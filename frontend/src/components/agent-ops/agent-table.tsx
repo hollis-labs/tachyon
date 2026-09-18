@@ -23,8 +23,8 @@ interface AgentTableProps {
 }
 
 const STATUS_COLORS: Record<AgentStatus, string> = {
-	enabled: "text-status-done",
-	disabled: "text-text-subtle",
+	active: "text-status-done",
+	sleeping: "text-text-subtle",
 }
 
 export function AgentTable({
@@ -56,7 +56,7 @@ export function AgentTable({
 					className="flex items-center gap-4 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors"
 				>
 					{/* Status indicator */}
-					<div className={`h-2 w-2 rounded-full ${agent.status === "enabled" ? "bg-status-done" : "bg-text-subtle"}`} />
+					<div className={`h-2 w-2 rounded-full ${agent.status === "active" ? "bg-status-done" : "bg-text-subtle"}`} />
 
 					{/* Agent info */}
 					<div className="flex-1 min-w-0">

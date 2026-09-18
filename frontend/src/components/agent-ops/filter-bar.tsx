@@ -1,14 +1,17 @@
 import { FilterSearchInput } from "@hollis-labs/sysop-ui/data"
 import { SlidersHorizontal } from "lucide-react"
 
-export type AgentStatus = "enabled" | "disabled"
+// Matches Nanite's real agent_profiles.status vocabulary
+// (internal/store/agents.go: case "", "sleeping", "active") — empty
+// defaults to "active" server-side.
+export type AgentStatus = "active" | "sleeping"
 
 const STATUS_COLORS: Record<AgentStatus, { bg: string; text: string; border: string }> = {
-	enabled: { bg: "bg-status-done/10", text: "text-status-done", border: "border-status-done/40" },
-	disabled: { bg: "bg-panel-2/50", text: "text-text-subtle", border: "border-border" },
+	active: { bg: "bg-status-done/10", text: "text-status-done", border: "border-status-done/40" },
+	sleeping: { bg: "bg-panel-2/50", text: "text-text-subtle", border: "border-border" },
 }
 
-const ALL_STATUSES: readonly AgentStatus[] = ["enabled", "disabled"]
+const ALL_STATUSES: readonly AgentStatus[] = ["active", "sleeping"]
 
 interface FilterBarProps {
 	activeStatuses: AgentStatus[]

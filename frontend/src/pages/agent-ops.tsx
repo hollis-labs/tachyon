@@ -1,10 +1,20 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { PageHeader, SummaryCards, Skeleton } from "@hollis-labs/sysop-ui"
+import {
+	PageHeader,
+	SummaryCards,
+	Skeleton,
+	FormDialog,
+	Button,
+	Input,
+	Label,
+	Textarea,
+} from "@hollis-labs/sysop-ui"
+import { Plus } from "lucide-react"
 import { FilterBar, type AgentStatus } from "../components/agent-ops/filter-bar"
 import { AgentTable, type Agent } from "../components/agent-ops/agent-table"
 import { useApi } from "../api/context"
 
-const DEFAULT_ACTIVE_STATUSES: AgentStatus[] = ["enabled", "disabled"]
+const DEFAULT_ACTIVE_STATUSES: AgentStatus[] = ["active", "sleeping"]
 
 function TableSkeleton() {
 	return (
@@ -22,6 +32,13 @@ export function AgentOpsPage() {
 	const [loading, setLoading] = useState(true)
 	const [activeStatuses, setActiveStatuses] = useState<AgentStatus[]>(DEFAULT_ACTIVE_STATUSES)
 	const [search, setSearch] = useState<string>("")
+
+	const [createOpen, setCreateOpen] = useState(false)
+	const [createName, setCreateName] = useState("")
+	const [createSystemPrompt, setCreateSystemPrompt] = useState("")
+	const [createDescription, setCreateDescription] = useState("")
+	const [creating, setCreating] = useState(false)
+	const [createError, setCreateError] = useState<string | null>(null)
 
 	// Fetch agents from API
 	const loadAgents = useCallback(async () => {
@@ -82,6 +99,33 @@ export function AgentOpsPage() {
 		console.log("Launch session for agent:", id)
 	}
 
+	function openCreateDialog() {
+		setCreateName("")
+		setCreateSystemPrompt("")
+		setCreateDescription("")
+		setCreateError(null)
+		setCreateOpen(true)
+	}
+
+	async function handleCreateSubmit() {
+		if (!createName.trim() || !createSystemPrompt.trim()) return
+		setCreating(true)
+		setCreateError(null)
+		try {
+			await api.createAgent({
+				name: createName.trim(),
+				system_prompt: createSystemPrompt.trim(),
+				agent_prompt: createDescription.trim() || undefined,
+			})
+			setCreateOpen(false)
+			await loadAgents()
+		} catch (error) {
+			setCreateError(error instanceof Error ? error.message : String(error))
+		} finally {
+			setCreating(false)
+		}
+	}
+
 	const filteredAgents = useMemo(() => {
 		let result = agents.filter((a) => activeStatuses.includes(a.status))
 		if (search) {
@@ -105,20 +149,25 @@ export function AgentOpsPage() {
 	const emptyVariant = activeFilterCount > 0 || search.length > 0 ? "no-results" : "no-agents"
 
 	const totalCount = agents.length
-	const enabledCount = agents.filter((a) => a.status === "enabled").length
-	const disabledCount = agents.filter((a) => a.status === "disabled").length
+	const activeCount = agents.filter((a) => a.status === "active").length
+	const sleepingCount = agents.filter((a) => a.status === "sleeping").length
 	const editableCount = agents.filter((a) => a.editable).length
 
 	const summaryCards = [
 		{ label: "Total Agents", value: totalCount },
-		{ label: "Enabled", value: enabledCount, accentColor: "#34d399" },
-		{ label: "Disabled", value: disabledCount },
+		{ label: "Active", value: activeCount, accentColor: "#34d399" },
+		{ label: "Sleeping", value: sleepingCount },
 		{ label: "Editable", value: editableCount, accentColor: "#60a5fa" },
 	]
 
 	return (
 		<div className="flex h-full flex-col">
-			<PageHeader title="Agent Operations" />
+			<PageHeader title="Agent Operations">
+				<Button type="button" size="sm" onClick={openCreateDialog}>
+					<Plus className="h-4 w-4" />
+					New Agent
+				</Button>
+			</PageHeader>
 			{!loading && <SummaryCards cards={summaryCards} />}
 			<FilterBar
 				activeStatuses={activeStatuses}
@@ -142,6 +191,50 @@ export function AgentOpsPage() {
 					/>
 				)}
 			</div>
+			<FormDialog
+				open={createOpen}
+				onClose={() => setCreateOpen(false)}
+				title="New Agent"
+				description="Create a new agent profile in Nanite."
+				onSubmit={handleCreateSubmit}
+				submitLabel="Create Agent"
+				submitDisabled={!createName.trim() || !createSystemPrompt.trim()}
+				submitting={creating}
+			>
+				<div className="flex flex-col gap-1.5">
+					<Label htmlFor="agent-name">Name</Label>
+					<Input
+						id="agent-name"
+						value={createName}
+						onChange={(e) => setCreateName(e.target.value)}
+						placeholder="e.g. Release Notes Writer"
+						autoFocus
+					/>
+				</div>
+				<div className="flex flex-col gap-1.5">
+					<Label htmlFor="agent-system-prompt">System prompt</Label>
+					<Textarea
+						id="agent-system-prompt"
+						value={createSystemPrompt}
+						onChange={(e) => setCreateSystemPrompt(e.target.value)}
+						placeholder="You are..."
+						rows={6}
+					/>
+				</div>
+				<div className="flex flex-col gap-1.5">
+					<Label htmlFor="agent-description">Description (optional)</Label>
+					<Textarea
+						id="agent-description"
+						value={createDescription}
+						onChange={(e) => setCreateDescription(e.target.value)}
+						placeholder="What this agent is for"
+						rows={2}
+					/>
+				</div>
+				{createError && (
+					<p className="text-xs text-status-failed">{createError}</p>
+				)}
+			</FormDialog>
 		</div>
 	)
 }

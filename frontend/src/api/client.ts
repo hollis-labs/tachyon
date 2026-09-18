@@ -1,4 +1,4 @@
-import { createApiClient } from "@hollis-labs/sysop-ui/api"
+import { createApiClient, type JsonObject } from "@hollis-labs/sysop-ui/api"
 
 // Same-origin: the Go binary serves both this SPA and the API, so an empty
 // baseUrl resolves every request against the current origin.
@@ -40,12 +40,19 @@ export interface UpdateAgentRequest {
 export const apiClient = {
   getHealth: () => http.get<HealthInfo>("/api/health"),
 
-  // Agent operations
+  // Agent operations. ApiClient only has get/post/request — PUT and DELETE
+  // go through the request() escape hatch.
   listAgents: () => http.get<Agent[]>("/api/agents"),
   getAgent: (id: string) => http.get<Agent>(`/api/agents/${id}`),
-  createAgent: (req: CreateAgentRequest) => http.post<Agent>("/api/agents", req),
-  updateAgent: (id: string, req: UpdateAgentRequest) => http.put<Agent>(`/api/agents/${id}`, req),
-  deleteAgent: (id: string) => http.delete(`/api/agents/${id}`),
+  createAgent: (req: CreateAgentRequest) => http.post<Agent>("/api/agents", req as unknown as JsonObject),
+  updateAgent: (id: string, req: UpdateAgentRequest) =>
+    http.request<Agent>(`/api/agents/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    }),
+  deleteAgent: (id: string) =>
+    http.request<void>(`/api/agents/${id}`, { method: "DELETE" }),
 }
 
 export type AppApiClient = typeof apiClient
