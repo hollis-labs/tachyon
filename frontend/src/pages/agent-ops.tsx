@@ -62,7 +62,7 @@ export function AgentOpsPage() {
 				description: a.description,
 				tags: a.tags,
 				icon: a.icon,
-				status: (a.status || "enabled") as AgentStatus,
+				status: a.status || "unknown",
 				layer: a.layer,
 				editable: a.editable,
 			})))
