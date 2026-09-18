@@ -7,243 +7,240 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 )
 
-// NaniteAdapter implements AgentAdapter using Tether's mux aggregator
-// (the mux_agent_* and mux_session_* MCP tools fronting Nanite).
-//
-// Design decision: We use the mux MCP tools rather than calling Nanite's
-// HTTP/MCP API directly because:
-//   - The mux layer provides a stable, already-aggregated interface
-//   - It abstracts Nanite implementation details
-//   - Future providers can be swapped in/out at the mux level
-//   - The adapter remains provider-agnostic from the start
+// NaniteAdapter implements AgentAdapter by calling Nanite's HTTP API directly
+// at http://localhost:8090. This targets Nanite's own daemon, not Tether/mux.
 type NaniteAdapter struct {
-	mcpURL     string       // MCP server URL (e.g., http://127.0.0.1:55970/mcp)
+	baseURL    string       // e.g., "http://localhost:8090"
 	httpClient *http.Client
 }
 
-// NewNaniteAdapter creates a new Nanite adapter using the mux MCP endpoint.
-func NewNaniteAdapter(mcpURL string) *NaniteAdapter {
+// NewNaniteAdapter creates a new Nanite adapter that calls the Nanite API
+// at the given base URL (typically http://localhost:8090).
+func NewNaniteAdapter(baseURL string) *NaniteAdapter {
 	return &NaniteAdapter{
-		mcpURL:     mcpURL,
+		baseURL:    baseURL,
 		httpClient: &http.Client{},
 	}
 }
 
-// mcpRequest represents an MCP tool call request.
-type mcpRequest struct {
-	Method string                 `json:"method"`
-	Params map[string]interface{} `json:"params"`
+// naniteAgent represents the Nanite API's agent response structure.
+// This matches the AgentProfileView type from internal/api/types.go.
+type naniteAgent struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Slug         string `json:"slug"`
+	SystemPrompt string `json:"system_prompt"`
+	Description  string `json:"description"`
+	Tags         string `json:"tags"`
+	Icon         string `json:"icon"`
+	Status       string `json:"status"`
+	Source       string `json:"source"`
+	ManageClass  string `json:"manage_class"`
+	Editable     bool   `json:"editable"`
 }
 
-// mcpResponse represents an MCP tool call response.
-type mcpResponse struct {
-	Content []mcpContent `json:"content"`
-	IsError bool         `json:"isError"`
+// naniteCreateAgentRequest matches Nanite's CreateAgentRequest type.
+type naniteCreateAgentRequest struct {
+	ID           string `json:"id,omitempty"`
+	Name         string `json:"name"`
+	Slug         string `json:"slug"`
+	SystemPrompt string `json:"system_prompt"`
+	Description  string `json:"description,omitempty"`
+	Avatar       string `json:"avatar,omitempty"`
+	Icon         string `json:"icon,omitempty"`
+	Tags         string `json:"tags,omitempty"`
+	Status       string `json:"status,omitempty"`
+	Source       string `json:"source,omitempty"` // Defaults to "user" server-side if omitted
 }
 
-// mcpContent represents a content block in the MCP response.
-type mcpContent struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+// naniteUpdateAgentRequest matches Nanite's UpdateAgentRequest type.
+type naniteUpdateAgentRequest struct {
+	Name         *string `json:"name,omitempty"`
+	Slug         *string `json:"slug,omitempty"`
+	SystemPrompt *string `json:"system_prompt,omitempty"`
+	Description  *string `json:"description,omitempty"`
+	Icon         *string `json:"icon,omitempty"`
+	Tags         *string `json:"tags,omitempty"`
+	Status       *string `json:"status,omitempty"`
 }
 
-// callMCP makes an MCP tool call and returns the response text.
-func (a *NaniteAdapter) callMCP(ctx context.Context, toolName string, params map[string]interface{}) (string, error) {
-	reqBody := mcpRequest{
-		Method: toolName,
-		Params: params,
-	}
+// naniteCreateSessionRequest matches Nanite's CreateSessionRequest type.
+type naniteCreateSessionRequest struct {
+	ProjectID string `json:"project_id,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	AgentID   string `json:"agent_id,omitempty"`
+}
 
-	body, err := json.Marshal(reqBody)
+// naniteSession represents Nanite's session response.
+type naniteSession struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+}
+
+// ListAgents implements AgentAdapter.ListAgents.
+func (a *NaniteAdapter) ListAgents(ctx context.Context) ([]Agent, error) {
+	// Use ?manageable=1 to exclude internal harness primitives
+	url := a.baseURL + "/api/agents?manageable=1"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal MCP request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", a.mcpURL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("MCP call failed: %w", err)
+		return nil, fmt.Errorf("GET /api/agents failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("MCP call returned status %d: %s", resp.StatusCode, string(respBody))
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET /api/agents returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	var mcpResp mcpResponse
-	if err := json.Unmarshal(respBody, &mcpResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal MCP response: %w", err)
+	var naniteAgents []naniteAgent
+	if err := json.NewDecoder(resp.Body).Decode(&naniteAgents); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if mcpResp.IsError {
-		if len(mcpResp.Content) > 0 {
-			return "", fmt.Errorf("MCP tool error: %s", mcpResp.Content[0].Text)
+	agents := make([]Agent, len(naniteAgents))
+	for i, na := range naniteAgents {
+		agents[i] = Agent{
+			ID:           na.ID,
+			Name:         na.Name,
+			SystemPrompt: na.SystemPrompt,
+			Layer:        na.ManageClass,
 		}
-		return "", fmt.Errorf("MCP tool error (no details)")
-	}
-
-	if len(mcpResp.Content) == 0 {
-		return "", fmt.Errorf("empty MCP response")
-	}
-
-	return mcpResp.Content[0].Text, nil
-}
-
-// ListAgents implements AgentAdapter.ListAgents using mux_agent_list.
-func (a *NaniteAdapter) ListAgents(ctx context.Context) ([]Agent, error) {
-	respText, err := a.callMCP(ctx, "mux_agent_list", map[string]interface{}{})
-	if err != nil {
-		return nil, fmt.Errorf("mux_agent_list failed: %w", err)
-	}
-
-	// Parse the response - the tool returns JSON array of agents
-	var rawAgents []map[string]interface{}
-	if err := json.Unmarshal([]byte(respText), &rawAgents); err != nil {
-		return nil, fmt.Errorf("failed to parse agent list: %w", err)
-	}
-
-	agents := make([]Agent, 0, len(rawAgents))
-	for _, raw := range rawAgents {
-		agent := Agent{
-			ID:       getString(raw, "id"),
-			Name:     getString(raw, "name"),
-			Layer:    getString(raw, "layer"),
-			FilePath: getString(raw, "file_path"),
-		}
-
-		// Parse optional fields
-		if sp, ok := raw["system_prompt"].(string); ok {
-			agent.SystemPrompt = sp
-		}
-		if ap, ok := raw["agent_prompt"].(string); ok {
-			agent.AgentPrompt = ap
-		}
-		if roles, ok := raw["roles"].([]interface{}); ok {
-			agent.Roles = toStringSlice(roles)
-		}
-		if skills, ok := raw["skills"].([]interface{}); ok {
-			agent.Skills = toStringSlice(skills)
-		}
-
-		agents = append(agents, agent)
 	}
 
 	return agents, nil
 }
 
-// GetAgent implements AgentAdapter.GetAgent using mux_agent_show.
+// GetAgent implements AgentAdapter.GetAgent.
 func (a *NaniteAdapter) GetAgent(ctx context.Context, id string) (*Agent, error) {
-	params := map[string]interface{}{
-		"id": id,
-	}
+	url := fmt.Sprintf("%s/api/agents/%s", a.baseURL, id)
 
-	respText, err := a.callMCP(ctx, "mux_agent_show", params)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("mux_agent_show failed: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	var raw map[string]interface{}
-	if err := json.Unmarshal([]byte(respText), &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse agent details: %w", err)
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET /api/agents/%s failed: %w", id, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET /api/agents/%s returned %d: %s", id, resp.StatusCode, string(body))
 	}
 
-	agent := &Agent{
-		ID:       getString(raw, "id"),
-		Name:     getString(raw, "name"),
-		Layer:    getString(raw, "layer"),
-		FilePath: getString(raw, "file_path"),
+	// The GET endpoint wraps the agent in {"agent": ...}
+	var wrapper struct {
+		Agent naniteAgent `json:"agent"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	if sp, ok := raw["system_prompt"].(string); ok {
-		agent.SystemPrompt = sp
-	}
-	if ap, ok := raw["agent_prompt"].(string); ok {
-		agent.AgentPrompt = ap
-	}
-	if roles, ok := raw["roles"].([]interface{}); ok {
-		agent.Roles = toStringSlice(roles)
-	}
-	if skills, ok := raw["skills"].([]interface{}); ok {
-		agent.Skills = toStringSlice(skills)
-	}
-
-	return agent, nil
+	return &Agent{
+		ID:           wrapper.Agent.ID,
+		Name:         wrapper.Agent.Name,
+		SystemPrompt: wrapper.Agent.SystemPrompt,
+		Layer:        wrapper.Agent.ManageClass,
+	}, nil
 }
 
-// CreateAgent implements AgentAdapter.CreateAgent using mux_agent_create.
+// CreateAgent implements AgentAdapter.CreateAgent.
 func (a *NaniteAdapter) CreateAgent(ctx context.Context, req CreateAgentRequest) (*Agent, error) {
-	params := map[string]interface{}{
-		"id": req.ID,
+	// Generate slug from ID if provided, otherwise from name
+	slug := req.ID
+	if slug == "" {
+		// Convert name to slug format (lowercase, replace spaces with hyphens)
+		slug = slugify(req.Name)
 	}
 
-	if req.Name != "" {
-		params["name"] = req.Name
-	}
-	if req.SystemPrompt != "" {
-		params["system_prompt"] = req.SystemPrompt
-	}
-	if req.AgentPrompt != "" {
-		params["agent_prompt"] = req.AgentPrompt
-	}
-	if len(req.Roles) > 0 {
-		params["roles"] = strings.Join(req.Roles, ",")
-	}
-	if len(req.Skills) > 0 {
-		params["skills"] = strings.Join(req.Skills, ",")
-	}
-	if req.Scope != "" {
-		params["scope"] = req.Scope
-	}
-	if req.ProjectID != "" {
-		params["project"] = req.ProjectID
+	naniteReq := naniteCreateAgentRequest{
+		Name:         req.Name,
+		Slug:         slug,
+		SystemPrompt: req.SystemPrompt,
+		Description:  req.AgentPrompt,
 	}
 
-	if _, err := a.callMCP(ctx, "mux_agent_create", params); err != nil {
-		return nil, fmt.Errorf("mux_agent_create failed: %w", err)
+	body, err := json.Marshal(naniteReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// After creation, fetch the full agent details
-	return a.GetAgent(ctx, req.ID)
+	url := a.baseURL + "/api/agents"
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("POST /api/agents failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("POST /api/agents returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var na naniteAgent
+	if err := json.NewDecoder(resp.Body).Decode(&na); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &Agent{
+		ID:           na.ID,
+		Name:         na.Name,
+		SystemPrompt: na.SystemPrompt,
+		Layer:        na.ManageClass,
+	}, nil
 }
 
-// UpdateAgent implements AgentAdapter.UpdateAgent using mux_agent_edit.
+// UpdateAgent implements AgentAdapter.UpdateAgent.
 func (a *NaniteAdapter) UpdateAgent(ctx context.Context, id string, req UpdateAgentRequest) (*Agent, error) {
-	params := map[string]interface{}{
-		"id": id,
+	naniteReq := naniteUpdateAgentRequest{
+		Name:         req.Name,
+		SystemPrompt: req.SystemPrompt,
 	}
 
-	if req.Name != nil {
-		params["name"] = *req.Name
-	}
-	if req.SystemPrompt != nil {
-		params["system_prompt"] = *req.SystemPrompt
-	}
 	if req.AgentPrompt != nil {
-		params["agent_prompt"] = *req.AgentPrompt
-	}
-	if req.Roles != nil {
-		params["roles"] = strings.Join(req.Roles, ",")
-	}
-	if req.Skills != nil {
-		params["skills"] = strings.Join(req.Skills, ",")
+		naniteReq.Description = req.AgentPrompt
 	}
 
-	if _, err := a.callMCP(ctx, "mux_agent_edit", params); err != nil {
-		return nil, fmt.Errorf("mux_agent_edit failed: %w", err)
+	body, err := json.Marshal(naniteReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/agents/%s", a.baseURL, id)
+	httpReq, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("PUT /api/agents/%s failed: %w", id, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("PUT /api/agents/%s returned %d: %s", id, resp.StatusCode, string(respBody))
 	}
 
 	// After update, fetch the current agent details
@@ -251,96 +248,94 @@ func (a *NaniteAdapter) UpdateAgent(ctx context.Context, id string, req UpdateAg
 }
 
 // DeleteAgent implements AgentAdapter.DeleteAgent.
-// Note: The mux_agent_* tools don't expose a delete operation,
-// so this is not currently supported via the Nanite adapter.
 func (a *NaniteAdapter) DeleteAgent(ctx context.Context, id string) error {
-	return fmt.Errorf("delete operation not supported by Nanite adapter (mux_agent_* tools don't expose delete)")
+	url := fmt.Sprintf("%s/api/agents/%s", a.baseURL, id)
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("DELETE /api/agents/%s failed: %w", id, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("DELETE /api/agents/%s returned %d: %s", id, resp.StatusCode, string(body))
+	}
+
+	return nil
 }
 
-// CreateSession implements AgentAdapter.CreateSession using mux_session_create.
+// CreateSession implements AgentAdapter.CreateSession.
+// This creates a Nanite session via POST /api/sessions.
 func (a *NaniteAdapter) CreateSession(ctx context.Context, req CreateSessionRequest) (string, error) {
-	params := map[string]interface{}{
-		"launch_id": req.LaunchID,
+	naniteReq := naniteCreateSessionRequest{
+		ProjectID: req.ProjectID,
+		Model:     req.Model,
+		Provider:  req.Provider,
+		AgentID:   req.AgentID,
 	}
 
-	if req.AgentFile != "" {
-		params["agent_file"] = req.AgentFile
-	}
-	if req.AgentInline != "" {
-		params["agent_inline"] = req.AgentInline
-	}
-	if req.BootProfile != "" {
-		params["boot_profile"] = req.BootProfile
-	}
-	if req.BootPrompt != "" {
-		params["boot_prompt"] = req.BootPrompt
-	}
-	if req.Override != "" {
-		params["override"] = req.Override
-	}
-	if req.PromptAppend != "" {
-		params["prompt_append"] = req.PromptAppend
-	}
-	if req.Injection != "" {
-		params["injection"] = req.Injection
-	}
-
-	respText, err := a.callMCP(ctx, "mux_session_create", params)
+	body, err := json.Marshal(naniteReq)
 	if err != nil {
-		return "", fmt.Errorf("mux_session_create failed: %w", err)
+		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(respText), &result); err != nil {
-		return "", fmt.Errorf("failed to parse session create response: %w", err)
+	url := a.baseURL + "/api/sessions"
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("POST /api/sessions failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("POST /api/sessions returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	sessionID := getString(result, "session_id")
-	if sessionID == "" {
-		return "", fmt.Errorf("session_id not found in response")
+	var session naniteSession
+	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return sessionID, nil
+	if session.ID == "" {
+		return "", fmt.Errorf("session ID not found in response")
+	}
+
+	return session.ID, nil
 }
 
-// LaunchSession implements AgentAdapter.LaunchSession using mux_session_launch.
+// LaunchSession implements AgentAdapter.LaunchSession.
+// Note: Nanite sessions are created and immediately usable; there's no separate
+// "launch" step in the API. We return the session ID in the result for consistency.
 func (a *NaniteAdapter) LaunchSession(ctx context.Context, sessionID string) (*LaunchResult, error) {
-	params := map[string]interface{}{
-		"session_id": sessionID,
-	}
-
-	respText, err := a.callMCP(ctx, "mux_session_launch", params)
-	if err != nil {
-		return nil, fmt.Errorf("mux_session_launch failed: %w", err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(respText), &result); err != nil {
-		return nil, fmt.Errorf("failed to parse launch response: %w", err)
-	}
-
 	return &LaunchResult{
-		SessionID:     sessionID,
-		WorkspacePath: getString(result, "workspace_path"),
-		LogPath:       getString(result, "log_path"),
+		SessionID: sessionID,
 	}, nil
 }
 
-// Helper functions
-
-func getString(m map[string]interface{}, key string) string {
-	if v, ok := m[key].(string); ok {
-		return v
-	}
-	return ""
-}
-
-func toStringSlice(arr []interface{}) []string {
-	result := make([]string, 0, len(arr))
-	for _, v := range arr {
-		if s, ok := v.(string); ok {
-			result = append(result, s)
+// slugify converts a string to a slug format (lowercase, spaces to hyphens).
+func slugify(s string) string {
+	// Simple slugification: lowercase and replace spaces with hyphens
+	slug := ""
+	for _, r := range s {
+		if r == ' ' {
+			slug += "-"
+		} else if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			slug += string(r)
+		} else if r >= 'A' && r <= 'Z' {
+			slug += string(r + 32) // convert to lowercase
 		}
 	}
-	return result
+	return slug
 }

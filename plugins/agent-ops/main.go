@@ -7,13 +7,9 @@
 // operations (list/get/create/update/delete/launch), and concrete adapters
 // implement these operations for specific frameworks.
 //
-// The first concrete adapter is NaniteAdapter, which uses Tether's mux
-// aggregator (the mux_agent_* and mux_session_* MCP tools) rather than
-// calling Nanite's HTTP/MCP API directly. This design choice provides:
-//   - A stable, already-aggregated interface
-//   - Abstraction of Nanite implementation details
-//   - Ability to swap providers at the mux level
-//   - Provider-agnostic adapter from the start
+// The first concrete adapter is NaniteAdapter, which calls Nanite's HTTP
+// API directly at http://localhost:8090 (the nanite-api-service daemon).
+// Future adapters can plug in for other agent frameworks.
 package main
 
 import (
@@ -28,20 +24,20 @@ type plugin struct {
 }
 
 func (p *plugin) Init(ctx context.Context, params subprocess.InitParams) (subprocess.InitResult, error) {
-	// Default MCP URL - can be overridden via config
-	mcpURL := "http://127.0.0.1:55970/mcp"
-	if url, ok := params.Config["mcp_url"]; ok {
-		mcpURL = url
+	// Default Nanite API URL - can be overridden via config
+	naniteURL := "http://localhost:8090"
+	if url, ok := params.Config["nanite_url"]; ok {
+		naniteURL = url
 	}
 
 	// Initialize the Nanite adapter (first concrete implementation)
-	p.adapter = NewNaniteAdapter(mcpURL)
+	p.adapter = NewNaniteAdapter(naniteURL)
 
 	return subprocess.InitResult{
 		ID:          "agent-ops",
 		Name:        "Agent Ops",
 		Version:     "0.1.0",
-		Description: "Agent operational capabilities for Tachyon (adapter-based, Nanite via mux)",
+		Description: "Agent operational capabilities for Tachyon (adapter-based, Nanite HTTP API)",
 		Protocol:    subprocess.ProtocolVersion,
 	}, nil
 }

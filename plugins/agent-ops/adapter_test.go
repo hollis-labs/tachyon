@@ -10,69 +10,192 @@ func TestAdapterInterface(t *testing.T) {
 	var _ AgentAdapter = (*NaniteAdapter)(nil)
 }
 
-// TestNaniteAdapterCreation tests that NewNaniteAdapter initializes correctly.
+// TestNaniteAdapterCreation verifies the adapter can be instantiated.
 func TestNaniteAdapterCreation(t *testing.T) {
-	mcpURL := "http://localhost:55970/mcp"
-	adapter := NewNaniteAdapter(mcpURL)
-
+	adapter := NewNaniteAdapter("http://localhost:8090")
 	if adapter == nil {
 		t.Fatal("NewNaniteAdapter returned nil")
 	}
-
-	if adapter.mcpURL != mcpURL {
-		t.Errorf("expected mcpURL %q, got %q", mcpURL, adapter.mcpURL)
+	if adapter.baseURL != "http://localhost:8090" {
+		t.Errorf("expected baseURL http://localhost:8090, got %s", adapter.baseURL)
 	}
-
 	if adapter.httpClient == nil {
 		t.Error("httpClient should not be nil")
 	}
 }
 
-// TestAgentTypeStructure validates the Agent struct can be marshaled/unmarshaled.
+// TestNaniteAdapterListAgents tests listing agents from the real Nanite API.
+// This is an integration test - it requires Nanite to be running at localhost:8090.
+func TestNaniteAdapterListAgents(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	adapter := NewNaniteAdapter("http://localhost:8090")
+	ctx := context.Background()
+
+	agents, err := adapter.ListAgents(ctx)
+	if err != nil {
+		t.Fatalf("ListAgents failed: %v", err)
+	}
+
+	// Should have at least some agents (Nanite has built-in agents)
+	if len(agents) == 0 {
+		t.Error("ListAgents returned empty list - expected at least some agents")
+	}
+
+	// Verify agent structure
+	for _, agent := range agents {
+		if agent.ID == "" {
+			t.Error("agent has empty ID")
+		}
+		if agent.Name == "" {
+			t.Error("agent has empty Name")
+		}
+	}
+}
+
+// TestNaniteAdapterCRUD tests create/get/update/delete operations
+// against the real Nanite API.
+func TestNaniteAdapterCRUD(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	adapter := NewNaniteAdapter("http://localhost:8090")
+	ctx := context.Background()
+
+	// Create a test agent
+	createReq := CreateAgentRequest{
+		Name:         "Test CRUD Agent",
+		SystemPrompt: "You are a test agent for verifying CRUD operations.",
+		AgentPrompt:  "This agent exists only for testing purposes.",
+	}
+
+	created, err := adapter.CreateAgent(ctx, createReq)
+	if err != nil {
+		t.Fatalf("CreateAgent failed: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("CreateAgent returned agent with empty ID")
+	}
+	if created.Name != createReq.Name {
+		t.Errorf("expected name %q, got %q", createReq.Name, created.Name)
+	}
+
+	// Clean up at the end
+	defer func() {
+		if err := adapter.DeleteAgent(ctx, created.ID); err != nil {
+			t.Errorf("cleanup: DeleteAgent failed: %v", err)
+		}
+	}()
+
+	// Get the agent by ID
+	retrieved, err := adapter.GetAgent(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetAgent failed: %v", err)
+	}
+	if retrieved.ID != created.ID {
+		t.Errorf("expected ID %q, got %q", created.ID, retrieved.ID)
+	}
+	if retrieved.Name != created.Name {
+		t.Errorf("expected name %q, got %q", created.Name, retrieved.Name)
+	}
+
+	// Update the agent
+	newName := "Updated Test Agent"
+	updateReq := UpdateAgentRequest{
+		Name: &newName,
+	}
+	updated, err := adapter.UpdateAgent(ctx, created.ID, updateReq)
+	if err != nil {
+		t.Fatalf("UpdateAgent failed: %v", err)
+	}
+	if updated.Name != newName {
+		t.Errorf("expected updated name %q, got %q", newName, updated.Name)
+	}
+
+	// Verify the update persisted
+	retrieved2, err := adapter.GetAgent(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetAgent after update failed: %v", err)
+	}
+	if retrieved2.Name != newName {
+		t.Errorf("expected persisted name %q, got %q", newName, retrieved2.Name)
+	}
+
+	// Delete is handled by defer cleanup above
+}
+
+// TestNaniteAdapterCreateSession tests session creation against the real Nanite API.
+func TestNaniteAdapterCreateSession(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	adapter := NewNaniteAdapter("http://localhost:8090")
+	ctx := context.Background()
+
+	// Create a session (agent_id is optional - Nanite will use a default)
+	sessionReq := CreateSessionRequest{
+		Model:    "claude-sonnet-4-5",
+		Provider: "anthropic",
+	}
+
+	sessionID, err := adapter.CreateSession(ctx, sessionReq)
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+	if sessionID == "" {
+		t.Fatal("CreateSession returned empty session ID")
+	}
+
+	// Launch the session (for Nanite this is a no-op, but tests the interface)
+	result, err := adapter.LaunchSession(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("LaunchSession failed: %v", err)
+	}
+	if result.SessionID != sessionID {
+		t.Errorf("expected session ID %q, got %q", sessionID, result.SessionID)
+	}
+}
+
+// TestAgentTypeStructure verifies the Agent type has expected fields.
 func TestAgentTypeStructure(t *testing.T) {
 	agent := Agent{
-		ID:           "test-agent",
+		ID:           "test-id",
 		Name:         "Test Agent",
-		SystemPrompt: "You are a test agent",
-		AgentPrompt:  "Test persona",
-		Roles:        []string{"tester", "validator"},
-		Skills:       []string{"testing", "validation"},
-		Layer:        "project",
-		FilePath:     "/path/to/agent.yaml",
+		SystemPrompt: "Test prompt",
+		Layer:        "managed",
 	}
 
-	if agent.ID != "test-agent" {
-		t.Errorf("expected ID %q, got %q", "test-agent", agent.ID)
+	if agent.ID != "test-id" {
+		t.Errorf("expected ID test-id, got %s", agent.ID)
 	}
-
-	if len(agent.Roles) != 2 {
-		t.Errorf("expected 2 roles, got %d", len(agent.Roles))
+	if agent.Name != "Test Agent" {
+		t.Errorf("expected Name 'Test Agent', got %s", agent.Name)
 	}
-
-	if len(agent.Skills) != 2 {
-		t.Errorf("expected 2 skills, got %d", len(agent.Skills))
+	if agent.SystemPrompt != "Test prompt" {
+		t.Errorf("expected SystemPrompt 'Test prompt', got %s", agent.SystemPrompt)
+	}
+	if agent.Layer != "managed" {
+		t.Errorf("expected Layer 'managed', got %s", agent.Layer)
 	}
 }
 
 // TestCreateAgentRequest validates the CreateAgentRequest structure.
 func TestCreateAgentRequest(t *testing.T) {
 	req := CreateAgentRequest{
-		ID:           "new-agent",
 		Name:         "New Agent",
 		SystemPrompt: "System prompt",
 		AgentPrompt:  "Agent prompt",
-		Roles:        []string{"role1"},
-		Skills:       []string{"skill1"},
-		Scope:        "project",
-		ProjectID:    "PRJ-123",
 	}
 
-	if req.ID != "new-agent" {
-		t.Errorf("expected ID %q, got %q", "new-agent", req.ID)
+	if req.Name != "New Agent" {
+		t.Errorf("expected Name %q, got %q", "New Agent", req.Name)
 	}
-
-	if req.Scope != "project" {
-		t.Errorf("expected scope %q, got %q", "project", req.Scope)
+	if req.SystemPrompt != "System prompt" {
+		t.Errorf("expected SystemPrompt %q, got %q", "System prompt", req.SystemPrompt)
 	}
 }
 
@@ -84,8 +207,6 @@ func TestUpdateAgentRequest(t *testing.T) {
 	req := UpdateAgentRequest{
 		Name:         &newName,
 		SystemPrompt: &newPrompt,
-		Roles:        []string{"new-role"},
-		Skills:       []string{"new-skill"},
 	}
 
 	if req.Name == nil || *req.Name != "Updated Name" {
@@ -100,92 +221,27 @@ func TestUpdateAgentRequest(t *testing.T) {
 // TestCreateSessionRequest validates the CreateSessionRequest structure.
 func TestCreateSessionRequest(t *testing.T) {
 	req := CreateSessionRequest{
-		LaunchID:     "launch-123",
-		AgentFile:    "/path/to/agent.yaml",
-		BootProfile:  "/path/to/boot.yaml",
-		BootPrompt:   "Boot prompt",
-		PromptAppend: "Additional instructions",
+		ProjectID: "proj-123",
+		Model:     "claude-sonnet-4-5",
+		Provider:  "anthropic",
+		AgentID:   "agent-456",
 	}
 
-	if req.LaunchID != "launch-123" {
-		t.Errorf("expected LaunchID %q, got %q", "launch-123", req.LaunchID)
+	if req.ProjectID != "proj-123" {
+		t.Errorf("expected ProjectID %q, got %q", "proj-123", req.ProjectID)
+	}
+	if req.Model != "claude-sonnet-4-5" {
+		t.Errorf("expected Model %q, got %q", "claude-sonnet-4-5", req.Model)
 	}
 }
 
 // TestLaunchResult validates the LaunchResult structure.
 func TestLaunchResult(t *testing.T) {
 	result := LaunchResult{
-		SessionID:     "session-456",
-		WorkspacePath: "/workspace",
-		LogPath:       "/logs/session.log",
+		SessionID: "session-456",
 	}
 
 	if result.SessionID != "session-456" {
 		t.Errorf("expected SessionID %q, got %q", "session-456", result.SessionID)
 	}
-}
-
-// MockAdapter is a minimal mock implementation for testing.
-type MockAdapter struct {
-	ListAgentsFunc    func(ctx context.Context) ([]Agent, error)
-	GetAgentFunc      func(ctx context.Context, id string) (*Agent, error)
-	CreateAgentFunc   func(ctx context.Context, req CreateAgentRequest) (*Agent, error)
-	UpdateAgentFunc   func(ctx context.Context, id string, req UpdateAgentRequest) (*Agent, error)
-	DeleteAgentFunc   func(ctx context.Context, id string) error
-	CreateSessionFunc func(ctx context.Context, req CreateSessionRequest) (string, error)
-	LaunchSessionFunc func(ctx context.Context, sessionID string) (*LaunchResult, error)
-}
-
-func (m *MockAdapter) ListAgents(ctx context.Context) ([]Agent, error) {
-	if m.ListAgentsFunc != nil {
-		return m.ListAgentsFunc(ctx)
-	}
-	return nil, nil
-}
-
-func (m *MockAdapter) GetAgent(ctx context.Context, id string) (*Agent, error) {
-	if m.GetAgentFunc != nil {
-		return m.GetAgentFunc(ctx, id)
-	}
-	return nil, nil
-}
-
-func (m *MockAdapter) CreateAgent(ctx context.Context, req CreateAgentRequest) (*Agent, error) {
-	if m.CreateAgentFunc != nil {
-		return m.CreateAgentFunc(ctx, req)
-	}
-	return nil, nil
-}
-
-func (m *MockAdapter) UpdateAgent(ctx context.Context, id string, req UpdateAgentRequest) (*Agent, error) {
-	if m.UpdateAgentFunc != nil {
-		return m.UpdateAgentFunc(ctx, id, req)
-	}
-	return nil, nil
-}
-
-func (m *MockAdapter) DeleteAgent(ctx context.Context, id string) error {
-	if m.DeleteAgentFunc != nil {
-		return m.DeleteAgentFunc(ctx, id)
-	}
-	return nil
-}
-
-func (m *MockAdapter) CreateSession(ctx context.Context, req CreateSessionRequest) (string, error) {
-	if m.CreateSessionFunc != nil {
-		return m.CreateSessionFunc(ctx, req)
-	}
-	return "", nil
-}
-
-func (m *MockAdapter) LaunchSession(ctx context.Context, sessionID string) (*LaunchResult, error) {
-	if m.LaunchSessionFunc != nil {
-		return m.LaunchSessionFunc(ctx, sessionID)
-	}
-	return nil, nil
-}
-
-// TestMockAdapter verifies the mock implements the interface.
-func TestMockAdapter(t *testing.T) {
-	var _ AgentAdapter = (*MockAdapter)(nil)
 }
