@@ -29,3 +29,5 @@ Thumbs.db
 # Local env
 .env
 .env.local
+plugins/*/[!.]*
+!plugins/*/*.go
