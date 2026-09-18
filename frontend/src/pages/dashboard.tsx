@@ -18,7 +18,7 @@ export function DashboardPage() {
     let cancelled = false
     api
       .getHealth()
-      .then((info) => {
+      .then((info: HealthInfo) => {
         if (!cancelled) setHealth(info)
       })
       .catch((err: unknown) => {
