@@ -1,5 +1,5 @@
 import { EmptyState } from "@hollis-labs/sysop-ui"
-import { Edit, MoreVertical, Play, Trash2 } from "lucide-react"
+import { Edit, Play, Trash2 } from "lucide-react"
 import type { AgentStatus } from "./filter-bar"
 
 export interface Agent {
@@ -12,6 +12,7 @@ export interface Agent {
 	status: AgentStatus
 	layer?: string
 	editable: boolean
+	system_prompt?: string
 }
 
 interface AgentTableProps {
@@ -19,19 +20,25 @@ interface AgentTableProps {
 	onEdit?: (id: string) => void
 	onDelete?: (id: string) => void
 	onLaunch?: (id: string) => void
+	onRowClick?: (agent: Agent) => void
 	emptyVariant?: "no-results" | "no-agents"
 }
 
-const STATUS_COLORS: Record<AgentStatus, string> = {
+const STATUS_COLOR_MAP: Record<string, string> = {
 	active: "text-status-done",
 	sleeping: "text-text-subtle",
+	enabled: "text-status-done",
+	disabled: "text-text-subtle",
 }
+
+const FALLBACK_STATUS_COLOR = "text-text-soft"
 
 export function AgentTable({
 	agents,
 	onEdit,
 	onDelete,
 	onLaunch,
+	onRowClick,
 	emptyVariant = "no-agents",
 }: AgentTableProps) {
 	if (agents.length === 0) {
@@ -53,7 +60,8 @@ export function AgentTable({
 			{agents.map((agent) => (
 				<div
 					key={agent.id}
-					className="flex items-center gap-4 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors"
+					onClick={() => onRowClick?.(agent)}
+					className="flex items-center gap-4 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors cursor-pointer"
 				>
 					{/* Status indicator */}
 					<div className={`h-2 w-2 rounded-full ${agent.status === "active" ? "bg-status-done" : "bg-text-subtle"}`} />
@@ -62,7 +70,7 @@ export function AgentTable({
 					<div className="flex-1 min-w-0">
 						<div className="flex items-center gap-2">
 							<span className="font-medium text-sm text-text truncate">{agent.name}</span>
-							<span className={`text-xs uppercase tracking-wider ${STATUS_COLORS[agent.status]}`}>
+							<span className={`text-xs uppercase tracking-wider ${STATUS_COLOR_MAP[agent.status] || FALLBACK_STATUS_COLOR}`}>
 								{agent.status}
 							</span>
 							{agent.tags && (
@@ -88,7 +96,10 @@ export function AgentTable({
 						{agent.editable && onEdit && (
 							<button
 								type="button"
-								onClick={() => onEdit(agent.id)}
+								onClick={(e) => {
+									e.stopPropagation()
+									onEdit(agent.id)
+								}}
 								className="p-1.5 rounded hover:bg-panel-2 text-text-subtle hover:text-text transition-colors"
 								title="Edit agent"
 							>
@@ -98,7 +109,10 @@ export function AgentTable({
 						{onLaunch && (
 							<button
 								type="button"
-								onClick={() => onLaunch(agent.id)}
+								onClick={(e) => {
+									e.stopPropagation()
+									onLaunch(agent.id)
+								}}
 								className="p-1.5 rounded hover:bg-panel-2 text-text-subtle hover:text-text transition-colors"
 								title="Launch session"
 							>
@@ -108,20 +122,16 @@ export function AgentTable({
 						{agent.editable && onDelete && (
 							<button
 								type="button"
-								onClick={() => onDelete(agent.id)}
+								onClick={(e) => {
+									e.stopPropagation()
+									onDelete(agent.id)
+								}}
 								className="p-1.5 rounded hover:bg-panel-2 text-text-subtle hover:text-status-failed transition-colors"
 								title="Delete agent"
 							>
 								<Trash2 className="h-4 w-4" />
 							</button>
 						)}
-						<button
-							type="button"
-							className="p-1.5 rounded hover:bg-panel-2 text-text-subtle hover:text-text transition-colors"
-							title="More actions"
-						>
-							<MoreVertical className="h-4 w-4" />
-						</button>
 					</div>
 				</div>
 			))}
