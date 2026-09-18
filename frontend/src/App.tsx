@@ -9,7 +9,9 @@ import { AgentOpsPage } from "./pages/agent-ops"
  * active page. Add pages by extending `nav` and the `route` switch below.
  */
 export function App() {
-  const [route, setRoute] = useState("dashboard")
+  // Agent Ops is the only real content this MVP has; land there directly
+  // instead of flashing the starter Dashboard page first.
+  const [route, setRoute] = useState("agent-ops")
 
   const nav: NavRailItem[] = [
     {
