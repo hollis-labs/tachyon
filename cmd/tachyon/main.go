@@ -12,9 +12,36 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/plugins"
 	"github.com/hollis-labs/tachyon/internal/webui"
 )
+
+const agentResourceType = "agent"
+
+// unwrapCRUDResult pulls the inner JSON payload out of a crud/create,
+// crud/read, or crud/update response envelope.
+func unwrapCRUDResult(raw json.RawMessage) (json.RawMessage, error) {
+	var res subprocess.CRUDResult
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return nil, err
+	}
+	return res.Data, nil
+}
+
+// unwrapCRUDList pulls the inner JSON array out of a crud/list response
+// envelope.
+func unwrapCRUDList(raw json.RawMessage) (json.RawMessage, error) {
+	var res subprocess.CRUDListResult
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return nil, err
+	}
+	items := res.Items
+	if items == nil {
+		items = []json.RawMessage{}
+	}
+	return json.Marshal(items)
+}
 
 func main() {
 	const addr = ":8080"
@@ -48,11 +75,18 @@ func main() {
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
-	// Agent operations endpoints - proxy to agent-ops plugin
+	// Agent operations endpoints - proxy to agent-ops plugin's CRUDHandler
+	// over plugin-sdk's standard crud/* wire methods.
 	mux.HandleFunc("GET /api/agents", func(w http.ResponseWriter, r *http.Request) {
-		result, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/list", nil)
+		raw, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", subprocess.MethodCRUDList, subprocess.CRUDParams{ResourceType: agentResourceType})
 		if err != nil {
 			logger.Error("failed to list agents", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result, err := unwrapCRUDList(raw)
+		if err != nil {
+			logger.Error("failed to decode agent list", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -62,9 +96,15 @@ func main() {
 
 	mux.HandleFunc("GET /api/agents/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		result, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/get", map[string]string{"id": id})
+		raw, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", subprocess.MethodCRUDRead, subprocess.CRUDParams{ResourceType: agentResourceType, ID: id})
 		if err != nil {
 			logger.Error("failed to get agent", "error", err, "id", id)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result, err := unwrapCRUDResult(raw)
+		if err != nil {
+			logger.Error("failed to decode agent", "error", err, "id", id)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -73,15 +113,21 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /api/agents", func(w http.ResponseWriter, r *http.Request) {
-		var req map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var data map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		result, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/create", req)
+		raw, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", subprocess.MethodCRUDCreate, subprocess.CRUDParams{ResourceType: agentResourceType, Data: data})
 		if err != nil {
 			logger.Error("failed to create agent", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result, err := unwrapCRUDResult(raw)
+		if err != nil {
+			logger.Error("failed to decode created agent", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -92,20 +138,21 @@ func main() {
 
 	mux.HandleFunc("PUT /api/agents/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		var update map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		var data map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		params := map[string]interface{}{
-			"id":     id,
-			"update": update,
-		}
-
-		result, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/update", params)
+		raw, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", subprocess.MethodCRUDUpdate, subprocess.CRUDParams{ResourceType: agentResourceType, ID: id, Data: data})
 		if err != nil {
 			logger.Error("failed to update agent", "error", err, "id", id)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		result, err := unwrapCRUDResult(raw)
+		if err != nil {
+			logger.Error("failed to decode updated agent", "error", err, "id", id)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -115,7 +162,7 @@ func main() {
 
 	mux.HandleFunc("DELETE /api/agents/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		_, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/delete", map[string]string{"id": id})
+		_, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", subprocess.MethodCRUDDelete, subprocess.CRUDParams{ResourceType: agentResourceType, ID: id})
 		if err != nil {
 			logger.Error("failed to delete agent", "error", err, "id", id)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
