@@ -113,8 +113,14 @@ func (a *NaniteAdapter) ListAgents(ctx context.Context) ([]Agent, error) {
 		agents[i] = Agent{
 			ID:           na.ID,
 			Name:         na.Name,
+			Slug:         na.Slug,
 			SystemPrompt: na.SystemPrompt,
+			Description:  na.Description,
+			Tags:         na.Tags,
+			Icon:         na.Icon,
+			Status:       na.Status,
 			Layer:        na.ManageClass,
+			Editable:     na.Editable,
 		}
 	}
 
@@ -152,8 +158,14 @@ func (a *NaniteAdapter) GetAgent(ctx context.Context, id string) (*Agent, error)
 	return &Agent{
 		ID:           wrapper.Agent.ID,
 		Name:         wrapper.Agent.Name,
+		Slug:         wrapper.Agent.Slug,
 		SystemPrompt: wrapper.Agent.SystemPrompt,
+		Description:  wrapper.Agent.Description,
+		Tags:         wrapper.Agent.Tags,
+		Icon:         wrapper.Agent.Icon,
+		Status:       wrapper.Agent.Status,
 		Layer:        wrapper.Agent.ManageClass,
+		Editable:     wrapper.Agent.Editable,
 	}, nil
 }
 
@@ -204,8 +216,14 @@ func (a *NaniteAdapter) CreateAgent(ctx context.Context, req CreateAgentRequest)
 	return &Agent{
 		ID:           na.ID,
 		Name:         na.Name,
+		Slug:         na.Slug,
 		SystemPrompt: na.SystemPrompt,
+		Description:  na.Description,
+		Tags:         na.Tags,
+		Icon:         na.Icon,
+		Status:       na.Status,
 		Layer:        na.ManageClass,
+		Editable:     na.Editable,
 	}, nil
 }
 

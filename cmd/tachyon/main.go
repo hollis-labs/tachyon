@@ -33,6 +33,12 @@ func main() {
 		logger.Warn("failed to load hello plugin (build it with: go build -o plugins/hello/hello ./plugins/hello)", "error", err)
 	}
 
+	// Load the agent-ops plugin
+	agentOpsPluginPath := "./plugins/agent-ops/agent-ops"
+	if err := pluginMgr.LoadPlugin(ctx, agentOpsPluginPath); err != nil {
+		logger.Warn("failed to load agent-ops plugin (build it with: make build-plugins)", "error", err)
+	}
+
 	mux := http.NewServeMux()
 
 	// Same-origin API. The starter dashboard polls /api/health; replace
@@ -40,6 +46,82 @@ func main() {
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	// Agent operations endpoints - proxy to agent-ops plugin
+	mux.HandleFunc("GET /api/agents", func(w http.ResponseWriter, r *http.Request) {
+		result, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/list", nil)
+		if err != nil {
+			logger.Error("failed to list agents", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(result)
+	})
+
+	mux.HandleFunc("GET /api/agents/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		result, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/get", map[string]string{"id": id})
+		if err != nil {
+			logger.Error("failed to get agent", "error", err, "id", id)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(result)
+	})
+
+	mux.HandleFunc("POST /api/agents", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		result, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/create", req)
+		if err != nil {
+			logger.Error("failed to create agent", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write(result)
+	})
+
+	mux.HandleFunc("PUT /api/agents/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		var update map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		params := map[string]interface{}{
+			"id":     id,
+			"update": update,
+		}
+
+		result, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/update", params)
+		if err != nil {
+			logger.Error("failed to update agent", "error", err, "id", id)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(result)
+	})
+
+	mux.HandleFunc("DELETE /api/agents/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		_, err := pluginMgr.CallPlugin(r.Context(), "agent-ops", "agent-ops/delete", map[string]string{"id": id})
+		if err != nil {
+			logger.Error("failed to delete agent", "error", err, "id", id)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	// Plugin registry endpoint — serves the registry.Response for the browser loader

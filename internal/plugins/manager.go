@@ -145,6 +145,39 @@ func (m *Manager) BuildRegistry() registry.Response {
 	return resp
 }
 
+// CallPlugin invokes a custom RPC method on a plugin.
+func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, params interface{}) (json.RawMessage, error) {
+	m.mu.RLock()
+	proc, exists := m.plugins[pluginID]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("plugin not found: %s", pluginID)
+	}
+
+	req := subprocess.RPCRequest{
+		JSONRPC: "2.0",
+		ID:      2, // Using 2 for custom calls (1 is init, 999 is unload)
+		Method:  method,
+		Params:  params,
+	}
+
+	if err := json.NewEncoder(proc.stdin).Encode(req); err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	var resp subprocess.RPCResponse
+	if err := json.NewDecoder(proc.stdout).Decode(&resp); err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.Error != nil {
+		return nil, fmt.Errorf("plugin error: %s", resp.Error.Message)
+	}
+
+	return resp.Result, nil
+}
+
 // Shutdown stops all plugins gracefully.
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
