@@ -4,6 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tachyon</title>
+    <script>
+      // Set the persisted theme attribute synchronously, before first paint
+      // and before the deferred module script runs — otherwise the page
+      // paints with no data-theme attribute (default light styling) and
+      // flips to the stored theme a moment later, which reads as a flash.
+      // Mirrors @hollis-labs/sysop-ui's applyTheme/getInitialTheme.
+      (function () {
+        var KEY = "sysop.theme";
+        var KNOWN = ["p1-green-phosphor", "p3-amber-phosphor", "p4-white", "hi-contrast"];
+        var theme = "p4-white";
+        try {
+          var stored = window.localStorage.getItem(KEY);
+          if (stored && KNOWN.indexOf(stored) !== -1) theme = stored;
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
