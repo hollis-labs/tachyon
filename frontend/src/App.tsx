@@ -1,7 +1,8 @@
-import { NavRail, type NavRailItem, PageHeader, ThemeSwitcher } from "@hollis-labs/sysop-ui"
-import { Activity, LayoutDashboard } from "lucide-react"
+import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/sysop-ui"
+import { Activity, LayoutDashboard, Users } from "lucide-react"
 import { useState } from "react"
 import { DashboardPage } from "./pages/dashboard"
+import { AgentOpsPage } from "./pages/agent-ops"
 
 /**
  * App shell — the icon nav rail on the left, a pinned page header, and the
@@ -18,6 +19,13 @@ export function App() {
       active: route === "dashboard",
       onSelect: () => setRoute("dashboard"),
     },
+    {
+      key: "agent-ops",
+      label: "Agent Ops",
+      icon: <Users className="h-4 w-4" />,
+      active: route === "agent-ops",
+      onSelect: () => setRoute("agent-ops"),
+    },
   ]
 
   return (
@@ -29,9 +37,9 @@ export function App() {
         footerExtra={<ThemeSwitcher />}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <PageHeader title="Dashboard" />
         <main className="min-h-0 flex-1 overflow-auto">
-          <DashboardPage />
+          {route === "dashboard" && <DashboardPage />}
+          {route === "agent-ops" && <AgentOpsPage />}
         </main>
       </div>
     </div>
