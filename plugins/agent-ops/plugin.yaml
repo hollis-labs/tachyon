@@ -1,0 +1,25 @@
+schema_version: 1
+id: agent-ops
+name: Agent Ops
+version: 0.1.0
+description: "Agent operational capabilities for Tachyon"
+author: "Hollis Labs"
+license: MIT
+homepage: https://github.com/hollis-labs/tachyon
+repository: https://github.com/hollis-labs/tachyon
+protocol: 1
+runtime: subprocess
+entrypoint: ./agent-ops
+load_type: auto
+
+config: {}
+
+registers:
+
+release:
+  platforms:
+    - darwin-arm64
+    - darwin-amd64
+    - linux-amd64
+    - linux-arm64
+    - windows-amd64
