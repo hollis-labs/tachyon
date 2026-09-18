@@ -12,6 +12,7 @@
     "lint:fix": "biome check --write ."
   },
   "dependencies": {
+    "@hollis-labs/plugin-registry": "file:../../../libs/plugin-sdk/ts/packages/plugin-registry",
     "@hollis-labs/sysop-ui": "github:hollis-labs/sysop-ui#v0.4.0",
     "lucide-react": "^1.7.0",
     "react": "^19.0.0",
