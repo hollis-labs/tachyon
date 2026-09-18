@@ -2,11 +2,12 @@ import { EmptyState, SummaryCards } from "@hollis-labs/sysop-ui"
 import { useEffect, useState } from "react"
 import type { HealthInfo } from "../api/client"
 import { useApi } from "../api/context"
+import { PluginLoader } from "../plugins/loader"
 
 /**
  * Starter page — polls the same-origin /api/health endpoint and shows the
- * result in the kit's SummaryCards strip. Replace this with real content;
- * see the @hollis-labs/sysop-ui README for the page-composition pattern.
+ * result in the kit's SummaryCards strip. Now includes the plugin loader
+ * demonstrating the plugin-sdk integration.
  */
 export function DashboardPage() {
   const api = useApi()
@@ -33,11 +34,14 @@ export function DashboardPage() {
   }
 
   return (
-    <SummaryCards
-      cards={[
-        { label: "Server", value: health ? health.status : "…" },
-        { label: "UI", value: "ready" },
-      ]}
-    />
+    <div className="space-y-4 p-4">
+      <SummaryCards
+        cards={[
+          { label: "Server", value: health ? health.status : "…" },
+          { label: "UI", value: "ready" },
+        ]}
+      />
+      <PluginLoader />
+    </div>
   )
 }
