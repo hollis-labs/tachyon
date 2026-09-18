@@ -1,17 +1,20 @@
 import { FilterSearchInput } from "@hollis-labs/sysop-ui/data"
 import { SlidersHorizontal } from "lucide-react"
 
-// Matches Nanite's real agent_profiles.status vocabulary
-// (internal/store/agents.go: case "", "sleeping", "active") — empty
-// defaults to "active" server-side.
-export type AgentStatus = "active" | "sleeping"
+// Provider-agnostic status — don't hardcode a provider's vocabulary.
+// The filter bar derives chips dynamically from whatever statuses are
+// actually present in the agent list.
+export type AgentStatus = string
 
-const STATUS_COLORS: Record<AgentStatus, { bg: string; text: string; border: string }> = {
+// Default colors for known statuses; unknown statuses fall back to neutral.
+const STATUS_COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = {
 	active: { bg: "bg-status-done/10", text: "text-status-done", border: "border-status-done/40" },
 	sleeping: { bg: "bg-panel-2/50", text: "text-text-subtle", border: "border-border" },
+	enabled: { bg: "bg-status-done/10", text: "text-status-done", border: "border-status-done/40" },
+	disabled: { bg: "bg-panel-2/50", text: "text-text-subtle", border: "border-border" },
 }
 
-const ALL_STATUSES: readonly AgentStatus[] = ["active", "sleeping"]
+const FALLBACK_COLORS = { bg: "bg-panel-2/50", text: "text-text-soft", border: "border-border" }
 
 interface FilterBarProps {
 	activeStatuses: AgentStatus[]
@@ -21,6 +24,8 @@ interface FilterBarProps {
 	searchMatchCount?: number
 	activeFilterCount?: number
 	onClear?: () => void
+	// Derived from the actual agent data — whatever statuses are present.
+	availableStatuses: AgentStatus[]
 }
 
 export function FilterBar({
@@ -31,6 +36,7 @@ export function FilterBar({
 	searchMatchCount,
 	activeFilterCount = 0,
 	onClear,
+	availableStatuses,
 }: FilterBarProps) {
 	return (
 		<div className="flex flex-col gap-3 border-b border-border bg-panel-1 px-4 py-3">
@@ -38,9 +44,9 @@ export function FilterBar({
 			<div className="flex flex-wrap items-center gap-3 text-xs">
 				<div className="flex flex-wrap items-center gap-1">
 					<span className="mr-1 text-[10px] uppercase tracking-wider text-text-subtle">Status:</span>
-					{ALL_STATUSES.map((status) => {
+					{availableStatuses.map((status) => {
 						const active = activeStatuses.includes(status)
-						const colors = STATUS_COLORS[status]
+						const colors = STATUS_COLOR_MAP[status] || FALLBACK_COLORS
 						return (
 							<button
 								key={status}
