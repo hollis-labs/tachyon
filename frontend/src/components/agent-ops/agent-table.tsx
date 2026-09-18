@@ -1,45 +1,48 @@
 import { EmptyState } from "@hollis-labs/sysop-ui"
-import { MoreVertical, Play, Square, Trash2 } from "lucide-react"
+import { Edit, MoreVertical, Play, Trash2 } from "lucide-react"
 import type { AgentStatus } from "./filter-bar"
 
 export interface Agent {
 	id: string
 	name: string
+	slug?: string
+	description?: string
+	tags?: string
+	icon?: string
 	status: AgentStatus
-	task: string
-	startedAt: string
-	duration?: string
+	layer?: string
+	editable: boolean
 }
 
 interface AgentTableProps {
 	agents: Agent[]
-	onStatusChange?: (id: string, status: AgentStatus) => void
+	onEdit?: (id: string) => void
 	onDelete?: (id: string) => void
+	onLaunch?: (id: string) => void
 	emptyVariant?: "no-results" | "no-agents"
 }
 
 const STATUS_COLORS: Record<AgentStatus, string> = {
-	running: "text-status-doing",
-	idle: "text-text-subtle",
-	failed: "text-status-failed",
-	completed: "text-status-done",
+	enabled: "text-status-done",
+	disabled: "text-text-subtle",
 }
 
 export function AgentTable({
 	agents,
-	onStatusChange,
+	onEdit,
 	onDelete,
+	onLaunch,
 	emptyVariant = "no-agents",
 }: AgentTableProps) {
 	if (agents.length === 0) {
 		return (
 			<EmptyState
 				variant={emptyVariant === "no-results" ? "no-results" : "empty"}
-				title={emptyVariant === "no-results" ? "No matching agents" : "No agents running"}
+				title={emptyVariant === "no-results" ? "No matching agents" : "No agents configured"}
 				description={
 					emptyVariant === "no-results"
 						? "Try adjusting your filters or search query"
-						: "Agent instances will appear here when they are active"
+						: "Use the '+ New Agent' button to create your first agent profile"
 				}
 			/>
 		)
@@ -53,7 +56,7 @@ export function AgentTable({
 					className="flex items-center gap-4 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors"
 				>
 					{/* Status indicator */}
-					<div className={`h-2 w-2 rounded-full ${agent.status === "running" ? "bg-status-doing animate-pulse" : agent.status === "failed" ? "bg-status-failed" : agent.status === "completed" ? "bg-status-done" : "bg-text-subtle"}`} />
+					<div className={`h-2 w-2 rounded-full ${agent.status === "enabled" ? "bg-status-done" : "bg-text-subtle"}`} />
 
 					{/* Agent info */}
 					<div className="flex-1 min-w-0">
@@ -62,40 +65,47 @@ export function AgentTable({
 							<span className={`text-xs uppercase tracking-wider ${STATUS_COLORS[agent.status]}`}>
 								{agent.status}
 							</span>
+							{agent.tags && (
+								<span className="text-xs text-text-subtle bg-panel-2 px-1.5 py-0.5 rounded">
+									{agent.tags}
+								</span>
+							)}
 						</div>
-						<div className="text-xs text-text-subtle mt-0.5 truncate">
-							{agent.task}
-						</div>
+						{agent.description && (
+							<div className="text-xs text-text-subtle mt-0.5 truncate">
+								{agent.description}
+							</div>
+						)}
 						<div className="flex items-center gap-3 text-xs text-text-subtle mt-1">
 							<span>ID: {agent.id}</span>
-							<span>Started: {agent.startedAt}</span>
-							{agent.duration && <span>Duration: {agent.duration}</span>}
+							{agent.slug && <span>Slug: {agent.slug}</span>}
+							{agent.layer && <span>Layer: {agent.layer}</span>}
 						</div>
 					</div>
 
 					{/* Actions */}
 					<div className="flex items-center gap-1">
-						{agent.status === "running" && onStatusChange && (
+						{agent.editable && onEdit && (
 							<button
 								type="button"
-								onClick={() => onStatusChange(agent.id, "idle")}
+								onClick={() => onEdit(agent.id)}
 								className="p-1.5 rounded hover:bg-panel-2 text-text-subtle hover:text-text transition-colors"
-								title="Stop agent"
+								title="Edit agent"
 							>
-								<Square className="h-4 w-4" />
+								<Edit className="h-4 w-4" />
 							</button>
 						)}
-						{agent.status === "idle" && onStatusChange && (
+						{onLaunch && (
 							<button
 								type="button"
-								onClick={() => onStatusChange(agent.id, "running")}
+								onClick={() => onLaunch(agent.id)}
 								className="p-1.5 rounded hover:bg-panel-2 text-text-subtle hover:text-text transition-colors"
-								title="Start agent"
+								title="Launch session"
 							>
 								<Play className="h-4 w-4" />
 							</button>
 						)}
-						{onDelete && (
+						{agent.editable && onDelete && (
 							<button
 								type="button"
 								onClick={() => onDelete(agent.id)}

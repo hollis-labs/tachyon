@@ -35,8 +35,14 @@ type AgentAdapter interface {
 type Agent struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
+	Slug         string `json:"slug,omitempty"`
 	SystemPrompt string `json:"system_prompt,omitempty"`
-	Layer        string `json:"layer,omitempty"` // management layer: managed/internal/plugin/external
+	Description  string `json:"description,omitempty"`
+	Tags         string `json:"tags,omitempty"`
+	Icon         string `json:"icon,omitempty"`
+	Status       string `json:"status,omitempty"` // enabled/disabled status
+	Layer        string `json:"layer,omitempty"`  // management layer: managed/internal/plugin/external
+	Editable     bool   `json:"editable"`
 }
 
 // CreateAgentRequest contains parameters for creating an agent.

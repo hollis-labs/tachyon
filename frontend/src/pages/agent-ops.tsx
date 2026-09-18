@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { PageHeader, SummaryCards, Skeleton } from "@hollis-labs/sysop-ui"
 import { FilterBar, type AgentStatus } from "../components/agent-ops/filter-bar"
 import { AgentTable, type Agent } from "../components/agent-ops/agent-table"
+import { useApi } from "../api/context"
 
-const DEFAULT_ACTIVE_STATUSES: AgentStatus[] = ["running", "idle"]
+const DEFAULT_ACTIVE_STATUSES: AgentStatus[] = ["enabled", "disabled"]
 
 function TableSkeleton() {
 	return (
@@ -16,51 +17,38 @@ function TableSkeleton() {
 }
 
 export function AgentOpsPage() {
+	const api = useApi()
 	const [agents, setAgents] = useState<Agent[]>([])
 	const [loading, setLoading] = useState(true)
 	const [activeStatuses, setActiveStatuses] = useState<AgentStatus[]>(DEFAULT_ACTIVE_STATUSES)
 	const [search, setSearch] = useState<string>("")
 
-	// Mock data fetch
-	useEffect(() => {
-		const timer = setTimeout(() => {
-			setAgents([
-				{
-					id: "agent-001",
-					name: "CodeReviewer",
-					status: "running",
-					task: "Reviewing PR #1234",
-					startedAt: "2m ago",
-					duration: "2m 15s",
-				},
-				{
-					id: "agent-002",
-					name: "TestRunner",
-					status: "completed",
-					task: "Running test suite for feature-x",
-					startedAt: "15m ago",
-					duration: "3m 42s",
-				},
-				{
-					id: "agent-003",
-					name: "DocumentGenerator",
-					status: "idle",
-					task: "Waiting for next task",
-					startedAt: "1h ago",
-				},
-				{
-					id: "agent-004",
-					name: "BugAnalyzer",
-					status: "failed",
-					task: "Analyzing issue #5678",
-					startedAt: "5m ago",
-					duration: "1m 8s",
-				},
-			])
+	// Fetch agents from API
+	const loadAgents = useCallback(async () => {
+		try {
+			setLoading(true)
+			const result = await api.listAgents()
+			setAgents(result.map(a => ({
+				id: a.id,
+				name: a.name,
+				slug: a.slug,
+				description: a.description,
+				tags: a.tags,
+				icon: a.icon,
+				status: (a.status || "enabled") as AgentStatus,
+				layer: a.layer,
+				editable: a.editable,
+			})))
+		} catch (error) {
+			console.error("Failed to load agents:", error)
+		} finally {
 			setLoading(false)
-		}, 800)
-		return () => clearTimeout(timer)
-	}, [])
+		}
+	}, [api])
+
+	useEffect(() => {
+		loadAgents()
+	}, [loadAgents])
 
 	function handleStatusToggle(status: AgentStatus) {
 		setActiveStatuses((prev) =>
@@ -73,12 +61,25 @@ export function AgentOpsPage() {
 		setActiveStatuses(DEFAULT_ACTIVE_STATUSES)
 	}
 
-	function handleStatusChange(id: string, status: AgentStatus) {
-		setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)))
+	async function handleEdit(id: string) {
+		// TODO: Open edit modal
+		console.log("Edit agent:", id)
 	}
 
-	function handleDelete(id: string) {
-		setAgents((prev) => prev.filter((a) => a.id !== id))
+	async function handleDelete(id: string) {
+		if (!confirm("Are you sure you want to delete this agent?")) return
+		try {
+			await api.deleteAgent(id)
+			await loadAgents()
+		} catch (error) {
+			console.error("Failed to delete agent:", error)
+			alert("Failed to delete agent")
+		}
+	}
+
+	async function handleLaunch(id: string) {
+		// TODO: Launch session for this agent
+		console.log("Launch session for agent:", id)
 	}
 
 	const filteredAgents = useMemo(() => {
@@ -89,7 +90,9 @@ export function AgentOpsPage() {
 				(a) =>
 					a.name.toLowerCase().includes(query) ||
 					a.id.toLowerCase().includes(query) ||
-					a.task.toLowerCase().includes(query)
+					(a.description && a.description.toLowerCase().includes(query)) ||
+					(a.slug && a.slug.toLowerCase().includes(query)) ||
+					(a.tags && a.tags.toLowerCase().includes(query))
 			)
 		}
 		return result
@@ -101,16 +104,16 @@ export function AgentOpsPage() {
 	const searchMatchCount = search ? filteredAgents.length : undefined
 	const emptyVariant = activeFilterCount > 0 || search.length > 0 ? "no-results" : "no-agents"
 
-	const runningCount = agents.filter((a) => a.status === "running").length
-	const idleCount = agents.filter((a) => a.status === "idle").length
-	const failedCount = agents.filter((a) => a.status === "failed").length
-	const completedCount = agents.filter((a) => a.status === "completed").length
+	const totalCount = agents.length
+	const enabledCount = agents.filter((a) => a.status === "enabled").length
+	const disabledCount = agents.filter((a) => a.status === "disabled").length
+	const editableCount = agents.filter((a) => a.editable).length
 
 	const summaryCards = [
-		{ label: "Running", value: runningCount, accentColor: "#60a5fa" },
-		{ label: "Idle", value: idleCount },
-		{ label: "Completed", value: completedCount, accentColor: "#34d399" },
-		{ label: "Failed", value: failedCount, accentColor: "#f87171" },
+		{ label: "Total Agents", value: totalCount },
+		{ label: "Enabled", value: enabledCount, accentColor: "#34d399" },
+		{ label: "Disabled", value: disabledCount },
+		{ label: "Editable", value: editableCount, accentColor: "#60a5fa" },
 	]
 
 	return (
@@ -132,8 +135,9 @@ export function AgentOpsPage() {
 				) : (
 					<AgentTable
 						agents={filteredAgents}
-						onStatusChange={handleStatusChange}
+						onEdit={handleEdit}
 						onDelete={handleDelete}
+						onLaunch={handleLaunch}
 						emptyVariant={emptyVariant}
 					/>
 				)}

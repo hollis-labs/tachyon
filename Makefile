@@ -1,8 +1,8 @@
-.PHONY: all build run install ui-build ui-dev test vet clean
+.PHONY: all build build-plugins run install ui-build ui-dev test vet clean
 
-# Build the frontend then the Go binary — a production binary with the
+# Build the frontend, plugins, and the Go binary — a production binary with the
 # Sysop UI embedded.
-all: ui-build build
+all: ui-build build-plugins build
 
 # Build the Sysop UI into internal/webui/dist (the Go embed directory).
 ui-build:
@@ -13,6 +13,10 @@ ui-build:
 # under /sysop/ (see `base` in frontend/vite.config.ts).
 ui-dev:
 	cd frontend && npm install && npm run dev
+
+# Build plugin binaries
+build-plugins:
+	go build -o plugins/agent-ops/agent-ops ./plugins/agent-ops
 
 # Build the Go binary. Embeds whatever is in internal/webui/dist; run
 # `make ui-build` first for a binary that serves the real UI.

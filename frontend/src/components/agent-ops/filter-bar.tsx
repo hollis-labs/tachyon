@@ -1,16 +1,14 @@
 import { FilterSearchInput } from "@hollis-labs/sysop-ui/data"
 import { SlidersHorizontal } from "lucide-react"
 
-export type AgentStatus = "running" | "idle" | "failed" | "completed"
+export type AgentStatus = "enabled" | "disabled"
 
 const STATUS_COLORS: Record<AgentStatus, { bg: string; text: string; border: string }> = {
-	running: { bg: "bg-status-doing/10", text: "text-status-doing", border: "border-status-doing/40" },
-	idle: { bg: "bg-panel-2/50", text: "text-text-subtle", border: "border-border" },
-	failed: { bg: "bg-status-failed/10", text: "text-status-failed", border: "border-status-failed/40" },
-	completed: { bg: "bg-status-done/10", text: "text-status-done", border: "border-status-done/40" },
+	enabled: { bg: "bg-status-done/10", text: "text-status-done", border: "border-status-done/40" },
+	disabled: { bg: "bg-panel-2/50", text: "text-text-subtle", border: "border-border" },
 }
 
-const ALL_STATUSES: readonly AgentStatus[] = ["running", "idle", "failed", "completed"]
+const ALL_STATUSES: readonly AgentStatus[] = ["enabled", "disabled"]
 
 interface FilterBarProps {
 	activeStatuses: AgentStatus[]
@@ -64,7 +62,7 @@ export function FilterBar({
 					<FilterSearchInput
 						value={searchQuery}
 						onChange={onSearchChange}
-						placeholder="Search agents by name, ID, or task..."
+						placeholder="Search agents by name, ID, or description..."
 					/>
 				</div>
 
