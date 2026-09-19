@@ -237,6 +237,7 @@ func (a *NaniteAdapter) UpdateAgent(ctx context.Context, id string, req UpdateAg
 	naniteReq := naniteUpdateAgentRequest{
 		Name:         req.Name,
 		SystemPrompt: req.SystemPrompt,
+		Status:       req.Status,
 		CanExecute:   req.CanExecute,
 		MCPServers:   req.MCPServers,
 		RoleTools:    req.RoleTools,
@@ -615,6 +616,136 @@ func (a *NaniteAdapter) UpdateAgentReflex(ctx context.Context, agentID, reflexID
 // DELETE /api/agents/{id}/reflexes/{reflexId}
 func (a *NaniteAdapter) DeleteAgentReflex(ctx context.Context, agentID, reflexID string) error {
 	return a.doJSON(ctx, http.MethodDelete, "/api/agents/"+agentID+"/reflexes/"+reflexID, nil, nil, http.StatusOK, http.StatusNoContent)
+}
+
+// naniteDurableAgent matches store.DurableAgentInstance's wire shape
+// (internal/store/durable_agents.go).
+type naniteDurableAgent struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Slug             string `json:"slug"`
+	ProfileID        string `json:"profile_id"`
+	LifecycleClass   string `json:"lifecycle_class"`
+	Provider         string `json:"provider"`
+	Model            string `json:"model"`
+	RuntimeKind      string `json:"runtime_kind"`
+	Status           string `json:"status"`
+	CurrentSessionID string `json:"current_session_id"`
+	FailureReason    string `json:"failure_reason"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+}
+
+func toDurableAgent(na naniteDurableAgent) *DurableAgent {
+	return &DurableAgent{
+		ID:               na.ID,
+		Name:             na.Name,
+		Slug:             na.Slug,
+		ProfileID:        na.ProfileID,
+		LifecycleClass:   na.LifecycleClass,
+		Provider:         na.Provider,
+		Model:            na.Model,
+		RuntimeKind:      na.RuntimeKind,
+		Status:           na.Status,
+		CurrentSessionID: na.CurrentSessionID,
+		FailureReason:    na.FailureReason,
+		CreatedAt:        na.CreatedAt,
+		UpdatedAt:        na.UpdatedAt,
+	}
+}
+
+// ListDurableAgents implements AgentAdapter.ListDurableAgents.
+// GET /api/durable-agents
+func (a *NaniteAdapter) ListDurableAgents(ctx context.Context) ([]DurableAgent, error) {
+	var items []naniteDurableAgent
+	if err := a.doJSON(ctx, http.MethodGet, "/api/durable-agents", nil, &items, http.StatusOK); err != nil {
+		return nil, err
+	}
+	out := make([]DurableAgent, len(items))
+	for i, it := range items {
+		out[i] = *toDurableAgent(it)
+	}
+	return out, nil
+}
+
+// GetDurableAgent implements AgentAdapter.GetDurableAgent.
+// GET /api/durable-agents/{id}
+func (a *NaniteAdapter) GetDurableAgent(ctx context.Context, id string) (*DurableAgent, error) {
+	var it naniteDurableAgent
+	if err := a.doJSON(ctx, http.MethodGet, "/api/durable-agents/"+id, nil, &it, http.StatusOK); err != nil {
+		return nil, err
+	}
+	return toDurableAgent(it), nil
+}
+
+// naniteDurableAgentEvent matches store.DurableAgentEvent's wire shape.
+type naniteDurableAgentEvent struct {
+	ID           string `json:"id"`
+	EventType    string `json:"event_type"`
+	StatusBefore string `json:"status_before"`
+	StatusAfter  string `json:"status_after"`
+	SessionID    string `json:"session_id"`
+	Source       string `json:"source"`
+	Message      string `json:"message"`
+	CreatedAt    string `json:"created_at"`
+}
+
+// ListDurableAgentEvents implements AgentAdapter.ListDurableAgentEvents.
+// GET /api/durable-agents/{id}/events
+func (a *NaniteAdapter) ListDurableAgentEvents(ctx context.Context, instanceID string) ([]DurableAgentEvent, error) {
+	var items []naniteDurableAgentEvent
+	if err := a.doJSON(ctx, http.MethodGet, "/api/durable-agents/"+instanceID+"/events", nil, &items, http.StatusOK); err != nil {
+		return nil, err
+	}
+	out := make([]DurableAgentEvent, len(items))
+	for i, it := range items {
+		out[i] = DurableAgentEvent{
+			ID:           it.ID,
+			EventType:    it.EventType,
+			StatusBefore: it.StatusBefore,
+			StatusAfter:  it.StatusAfter,
+			SessionID:    it.SessionID,
+			Source:       it.Source,
+			Message:      it.Message,
+			CreatedAt:    it.CreatedAt,
+		}
+	}
+	return out, nil
+}
+
+// naniteDurableAgentSessionState matches store.DurableAgentInstanceSessionState's
+// wire shape — DurableAgentInstanceSession's fields flattened in (Go embeds
+// the anonymous field inline in JSON) plus the session's own runtime state.
+type naniteDurableAgentSessionState struct {
+	SessionID     string `json:"session_id"`
+	Relation      string `json:"relation"`
+	AttachedAt    string `json:"attached_at"`
+	SessionStatus string `json:"session_status"`
+	Provider      string `json:"provider"`
+	Model         string `json:"model"`
+	RuntimeState  string `json:"runtime_state"`
+}
+
+// ListDurableAgentSessions implements AgentAdapter.ListDurableAgentSessions.
+// GET /api/durable-agents/{id}/sessions
+func (a *NaniteAdapter) ListDurableAgentSessions(ctx context.Context, instanceID string) ([]DurableAgentSession, error) {
+	var items []naniteDurableAgentSessionState
+	if err := a.doJSON(ctx, http.MethodGet, "/api/durable-agents/"+instanceID+"/sessions", nil, &items, http.StatusOK); err != nil {
+		return nil, err
+	}
+	out := make([]DurableAgentSession, len(items))
+	for i, it := range items {
+		out[i] = DurableAgentSession{
+			SessionID:     it.SessionID,
+			Relation:      it.Relation,
+			SessionStatus: it.SessionStatus,
+			Provider:      it.Provider,
+			Model:         it.Model,
+			RuntimeState:  it.RuntimeState,
+			AttachedAt:    it.AttachedAt,
+		}
+	}
+	return out, nil
 }
 
 // slugify converts a string to a slug format (lowercase, spaces to hyphens).

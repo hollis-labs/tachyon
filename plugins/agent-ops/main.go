@@ -55,6 +55,10 @@ const (
 	resourceTypeMCPServer       = "mcp-server"
 	resourceTypeAgentMCPServer  = "agent-mcp-server"
 	resourceTypeReflex          = "reflex"
+
+	resourceTypeDurableAgent        = "durable-agent"
+	resourceTypeDurableAgentEvent   = "durable-agent-event"
+	resourceTypeDurableAgentSession = "durable-agent-session"
 )
 
 type plugin struct {
@@ -257,6 +261,13 @@ func (p *plugin) Read(ctx context.Context, resourceType, id string) (map[string]
 		}
 		return toMap(status)
 
+	case resourceTypeDurableAgent:
+		durableAgent, err := p.adapter.GetDurableAgent(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(durableAgent)
+
 	default:
 		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
 	}
@@ -399,6 +410,35 @@ func (p *plugin) List(ctx context.Context, resourceType string, filters map[stri
 			return nil, err
 		}
 		return mapSlice(reflexes)
+
+	case resourceTypeDurableAgent:
+		durableAgents, err := p.adapter.ListDurableAgents(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(durableAgents)
+
+	case resourceTypeDurableAgentEvent:
+		instanceID, err := stringField(filters, "instance_id")
+		if err != nil {
+			return nil, err
+		}
+		events, err := p.adapter.ListDurableAgentEvents(ctx, instanceID)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(events)
+
+	case resourceTypeDurableAgentSession:
+		instanceID, err := stringField(filters, "instance_id")
+		if err != nil {
+			return nil, err
+		}
+		sessions, err := p.adapter.ListDurableAgentSessions(ctx, instanceID)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(sessions)
 
 	default:
 		return nil, fmt.Errorf("unknown resource type: %s", resourceType)

@@ -19,6 +19,8 @@ import { type Agent, AgentTable } from "../components/agent-ops/agent-table"
 import { type AgentStatus, FilterBar } from "../components/agent-ops/filter-bar"
 import { LargeDialog } from "../components/agent-ops/large-dialog"
 
+const HIDDEN_BY_DEFAULT_STATUS = "disabled"
+
 function TableSkeleton() {
   return (
     <div className="flex flex-col gap-2 p-4">
@@ -105,12 +107,20 @@ export function AgentOpsPage() {
     return statuses.sort()
   }, [agents])
 
-  // Initialize active statuses to all available statuses on first load
+  // Nanite hides "disabled" agents unless asked ("Show disabled" in its
+  // Admin list). Keep that default so disabling an agent hides it the same
+  // way in-session and after a reload; its status chip is the "show" control.
+  const defaultStatuses = useMemo(
+    () => availableStatuses.filter((s) => s !== HIDDEN_BY_DEFAULT_STATUS),
+    [availableStatuses],
+  )
+
+  // Initialize active statuses to the default (non-hidden) set on first load
   useEffect(() => {
     if (agents.length > 0 && activeStatuses.length === 0) {
-      setActiveStatuses(availableStatuses)
+      setActiveStatuses(defaultStatuses)
     }
-  }, [agents, availableStatuses, activeStatuses.length])
+  }, [agents, defaultStatuses, activeStatuses.length])
 
   function handleStatusToggle(status: AgentStatus) {
     setActiveStatuses((prev) =>
@@ -120,7 +130,7 @@ export function AgentOpsPage() {
 
   function handleClearFilters() {
     setSearch("")
-    setActiveStatuses(availableStatuses)
+    setActiveStatuses(defaultStatuses)
   }
 
   // Opens the same tabbed manage dialog for both a row click and the
@@ -213,8 +223,12 @@ export function AgentOpsPage() {
     return result
   }, [agents, activeStatuses, search])
 
-  const activeFilterCount =
-    (activeStatuses.length !== availableStatuses.length ? 1 : 0) + (search ? 1 : 0)
+  // A status filter counts as "active" only when it departs from the default
+  // view (a default status switched off, or a hidden one switched on).
+  const statusFilterActive =
+    defaultStatuses.some((s) => !activeStatuses.includes(s)) ||
+    activeStatuses.some((s) => availableStatuses.includes(s) && !defaultStatuses.includes(s))
+  const activeFilterCount = (statusFilterActive ? 1 : 0) + (search ? 1 : 0)
 
   const searchMatchCount = search ? filteredAgents.length : undefined
   const emptyVariant = activeFilterCount > 0 || search.length > 0 ? "no-results" : "no-agents"

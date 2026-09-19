@@ -29,6 +29,10 @@ const (
 	resourceTypeMCPServer       = "mcp-server"
 	resourceTypeAgentMCPServer  = "agent-mcp-server"
 	resourceTypeReflex          = "reflex"
+
+	resourceTypeDurableAgent        = "durable-agent"
+	resourceTypeDurableAgentEvent   = "durable-agent-event"
+	resourceTypeDurableAgentSession = "durable-agent-session"
 )
 
 // unwrapCRUDResult pulls the inner JSON payload out of a crud/create,
@@ -101,6 +105,12 @@ func compoundID(agentParam, subParam string) func(r *http.Request) string {
 // the {id} path parameter.
 func agentIDFilter(r *http.Request) map[string]interface{} {
 	return map[string]interface{}{"agent_id": r.PathValue("id")}
+}
+
+// durableAgentIDFilter builds a crud/list filter scoping to the durable
+// agent instance named by the {id} path parameter.
+func durableAgentIDFilter(r *http.Request) map[string]interface{} {
+	return map[string]interface{}{"instance_id": r.PathValue("id")}
 }
 
 // withAgentID builds a crud/create data-merge that adds the owning
@@ -355,6 +365,13 @@ func main() {
 	mux.HandleFunc("POST /api/agents/{id}/reflexes", agentOps.create(resourceTypeReflex, withAgentID))
 	mux.HandleFunc("PATCH /api/agents/{id}/reflexes/{reflexId}", agentOps.update(resourceTypeReflex, compoundID("id", "reflexId")))
 	mux.HandleFunc("DELETE /api/agents/{id}/reflexes/{reflexId}", agentOps.delete(resourceTypeReflex, compoundID("id", "reflexId")))
+
+	// Durable agent instances (long-running agents) and their activity —
+	// read-only for MVP; start/stop/pause lifecycle actions are post-MVP.
+	mux.HandleFunc("GET /api/durable-agents", agentOps.list(resourceTypeDurableAgent, nil))
+	mux.HandleFunc("GET /api/durable-agents/{id}", agentOps.read(resourceTypeDurableAgent, pathValue("id")))
+	mux.HandleFunc("GET /api/durable-agents/{id}/events", agentOps.list(resourceTypeDurableAgentEvent, durableAgentIDFilter))
+	mux.HandleFunc("GET /api/durable-agents/{id}/sessions", agentOps.list(resourceTypeDurableAgentSession, durableAgentIDFilter))
 
 	// Plugin registry endpoint — serves the registry.Response for the browser loader
 	mux.HandleFunc("GET /api/plugins/registry", func(w http.ResponseWriter, r *http.Request) {

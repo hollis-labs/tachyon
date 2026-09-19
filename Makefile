@@ -28,8 +28,11 @@ run: build
 	./tachyon
 
 # Build the embedded UI and install the binary to $GOBIN — a self-contained
-# tachyon on PATH that serves the real Sysop UI.
-install: ui-build
+# tachyon on PATH that serves the real Sysop UI. Depends on build-plugins too:
+# Cerberus's deploy runs `make build` then `make install`, and the plugin
+# binary (spawned by path at runtime, not embedded) needs to ride along on
+# that same deploy or it silently goes stale.
+install: ui-build build-plugins
 	go install ./cmd/tachyon
 
 test:

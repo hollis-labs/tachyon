@@ -102,6 +102,22 @@ type AgentAdapter interface {
 
 	// DeleteAgentReflex removes a reflex from an agent.
 	DeleteAgentReflex(ctx context.Context, agentID, reflexID string) error
+
+	// ListDurableAgents returns every long-running agent instance with its
+	// current lifecycle status (e.g. sleeping, active, paused, failed).
+	// Read-only for MVP — start/stop/pause lifecycle actions are post-MVP.
+	ListDurableAgents(ctx context.Context) ([]DurableAgent, error)
+
+	// GetDurableAgent returns one durable agent instance by ID.
+	GetDurableAgent(ctx context.Context, id string) (*DurableAgent, error)
+
+	// ListDurableAgentEvents returns recent lifecycle/activity events for a
+	// durable agent instance, newest first.
+	ListDurableAgentEvents(ctx context.Context, instanceID string) ([]DurableAgentEvent, error)
+
+	// ListDurableAgentSessions returns the chat sessions currently or
+	// previously attached to a durable agent instance.
+	ListDurableAgentSessions(ctx context.Context, instanceID string) ([]DurableAgentSession, error)
 }
 
 // AgentCapabilities is a flat boolean declaration of what an adapter's
@@ -175,10 +191,14 @@ type UpdateAgentRequest struct {
 	Name         *string `json:"name,omitempty"`
 	SystemPrompt *string `json:"system_prompt,omitempty"`
 	Description  *string `json:"description,omitempty"`
-	CanExecute   *bool   `json:"can_execute,omitempty"`
-	MCPServers   *string `json:"mcp_servers,omitempty"`
-	RoleTools    *string `json:"role_tools,omitempty"`
-	RoleSkills   *string `json:"role_skills,omitempty"`
+	// Status is provider vocabulary, passed through verbatim. Nanite treats
+	// "disabled" as hidden (out of its agent list and chat launch pickers)
+	// and anything else, canonically "active", as visible.
+	Status     *string `json:"status,omitempty"`
+	CanExecute *bool   `json:"can_execute,omitempty"`
+	MCPServers *string `json:"mcp_servers,omitempty"`
+	RoleTools  *string `json:"role_tools,omitempty"`
+	RoleSkills *string `json:"role_skills,omitempty"`
 }
 
 // CreateSessionRequest contains parameters for creating a session.
@@ -286,4 +306,52 @@ type UpdateReflexRequest struct {
 	Priority                  *int64  `json:"priority,omitempty"`
 	OptOutAllowed             *bool   `json:"opt_out_allowed,omitempty"`
 	RecurrenceOverrideSeconds *int64  `json:"recurrence_override_seconds,omitempty"`
+}
+
+// DurableAgent is a long-running agent instance and its current lifecycle
+// status — distinct from Agent, which is the reusable profile/definition an
+// instance was launched from. Status is surfaced verbatim from the
+// provider (Nanite's vocabulary today: sleeping, starting, active, paused,
+// stopped, start_requested, stop_requested, resume_requested, failed,
+// archived) rather than normalized to a fixed enum, the same
+// provider-agnostic approach Agent.Status already takes.
+type DurableAgent struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Slug             string `json:"slug,omitempty"`
+	ProfileID        string `json:"profile_id,omitempty"`
+	LifecycleClass   string `json:"lifecycle_class,omitempty"`
+	Provider         string `json:"provider,omitempty"`
+	Model            string `json:"model,omitempty"`
+	RuntimeKind      string `json:"runtime_kind,omitempty"`
+	Status           string `json:"status"`
+	CurrentSessionID string `json:"current_session_id,omitempty"`
+	FailureReason    string `json:"failure_reason,omitempty"`
+	CreatedAt        string `json:"created_at,omitempty"`
+	UpdatedAt        string `json:"updated_at,omitempty"`
+}
+
+// DurableAgentEvent is one lifecycle/activity event recorded for a durable
+// agent instance — what "activity at a glance" drills into.
+type DurableAgentEvent struct {
+	ID           string `json:"id"`
+	EventType    string `json:"event_type"`
+	StatusBefore string `json:"status_before,omitempty"`
+	StatusAfter  string `json:"status_after,omitempty"`
+	SessionID    string `json:"session_id,omitempty"`
+	Source       string `json:"source,omitempty"`
+	Message      string `json:"message,omitempty"`
+	CreatedAt    string `json:"created_at"`
+}
+
+// DurableAgentSession is one chat session attached to a durable agent
+// instance, with that session's own runtime state folded in.
+type DurableAgentSession struct {
+	SessionID     string `json:"session_id"`
+	Relation      string `json:"relation,omitempty"`
+	SessionStatus string `json:"session_status,omitempty"`
+	Provider      string `json:"provider,omitempty"`
+	Model         string `json:"model,omitempty"`
+	RuntimeState  string `json:"runtime_state,omitempty"`
+	AttachedAt    string `json:"attached_at,omitempty"`
 }

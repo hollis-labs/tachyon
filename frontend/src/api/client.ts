@@ -55,6 +55,8 @@ export interface UpdateAgentRequest {
   name?: string
   system_prompt?: string
   description?: string
+  // Provider vocabulary — Nanite: "disabled" hides the agent, "active" shows it.
+  status?: string
   can_execute?: boolean
 }
 
@@ -131,6 +133,48 @@ export interface UpdateReflexRequest {
   priority?: number
   opt_out_allowed?: boolean
   recurrence_override_seconds?: number | null
+}
+
+// A long-running agent instance and its current lifecycle status — distinct
+// from Agent, which is the reusable profile/definition an instance was
+// launched from. Status is provider vocabulary, not a fixed enum (Nanite
+// today: sleeping, starting, active, paused, stopped, start_requested,
+// stop_requested, resume_requested, failed, archived).
+export interface DurableAgent {
+  id: string
+  name: string
+  slug?: string
+  profile_id?: string
+  lifecycle_class?: string
+  provider?: string
+  model?: string
+  runtime_kind?: string
+  status: string
+  current_session_id?: string
+  failure_reason?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface DurableAgentEvent {
+  id: string
+  event_type: string
+  status_before?: string
+  status_after?: string
+  session_id?: string
+  source?: string
+  message?: string
+  created_at: string
+}
+
+export interface DurableAgentSession {
+  session_id: string
+  relation?: string
+  session_status?: string
+  provider?: string
+  model?: string
+  runtime_state?: string
+  attached_at?: string
 }
 
 // Path segments are user- or provider-supplied identifiers (an MCP server
@@ -227,6 +271,14 @@ export const apiClient = {
     http.request<void>(`/api/agents/${enc(agentId)}/reflexes/${enc(reflexId)}`, {
       method: "DELETE",
     }),
+
+  // Durable agent instances (long-running agents) — read-only for MVP.
+  listDurableAgents: () => http.get<DurableAgent[]>("/api/durable-agents"),
+  getDurableAgent: (id: string) => http.get<DurableAgent>(`/api/durable-agents/${enc(id)}`),
+  listDurableAgentEvents: (id: string) =>
+    http.get<DurableAgentEvent[]>(`/api/durable-agents/${enc(id)}/events`),
+  listDurableAgentSessions: (id: string) =>
+    http.get<DurableAgentSession[]>(`/api/durable-agents/${enc(id)}/sessions`),
 }
 
 export type AppApiClient = typeof apiClient

@@ -72,6 +72,9 @@ export function AgentManageDialog({
   const [overviewSystemPrompt, setOverviewSystemPrompt] = useState("")
   const [overviewDescription, setOverviewDescription] = useState("")
   const [overviewCanExecute, setOverviewCanExecute] = useState(false)
+  // Nanite "hides" an agent by setting status to "disabled"; anything else
+  // counts as enabled.
+  const [overviewEnabled, setOverviewEnabled] = useState(true)
   const [savingOverview, setSavingOverview] = useState(false)
   const [overviewError, setOverviewError] = useState<string | null>(null)
 
@@ -82,6 +85,7 @@ export function AgentManageDialog({
     setOverviewSystemPrompt(agent?.system_prompt ?? "")
     setOverviewDescription(agent?.description ?? "")
     setOverviewCanExecute(agent?.can_execute ?? false)
+    setOverviewEnabled(agent?.status !== "disabled")
     setOverviewError(null)
   }, [agent, initialTab])
 
@@ -106,6 +110,11 @@ export function AgentManageDialog({
         system_prompt: overviewSystemPrompt.trim(),
         description: overviewDescription.trim() || undefined,
         can_execute: overviewCanExecute,
+        // Only when the toggle moved — an agent carrying some other status
+        // value must not be rewritten to "active" by an unrelated edit.
+        ...(overviewEnabled !== (current.status !== "disabled")
+          ? { status: overviewEnabled ? "active" : "disabled" }
+          : {}),
       })
       setCurrent(updated)
       onAgentChanged()
@@ -121,7 +130,8 @@ export function AgentManageDialog({
     (overviewName !== current.name ||
       overviewSystemPrompt !== (current.system_prompt ?? "") ||
       overviewDescription !== (current.description ?? "") ||
-      overviewCanExecute !== current.can_execute)
+      overviewCanExecute !== current.can_execute ||
+      overviewEnabled !== (current.status !== "disabled"))
 
   // Row-level editable (this specific agent, e.g. not external/internal)
   // AND provider-level can_update (this adapter supports editing at all).
@@ -201,6 +211,13 @@ export function AgentManageDialog({
                 <div className="flex items-center gap-2">
                   <Switch checked={overviewCanExecute} onCheckedChange={setOverviewCanExecute} />
                   <Label>Can execute (spawnable as a subagent worker)</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch checked={overviewEnabled} onCheckedChange={setOverviewEnabled} />
+                  <Label>Enabled</Label>
+                  <span className="text-xs text-text-subtle">
+                    Disabled agents are hidden from Nanite's agent list and chat pickers.
+                  </span>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="overview-system-prompt">System prompt</Label>
