@@ -32,6 +32,32 @@ type pluginProcess struct {
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
 	stdout  io.ReadCloser
+
+	// stdoutDec is the single long-lived decoder over stdout, created once
+	// in LoadPlugin and reused by every subsequent CallPlugin. A
+	// json.Decoder buffers ahead of the JSON value it hands back from
+	// Decode — reading a pipe can return more bytes in one syscall than
+	// exactly one JSON-RPC message, and the decoder holds the remainder
+	// (the start of the *next* response) in its own internal buffer.
+	// Constructing a fresh json.NewDecoder(proc.stdout) per call, as this
+	// used to do, throws that buffered remainder away when the old
+	// decoder is discarded — corrupting the next response even with calls
+	// fully serialized. Reusing one decoder is what makes serialization
+	// (via callMu below) actually sufficient.
+	stdoutDec *json.Decoder
+
+	// callMu serializes the write-request/read-response round trip in
+	// CallPlugin. The subprocess speaks one JSON-RPC message at a time
+	// over a single stdin/stdout pipe pair with no request IDs to
+	// correlate an out-of-order response — without this lock, concurrent
+	// HTTP handlers calling the same plugin race to write and read that
+	// shared pipe, interleaving their requests and responses and handing
+	// each other's decode calls garbled JSON (surfaces as "invalid
+	// character 'x' looking for beginning of value" at an essentially
+	// random byte offset). A UI that fires several requests at once
+	// against the same plugin — e.g. loading multiple tabs' data in
+	// parallel — reliably triggers this without the lock.
+	callMu sync.Mutex
 }
 
 // NewManager creates a new plugin manager.
@@ -62,6 +88,11 @@ func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
 		return fmt.Errorf("failed to start plugin: %w", err)
 	}
 
+	// One decoder for this subprocess's entire lifetime — see
+	// pluginProcess.stdoutDec's doc comment for why a fresh decoder per
+	// call is unsafe.
+	dec := json.NewDecoder(stdout)
+
 	// Call plugin/init to get plugin metadata
 	initReq := subprocess.RPCRequest{
 		JSONRPC: "2.0",
@@ -86,7 +117,7 @@ func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
 	}
 
 	var initResp subprocess.RPCResponse
-	if err := json.NewDecoder(stdout).Decode(&initResp); err != nil {
+	if err := dec.Decode(&initResp); err != nil {
 		cmd.Process.Kill()
 		return fmt.Errorf("failed to read init response: %w", err)
 	}
@@ -103,12 +134,13 @@ func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
 	}
 
 	proc := &pluginProcess{
-		id:      initResult.ID,
-		name:    initResult.Name,
-		version: initResult.Version,
-		cmd:     cmd,
-		stdin:   stdin,
-		stdout:  stdout,
+		id:        initResult.ID,
+		name:      initResult.Name,
+		version:   initResult.Version,
+		cmd:       cmd,
+		stdin:     stdin,
+		stdout:    stdout,
+		stdoutDec: dec,
 	}
 
 	m.mu.Lock()
@@ -155,6 +187,12 @@ func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, param
 		return nil, fmt.Errorf("plugin not found: %s", pluginID)
 	}
 
+	// Serialize the full round trip — see pluginProcess.callMu's doc
+	// comment for why concurrent callers must not share this pipe pair
+	// unguarded.
+	proc.callMu.Lock()
+	defer proc.callMu.Unlock()
+
 	req := subprocess.RPCRequest{
 		JSONRPC: "2.0",
 		ID:      2, // Using 2 for custom calls (1 is init, 999 is unload)
@@ -167,7 +205,7 @@ func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, param
 	}
 
 	var resp subprocess.RPCResponse
-	if err := json.NewDecoder(proc.stdout).Decode(&resp); err != nil {
+	if err := proc.stdoutDec.Decode(&resp); err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 

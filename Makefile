@@ -9,7 +9,7 @@ ui-build:
 	cd frontend && npm install && npm run build
 
 # Run the Sysop UI dev server with hot reload. Proxies /api to the Go
-# server on :8080 — run `make run` in another shell. The dev UI is served
+# server on :8093 — run `make run` in another shell. The dev UI is served
 # under /sysop/ (see `base` in frontend/vite.config.ts).
 ui-dev:
 	cd frontend && npm install && npm run dev

@@ -4,8 +4,9 @@
 //
 // This plugin uses an adapter-based architecture to support multiple
 // agent frameworks. The AgentAdapter interface defines provider-agnostic
-// operations (list/get/create/update/delete/launch), and concrete adapters
-// implement these operations for specific frameworks.
+// operations (list/get/create/update/delete/launch plus tool/skill/MCP
+// capability management and reflexes), and concrete adapters implement
+// these operations for specific frameworks.
 //
 // The first concrete adapter is NaniteAdapter, which calls Nanite's HTTP
 // API directly at http://localhost:8090 (the nanite-api-service daemon).
@@ -14,7 +15,25 @@
 // CRUD is exposed over plugin-sdk's standard CRUDHandler wire contract
 // (crud/create, crud/read, crud/update, crud/delete, crud/list) via
 // subprocess.Serve, the same dispatch loop every other plugin in this
-// portfolio uses — not a hand-rolled RPC loop.
+// portfolio uses — not a hand-rolled RPC loop. Agent-scoped sub-resources
+// (a tool grant, a skill assignment, an MCP attachment, a reflex) reuse
+// the same five verbs rather than inventing new Command actions:
+//
+//   - "list" resource types that are agent-scoped (agent-tool, agent-skill,
+//     reflex) read the owning agent's ID out of the list filters
+//     (`filters.agent_id`).
+//   - "create" reads `data.agent_id` alongside the resource's own fields.
+//   - "read"/"update"/"delete" address a compound identity the resource
+//     can't express as a single opaque ID — e.g. one tool grant is really
+//     (agent_id, tool_id) — as a "<agentID>::<subID>" compound ID (see
+//     splitCompoundID). This keeps every sub-resource on the same wire
+//     contract "agent" already uses instead of a second, parallel command
+//     dispatch.
+//
+// "skill" and "mcp-server" are read-only catalog resource types (list
+// only) — Tachyon manages grants/attachments against them, not the
+// catalog entries themselves; skill authoring and MCP server registration
+// stay on Nanite's own install/admin flows.
 package main
 
 import (
@@ -22,11 +41,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 )
 
-const resourceTypeAgent = "agent"
+const (
+	resourceTypeAgent           = "agent"
+	resourceTypeAgentTool       = "agent-tool"
+	resourceTypeSkill           = "skill"
+	resourceTypeAgentSkill      = "agent-skill"
+	resourceTypeAgentSkillGrant = "agent-skill-grant"
+	resourceTypeMCPServer       = "mcp-server"
+	resourceTypeAgentMCPServer  = "agent-mcp-server"
+	resourceTypeReflex          = "reflex"
+)
 
 type plugin struct {
 	adapter AgentAdapter
@@ -84,70 +113,304 @@ func fromMap(m map[string]interface{}, dst interface{}) error {
 	return json.Unmarshal(b, dst)
 }
 
+// splitCompoundID splits a "<agentID>::<subID>" compound ID used to
+// address an agent-scoped sub-resource (a tool grant, a skill assignment,
+// an MCP attachment, a reflex) as a single opaque ID on the crud/read,
+// crud/update, and crud/delete wire methods.
+func splitCompoundID(id string) (agentID, subID string, err error) {
+	parts := strings.SplitN(id, "::", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("expected a compound id of the form \"<agentID>::<subID>\", got %q", id)
+	}
+	return parts[0], parts[1], nil
+}
+
+func stringField(m map[string]interface{}, key string) (string, error) {
+	v, ok := m[key]
+	if !ok {
+		return "", fmt.Errorf("missing required field: %s", key)
+	}
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return "", fmt.Errorf("field %q must be a non-empty string", key)
+	}
+	return s, nil
+}
+
 // Create implements subprocess.CRUDHandler.
 func (p *plugin) Create(ctx context.Context, resourceType string, data map[string]interface{}) (map[string]interface{}, error) {
-	if resourceType != resourceTypeAgent {
+	switch resourceType {
+	case resourceTypeAgent:
+		var req CreateAgentRequest
+		if err := fromMap(data, &req); err != nil {
+			return nil, fmt.Errorf("decode create request: %w", err)
+		}
+		agent, err := p.adapter.CreateAgent(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(agent)
+
+	case resourceTypeAgentTool:
+		agentID, err := stringField(data, "agent_id")
+		if err != nil {
+			return nil, err
+		}
+		toolID, err := stringField(data, "tool_id")
+		if err != nil {
+			return nil, err
+		}
+		if err := p.adapter.GrantAgentTool(ctx, agentID, toolID); err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"agent_id": agentID, "tool_id": toolID, "granted": true}, nil
+
+	case resourceTypeAgentSkill:
+		agentID, err := stringField(data, "agent_id")
+		if err != nil {
+			return nil, err
+		}
+		skillID, err := stringField(data, "skill_id")
+		if err != nil {
+			return nil, err
+		}
+		if err := p.adapter.AssignAgentSkill(ctx, agentID, skillID); err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"agent_id": agentID, "skill_id": skillID, "assigned": true}, nil
+
+	case resourceTypeAgentSkillGrant:
+		agentID, err := stringField(data, "agent_id")
+		if err != nil {
+			return nil, err
+		}
+		skillSlug, err := stringField(data, "skill_slug")
+		if err != nil {
+			return nil, err
+		}
+		grantedBy, err := stringField(data, "granted_by")
+		if err != nil {
+			return nil, err
+		}
+		if err := p.adapter.GrantAgentSkill(ctx, agentID, skillSlug, grantedBy); err != nil {
+			return nil, err
+		}
+		status, err := p.adapter.GetAgentSkillGrant(ctx, agentID, skillSlug)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(status)
+
+	case resourceTypeAgentMCPServer:
+		agentID, err := stringField(data, "agent_id")
+		if err != nil {
+			return nil, err
+		}
+		serverName, err := stringField(data, "server_name")
+		if err != nil {
+			return nil, err
+		}
+		agent, err := p.adapter.AttachAgentMCPServer(ctx, agentID, serverName)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(agent)
+
+	case resourceTypeReflex:
+		agentID, err := stringField(data, "agent_id")
+		if err != nil {
+			return nil, err
+		}
+		var req CreateReflexRequest
+		if err := fromMap(data, &req); err != nil {
+			return nil, fmt.Errorf("decode create request: %w", err)
+		}
+		reflex, err := p.adapter.CreateAgentReflex(ctx, agentID, req)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(reflex)
+
+	default:
 		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
 	}
-	var req CreateAgentRequest
-	if err := fromMap(data, &req); err != nil {
-		return nil, fmt.Errorf("decode create request: %w", err)
-	}
-	agent, err := p.adapter.CreateAgent(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return toMap(agent)
 }
 
 // Read implements subprocess.CRUDHandler.
 func (p *plugin) Read(ctx context.Context, resourceType, id string) (map[string]interface{}, error) {
-	if resourceType != resourceTypeAgent {
+	switch resourceType {
+	case resourceTypeAgent:
+		agent, err := p.adapter.GetAgent(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(agent)
+
+	case resourceTypeAgentSkillGrant:
+		agentID, skillSlug, err := splitCompoundID(id)
+		if err != nil {
+			return nil, err
+		}
+		status, err := p.adapter.GetAgentSkillGrant(ctx, agentID, skillSlug)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(status)
+
+	default:
 		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
 	}
-	agent, err := p.adapter.GetAgent(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return toMap(agent)
 }
 
 // Update implements subprocess.CRUDHandler.
 func (p *plugin) Update(ctx context.Context, resourceType, id string, data map[string]interface{}) (map[string]interface{}, error) {
-	if resourceType != resourceTypeAgent {
+	switch resourceType {
+	case resourceTypeAgent:
+		var req UpdateAgentRequest
+		if err := fromMap(data, &req); err != nil {
+			return nil, fmt.Errorf("decode update request: %w", err)
+		}
+		agent, err := p.adapter.UpdateAgent(ctx, id, req)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(agent)
+
+	case resourceTypeReflex:
+		agentID, reflexID, err := splitCompoundID(id)
+		if err != nil {
+			return nil, err
+		}
+		var req UpdateReflexRequest
+		if err := fromMap(data, &req); err != nil {
+			return nil, fmt.Errorf("decode update request: %w", err)
+		}
+		reflex, err := p.adapter.UpdateAgentReflex(ctx, agentID, reflexID, req)
+		if err != nil {
+			return nil, err
+		}
+		return toMap(reflex)
+
+	default:
 		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
 	}
-	var req UpdateAgentRequest
-	if err := fromMap(data, &req); err != nil {
-		return nil, fmt.Errorf("decode update request: %w", err)
-	}
-	agent, err := p.adapter.UpdateAgent(ctx, id, req)
-	if err != nil {
-		return nil, err
-	}
-	return toMap(agent)
 }
 
 // Delete implements subprocess.CRUDHandler.
 func (p *plugin) Delete(ctx context.Context, resourceType, id string) error {
-	if resourceType != resourceTypeAgent {
+	switch resourceType {
+	case resourceTypeAgent:
+		return p.adapter.DeleteAgent(ctx, id)
+
+	case resourceTypeAgentTool:
+		agentID, toolID, err := splitCompoundID(id)
+		if err != nil {
+			return err
+		}
+		return p.adapter.RevokeAgentTool(ctx, agentID, toolID)
+
+	case resourceTypeAgentSkill:
+		agentID, skillID, err := splitCompoundID(id)
+		if err != nil {
+			return err
+		}
+		return p.adapter.RemoveAgentSkill(ctx, agentID, skillID)
+
+	case resourceTypeAgentSkillGrant:
+		agentID, skillSlug, err := splitCompoundID(id)
+		if err != nil {
+			return err
+		}
+		return p.adapter.RevokeAgentSkillGrant(ctx, agentID, skillSlug)
+
+	case resourceTypeAgentMCPServer:
+		agentID, serverName, err := splitCompoundID(id)
+		if err != nil {
+			return err
+		}
+		_, err = p.adapter.DetachAgentMCPServer(ctx, agentID, serverName)
+		return err
+
+	case resourceTypeReflex:
+		agentID, reflexID, err := splitCompoundID(id)
+		if err != nil {
+			return err
+		}
+		return p.adapter.DeleteAgentReflex(ctx, agentID, reflexID)
+
+	default:
 		return fmt.Errorf("unknown resource type: %s", resourceType)
 	}
-	return p.adapter.DeleteAgent(ctx, id)
 }
 
 // List implements subprocess.CRUDHandler.
 func (p *plugin) List(ctx context.Context, resourceType string, filters map[string]interface{}) ([]map[string]interface{}, error) {
-	if resourceType != resourceTypeAgent {
+	switch resourceType {
+	case resourceTypeAgent:
+		agents, err := p.adapter.ListAgents(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(agents)
+
+	case resourceTypeAgentTool:
+		agentID, err := stringField(filters, "agent_id")
+		if err != nil {
+			return nil, err
+		}
+		tools, err := p.adapter.ListAgentTools(ctx, agentID)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(tools)
+
+	case resourceTypeSkill:
+		skills, err := p.adapter.ListSkillCatalog(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(skills)
+
+	case resourceTypeAgentSkill:
+		agentID, err := stringField(filters, "agent_id")
+		if err != nil {
+			return nil, err
+		}
+		skills, err := p.adapter.ListAgentSkills(ctx, agentID)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(skills)
+
+	case resourceTypeMCPServer:
+		servers, err := p.adapter.ListMCPServerCatalog(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(servers)
+
+	case resourceTypeReflex:
+		agentID, err := stringField(filters, "agent_id")
+		if err != nil {
+			return nil, err
+		}
+		reflexes, err := p.adapter.ListAgentReflexes(ctx, agentID)
+		if err != nil {
+			return nil, err
+		}
+		return mapSlice(reflexes)
+
+	default:
 		return nil, fmt.Errorf("unknown resource type: %s", resourceType)
 	}
-	agents, err := p.adapter.ListAgents(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]map[string]interface{}, 0, len(agents))
-	for _, a := range agents {
-		m, err := toMap(a)
+}
+
+// mapSlice round-trips a typed slice through JSON into the generic
+// []map[string]interface{} shape CRUDHandler.List works in.
+func mapSlice[T any](items []T) ([]map[string]interface{}, error) {
+	out := make([]map[string]interface{}, 0, len(items))
+	for _, it := range items {
+		m, err := toMap(it)
 		if err != nil {
 			return nil, err
 		}
@@ -168,9 +431,17 @@ type launchArgs struct {
 // Command implements subprocess.CommandHandler for the one operation that
 // doesn't fit CRUD: launching a session for an agent.
 func (p *plugin) Command(ctx context.Context, req subprocess.CommandRequest) (subprocess.CommandResult, error) {
-	if req.Name != "launch" {
+	switch req.Name {
+	case "launch":
+		return p.commandLaunch(ctx, req)
+	case "capabilities":
+		return p.commandCapabilities(ctx)
+	default:
 		return subprocess.CommandResult{}, fmt.Errorf("unknown command: %s", req.Name)
 	}
+}
+
+func (p *plugin) commandLaunch(ctx context.Context, req subprocess.CommandRequest) (subprocess.CommandResult, error) {
 	var args launchArgs
 	if req.Args != "" {
 		if err := json.Unmarshal([]byte(req.Args), &args); err != nil {
@@ -191,6 +462,21 @@ func (p *plugin) Command(ctx context.Context, req subprocess.CommandRequest) (su
 		return subprocess.CommandResult{}, err
 	}
 	content, err := json.Marshal(result)
+	if err != nil {
+		return subprocess.CommandResult{}, err
+	}
+	return subprocess.CommandResult{Action: "message", Content: string(content)}, nil
+}
+
+// commandCapabilities implements the "capabilities" command: the
+// provider-neutral capability declaration a consumer checks before
+// offering an action (e.g. whether to show "New Agent" at all).
+func (p *plugin) commandCapabilities(ctx context.Context) (subprocess.CommandResult, error) {
+	caps, err := p.adapter.Capabilities(ctx)
+	if err != nil {
+		return subprocess.CommandResult{}, err
+	}
+	content, err := json.Marshal(caps)
 	if err != nil {
 		return subprocess.CommandResult{}, err
 	}

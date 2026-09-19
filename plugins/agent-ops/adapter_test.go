@@ -69,7 +69,7 @@ func TestNaniteAdapterCRUD(t *testing.T) {
 	createReq := CreateAgentRequest{
 		Name:         "Test CRUD Agent",
 		SystemPrompt: "You are a test agent for verifying CRUD operations.",
-		AgentPrompt:  "This agent exists only for testing purposes.",
+		Description:  "This agent exists only for testing purposes.",
 	}
 
 	created, err := adapter.CreateAgent(ctx, createReq)
@@ -188,7 +188,7 @@ func TestCreateAgentRequest(t *testing.T) {
 	req := CreateAgentRequest{
 		Name:         "New Agent",
 		SystemPrompt: "System prompt",
-		AgentPrompt:  "Agent prompt",
+		Description:  "Agent description",
 	}
 
 	if req.Name != "New Agent" {

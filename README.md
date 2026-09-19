@@ -31,8 +31,8 @@ embeds — so a single binary serves both the API and the UI.
 Two processes during development:
 
 ```sh
-make run      # Go server on :8080 (serves /api and the last UI build)
-make ui-dev   # Vite dev server with hot reload — proxies /api to :8080
+make run      # Go server on :8093 (serves /api and the last UI build)
+make ui-dev   # Vite dev server with hot reload — proxies /api to :8093
 ```
 
 Open the Vite dev server URL — the app is served under
@@ -45,7 +45,7 @@ make all      # ui-build (vite → internal/webui/dist) then build
 ./tachyon
 ```
 
-The Sysop UI is then served at <http://localhost:8080/sysop/>.
+The Sysop UI is then served at <http://localhost:8093/sysop/>.
 Before the first `make ui-build`, `go-webui` serves a "not built"
 placeholder in place of the app.
 

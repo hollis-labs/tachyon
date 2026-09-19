@@ -7,6 +7,9 @@
 *.out
 coverage.out
 
+# Cerberus build lock (held for the duration of a resource deploy)
+.cerberus-build.lock
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

@@ -1,0 +1,68 @@
+kind: cerberus-project/v1
+owner: tachyon
+namespace: local
+project:
+  id: tachyon
+  name: Tachyon
+  description: Headless-capable, plugin-based control plane for the Hollis Labs agent fabric
+resources:
+  - id: tachyon-backend-dev
+    name: Tachyon Backend Dev
+    type: process
+    project: tachyon
+    connector: local
+    tags:
+      - tachyon
+      - dev
+      - backend
+      - api
+      - go
+      - v2
+    config:
+      dir: /Users/chrispian/dev/hollis-labs/apps/tachyon
+      build_strategy:
+        kind: make_standard
+        source:
+          root: .
+        rules:
+          target: build
+          output: tachyon
+      command:
+        - ./tachyon
+      mode: dev_session
+      run_from: workspace
+      port: 8093
+      url: http://127.0.0.1:8093/sysop/
+      auto_restart: true
+      restart_delay: 2s
+  - id: tachyon-frontend-dev
+    name: Tachyon Frontend Dev
+    type: process
+    project: tachyon
+    connector: local
+    depends_on:
+      - tachyon-backend-dev
+    tags:
+      - tachyon
+      - dev
+      - frontend
+      - vite
+      - react
+      - v2
+    config:
+      dir: /Users/chrispian/dev/hollis-labs/apps/tachyon/frontend
+      command:
+        - npm
+        - run
+        - dev
+        - --
+        - --host
+        - 127.0.0.1
+        - --port
+        - "5178"
+      mode: dev_session
+      run_from: workspace
+      port: 5178
+      url: http://127.0.0.1:5178/sysop/
+      auto_restart: true
+      restart_delay: 2s
