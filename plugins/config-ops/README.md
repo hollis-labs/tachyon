@@ -33,8 +33,13 @@ The host only reads the values file when spawning a plugin. It passes defaults
 and persisted values from the authored `capabilities.json` settings fields in
 `InitParams.Config`; unknown stored keys are not forwarded. Values apply on
 the next plugin spawn, with no live `config/changed` RPC. Every set/reset returns
-`restart_required: true`. Individual plugin restart is tracked in
-CW-20261001-0478; this plugin does not restart processes or services.
+`restart_required: true`. Restart a loaded plugin with `POST /api/plugins/<id>/restart` after saving.
+The endpoint returns `{id, status: "loaded"}` on success, or
+`{id, status: "unloaded", error}` on failure. A failed respawn removes its
+module/nav registration; the host logs the failure. Other plugins keep running.
+Restart waits for an in-flight serial command to finish. The respawn uses the
+manager lifetime context, not the HTTP request context. This plugin does not
+restart processes or services itself.
 
 `TACHYON_DATA_DIR` overrides the host's plugin data root. Otherwise it uses
 `$XDG_DATA_HOME/tachyon/plugins`, or `~/.local/share/tachyon/plugins` when no

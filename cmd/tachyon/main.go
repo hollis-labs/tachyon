@@ -297,6 +297,7 @@ func main() {
 	loadDiscoveredPlugins(ctx, pluginMgr, "./plugins", logger)
 
 	mux := http.NewServeMux()
+	mux.Handle("POST /api/plugins/{id}/restart", newPluginRestartHandler(pluginMgr))
 
 	// Same-origin API. The starter dashboard polls /api/health; replace
 	// this with your application's real endpoints.
