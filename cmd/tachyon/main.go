@@ -303,6 +303,11 @@ func main() {
 		logger.Warn("failed to load observe-ops plugin (build it with: make build-plugins)", "error", err)
 	}
 
+	// Work tracking is a separate module backed by Torque.
+	if err := pluginMgr.LoadPlugin(ctx, "./plugins/work-ops/work-ops"); err != nil {
+		logger.Warn("failed to load work-ops plugin (build it with: make build-plugins)", "error", err)
+	}
+
 	mux := http.NewServeMux()
 
 	// Same-origin API. The starter dashboard polls /api/health; replace
