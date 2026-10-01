@@ -1,4 +1,4 @@
-# Host HITL bridge (CW-20261001-0488)
+# Host HITL bridge
 
 Tachyon validates plugin `status=ask` responses and optionally enqueues them through Tangent's supported Streamable HTTP MCP caller API. Tangent owns interactions and participant decisions. The host uses released `go-hitl v0.1.0` typed retrieval and terminal outcomes, and MCP SDK v1.8.0.
 
@@ -16,7 +16,7 @@ Each initial invocation creates a distinct operation, even with identical verb/p
 
 The host validates request snapshot, item ID, revisions, contract version, lifecycle state, typed terminal identity and kind-specific decision, then checks correlation again after waiting. `approved:true` means terminal `resolved` with response `{kind:"approval",decision:"approved"}` for an approval item. Attention, denial, canceled, expired, failed, superseded, malformed/forged status, and lookup failure never approve. Missing correlation returns 410; backend/validation failure returns 502 with approved false. Await timeout does not cancel Tangent's item.
 
-**Continuation is unavailable.** There is no POST/resume route, no automatic verb replay after approval, and no provider call from status. Unknown write completion remains unknown. The current plugin carrier cannot safely express a trusted continuation; CW-20261001-0532 holds that design decision. Frontend rendering is separate from this host contract. This host change is not a complete HITL continuation runtime.
+**Continuation is unavailable.** There is no POST/resume route, no automatic verb replay after approval, and no provider call from status. Unknown write completion remains unknown. The current plugin carrier cannot safely express a trusted continuation. The continuation design is tracked as a follow-up. Frontend rendering is separate from this host contract. This host change is not a complete HITL continuation runtime.
 
 ## Work and Launch pending decisions
 
@@ -24,13 +24,10 @@ Work task details, Board/list/search reads, and Launch reads/actions preserve an
 
 Only GET of the host operation endpoint is polled, with `wait_ms=25000`, no overlapping requests, and a three-second minimum between responses. Busy/unavailable status retries use exponential backoff and stop after five consecutive failures. Polling stops on terminal/unknown states, lost correlation (410), rejected origin (403), unmount, or the earlier of ask expiry and a ten-minute mounted tracking window. Closing a panel aborts its browser wait; it does not cancel the Tangent item. Resolved approval requires the host projection's `approved:true` and `decision:"approved"`; other outcomes cannot grant approval. Every panel states that Tachyon took no action in response to the decision, and continuation is unavailable. Pending writes stay blocked in that form, with drafts and selection retained. There is no Continue, Resume, or Retry-write action and no verb replay. Starting a new action is a distinct operator intent, not continuation of the approved operation.
 
-Settings pending treatment is a separate frontend follow-up after its settings UI change; safe continuation remains CW-20261001-0532.
+Settings pending treatment is a separate frontend follow-up after its settings UI change; safe continuation is not yet implemented.
 
-## Final frontend documentation pass pending
+<!-- TODO(final pass): Reconcile page-specific ask handling alongside merged
+Work/Board and Settings recovery changes. Preserve the already-merged Work/Launch
+behavior above and the unavailable-continuation contract. -->
 
-**CW-20261001-0496 placeholder:** the Work/Launch behavior above describes
-already-merged code. Reconcile page-specific ask handling alongside the final
-Work/Board, Settings recovery and other frontend changes after their PRs merge.
-This host/operations pass adds no claim about an unmerged page and does not
-make continuation available. [Host operations](host-operations.md) carries the
-current lifecycle/deployment limits.
+[Host operations](host-operations.md) documents lifecycle and deployment limits.

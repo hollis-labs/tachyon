@@ -1,7 +1,7 @@
 # Host operations and deployment
 
-This describes the merged host chain through PR #47 (`47af42b`), not a claim that
-that revision is deployed. Named constants in `internal/plugins/watchdog.go`,
+This describes the implemented host contract, not a claim that the current
+source revision is deployed. Named constants in `internal/plugins/watchdog.go`,
 `internal/plugins/observe.go`, and `cmd/tachyon/{plugins_discover,shutdown}.go`
 are authoritative. Provider behavior and frontend pages have separate contracts.
 
@@ -127,7 +127,7 @@ Logs identify `plugin_unload` and the plugin, or `plugin_shutdown` stage failure
 Observe unloads last, without waiting for telemetry drain. A clean signal stop
 exits zero.
 
-The deployed systemd user service has `TimeoutStopSec=90s`. Nine loaded binaries
+The reference systemd service defaults to `TimeoutStopSec=90s`. Nine loaded binaries
 (eight modules plus hello) need at most 5s + nine 5s unload graces in the ordinary
 shutdown path, excluding lifecycle-lock waiting and process-reaping overhead.
 The 120s lifecycle wait can exceed systemd's 90s limit under contention; do not
@@ -143,7 +143,7 @@ projection with authoritative approval, bound to host epoch, operation, exact
 plugin generation, verb and canonical payload digest. Correlation is bounded to
 256 entries, 32KiB payloads and 10 minutes; restart/loss/expiry fails closed.
 **Continuation is unavailable**: no resume POST, verb redispatch or automatic
-write retry. CW-20261001-0532 owns the continuation design. See [HITL](hitl-host.md)
+write retry. The continuation design is tracked as a follow-up. See [HITL](hitl-host.md)
 for exact caps, safe links, singleflight and same-request enqueue retry semantics.
 
 Observe delivery is private: an in-band per-process marker authorizes
@@ -171,17 +171,16 @@ and `--no-install-after-build` skips it for that invocation. `make install`
 rebuilds UI/plugins then installs only the host through go install; it is not a
 plugin distribution package.
 
-Read-only inspection on 2026-10-01 confirmed the systemd user service executes
-`/home/chrispian/dev/hollis-labs/apps/tachyon/tachyon` with that same working
-directory. Cerberus also tracks an artifact/install layout under `.cerberus`,
-but this workspace-based service does not execute that stored artifact path.
-Relative plugin paths are why the working directory must contain built plugins.
+The reference deployment is an OS service supervised by systemd (default
+`TimeoutStopSec=90s`). With `run_from:workspace`, it executes `<checkout>/tachyon`
+with `<checkout>` as its working directory. Cerberus also tracks an
+artifact/install layout, but workspace execution uses the checkout binary.
+Relative plugin paths require that checkout to contain matching built plugins.
 
-The deployed resource sets `TACHYON_ADDR=127.0.0.1:8093`. Caddy binds the Tailscale
-interface and routes `https://tachyon.nanite.cloud/sysop/` to loopback 8093,
-redirecting `/` to `/sysop/` and terminating HTTPS. This is a deployment override,
-not a changed code default or new authentication policy. CW-20261001-0476's
-listener decision is not resolved by this documentation.
+Set `TACHYON_ADDR=127.0.0.1:8093` for the loopback listener, behind an HTTPS
+reverse proxy such as Caddy on a private interface. Serve `/sysop/` and, if desired,
+redirect `/` there. This is a deployment override, not a changed code default or
+new authentication policy. Listener-policy changes are tracked separately.
 
 Read-only operator inspection:
 
@@ -213,7 +212,7 @@ matching UI/plugins/host artifacts, then an authorized deploy/reload and read-on
 verification; reverting source alone does not roll back the running process or
 provider data.
 
-## Known limits and final documentation pass
+## Known limits
 
 - No HTTP authentication/authorization, built-in TLS, plugin sandbox or binary
   signatures. Same-origin status and private markers do not replace those.
@@ -230,8 +229,6 @@ provider data.
 - Local settings are plaintext, applied at restart; no plugin install or
   enable/disable surface. See SECURITY.md for provider and log protection.
 
-**CW-20261001-0496 final-pass placeholders:** reconcile Observe UI (0492),
-Work/Board per-status behavior, Services/SCM/Settings recovery, Toaster and search
-cap after their corresponding frontend PRs merge. Do not infer page implementation
-from this host contract. These placeholders will be replaced with source-verified
-page behavior in the later frontend documentation theme.
+<!-- TODO(final pass): Reconcile Observe UI, Work/Board per-status behavior,
+Services/SCM/Settings recovery, Toaster and search cap after their frontend PRs
+merge. Describe page behavior verified against merged source. -->

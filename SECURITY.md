@@ -24,7 +24,7 @@ Tachyon is a local operator tool. **Its HTTP API has no authentication and no TL
 
 The default listen address is `:8093`, which binds every interface. Set `TACHYON_ADDR=127.0.0.1:8093` to restrict it to the local machine, and do so unless you have placed the listener behind something that provides the missing boundary: a VPN, an SSH tunnel, or an authenticating, TLS-terminating reverse proxy. Do not expose the port to an untrusted network.
 
-The registered agent-os resource overrides the listener to loopback. The verified front is HTTPS at `tachyon.nanite.cloud` through Tailscale-bound Caddy to `127.0.0.1:8093`; HTTPS termination and network reachability controls do not add authentication to Tachyon. The code default remains unchanged. See [host operations](docs/host-operations.md) for the deployment evidence and revision/pre-flight distinction.
+The reference deployment is an OS service supervised by systemd, with a loopback listener set through `TACHYON_ADDR` and an HTTPS reverse proxy such as Caddy on a private interface. HTTPS termination and network reachability controls do not add authentication to Tachyon. The code default remains unchanged. See [host operations](docs/host-operations.md) for deployment and the source/build/live revision distinction.
 
 ## Plugins
 
@@ -42,7 +42,7 @@ Retired plugin metadata and bounded HITL correlations are in memory. Observe act
 
 `TACHYON_TANGENT_MCP_URL` is unrestricted operator configuration, disabled when unset. Treat enabling it as an outbound connection/data disclosure choice. Configured asks send prompt/impact information and opaque host correlation references to Tangent; options/context remain in the browser ask and are not copied into the enqueue request. An approved item-link base restricts browser links independently; the browser never supplies the MCP endpoint. Startup logs only MCP scheme/host. Read-only status exposes a safe projection, validates exact host/process correlation and rejects explicit foreign browser origins; missing Origin permits local clients and is not authentication.
 
-Approval never resumes or replays a verb. Continuation is unavailable (CW-20261001-0532); enqueue failure, correlation loss, timeout and malformed outcomes fail closed. An ambiguous enqueue may retry only the same frozen request/key, not the plugin operation. See [HITL](docs/hitl-host.md) for the bounds and safe outcome rules.
+Approval never resumes or replays a verb. Continuation is unavailable and its design is tracked as a follow-up; enqueue failure, correlation loss, timeout and malformed outcomes fail closed. An ambiguous enqueue may retry only the same frozen request/key, not the plugin operation. See [HITL](docs/hitl-host.md) for the bounds and safe outcome rules.
 
 The Observe ingestion command is absent from public capabilities and blocked by all HTTP command/verb paths. Its per-process marker travels only in init stdin; it is a trusted-subprocess boundary, not a sandbox against a malicious local process with the same privileges. [Observe feed](docs/observe-host-feed.md) documents this boundary, recursion exclusion and lossy queues.
 

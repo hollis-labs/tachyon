@@ -54,16 +54,18 @@ Lefthook once if using the tracked hooks; their presence alone installs nothing.
 - Skill/MCP catalogs and durable agents remain read-only; Tether sessions have
   their separately declared lifecycle verbs. Keep provider ownership upstream.
 - Tangent status is read-only, fail-closed correlation. Approval cannot resume
-  or redispatch a verb; continuation remains unavailable (CW-20261001-0532).
+  or redispatch a verb. Continuation remains unavailable; its design is tracked
+  as a follow-up.
 - Observe records safe identity/status/effect/duration only. Never include
   payloads, prompts, settings, credentials or upstream error bodies. The private
   ingestion command and marker cannot be exposed by HTTP or capabilities.
 - HTTP has no authentication or built-in TLS. The code default is all-interface
-  `:8093`; the deployed resource overrides it to loopback behind Tailscale/Caddy.
+  `:8093`; the reference deployment overrides it to loopback behind a private
+  HTTPS proxy.
   Do not infer authorization from effects, same-origin checks or the proxy.
 - Consume published design-kit packages and update the frontend lockfile with
-  dependency changes. Keep page-specific docs pending the final 0496 pass until
-  their corresponding frontend changes are merged.
+  dependency changes. Keep page-specific docs pending the final documentation
+  pass until their corresponding frontend changes are merged.
 
 ## Shared workspace and deployment
 

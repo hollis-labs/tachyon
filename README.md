@@ -88,13 +88,9 @@ verb. Visibility requires both supported capabilities and a registered page.
 Keep API clients under `frontend/src/api/` and browser requests same-origin.
 Read the declaration validation rules in ADR 001 before adding a plugin page.
 
-## Documentation still awaiting the final page pass
-
-**CW-20261001-0496 placeholder:** after the corresponding frontend PRs merge,
-reconcile Observe UI (0492), Work/Board per-status behavior, Services/SCM/Settings
-recovery, Toaster, and the Work search cap. This host/operations pass makes no
-claim that a pending page change is implemented. Existing page code on main is
-the authority until that reconciliation.
+<!-- TODO(final pass): Reconcile Observe UI, Work/Board per-status behavior,
+Services/SCM/Settings recovery, Toaster and Work search cap after their frontend
+PRs merge. Describe only merged behavior verified against source. -->
 
 ## Dependencies and contributing
 

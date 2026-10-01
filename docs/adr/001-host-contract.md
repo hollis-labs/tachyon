@@ -268,15 +268,15 @@ Settings targets and optional registry `retired_plugins` expose safe retirement
 identity/reason/time, clearing on successful load or shutdown.
 
 SIGINT/SIGTERM drains HTTP for 5s, then gives each plugin a fresh 5s unload grace,
-force-stopping/reaping leftovers. The deployed systemd stop limit is 90s;
+force-stopping/reaping leftovers. The reference systemd stop limit defaults to 90s;
 lifecycle contention is separately bounded and can exceed that outer limit.
 [Host operations](../host-operations.md) gives the per-operation budget audit,
 admission/exit policy, deployment and known limitations.
 
 Configured Tangent HITL adds bounded correlation and read-only safe status;
 unconfigured asks pass through unchanged. Approval is a terminal decision, not
-permission to replay an operation: continuation is unavailable pending
-CW-20261001-0532. See [HITL](../hitl-host.md). Private bounded Observe ingestion
+permission to replay an operation: continuation is unavailable and its design
+is tracked as a follow-up. See [HITL](../hitl-host.md). Private bounded Observe ingestion
 adds safe metadata and explicit loss counters without recursive recording or
 changing operation-error health semantics; see [Observe feed](../observe-host-feed.md).
 
