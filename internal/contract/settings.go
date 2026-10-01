@@ -31,7 +31,9 @@ type SettingsField struct {
 	// Default is the default value if the user hasn't set one.
 	Default any `json:"default,omitempty"`
 
-	// Required marks the field as mandatory.
+	// Required marks the field as mandatory. A missing/null default means the
+	// operator must supply a value. Provided defaults must match Type; required
+	// strings cannot be blank. False and zero remain valid defaults.
 	Required bool `json:"required,omitempty"`
 
 	// Options lists allowed values when Type is "select".
@@ -49,4 +51,11 @@ type SettingsOption struct {
 // exposes it through the config module's API.
 type SettingsDeclaration struct {
 	Fields []SettingsField `json:"fields,omitempty"`
+}
+
+// SettingsTarget binds a plugin-owned settings schema to its stable identity.
+type SettingsTarget struct {
+	ID       string              `json:"id"`
+	Name     string              `json:"name"`
+	Settings SettingsDeclaration `json:"settings"`
 }

@@ -16,5 +16,33 @@
     "agent_reflex_list": { "effect": "reads" },
     "agent_approve": { "effect": "writes" },
     "agent_launch": { "effect": "open_world" }
+  },
+  "nav": {
+    "groups": [
+      {
+        "id": "agents",
+        "label": "Agents",
+        "icon": "users",
+        "priority": 100
+      }
+    ],
+    "items": [
+      {
+        "id": "agent_list",
+        "label": "Agent Ops",
+        "group": "agents",
+        "route": "/agents",
+        "requires_verb": "agent_list",
+        "priority": 100
+      },
+      {
+        "id": "agent_durable_sessions",
+        "label": "Durable Sessions",
+        "group": "agents",
+        "route": "/agents/durable",
+        "requires_verb": "agent_list",
+        "priority": 200
+      }
+    ]
   }
 }

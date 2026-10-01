@@ -9,7 +9,7 @@
 // The plugin self-feeds: every verb invocation that flows through
 // Command() is automatically instrumented with an activity entry, a
 // lifecycle event, a latency metric, and (on error) a log line.
-// Cross-plugin, Tether, and Nanite data is not wired yet.
+// External dependency probes and Nanite session snapshots are read on demand.
 package main
 
 import (
@@ -98,7 +98,7 @@ func (p *plugin) instrumentedHandleVerb(ctx context.Context, verb string, payloa
 
 // --- subprocess.Plugin lifecycle ---
 
-func (p *plugin) Init(_ context.Context, _ subprocess.InitParams) (subprocess.InitResult, error) {
+func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subprocess.InitResult, error) {
 	// Parse embedded capabilities.
 	if err := json.Unmarshal(capabilitiesJSON, &p.caps); err != nil {
 		return subprocess.InitResult{}, fmt.Errorf("parse embedded capabilities: %w", err)
@@ -110,7 +110,11 @@ func (p *plugin) Init(_ context.Context, _ subprocess.InitParams) (subprocess.In
 	// Initialize the local adapter (MVP).
 	la := NewLocalAdapter(1000)
 	p.local = la
-	p.adapter = la
+	adapter, err := NewPollingAdapter(la, params.Config)
+	if err != nil {
+		return subprocess.InitResult{}, err
+	}
+	p.adapter = adapter
 
 	// Self-feed: record plugin initialization.
 	p.local.RecordEvent(Event{
@@ -149,6 +153,9 @@ func (p *plugin) Load(_ context.Context) (subprocess.LoadResult, error) {
 }
 
 func (p *plugin) Unload(_ context.Context) error {
+	if adapter, ok := p.adapter.(*PollingAdapter); ok {
+		adapter.client.CloseIdleConnections()
+	}
 	return nil
 }
 

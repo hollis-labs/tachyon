@@ -1,0 +1,14 @@
+{
+  "modules": ["config"],
+  "verbs": {
+    "config_schema": {"effect": "reads"},
+    "config_get": {"effect": "reads"},
+    "config_list": {"effect": "reads"},
+    "config_set": {"effect": "writes"},
+    "config_reset": {"effect": "writes"}
+  },
+  "nav": {
+    "groups": [{"id": "settings", "label": "Settings", "icon": "settings", "priority": 900}],
+    "items": [{"id": "config_list", "label": "Configuration", "group": "settings", "route": "/settings", "requires_verb": "config_list", "priority": 100}]
+  }
+}

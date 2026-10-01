@@ -17,5 +17,12 @@
       { "id": "observe_logs",     "label": "Logs",      "group": "observability", "route": "/observe/logs",    "requires_verb": "observe_logs",     "priority": 200 },
       { "id": "observe_metrics",  "label": "Metrics",   "group": "observability", "route": "/observe/metrics", "requires_verb": "observe_metrics",  "priority": 300 }
     ]
+  },
+  "settings": {
+    "fields": [
+      { "key": "nanite_url", "type": "string", "label": "Nanite API URL", "default": "http://127.0.0.1:8090" },
+      { "key": "torque_url", "type": "string", "label": "Torque API URL", "default": "http://127.0.0.1:8990" },
+      { "key": "tether_url", "type": "string", "label": "Tether API URL", "default": "http://127.0.0.1:8947" }
+    ]
   }
 }

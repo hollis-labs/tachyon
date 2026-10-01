@@ -297,6 +297,7 @@ func main() {
 	loadDiscoveredPlugins(ctx, pluginMgr, "./plugins", logger)
 
 	mux := http.NewServeMux()
+	mux.Handle("POST /api/plugins/{id}/restart", newPluginRestartHandler(pluginMgr))
 
 	// Same-origin API. The starter dashboard polls /api/health; replace
 	// this with your application's real endpoints.
@@ -363,6 +364,12 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(payload)
+	})
+
+	// Merged plugin navigation, with first-loaded metadata winning collisions.
+	mux.HandleFunc("GET /api/nav", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(pluginMgr.MergedNav())
 	})
 
 	// Agents.

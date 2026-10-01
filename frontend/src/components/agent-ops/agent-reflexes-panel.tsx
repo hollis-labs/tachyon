@@ -24,6 +24,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import type { CreateReflexRequest, Reflex } from "../../api/client"
 import { useApi } from "../../api/context"
+import { useCapabilities } from "../../hooks/use-capabilities"
 
 interface AgentReflexesPanelProps {
   agentId: string
@@ -59,6 +60,7 @@ const ACTION_KINDS = [
 
 export function AgentReflexesPanel({ agentId }: AgentReflexesPanelProps) {
   const api = useApi()
+  const { has } = useCapabilities()
   const [reflexes, setReflexes] = useState<Reflex[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -110,6 +112,7 @@ export function AgentReflexesPanel({ agentId }: AgentReflexesPanelProps) {
   }
 
   async function handleSubmit() {
+    if (!has(editing ? "agent_reflex_update" : "agent_reflex_create")) return
     setSaving(true)
     setFormError(null)
     try {
@@ -128,7 +131,7 @@ export function AgentReflexesPanel({ agentId }: AgentReflexesPanelProps) {
   }
 
   async function handleDelete() {
-    if (!deleteTarget) return
+    if (!deleteTarget || !has("agent_reflex_delete")) return
     setDeleting(true)
     try {
       await api.deleteAgentReflex(agentId, deleteTarget.id)
@@ -170,7 +173,7 @@ export function AgentReflexesPanel({ agentId }: AgentReflexesPanelProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-end">
-        {!formOpen && (
+        {!formOpen && has("agent_reflex_create") && (
           <Button type="button" size="sm" onClick={openCreate}>
             <Plus className="h-4 w-4" />
             New Reflex
@@ -306,7 +309,15 @@ export function AgentReflexesPanel({ agentId }: AgentReflexesPanelProps) {
             >
               Cancel
             </Button>
-            <Button type="button" onClick={handleSubmit} disabled={!canSubmit || saving}>
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={
+                !canSubmit ||
+                saving ||
+                !has(editing ? "agent_reflex_update" : "agent_reflex_create")
+              }
+            >
               {editing ? "Save Changes" : "Create Reflex"}
             </Button>
           </div>
@@ -350,6 +361,7 @@ export function AgentReflexesPanel({ agentId }: AgentReflexesPanelProps) {
                         type="button"
                         onClick={() => openEdit(r)}
                         className="p-1.5 rounded hover:bg-panel-2 text-text-subtle hover:text-text transition-colors"
+                        disabled={!has("agent_reflex_update")}
                         title="Edit reflex"
                       >
                         <Pencil className="h-4 w-4" />
@@ -358,6 +370,7 @@ export function AgentReflexesPanel({ agentId }: AgentReflexesPanelProps) {
                         type="button"
                         onClick={() => setDeleteTarget(r)}
                         className="p-1.5 rounded hover:bg-panel-2 text-text-subtle hover:text-status-failed transition-colors"
+                        disabled={!has("agent_reflex_delete")}
                         title="Delete reflex"
                       >
                         <Trash2 className="h-4 w-4" />
