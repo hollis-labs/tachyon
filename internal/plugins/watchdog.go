@@ -102,6 +102,8 @@ func (m *Manager) retireProcess(proc *pluginProcess) {
 			m.mu.Unlock()
 			if current {
 				m.detachProcess(proc)
+				m.lifecycleRecord(proc, proc.id, "plugin_failure", "error", proc.deathReason)
+				m.lifecycleRecord(proc, proc.id, "plugin_retire", "error", proc.deathReason)
 				m.logger.Warn("plugin transport interrupted; plugin unloaded", "id", proc.id, "completion", "unknown")
 			}
 		}()

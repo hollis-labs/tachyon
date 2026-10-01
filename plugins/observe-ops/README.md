@@ -1,5 +1,11 @@
 # Observe polling contract
 
+Other plugins' host operation and lifecycle metadata is now ingested privately
+into the same bounded local rings. Observe reads and delivery never record
+themselves. See [the host feed contract](../../docs/observe-host-feed.md) for
+privacy, ordering, loss counters, private-command guards and restart/shutdown
+limitations.
+
 `POST /api/verb/observe_subscribe` describes stateless same-origin polling.
 It allocates no subscription token or server-side state. For example:
 
