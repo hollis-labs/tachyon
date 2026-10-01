@@ -1,0 +1,108 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/tachyon/internal/contract"
+	"github.com/hollis-labs/tachyon/internal/pluginkit"
+)
+
+func commandEnvelope(t *testing.T, p *plugin, name, payload string) contract.ResultEnvelope {
+	t.Helper()
+	result, err := p.Command(context.Background(), subprocess.CommandRequest{Name: name, Args: payload})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope contract.ResultEnvelope
+	if err := json.Unmarshal([]byte(result.Content), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	return envelope
+}
+
+func TestConfigCommands(t *testing.T) {
+	p := &plugin{}
+	if _, err := p.Init(context.Background(), subprocess.InitParams{DataDir: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal([]ConfigTarget{testTarget()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := commandEnvelope(t, p, "config_schemas", string(encoded)); result.Status != contract.StatusOK {
+		t.Fatalf("sync: %+v", result)
+	}
+	for _, verb := range []string{"config_schema", "config_get", "config_list"} {
+		if result := commandEnvelope(t, p, verb, `{"plugin":"example"}`); result.Status != contract.StatusOK {
+			t.Fatalf("%s: %+v", verb, result)
+		}
+	}
+	result := commandEnvelope(t, p, "config_set", `{"plugin":"example","values":{"enabled":false}}`)
+	if result.Status != contract.StatusOK {
+		t.Fatalf("set: %+v", result)
+	}
+	var data struct {
+		Plugin          string       `json:"plugin"`
+		RestartRequired bool         `json:"restart_required"`
+		Config          TargetConfig `json:"config"`
+	}
+	if err := json.Unmarshal(result.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Plugin != "example" || !data.RestartRequired || data.Config.Values["enabled"] != false {
+		t.Fatalf("restart contract: %+v", data)
+	}
+	if result := commandEnvelope(t, p, "config_reset", `{"plugin":"example"}`); result.Status != contract.StatusOK {
+		t.Fatalf("reset: %+v", result)
+	}
+	for _, payload := range []string{`{}`, `{"plugin":"example"}`, `{"plugin":"example","values":{"unknown":"do not echo me"}}`, `{"plugin":"example","values":{"enabled":"do not echo me"}}`} {
+		result := commandEnvelope(t, p, "config_set", payload)
+		encoded, _ := json.Marshal(result)
+		if strings.Contains(string(encoded), "do not echo me") {
+			t.Fatal("rejected value echoed")
+		}
+		if result.Status != contract.StatusError || result.Error.Code != "validation" {
+			t.Fatalf("validation: %+v", result)
+		}
+	}
+	if result := commandEnvelope(t, p, "config_get", `{"plugin":"unknown"}`); result.Status != contract.StatusError {
+		t.Fatalf("unknown: %+v", result)
+	}
+	resultCaps, err := p.Command(context.Background(), subprocess.CommandRequest{Name: pluginkit.CommandCapabilities})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var caps contract.PluginCapabilities
+	if err := json.Unmarshal([]byte(resultCaps.Content), &caps); err != nil {
+		t.Fatal(err)
+	}
+	if err := caps.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, verb := range []string{"config_update", "config_validate", "config_schemas"} {
+		if _, ok := p.Capabilities().Verbs[verb]; ok {
+			t.Fatalf("reserved/obsolete verb advertised: %s", verb)
+		}
+	}
+	if _, err := p.Command(context.Background(), subprocess.CommandRequest{Name: "unknown"}); err == nil {
+		t.Fatal("unknown command accepted")
+	}
+}
+
+func TestInitNeedsDataDirAndBadSyncPreservesSchemas(t *testing.T) {
+	p := &plugin{}
+	if _, err := p.Init(context.Background(), subprocess.InitParams{}); err == nil {
+		t.Fatal("missing DataDir accepted")
+	}
+	p.adapter = configuredAdapter(t, t.TempDir())
+	if _, err := p.Command(context.Background(), subprocess.CommandRequest{Name: "config_schemas", Args: `{`}); err == nil {
+		t.Fatal("invalid schema payload accepted")
+	}
+	if view, err := p.adapter.Read(context.Background(), "example"); err != nil || view.Target.ID != "example" {
+		t.Fatalf("bad sync replaced targets: %+v %v", view, err)
+	}
+}

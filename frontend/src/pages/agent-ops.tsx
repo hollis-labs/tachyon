@@ -12,12 +12,13 @@ import {
 } from "@hollis-labs/sysop-ui"
 import { Plus } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { AgentCapabilities, Agent as ApiAgent } from "../api/client"
+import type { Agent as ApiAgent } from "../api/client"
 import { useApi } from "../api/context"
 import { AgentManageDialog } from "../components/agent-ops/agent-manage-dialog"
 import { type Agent, AgentTable } from "../components/agent-ops/agent-table"
 import { type AgentStatus, FilterBar } from "../components/agent-ops/filter-bar"
 import { LargeDialog } from "../components/agent-ops/large-dialog"
+import { useCapabilities } from "../hooks/use-capabilities"
 
 const HIDDEN_BY_DEFAULT_STATUS = "disabled"
 
@@ -37,11 +38,7 @@ export function AgentOpsPage() {
   const [loading, setLoading] = useState(true)
   const [activeStatuses, setActiveStatuses] = useState<AgentStatus[]>([])
   const [search, setSearch] = useState<string>("")
-  // What the active provider actually supports — checked before offering
-  // "New Agent" at all, instead of assuming every provider can author
-  // agents the way Nanite does. Defaults closed (all false) until the
-  // real declaration loads, so the button doesn't flash on then off.
-  const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null)
+  const { has, agent: capabilities } = useCapabilities()
 
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState("")
@@ -93,13 +90,6 @@ export function AgentOpsPage() {
   useEffect(() => {
     loadAgents()
   }, [loadAgents])
-
-  useEffect(() => {
-    api
-      .getCapabilities()
-      .then(setCapabilities)
-      .catch((error) => console.error("Failed to load provider capabilities:", error))
-  }, [api])
 
   // Derive available statuses from actual agent data (provider-agnostic)
   const availableStatuses = useMemo(() => {
@@ -154,6 +144,7 @@ export function AgentOpsPage() {
   }
 
   async function handleDelete(id: string) {
+    if (!has("agent_delete")) return
     if (!confirm("Are you sure you want to delete this agent?")) return
     try {
       await api.deleteAgent(id)
@@ -183,7 +174,7 @@ export function AgentOpsPage() {
   }
 
   async function handleCreateSubmit() {
-    if (!createName.trim() || !createSystemPrompt.trim()) return
+    if (!has("agent_create") || !createName.trim() || !createSystemPrompt.trim()) return
     setCreating(true)
     setCreateError(null)
     try {
@@ -248,7 +239,7 @@ export function AgentOpsPage() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="Agent Operations">
-        {capabilities?.can_create && (
+        {has("agent_create") && (
           <Button type="button" size="sm" onClick={openCreateDialog}>
             <Plus className="h-4 w-4" />
             New Agent
@@ -272,8 +263,8 @@ export function AgentOpsPage() {
         ) : (
           <AgentTable
             agents={filteredAgents}
-            onEdit={capabilities?.can_update ? openManageDialog : undefined}
-            onDelete={capabilities?.can_delete ? handleDelete : undefined}
+            onEdit={has("agent_update") ? openManageDialog : undefined}
+            onDelete={has("agent_delete") ? handleDelete : undefined}
             onLaunch={handleLaunch}
             onRowClick={handleRowClick}
             emptyVariant={emptyVariant}

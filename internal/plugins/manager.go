@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"sync"
 
@@ -22,20 +23,25 @@ import (
 // Manager is Tachyon's plugin host. It spawns plugin binaries, manages their
 // lifecycle, and builds the registry response for the browser loader.
 type Manager struct {
-	logger    *slog.Logger
-	mu        sync.RWMutex
-	plugins   map[string]*pluginProcess // keyed by plugin ID
-	modules   map[string]string         // module name -> owning plugin ID
-	loadOrder []string
-	navGroups map[string]string // group ID -> first-loaded plugin ID
-	navItems  map[string]string // item ID -> first-loaded plugin ID
+	lifecycleMu sync.Mutex // serialize load/restart/shutdown registration changes
+	spawn       func(context.Context, string) (*pluginProcess, error)
+	logger      *slog.Logger
+	mu          sync.RWMutex
+	plugins     map[string]*pluginProcess // keyed by plugin ID
+	modules     map[string]string         // module name -> owning plugin ID
+	loadOrder   []string
+	navGroups   map[string]string // group ID -> first-loaded plugin ID
+	navItems    map[string]string // item ID -> first-loaded plugin ID
 }
 
 // pluginProcess is one spawned plugin subprocess.
 type pluginProcess struct {
-	id      string
-	name    string
-	version string
+	binaryPath string
+	lifetime   context.Context
+	stopped    bool // protected by callMu
+	id         string
+	name       string
+	version    string
 	// capabilities holds the plugin's validated capability declaration
 	// from its discovery command (D-47). Nil for legacy plugins that do not
 	// yet declare capabilities.
@@ -75,6 +81,7 @@ type pluginProcess struct {
 func NewManager(logger *slog.Logger) *Manager {
 	return &Manager{
 		logger:    logger,
+		spawn:     spawnProcess,
 		plugins:   make(map[string]*pluginProcess),
 		modules:   make(map[string]string),
 		navGroups: make(map[string]string),
@@ -82,24 +89,58 @@ func NewManager(logger *slog.Logger) *Manager {
 	}
 }
 
-// LoadPlugin spawns a plugin binary and initializes it.
+// LoadPlugin spawns a plugin binary and initializes it through the normal
+// settings-read path. Lifecycle changes are serialized separately from calls.
 func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+	return m.loadPlugin(ctx, binaryPath, "")
+}
+
+func (m *Manager) loadPlugin(ctx context.Context, binaryPath, expectedID string) error {
+	spawn := m.spawn
+	if spawn == nil {
+		spawn = spawnProcess
+	}
+	proc, err := spawn(ctx, binaryPath)
+	if err != nil {
+		return err
+	}
+	proc.binaryPath = binaryPath
+	proc.lifetime = ctx
+	if expectedID != "" && proc.id != expectedID {
+		stopProcess(proc)
+		return fmt.Errorf("restarted plugin identity changed from %q to %q", expectedID, proc.id)
+	}
+	if err := m.initializePlugin(ctx, proc); err != nil {
+		stopProcess(proc)
+		return err
+	}
+	m.logger.Info("plugin loaded", "id", proc.id, "name", proc.name, "version", proc.version)
+	return nil
+}
+
+func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error) {
+	dataDir, config, err := pluginInitSettings(binaryPath)
+	if err != nil {
+		return nil, fmt.Errorf("plugin startup settings: %w", err)
+	}
 	cmd := exec.CommandContext(ctx, binaryPath)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stdin pipe: %w", err)
+		return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %w", err)
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start plugin: %w", err)
+		return nil, fmt.Errorf("failed to start plugin: %w", err)
 	}
 
 	// One decoder for this subprocess's entire lifetime — see
@@ -113,10 +154,10 @@ func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
 		ID:      1,
 		Method:  "plugin/init",
 		Params: subprocess.InitParams{
-			PluginDir: "",
-			DataDir:   "",
+			PluginDir: filepath.Dir(binaryPath),
+			DataDir:   dataDir,
 			CacheDir:  "",
-			Config:    map[string]string{},
+			Config:    config,
 			LogLevel:  "info",
 			HostInfo: subprocess.HostInfo{
 				Version:  "0.1.0",
@@ -127,38 +168,32 @@ func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
 
 	if err := json.NewEncoder(stdin).Encode(initReq); err != nil {
 		cmd.Process.Kill()
-		return fmt.Errorf("failed to send init request: %w", err)
+		cmd.Wait()
+		return nil, fmt.Errorf("failed to send init request: %w", err)
 	}
 
 	var initResp subprocess.RPCResponse
 	if err := dec.Decode(&initResp); err != nil {
 		cmd.Process.Kill()
-		return fmt.Errorf("failed to read init response: %w", err)
+		cmd.Wait()
+		return nil, fmt.Errorf("failed to read init response: %w", err)
 	}
 
 	if initResp.Error != nil {
 		cmd.Process.Kill()
-		return fmt.Errorf("plugin init failed: %s", initResp.Error.Message)
+		cmd.Wait()
+		return nil, fmt.Errorf("plugin init failed: %s", initResp.Error.Message)
 	}
 
 	var initResult subprocess.InitResult
 	if err := json.Unmarshal(initResp.Result, &initResult); err != nil {
 		cmd.Process.Kill()
 		cmd.Wait()
-		return fmt.Errorf("failed to unmarshal init result: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal init result: %w", err)
 	}
 	proc := &pluginProcess{id: initResult.ID, name: initResult.Name, version: initResult.Version,
 		cmd: cmd, stdin: stdin, stdout: stdout, stdoutDec: dec}
-	if err := m.initializePlugin(ctx, proc); err != nil {
-		stdin.Close()
-		stdout.Close()
-		cmd.Process.Kill()
-		cmd.Wait()
-		return err
-	}
-	m.logger.Info("plugin loaded", "id", proc.id, "name", proc.name, "version", proc.version)
-
-	return nil
+	return proc, nil
 }
 
 // BuildRegistry constructs the registry.Response for the browser loader.
@@ -202,6 +237,9 @@ func callProcess(ctx context.Context, proc *pluginProcess, method string, params
 	// unguarded.
 	proc.callMu.Lock()
 	defer proc.callMu.Unlock()
+	if proc.stopped {
+		return nil, fmt.Errorf("plugin %q is unloaded", proc.id)
+	}
 
 	req := subprocess.RPCRequest{
 		JSONRPC: "2.0",
@@ -252,6 +290,11 @@ func (m *Manager) InvokeVerb(ctx context.Context, verb string, payload json.RawM
 		return nil, fmt.Errorf("no plugin owns a module matching verb %q", verb)
 	}
 
+	if verb == "config_schema" || verb == "config_get" || verb == "config_list" || verb == "config_set" || verb == "config_reset" {
+		if err := m.syncConfigSchemas(ctx, ownerID); err != nil {
+			return nil, err
+		}
+	}
 	raw, err := m.CallPlugin(ctx, ownerID, "command/execute", subprocess.CommandExecParams{Name: verb, Args: string(payload)})
 	if err != nil {
 		return nil, err
@@ -291,39 +334,16 @@ func (m *Manager) AllCapabilities() map[string]*contract.PluginCapabilities {
 	return result
 }
 
-// Shutdown stops all plugins gracefully.
+// Shutdown stops all plugins after their in-flight serial calls complete.
 func (m *Manager) Shutdown(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for id, proc := range m.plugins {
-		// Call plugin/unload
-		unloadReq := subprocess.RPCRequest{
-			JSONRPC: "2.0",
-			ID:      999,
-			Method:  "plugin/unload",
-			Params:  struct{}{},
-		}
-
-		if err := json.NewEncoder(proc.stdin).Encode(unloadReq); err != nil {
-			m.logger.Error("failed to send unload request", "plugin_id", id, "error", err)
-		}
-
-		proc.stdin.Close()
-		proc.stdout.Close()
-
-		// Release module ownership.
-		if proc.capabilities != nil {
-			for _, mod := range proc.capabilities.Modules {
-				delete(m.modules, mod)
-			}
-		}
-
-		if err := proc.cmd.Wait(); err != nil {
-			m.logger.Error("plugin exited with error", "plugin_id", id, "error", err)
-		}
+	m.lifecycleMu.Lock()
+	defer m.lifecycleMu.Unlock()
+	m.mu.RLock()
+	ids := append([]string(nil), m.loadOrder...)
+	m.mu.RUnlock()
+	for _, id := range ids {
+		m.unloadPlugin(id)
 	}
-
 	return nil
 }
 

@@ -135,7 +135,7 @@ func TestInstrumentedVerbRecordsErrorLog(t *testing.T) {
 func TestLifecycleEventsRecorded(t *testing.T) {
 	p := &plugin{}
 	ctx := context.Background()
-	if _, err := p.Init(ctx, subprocess.InitParams{}); err != nil {
+	if _, err := p.Init(ctx, subprocess.InitParams{Config: pollingTestConfig(t, nil)}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Load(ctx); err != nil {
@@ -188,7 +188,7 @@ func mustMarshalInstr(t *testing.T, v any) json.RawMessage {
 func TestCommandRecordsActivity(t *testing.T) {
 	p := &plugin{}
 	ctx := context.Background()
-	if _, err := p.Init(ctx, subprocess.InitParams{}); err != nil {
+	if _, err := p.Init(ctx, subprocess.InitParams{Config: pollingTestConfig(t, nil)}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Command(ctx, subprocess.CommandRequest{Name: "observe_status"}); err != nil {

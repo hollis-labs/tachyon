@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { AgentSkill, Skill, SkillGrantStatus } from "../../api/client"
 import { useApi } from "../../api/context"
+import { useCapabilities } from "../../hooks/use-capabilities"
 import { type ChecklistItem, SearchableChecklist } from "./checklist"
 
 interface AgentSkillsPanelProps {
@@ -34,6 +35,7 @@ const STATUS_LABEL: Record<SkillGrantStatus["status"], string> = {
 
 export function AgentSkillsPanel({ agentId, grantedBy }: AgentSkillsPanelProps) {
   const api = useApi()
+  const { has } = useCapabilities()
   const [catalog, setCatalog] = useState<Skill[]>([])
   const [assigned, setAssigned] = useState<AgentSkill[]>([])
   const [grants, setGrants] = useState<Record<string, SkillGrantStatus>>({})
@@ -77,8 +79,11 @@ export function AgentSkillsPanel({ agentId, grantedBy }: AgentSkillsPanelProps) 
         label: s.name,
         description: s.description,
         category: s.category || undefined,
+        disabled: assigned.some((a) => a.skill_slug === s.slug)
+          ? !has("agent_revoke", "can_assign_skills")
+          : !has("agent_grant", "can_assign_skills"),
       })),
-    [catalog],
+    [catalog, assigned, has],
   )
   const checkedIds = useMemo(
     () =>
@@ -88,6 +93,7 @@ export function AgentSkillsPanel({ agentId, grantedBy }: AgentSkillsPanelProps) 
   const [pendingAssignId, setPendingAssignId] = useState<string | null>(null)
 
   async function handleAssignToggle(skillId: string, next: boolean) {
+    if (!has(next ? "agent_grant" : "agent_revoke", "can_assign_skills")) return
     setPendingAssignId(skillId)
     try {
       if (next) {
@@ -104,6 +110,7 @@ export function AgentSkillsPanel({ agentId, grantedBy }: AgentSkillsPanelProps) 
   }
 
   async function handleGrant(slug: string) {
+    if (!has("agent_approve", "can_assign_skills")) return
     setPendingSlug(slug)
     try {
       await api.grantAgentSkill(agentId, slug, grantedBy)
@@ -116,6 +123,7 @@ export function AgentSkillsPanel({ agentId, grantedBy }: AgentSkillsPanelProps) 
   }
 
   async function handleRevoke(slug: string) {
+    if (!has("agent_approve", "can_assign_skills")) return
     setPendingSlug(slug)
     try {
       await api.revokeAgentSkillGrant(agentId, slug)
@@ -182,7 +190,7 @@ export function AgentSkillsPanel({ agentId, grantedBy }: AgentSkillsPanelProps) 
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={busy}
+                          disabled={busy || !has("agent_approve", "can_assign_skills")}
                           onClick={() => handleRevoke(a.skill_slug)}
                         >
                           Revoke
@@ -191,7 +199,7 @@ export function AgentSkillsPanel({ agentId, grantedBy }: AgentSkillsPanelProps) 
                         <Button
                           type="button"
                           size="sm"
-                          disabled={busy}
+                          disabled={busy || !has("agent_approve", "can_assign_skills")}
                           onClick={() => handleGrant(a.skill_slug)}
                         >
                           Approve
