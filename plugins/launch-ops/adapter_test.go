@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
@@ -42,7 +43,7 @@ func TestPrepareAndExecute(t *testing.T) {
 	srv := stubNaniteServer(t)
 	defer srv.Close()
 
-	adapter := NewNaniteLaunchAdapter(srv.URL)
+	adapter := testNaniteAdapter(t, srv.URL)
 	ctx := context.Background()
 
 	// Prepare
@@ -84,7 +85,7 @@ func TestPrepareAndCancel(t *testing.T) {
 	srv := stubNaniteServer(t)
 	defer srv.Close()
 
-	adapter := NewNaniteLaunchAdapter(srv.URL)
+	adapter := testNaniteAdapter(t, srv.URL)
 	ctx := context.Background()
 
 	launch, err := adapter.Prepare(ctx, PrepareRequest{AgentID: "test-agent"})
@@ -111,7 +112,7 @@ func TestReadAndList(t *testing.T) {
 	srv := stubNaniteServer(t)
 	defer srv.Close()
 
-	adapter := NewNaniteLaunchAdapter(srv.URL)
+	adapter := testNaniteAdapter(t, srv.URL)
 	ctx := context.Background()
 
 	// Prepare two launches
@@ -165,7 +166,7 @@ func TestExecuteRequiresPreparedState(t *testing.T) {
 	srv := stubNaniteServer(t)
 	defer srv.Close()
 
-	adapter := NewNaniteLaunchAdapter(srv.URL)
+	adapter := testNaniteAdapter(t, srv.URL)
 	ctx := context.Background()
 
 	launch, err := adapter.Prepare(ctx, PrepareRequest{AgentID: "test-agent"})
@@ -190,7 +191,7 @@ func TestCancelCompletedFails(t *testing.T) {
 	srv := stubNaniteServer(t)
 	defer srv.Close()
 
-	adapter := NewNaniteLaunchAdapter(srv.URL)
+	adapter := testNaniteAdapter(t, srv.URL)
 	ctx := context.Background()
 
 	launch, err := adapter.Prepare(ctx, PrepareRequest{AgentID: "test-agent"})
@@ -212,7 +213,7 @@ func TestCancelCompletedFails(t *testing.T) {
 }
 
 func TestNotFound(t *testing.T) {
-	adapter := NewNaniteLaunchAdapter("http://localhost:1") // won't be called
+	adapter := testNaniteAdapter(t, "http://localhost:1") // won't be called
 	ctx := context.Background()
 
 	_, err := adapter.Read(ctx, ReadRequest{LaunchID: "nonexistent"})
@@ -241,7 +242,7 @@ func TestVerbHandler(t *testing.T) {
 	defer srv.Close()
 
 	p := &plugin{
-		adapter: NewNaniteLaunchAdapter(srv.URL),
+		adapter: testNaniteAdapter(t, srv.URL),
 	}
 	ctx := context.Background()
 
@@ -326,7 +327,7 @@ func TestVerbHandler(t *testing.T) {
 
 func TestVerbValidation(t *testing.T) {
 	p := &plugin{
-		adapter: NewNaniteLaunchAdapter("http://localhost:1"),
+		adapter: testNaniteAdapter(t, "http://localhost:1"),
 	}
 	ctx := context.Background()
 
@@ -397,11 +398,13 @@ func TestCapabilitiesEmbed(t *testing.T) {
 func TestPluginInit(t *testing.T) {
 	p := &plugin{}
 	result, err := p.Init(context.Background(), subprocess.InitParams{
-		Config: map[string]string{"nanite_url": "http://example.com"},
+		DataDir: t.TempDir(),
+		Config:  map[string]string{"nanite_url": "http://example.com"},
 	})
 	if err != nil {
 		t.Fatalf("Init: %v", err)
 	}
+	t.Cleanup(func() { p.Unload(context.Background()) })
 	if result.ID != "launch-ops" {
 		t.Errorf("expected ID launch-ops, got %s", result.ID)
 	}
@@ -420,7 +423,7 @@ func TestListLimit(t *testing.T) {
 	srv := stubNaniteServer(t)
 	defer srv.Close()
 
-	adapter := NewNaniteLaunchAdapter(srv.URL)
+	adapter := testNaniteAdapter(t, srv.URL)
 	ctx := context.Background()
 
 	// Prepare 5 launches
@@ -454,8 +457,10 @@ func TestExecuteCancelRace(t *testing.T) {
 				json.NewEncoder(w).Encode(naniteSession{ID: "session-race"})
 			}))
 			defer srv.Close()
-			a := NewNaniteLaunchAdapter(srv.URL)
-			a.launches["race"] = &Launch{ID: "race", AgentID: "test-agent", State: LaunchStatePrepared}
+			a := testNaniteAdapter(t, srv.URL)
+			if err := a.store.Create(context.Background(), &Launch{ID: "race", AgentID: "test-agent", Backend: "nanite", State: LaunchStatePrepared}); err != nil {
+				t.Fatal(err)
+			}
 			done := make(chan *Launch, 1)
 			go func() {
 				result, err := a.Execute(context.Background(), ExecuteRequest{LaunchID: "race"})
@@ -480,4 +485,18 @@ func TestExecuteCancelRace(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testStore(t *testing.T) *LaunchStore {
+	t.Helper()
+	store, err := OpenLaunchStore(filepath.Join(t.TempDir(), "launches.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return store
+}
+func testNaniteAdapter(t *testing.T, url string) *NaniteLaunchAdapter {
+	t.Helper()
+	return NewNaniteLaunchAdapter(url, testStore(t))
 }
