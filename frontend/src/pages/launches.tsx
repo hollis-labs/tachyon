@@ -5,7 +5,7 @@ import { invokeVerb, useVerbs } from "../api/verbs"
 import { LargeDialog } from "../components/agent-ops/large-dialog"
 
 type LaunchState = "prepared" | "executing" | "running" | "completed" | "failed" | "cancelled"
-interface Launch {
+export interface Launch {
   id: string
   backend?: string
   agent_id: string
@@ -20,7 +20,7 @@ interface Launch {
   created_at: string
   updated_at: string
 }
-interface LaunchStatus {
+export interface LaunchStatus {
   launch_id: string
   state: LaunchState
   session_id?: string
