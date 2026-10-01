@@ -8,6 +8,7 @@ import { PendingApprovalError } from "../api/hitl"
 import { type AskDetail, useVerbs } from "../api/verbs"
 import { ACTIVE_STATUSES, CLOSED_STATUSES, workBoardApi } from "../api/work-board"
 import { PendingApproval } from "../components/pending-approval"
+import { workSearchNotice } from "../components/work/search-notice"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -230,6 +231,7 @@ function BoardSearch({
     loading: boolean
     error: string
     pending?: AskDetail
+    notice?: string
   }>({
     tasks: [],
     loading: true,
@@ -243,7 +245,13 @@ function BoardSearch({
         .searchWork(query)
         .then(dataOf)
         .then((page) => {
-          if (active) setState({ tasks: page.tasks, loading: false, error: "" })
+          if (active)
+            setState({
+              tasks: page.tasks,
+              loading: false,
+              error: "",
+              notice: workSearchNotice(page),
+            })
         })
         .catch((error) => {
           if (active)
@@ -273,7 +281,13 @@ function BoardSearch({
         <p role="alert">{state.error}</p>
       ) : state.tasks.length ? (
         <>
-          <p>{state.tasks.length} search results</p>
+          {state.notice ? (
+            <p role="status" className="break-words text-sm text-text-muted">
+              {state.notice}
+            </p>
+          ) : (
+            <p>{state.tasks.length} returned search results</p>
+          )}
           {state.tasks.map((task) => (
             <WorkCard key={task.id} task={task} agents={agents} canRead={canRead} onOpen={onOpen} />
           ))}
