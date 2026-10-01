@@ -2,6 +2,7 @@ import type { ComponentType } from "react"
 import { AgentOpsPage } from "./agent-ops"
 import { DashboardPage } from "./dashboard"
 import { LaunchesPage } from "./launches"
+import { SCMActivityPage, SCMRepositoriesPage } from "./scm"
 import { SessionsPage } from "./sessions"
 import { SettingsPage } from "./settings"
 import { WorkPage } from "./work"
@@ -15,4 +16,6 @@ export const pageRegistry: Record<string, ComponentType> = {
   "/agents": AgentOpsPage,
   "/agents/durable": SessionsPage,
   "/work": WorkPage,
+  "/scm": SCMRepositoriesPage,
+  "/scm/activity": SCMActivityPage,
 }
