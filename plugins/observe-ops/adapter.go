@@ -13,8 +13,9 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/hollis-labs/tachyon/internal/observefeed"
 	"time"
+
+	"github.com/hollis-labs/tachyon/internal/observefeed"
 )
 
 // ActivityEntry is a single item in the activity feed — a timestamped
@@ -67,15 +68,16 @@ type HostFeedStatus struct {
 }
 
 type StatusSummary struct {
-	HostFeed          *HostFeedStatus    `json:"host_feed,omitempty"`
-	Dependencies      []DependencyStatus `json:"dependencies,omitempty"`
-	SessionCountKnown bool               `json:"session_count_known"`
-	ActiveAgents      int                `json:"active_agents"`
-	ActiveSessions    int                `json:"active_sessions"`
-	ErrorCount        int                `json:"error_count"`
-	HealthStatus      string             `json:"health_status"` // "healthy", "degraded", "unhealthy"
-	UptimeSeconds     int64              `json:"uptime_seconds"`
-	LastUpdated       time.Time          `json:"last_updated"`
+	HostFeed            *HostFeedStatus    `json:"host_feed,omitempty"`
+	Dependencies        []DependencyStatus `json:"dependencies,omitempty"`
+	SessionCountKnown   bool               `json:"session_count_known"`
+	ActiveAgents        int                `json:"active_agents"`
+	ActiveSessions      int                `json:"active_sessions"`
+	OperationErrorCount int                `json:"operation_error_count"`
+	ErrorCount          int                `json:"error_count"`
+	HealthStatus        string             `json:"health_status"` // "healthy", "degraded", "unhealthy"
+	UptimeSeconds       int64              `json:"uptime_seconds"`
+	LastUpdated         time.Time          `json:"last_updated"`
 }
 
 // SubscriptionHandle describes stateless snapshot polling, not a registered

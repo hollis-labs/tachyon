@@ -71,3 +71,30 @@ func TestMissingHostMarkerCannotEnableIngestion(t *testing.T) {
 		t.Fatal("empty marker enabled ingestion")
 	}
 }
+
+func TestOperationErrorsDoNotChangeHealthAndRetirementCountsOnce(t *testing.T) {
+	local := NewLocalAdapter(100)
+	for n := 0; n < 60; n++ {
+		local.RecordEvent(Event{Kind: "operation_result", Payload: map[string]any{"status": "error"}})
+	}
+	status, _ := local.Status(context.Background())
+	if status.HealthStatus != "healthy" || status.ErrorCount != 0 || status.OperationErrorCount != 60 {
+		t.Fatal("operation errors changed health", status)
+	}
+	for n := 0; n < 12; n++ {
+		local.RecordEvent(Event{Kind: "plugin_failure", Payload: map[string]any{"status": "error"}})
+		local.RecordEvent(Event{Kind: "plugin_retire", Payload: map[string]any{"status": "error"}})
+	}
+	status, _ = local.Status(context.Background())
+	if status.HealthStatus != "degraded" || status.ErrorCount != 12 || status.OperationErrorCount != 60 {
+		t.Fatal("retirement doubled failure health count", status)
+	}
+	legacy := NewLocalAdapter(100)
+	for n := 0; n < 11; n++ {
+		legacy.RecordEvent(Event{Kind: "error"})
+	}
+	status, _ = legacy.Status(context.Background())
+	if status.HealthStatus != "degraded" || status.ErrorCount != 11 {
+		t.Fatal("legacy health definition changed", status)
+	}
+}

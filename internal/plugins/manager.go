@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -122,7 +123,7 @@ func (m *Manager) loadPlugin(ctx context.Context, binaryPath, expectedID string)
 	}
 	proc, err := spawn(ctx, binaryPath)
 	if err != nil {
-		m.lifecycleRecord(nil, filepath.Base(binaryPath), "plugin_failure", "error", "admission")
+		m.lifecycleRecord(nil, filepath.Base(binaryPath), "plugin_failure", "error", admissionReason(err, "spawn"))
 		return err
 	}
 	proc.binaryPath = binaryPath
@@ -133,7 +134,7 @@ func (m *Manager) loadPlugin(ctx context.Context, binaryPath, expectedID string)
 		return fmt.Errorf("restarted plugin identity changed from %q to %q", expectedID, proc.id)
 	}
 	if err := m.initializePlugin(ctx, proc); err != nil {
-		m.lifecycleRecord(proc, proc.id, "plugin_failure", "error", "admission")
+		m.lifecycleRecord(proc, proc.id, "plugin_failure", "error", admissionReason(err, "admission"))
 		stopProcess(proc)
 		return err
 	}
@@ -226,6 +227,9 @@ func (m *Manager) BuildRegistry() RegistryResponse {
 // governs queueing only: a client disconnect cannot terminate a shared plugin
 // or abandon a response on its serial wire. Active I/O uses the host budget.
 func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, params interface{}) (json.RawMessage, error) {
+	if strings.HasPrefix(method, "plugin/") {
+		return nil, fmt.Errorf("plugin lifecycle methods are host-only")
+	}
 	if method == "command/execute" {
 		// Inspect the actual serialized name, irrespective of the Go parameter
 		// type. Pass the frozen bytes onward so custom marshalers run only once.
@@ -265,12 +269,20 @@ func callProcess(ctx context.Context, proc *pluginProcess, method string, params
 	return callProcessContexts(ctx, ctx, proc, method, params)
 }
 
+var errCallQueueWait = errors.New("plugin queue wait")
+
 func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, method string, params interface{}) (json.RawMessage, error) {
-	// Queueing is cancellable and never kills somebody else's active call.
 	budget := proc.callTimeout
 	if budget <= 0 {
 		budget = pluginCallTimeout
 	}
+	return callProcessContextsBudgets(queueCtx, ioCtx, proc, method, params, budget, budget)
+}
+
+// Each deadline starts in its own stage. A queue error proves no bytes were
+// written; callers may retain telemetry without replaying ambiguous I/O.
+func callProcessContextsBudgets(queueCtx, ioCtx context.Context, proc *pluginProcess, method string, params interface{}, queueBudget, ioBudget time.Duration) (json.RawMessage, error) {
+	// Queueing is cancellable and never kills somebody else's active call.
 	if proc.dead.Load() {
 		return nil, fmt.Errorf("plugin %q is unloaded", proc.id)
 	}
@@ -297,13 +309,13 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 
 	// Give wire acquisition its own limit; queue time must not consume the
 	// operation budget (service_health can legitimately need up to 90s).
-	queued, cancelQueue := context.WithTimeout(queueCtx, budget)
+	queued, cancelQueue := context.WithTimeout(queueCtx, queueBudget)
 	err = proc.callMu.LockContext(queued)
 	cancelQueue()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errCallQueueWait, err)
 	}
-	bounded, cancel := context.WithTimeout(ioCtx, budget)
+	bounded, cancel := context.WithTimeout(ioCtx, ioBudget)
 	defer cancel()
 	defer proc.callMu.Unlock()
 	if proc.stopped || proc.dead.Load() {

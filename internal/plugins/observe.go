@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -17,21 +18,34 @@ import (
 
 const observeQueueCapacity = 256
 
+// Lifecycle capacity is isolated so HTTP operation volume cannot starve failures.
+const observeLifecycleCapacity = 64
+
+// Polling reads may own the pipe for 750ms each; only the worker waits here.
+const observeQueueTimeout = 30 * time.Second
+
+// Avoid flooding logs when an old Observe binary rejects the private command.
+const observeWarningInterval = 30 * time.Second
+
 // Telemetry may lose records; it never merits the ordinary 120s operation budget.
-const observeDeliveryTimeout = time.Second
+const observeDeliveryTimeout = 2 * time.Second
 
 // observeRecorder has its own short-held lock. Recording only appends metadata;
 // the worker releases it before taking a manager lock or serial subprocess pipe.
 type observeRecorder struct {
-	mu       sync.Mutex
-	epoch    string
-	sequence uint64
-	queue    []observefeed.Record
-	counters observefeed.Counters
-	wake     chan struct{}
-	cancel   context.CancelFunc
-	done     chan struct{}
-	closed   bool
+	mu           sync.Mutex
+	epoch        string
+	sequence     uint64
+	queue        []observefeed.Record
+	lifecycle    []observefeed.Record
+	queueTimeout time.Duration // injectable before start, for fake-pipe tests
+	ioTimeout    time.Duration
+	lastWarning  time.Time
+	counters     observefeed.Counters
+	wake         chan struct{}
+	cancel       context.CancelFunc
+	done         chan struct{}
+	closed       bool
 }
 
 func opaqueID() string {
@@ -72,11 +86,19 @@ func (f *observeRecorder) record(r observefeed.Record) {
 	r.Sequence = f.sequence
 	r.ID = fmt.Sprintf("%s-%d", f.epoch, f.sequence)
 	r.Timestamp = time.Now().UTC()
-	if len(f.queue) == observeQueueCapacity {
-		f.counters.Overflow++
-		return
+	if strings.HasPrefix(r.Kind, "plugin_") {
+		if len(f.lifecycle) == observeLifecycleCapacity {
+			f.counters.LifecycleOverflow++
+			return
+		}
+		f.lifecycle = append(f.lifecycle, r)
+	} else {
+		if len(f.queue) == observeQueueCapacity {
+			f.counters.Overflow++
+			return
+		}
+		f.queue = append(f.queue, r)
 	}
-	f.queue = append(f.queue, r)
 	select {
 	case f.wake <- struct{}{}:
 	default:
@@ -109,15 +131,22 @@ func (f *observeRecorder) stop() {
 func (f *observeRecorder) take() observefeed.Batch {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	n := min(len(f.queue), observefeed.MaxBatch)
-	b := observefeed.Batch{Epoch: f.epoch, Records: append([]observefeed.Record(nil), f.queue[:n]...), Counters: f.counters}
-	f.queue = append(f.queue[:0], f.queue[n:]...)
+	b := observefeed.Batch{Epoch: f.epoch, Counters: f.counters}
+	for len(b.Records) < observefeed.MaxBatch && len(f.queue)+len(f.lifecycle) > 0 {
+		source := &f.queue
+		if len(f.lifecycle) > 0 && (len(f.queue) == 0 || f.lifecycle[0].Sequence < f.queue[0].Sequence) {
+			source = &f.lifecycle
+		}
+		b.Records = append(b.Records, (*source)[0])
+		(*source)[0] = observefeed.Record{}
+		*source = (*source)[1:]
+	}
 	return b
 }
 
 func (f *observeRecorder) run(ctx context.Context, m *Manager) {
 	defer close(f.done)
-	var lastSent observefeed.Counters
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -126,10 +155,10 @@ func (f *observeRecorder) run(ctx context.Context, m *Manager) {
 		}
 		for ctx.Err() == nil {
 			batch := f.take()
-			if len(batch.Records) == 0 && batch.Counters == lastSent {
+			if len(batch.Records) == 0 {
 				break
 			}
-			lastSent = batch.Counters
+
 			m.mu.RLock()
 			proc := m.plugins["observe-ops"]
 			m.mu.RUnlock()
@@ -137,12 +166,30 @@ func (f *observeRecorder) run(ctx context.Context, m *Manager) {
 			var err error
 			if available {
 				args, _ := json.Marshal(observefeed.Ingest{Token: proc.observeToken, Batch: batch})
-				bounded, cancel := context.WithTimeout(ctx, observeDeliveryTimeout)
+				queueBudget, ioBudget := observeQueueTimeout, observeDeliveryTimeout
+				if f.queueTimeout > 0 {
+					queueBudget = f.queueTimeout
+				}
+				if f.ioTimeout > 0 {
+					ioBudget = f.ioTimeout
+				}
 				var raw json.RawMessage
 				// Private transport: no public CallPlugin instrumentation, no manager
 				// or recorder locks held, and exact captured process identity.
-				raw, err = callProcess(bounded, proc, "command/execute", subprocess.CommandExecParams{Name: observefeed.Command, Args: string(args)})
-				cancel()
+				for {
+					raw, err = callProcessContextsBudgets(ctx, ctx, proc, "command/execute", subprocess.CommandExecParams{Name: observefeed.Command, Args: string(args)}, queueBudget, ioBudget)
+					if ctx.Err() != nil {
+						return
+					}
+					if !errors.Is(err, errCallQueueWait) {
+						break
+					}
+					// Nothing was written. Keep the frozen batch in this worker, ahead of
+					// both bounded queues, until it can acquire a wire or the host stops.
+					f.mu.Lock()
+					f.counters.QueueWaitTimeouts++
+					f.mu.Unlock()
+				}
 				if err == nil {
 					var ack subprocess.CommandExecResult
 					if json.Unmarshal(raw, &ack) != nil || ack.Action != "message" || ack.Content != `{"accepted":true}` {
@@ -164,7 +211,16 @@ func (f *observeRecorder) run(ctx context.Context, m *Manager) {
 			}
 			f.mu.Unlock()
 			if err != nil {
-				m.logger.Warn("Observe feed delivery failed", "reason_class", "delivery_failed")
+				f.mu.Lock()
+				now := time.Now()
+				warn := f.lastWarning.IsZero() || now.Sub(f.lastWarning) >= observeWarningInterval
+				if warn {
+					f.lastWarning = now
+				}
+				f.mu.Unlock()
+				if warn {
+					m.logger.Warn("Observe feed delivery failed", "reason_class", "delivery_failed")
+				}
 			}
 		}
 	}
@@ -199,7 +255,7 @@ func (m *Manager) lifecycleRecord(proc *pluginProcess, id, kind, status, reason 
 }
 
 func (m *Manager) beginOperation(proc *pluginProcess, method, verb string) func(json.RawMessage, error) {
-	if isObserve(proc) {
+	if isObserve(proc) || method == "command/execute" && verb == "config_schemas" {
 		return func(json.RawMessage, error) {}
 	}
 	r := observefeed.Record{Plugin: safeIdentity(proc.id), Generation: observeGeneration(proc), Kind: "operation_start", Status: "started", Operation: opaqueID(), Effect: "unknown"}
@@ -276,3 +332,11 @@ func commandEnvelope(raw json.RawMessage) json.RawMessage {
 
 // Reserved commands are never routable through the public host APIs.
 func PrivateCommand(name string) bool { return strings.EqualFold(name, observefeed.Command) }
+
+func admissionReason(err error, fallback string) string {
+	var admission *AdmissionError
+	if errors.As(err, &admission) {
+		return admission.Reason
+	}
+	return fallback
+}

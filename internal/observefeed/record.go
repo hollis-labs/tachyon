@@ -34,10 +34,12 @@ type Record struct {
 }
 
 type Counters struct {
-	Overflow       uint64 `json:"overflow"`
-	Unavailable    uint64 `json:"unavailable"`
-	DeliveryFailed uint64 `json:"delivery_failed"`
-	Delivered      uint64 `json:"delivered"`
+	LifecycleOverflow uint64 `json:"lifecycle_overflow"`
+	QueueWaitTimeouts uint64 `json:"queue_wait_timeouts"`
+	Overflow          uint64 `json:"overflow"`
+	Unavailable       uint64 `json:"unavailable"`
+	DeliveryFailed    uint64 `json:"delivery_failed"`
+	Delivered         uint64 `json:"delivered"`
 }
 
 type Batch struct {
@@ -68,7 +70,7 @@ func (b Batch) Validate() error {
 				return fmt.Errorf("invalid host identity")
 			}
 		}
-		if !oneOf(r.Kind, "operation_start", "operation_result", "plugin_load", "plugin_restart", "plugin_unload", "plugin_failure", "plugin_retire") || !oneOf(r.Status, "started", "ok", "ask", "error", "unknown") || !oneOf(r.Effect, "", "unknown", "reads", "writes", "destroys", "open_world") || !oneOf(r.Reason, "", "transport", "invalid_result", "admission", "host_stop", "timeout", "transport_error", "canceled", "invalid_response", "unload_failed", "restart_failed") || !oneOf(r.Method, "", "command/execute", "crud/list", "crud/read", "crud/create", "crud/update", "crud/delete", "other") {
+		if !oneOf(r.Kind, "operation_start", "operation_result", "plugin_load", "plugin_restart", "plugin_unload", "plugin_failure", "plugin_retire") || !oneOf(r.Status, "started", "ok", "ask", "error", "unknown") || !oneOf(r.Effect, "", "unknown", "reads", "writes", "destroys", "open_world") || !oneOf(r.Reason, "", "transport", "invalid_result", "admission", "spawn", "settings", "handshake", "load", "discovery", "declaration", "validation", "collision", "host_stop", "timeout", "transport_error", "canceled", "invalid_response", "unload_failed", "restart_failed") || !oneOf(r.Method, "", "command/execute", "crud/list", "crud/read", "crud/create", "crud/update", "crud/delete", "other") {
 			return fmt.Errorf("invalid host classification")
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -71,7 +73,9 @@ func envelopeCommand(p subprocess.CommandExecParams) (any, *subprocess.RPCError)
 func queuedRecords(m *Manager) []observefeed.Record {
 	m.observe.mu.Lock()
 	defer m.observe.mu.Unlock()
-	return append([]observefeed.Record(nil), m.observe.queue...)
+	records := append(append([]observefeed.Record(nil), m.observe.queue...), m.observe.lifecycle...)
+	sort.Slice(records, func(i, j int) bool { return records[i].Sequence < records[j].Sequence })
+	return records
 }
 
 func TestObserveFeedVerbOutcomesAndPrivacy(t *testing.T) {
@@ -152,7 +156,7 @@ func TestObserveFeedLifecycleOrderAndRetirement(t *testing.T) {
 		t.Fatal("invalid admission")
 	}
 	last := queuedRecords(m)
-	if last[len(last)-1].Kind != "plugin_failure" || last[len(last)-1].Reason != "admission" {
+	if last[len(last)-1].Kind != "plugin_failure" || last[len(last)-1].Reason != "validation" {
 		t.Fatal(last)
 	}
 	proc, _, _ := stalledProcess(t, "decode")
@@ -204,9 +208,11 @@ func TestObserveAbsentAndOverflowAreBounded(t *testing.T) {
 
 func TestObserveHungDeliveryDoesNotHoldOtherPluginOrManagerLocks(t *testing.T) {
 	m := watchdogManager()
+	var ingestionCalls atomic.Int32
 	entered, release := make(chan struct{}), make(chan struct{})
 	observer := feedProcess(t, "observe-ops", feedCaps("observe"), func(p subprocess.CommandExecParams) (any, *subprocess.RPCError) {
 		if p.Name == observefeed.Command {
+			ingestionCalls.Add(1)
 			close(entered)
 			<-release
 		}
@@ -253,6 +259,9 @@ func TestObserveHungDeliveryDoesNotHoldOtherPluginOrManagerLocks(t *testing.T) {
 	if _, err := m.InvokeVerb(context.Background(), "work_write", nil); err != nil {
 		t.Fatal("other plugin lost", err)
 	}
+	if ingestionCalls.Load() != 1 {
+		t.Fatal("ambiguous hung batch replayed", ingestionCalls.Load())
+	}
 }
 
 func TestObserveDeliveryNoRecursionAndConcurrentOrdering(t *testing.T) {
@@ -295,7 +304,7 @@ func TestObserveDeliveryNoRecursionAndConcurrentOrdering(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	awaitCondition(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(records) == 80 && counters.Delivered == 80 })
+	awaitCondition(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(records) == 80 && counters.Delivered < 80 })
 	for n := 0; n < 5; n++ {
 		if _, err := m.InvokeVerb(context.Background(), "observe_read", nil); err != nil {
 			t.Fatal(err)
@@ -313,8 +322,9 @@ func TestObserveDeliveryNoRecursionAndConcurrentOrdering(t *testing.T) {
 	}
 }
 
-func TestObserveBusyWireLosesTelemetryWithoutKillingActiveRead(t *testing.T) {
+func TestObserveBusyWireRetainsTelemetryWithoutKillingActiveRead(t *testing.T) {
 	m := watchdogManager()
+	m.observe.queueTimeout = 40 * time.Millisecond
 	entered, release := make(chan struct{}), make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
@@ -349,7 +359,7 @@ func TestObserveBusyWireLosesTelemetryWithoutKillingActiveRead(t *testing.T) {
 	awaitCondition(t, func() bool {
 		m.observe.mu.Lock()
 		defer m.observe.mu.Unlock()
-		return m.observe.counters.DeliveryFailed > 0
+		return m.observe.counters.QueueWaitTimeouts > 0
 	})
 	if observer.dead.Load() {
 		t.Fatal("queue deadline killed an active Observe read")
@@ -362,6 +372,12 @@ func TestObserveBusyWireLosesTelemetryWithoutKillingActiveRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitCondition(t, func() bool { m.observe.mu.Lock(); defer m.observe.mu.Unlock(); return m.observe.counters.Delivered > 0 })
+	m.observe.mu.Lock()
+	lost := m.observe.counters.DeliveryFailed + m.observe.counters.Unavailable
+	m.observe.mu.Unlock()
+	if lost != 0 {
+		t.Fatal("queue timeout lost unwritten batch", lost)
+	}
 	if observer.dead.Load() {
 		t.Fatal("healthy Observe was retired")
 	}
@@ -456,5 +472,239 @@ func TestShutdownStopsHungObserveWorker(t *testing.T) {
 	}
 	if len(m.BuildRegistry().Plugins) != 0 || !observer.dead.Load() || !worker.dead.Load() {
 		t.Fatal("shutdown left processes registered")
+	}
+}
+
+func TestObserveFreshIOBudgetAfterSlowReadAndSlowHealthyAck(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		read, ack time.Duration
+	}{{"queued behind read", 900 * time.Millisecond, 300 * time.Millisecond}, {"healthy slow ack", 0, 1300 * time.Millisecond}} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := watchdogManager()
+			entered := make(chan struct{})
+			observer := feedProcess(t, "observe-ops", feedCaps("observe"), func(p subprocess.CommandExecParams) (any, *subprocess.RPCError) {
+				if p.Name == observefeed.Command {
+					time.Sleep(tc.ack)
+					return subprocess.CommandExecResult{Action: "message", Content: `{"accepted":true}`}, nil
+				}
+				close(entered)
+				time.Sleep(tc.read)
+				return envelopeCommand(p)
+			})
+			observer.observeToken = "private-marker"
+			if err := m.initializePlugin(context.Background(), observer); err != nil {
+				t.Fatal(err)
+			}
+			readDone := make(chan error, 1)
+			if tc.read > 0 {
+				go func() { _, err := m.InvokeVerb(context.Background(), "observe_read", nil); readDone <- err }()
+				<-entered
+			}
+			m.observe.record(observefeed.Record{Plugin: "work-ops", Kind: "operation_result", Status: "ok"})
+			m.observe.start(m)
+			t.Cleanup(m.observe.stop)
+			awaitCondition(t, func() bool {
+				m.observe.mu.Lock()
+				defer m.observe.mu.Unlock()
+				return m.observe.counters.Delivered == 1
+			})
+			if observer.dead.Load() || m.ModuleOwner("observe") != "observe-ops" {
+				t.Fatal("healthy Observe retired")
+			}
+			if tc.read > 0 {
+				if err := awaitError(t, readDone); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestObserveThreePollersQueueTimeoutRetainsAllRecords(t *testing.T) {
+	m := watchdogManager()
+	m.observe.queueTimeout = 40 * time.Millisecond
+	m.observe.ioTimeout = 80 * time.Millisecond
+	var mu sync.Mutex
+	var records []observefeed.Record
+	var reads atomic.Int32
+	entered := make(chan struct{})
+	observer := feedProcess(t, "observe-ops", feedCaps("observe"), func(p subprocess.CommandExecParams) (any, *subprocess.RPCError) {
+		if p.Name == observefeed.Command {
+			var in observefeed.Ingest
+			_ = json.Unmarshal([]byte(p.Args), &in)
+			time.Sleep(20 * time.Millisecond)
+			mu.Lock()
+			records = append(records, in.Batch.Records...)
+			mu.Unlock()
+			return subprocess.CommandExecResult{Action: "message", Content: `{"accepted":true}`}, nil
+		}
+		if reads.Add(1) == 1 {
+			close(entered)
+		}
+		time.Sleep(100 * time.Millisecond)
+		return envelopeCommand(p)
+	})
+	observer.observeToken = "private-marker"
+	if err := m.initializePlugin(context.Background(), observer); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for n := 0; n < 3; n++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := m.InvokeVerb(context.Background(), "observe_read", nil); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	<-entered
+	for n := 0; n < 80; n++ {
+		m.observe.record(observefeed.Record{Plugin: "work-ops", Kind: "operation_result", Status: "ok"})
+	}
+	m.observe.start(m)
+	t.Cleanup(m.observe.stop)
+	wg.Wait()
+	awaitCondition(t, func() bool {
+		m.observe.mu.Lock()
+		defer m.observe.mu.Unlock()
+		return m.observe.counters.Delivered == 80
+	})
+	m.observe.mu.Lock()
+	counts := m.observe.counters
+	m.observe.mu.Unlock()
+	if counts.QueueWaitTimeouts == 0 || counts.DeliveryFailed+counts.Unavailable+counts.Overflow != 0 || observer.dead.Load() {
+		t.Fatal("queue retries lost records or killed Observe", counts)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(records) != 80 {
+		t.Fatal("records lost/replayed", len(records))
+	}
+	for n, r := range records {
+		if r.Sequence != uint64(n+1) {
+			t.Fatal("retained batch reordered/replayed", records)
+		}
+	}
+}
+
+func TestObserveCountersPiggybackWithoutExtraRPC(t *testing.T) {
+	m := watchdogManager()
+	var calls atomic.Int32
+	observer := feedProcess(t, "observe-ops", feedCaps("observe"), func(p subprocess.CommandExecParams) (any, *subprocess.RPCError) {
+		var in observefeed.Ingest
+		_ = json.Unmarshal([]byte(p.Args), &in)
+		if len(in.Batch.Records) == 0 {
+			t.Error("counters-only RPC")
+		}
+		if in.Batch.Counters.Delivered != uint64(calls.Load()) {
+			t.Error("counter snapshot not piggybacked")
+		}
+		calls.Add(1)
+		return subprocess.CommandExecResult{Action: "message", Content: `{"accepted":true}`}, nil
+	})
+	observer.observeToken = "private-marker"
+	if err := m.initializePlugin(context.Background(), observer); err != nil {
+		t.Fatal(err)
+	}
+	m.observe.start(m)
+	t.Cleanup(m.observe.stop)
+	for n := 1; n <= 5; n++ {
+		m.observe.record(observefeed.Record{Plugin: "work-ops", Kind: "operation_result", Status: "ok"})
+		awaitCondition(t, func() bool {
+			m.observe.mu.Lock()
+			defer m.observe.mu.Unlock()
+			return m.observe.counters.Delivered == uint64(n)
+		})
+	}
+	m.observe.stop()
+	if calls.Load() != 5 {
+		t.Fatal("extra feed RPCs", calls.Load())
+	}
+}
+
+func TestObserveOperationFloodCannotStarveLifecycle(t *testing.T) {
+	m := watchdogManager()
+	for n := 0; n < observeQueueCapacity+100; n++ {
+		m.observe.record(observefeed.Record{Plugin: "work-ops", Kind: "operation_result", Status: "ok"})
+	}
+	m.lifecycleRecord(nil, "work-ops", "plugin_failure", "error", "timeout")
+	m.lifecycleRecord(nil, "work-ops", "plugin_retire", "error", "timeout")
+	var records []observefeed.Record
+	for {
+		batch := m.observe.take()
+		if len(batch.Records) == 0 {
+			break
+		}
+		records = append(records, batch.Records...)
+	}
+	if len(records) != observeQueueCapacity+2 || records[len(records)-2].Kind != "plugin_failure" || records[len(records)-1].Kind != "plugin_retire" {
+		t.Fatal("operation flood starved lifecycle", records)
+	}
+	for n := 0; n < observeLifecycleCapacity+1; n++ {
+		m.lifecycleRecord(nil, "work-ops", "plugin_load", "ok", "")
+	}
+	m.observe.mu.Lock()
+	defer m.observe.mu.Unlock()
+	if m.observe.counters.Overflow != 100 || m.observe.counters.LifecycleOverflow != 1 || len(m.observe.lifecycle) != observeLifecycleCapacity {
+		t.Fatal("dishonest/uncapped lifecycle losses", m.observe.counters)
+	}
+}
+
+type observeWarningHandler struct{ count atomic.Int32 }
+
+func (*observeWarningHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *observeWarningHandler) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == "Observe feed delivery failed" {
+		h.count.Add(1)
+	}
+	return nil
+}
+func (h *observeWarningHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *observeWarningHandler) WithGroup(string) slog.Handler      { return h }
+
+func TestObserveRejectedDeliveryWarningsAreRateLimited(t *testing.T) {
+	h := &observeWarningHandler{}
+	m := NewManager(slog.New(h))
+	observer := feedProcess(t, "observe-ops", feedCaps("observe"), func(subprocess.CommandExecParams) (any, *subprocess.RPCError) {
+		return nil, &subprocess.RPCError{Code: -32601, Message: "UPSTREAM-SECRET"}
+	})
+	observer.observeToken = "private-marker"
+	if err := m.initializePlugin(context.Background(), observer); err != nil {
+		t.Fatal(err)
+	}
+	m.observe.start(m)
+	t.Cleanup(m.observe.stop)
+	for n := 1; n <= 5; n++ {
+		m.observe.record(observefeed.Record{Plugin: "work-ops", Kind: "operation_result", Status: "ok"})
+		awaitCondition(t, func() bool {
+			m.observe.mu.Lock()
+			defer m.observe.mu.Unlock()
+			return m.observe.counters.DeliveryFailed == uint64(n)
+		})
+	}
+	m.observe.stop()
+	if h.count.Load() != 1 || observer.dead.Load() {
+		t.Fatal("warning flood or unhealthy legacy consumer", h.count.Load())
+	}
+}
+
+func TestPublicLifecycleCallsRejectedAndSchemaSyncExcluded(t *testing.T) {
+	m := watchdogManager()
+	p := feedProcess(t, "config-ops", feedCaps("config"), envelopeCommand)
+	if err := m.initializePlugin(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"plugin/init", "plugin/load", "plugin/unload", "plugin/other"} {
+		if _, err := m.CallPlugin(context.Background(), p.id, method, subprocess.InitParams{Config: map[string]string{observefeed.TokenConfig: "forged"}}); err == nil {
+			t.Fatal("public lifecycle allowed", method)
+		}
+	}
+	if _, err := m.CallPlugin(context.Background(), p.id, "command/execute", subprocess.CommandExecParams{Name: "config_schemas", Args: "CONFIG-SECRET"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(queuedRecords(m)) != 0 || p.dead.Load() {
+		t.Fatal("schema housekeeping instrumented or lifecycle reached pipe")
 	}
 }

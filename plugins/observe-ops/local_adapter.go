@@ -279,9 +279,12 @@ func (a *LocalAdapter) Status(_ context.Context) (*StatusSummary, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	errCount := 0
+	errCount, operationErrors := 0, 0
 	for _, e := range a.events {
-		if e.Kind == "error" || e.Payload["status"] == "error" {
+		if e.Kind == "operation_result" && e.Payload["status"] == "error" {
+			operationErrors++
+		}
+		if e.Kind == "error" || e.Kind == "plugin_failure" {
 			errCount++
 		}
 	}
@@ -300,11 +303,12 @@ func (a *LocalAdapter) Status(_ context.Context) (*StatusSummary, error) {
 		feed = &copy
 	}
 	return &StatusSummary{
-		HostFeed:      feed,
-		ErrorCount:    errCount,
-		HealthStatus:  health,
-		UptimeSeconds: int64(time.Since(a.startedAt).Seconds()),
-		LastUpdated:   time.Now(),
+		HostFeed:            feed,
+		ErrorCount:          errCount,
+		OperationErrorCount: operationErrors,
+		HealthStatus:        health,
+		UptimeSeconds:       int64(time.Since(a.startedAt).Seconds()),
+		LastUpdated:         time.Now(),
 	}, nil
 }
 
