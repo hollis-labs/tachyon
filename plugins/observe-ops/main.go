@@ -4,12 +4,10 @@
 //
 // It claims the "observe" module namespace and implements verb dispatch
 // via the pluginkit shim (internal/pluginkit), which carries the ADR 001
-// verb contract over the plugin-sdk v0.5.0 command/execute method.
+// verb contract over the plugin-sdk v0.4.0 command/execute method.
 //
-// The plugin self-feeds: every verb invocation that flows through
-// Command() is automatically instrumented with an activity entry, a
-// lifecycle event, a latency metric, and (on error) a log line.
-// External dependency probes and Nanite session snapshots are read on demand.
+// Host metadata arrives through a private ingestion command. Observe reads and
+// delivery never instrument themselves. External probes remain read-on-demand.
 package main
 
 import (
@@ -18,10 +16,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
+	"github.com/hollis-labs/tachyon/internal/observefeed"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
 
@@ -29,9 +27,10 @@ import (
 var capabilitiesJSON []byte
 
 type plugin struct {
-	adapter ObserveAdapter
-	local   *LocalAdapter // concrete type for Record* calls
-	caps    contract.PluginCapabilities
+	hostToken string
+	adapter   ObserveAdapter
+	local     *LocalAdapter // concrete type for Record* calls
+	caps      contract.PluginCapabilities
 }
 
 // --- pluginkit.VerbPlugin implementation ---
@@ -44,61 +43,13 @@ func (p *plugin) Capabilities() contract.PluginCapabilities {
 // HandleVerb dispatches a verb invocation to the appropriate adapter
 // method. This is the pluginkit.VerbPlugin interface method.
 func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMessage) (contract.ResultEnvelope, error) {
-	return p.instrumentedHandleVerb(ctx, verb, payload)
-}
-
-// instrumentedHandleVerb wraps handleVerb with self-feeding instrumentation:
-// an activity entry and event for every call, a latency_ms metric, and a
-// log line on errors.
-func (p *plugin) instrumentedHandleVerb(ctx context.Context, verb string, payload json.RawMessage) (contract.ResultEnvelope, error) {
-	start := time.Now()
-	env, err := p.handleVerb(ctx, verb, payload)
-	elapsed := time.Since(start)
-
-	// Record activity entry for every verb invocation.
-	p.local.RecordActivity(ActivityEntry{
-		Kind:    "verb",
-		Source:  "observe-ops",
-		Actor:   "observe-ops",
-		Summary: fmt.Sprintf("verb %s invoked", verb),
-		Detail:  map[string]any{"verb": verb, "status": string(env.Status)},
-	})
-
-	// Record lifecycle event.
-	p.local.RecordEvent(Event{
-		Kind:   "verb_invoked",
-		Source: "observe-ops",
-		Payload: map[string]any{
-			"verb":       verb,
-			"status":     string(env.Status),
-			"latency_ms": elapsed.Milliseconds(),
-		},
-	})
-
-	// Record latency metric.
-	p.local.RecordMetric(MetricPoint{
-		Name:  "latency_ms",
-		Value: float64(elapsed) / float64(time.Millisecond),
-		Unit:  "ms",
-		Tags:  map[string]string{"verb": verb},
-	})
-
-	// Log errors.
-	if env.Status == contract.StatusError && env.Error != nil {
-		p.local.RecordLog(LogEntry{
-			Level:   "error",
-			Source:  "observe-ops",
-			Message: fmt.Sprintf("verb %s failed: %s", verb, env.Error.Message),
-			Fields:  map[string]any{"verb": verb, "code": env.Error.Code},
-		})
-	}
-
-	return env, err
+	return p.handleVerb(ctx, verb, payload)
 }
 
 // --- subprocess.Plugin lifecycle ---
 
 func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subprocess.InitResult, error) {
+	p.hostToken = params.Config[observefeed.TokenConfig]
 	// Parse embedded capabilities.
 	if err := json.Unmarshal(capabilitiesJSON, &p.caps); err != nil {
 		return subprocess.InitResult{}, fmt.Errorf("parse embedded capabilities: %w", err)
@@ -165,6 +116,9 @@ func (p *plugin) Unload(_ context.Context) error {
 // verb invocations (including plugin_capabilities); unhandled commands
 // fall through to legacy dispatch.
 func (p *plugin) Command(ctx context.Context, req subprocess.CommandRequest) (subprocess.CommandResult, error) {
+	if req.Name == observefeed.Command {
+		return p.ingestHost(req.Args)
+	}
 	result, handled, err := pluginkit.Dispatch(ctx, p, req)
 	if handled || err != nil {
 		return result, err

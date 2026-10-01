@@ -34,12 +34,18 @@ func (m *Manager) restartPlugin(ctx context.Context, id string) error {
 	if lifetime == nil {
 		lifetime = context.Background()
 	}
+	m.lifecycleRecord(proc, id, "plugin_restart", "started", "")
 	m.unloadPlugin(lifetime, id)
 	if err := m.loadPlugin(lifetime, path, id); err != nil {
+		m.lifecycleRecord(nil, id, "plugin_restart", "error", "restart_failed")
 		m.logger.Error("plugin restart failed; plugin remains unloaded", "id", id, "error", err)
 		return fmt.Errorf("restart plugin %q: %w", id, err)
 	}
 	m.logger.Info("plugin restarted", "id", id)
+	m.mu.RLock()
+	replacement := m.plugins[id]
+	m.mu.RUnlock()
+	m.lifecycleRecord(replacement, id, "plugin_restart", "ok", "")
 	return nil
 }
 
@@ -71,6 +77,11 @@ func (m *Manager) unloadPlugin(ctx context.Context, id string) {
 	_, err := callProcess(bounded, proc, "plugin/unload", nil)
 	stopProcess(proc)
 	m.detachProcess(proc)
+	status, reason := "ok", ""
+	if err != nil {
+		status, reason = "error", "unload_failed"
+	}
+	m.lifecycleRecord(proc, id, "plugin_unload", status, reason)
 	if err != nil {
 		m.logger.Warn("plugin unload failed; process force-stopped and reaped", "stage", "plugin_unload", "id", proc.id, "timed_out", errors.Is(err, context.DeadlineExceeded), "error", err)
 	} else {

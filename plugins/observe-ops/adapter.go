@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/hollis-labs/tachyon/internal/observefeed"
 	"time"
 )
 
@@ -59,7 +60,14 @@ type Event struct {
 }
 
 // StatusSummary is aggregate health/status data for the dashboard.
+type HostFeedStatus struct {
+	Epoch        string               `json:"epoch"`
+	Counters     observefeed.Counters `json:"counters"`
+	LastSequence uint64               `json:"last_sequence"`
+}
+
 type StatusSummary struct {
+	HostFeed          *HostFeedStatus    `json:"host_feed,omitempty"`
 	Dependencies      []DependencyStatus `json:"dependencies,omitempty"`
 	SessionCountKnown bool               `json:"session_count_known"`
 	ActiveAgents      int                `json:"active_agents"`

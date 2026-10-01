@@ -238,6 +238,10 @@ func (p *pluginProxy) delete(resourceType string, id func(r *http.Request) strin
 // JSON-encoded body, written through as-is.
 func (p *pluginProxy) command(commandName string, buildArgs func(r *http.Request) (string, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if plugins.PrivateCommand(commandName) {
+			http.Error(w, "private host command is unavailable", http.StatusForbidden)
+			return
+		}
 		var args string
 		if buildArgs != nil {
 			built, err := buildArgs(r)

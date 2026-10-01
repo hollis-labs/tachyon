@@ -31,6 +31,12 @@ func hitlSameOrigin(r *http.Request) bool {
 }
 func registerHITL(mux *http.ServeMux, mgr *plugins.Manager, bridge *hitl.Runtime, logger *slog.Logger) {
 	mux.HandleFunc("POST /api/verb/{verb}", func(w http.ResponseWriter, r *http.Request) {
+		if plugins.PrivateCommand(r.PathValue("verb")) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "error": map[string]string{"code": "unknown_verb", "message": "unknown verb"}})
+			return
+		}
 		var payload json.RawMessage
 		body, e := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 		if e != nil {

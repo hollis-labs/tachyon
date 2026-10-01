@@ -10,10 +10,8 @@ import (
 )
 
 // LocalAdapter is the MVP ObserveAdapter implementation. It maintains an
-// in-memory ring buffer of activity entries, log lines, events, and
-// metric points. Data is populated by the plugin's own Command() wrapper
-// which instruments every verb invocation with activity, event, latency
-// and error entries. Lifecycle events are recorded at Init and Load.
+// in-memory ring buffer of safe host metadata and plugin lifecycle records.
+// Observe read calls are excluded from instrumentation.
 //
 // PollingAdapter supplements this local telemetry with external snapshots.
 //
@@ -22,6 +20,7 @@ import (
 // a later integration.
 type LocalAdapter struct {
 	mu         sync.RWMutex
+	hostFeed   *HostFeedStatus
 	activities []ActivityEntry
 	logs       []LogEntry
 	metrics    []MetricPoint
@@ -282,7 +281,7 @@ func (a *LocalAdapter) Status(_ context.Context) (*StatusSummary, error) {
 
 	errCount := 0
 	for _, e := range a.events {
-		if e.Kind == "error" {
+		if e.Kind == "error" || e.Payload["status"] == "error" {
 			errCount++
 		}
 	}
@@ -295,7 +294,13 @@ func (a *LocalAdapter) Status(_ context.Context) (*StatusSummary, error) {
 		health = "unhealthy"
 	}
 
+	var feed *HostFeedStatus
+	if a.hostFeed != nil {
+		copy := *a.hostFeed
+		feed = &copy
+	}
 	return &StatusSummary{
+		HostFeed:      feed,
 		ErrorCount:    errCount,
 		HealthStatus:  health,
 		UptimeSeconds: int64(time.Since(a.startedAt).Seconds()),

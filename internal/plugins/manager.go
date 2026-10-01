@@ -20,12 +20,14 @@ import (
 	"github.com/hollis-labs/plugin-sdk/registry"
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
+	"github.com/hollis-labs/tachyon/internal/observefeed"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
 
 // Manager is Tachyon's plugin host. It spawns plugin binaries, manages their
 // lifecycle, and builds the registry response for the browser loader.
 type Manager struct {
+	observe     *observeRecorder
 	lifecycleMu contextMutex // serialize load/restart/shutdown registration changes
 	spawn       func(context.Context, string) (*pluginProcess, error)
 	logger      *slog.Logger
@@ -40,12 +42,14 @@ type Manager struct {
 
 // pluginProcess is one spawned plugin subprocess.
 type pluginProcess struct {
-	binaryPath string
-	lifetime   context.Context
-	stopped    bool // protected by callMu
-	id         string
-	name       string
-	version    string
+	observeGeneration string // opaque per-process identity, never a memory address
+	observeToken      string // immutable private init marker; never published
+	binaryPath        string
+	lifetime          context.Context
+	stopped           bool // protected by callMu
+	id                string
+	name              string
+	version           string
 	// capabilities holds the plugin's validated capability declaration
 	// from its discovery command (D-47). Nil for legacy plugins that do not
 	// yet declare capabilities.
@@ -90,6 +94,7 @@ type pluginProcess struct {
 // NewManager creates a new plugin manager.
 func NewManager(logger *slog.Logger) *Manager {
 	return &Manager{
+		observe:   newObserveRecorder(),
 		logger:    logger,
 		spawn:     spawnProcess,
 		plugins:   make(map[string]*pluginProcess),
@@ -117,19 +122,26 @@ func (m *Manager) loadPlugin(ctx context.Context, binaryPath, expectedID string)
 	}
 	proc, err := spawn(ctx, binaryPath)
 	if err != nil {
+		m.lifecycleRecord(nil, filepath.Base(binaryPath), "plugin_failure", "error", "admission")
 		return err
 	}
 	proc.binaryPath = binaryPath
 	proc.lifetime = ctx
 	if expectedID != "" && proc.id != expectedID {
 		stopProcess(proc)
+		m.lifecycleRecord(proc, expectedID, "plugin_failure", "error", "admission")
 		return fmt.Errorf("restarted plugin identity changed from %q to %q", expectedID, proc.id)
 	}
 	if err := m.initializePlugin(ctx, proc); err != nil {
+		m.lifecycleRecord(proc, proc.id, "plugin_failure", "error", "admission")
 		stopProcess(proc)
 		return err
 	}
 	m.logger.Info("plugin loaded", "id", proc.id, "name", proc.name, "version", proc.version)
+	m.lifecycleRecord(proc, proc.id, "plugin_load", "ok", "")
+	if proc.id == "observe-ops" {
+		m.observe.start(m)
+	}
 	return nil
 }
 
@@ -157,6 +169,10 @@ func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error
 	}
 
 	proc := &pluginProcess{cmd: cmd, stdin: stdin, stdout: stdout, stdoutDec: json.NewDecoder(stdout)}
+	if filepath.Base(binaryPath) == "observe-ops" {
+		proc.observeToken = opaqueID()
+		config[observefeed.TokenConfig] = proc.observeToken
+	}
 	// Init shares the same bounded, serial transport as runtime calls. Keep the
 	// subprocess lifetime on ctx, not on the temporary call deadline.
 	raw, err := callProcess(ctx, proc, "plugin/init", subprocess.InitParams{
@@ -210,6 +226,18 @@ func (m *Manager) BuildRegistry() RegistryResponse {
 // governs queueing only: a client disconnect cannot terminate a shared plugin
 // or abandon a response on its serial wire. Active I/O uses the host budget.
 func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, params interface{}) (json.RawMessage, error) {
+	if method == "command/execute" {
+		// Inspect the actual serialized name, irrespective of the Go parameter
+		// type. Pass the frozen bytes onward so custom marshalers run only once.
+		encoded, err := json.Marshal(params)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request: %w", err)
+		}
+		params = json.RawMessage(encoded)
+		if PrivateCommand(commandName(params)) {
+			return nil, fmt.Errorf("private host command is unavailable")
+		}
+	}
 	m.mu.RLock()
 	proc, exists := m.plugins[pluginID]
 	m.mu.RUnlock()
@@ -218,7 +246,13 @@ func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, param
 		return nil, fmt.Errorf("plugin not found: %s", pluginID)
 	}
 
+	finish := m.beginOperation(proc, method, commandName(params))
 	raw, err := callProcessContexts(ctx, context.WithoutCancel(ctx), proc, method, params)
+	result := raw
+	if method == "command/execute" {
+		result = commandEnvelope(raw)
+	}
+	finish(result, err)
 	if proc.dead.Load() {
 		m.retireProcess(proc)
 	}
@@ -375,7 +409,10 @@ func (m *Manager) InvokeVerb(ctx context.Context, verb string, payload json.RawM
 }
 
 // InvokeVerbCaptured binds the returned result to the process used for I/O.
-func (m *Manager) InvokeVerbCaptured(ctx context.Context, verb string, payload json.RawMessage) (json.RawMessage, InvocationIdentity, error) {
+func (m *Manager) InvokeVerbCaptured(ctx context.Context, verb string, payload json.RawMessage) (returned json.RawMessage, identity InvocationIdentity, returnedErr error) {
+	if PrivateCommand(verb) {
+		return nil, InvocationIdentity{}, fmt.Errorf("unknown_verb")
+	}
 	m.mu.RLock()
 
 	// Determine which module owns this verb by prefix matching.
@@ -407,6 +444,8 @@ func (m *Manager) InvokeVerbCaptured(ctx context.Context, verb string, payload j
 	if proc == nil {
 		return nil, InvocationIdentity{}, fmt.Errorf("plugin not found: %s", ownerID)
 	}
+	finish := m.beginOperation(proc, "command/execute", verb)
+	defer func() { finish(returned, returnedErr) }()
 	raw, err := callProcessContexts(ctx, context.WithoutCancel(ctx), proc, "command/execute", subprocess.CommandExecParams{Name: verb, Args: string(payload)})
 	if proc.dead.Load() {
 		m.retireProcess(proc)
@@ -457,10 +496,19 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	if err := m.lockLifecycle(ctx); err != nil {
 		return err
 	}
+	defer m.observe.stop()
 	defer m.lifecycleMu.Unlock()
 	m.mu.RLock()
 	ids := append([]string(nil), m.loadOrder...)
 	m.mu.RUnlock()
+	// Keep the recorder consumer alive while other plugins emit their unload
+	// records. Delivery remains best effort; shutdown never waits for queue drain.
+	for i, id := range ids {
+		if id == "observe-ops" {
+			ids = append(append(ids[:i:i], ids[i+1:]...), id)
+			break
+		}
+	}
 	for _, id := range ids {
 		bounded, cancel := context.WithTimeout(ctx, pluginUnloadTimeout)
 		m.unloadPlugin(bounded, id)
@@ -475,6 +523,9 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 // initializePlugin completes lifecycle and capability registration before the
 // process becomes visible to callers. Collision checks and insertion are atomic.
 func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) error {
+	if proc.observeGeneration == "" {
+		proc.observeGeneration = opaqueID()
+	}
 	if _, err := callProcess(ctx, proc, "plugin/load", subprocess.LoadParams{}); err != nil {
 		return admissionFailure("load", "plugin %q load failed: %w", proc.id, err)
 	}
@@ -504,6 +555,9 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 				return admissionFailure("validation", "plugin %q capability validation failed: %w", proc.id, err)
 			}
 			proc.capabilities = &caps
+			if _, reserved := caps.Verbs[observefeed.Command]; reserved {
+				return admissionFailure("validation", "private host command cannot be declared")
+			}
 		}
 	}
 	m.mu.Lock()
