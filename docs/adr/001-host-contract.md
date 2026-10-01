@@ -96,28 +96,25 @@ Tachyon defines 8 canonical modules organized across 3 operational tiers:
 
 ### 7. Capability Declaration Format
 
-Plugins declare their capabilities in the `plugin/init` response during host initialization. The initialization payload includes a `capabilities` object containing the declared `modules` array and `verbs` map:
+Plugins embed `capabilities.json` and return its declaration through the reserved
+`plugin_capabilities` command after `plugin/init` and `plugin/load`. The host
+calls `command/execute` with `name: "plugin_capabilities"`; the response has
+`action: "message"` and `content` containing this JSON as a string:
 
 ```json
 {
-  "id": "agent-ops",
-  "name": "Agent Operations",
-  "version": "0.2.0",
-  "capabilities": {
-    "modules": [
-      "agent",
-      "launch"
-    ],
-    "verbs": {
-      "agent_list": { "effect": "reads" },
-      "agent_get": { "effect": "reads" },
-      "agent_create": { "effect": "writes" },
-      "agent_delete": { "effect": "destroys" },
-      "launch_session": { "effect": "open_world" }
-    }
+  "modules": ["agent"],
+  "verbs": {
+    "agent_list": { "effect": "reads" },
+    "agent_create": { "effect": "writes" },
+    "agent_delete": { "effect": "destroys" }
   }
 }
 ```
+
+Plugins implement `pluginkit.VerbPlugin` (`Capabilities` and `HandleVerb`) and
+call `pluginkit.Dispatch` first in `Command`. When `handled` is false, they
+continue their legacy command dispatch.
 
 ### 8. Registration-Time Capability Verification (D-47)
 
@@ -132,43 +129,53 @@ Capability validation occurs synchronously during plugin initialization (`LoadPl
 
 ### 9. Wire Format and Migration Strategy
 
-Tachyon introduces the `verb/invoke` JSON-RPC method (`contract.MethodVerbInvoke = "verb/invoke"`) for capability execution:
+Tachyon carries declared verbs over `command/execute`. plugin-sdk v0.5.0
+`Serve` cannot route `verb/invoke`, and its `InitResult` cannot carry a
+capability declaration. The command carrier preserves the contract semantics
+without requiring an unavailable SDK release. Native `verb/invoke` routing
+remains a future plugin-sdk change.
 
-#### Request Params (`VerbInvokeParams`)
+#### Request
+
 ```json
 {
   "jsonrpc": "2.0",
   "id": 10,
-  "method": "verb/invoke",
+  "method": "command/execute",
   "params": {
-    "verb": "agent_create",
-    "payload": {
-      "name": "ResearchAgent",
-      "model": "claude-3-7-sonnet"
-    }
+    "name": "agent_create",
+    "args": "{\"name\":\"ResearchAgent\",\"model\":\"claude-3-7-sonnet\"}"
   }
 }
 ```
 
-#### Response Envelope (`VerbInvokeResult` / `ResultEnvelope`)
+`name` is the declared verb; `args` is the JSON payload string. Empty `args`
+means no payload.
+
+#### Response
+
 ```json
 {
   "jsonrpc": "2.0",
   "id": 10,
   "result": {
-    "status": "ok",
-    "data": {
-      "id": "ag_01h8x...",
-      "name": "ResearchAgent"
-    }
+    "action": "message",
+    "content": "{\"status\":\"ok\",\"data\":{\"id\":\"ag_01h8x...\",\"name\":\"ResearchAgent\"}}"
   }
 }
 ```
 
+The host unwraps `CommandExecResult.content` and returns the `ResultEnvelope`
+JSON to HTTP callers, preserving `ok`, `error`, and `ask` outcomes.
+
 #### Migration
-To enable non-breaking incremental migration of existing plugins:
-* `verb/invoke` runs concurrently alongside legacy methods (`crud/create`, `crud/read`, `crud/update`, `crud/delete`, `crud/list`, and `command/execute`).
-* Host route proxies will bridge HTTP endpoints to `verb/invoke` where capability declarations exist, falling back to legacy handlers for unmigrated plugins until the deprecation milestone is reached.
+
+Legacy `crud/*` and commands (including `launch` and provider `capabilities`)
+continue to work. A discovery RPC error (including method-not-found or unknown
+command), or a command response with `action: "error"`, admits a legacy plugin
+without capabilities and logs a warning. A returned declaration must validate;
+malformed declarations and module collisions remain hard load errors under
+D-47. HTTP verb routes dispatch only declared verbs through the command carrier.
 
 ---
 
