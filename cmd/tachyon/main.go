@@ -291,23 +291,10 @@ func main() {
 		logger.Warn("failed to load hello plugin (build it with: go build -o plugins/hello/hello ./plugins/hello)", "error", err)
 	}
 
-	// Load the agent-ops plugin
-	agentOpsPluginPath := "./plugins/agent-ops/agent-ops"
-	if err := pluginMgr.LoadPlugin(ctx, agentOpsPluginPath); err != nil {
-		logger.Warn("failed to load agent-ops plugin (build it with: make build-plugins)", "error", err)
-	}
-
-	// Load the launch-ops plugin
-	launchOpsPluginPath := "./plugins/launch-ops/launch-ops"
-	if err := pluginMgr.LoadPlugin(ctx, launchOpsPluginPath); err != nil {
-		logger.Warn("failed to load launch-ops plugin (build it with: make build-plugins)", "error", err)
-	}
-
-	// Load the observe-ops plugin
-	observeOpsPluginPath := "./plugins/observe-ops/observe-ops"
-	if err := pluginMgr.LoadPlugin(ctx, observeOpsPluginPath); err != nil {
-		logger.Warn("failed to load observe-ops plugin (build it with: make build-plugins)", "error", err)
-	}
+	// Discover and load every built plugin under ./plugins (a directory with a
+	// plugin.yaml and an executable named after it). A new plugin needs no edit
+	// here; build it with `make build-plugins`.
+	loadDiscoveredPlugins(ctx, pluginMgr, "./plugins", logger)
 
 	mux := http.NewServeMux()
 
