@@ -83,6 +83,7 @@ export function VerbProvider({ children }: PropsWithChildren) {
 export function useVerbs(): {
   loading: boolean
   available: boolean | null
+  registry: VerbRegistry
   has(verb: string): boolean
   supports(module: string, verb: string): boolean
   effect(verb: string): string | undefined
@@ -102,6 +103,7 @@ export function useVerbs(): {
     return {
       loading,
       available,
+      registry,
       has: (verb: string) => declared.has(verb),
       supports: (module: string, verb: string) =>
         verb.startsWith(`${module}_`) && declared.has(verb),
