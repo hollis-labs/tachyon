@@ -1,6 +1,7 @@
 import type { ComponentType } from "react"
 import { AgentOpsPage } from "./agent-ops"
 import { DashboardPage } from "./dashboard"
+import { LaunchesPage } from "./launches"
 import { SessionsPage } from "./sessions"
 import { WorkPage } from "./work"
 
@@ -8,6 +9,7 @@ import { WorkPage } from "./work"
 // The shell shows a plugin nav item only when its component and verb exist.
 export const pageRegistry: Record<string, ComponentType> = {
   "/dashboard": DashboardPage,
+  "/launches": LaunchesPage,
   "/agents": AgentOpsPage,
   "/agents/durable": SessionsPage,
   "/work": WorkPage,
