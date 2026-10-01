@@ -1,0 +1,51 @@
+{
+  "modules": ["launch"],
+  "verbs": {
+    "launch_prepare": { "effect": "writes" },
+    "launch_execute": { "effect": "open_world" },
+    "launch_cancel": { "effect": "open_world" },
+    "launch_read": { "effect": "reads" },
+    "launch_list": { "effect": "reads" },
+    "launch_status": { "effect": "reads" }
+  },
+  "nav": {
+    "groups": [
+      {
+        "id": "execution",
+        "label": "Execution",
+        "icon": "play",
+        "priority": 200
+      }
+    ],
+    "items": [
+      {
+        "id": "launch_list",
+        "label": "Launches",
+        "group": "execution",
+        "route": "/launches",
+        "requires_verb": "launch_list",
+        "priority": 100
+      }
+    ]
+  },
+  "settings": {
+    "fields": [
+      {
+        "key": "nanite_url",
+        "type": "string",
+        "label": "Nanite API URL",
+        "default": "http://localhost:8090",
+        "required": true
+      },
+      {
+        "key": "default_provider",
+        "type": "select",
+        "label": "Default Provider",
+        "default": "nanite",
+        "options": [
+          { "label": "Nanite", "value": "nanite" }
+        ]
+      }
+    ]
+  }
+}
