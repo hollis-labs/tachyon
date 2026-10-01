@@ -1,4 +1,4 @@
-import { AppShell } from "@hollis-labs/design-components"
+import { AppShell, Toaster } from "@hollis-labs/design-components"
 import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/kit-dashboard"
 import {
   Activity,
@@ -186,6 +186,7 @@ export function App() {
           </>
         )}
       </div>
+      <Toaster />
     </AppShell>
   )
 }
