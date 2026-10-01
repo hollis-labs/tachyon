@@ -24,7 +24,7 @@ Work task details, Board/list/search reads, and Launch reads/actions preserve an
 
 Only GET of the host operation endpoint is polled, with `wait_ms=25000`, no overlapping requests, and a three-second minimum between responses. Busy/unavailable status retries use exponential backoff and stop after five consecutive failures. Polling stops on terminal/unknown states, lost correlation (410), rejected origin (403), unmount, or the earlier of ask expiry and a ten-minute mounted tracking window. Closing a panel aborts its browser wait; it does not cancel the Tangent item. Resolved approval requires the host projection's `approved:true` and `decision:"approved"`; other outcomes cannot grant approval. Every panel states that Tachyon took no action in response to the decision, and continuation is unavailable. Pending writes stay blocked in that form, with drafts and selection retained. There is no Continue, Resume, or Retry-write action and no verb replay. Starting a new action is a distinct operator intent, not continuation of the approved operation.
 
-Settings pending treatment is a separate frontend follow-up after its settings UI change; safe continuation is not yet implemented.
+Settings reads and writes also preserve asks in the pending-decision panel. Drafts and target selection remain intact while a pending write blocks further actions in that form. Tracking is read-only: an approved decision does not save, reset or restart a plugin, and safe continuation is not implemented. See [Settings and recovery](pages/settings-recovery.md).
 
 <!-- TODO(final pass): Reconcile page-specific ask handling alongside merged
 Work/Board and Settings recovery changes. Preserve the already-merged Work/Launch
