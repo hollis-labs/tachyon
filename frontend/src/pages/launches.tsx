@@ -41,13 +41,15 @@ const stateLabels: Record<LaunchState, string> = {
   cancelled: "Cancelled",
 }
 const selectClass = "h-9 rounded-md border border-border-strong bg-bg px-3 text-sm"
-const cancellable = (launch: Launch) => ["prepared", "running"].includes(launch.state)
+const cancellable = (launch: Launch) => ["prepared", "executing", "running"].includes(launch.state)
 const cancelLabel = (launch: Launch) =>
-  launch.state === "prepared"
-    ? "Cancel prepared launch"
-    : launch.backend === "nanite"
-      ? "Archive and request stop"
-      : "Stop session"
+  launch.state === "executing"
+    ? "Resolve interrupted launch"
+    : launch.state === "prepared"
+      ? "Cancel prepared launch"
+      : launch.backend === "nanite"
+        ? "Archive and request stop"
+        : "Stop session"
 const message = (error: unknown) => (error instanceof Error ? error.message : "Request failed")
 
 async function read<T>(verb: string, payload: unknown = {}): Promise<T> {
@@ -601,7 +603,8 @@ export function LaunchesPage() {
         {detail ? <LaunchDetails launch={detail} /> : !detailError && <p>Loading launch…</p>}
         {detail?.state === "executing" && (
           <p className="mt-3">
-            Session creation is in progress. Wait for its result before stopping the session.
+            Active session creation must finish before cancellation. An interrupted launch can be
+            resolved; without a session ID, its provider outcome remains unknown.
           </p>
         )}
         {cancelOpen && (
@@ -609,9 +612,11 @@ export function LaunchesPage() {
             <p>
               {detail?.state === "prepared"
                 ? "Cancel this prepared launch? No session will be created."
-                : detail?.backend === "nanite"
-                  ? "Archive this Nanite session and request runtime shutdown? Nanite retains its conversation; it does not report whether shutdown succeeded."
-                  : "Stop this provider session? Cancellation is recorded after the provider accepts the stop request."}
+                : detail?.state === "executing" && !detail.session_id
+                  ? "Resolve this interrupted launch as cancelled? A provider session may exist; no stop can be requested without its ID. Active creation will reject this request."
+                  : detail?.backend === "nanite"
+                    ? "Archive this Nanite session and request runtime shutdown? Nanite retains its conversation; it does not report whether shutdown succeeded."
+                    : "Stop this provider session? Cancellation is recorded after the provider accepts the stop request."}
             </p>
             <Label htmlFor="launch-cancel-reason">Reason (optional)</Label>
             <Input

@@ -119,8 +119,8 @@ type LaunchAdapter interface {
 	Execute(ctx context.Context, req ExecuteRequest) (*Launch, error)
 
 	// Cancel cancels a prepared intent or stops its running provider session.
-	// Executing launches and unsupported provider stops return errors without
-	// claiming cancellation.
+	// Active executions and unsupported provider stops return errors. Interrupted
+	// executions without a session ID record cancellation with an unknown outcome.
 	Cancel(ctx context.Context, req CancelRequest) (*Launch, error)
 
 	// Read returns the full details of a launch by ID.

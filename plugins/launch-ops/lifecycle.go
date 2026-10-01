@@ -21,6 +21,7 @@ type launchLifecycle struct {
 	replaySafe bool
 	mu         sync.Mutex
 	inFlight   map[string]bool
+	cancelling map[string]bool
 }
 
 func (a *launchLifecycle) Prepare(ctx context.Context, req PrepareRequest) (*Launch, error) {
@@ -48,7 +49,7 @@ func (a *launchLifecycle) Execute(ctx context.Context, req ExecuteRequest) (*Lau
 	if a.inFlight == nil {
 		a.inFlight = map[string]bool{}
 	}
-	if a.inFlight[req.LaunchID] {
+	if a.inFlight[req.LaunchID] || a.cancelling[req.LaunchID] {
 		a.mu.Unlock()
 		return nil, fmt.Errorf("launch %s is already executing", req.LaunchID)
 	}
@@ -115,10 +116,22 @@ func terminalLaunch(state LaunchState) bool {
 	return state == LaunchStateCompleted || state == LaunchStateFailed || state == LaunchStateCancelled
 }
 
-// Cancel cancels only prepared intents or provider sessions known to be
-// running. Executing launches cannot safely be claimed cancelled before the
-// provider's creation result and session ID are known.
+// Cancel rejects active creation calls, but resolves interrupted executing
+// intents honestly: stop a known session or record an unknown provider outcome.
 func (a *launchLifecycle) Cancel(ctx context.Context, req CancelRequest) (*Launch, error) {
+	// Reserve this launch against a concurrent Execute replay while cancellation
+	// reads its checkpoint and calls the provider. Other launches remain usable.
+	a.mu.Lock()
+	if a.inFlight[req.LaunchID] || a.cancelling[req.LaunchID] {
+		a.mu.Unlock()
+		return nil, fmt.Errorf("launch %s has an operation in flight; wait for its result before stopping it", req.LaunchID)
+	}
+	if a.cancelling == nil {
+		a.cancelling = map[string]bool{}
+	}
+	a.cancelling[req.LaunchID] = true
+	a.mu.Unlock()
+	defer func() { a.mu.Lock(); delete(a.cancelling, req.LaunchID); a.mu.Unlock() }()
 	l, err := a.store.Get(ctx, req.LaunchID)
 	if err != nil {
 		return nil, err
@@ -133,10 +146,16 @@ func (a *launchLifecycle) Cancel(ctx context.Context, req CancelRequest) (*Launc
 			return nil
 		})
 	}
-	if l.State == LaunchStateExecuting {
-		return nil, fmt.Errorf("launch %s is still executing; wait for session creation before stopping it", l.ID)
+	if l.State == LaunchStateExecuting && l.SessionID == "" {
+		return a.store.Update(ctx, l.ID, func(current *Launch) error {
+			if current.State != LaunchStateExecuting || current.SessionID != "" {
+				return fmt.Errorf("launch state changed while resolving interrupted execution")
+			}
+			markCancelled(current, "provider outcome unknown; a session may exist")
+			return nil
+		})
 	}
-	if l.State != LaunchStateRunning {
+	if l.State != LaunchStateRunning && l.State != LaunchStateExecuting {
 		return nil, fmt.Errorf("launch %s is in state %s, cannot cancel", l.ID, l.State)
 	}
 	if a.stop == nil {
@@ -157,7 +176,7 @@ func (a *launchLifecycle) Cancel(ctx context.Context, req CancelRequest) (*Launc
 		if terminalLaunch(current.State) {
 			return nil
 		}
-		if current.State != LaunchStateRunning {
+		if current.State != LaunchStateRunning && current.State != LaunchStateExecuting {
 			return fmt.Errorf("launch state changed while stopping its provider session")
 		}
 		markCancelled(current, req.Reason)
