@@ -316,6 +316,56 @@ func main() {
 	// plugins/agent-ops/adapter.go's AgentCapabilities doc comment.
 	mux.HandleFunc("GET /api/capabilities", agentOps.command("capabilities", nil))
 
+	// Verb dispatch — unified endpoint that routes to the owning plugin
+	// by module prefix (ADR 001 §6). Coexists with the existing per-resource
+	// CRUD endpoints during migration.
+	mux.HandleFunc("POST /api/verb/{verb}", func(w http.ResponseWriter, r *http.Request) {
+		verb := r.PathValue("verb")
+
+		var payload json.RawMessage
+		if r.ContentLength > 0 {
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+		}
+
+		result, err := pluginMgr.InvokeVerb(r.Context(), verb, payload)
+		if err != nil {
+			logger.Error("verb invocation failed", "verb", verb, "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":  "error",
+				"error": map[string]string{
+					"code":    "dispatch_error",
+					"message": err.Error(),
+				},
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(result)
+	})
+
+	// Verb registry — returns all declared modules and verbs from loaded
+	// plugins, for the frontend to gate UI actions on specific verb
+	// capabilities (D-48).
+	mux.HandleFunc("GET /api/verbs", func(w http.ResponseWriter, r *http.Request) {
+		caps := pluginMgr.AllCapabilities()
+
+		payload, err := json.Marshal(caps)
+		if err != nil {
+			logger.Error("verb registry serialization failed", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(payload)
+	})
+
 	// Agents.
 	mux.HandleFunc("GET /api/agents", agentOps.list(resourceTypeAgent, nil))
 	mux.HandleFunc("GET /api/agents/{id}", agentOps.read(resourceTypeAgent, pathValue("id")))

@@ -1,0 +1,52 @@
+package contract
+
+// SettingsFieldType is the data type of a plugin settings field.
+type SettingsFieldType string
+
+const (
+	SettingsFieldString  SettingsFieldType = "string"
+	SettingsFieldBoolean SettingsFieldType = "boolean"
+	SettingsFieldNumber  SettingsFieldType = "number"
+	SettingsFieldSelect  SettingsFieldType = "select"
+)
+
+// SettingsField declares a single configurable field exposed by a
+// plugin. The host aggregates these into a merged settings schema
+// served to the frontend's Settings page for dynamic form rendering.
+type SettingsField struct {
+	// Key is the unique field identifier within this plugin's settings
+	// namespace. Scoped by plugin ID, so collisions across plugins
+	// are impossible.
+	Key string `json:"key"`
+
+	// Type determines the input control rendered in the Settings UI.
+	Type SettingsFieldType `json:"type"`
+
+	// Label is the human-readable field label.
+	Label string `json:"label"`
+
+	// Description provides context shown as help text.
+	Description string `json:"description,omitempty"`
+
+	// Default is the default value if the user hasn't set one.
+	Default any `json:"default,omitempty"`
+
+	// Required marks the field as mandatory.
+	Required bool `json:"required,omitempty"`
+
+	// Options lists allowed values when Type is "select".
+	Options []SettingsOption `json:"options,omitempty"`
+}
+
+// SettingsOption is one choice in a select-type settings field.
+type SettingsOption struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// SettingsDeclaration is the settings contribution a plugin includes
+// in its capability declaration. The host reads it at load time and
+// exposes it through the config module's API.
+type SettingsDeclaration struct {
+	Fields []SettingsField `json:"fields,omitempty"`
+}

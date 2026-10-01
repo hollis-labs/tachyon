@@ -19,7 +19,7 @@ resources:
       - go
       - v2
     config:
-      dir: /Users/chrispian/dev/hollis-labs/apps/tachyon
+      dir: ~/dev/hollis-labs/apps/tachyon
       build_strategy:
         kind: make_standard
         source:
@@ -50,7 +50,7 @@ resources:
       - react
       - v2
     config:
-      dir: /Users/chrispian/dev/hollis-labs/apps/tachyon/frontend
+      dir: ~/dev/hollis-labs/apps/tachyon/frontend
       command:
         - npm
         - run
