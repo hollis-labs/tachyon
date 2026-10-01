@@ -1,0 +1,57 @@
+{
+  "modules": [
+    "service"
+  ],
+  "verbs": {
+    "service_list": {
+      "effect": "reads"
+    },
+    "service_read": {
+      "effect": "reads"
+    },
+    "service_status": {
+      "effect": "reads"
+    },
+    "service_health": {
+      "effect": "reads"
+    }
+  },
+  "nav": {
+    "groups": [
+      {
+        "id": "services",
+        "label": "Services",
+        "icon": "server",
+        "priority": 600
+      }
+    ],
+    "items": [
+      {
+        "id": "service_list",
+        "label": "All Services",
+        "group": "services",
+        "route": "/services",
+        "requires_verb": "service_list",
+        "priority": 100
+      },
+      {
+        "id": "service_health",
+        "label": "Health",
+        "group": "services",
+        "route": "/services/health",
+        "requires_verb": "service_health",
+        "priority": 200
+      }
+    ]
+  },
+  "settings": {
+    "fields": [
+      {
+        "key": "cerberus_socket",
+        "type": "string",
+        "label": "Cerberus Socket Path",
+        "default": "~/.cerberus/cerberus.sock"
+      }
+    ]
+  }
+}
