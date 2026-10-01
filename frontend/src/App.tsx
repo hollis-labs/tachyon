@@ -13,7 +13,9 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { fetchNavigation, type Navigation, visibleNavigation } from "./api/navigation"
+import { type ConfigTarget, retiredConfigTargets } from "./api/settings"
 import { useCapabilities } from "./hooks/use-capabilities"
+import { PluginRecoveryPage } from "./pages/plugin-recovery"
 import { pageRegistry } from "./pages/registry"
 
 const icons = {
@@ -33,8 +35,15 @@ export function App() {
   const [navigation, setNavigation] = useState<Navigation>({})
   const [loading, setLoading] = useState(true)
   const [navError, setNavError] = useState("")
+  const [retired, setRetired] = useState<ConfigTarget[]>([])
+  const [restoreFocus, setRestoreFocus] = useState(false)
   useEffect(() => {
     let active = true
+    retiredConfigTargets()
+      .then((targets) => {
+        if (active) setRetired(targets)
+      })
+      .catch(() => {})
     fetchNavigation()
       .then((nav) => {
         if (active) {
@@ -81,8 +90,37 @@ export function App() {
     return visibleNavigation(nav, capabilities.has, (path) => Object.hasOwn(pageRegistry, path))
   }, [navigation, capabilities])
 
+  // Recovery is a host surface, never a plugin capability or nav declaration.
+  const recoveryAvailable =
+    retired.length > 0 && !navigation.items?.some((item) => item.route === "/settings")
+  async function refreshRecovery() {
+    const [nextNavigation, nextRetired] = await Promise.all([
+      fetchNavigation(),
+      retiredConfigTargets(),
+      capabilities.refresh(),
+    ])
+    setNavigation(nextNavigation)
+    setRetired(nextRetired)
+    setRestoreFocus(true)
+  }
+  useEffect(() => {
+    if (!restoreFocus) return
+    const label = items.some((item) => item.route === "/settings")
+      ? items.find((item) => item.route === "/settings")?.label
+      : recoveryAvailable
+        ? "Plugin recovery"
+        : "Dashboard"
+    Array.from(document.querySelectorAll<HTMLButtonElement>("button[aria-label]"))
+      .find((button) => button.getAttribute("aria-label") === label)
+      ?.focus()
+    setRestoreFocus(false)
+  }, [restoreFocus, items, recoveryAvailable])
   const activeRoute =
-    items.some((item) => item.route === route) || route === "/dashboard" ? route : "/dashboard"
+    route === "/plugin-recovery" && recoveryAvailable
+      ? route
+      : items.some((item) => item.route === route) || route === "/dashboard"
+        ? route
+        : "/dashboard"
   const Page = pageRegistry[activeRoute]
   const nav: NavRailItem[] = [
     {
@@ -92,6 +130,17 @@ export function App() {
       active: activeRoute === "/dashboard",
       onSelect: () => setRoute("/dashboard"),
     },
+    ...(recoveryAvailable
+      ? [
+          {
+            key: "host-plugin-recovery",
+            label: "Plugin recovery",
+            icon: <Activity className="h-4 w-4" />,
+            active: activeRoute === "/plugin-recovery",
+            onSelect: () => setRoute("/plugin-recovery"),
+          },
+        ]
+      : []),
     ...items.map((item) => {
       const iconName = navigation.groups?.find((group) => group.id === item.group)?.icon
       const Icon = icons[iconName as keyof typeof icons] ?? Activity
@@ -124,12 +173,16 @@ export function App() {
           </p>
         ) : (
           <>
-            {navError && capabilities.available !== false && (
+            {(navError || capabilities.refreshError) && capabilities.available !== false && (
               <p className="p-4 text-text-muted" role="status">
-                {navError}
+                {navError || capabilities.refreshError}
               </p>
             )}
-            <Page />
+            {activeRoute === "/plugin-recovery" ? (
+              <PluginRecoveryPage targets={retired} onRefresh={refreshRecovery} />
+            ) : (
+              <Page />
+            )}
           </>
         )}
       </div>
