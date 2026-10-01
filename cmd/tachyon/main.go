@@ -302,6 +302,12 @@ func main() {
 		logger.Warn("failed to load session-ops plugin (build it with: make build-plugins)", "error", err)
 	}
 
+	// Load the observe-ops plugin
+	observeOpsPluginPath := "./plugins/observe-ops/observe-ops"
+	if err := pluginMgr.LoadPlugin(ctx, observeOpsPluginPath); err != nil {
+		logger.Warn("failed to load observe-ops plugin (build it with: make build-plugins)", "error", err)
+	}
+
 	mux := http.NewServeMux()
 
 	// Same-origin API. The starter dashboard polls /api/health; replace
