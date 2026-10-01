@@ -1,4 +1,4 @@
-import { EmptyState } from "@hollis-labs/sysop-ui"
+import { EmptyState } from "@hollis-labs/design-components"
 import { Edit, Play, Trash2 } from "lucide-react"
 import type { AgentStatus } from "./filter-bar"
 

@@ -1,4 +1,4 @@
-import { EmptyState } from "@hollis-labs/sysop-ui"
+import { EmptyState } from "@hollis-labs/design-components"
 import type { AgentStatus } from "./filter-bar"
 
 export interface DurableAgentRow {

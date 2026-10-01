@@ -10,7 +10,7 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
 import { type ReactNode, useEffect, useState } from "react"
 import type { Agent, AgentCapabilities } from "../../api/client"
 import { useApi } from "../../api/context"

@@ -1,4 +1,4 @@
-import { FilterSearchInput } from "@hollis-labs/sysop-ui/data"
+import { SearchInput } from "@hollis-labs/design-components"
 import { SlidersHorizontal } from "lucide-react"
 
 // Provider-agnostic status — don't hardcode a provider's vocabulary.
@@ -70,7 +70,7 @@ export function FilterBar({
       {/* Row 2: Search + summary */}
       <div className="flex items-center gap-3">
         <div className="flex-1">
-          <FilterSearchInput
+          <SearchInput
             value={searchQuery}
             onChange={onSearchChange}
             placeholder="Search agents by name, ID, or description..."

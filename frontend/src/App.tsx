@@ -1,4 +1,5 @@
-import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/sysop-ui"
+import { AppShell } from "@hollis-labs/design-components"
+import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/kit-dashboard"
 import {
   Activity,
   GitBranch,
@@ -105,31 +106,33 @@ export function App() {
   ]
 
   return (
-    <div className="flex h-screen bg-bg text-text">
-      <NavRail
-        items={nav}
-        logo={<Activity className="h-4 w-4" />}
-        logoLabel="Sysop"
-        footerExtra={<ThemeSwitcher />}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main className="min-h-0 flex-1 overflow-auto">
-          {loading || capabilities.loading ? (
-            <p className="p-4" role="status">
-              Loading capabilities…
-            </p>
-          ) : (
-            <>
-              {navError && capabilities.available !== false && (
-                <p className="p-4 text-text-muted" role="status">
-                  {navError}
-                </p>
-              )}
-              <Page />
-            </>
-          )}
-        </main>
+    <AppShell
+      className="text-text"
+      nav={
+        <NavRail
+          items={nav}
+          logo={<Activity className="h-4 w-4" />}
+          logoLabel="Sysop"
+          footerExtra={<ThemeSwitcher />}
+        />
+      }
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
+        {loading || capabilities.loading ? (
+          <p className="p-4" role="status">
+            Loading capabilities…
+          </p>
+        ) : (
+          <>
+            {navError && capabilities.available !== false && (
+              <p className="p-4 text-text-muted" role="status">
+                {navError}
+              </p>
+            )}
+            <Page />
+          </>
+        )}
       </div>
-    </div>
+    </AppShell>
   )
 }

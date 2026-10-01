@@ -9,7 +9,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { AgentSkill, Skill, SkillGrantStatus } from "../../api/client"
 import { useApi } from "../../api/context"

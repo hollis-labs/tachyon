@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
   Textarea,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import type { CreateReflexRequest, Reflex } from "../../api/client"

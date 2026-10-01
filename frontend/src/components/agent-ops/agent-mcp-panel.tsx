@@ -1,4 +1,4 @@
-import { Combobox, notifyError, Pill, Skeleton } from "@hollis-labs/sysop-ui"
+import { Combobox, notifyError, Pill, Skeleton } from "@hollis-labs/design-components"
 import { X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { MCPServer } from "../../api/client"

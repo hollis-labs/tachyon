@@ -1,4 +1,4 @@
-import { notifyError, Skeleton } from "@hollis-labs/sysop-ui"
+import { notifyError, Skeleton } from "@hollis-labs/design-components"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { AgentTool } from "../../api/client"
 import { useApi } from "../../api/context"

@@ -1,4 +1,5 @@
-import { PageHeader, Skeleton, SummaryCards } from "@hollis-labs/sysop-ui"
+import { Skeleton } from "@hollis-labs/design-components"
+import { PageHeader, SummaryCards } from "@hollis-labs/kit-dashboard"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { DurableAgent } from "../api/client"
 import { useApi } from "../api/context"

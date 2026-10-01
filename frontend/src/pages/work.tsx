@@ -3,11 +3,10 @@ import {
   EmptyState,
   Input,
   Label,
-  PageHeader,
   Skeleton,
-  SummaryCards,
   Textarea,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
+import { PageHeader, SummaryCards } from "@hollis-labs/kit-dashboard"
 import { RefreshCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { Agent, WorkItem } from "../api/client"

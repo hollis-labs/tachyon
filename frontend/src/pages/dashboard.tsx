@@ -1,4 +1,5 @@
-import { EmptyState, SummaryCards } from "@hollis-labs/sysop-ui"
+import { EmptyState } from "@hollis-labs/design-components"
+import { SummaryCards } from "@hollis-labs/kit-dashboard"
 import { useEffect, useState } from "react"
 import type { HealthInfo } from "../api/client"
 import { useApi } from "../api/context"

@@ -1,4 +1,5 @@
-import { Button, EmptyState, Input, Label, PageHeader, Pill, Skeleton } from "@hollis-labs/sysop-ui"
+import { Button, EmptyState, Input, Label, Pill, Skeleton } from "@hollis-labs/design-components"
+import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { RefreshCw, RotateCcw, Save, Settings, Zap } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import {

@@ -4,7 +4,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
 import type { ReactNode } from "react"
 
 interface LargeDialogProps {
@@ -17,7 +17,7 @@ interface LargeDialogProps {
   children: ReactNode
 }
 
-// FormDialog/DetailDialog (sysop-ui) hardcode height at 450px with no
+// FormDialog/DetailDialog (design-components) hardcode height at 450px with no
 // override prop — fine for a short form, too small for a tabbed view with
 // a 475-row tool checklist and a reflexes table. Built directly on the
 // Dialog primitives instead, sized to 80% of the viewport in both

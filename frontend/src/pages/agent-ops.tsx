@@ -4,12 +4,11 @@ import {
   Label,
   notifyError,
   notifySuccess,
-  PageHeader,
   Skeleton,
-  SummaryCards,
   Switch,
   Textarea,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
+import { PageHeader, SummaryCards } from "@hollis-labs/kit-dashboard"
 import { Plus } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Agent as ApiAgent } from "../api/client"

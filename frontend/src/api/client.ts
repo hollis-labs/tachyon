@@ -1,4 +1,4 @@
-import { createApiClient, type JsonObject } from "@hollis-labs/sysop-ui/api"
+import { createApiClient, type JsonObject } from "@hollis-labs/design-app-runtime"
 import { invokeVerb } from "./verbs"
 
 // Same-origin: the Go binary serves both this SPA and the API, so an empty

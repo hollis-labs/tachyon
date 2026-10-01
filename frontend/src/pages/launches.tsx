@@ -1,4 +1,5 @@
-import { Button, Input, Label, PageHeader } from "@hollis-labs/sysop-ui"
+import { Button, Input, Label } from "@hollis-labs/design-components"
+import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { invokeVerb, useVerbs } from "../api/verbs"
 import { LargeDialog } from "../components/agent-ops/large-dialog"
