@@ -35,6 +35,7 @@ function drafts(config: TargetConfig): Record<string, string | boolean> {
 export function SettingsPage() {
   const verbs = useVerbs()
   const selectionTrigger = useRef<HTMLButtonElement>(null)
+  const [restoreFocus, setRestoreFocus] = useState(false)
   const [targets, setTargets] = useState<ConfigTarget[]>([])
   const [selected, setSelected] = useState<string>("")
   const [loading, setLoading] = useState(true)
@@ -78,6 +79,13 @@ export function SettingsPage() {
       active = false
     }
   }, [verbs, refresh])
+
+  useEffect(() => {
+    if (restoreFocus && !loading && !busy) {
+      selectionTrigger.current?.focus()
+      setRestoreFocus(false)
+    }
+  }, [restoreFocus, loading, busy])
 
   const markRestart = useCallback((plugin: string, needed: boolean) => {
     setRestartNeeded((current) => ({ ...current, [plugin]: needed }))
@@ -173,8 +181,9 @@ export function SettingsPage() {
               onNotice={setOperationNotice}
               onError={setOperationError}
               onRefresh={() => {
+                setLoading(true)
+                setRestoreFocus(true)
                 setRefresh((current) => current + 1)
-                requestAnimationFrame(() => selectionTrigger.current?.focus())
               }}
             />
           ) : (
@@ -190,12 +199,16 @@ export function SettingsPage() {
                 onRestartNeeded={markRestart}
                 onBusy={setBusy}
                 onRestart={() => setRefresh((current) => current + 1)}
-                onRestartFailure={(detail) => {
+                onRestartFailure={(detail, removed) => {
                   setOperationError(detail)
                   setTargets((current) =>
-                    current.map((item) =>
-                      item.id === target.id ? { ...item, state: "unloaded", settings: {} } : item,
-                    ),
+                    removed
+                      ? current.filter((item) => item.id !== target.id)
+                      : current.map((item) =>
+                          item.id === target.id
+                            ? { ...item, state: "unloaded", settings: {} }
+                            : item,
+                        ),
                   )
                   setRefresh((current) => current + 1)
                 }}
@@ -218,7 +231,7 @@ interface EditorProps {
   onRestartNeeded(plugin: string, needed: boolean): void
   onBusy(busy: boolean): void
   onRestart(): void
-  onRestartFailure(detail: string): void
+  onRestartFailure(detail: string, removed?: boolean): void
 }
 
 function SettingsEditor({
@@ -359,8 +372,10 @@ function SettingsEditor({
       try {
         await restartPlugin(target.id)
       } catch (failure) {
-        if (failure instanceof PluginRestartError && failure.unloaded) {
-          onRestartFailure(`${target.name || target.id} is unloaded: ${message(failure)}`)
+        if (failure instanceof PluginRestartError) {
+          if (failure.httpStatus === 404) onRestartFailure(message(failure), true)
+          else if (failure.unloaded)
+            onRestartFailure(`${target.name || target.id} is unloaded: ${message(failure)}`)
         }
         throw failure
       }
