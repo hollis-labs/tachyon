@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/hollis-labs/plugin-sdk/registry"
 	"github.com/hollis-labs/plugin-sdk/subprocess"
@@ -23,11 +25,12 @@ import (
 // Manager is Tachyon's plugin host. It spawns plugin binaries, manages their
 // lifecycle, and builds the registry response for the browser loader.
 type Manager struct {
-	lifecycleMu sync.Mutex // serialize load/restart/shutdown registration changes
+	lifecycleMu contextMutex // serialize load/restart/shutdown registration changes
 	spawn       func(context.Context, string) (*pluginProcess, error)
 	logger      *slog.Logger
 	mu          sync.RWMutex
 	plugins     map[string]*pluginProcess // keyed by plugin ID
+	retired     map[string]retiredPlugin  // recovery metadata only; never routable
 	modules     map[string]string         // module name -> owning plugin ID
 	loadOrder   []string
 	navGroups   map[string]string // group ID -> first-loaded plugin ID
@@ -74,7 +77,12 @@ type pluginProcess struct {
 	// random byte offset). A UI that fires several requests at once
 	// against the same plugin — e.g. loading multiple tabs' data in
 	// parallel — reliably triggers this without the lock.
-	callMu sync.Mutex
+	callMu        contextMutex
+	dead          atomic.Bool // readable without callMu during watchdog interruption
+	interruptOnce sync.Once
+	reapOnce      sync.Once
+	retireOnce    sync.Once
+	callTimeout   time.Duration // zero uses pluginCallTimeout
 }
 
 // NewManager creates a new plugin manager.
@@ -83,6 +91,7 @@ func NewManager(logger *slog.Logger) *Manager {
 		logger:    logger,
 		spawn:     spawnProcess,
 		plugins:   make(map[string]*pluginProcess),
+		retired:   make(map[string]retiredPlugin),
 		modules:   make(map[string]string),
 		navGroups: make(map[string]string),
 		navItems:  make(map[string]string),
@@ -92,7 +101,9 @@ func NewManager(logger *slog.Logger) *Manager {
 // LoadPlugin spawns a plugin binary and initializes it through the normal
 // settings-read path. Lifecycle changes are serialized separately from calls.
 func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
-	m.lifecycleMu.Lock()
+	if err := m.lockLifecycle(ctx); err != nil {
+		return err
+	}
 	defer m.lifecycleMu.Unlock()
 	return m.loadPlugin(ctx, binaryPath, "")
 }
@@ -143,56 +154,24 @@ func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error
 		return nil, fmt.Errorf("failed to start plugin: %w", err)
 	}
 
-	// One decoder for this subprocess's entire lifetime — see
-	// pluginProcess.stdoutDec's doc comment for why a fresh decoder per
-	// call is unsafe.
-	dec := json.NewDecoder(stdout)
-
-	// Call plugin/init to get plugin metadata
-	initReq := subprocess.RPCRequest{
-		JSONRPC: "2.0",
-		ID:      1,
-		Method:  "plugin/init",
-		Params: subprocess.InitParams{
-			PluginDir: filepath.Dir(binaryPath),
-			DataDir:   dataDir,
-			CacheDir:  "",
-			Config:    config,
-			LogLevel:  "info",
-			HostInfo: subprocess.HostInfo{
-				Version:  "0.1.0",
-				Protocol: subprocess.ProtocolVersion,
-			},
-		},
+	proc := &pluginProcess{cmd: cmd, stdin: stdin, stdout: stdout, stdoutDec: json.NewDecoder(stdout)}
+	// Init shares the same bounded, serial transport as runtime calls. Keep the
+	// subprocess lifetime on ctx, not on the temporary call deadline.
+	raw, err := callProcess(ctx, proc, "plugin/init", subprocess.InitParams{
+		PluginDir: filepath.Dir(binaryPath), DataDir: dataDir, Config: config, LogLevel: "info",
+		HostInfo: subprocess.HostInfo{Version: "0.1.0", Protocol: subprocess.ProtocolVersion},
+	})
+	if err != nil {
+		stopProcess(proc)
+		return nil, fmt.Errorf("plugin init failed: %w", err)
 	}
-
-	if err := json.NewEncoder(stdin).Encode(initReq); err != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
-		return nil, fmt.Errorf("failed to send init request: %w", err)
-	}
-
-	var initResp subprocess.RPCResponse
-	if err := dec.Decode(&initResp); err != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
-		return nil, fmt.Errorf("failed to read init response: %w", err)
-	}
-
-	if initResp.Error != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
-		return nil, fmt.Errorf("plugin init failed: %s", initResp.Error.Message)
-	}
-
-	var initResult subprocess.InitResult
-	if err := json.Unmarshal(initResp.Result, &initResult); err != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
+	var result subprocess.InitResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		stopProcess(proc)
 		return nil, fmt.Errorf("failed to unmarshal init result: %w", err)
 	}
-	proc := &pluginProcess{id: initResult.ID, name: initResult.Name, version: initResult.Version,
-		cmd: cmd, stdin: stdin, stdout: stdout, stdoutDec: dec}
+	proc.id, proc.name, proc.version = result.ID, result.Name, result.Version
+
 	return proc, nil
 }
 
@@ -218,7 +197,9 @@ func (m *Manager) BuildRegistry() registry.Response {
 	return resp
 }
 
-// CallPlugin invokes a custom RPC method on a plugin.
+// CallPlugin invokes a custom RPC method on a plugin. The request context
+// governs queueing only: a client disconnect cannot terminate a shared plugin
+// or abandon a response on its serial wire. Active I/O uses the host budget.
 func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, params interface{}) (json.RawMessage, error) {
 	m.mu.RLock()
 	proc, exists := m.plugins[pluginID]
@@ -228,33 +209,112 @@ func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, param
 		return nil, fmt.Errorf("plugin not found: %s", pluginID)
 	}
 
-	return callProcess(ctx, proc, method, params)
+	raw, err := callProcessContexts(ctx, context.WithoutCancel(ctx), proc, method, params)
+	if proc.dead.Load() {
+		m.retireProcess(proc)
+	}
+	return raw, err
 }
 
+// callProcess is for lifecycle operations whose caller owns the subprocess.
+// Those contexts may interrupt active I/O, unlike an HTTP request's context.
 func callProcess(ctx context.Context, proc *pluginProcess, method string, params interface{}) (json.RawMessage, error) {
-	// Serialize the full round trip — see pluginProcess.callMu's doc
-	// comment for why concurrent callers must not share this pipe pair
-	// unguarded.
-	proc.callMu.Lock()
-	defer proc.callMu.Unlock()
-	if proc.stopped {
+	return callProcessContexts(ctx, ctx, proc, method, params)
+}
+
+func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, method string, params interface{}) (json.RawMessage, error) {
+	// Queueing is cancellable and never kills somebody else's active call.
+	budget := proc.callTimeout
+	if budget <= 0 {
+		budget = pluginCallTimeout
+	}
+	if proc.dead.Load() {
 		return nil, fmt.Errorf("plugin %q is unloaded", proc.id)
 	}
-
 	req := subprocess.RPCRequest{
 		JSONRPC: "2.0",
-		ID:      2, // Using 2 for custom calls (1 is init, 999 is unload)
+		ID:      2, // Serial custom calls share an ID; responses never overlap.
 		Method:  method,
 		Params:  params,
 	}
 
-	if err := json.NewEncoder(proc.stdin).Encode(req); err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+	switch method {
+	case "plugin/init":
+		req.ID = 1
+	case "plugin/unload":
+		req.ID = 999
+	}
+	// Local serialization cannot damage the wire: reject invalid params before
+	// installing a watchdog or writing anything to a healthy subprocess.
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+	encoded = append(encoded, '\n')
+
+	// Give wire acquisition its own limit; queue time must not consume the
+	// operation budget (service_health can legitimately need up to 90s).
+	queued, cancelQueue := context.WithTimeout(queueCtx, budget)
+	err = proc.callMu.LockContext(queued)
+	cancelQueue()
+	if err != nil {
+		return nil, err
+	}
+	bounded, cancel := context.WithTimeout(ioCtx, budget)
+	defer cancel()
+	defer proc.callMu.Unlock()
+	if proc.stopped || proc.dead.Load() {
+		return nil, fmt.Errorf("plugin %q is unloaded", proc.id)
+	}
+	if err := bounded.Err(); err != nil {
+		return nil, err
+	}
+	// Once I/O starts, a host watchdog or lifecycle interruption makes completion
+	// ambiguous. Request disconnects do not reach this context. Close the exact
+	// captured pipes/process; never reuse the stream or retry the operation.
+	finished := make(chan struct{})
+	stop := context.AfterFunc(bounded, func() { interruptProcess(proc); close(finished) })
+	var finishOnce sync.Once
+	interrupted := false
+	finish := func() {
+		finishOnce.Do(func() {
+			if !stop() {
+				<-finished
+				interrupted = true
+			}
+		})
+	}
+	defer finish()
+
+	if n, err := proc.stdin.Write(encoded); err != nil || n != len(encoded) {
+		if err == nil {
+			err = io.ErrShortWrite
+		}
+		interruptProcess(proc)
+		if bounded.Err() != nil {
+			return nil, fmt.Errorf("plugin call interrupted; completion unknown: %w", bounded.Err())
+		}
+		return nil, fmt.Errorf("failed to send request; completion unknown: %w", err)
 	}
 
+	var raw json.RawMessage
+	if err := proc.stdoutDec.Decode(&raw); err != nil {
+		interruptProcess(proc)
+		if bounded.Err() != nil {
+			return nil, fmt.Errorf("plugin call interrupted; completion unknown: %w", bounded.Err())
+		}
+		return nil, fmt.Errorf("failed to read response; completion unknown: %w", err)
+	}
+
+	finish()
+	if interrupted {
+		return nil, fmt.Errorf("plugin call interrupted; completion unknown: %w", bounded.Err())
+	}
+	// The decoder consumed one complete JSON value. A type/shape error does
+	// not leave a partial response behind, so the stream remains reusable.
 	var resp subprocess.RPCResponse
-	if err := proc.stdoutDec.Decode(&resp); err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("invalid RPC response: %w", err)
 	}
 
 	if resp.Error != nil {
@@ -334,16 +394,22 @@ func (m *Manager) AllCapabilities() map[string]*contract.PluginCapabilities {
 	return result
 }
 
-// Shutdown stops all plugins after their in-flight serial calls complete.
+// Shutdown gives each plugin a bounded chance to unload, then closes its pipes.
+// ctx bounds lifecycle lock acquisition and shortens all unload attempts.
 func (m *Manager) Shutdown(ctx context.Context) error {
-	m.lifecycleMu.Lock()
+	if err := m.lockLifecycle(ctx); err != nil {
+		return err
+	}
 	defer m.lifecycleMu.Unlock()
 	m.mu.RLock()
 	ids := append([]string(nil), m.loadOrder...)
 	m.mu.RUnlock()
 	for _, id := range ids {
-		m.unloadPlugin(id)
+		m.unloadPlugin(ctx, id)
 	}
+	m.mu.Lock()
+	clear(m.retired) // shutdown must not leave recovery paths for stopped plugins
+	m.mu.Unlock()
 	return nil
 }
 
@@ -355,6 +421,9 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 	}
 	raw, err := callProcess(ctx, proc, "command/execute", subprocess.CommandExecParams{Name: pluginkit.CommandCapabilities})
 	if err != nil {
+		if proc.dead.Load() || ctx.Err() != nil {
+			return fmt.Errorf("plugin %q capability discovery failed: %w", proc.id, err)
+		}
 		m.logger.Warn("plugin loaded without capability declaration", "id", proc.id, "error", err)
 	} else {
 		var result subprocess.CommandExecResult
@@ -406,6 +475,7 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 		}
 	}
 	m.plugins[proc.id] = proc
+	delete(m.retired, proc.id)
 	m.loadOrder = append(m.loadOrder, proc.id)
 	return nil
 }

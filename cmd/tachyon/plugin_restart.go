@@ -25,6 +25,10 @@ func newPluginRestartHandler(manager pluginRestarter) http.Handler {
 			status = http.StatusInternalServerError
 			if errors.Is(err, plugins.ErrPluginNotFound) {
 				status = http.StatusNotFound
+			} else if errors.Is(err, plugins.ErrRestartBusy) {
+				status = http.StatusServiceUnavailable
+				result.Status = "unchanged"
+				result.Error = "plugin is busy; restart not attempted"
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")

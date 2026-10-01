@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,6 +27,7 @@ func TestPluginRestartEndpoint(t *testing.T) {
 	}{
 		{"loaded", nil, http.StatusOK, "loaded"},
 		{"unknown", plugins.ErrPluginNotFound, http.StatusNotFound, "unloaded"},
+		{"busy", fmt.Errorf("wrapped: %w", plugins.ErrRestartBusy), http.StatusServiceUnavailable, "unchanged"},
 		{"failed", errors.New("respawn failed"), http.StatusInternalServerError, "unloaded"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -44,6 +46,9 @@ func TestPluginRestartEndpoint(t *testing.T) {
 			}
 			if recorder.Code != tc.httpStatus || body.Status != tc.loadStatus || body.ID != "example" || manager.called != "example" {
 				t.Fatalf("response: %d %+v", recorder.Code, body)
+			}
+			if errors.Is(tc.err, plugins.ErrRestartBusy) && body.Error != plugins.ErrRestartBusy.Error() {
+				t.Fatalf("misleading busy message: %s", body.Error)
 			}
 			if (body.Error != "") != (tc.err != nil) {
 				t.Fatalf("error status: %+v", body)
