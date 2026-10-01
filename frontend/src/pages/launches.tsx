@@ -1,8 +1,10 @@
 import { Button, Input, Label } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { invokeVerb, useVerbs } from "../api/verbs"
+import { PendingApprovalError } from "../api/hitl"
+import { type AskDetail, invokeVerb, useVerbs } from "../api/verbs"
 import { LargeDialog } from "../components/agent-ops/large-dialog"
+import { PendingApproval } from "../components/pending-approval"
 
 type LaunchState = "prepared" | "executing" | "running" | "completed" | "failed" | "cancelled"
 export interface Launch {
@@ -56,7 +58,7 @@ const message = (error: unknown) => (error instanceof Error ? error.message : "R
 async function read<T>(verb: string, payload: unknown = {}): Promise<T> {
   const result = await invokeVerb<T>(verb, payload)
   if (result.status === "error") throw new Error(result.error.message)
-  if (result.status === "ask") throw new Error(`Approval required: ${result.ask.prompt}`)
+  if (result.status === "ask") throw new PendingApprovalError(result.ask)
   return result.data
 }
 
@@ -88,6 +90,10 @@ export function LaunchesPage() {
   const [prepared, setPrepared] = useState<Launch | null>(null)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [reason, setReason] = useState("")
+  const [listPending, setListPending] = useState<AskDetail | null>(null)
+  const [agentPending, setAgentPending] = useState<AskDetail | null>(null)
+  const [wizardPending, setWizardPending] = useState<AskDetail | null>(null)
+  const [detailPending, setDetailPending] = useState<AskDetail | null>(null)
 
   const canList = verbs.has("launch_list")
   const canRead = verbs.has("launch_read")
@@ -103,12 +109,16 @@ export function LaunchesPage() {
     let active = true
     setAgentsLoading(true)
     setAgentError("")
+    setAgentPending(null)
     read<AgentOption[] | null>("agent_list")
       .then((items) => {
         if (active) setAgents(items ?? [])
       })
       .catch((failure) => {
-        if (active) setAgentError(message(failure))
+        if (active) {
+          if (failure instanceof PendingApprovalError) setAgentPending(failure.ask)
+          else setAgentError(message(failure))
+        }
       })
       .finally(() => {
         if (active) setAgentsLoading(false)
@@ -125,6 +135,8 @@ export function LaunchesPage() {
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
     setLoading(true)
+    setListPending(null)
+    let waiting = false
     async function refresh() {
       try {
         const items = await read<Launch[] | null>("launch_list")
@@ -133,11 +145,16 @@ export function LaunchesPage() {
           setError("")
         }
       } catch (failure) {
-        if (active) setError(message(failure))
+        if (active) {
+          if (failure instanceof PendingApprovalError) {
+            waiting = true
+            setListPending(failure.ask)
+          } else setError(message(failure))
+        }
       } finally {
         if (active) {
           setLoading(false)
-          timer = setTimeout(refresh, 5000)
+          if (!waiting) timer = setTimeout(refresh, 5000)
         }
       }
     }
@@ -152,12 +169,15 @@ export function LaunchesPage() {
   useEffect(() => {
     if (!selectedId || !canRead) {
       setDetail(null)
+      setDetailPending(null)
       return
     }
+    if (detailPending) return
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
     setDetail(null)
     setDetailError("")
+    let waiting = false
     async function poll() {
       try {
         const status = await read<LaunchStatus>("launch_status", { launch_id: selectedId })
@@ -176,9 +196,14 @@ export function LaunchesPage() {
           setDetailError("")
         }
       } catch (failure) {
-        if (active) setDetailError(message(failure))
+        if (active) {
+          if (failure instanceof PendingApprovalError) {
+            waiting = true
+            setDetailPending(failure.ask)
+          } else setDetailError(message(failure))
+        }
       } finally {
-        if (active && canPoll) timer = setTimeout(poll, 3000)
+        if (active && canPoll && !waiting) timer = setTimeout(poll, 3000)
       }
     }
     read<Launch>("launch_read", { launch_id: selectedId })
@@ -188,13 +213,18 @@ export function LaunchesPage() {
         if (canPoll) timer = setTimeout(poll, 3000)
       })
       .catch((failure) => {
-        if (active) setDetailError(message(failure))
+        if (active) {
+          if (failure instanceof PendingApprovalError) {
+            waiting = true
+            setDetailPending(failure.ask)
+          } else setDetailError(message(failure))
+        }
       })
     return () => {
       active = false
       clearTimeout(timer)
     }
-  }, [selectedId, canRead, canPoll, revision])
+  }, [selectedId, canRead, canPoll, revision, detailPending])
 
   const filtered = useMemo(
     () =>
@@ -227,12 +257,13 @@ export function LaunchesPage() {
     setWorkId("")
     setPrepared(null)
     setWizardError("")
+    setWizardPending(null)
     setStep(1)
     setWizardOpen(true)
   }
 
   async function prepare() {
-    if (!canPrepare || !agentId || busy) return
+    if (!canPrepare || !agentId || busy || wizardPending || agentPending) return
     setBusy(true)
     setWizardError("")
     try {
@@ -247,14 +278,21 @@ export function LaunchesPage() {
       setStep(3)
       refresh()
     } catch (failure) {
-      setWizardError(message(failure))
+      if (failure instanceof PendingApprovalError) setWizardPending(failure.ask)
+      else setWizardError(message(failure))
     } finally {
       setBusy(false)
     }
   }
 
   async function execute(launch: Launch, wizard = false) {
-    if (!canExecute || launch.state !== "prepared" || busy) return
+    if (
+      !canExecute ||
+      launch.state !== "prepared" ||
+      busy ||
+      (wizard ? wizardPending : detailPending)
+    )
+      return
     setBusy(true)
     if (wizard) setWizardError("")
     else setDetailError("")
@@ -264,7 +302,10 @@ export function LaunchesPage() {
       setSelectedId(result.id)
       refresh()
     } catch (failure) {
-      if (wizard) setWizardError(message(failure))
+      if (failure instanceof PendingApprovalError) {
+        if (wizard) setWizardPending(failure.ask)
+        else setDetailPending(failure.ask)
+      } else if (wizard) setWizardError(message(failure))
       else setDetailError(message(failure))
     } finally {
       setBusy(false)
@@ -272,7 +313,7 @@ export function LaunchesPage() {
   }
 
   async function cancel() {
-    if (!detail || !canCancel || !cancellable(detail) || busy) return
+    if (!detail || !canCancel || !cancellable(detail) || busy || detailPending) return
     setBusy(true)
     setDetailError("")
     try {
@@ -280,7 +321,8 @@ export function LaunchesPage() {
       setCancelOpen(false)
       refresh()
     } catch (failure) {
-      setDetailError(message(failure))
+      if (failure instanceof PendingApprovalError) setDetailPending(failure.ask)
+      else setDetailError(message(failure))
     } finally {
       setBusy(false)
     }
@@ -295,6 +337,11 @@ export function LaunchesPage() {
         </p>
         {canPrepare && <Button onClick={startWizard}>New launch</Button>}
       </div>
+      {listPending && (
+        <div className="px-4">
+          <PendingApproval ask={listPending} />
+        </div>
+      )}
       {verbs.loading ? (
         <p className="p-4">Loading capabilities…</p>
       ) : !canList ? (
@@ -454,25 +501,42 @@ export function LaunchesPage() {
             )}
             {step === 1 && (
               <Button
-                disabled={!agentId || busy || agentsLoading || !!agentError}
+                disabled={
+                  !agentId ||
+                  busy ||
+                  agentsLoading ||
+                  !!agentError ||
+                  !!agentPending ||
+                  !!wizardPending
+                }
                 onClick={() => setStep(2)}
               >
                 Configure
               </Button>
             )}
             {step === 2 && (
-              <Button disabled={!canPrepare || busy} onClick={() => void prepare()}>
+              <Button
+                className="aria-disabled:opacity-50"
+                aria-disabled={!canPrepare || busy || !!wizardPending}
+                onClick={() => void prepare()}
+              >
                 {busy ? "Preparing…" : "Prepare and review"}
               </Button>
             )}
             {step === 3 && prepared && canExecute && (
-              <Button disabled={busy} onClick={() => void execute(prepared, true)}>
+              <Button
+                className="aria-disabled:opacity-50"
+                aria-disabled={busy || !!wizardPending}
+                onClick={() => void execute(prepared, true)}
+              >
                 {busy ? "Creating session…" : "Create session"}
               </Button>
             )}
           </>
         }
       >
+        {wizardPending && <PendingApproval ask={wizardPending} />}
+        {agentPending && <PendingApproval ask={agentPending} />}
         {wizardError && (
           <p role="alert" className="mb-3 text-danger">
             {wizardError}
@@ -504,6 +568,7 @@ export function LaunchesPage() {
             {agentsLoading && <p role="status">Loading agents…</p>}
             {!agentsLoading &&
               !agentError &&
+              !agentPending &&
               !agents.some(
                 (agent) => agent.status !== "disabled" && agent.can_execute !== false,
               ) && (
@@ -577,7 +642,11 @@ export function LaunchesPage() {
               Close
             </Button>
             {detail?.state === "prepared" && canExecute && (
-              <Button disabled={busy} onClick={() => void execute(detail)}>
+              <Button
+                className="aria-disabled:opacity-50"
+                aria-disabled={busy || !!detailPending}
+                onClick={() => void execute(detail)}
+              >
                 Create session
               </Button>
             )}
@@ -596,12 +665,17 @@ export function LaunchesPage() {
           </>
         }
       >
+        {detailPending && <PendingApproval ask={detailPending} />}
         {detailError && (
           <p role="alert" className="mb-3 text-danger">
             {detailError}
           </p>
         )}
-        {detail ? <LaunchDetails launch={detail} /> : !detailError && <p>Loading launch…</p>}
+        {detail ? (
+          <LaunchDetails launch={detail} />
+        ) : (
+          !detailError && !detailPending && <p>Loading launch…</p>
+        )}
         {detail?.state === "executing" && (
           <p className="mt-3">
             Active session creation must finish before cancellation. An interrupted launch can be
@@ -626,7 +700,11 @@ export function LaunchesPage() {
               onChange={(event) => setReason(event.target.value)}
             />
             <div className="flex gap-2">
-              <Button disabled={busy} onClick={() => void cancel()}>
+              <Button
+                className="aria-disabled:opacity-50"
+                aria-disabled={busy || !!detailPending}
+                onClick={() => void cancel()}
+              >
                 {busy ? "Applying…" : detail ? cancelLabel(detail) : "Confirm"}
               </Button>
               <Button variant="outline" disabled={busy} onClick={() => setCancelOpen(false)}>

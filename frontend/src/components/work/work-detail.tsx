@@ -2,8 +2,10 @@ import { Button, Label, Skeleton, Textarea } from "@hollis-labs/design-component
 import { useEffect, useState } from "react"
 import type { Agent, WorkItem } from "../../api/client"
 import { useApi } from "../../api/context"
-import type { Envelope, useVerbs } from "../../api/verbs"
+import { PendingApprovalError } from "../../api/hitl"
+import type { AskDetail, Envelope, useVerbs } from "../../api/verbs"
 import { LargeDialog } from "../agent-ops/large-dialog"
+import { PendingApproval } from "../pending-approval"
 
 const selectStyle = "h-8 rounded-md border border-border bg-surface px-2 text-sm text-text"
 const torqueStatuses = [
@@ -27,9 +29,7 @@ type Capabilities = ReturnType<typeof useVerbs>
 export function dataOf<T>(result: Envelope<T>): T {
   if (result.status === "ok") return result.data
   if (result.status === "error") throw new Error(result.error.message)
-  throw new Error(
-    `Operator decision required: ${result.ask.prompt}${result.ask.options?.length ? ` (${result.ask.options.join(", ")})` : ""}`,
-  )
+  throw new PendingApprovalError(result.ask)
 }
 
 export function WorkDetail({
@@ -55,10 +55,12 @@ export function WorkDetail({
   const [status, setStatus] = useState("")
   const [comment, setComment] = useState("")
   const [notice, setNotice] = useState("")
+  const [pending, setPending] = useState<AskDetail | null>(null)
   const canRead = verbs.has("work_read")
   useEffect(() => {
     setTask(null)
     setError("")
+    setPending(null)
     if (!canRead) {
       setError("Task details are unavailable from the connected provider.")
       return
@@ -75,7 +77,10 @@ export function WorkDetail({
         }
       })
       .catch((error) => {
-        if (active) setError(message(error))
+        if (active) {
+          if (error instanceof PendingApprovalError) setPending(error.ask)
+          else setError(message(error))
+        }
       })
     return () => {
       active = false
@@ -83,6 +88,14 @@ export function WorkDetail({
   }, [api, id, canRead])
 
   async function mutate(action: "assign" | "transition" | "comment") {
+    if (
+      busy ||
+      pending ||
+      (action === "assign" && (!assignee || assignee === (task ? assigneeOf(task) : ""))) ||
+      (action === "transition" && status === task?.status) ||
+      (action === "comment" && !comment.trim())
+    )
+      return
     setBusy(true)
     setError("")
     setNotice("")
@@ -104,7 +117,8 @@ export function WorkDetail({
       }
       onUpdated()
     } catch (error) {
-      setError(message(error))
+      if (error instanceof PendingApprovalError) setPending(error.ask)
+      else setError(message(error))
     } finally {
       setBusy(false)
     }
@@ -135,8 +149,9 @@ export function WorkDetail({
           {notice}
         </p>
       )}
+      {pending && <PendingApproval ask={pending} />}
       {!task ? (
-        !error && <Skeleton className="h-40 w-full" />
+        !error && !pending && <Skeleton className="h-40 w-full" />
       ) : (
         <div className="space-y-6">
           <div className="flex flex-wrap gap-4 text-sm text-text-soft">
@@ -160,7 +175,7 @@ export function WorkDetail({
                   id="work-detail-assignee"
                   className={selectStyle}
                   value={assignee}
-                  disabled={busy}
+                  disabled={busy || !!pending}
                   onChange={(event) => setAssignee(event.target.value)}
                 >
                   <option value="">Select an agent</option>
@@ -177,11 +192,11 @@ export function WorkDetail({
                 <Button
                   className={
                     // TODO(CW-20261001-0521): remove at design-components 0.1.1
-                    "text-primary-foreground"
+                    "text-primary-foreground aria-disabled:opacity-50"
                   }
                   type="button"
                   size="sm"
-                  disabled={busy || !assignee || assignee === currentAssignee}
+                  aria-disabled={busy || !!pending || !assignee || assignee === currentAssignee}
                   onClick={() => mutate("assign")}
                 >
                   Assign
@@ -202,7 +217,7 @@ export function WorkDetail({
                   id="work-detail-status"
                   className={selectStyle}
                   value={status}
-                  disabled={busy}
+                  disabled={busy || !!pending}
                   onChange={(event) => setStatus(event.target.value)}
                 >
                   {Array.from(new Set([...torqueStatuses, task.status])).map((value) => (
@@ -214,11 +229,11 @@ export function WorkDetail({
                 <Button
                   className={
                     // TODO(CW-20261001-0521): remove at design-components 0.1.1
-                    "text-primary-foreground"
+                    "text-primary-foreground aria-disabled:opacity-50"
                   }
                   type="button"
                   size="sm"
-                  disabled={busy || status === task.status}
+                  aria-disabled={busy || !!pending || status === task.status}
                   onClick={() => mutate("transition")}
                 >
                   Update status
@@ -233,17 +248,17 @@ export function WorkDetail({
                 id="work-detail-comment"
                 placeholder="Add a comment"
                 value={comment}
-                disabled={busy}
+                disabled={busy || !!pending}
                 onChange={(event) => setComment(event.target.value)}
               />
               <Button
                 className={
                   // TODO(CW-20261001-0521): remove at design-components 0.1.1
-                  "text-primary-foreground"
+                  "text-primary-foreground aria-disabled:opacity-50"
                 }
                 type="button"
                 size="sm"
-                disabled={busy || !comment.trim()}
+                aria-disabled={busy || !!pending || !comment.trim()}
                 onClick={() => mutate("comment")}
               >
                 Add comment
