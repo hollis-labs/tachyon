@@ -38,12 +38,15 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/tachyon/internal/contract"
+	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
 
 const (
@@ -60,6 +63,25 @@ const (
 	resourceTypeDurableAgentEvent   = "durable-agent-event"
 	resourceTypeDurableAgentSession = "durable-agent-session"
 )
+
+//go:embed capabilities.json
+var capabilityJSON []byte
+
+// Capabilities returns the embedded host declaration. Invalid declarations
+// remain invalid so the host rejects them during registration.
+func (p *plugin) Capabilities() contract.PluginCapabilities {
+	var caps contract.PluginCapabilities
+	if err := json.Unmarshal(capabilityJSON, &caps); err != nil {
+		return contract.PluginCapabilities{}
+	}
+	return caps
+}
+
+func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMessage) (contract.ResultEnvelope, error) {
+	return p.handleVerb(ctx, verb, payload)
+}
+
+var _ pluginkit.VerbPlugin = (*plugin)(nil)
 
 type plugin struct {
 	adapter AgentAdapter
@@ -471,6 +493,9 @@ type launchArgs struct {
 // Command implements subprocess.CommandHandler for the one operation that
 // doesn't fit CRUD: launching a session for an agent.
 func (p *plugin) Command(ctx context.Context, req subprocess.CommandRequest) (subprocess.CommandResult, error) {
+	if result, handled, err := pluginkit.Dispatch(ctx, p, req); handled {
+		return result, err
+	}
 	switch req.Name {
 	case "launch":
 		return p.commandLaunch(ctx, req)
