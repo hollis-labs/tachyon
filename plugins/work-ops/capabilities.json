@@ -1,0 +1,76 @@
+{
+  "modules": [
+    "work"
+  ],
+  "verbs": {
+    "work_create": {
+      "effect": "writes"
+    },
+    "work_read": {
+      "effect": "reads"
+    },
+    "work_update": {
+      "effect": "writes"
+    },
+    "work_list": {
+      "effect": "reads"
+    },
+    "work_search": {
+      "effect": "reads"
+    },
+    "work_assign": {
+      "effect": "writes"
+    },
+    "work_transition": {
+      "effect": "writes"
+    },
+    "work_comment": {
+      "effect": "writes"
+    }
+  },
+  "nav": {
+    "groups": [
+      {
+        "id": "work",
+        "label": "Work",
+        "icon": "clipboard-list",
+        "priority": 500
+      }
+    ],
+    "items": [
+      {
+        "id": "work_list",
+        "label": "Tasks",
+        "group": "work",
+        "route": "/work",
+        "requires_verb": "work_list",
+        "priority": 100
+      },
+      {
+        "id": "work_board",
+        "label": "Board",
+        "group": "work",
+        "route": "/work/board",
+        "requires_verb": "work_list",
+        "priority": 200
+      }
+    ]
+  },
+  "settings": {
+    "fields": [
+      {
+        "key": "torque_url",
+        "type": "string",
+        "label": "Torque API URL",
+        "default": "http://127.0.0.1:8990",
+        "required": true
+      },
+      {
+        "key": "default_project",
+        "type": "string",
+        "label": "Default Project ID",
+        "description": "Torque project to use for create and list when none specified"
+      }
+    ]
+  }
+}
