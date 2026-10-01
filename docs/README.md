@@ -14,6 +14,7 @@
 ## Operator pages
 
 - [Agent Operations notifications and focus](pages/agent-ops.md)
+- [Provider Sessions](pages/sessions.md)
 - [Work Board](pages/work-board.md)
 - [Services and health](pages/services.md)
 - [SCM](pages/scm.md)
