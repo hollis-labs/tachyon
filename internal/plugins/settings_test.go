@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -84,6 +85,7 @@ func TestConfigInvocationSyncsEveryLoadedSchema(t *testing.T) {
 	m := NewManager(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	m.plugins["example"] = &pluginProcess{id: "example", name: "Example", capabilities: &contract.PluginCapabilities{Settings: &contract.SettingsDeclaration{Fields: []contract.SettingsField{{Key: "enabled", Type: contract.SettingsFieldBoolean}}}}}
 	m.plugins["legacy"] = &pluginProcess{id: "legacy", name: "Legacy"}
+	m.retired["retired"] = retiredPlugin{id: "retired", name: "Retired", reason: "timeout", retiredAt: time.Now().UTC()}
 	inputReader, inputWriter := io.Pipe()
 	outputReader, outputWriter := io.Pipe()
 	t.Cleanup(func() { inputWriter.Close(); outputReader.Close() })
@@ -114,11 +116,14 @@ func TestConfigInvocationSyncsEveryLoadedSchema(t *testing.T) {
 				seen := map[string]bool{}
 				for _, target := range targets {
 					seen[target.ID] = true
+					if target.ID == "retired" && (target.State != "unloaded" || target.Reason != "timeout" || target.RetiredAt == nil) {
+						calls = append(calls, "lost retirement metadata")
+					}
 					if target.ID == "example" && len(target.Settings.Fields) == 0 {
 						calls = append(calls, "lost fields")
 					}
 				}
-				if !seen["example"] || !seen["legacy"] || !seen["config-ops"] {
+				if !seen["example"] || !seen["legacy"] || !seen["config-ops"] || !seen["retired"] {
 					calls = append(calls, "missing target")
 				}
 			}

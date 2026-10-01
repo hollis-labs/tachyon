@@ -106,7 +106,7 @@ func TestWatchdogBoundsEncodeAndDecodeAndUnloadsOwnership(t *testing.T) {
 			if nav := m.MergedNav(); len(nav.Items) != 1 || nav.Groups[0].Label != "Other" {
 				t.Fatalf("stale ownership: %+v", nav)
 			}
-			if len(m.BuildRegistry().Plugins) != 1 || len(m.SettingsTargets()) != 1 {
+			if len(m.BuildRegistry().Plugins) != 1 || len(m.BuildRegistry().RetiredPlugins) != 1 || len(m.SettingsTargets()) != 2 {
 				t.Fatal("stale registry/settings")
 			}
 			if stage == "decode" && writes.Load() != 1 {
@@ -558,8 +558,8 @@ func TestRestartRecoversRetiredPluginWithOwnerLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitCondition(t, func() bool { return m.ModuleOwner("hung") == "" })
-	if len(m.SettingsTargets()) != 0 {
-		t.Fatal("retired plugin retained active settings registration")
+	if targets := m.SettingsTargets(); len(targets) != 1 || targets[0].State != "unloaded" || len(targets[0].Settings.Fields) != 0 {
+		t.Fatal("retired plugin missing metadata or retained active settings registration")
 	}
 	m.spawn = func(ctx context.Context, path string) (*pluginProcess, error) {
 		if ctx != lifetime || ctx == request || ctx.Err() != nil || path != proc.binaryPath {

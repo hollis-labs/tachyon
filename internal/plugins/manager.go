@@ -79,6 +79,7 @@ type pluginProcess struct {
 	// against the same plugin — e.g. loading multiple tabs' data in
 	// parallel — reliably triggers this without the lock.
 	callMu        contextMutex
+	deathReason   string      // Published by interruptOnce before dead becomes true.
 	dead          atomic.Bool // readable without callMu during watchdog interruption
 	interruptOnce sync.Once
 	reapOnce      sync.Once
@@ -177,11 +178,18 @@ func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error
 }
 
 // BuildRegistry constructs the registry.Response for the browser loader.
-func (m *Manager) BuildRegistry() registry.Response {
+// RegistryResponse extends the SDK registry without advertising dead plugin
+// bundles or routing claims. Legacy decoders ignore the additive metadata.
+type RegistryResponse struct {
+	registry.Response
+	RetiredPlugins []contract.SettingsTarget `json:"retired_plugins,omitempty"`
+}
+
+func (m *Manager) BuildRegistry() RegistryResponse {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	resp := registry.NewResponse()
+	resp := RegistryResponse{Response: registry.NewResponse(), RetiredPlugins: m.retiredTargetsLocked()}
 
 	// For now, we're just proving the contract works — plugins are registered
 	// but have no browser UI bundles yet. Full implementation would include
@@ -274,7 +282,7 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 	// ambiguous. Request disconnects do not reach this context. Close the exact
 	// captured pipes/process; never reuse the stream or retry the operation.
 	finished := make(chan struct{})
-	stop := context.AfterFunc(bounded, func() { interruptProcess(proc); close(finished) })
+	stop := context.AfterFunc(bounded, func() { interruptCall(proc, bounded, bounded.Err()); close(finished) })
 	var finishOnce sync.Once
 	interrupted := false
 	finish := func() {
@@ -291,7 +299,7 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 		if err == nil {
 			err = io.ErrShortWrite
 		}
-		interruptProcess(proc)
+		interruptCall(proc, bounded, err)
 		if bounded.Err() != nil {
 			return nil, fmt.Errorf("plugin call interrupted; completion unknown: %w", bounded.Err())
 		}
@@ -300,7 +308,7 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 
 	var raw json.RawMessage
 	if err := proc.stdoutDec.Decode(&raw); err != nil {
-		interruptProcess(proc)
+		interruptCall(proc, bounded, err)
 		if bounded.Err() != nil {
 			return nil, fmt.Errorf("plugin call interrupted; completion unknown: %w", bounded.Err())
 		}
@@ -323,6 +331,23 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 	}
 
 	return resp.Result, nil
+}
+
+// Only reason classes are exposed in retirement data; raw provider errors may
+// contain sensitive details and remain on the call error path.
+func interruptCall(proc *pluginProcess, ctx context.Context, err error) {
+	reason := "transport_error"
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		reason = "timeout"
+	} else if ctx.Err() != nil {
+		reason = "canceled"
+	} else {
+		var syntax *json.SyntaxError
+		if errors.As(err, &syntax) {
+			reason = "invalid_response"
+		}
+	}
+	interruptProcessForReason(proc, reason)
 }
 
 // rpcResponseError identifies an explicit plugin rejection, rather than a
