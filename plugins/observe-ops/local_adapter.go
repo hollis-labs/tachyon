@@ -11,8 +11,12 @@ import (
 
 // LocalAdapter is the MVP ObserveAdapter implementation. It maintains an
 // in-memory ring buffer of activity entries, log lines, events, and
-// metric points. Data is populated by the plugin host calling Record*
-// methods as verb invocations flow through the system.
+// metric points. Data is populated by the plugin's own Command() wrapper
+// which instruments every verb invocation with activity, event, latency
+// and error entries. Lifecycle events are recorded at Init and Load.
+//
+// Cross-plugin, Tether, and Nanite data feeding is not wired yet; a
+// running system currently observes only its own verb traffic.
 //
 // This is intentionally ephemeral — data lives only as long as the plugin
 // process. Durable observability (Tether sessions, Flux streams, OTel) is

@@ -57,3 +57,44 @@ func TestCapabilitiesJSON(t *testing.T) {
 		}
 	}
 }
+
+// TestCapabilitiesNavDeclaration validates the nav declaration in
+// capabilities.json.
+func TestCapabilitiesNavDeclaration(t *testing.T) {
+	data, err := os.ReadFile("capabilities.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var raw struct {
+		Nav *contract.NavDeclaration `json:"nav"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal capabilities.json: %v", err)
+	}
+	if raw.Nav == nil {
+		t.Fatal("capabilities.json missing nav declaration")
+	}
+	if len(raw.Nav.Groups) != 1 {
+		t.Fatalf("got %d nav groups, want 1", len(raw.Nav.Groups))
+	}
+	g := raw.Nav.Groups[0]
+	if g.ID != "observability" {
+		t.Errorf("group id = %q, want observability", g.ID)
+	}
+	if g.Priority != 400 {
+		t.Errorf("group priority = %d, want 400", g.Priority)
+	}
+
+	if len(raw.Nav.Items) != 3 {
+		t.Fatalf("got %d nav items, want 3", len(raw.Nav.Items))
+	}
+	for _, item := range raw.Nav.Items {
+		if item.Group != "observability" {
+			t.Errorf("item %q group = %q, want observability", item.ID, item.Group)
+		}
+		if item.RequiresVerb == "" {
+			t.Errorf("item %q missing requires_verb", item.ID)
+		}
+	}
+}
