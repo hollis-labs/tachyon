@@ -15,8 +15,7 @@ import (
 // which instruments every verb invocation with activity, event, latency
 // and error entries. Lifecycle events are recorded at Init and Load.
 //
-// Cross-plugin, Tether, and Nanite data feeding is not wired yet; a
-// running system currently observes only its own verb traffic.
+// PollingAdapter supplements this local telemetry with external snapshots.
 //
 // This is intentionally ephemeral — data lives only as long as the plugin
 // process. Durable observability (Tether sessions, Flux streams, OTel) is

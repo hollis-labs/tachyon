@@ -6,8 +6,8 @@
 // module namespace and all verbs are classified as reads — this plugin
 // never writes state.
 //
-// MVP uses a local event aggregator that records verb invocations and
-// plugin lifecycle events. Tether/Flux integration is deferred.
+// Local telemetry is supplemented by on-demand dependency probes and Nanite
+// session snapshots. External history and streams remain deferred.
 package main
 
 import (
@@ -59,12 +59,14 @@ type Event struct {
 
 // StatusSummary is aggregate health/status data for the dashboard.
 type StatusSummary struct {
-	ActiveAgents   int       `json:"active_agents"`
-	ActiveSessions int       `json:"active_sessions"`
-	ErrorCount     int       `json:"error_count"`
-	HealthStatus   string    `json:"health_status"` // "healthy", "degraded", "unhealthy"
-	UptimeSeconds  int64     `json:"uptime_seconds"`
-	LastUpdated    time.Time `json:"last_updated"`
+	Dependencies      []DependencyStatus `json:"dependencies,omitempty"`
+	SessionCountKnown bool               `json:"session_count_known"`
+	ActiveAgents      int                `json:"active_agents"`
+	ActiveSessions    int                `json:"active_sessions"`
+	ErrorCount        int                `json:"error_count"`
+	HealthStatus      string             `json:"health_status"` // "healthy", "degraded", "unhealthy"
+	UptimeSeconds     int64              `json:"uptime_seconds"`
+	LastUpdated       time.Time          `json:"last_updated"`
 }
 
 // SubscriptionHandle is the token returned when a consumer registers for
