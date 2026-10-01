@@ -1,0 +1,19 @@
+{
+  "modules": ["session"],
+  "verbs": {
+    "session_create": {"effect": "open_world"},
+    "session_read": {"effect": "reads"},
+    "session_list": {"effect": "reads"},
+    "session_attach": {"effect": "reads"},
+    "session_stop": {"effect": "open_world"},
+    "session_submit": {"effect": "open_world"},
+    "session_history": {"effect": "reads"}
+  },
+  "nav": {
+    "groups": [{"id": "sessions", "label": "Sessions", "icon": "terminal", "priority": 300}],
+    "items": [
+      {"id": "session_list", "label": "Active Sessions", "group": "sessions", "route": "/sessions", "requires_verb": "session_list", "priority": 100},
+      {"id": "session_history", "label": "Session History", "group": "sessions", "route": "/sessions/history", "requires_verb": "session_history", "priority": 200}
+    ]
+  }
+}
