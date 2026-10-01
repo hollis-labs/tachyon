@@ -5,9 +5,11 @@ import { LaunchesPage } from "./launches"
 import { ObservePage } from "./observe"
 import { ObserveLogsPage } from "./observe-logs"
 import { ObserveMetricsPage } from "./observe-metrics"
+import { ProviderSessionsPage } from "./provider-sessions"
 import { SCMActivityPage, SCMRepositoriesPage } from "./scm"
 import { ServiceHealthPage } from "./service-health"
 import { ServicesPage } from "./services"
+import { SessionHistoryPage } from "./session-history"
 import { SessionsPage } from "./sessions"
 import { SettingsPage } from "./settings"
 import { WorkPage } from "./work"
@@ -21,6 +23,8 @@ export const pageRegistry: Record<string, ComponentType> = {
   "/launches": LaunchesPage,
   "/agents": AgentOpsPage,
   "/agents/durable": SessionsPage,
+  "/sessions": ProviderSessionsPage,
+  "/sessions/history": SessionHistoryPage,
   "/work": WorkPage,
   "/work/board": WorkBoardPage,
   "/services": ServicesPage,
