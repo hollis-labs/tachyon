@@ -516,6 +516,7 @@ export function LaunchesPage() {
             )}
             {step === 2 && (
               <Button
+                className="aria-disabled:opacity-50"
                 aria-disabled={!canPrepare || busy || !!wizardPending}
                 onClick={() => void prepare()}
               >
@@ -524,6 +525,7 @@ export function LaunchesPage() {
             )}
             {step === 3 && prepared && canExecute && (
               <Button
+                className="aria-disabled:opacity-50"
                 aria-disabled={busy || !!wizardPending}
                 onClick={() => void execute(prepared, true)}
               >
@@ -640,7 +642,11 @@ export function LaunchesPage() {
               Close
             </Button>
             {detail?.state === "prepared" && canExecute && (
-              <Button aria-disabled={busy || !!detailPending} onClick={() => void execute(detail)}>
+              <Button
+                className="aria-disabled:opacity-50"
+                aria-disabled={busy || !!detailPending}
+                onClick={() => void execute(detail)}
+              >
                 Create session
               </Button>
             )}
@@ -694,7 +700,11 @@ export function LaunchesPage() {
               onChange={(event) => setReason(event.target.value)}
             />
             <div className="flex gap-2">
-              <Button aria-disabled={busy || !!detailPending} onClick={() => void cancel()}>
+              <Button
+                className="aria-disabled:opacity-50"
+                aria-disabled={busy || !!detailPending}
+                onClick={() => void cancel()}
+              >
                 {busy ? "Applying…" : detail ? cancelLabel(detail) : "Confirm"}
               </Button>
               <Button variant="outline" disabled={busy} onClick={() => setCancelOpen(false)}>
