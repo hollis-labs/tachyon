@@ -15,7 +15,7 @@ import (
 
 // This guard is an origin check, not authentication. Local no-Origin clients work.
 func hitlSameOrigin(r *http.Request) bool {
-	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "none" && site != "same-origin" {
 		return false
 	}
 	origin := r.Header.Get("Origin")

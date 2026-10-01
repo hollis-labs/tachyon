@@ -44,6 +44,15 @@ func TestHITLHTTPAskAndOrigin(t *testing.T) {
 			t.Fatal(w.Code)
 		}
 	}
+	for _, site := range []string{"same-site", "cross-site"} {
+		w = httptest.NewRecorder()
+		r = httptest.NewRequest("GET", "http://localhost/api/hitl/operations/id", nil)
+		r.Header.Set("Sec-Fetch-Site", site)
+		mux.ServeHTTP(w, r)
+		if w.Code != 403 {
+			t.Fatal(site, w.Code)
+		}
+	}
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest("GET", "http://localhost/api/hitl/operations/id", nil)
 	r.Header.Set("Origin", "http://localhost")
