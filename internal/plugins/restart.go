@@ -69,7 +69,11 @@ func (m *Manager) unloadPlugin(ctx context.Context, id string) {
 	_, err := callProcess(bounded, proc, "plugin/unload", nil)
 	stopProcess(proc)
 	m.detachProcess(proc)
-	m.logger.Info("plugin unloaded", "id", proc.id, "graceful", err == nil)
+	if err != nil {
+		m.logger.Warn("plugin unload failed; process force-stopped and reaped", "stage", "plugin_unload", "id", proc.id, "timed_out", errors.Is(err, context.DeadlineExceeded), "error", err)
+	} else {
+		m.logger.Info("plugin unloaded", "stage", "plugin_unload", "id", proc.id, "graceful", true)
+	}
 }
 
 // detachProcess requires lifecycleMu. Identity protects replacements from

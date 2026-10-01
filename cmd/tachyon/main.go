@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/plugins"
@@ -457,14 +456,5 @@ func main() {
 	<-sigCh
 	logger.Info("shutting down...")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-
-	if err := pluginMgr.Shutdown(shutdownCtx); err != nil {
-		logger.Error("plugin shutdown failed", "error", err)
-	}
-
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("server shutdown failed", "error", err)
-	}
+	shutdownHost(server, pluginMgr, logger, httpShutdownTimeout)
 }
