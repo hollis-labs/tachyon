@@ -7,7 +7,7 @@ package contract
 type NavGroup struct {
 	// ID is the unique identifier for this nav group. Must be globally
 	// unique across all plugins — collisions are resolved by the first
-	// plugin to claim the ID.
+	// successfully loaded plugin to claim the ID.
 	ID string `json:"id"`
 
 	// Label is the display name shown in the nav rail.
@@ -47,6 +47,10 @@ type NavItem struct {
 	Priority int `json:"priority,omitempty"`
 }
 
+// Each item references a group declared by the same plugin. Plugins may
+// declare the same group ID to contribute items to a shared group; the host
+// keeps the first-loaded group metadata.
+//
 // NavDeclaration is the nav contribution a plugin includes in its
 // capability declaration. The host merges declarations from all
 // loaded plugins into a single nav tree for the browser loader.

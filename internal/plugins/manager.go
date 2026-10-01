@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"sort"
 	"sync"
 
 	"github.com/hollis-labs/plugin-sdk/registry"
@@ -21,10 +22,13 @@ import (
 // Manager is Tachyon's plugin host. It spawns plugin binaries, manages their
 // lifecycle, and builds the registry response for the browser loader.
 type Manager struct {
-	logger  *slog.Logger
-	mu      sync.RWMutex
-	plugins map[string]*pluginProcess // keyed by plugin ID
-	modules map[string]string         // module name -> owning plugin ID
+	logger    *slog.Logger
+	mu        sync.RWMutex
+	plugins   map[string]*pluginProcess // keyed by plugin ID
+	modules   map[string]string         // module name -> owning plugin ID
+	loadOrder []string
+	navGroups map[string]string // group ID -> first-loaded plugin ID
+	navItems  map[string]string // item ID -> first-loaded plugin ID
 }
 
 // pluginProcess is one spawned plugin subprocess.
@@ -70,9 +74,11 @@ type pluginProcess struct {
 // NewManager creates a new plugin manager.
 func NewManager(logger *slog.Logger) *Manager {
 	return &Manager{
-		logger:  logger,
-		plugins: make(map[string]*pluginProcess),
-		modules: make(map[string]string),
+		logger:    logger,
+		plugins:   make(map[string]*pluginProcess),
+		modules:   make(map[string]string),
+		navGroups: make(map[string]string),
+		navItems:  make(map[string]string),
 	}
 }
 
@@ -363,6 +369,70 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 			m.modules[mod] = proc.id
 		}
 	}
+	if proc.capabilities != nil && proc.capabilities.Nav != nil {
+		for _, group := range proc.capabilities.Nav.Groups {
+			if owner, exists := m.navGroups[group.ID]; exists {
+				m.logger.Warn("nav group collision; first loaded declaration wins", "group_id", group.ID, "winner", owner, "loser", proc.id)
+			} else {
+				m.navGroups[group.ID] = proc.id
+			}
+		}
+		for _, item := range proc.capabilities.Nav.Items {
+			if owner, exists := m.navItems[item.ID]; exists {
+				m.logger.Warn("nav item collision; first loaded declaration wins", "item_id", item.ID, "winner", owner, "loser", proc.id)
+			} else {
+				m.navItems[item.ID] = proc.id
+			}
+		}
+	}
 	m.plugins[proc.id] = proc
+	m.loadOrder = append(m.loadOrder, proc.id)
 	return nil
+}
+
+// MergedNav returns a snapshot of navigation from registered plugins. Group
+// metadata and globally unique item IDs are first-loaded wins; later plugins
+// can still contribute distinct items to a shared group. Priority zero uses
+// the contract default (1000), and IDs break ties for deterministic responses.
+func (m *Manager) MergedNav() contract.NavDeclaration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := contract.NavDeclaration{Groups: []contract.NavGroup{}, Items: []contract.NavItem{}}
+	for _, id := range m.loadOrder {
+		proc := m.plugins[id]
+		if proc == nil || proc.capabilities == nil || proc.capabilities.Nav == nil {
+			continue
+		}
+		for _, g := range proc.capabilities.Nav.Groups {
+			if m.navGroups[g.ID] == id {
+				out.Groups = append(out.Groups, g)
+			}
+		}
+		for _, item := range proc.capabilities.Nav.Items {
+			if m.navItems[item.ID] == id {
+				out.Items = append(out.Items, item)
+			}
+		}
+	}
+	priority := func(value int) int {
+		if value == 0 {
+			return 1000
+		}
+		return value
+	}
+	sort.Slice(out.Groups, func(i, j int) bool {
+		a, b := out.Groups[i], out.Groups[j]
+		if priority(a.Priority) == priority(b.Priority) {
+			return a.ID < b.ID
+		}
+		return priority(a.Priority) < priority(b.Priority)
+	})
+	sort.Slice(out.Items, func(i, j int) bool {
+		a, b := out.Items[i], out.Items[j]
+		if priority(a.Priority) == priority(b.Priority) {
+			return a.ID < b.ID
+		}
+		return priority(a.Priority) < priority(b.Priority)
+	})
+	return out
 }
