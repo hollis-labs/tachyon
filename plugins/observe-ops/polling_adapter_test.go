@@ -284,8 +284,6 @@ func TestMalformedAndUnreachableSources(t *testing.T) {
 func TestStalledSourceTimesOutWithoutHidingOthers(t *testing.T) {
 	config := pollingTestConfig(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/tether/api/health":
-			<-r.Context().Done()
 		case "/api/sessions":
 			w.Write([]byte("[]"))
 		case "/api/v1/scheduler/status":
@@ -298,8 +296,25 @@ func TestStalledSourceTimesOutWithoutHidingOthers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Keep this test quick while exercising the real HTTP timeout path.
-	adapter.client.Timeout = 25 * time.Millisecond
+	// Model the stalled probe's timeout after the healthy responses arrive.
+	// Their reachability must not depend on completing local HTTP within 25ms;
+	// TestProbesAreParallelAndBounded separately checks deadlines/cancellation.
+	healthyResponses := make(chan struct{}, 3)
+	adapter.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/tether/api/health" {
+			for i := 0; i < 3; i++ {
+				select {
+				case <-healthyResponses:
+				case <-r.Context().Done():
+					return nil, r.Context().Err()
+				}
+			}
+			return nil, context.DeadlineExceeded
+		}
+		response, err := http.DefaultTransport.RoundTrip(r)
+		healthyResponses <- struct{}{}
+		return response, err
+	})
 	status, err := adapter.Status(context.Background())
 	if err != nil || status.HealthStatus != "degraded" {
 		t.Fatalf("status: %+v, %v", status, err)
