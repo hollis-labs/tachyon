@@ -54,6 +54,8 @@ export function LaunchesPage() {
   const verbs = useVerbs()
   const [launches, setLaunches] = useState<Launch[]>([])
   const [agents, setAgents] = useState<AgentOption[]>([])
+  const [agentsLoading, setAgentsLoading] = useState(false)
+  const [agentError, setAgentError] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [revision, setRevision] = useState(0)
@@ -85,20 +87,26 @@ export function LaunchesPage() {
   const canExecute = verbs.has("launch_execute")
   const canCancel = verbs.has("launch_cancel")
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opening the wizard explicitly refreshes agent choices.
   useEffect(() => {
     if (!canChooseAgent) return
     let active = true
+    setAgentsLoading(true)
+    setAgentError("")
     read<AgentOption[] | null>("agent_list")
       .then((items) => {
         if (active) setAgents(items ?? [])
       })
       .catch((failure) => {
-        if (active) setWizardError(message(failure))
+        if (active) setAgentError(message(failure))
+      })
+      .finally(() => {
+        if (active) setAgentsLoading(false)
       })
     return () => {
       active = false
     }
-  }, [canChooseAgent])
+  }, [canChooseAgent, wizardOpen])
 
   // Poll without overlapping requests on the serial plugin pipe.
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision explicitly restarts polling after mutations or Refresh.
@@ -435,7 +443,10 @@ export function LaunchesPage() {
               </Button>
             )}
             {step === 1 && (
-              <Button disabled={!agentId || busy} onClick={() => setStep(2)}>
+              <Button
+                disabled={!agentId || busy || agentsLoading || !!agentError}
+                onClick={() => setStep(2)}
+              >
                 Configure
               </Button>
             )}
@@ -475,11 +486,21 @@ export function LaunchesPage() {
                   </option>
                 ))}
             </select>
-            {!agents.length && (
-              <p className="text-sm">
-                No agents available. Check Agent Ops, then reopen this wizard.
+            {agentError && (
+              <p role="alert" className="text-danger">
+                {agentError}
               </p>
             )}
+            {agentsLoading && <p role="status">Loading agents…</p>}
+            {!agentsLoading &&
+              !agentError &&
+              !agents.some(
+                (agent) => agent.status !== "disabled" && agent.can_execute !== false,
+              ) && (
+                <p className="text-sm">
+                  No executable agents available. Check Agent Ops, then reopen this wizard.
+                </p>
+              )}
           </div>
         )}
         {step === 2 && (
