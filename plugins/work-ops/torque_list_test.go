@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -239,7 +242,7 @@ func TestSearchBothShapes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantTotal, wantCalls := 200, 1
+			wantTotal, wantCalls := 250, 1
 			if paged {
 				wantTotal, wantCalls = 250, 2
 			}
@@ -367,5 +370,168 @@ func TestSearchEmptyAndFinalBothShapes(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func readTorqueGolden(t *testing.T, name string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/" + name + ".golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	header, body, ok := strings.Cut(string(raw), "\n")
+	if !ok || !strings.HasPrefix(header, "// Torque ") {
+		t.Fatal("missing capture provenance")
+	}
+	return []byte(body)
+}
+
+// These are real HTTP handler captures from two disposable Torque builds, not
+// synthesized wire records. Assert all WorkItem fields survive both envelopes.
+func TestRealTorqueGoldenRecords(t *testing.T) {
+	legacy, _, _, err := decodeTorqueList(readTorqueGolden(t, "legacy-list"), 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(legacy.Tasks) != 4 {
+		t.Fatal("fixture cohort")
+	}
+	for i, item := range legacy.Tasks {
+		var project *string
+		if i < 3 {
+			id := "PRJ-20261001-0001"
+			project = &id
+		}
+		want := WorkItem{ID: fmt.Sprintf("CW-20261001-%04d", i+1), Title: fmt.Sprintf("golden-match-%d", i), Description: fmt.Sprintf("fixture description %d", i), Status: "todo", Priority: i + 1, ProjectID: project, Manual: true, Metadata: map[string]any{"owner": "fixture", "nested": map[string]any{"flag": true}, "count": float64(i)}}
+		if !reflect.DeepEqual(item, want) {
+			t.Fatalf("fixture field mapping: got %+v want %+v", item, want)
+		}
+	}
+	for _, name := range []string{"legacy-list", "legacy-search", "current-list", "current-search", "current-list-total", "current-search-total"} {
+		t.Run(name, func(t *testing.T) {
+			raw := readTorqueGolden(t, name)
+			list, _, _, err := decodeTorqueList(raw, 0, strings.Contains(name, "search"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(list.Tasks, legacy.Tasks) {
+				t.Fatalf("task fields changed across real handler envelopes: %+v", list.Tasks)
+			}
+			// Independently compare the eight consumed JSON fields before decoding,
+			// ensuring an unexpected type/key cannot silently become a Go zero value.
+			var body map[string]json.RawMessage
+			json.Unmarshal(raw, &body)
+			records := body["tasks"]
+			if records == nil {
+				records = body["items"]
+			}
+			var items []map[string]json.RawMessage
+			json.Unmarshal(records, &items)
+			for i, record := range items {
+				projected := map[string]json.RawMessage{}
+				for _, key := range []string{"id", "title", "description", "status", "priority", "project_id", "manual", "metadata"} {
+					value, ok := record[key]
+					if !ok {
+						t.Fatalf("missing field %s", key)
+					}
+					projected[key] = value
+				}
+				expected, _ := json.Marshal(list.Tasks[i])
+				actual, _ := json.Marshal(projected)
+				var got, want any
+				json.Unmarshal(actual, &got)
+				json.Unmarshal(expected, &want)
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("lossy field projection: %s vs %s", actual, expected)
+				}
+			}
+		})
+	}
+}
+
+func TestRealTorqueGoldenHandshake(t *testing.T) {
+	for _, shape := range []string{"legacy", "current"} {
+		for _, operation := range []string{"list", "search"} {
+			t.Run(shape+"-"+operation, func(t *testing.T) {
+				calls := 0
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					calls++
+					name := shape + "-" + operation
+					if r.URL.Query().Get("offset") != "0" {
+						t.Error("missing explicit zero")
+					}
+					if r.URL.Query().Has("include_total") {
+						if shape == "legacy" {
+							http.Error(w, "unsupported query parameter include_total", 400)
+							return
+						}
+						name += "-total"
+					}
+					w.Write(readTorqueGolden(t, name))
+				}))
+				defer server.Close()
+				adapter := NewTorqueAdapter(server.URL)
+				var list *WorkList
+				var err error
+				if operation == "list" {
+					list, err = adapter.ListWorkItems(context.Background(), WorkFilters{Limit: 50})
+				} else {
+					list, err = adapter.SearchWorkItems(context.Background(), "golden-match")
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantCalls := 1
+				if shape == "current" {
+					wantCalls = 2
+				}
+				if list.Total != 4 || len(list.Tasks) != 4 || list.HasMore || calls != wantCalls {
+					t.Fatalf("golden handshake: %+v, requests=%d", list, calls)
+				}
+			})
+		}
+	}
+}
+
+func TestLegacySearchCapBoundaries(t *testing.T) {
+	for _, count := range []int{200, 201, 350} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(map[string]any{"tasks": make([]WorkItem, count)})
+			}))
+			defer server.Close()
+			list, err := NewTorqueAdapter(server.URL).SearchWorkItems(context.Background(), "matches")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(list.Tasks) != 200 || list.Total != count || list.HasMore != (count > 200) {
+				t.Fatalf("legacy exact count before truncation: %+v", list)
+			}
+		})
+	}
+}
+
+func TestMalformedListElementsAndTotals(t *testing.T) {
+	for _, raw := range []string{
+		`{"items":[null],"meta":{"returned":1,"limit":50,"offset":0,"has_more":false,"total":1}}`,
+		`{"items":[123],"meta":{"returned":1,"limit":50,"offset":0,"has_more":false,"total":1}}`,
+		`{"items":[[]],"meta":{"returned":1,"limit":50,"offset":0,"has_more":false,"total":1}}`,
+		`{"items":[{"id":"one"}],"meta":{"returned":1,"limit":50,"offset":0,"has_more":false,"total":0}}`,
+		`{"tasks":[{"id":"one"}],"has_more":true,"next_offset":1}`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			list, _, _, err := decodeTorqueList(json.RawMessage(raw), 0, true)
+			if err == nil || list != nil {
+				t.Fatalf("accepted malformed list: %+v", list)
+			}
+		})
+	}
+	list, _, _, err := decodeTorqueList(json.RawMessage(`{"items":[],"meta":{"returned":0,"limit":50,"offset":100,"has_more":false,"total":1}}`), 100, false)
+	if err != nil || list.HasMore || list.Total != 1 {
+		t.Fatalf("past-end empty page rejected: %v %+v", err, list)
+	}
+	list, _, _, err = decodeTorqueList(json.RawMessage(`{"items":[{"id":"one","future_field":true}],"meta":{"returned":1,"limit":50,"offset":0,"has_more":false,"total":1}}`), 0, false)
+	if err != nil || list.Tasks[0].ID != "one" {
+		t.Fatalf("unknown object field rejected: %v %+v", err, list)
 	}
 }

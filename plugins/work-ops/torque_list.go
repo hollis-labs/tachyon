@@ -60,7 +60,7 @@ func (a *TorqueAdapter) requestWorkList(ctx context.Context, path string, q url.
 		}
 		return list, nil
 	}
-	panic("unreachable work-list retry")
+	return nil, fmt.Errorf("torque work-list negotiation exhausted its retry budget")
 }
 
 type torqueListMeta struct {
@@ -98,6 +98,16 @@ func decodeTorqueList(raw json.RawMessage, offset int, search bool) (*WorkList, 
 	if string(tasks) == "null" {
 		return nil, paged, false, fmt.Errorf("task items must be an array")
 	}
+	var elements []json.RawMessage
+	if err := json.Unmarshal(tasks, &elements); err != nil {
+		return nil, paged, false, err
+	}
+	for _, element := range elements {
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(element, &object); err != nil || object == nil {
+			return nil, paged, false, fmt.Errorf("task items must contain non-null objects")
+		}
+	}
 	if err := json.Unmarshal(tasks, &list.Tasks); err != nil {
 		return nil, paged, false, err
 	}
@@ -107,8 +117,8 @@ func decodeTorqueList(raw json.RawMessage, offset int, search bool) (*WorkList, 
 	if !paged && !search && (meta.Total == nil || meta.HasMore == nil) {
 		return nil, false, false, fmt.Errorf("legacy list requires total and has_more")
 	}
-	if meta.Total != nil && *meta.Total < 0 {
-		return nil, paged, false, fmt.Errorf("total must be nonnegative")
+	if meta.Total != nil && *meta.Total < len(list.Tasks) {
+		return nil, paged, false, fmt.Errorf("total must be at least the returned item count")
 	}
 	if meta.Returned != nil && *meta.Returned != len(list.Tasks) {
 		return nil, paged, false, fmt.Errorf("returned does not match task items")
@@ -122,6 +132,9 @@ func decodeTorqueList(raw json.RawMessage, offset int, search bool) (*WorkList, 
 	if meta.HasMore != nil {
 		list.HasMore = *meta.HasMore
 	}
+	if !paged && search && list.HasMore && meta.Total == nil {
+		return nil, false, false, fmt.Errorf("partial legacy search requires a trustworthy total")
+	}
 	if list.HasMore {
 		if len(list.Tasks) == 0 || meta.NextOffset == nil || *meta.NextOffset <= offset {
 			return nil, paged, false, fmt.Errorf("has_more requires a forward next_offset")
@@ -133,13 +146,14 @@ func decodeTorqueList(raw json.RawMessage, offset int, search bool) (*WorkList, 
 	} else if meta.NextOffset != nil {
 		return nil, paged, false, fmt.Errorf("final page must not have next_offset")
 	}
+	matches := len(list.Tasks)
 	if search && len(list.Tasks) > 200 {
 		// Old search is unpaged even when sent limit/offset. Bound the verb's
 		// output without walking provider pages or inventing a continuation.
 		list.Tasks = list.Tasks[:200]
 		list.HasMore = true
 	}
-	list.Total = len(list.Tasks)
+	list.Total = matches
 	if meta.Total != nil {
 		list.Total = *meta.Total
 	}
