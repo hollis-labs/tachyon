@@ -60,30 +60,32 @@ export function AgentTable({
       {agents.map((agent) => (
         <div
           key={agent.id}
-          className="flex items-center gap-4 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors cursor-pointer"
+          className="flex items-center gap-4 max-sm:flex-col max-sm:items-stretch max-sm:gap-2 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors cursor-pointer"
         >
           <button
             type="button"
             disabled={!onRowClick}
             onClick={() => onRowClick?.(agent)}
-            className="flex flex-1 min-w-0 items-center gap-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            className="flex flex-1 min-w-0 items-center gap-4 max-sm:items-start text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
           >
             {/* Status indicator */}
             <span
-              className={`h-2 w-2 rounded-full ${agent.status === "active" ? "bg-status-done" : "bg-text-subtle"}`}
+              className={`h-2 w-2 max-sm:mt-1.5 max-sm:shrink-0 rounded-full ${agent.status === "active" ? "bg-status-done" : "bg-text-subtle"}`}
             />
 
             {/* Agent info */}
             <span className="flex-1 min-w-0">
-              <span className="flex items-center gap-2">
-                <span className="font-medium text-sm text-text truncate">{agent.name}</span>
+              <span className="flex items-center gap-2 max-sm:flex-wrap">
+                <span className="font-medium text-sm text-text truncate max-sm:basis-full max-sm:whitespace-normal max-sm:overflow-visible max-sm:text-clip max-sm:break-words">
+                  {agent.name}
+                </span>
                 <span
                   className={`text-xs uppercase tracking-wider ${STATUS_COLOR_MAP[agent.status] || FALLBACK_STATUS_COLOR}`}
                 >
                   {agent.status}
                 </span>
                 {agent.tags && (
-                  <span className="text-xs text-text-subtle bg-panel-2 px-1.5 py-0.5 rounded">
+                  <span className="text-xs text-text-subtle bg-panel-2 max-sm:min-w-0 max-sm:break-words px-1.5 py-0.5 rounded">
                     {agent.tags}
                   </span>
                 )}
@@ -93,7 +95,7 @@ export function AgentTable({
                   {agent.description}
                 </span>
               )}
-              <span className="flex items-center gap-3 text-xs text-text-subtle mt-1">
+              <span className="flex items-center gap-3 max-sm:flex-wrap max-sm:gap-y-1 max-sm:break-all text-xs text-text-subtle mt-1">
                 <span>ID: {agent.id}</span>
                 {agent.slug && <span>Slug: {agent.slug}</span>}
                 {agent.layer && <span>Layer: {agent.layer}</span>}
@@ -102,7 +104,7 @@ export function AgentTable({
           </button>
 
           {/* Actions */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 max-sm:justify-end">
             {agent.editable && onEdit && (
               <button
                 type="button"

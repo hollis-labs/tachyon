@@ -62,29 +62,31 @@ export function DurableAgentTable({
           className="flex w-full text-left items-center gap-4 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors cursor-pointer"
         >
           <span
-            className={`h-2 w-2 rounded-full ${STATUS_DOT[agent.status] || "bg-text-subtle"}`}
+            className={`h-2 w-2 max-sm:shrink-0 rounded-full ${STATUS_DOT[agent.status] || "bg-text-subtle"}`}
           />
 
           <span className="flex-1 min-w-0">
-            <span className="flex items-center gap-2">
-              <span className="font-medium text-sm text-text truncate">{agent.name}</span>
+            <span className="flex items-center gap-2 max-sm:flex-wrap">
+              <span className="font-medium text-sm text-text truncate max-sm:basis-full max-sm:whitespace-normal max-sm:overflow-visible max-sm:text-clip max-sm:break-words">
+                {agent.name}
+              </span>
               <span
                 className={`text-xs uppercase tracking-wider ${STATUS_TEXT[agent.status] || "text-text-subtle"}`}
               >
                 {agent.status}
               </span>
               {agent.provider && (
-                <span className="text-xs text-text-subtle bg-panel-2 px-1.5 py-0.5 rounded">
+                <span className="text-xs text-text-subtle bg-panel-2 max-sm:min-w-0 max-sm:break-words px-1.5 py-0.5 rounded">
                   {agent.provider}
                 </span>
               )}
               {agent.model && (
-                <span className="text-xs text-text-subtle bg-panel-2 px-1.5 py-0.5 rounded">
+                <span className="text-xs text-text-subtle bg-panel-2 max-sm:min-w-0 max-sm:break-words px-1.5 py-0.5 rounded">
                   {agent.model}
                 </span>
               )}
             </span>
-            <span className="flex items-center gap-3 text-xs text-text-subtle mt-1">
+            <span className="flex items-center gap-3 max-sm:flex-wrap max-sm:gap-y-1 max-sm:break-all text-xs text-text-subtle mt-1">
               <span>ID: {agent.id}</span>
               {agent.slug && <span>Slug: {agent.slug}</span>}
               {agent.currentSessionId && <span>Session: {agent.currentSessionId}</span>}
