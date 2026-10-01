@@ -432,10 +432,6 @@ function SettingsEditor({
         >
           <p className="text-sm">Restart this plugin to apply saved settings.</p>
           <Button
-            className={
-              // TODO(CW-20261001-0521): remove at design-components 0.1.1
-              "text-primary-foreground"
-            }
             size="sm"
             disabled={action !== null || !!pending || Object.keys(dirty).length > 0}
             onClick={restart}
@@ -496,10 +492,7 @@ function SettingsEditor({
               ))}
             <div className="flex flex-wrap gap-2 border-t border-border pt-4">
               <Button
-                className={
-                  // TODO(CW-20261001-0521): remove at design-components 0.1.1
-                  "text-primary-foreground aria-disabled:opacity-50"
-                }
+                className="aria-disabled:opacity-50"
                 type="submit"
                 size="sm"
                 aria-disabled={

@@ -190,10 +190,7 @@ export function WorkDetail({
                   ))}
                 </select>
                 <Button
-                  className={
-                    // TODO(CW-20261001-0521): remove at design-components 0.1.1
-                    "text-primary-foreground aria-disabled:opacity-50"
-                  }
+                  className="aria-disabled:opacity-50"
                   type="button"
                   size="sm"
                   aria-disabled={busy || !!pending || !assignee || assignee === currentAssignee}
@@ -227,10 +224,7 @@ export function WorkDetail({
                   ))}
                 </select>
                 <Button
-                  className={
-                    // TODO(CW-20261001-0521): remove at design-components 0.1.1
-                    "text-primary-foreground aria-disabled:opacity-50"
-                  }
+                  className="aria-disabled:opacity-50"
                   type="button"
                   size="sm"
                   aria-disabled={busy || !!pending || status === task.status}
@@ -252,10 +246,7 @@ export function WorkDetail({
                 onChange={(event) => setComment(event.target.value)}
               />
               <Button
-                className={
-                  // TODO(CW-20261001-0521): remove at design-components 0.1.1
-                  "text-primary-foreground aria-disabled:opacity-50"
-                }
+                className="aria-disabled:opacity-50"
                 type="button"
                 size="sm"
                 aria-disabled={busy || !!pending || !comment.trim()}
