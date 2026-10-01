@@ -52,3 +52,10 @@ type SettingsOption struct {
 type SettingsDeclaration struct {
 	Fields []SettingsField `json:"fields,omitempty"`
 }
+
+// SettingsTarget binds a plugin-owned settings schema to its stable identity.
+type SettingsTarget struct {
+	ID       string              `json:"id"`
+	Name     string              `json:"name"`
+	Settings SettingsDeclaration `json:"settings"`
+}

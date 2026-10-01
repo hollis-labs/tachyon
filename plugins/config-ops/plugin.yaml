@@ -1,0 +1,22 @@
+schema_version: 1
+id: config-ops
+name: Config Ops
+version: 0.1.0
+description: "Schema-backed plugin settings for Tachyon"
+author: "Hollis Labs"
+license: MIT
+homepage: https://github.com/hollis-labs/tachyon
+repository: https://github.com/hollis-labs/tachyon
+protocol: 1
+runtime: subprocess
+entrypoint: ./config-ops
+load_type: auto
+config: {}
+registers:
+release:
+  platforms:
+    - darwin-arm64
+    - darwin-amd64
+    - linux-amd64
+    - linux-arm64
+    - windows-amd64
