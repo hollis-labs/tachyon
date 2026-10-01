@@ -230,8 +230,8 @@ func TestSubscribe(t *testing.T) {
 	if handle.Channel != "activity" {
 		t.Errorf("channel = %q, want activity", handle.Channel)
 	}
-	if handle.ID == "" {
-		t.Error("handle ID should be set")
+	if handle.Method != "POST" || handle.Transport != "polling" || !handle.Supported {
+		t.Errorf("invalid polling descriptor: %+v", handle)
 	}
 	if handle.Endpoint == "" {
 		t.Error("handle endpoint should be set")
