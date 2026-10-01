@@ -3,9 +3,10 @@
 Headless-capable, plugin-based control plane for the Hollis Labs agent fabric
 
 A **Sysop UI** application: a React frontend built on
-[`@hollis-labs/sysop-ui`](https://github.com/hollis-labs/sysop-ui) served by a
+[`design-kit`](https://github.com/hollis-labs/design-kit), using design-components'
+AppShell and kit-dashboard's navigation and theme, served by a
 Go binary through the [`go-webui`](https://github.com/hollis-labs/go-webui)
-embed harness. Scaffolded by `folio new sysop-ui`.
+embed harness.
 
 ## Layout
 
@@ -65,15 +66,16 @@ A page is generic kit chrome plus app-specific content. Add a component
 under `frontend/src/pages/`, then wire it into `frontend/src/App.tsx`
 (extend the `nav` array and the active-route switch). Add API endpoints
 to `frontend/src/api/client.ts`. See the
-[`@hollis-labs/sysop-ui` README](https://github.com/hollis-labs/sysop-ui)
+[`kit-dashboard` README](https://github.com/hollis-labs/design-kit/blob/main/packages/kit-dashboard/README.md)
 for the `PageHeader` / `DataTable` / `SummaryCards` composition pattern.
 
 ## Dependencies
 
-- **`@hollis-labs/sysop-ui`** (`v0.4.0`) — the React
-  kit + canonical theme. Consumed as a git dependency, pinned to a release
-  tag. For local kit development, link a working copy:
-  `npm install file:<path-to>/libs/sysop-ui` from `frontend/`.
+- **`@hollis-labs/design-app-runtime`, `@hollis-labs/design-components`,
+  `@hollis-labs/design-tokens`, `@hollis-labs/kit-dashboard`** (`^0.1.0`) —
+  transport/context, React components/AppShell, tokens, and dashboard chrome/theme.
+  Consume published npm releases; update `frontend/package.json` and
+  `frontend/package-lock.json` together, never a branch or git ref.
 - **`github.com/hollis-labs/go-webui`** (`v0.1.0`) —
   the SPA-serving harness.
 
