@@ -24,7 +24,7 @@ make vet            # go vet ./...
 cd frontend && npm run typecheck && npm run lint
 ```
 
-CI (`.github/workflows/ci.yml`) runs `go vet`, `go build` and `go test` on every push and pull request. Lefthook adds gofmt/goimports, `golangci-lint --new` and `go vet` on commit, biome on staged frontend files, and `go test` on push; run `lefthook install` once after cloning.
+CI (`.github/workflows/ci.yml`) runs `go vet`, `go build` and `go test -short` (integration tests that need a live Nanite are skipped) on every push and pull request. Lefthook adds gofmt/goimports, `golangci-lint --new` and `go vet` on commit, biome on staged frontend files, and `go test` on push; run `lefthook install` once after cloning.
 
 ## Boundaries
 

@@ -45,9 +45,9 @@ type pluginProcess struct {
 	// from its init response (D-47). Nil for legacy plugins that do not
 	// yet declare capabilities.
 	capabilities *contract.PluginCapabilities
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	stdout  io.ReadCloser
+	cmd          *exec.Cmd
+	stdin        io.WriteCloser
+	stdout       io.ReadCloser
 
 	// stdoutDec is the single long-lived decoder over stdout, created once
 	// in LoadPlugin and reused by every subsequent CallPlugin. A

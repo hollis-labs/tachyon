@@ -39,7 +39,7 @@ func TestModuleRegistration(t *testing.T) {
 		id:           "plugin-a",
 		capabilities: caps,
 	}
-	
+
 	m.plugins[proc.id] = proc
 	for _, mod := range caps.Modules {
 		m.modules[mod] = proc.id
@@ -96,7 +96,7 @@ func TestInvokeVerbRouting(t *testing.T) {
 	m := NewManager(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	m.modules["agent"] = "agent-ops"
 	m.modules["work"] = "work-ops"
-	
+
 	_, err := m.InvokeVerb(context.Background(), "agent_create", nil)
 	if err == nil || err.Error() == `no plugin owns a module matching verb "agent_create"` {
 		t.Fatal("expected routing to find agent module")
@@ -104,7 +104,7 @@ func TestInvokeVerbRouting(t *testing.T) {
 	if err.Error() != "plugin not found: agent-ops" {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	
+
 	_, err = m.InvokeVerb(context.Background(), "session_create", nil)
 	if err == nil || err.Error() != `no plugin owns a module matching verb "session_create"` {
 		t.Fatalf("expected no-module error, got: %v", err)
@@ -113,7 +113,7 @@ func TestInvokeVerbRouting(t *testing.T) {
 
 func TestShutdownReleasesModules(t *testing.T) {
 	m := NewManager(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-	
+
 	caps := &contract.PluginCapabilities{
 		Modules: []string{"agent", "launch"},
 	}

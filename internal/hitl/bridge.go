@@ -9,16 +9,16 @@ import (
 // without importing go-hitl directly — Tachyon is a caller, not a store
 // owner (D-41).
 type EnqueueRequest struct {
-	ContractVersion string         `json:"contract_version"`
-	Kind            string         `json:"kind"`
-	IdempotencyKey  string         `json:"idempotency_key"`
-	Title           string         `json:"title"`
-	Summary         string         `json:"summary"`
-	Request         string         `json:"request"`
+	ContractVersion string          `json:"contract_version"`
+	Kind            string          `json:"kind"`
+	IdempotencyKey  string          `json:"idempotency_key"`
+	Title           string          `json:"title"`
+	Summary         string          `json:"summary"`
+	Request         string          `json:"request"`
 	Source          SourceAssertion `json:"source"`
-	Impact          *ImpactDetail  `json:"impact,omitempty"`
-	Correlations    map[string]any `json:"correlations,omitempty"`
-	ExpiresAt       string         `json:"expires_at,omitempty"`
+	Impact          *ImpactDetail   `json:"impact,omitempty"`
+	Correlations    map[string]any  `json:"correlations,omitempty"`
+	ExpiresAt       string          `json:"expires_at,omitempty"`
 }
 
 // SourceAssertion identifies the caller producing the HITL interaction.
