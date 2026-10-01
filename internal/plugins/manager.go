@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"sync"
 
@@ -84,6 +85,10 @@ func NewManager(logger *slog.Logger) *Manager {
 
 // LoadPlugin spawns a plugin binary and initializes it.
 func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
+	dataDir, config, err := pluginInitSettings(binaryPath)
+	if err != nil {
+		return fmt.Errorf("plugin startup settings: %w", err)
+	}
 	cmd := exec.CommandContext(ctx, binaryPath)
 
 	stdin, err := cmd.StdinPipe()
@@ -113,10 +118,10 @@ func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
 		ID:      1,
 		Method:  "plugin/init",
 		Params: subprocess.InitParams{
-			PluginDir: "",
-			DataDir:   "",
+			PluginDir: filepath.Dir(binaryPath),
+			DataDir:   dataDir,
 			CacheDir:  "",
-			Config:    map[string]string{},
+			Config:    config,
 			LogLevel:  "info",
 			HostInfo: subprocess.HostInfo{
 				Version:  "0.1.0",
@@ -252,6 +257,11 @@ func (m *Manager) InvokeVerb(ctx context.Context, verb string, payload json.RawM
 		return nil, fmt.Errorf("no plugin owns a module matching verb %q", verb)
 	}
 
+	if verb == "config_schema" || verb == "config_get" || verb == "config_list" || verb == "config_set" || verb == "config_reset" {
+		if err := m.syncConfigSchemas(ctx, ownerID); err != nil {
+			return nil, err
+		}
+	}
 	raw, err := m.CallPlugin(ctx, ownerID, "command/execute", subprocess.CommandExecParams{Name: verb, Args: string(payload)})
 	if err != nil {
 		return nil, err
