@@ -2,6 +2,9 @@ import type { ComponentType } from "react"
 import { AgentOpsPage } from "./agent-ops"
 import { DashboardPage } from "./dashboard"
 import { LaunchesPage } from "./launches"
+import { ObservePage } from "./observe"
+import { ObserveLogsPage } from "./observe-logs"
+import { ObserveMetricsPage } from "./observe-metrics"
 import { SCMActivityPage, SCMRepositoriesPage } from "./scm"
 import { ServiceHealthPage } from "./service-health"
 import { ServicesPage } from "./services"
@@ -22,6 +25,9 @@ export const pageRegistry: Record<string, ComponentType> = {
   "/work/board": WorkBoardPage,
   "/services": ServicesPage,
   "/services/health": ServiceHealthPage,
+  "/observe": ObservePage,
+  "/observe/logs": ObserveLogsPage,
+  "/observe/metrics": ObserveMetricsPage,
   "/scm": SCMRepositoriesPage,
   "/scm/activity": SCMActivityPage,
 }
