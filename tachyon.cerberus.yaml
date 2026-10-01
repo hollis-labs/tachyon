@@ -25,14 +25,22 @@ resources:
         source:
           root: .
         rules:
-          target: build
+          target: all
           output: tachyon
       command:
         - ./tachyon
-      mode: dev_session
+      # Reuse the local systemd unit and run from the checkout so relative
+      # plugin paths resolve to the binaries built by make all.
+      mode: os_service
+      supervisor: auto
+      service_name: tachyon
       run_from: workspace
+      # make all builds frontend + plugins + server; no separate install step needed.
+      install_after_build: false
+      env:
+        TACHYON_ADDR: 127.0.0.1:8093
       port: 8093
-      url: http://127.0.0.1:8093/sysop/
+      url: https://tachyon.nanite.cloud/sysop/
       auto_restart: true
       restart_delay: 2s
   - id: tachyon-frontend-dev
