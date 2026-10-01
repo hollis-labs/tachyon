@@ -15,7 +15,7 @@ type VerbDeclaration struct {
 }
 
 // PluginCapabilities is the capability declaration a plugin includes in
-// its plugin/init response (D-47, D-48). The host validates it at load
+// its plugin_capabilities command response (D-47, D-48). The host validates it at load
 // time; any violation is a hard load error, never a silently wrong
 // catalog entry.
 type PluginCapabilities struct {
@@ -28,6 +28,9 @@ type PluginCapabilities struct {
 	// follow the <module>_<verb> pattern (D-49) and be prefixed with
 	// one of this plugin's declared modules.
 	Verbs map[string]VerbDeclaration `json:"verbs"`
+
+	Nav      *NavDeclaration      `json:"nav,omitempty"`
+	Settings *SettingsDeclaration `json:"settings,omitempty"`
 }
 
 // Validate checks the capability declaration for internal consistency.
@@ -71,7 +74,10 @@ func (pc *PluginCapabilities) Validate() error {
 		}
 	}
 
-	return nil
+	if err := pc.validateNav(); err != nil {
+		return err
+	}
+	return pc.validateSettings()
 }
 
 // ModuleForVerb returns the owning module for a verb ID, or empty string

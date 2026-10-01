@@ -13,7 +13,7 @@ import (
 )
 
 // fakeProcess uses real JSON-RPC framing through pipes without spawning binaries.
-func fakeProcess(t *testing.T, id, mode string) *pluginProcess {
+func fakeProcess(t *testing.T, id, mode string, declarations ...contract.PluginCapabilities) *pluginProcess {
 	t.Helper()
 	requests, input := io.Pipe()
 	output, responses := io.Pipe()
@@ -53,6 +53,9 @@ func fakeProcess(t *testing.T, id, mode string) *pluginProcess {
 							effect = "invalid"
 						}
 						caps := contract.PluginCapabilities{Modules: []string{"agent"}, Verbs: map[string]contract.VerbDeclaration{"agent_list": {Effect: effect}}}
+						if len(declarations) > 0 {
+							caps = declarations[0]
+						}
 						content, _ := json.Marshal(caps)
 						resp.Result, _ = json.Marshal(subprocess.CommandExecResult{Action: "message", Content: string(content)})
 					}

@@ -108,6 +108,19 @@ calls `command/execute` with `name: "plugin_capabilities"`; the response has
     "agent_list": { "effect": "reads" },
     "agent_create": { "effect": "writes" },
     "agent_delete": { "effect": "destroys" }
+  },
+  "nav": {
+    "groups": [{ "id": "agents", "label": "Agents", "priority": 100 }],
+    "items": [{
+      "id": "agent_list", "label": "Agents", "group": "agents",
+      "route": "/agents", "requires_verb": "agent_list", "priority": 100
+    }]
+  },
+  "settings": {
+    "fields": [{
+      "key": "provider_url", "type": "string", "label": "Provider URL",
+      "default": "http://localhost:8090", "required": true
+    }]
   }
 }
 ```
@@ -115,6 +128,30 @@ calls `command/execute` with `name: "plugin_capabilities"`; the response has
 Plugins implement `pluginkit.VerbPlugin` (`Capabilities` and `HandleVerb`) and
 call `pluginkit.Dispatch` first in `Command`. When `handled` is false, they
 continue their legacy command dispatch.
+
+`nav` and `settings` are optional and survive the capability carrier. Existing
+`GET /api/verbs` responses remain keyed by module, with these fields added to
+each plugin declaration. `GET /api/nav` exposes the merged navigation view as
+`{ "groups": [...], "items": [...] }`.
+
+Each nav item references a group declared by the same plugin. Cross-plugin
+references are rejected so validation never depends on load order. Plugins
+may declare the same group ID: the first successfully loaded plugin's group
+metadata wins, the loser is logged, and later distinct items still contribute
+to that group. Duplicate item IDs across plugins also use first-loaded wins
+and log the loser. Within one declaration, duplicate group/item IDs are hard
+errors. Group/item IDs match `^[a-z0-9][a-z0-9_-]*$`, and a non-empty
+`requires_verb` must name a verb declared by that plugin. Merged navigation
+sorts by priority (zero means the default 1000), then by ID to break ties.
+
+Settings keys are unique within a declaration and match
+`^[a-z0-9][a-z0-9_.-]*$`. Types are `string`, `boolean`, `number`, or `select`.
+Select fields require non-empty, unique option values. Supplied defaults must
+match the field type; select defaults must name an allowed option. A missing
+or null default is valid even for required fields, meaning the operator must
+supply a value. Required string defaults cannot be blank; boolean false and
+numeric zero are valid. These declarations describe schemas only: this
+contract neither persists setting values nor implements frontend controls.
 
 ### 8. Registration-Time Capability Verification (D-47)
 
@@ -124,6 +161,7 @@ Capability validation occurs synchronously during plugin initialization (`LoadPl
 2. **Verb Prefix Adherence**: Every verb declared in `verbs` must start with `<module>_` where `<module>` is present in the plugin's `modules` array.
 3. **Effect Validity**: Each verb's `effect` must be one of `reads`, `writes`, `destroys`, or `open_world`.
 4. **Identifier Formatting**: Module names and verb names must match `^[a-z0-9_]+$`.
+5. **Navigation and Settings**: Local references, unique declaration IDs/keys, field types/options and provided defaults follow section 7. Invalid declarations are hard load errors; cross-plugin nav metadata collisions use the documented first-loaded rule.
 
 **Enforcement Rule**: Any validation failure is treated as a **hard load error**. The plugin is terminated, and Tachyon refuses to start. Degraded catalog admissions or silent fallbacks are prohibited.
 
