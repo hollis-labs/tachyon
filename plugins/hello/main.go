@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
@@ -29,6 +30,12 @@ func (hello) Load(ctx context.Context) (subprocess.LoadResult, error) {
 func (hello) Unload(ctx context.Context) error { return nil }
 
 func (hello) Command(ctx context.Context, req subprocess.CommandRequest) (subprocess.CommandResult, error) {
+	// Answer only our own command. The host probes every plugin with the
+	// reserved plugin_capabilities command; a catch-all reply would be read as
+	// a malformed capability declaration, which is a hard load error.
+	if req.Name != "hello" {
+		return subprocess.CommandResult{}, fmt.Errorf("unknown command: %s", req.Name)
+	}
 	return subprocess.CommandResult{Action: "message", Content: "hello, " + req.Args}, nil
 }
 
