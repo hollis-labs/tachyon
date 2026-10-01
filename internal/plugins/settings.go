@@ -104,18 +104,35 @@ func readPluginSettings(root, pluginDir, id string) (map[string]string, error) {
 	return out, nil
 }
 
-// SettingsTargets includes every loaded plugin, including those with no
-// configurable fields. Schemas remain plugin-scoped by the runtime plugin ID.
+// SettingsTargets includes loaded schemas and retired recovery identities.
+// Retired targets have no schema or routing claims, only unload metadata.
+// Loaded target JSON stays unchanged; absent state means loaded.
 func (m *Manager) SettingsTargets() []contract.SettingsTarget {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make([]contract.SettingsTarget, 0, len(m.plugins))
+	out := make([]contract.SettingsTarget, 0, len(m.plugins)+len(m.retired))
 	for id, proc := range m.plugins {
 		target := contract.SettingsTarget{ID: id, Name: proc.name}
 		if proc.capabilities != nil && proc.capabilities.Settings != nil {
 			target.Settings = *proc.capabilities.Settings
 		}
 		out = append(out, target)
+	}
+	out = append(out, m.retiredTargetsLocked()...)
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// retiredTargetsLocked requires m.mu and returns detached metadata copies.
+// During retirement insertion/detachment a loaded ID wins to avoid duplicates.
+func (m *Manager) retiredTargetsLocked() []contract.SettingsTarget {
+	out := make([]contract.SettingsTarget, 0, len(m.retired))
+	for id, retired := range m.retired {
+		if m.plugins[id] != nil {
+			continue
+		}
+		at := retired.retiredAt
+		out = append(out, contract.SettingsTarget{ID: id, Name: retired.name, State: "unloaded", Reason: retired.reason, RetiredAt: &at})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out

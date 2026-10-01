@@ -1,5 +1,7 @@
 package contract
 
+import "time"
+
 // SettingsFieldType is the data type of a plugin settings field.
 type SettingsFieldType string
 
@@ -58,4 +60,8 @@ type SettingsTarget struct {
 	ID       string              `json:"id"`
 	Name     string              `json:"name"`
 	Settings SettingsDeclaration `json:"settings"`
+	// Retirement metadata is additive; absent fields mean a loaded target.
+	State     string     `json:"state,omitempty"`
+	Reason    string     `json:"reason,omitempty"`
+	RetiredAt *time.Time `json:"retired_at,omitempty"`
 }

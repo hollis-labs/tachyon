@@ -56,8 +56,11 @@ func (m *contextMutex) Unlock() {
 
 // interruptProcess must not acquire callMu or any manager lock. The watchdog
 // captures a process pointer, never an ID lookup that could find a replacement.
-func interruptProcess(proc *pluginProcess) {
+func interruptProcess(proc *pluginProcess) { interruptProcessForReason(proc, "host_stop") }
+
+func interruptProcessForReason(proc *pluginProcess, reason string) {
 	proc.interruptOnce.Do(func() {
+		proc.deathReason = reason // Publish before dead so retirement can read it safely.
 		proc.dead.Store(true)
 		if proc.cmd != nil && proc.cmd.Process != nil {
 			_ = proc.cmd.Process.Kill()
@@ -76,6 +79,8 @@ func interruptProcess(proc *pluginProcess) {
 type retiredPlugin struct {
 	id, name, binaryPath string
 	lifetime             context.Context
+	reason               string
+	retiredAt            time.Time
 }
 
 // Retirement runs outside the call lock and asynchronously to avoid delaying
@@ -92,7 +97,7 @@ func (m *Manager) retireProcess(proc *pluginProcess) {
 			m.mu.Lock()
 			current := m.plugins[proc.id] == proc
 			if current {
-				m.retired[proc.id] = retiredPlugin{id: proc.id, name: proc.name, binaryPath: proc.binaryPath, lifetime: proc.lifetime}
+				m.retired[proc.id] = retiredPlugin{id: proc.id, name: proc.name, binaryPath: proc.binaryPath, lifetime: proc.lifetime, reason: proc.deathReason, retiredAt: time.Now().UTC()}
 			}
 			m.mu.Unlock()
 			if current {

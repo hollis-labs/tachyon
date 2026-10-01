@@ -13,8 +13,10 @@ var ErrRestartBusy = errors.New("plugin is busy; restart not attempted")
 // path to re-read settings and validate registration. The original lifetime
 // context is retained: an HTTP request finishing must not kill the new plugin.
 // A failed respawn leaves no registered process, module or navigation claims.
-func (m *Manager) RestartPlugin(id string) error {
-	if err := m.lockLifecycle(context.Background()); err != nil {
+func (m *Manager) RestartPlugin(id string) error { return m.restartPlugin(context.Background(), id) }
+
+func (m *Manager) restartPlugin(ctx context.Context, id string) error {
+	if err := m.lockLifecycle(ctx); err != nil {
 		return fmt.Errorf("%w: %w", ErrRestartBusy, err)
 	}
 	defer m.lifecycleMu.Unlock()

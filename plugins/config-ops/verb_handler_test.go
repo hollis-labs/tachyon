@@ -106,3 +106,31 @@ func TestInitNeedsDataDirAndBadSyncPreservesSchemas(t *testing.T) {
 		t.Fatalf("bad sync replaced targets: %+v %v", view, err)
 	}
 }
+
+func TestConfigListPreservesRetiredTargetMetadata(t *testing.T) {
+	p := &plugin{}
+	if _, err := p.Init(context.Background(), subprocess.InitParams{DataDir: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	// Host's config_schemas carrier includes additive metadata. A future field
+	// remains ignored, preserving compatibility across independent host builds.
+	payload := `[{"id":"hung","name":"Hung","settings":{},"state":"unloaded","reason":"timeout","retired_at":"2026-10-01T19:00:00Z","future_field":"ignored"}]`
+	if env := commandEnvelope(t, p, "config_schemas", payload); env.Status != contract.StatusOK {
+		t.Fatalf("metadata sync failed: %+v", env)
+	}
+	env := commandEnvelope(t, p, "config_list", `{}`)
+	var targets []contract.SettingsTarget
+	if err := json.Unmarshal(env.Data, &targets); err != nil {
+		t.Fatal(err)
+	}
+	if env.Status != contract.StatusOK || len(targets) != 1 || targets[0].State != "unloaded" || targets[0].Reason != "timeout" || targets[0].RetiredAt == nil || targets[0].ID != "hung" {
+		t.Fatalf("config_list lost metadata: %s", env.Data)
+	}
+	if env := commandEnvelope(t, p, "config_schemas", `[]`); env.Status != contract.StatusOK {
+		t.Fatal("clear failed")
+	}
+	env = commandEnvelope(t, p, "config_list", `{}`)
+	if err := json.Unmarshal(env.Data, &targets); err != nil || len(targets) != 0 {
+		t.Fatalf("removed target persisted: %s", env.Data)
+	}
+}
