@@ -297,6 +297,11 @@ func main() {
 		logger.Warn("failed to load agent-ops plugin (build it with: make build-plugins)", "error", err)
 	}
 
+	// Load the service-ops plugin.
+	if err := pluginMgr.LoadPlugin(ctx, "./plugins/service-ops/service-ops"); err != nil {
+		logger.Warn("failed to load service-ops plugin (build it with: make build-plugins)", "error", err)
+	}
+
 	mux := http.NewServeMux()
 
 	// Same-origin API. The starter dashboard polls /api/health; replace
