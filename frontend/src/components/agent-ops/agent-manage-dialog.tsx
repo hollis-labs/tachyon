@@ -34,7 +34,7 @@ type ManageTab = "overview" | "tools" | "skills" | "reflexes"
 
 interface AgentManageDialogProps {
   agent: Agent | null
-  /** The active provider's declared capabilities — combined with the row's own `editable` flag to decide whether Overview is an edit form or a read-only summary. Null while still loading; treated as permissive until it resolves false, to avoid a visible flicker for the common (Nanite, fully-capable) case. */
+  /** The active provider's declared capabilities — combined with the row's own `editable` flag to decide whether Overview is an edit form or a read-only summary. Defaults closed until registry or legacy discovery succeeds. */
   capabilities?: AgentCapabilities | null
   onClose: () => void
   /** Called after a change that may affect the summary list (e.g. an edit or an MCP attach touching the agent row). */
@@ -101,7 +101,7 @@ export function AgentManageDialog({
   }
 
   async function handleSaveOverview() {
-    if (!current || !overviewName.trim() || !overviewSystemPrompt.trim()) return
+    if (!current || !canEditOverview || !overviewName.trim() || !overviewSystemPrompt.trim()) return
     setSavingOverview(true)
     setOverviewError(null)
     try {
@@ -133,12 +133,8 @@ export function AgentManageDialog({
       overviewCanExecute !== current.can_execute ||
       overviewEnabled !== (current.status !== "disabled"))
 
-  // Row-level editable (this specific agent, e.g. not external/internal)
-  // AND provider-level can_update (this adapter supports editing at all).
-  // capabilities?.can_update !== false stays permissive while the
-  // declaration is still loading (null) rather than flashing read-only
-  // then editable for the common fully-capable case.
-  const canEditOverview = !!current?.editable && capabilities?.can_update !== false
+  // Both row ownership and the discovered agent_update verb must permit edits.
+  const canEditOverview = !!current?.editable && capabilities?.can_update === true
 
   const footerButtons: ReactNode[] = []
   if (canEditOverview && activeTab === "overview") {

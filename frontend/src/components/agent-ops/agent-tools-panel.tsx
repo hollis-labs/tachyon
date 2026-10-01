@@ -2,6 +2,7 @@ import { notifyError, Skeleton } from "@hollis-labs/sysop-ui"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { AgentTool } from "../../api/client"
 import { useApi } from "../../api/context"
+import { useCapabilities } from "../../hooks/use-capabilities"
 import { type ChecklistItem, SearchableChecklist } from "./checklist"
 
 interface AgentToolsPanelProps {
@@ -20,6 +21,7 @@ function categoryOf(toolName: string): string {
 
 export function AgentToolsPanel({ agentId }: AgentToolsPanelProps) {
   const api = useApi()
+  const { has } = useCapabilities()
   const [tools, setTools] = useState<AgentTool[]>([])
   const [loading, setLoading] = useState(true)
   const [pendingId, setPendingId] = useState<string | null>(null)
@@ -46,12 +48,12 @@ export function AgentToolsPanel({ agentId }: AgentToolsPanelProps) {
         label: t.name,
         description: t.description,
         category: categoryOf(t.name),
-        disabled: !t.id,
+        disabled: !t.id || (t.granted ? !has("agent_revoke") : !has("agent_grant")),
         disabledReason: t.id
           ? undefined
           : "Not yet synced into the provider's known-tools catalog — needs a restart",
       })),
-    [tools],
+    [tools, has],
   )
   const checked = useMemo(
     () => new Set(tools.filter((t) => t.granted && t.id).map((t) => t.id)),
@@ -60,6 +62,7 @@ export function AgentToolsPanel({ agentId }: AgentToolsPanelProps) {
   const ungrantableCount = tools.filter((t) => !t.id).length
 
   async function handleToggle(toolId: string, next: boolean) {
+    if (!has(next ? "agent_grant" : "agent_revoke")) return
     setPendingId(toolId)
     try {
       if (next) {

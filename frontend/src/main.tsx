@@ -3,6 +3,7 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 import { App } from "./App"
 import { ApiProvider } from "./api/context"
+import { CapabilitiesProvider } from "./hooks/use-capabilities"
 import "./index.css"
 
 // Apply the persisted Sysop UI palette before first paint.
@@ -16,7 +17,9 @@ if (!root) {
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <ApiProvider>
-      <App />
+      <CapabilitiesProvider>
+        <App />
+      </CapabilitiesProvider>
     </ApiProvider>
   </React.StrictMode>,
 )
