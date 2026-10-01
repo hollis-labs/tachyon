@@ -10,7 +10,7 @@ import {
 } from "@hollis-labs/design-components"
 import { PageHeader, SummaryCards } from "@hollis-labs/kit-dashboard"
 import { Plus } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Agent as ApiAgent } from "../api/client"
 import { useApi } from "../api/context"
 import { AgentManageDialog } from "../components/agent-ops/agent-manage-dialog"
@@ -42,6 +42,8 @@ export function AgentOpsPage() {
   const [search, setSearch] = useState<string>("")
   const { has, agent: capabilities } = useCapabilities()
 
+  const createTrigger = useRef<HTMLButtonElement>(null)
+  const detailTrigger = useRef<HTMLElement | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [createName, setCreateName] = useState("")
   const [createSystemPrompt, setCreateSystemPrompt] = useState("")
@@ -130,6 +132,8 @@ export function AgentOpsPage() {
   // point (Overview tab, now itself editable) instead of a separate small
   // popup with no path to Tools/Skills/Reflexes.
   async function openManageDialog(id: string) {
+    detailTrigger.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
     try {
       const fullAgent = await api.getAgent(id)
       setDetailInitialTab("overview")
@@ -191,6 +195,7 @@ export function AgentOpsPage() {
       // Step 2 of 2: land straight on Tools so a freshly created agent
       // doesn't sit at zero tool grants with no obvious next step.
       setDetailInitialTab("tools")
+      detailTrigger.current = createTrigger.current
       setCreationWizardActive(true)
       setDetailAgent(created)
     } catch (error) {
@@ -242,7 +247,7 @@ export function AgentOpsPage() {
     <div className="flex h-full flex-col">
       <PageHeader title="Agent Operations">
         {has("agent_create") && (
-          <Button type="button" size="sm" onClick={openCreateDialog}>
+          <Button ref={createTrigger} type="button" size="sm" onClick={openCreateDialog}>
             <Plus className="h-4 w-4" />
             New Agent
           </Button>
@@ -275,6 +280,7 @@ export function AgentOpsPage() {
       </div>
       <LargeDialog
         open={createOpen}
+        finalFocus={createTrigger}
         onClose={() => setCreateOpen(false)}
         title="New Agent"
         description="Step 1 of 2 — Basic Info. Capabilities (tools, skills, MCP servers, reflexes) come next."
@@ -345,6 +351,7 @@ export function AgentOpsPage() {
       </LargeDialog>
 
       <AgentManageDialog
+        finalFocus={detailTrigger}
         agent={detailAgent}
         capabilities={capabilities}
         initialTab={detailInitialTab}

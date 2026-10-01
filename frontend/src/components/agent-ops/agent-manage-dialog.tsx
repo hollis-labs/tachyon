@@ -11,7 +11,7 @@ import {
   TabsTrigger,
   Textarea,
 } from "@hollis-labs/design-components"
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, type RefObject, useEffect, useState } from "react"
 import type { Agent, AgentCapabilities } from "../../api/client"
 import { useApi } from "../../api/context"
 import { AgentMCPPanel } from "./agent-mcp-panel"
@@ -33,6 +33,7 @@ const GRANTED_BY = "operator"
 type ManageTab = "overview" | "tools" | "skills" | "reflexes"
 
 interface AgentManageDialogProps {
+  finalFocus?: RefObject<HTMLElement | null>
   agent: Agent | null
   /** The active provider's declared capabilities — combined with the row's own `editable` flag to decide whether Overview is an edit form or a read-only summary. Defaults closed until registry or legacy discovery succeeds. */
   capabilities?: AgentCapabilities | null
@@ -53,6 +54,7 @@ interface AgentManageDialogProps {
 
 export function AgentManageDialog({
   agent,
+  finalFocus,
   capabilities,
   onClose,
   onAgentChanged,
@@ -163,6 +165,7 @@ export function AgentManageDialog({
 
   return (
     <LargeDialog
+      finalFocus={finalFocus}
       open={!!current}
       onClose={onClose}
       title={current?.name || ""}

@@ -5,10 +5,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@hollis-labs/design-components"
-import type { ReactNode } from "react"
+import type { ReactNode, RefObject } from "react"
 
 interface LargeDialogProps {
   open: boolean
+  finalFocus?: RefObject<HTMLElement | null>
   onClose: () => void
   title: ReactNode
   description?: ReactNode
@@ -26,6 +27,7 @@ interface LargeDialogProps {
 export function LargeDialog({
   open,
   onClose,
+  finalFocus,
   title,
   description,
   meta,
@@ -35,6 +37,7 @@ export function LargeDialog({
   return (
     <Dialog open={open} onOpenChange={(next: boolean) => !next && onClose()}>
       <DialogContent
+        finalFocus={finalFocus}
         widthClassName="max-w-[80vw]"
         className="flex h-[80vh] max-h-[calc(100vh-2rem)] w-[80vw] flex-col gap-0 overflow-hidden p-0"
       >
