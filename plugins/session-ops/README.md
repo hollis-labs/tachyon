@@ -39,3 +39,18 @@ agent is a different operation. Any follow-up belongs in Tether first.
 The declaration includes the Sessions navigation group and its list/history
 items. Rendering these declarations and implementing the React screens are
 separate host/frontend work; this plugin adds no browser routes.
+
+Turn submissions have a 30-second context deadline (a shorter caller deadline
+wins), so a stalled Tether turn releases the serial plugin pipe. Timeout returns
+`timeout` with unknown completion: a submitted turn may still run upstream, so
+inspect session history before retrying. Other operations use the client's
+five-second HTTP timeout; create performs allocation and a follow-up read.
+
+The HTTP boundary caps successful response bodies at 2 MiB before SDK decoding
+and response headers at 64 KiB. Non-success bodies are closed without reading;
+provider error codes, messages and bodies never enter verb errors. Errors expose
+only a fixed local code and, when available, the numeric HTTP status. Malformed
+responses and transport errors use a generic message. Redirects are not followed.
+HTTP(S), TCP, explicit Unix paths, home-relative Unix paths and the default socket
+retain their address semantics. Response bodies are buffered within the cap, so
+this boundary is for these finite session operations, not streaming attachments.

@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	tether "github.com/hollis-labs/go-tether-client"
 	"strings"
 
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -76,8 +79,21 @@ func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMe
 }
 
 func sessionResult(data any, err error) (contract.ResultEnvelope, error) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return contract.Err("timeout", "session request timed out; completion is unknown"), nil
+	}
+	if errors.Is(err, errResponseTooLarge) {
+		return contract.Err("response_too_large", "Tether response exceeded size limit"), nil
+	}
+	if errors.Is(err, errInactiveSession) {
+		return contract.Err("invalid_state", "session is not running"), nil
+	}
+	var apiErr *tether.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode >= 100 && apiErr.StatusCode <= 599 {
+		return contract.Err("provider_error", fmt.Sprintf("Tether request failed (HTTP %d)", apiErr.StatusCode)), nil
+	}
 	if err != nil {
-		return contract.Err("provider_error", err.Error()), nil
+		return contract.Err("provider_error", "Tether request failed"), nil
 	}
 	return contract.OK(data)
 }

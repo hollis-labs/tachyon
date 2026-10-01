@@ -16,15 +16,21 @@ type TetherLaunchAdapter struct {
 }
 
 func NewTetherLaunchAdapter(addr string, store *LaunchStore) (*TetherLaunchAdapter, error) {
-	client, err := tether.New(addr)
+	httpClient, err := tetherHTTPClient(addr)
 	if err != nil {
-		return nil, err
+		return nil, safeProviderError(err)
+	}
+	client, err := tether.New(addr, tether.WithHTTPClient(httpClient))
+	if err != nil {
+		return nil, safeProviderError(err)
 	}
 	a := &TetherLaunchAdapter{client: client, launchLifecycle: &launchLifecycle{store: store, backend: "tether", replaySafe: true}}
 	a.resolve = a.resolveLaunch
 	a.start = a.startSession
 	a.refresh = a.refreshSession
-	a.stop = func(ctx context.Context, l *Launch) error { return a.client.StopSession(ctx, l.SessionID) }
+	a.stop = func(ctx context.Context, l *Launch) error {
+		return safeProviderError(a.client.StopSession(ctx, l.SessionID))
+	}
 	return a, nil
 }
 
@@ -43,7 +49,7 @@ func (a *TetherLaunchAdapter) resolveLaunch(ctx context.Context, req PrepareRequ
 	launchID, _ := req.Config["launch_id"].(string)
 	launches, err := a.client.ListLaunches(ctx)
 	if err != nil {
-		return req, "", err
+		return req, "", safeProviderError(err)
 	}
 	matches := []tether.Launch{}
 	for _, l := range launches {
@@ -78,7 +84,7 @@ func (a *TetherLaunchAdapter) startSession(ctx context.Context, l *Launch) (stri
 		prompt, _ := l.Config["boot_prompt"].(string)
 		result, err := a.client.CreateSessionWithInput(ctx, tether.LaunchRequest{Launch: launchID, BootPrompt: prompt, IdempotencyKey: "tachyon:launch:" + l.ID})
 		if err != nil {
-			return "", LaunchStateExecuting, err
+			return "", LaunchStateExecuting, safeProviderError(err)
 		}
 		sid = result.ID
 		if sid == "" {
@@ -88,7 +94,7 @@ func (a *TetherLaunchAdapter) startSession(ctx context.Context, l *Launch) (stri
 		defer cancel()
 		saved, err := a.store.Update(saveCtx, l.ID, func(current *Launch) error { current.SessionID = sid; current.UpdatedAt = time.Now().UTC(); return nil })
 		if err != nil {
-			return sid, LaunchStateExecuting, err
+			return sid, LaunchStateExecuting, safeProviderError(err)
 		}
 		if saved.State == LaunchStateCancelled {
 			return sid, LaunchStateCancelled, nil
@@ -97,15 +103,15 @@ func (a *TetherLaunchAdapter) startSession(ctx context.Context, l *Launch) (stri
 	// Read first: replaying a completed keyed session must never relaunch it.
 	session, err := a.client.GetSession(ctx, sid)
 	if err != nil {
-		return sid, LaunchStateExecuting, err
+		return sid, LaunchStateExecuting, safeProviderError(err)
 	}
 	if session.State == tether.SessionStateCreated {
 		if _, err := a.client.LaunchSession(ctx, sid); err != nil {
-			return sid, LaunchStateExecuting, err
+			return sid, LaunchStateExecuting, safeProviderError(err)
 		}
 		session, err = a.client.GetSession(ctx, sid)
 		if err != nil {
-			return sid, LaunchStateExecuting, err
+			return sid, LaunchStateExecuting, safeProviderError(err)
 		}
 	}
 	state, err := launchStateFromSession(session.State)
@@ -125,18 +131,18 @@ func launchStateFromSession(state string) (LaunchState, error) {
 	case tether.SessionStateKilled:
 		return LaunchStateCancelled, nil
 	default:
-		return LaunchStateExecuting, fmt.Errorf("unknown Tether session state %q", state)
+		return LaunchStateExecuting, fmt.Errorf("unknown Tether session state")
 	}
 }
 
 func (a *TetherLaunchAdapter) refreshSession(ctx context.Context, l *Launch) (*Launch, error) {
 	session, err := a.client.GetSession(ctx, l.SessionID)
 	if err != nil {
-		return nil, err
+		return nil, safeProviderError(err)
 	}
 	state, err := launchStateFromSession(session.State)
 	if err != nil {
-		return nil, err
+		return nil, safeProviderError(err)
 	}
 	return a.store.Update(ctx, l.ID, func(current *Launch) error {
 		if terminalLaunch(current.State) {
