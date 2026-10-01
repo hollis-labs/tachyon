@@ -297,6 +297,11 @@ func main() {
 		logger.Warn("failed to load agent-ops plugin (build it with: make build-plugins)", "error", err)
 	}
 
+	// Session lifecycle is owned by Tether, exposed by session-ops.
+	if err := pluginMgr.LoadPlugin(ctx, "./plugins/session-ops/session-ops"); err != nil {
+		logger.Warn("failed to load session-ops plugin (build it with: make build-plugins)", "error", err)
+	}
+
 	mux := http.NewServeMux()
 
 	// Same-origin API. The starter dashboard polls /api/health; replace
