@@ -401,8 +401,10 @@ func (m *Manager) AllCapabilities() map[string]*contract.PluginCapabilities {
 	return result
 }
 
-// Shutdown gives each plugin a bounded chance to unload, then closes its pipes.
-// ctx bounds lifecycle lock acquisition and shortens all unload attempts.
+// Shutdown gives each plugin a fresh pluginUnloadTimeout grace, then force-stops
+// and reaps it. Use an independent context after HTTP drain for normal shutdown;
+// an explicit caller deadline still shortens all attempts (startup rollback).
+// Nil means cleanup completed, including forced cleanup logged per plugin.
 func (m *Manager) Shutdown(ctx context.Context) error {
 	if err := m.lockLifecycle(ctx); err != nil {
 		return err
@@ -412,7 +414,9 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	ids := append([]string(nil), m.loadOrder...)
 	m.mu.RUnlock()
 	for _, id := range ids {
-		m.unloadPlugin(ctx, id)
+		bounded, cancel := context.WithTimeout(ctx, pluginUnloadTimeout)
+		m.unloadPlugin(bounded, id)
+		cancel()
 	}
 	m.mu.Lock()
 	clear(m.retired) // shutdown must not leave recovery paths for stopped plugins

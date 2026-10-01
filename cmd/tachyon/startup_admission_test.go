@@ -54,11 +54,13 @@ func fakeAdmissionPlugin(dir string) {
 				}
 			}
 		case "plugin/unload":
+			_ = os.WriteFile(filepath.Join(dir, "unload-started"), nil, 0600)
 			if _, err := os.Stat(filepath.Join(dir, "hang-unload")); err == nil {
 				for {
 					time.Sleep(time.Hour)
 				}
 			}
+			_ = os.WriteFile(filepath.Join(dir, "unload-ack"), nil, 0600)
 		case "command/execute":
 			content, _ := os.ReadFile(filepath.Join(dir, "declaration"))
 			switch string(content) {

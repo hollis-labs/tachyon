@@ -59,6 +59,18 @@ placeholder in place of the app.
 | `make install` | Build the embedded UI + install `tachyon` to `$GOBIN` |
 | `make test` / `make vet` | Go test / vet |
 
+## Shutdown
+
+On SIGINT or SIGTERM, Tachyon stops accepting HTTP connections and gives active
+requests a separate five-second drain grace. If draining times out, it closes
+remaining connections before unloading plugins. Each plugin then gets its own
+five-second unload grace; a hung hook is force-stopped and reaped, and later
+plugins still get their grace. Logs identify `http_drain` or `plugin_unload`
+timeouts and the affected plugin ID. A clean signal stop exits zero. Normal
+shutdown can therefore take five seconds plus five seconds per loaded plugin,
+excluding bounded lifecycle-lock acquisition. Startup rollback retains its
+separate shared five-second cleanup cap.
+
 ## Adding a page
 
 A page is generic kit chrome plus app-specific content. Add a component
