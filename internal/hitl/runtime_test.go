@@ -208,3 +208,46 @@ func TestForgedTerminalIdentityAndAttention(t *testing.T) {
 		t.Fatal("nonterminal approval")
 	}
 }
+
+type waitingClient struct {
+	*fakeClient
+	started, release chan struct{}
+}
+
+func (f *waitingClient) Retrieve(ctx context.Context, id string, wait int) (core.RetrievalResult, error) {
+	close(f.started)
+	select {
+	case <-f.release:
+	case <-ctx.Done():
+		return core.RetrievalResult{}, ctx.Err()
+	}
+	r, e := f.fakeClient.Retrieve(ctx, id, wait)
+	r.Mode = core.ModeAwait
+	r.WaitStatus = core.WaitTerminal
+	return r, e
+}
+func TestRestartWhileAwaitingApprovalFailsClosed(t *testing.T) {
+	f := &waitingClient{fakeClient: &fakeClient{}, started: make(chan struct{}), release: make(chan struct{})}
+	r, _ := NewRuntime(f, "")
+	var alive atomic.Bool
+	alive.Store(true)
+	a := ask(t, r, `{}`, alive.Load)
+	terminal(f.fakeClient, core.StateResolved, "approval", "approved")
+	done := make(chan error, 1)
+	go func() {
+		s, e := r.Status(context.Background(), a.OperationID, 50)
+		if s.Approved {
+			t.Error("approval survived process replacement")
+		}
+		done <- e
+	}()
+	<-f.started
+	alive.Store(false)
+	close(f.release)
+	if e := <-done; !errors.Is(e, ErrCorrelation) {
+		t.Fatal(e)
+	}
+	if len(f.requests) != 1 {
+		t.Fatal("await replayed provider/enqueue")
+	}
+}
