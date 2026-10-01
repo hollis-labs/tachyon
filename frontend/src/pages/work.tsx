@@ -7,6 +7,7 @@ import { useApi } from "../api/context"
 import { PendingApprovalError } from "../api/hitl"
 import { type AskDetail, useVerbs } from "../api/verbs"
 import { PendingApproval } from "../components/pending-approval"
+import { workSearchNotice } from "../components/work/search-notice"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
 
 const selectStyle = "h-8 rounded-md border border-border bg-surface px-2 text-sm text-text"
@@ -25,6 +26,7 @@ export function WorkPage() {
   const [pending, setPending] = useState<AskDetail | null>(null)
   const [agentPending, setAgentPending] = useState<AskDetail | null>(null)
   const [search, setSearch] = useState("")
+  const [searchResult, setSearchResult] = useState<{ query: string; notice?: string } | null>(null)
   const [status, setStatus] = useState("")
   const [assignee, setAssignee] = useState("")
   const [revision, setRevision] = useState(0)
@@ -43,11 +45,14 @@ export function WorkPage() {
         setLoading(true)
         setError("")
         setPending(null)
+        setSearchResult(null)
         try {
           const query = search.trim()
           let items: WorkItem[]
           if (query && canSearch) {
-            items = dataOf(await api.searchWork(query)).tasks
+            const page = dataOf(await api.searchWork(query))
+            items = page.tasks
+            if (active) setSearchResult({ query, notice: workSearchNotice(page) })
           } else {
             items = []
             let offset = 0
@@ -156,7 +161,10 @@ export function WorkPage() {
           {!loading && !error && !pending && (
             <SummaryCards
               cards={[
-                { label: "Matching tasks", value: visibleTasks.length },
+                {
+                  label: search.trim() && canSearch ? "Returned tasks" : "Matching tasks",
+                  value: visibleTasks.length,
+                },
                 {
                   label: "Doing",
                   value: visibleTasks.filter((task) => task.status === "doing").length,
@@ -234,6 +242,15 @@ export function WorkPage() {
             )}
           </div>
           <div className="flex-1 overflow-auto">
+            {!loading &&
+              !error &&
+              !pending &&
+              searchResult?.query === search.trim() &&
+              searchResult.notice && (
+                <p role="status" className="px-4 py-3 text-sm text-text-muted break-words">
+                  {searchResult.notice}
+                </p>
+              )}
             {pending ? (
               <div className="p-4">
                 <PendingApproval ask={pending} />

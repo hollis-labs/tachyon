@@ -2,7 +2,8 @@
 
 Open **Board** in the shell's **Work** group. Its registered page route is
 `/work/board`, a shell navigation identifier within the UI served under
-`/sysop/`. **Tasks** at `/work` remains a separate list page.
+`/sysop/`. **Tasks** at `/work` remains a separate list page; its provider search
+uses the same 200-match cap and notice described below.
 
 ## Capabilities
 
@@ -49,8 +50,14 @@ columns; the board does not automatically poll.
 Search uses `work_search`, independently of the board columns. The project
 filter does not apply to search. Provider-custom statuses appear only in
 search; the board cannot discover all custom statuses without scanning the
-whole collection. Search results are the provider's returned subset, with no
-search pagination control or completeness guarantee.
+whole collection. Search returns at most 200 matches. When a consistent exact
+provider total exceeds the returned count, Tasks and Board show:
+**Showing the first 200 of N matches. Refine your search.** An exactly-200
+complete result has no cap notice. Missing or inconsistent metadata does not
+produce an invented total. Search has no pagination control or automatic
+loading; refine the query to narrow the results. Counts describe returned
+results, and Tasks' local status/assignee filters do not change the provider's
+search total.
 
 Cards show title, ID, status, priority and assignee. Their details dialog is
 shared with the Tasks page. Assignment, status changes and comments require
