@@ -32,7 +32,9 @@ const (
 // intent. The prepare phase creates it; the execute phase commits the
 // side effects (session creation on the target provider).
 type Launch struct {
-	ID        string      `json:"id"`
+	ID string `json:"id"`
+	// Backend records the orchestration service separately from Provider.
+	Backend   string      `json:"backend"`
 	AgentID   string      `json:"agent_id"`
 	AgentName string      `json:"agent_name,omitempty"`
 	Provider  string      `json:"provider,omitempty"`
@@ -55,6 +57,9 @@ type Launch struct {
 
 // PrepareRequest is the payload for launch_prepare.
 type PrepareRequest struct {
+	// Backend optionally chooses nanite or tether; otherwise default_provider
+	// applies (legacy provider=nanite/tether also selects that backend).
+	Backend   string         `json:"backend,omitempty"`
 	AgentID   string         `json:"agent_id"`
 	Provider  string         `json:"provider,omitempty"`
 	Model     string         `json:"model,omitempty"`

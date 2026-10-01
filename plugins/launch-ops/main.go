@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -17,6 +18,7 @@ var capabilitiesJSON []byte
 
 type plugin struct {
 	adapter LaunchAdapter
+	store   *LaunchStore
 	caps    contract.PluginCapabilities
 }
 
@@ -42,7 +44,47 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 		naniteURL = url
 	}
 
-	p.adapter = NewNaniteLaunchAdapter(naniteURL)
+	dataDir := params.DataDir
+	if dataDir == "" {
+		dataDir = os.Getenv("TACHYON_LAUNCH_DATA_DIR")
+	}
+	if dataDir == "" {
+		root := os.Getenv("XDG_DATA_HOME")
+		if root == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return subprocess.InitResult{}, err
+			}
+			root = filepath.Join(home, ".local", "share")
+		}
+		dataDir = filepath.Join(root, "tachyon", "plugins", "launch-ops")
+	}
+	store, err := OpenLaunchStore(filepath.Join(dataDir, "launches.db"))
+	if err != nil {
+		return subprocess.InitResult{}, fmt.Errorf("open launch store: %w", err)
+	}
+	addr := params.Config["tether_addr"]
+	if addr == "" {
+		addr = os.Getenv("TETHER_ADDR")
+	}
+	tetherAdapter, err := NewTetherLaunchAdapter(addr, store)
+	if err != nil {
+		store.Close()
+		return subprocess.InitResult{}, err
+	}
+	defaultProvider := params.Config["default_provider"]
+	if defaultProvider == "" {
+		defaultProvider = os.Getenv("TACHYON_LAUNCH_DEFAULT_PROVIDER")
+	}
+	if defaultProvider == "" {
+		defaultProvider = "nanite"
+	}
+	if defaultProvider != "nanite" && defaultProvider != "tether" {
+		store.Close()
+		return subprocess.InitResult{}, fmt.Errorf("unsupported default_provider %q", defaultProvider)
+	}
+	p.store = store
+	p.adapter = &launchRouter{store: store, defaultProvider: defaultProvider, adapters: map[string]LaunchAdapter{"nanite": NewNaniteLaunchAdapter(naniteURL, store), "tether": tetherAdapter}}
 
 	return subprocess.InitResult{
 		ID:          "launch-ops",
@@ -58,6 +100,9 @@ func (p *plugin) Load(_ context.Context) (subprocess.LoadResult, error) {
 }
 
 func (p *plugin) Unload(_ context.Context) error {
+	if p.store != nil {
+		return p.store.Close()
+	}
 	return nil
 }
 
