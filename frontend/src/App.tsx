@@ -92,7 +92,7 @@ export function App() {
 
   // Recovery is a host surface, never a plugin capability or nav declaration.
   const recoveryAvailable =
-    retired.length > 0 && !navigation.items?.some((item) => item.route === "/settings")
+    !loading && retired.length > 0 && !navigation.items?.some((item) => item.route === "/settings")
   async function refreshRecovery() {
     const [nextNavigation, nextRetired] = await Promise.all([
       fetchNavigation(),
