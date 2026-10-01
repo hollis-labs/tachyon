@@ -88,9 +88,20 @@ verb. Visibility requires both supported capabilities and a registered page.
 Keep API clients under `frontend/src/api/` and browser requests same-origin.
 Read the declaration validation rules in ADR 001 before adding a plugin page.
 
-<!-- TODO(final pass): Reconcile Observe UI, Work/Board per-status behavior,
-Services/SCM/Settings recovery, Toaster and Work search cap after their frontend
-PRs merge. Describe only merged behavior verified against source. -->
+## Page guides
+
+| Guide | Operator behavior |
+| --- | --- |
+| [Agent Operations](docs/pages/agent-ops.md) | Notifications, dialog focus and mobile rows |
+| [Work Board](docs/pages/work-board.md) | Per-status columns, filtered totals and explicit task actions |
+| [Services and health](docs/pages/services.md) | Connector definitions, separate health snapshots and manual refresh |
+| [SCM](docs/pages/scm.md) | Read-only repository status, activity and diffs |
+| [Observe](docs/pages/observe.md) | Bounded snapshots, refresh and honest telemetry limits |
+| [Settings and plugin recovery](docs/pages/settings-recovery.md) | Persisted settings and explicit restart recovery |
+| [Operator decisions](docs/pages/hitl-ui.md) | Read-only decision tracking; continuation unavailable |
+
+The [documentation index](docs/README.md) also links the host contracts and
+operations guides.
 
 ## Dependencies and contributing
 

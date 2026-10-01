@@ -18,16 +18,15 @@ The host validates request snapshot, item ID, revisions, contract version, lifec
 
 **Continuation is unavailable.** There is no POST/resume route, no automatic verb replay after approval, and no provider call from status. Unknown write completion remains unknown. The current plugin carrier cannot safely express a trusted continuation. The continuation design is tracked as a follow-up. Frontend rendering is separate from this host contract. This host change is not a complete HITL continuation runtime.
 
-## Work and Launch pending decisions
+## Operator-decision panels
 
 Work task details, Board/list/search reads, and Launch reads/actions preserve an `ask` as a pending operator panel. Options and context are read-only; escaped text never becomes HTML. A host-supplied absolute HTTP(S) item link opens Tangent in a separate tab with `noopener noreferrer`. The browser never fetches Tangent or a provider.
 
 Only GET of the host operation endpoint is polled, with `wait_ms=25000`, no overlapping requests, and a three-second minimum between responses. Busy/unavailable status retries use exponential backoff and stop after five consecutive failures. Polling stops on terminal/unknown states, lost correlation (410), rejected origin (403), unmount, or the earlier of ask expiry and a ten-minute mounted tracking window. Closing a panel aborts its browser wait; it does not cancel the Tangent item. Resolved approval requires the host projection's `approved:true` and `decision:"approved"`; other outcomes cannot grant approval. Every panel states that Tachyon took no action in response to the decision, and continuation is unavailable. Pending writes stay blocked in that form, with drafts and selection retained. There is no Continue, Resume, or Retry-write action and no verb replay. Starting a new action is a distinct operator intent, not continuation of the approved operation.
 
-Settings pending treatment is a separate frontend follow-up after its settings UI change; safe continuation is not yet implemented.
+Settings reads and writes also preserve asks in the pending-decision panel. Drafts and target selection remain intact while a pending write blocks further actions in that form. Tracking is read-only: an approved decision does not save, reset or restart a plugin, and safe continuation is not implemented. See [Settings and recovery](pages/settings-recovery.md).
 
-<!-- TODO(final pass): Reconcile page-specific ask handling alongside merged
-Work/Board and Settings recovery changes. Preserve the already-merged Work/Launch
-behavior above and the unavailable-continuation contract. -->
+The [operator-decision UI guide](pages/hitl-ui.md) describes supported surfaces,
+tracking bounds and terminal states.
 
 [Host operations](host-operations.md) documents lifecycle and deployment limits.
