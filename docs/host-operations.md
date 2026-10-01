@@ -106,8 +106,9 @@ live process or its retired tombstone. Persisted settings apply to the new spawn
 | Unknown id (`ErrPluginNotFound`) | 404 / `unloaded` |
 | Actual respawn/admission failure | 500 / `unloaded` |
 
-A valid restart does not retry the interrupted operation. Recovery UI details
-are reserved for the final page documentation pass.
+A valid restart does not retry the interrupted operation. See
+[Settings and plugin recovery](pages/settings-recovery.md) for the operator
+controls and host fallback page.
 
 ## Local settings and shutdown
 
@@ -229,6 +230,4 @@ provider data.
 - Local settings are plaintext, applied at restart; no plugin install or
   enable/disable surface. See SECURITY.md for provider and log protection.
 
-<!-- TODO(final pass): Reconcile Observe UI, Work/Board per-status behavior,
-Services/SCM/Settings recovery, Toaster and search cap after their frontend PRs
-merge. Describe page behavior verified against merged source. -->
+See the [documentation index](README.md) for the supported operator page guides.
