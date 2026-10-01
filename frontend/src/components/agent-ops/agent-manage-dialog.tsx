@@ -177,7 +177,7 @@ export function AgentManageDialog({
           )}
         </div>
       }
-      footer={footerButtons.length > 0 ? <>{footerButtons}</> : undefined}
+      footer={footerButtons.length > 0 ? footerButtons : undefined}
     >
       {current && (
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ManageTab)}>

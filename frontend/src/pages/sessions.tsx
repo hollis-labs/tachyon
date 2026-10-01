@@ -12,9 +12,12 @@ import { type AgentStatus, FilterBar } from "../components/agent-ops/filter-bar"
 function TableSkeleton() {
   return (
     <div className="flex flex-col gap-2 p-4">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-16 w-full rounded-md" />
-      ))}
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
     </div>
   )
 }
@@ -75,9 +78,9 @@ export function SessionsPage() {
         (a) =>
           a.name.toLowerCase().includes(query) ||
           a.id.toLowerCase().includes(query) ||
-          (a.slug && a.slug.toLowerCase().includes(query)) ||
-          (a.provider && a.provider.toLowerCase().includes(query)) ||
-          (a.model && a.model.toLowerCase().includes(query)),
+          a.slug?.toLowerCase().includes(query) ||
+          a.provider?.toLowerCase().includes(query) ||
+          a.model?.toLowerCase().includes(query),
       )
     }
     return result

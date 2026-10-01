@@ -54,15 +54,19 @@ export function DurableAgentTable({
   return (
     <div className="divide-y divide-border border-t border-border">
       {agents.map((agent) => (
-        <div
+        <button
+          type="button"
+          disabled={!onRowClick}
           key={agent.id}
           onClick={() => onRowClick?.(agent)}
-          className="flex items-center gap-4 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors cursor-pointer"
+          className="flex w-full text-left items-center gap-4 bg-surface px-4 py-3 hover:bg-panel-1 transition-colors cursor-pointer"
         >
-          <div className={`h-2 w-2 rounded-full ${STATUS_DOT[agent.status] || "bg-text-subtle"}`} />
+          <span
+            className={`h-2 w-2 rounded-full ${STATUS_DOT[agent.status] || "bg-text-subtle"}`}
+          />
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+          <span className="flex-1 min-w-0">
+            <span className="flex items-center gap-2">
               <span className="font-medium text-sm text-text truncate">{agent.name}</span>
               <span
                 className={`text-xs uppercase tracking-wider ${STATUS_TEXT[agent.status] || "text-text-subtle"}`}
@@ -79,17 +83,17 @@ export function DurableAgentTable({
                   {agent.model}
                 </span>
               )}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-text-subtle mt-1">
+            </span>
+            <span className="flex items-center gap-3 text-xs text-text-subtle mt-1">
               <span>ID: {agent.id}</span>
               {agent.slug && <span>Slug: {agent.slug}</span>}
               {agent.currentSessionId && <span>Session: {agent.currentSessionId}</span>}
               {agent.updatedAt && (
                 <span>Updated: {new Date(agent.updatedAt).toLocaleString()}</span>
               )}
-            </div>
-          </div>
-        </div>
+            </span>
+          </span>
+        </button>
       ))}
     </div>
   )

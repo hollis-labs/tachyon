@@ -10,14 +10,14 @@
       // paints with no data-theme attribute (default light styling) and
       // flips to the stored theme a moment later, which reads as a flash.
       // Mirrors @hollis-labs/sysop-ui's applyTheme/getInitialTheme.
-      (function () {
-        var KEY = "sysop.theme";
-        var KNOWN = ["p1-green-phosphor", "p3-amber-phosphor", "p4-white", "hi-contrast"];
-        var theme = "p4-white";
+      (() => {
+        const KEY = "sysop.theme";
+        const KNOWN = ["p1-green-phosphor", "p3-amber-phosphor", "p4-white", "hi-contrast"];
+        let theme = "p4-white";
         try {
-          var stored = window.localStorage.getItem(KEY);
+          const stored = window.localStorage.getItem(KEY);
           if (stored && KNOWN.indexOf(stored) !== -1) theme = stored;
-        } catch (e) {}
+        } catch {}
         document.documentElement.setAttribute("data-theme", theme);
       })();
     </script>

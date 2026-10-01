@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
-import { createPluginRegistry } from "@hollis-labs/plugin-registry"
 import type { PluginRegistry, PluginRegistrySnapshot } from "@hollis-labs/plugin-registry"
+import { createPluginRegistry } from "@hollis-labs/plugin-registry"
+import { useEffect, useState } from "react"
 
 /**
  * PluginLoader fetches the plugin registry from the server and displays
@@ -21,12 +21,12 @@ export function PluginLoader() {
         // Create the plugin registry
         registry = createPluginRegistry({
           onDiagnostic: (event) => {
-            console.log('[plugin-registry]', event)
+            console.log("[plugin-registry]", event)
           },
         })
 
         // Fetch the registry response from the server
-        const response = await fetch('/api/plugins/registry')
+        const response = await fetch("/api/plugins/registry")
         if (!response.ok) {
           throw new Error(`Failed to fetch registry: ${response.statusText}`)
         }
@@ -83,22 +83,16 @@ export function PluginLoader() {
     <div className="rounded-lg border border-border bg-surface p-4">
       <h3 className="text-sm font-medium mb-4">Plugins</h3>
       <div className="space-y-2">
-        <p className="text-sm text-subtle">
-          Registry Protocol: {snapshot.protocol}
-        </p>
-        <p className="text-sm text-subtle">
-          Plugins Loaded: {pluginCount}
-        </p>
-        <p className="text-sm text-subtle">
-          Contributions: {contributionCount}
-        </p>
+        <p className="text-sm text-subtle">Registry Protocol: {snapshot.protocol}</p>
+        <p className="text-sm text-subtle">Plugins Loaded: {pluginCount}</p>
+        <p className="text-sm text-subtle">Contributions: {contributionCount}</p>
         {pluginCount > 0 && (
           <div className="mt-4">
             <h4 className="text-xs font-medium mb-2">Registered Plugins</h4>
             <ul className="space-y-1">
               {snapshot.plugins.map((plugin) => (
                 <li key={plugin.id} className="text-xs text-subtle">
-                  • {plugin.id} {plugin.loaded ? '✓' : '✗'}
+                  • {plugin.id} {plugin.loaded ? "✓" : "✗"}
                 </li>
               ))}
             </ul>
