@@ -1,8 +1,9 @@
 import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/sysop-ui"
-import { Activity, LayoutDashboard, Radio, Users } from "lucide-react"
+import { Activity, LayoutDashboard, Radio, Rocket, Users } from "lucide-react"
 import { useState } from "react"
 import { AgentOpsPage } from "./pages/agent-ops"
 import { DashboardPage } from "./pages/dashboard"
+import { LaunchesPage } from "./pages/launches"
 import { SessionsPage } from "./pages/sessions"
 
 /**
@@ -36,6 +37,13 @@ export function App() {
       active: route === "sessions",
       onSelect: () => setRoute("sessions"),
     },
+    {
+      key: "launches",
+      label: "Launches",
+      icon: <Rocket className="h-4 w-4" />,
+      active: route === "launches",
+      onSelect: () => setRoute("launches"),
+    },
   ]
 
   return (
@@ -51,6 +59,7 @@ export function App() {
           {route === "dashboard" && <DashboardPage />}
           {route === "agent-ops" && <AgentOpsPage />}
           {route === "sessions" && <SessionsPage />}
+          {route === "launches" && <LaunchesPage />}
         </main>
       </div>
     </div>
