@@ -41,9 +41,8 @@
         "key": "default_provider",
         "type": "select",
         "label": "Default Provider",
-        "default": "tether",
+        "default": "nanite",
         "options": [
-          { "label": "Tether", "value": "tether" },
           { "label": "Nanite", "value": "nanite" }
         ]
       }

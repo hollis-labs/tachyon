@@ -46,18 +46,21 @@ type naniteAgent struct {
 	Enabled bool   `json:"enabled"`
 }
 
-// naniteCreateSessionRequest is the wire DTO for creating a session.
+// naniteCreateSessionRequest matches Nanite's CreateSessionRequest type
+// (POST /api/sessions). agent_id goes in the body, not the URL path.
 type naniteCreateSessionRequest struct {
+	AgentID   string `json:"agent_id,omitempty"`
 	ProjectID string `json:"project_id,omitempty"`
 	Model     string `json:"model,omitempty"`
 	Provider  string `json:"provider,omitempty"`
 }
 
-// naniteSession is the wire DTO for a created session.
+// naniteSession represents Nanite's session response.
 type naniteSession struct {
 	ID        string `json:"id"`
-	SessionID string `json:"session_id,omitempty"`
-	Status    string `json:"status,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Provider  string `json:"provider,omitempty"`
 }
 
 func (a *NaniteLaunchAdapter) nextID() string {
@@ -104,12 +107,15 @@ func (a *NaniteLaunchAdapter) doJSON(ctx context.Context, method, path string, b
 }
 
 // resolveAgent fetches the agent profile from Nanite for name resolution.
+// The GET endpoint wraps the agent in {"agent": ...} (matching agent-ops).
 func (a *NaniteLaunchAdapter) resolveAgent(ctx context.Context, agentID string) (*naniteAgent, error) {
-	var agent naniteAgent
-	if err := a.doJSON(ctx, http.MethodGet, "/api/agents/"+agentID, nil, &agent); err != nil {
+	var wrapper struct {
+		Agent naniteAgent `json:"agent"`
+	}
+	if err := a.doJSON(ctx, http.MethodGet, "/api/agents/"+agentID, nil, &wrapper); err != nil {
 		return nil, fmt.Errorf("resolve agent %s: %w", agentID, err)
 	}
-	return &agent, nil
+	return &wrapper.Agent, nil
 }
 
 // Prepare assembles a launch intent, validates the agent exists via
@@ -146,8 +152,13 @@ func (a *NaniteLaunchAdapter) Prepare(ctx context.Context, req PrepareRequest) (
 	return cloneLaunch(launch), nil
 }
 
-// Execute commits a prepared launch by creating and starting a session
-// on Nanite for the configured agent.
+// Execute commits a prepared launch by creating a session on Nanite.
+// Nanite sessions are created and immediately usable — there is no
+// separate launch step (see agent-ops/nanite_adapter.go LaunchSession).
+//
+// The lock is dropped around the Nanite call. A concurrent Cancel may
+// transition the launch to cancelled while the call is in flight; on
+// return we only update if the state is still executing.
 func (a *NaniteLaunchAdapter) Execute(ctx context.Context, req ExecuteRequest) (*Launch, error) {
 	if req.LaunchID == "" {
 		return nil, fmt.Errorf("launch_id is required")
@@ -169,50 +180,46 @@ func (a *NaniteLaunchAdapter) Execute(ctx context.Context, req ExecuteRequest) (
 	launch.StartedAt = &now
 	a.mu.Unlock()
 
-	// Create session via Nanite
+	// Create session via Nanite POST /api/sessions (agent_id in body).
 	sessionReq := naniteCreateSessionRequest{
+		AgentID:   launch.AgentID,
 		ProjectID: launch.ProjectID,
 		Model:     launch.Model,
 		Provider:  launch.Provider,
 	}
 	var sessionResp naniteSession
-	err := a.doJSON(ctx, http.MethodPost, "/api/agents/"+launch.AgentID+"/sessions", sessionReq, &sessionResp)
-	if err != nil {
-		a.mu.Lock()
-		launch.State = LaunchStateFailed
-		launch.Error = err.Error()
-		endNow := time.Now().UTC()
-		launch.EndedAt = &endNow
-		launch.UpdatedAt = endNow
-		a.mu.Unlock()
-		return cloneLaunch(launch), nil
-	}
-
-	sessionID := sessionResp.ID
-	if sessionID == "" {
-		sessionID = sessionResp.SessionID
-	}
-
-	// Launch the created session
-	var launchResp naniteSession
-	err = a.doJSON(ctx, http.MethodPost, "/api/sessions/"+sessionID+"/launch", nil, &launchResp)
-	if err != nil {
-		a.mu.Lock()
-		launch.State = LaunchStateFailed
-		launch.Error = err.Error()
-		launch.SessionID = sessionID
-		endNow := time.Now().UTC()
-		launch.EndedAt = &endNow
-		launch.UpdatedAt = endNow
-		a.mu.Unlock()
-		return cloneLaunch(launch), nil
-	}
+	err := a.doJSON(ctx, http.MethodPost, "/api/sessions", sessionReq, &sessionResp)
 
 	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// A concurrent Cancel may have transitioned the launch while
+	// we were waiting on Nanite. Only update if still executing.
+	if launch.State != LaunchStateExecuting {
+		return cloneLaunch(launch), nil
+	}
+
+	if err != nil {
+		launch.State = LaunchStateFailed
+		launch.Error = err.Error()
+		endNow := time.Now().UTC()
+		launch.EndedAt = &endNow
+		launch.UpdatedAt = endNow
+		return cloneLaunch(launch), nil
+	}
+
+	if sessionResp.ID == "" {
+		launch.State = LaunchStateFailed
+		launch.Error = "session ID not found in response"
+		endNow := time.Now().UTC()
+		launch.EndedAt = &endNow
+		launch.UpdatedAt = endNow
+		return cloneLaunch(launch), nil
+	}
+
 	launch.State = LaunchStateRunning
-	launch.SessionID = sessionID
+	launch.SessionID = sessionResp.ID
 	launch.UpdatedAt = time.Now().UTC()
-	a.mu.Unlock()
 
 	return cloneLaunch(launch), nil
 }

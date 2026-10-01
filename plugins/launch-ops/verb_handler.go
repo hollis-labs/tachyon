@@ -54,21 +54,9 @@ func (p *plugin) verbLaunchExecute(ctx context.Context, payload json.RawMessage)
 		return contract.Err("validation", "launch_id is required"), nil
 	}
 
-	// For open_world verbs, return an ask envelope requesting
-	// operator confirmation before committing side effects. The
-	// caller re-submits with confirmation to proceed.
-	//
-	// This check is applied at the verb layer rather than in the
-	// adapter because the ask/confirm policy is a UI concern, not
-	// a provider concern. The adapter always executes.
-	//
-	// For MVP the ask is always returned on first call. A future
-	// iteration could check plugin settings for a "skip_confirmation"
-	// flag or consult the HITL bridge for policy.
-	//
-	// When the pluginkit shim lands, the host can intercept ask
-	// envelopes and route them through Tangent's hitl_enqueue.
-	// Until then, the frontend handles the confirmation UX.
+	// No ask in MVP. Confirmation for open_world verbs is host policy,
+	// not plugin policy — the host or HITL bridge can intercept the
+	// effect classification and gate execution before it reaches here.
 
 	launch, err := p.adapter.Execute(ctx, req)
 	if err != nil {

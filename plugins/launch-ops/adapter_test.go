@@ -11,51 +11,27 @@ import (
 	"github.com/hollis-labs/tachyon/internal/contract"
 )
 
-// stubNaniteServer creates a test HTTP server that mimics the Nanite
-// endpoints the launch adapter uses: GET /api/agents/:id (profile
-// resolution) and POST /api/agents/:id/sessions + POST /api/sessions/:id/launch
-// (session creation and launch).
+// stubNaniteServer mirrors Nanite's agent resolution and session creation routes.
 func stubNaniteServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && len(r.URL.Path) > len("/api/agents/"):
-			// GET /api/agents/:id — return a stub agent
-			json.NewEncoder(w).Encode(naniteAgent{
-				ID:      "test-agent",
-				Name:    "Test Agent",
-				Slug:    "test-agent",
-				Enabled: true,
-			})
-		case r.Method == http.MethodPost && contains(r.URL.Path, "/sessions") && !contains(r.URL.Path, "/launch"):
-			// POST /api/agents/:id/sessions — create a session
-			json.NewEncoder(w).Encode(naniteSession{
-				ID:     "session-001",
-				Status: "created",
-			})
-		case r.Method == http.MethodPost && contains(r.URL.Path, "/launch"):
-			// POST /api/sessions/:id/launch — launch a session
-			json.NewEncoder(w).Encode(naniteSession{
-				ID:     "session-001",
-				Status: "running",
-			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/agents/test-agent":
+			json.NewEncoder(w).Encode(map[string]any{"agent": naniteAgent{ID: "test-agent", Name: "Test Agent", Slug: "test-agent", Enabled: true}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/sessions":
+			var req naniteCreateSessionRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AgentID != "test-agent" {
+				t.Errorf("invalid session request: %+v, error: %v", req, err)
+				http.Error(w, "invalid request", http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(naniteSession{ID: "session-001"})
 		default:
+			t.Errorf("unexpected Nanite route: %s %s", r.Method, r.URL.Path)
 			http.NotFound(w, r)
 		}
 	}))
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestNaniteLaunchAdapter_ImplementsInterface(t *testing.T) {
@@ -462,5 +438,46 @@ func TestListLimit(t *testing.T) {
 	}
 	if len(limited) != 3 {
 		t.Errorf("expected 3 launches, got %d", len(limited))
+	}
+}
+
+// TestExecuteCancelRace checks cancellation survives both a successful and failed
+// session request while Execute is waiting for Nanite.
+func TestExecuteCancelRace(t *testing.T) {
+	for _, status := range []int{http.StatusCreated, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			entered, release := make(chan struct{}), make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				close(entered)
+				<-release
+				w.WriteHeader(status)
+				json.NewEncoder(w).Encode(naniteSession{ID: "session-race"})
+			}))
+			defer srv.Close()
+			a := NewNaniteLaunchAdapter(srv.URL)
+			a.launches["race"] = &Launch{ID: "race", AgentID: "test-agent", State: LaunchStatePrepared}
+			done := make(chan *Launch, 1)
+			go func() {
+				result, err := a.Execute(context.Background(), ExecuteRequest{LaunchID: "race"})
+				if err != nil {
+					t.Errorf("Execute: %v", err)
+				}
+				done <- result
+			}()
+			<-entered
+			cancelled, err := a.Cancel(context.Background(), CancelRequest{LaunchID: "race", Reason: "operator"})
+			close(release)
+			if err != nil {
+				t.Fatalf("Cancel: %v", err)
+			}
+			result := <-done
+			if result == nil || result.State != LaunchStateCancelled || result.Error != cancelled.Error {
+				t.Fatalf("Execute overwrote cancellation: %+v", result)
+			}
+			stored, err := a.Read(context.Background(), ReadRequest{LaunchID: "race"})
+			if err != nil || stored.State != LaunchStateCancelled {
+				t.Fatalf("stored launch: %+v, %v", stored, err)
+			}
+		})
 	}
 }

@@ -1,12 +1,3 @@
-// launch-ops is a subprocess plugin for Tachyon that provides two-phase
-// agent execution orchestration: prepare intent, then execute.
-//
-// Verb dispatch rides command/execute through the pluginkit shim
-// (CW-20261001-0469). The plugin implements pluginkit.VerbPlugin and
-// calls pluginkit.Dispatch at the top of Command(). Until pluginkit
-// lands on main, the plugin compiles and its verb handler is tested
-// directly; the Dispatch integration is wired once the dependency
-// merges.
 package main
 
 import (
@@ -18,6 +9,7 @@ import (
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
+	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
 
 //go:embed capabilities.json
@@ -69,54 +61,12 @@ func (p *plugin) Unload(_ context.Context) error {
 	return nil
 }
 
-// Command implements subprocess.CommandHandler. When the pluginkit shim
-// lands (CW-20261001-0469), the first thing this method does is call
-// pluginkit.Dispatch(ctx, p, req) which handles:
-//   - "plugin_capabilities" → returns p.Capabilities() as JSON
-//   - any declared verb name → calls p.HandleVerb and wraps the
-//     ResultEnvelope as CommandResult.Content
-//
-// If Dispatch returns handled=false, we fall through to legacy commands.
-//
-// Until pluginkit merges, this method handles verbs directly via a
-// local dispatch that mirrors the same contract: command name = verb,
-// args = JSON payload, result content = JSON-encoded ResultEnvelope.
+// Command dispatches capabilities and declared verbs through the host shim.
 func (p *plugin) Command(ctx context.Context, req subprocess.CommandRequest) (subprocess.CommandResult, error) {
-	// --- pluginkit shim dispatch (uncomment when CW-20261001-0469 merges) ---
-	// result, handled, err := pluginkit.Dispatch(ctx, p, req)
-	// if err != nil {
-	// 	return subprocess.CommandResult{}, err
-	// }
-	// if handled {
-	// 	return result, nil
-	// }
-
-	// --- interim verb dispatch until pluginkit lands ---
-	if req.Name == "plugin_capabilities" {
-		content, err := json.Marshal(p.caps)
-		if err != nil {
-			return subprocess.CommandResult{}, err
-		}
-		return subprocess.CommandResult{Action: "message", Content: string(content)}, nil
+	result, handled, err := pluginkit.Dispatch(ctx, p, req)
+	if err != nil || handled {
+		return result, err
 	}
-
-	// Check if this is a declared verb
-	if _, declared := p.caps.Verbs[req.Name]; declared {
-		var payload json.RawMessage
-		if req.Args != "" {
-			payload = json.RawMessage(req.Args)
-		}
-		env, err := p.HandleVerb(ctx, req.Name, payload)
-		if err != nil {
-			return subprocess.CommandResult{}, err
-		}
-		content, err := json.Marshal(env)
-		if err != nil {
-			return subprocess.CommandResult{}, err
-		}
-		return subprocess.CommandResult{Action: "message", Content: string(content)}, nil
-	}
-
 	return subprocess.CommandResult{}, fmt.Errorf("unknown command: %s", req.Name)
 }
 
