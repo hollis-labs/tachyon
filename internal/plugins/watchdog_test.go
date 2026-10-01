@@ -540,3 +540,137 @@ func TestLifecycleDeadlineStillInterruptsActiveIO(t *testing.T) {
 		})
 	}
 }
+
+func TestRestartRecoversRetiredPluginWithOwnerLifetime(t *testing.T) {
+	m := watchdogManager()
+	proc, started, _ := stalledProcess(t, "decode")
+	lifetime, stopLifetime := context.WithCancel(context.Background())
+	defer stopLifetime()
+	proc.lifetime = lifetime
+	registerStalled(m, proc)
+	request, cancelRequest := context.WithCancel(context.Background())
+	defer cancelRequest()
+	done := make(chan error, 1)
+	go func() { _, err := m.CallPlugin(request, "hung", "command/execute", nil); done <- err }()
+	<-started
+	cancelRequest()
+	if err := awaitError(t, done); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	awaitCondition(t, func() bool { return m.ModuleOwner("hung") == "" })
+	if len(m.SettingsTargets()) != 0 {
+		t.Fatal("retired plugin retained active settings registration")
+	}
+	m.spawn = func(ctx context.Context, path string) (*pluginProcess, error) {
+		if ctx != lifetime || ctx == request || ctx.Err() != nil || path != proc.binaryPath {
+			t.Fatal("recovery lost owner lifetime/path")
+		}
+		return fakeProcess(t, "hung", "declared", declarationFor("hung", "Recovered")), nil
+	}
+	if err := m.RestartPlugin("hung"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.InvokeVerb(context.Background(), "hung_list", nil); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.RLock()
+	_, retained := m.retired["hung"]
+	m.mu.RUnlock()
+	if retained {
+		t.Fatal("successful load retained tombstone")
+	}
+	if err := m.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RestartPlugin("hung"); !errors.Is(err, ErrPluginNotFound) {
+		t.Fatalf("graceful shutdown created recovery path: %v", err)
+	}
+}
+
+func TestShutdownClearsRetiredRecoveryMetadata(t *testing.T) {
+	m := watchdogManager()
+	proc, _, _ := stalledProcess(t, "encode")
+	registerStalled(m, proc)
+	if _, err := m.CallPlugin(context.Background(), "hung", "command/execute", nil); err == nil {
+		t.Fatal("hung call succeeded")
+	}
+	awaitCondition(t, func() bool { return m.ModuleOwner("hung") == "" })
+	if err := m.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RestartPlugin("hung"); !errors.Is(err, ErrPluginNotFound) {
+		t.Fatalf("shutdown left recovery metadata: %v", err)
+	}
+}
+
+func TestConsumedWrongResponseShapeKeepsSerialStreamUsable(t *testing.T) {
+	requests, input := io.Pipe()
+	output, responses := io.Pipe()
+	t.Cleanup(func() { requests.Close(); input.Close(); output.Close(); responses.Close() })
+	proc := &pluginProcess{id: "hung", stdin: input, stdout: output, stdoutDec: json.NewDecoder(output)}
+	m := watchdogManager()
+	registerStalled(m, proc)
+	go func() {
+		decoder := json.NewDecoder(requests)
+		for _, response := range []string{`{"error":"boom"}`, `{"jsonrpc":"2.0","result":{"ok":true}}`} {
+			var req subprocess.RPCRequest
+			if decoder.Decode(&req) != nil {
+				return
+			}
+			if _, err := io.WriteString(responses, response+"\n"); err != nil {
+				return
+			}
+		}
+	}()
+	_, err := m.CallPlugin(context.Background(), "hung", "command/execute", nil)
+	var shapeErr *json.UnmarshalTypeError
+	if !errors.As(err, &shapeErr) || proc.dead.Load() {
+		t.Fatalf("shape error retired stream: %v", err)
+	}
+	raw, err := m.CallPlugin(context.Background(), "hung", "command/execute", nil)
+	if err != nil || string(raw) != `{"ok":true}` || m.ModuleOwner("hung") != "hung" {
+		t.Fatalf("following response lost: %s %v", raw, err)
+	}
+}
+
+func TestMarshalFailureDoesNotWriteOrRetirePlugin(t *testing.T) {
+	m := watchdogManager()
+	proc := fakeProcess(t, "normal", "declared")
+	if err := m.initializePlugin(context.Background(), proc); err != nil {
+		t.Fatal(err)
+	}
+	_, err := m.CallPlugin(context.Background(), "normal", "command/execute", make(chan int))
+	var unsupported *json.UnsupportedTypeError
+	if !errors.As(err, &unsupported) || strings.Contains(err.Error(), "completion unknown") || proc.dead.Load() {
+		t.Fatalf("local marshal failure retired healthy plugin: %v", err)
+	}
+	if _, err := m.InvokeVerb(context.Background(), "agent_list", nil); err != nil {
+		t.Fatalf("marshal failure damaged next call: %v", err)
+	}
+}
+
+func TestContextMutexDoubleUnlockPanicsWithoutBlocking(t *testing.T) {
+	for _, initialized := range []bool{false, true} {
+		t.Run(strconv.FormatBool(initialized), func(t *testing.T) {
+			var lock contextMutex
+			if initialized {
+				lock.Lock()
+				lock.Unlock()
+			}
+			done := make(chan error, 1)
+			go func() {
+				defer func() {
+					if value := recover(); value == "plugins: unlock of unlocked contextMutex" {
+						done <- nil
+					} else {
+						done <- errors.New("missing clear unlock panic")
+					}
+				}()
+				lock.Unlock()
+			}()
+			if err := awaitError(t, done); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

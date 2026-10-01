@@ -30,6 +30,7 @@ type Manager struct {
 	logger      *slog.Logger
 	mu          sync.RWMutex
 	plugins     map[string]*pluginProcess // keyed by plugin ID
+	retired     map[string]retiredPlugin  // recovery metadata only; never routable
 	modules     map[string]string         // module name -> owning plugin ID
 	loadOrder   []string
 	navGroups   map[string]string // group ID -> first-loaded plugin ID
@@ -90,6 +91,7 @@ func NewManager(logger *slog.Logger) *Manager {
 		logger:    logger,
 		spawn:     spawnProcess,
 		plugins:   make(map[string]*pluginProcess),
+		retired:   make(map[string]retiredPlugin),
 		modules:   make(map[string]string),
 		navGroups: make(map[string]string),
 		navItems:  make(map[string]string),
@@ -229,10 +231,31 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 	if proc.dead.Load() {
 		return nil, fmt.Errorf("plugin %q is unloaded", proc.id)
 	}
+	req := subprocess.RPCRequest{
+		JSONRPC: "2.0",
+		ID:      2, // Serial custom calls share an ID; responses never overlap.
+		Method:  method,
+		Params:  params,
+	}
+
+	switch method {
+	case "plugin/init":
+		req.ID = 1
+	case "plugin/unload":
+		req.ID = 999
+	}
+	// Local serialization cannot damage the wire: reject invalid params before
+	// installing a watchdog or writing anything to a healthy subprocess.
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+	encoded = append(encoded, '\n')
+
 	// Give wire acquisition its own limit; queue time must not consume the
 	// operation budget (service_health can legitimately need up to 90s).
 	queued, cancelQueue := context.WithTimeout(queueCtx, budget)
-	err := proc.callMu.LockContext(queued)
+	err = proc.callMu.LockContext(queued)
 	cancelQueue()
 	if err != nil {
 		return nil, err
@@ -263,20 +286,10 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 	}
 	defer finish()
 
-	req := subprocess.RPCRequest{
-		JSONRPC: "2.0",
-		ID:      2, // Serial custom calls share an ID; responses never overlap.
-		Method:  method,
-		Params:  params,
-	}
-
-	switch method {
-	case "plugin/init":
-		req.ID = 1
-	case "plugin/unload":
-		req.ID = 999
-	}
-	if err := json.NewEncoder(proc.stdin).Encode(req); err != nil {
+	if n, err := proc.stdin.Write(encoded); err != nil || n != len(encoded) {
+		if err == nil {
+			err = io.ErrShortWrite
+		}
 		interruptProcess(proc)
 		if bounded.Err() != nil {
 			return nil, fmt.Errorf("plugin call interrupted; completion unknown: %w", bounded.Err())
@@ -284,8 +297,8 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 		return nil, fmt.Errorf("failed to send request; completion unknown: %w", err)
 	}
 
-	var resp subprocess.RPCResponse
-	if err := proc.stdoutDec.Decode(&resp); err != nil {
+	var raw json.RawMessage
+	if err := proc.stdoutDec.Decode(&raw); err != nil {
 		interruptProcess(proc)
 		if bounded.Err() != nil {
 			return nil, fmt.Errorf("plugin call interrupted; completion unknown: %w", bounded.Err())
@@ -297,6 +310,13 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 	if interrupted {
 		return nil, fmt.Errorf("plugin call interrupted; completion unknown: %w", bounded.Err())
 	}
+	// The decoder consumed one complete JSON value. A type/shape error does
+	// not leave a partial response behind, so the stream remains reusable.
+	var resp subprocess.RPCResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("invalid RPC response: %w", err)
+	}
+
 	if resp.Error != nil {
 		return nil, fmt.Errorf("plugin error: %s", resp.Error.Message)
 	}
@@ -387,6 +407,9 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	for _, id := range ids {
 		m.unloadPlugin(ctx, id)
 	}
+	m.mu.Lock()
+	clear(m.retired) // shutdown must not leave recovery paths for stopped plugins
+	m.mu.Unlock()
 	return nil
 }
 
@@ -452,6 +475,7 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 		}
 	}
 	m.plugins[proc.id] = proc
+	delete(m.retired, proc.id)
 	m.loadOrder = append(m.loadOrder, proc.id)
 	return nil
 }

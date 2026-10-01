@@ -45,8 +45,14 @@ func (m *contextMutex) LockContext(ctx context.Context) error {
 		return nil
 	}
 }
-func (m *contextMutex) Lock()   { _ = m.LockContext(context.Background()) }
-func (m *contextMutex) Unlock() { m.token <- struct{}{} }
+func (m *contextMutex) Lock() { _ = m.LockContext(context.Background()) }
+func (m *contextMutex) Unlock() {
+	select {
+	case m.token <- struct{}{}:
+	default:
+		panic("plugins: unlock of unlocked contextMutex")
+	}
+}
 
 // interruptProcess must not acquire callMu or any manager lock. The watchdog
 // captures a process pointer, never an ID lookup that could find a replacement.
@@ -65,18 +71,30 @@ func interruptProcess(proc *pluginProcess) {
 	})
 }
 
+// retiredPlugin keeps only recovery metadata, never pipes or capability claims.
+// lifetime comes from LoadPlugin's process owner, never from CallPlugin's request.
+type retiredPlugin struct {
+	id, name, binaryPath string
+	lifetime             context.Context
+}
+
 // Retirement runs outside the call lock and asynchronously to avoid delaying
 // HTTP failures behind an unrelated load/restart. Dead processes reject calls
 // immediately while lifecycle serialization finishes removing registrations.
 func (m *Manager) retireProcess(proc *pluginProcess) {
 	proc.retireOnce.Do(func() {
 		go func() {
+			// Waiting here can delay reaping the already killed child while a hung
+			// load owns lifecycleMu. Its handshakes are bounded; the delay is harmless.
 			m.lifecycleMu.Lock()
 			defer m.lifecycleMu.Unlock()
 			stopProcess(proc)
-			m.mu.RLock()
+			m.mu.Lock()
 			current := m.plugins[proc.id] == proc
-			m.mu.RUnlock()
+			if current {
+				m.retired[proc.id] = retiredPlugin{id: proc.id, name: proc.name, binaryPath: proc.binaryPath, lifetime: proc.lifetime}
+			}
+			m.mu.Unlock()
 			if current {
 				m.detachProcess(proc)
 				m.logger.Warn("plugin transport interrupted; plugin unloaded", "id", proc.id, "completion", "unknown")

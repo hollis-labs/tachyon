@@ -7,6 +7,7 @@ import (
 )
 
 var ErrPluginNotFound = errors.New("plugin not found")
+var ErrRestartBusy = errors.New("plugin is busy; restart not attempted")
 
 // RestartPlugin stops only the named subprocess, then uses the normal load
 // path to re-read settings and validate registration. The original lifetime
@@ -14,16 +15,20 @@ var ErrPluginNotFound = errors.New("plugin not found")
 // A failed respawn leaves no registered process, module or navigation claims.
 func (m *Manager) RestartPlugin(id string) error {
 	if err := m.lockLifecycle(context.Background()); err != nil {
-		return fmt.Errorf("restart lifecycle wait: %w", err)
+		return fmt.Errorf("%w: %w", ErrRestartBusy, err)
 	}
 	defer m.lifecycleMu.Unlock()
 	m.mu.RLock()
 	proc := m.plugins[id]
+	retired, recoverable := m.retired[id]
 	m.mu.RUnlock()
-	if proc == nil {
+	if proc == nil && !recoverable {
 		return fmt.Errorf("%w: %s", ErrPluginNotFound, id)
 	}
-	path, lifetime := proc.binaryPath, proc.lifetime
+	path, lifetime := retired.binaryPath, retired.lifetime
+	if proc != nil {
+		path, lifetime = proc.binaryPath, proc.lifetime
+	}
 	if lifetime == nil {
 		lifetime = context.Background()
 	}
