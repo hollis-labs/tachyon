@@ -242,7 +242,15 @@ export function AgentOpsPage() {
     <div className="flex h-full flex-col">
       <PageHeader title="Agent Operations">
         {has("agent_create") && (
-          <Button type="button" size="sm" onClick={openCreateDialog}>
+          <Button
+            className={
+              // TODO(CW-20261001-0521): remove at design-components 0.1.1
+              "text-primary-foreground"
+            }
+            type="button"
+            size="sm"
+            onClick={openCreateDialog}
+          >
             <Plus className="h-4 w-4" />
             New Agent
           </Button>
