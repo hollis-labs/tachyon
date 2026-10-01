@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	tether "github.com/hollis-labs/go-tether-client"
@@ -17,7 +16,11 @@ type TetherAdapter struct {
 }
 
 func NewTetherAdapter(listenAddr string) (*TetherAdapter, error) {
-	client, err := tether.New(listenAddr)
+	listenAddr, httpClient, err := sessionHTTPClient(listenAddr)
+	if err != nil {
+		return nil, err
+	}
+	client, err := tether.New(listenAddr, tether.WithHTTPClient(httpClient))
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +83,7 @@ func (a *TetherAdapter) Attach(ctx context.Context, id string) (ConnectionInfo, 
 		return ConnectionInfo{}, err
 	}
 	if s.State != "running" {
-		return ConnectionInfo{}, fmt.Errorf("session %q is not running (state %q)", id, s.State)
+		return ConnectionInfo{}, errInactiveSession
 	}
 	return ConnectionInfo{SessionID: s.ID, ProviderID: s.ProviderID, State: s.State, Transport: "tether", Streaming: true}, nil
 }
