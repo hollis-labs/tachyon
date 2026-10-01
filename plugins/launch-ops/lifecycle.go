@@ -107,11 +107,7 @@ func (a *launchLifecycle) Execute(ctx context.Context, req ExecuteRequest) (*Lau
 	if err != nil {
 		return nil, err
 	}
-	if result.State == LaunchStateCancelled && result.SessionID != "" && a.stop != nil {
-		if err := a.stop(saveCtx, result); err != nil {
-			return result, fmt.Errorf("launch cancelled but provider stop failed: %w", err)
-		}
-	}
+
 	return result, nil
 }
 
@@ -119,34 +115,67 @@ func terminalLaunch(state LaunchState) bool {
 	return state == LaunchStateCompleted || state == LaunchStateFailed || state == LaunchStateCancelled
 }
 
+// Cancel cancels only prepared intents or provider sessions known to be
+// running. Executing launches cannot safely be claimed cancelled before the
+// provider's creation result and session ID are known.
 func (a *launchLifecycle) Cancel(ctx context.Context, req CancelRequest) (*Launch, error) {
 	l, err := a.store.Get(ctx, req.LaunchID)
 	if err != nil {
 		return nil, err
 	}
-	if terminalLaunch(l.State) {
+	if l.State == LaunchStatePrepared {
+		return a.store.Update(ctx, l.ID, func(current *Launch) error {
+			// Execute can win between Get and Update. Do not cancel its in-flight call.
+			if current.State != LaunchStatePrepared {
+				return fmt.Errorf("launch %s is in state %s; wait for session creation before stopping it", current.ID, current.State)
+			}
+			markCancelled(current, req.Reason)
+			return nil
+		})
+	}
+	if l.State == LaunchStateExecuting {
+		return nil, fmt.Errorf("launch %s is still executing; wait for session creation before stopping it", l.ID)
+	}
+	if l.State != LaunchStateRunning {
 		return nil, fmt.Errorf("launch %s is in state %s, cannot cancel", l.ID, l.State)
 	}
-	if a.stop != nil && l.SessionID != "" {
-		if err := a.stop(ctx, l); err != nil {
-			return nil, err
-		}
+	if a.stop == nil {
+		return nil, fmt.Errorf("provider %s cannot stop a running launch; state unchanged", a.backend)
 	}
-	return a.store.Update(ctx, l.ID, func(current *Launch) error {
+	if l.SessionID == "" {
+		return nil, fmt.Errorf("running launch has no provider session ID; state unchanged")
+	}
+	if err := a.stop(ctx, l); err != nil {
+		return nil, err
+	}
+	// Once the provider accepted stop, persist its outcome even if the caller
+	// disconnected. Failed provider calls leave the durable state untouched.
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	return a.store.Update(saveCtx, l.ID, func(current *Launch) error {
+		// A concurrent provider status poll may have recorded completion already.
 		if terminalLaunch(current.State) {
-			return fmt.Errorf("launch %s is in state %s, cannot cancel", current.ID, current.State)
+			return nil
 		}
-		now := time.Now().UTC()
-		current.State = LaunchStateCancelled
-		current.UpdatedAt = now
-		current.EndedAt = &now
-		current.Error = "cancelled"
-		if req.Reason != "" {
-			current.Error += ": " + req.Reason
+		if current.State != LaunchStateRunning {
+			return fmt.Errorf("launch state changed while stopping its provider session")
 		}
+		markCancelled(current, req.Reason)
 		return nil
 	})
 }
+
+func markCancelled(l *Launch, reason string) {
+	now := time.Now().UTC()
+	l.State = LaunchStateCancelled
+	l.UpdatedAt = now
+	l.EndedAt = &now
+	l.Error = "cancelled"
+	if reason != "" {
+		l.Error += ": " + reason
+	}
+}
+
 func (a *launchLifecycle) Read(ctx context.Context, req ReadRequest) (*Launch, error) {
 	l, err := a.store.Get(ctx, req.LaunchID)
 	if err != nil {

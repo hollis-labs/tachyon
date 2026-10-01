@@ -118,8 +118,9 @@ type LaunchAdapter interface {
 	// "executing" then "running".
 	Execute(ctx context.Context, req ExecuteRequest) (*Launch, error)
 
-	// Cancel aborts a pending or running launch. Transitions to
-	// "cancelled".
+	// Cancel cancels a prepared intent or stops its running provider session.
+	// Executing launches and unsupported provider stops return errors without
+	// claiming cancellation.
 	Cancel(ctx context.Context, req CancelRequest) (*Launch, error)
 
 	// Read returns the full details of a launch by ID.

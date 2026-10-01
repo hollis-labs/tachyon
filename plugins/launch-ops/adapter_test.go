@@ -444,8 +444,8 @@ func TestListLimit(t *testing.T) {
 	}
 }
 
-// TestExecuteCancelRace checks cancellation survives both a successful and failed
-// session request while Execute is waiting for Nanite.
+// TestExecuteCancelRace rejects cancellation while provider creation is in flight,
+// preserving the eventual running/failed outcome instead of claiming stopped.
 func TestExecuteCancelRace(t *testing.T) {
 	for _, status := range []int{http.StatusCreated, http.StatusInternalServerError} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
@@ -470,18 +470,22 @@ func TestExecuteCancelRace(t *testing.T) {
 				done <- result
 			}()
 			<-entered
-			cancelled, err := a.Cancel(context.Background(), CancelRequest{LaunchID: "race", Reason: "operator"})
+			_, cancelErr := a.Cancel(context.Background(), CancelRequest{LaunchID: "race", Reason: "operator"})
 			close(release)
-			if err != nil {
-				t.Fatalf("Cancel: %v", err)
+			if cancelErr == nil {
+				t.Fatal("in-flight creation was claimed cancelled")
 			}
 			result := <-done
-			if result == nil || result.State != LaunchStateCancelled || result.Error != cancelled.Error {
-				t.Fatalf("Execute overwrote cancellation: %+v", result)
+			expected := LaunchStateRunning
+			if status == http.StatusInternalServerError {
+				expected = LaunchStateFailed
+			}
+			if result == nil || result.State != expected {
+				t.Fatalf("execution result: %+v", result)
 			}
 			stored, err := a.Read(context.Background(), ReadRequest{LaunchID: "race"})
-			if err != nil || stored.State != LaunchStateCancelled {
-				t.Fatalf("stored launch: %+v, %v", stored, err)
+			if err != nil || stored.State != expected {
+				t.Fatalf("stored launch: %+v %v", stored, err)
 			}
 		})
 	}
