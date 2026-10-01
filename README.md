@@ -93,6 +93,7 @@ Read the declaration validation rules in ADR 001 before adding a plugin page.
 | Guide | Operator behavior |
 | --- | --- |
 | [Agent Operations](docs/pages/agent-ops.md) | Notifications, dialog focus and mobile rows |
+| [Provider Sessions](docs/pages/sessions.md) | Provider history, metadata inspection and confirmed actions |
 | [Work Board](docs/pages/work-board.md) | Per-status columns, filtered totals and explicit task actions |
 | [Services and health](docs/pages/services.md) | Connector definitions, separate health snapshots and manual refresh |
 | [SCM](docs/pages/scm.md) | Read-only repository status, activity and diffs |
