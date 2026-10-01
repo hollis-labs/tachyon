@@ -1,4 +1,5 @@
 import { createApiClient, type JsonObject } from "@hollis-labs/sysop-ui/api"
+import { invokeVerb } from "./verbs"
 
 // Same-origin: the Go binary serves both this SPA and the API, so an empty
 // baseUrl resolves every request against the current origin.
@@ -183,10 +184,47 @@ export interface DurableAgentSession {
 // URL template below.
 const enc = encodeURIComponent
 
+export interface WorkItem {
+  id: string
+  title: string
+  description: string
+  status: string
+  priority: number
+  project_id: string | null
+  manual: boolean
+  metadata: Record<string, unknown> | null
+}
+
+export interface WorkList {
+  tasks: WorkItem[]
+  total: number
+  has_more: boolean
+  next_offset?: number | null
+}
+
+export interface WorkComment {
+  id: number
+  entity_id: string
+  author: string
+  content: string
+}
+
 /**
  * Concrete API client — one method per endpoint.
  */
 export const apiClient = {
+  listWork: (filters: { limit?: number; offset?: number } = {}) =>
+    invokeVerb<WorkList>("work_list", filters),
+  searchWork: (query: string) => invokeVerb<WorkList>("work_search", { query }),
+  readWork: (id: string) => invokeVerb<WorkItem>("work_read", { id }),
+  assignWork: (id: string, assignee: string) =>
+    invokeVerb<WorkItem>("work_assign", { id, assignee }),
+  transitionWork: (id: string, status: string) =>
+    invokeVerb<WorkItem>("work_transition", { id, status }),
+  commentWork: (id: string, content: string) =>
+    invokeVerb<WorkComment>("work_comment", { id, content }),
+  listWorkAgents: () => invokeVerb<Agent[]>("agent_list"),
+
   getHealth: () => http.get<HealthInfo>("/api/health"),
   getCapabilities: () => http.get<AgentCapabilities>("/api/capabilities"),
 
