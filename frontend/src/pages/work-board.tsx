@@ -4,8 +4,10 @@ import { PageHeader } from "@hollis-labs/kit-dashboard/ui"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Agent, WorkItem } from "../api/client"
 import { useApi } from "../api/context"
-import { useVerbs } from "../api/verbs"
+import { PendingApprovalError } from "../api/hitl"
+import { type AskDetail, useVerbs } from "../api/verbs"
 import { ACTIVE_STATUSES, CLOSED_STATUSES, workBoardApi } from "../api/work-board"
+import { PendingApproval } from "../components/pending-approval"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -17,6 +19,7 @@ interface ColumnState {
   next?: number
   loading: boolean
   error: string
+  pending?: AskDetail
 }
 const initialColumn: ColumnState = {
   tasks: [],
@@ -79,7 +82,7 @@ function WorkColumn({
   const load = useCallback(
     async (offset: number, append = false) => {
       const request = generation.current
-      setState((current) => ({ ...current, loading: true, error: "" }))
+      setState((current) => ({ ...current, loading: true, error: "", pending: undefined }))
       try {
         const page = dataOf(
           await workBoardApi.list({
@@ -126,7 +129,12 @@ function WorkColumn({
         })
       } catch (error) {
         if (request === generation.current)
-          setState((current) => ({ ...current, loading: false, error: message(error) }))
+          setState((current) => ({
+            ...current,
+            loading: false,
+            error: error instanceof PendingApprovalError ? "" : message(error),
+            pending: error instanceof PendingApprovalError ? error.ask : undefined,
+          }))
       }
     },
     [status, project, expanded],
@@ -141,7 +149,7 @@ function WorkColumn({
   }, [load])
   const count =
     state.total === undefined
-      ? state.loading || state.error
+      ? state.loading || state.error || state.pending
         ? "Count unavailable"
         : `at least ${state.lowerBound}`
       : `${state.total} total`
@@ -152,6 +160,7 @@ function WorkColumn({
     >
       <h2 className="font-medium">{status}</h2>
       <p className="text-xs text-text-muted">{count}</p>
+      {state.pending && <PendingApproval ask={state.pending} />}
       {state.error && (
         <p role="alert" className="break-words text-sm text-status-failed">
           {state.error}
@@ -167,13 +176,13 @@ function WorkColumn({
           {state.tasks.map((task) => (
             <WorkCard key={task.id} task={task} agents={agents} canRead={canRead} onOpen={onOpen} />
           ))}
-          {!state.loading && !state.error && state.tasks.length === 0 && (
+          {!state.loading && !state.error && !state.pending && state.tasks.length === 0 && (
             <p className="text-sm text-text-muted">No tasks</p>
           )}
           {state.tasks.length > 0 && (
             <p className="text-xs text-text-muted">{state.tasks.length} loaded</p>
           )}
-          {!state.error && state.hasMore && (
+          {!state.error && !state.pending && state.hasMore && (
             <Button
               variant="outline"
               disabled={state.loading}
@@ -216,7 +225,12 @@ function BoardSearch({
   onOpen: (id: string) => void
 }) {
   const api = useApi()
-  const [state, setState] = useState<{ tasks: WorkItem[]; loading: boolean; error: string }>({
+  const [state, setState] = useState<{
+    tasks: WorkItem[]
+    loading: boolean
+    error: string
+    pending?: AskDetail
+  }>({
     tasks: [],
     loading: true,
     error: "",
@@ -232,7 +246,13 @@ function BoardSearch({
           if (active) setState({ tasks: page.tasks, loading: false, error: "" })
         })
         .catch((error) => {
-          if (active) setState({ tasks: [], loading: false, error: message(error) })
+          if (active)
+            setState({
+              tasks: [],
+              loading: false,
+              error: error instanceof PendingApprovalError ? "" : message(error),
+              pending: error instanceof PendingApprovalError ? error.ask : undefined,
+            })
         })
     }, 250)
     return () => {
@@ -245,7 +265,9 @@ function BoardSearch({
       <p className="text-sm text-text-muted">
         Provider search results. Project filter does not apply to search.
       </p>
-      {state.loading ? (
+      {state.pending ? (
+        <PendingApproval ask={state.pending} />
+      ) : state.loading ? (
         <Skeleton className="h-24" />
       ) : state.error ? (
         <p role="alert">{state.error}</p>
@@ -272,6 +294,7 @@ export function WorkBoardPage() {
   const api = useApi()
   const [agents, setAgents] = useState<Agent[]>([])
   const [agentError, setAgentError] = useState("")
+  const [agentPending, setAgentPending] = useState<AskDetail | null>(null)
   const [projectInput, setProjectInput] = useState("")
   const [project, setProject] = useState("")
   const [search, setSearch] = useState("")
@@ -285,6 +308,7 @@ export function WorkBoardPage() {
     let active = true
     setAgents([])
     setAgentError("")
+    setAgentPending(null)
     if (canAgents)
       api
         .listWorkAgents()
@@ -293,7 +317,10 @@ export function WorkBoardPage() {
           if (active) setAgents(items)
         })
         .catch((error) => {
-          if (active) setAgentError(message(error))
+          if (active) {
+            if (error instanceof PendingApprovalError) setAgentPending(error.ask)
+            else setAgentError(message(error))
+          }
         })
     return () => {
       active = false
@@ -314,6 +341,7 @@ export function WorkBoardPage() {
       }
     >
       <div className="space-y-4 p-4">
+        {agentPending && <PendingApproval ask={agentPending} />}
         {verbs.loading ? (
           <Skeleton className="h-40" />
         ) : !canList ? (

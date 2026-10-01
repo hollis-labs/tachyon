@@ -4,7 +4,9 @@ import { RefreshCw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { Agent, WorkItem } from "../api/client"
 import { useApi } from "../api/context"
-import { useVerbs } from "../api/verbs"
+import { PendingApprovalError } from "../api/hitl"
+import { type AskDetail, useVerbs } from "../api/verbs"
+import { PendingApproval } from "../components/pending-approval"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
 
 const selectStyle = "h-8 rounded-md border border-border bg-surface px-2 text-sm text-text"
@@ -20,6 +22,8 @@ export function WorkPage() {
   const [agentError, setAgentError] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [pending, setPending] = useState<AskDetail | null>(null)
+  const [agentPending, setAgentPending] = useState<AskDetail | null>(null)
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState("")
   const [assignee, setAssignee] = useState("")
@@ -38,6 +42,7 @@ export function WorkPage() {
       async () => {
         setLoading(true)
         setError("")
+        setPending(null)
         try {
           const query = search.trim()
           let items: WorkItem[]
@@ -59,8 +64,11 @@ export function WorkPage() {
           if (active) setTasks(items)
         } catch (error) {
           if (active) {
-            setTasks([])
-            setError(message(error))
+            if (error instanceof PendingApprovalError) setPending(error.ask)
+            else {
+              setTasks([])
+              setError(message(error))
+            }
           }
         } finally {
           if (active) setLoading(false)
@@ -82,6 +90,7 @@ export function WorkPage() {
     }
     let active = true
     setAgentError("")
+    setAgentPending(null)
     api
       .listWorkAgents()
       .then((result) => {
@@ -90,7 +99,8 @@ export function WorkPage() {
       .catch((error) => {
         if (active) {
           setAgents([])
-          setAgentError(`Could not load agents: ${message(error)}`)
+          if (error instanceof PendingApprovalError) setAgentPending(error.ask)
+          else setAgentError(`Could not load agents: ${message(error)}`)
         }
       })
     return () => {
@@ -128,6 +138,11 @@ export function WorkPage() {
           Refresh
         </Button>
       </PageHeader>
+      {agentPending && (
+        <div className="px-4">
+          <PendingApproval ask={agentPending} />
+        </div>
+      )}
       {verbs.loading ? (
         <Skeleton className="m-4 h-40" />
       ) : !canList ? (
@@ -138,7 +153,7 @@ export function WorkPage() {
         />
       ) : (
         <>
-          {!loading && !error && (
+          {!loading && !error && !pending && (
             <SummaryCards
               cards={[
                 { label: "Matching tasks", value: visibleTasks.length },
@@ -219,7 +234,11 @@ export function WorkPage() {
             )}
           </div>
           <div className="flex-1 overflow-auto">
-            {error ? (
+            {pending ? (
+              <div className="p-4">
+                <PendingApproval ask={pending} />
+              </div>
+            ) : error ? (
               <p role="alert" className="p-4 text-sm text-status-failed">
                 {error}
               </p>

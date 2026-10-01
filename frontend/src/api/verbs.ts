@@ -8,12 +8,26 @@ import {
   useState,
 } from "react"
 
+export interface AskDetail {
+  prompt: string
+  options?: string[]
+  context?: Record<string, unknown>
+  kind?: string
+  item_id?: string
+  item_url?: string
+  operation_id?: string
+  state?: string
+  expiry?: string
+  continuation?: string
+  unavailable?: string
+}
+
 export type Envelope<T> =
   | { status: "ok"; data: T }
   | { status: "error"; error: { code: string; message: string; detail?: unknown } }
   | {
       status: "ask"
-      ask: { prompt: string; options?: string[]; context?: Record<string, unknown> }
+      ask: AskDetail
     }
 
 export type VerbRegistry = Record<
