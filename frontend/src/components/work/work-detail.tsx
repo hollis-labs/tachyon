@@ -60,7 +60,7 @@ export function WorkDetail({
     setTask(null)
     setError("")
     if (!canRead) {
-      setError("Task details unavailable: work_read is not declared.")
+      setError("Task details are unavailable from the connected provider.")
       return
     }
     let active = true

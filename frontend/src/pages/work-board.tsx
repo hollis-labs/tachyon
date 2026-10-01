@@ -322,7 +322,7 @@ export function WorkBoardPage() {
             title="Work Board unavailable"
             description={
               verbs.available === true
-                ? "The work_list verb is unavailable."
+                ? "The connected provider does not offer task lists."
                 : "Could not discover work capabilities."
             }
           />
