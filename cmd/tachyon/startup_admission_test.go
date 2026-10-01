@@ -62,6 +62,16 @@ func fakeAdmissionPlugin(dir string) {
 			}
 			_ = os.WriteFile(filepath.Join(dir, "unload-ack"), nil, 0600)
 		case "command/execute":
+			var params subprocess.CommandExecParams
+			paramsRaw, _ := json.Marshal(req.Params)
+			_ = json.Unmarshal(paramsRaw, &params)
+			if params.Name != "plugin_capabilities" {
+				if result, e := os.ReadFile(filepath.Join(dir, "verb-result")); e == nil {
+					resp.Result, _ = json.Marshal(subprocess.CommandExecResult{Action: "message", Content: string(result)})
+					_ = enc.Encode(resp)
+					continue
+				}
+			}
 			content, _ := os.ReadFile(filepath.Join(dir, "declaration"))
 			switch string(content) {
 			case "rpc-legacy":

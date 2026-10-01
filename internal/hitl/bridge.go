@@ -55,9 +55,9 @@ var DefaultSource = SourceAssertion{
 }
 
 // FromAskDetail translates a verb's AskDetail into an EnqueueRequest
-// ready to send to Tangent. The verb name is used in the title and
-// idempotency key.
-func FromAskDetail(verb string, ask *contract.AskDetail) EnqueueRequest {
+// ready to send to Tangent. The verb name supplies the title; the caller
+// must supply an operation-scoped idempotency key.
+func FromAskDetail(verb, idempotencyKey string, ask *contract.AskDetail) EnqueueRequest {
 	kind := ask.Kind
 	if kind == "" {
 		kind = "approval"
@@ -66,7 +66,7 @@ func FromAskDetail(verb string, ask *contract.AskDetail) EnqueueRequest {
 	req := EnqueueRequest{
 		ContractVersion: "1.0",
 		Kind:            kind,
-		IdempotencyKey:  "tachyon:" + verb,
+		IdempotencyKey:  idempotencyKey,
 		Title:           "Tachyon: " + verb,
 		Summary:         ask.Prompt,
 		Request:         ask.Prompt,
