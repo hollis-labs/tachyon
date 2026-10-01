@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,6 +18,9 @@ import (
 type TorqueAdapter struct {
 	baseURL string
 	client  *http.Client
+	// Zero means legacy-first. Remember only this instance's observed shape;
+	// deploys and rollbacks must not turn include_total into a blind probe.
+	pagedLists atomic.Bool
 }
 
 func NewTorqueAdapter(baseURL string) *TorqueAdapter {
@@ -49,7 +53,7 @@ func (a *TorqueAdapter) request(ctx context.Context, method, path string, body, 
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("torque %s %s: HTTP %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(raw)))
+		return &torqueHTTPError{method: method, path: path, status: resp.StatusCode, body: strings.TrimSpace(string(raw))}
 	}
 	if out == nil {
 		return nil
@@ -94,18 +98,12 @@ func (a *TorqueAdapter) ListWorkItems(ctx context.Context, filters WorkFilters) 
 	if filters.Limit != 0 {
 		q.Set("limit", strconv.Itoa(filters.Limit))
 	}
-	if filters.Offset != 0 {
-		q.Set("offset", strconv.Itoa(filters.Offset))
-	}
-	var list WorkList
-	err := a.request(ctx, http.MethodGet, "/tasks?"+q.Encode(), nil, &list)
-	return &list, err
+	// Explicit zero selects offset mode on the new Torque contract.
+	q.Set("offset", strconv.Itoa(filters.Offset))
+	return a.requestWorkList(ctx, "/tasks", q, false)
 }
 func (a *TorqueAdapter) SearchWorkItems(ctx context.Context, query string) (*WorkList, error) {
-	var list WorkList
-	err := a.request(ctx, http.MethodGet, "/tasks/search?"+url.Values{"q": {query}}.Encode(), nil, &list)
-	list.Total = len(list.Tasks)
-	return &list, err
+	return a.requestWorkList(ctx, "/tasks/search", url.Values{"q": {query}, "limit": {"200"}, "offset": {"0"}}, true)
 }
 func (a *TorqueAdapter) AssignWorkItem(ctx context.Context, id, assignee string) (*WorkItem, error) {
 	// Torque has no native assignee field. Preserve metadata read from the

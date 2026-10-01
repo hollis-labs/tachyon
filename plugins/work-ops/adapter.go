@@ -68,7 +68,8 @@ type WorkFilters struct {
 }
 
 // WorkList retains Torque's pagination so callers do not mistake one page
-// for the complete matching cohort. Search currently returns an unpaged list.
+// for the complete matching cohort. Search emits at most 200 matches; HasMore
+// tells callers to refine the query rather than treating that page as complete.
 type WorkList struct {
 	Tasks      []WorkItem `json:"tasks"`
 	Total      int        `json:"total"`
