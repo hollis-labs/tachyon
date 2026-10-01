@@ -20,7 +20,7 @@ type NaniteLaunchAdapter struct {
 }
 
 func NewNaniteLaunchAdapter(baseURL string, store *LaunchStore) *NaniteLaunchAdapter {
-	a := &NaniteLaunchAdapter{baseURL: strings.TrimRight(baseURL, "/"), httpClient: &http.Client{Timeout: 30 * time.Second}}
+	a := &NaniteLaunchAdapter{baseURL: strings.TrimRight(baseURL, "/"), httpClient: providerHTTPClient(http.DefaultTransport, 30*time.Second)}
 	a.launchLifecycle = &launchLifecycle{store: store, backend: "nanite"}
 	a.resolve = func(ctx context.Context, req PrepareRequest) (PrepareRequest, string, error) {
 		agent, err := a.resolveAgent(ctx, req.AgentID)
@@ -85,7 +85,7 @@ func (a *NaniteLaunchAdapter) doJSON(ctx context.Context, method, path string, b
 
 	req, err := http.NewRequestWithContext(ctx, method, a.baseURL+path, bodyReader)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return fmt.Errorf("invalid provider request")
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -93,18 +93,17 @@ func (a *NaniteLaunchAdapter) doJSON(ctx context.Context, method, path string, b
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("http %s %s: %w", method, path, err)
+		return safeProviderError(err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("http %s %s: status %d: %s", method, path, resp.StatusCode, string(b))
+		return &providerResponseError{status: resp.StatusCode}
 	}
 
 	if dst != nil {
 		if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
-			return fmt.Errorf("decode response: %w", err)
+			return fmt.Errorf("invalid provider JSON response")
 		}
 	}
 	return nil
