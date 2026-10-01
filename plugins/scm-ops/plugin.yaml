@@ -1,0 +1,23 @@
+schema_version: 1
+id: scm-ops
+name: Source Control
+version: 0.1.0
+description: "Read-only local Git repository activity and status"
+author: "Hollis Labs"
+license: MIT
+homepage: https://github.com/hollis-labs/tachyon
+repository: https://github.com/hollis-labs/tachyon
+protocol: 1
+runtime: subprocess
+entrypoint: ./scm-ops
+load_type: auto
+config:
+  repos_root: "~/dev"
+registers:
+release:
+  platforms:
+    - darwin-arm64
+    - darwin-amd64
+    - linux-amd64
+    - linux-arm64
+    - windows-amd64
