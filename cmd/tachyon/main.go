@@ -284,17 +284,11 @@ func main() {
 	// Initialize plugin manager
 	pluginMgr := plugins.NewManager(logger)
 
-	// Load the hello plugin for proof-of-concept
-	// In production, this would discover and load plugins from a configured directory
-	helloPluginPath := "./plugins/hello/hello"
-	if err := pluginMgr.LoadPlugin(ctx, helloPluginPath); err != nil {
-		logger.Warn("failed to load hello plugin (build it with: go build -o plugins/hello/hello ./plugins/hello)", "error", err)
+	// Admission and rollback finish before any HTTP listener can start.
+	if err := loadStartupPlugins(ctx, pluginMgr, "./plugins", logger); err != nil {
+		logStartupRefusal(logger, err)
+		os.Exit(1)
 	}
-
-	// Discover and load every built plugin under ./plugins (a directory with a
-	// plugin.yaml and an executable named after it). A new plugin needs no edit
-	// here; build it with `make build-plugins`.
-	loadDiscoveredPlugins(ctx, pluginMgr, "./plugins", logger)
 
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/plugins/{id}/restart", newPluginRestartHandler(pluginMgr))
