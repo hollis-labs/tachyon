@@ -1,0 +1,21 @@
+{
+  "modules": ["observe"],
+  "verbs": {
+    "observe_activity":  { "effect": "reads" },
+    "observe_logs":      { "effect": "reads" },
+    "observe_metrics":   { "effect": "reads" },
+    "observe_events":    { "effect": "reads" },
+    "observe_status":    { "effect": "reads" },
+    "observe_subscribe": { "effect": "reads" }
+  },
+  "nav": {
+    "groups": [
+      { "id": "observability", "label": "Observability", "icon": "activity", "priority": 400 }
+    ],
+    "items": [
+      { "id": "observe_activity", "label": "Activity",  "group": "observability", "route": "/observe",         "requires_verb": "observe_activity", "priority": 100 },
+      { "id": "observe_logs",     "label": "Logs",      "group": "observability", "route": "/observe/logs",    "requires_verb": "observe_logs",     "priority": 200 },
+      { "id": "observe_metrics",  "label": "Metrics",   "group": "observability", "route": "/observe/metrics", "requires_verb": "observe_metrics",  "priority": 300 }
+    ]
+  }
+}
