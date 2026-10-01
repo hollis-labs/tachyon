@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -105,7 +106,10 @@ func (p *plugin) verbObserveSubscribe(ctx context.Context, payload json.RawMessa
 	}
 	handle, err := p.adapter.Subscribe(ctx, req)
 	if err != nil {
-		return contract.Err("provider_error", err.Error()), nil
+		if errors.Is(err, errUnsupportedPolling) {
+			return contract.Err("unsupported", err.Error()), nil
+		}
+		return contract.Err("validation", err.Error()), nil
 	}
 	return contract.OK(handle)
 }

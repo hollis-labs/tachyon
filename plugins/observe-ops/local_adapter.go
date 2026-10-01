@@ -303,16 +303,7 @@ func (a *LocalAdapter) Status(_ context.Context) (*StatusSummary, error) {
 	}, nil
 }
 
-// Subscribe implements ObserveAdapter. MVP returns a stub handle — real
-// streaming (SSE, WebSocket) is a later feature.
+// Subscribe implements ObserveAdapter without allocating subscription state.
 func (a *LocalAdapter) Subscribe(_ context.Context, req SubscribeRequest) (*SubscriptionHandle, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	id := a.allocID()
-	return &SubscriptionHandle{
-		ID:       id,
-		Channel:  req.Channel,
-		Filter:   req.Filter,
-		Endpoint: fmt.Sprintf("/api/verb/observe_%s?subscription=%s", req.Channel, id),
-	}, nil
+	return pollingDescriptor(req)
 }

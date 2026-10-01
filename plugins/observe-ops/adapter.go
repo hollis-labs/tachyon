@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -69,13 +70,21 @@ type StatusSummary struct {
 	LastUpdated       time.Time          `json:"last_updated"`
 }
 
-// SubscriptionHandle is the token returned when a consumer registers for
-// real-time updates.
+// SubscriptionHandle describes stateless snapshot polling, not a registered
+// subscription. Payload is sent as the JSON body to the same-origin endpoint.
 type SubscriptionHandle struct {
-	ID       string `json:"id"`
-	Channel  string `json:"channel"` // "activity", "logs", "events"
-	Filter   string `json:"filter,omitempty"`
-	Endpoint string `json:"endpoint"` // where to poll/stream
+	Channel         string          `json:"channel"`
+	Endpoint        string          `json:"endpoint"`
+	Method          string          `json:"method"`
+	Payload         json.RawMessage `json:"payload"`
+	Transport       string          `json:"transport"`
+	Supported       bool            `json:"supported"`
+	Mode            string          `json:"mode"`
+	PollIntervalMS  int             `json:"poll_interval_ms"`
+	MaxLimit        int             `json:"max_limit"`
+	CursorSupported bool            `json:"cursor_supported"`
+	Cursor          any             `json:"cursor"`
+	DurableReplay   bool            `json:"durable_replay"`
 }
 
 // ActivityFilter constrains the activity feed query.
@@ -113,7 +122,8 @@ type EventFilter struct {
 	SinceID string `json:"since_id,omitempty"`
 }
 
-// SubscribeRequest specifies what real-time channel to subscribe to.
+// SubscribeRequest requests a polling descriptor. Filter is a JSON object
+// encoded as a string, using the selected channel's read-filter fields.
 type SubscribeRequest struct {
 	Channel string `json:"channel"` // "activity", "logs", "events"
 	Filter  string `json:"filter,omitempty"`
@@ -139,7 +149,6 @@ type ObserveAdapter interface {
 	// Status returns aggregate health/status data for the dashboard.
 	Status(ctx context.Context) (*StatusSummary, error)
 
-	// Subscribe registers a consumer for real-time updates on the given
-	// channel and returns a handle the consumer uses to poll/stream.
+	// Subscribe describes stateless snapshot polling for a supported channel.
 	Subscribe(ctx context.Context, req SubscribeRequest) (*SubscriptionHandle, error)
 }
