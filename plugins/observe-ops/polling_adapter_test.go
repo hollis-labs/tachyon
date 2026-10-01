@@ -29,7 +29,7 @@ func pollingTestConfig(t *testing.T, override http.HandlerFunc) map[string]strin
 			return
 		}
 		switch r.URL.Path {
-		case "/api/health", "/health":
+		case "/api/health", "/tether/api/health":
 			w.Write([]byte(`{"status":"ok"}`))
 		case "/api/v1/scheduler/status":
 			w.Write([]byte(`{"enabled":false,"max_workers":3,"active_workers":0,"queue_depth":0}`))
@@ -44,7 +44,7 @@ func pollingTestConfig(t *testing.T, override http.HandlerFunc) map[string]strin
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return map[string]string{"nanite_url": srv.URL, "torque_url": srv.URL, "tether_url": srv.URL}
+	return map[string]string{"nanite_url": srv.URL, "torque_url": srv.URL, "tether_url": srv.URL + "/tether"}
 }
 
 func TestPollingPluginReadsRealSources(t *testing.T) {
@@ -137,7 +137,7 @@ func TestSnapshotFiltersAndOrdering(t *testing.T) {
 }
 
 func TestDependenciesDegradeIndependently(t *testing.T) {
-	for _, failed := range []string{"/api/health", "/health", "/api/v1/scheduler/status", "/api/sessions"} {
+	for _, failed := range []string{"/api/health", "/tether/api/health", "/api/v1/scheduler/status", "/api/sessions"} {
 		t.Run(failed, func(t *testing.T) {
 			config := pollingTestConfig(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == failed {
@@ -284,7 +284,7 @@ func TestMalformedAndUnreachableSources(t *testing.T) {
 func TestStalledSourceTimesOutWithoutHidingOthers(t *testing.T) {
 	config := pollingTestConfig(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/health":
+		case "/tether/api/health":
 			<-r.Context().Done()
 		case "/api/sessions":
 			w.Write([]byte("[]"))

@@ -113,7 +113,7 @@ func (a *PollingAdapter) poll(ctx context.Context) pollResult {
 		{"nanite", a.endpoints[0] + "/api/health"},
 		// Torque has no health route; scheduler/status is its cheap read-only probe.
 		{"torque", a.endpoints[1] + "/api/v1/scheduler/status"},
-		{"tether", a.endpoints[2] + "/health"},
+		{"tether", a.endpoints[2] + "/api/health"},
 		{"nanite_sessions", a.endpoints[0] + "/api/sessions"},
 	}
 	var wg sync.WaitGroup
