@@ -3,6 +3,7 @@ import { X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { MCPServer } from "../../api/client"
 import { useApi } from "../../api/context"
+import { useCapabilities } from "../../hooks/use-capabilities"
 
 interface AgentMCPPanelProps {
   agentId: string
@@ -22,6 +23,7 @@ function parseServerNames(json?: string): string[] {
 
 export function AgentMCPPanel({ agentId, mcpServersJson, onChanged }: AgentMCPPanelProps) {
   const api = useApi()
+  const { has } = useCapabilities()
   const [catalog, setCatalog] = useState<MCPServer[]>([])
   const [loading, setLoading] = useState(true)
   const [picked, setPicked] = useState<string | null>(null)
@@ -52,7 +54,7 @@ export function AgentMCPPanel({ agentId, mcpServersJson, onChanged }: AgentMCPPa
   )
 
   async function handleAttach(name: string | null) {
-    if (!name) return
+    if (!name || !has("agent_grant", "can_attach_mcp_servers")) return
     setBusy(true)
     try {
       await api.attachAgentMCPServer(agentId, name)
@@ -66,6 +68,7 @@ export function AgentMCPPanel({ agentId, mcpServersJson, onChanged }: AgentMCPPa
   }
 
   async function handleDetach(name: string) {
+    if (!has("agent_revoke", "can_attach_mcp_servers")) return
     setBusy(true)
     try {
       await api.detachAgentMCPServer(agentId, name)
@@ -93,7 +96,7 @@ export function AgentMCPPanel({ agentId, mcpServersJson, onChanged }: AgentMCPPa
               {name}
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !has("agent_revoke", "can_attach_mcp_servers")}
                 onClick={() => handleDetach(name)}
                 className="rounded-full hover:bg-black/10"
                 title={`Detach ${name}`}
@@ -104,19 +107,21 @@ export function AgentMCPPanel({ agentId, mcpServersJson, onChanged }: AgentMCPPa
           </Pill>
         ))}
       </div>
-      <div className="max-w-xs">
-        <Combobox
-          items={pickable}
-          value={picked}
-          onChange={(value) => {
-            setPicked(value)
-            handleAttach(value)
-          }}
-          ariaLabel="Attach an MCP server"
-          placeholder="Attach an MCP server…"
-          emptyText="No more registered servers to attach"
-        />
-      </div>
+      {has("agent_grant", "can_attach_mcp_servers") && (
+        <div className="max-w-xs">
+          <Combobox
+            items={pickable}
+            value={picked}
+            onChange={(value) => {
+              setPicked(value)
+              handleAttach(value)
+            }}
+            ariaLabel="Attach an MCP server"
+            placeholder="Attach an MCP server…"
+            emptyText="No more registered servers to attach"
+          />
+        </div>
+      )}
     </div>
   )
 }
