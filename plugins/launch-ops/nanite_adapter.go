@@ -44,6 +44,11 @@ func NewNaniteLaunchAdapter(baseURL string, store *LaunchStore) *NaniteLaunchAda
 		}
 		return result.ID, LaunchStateRunning, nil
 	}
+	a.stop = func(ctx context.Context, l *Launch) error {
+		// Verified Nanite route: archive retains conversation data and invokes
+		// CloseAgentSession plus orphan-process cleanup in handleDeleteSession.
+		return a.doJSON(ctx, http.MethodDelete, "/api/sessions/"+url.PathEscape(l.SessionID), nil, nil)
+	}
 	return a
 }
 

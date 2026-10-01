@@ -6,6 +6,7 @@ import { LargeDialog } from "../components/agent-ops/large-dialog"
 type LaunchState = "prepared" | "executing" | "running" | "completed" | "failed" | "cancelled"
 interface Launch {
   id: string
+  backend?: string
   agent_id: string
   agent_name?: string
   provider?: string
@@ -41,6 +42,14 @@ const stateLabels: Record<LaunchState, string> = {
 }
 const selectClass = "h-9 rounded-md border border-border-strong bg-bg px-3 text-sm"
 const cancellable = (launch: Launch) => ["prepared", "executing", "running"].includes(launch.state)
+const cancelLabel = (launch: Launch) =>
+  launch.state === "executing"
+    ? "Resolve interrupted launch"
+    : launch.state === "prepared"
+      ? "Cancel prepared launch"
+      : launch.backend === "nanite"
+        ? "Archive and request stop"
+        : "Stop session"
 const message = (error: unknown) => (error instanceof Error ? error.message : "Request failed")
 
 async function read<T>(verb: string, payload: unknown = {}): Promise<T> {
@@ -580,7 +589,7 @@ export function LaunchesPage() {
                   setCancelOpen(true)
                 }}
               >
-                Cancel launch
+                {cancelLabel(detail)}
               </Button>
             )}
           </>
@@ -592,9 +601,23 @@ export function LaunchesPage() {
           </p>
         )}
         {detail ? <LaunchDetails launch={detail} /> : !detailError && <p>Loading launch…</p>}
+        {detail?.state === "executing" && (
+          <p className="mt-3">
+            Active session creation must finish before cancellation. An interrupted launch can be
+            resolved; without a session ID, its provider outcome remains unknown.
+          </p>
+        )}
         {cancelOpen && (
           <div className="mt-5 grid max-w-xl gap-3 border-t border-border-strong pt-4">
-            <p>Cancel this launch? This does not stop an existing session.</p>
+            <p>
+              {detail?.state === "prepared"
+                ? "Cancel this prepared launch? No session will be created."
+                : detail?.state === "executing" && !detail.session_id
+                  ? "Resolve this interrupted launch as cancelled? A provider session may exist; no stop can be requested without its ID. Active creation will reject this request."
+                  : detail?.backend === "nanite"
+                    ? "Archive this Nanite session and request runtime shutdown? Nanite retains its conversation; it does not report whether shutdown succeeded."
+                    : "Stop this provider session? Cancellation is recorded after the provider accepts the stop request."}
+            </p>
             <Label htmlFor="launch-cancel-reason">Reason (optional)</Label>
             <Input
               id="launch-cancel-reason"
@@ -603,10 +626,10 @@ export function LaunchesPage() {
             />
             <div className="flex gap-2">
               <Button disabled={busy} onClick={() => void cancel()}>
-                {busy ? "Cancelling…" : "Confirm cancellation"}
+                {busy ? "Applying…" : detail ? cancelLabel(detail) : "Confirm"}
               </Button>
               <Button variant="outline" disabled={busy} onClick={() => setCancelOpen(false)}>
-                Keep launch
+                {detail?.state === "prepared" ? "Keep launch" : "Keep session"}
               </Button>
             </div>
           </div>

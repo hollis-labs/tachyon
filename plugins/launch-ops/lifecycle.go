@@ -21,6 +21,7 @@ type launchLifecycle struct {
 	replaySafe bool
 	mu         sync.Mutex
 	inFlight   map[string]bool
+	cancelling map[string]bool
 }
 
 func (a *launchLifecycle) Prepare(ctx context.Context, req PrepareRequest) (*Launch, error) {
@@ -48,7 +49,7 @@ func (a *launchLifecycle) Execute(ctx context.Context, req ExecuteRequest) (*Lau
 	if a.inFlight == nil {
 		a.inFlight = map[string]bool{}
 	}
-	if a.inFlight[req.LaunchID] {
+	if a.inFlight[req.LaunchID] || a.cancelling[req.LaunchID] {
 		a.mu.Unlock()
 		return nil, fmt.Errorf("launch %s is already executing", req.LaunchID)
 	}
@@ -107,11 +108,7 @@ func (a *launchLifecycle) Execute(ctx context.Context, req ExecuteRequest) (*Lau
 	if err != nil {
 		return nil, err
 	}
-	if result.State == LaunchStateCancelled && result.SessionID != "" && a.stop != nil {
-		if err := a.stop(saveCtx, result); err != nil {
-			return result, fmt.Errorf("launch cancelled but provider stop failed: %w", err)
-		}
-	}
+
 	return result, nil
 }
 
@@ -119,34 +116,85 @@ func terminalLaunch(state LaunchState) bool {
 	return state == LaunchStateCompleted || state == LaunchStateFailed || state == LaunchStateCancelled
 }
 
+// Cancel rejects active creation calls, but resolves interrupted executing
+// intents honestly: stop a known session or record an unknown provider outcome.
 func (a *launchLifecycle) Cancel(ctx context.Context, req CancelRequest) (*Launch, error) {
+	// Reserve this launch against a concurrent Execute replay while cancellation
+	// reads its checkpoint and calls the provider. Other launches remain usable.
+	a.mu.Lock()
+	if a.inFlight[req.LaunchID] || a.cancelling[req.LaunchID] {
+		a.mu.Unlock()
+		return nil, fmt.Errorf("launch %s has an operation in flight; wait for its result before stopping it", req.LaunchID)
+	}
+	if a.cancelling == nil {
+		a.cancelling = map[string]bool{}
+	}
+	a.cancelling[req.LaunchID] = true
+	a.mu.Unlock()
+	defer func() { a.mu.Lock(); delete(a.cancelling, req.LaunchID); a.mu.Unlock() }()
 	l, err := a.store.Get(ctx, req.LaunchID)
 	if err != nil {
 		return nil, err
 	}
-	if terminalLaunch(l.State) {
+	if l.State == LaunchStatePrepared {
+		return a.store.Update(ctx, l.ID, func(current *Launch) error {
+			// Execute can win between Get and Update. Do not cancel its in-flight call.
+			if current.State != LaunchStatePrepared {
+				return fmt.Errorf("launch %s is in state %s; wait for session creation before stopping it", current.ID, current.State)
+			}
+			markCancelled(current, req.Reason)
+			return nil
+		})
+	}
+	if l.State == LaunchStateExecuting && l.SessionID == "" {
+		return a.store.Update(ctx, l.ID, func(current *Launch) error {
+			if current.State != LaunchStateExecuting || current.SessionID != "" {
+				return fmt.Errorf("launch state changed while resolving interrupted execution")
+			}
+			markCancelled(current, "provider outcome unknown; a session may exist")
+			return nil
+		})
+	}
+	if l.State != LaunchStateRunning && l.State != LaunchStateExecuting {
 		return nil, fmt.Errorf("launch %s is in state %s, cannot cancel", l.ID, l.State)
 	}
-	if a.stop != nil && l.SessionID != "" {
-		if err := a.stop(ctx, l); err != nil {
-			return nil, err
-		}
+	if a.stop == nil {
+		return nil, fmt.Errorf("provider %s cannot stop a running launch; state unchanged", a.backend)
 	}
-	return a.store.Update(ctx, l.ID, func(current *Launch) error {
+	if l.SessionID == "" {
+		return nil, fmt.Errorf("running launch has no provider session ID; state unchanged")
+	}
+	if err := a.stop(ctx, l); err != nil {
+		return nil, err
+	}
+	// Once the provider accepted stop, persist its outcome even if the caller
+	// disconnected. Failed provider calls leave the durable state untouched.
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	return a.store.Update(saveCtx, l.ID, func(current *Launch) error {
+		// A concurrent provider status poll may have recorded completion already.
 		if terminalLaunch(current.State) {
-			return fmt.Errorf("launch %s is in state %s, cannot cancel", current.ID, current.State)
+			return nil
 		}
-		now := time.Now().UTC()
-		current.State = LaunchStateCancelled
-		current.UpdatedAt = now
-		current.EndedAt = &now
-		current.Error = "cancelled"
-		if req.Reason != "" {
-			current.Error += ": " + req.Reason
+		if current.State != LaunchStateRunning && current.State != LaunchStateExecuting {
+			return fmt.Errorf("launch state changed while stopping its provider session")
 		}
+		markCancelled(current, req.Reason)
 		return nil
 	})
 }
+
+func markCancelled(l *Launch, reason string) {
+	now := time.Now().UTC()
+	l.State = LaunchStateCancelled
+	l.UpdatedAt = now
+	l.EndedAt = &now
+	l.Error = "cancelled"
+	if reason != "" {
+		l.Error += ": " + reason
+	}
+}
+
 func (a *launchLifecycle) Read(ctx context.Context, req ReadRequest) (*Launch, error) {
 	l, err := a.store.Get(ctx, req.LaunchID)
 	if err != nil {
