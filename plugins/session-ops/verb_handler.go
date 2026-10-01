@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -76,6 +77,9 @@ func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMe
 }
 
 func sessionResult(data any, err error) (contract.ResultEnvelope, error) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return contract.Err("timeout", "session request timed out; completion is unknown"), nil
+	}
 	if err != nil {
 		return contract.Err("provider_error", err.Error()), nil
 	}

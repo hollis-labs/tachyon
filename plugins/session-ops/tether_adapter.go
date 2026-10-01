@@ -3,18 +3,25 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	tether "github.com/hollis-labs/go-tether-client"
 )
 
-type TetherAdapter struct{ client *tether.Client }
+// Turns can outlast ordinary reads, but must release the serial plugin pipe.
+const submitTimeout = 30 * time.Second
+
+type TetherAdapter struct {
+	client        *tether.Client
+	submitTimeout time.Duration
+}
 
 func NewTetherAdapter(listenAddr string) (*TetherAdapter, error) {
 	client, err := tether.New(listenAddr)
 	if err != nil {
 		return nil, err
 	}
-	return &TetherAdapter{client: client}, nil
+	return &TetherAdapter{client: client, submitTimeout: submitTimeout}, nil
 }
 
 func sessionFromTether(s tether.Session) Session {
@@ -82,6 +89,8 @@ func (a *TetherAdapter) Stop(ctx context.Context, id string) error {
 	return a.client.StopSession(ctx, id)
 }
 func (a *TetherAdapter) Submit(ctx context.Context, id, text string) error {
+	ctx, cancel := context.WithTimeout(ctx, a.submitTimeout)
+	defer cancel()
 	return a.client.SendTurn(ctx, id, text)
 }
 
