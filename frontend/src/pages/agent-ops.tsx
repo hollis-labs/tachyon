@@ -25,9 +25,12 @@ const HIDDEN_BY_DEFAULT_STATUS = "disabled"
 function TableSkeleton() {
   return (
     <div className="flex flex-col gap-2 p-4">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-16 w-full rounded-md" />
-      ))}
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
     </div>
   )
 }
@@ -206,9 +209,9 @@ export function AgentOpsPage() {
         (a) =>
           a.name.toLowerCase().includes(query) ||
           a.id.toLowerCase().includes(query) ||
-          (a.description && a.description.toLowerCase().includes(query)) ||
-          (a.slug && a.slug.toLowerCase().includes(query)) ||
-          (a.tags && a.tags.toLowerCase().includes(query)),
+          a.description?.toLowerCase().includes(query) ||
+          a.slug?.toLowerCase().includes(query) ||
+          a.tags?.toLowerCase().includes(query),
       )
     }
     return result

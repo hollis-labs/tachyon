@@ -1,6 +1,6 @@
 import { Checkbox, EmptyState } from "@hollis-labs/sysop-ui"
 import { Search } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 
 export interface ChecklistItem {
   value: string
@@ -39,6 +39,7 @@ export function SearchableChecklist({
   categoryLabel,
   className,
 }: SearchableChecklistProps) {
+  const checklistId = useId()
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState<string>("all")
 
@@ -106,36 +107,19 @@ export function SearchableChecklist({
             {filtered.map((item) => {
               const isChecked = checked.has(item.value)
               return (
-                // The WAI-ARIA custom-checkbox pattern (role="checkbox" +
-                // aria-checked + tabIndex on a plain element), not a
-                // <button>: the Checkbox below is itself an interactive
-                // element, and nesting one interactive element inside
-                // another is invalid HTML and risks double-handling the
-                // click. The Checkbox is pointer-events-none so every
-                // click here — anywhere on the row — is handled exactly
-                // once, by this element.
-                <div
+                <label
                   key={item.value}
-                  role="checkbox"
-                  tabIndex={item.disabled ? -1 : 0}
+                  htmlFor={`${checklistId}-${item.value}`}
                   aria-disabled={item.disabled}
-                  aria-checked={isChecked}
-                  onClick={() => !item.disabled && onToggle(item.value, !isChecked)}
-                  onKeyDown={(e) => {
-                    if (item.disabled) return
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault()
-                      onToggle(item.value, !isChecked)
-                    }
-                  }}
                   className="flex w-full cursor-pointer items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-panel/70 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
                   title={item.disabled ? item.disabledReason : undefined}
                 >
                   <Checkbox
+                    id={`${checklistId}-${item.value}`}
                     checked={isChecked}
                     disabled={item.disabled}
-                    tabIndex={-1}
-                    className="pointer-events-none mt-0.5 shrink-0"
+                    onCheckedChange={(next) => onToggle(item.value, next)}
+                    className="mt-0.5 shrink-0"
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-mono text-[12px] text-text">
@@ -147,7 +131,7 @@ export function SearchableChecklist({
                       </span>
                     )}
                   </span>
-                </div>
+                </label>
               )
             })}
           </div>

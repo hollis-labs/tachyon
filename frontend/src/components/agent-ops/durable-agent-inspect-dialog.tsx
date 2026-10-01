@@ -97,9 +97,9 @@ export function DurableAgentInspectDialog({ agent, onClose }: DurableAgentInspec
             <SectionHeading>Recent Activity</SectionHeading>
             {loading ? (
               <div className="flex flex-col gap-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full rounded-md" />
-                ))}
+                <Skeleton className="h-10 w-full rounded-md" />
+                <Skeleton className="h-10 w-full rounded-md" />
+                <Skeleton className="h-10 w-full rounded-md" />
               </div>
             ) : events.length === 0 ? (
               <p className="text-xs text-text-subtle">No recorded activity yet.</p>
