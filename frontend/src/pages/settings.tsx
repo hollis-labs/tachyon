@@ -10,12 +10,14 @@ import {
   PluginRestartError,
   resetConfig,
   restartPlugin,
+  retiredConfigTargets,
   type SettingsField,
   setConfig,
   type TargetConfig,
   validationErrors,
 } from "../api/settings"
 import { useVerbs } from "../api/verbs"
+import { PluginRecovery } from "../components/settings/plugin-recovery"
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "Could not complete the request."
@@ -32,11 +34,13 @@ function drafts(config: TargetConfig): Record<string, string | boolean> {
 
 export function SettingsPage() {
   const verbs = useVerbs()
+  const selectionTrigger = useRef<HTMLButtonElement>(null)
   const [targets, setTargets] = useState<ConfigTarget[]>([])
   const [selected, setSelected] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [operationNotice, setOperationNotice] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
   const [restartNeeded, setRestartNeeded] = useState<Record<string, boolean>>({})
@@ -44,15 +48,13 @@ export function SettingsPage() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh explicitly reloads the server snapshot.
   useEffect(() => {
     if (verbs.loading) return
-    if (!verbs.has("config_list")) {
-      setLoading(false)
-      setTargets([])
-      return
-    }
     let active = true
     setLoading(true)
     setError(null)
-    listConfigTargets()
+    const snapshot = verbs.has("config_list")
+      ? listConfigTargets()
+      : retiredConfigTargets().then((data) => ({ status: "ok" as const, data }))
+    snapshot
       .then((result) => {
         if (!active) return
         if (result.status !== "ok") throw new Error(envelopeError(result))
@@ -87,7 +89,7 @@ export function SettingsPage() {
       <PageHeader title="Settings / Plugins" />
       <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3">
         <p className="text-sm text-text-soft">
-          Configure loaded plugins. Saved changes apply when a plugin restarts.
+          Configure loaded plugins or recover unloaded plugins. Saved changes apply after restart.
         </p>
         <Button
           variant="outline"
@@ -107,28 +109,39 @@ export function SettingsPage() {
           {operationError || error}
         </div>
       )}
+      {operationNotice && (
+        <div role="status" className="border-b border-border px-5 py-3 text-sm">
+          {operationNotice}
+          {!verbs.has("config_list") && (
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Reload capabilities
+            </Button>
+          )}
+        </div>
+      )}
       {verbs.loading || (loading && targets.length === 0) ? (
         <div className="space-y-3 p-5">
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-48 w-full" />
         </div>
-      ) : !verbs.has("config_list") ? (
+      ) : !verbs.has("config_list") && targets.length === 0 ? (
         <EmptyState
           variant="empty"
           title="Configuration is unavailable"
           description="The config module is not loaded."
         />
       ) : targets.length === 0 ? (
-        <EmptyState variant="empty" title="No loaded plugins" description="Refresh to try again." />
+        <EmptyState variant="empty" title="No plugins" description="Refresh to try again." />
       ) : (
         <div className="grid min-h-0 flex-1 gap-5 overflow-auto p-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside aria-label="Loaded plugins" className="space-y-1">
+          <aside aria-label="Plugins" className="space-y-1">
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-subtle">
-              Loaded plugins · {targets.length}
+              Plugins · {targets.length}
             </h2>
             {targets.map((item) => (
               <button
                 key={item.id}
+                ref={selected === item.id ? selectionTrigger : undefined}
                 type="button"
                 disabled={busy}
                 aria-pressed={selected === item.id}
@@ -145,6 +158,7 @@ export function SettingsPage() {
                     {item.id}
                   </span>
                   <span className="mt-1 block text-xs text-text-soft">
+                    {item.state === "unloaded" ? "Unloaded" : "Loaded"} ·{" "}
                     {item.settings.fields?.length ?? 0} settings
                   </span>
                 </span>
@@ -152,25 +166,41 @@ export function SettingsPage() {
               </button>
             ))}
           </aside>
-          {target && (
-            <SettingsEditor
-              key={target.id}
+          {target?.state === "unloaded" ? (
+            <PluginRecovery
               target={target}
-              refresh={refresh}
-              canRead={verbs.has("config_get")}
-              canSave={verbs.has("config_set")}
-              canReset={verbs.has("config_reset")}
-              restartNeeded={restartNeeded[target.id] === true}
-              onRestartNeeded={markRestart}
               onBusy={setBusy}
-              onRestart={() => setRefresh((current) => current + 1)}
-              onRestartFailure={(detail) => {
-                setOperationError(detail)
-                setTargets((current) => current.filter((item) => item.id !== target.id))
-                setSelected(targets.find((item) => item.id !== target.id)?.id ?? "")
+              onNotice={setOperationNotice}
+              onError={setOperationError}
+              onRefresh={() => {
                 setRefresh((current) => current + 1)
+                requestAnimationFrame(() => selectionTrigger.current?.focus())
               }}
             />
+          ) : (
+            target && (
+              <SettingsEditor
+                key={target.id}
+                target={target}
+                refresh={refresh}
+                canRead={verbs.has("config_get")}
+                canSave={verbs.has("config_set")}
+                canReset={verbs.has("config_reset")}
+                restartNeeded={restartNeeded[target.id] === true}
+                onRestartNeeded={markRestart}
+                onBusy={setBusy}
+                onRestart={() => setRefresh((current) => current + 1)}
+                onRestartFailure={(detail) => {
+                  setOperationError(detail)
+                  setTargets((current) =>
+                    current.map((item) =>
+                      item.id === target.id ? { ...item, state: "unloaded", settings: {} } : item,
+                    ),
+                  )
+                  setRefresh((current) => current + 1)
+                }}
+              />
+            )
           )}
         </div>
       )}
