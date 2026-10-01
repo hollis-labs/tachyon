@@ -2,9 +2,11 @@ import {
   createContext,
   createElement,
   type PropsWithChildren,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 
@@ -47,10 +49,44 @@ interface VerbState {
   loading: boolean
   available: boolean | null
 }
-const VerbContext = createContext<VerbState | null>(null)
+type VerbDiscovery = VerbState & { refresh(): Promise<void>; refreshError: string | null }
+const VerbContext = createContext<VerbDiscovery | null>(null)
 
-function useVerbDiscovery(enabled = true): VerbState {
+function useVerbDiscovery(enabled = true): VerbDiscovery {
   const [state, setState] = useState<VerbState>({ registry: {}, loading: true, available: null })
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  const mounted = useRef(false)
+  const sequence = useRef(0)
+  const flight = useRef<Promise<void> | null>(null)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      sequence.current += 1
+    }
+  }, [])
+  const refresh = useCallback(() => {
+    if (flight.current) return flight.current
+    const version = ++sequence.current
+    if (mounted.current) setRefreshError(null)
+    const pending = fetchVerbs()
+      .then((registry) => {
+        if (mounted.current && sequence.current === version) {
+          setState({ registry, loading: false, available: true })
+        }
+      })
+      .catch((error: unknown) => {
+        if (mounted.current && sequence.current === version) {
+          setRefreshError(error instanceof Error ? error.message : "Verb refresh failed")
+        }
+        throw error
+      })
+      .finally(() => {
+        if (flight.current === pending) flight.current = null
+      })
+    flight.current = pending
+    return pending
+  }, [])
   useEffect(() => {
     if (!enabled) return
     let active = true
@@ -70,7 +106,7 @@ function useVerbDiscovery(enabled = true): VerbState {
       active = false
     }
   }, [enabled])
-  return state
+  return { ...state, refresh, refreshError }
 }
 
 // Share one discovery result across the shell and pages. Standalone consumers
@@ -84,13 +120,15 @@ export function useVerbs(): {
   loading: boolean
   available: boolean | null
   registry: VerbRegistry
+  refresh(): Promise<void>
+  refreshError: string | null
   has(verb: string): boolean
   supports(module: string, verb: string): boolean
   effect(verb: string): string | undefined
 } {
   const shared = useContext(VerbContext)
   const standalone = useVerbDiscovery(!shared)
-  const { registry, loading, available } = shared ?? standalone
+  const { registry, loading, available, refresh, refreshError } = shared ?? standalone
   return useMemo(() => {
     const declared = new Map<string, string>()
     for (const [module, capabilities] of Object.entries(registry ?? {})) {
@@ -104,10 +142,12 @@ export function useVerbs(): {
       loading,
       available,
       registry,
+      refresh,
+      refreshError,
       has: (verb: string) => declared.has(verb),
       supports: (module: string, verb: string) =>
         verb.startsWith(`${module}_`) && declared.has(verb),
       effect: (verb: string) => declared.get(verb),
     }
-  }, [loading, available, registry])
+  }, [loading, available, registry, refresh, refreshError])
 }
