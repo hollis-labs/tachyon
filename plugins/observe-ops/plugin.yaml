@@ -1,0 +1,22 @@
+id: observe-ops
+name: Observe Ops
+version: 0.1.0
+description: >-
+  Observability plugin for Tachyon — activity feeds, logs, metrics,
+  events and aggregate status across agents and sessions.
+protocol: 1
+runtime: subprocess
+entrypoint: ./observe-ops
+load_type: auto
+release:
+  platforms:
+    - os: darwin
+      arch: arm64
+    - os: darwin
+      arch: amd64
+    - os: linux
+      arch: amd64
+    - os: linux
+      arch: arm64
+    - os: windows
+      arch: amd64
