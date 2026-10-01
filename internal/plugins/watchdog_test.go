@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -399,6 +400,143 @@ func TestTransportFailureRetiresRatherThanReusesStream(t *testing.T) {
 				t.Fatal("broken stream reused")
 			}
 			awaitCondition(t, func() bool { return m.ModuleOwner("hung") == "" })
+		})
+	}
+}
+
+// Signal precisely when Encode attempts pipe I/O, before any reader accepts it.
+type signallingWriter struct {
+	io.WriteCloser
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (w *signallingWriter) Write(data []byte) (int, error) {
+	w.once.Do(func() { close(w.entered) })
+	return w.WriteCloser.Write(data)
+}
+
+func TestRequestCancellationDuringActiveIOPreservesPlugin(t *testing.T) {
+	for _, stage := range []string{"encode", "decode"} {
+		t.Run(stage, func(t *testing.T) {
+			requests, input := io.Pipe()
+			output, responses := io.Pipe()
+			t.Cleanup(func() { requests.Close(); input.Close(); output.Close(); responses.Close() })
+			entered, release := make(chan struct{}), make(chan struct{})
+			proc := &pluginProcess{id: "hung", stdin: input, stdout: output, stdoutDec: json.NewDecoder(output)}
+			if stage == "encode" {
+				proc.stdin = &signallingWriter{WriteCloser: input, entered: entered}
+			}
+			go func() {
+				decoder, encoder := json.NewDecoder(requests), json.NewEncoder(responses)
+				if stage == "encode" {
+					<-release
+				}
+				for i := 0; ; i++ {
+					var req subprocess.RPCRequest
+					if decoder.Decode(&req) != nil {
+						return
+					}
+					if i == 0 && stage == "decode" {
+						close(entered)
+						<-release
+					}
+					if encoder.Encode(subprocess.RPCResponse{JSONRPC: "2.0", Result: json.RawMessage(`{"completed":true}`)}) != nil {
+						return
+					}
+				}
+			}()
+			m := watchdogManager()
+			registerStalled(m, proc)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				raw, err := m.CallPlugin(ctx, "hung", "command/execute", nil)
+				if err == nil && string(raw) != `{"completed":true}` {
+					err = errors.New("lost response")
+				}
+				done <- err
+			}()
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("call did not start I/O")
+			}
+			cancel()
+			// Give an accidentally inherited cancellation callback time to fire.
+			select {
+			case err := <-done:
+				t.Fatalf("request cancel interrupted active %s: %v", stage, err)
+			case <-time.After(30 * time.Millisecond):
+			}
+			if proc.dead.Load() || m.ModuleOwner("hung") != "hung" {
+				t.Fatal("disconnect retired plugin")
+			}
+			close(release)
+			if err := awaitError(t, done); err != nil {
+				t.Fatal(err)
+			}
+			if proc.dead.Load() || len(m.BuildRegistry().Plugins) != 1 {
+				t.Fatal("completed request retired plugin")
+			}
+			if _, err := m.CallPlugin(context.Background(), "hung", "command/execute", nil); err != nil {
+				t.Fatalf("next call failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestHungRequestIgnoresCallerDeadlineUntilHostWatchdog(t *testing.T) {
+	for _, stage := range []string{"encode", "decode"} {
+		t.Run(stage, func(t *testing.T) {
+			proc, started, _ := stalledProcess(t, stage)
+			proc.callTimeout = time.Second
+			if stage == "encode" {
+				entered := make(chan struct{})
+				proc.stdin = &signallingWriter{WriteCloser: proc.stdin, entered: entered}
+				started = entered
+			}
+			m := watchdogManager()
+			registerStalled(m, proc)
+			ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { _, err := m.CallPlugin(ctx, "hung", "command/execute", nil); done <- err }()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("call did not start I/O")
+			}
+			<-ctx.Done()
+			select {
+			case err := <-done:
+				t.Fatalf("request cancelled active I/O: %v", err)
+			case <-time.After(30 * time.Millisecond):
+			}
+			if proc.dead.Load() {
+				t.Fatal("caller cancelled subprocess")
+			}
+			if err := awaitError(t, done); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("host watchdog did not expire: %v", err)
+			}
+			awaitCondition(t, func() bool { return m.ModuleOwner("hung") == "" })
+		})
+	}
+}
+
+func TestLifecycleDeadlineStillInterruptsActiveIO(t *testing.T) {
+	for _, stage := range []string{"encode", "decode"} {
+		t.Run(stage, func(t *testing.T) {
+			proc, _, _ := stalledProcess(t, stage)
+			proc.callTimeout = time.Minute
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { _, err := callProcess(ctx, proc, "plugin/unload", nil); done <- err }()
+			if err := awaitError(t, done); !errors.Is(err, context.DeadlineExceeded) || !proc.dead.Load() {
+				t.Fatalf("lifecycle deadline ignored: %v", err)
+			}
 		})
 	}
 }

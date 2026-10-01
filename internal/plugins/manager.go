@@ -195,7 +195,9 @@ func (m *Manager) BuildRegistry() registry.Response {
 	return resp
 }
 
-// CallPlugin invokes a custom RPC method on a plugin.
+// CallPlugin invokes a custom RPC method on a plugin. The request context
+// governs queueing only: a client disconnect cannot terminate a shared plugin
+// or abandon a response on its serial wire. Active I/O uses the host budget.
 func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, params interface{}) (json.RawMessage, error) {
 	m.mu.RLock()
 	proc, exists := m.plugins[pluginID]
@@ -205,14 +207,20 @@ func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, param
 		return nil, fmt.Errorf("plugin not found: %s", pluginID)
 	}
 
-	raw, err := callProcess(ctx, proc, method, params)
+	raw, err := callProcessContexts(ctx, context.WithoutCancel(ctx), proc, method, params)
 	if proc.dead.Load() {
 		m.retireProcess(proc)
 	}
 	return raw, err
 }
 
+// callProcess is for lifecycle operations whose caller owns the subprocess.
+// Those contexts may interrupt active I/O, unlike an HTTP request's context.
 func callProcess(ctx context.Context, proc *pluginProcess, method string, params interface{}) (json.RawMessage, error) {
+	return callProcessContexts(ctx, ctx, proc, method, params)
+}
+
+func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, method string, params interface{}) (json.RawMessage, error) {
 	// Queueing is cancellable and never kills somebody else's active call.
 	budget := proc.callTimeout
 	if budget <= 0 {
@@ -223,13 +231,13 @@ func callProcess(ctx context.Context, proc *pluginProcess, method string, params
 	}
 	// Give wire acquisition its own limit; queue time must not consume the
 	// operation budget (service_health can legitimately need up to 90s).
-	queued, cancelQueue := context.WithTimeout(ctx, budget)
+	queued, cancelQueue := context.WithTimeout(queueCtx, budget)
 	err := proc.callMu.LockContext(queued)
 	cancelQueue()
 	if err != nil {
 		return nil, err
 	}
-	bounded, cancel := context.WithTimeout(ctx, budget)
+	bounded, cancel := context.WithTimeout(ioCtx, budget)
 	defer cancel()
 	defer proc.callMu.Unlock()
 	if proc.stopped || proc.dead.Load() {
@@ -238,7 +246,8 @@ func callProcess(ctx context.Context, proc *pluginProcess, method string, params
 	if err := bounded.Err(); err != nil {
 		return nil, err
 	}
-	// Once I/O starts, cancellation makes completion ambiguous. Close the exact
+	// Once I/O starts, a host watchdog or lifecycle interruption makes completion
+	// ambiguous. Request disconnects do not reach this context. Close the exact
 	// captured pipes/process; never reuse the stream or retry the operation.
 	finished := make(chan struct{})
 	stop := context.AfterFunc(bounded, func() { interruptProcess(proc); close(finished) })
