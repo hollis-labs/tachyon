@@ -81,17 +81,22 @@ Verbs must conform to the following identifier rules:
 
 ### 6. Module Taxonomy
 
+The examples below name current declarations, not every operation originally
+envisioned for a module. Services and SCM currently expose read-only adapters;
+external streams/history, plugin installation and automatic HITL continuation
+are not supplied by this taxonomy.
+
 Tachyon defines 8 canonical modules organized across 3 operational tiers:
 
 | Tier | Module | Responsibility | Example Verbs |
 |---|---|---|---|
-| **Tier 1 (Core)** | `agent` | Agent entity lifecycle, identity, tool/skill grants | `agent_list`, `agent_get`, `agent_create`, `agent_update`, `agent_delete` |
-| | `launch` | Execution instantiation and runtime bootstrapping | `launch_session`, `launch_quick` |
-| | `session` | Active session lifecycle and state synchronization | `session_get`, `session_list`, `session_terminate` |
-| **Tier 2 (Observability)** | `observe` | Telemetry, traces, event logs, and operational health | `observe_tail`, `observe_events`, `observe_metrics` |
-| **Tier 3 (Integrations)** | `work` | Task management, issues, backlog sync, and tracking | `work_list`, `work_assign`, `work_sync` |
-| | `service` | External integrations, connected service brokers | `service_connect`, `service_status`, `service_invoke` |
-| | `scm` | Source control operations, repository and commit bindings | `scm_diff`, `scm_branch`, `scm_commit` |
+| **Tier 1 (Core)** | `agent` | Agent entity lifecycle, identity, tool/skill grants | `agent_list`, `agent_read`, `agent_create`, `agent_update`, `agent_delete` |
+| | `launch` | Execution instantiation and runtime bootstrapping | `launch_prepare`, `launch_execute`, `launch_status` |
+| | `session` | Active session lifecycle and state synchronization | `session_read`, `session_list`, `session_stop` |
+| **Tier 2 (Observability)** | `observe` | Telemetry, traces, event logs, and operational health | `observe_activity`, `observe_events`, `observe_metrics` |
+| **Tier 3 (Integrations)** | `work` | Task management, issues, backlog sync, and tracking | `work_list`, `work_assign`, `work_transition` |
+| | `service` | External integrations, connected service brokers | `service_list`, `service_status`, `service_health` |
+| | `scm` | Source control operations, repository and commit bindings | `scm_list`, `scm_status`, `scm_diff` |
 | | `config` | Dynamic runtime settings, host/plugin configuration | `config_get`, `config_set`, `config_schema` |
 
 ### 7. Capability Declaration Format
@@ -150,8 +155,11 @@ Select fields require non-empty, unique option values. Supplied defaults must
 match the field type; select defaults must name an allowed option. A missing
 or null default is valid even for required fields, meaning the operator must
 supply a value. Required string defaults cannot be blank; boolean false and
-numeric zero are valid. These declarations describe schemas only: this
-contract neither persists setting values nor implements frontend controls.
+numeric zero are valid. These declarations describe schemas only: the
+declaration alone does not persist values. The host/config-ops integration now
+persists validated overrides and applies them at spawn/restart; see
+[host operations](../host-operations.md). Frontend controls have their own
+implementation and are not implied by a declaration.
 
 ### 8. Registration-Time Capability Verification (D-47)
 
@@ -199,7 +207,7 @@ Startup admission policy:
 
 ### 9. Wire Format and Migration Strategy
 
-Tachyon carries declared verbs over `command/execute`. plugin-sdk v0.5.0
+Tachyon carries declared verbs over `command/execute`. plugin-sdk v0.4.0
 `Serve` cannot route `verb/invoke`, and its `InitResult` cannot carry a
 capability declaration. The command carrier preserves the contract semantics
 without requiring an unavailable SDK release. Native `verb/invoke` routing
@@ -246,6 +254,31 @@ command), or a command response with `action: "error"`, admits a legacy plugin
 without capabilities and logs a warning. A returned declaration must validate;
 malformed declarations and module collisions remain hard load errors under
 D-47. HTTP verb routes dispatch only declared verbs through the command carrier.
+
+### 10. Implemented host lifecycle and optional bridges
+
+The serial wire uses request IDs without concurrent multiplexing. Ordinary calls
+have a cancellable queue wait capped at 120s, then a fresh 120s active-I/O budget;
+request cancellation no longer interrupts active work. Lifecycle owners retain
+context cancellation. Watchdogs close/kill only the captured process, retire
+routing claims and retain recovery metadata. Explicit
+`POST /api/plugins/{id}/restart` recovers retired plugins; a busy lifecycle lock
+returns 503/status `unchanged` (`ErrRestartBusy`), not a false unload report.
+Settings targets and optional registry `retired_plugins` expose safe retirement
+identity/reason/time, clearing on successful load or shutdown.
+
+SIGINT/SIGTERM drains HTTP for 5s, then gives each plugin a fresh 5s unload grace,
+force-stopping/reaping leftovers. The reference systemd stop limit defaults to 90s;
+lifecycle contention is separately bounded and can exceed that outer limit.
+[Host operations](../host-operations.md) gives the per-operation budget audit,
+admission/exit policy, deployment and known limitations.
+
+Configured Tangent HITL adds bounded correlation and read-only safe status;
+unconfigured asks pass through unchanged. Approval is a terminal decision, not
+permission to replay an operation: continuation is unavailable and its design
+is tracked as a follow-up. See [HITL](../hitl-host.md). Private bounded Observe ingestion
+adds safe metadata and explicit loss counters without recursive recording or
+changing operation-error health semantics; see [Observe feed](../observe-host-feed.md).
 
 ---
 

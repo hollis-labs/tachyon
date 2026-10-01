@@ -12,7 +12,7 @@ How a change gets from your clone into `main`. This is deliberately short: most 
 
 1. **Branch.** `<type>/<short-slug>`, where the type matches the change — `feat`, `fix`, `docs`, `chore`. Nothing enforces this; it is what the history does.
 2. **Change one thing.** A branch carrying two unrelated changes costs the reviewer the ability to accept one and question the other.
-3. **Run the checks** before you push: `make vet test`, and in `frontend/` `npm run typecheck && npm run lint`. CI runs `go vet`, `go build` and `go test` on the pull request.
+3. **Run the checks** before you push: `go vet ./...`, `go build ./...`, `go test -short ./...`, and in `frontend/` `npm ci`, `npm run typecheck`, `npm run lint -- --error-on-warnings`, and `npm run build`. CI runs these same gates. For host concurrency/lifecycle/HITL changes also run `go test -race -short ./...`. Full `make test` includes provider integration tests and requires separately authorized fixtures; isolated verification uses fake providers and `-short`.
 4. **Push, and open a pull request** against `main`.
 
 Commit subjects follow the conventional-commit shape — a type, an optional scope, a colon, then the summary, for example `fix(agent-ops): correct status vocabulary`. To see what is actually in use rather than trusting this sentence:
@@ -29,17 +29,20 @@ If a number appears in the description, put the command that produced it beside 
 
 ## The one that is easy to get wrong
 
-**The plugin pipe is serial.** Tachyon talks to each plugin over one stdin/stdout pair with no request IDs. The call lock and the single long-lived decoder in `internal/plugins/manager.go` are what keep concurrent UI requests from corrupting each other's responses; the failure shows up as random JSON decode errors under load, not as a clean test failure. Read the comments there before touching that path.
+**The plugin pipe is serial.** Tachyon talks to each plugin over one stdin/stdout pair. RPC IDs are present, but calls are not multiplexed. The call lock and the single long-lived decoder in `internal/plugins/manager.go` are what keep concurrent UI requests from corrupting each other's responses; the failure shows up as random JSON decode errors under load, not as a clean test failure. Read the comments there before touching that path.
 
 ## Things that surprise people
 
 - **`go build` does not build the plugins.** They are separate binaries spawned by relative path. Use `make all` (or `make install`), or the UI will show a plugin as missing or stale.
 - **`internal/webui/dist/.gitkeep` must stay.** The embed directive fails to compile without a match, and the built bundle must not be committed beside it.
 - **The UI lives under `/sysop/`**, not the root path, in both the dev server and the built binary.
-- **The agent-ops plugin expects a Nanite API** at `http://localhost:8090`. Without one the pages load but have no data.
+- **Provider availability is separate from admission.** Agent Ops defaults to Nanite at `http://localhost:8090`; other plugins have their own adapters. An admitted plugin may return a provider error. Discover current declarations through `/api/verbs`; do not assume every authored navigation item has an implemented page.
+- **Plugins and pages are discovered differently.** Backend manifests/executables are auto-discovered; frontend components belong in `pages/registry.ts`, with capability-gated `/api/nav` metadata. No manual plugin registration or App.tsx nav array is needed.
+- **Settings persist locally.** config-ops writes declared values; they apply on restart, not immediately. [Host operations](docs/host-operations.md) describes data roots, watchdog recovery and retired registry entries.
+- **Tests must be isolated.** Use an unused loopback port, temporary HOME/data and fake plugins/providers. Do not run tests or builds in a Cerberus-managed live workspace or use its live port. Never retry an ambiguous plugin write automatically.
 
 ## What this does not cover
 
 - **Which change is worth making.** There is no roadmap here by design; that conversation happens in issues.
-- **Release and deployment.** Separate subjects with separate mechanics.
+- **Deployment authorization.** [Host operations](docs/host-operations.md) describes the verified Cerberus/systemd/Caddy setup and pre-flight/rollback. A source change or green build does not authorize deployment or establish the running revision.
 - **Plugin authoring in general.** A plugin is a subprocess against the published `plugin-sdk` interface, not a contribution to this repo.
