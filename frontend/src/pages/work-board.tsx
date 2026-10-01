@@ -148,7 +148,7 @@ function WorkColumn({
   return (
     <section
       aria-label={`${status} tasks`}
-      className="min-w-0 space-y-3 rounded border border-border p-3 md:w-64 md:shrink-0"
+      className="min-w-0 space-y-3 rounded border border-border p-3 md:w-64 md:shrink-0 md:max-h-128 md:overflow-y-auto"
     >
       <h2 className="font-medium">{status}</h2>
       <p className="text-xs text-text-muted">{count}</p>
@@ -401,7 +401,7 @@ export function WorkBoardPage() {
                 onOpen={setSelectedId}
               />
             ) : (
-              <div className="flex flex-col gap-4 md:flex-row md:overflow-x-auto">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:overflow-x-auto">
                 {[...ACTIVE_STATUSES, ...CLOSED_STATUSES].map((status) => (
                   <WorkColumn
                     key={`${status}:${project}:${revision}`}
