@@ -68,7 +68,7 @@ func registerHITL(mux *http.ServeMux, mgr *plugins.Manager, bridge *hitl.Runtime
 		if text := r.URL.Query().Get("wait_ms"); text != "" {
 			wait, e = strconv.Atoi(text)
 		}
-		if e != nil || wait < 0 || wait > 50000 {
+		if e != nil || wait < 0 || wait > hitl.MaxStatusWait {
 			http.Error(w, "invalid wait_ms", 400)
 			return
 		}
@@ -76,6 +76,10 @@ func registerHITL(mux *http.ServeMux, mgr *plugins.Manager, bridge *hitl.Runtime
 		if e != nil {
 			code := http.StatusBadGateway
 			reason := "status_unavailable"
+			if errors.Is(e, hitl.ErrStatusBusy) {
+				code = http.StatusServiceUnavailable
+				reason = "poll_busy"
+			}
 			if errors.Is(e, hitl.ErrCorrelation) {
 				code = 410
 				reason = "correlation_unavailable"

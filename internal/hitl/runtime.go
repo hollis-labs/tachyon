@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	core "github.com/hollis-labs/go-hitl"
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -20,10 +22,15 @@ import (
 const PendingCapacity = 256         // Reject new correlations rather than evict existing operations.
 const MaxPayload = 32 << 10         // Maximum canonical payload retained per operation.
 const PendingTTL = 10 * time.Minute // Correlation never survives host restart or this TTL.
+const MaxStatusWait = 25000         // One operation holds at most one bounded Tangent poll.
+var errBindingInvalid = errors.New("HITL outcome binding invalid")
+var errTerminalInvalid = errors.New("HITL terminal invalid")
+var ErrStatusBusy = errors.New("HITL operation poll busy")
 var ErrCorrelation = errors.New("HITL correlation unavailable")
 
 type pending struct {
-	request  EnqueueRequest
+	kind     string
+	poll     chan struct{}
 	snapshot []byte
 	handle   EnqueueHandle
 	expiry   time.Time
@@ -36,6 +43,7 @@ type Runtime struct {
 	client  Client
 	base    *url.URL
 	now     func() time.Time
+	logger  *slog.Logger
 }
 
 func randomID() string {
@@ -45,7 +53,7 @@ func randomID() string {
 	}
 	return hex.EncodeToString(b)
 }
-func NewRuntime(client Client, base string) (*Runtime, error) {
+func NewRuntime(client Client, base string, loggers ...*slog.Logger) (*Runtime, error) {
 	var u *url.URL
 	var e error
 	if base != "" {
@@ -54,11 +62,18 @@ func NewRuntime(client Client, base string) (*Runtime, error) {
 			return nil, errors.New("invalid approved Tangent item base")
 		}
 	}
-	return &Runtime{epoch: randomID(), entries: map[string]*pending{}, client: client, base: u, now: time.Now}, nil
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if len(loggers) > 0 && loggers[0] != nil {
+		logger = loggers[0]
+	}
+	return &Runtime{logger: logger, epoch: randomID(), entries: map[string]*pending{}, client: client, base: u, now: time.Now}, nil
 }
 
 // Canonical preserves JSON numbers without float conversion. Empty payload means null.
 func Canonical(raw []byte) ([]byte, error) {
+	if len(raw) > MaxPayload {
+		return nil, errors.New("payload limit")
+	}
 	if len(raw) == 0 {
 		raw = []byte("null")
 	}
@@ -83,6 +98,10 @@ func (r *Runtime) pruneLocked() {
 
 // Attach preserves asks on every failure. It never invokes or resumes a plugin.
 func (r *Runtime) Attach(ctx context.Context, verb string, payload []byte, generation string, current func() bool, raw []byte) []byte {
+	if r.client == nil {
+		return raw
+	}
+	id := ""
 	var header struct {
 		Status contract.Status `json:"status"`
 	}
@@ -93,6 +112,7 @@ func (r *Runtime) Attach(ctx context.Context, verb string, payload []byte, gener
 	envDecoder := json.NewDecoder(strings.NewReader(string(raw)))
 	envDecoder.UseNumber()
 	if envDecoder.Decode(&env) != nil {
+		r.logFailure(id, "invalid_ask")
 		b, _ := json.Marshal(contract.ResultEnvelope{Status: contract.StatusAsk, Ask: &contract.AskDetail{State: "unavailable", Continuation: "unavailable", Unavailable: "invalid_ask"}})
 		return b
 	}
@@ -108,8 +128,15 @@ func (r *Runtime) Attach(ctx context.Context, verb string, payload []byte, gener
 	ask.Expiry = ""
 	ask.Continuation = "unavailable"
 	ask.Unavailable = ""
-	fail := func(reason string) []byte { ask.Unavailable = reason; b, _ := json.Marshal(env); return b }
-	if env.Data != nil || env.Error != nil || strings.TrimSpace(ask.Prompt) == "" || len(ask.Prompt) > MaxPayload || (ask.Kind != "" && ask.Kind != "approval" && ask.Kind != "attention") {
+	fail := func(reason string) []byte {
+		ask.OperationID = ""
+		ask.Expiry = ""
+		ask.Unavailable = reason
+		r.logFailure(id, reason)
+		b, _ := json.Marshal(env)
+		return b
+	}
+	if env.Data != nil || env.Error != nil || strings.TrimSpace(ask.Prompt) == "" || utf8.RuneCountInString(strings.TrimSpace(ask.Prompt)) > 4000 || (ask.Kind != "" && ask.Kind != "approval" && ask.Kind != "attention") {
 		return fail("invalid_ask")
 	}
 	for _, option := range ask.Options {
@@ -127,38 +154,45 @@ func (r *Runtime) Attach(ctx context.Context, verb string, payload []byte, gener
 			expiry = t
 		}
 	}
+	if len(payload) > MaxPayload {
+		return fail("payload_limit")
+	}
 	canonical, e := Canonical(payload)
 	if e != nil || len(canonical) > MaxPayload {
 		return fail("payload_limit")
 	}
-	if r.client == nil {
-		return fail("not_configured")
-	}
+
 	if !current() {
 		return fail("plugin_restarted")
 	}
-	id := randomID()
+	id = randomID()
 	digest := sha256.Sum256(canonical)
 	gen := sha256.Sum256([]byte(generation))
 	req := FromAskDetail(verb, "tachyon:"+r.epoch+":"+id+":1", ask)
 	req.Summary = strings.TrimSpace(req.Summary)
 	req.Request = strings.TrimSpace(req.Request)
+	if req.Impact != nil && req.Kind == "attention" {
+		return fail("invalid_ask")
+	}
 	if req.Impact != nil {
 		req.Impact.Approve = strings.TrimSpace(req.Impact.Approve)
 		req.Impact.Deny = strings.TrimSpace(req.Impact.Deny)
-		if req.Impact.Approve == "" || req.Impact.Deny == "" {
+		if req.Impact.Approve == "" || req.Impact.Deny == "" || utf8.RuneCountInString(req.Impact.Approve) > 2000 || utf8.RuneCountInString(req.Impact.Deny) > 2000 {
 			return fail("invalid_impact")
 		}
 	}
 	req.ExpiresAt = expiry.UTC().Format(time.RFC3339Nano)
-	req.Correlations = map[string]any{"host_epoch": r.epoch, "operation_id": id, "plugin_generation": hex.EncodeToString(gen[:]), "verb": verb, "payload_digest": hex.EncodeToString(digest[:])}
-	// Copy plugin trace data under its own namespace so it cannot overwrite host binding.
-	if ask.Correlations != nil {
-		req.Correlations["plugin"] = ask.Correlations
+	// Reserve five supported AdditionalCorrelationV1 references for host binding.
+	// Plugin correlations are advisory and dropped, preventing spoofed host refs
+	// and ensuring the schema's 16-entry limit cannot crowd out host identity.
+	additional := []any{}
+	for _, ref := range []string{"epoch:" + r.epoch, "op:" + id, "gen:" + hex.EncodeToString(gen[:]), "verb:" + verb, "digest:" + hex.EncodeToString(digest[:])} {
+		if utf8.RuneCountInString(ref) > 512 || strings.TrimSpace(ref) != ref {
+			return fail("invalid_ask")
+		}
+		additional = append(additional, map[string]any{"kind": "other", "authority": "tachyon", "id": ref})
 	}
-	if e := validateTrace(req.Correlations); e != nil {
-		return fail("invalid_correlations")
-	}
+	req.Correlations = map[string]any{"additional": additional}
 	frozen, e := json.Marshal(req)
 	if e != nil || len(frozen) > MaxPayload {
 		return fail("ask_limit")
@@ -168,7 +202,7 @@ func (r *Runtime) Attach(ctx context.Context, verb string, payload []byte, gener
 	if e = decoder.Decode(&req); e != nil {
 		return fail("invalid_ask")
 	}
-	p := &pending{request: req, snapshot: frozen, expiry: expiry, current: current}
+	p := &pending{kind: req.Kind, poll: make(chan struct{}, 1), snapshot: frozen, expiry: expiry, current: current}
 	r.mu.Lock()
 	r.pruneLocked()
 	if len(r.entries) >= PendingCapacity {
@@ -186,14 +220,20 @@ func (r *Runtime) Attach(ctx context.Context, verb string, payload []byte, gener
 		delete(r.entries, id)
 		return fail("correlation_lost")
 	}
-	ask.OperationID = id
-	ask.Expiry = expiry.UTC().Format(time.RFC3339Nano)
 	if e != nil {
-		return fail("enqueue_unavailable")
+		delete(r.entries, id)
+		reason := "enqueue_unavailable"
+		if errors.Is(e, errRejected) {
+			reason = "enqueue_rejected"
+		}
+		return fail(reason)
 	}
 	if h.ContractVersion != "1.0" || h.ItemID == "" || h.Revision < 1 || !core.State(h.State).Valid() {
+		delete(r.entries, id)
 		return fail("invalid_handle")
 	}
+	ask.OperationID = id
+	ask.Expiry = expiry.UTC().Format(time.RFC3339Nano)
 	p.handle = h
 	ask.ItemID = h.ItemID
 	ask.State = h.State
@@ -217,16 +257,41 @@ func (r *Runtime) itemLink(link, id string) string {
 }
 
 type Status struct {
-	OperationID  string       `json:"operation_id"`
-	ItemID       string       `json:"item_id"`
-	State        core.State   `json:"state"`
-	Approved     bool         `json:"approved"`
-	Continuation string       `json:"continuation"`
-	Expiry       time.Time    `json:"expiry"`
-	Outcome      core.Outcome `json:"terminal_outcome,omitempty"`
+	OperationID  string     `json:"operation_id"`
+	ItemID       string     `json:"item_id"`
+	State        core.State `json:"state"`
+	Approved     bool       `json:"approved"`
+	Continuation string     `json:"continuation"`
+	Expiry       time.Time  `json:"expiry"`
+	Decision     string     `json:"decision,omitempty"`
+	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
 }
 
-func (r *Runtime) Status(ctx context.Context, id string, wait int) (Status, error) {
+func (r *Runtime) Status(ctx context.Context, id string, wait int) (status Status, err error) {
+	defer func() {
+		if err != nil {
+			reason := "status_unavailable"
+			if errors.Is(err, errRejected) {
+				reason = "status_rejected"
+			}
+			if errors.Is(err, errBindingInvalid) {
+				reason = "binding_invalid"
+			}
+			if errors.Is(err, errTerminalInvalid) {
+				reason = "terminal_invalid"
+			}
+			if errors.Is(err, ErrCorrelation) {
+				reason = "correlation_unavailable"
+			}
+			if errors.Is(err, ErrStatusBusy) {
+				reason = "poll_busy"
+			}
+			r.logFailure(id, reason)
+		}
+	}()
+	if wait < 0 || wait > MaxStatusWait {
+		return Status{}, errors.New("invalid wait_ms")
+	}
 	r.mu.Lock()
 	r.pruneLocked()
 	original := r.entries[id]
@@ -239,6 +304,12 @@ func (r *Runtime) Status(ctx context.Context, id string, wait int) (Status, erro
 	if p == nil || p.handle.ItemID == "" {
 		return Status{}, ErrCorrelation
 	}
+	select {
+	case p.poll <- struct{}{}:
+		defer func() { <-p.poll }()
+	default:
+		return Status{}, ErrStatusBusy
+	}
 	result, e := r.client.Retrieve(ctx, p.handle.ItemID, wait)
 	if e != nil {
 		return Status{}, e
@@ -246,24 +317,24 @@ func (r *Runtime) Status(ctx context.Context, id string, wait int) (Status, erro
 	snapshot, e := Canonical(result.Item.RequestSnapshot)
 	expected, ee := Canonical(p.snapshot)
 	if e != nil || ee != nil || string(snapshot) != string(expected) || result.Item.ItemID != p.handle.ItemID || result.Item.Revision < p.handle.Revision || result.Validate() != nil || result.ContractVersion != "1.0" || result.Item.ContractVersion != "1.0" || !result.Item.State.Valid() {
-		return Status{}, errors.New("HITL outcome binding invalid")
+		return Status{}, errBindingInvalid
 	}
 	o := result.Item.TerminalOutcome
 	if o != nil {
 		wire, err := json.Marshal(o)
 		if err != nil {
-			return Status{}, errors.New("invalid terminal outcome")
+			return Status{}, errTerminalInvalid
 		}
 		o, err = core.UnmarshalOutcome(wire)
 		if err != nil {
-			return Status{}, err
+			return Status{}, errTerminalInvalid
 		}
 	}
 	if resolved, ok := o.(core.Resolved); ok && resolved.Resolution.InteractionRevision != result.Item.Revision {
-		return Status{}, errors.New("resolution revision mismatch")
+		return Status{}, errTerminalInvalid
 	}
 	if result.Item.State.IsTerminal() != (o != nil) || (o != nil && (o.OutcomeItemID() != p.handle.ItemID || o.OutcomeRevision() != result.Item.Revision || o.OutcomeState() != result.Item.State)) {
-		return Status{}, errors.New("HITL terminal identity invalid")
+		return Status{}, errTerminalInvalid
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -271,36 +342,26 @@ func (r *Runtime) Status(ctx context.Context, id string, wait int) (Status, erro
 		delete(r.entries, id)
 		return Status{}, ErrCorrelation
 	}
-	s := Status{OperationID: id, ItemID: p.handle.ItemID, State: result.Item.State, Continuation: "unavailable", Expiry: p.expiry, Outcome: o}
+	s := Status{OperationID: id, ItemID: p.handle.ItemID, State: result.Item.State, Continuation: "unavailable", Expiry: p.expiry}
 	if resolved, ok := o.(core.Resolved); ok {
-		s.Approved = p.request.Kind == "approval" && resolved.Resolution.Response.Kind == "approval" && resolved.Resolution.Response.Decision == "approved"
+		response := resolved.Resolution.Response
+		if response.Kind != p.kind || (p.kind == "approval" && response.Decision != "approved" && response.Decision != "denied") || (p.kind == "attention" && response.Decision != "acknowledged") {
+			return Status{}, errTerminalInvalid
+		}
+		s.Decision = resolved.Resolution.Response.Decision
+		resolvedAt := resolved.Resolution.ResolvedAt
+		s.ResolvedAt = &resolvedAt
+		s.Approved = p.kind == "approval" && resolved.Resolution.Response.Kind == "approval" && resolved.Resolution.Response.Decision == "approved"
 	}
 	return s, nil
 }
 
-// Tangent rejects blank strings anywhere in a request. Reject trace values
-// that its normalization would alter, keeping the frozen snapshot exact.
-func validateTrace(value any) error {
-	switch v := value.(type) {
-	case string:
-		if strings.TrimSpace(v) == "" {
-			return errors.New("blank trace value")
-		}
-	case []any:
-		for _, child := range v {
-			if e := validateTrace(child); e != nil {
-				return e
-			}
-		}
-	case map[string]any:
-		for _, child := range v {
-			if text, ok := child.(string); ok && text != strings.TrimSpace(text) {
-				return errors.New("trace whitespace must be normalized")
-			}
-			if e := validateTrace(child); e != nil {
-				return e
-			}
-		}
+// Log only classes and an opaque prefix, never provider errors or request data.
+func (r *Runtime) logFailure(id, reason string) {
+	if _, e := hex.DecodeString(id); e != nil || len(id) != 32 {
+		id = ""
+	} else {
+		id = id[:8]
 	}
-	return nil
+	r.logger.Warn("HITL unavailable", "reason_class", reason, "operation_prefix", id)
 }

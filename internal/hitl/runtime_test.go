@@ -76,7 +76,11 @@ func TestAuthoritativeOutcomes(t *testing.T) {
 			a := ask(t, r, `{"amount":9007199254740993}`, func() bool { return true })
 			terminal(f, tc.state, tc.kind, tc.decision)
 			s, e := r.Status(context.Background(), a.OperationID, 0)
-			if e != nil || s.Approved != tc.approved || s.Continuation != "unavailable" {
+			if tc.kind == "attention" {
+				if e == nil || s.Approved {
+					t.Fatal("invalid attention response accepted")
+				}
+			} else if e != nil || s.Approved != tc.approved || s.Continuation != "unavailable" {
 				t.Fatalf("%+v %v", s, e)
 			}
 			f.result.Item.RequestSnapshot = []byte(`{}`)
@@ -124,7 +128,7 @@ func TestDistinctBindingsAndConcurrentStatus(t *testing.T) {
 	a := ask(t, r, `{"a":1}`, func() bool { return true })
 	ask(t, r, `{"a":2}`, func() bool { return true })
 	ask(t, r, `{"a":1}`, func() bool { return true })
-	if f.requests[0].IdempotencyKey == f.requests[1].IdempotencyKey || f.requests[0].IdempotencyKey == f.requests[2].IdempotencyKey || f.requests[0].Correlations["payload_digest"] == f.requests[1].Correlations["payload_digest"] {
+	if f.requests[0].IdempotencyKey == f.requests[1].IdempotencyKey || f.requests[0].IdempotencyKey == f.requests[2].IdempotencyKey || bindingID(f.requests[0], 4) == bindingID(f.requests[1], 4) {
 		t.Fatal("bindings collided")
 	}
 	terminal(f, core.StateResolved, "approval", "approved")
@@ -132,7 +136,7 @@ func TestDistinctBindingsAndConcurrentStatus(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		wg.Go(func() {
 			s, e := r.Status(context.Background(), a.OperationID, 0)
-			if e != nil || !s.Approved {
+			if !errors.Is(e, ErrStatusBusy) && (e != nil || !s.Approved) {
 				t.Errorf("%+v %v", s, e)
 			}
 		})
@@ -143,12 +147,8 @@ func TestDistinctBindingsAndConcurrentStatus(t *testing.T) {
 	}
 }
 func TestUnavailableAndInvalidAsk(t *testing.T) {
-	r, _ := NewRuntime(nil, "")
-	if a := ask(t, r, `{}`, func() bool { return true }); a.Unavailable != "not_configured" || a.ItemID != "" {
-		t.Fatal(a)
-	}
 	f := &fakeClient{err: errors.New("lost response")}
-	r, _ = NewRuntime(f, "")
+	r, _ := NewRuntime(f, "")
 	a := ask(t, r, `{}`, func() bool { return true })
 	if a.Unavailable != "enqueue_unavailable" || a.ItemID != "" {
 		t.Fatal(a)
@@ -195,7 +195,7 @@ func TestForgedTerminalIdentityAndAttention(t *testing.T) {
 	_ = json.Unmarshal(out, &env)
 	terminal(f, core.StateResolved, "approval", "approved")
 	s, e := r.Status(context.Background(), env.Ask.OperationID, 0)
-	if e != nil || s.Approved {
+	if e == nil || s.Approved {
 		t.Fatal(s, e)
 	}
 	f.result.Item.TerminalOutcome = core.Resolved{ItemID: "other", InteractionRevision: 2, Resolution: core.ResolutionRecord{ResolutionID: "res", Response: core.Response{Kind: "approval", Decision: "approved"}, Participant: core.Participant{PrincipalRef: "op", Assurance: "local"}, ResolvedAt: time.Now(), InteractionRevision: 2}}
@@ -250,4 +250,8 @@ func TestRestartWhileAwaitingApprovalFailsClosed(t *testing.T) {
 	if len(f.requests) != 1 {
 		t.Fatal("await replayed provider/enqueue")
 	}
+}
+
+func bindingID(req EnqueueRequest, index int) any {
+	return req.Correlations["additional"].([]any)[index].(map[string]any)["id"]
 }

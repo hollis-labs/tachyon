@@ -18,6 +18,7 @@ var contractAsk = contract.AskDetail{Prompt: "Proceed?"}
 
 func TestMCPEnqueueLostResponseAndReadTools(t *testing.T) {
 	server := mcp.NewServer(&mcp.Implementation{Name: "fake-tangent", Version: "1"}, nil)
+	schema := requestSchema(t)
 	var mu sync.Mutex
 	var requests [][]byte
 	var reads []string
@@ -26,6 +27,10 @@ func TestMCPEnqueueLostResponseAndReadTools(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			if req.Params.Name == "tangent.hitl_enqueue" {
+				if e := validateRequestBytes(schema, req.Params.Arguments); e != nil {
+					t.Errorf("fake Tangent rejected request: %v", e)
+					return &mcp.CallToolResult{IsError: true}, nil
+				}
 				requests = append(requests, append([]byte(nil), req.Params.Arguments...))
 				if len(requests) == 1 {
 					return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "lost/malformed response"}}}, nil

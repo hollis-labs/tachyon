@@ -67,6 +67,7 @@ func fakeAdmissionPlugin(dir string) {
 			_ = json.Unmarshal(paramsRaw, &params)
 			if params.Name != "plugin_capabilities" {
 				if result, e := os.ReadFile(filepath.Join(dir, "verb-result")); e == nil {
+					_ = os.WriteFile(filepath.Join(dir, "verb-payload"), []byte(params.Args), 0600)
 					resp.Result, _ = json.Marshal(subprocess.CommandExecResult{Action: "message", Content: string(result)})
 					_ = enc.Encode(resp)
 					continue

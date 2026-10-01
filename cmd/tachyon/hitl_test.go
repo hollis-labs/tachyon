@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,8 +35,12 @@ func TestHITLHTTPAskAndOrigin(t *testing.T) {
 	mux.ServeHTTP(w, r)
 	var env contract.ResultEnvelope
 	_ = json.Unmarshal(w.Body.Bytes(), &env)
-	if w.Code != 200 || env.Status != "ask" || env.Ask == nil || env.Ask.Unavailable != "not_configured" || env.Ask.Continuation != "unavailable" || env.Ask.Context["keep"] != true {
+	if w.Code != 200 || env.Status != "ask" || env.Ask == nil || env.Ask.Unavailable != "" || env.Ask.Continuation != "" || env.Ask.Context["keep"] != true {
 		t.Fatal(w.Code, w.Body.String())
+	}
+	payload, e := os.ReadFile(filepath.Join(dir, "verb-payload"))
+	if e != nil || string(payload) != `{"amount":1}` {
+		t.Fatal("chunked payload not dispatched", string(payload), e)
 	}
 	for _, origin := range []string{"https://evil.test", "null", "http://localhost.evil"} {
 		w = httptest.NewRecorder()
@@ -68,6 +75,35 @@ func TestHITLHTTPAskAndOrigin(t *testing.T) {
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/api/hitl/operations/id?wait_ms=50001", nil))
 	if w.Code != 400 {
+		t.Fatal(w.Code)
+	}
+}
+
+type failingBody struct{}
+
+func (failingBody) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+func (failingBody) Close() error             { return nil }
+func TestVerbHTTPInputBoundaries(t *testing.T) {
+	bridge, _ := hitl.NewRuntime(nil, "")
+	mux := http.NewServeMux()
+	registerHITL(mux, nil, bridge, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for _, body := range []string{`{} garbage`, `{} {}`} {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest("POST", "http://localhost/api/verb/work_write", strings.NewReader(body)))
+		if w.Code != 400 {
+			t.Fatal(w.Code)
+		}
+	}
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("POST", "http://localhost/api/verb/work_write", strings.NewReader(strings.Repeat("x", (1<<20)+1))))
+	if w.Code != 413 {
+		t.Fatal(w.Code)
+	}
+	w = httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "http://localhost/api/verb/work_write", nil)
+	r.Body = failingBody{}
+	mux.ServeHTTP(w, r)
+	if w.Code != 413 {
 		t.Fatal(w.Code)
 	}
 }

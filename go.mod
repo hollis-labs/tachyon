@@ -3,6 +3,7 @@ module github.com/hollis-labs/tachyon
 go 1.26.6
 
 require (
+	github.com/google/jsonschema-go v0.4.3
 	github.com/hollis-labs/go-hitl v0.1.0
 	github.com/hollis-labs/go-tether-client v0.7.0
 	github.com/hollis-labs/go-webui v0.1.0
@@ -13,7 +14,6 @@ require (
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hollis-labs/go-messaging v0.5.2 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

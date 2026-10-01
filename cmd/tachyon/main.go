@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -289,8 +290,10 @@ func main() {
 			os.Exit(1)
 		}
 		tangent = client
+		endpointURL, _ := url.Parse(endpoint)
+		logger.Info("Tangent MCP configured", "scheme", endpointURL.Scheme, "host", endpointURL.Host)
 	}
-	bridge, err := hitl.NewRuntime(tangent, os.Getenv("TACHYON_TANGENT_ITEM_BASE"))
+	bridge, err := hitl.NewRuntime(tangent, os.Getenv("TACHYON_TANGENT_ITEM_BASE"), logger)
 	if err != nil {
 		logger.Error("invalid HITL configuration", "error", err)
 		os.Exit(1)

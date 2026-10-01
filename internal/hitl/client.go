@@ -132,7 +132,7 @@ func (c *MCPClient) Retrieve(ctx context.Context, id string, wait int) (core.Ret
 		if e = cmd.Validate(); e != nil {
 			return r, e
 		}
-		e = c.call(ctx, "tangent.hitl_await", cmd, &r, awaitTimeout)
+		e = c.call(ctx, "tangent.hitl_await", cmd, &r, min(awaitTimeout, time.Duration(wait)*time.Millisecond+5*time.Second))
 	}
 	if e == nil {
 		e = r.Validate()
