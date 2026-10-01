@@ -165,6 +165,38 @@ Capability validation occurs synchronously during plugin initialization (`LoadPl
 
 **Enforcement Rule**: Any validation failure is treated as a **hard load error**. The plugin is terminated, and Tachyon refuses to start. Degraded catalog admissions or silent fallbacks are prohibited.
 
+Startup admission policy:
+
+| Condition | Startup decision |
+| --- | --- |
+| Missing binary | Warn; optional absence |
+| Unbuilt/non-executable binary | Warn with build guidance; optional absence |
+| Init/handshake timeout | Refuse startup; 120s host I/O ceiling |
+| Discovery RPC error or command `action: "error"` | Warn; admit legacy without module claims |
+| Malformed declaration or RPC/command shape | Refuse startup |
+| Module/verb ownership collision | Refuse startup |
+| Invalid nav/settings declaration | Refuse startup |
+| Hello/no-capabilities | Missing hello is optional; explicit discovery rejection admits legacy |
+
+* Discovery is ordered by directory name. A missing plugin directory, directories
+  without manifests, and missing/non-executable binaries are optional absences:
+  the host logs build guidance and continues. The manifest-free `hello` binary
+  follows the same optional-absence rule and loads first when available.
+* Once an executable is present, any init/load/discovery, settings-read, or
+  declaration-validation failure aborts startup, including duplicate module
+  ownership. Filesystem errors other than absence also abort discovery.
+* Only an explicit capability-discovery RPC error or command `action: "error"`
+  admits a legacy plugin without module claims. Malformed RPC/command responses,
+  unexpected command actions, and malformed declarations are hard errors.
+* HTTP starts only after admission completes. Refusal exits non-zero with one
+  structured error line naming `plugin_id`, `path`, and `reason_class`.
+  `LoadPlugin` force-stops and reaps the rejected child; startup rollback unloads all earlier children with a shared
+  five-second grace, then force-stops/reaps them. An expired startup context does
+  not skip rollback. Init/load/discovery retain the host's 120-second I/O ceiling.
+* Cross-plugin nav IDs retain first-loaded precedence. A later explicit restart
+  uses ordinary per-plugin admission; its failure unloads only that plugin and
+  does not trigger startup rollback.
+
 ### 9. Wire Format and Migration Strategy
 
 Tachyon carries declared verbs over `command/execute`. plugin-sdk v0.5.0

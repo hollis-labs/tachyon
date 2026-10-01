@@ -5,6 +5,7 @@ package plugins
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -134,24 +135,24 @@ func (m *Manager) loadPlugin(ctx context.Context, binaryPath, expectedID string)
 func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error) {
 	dataDir, config, err := pluginInitSettings(binaryPath)
 	if err != nil {
-		return nil, fmt.Errorf("plugin startup settings: %w", err)
+		return nil, admissionFailure("settings", "plugin startup settings: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, binaryPath)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stdin pipe: %w", err)
+		return nil, admissionFailure("spawn", "failed to create stdin pipe: %w", err)
 	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+		return nil, admissionFailure("spawn", "failed to create stdout pipe: %w", err)
 	}
 
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start plugin: %w", err)
+		return nil, admissionFailure("spawn", "failed to start plugin: %w", err)
 	}
 
 	proc := &pluginProcess{cmd: cmd, stdin: stdin, stdout: stdout, stdoutDec: json.NewDecoder(stdout)}
@@ -163,12 +164,12 @@ func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error
 	})
 	if err != nil {
 		stopProcess(proc)
-		return nil, fmt.Errorf("plugin init failed: %w", err)
+		return nil, admissionFailure("handshake", "plugin init failed: %w", err)
 	}
 	var result subprocess.InitResult
 	if err := json.Unmarshal(raw, &result); err != nil {
 		stopProcess(proc)
-		return nil, fmt.Errorf("failed to unmarshal init result: %w", err)
+		return nil, admissionFailure("handshake", "failed to unmarshal init result: %w", err)
 	}
 	proc.id, proc.name, proc.version = result.ID, result.Name, result.Version
 
@@ -318,11 +319,17 @@ func callProcessContexts(queueCtx, ioCtx context.Context, proc *pluginProcess, m
 	}
 
 	if resp.Error != nil {
-		return nil, fmt.Errorf("plugin error: %s", resp.Error.Message)
+		return nil, &rpcResponseError{message: resp.Error.Message}
 	}
 
 	return resp.Result, nil
 }
+
+// rpcResponseError identifies an explicit plugin rejection, rather than a
+// malformed response or transport failure. Only this supports legacy discovery.
+type rpcResponseError struct{ message string }
+
+func (e *rpcResponseError) Error() string { return "plugin error: " + e.message }
 
 // InvokeVerb dispatches a command/execute call to the plugin that owns the
 // verb's module. Returns an error if no plugin claims the module or the
@@ -417,28 +424,32 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 // process becomes visible to callers. Collision checks and insertion are atomic.
 func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) error {
 	if _, err := callProcess(ctx, proc, "plugin/load", subprocess.LoadParams{}); err != nil {
-		return fmt.Errorf("plugin %q load failed: %w", proc.id, err)
+		return admissionFailure("load", "plugin %q load failed: %w", proc.id, err)
 	}
 	raw, err := callProcess(ctx, proc, "command/execute", subprocess.CommandExecParams{Name: pluginkit.CommandCapabilities})
 	if err != nil {
-		if proc.dead.Load() || ctx.Err() != nil {
-			return fmt.Errorf("plugin %q capability discovery failed: %w", proc.id, err)
+		var rejection *rpcResponseError
+		if !errors.As(err, &rejection) || proc.dead.Load() || ctx.Err() != nil {
+			return admissionFailure("discovery", "plugin %q capability discovery failed: %w", proc.id, err)
 		}
 		m.logger.Warn("plugin loaded without capability declaration", "id", proc.id, "error", err)
 	} else {
 		var result subprocess.CommandExecResult
 		if err := json.Unmarshal(raw, &result); err != nil {
-			return fmt.Errorf("plugin %q capability response: %w", proc.id, err)
+			return admissionFailure("declaration", "plugin %q capability response: %w", proc.id, err)
 		}
 		if result.Action == "error" {
 			m.logger.Warn("plugin loaded without capability declaration", "id", proc.id, "error", result.Content)
 		} else {
+			if result.Action != "message" {
+				return admissionFailure("declaration", "plugin %q capability response: unexpected action %q", proc.id, result.Action)
+			}
 			var caps contract.PluginCapabilities
 			if err := json.Unmarshal([]byte(result.Content), &caps); err != nil {
-				return fmt.Errorf("plugin %q capability declaration: %w", proc.id, err)
+				return admissionFailure("declaration", "plugin %q capability declaration: %w", proc.id, err)
 			}
 			if err := caps.Validate(); err != nil {
-				return fmt.Errorf("plugin %q capability validation failed: %w", proc.id, err)
+				return admissionFailure("validation", "plugin %q capability validation failed: %w", proc.id, err)
 			}
 			proc.capabilities = &caps
 		}
@@ -446,12 +457,24 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.plugins[proc.id]; exists {
-		return fmt.Errorf("plugin %q already loaded", proc.id)
+		return admissionFailure("collision", "plugin %q already loaded", proc.id)
 	}
 	if proc.capabilities != nil {
 		for _, mod := range proc.capabilities.Modules {
 			if owner, taken := m.modules[mod]; taken {
-				return fmt.Errorf("plugin %q claims module %q, already owned by plugin %q", proc.id, mod, owner)
+				return admissionFailure("collision", "plugin %q claims module %q, already owned by plugin %q", proc.id, mod, owner)
+			}
+		}
+		// Distinct overlapping module prefixes can still declare the same verb.
+		// Check exact verb ownership before inserting any claims.
+		for _, loaded := range m.plugins {
+			if loaded.capabilities == nil {
+				continue
+			}
+			for verb := range proc.capabilities.Verbs {
+				if _, claimed := loaded.capabilities.Verbs[verb]; claimed {
+					return admissionFailure("collision", "plugin %q claims verb %q, already owned by plugin %q", proc.id, verb, loaded.id)
+				}
 			}
 		}
 		for _, mod := range proc.capabilities.Modules {
