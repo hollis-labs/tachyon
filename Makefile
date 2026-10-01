@@ -16,7 +16,11 @@ ui-dev:
 
 # Build plugin binaries
 build-plugins:
-	go build -o plugins/agent-ops/agent-ops ./plugins/agent-ops
+	@for d in plugins/*/; do \
+		id=$$(basename $$d); \
+		echo "build $$id"; \
+		go build -o plugins/$$id/$$id ./plugins/$$id || exit 1; \
+	done
 
 # Build the Go binary. Embeds whatever is in internal/webui/dist; run
 # `make ui-build` first for a binary that serves the real UI.

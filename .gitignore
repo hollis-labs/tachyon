@@ -32,5 +32,10 @@ Thumbs.db
 # Local env
 .env
 .env.local
+# Plugin build outputs (binaries named after their dir). Source, manifests and
+# declarations are tracked.
 plugins/*/[!.]*
 !plugins/*/*.go
+!plugins/*/*.yaml
+!plugins/*/*.json
+!plugins/*/*.md
