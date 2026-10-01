@@ -24,7 +24,7 @@ func TestWorkVerbHTTPMapping(t *testing.T) {
 		{"work_read", `{"id":"CW-1"}`, "GET", "/api/v1/tasks/CW-1", nil, nil, `{"id":"CW-1"}`},
 		{"work_update", `{"id":"CW-1","description":"","priority":0}`, "PUT", "/api/v1/tasks/CW-1", map[string]any{"description": "", "priority": float64(0)}, nil, `{"id":"CW-1","description":""}`},
 		{"work_list", `{"status":"doing,review","tags":"a,b","limit":2,"offset":4}`, "GET", "/api/v1/tasks", nil, map[string]string{"project_id": "default-project", "status": "doing,review", "tags": "a,b", "limit": "2", "offset": "4"}, `{"tasks":[{"id":"CW-1"}],"total":10,"has_more":true,"next_offset":6}`},
-		{"work_search", `{"query":"hello & world"}`, "GET", "/api/v1/tasks/search", nil, map[string]string{"q": "hello & world"}, `{"tasks":[{"id":"CW-1"}]}`},
+		{"work_search", `{"query":"hello & world"}`, "GET", "/api/v1/tasks/search", nil, map[string]string{"q": "hello & world", "limit": "200", "offset": "0"}, `{"tasks":[{"id":"CW-1"}]}`},
 		{"work_transition", `{"id":"CW-1","status":"review"}`, "POST", "/api/v1/tasks/CW-1/transition", map[string]any{"status": "review"}, nil, `{"id":"CW-1","status":"review"}`},
 		{"work_comment", `{"id":"CW-1","author":"tester","content":"Ready"}`, "POST", "/api/v1/tasks/CW-1/comments", map[string]any{"author": "tester", "content": "Ready"}, nil, `{"id":1,"entity_id":"CW-1","author":"tester","content":"Ready"}`},
 	}
