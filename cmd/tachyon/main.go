@@ -8,11 +8,13 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/tachyon/internal/hitl"
 	"github.com/hollis-labs/tachyon/internal/plugins"
 	"github.com/hollis-labs/tachyon/internal/webui"
 )
@@ -280,6 +282,22 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	var tangent hitl.Client
+	if endpoint := os.Getenv("TACHYON_TANGENT_MCP_URL"); endpoint != "" {
+		client, err := hitl.NewMCPClient(endpoint)
+		if err != nil {
+			logger.Error("invalid HITL configuration", "error", err)
+			os.Exit(1)
+		}
+		tangent = client
+		endpointURL, _ := url.Parse(endpoint)
+		logger.Info("Tangent MCP configured", "scheme", endpointURL.Scheme, "host", endpointURL.Host)
+	}
+	bridge, err := hitl.NewRuntime(tangent, os.Getenv("TACHYON_TANGENT_ITEM_BASE"), logger)
+	if err != nil {
+		logger.Error("invalid HITL configuration", "error", err)
+		os.Exit(1)
+	}
 	// Initialize plugin manager
 	pluginMgr := plugins.NewManager(logger)
 
@@ -312,35 +330,8 @@ func main() {
 	// Verb dispatch — unified endpoint that routes to the owning plugin
 	// by module prefix (ADR 001 §6). Coexists with the existing per-resource
 	// CRUD endpoints during migration.
-	mux.HandleFunc("POST /api/verb/{verb}", func(w http.ResponseWriter, r *http.Request) {
-		verb := r.PathValue("verb")
 
-		var payload json.RawMessage
-		if r.ContentLength > 0 {
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-				http.Error(w, "invalid request body", http.StatusBadRequest)
-				return
-			}
-		}
-
-		result, err := pluginMgr.InvokeVerb(r.Context(), verb, payload)
-		if err != nil {
-			logger.Error("verb invocation failed", "verb", verb, "error", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"status": "error",
-				"error": map[string]string{
-					"code":    "dispatch_error",
-					"message": err.Error(),
-				},
-			})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(result)
-	})
+	registerHITL(mux, pluginMgr, bridge, logger)
 
 	// Verb registry — returns all declared modules and verbs from loaded
 	// plugins, for the frontend to gate UI actions on specific verb

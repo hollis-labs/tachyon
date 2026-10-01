@@ -2,6 +2,7 @@ package hitl
 
 import (
 	"github.com/hollis-labs/tachyon/internal/contract"
+	"strings"
 )
 
 // EnqueueRequest is the shape Tachyon sends to Tangent's hitl_enqueue
@@ -55,9 +56,9 @@ var DefaultSource = SourceAssertion{
 }
 
 // FromAskDetail translates a verb's AskDetail into an EnqueueRequest
-// ready to send to Tangent. The verb name is used in the title and
-// idempotency key.
-func FromAskDetail(verb string, ask *contract.AskDetail) EnqueueRequest {
+// ready to send to Tangent. The verb name supplies the title; the caller
+// must supply an operation-scoped idempotency key.
+func FromAskDetail(verb, idempotencyKey string, ask *contract.AskDetail) EnqueueRequest {
 	kind := ask.Kind
 	if kind == "" {
 		kind = "approval"
@@ -66,13 +67,13 @@ func FromAskDetail(verb string, ask *contract.AskDetail) EnqueueRequest {
 	req := EnqueueRequest{
 		ContractVersion: "1.0",
 		Kind:            kind,
-		IdempotencyKey:  "tachyon:" + verb,
-		Title:           "Tachyon: " + verb,
-		Summary:         ask.Prompt,
-		Request:         ask.Prompt,
+		IdempotencyKey:  idempotencyKey,
+		Title:           truncate("Tachyon: "+verb, 160),
+		Summary:         truncate(strings.TrimSpace(ask.Prompt), 600),
+		Request:         strings.TrimSpace(ask.Prompt),
 		Source:          DefaultSource,
-		Correlations:    ask.Correlations,
-		ExpiresAt:       ask.ExpiresAt,
+
+		ExpiresAt: ask.ExpiresAt,
 	}
 
 	if ask.Impact != nil {
@@ -102,4 +103,12 @@ func FromHandle(h EnqueueHandle) AskResponse {
 		QueueSequence: h.QueueSequence,
 		ItemURL:       h.ItemURL,
 	}
+}
+
+func truncate(s string, max int) string {
+	r := []rune(s)
+	if len(r) > max {
+		r = r[:max]
+	}
+	return strings.TrimSpace(string(r))
 }

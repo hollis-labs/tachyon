@@ -356,10 +356,26 @@ type rpcResponseError struct{ message string }
 
 func (e *rpcResponseError) Error() string { return "plugin error: " + e.message }
 
+// InvocationIdentity captures the exact process, not an ID that can be reused.
+type InvocationIdentity struct{ proc *pluginProcess }
+
+func (i InvocationIdentity) Generation() string { return fmt.Sprintf("%p", i.proc) }
+func (m *Manager) IdentityCurrent(i InvocationIdentity) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return i.proc != nil && m.plugins[i.proc.id] == i.proc && !i.proc.dead.Load()
+}
+
 // InvokeVerb dispatches a command/execute call to the plugin that owns the
 // verb's module. Returns an error if no plugin claims the module or the
 // verb is not declared in the owning plugin's capabilities.
 func (m *Manager) InvokeVerb(ctx context.Context, verb string, payload json.RawMessage) (json.RawMessage, error) {
+	raw, _, err := m.InvokeVerbCaptured(ctx, verb, payload)
+	return raw, err
+}
+
+// InvokeVerbCaptured binds the returned result to the process used for I/O.
+func (m *Manager) InvokeVerbCaptured(ctx context.Context, verb string, payload json.RawMessage) (json.RawMessage, InvocationIdentity, error) {
 	m.mu.RLock()
 
 	// Determine which module owns this verb by prefix matching.
@@ -373,32 +389,39 @@ func (m *Manager) InvokeVerb(ctx context.Context, verb string, payload json.RawM
 	if proc := m.plugins[ownerID]; proc != nil && proc.capabilities != nil {
 		if _, declared := proc.capabilities.Verbs[verb]; !declared {
 			m.mu.RUnlock()
-			return nil, fmt.Errorf("verb %q is not declared by plugin %q", verb, ownerID)
+			return nil, InvocationIdentity{}, fmt.Errorf("verb %q is not declared by plugin %q", verb, ownerID)
 		}
 	}
+	proc := m.plugins[ownerID]
 	m.mu.RUnlock()
 
 	if ownerID == "" {
-		return nil, fmt.Errorf("no plugin owns a module matching verb %q", verb)
+		return nil, InvocationIdentity{}, fmt.Errorf("no plugin owns a module matching verb %q", verb)
 	}
 
 	if verb == "config_schema" || verb == "config_get" || verb == "config_list" || verb == "config_set" || verb == "config_reset" {
 		if err := m.syncConfigSchemas(ctx, ownerID); err != nil {
-			return nil, err
+			return nil, InvocationIdentity{}, err
 		}
 	}
-	raw, err := m.CallPlugin(ctx, ownerID, "command/execute", subprocess.CommandExecParams{Name: verb, Args: string(payload)})
+	if proc == nil {
+		return nil, InvocationIdentity{}, fmt.Errorf("plugin not found: %s", ownerID)
+	}
+	raw, err := callProcessContexts(ctx, context.WithoutCancel(ctx), proc, "command/execute", subprocess.CommandExecParams{Name: verb, Args: string(payload)})
+	if proc.dead.Load() {
+		m.retireProcess(proc)
+	}
 	if err != nil {
-		return nil, err
+		return nil, InvocationIdentity{}, err
 	}
 	var result subprocess.CommandExecResult
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, fmt.Errorf("decode verb command result: %w", err)
+		return nil, InvocationIdentity{}, fmt.Errorf("decode verb command result: %w", err)
 	}
 	if result.Action != "message" || !json.Valid([]byte(result.Content)) {
-		return nil, fmt.Errorf("plugin %q returned invalid verb command result", ownerID)
+		return nil, InvocationIdentity{}, fmt.Errorf("plugin %q returned invalid verb command result", ownerID)
 	}
-	return json.RawMessage(result.Content), nil
+	return json.RawMessage(result.Content), InvocationIdentity{proc: proc}, nil
 }
 
 // ModuleOwner returns the plugin ID that owns the given module, or empty

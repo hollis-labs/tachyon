@@ -56,7 +56,14 @@ type AskDetail struct {
 
 	// ExpiresAt is an RFC3339 timestamp after which the interaction
 	// expires. Expired interactions fail closed to deny (D-43).
-	ExpiresAt string `json:"expires_at,omitempty"`
+	ExpiresAt    string `json:"expires_at,omitempty"`
+	ItemID       string `json:"item_id,omitempty"`
+	ItemURL      string `json:"item_url,omitempty"`
+	OperationID  string `json:"operation_id,omitempty"`
+	State        string `json:"state,omitempty"`
+	Expiry       string `json:"expiry,omitempty"`
+	Continuation string `json:"continuation,omitempty"`
+	Unavailable  string `json:"unavailable,omitempty"`
 }
 
 // HitlImpact describes the consequences of approving or denying
