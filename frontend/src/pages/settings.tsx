@@ -2,6 +2,7 @@ import { Button, EmptyState, Input, Label, Pill, Skeleton } from "@hollis-labs/d
 import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { RefreshCw, RotateCcw, Save, Settings, Zap } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { PendingApprovalError } from "../api/hitl"
 import {
   type ConfigTarget,
   envelopeError,
@@ -16,7 +17,8 @@ import {
   type TargetConfig,
   validationErrors,
 } from "../api/settings"
-import { useVerbs } from "../api/verbs"
+import { type AskDetail, useVerbs } from "../api/verbs"
+import { PendingApproval } from "../components/pending-approval"
 import { PluginRecovery } from "../components/settings/plugin-recovery"
 
 function message(error: unknown): string {
@@ -41,6 +43,7 @@ export function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState<AskDetail | null>(null)
   const [operationNotice, setOperationNotice] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
@@ -52,12 +55,14 @@ export function SettingsPage() {
     let active = true
     setLoading(true)
     setError(null)
+    setPending(null)
     const snapshot = verbs.has("config_list")
       ? listConfigTargets()
       : retiredConfigTargets().then((data) => ({ status: "ok" as const, data }))
     snapshot
       .then((result) => {
         if (!active) return
+        if (result.status === "ask") throw new PendingApprovalError(result.ask)
         if (result.status !== "ok") throw new Error(envelopeError(result))
         setTargets(result.data)
         setSelected((current) => {
@@ -70,7 +75,10 @@ export function SettingsPage() {
         })
       })
       .catch((failure: unknown) => {
-        if (active) setError(message(failure))
+        if (active) {
+          if (failure instanceof PendingApprovalError) setPending(failure.ask)
+          else setError(message(failure))
+        }
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -112,6 +120,11 @@ export function SettingsPage() {
           Refresh
         </Button>
       </div>
+      {pending && (
+        <div className="px-5">
+          <PendingApproval ask={pending} />
+        </div>
+      )}
       {(error || operationError) && (
         <div role="alert" className="border-b border-border bg-status-failed/10 px-5 py-3 text-sm">
           {operationError || error}
@@ -138,7 +151,7 @@ export function SettingsPage() {
           title="Configuration is unavailable"
           description="The config module is not loaded."
         />
-      ) : targets.length === 0 ? (
+      ) : pending && targets.length === 0 ? null : targets.length === 0 ? (
         <EmptyState variant="empty" title="No plugins" description="Refresh to try again." />
       ) : (
         <div className="grid min-h-0 flex-1 gap-5 overflow-auto p-5 lg:grid-cols-[260px_minmax(0,1fr)]">
@@ -253,6 +266,7 @@ function SettingsEditor({
   const [loading, setLoading] = useState(true)
   const [action, setAction] = useState<"save" | "reset" | "restart" | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState<AskDetail | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   const active = useRef(true)
@@ -280,14 +294,19 @@ function SettingsEditor({
     let current = true
     setLoading(true)
     setError(null)
+    setPending(null)
     getConfig(target.id)
       .then((result) => {
         if (!current) return
+        if (result.status === "ask") throw new PendingApprovalError(result.ask)
         if (result.status !== "ok") throw new Error(envelopeError(result))
         apply(result.data)
       })
       .catch((failure: unknown) => {
-        if (current) setError(message(failure))
+        if (current) {
+          if (failure instanceof PendingApprovalError) setPending(failure.ask)
+          else setError(message(failure))
+        }
       })
       .finally(() => {
         if (current) setLoading(false)
@@ -309,7 +328,7 @@ function SettingsEditor({
   }
 
   async function save() {
-    if (!config) return
+    if (!config || !canSave || action !== null || pending || Object.keys(dirty).length === 0) return
     const values: Record<string, string | boolean | number> = {}
     const errors: Record<string, string> = {}
     for (const field of config.target.settings.fields ?? []) {
@@ -331,6 +350,7 @@ function SettingsEditor({
     await run("save", async () => {
       const result = await setConfig(target.id, values)
       if (!active.current) return
+      if (result.status === "ask") throw new PendingApprovalError(result.ask)
       if (result.status !== "ok") {
         setFieldErrors(validationErrors(result))
         throw new Error(envelopeError(result))
@@ -342,6 +362,7 @@ function SettingsEditor({
   }
 
   async function run(kind: "save" | "reset" | "restart", work: () => Promise<void>) {
+    if (action !== null || pending) return
     setAction(kind)
     onBusy(true)
     setError(null)
@@ -349,7 +370,10 @@ function SettingsEditor({
     try {
       await work()
     } catch (failure) {
-      if (active.current) setError(message(failure))
+      if (active.current) {
+        if (failure instanceof PendingApprovalError) setPending(failure.ask)
+        else setError(message(failure))
+      }
     } finally {
       if (active.current) setAction(null)
       onBusy(false)
@@ -357,9 +381,11 @@ function SettingsEditor({
   }
 
   async function reset() {
+    if (!canReset) return
     await run("reset", async () => {
       const result = await resetConfig(target.id)
       if (!active.current) return
+      if (result.status === "ask") throw new PendingApprovalError(result.ask)
       if (result.status !== "ok") throw new Error(envelopeError(result))
       apply(result.data.config)
       onRestartNeeded(target.id, result.data.restart_required)
@@ -411,7 +437,7 @@ function SettingsEditor({
               "text-primary-foreground"
             }
             size="sm"
-            disabled={action !== null || Object.keys(dirty).length > 0}
+            disabled={action !== null || !!pending || Object.keys(dirty).length > 0}
             onClick={restart}
           >
             <RefreshCw className="h-3.5 w-3.5" />
@@ -420,6 +446,7 @@ function SettingsEditor({
         </div>
       )}
       <div className="space-y-4 p-4">
+        {pending && <PendingApproval ask={pending} />}
         {error && (
           <p role="alert" className="text-sm text-status-failed">
             {error}
@@ -436,7 +463,7 @@ function SettingsEditor({
           <p className="text-sm text-text-soft">
             This plugin does not support configuration reads.
           </p>
-        ) : !config ? (
+        ) : !config && pending ? null : !config ? (
           <Button variant="outline" size="sm" onClick={() => setReload((current) => current + 1)}>
             Try again
           </Button>
@@ -455,7 +482,7 @@ function SettingsEditor({
                 key={field.key}
                 field={field}
                 value={draft[field.key] ?? ""}
-                disabled={action !== null || !canSave}
+                disabled={action !== null || !!pending || !canSave}
                 error={fieldErrors[field.key]}
                 onChange={(value) => edit(field.key, value)}
               />
@@ -471,11 +498,13 @@ function SettingsEditor({
               <Button
                 className={
                   // TODO(CW-20261001-0521): remove at design-components 0.1.1
-                  "text-primary-foreground"
+                  "text-primary-foreground aria-disabled:opacity-50"
                 }
                 type="submit"
                 size="sm"
-                disabled={action !== null || !canSave || Object.keys(dirty).length === 0}
+                aria-disabled={
+                  action !== null || !!pending || !canSave || Object.keys(dirty).length === 0
+                }
               >
                 <Save className="h-3.5 w-3.5" />
                 {action === "save" ? "Saving…" : "Save settings"}
@@ -485,7 +514,8 @@ function SettingsEditor({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={action !== null}
+                  className="aria-disabled:opacity-50"
+                  aria-disabled={action !== null || !!pending}
                   onClick={reset}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
