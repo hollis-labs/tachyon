@@ -15,17 +15,8 @@ import (
 	"github.com/hollis-labs/plugin-sdk/registry"
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
+	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
-
-// extendedInitResult extends plugin-sdk's InitResult with the host
-// contract's capability declaration (D-47, D-48). Plugins that declare
-// capabilities include a "capabilities" field alongside the standard
-// InitResult fields. The host unmarshals into this extended type and
-// validates the declaration at load time.
-type extendedInitResult struct {
-	subprocess.InitResult
-	Capabilities *contract.PluginCapabilities `json:"capabilities,omitempty"`
-}
 
 // Manager is Tachyon's plugin host. It spawns plugin binaries, manages their
 // lifecycle, and builds the registry response for the browser loader.
@@ -42,7 +33,7 @@ type pluginProcess struct {
 	name    string
 	version string
 	// capabilities holds the plugin's validated capability declaration
-	// from its init response (D-47). Nil for legacy plugins that do not
+	// from its discovery command (D-47). Nil for legacy plugins that do not
 	// yet declare capabilities.
 	capabilities *contract.PluginCapabilities
 	cmd          *exec.Cmd
@@ -144,68 +135,22 @@ func (m *Manager) LoadPlugin(ctx context.Context, binaryPath string) error {
 		return fmt.Errorf("plugin init failed: %s", initResp.Error.Message)
 	}
 
-	var extResult extendedInitResult
-	if err := json.Unmarshal(initResp.Result, &extResult); err != nil {
+	var initResult subprocess.InitResult
+	if err := json.Unmarshal(initResp.Result, &initResult); err != nil {
 		cmd.Process.Kill()
+		cmd.Wait()
 		return fmt.Errorf("failed to unmarshal init result: %w", err)
 	}
-
-	// Validate capability declarations (D-47). If the plugin declares
-	// capabilities, every declaration is checked for internal consistency
-	// and cross-plugin module collisions. A legacy plugin that omits
-	// capabilities is loaded with a warning but no error.
-	if extResult.Capabilities != nil {
-		if err := extResult.Capabilities.Validate(); err != nil {
-			cmd.Process.Kill()
-			return fmt.Errorf("plugin %q capability validation failed: %w", extResult.ID, err)
-		}
-
-		// Check for module ownership collisions (D-49).
-		for _, mod := range extResult.Capabilities.Modules {
-			if owner, taken := m.modules[mod]; taken {
-				cmd.Process.Kill()
-				return fmt.Errorf("plugin %q claims module %q, already owned by plugin %q", extResult.ID, mod, owner)
-			}
-		}
-	} else {
-		m.logger.Warn("plugin loaded without capability declaration",
-			"id", extResult.ID,
-			"hint", "declare capabilities in plugin/init response (D-47)")
+	proc := &pluginProcess{id: initResult.ID, name: initResult.Name, version: initResult.Version,
+		cmd: cmd, stdin: stdin, stdout: stdout, stdoutDec: dec}
+	if err := m.initializePlugin(ctx, proc); err != nil {
+		stdin.Close()
+		stdout.Close()
+		cmd.Process.Kill()
+		cmd.Wait()
+		return err
 	}
-
-	proc := &pluginProcess{
-		id:           extResult.ID,
-		name:         extResult.Name,
-		version:      extResult.Version,
-		capabilities: extResult.Capabilities,
-		cmd:          cmd,
-		stdin:        stdin,
-		stdout:       stdout,
-		stdoutDec:    dec,
-	}
-
-	m.mu.Lock()
-	m.plugins[extResult.ID] = proc
-	if extResult.Capabilities != nil {
-		for _, mod := range extResult.Capabilities.Modules {
-			m.modules[mod] = extResult.ID
-		}
-	}
-	m.mu.Unlock()
-
-	if extResult.Capabilities != nil {
-		m.logger.Info("plugin loaded",
-			"id", extResult.ID,
-			"name", extResult.Name,
-			"version", extResult.Version,
-			"modules", extResult.Capabilities.Modules,
-			"verbs", len(extResult.Capabilities.Verbs))
-	} else {
-		m.logger.Info("plugin loaded",
-			"id", extResult.ID,
-			"name", extResult.Name,
-			"version", extResult.Version)
-	}
+	m.logger.Info("plugin loaded", "id", proc.id, "name", proc.name, "version", proc.version)
 
 	return nil
 }
@@ -242,6 +187,10 @@ func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, param
 		return nil, fmt.Errorf("plugin not found: %s", pluginID)
 	}
 
+	return callProcess(ctx, proc, method, params)
+}
+
+func callProcess(ctx context.Context, proc *pluginProcess, method string, params interface{}) (json.RawMessage, error) {
 	// Serialize the full round trip — see pluginProcess.callMu's doc
 	// comment for why concurrent callers must not share this pipe pair
 	// unguarded.
@@ -271,7 +220,7 @@ func (m *Manager) CallPlugin(ctx context.Context, pluginID, method string, param
 	return resp.Result, nil
 }
 
-// InvokeVerb dispatches a verb/invoke call to the plugin that owns the
+// InvokeVerb dispatches a command/execute call to the plugin that owns the
 // verb's module. Returns an error if no plugin claims the module or the
 // verb is not declared in the owning plugin's capabilities.
 func (m *Manager) InvokeVerb(ctx context.Context, verb string, payload json.RawMessage) (json.RawMessage, error) {
@@ -285,21 +234,30 @@ func (m *Manager) InvokeVerb(ctx context.Context, verb string, payload json.RawM
 			break
 		}
 	}
+	if proc := m.plugins[ownerID]; proc != nil && proc.capabilities != nil {
+		if _, declared := proc.capabilities.Verbs[verb]; !declared {
+			m.mu.RUnlock()
+			return nil, fmt.Errorf("verb %q is not declared by plugin %q", verb, ownerID)
+		}
+	}
 	m.mu.RUnlock()
 
 	if ownerID == "" {
 		return nil, fmt.Errorf("no plugin owns a module matching verb %q", verb)
 	}
 
-	params := struct {
-		Verb    string          `json:"verb"`
-		Payload json.RawMessage `json:"payload,omitempty"`
-	}{
-		Verb:    verb,
-		Payload: payload,
+	raw, err := m.CallPlugin(ctx, ownerID, "command/execute", subprocess.CommandExecParams{Name: verb, Args: string(payload)})
+	if err != nil {
+		return nil, err
 	}
-
-	return m.CallPlugin(ctx, ownerID, "verb/invoke", params)
+	var result subprocess.CommandExecResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("decode verb command result: %w", err)
+	}
+	if result.Action != "message" || !json.Valid([]byte(result.Content)) {
+		return nil, fmt.Errorf("plugin %q returned invalid verb command result", ownerID)
+	}
+	return json.RawMessage(result.Content), nil
 }
 
 // ModuleOwner returns the plugin ID that owns the given module, or empty
@@ -360,5 +318,51 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// initializePlugin completes lifecycle and capability registration before the
+// process becomes visible to callers. Collision checks and insertion are atomic.
+func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) error {
+	if _, err := callProcess(ctx, proc, "plugin/load", subprocess.LoadParams{}); err != nil {
+		return fmt.Errorf("plugin %q load failed: %w", proc.id, err)
+	}
+	raw, err := callProcess(ctx, proc, "command/execute", subprocess.CommandExecParams{Name: pluginkit.CommandCapabilities})
+	if err != nil {
+		m.logger.Warn("plugin loaded without capability declaration", "id", proc.id, "error", err)
+	} else {
+		var result subprocess.CommandExecResult
+		if err := json.Unmarshal(raw, &result); err != nil {
+			return fmt.Errorf("plugin %q capability response: %w", proc.id, err)
+		}
+		if result.Action == "error" {
+			m.logger.Warn("plugin loaded without capability declaration", "id", proc.id, "error", result.Content)
+		} else {
+			var caps contract.PluginCapabilities
+			if err := json.Unmarshal([]byte(result.Content), &caps); err != nil {
+				return fmt.Errorf("plugin %q capability declaration: %w", proc.id, err)
+			}
+			if err := caps.Validate(); err != nil {
+				return fmt.Errorf("plugin %q capability validation failed: %w", proc.id, err)
+			}
+			proc.capabilities = &caps
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.plugins[proc.id]; exists {
+		return fmt.Errorf("plugin %q already loaded", proc.id)
+	}
+	if proc.capabilities != nil {
+		for _, mod := range proc.capabilities.Modules {
+			if owner, taken := m.modules[mod]; taken {
+				return fmt.Errorf("plugin %q claims module %q, already owned by plugin %q", proc.id, mod, owner)
+			}
+		}
+		for _, mod := range proc.capabilities.Modules {
+			m.modules[mod] = proc.id
+		}
+	}
+	m.plugins[proc.id] = proc
 	return nil
 }
