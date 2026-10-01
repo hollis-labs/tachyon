@@ -33,7 +33,7 @@ CI (`.github/workflows/ci.yml`) runs `go vet`, `go build` and `go test -short` (
 - **`internal/webui/dist/.gitkeep` must stay.** `//go:embed all:dist` fails to compile when nothing matches. Do not delete it and do not commit the built bundle beside it; `make clean` keeps it.
 - **The UI degrades by capability, not by assumption.** `GET /api/capabilities` reports what the active provider supports. A new UI action checks it first rather than assuming Nanite's shape is the only shape.
 - **Read-only means read-only.** The skill catalog and MCP server catalog are read-only from Tachyon, and durable agents are read-only with no start/stop lifecycle. Adding a write path to either is a scope decision, not a refactor.
-- **Pinned kit versions.** The frontend consumes `@hollis-labs/sysop-ui` as a git dependency pinned to a release tag; bump the tag, never a branch.
+- **Pinned kit versions.** The frontend consumes `@hollis-labs/design-app-runtime`, `@hollis-labs/design-components`, `@hollis-labs/design-tokens` and `@hollis-labs/kit-dashboard` from npm at `^0.1.0`. Bump versions through `frontend/package.json` and its lockfile, never a branch or git ref. Move design-components to `^0.1.1` after the CW-20261001-0525 npm publish and remove the CW-20261001-0521 Button workarounds.
 - **No authentication yet.** The HTTP API has no auth and the default listener is `:8093` on all interfaces. Treat it as a local tool. Do not add an endpoint that assumes a caller has been authenticated, and see `SECURITY.md` before changing how the server binds.
 
 ## Adding a page or a plugin

@@ -1,4 +1,5 @@
-import { Button, EmptyState, Input, Label, PageHeader, Pill, Skeleton } from "@hollis-labs/sysop-ui"
+import { Button, EmptyState, Input, Label, Pill, Skeleton } from "@hollis-labs/design-components"
+import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { RefreshCw, RotateCcw, Save, Settings, Zap } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
@@ -360,6 +361,10 @@ function SettingsEditor({
         >
           <p className="text-sm">Restart this plugin to apply saved settings.</p>
           <Button
+            className={
+              // TODO(CW-20261001-0521): remove at design-components 0.1.1
+              "text-primary-foreground"
+            }
             size="sm"
             disabled={action !== null || Object.keys(dirty).length > 0}
             onClick={restart}
@@ -419,6 +424,10 @@ function SettingsEditor({
               ))}
             <div className="flex flex-wrap gap-2 border-t border-border pt-4">
               <Button
+                className={
+                  // TODO(CW-20261001-0521): remove at design-components 0.1.1
+                  "text-primary-foreground"
+                }
                 type="submit"
                 size="sm"
                 disabled={action !== null || !canSave || Object.keys(dirty).length === 0}

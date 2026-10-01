@@ -9,7 +9,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { AgentSkill, Skill, SkillGrantStatus } from "../../api/client"
 import { useApi } from "../../api/context"
@@ -198,6 +198,10 @@ export function AgentSkillsPanel({ agentId, grantedBy }: AgentSkillsPanelProps) 
                         </Button>
                       ) : (
                         <Button
+                          className={
+                            // TODO(CW-20261001-0521): remove at design-components 0.1.1
+                            "text-primary-foreground"
+                          }
                           type="button"
                           size="sm"
                           disabled={busy || !has("agent_approve", "can_assign_skills")}

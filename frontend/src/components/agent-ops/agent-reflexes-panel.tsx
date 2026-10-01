@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
   Textarea,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import type { CreateReflexRequest, Reflex } from "../../api/client"
@@ -174,7 +174,15 @@ export function AgentReflexesPanel({ agentId }: AgentReflexesPanelProps) {
     <div className="flex flex-col gap-3">
       <div className="flex justify-end">
         {!formOpen && has("agent_reflex_create") && (
-          <Button type="button" size="sm" onClick={openCreate}>
+          <Button
+            className={
+              // TODO(CW-20261001-0521): remove at design-components 0.1.1
+              "text-primary-foreground"
+            }
+            type="button"
+            size="sm"
+            onClick={openCreate}
+          >
             <Plus className="h-4 w-4" />
             New Reflex
           </Button>

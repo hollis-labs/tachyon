@@ -12,8 +12,11 @@
     "lint:fix": "biome check --write ."
   },
   "dependencies": {
+    "@hollis-labs/design-app-runtime": "^0.1.0",
+    "@hollis-labs/design-components": "^0.1.0",
+    "@hollis-labs/design-tokens": "^0.1.0",
+    "@hollis-labs/kit-dashboard": "^0.1.0",
     "@hollis-labs/plugin-registry": "^0.1.0",
-    "@hollis-labs/sysop-ui": "github:hollis-labs/sysop-ui#v0.9.0",
     "lucide-react": "^1.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

@@ -1,4 +1,4 @@
-import { Skeleton } from "@hollis-labs/sysop-ui"
+import { Skeleton } from "@hollis-labs/design-components"
 import { useEffect, useState } from "react"
 import type { DurableAgent, DurableAgentEvent, DurableAgentSession } from "../../api/client"
 import { useApi } from "../../api/context"

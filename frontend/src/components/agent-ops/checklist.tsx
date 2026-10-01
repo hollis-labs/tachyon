@@ -1,4 +1,4 @@
-import { Checkbox, EmptyState } from "@hollis-labs/sysop-ui"
+import { Checkbox, EmptyState } from "@hollis-labs/design-components"
 import { Search } from "lucide-react"
 import { useId, useMemo, useState } from "react"
 

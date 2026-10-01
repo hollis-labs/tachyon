@@ -1,4 +1,4 @@
-import { applyTheme, getInitialTheme } from "@hollis-labs/sysop-ui"
+import { applyTheme, getInitialTheme } from "@hollis-labs/kit-dashboard"
 import React from "react"
 import ReactDOM from "react-dom/client"
 import { App } from "./App"

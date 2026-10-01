@@ -10,7 +10,7 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
-} from "@hollis-labs/sysop-ui"
+} from "@hollis-labs/design-components"
 import { type ReactNode, useEffect, useState } from "react"
 import type { Agent, AgentCapabilities } from "../../api/client"
 import { useApi } from "../../api/context"
@@ -140,6 +140,10 @@ export function AgentManageDialog({
   if (canEditOverview && activeTab === "overview") {
     footerButtons.push(
       <Button
+        className={
+          // TODO(CW-20261001-0521): remove at design-components 0.1.1
+          onFinish ? undefined : "text-primary-foreground"
+        }
         key="save"
         type="button"
         size="sm"
@@ -155,7 +159,16 @@ export function AgentManageDialog({
   }
   if (onFinish) {
     footerButtons.push(
-      <Button key="done" type="button" size="sm" onClick={onFinish}>
+      <Button
+        className={
+          // TODO(CW-20261001-0521): remove at design-components 0.1.1
+          "text-primary-foreground"
+        }
+        key="done"
+        type="button"
+        size="sm"
+        onClick={onFinish}
+      >
         Done
       </Button>,
     )

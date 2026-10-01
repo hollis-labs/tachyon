@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Adopted design-components AppShell and the published design-kit packages in place of the sysop-ui git dependency, preserving registry navigation and the pre-paint theme bootstrap.
 - Scaffolded from Folio's `sysop-ui` preset: a Go server embedding a Vite + React Sysop UI served under `/sysop/`.
 
 ### Fixed
