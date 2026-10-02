@@ -1,7 +1,22 @@
-import { Button, EmptyState, Input, Label, Skeleton } from "@hollis-labs/design-components"
+import { Button, Input, Label } from "@hollis-labs/design-components"
 import { ListPageLayout } from "@hollis-labs/kit-dashboard/layout"
 import { PageHeader } from "@hollis-labs/kit-dashboard/ui"
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
+import {
+  DiagnosticPanel,
+  HealthSummary,
+  type ObservationState,
+  ObservationStatus,
+  StatCollection,
+} from "@hollis-labs/kit-observe"
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { PendingApprovalError } from "../../api/hitl"
 import {
   type HostFeedStatus,
@@ -14,14 +29,35 @@ import {
 } from "../../api/observe"
 import { type AskDetail, useVerbs } from "../../api/verbs"
 import { PendingApproval } from "../pending-approval"
+import {
+  diagnosticProjection,
+  diagnosticSchema,
+  observationState,
+  reachability,
+  reportedHealth,
+  snapshotRows,
+  statusSnapshot,
+  statusStats,
+} from "./observe-kit-adapter"
 
 export const selectClass = "h-9 max-w-full rounded-md border border-border bg-surface px-2 text-sm"
 export const timeText = (value: string | undefined) =>
   value && Number.isFinite(Date.parse(value))
     ? new Date(value).toLocaleString()
     : "Timestamp unavailable"
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
+const errorText = (_error: unknown) =>
+  "The Observe read or polling descriptor failed. Use an explicit Refresh to try again."
 const readQueues = new Map<string, Promise<unknown>>()
+const ObservationContext = createContext<ObservationState | null>(null)
+
+function useObservationClock() {
+  const [nowMs, setNowMs] = useState(Date.now)
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  return nowMs
+}
 
 interface ReadState<T> {
   data?: T
@@ -133,11 +169,24 @@ export function useObserveRead<T>(
           if (!alive()) return
           setState((old) => ({ ...old, loading: true }))
           try {
-            const data = await serialize(alive, async () =>
-              observeData(
+            const data = await serialize(alive, async () => {
+              const snapshot = observeData(
                 await observeApi.snapshot<T>(contract.channel as PollChannel, contract.payload),
-              ),
-            )
+              )
+              snapshotRows(
+                snapshot as unknown[] | null,
+                contract.channel === "logs"
+                  ? ["id", "timestamp", "level", "source", "message"]
+                  : [
+                      "id",
+                      "timestamp",
+                      "kind",
+                      "source",
+                      ...(contract.channel === "activity" ? ["summary", "actor"] : []),
+                    ],
+              )
+              return snapshot
+            })
             if (!alive()) return
             failures = 0
             setState({ data, loading: false, error: "", updated: new Date().toISOString() })
@@ -215,26 +264,32 @@ export function ObserveLayout({
   children: ReactNode
 }) {
   const verbs = useVerbs()
+  const nowMs = useObservationClock()
   return (
     <ListPageLayout header={<PageHeader title={title} />}>
       <div className="min-w-0 space-y-4 p-4">
         <p className="text-sm text-text-muted">
           Current snapshots and retained host records; not durable history.
         </p>
-        {verbs.loading ? (
-          <Skeleton className="h-24" />
-        ) : !verbs.has(verb) ? (
-          <EmptyState
-            variant="empty"
-            title="Observe unavailable"
-            description={
-              verbs.available === true
-                ? "The required read verb is unavailable."
-                : "Could not discover Observe capabilities."
-            }
+        {verbs.loading || !verbs.has(verb) ? (
+          <ObservationStatus
+            label="Observe availability"
+            observation={{
+              phase: verbs.loading ? "loading" : "idle",
+              supported: verbs.loading || verbs.has(verb),
+              nowMs,
+              staleAfterMs: 30000,
+            }}
           />
         ) : (
           children
+        )}
+        {!verbs.loading && !verbs.has(verb) && (
+          <p>
+            {verbs.available === true
+              ? "The required read verb is unavailable."
+              : "Could not discover Observe capabilities."}
+          </p>
         )}
       </div>
     </ListPageLayout>
@@ -275,37 +330,53 @@ export function ReadControls<T>({ read }: { read: ReturnType<typeof useObserveRe
 export function ReadRegion<T>({
   read,
   children,
+  label = "Snapshot received",
+  observedAt,
 }: {
   read: ReturnType<typeof useObserveRead<T>>
   children: ReactNode
+  label?: string
+  observedAt?: string
 }) {
+  const nowMs = useObservationClock()
+  const observation = observationState(read, nowMs, true, observedAt)
   return (
     <div className="min-w-0 space-y-3">
       {read.ask && <PendingApproval ask={read.ask} />}
-      {read.error && (
-        <p role="alert" className="break-words text-status-failed">
-          {read.data !== undefined ? "Retained snapshot is stale. " : "Read failed. "}
-          {read.error}
-        </p>
-      )}
-      {read.loading &&
-        (read.data === undefined ? (
-          <Skeleton className="h-24" />
-        ) : (
-          <p role="status">Refreshing; previous snapshot retained.</p>
-        ))}
-      {read.data !== undefined && children}
+      <p className="text-xs text-text-muted">
+        Freshness uses a 30-second host policy; age does not establish workload health.
+      </p>
+      <ObservationContext.Provider value={observation}>
+        <ObservationStatus
+          label={label}
+          observation={{
+            ...observation,
+            onRetry: !read.ask && !read.loading && !read.auto ? read.refresh : undefined,
+          }}
+        >
+          {read.data !== undefined && children}
+        </ObservationStatus>
+      </ObservationContext.Provider>
     </div>
   )
 }
 export function Details({ value }: { value: unknown }) {
+  const observation = useContext(ObservationContext)
   if (value === undefined || value === null) return null
+  if (!observation) return null
+  const projection = diagnosticProjection(value)
   return (
-    <details>
+    <details className="min-w-0">
       <summary className="cursor-pointer text-sm">Details (read only)</summary>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">
-        {JSON.stringify(value, null, 2)}
-      </pre>
+      <p className="text-xs text-text-muted">
+        Recognized metadata only; other fields and raw error text are omitted.
+      </p>
+      <DiagnosticPanel
+        label="Snapshot metadata"
+        schema={diagnosticSchema}
+        {...projection}
+        observation={observation}
+      />
     </details>
   )
 }
@@ -314,17 +385,25 @@ export function FilterInput({
   value,
   change,
   type = "text",
+  disabled = false,
 }: {
   name: string
   value: string
   change: (value: string) => void
   type?: string
+  disabled?: boolean
 }) {
   const id = `observe-${name.toLowerCase().replaceAll(" ", "-")}`
   return (
     <div className="min-w-0">
       <Label htmlFor={id}>{name}</Label>
-      <Input id={id} type={type} value={value} onChange={(event) => change(event.target.value)} />
+      <Input
+        id={id}
+        type={type}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => change(event.target.value)}
+      />
     </div>
   )
 }
@@ -346,12 +425,10 @@ export function dateFilters(since: string, until: string) {
     ...(to === undefined ? {} : { until: new Date(to).toISOString() }),
   }
 }
-const counterText = (value: unknown) =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? String(value)
-    : "Unavailable"
 function HostReceipt({ receipt }: { receipt: HostFeedStatus | undefined }) {
+  const observation = useContext(ObservationContext)
   if (!receipt) return <p>No host-feed receipt reported</p>
+  if (!observation) return null
   const counters = receipt.counters
   const lost = [
     counters?.overflow,
@@ -363,79 +440,70 @@ function HostReceipt({ receipt }: { receipt: HostFeedStatus | undefined }) {
     <section aria-label="Host-feed receipt" className="space-y-2">
       <h3 className="font-medium">Host-feed receipt</h3>
       <p>Delivery counters are the last received report and may lag host accounting.</p>
-      <dl className="grid grid-cols-1 gap-2 break-words sm:grid-cols-2">
-        <dt>Host epoch</dt>
-        <dd className="break-all">{receipt.epoch || "Unavailable"}</dd>
-        <dt>Last received sequence</dt>
-        <dd>{counterText(receipt.last_sequence)}</dd>
-        <dt>Delivered records</dt>
-        <dd>{counterText(counters?.delivered)}</dd>
-        <dt>Operation overflow records</dt>
-        <dd>{counterText(counters?.overflow)}</dd>
-        <dt>Lifecycle overflow records</dt>
-        <dd>{counterText(counters?.lifecycle_overflow)}</dd>
-        <dt>Unavailable records</dt>
-        <dd>{counterText(counters?.unavailable)}</dd>
-        <dt>Failed-delivery records</dt>
-        <dd>{counterText(counters?.delivery_failed)}</dd>
-        <dt>Queue-wait timeout attempts (not record loss)</dt>
-        <dd>{counterText(counters?.queue_wait_timeouts)}</dd>
-      </dl>
+      <details className="min-w-0">
+        <summary className="cursor-pointer">Host-feed receipt metadata</summary>
+        <DiagnosticPanel
+          label="Host-feed receipt"
+          schema={diagnosticSchema}
+          {...diagnosticProjection(receipt)}
+          observation={observation}
+        />
+      </details>
       {lost && (
         <p className="text-status-failed">
           Retained telemetry may be incomplete: records were dropped or delivery failed.
         </p>
       )}
       <p className="text-text-muted">
-        Counters are not provider activity or complete history. Accepted records may be visible even
-        when their acknowledgment was lost. No durable replay or exactly-once guarantee.
+        Queue-wait timeouts count attempts, not record loss. Counters reset with the host epoch and
+        are not provider activity or complete history. Accepted records may be visible even when
+        their acknowledgment was lost. No durable replay or exactly-once guarantee.
       </p>
     </section>
   )
 }
 function StatusView({ status }: { status: StatusSummary }) {
+  const observation = useContext(ObservationContext)
+  if (!observation || !status || typeof status !== "object" || Array.isArray(status))
+    return <p role="alert">Invalid Observe status snapshot.</p>
+  const dependencies = Array.isArray(status.dependencies) ? status.dependencies : []
   return (
     <div className="space-y-3 text-sm">
-      <dl className="grid grid-cols-1 gap-2 break-words sm:grid-cols-2">
-        <dt>Observe aggregate health</dt>
-        <dd>{status.health_status || "Unavailable"}</dd>
-        <dt>Local error events and plugin failures (retained ring)</dt>
-        <dd>{counterText(status.error_count)}</dd>
-        <dt>Operation errors (retained ring; separate from health)</dt>
-        <dd>{counterText(status.operation_error_count)}</dd>
-        <dt>Active agents</dt>
-        <dd>Unknown — not measured</dd>
-        <dt>Nanite sessions with status active</dt>
-        <dd>
-          {status.session_count_known === true &&
-          Number.isSafeInteger(status.active_sessions) &&
-          status.active_sessions >= 0
-            ? status.active_sessions
-            : "Unknown"}
-        </dd>
-        <dt>Observe process uptime</dt>
-        <dd>
-          {Number.isFinite(status.uptime_seconds) && status.uptime_seconds >= 0
-            ? `${status.uptime_seconds} seconds`
-            : "Unavailable"}
-        </dd>
-        <dt>Last updated</dt>
-        <dd>{timeText(status.last_updated)}</dd>
-      </dl>
+      <HealthSummary
+        label="Observe reported aggregate"
+        status={reportedHealth(status.health_status)}
+        checks={[]}
+        observation={observation}
+      />
+      <StatCollection label="Reported scalar gauges" rows={statusStats(status, observation)} />
       <p className="text-text-muted">
         Dependency reachability is not workload health. Active session status does not mean
         executing.
       </p>
       <HostReceipt receipt={status.host_feed} />
       <h3 className="font-medium">Dependency reachability</h3>
-      {status.dependencies?.length ? (
+      {status.dependencies !== undefined && !Array.isArray(status.dependencies) && (
+        <p role="alert">Invalid dependency reachability snapshot.</p>
+      )}
+      {dependencies.length ? (
         <ul className="space-y-2">
-          {status.dependencies.map((dependency) => (
-            <li key={dependency.source} className="rounded border border-border p-3 break-words">
-              <span className="font-medium">{dependency.source}</span> ·{" "}
-              {dependency.status || "Unavailable"}
-              <p>Checked: {timeText(dependency.checked_at)}</p>
-              {dependency.error && <p className="text-status-failed">{dependency.error}</p>}
+          {keyedSnapshot(dependencies).map(({ row: dependency, key }) => (
+            <li key={key} className="min-w-0 break-words">
+              <HealthSummary
+                label={`${typeof dependency?.source === "string" ? dependency.source : "Unknown source"} reachability check`}
+                status={reachability(dependency?.status)}
+                checks={[]}
+                observation={{
+                  ...observation,
+                  observedAt:
+                    typeof dependency?.checked_at === "string" ? dependency.checked_at : "",
+                }}
+              />
+              {dependency?.error && (
+                <p className="text-status-failed">
+                  The dependency reachability check reported an error.
+                </p>
+              )}
             </li>
           ))}
         </ul>
@@ -447,17 +515,55 @@ function StatusView({ status }: { status: StatusSummary }) {
 }
 export function ObserveStatus() {
   const verbs = useVerbs()
-  const load = useCallback(() => observeApi.status().then(observeData), [])
+  const load = useCallback(() => observeApi.status().then(observeData).then(statusSnapshot), [])
   const read = useObserveRead(verbs.has("observe_status"), load)
-  if (!verbs.has("observe_status")) return <p>Status read unavailable</p>
+  const nowMs = useObservationClock()
+  if (!verbs.has("observe_status"))
+    return (
+      <ObservationStatus
+        label="Observe status"
+        observation={observationState(read, nowMs, false)}
+      />
+    )
   return (
     <section aria-label="Observe status" className="space-y-3 rounded border border-border p-4">
       <h2 className="text-lg font-medium">Observe status</h2>
       <ReadControls read={read} />
-      <ReadRegion read={read}>
+      <ReadRegion
+        read={read}
+        label="Observe status source time"
+        observedAt={
+          read.data
+            ? typeof read.data.last_updated === "string"
+              ? read.data.last_updated
+              : ""
+            : undefined
+        }
+      >
         {read.data ? <StatusView status={read.data} /> : <p>Status unavailable</p>}
       </ReadRegion>
     </section>
+  )
+}
+
+export function MetricSample({
+  at,
+  label,
+  children,
+}: {
+  at: string
+  label: string
+  children: ReactNode
+}) {
+  const observation = useContext(ObservationContext)
+  if (!observation) return null
+  return (
+    <ObservationStatus
+      label={label}
+      observation={{ ...observation, observedAt: typeof at === "string" ? at : "" }}
+    >
+      {children}
+    </ObservationStatus>
   )
 }
 

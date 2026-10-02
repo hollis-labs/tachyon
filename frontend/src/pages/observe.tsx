@@ -8,6 +8,7 @@ import {
   observeData,
 } from "../api/observe"
 import { useVerbs } from "../api/verbs"
+import { snapshotRows } from "../components/observe/observe-kit-adapter"
 import {
   Details,
   FilterInput,
@@ -32,7 +33,16 @@ function Feed({ channel }: { channel: "activity" | "events" }) {
     () =>
       observeApi
         .snapshot<(ActivityEntry | ObserveEvent)[] | null>(channel, { ...filter })
-        .then(observeData),
+        .then(observeData)
+        .then((rows) =>
+          snapshotRows(rows, [
+            "id",
+            "timestamp",
+            "kind",
+            "source",
+            ...(channel === "activity" ? ["summary", "actor"] : []),
+          ]),
+        ),
     [channel, filter],
   )
   const read = useObserveRead(verbs.has(`observe_${channel}`), load, {
@@ -62,9 +72,15 @@ function Feed({ channel }: { channel: "activity" | "events" }) {
           }
         }}
       >
-        <FilterInput name="Source" value={source} change={setSource} />
-        <FilterInput name="Kind" value={kind} change={setKind} />
-        <FilterInput name="Limit" value={limit} change={setLimit} type="number" />
+        <FilterInput name="Source" value={source} change={setSource} disabled={!!read.ask} />
+        <FilterInput name="Kind" value={kind} change={setKind} disabled={!!read.ask} />
+        <FilterInput
+          name="Limit"
+          value={limit}
+          change={setLimit}
+          type="number"
+          disabled={!!read.ask}
+        />
         <Button variant="outline" type="submit" disabled={!!read.ask}>
           Apply filters
         </Button>
