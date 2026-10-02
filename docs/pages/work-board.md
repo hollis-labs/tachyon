@@ -45,6 +45,28 @@ The **Project ID** field applies to column queries. With no explicit project,
 the adapter uses its configured default project scope. **Refresh** reloads
 columns; the board does not automatically poll.
 
+## Tasks list
+
+**Tasks** at `/work` requests a bounded page on entry. Status, Project ID and
+Tag slugs filter list queries on the server; **Apply scope** applies project
+and tag inputs. Tags are comma-separated, case-sensitive slugs, and every
+specified tag must match. An empty Project ID uses the configured provider
+scope. Applying unchanged scope inputs does not request another page.
+
+The list reports loaded rows separately from the provider's matching total.
+Summary counts and the Assignee selector cover loaded rows only; selecting an
+assignee explicitly identifies that limited scope. **Load more** follows the
+provider's continuation on request, including when an assignee filter leaves
+no visible rows. When a credible total is available, both Tasks and Board add
+the remaining count to the button label. Otherwise they show **Load more**
+without an invented count.
+
+Search stays on the separate provider search path described below. Status and
+assignee filter returned search rows locally; project and tags do not apply.
+Changing those filters does not repeat provider search. Query edits retain
+existing rows until the debounce fires, then request the latest query.
+**Refresh** and detail mutations explicitly reload the current view.
+
 ## Search and task actions
 
 Search uses `work_search`, independently of the board columns. The project
@@ -77,6 +99,6 @@ panel](hitl-ui.md). Task detail drafts and selections stay in place while that
 form's actions are blocked. Approval does not replay the original operation.
 
 Source: [board implementation](../../frontend/src/pages/work-board.tsx),
-[column API and statuses](../../frontend/src/api/work-board.ts),
+[shared Work API and statuses](../../frontend/src/api/work.ts),
 [shared task details](../../frontend/src/components/work/work-detail.tsx), and
 [plugin capabilities](../../plugins/work-ops/capabilities.json).

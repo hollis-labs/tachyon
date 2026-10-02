@@ -1,11 +1,12 @@
 import { Button, EmptyState, Input, Label, Skeleton } from "@hollis-labs/design-components"
 import { PageHeader, SummaryCards } from "@hollis-labs/kit-dashboard"
 import { RefreshCw } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { Agent, WorkItem } from "../api/client"
 import { useApi } from "../api/context"
 import { PendingApprovalError } from "../api/hitl"
 import { type AskDetail, useVerbs } from "../api/verbs"
+import { ACTIVE_STATUSES, CLOSED_STATUSES, workPageInfo } from "../api/work"
 import { PendingApproval } from "../components/pending-approval"
 import { workSearchNotice } from "../components/work/search-notice"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
@@ -28,9 +29,22 @@ export function WorkPage() {
   const [search, setSearch] = useState("")
   const [searchResult, setSearchResult] = useState<{ query: string; notice?: string } | null>(null)
   const [status, setStatus] = useState("")
+  const [scopeInput, setScopeInput] = useState({ project: "", tags: "" })
+  const [scope, setScope] = useState({ project: "", tags: "" })
+  const [pageInfo, setPageInfo] = useState<ReturnType<typeof workPageInfo> | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState("")
+  const generation = useRef(0)
   const [assignee, setAssignee] = useState("")
   const [revision, setRevision] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  const searching = !!search.trim() && canSearch
+  // These keys deliberately stay empty during search: status is then a local
+  // filter, while project/tags only apply to list requests.
+  const listStatus = searching ? "" : status
+  const listProject = searching ? "" : scope.project
+  const listTags = searching ? "" : scope.tags
 
   // The refresh counter deliberately restarts this effect after mutations.
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision triggers a new read after explicit refresh or mutation.
@@ -40,8 +54,13 @@ export function WorkPage() {
       return
     }
     let active = true
+    generation.current++
     const timer = setTimeout(
       async () => {
+        setTasks([])
+        setPageInfo(null)
+        setLoadingMore(false)
+        setMoreError("")
         setLoading(true)
         setError("")
         setPending(null)
@@ -54,17 +73,18 @@ export function WorkPage() {
             items = page.tasks
             if (active) setSearchResult({ query, notice: workSearchNotice(page) })
           } else {
-            items = []
-            let offset = 0
-            while (true) {
-              const page = dataOf(await api.listWork({ limit: 200, offset }))
-              if (!active) return
-              items.push(...page.tasks)
-              if (!page.has_more) break
-              if (page.next_offset == null || page.next_offset <= offset)
-                throw new Error("Tasks could not be fully loaded. Try refreshing.")
-              offset = page.next_offset
-            }
+            const page = dataOf(
+              await api.listWork({
+                ...(listStatus ? { status: listStatus } : {}),
+                ...(listProject ? { project_id: listProject } : {}),
+                ...(listTags ? { tags: listTags } : {}),
+                limit: 50,
+                offset: 0,
+              }),
+            )
+            const info = workPageInfo(page, 0, { status: listStatus, project_id: listProject })
+            items = page.tasks
+            if (active) setPageInfo(info)
           }
           if (active) setTasks(items)
         } catch (error) {
@@ -83,9 +103,42 @@ export function WorkPage() {
     )
     return () => {
       active = false
+      generation.current++
       clearTimeout(timer)
     }
-  }, [api, canList, canSearch, search, revision])
+  }, [api, canList, canSearch, search, listStatus, listProject, listTags, revision])
+
+  async function loadMore() {
+    if (pageInfo?.next === undefined || loadingMore) return
+    const request = generation.current
+    const offset = pageInfo.next
+    setLoadingMore(true)
+    setMoreError("")
+    try {
+      const page = dataOf(
+        await api.listWork({
+          ...(status ? { status } : {}),
+          ...(scope.project ? { project_id: scope.project } : {}),
+          ...(scope.tags ? { tags: scope.tags } : {}),
+          limit: 50,
+          offset,
+        }),
+      )
+      const info = workPageInfo(page, offset, { status, project_id: scope.project })
+      if (request !== generation.current) return
+      setTasks((current) =>
+        Array.from(new Map([...current, ...page.tasks].map((task) => [task.id, task])).values()),
+      )
+      setPageInfo(info)
+    } catch (error) {
+      if (request === generation.current) {
+        if (error instanceof PendingApprovalError) setPending(error.ask)
+        else setMoreError(message(error))
+      }
+    } finally {
+      if (request === generation.current) setLoadingMore(false)
+    }
+  }
 
   const canListAgents = verbs.has("agent_list")
   useEffect(() => {
@@ -114,7 +167,10 @@ export function WorkPage() {
   }, [api, canListAgents])
 
   const statuses = useMemo(
-    () => Array.from(new Set(tasks.map((task) => task.status))).sort(),
+    () =>
+      Array.from(
+        new Set([...ACTIVE_STATUSES, ...CLOSED_STATUSES, ...tasks.map((task) => task.status)]),
+      ).sort(),
     [tasks],
   )
   const assignees = useMemo(
@@ -162,15 +218,15 @@ export function WorkPage() {
             <SummaryCards
               cards={[
                 {
-                  label: search.trim() && canSearch ? "Returned tasks" : "Matching tasks",
+                  label: search.trim() && canSearch ? "Returned tasks" : "Shown loaded tasks",
                   value: visibleTasks.length,
                 },
                 {
-                  label: "Doing",
+                  label: "Doing (loaded)",
                   value: visibleTasks.filter((task) => task.status === "doing").length,
                 },
                 {
-                  label: "Unassigned",
+                  label: "Unassigned (loaded)",
                   value: visibleTasks.filter((task) => !assigneeOf(task)).length,
                 },
               ]}
@@ -188,6 +244,42 @@ export function WorkPage() {
                 />
               </div>
             )}
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                setScope({ project: scopeInput.project.trim(), tags: scopeInput.tags.trim() })
+              }}
+            >
+              <div>
+                <Label htmlFor="work-project">Project ID</Label>
+                <Input
+                  id="work-project"
+                  placeholder="Provider default"
+                  value={scopeInput.project}
+                  onChange={(event) =>
+                    setScopeInput((current) => ({ ...current, project: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="work-tags">Tag slugs (ALL must match)</Label>
+                <Input
+                  id="work-tags"
+                  aria-describedby="work-tags-hint"
+                  value={scopeInput.tags}
+                  onChange={(event) =>
+                    setScopeInput((current) => ({ ...current, tags: event.target.value }))
+                  }
+                />
+                <p id="work-tags-hint" className="max-w-56 text-xs text-text-muted">
+                  Comma-separated, case-sensitive slugs.
+                </p>
+              </div>
+              <Button type="submit" variant="outline" size="sm">
+                Apply scope
+              </Button>
+            </form>
             <div className="flex flex-col gap-1">
               <Label htmlFor="work-status">Status</Label>
               <select
@@ -205,7 +297,7 @@ export function WorkPage() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="work-assignee">Assignee</Label>
+              <Label htmlFor="work-assignee">Assignee (loaded tasks)</Label>
               <select
                 id="work-assignee"
                 className={selectStyle}
@@ -226,7 +318,13 @@ export function WorkPage() {
                 ))}
               </select>
             </div>
-            {(search || status || assignee) && (
+            {(search ||
+              status ||
+              assignee ||
+              scopeInput.project ||
+              scopeInput.tags ||
+              scope.project ||
+              scope.tags) && (
               <Button
                 type="button"
                 variant="outline"
@@ -235,6 +333,8 @@ export function WorkPage() {
                   setSearch("")
                   setStatus("")
                   setAssignee("")
+                  setScopeInput({ project: "", tags: "" })
+                  setScope({ project: "", tags: "" })
                 }}
               >
                 Clear filters
@@ -242,6 +342,15 @@ export function WorkPage() {
             )}
           </div>
           <div className="flex-1 overflow-auto">
+            {!loading && !error && !pending && (
+              <p role="status" className="px-4 py-3 text-sm text-text-muted">
+                {search.trim() && canSearch
+                  ? "Provider search results. Status and assignee filter returned results; project and tags do not apply to search."
+                  : assignee
+                    ? `Filtering ${tasks.length} loaded${pageInfo?.total === undefined ? "; total unavailable" : ` of ${pageInfo.total} matching tasks`} by assignee.`
+                    : `${tasks.length} loaded${pageInfo?.total === undefined ? "; total unavailable" : ` of ${pageInfo.total} matching tasks`}.`}
+              </p>
+            )}
             {!loading &&
               !error &&
               !pending &&
@@ -298,6 +407,31 @@ export function WorkPage() {
                 ))}
               </div>
             )}
+            {!loading &&
+              !error &&
+              !pending &&
+              !(search.trim() && canSearch) &&
+              pageInfo?.hasMore && (
+                <div className="space-y-2 px-4 py-3">
+                  {moreError && (
+                    <p role="alert" className="text-sm text-status-failed">
+                      {moreError}
+                    </p>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={loadingMore}
+                    onClick={() => void loadMore()}
+                  >
+                    {loadingMore
+                      ? "Loading more…"
+                      : pageInfo.more === undefined
+                        ? "Load more"
+                        : `Load more (${pageInfo.more} remaining)`}
+                  </Button>
+                </div>
+              )}
           </div>
         </>
       )}

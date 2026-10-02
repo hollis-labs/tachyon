@@ -6,7 +6,7 @@ import type { Agent, WorkItem } from "../api/client"
 import { useApi } from "../api/context"
 import { PendingApprovalError } from "../api/hitl"
 import { type AskDetail, useVerbs } from "../api/verbs"
-import { ACTIVE_STATUSES, CLOSED_STATUSES, workBoardApi } from "../api/work-board"
+import { ACTIVE_STATUSES, CLOSED_STATUSES, workPageInfo } from "../api/work"
 import { PendingApproval } from "../components/pending-approval"
 import { workSearchNotice } from "../components/work/search-notice"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
@@ -18,6 +18,7 @@ interface ColumnState {
   total?: number
   hasMore: boolean
   next?: number
+  more?: number
   loading: boolean
   error: string
   pending?: AskDetail
@@ -78,6 +79,7 @@ function WorkColumn({
   canRead: boolean
   onOpen: (id: string) => void
 }) {
+  const api = useApi()
   const [state, setState] = useState<ColumnState>(initialColumn)
   const generation = useRef(0)
   const load = useCallback(
@@ -86,7 +88,7 @@ function WorkColumn({
       setState((current) => ({ ...current, loading: true, error: "", pending: undefined }))
       try {
         const page = dataOf(
-          await workBoardApi.list({
+          await api.listWork({
             status,
             ...(project ? { project_id: project } : {}),
             limit: expanded ? 50 : 1,
@@ -94,16 +96,7 @@ function WorkColumn({
           }),
         )
         if (request !== generation.current) return
-        if (!Array.isArray(page.tasks)) throw new Error("Task list response is incomplete.")
-        if (page.tasks.some((task) => task.status !== status))
-          throw new Error("Provider did not apply the requested status filter.")
-        if (
-          page.has_more &&
-          (page.next_offset == null ||
-            !Number.isInteger(page.next_offset) ||
-            page.next_offset <= offset)
-        )
-          throw new Error("Task page continuation is invalid. Refresh this column.")
+        const info = workPageInfo(page, offset, { status, project_id: project })
         // Provider totals are accepted only when structurally credible. Torque's
         // status/project-filtered totals are verified; offset pages are not a snapshot.
         setState((current) => {
@@ -114,16 +107,10 @@ function WorkColumn({
                 ).values(),
               )
             : []
-          const total =
-            Number.isInteger(page.total) && page.total >= Math.max(tasks.length, page.tasks.length)
-              ? page.total
-              : undefined
           return {
             tasks,
             lowerBound: expanded ? tasks.length : page.tasks.length,
-            total,
-            hasMore: page.has_more,
-            next: page.next_offset ?? undefined,
+            ...info,
             loading: false,
             error: "",
           }
@@ -138,7 +125,7 @@ function WorkColumn({
           }))
       }
     },
-    [status, project, expanded],
+    [api, status, project, expanded],
   )
   useEffect(() => {
     generation.current++
@@ -191,7 +178,7 @@ function WorkColumn({
                 if (state.next !== undefined) void load(state.next, true)
               }}
             >
-              Load more
+              {state.more === undefined ? "Load more" : `Load more (${state.more} remaining)`}
             </Button>
           )}
         </>

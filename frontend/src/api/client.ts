@@ -1,5 +1,6 @@
 import { createApiClient, type JsonObject } from "@hollis-labs/design-app-runtime"
 import { invokeVerb } from "./verbs"
+import { workApi } from "./work"
 
 // Same-origin: the Go binary serves both this SPA and the API, so an empty
 // baseUrl resolves every request against the current origin.
@@ -213,9 +214,8 @@ export interface WorkComment {
  * Concrete API client — one method per endpoint.
  */
 export const apiClient = {
-  listWork: (filters: { limit?: number; offset?: number } = {}) =>
-    invokeVerb<WorkList>("work_list", filters),
-  searchWork: (query: string) => invokeVerb<WorkList>("work_search", { query }),
+  listWork: workApi.list,
+  searchWork: workApi.search,
   readWork: (id: string) => invokeVerb<WorkItem>("work_read", { id }),
   assignWork: (id: string, assignee: string) =>
     invokeVerb<WorkItem>("work_assign", { id, assignee }),
