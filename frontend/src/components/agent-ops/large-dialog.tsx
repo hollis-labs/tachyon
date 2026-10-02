@@ -5,11 +5,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@hollis-labs/design-components"
-import type { ReactNode, RefObject } from "react"
+import type { ComponentProps, ReactNode } from "react"
 
 interface LargeDialogProps {
   open: boolean
-  finalFocus?: RefObject<HTMLElement | null>
+  finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"]
+  unmountOnClose?: boolean
   onClose: () => void
   title: ReactNode
   description?: ReactNode
@@ -28,12 +29,14 @@ export function LargeDialog({
   open,
   onClose,
   finalFocus,
+  unmountOnClose = false,
   title,
   description,
   meta,
   footer,
   children,
 }: LargeDialogProps) {
+  if (unmountOnClose && !open) return null
   return (
     <Dialog open={open} onOpenChange={(next: boolean) => !next && onClose()}>
       <DialogContent

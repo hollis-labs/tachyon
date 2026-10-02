@@ -45,6 +45,8 @@ export function AgentOpsPage() {
   const createTrigger = useRef<HTMLButtonElement>(null)
   const detailTrigger = useRef<HTMLElement | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createContinues, setCreateContinues] = useState(false)
+  const createReturnFocus = useRef<HTMLElement | null | false>(null)
   const [createName, setCreateName] = useState("")
   const [createSystemPrompt, setCreateSystemPrompt] = useState("")
   const [createDescription, setCreateDescription] = useState("")
@@ -171,6 +173,8 @@ export function AgentOpsPage() {
   }
 
   function openCreateDialog() {
+    createReturnFocus.current = createTrigger.current
+    setCreateContinues(false)
     setCreateName("")
     setCreateSystemPrompt("")
     setCreateDescription("")
@@ -190,14 +194,19 @@ export function AgentOpsPage() {
         description: createDescription.trim() || undefined,
         can_execute: createCanExecute,
       })
+      // Closing for continuation removes step 1 without an overlapping exit modal.
+      // Its unmount cleanup must read this live target instead of an old prop.
+      createReturnFocus.current = false
+      setCreateContinues(true)
       setCreateOpen(false)
-      await loadAgents()
       // Step 2 of 2: land straight on Tools so a freshly created agent
       // doesn't sit at zero tool grants with no obvious next step.
       setDetailInitialTab("tools")
       detailTrigger.current = createTrigger.current
       setCreationWizardActive(true)
       setDetailAgent(created)
+      // Refresh must not delay or prevent the continuation dialog from opening.
+      await loadAgents()
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -280,7 +289,8 @@ export function AgentOpsPage() {
       </div>
       <LargeDialog
         open={createOpen}
-        finalFocus={createTrigger}
+        finalFocus={() => createReturnFocus.current}
+        unmountOnClose={createContinues}
         onClose={() => setCreateOpen(false)}
         title="New Agent"
         description="Step 1 of 2 — Basic Info. Capabilities (tools, skills, MCP servers, reflexes) come next."
