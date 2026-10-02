@@ -97,3 +97,24 @@ test("ignored server filters cannot present an unrelated page as matching tasks"
   assert.throws(() => workPageInfo(page, 0, { project_id: "other" }), /project filter/)
   assert.equal(workPageInfo(page, 0, { status: "doing", project_id: "project-one" }).total, 3)
 })
+
+test("total below the loaded page end is unknown even when it exceeds the page length", () => {
+  const info = workPageInfo(
+    {
+      ...page,
+      total: 7,
+      next_offset: 6,
+      tasks: [task, { ...task, id: "two" }, { ...task, id: "three" }],
+    },
+    5,
+  )
+  assert.equal(info.total, undefined)
+  assert.equal(info.more, undefined)
+})
+
+test("remaining count uses provider next_offset even when it differs from loaded end", () => {
+  const info = workPageInfo({ ...page, total: 12, next_offset: 8 }, 2)
+  assert.equal(info.total, 12)
+  assert.equal(info.next, 8)
+  assert.equal(info.more, 4)
+})

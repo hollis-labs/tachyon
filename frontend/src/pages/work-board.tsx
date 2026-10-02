@@ -178,7 +178,7 @@ function WorkColumn({
                 if (state.next !== undefined) void load(state.next, true)
               }}
             >
-              {state.more === undefined ? "Load more" : `${state.more} more`}
+              {state.more === undefined ? "Load more" : `Load more (${state.more} remaining)`}
             </Button>
           )}
         </>

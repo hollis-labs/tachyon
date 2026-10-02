@@ -39,6 +39,13 @@ export function WorkPage() {
   const [revision, setRevision] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  const searching = !!search.trim() && canSearch
+  // These keys deliberately stay empty during search: status is then a local
+  // filter, while project/tags only apply to list requests.
+  const listStatus = searching ? "" : status
+  const listProject = searching ? "" : scope.project
+  const listTags = searching ? "" : scope.tags
+
   // The refresh counter deliberately restarts this effect after mutations.
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision triggers a new read after explicit refresh or mutation.
   useEffect(() => {
@@ -48,13 +55,12 @@ export function WorkPage() {
     }
     let active = true
     generation.current++
-    setTasks([])
-    setPageInfo(null)
-    setLoadingMore(false)
-    setMoreError("")
-    setLoading(true)
     const timer = setTimeout(
       async () => {
+        setTasks([])
+        setPageInfo(null)
+        setLoadingMore(false)
+        setMoreError("")
         setLoading(true)
         setError("")
         setPending(null)
@@ -69,14 +75,14 @@ export function WorkPage() {
           } else {
             const page = dataOf(
               await api.listWork({
-                ...(status ? { status } : {}),
-                ...(scope.project ? { project_id: scope.project } : {}),
-                ...(scope.tags ? { tags: scope.tags } : {}),
+                ...(listStatus ? { status: listStatus } : {}),
+                ...(listProject ? { project_id: listProject } : {}),
+                ...(listTags ? { tags: listTags } : {}),
                 limit: 50,
                 offset: 0,
               }),
             )
-            const info = workPageInfo(page, 0, { status, project_id: scope.project })
+            const info = workPageInfo(page, 0, { status: listStatus, project_id: listProject })
             items = page.tasks
             if (active) setPageInfo(info)
           }
@@ -100,7 +106,7 @@ export function WorkPage() {
       generation.current++
       clearTimeout(timer)
     }
-  }, [api, canList, canSearch, search, status, scope, revision])
+  }, [api, canList, canSearch, search, listStatus, listProject, listTags, revision])
 
   async function loadMore() {
     if (pageInfo?.next === undefined || loadingMore) return
@@ -257,14 +263,18 @@ export function WorkPage() {
                 />
               </div>
               <div>
-                <Label htmlFor="work-tags">Tags (comma-separated)</Label>
+                <Label htmlFor="work-tags">Tag slugs (ALL must match)</Label>
                 <Input
                   id="work-tags"
+                  aria-describedby="work-tags-hint"
                   value={scopeInput.tags}
                   onChange={(event) =>
                     setScopeInput((current) => ({ ...current, tags: event.target.value }))
                   }
                 />
+                <p id="work-tags-hint" className="max-w-56 text-xs text-text-muted">
+                  Comma-separated, case-sensitive slugs.
+                </p>
               </div>
               <Button type="submit" variant="outline" size="sm">
                 Apply scope
@@ -418,7 +428,7 @@ export function WorkPage() {
                       ? "Loading more…"
                       : pageInfo.more === undefined
                         ? "Load more"
-                        : `${pageInfo.more} more`}
+                        : `Load more (${pageInfo.more} remaining)`}
                   </Button>
                 </div>
               )}
