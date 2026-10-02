@@ -14,8 +14,8 @@ github.com/hollis-labs/go-hitl v0.1.0 h1:XZ3Ihv37E/QDR76JtrkEodFl6KtmtzzipkFekNI
 github.com/hollis-labs/go-hitl v0.1.0/go.mod h1:SjeM41xXMvaRSIcAgzIoMya0R2R0poMquqH231FxJAI=
 github.com/hollis-labs/go-messaging v0.5.2 h1:sMVnZRE1BAm/AN+36Zri5Bdd4SzF+EmCqULL627ztXA=
 github.com/hollis-labs/go-messaging v0.5.2/go.mod h1:hSEDlxOWkgZQAxlqFDfKvQ1hSHNZ8zrwee+0rAKuvXc=
-github.com/hollis-labs/go-tether-client v0.7.0 h1:YDA4S5igsvvo/ihUBtH+fwsMjlMkOF8DFnWKJjJ3wN4=
-github.com/hollis-labs/go-tether-client v0.7.0/go.mod h1:xg8sxCZefI592F6m/0rO0w+td3Sz32PCycnolki9Qxk=
+github.com/hollis-labs/go-tether-client v0.8.0 h1:20axAfaqixLnWs7n+DY0JqrUnOfHMyt4KxRRzWau5e0=
+github.com/hollis-labs/go-tether-client v0.8.0/go.mod h1:xg8sxCZefI592F6m/0rO0w+td3Sz32PCycnolki9Qxk=
 github.com/hollis-labs/go-webui v0.1.0 h1:j+seGHO3FBehZvUhiJWIS3/aLeEETlJ0G23qpx8gFRE=
 github.com/hollis-labs/go-webui v0.1.0/go.mod h1:AxZNBuBPpMv6SmS7xaQm2emmSikL8pa8mjNamCzaUz8=
 github.com/hollis-labs/plugin-sdk v0.4.0 h1:e7LTkwJQL+n9kRf9IUAUCUeydS11XIdjGIfFjP2PyBg=
