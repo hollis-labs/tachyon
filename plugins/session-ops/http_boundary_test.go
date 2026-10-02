@@ -121,7 +121,12 @@ func TestTetherBoundaryReadBudget(t *testing.T) {
 }
 
 func TestTetherBoundaryPreservesUnixAndDefaultHome(t *testing.T) {
-	home := t.TempDir()
+	// Keep Unix socket paths short even when the caller supplies a long TMPDIR.
+	home, err := os.MkdirTemp(os.TempDir(), "so-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
 	t.Setenv("HOME", home)
 	for _, addr := range []string{"unix:" + filepath.Join(home, "explicit.sock"), "unix:~/relative.sock", ""} {
 		t.Run(addr, func(t *testing.T) {

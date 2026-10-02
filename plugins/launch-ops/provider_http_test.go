@@ -139,7 +139,7 @@ func TestExecutionErrorsStoredSafely(t *testing.T) {
 }
 
 func TestBoundedTetherUnixTransport(t *testing.T) {
-	home, err := os.MkdirTemp("/tmp", "launch-unix-")
+	home, err := os.MkdirTemp(os.TempDir(), "lu-")
 	if err != nil {
 		t.Fatal(err)
 	}

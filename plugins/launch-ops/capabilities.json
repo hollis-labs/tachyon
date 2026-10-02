@@ -71,7 +71,7 @@
         "key": "tether_addr",
         "type": "string",
         "label": "Tether Address",
-        "default": "unix:~/.tether/run/muxd.sock"
+        "description": "Leave blank to use TETHER_ADDR or the Tether client default socket."
       }
     ]
   }

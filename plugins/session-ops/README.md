@@ -1,12 +1,13 @@
 # Session Ops
 
-Stateless session operations through go-tether-client v0.7.0. Tether owns all
+Stateless session operations through go-tether-client v0.8.0. Tether owns all
 session state and execution. The plugin uses `pluginkit.Dispatch` to carry
 capabilities and verbs over plugin-sdk's `command/execute` protocol.
 
 Set `TETHER_ADDR` to a go-tether-client listen address (`unix:/path`,
-`tcp:host:port`, or `http(s)://host`). Host configuration `tether_addr` takes
-precedence. With neither set, the client uses its default Tether Unix socket.
+`tcp:host:port`, or `http(s)://host`). Tachyon exposes no `tether_addr` setting
+for session-ops. With `TETHER_ADDR` unset, the client uses its default Tether Unix
+socket.
 Initialization constructs the client without requiring a reachable daemon.
 
 Invoke verbs with `POST /api/verb/<verb>` and a JSON body:
