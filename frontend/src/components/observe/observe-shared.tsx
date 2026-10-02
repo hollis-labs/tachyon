@@ -4,7 +4,6 @@ import { PageHeader } from "@hollis-labs/kit-dashboard/ui"
 import {
   DiagnosticPanel,
   HealthSummary,
-  type ObservationState,
   ObservationStatus,
   StatCollection,
 } from "@hollis-labs/kit-observe"
@@ -36,9 +35,11 @@ import {
   diagnosticProjection,
   diagnosticSchema,
   observationState,
+  type ReceiptObservation,
   reachability,
   reportedHealth,
   snapshotRows,
+  sourceObservation,
   statusSnapshot,
   statusStats,
 } from "./observe-kit-adapter"
@@ -51,7 +52,7 @@ export const timeText = (value: string | undefined) =>
 const errorText = (_error: unknown) =>
   "The Observe read or polling descriptor failed. Use an explicit Refresh to try again."
 const readQueues = new Map<string, Promise<unknown>>()
-const ObservationContext = createContext<ObservationState | null>(null)
+const ObservationContext = createContext<ReceiptObservation | null>(null)
 
 function useObservationClock() {
   const [nowMs, setNowMs] = useState(Date.now)
@@ -341,13 +342,15 @@ export function ReadRegion<T>({
   const { loading, error, updated, auto } = read
   const pending = !!read.ask
   const { observation, contextObservation } = useMemo(() => {
-    const observation = observationState(
-      { loading, error, updated, auto, ask: pending },
-      nowMs,
-      true,
-      observedAt,
-    )
-    return { observation, contextObservation: { ...observation, nowMs } }
+    const contextObservation = {
+      ...observationState({ loading, error, updated, auto, ask: pending }, nowMs),
+      rawNowMs: nowMs,
+    }
+    const observation =
+      observedAt === undefined
+        ? contextObservation
+        : sourceObservation(contextObservation, observedAt)
+    return { observation, contextObservation }
   }, [loading, error, updated, auto, pending, nowMs, observedAt])
   return (
     <div className="min-w-0 space-y-3">
@@ -472,9 +475,13 @@ function HostReceipt({ receipt }: { receipt: HostFeedStatus | undefined }) {
   )
 }
 function StatusView({ status }: { status: StatusSummary }) {
-  const observation = useContext(ObservationContext)
-  if (!observation || !status || typeof status !== "object" || Array.isArray(status))
+  const receipt = useContext(ObservationContext)
+  if (!receipt || !status || typeof status !== "object" || Array.isArray(status))
     return <p role="alert">Invalid Observe status snapshot.</p>
+  const observation = sourceObservation(
+    receipt,
+    typeof status.last_updated === "string" ? status.last_updated : "",
+  )
   const dependencies = Array.isArray(status.dependencies) ? status.dependencies : []
   return (
     <div className="space-y-3 text-sm">
@@ -498,7 +505,7 @@ function StatusView({ status }: { status: StatusSummary }) {
         <ul className="space-y-2">
           {keyedSnapshot(dependencies).map(({ row: dependency, key }) => (
             <li key={key} className="min-w-0 break-words">
-              <DependencyReachability dependency={dependency} observation={observation} />
+              <DependencyReachability dependency={dependency} observation={receipt} />
               {dependency?.error && (
                 <p className="text-status-failed">
                   The dependency reachability check reported an error.
@@ -518,16 +525,16 @@ export function DependencyReachability({
   observation,
 }: {
   dependency: DependencyStatus
-  observation: ObservationState
+  observation: ReceiptObservation
 }) {
   const probe = reachability(dependency?.status)
   return (
     <ObservationStatus
       label={`${typeof dependency?.source === "string" ? dependency.source : "Unknown source"} reachability check`}
-      observation={{
-        ...observation,
-        observedAt: typeof dependency?.checked_at === "string" ? dependency.checked_at : "",
-      }}
+      observation={sourceObservation(
+        observation,
+        typeof dependency?.checked_at === "string" ? dependency.checked_at : "",
+      )}
     >
       <Pill tone={probe.tone}>{probe.label}</Pill>
     </ObservationStatus>
@@ -585,7 +592,7 @@ export function MetricSample({
   return (
     <ObservationStatus
       label={label}
-      observation={{ ...observation, observedAt: typeof at === "string" ? at : "" }}
+      observation={sourceObservation(observation, typeof at === "string" ? at : "")}
     >
       {children}
     </ObservationStatus>
