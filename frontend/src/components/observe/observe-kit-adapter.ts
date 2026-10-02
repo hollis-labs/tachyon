@@ -43,15 +43,15 @@ export function observationState(
   read: { loading: boolean; error: string; updated?: string; ask?: unknown; auto?: boolean },
   nowMs: number,
   supported = true,
-  observedAt = read.updated,
+  observedAt?: string,
 ): ObservationState {
-  if (observedAt === read.updated && read.updated) {
+  if (observedAt === undefined && read.updated) {
     const receivedMs = Date.parse(read.updated)
     if (Number.isFinite(nowMs) && Number.isFinite(receivedMs)) nowMs = Math.max(nowMs, receivedMs)
   }
   return {
     phase: read.loading ? "loading" : read.error ? "error" : read.updated ? "ready" : "idle",
-    observedAt,
+    observedAt: observedAt === undefined ? read.updated : observedAt,
     nowMs,
     staleAfterMs: STALE_AFTER_MS,
     supported,

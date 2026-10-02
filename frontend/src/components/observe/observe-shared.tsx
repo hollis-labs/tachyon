@@ -340,18 +340,22 @@ export function ReadRegion<T>({
   const nowMs = useObservationClock()
   const { loading, error, updated, auto } = read
   const pending = !!read.ask
-  const observation = useMemo(
-    () =>
-      observationState({ loading, error, updated, auto, ask: pending }, nowMs, true, observedAt),
-    [loading, error, updated, auto, pending, nowMs, observedAt],
-  )
+  const { observation, contextObservation } = useMemo(() => {
+    const observation = observationState(
+      { loading, error, updated, auto, ask: pending },
+      nowMs,
+      true,
+      observedAt,
+    )
+    return { observation, contextObservation: { ...observation, nowMs } }
+  }, [loading, error, updated, auto, pending, nowMs, observedAt])
   return (
     <div className="min-w-0 space-y-3">
       {read.ask && <PendingApproval ask={read.ask} />}
       <p className="text-xs text-text-muted">
         Freshness uses a 30-second host policy; age does not establish workload health.
       </p>
-      <ObservationContext.Provider value={observation}>
+      <ObservationContext.Provider value={contextObservation}>
         <ObservationStatus
           label={label}
           observation={{
