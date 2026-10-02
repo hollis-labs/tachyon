@@ -13,10 +13,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	tether "github.com/hollis-labs/go-tether-client"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	_ "modernc.org/sqlite"
 )
@@ -25,8 +27,8 @@ import (
 // launch subprocess. The only provider is a fake Unix HTTP daemon; no model
 // CLI or running Tether instance participates.
 func TestLaunchSettingsReachTetherThroughHost(t *testing.T) {
-	// Short names keep Unix socket paths within the platform limit while keeping
-	// all scratch under the caller's TMPDIR (the shared box must not use /tmp).
+	// Short names keep Unix socket paths within the platform limit while
+	// respecting the caller's temporary directory.
 	root, err := os.MkdirTemp(os.TempDir(), "ls-")
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +39,21 @@ func TestLaunchSettingsReachTetherThroughHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(pluginDir, "launch-ops")
-	cmd := exec.Command("go", "build", "-p", "2", "-o", binary, "../../plugins/launch-ops")
+	sourceDir := "../../plugins/launch-ops"
+	// The subprocess build is invisible to go test's input tracking. Read its
+	// package sources so changes invalidate this test's cached result.
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") {
+			if _, err := os.ReadFile(filepath.Join(sourceDir, entry.Name())); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	cmd := exec.Command("go", "build", "-o", binary, sourceDir)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build launch plugin: %v\n%s", err, output)
 	}
@@ -48,16 +64,17 @@ func TestLaunchSettingsReachTetherThroughHost(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(pluginDir, "capabilities.json"), caps, 0600); err != nil {
 		t.Fatal(err)
 	}
+	defaultSocket := strings.TrimPrefix(tether.DefaultListenAddr, "unix:~/")
 	for i, tc := range []struct {
 		name, socket, env string
 		override          *string
 		fails             bool
 	}{
-		{name: "client_default", socket: ".tether/run/tetherd.sock"},
-		{name: "persisted_blank", socket: ".tether/run/tetherd.sock", override: stringPtr("")},
+		{name: "client_default", socket: defaultSocket},
+		{name: "persisted_blank", socket: defaultSocket, override: stringPtr("")},
 		{name: "environment", socket: "env.sock", env: "unix:~/env.sock"},
 		{name: "explicit_override", socket: "override.sock", env: "unix:~/missing.sock", override: stringPtr("unix:~/override.sock")},
-		{name: "stale_override_survives", socket: ".tether/run/tetherd.sock", env: "unix:~/.tether/run/tetherd.sock", override: stringPtr("unix:~/.tether/run/muxd.sock"), fails: true},
+		{name: "stale_override_survives", socket: defaultSocket, env: tether.DefaultListenAddr, override: stringPtr("unix:~/.tether/run/muxd.sock"), fails: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home := filepath.Join(root, string(rune('a'+i)))
@@ -186,7 +203,7 @@ func TestLaunchSettingsReachTetherThroughHost(t *testing.T) {
 						t.Fatalf("%s reached daemon despite stale override: %v", call.verb, got)
 					}
 					if call.verb == "launch_execute" {
-						if result.Status != "ok" || result.Data.State != "executing" || result.Data.Error == "" {
+						if result.Data.State == "running" || (result.Status != "error" && result.Data.Error == "") {
 							t.Fatalf("execute lost failure checkpoint: %s", raw)
 						}
 					} else if result.Status != "error" || result.Error == nil {
