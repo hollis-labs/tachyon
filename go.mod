@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/google/jsonschema-go v0.4.3
 	github.com/hollis-labs/go-hitl v0.1.0
-	github.com/hollis-labs/go-tether-client v0.7.0
+	github.com/hollis-labs/go-tether-client v0.8.0
 	github.com/hollis-labs/go-webui v0.1.0
 	github.com/hollis-labs/plugin-sdk v0.4.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
