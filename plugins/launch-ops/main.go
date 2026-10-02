@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -63,9 +64,9 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 	if err != nil {
 		return subprocess.InitResult{}, fmt.Errorf("open launch store: %w", err)
 	}
-	addr := params.Config["tether_addr"]
+	addr := strings.TrimSpace(params.Config["tether_addr"])
 	if addr == "" {
-		addr = os.Getenv("TETHER_ADDR")
+		addr = strings.TrimSpace(os.Getenv("TETHER_ADDR"))
 	}
 	tetherAdapter, err := NewTetherLaunchAdapter(addr, store)
 	if err != nil {
