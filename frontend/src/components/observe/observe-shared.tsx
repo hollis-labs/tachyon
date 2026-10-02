@@ -4,6 +4,7 @@ import { PageHeader } from "@hollis-labs/kit-dashboard/ui"
 import {
   DiagnosticPanel,
   HealthSummary,
+  type ObservationState,
   ObservationStatus,
   StatCollection,
 } from "@hollis-labs/kit-observe"
@@ -35,11 +36,9 @@ import {
   diagnosticProjection,
   diagnosticSchema,
   observationState,
-  type ReceiptObservation,
   reachability,
   reportedHealth,
   snapshotRows,
-  sourceObservation,
   statusSnapshot,
   statusStats,
 } from "./observe-kit-adapter"
@@ -52,15 +51,15 @@ export const timeText = (value: string | undefined) =>
 const errorText = (_error: unknown) =>
   "The Observe read or polling descriptor failed. Use an explicit Refresh to try again."
 const readQueues = new Map<string, Promise<unknown>>()
-const ObservationContext = createContext<ReceiptObservation | null>(null)
+const ObservationContext = createContext<ObservationState | null>(null)
 
 function useObservationClock() {
-  const [nowMs, setNowMs] = useState(Date.now)
+  const [, setTick] = useState(0)
   useEffect(() => {
-    const timer = setInterval(() => setNowMs(Date.now()), 1000)
+    const timer = setInterval(() => setTick((tick) => tick + 1), 1000)
     return () => clearInterval(timer)
   }, [])
-  return nowMs
+  return Date.now()
 }
 
 interface ReadState<T> {
@@ -341,24 +340,18 @@ export function ReadRegion<T>({
   const nowMs = useObservationClock()
   const { loading, error, updated, auto } = read
   const pending = !!read.ask
-  const { observation, contextObservation } = useMemo(() => {
-    const contextObservation = {
-      ...observationState({ loading, error, updated, auto, ask: pending }, nowMs),
-      rawNowMs: nowMs,
-    }
-    const observation =
-      observedAt === undefined
-        ? contextObservation
-        : sourceObservation(contextObservation, observedAt)
-    return { observation, contextObservation }
-  }, [loading, error, updated, auto, pending, nowMs, observedAt])
+  const observation = useMemo(
+    () =>
+      observationState({ loading, error, updated, auto, ask: pending }, nowMs, true, observedAt),
+    [loading, error, updated, auto, pending, nowMs, observedAt],
+  )
   return (
     <div className="min-w-0 space-y-3">
       {read.ask && <PendingApproval ask={read.ask} />}
       <p className="text-xs text-text-muted">
         Freshness uses a 30-second host policy; age does not establish workload health.
       </p>
-      <ObservationContext.Provider value={contextObservation}>
+      <ObservationContext.Provider value={observation}>
         <ObservationStatus
           label={label}
           observation={{
@@ -475,13 +468,9 @@ function HostReceipt({ receipt }: { receipt: HostFeedStatus | undefined }) {
   )
 }
 function StatusView({ status }: { status: StatusSummary }) {
-  const receipt = useContext(ObservationContext)
-  if (!receipt || !status || typeof status !== "object" || Array.isArray(status))
+  const observation = useContext(ObservationContext)
+  if (!observation || !status || typeof status !== "object" || Array.isArray(status))
     return <p role="alert">Invalid Observe status snapshot.</p>
-  const observation = sourceObservation(
-    receipt,
-    typeof status.last_updated === "string" ? status.last_updated : "",
-  )
   const dependencies = Array.isArray(status.dependencies) ? status.dependencies : []
   return (
     <div className="space-y-3 text-sm">
@@ -505,7 +494,7 @@ function StatusView({ status }: { status: StatusSummary }) {
         <ul className="space-y-2">
           {keyedSnapshot(dependencies).map(({ row: dependency, key }) => (
             <li key={key} className="min-w-0 break-words">
-              <DependencyReachability dependency={dependency} observation={receipt} />
+              <DependencyReachability dependency={dependency} observation={observation} />
               {dependency?.error && (
                 <p className="text-status-failed">
                   The dependency reachability check reported an error.
@@ -525,16 +514,16 @@ export function DependencyReachability({
   observation,
 }: {
   dependency: DependencyStatus
-  observation: ReceiptObservation
+  observation: ObservationState
 }) {
   const probe = reachability(dependency?.status)
   return (
     <ObservationStatus
       label={`${typeof dependency?.source === "string" ? dependency.source : "Unknown source"} reachability check`}
-      observation={sourceObservation(
-        observation,
-        typeof dependency?.checked_at === "string" ? dependency.checked_at : "",
-      )}
+      observation={{
+        ...observation,
+        observedAt: typeof dependency?.checked_at === "string" ? dependency.checked_at : "",
+      }}
     >
       <Pill tone={probe.tone}>{probe.label}</Pill>
     </ObservationStatus>
@@ -592,7 +581,7 @@ export function MetricSample({
   return (
     <ObservationStatus
       label={label}
-      observation={sourceObservation(observation, typeof at === "string" ? at : "")}
+      observation={{ ...observation, observedAt: typeof at === "string" ? at : "" }}
     >
       {children}
     </ObservationStatus>

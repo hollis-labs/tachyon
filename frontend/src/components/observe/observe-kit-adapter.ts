@@ -9,15 +9,6 @@ import type { StatusSummary } from "../../api/observe"
 
 export const STALE_AFTER_MS = 30000
 
-export type ReceiptObservation = ObservationState & { rawNowMs: number }
-
-export function sourceObservation(
-  receipt: ReceiptObservation,
-  observedAt: string,
-): ObservationState {
-  return { ...receipt, nowMs: receipt.rawNowMs, observedAt }
-}
-
 export function statusSnapshot(value: StatusSummary): StatusSummary {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Malformed Observe status snapshot.")
@@ -52,15 +43,11 @@ export function observationState(
   read: { loading: boolean; error: string; updated?: string; ask?: unknown; auto?: boolean },
   nowMs: number,
   supported = true,
-  observedAt?: string,
+  observedAt = read.updated,
 ): ObservationState {
-  if (observedAt === undefined && read.updated) {
-    const receivedMs = Date.parse(read.updated)
-    if (Number.isFinite(nowMs) && Number.isFinite(receivedMs)) nowMs = Math.max(nowMs, receivedMs)
-  }
   return {
     phase: read.loading ? "loading" : read.error ? "error" : read.updated ? "ready" : "idle",
-    observedAt: observedAt === undefined ? read.updated : observedAt,
+    observedAt,
     nowMs,
     staleAfterMs: STALE_AFTER_MS,
     supported,
