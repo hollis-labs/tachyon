@@ -60,8 +60,31 @@ export function reportedHealth(value: unknown): HealthStatus {
   return value === "healthy" || value === "degraded" || value === "unhealthy" ? value : "unknown"
 }
 
-export function reachability(value: unknown): HealthStatus {
-  return value === "reachable" ? "healthy" : value === "unreachable" ? "unhealthy" : "unknown"
+export function reachability(value: unknown): {
+  label: "Reachable" | "Unreachable" | "Unknown"
+  tone: "neutral" | "danger"
+} {
+  return value === "reachable"
+    ? { label: "Reachable", tone: "neutral" }
+    : value === "unreachable"
+      ? { label: "Unreachable", tone: "danger" }
+      : { label: "Unknown", tone: "neutral" }
+}
+
+export function capabilityObservation(
+  loading: boolean,
+  available: boolean | null,
+  hasVerb: boolean,
+  nowMs: number,
+): ObservationState {
+  const failed = !loading && available !== true
+  return {
+    phase: loading ? "loading" : failed ? "error" : "idle",
+    supported: loading || failed || hasVerb,
+    error: failed ? "Could not discover Observe capabilities." : undefined,
+    nowMs,
+    staleAfterMs: STALE_AFTER_MS,
+  }
 }
 
 const count = (value: unknown): number | null =>

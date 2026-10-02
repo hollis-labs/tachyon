@@ -112,7 +112,6 @@ export function ObserveMetricsPage() {
                 className="min-w-0 space-y-2 rounded border border-border p-4 break-words"
               >
                 <MetricSample label={point.name} at={point.timestamp}>
-                  <h2 className="font-medium">{point.name}</h2>
                   <p>
                     {Number.isFinite(point.value) ? point.value : "Unavailable"} ·{" "}
                     {point.unit || "Unit not supplied"}

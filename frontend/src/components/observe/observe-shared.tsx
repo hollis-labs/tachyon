@@ -1,4 +1,4 @@
-import { Button, Input, Label } from "@hollis-labs/design-components"
+import { Button, Input, Label, Pill } from "@hollis-labs/design-components"
 import { ListPageLayout } from "@hollis-labs/kit-dashboard/layout"
 import { PageHeader } from "@hollis-labs/kit-dashboard/ui"
 import {
@@ -14,11 +14,13 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
 import { PendingApprovalError } from "../../api/hitl"
 import {
+  type DependencyStatus,
   type HostFeedStatus,
   observeApi,
   observeData,
@@ -30,6 +32,7 @@ import {
 import { type AskDetail, useVerbs } from "../../api/verbs"
 import { PendingApproval } from "../pending-approval"
 import {
+  capabilityObservation,
   diagnosticProjection,
   diagnosticSchema,
   observationState,
@@ -271,25 +274,21 @@ export function ObserveLayout({
         <p className="text-sm text-text-muted">
           Current snapshots and retained host records; not durable history.
         </p>
-        {verbs.loading || !verbs.has(verb) ? (
+        {verbs.loading || verbs.available !== true || !verbs.has(verb) ? (
           <ObservationStatus
             label="Observe availability"
-            observation={{
-              phase: verbs.loading ? "loading" : "idle",
-              supported: verbs.loading || verbs.has(verb),
+            observation={capabilityObservation(
+              verbs.loading,
+              verbs.available,
+              verbs.has(verb),
               nowMs,
-              staleAfterMs: 30000,
-            }}
+            )}
           />
         ) : (
           children
         )}
-        {!verbs.loading && !verbs.has(verb) && (
-          <p>
-            {verbs.available === true
-              ? "The required read verb is unavailable."
-              : "Could not discover Observe capabilities."}
-          </p>
+        {!verbs.loading && verbs.available === true && !verbs.has(verb) && (
+          <p>The required read verb is unavailable.</p>
         )}
       </div>
     </ListPageLayout>
@@ -339,7 +338,13 @@ export function ReadRegion<T>({
   observedAt?: string
 }) {
   const nowMs = useObservationClock()
-  const observation = observationState(read, nowMs, true, observedAt)
+  const { loading, error, updated, auto } = read
+  const pending = !!read.ask
+  const observation = useMemo(
+    () =>
+      observationState({ loading, error, updated, auto, ask: pending }, nowMs, true, observedAt),
+    [loading, error, updated, auto, pending, nowMs, observedAt],
+  )
   return (
     <div className="min-w-0 space-y-3">
       {read.ask && <PendingApproval ask={read.ask} />}
@@ -362,9 +367,9 @@ export function ReadRegion<T>({
 }
 export function Details({ value }: { value: unknown }) {
   const observation = useContext(ObservationContext)
+  const projection = useMemo(() => diagnosticProjection(value), [value])
   if (value === undefined || value === null) return null
   if (!observation) return null
-  const projection = diagnosticProjection(value)
   return (
     <details className="min-w-0">
       <summary className="cursor-pointer text-sm">Details (read only)</summary>
@@ -427,6 +432,7 @@ export function dateFilters(since: string, until: string) {
 }
 function HostReceipt({ receipt }: { receipt: HostFeedStatus | undefined }) {
   const observation = useContext(ObservationContext)
+  const projection = useMemo(() => diagnosticProjection(receipt), [receipt])
   if (!receipt) return <p>No host-feed receipt reported</p>
   if (!observation) return null
   const counters = receipt.counters
@@ -438,14 +444,13 @@ function HostReceipt({ receipt }: { receipt: HostFeedStatus | undefined }) {
   ].some((value) => typeof value === "number" && value > 0)
   return (
     <section aria-label="Host-feed receipt" className="space-y-2">
-      <h3 className="font-medium">Host-feed receipt</h3>
       <p>Delivery counters are the last received report and may lag host accounting.</p>
       <details className="min-w-0">
         <summary className="cursor-pointer">Host-feed receipt metadata</summary>
         <DiagnosticPanel
           label="Host-feed receipt"
           schema={diagnosticSchema}
-          {...diagnosticProjection(receipt)}
+          {...projection}
           observation={observation}
         />
       </details>
@@ -489,16 +494,7 @@ function StatusView({ status }: { status: StatusSummary }) {
         <ul className="space-y-2">
           {keyedSnapshot(dependencies).map(({ row: dependency, key }) => (
             <li key={key} className="min-w-0 break-words">
-              <HealthSummary
-                label={`${typeof dependency?.source === "string" ? dependency.source : "Unknown source"} reachability check`}
-                status={reachability(dependency?.status)}
-                checks={[]}
-                observation={{
-                  ...observation,
-                  observedAt:
-                    typeof dependency?.checked_at === "string" ? dependency.checked_at : "",
-                }}
-              />
+              <DependencyReachability dependency={dependency} observation={observation} />
               {dependency?.error && (
                 <p className="text-status-failed">
                   The dependency reachability check reported an error.
@@ -513,16 +509,41 @@ function StatusView({ status }: { status: StatusSummary }) {
     </div>
   )
 }
+export function DependencyReachability({
+  dependency,
+  observation,
+}: {
+  dependency: DependencyStatus
+  observation: ObservationState
+}) {
+  const probe = reachability(dependency?.status)
+  return (
+    <ObservationStatus
+      label={`${typeof dependency?.source === "string" ? dependency.source : "Unknown source"} reachability check`}
+      observation={{
+        ...observation,
+        observedAt: typeof dependency?.checked_at === "string" ? dependency.checked_at : "",
+      }}
+    >
+      <Pill tone={probe.tone}>{probe.label}</Pill>
+    </ObservationStatus>
+  )
+}
 export function ObserveStatus() {
   const verbs = useVerbs()
   const load = useCallback(() => observeApi.status().then(observeData).then(statusSnapshot), [])
-  const read = useObserveRead(verbs.has("observe_status"), load)
+  const read = useObserveRead(verbs.available === true && verbs.has("observe_status"), load)
   const nowMs = useObservationClock()
-  if (!verbs.has("observe_status"))
+  if (verbs.loading || verbs.available !== true || !verbs.has("observe_status"))
     return (
       <ObservationStatus
         label="Observe status"
-        observation={observationState(read, nowMs, false)}
+        observation={capabilityObservation(
+          verbs.loading,
+          verbs.available,
+          verbs.has("observe_status"),
+          nowMs,
+        )}
       />
     )
   return (
