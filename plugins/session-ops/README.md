@@ -1,6 +1,6 @@
 # Session Ops
 
-Stateless session operations through go-tether-client v0.7.0. Tether owns all
+Stateless session operations through go-tether-client v0.8.0. Tether owns all
 session state and execution. The plugin uses `pluginkit.Dispatch` to carry
 capabilities and verbs over plugin-sdk's `command/execute` protocol.
 
