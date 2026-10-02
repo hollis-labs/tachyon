@@ -6,6 +6,7 @@ import { createServer } from "vite"
 // provider, model CLI, listening socket, or browser is needed for these checks.
 const server = await createServer({
   configFile: false,
+  optimizeDeps: { noDiscovery: true },
   server: { middlewareMode: true, watch: null },
   appType: "custom",
 })
