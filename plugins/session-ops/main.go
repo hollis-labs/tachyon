@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -27,9 +28,9 @@ func (*plugin) Capabilities() contract.PluginCapabilities {
 }
 
 func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subprocess.InitResult, error) {
-	addr := params.Config["tether_addr"]
+	addr := strings.TrimSpace(params.Config["tether_addr"])
 	if addr == "" {
-		addr = os.Getenv("TETHER_ADDR")
+		addr = strings.TrimSpace(os.Getenv("TETHER_ADDR"))
 	}
 	adapter, err := NewTetherAdapter(addr)
 	if err != nil {
