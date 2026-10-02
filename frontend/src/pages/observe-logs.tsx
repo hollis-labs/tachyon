@@ -2,6 +2,7 @@ import { Button, EmptyState, Label } from "@hollis-labs/design-components"
 import { useCallback, useState } from "react"
 import { type LogFilter, observeApi, observeData } from "../api/observe"
 import { useVerbs } from "../api/verbs"
+import { snapshotRows } from "../components/observe/observe-kit-adapter"
 import {
   Details,
   dateFilters,
@@ -26,7 +27,14 @@ export function ObserveLogsPage() {
   const [limit, setLimit] = useState("100")
   const [filter, setFilter] = useState<LogFilter>({ limit: 100 })
   const [validation, setValidation] = useState("")
-  const load = useCallback(() => observeApi.logs(filter).then(observeData), [filter])
+  const load = useCallback(
+    () =>
+      observeApi
+        .logs(filter)
+        .then(observeData)
+        .then((rows) => snapshotRows(rows, ["id", "timestamp", "level", "source", "message"])),
+    [filter],
+  )
   const read = useObserveRead(verbs.has("observe_logs"), load, {
     channel: "logs",
     filter,
@@ -57,13 +65,14 @@ export function ObserveLogsPage() {
           }
         }}
       >
-        <FilterInput name="Source" value={source} change={setSource} />
+        <FilterInput name="Source" value={source} change={setSource} disabled={!!read.ask} />
         <div>
           <Label htmlFor="observe-level">Level</Label>
           <select
             id="observe-level"
             className={`${selectClass} w-full`}
             value={level}
+            disabled={!!read.ask}
             onChange={(event) => setLevel(event.target.value)}
           >
             {["", "debug", "info", "warn", "error"].map((item) => (
@@ -73,10 +82,33 @@ export function ObserveLogsPage() {
             ))}
           </select>
         </div>
-        <FilterInput name="Message contains (case-sensitive)" value={search} change={setSearch} />
-        <FilterInput name="From" value={since} change={setSince} type="datetime-local" />
-        <FilterInput name="Until" value={until} change={setUntil} type="datetime-local" />
-        <FilterInput name="Limit" value={limit} change={setLimit} type="number" />
+        <FilterInput
+          name="Message contains (case-sensitive)"
+          value={search}
+          change={setSearch}
+          disabled={!!read.ask}
+        />
+        <FilterInput
+          name="From"
+          value={since}
+          change={setSince}
+          type="datetime-local"
+          disabled={!!read.ask}
+        />
+        <FilterInput
+          name="Until"
+          value={until}
+          change={setUntil}
+          type="datetime-local"
+          disabled={!!read.ask}
+        />
+        <FilterInput
+          name="Limit"
+          value={limit}
+          change={setLimit}
+          type="number"
+          disabled={!!read.ask}
+        />
         <Button variant="outline" type="submit" disabled={!!read.ask}>
           Apply filters
         </Button>
