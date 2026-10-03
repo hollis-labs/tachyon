@@ -41,7 +41,7 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 
 	// Default Nanite API URL — overridable via plugin config.
 	naniteURL := "http://localhost:8090"
-	if url, ok := params.Config["nanite_url"]; ok {
+	if url := strings.TrimSpace(params.Config["nanite_url"]); url != "" {
 		naniteURL = url
 	}
 
@@ -73,16 +73,16 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 		store.Close()
 		return subprocess.InitResult{}, err
 	}
-	defaultProvider := params.Config["default_provider"]
+	defaultProvider := strings.TrimSpace(params.Config["default_provider"])
 	if defaultProvider == "" {
-		defaultProvider = os.Getenv("TACHYON_LAUNCH_DEFAULT_PROVIDER")
+		defaultProvider = strings.TrimSpace(os.Getenv("TACHYON_LAUNCH_DEFAULT_PROVIDER"))
 	}
 	if defaultProvider == "" {
 		defaultProvider = "nanite"
 	}
 	if defaultProvider != "nanite" && defaultProvider != "tether" {
 		store.Close()
-		return subprocess.InitResult{}, fmt.Errorf("unsupported default_provider %q", defaultProvider)
+		return subprocess.InitResult{}, fmt.Errorf("default_provider must be nanite or tether")
 	}
 	p.store = store
 	p.adapter = &launchRouter{store: store, defaultProvider: defaultProvider, adapters: map[string]LaunchAdapter{"nanite": NewNaniteLaunchAdapter(naniteURL, store), "tether": tetherAdapter}}
