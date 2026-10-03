@@ -69,13 +69,12 @@ func TestNormalizedSettingsThroughHost(t *testing.T) {
 			{name: "padded_url_and_opaque_id", project: " project with edge spaces "},
 			{name: "whitespace_only_project", project: " \t\n"},
 			{name: "padded_declared_default", project: "fixture", defaultURL: true},
-			// Credentials are accepted by current Init, but the planned write-only
-			// HTTP-base rule rejects them. Startup must continue to accept this value.
+			// Startup must continue to accept credentials supported by current Init.
 			{name: "legacy_url_credentials", project: "legacy", credentials: true},
 			{name: "legacy_select_option", project: "legacy", legacySelect: true},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				home := settingsTestHome(t, root, "w")
+				home := settingsTestHome(t, "w")
 				seen := make(chan string, 1)
 				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.Method != "GET" || r.URL.Path != "/api/v1/tasks" {
@@ -178,12 +177,31 @@ func TestNormalizedSettingsThroughHost(t *testing.T) {
 				name = "whitespace_only_path"
 			}
 			t.Run(name, func(t *testing.T) {
-				home := settingsTestHome(t, root, "s")
+				home := settingsTestHome(t, "s")
 				socket := filepath.Join(home, "socket ")
 				setting := socket
 				if blank {
 					setting = " \t\n"
-					socket = filepath.Join(home, ".cerberus", "cerberus.sock")
+					settingsTestStore(t, home, "service-ops", map[string]string{"cerberus_socket": setting})
+					config, err := readPluginSettings(filepath.Join(home, "data"), filepath.Dir(binaries["service-ops"]), "service-ops")
+					if err != nil || config["cerberus_socket"] != "" {
+						t.Fatalf("whitespace socket reached Init config: %v %v", config, err)
+					}
+					mgr := settingsTestManager(t, binaries["service-ops"])
+					// No provider socket exists: startup succeeds, and the read reports
+					// an unavailable provider without dialing the whitespace input.
+					raw, err := mgr.InvokeVerb(context.Background(), "service_list", json.RawMessage(`{}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+					var result contract.ResultEnvelope
+					if err := json.Unmarshal(raw, &result); err != nil || result.Status != contract.StatusError || result.Error == nil {
+						t.Fatalf("expected unavailable provider: %s %v", raw, err)
+					}
+					if strings.Contains(result.Error.Message, setting) {
+						t.Fatalf("whitespace socket was dialed: %s", result.Error.Message)
+					}
+					return
 				}
 				if err := os.MkdirAll(filepath.Dir(socket), 0700); err != nil {
 					t.Fatal(err)
@@ -216,12 +234,12 @@ func TestNormalizedSettingsThroughHost(t *testing.T) {
 				name = "whitespace_only_root"
 			}
 			t.Run(name, func(t *testing.T) {
-				home := settingsTestHome(t, root, "g")
+				home := settingsTestHome(t, "g")
 				repos := filepath.Join(home, "repos ")
 				setting := repos
 				if blank {
 					setting = " \t\n"
-					repos = filepath.Join(home, "dev")
+					t.Setenv("TACHYON_SCM_REPOS_ROOT", repos)
 				}
 				repo := filepath.Join(repos, "fixture")
 				if err := os.MkdirAll(repo, 0700); err != nil {
@@ -244,12 +262,14 @@ func TestNormalizedSettingsThroughHost(t *testing.T) {
 	})
 }
 
-func settingsTestHome(t *testing.T, root, prefix string) string {
+func settingsTestHome(t *testing.T, prefix string) string {
 	t.Helper()
-	home, err := os.MkdirTemp(root, prefix)
+	// Keep HOME directly under the temp root to leave room for Unix socket names.
+	home, err := os.MkdirTemp(os.TempDir(), prefix)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { os.RemoveAll(home) })
 	t.Setenv("HOME", home)
 	t.Setenv("TACHYON_DATA_DIR", filepath.Join(home, "data"))
 	t.Setenv("TACHYON_SCM_REPOS_ROOT", "")
