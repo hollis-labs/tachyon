@@ -140,7 +140,14 @@ type ConfigurationValidationError struct{ Validation ValidationResult }
 
 func (*ConfigurationValidationError) Error() string { return "proposed configuration is invalid" }
 
+// Read and preflight report all semantic issues, including untouched legacy values.
 func validateValues(target ConfigTarget, values map[string]any) ValidationResult {
+	return validateCandidate(target, values, values)
+}
+
+// Structural checks cover the merged candidate; semantic rejection covers only
+// supplied keys so an accepted legacy value cannot trap an unrelated save.
+func validateCandidate(target ConfigTarget, values, semanticPatch map[string]any) ValidationResult {
 	result := ValidationResult{Valid: true, Errors: map[string]string{}}
 	fields := map[string]contract.SettingsField{}
 	for _, field := range target.Settings.Fields {
@@ -157,8 +164,10 @@ func validateValues(target ConfigTarget, values map[string]any) ValidationResult
 			result.Errors[field.Key] = err.Error()
 			continue
 		}
-		if err := contract.ValidateSettingWrite(field, resolved); err != nil {
-			result.Errors[field.Key] = err.Error()
+		if _, supplied := semanticPatch[field.Key]; supplied {
+			if err := contract.ValidateSettingWrite(field, resolved); err != nil {
+				result.Errors[field.Key] = err.Error()
+			}
 		}
 	}
 	for key := range values {
@@ -211,7 +220,7 @@ func (a *LocalAdapter) Validate(ctx context.Context, id string, patch map[string
 }
 
 // Update persists only supplied overrides, atomically, after validating the
-// effective configuration (defaults + existing overrides + this patch).
+// merged structural configuration and semantic constraints on supplied keys.
 func (a *LocalAdapter) Update(ctx context.Context, id string, patch map[string]any) (TargetConfig, error) {
 	if err := ctx.Err(); err != nil {
 		return TargetConfig{}, err
@@ -225,7 +234,7 @@ func (a *LocalAdapter) Update(ctx context.Context, id string, patch map[string]a
 	for key, value := range patch {
 		values[key] = value
 	}
-	validation := validateValues(target, values)
+	validation := validateCandidate(target, values, patch)
 	if !validation.Valid {
 		return TargetConfig{}, &ConfigurationValidationError{Validation: validation}
 	}
@@ -239,7 +248,7 @@ func (a *LocalAdapter) Update(ctx context.Context, id string, patch map[string]a
 		return TargetConfig{}, err
 	}
 	a.overrides = next
-	return TargetConfig{Target: target, Values: values, Validation: validation}, nil
+	return TargetConfig{Target: target, Values: values, Validation: validateValues(target, values)}, nil
 }
 
 // Reset removes overrides even when a required field has no default; Read's

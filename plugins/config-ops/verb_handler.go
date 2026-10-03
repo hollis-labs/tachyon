@@ -42,15 +42,8 @@ func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMe
 		if req.Values == nil {
 			return contract.Err("validation", "values object is required"), nil
 		}
-		validation, err := p.adapter.Validate(ctx, req.Plugin, req.Values)
-		if err != nil {
-			return configResult(nil, err)
-		}
-		if !validation.Valid {
-			env := contract.Err("validation", "proposed configuration is invalid")
-			env.Error.Detail, _ = json.Marshal(validation)
-			return env, nil
-		}
+		// Update is the authoritative locked admission check. Read/Validate report
+		// untouched legacy semantic issues without blocking this patch.
 		// Declared settings apply on restart; adding a default-valued override
 		// changes storage but not the desired value that the plugin will receive.
 		before, err := p.adapter.Read(ctx, req.Plugin)

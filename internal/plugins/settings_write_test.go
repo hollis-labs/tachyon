@@ -200,12 +200,32 @@ func TestConfigWritesThroughHost(t *testing.T) {
 			t.Fatalf("restart flag: %s %v", env.Data, err)
 		}
 	}
-	t.Run("legacy_candidate_rejected_until_repaired", func(t *testing.T) {
-		reject(t, "work-ops", "default_project", "new-fixture")
+	t.Run("legacy_semantic_issue_does_not_block_unrelated_save", func(t *testing.T) {
+		write(t, "work-ops", map[string]any{"default_project": "new-fixture"}, true)
+		storedBytes, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var persisted map[string]map[string]string
+		if err := json.Unmarshal(storedBytes, &persisted); err != nil || persisted["work-ops"]["torque_url"] != legacyURL {
+			t.Fatal("unrelated save changed legacy value", err)
+		}
+		env := invoke(t, "config_get", "work-ops", nil)
+		var view struct {
+			Values     map[string]any `json:"values"`
+			Validation struct {
+				Valid  bool              `json:"valid"`
+				Errors map[string]string `json:"errors"`
+			} `json:"validation"`
+		}
+		if err := json.Unmarshal(env.Data, &view); err != nil || view.Values["torque_url"] != legacyURL || view.Validation.Valid || view.Validation.Errors["torque_url"] == "" {
+			t.Fatal("Read hid legacy semantic issue", err)
+		}
+		reject(t, "work-ops", "torque_url", "http://fixture:private@invalid")
 		if err := mgr.RestartPlugin("work-ops"); err != nil {
 			t.Fatal("new refusal for accepted legacy URL", err)
 		}
-		write(t, "work-ops", map[string]any{"torque_url": " \t" + provider.URL + "\n"}, true)
+		write(t, "work-ops", map[string]any{"torque_url": " \t" + provider.URL + "\n", "default_project": " fixture "}, true)
 		if err := mgr.RestartPlugin("work-ops"); err != nil {
 			t.Fatal(err)
 		}
@@ -214,6 +234,15 @@ func TestConfigWritesThroughHost(t *testing.T) {
 	t.Run("padded_stored_select_does_not_block_other_fields", func(t *testing.T) {
 		write(t, "launch-ops", map[string]any{"nanite_url": " \t" + provider.URL + "\n"}, false)
 		write(t, "launch-ops", map[string]any{"default_provider": " \ttether\n"}, false)
+		if err := mgr.RestartPlugin("launch-ops"); err != nil {
+			t.Fatal(err)
+		}
+		settingsTestInvoke(t, mgr, "launch_prepare", `{"agent_id":"fixture-agent","config":{"launch_id":"fixture-launch"}}`)
+	})
+	t.Run("tether_http_prefix_matches_client", func(t *testing.T) {
+		reject(t, "launch-ops", "tether_addr", strings.Replace(provider.URL, "http://", "HTTP://", 1))
+		reject(t, "launch-ops", "tether_addr", strings.Replace(provider.URL, "http://", "Https://", 1))
+		write(t, "launch-ops", map[string]any{"tether_addr": provider.URL}, false)
 		if err := mgr.RestartPlugin("launch-ops"); err != nil {
 			t.Fatal(err)
 		}

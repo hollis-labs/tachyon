@@ -13,7 +13,7 @@ func TestWriteValidationConstraints(t *testing.T) {
 	}{
 		{SettingsValidationHTTPBaseURL, []string{"", "http://fixture", "https://[::1]:1234/base/"}, []string{"junk", "http://", "http://:12", "http://fixture:0", "http://fixture:70000", "http://user:secret@fixture", "http://fixture?", "http://fixture?key=secret", "http://fixture#", "http://fixture/#secret", "http://fixture/%E2%80%8B", "http://%E2%80%8Bfixture", "http://fixture:", "http://fixture/\n"}},
 		{SettingsValidationAbsolutePath, []string{"", "/fixture/socket ", "~/fixture"}, []string{"relative", "~fixture", "/fixture\n"}},
-		{SettingsValidationTetherAddr, []string{"", "unix:/fixture", "unix:~/fixture", "tcp:localhost:1234", "tcp:[::1]:1234", "https://fixture/base"}, []string{"junk", "unix:", "unix:relative", "tcp:", "tcp:fixture", "tcp::1234", "tcp:fixture:0", "tcp:fixture:70000", "tcp:fixture/path:1234", "tcp:fixture:+123", "tcp:%E2%80%8Bfixture:1234", "http://user:secret@fixture", "http://fixture?secret"}},
+		{SettingsValidationTetherAddr, []string{"", "unix:/fixture", "unix:~/fixture", "tcp:localhost:1234", "tcp:[::1]:1234", "https://fixture/base"}, []string{"HTTP://fixture", "Https://fixture", "junk", "unix:", "unix:relative", "tcp:", "tcp:fixture", "tcp::1234", "tcp:fixture:0", "tcp:fixture:70000", "tcp:fixture/path:1234", "tcp:fixture:+123", "tcp:%E2%80%8Bfixture:1234", "http://user:secret@fixture", "http://fixture?secret"}},
 	} {
 		t.Run(string(tc.rule), func(t *testing.T) {
 			field := SettingsField{Key: "fixture", Type: SettingsFieldString, Validation: tc.rule, PreserveEdgeWhitespace: true}

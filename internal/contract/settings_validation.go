@@ -88,7 +88,7 @@ func ValidateSettingWrite(field SettingsField, value any) error {
 			host, port, err := net.SplitHostPort(strings.TrimPrefix(text, "tcp:"))
 			valid = err == nil && host != "" && !strings.ContainsAny(host, " /?#@") && validPort(port) && validHTTPBase("http://"+strings.TrimPrefix(text, "tcp:"))
 		default:
-			valid = validHTTPBase(text)
+			valid = (strings.HasPrefix(text, "http://") || strings.HasPrefix(text, "https://")) && validHTTPBase(text)
 		}
 		if !valid {
 			return errors.New("value must use unix:/path, unix:~/path, tcp:host:port or an HTTP(S) base URL")
