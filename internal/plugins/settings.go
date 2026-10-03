@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -83,10 +84,21 @@ func readPluginSettings(root, pluginDir, id string) (map[string]string, error) {
 		if value == nil {
 			continue
 		}
+		original := value
+		value = contract.NormalizeSettingValue(field, value)
 		field.Default = value
 		check := contract.PluginCapabilities{Modules: []string{"config"}, Settings: &contract.SettingsDeclaration{Fields: []contract.SettingsField{field}}}
 		if err := check.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid persisted field %q", field.Key)
+			// An older declaration may intentionally use a select option with
+			// edge spaces. Normalization must not introduce a startup refusal
+			// for a value that already satisfied that declaration.
+			field.Default = original
+			legacy := contract.PluginCapabilities{Modules: []string{"config"}, Settings: &contract.SettingsDeclaration{Fields: []contract.SettingsField{field}}}
+			if err := legacy.Validate(); err != nil {
+				return nil, fmt.Errorf("invalid persisted field %q", field.Key)
+			}
+			slog.Warn("setting normalization conflicts with declaration; retaining accepted value", "plugin", id, "field", field.Key)
+			value = original
 		}
 		switch v := value.(type) {
 		case string:

@@ -67,6 +67,7 @@
       },
       {
         "key": "default_project",
+        "preserve_edge_whitespace": true,
         "type": "string",
         "label": "Default Project ID",
         "description": "Torque project to use for create and list when none specified"
