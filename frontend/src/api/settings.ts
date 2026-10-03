@@ -112,3 +112,9 @@ export async function retiredConfigTargets(): Promise<ConfigTarget[]> {
   const registry: { retired_plugins?: ConfigTarget[] } = await response.json()
   return registry.retired_plugins ?? []
 }
+
+// This flag describes this command, not previously saved changes awaiting restart.
+export function configWriteNotice(action: "save" | "reset", restartRequired: boolean): string {
+  const saved = action === "save" ? "Settings saved." : "Defaults restored."
+  return `${saved} ${restartRequired ? "Restart this plugin to apply these changes." : "This command did not change settings that require a restart."}`
+}
