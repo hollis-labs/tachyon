@@ -4,7 +4,7 @@ import { createServer } from "vite"
 
 const server = await createServer({
   configFile: false,
-  server: { middlewareMode: true, watch: null },
+  server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   appType: "custom",
 })
 const { setConfig, resetConfig, configWriteNotice } =

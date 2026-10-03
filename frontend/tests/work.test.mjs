@@ -6,7 +6,7 @@ import { createServer } from "vite"
 // provider, model CLI, listening socket, or browser is needed for these checks.
 const server = await createServer({
   configFile: false,
-  server: { middlewareMode: true, watch: null },
+  server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   appType: "custom",
 })
 const { workApi, workPageInfo } = await server.ssrLoadModule("/src/api/work.ts")
