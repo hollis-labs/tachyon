@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -40,7 +41,7 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 
 	// Default Nanite API URL — overridable via plugin config.
 	naniteURL := "http://localhost:8090"
-	if url, ok := params.Config["nanite_url"]; ok {
+	if url := strings.TrimSpace(params.Config["nanite_url"]); url != "" {
 		naniteURL = url
 	}
 
@@ -63,25 +64,25 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 	if err != nil {
 		return subprocess.InitResult{}, fmt.Errorf("open launch store: %w", err)
 	}
-	addr := params.Config["tether_addr"]
+	addr := strings.TrimSpace(params.Config["tether_addr"])
 	if addr == "" {
-		addr = os.Getenv("TETHER_ADDR")
+		addr = strings.TrimSpace(os.Getenv("TETHER_ADDR"))
 	}
 	tetherAdapter, err := NewTetherLaunchAdapter(addr, store)
 	if err != nil {
 		store.Close()
 		return subprocess.InitResult{}, err
 	}
-	defaultProvider := params.Config["default_provider"]
+	defaultProvider := strings.TrimSpace(params.Config["default_provider"])
 	if defaultProvider == "" {
-		defaultProvider = os.Getenv("TACHYON_LAUNCH_DEFAULT_PROVIDER")
+		defaultProvider = strings.TrimSpace(os.Getenv("TACHYON_LAUNCH_DEFAULT_PROVIDER"))
 	}
 	if defaultProvider == "" {
 		defaultProvider = "nanite"
 	}
 	if defaultProvider != "nanite" && defaultProvider != "tether" {
 		store.Close()
-		return subprocess.InitResult{}, fmt.Errorf("unsupported default_provider %q", defaultProvider)
+		return subprocess.InitResult{}, fmt.Errorf("default_provider must be nanite or tether")
 	}
 	p.store = store
 	p.adapter = &launchRouter{store: store, defaultProvider: defaultProvider, adapters: map[string]LaunchAdapter{"nanite": NewNaniteLaunchAdapter(naniteURL, store), "tether": tetherAdapter}}

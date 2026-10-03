@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -83,10 +84,17 @@ func readPluginSettings(root, pluginDir, id string) (map[string]string, error) {
 		if value == nil {
 			continue
 		}
-		field.Default = value
-		check := contract.PluginCapabilities{Modules: []string{"config"}, Settings: &contract.SettingsDeclaration{Fields: []contract.SettingsField{field}}}
-		if err := check.Validate(); err != nil {
+		value, retained, err := contract.ResolveSettingValue(field, value)
+		if err != nil {
 			return nil, fmt.Errorf("invalid persisted field %q", field.Key)
+		}
+		if retained {
+			slog.Warn("setting normalization conflicts with declaration; retaining accepted value", "plugin", id, "field", field.Key)
+		}
+		if err := contract.ValidateSettingWrite(field, value); err != nil {
+			// New semantic constraints are write-only: Init retains authority over
+			// legacy stored values, with no new startup refusal or file rewrite.
+			slog.Warn("setting fails write validation; retaining startup compatibility", "plugin", id, "field", field.Key)
 		}
 		switch v := value.(type) {
 		case string:

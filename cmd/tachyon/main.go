@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
@@ -287,7 +288,7 @@ func main() {
 	defer cancel()
 
 	var tangent hitl.Client
-	if endpoint := os.Getenv("TACHYON_TANGENT_MCP_URL"); endpoint != "" {
+	if endpoint := strings.TrimSpace(os.Getenv("TACHYON_TANGENT_MCP_URL")); endpoint != "" {
 		client, err := hitl.NewMCPClient(endpoint)
 		if err != nil {
 			logger.Error("invalid HITL configuration", "error", err)
@@ -297,7 +298,7 @@ func main() {
 		endpointURL, _ := url.Parse(endpoint)
 		logger.Info("Tangent MCP configured", "scheme", endpointURL.Scheme, "host", endpointURL.Host)
 	}
-	bridge, err := hitl.NewRuntime(tangent, os.Getenv("TACHYON_TANGENT_ITEM_BASE"), logger)
+	bridge, err := hitl.NewRuntime(tangent, strings.TrimSpace(os.Getenv("TACHYON_TANGENT_ITEM_BASE")), logger)
 	if err != nil {
 		logger.Error("invalid HITL configuration", "error", err)
 		os.Exit(1)

@@ -7,6 +7,10 @@ export interface SettingsField {
   description?: string
   default?: string | boolean | number
   required?: boolean
+  // Preserve nonblank path/ID edge spaces; whitespace-only still becomes empty.
+  preserve_edge_whitespace?: boolean
+  // Semantic write constraints; optional blank values keep fallback behavior.
+  validation?: "http_base_url" | "absolute_path" | "tether_addr" | "select"
   options?: { label: string; value: string }[]
 }
 
@@ -111,4 +115,10 @@ export async function retiredConfigTargets(): Promise<ConfigTarget[]> {
   if (!response.ok) throw new Error(`Plugin registry unavailable (HTTP ${response.status})`)
   const registry: { retired_plugins?: ConfigTarget[] } = await response.json()
   return registry.retired_plugins ?? []
+}
+
+// This flag describes this command, not previously saved changes awaiting restart.
+export function configWriteNotice(action: "save" | "reset", restartRequired: boolean): string {
+  const saved = action === "save" ? "Settings saved." : "Defaults restored."
+  return `${saved} ${restartRequired ? "Restart this plugin to apply these changes." : "This command did not change settings that require a restart."}`
 }

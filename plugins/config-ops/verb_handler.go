@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"reflect"
 	"strings"
 
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -40,31 +42,40 @@ func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMe
 		if req.Values == nil {
 			return contract.Err("validation", "values object is required"), nil
 		}
-		validation, err := p.adapter.Validate(ctx, req.Plugin, req.Values)
+		// Update is the authoritative locked admission check. Read/Validate report
+		// untouched legacy semantic issues without blocking this patch.
+		// Declared settings apply on restart; adding a default-valued override
+		// changes storage but not the desired value that the plugin will receive.
+		before, err := p.adapter.Read(ctx, req.Plugin)
 		if err != nil {
 			return configResult(nil, err)
-		}
-		if !validation.Valid {
-			env := contract.Err("validation", "proposed configuration is invalid")
-			env.Error.Detail, _ = json.Marshal(validation)
-			return env, nil
 		}
 		view, err := p.adapter.Update(ctx, req.Plugin, req.Values)
 		if err != nil {
 			return configResult(nil, err)
 		}
-		return contract.OK(map[string]any{"plugin": req.Plugin, "restart_required": true, "config": view})
+		return contract.OK(map[string]any{"plugin": req.Plugin, "restart_required": !reflect.DeepEqual(before.Values, view.Values), "config": view})
 	case "config_reset":
+		before, err := p.adapter.Read(ctx, req.Plugin)
+		if err != nil {
+			return configResult(nil, err)
+		}
 		view, err := p.adapter.Reset(ctx, req.Plugin)
 		if err != nil {
 			return configResult(nil, err)
 		}
-		return contract.OK(map[string]any{"plugin": req.Plugin, "restart_required": true, "config": view})
+		return contract.OK(map[string]any{"plugin": req.Plugin, "restart_required": !reflect.DeepEqual(before.Values, view.Values), "config": view})
 	}
 	return contract.Err("unknown_verb", "verb is not implemented"), nil
 }
 func configResult(value any, err error) (contract.ResultEnvelope, error) {
 	if err != nil {
+		var invalid *ConfigurationValidationError
+		if errors.As(err, &invalid) {
+			env := contract.Err("validation", "proposed configuration is invalid")
+			env.Error.Detail, _ = json.Marshal(invalid.Validation)
+			return env, nil
+		}
 		return contract.Err("provider_error", err.Error()), nil
 	}
 	return contract.OK(value)

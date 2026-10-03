@@ -48,6 +48,8 @@
     "fields": [
       {
         "key": "cerberus_socket",
+        "validation": "absolute_path",
+        "preserve_edge_whitespace": true,
         "type": "string",
         "label": "Cerberus Socket Path",
         "default": "~/.cerberus/cerberus.sock"

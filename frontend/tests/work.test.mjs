@@ -7,7 +7,7 @@ import { createServer } from "vite"
 const server = await createServer({
   configFile: false,
   optimizeDeps: { noDiscovery: true },
-  server: { middlewareMode: true, watch: null },
+  server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   appType: "custom",
 })
 const { workApi, workPageInfo } = await server.ssrLoadModule("/src/api/work.ts")

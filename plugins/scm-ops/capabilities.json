@@ -15,6 +15,6 @@
   ]
  },
  "settings": {
-  "fields": [{"key":"repos_root","type":"string","label":"Repositories Root","default":"~/dev","description":"Base directory to scan for Git worktrees. Also configurable through TACHYON_SCM_REPOS_ROOT."}]
+  "fields": [{"key":"repos_root","preserve_edge_whitespace":true,"type":"string","label":"Repositories Root","default":"~/dev","description":"Base directory to scan for Git worktrees. Also configurable through TACHYON_SCM_REPOS_ROOT."}]
  }
 }

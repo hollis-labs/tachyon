@@ -12,8 +12,8 @@ until an adapter exposes their schemas and values.
 | `config_list` | none | Loaded schemas and retired recovery targets |
 | `config_schema` | `plugin` | One target and its schema |
 | `config_get` | `plugin` | Effective values and validation status |
-| `config_set` | `plugin`, `values` object | Persisted config, `plugin`, `restart_required: true` |
-| `config_reset` | `plugin` | Defaults, validation status, `plugin`, `restart_required: true` |
+| `config_set` | `plugin`, `values` object | Persisted config, `plugin`, command-specific `restart_required` |
+| `config_reset` | `plugin` | Defaults, validation status, `plugin`, command-specific `restart_required` |
 
 Loaded targets keep `{id, name, settings}` unchanged. Retired targets add
 `state: "unloaded"`, `reason` (a class such as `timeout`, `transport_error`, or
@@ -43,8 +43,15 @@ Schema changes preserve stored overrides until reset.
 The host only reads the values file when spawning a plugin. It passes defaults
 and persisted values from the authored `capabilities.json` settings fields in
 `InitParams.Config`; unknown stored keys are not forwarded. Values apply on
-the next plugin spawn, with no live `config/changed` RPC. Every set/reset returns
-`restart_required: true`. Restart a loaded plugin with `POST /api/plugins/<id>/restart` after saving.
+the next plugin spawn, with no live `config/changed` RPC. Set/reset returns
+`restart_required: true` only when this command changed an effective value.
+Re-saving unchanged values (including unchanged padded strings), adding an
+override equal to the already-effective default, or resetting values already
+at defaults returns
+`false`. This flag does not describe earlier changes awaiting restart: the
+Settings UI retains its earlier pending restart reminder until successful
+restart. Restart a loaded plugin with `POST /api/plugins/<id>/restart` to apply
+changed settings.
 The endpoint returns HTTP 200 `{id, status: "loaded"}` on success, HTTP 503
 `{id, status: "unchanged", error}` when busy, HTTP 404 for an unknown plugin, or
 HTTP 500 `{id, status: "unloaded", error}` for a respawn failure. A failed respawn removes its

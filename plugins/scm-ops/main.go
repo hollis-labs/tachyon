@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/hollis-labs/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -33,10 +34,11 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 		return subprocess.InitResult{}, err
 	}
 	root := params.Config["repos_root"]
-	if root == "" {
+	// Preserve meaningful edge spaces in nonblank filesystem names.
+	if strings.TrimSpace(root) == "" {
 		root = os.Getenv("TACHYON_SCM_REPOS_ROOT")
 	}
-	if root == "" {
+	if strings.TrimSpace(root) == "" {
 		root = "~/dev"
 	}
 	adapter, err := NewGitAdapter(root)
