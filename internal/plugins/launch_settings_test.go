@@ -103,6 +103,9 @@ func TestLaunchSettingsReachTetherThroughHost(t *testing.T) {
 			}))
 			defer provider.Close()
 			settings := map[string]string{"nanite_url": provider.URL}
+			if tc.name == "padded_override" {
+				settings["default_provider"] = " \ttether \n"
+			}
 			if tc.override != nil {
 				settings["tether_addr"] = *tc.override
 			}

@@ -7,6 +7,8 @@ export interface SettingsField {
   description?: string
   default?: string | boolean | number
   required?: boolean
+  // Preserve nonblank path/ID edge spaces; whitespace-only still becomes empty.
+  preserve_edge_whitespace?: boolean
   options?: { label: string; value: string }[]
 }
 

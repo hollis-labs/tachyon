@@ -38,6 +38,12 @@ type SettingsField struct {
 	// strings cannot be blank. False and zero remain valid defaults.
 	Required bool `json:"required,omitempty"`
 
+	// PreserveEdgeWhitespace keeps nonblank string/select values verbatim when
+	// edge spaces are meaningful (for example, a filesystem path or opaque ID).
+	// Whitespace-only values always normalize to empty, even with this opt-out.
+	// Other string/select values are trimmed before they reach plugin Init.
+	PreserveEdgeWhitespace bool `json:"preserve_edge_whitespace,omitempty"`
+
 	// Options lists allowed values when Type is "select".
 	Options []SettingsOption `json:"options,omitempty"`
 }
