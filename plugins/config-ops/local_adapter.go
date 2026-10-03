@@ -120,6 +120,26 @@ func (a *LocalAdapter) effective(id string) (ConfigTarget, map[string]any, error
 	return target, values, nil
 }
 
+// normalizeValues uses the same accepted-value resolution as the startup reader.
+// Leave invalid values intact so validation can identify their field safely.
+func normalizeValues(target ConfigTarget, values map[string]any) map[string]any {
+	normalized := copyValues(values)
+	for _, field := range target.Settings.Fields {
+		if value, exists := normalized[field.Key]; exists {
+			if resolved, _, err := contract.ResolveSettingValue(field, value); err == nil {
+				normalized[field.Key] = resolved
+			}
+		}
+	}
+	return normalized
+}
+
+// ConfigurationValidationError carries field errors from the locked update
+// check, without including proposed values in its message or error detail.
+type ConfigurationValidationError struct{ Validation ValidationResult }
+
+func (*ConfigurationValidationError) Error() string { return "proposed configuration is invalid" }
+
 func validateValues(target ConfigTarget, values map[string]any) ValidationResult {
 	result := ValidationResult{Valid: true, Errors: map[string]string{}}
 	fields := map[string]contract.SettingsField{}
@@ -132,13 +152,12 @@ func validateValues(target ConfigTarget, values map[string]any) ValidationResult
 			}
 			continue
 		}
-		if value == nil {
-			result.Errors[field.Key] = "value must match the declared type"
+		resolved, _, err := contract.ResolveSettingValue(field, value)
+		if err != nil {
+			result.Errors[field.Key] = err.Error()
 			continue
 		}
-		field.Default = value
-		caps := contract.PluginCapabilities{Modules: []string{"config"}, Settings: &contract.SettingsDeclaration{Fields: []contract.SettingsField{field}}}
-		if err := caps.Validate(); err != nil {
+		if err := contract.ValidateSettingWrite(field, resolved); err != nil {
 			result.Errors[field.Key] = err.Error()
 		}
 	}
@@ -172,7 +191,7 @@ func (a *LocalAdapter) Read(ctx context.Context, id string) (TargetConfig, error
 	if err != nil {
 		return TargetConfig{}, err
 	}
-	return TargetConfig{Target: target, Values: visibleValues(target, values), Validation: validateValues(target, values)}, nil
+	return TargetConfig{Target: target, Values: visibleValues(target, normalizeValues(target, values)), Validation: validateValues(target, values)}, nil
 }
 
 func (a *LocalAdapter) Validate(ctx context.Context, id string, patch map[string]any) (ValidationResult, error) {
@@ -208,12 +227,13 @@ func (a *LocalAdapter) Update(ctx context.Context, id string, patch map[string]a
 	}
 	validation := validateValues(target, values)
 	if !validation.Valid {
-		return TargetConfig{Target: target, Values: values, Validation: validation}, fmt.Errorf("invalid configuration")
+		return TargetConfig{}, &ConfigurationValidationError{Validation: validation}
 	}
+	values = normalizeValues(target, values)
 	next := a.copyOverrides()
 	next[id] = copyValues(a.overrides[id])
-	for key, value := range patch {
-		next[id][key] = value
+	for key := range patch {
+		next[id][key] = values[key]
 	}
 	if err := a.persist(ctx, next); err != nil {
 		return TargetConfig{}, err
@@ -240,7 +260,7 @@ func (a *LocalAdapter) Reset(ctx context.Context, id string) (TargetConfig, erro
 	}
 	a.overrides = next
 	target, values, _ := a.effective(id)
-	return TargetConfig{Target: target, Values: visibleValues(target, values), Validation: validateValues(target, values)}, nil
+	return TargetConfig{Target: target, Values: visibleValues(target, normalizeValues(target, values)), Validation: validateValues(target, values)}, nil
 }
 
 func (a *LocalAdapter) copyOverrides() map[string]map[string]any {

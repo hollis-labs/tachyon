@@ -84,21 +84,17 @@ func readPluginSettings(root, pluginDir, id string) (map[string]string, error) {
 		if value == nil {
 			continue
 		}
-		original := value
-		value = contract.NormalizeSettingValue(field, value)
-		field.Default = value
-		check := contract.PluginCapabilities{Modules: []string{"config"}, Settings: &contract.SettingsDeclaration{Fields: []contract.SettingsField{field}}}
-		if err := check.Validate(); err != nil {
-			// An older declaration may intentionally use a select option with
-			// edge spaces. Normalization must not introduce a startup refusal
-			// for a value that already satisfied that declaration.
-			field.Default = original
-			legacy := contract.PluginCapabilities{Modules: []string{"config"}, Settings: &contract.SettingsDeclaration{Fields: []contract.SettingsField{field}}}
-			if err := legacy.Validate(); err != nil {
-				return nil, fmt.Errorf("invalid persisted field %q", field.Key)
-			}
+		value, retained, err := contract.ResolveSettingValue(field, value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid persisted field %q", field.Key)
+		}
+		if retained {
 			slog.Warn("setting normalization conflicts with declaration; retaining accepted value", "plugin", id, "field", field.Key)
-			value = original
+		}
+		if err := contract.ValidateSettingWrite(field, value); err != nil {
+			// New semantic constraints are write-only: Init retains authority over
+			// legacy stored values, with no new startup refusal or file rewrite.
+			slog.Warn("setting fails write validation; retaining startup compatibility", "plugin", id, "field", field.Key)
 		}
 		switch v := value.(type) {
 		case string:

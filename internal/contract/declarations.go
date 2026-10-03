@@ -78,6 +78,9 @@ func (pc *PluginCapabilities) validateSettings() error {
 		default:
 			return fmt.Errorf("capabilities: settings field %q has invalid type %q", field.Key, field.Type)
 		}
+		if err := validateSettingsRule(field); err != nil {
+			return fmt.Errorf("capabilities: settings field %q: %w", field.Key, err)
+		}
 		// Missing (or JSON null) defaults mean the operator must supply
 		// required values. False and zero are valid required defaults.
 		if field.Default == nil {

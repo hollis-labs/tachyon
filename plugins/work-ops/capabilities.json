@@ -60,6 +60,7 @@
     "fields": [
       {
         "key": "torque_url",
+        "validation": "http_base_url",
         "type": "string",
         "label": "Torque API URL",
         "default": "http://127.0.0.1:8990",

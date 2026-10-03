@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 
@@ -76,6 +77,12 @@ func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMe
 }
 func configResult(value any, err error) (contract.ResultEnvelope, error) {
 	if err != nil {
+		var invalid *ConfigurationValidationError
+		if errors.As(err, &invalid) {
+			env := contract.Err("validation", "proposed configuration is invalid")
+			env.Error.Detail, _ = json.Marshal(invalid.Validation)
+			return env, nil
+		}
 		return contract.Err("provider_error", err.Error()), nil
 	}
 	return contract.OK(value)

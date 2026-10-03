@@ -46,6 +46,7 @@
     "fields": [
       {
         "key": "nanite_url",
+        "validation": "http_base_url",
         "type": "string",
         "label": "Nanite API URL",
         "default": "http://localhost:8090",
@@ -53,6 +54,7 @@
       },
       {
         "key": "default_provider",
+        "validation": "select",
         "type": "select",
         "label": "Default Provider",
         "default": "nanite",
@@ -69,6 +71,7 @@
       },
       {
         "key": "tether_addr",
+        "validation": "tether_addr",
         "type": "string",
         "label": "Tether Address",
         "description": "Leave blank to use TETHER_ADDR or the Tether client default socket."

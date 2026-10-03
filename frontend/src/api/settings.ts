@@ -9,6 +9,8 @@ export interface SettingsField {
   required?: boolean
   // Preserve nonblank path/ID edge spaces; whitespace-only still becomes empty.
   preserve_edge_whitespace?: boolean
+  // Semantic write constraints; optional blank values keep fallback behavior.
+  validation?: "http_base_url" | "absolute_path" | "tether_addr" | "select"
   options?: { label: string; value: string }[]
 }
 
