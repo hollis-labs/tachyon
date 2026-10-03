@@ -41,10 +41,10 @@ func NewPollingAdapter(local ObserveAdapter, config map[string]string) (*Polling
 		{"tether_url", "http://127.0.0.1:8947"},
 	} {
 		base := setting.fallback
-		if override := os.Getenv("TACHYON_OBSERVE_" + strings.ToUpper(setting.key)); override != "" {
+		if override := strings.TrimSpace(os.Getenv("TACHYON_OBSERVE_" + strings.ToUpper(setting.key))); override != "" {
 			base = override
 		}
-		if configured := config[setting.key]; configured != "" {
+		if configured := strings.TrimSpace(config[setting.key]); configured != "" {
 			base = configured
 		}
 		u, err := url.Parse(base)
