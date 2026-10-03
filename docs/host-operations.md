@@ -116,7 +116,12 @@ config-ops is the sole writer of `<data root>/config-ops/settings.json`. The dat
 root is `TACHYON_DATA_DIR`, otherwise absolute `XDG_DATA_HOME/tachyon/plugins`,
 otherwise `$HOME/.local/share/tachyon/plugins`. Authored settings declarations
 filter and validate persisted overrides before they enter plugin init. Saving or
-resetting a setting returns `restart_required`; it is not a live configuration
+resetting settings returns `restart_required: true` only when this command
+changed an effective value; unchanged values (including unchanged padded
+strings), no-op default-valued overrides and resets already at defaults return
+`false`. Earlier changes awaiting restart remain represented by the Settings
+UI's pending restart reminder, not this command-specific flag. Settings apply
+on plugin spawn/restart; saving or resetting is not a live configuration
 change. Plugin installation, enable/disable and provider state storage are not
 host configuration features.
 
