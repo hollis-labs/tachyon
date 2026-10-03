@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { PendingApprovalError } from "../api/hitl"
 import {
   type ConfigTarget,
+  configWriteNotice,
   envelopeError,
   getConfig,
   listConfigTargets,
@@ -356,8 +357,8 @@ function SettingsEditor({
         throw new Error(envelopeError(result))
       }
       apply(result.data.config)
-      onRestartNeeded(target.id, result.data.restart_required)
-      setNotice("Settings saved.")
+      onRestartNeeded(target.id, restartNeeded || result.data.restart_required)
+      setNotice(configWriteNotice("save", result.data.restart_required))
     })
   }
 
@@ -388,8 +389,8 @@ function SettingsEditor({
       if (result.status === "ask") throw new PendingApprovalError(result.ask)
       if (result.status !== "ok") throw new Error(envelopeError(result))
       apply(result.data.config)
-      onRestartNeeded(target.id, result.data.restart_required)
-      setNotice("Defaults restored.")
+      onRestartNeeded(target.id, restartNeeded || result.data.restart_required)
+      setNotice(configWriteNotice("reset", result.data.restart_required))
     })
   }
 

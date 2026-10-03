@@ -134,3 +134,67 @@ func TestConfigListPreservesRetiredTargetMetadata(t *testing.T) {
 		t.Fatalf("removed target persisted: %s", env.Data)
 	}
 }
+
+func TestConfigWriteRestartRequired(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		initial     map[string]any
+		verb        string
+		values      map[string]any
+		wantRestart bool
+		wantEnabled bool
+	}{
+		{name: "no-op set defaults", verb: "config_set", values: map[string]any{"enabled": true}, wantEnabled: true},
+		{name: "no-op set existing override", initial: map[string]any{"enabled": false}, verb: "config_set", values: map[string]any{"enabled": false}},
+		{name: "no-op set numeric default", verb: "config_set", values: map[string]any{"count": 1}, wantEnabled: true},
+		{name: "no-op reset defaults", verb: "config_reset", wantEnabled: true},
+		{name: "no-op reset default override", initial: map[string]any{"enabled": true}, verb: "config_reset", wantEnabled: true},
+		{name: "real set", verb: "config_set", values: map[string]any{"enabled": false}, wantRestart: true},
+		{name: "real reset", initial: map[string]any{"enabled": false}, verb: "config_reset", wantRestart: true, wantEnabled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			a := configuredAdapter(t, dir)
+			if tc.initial != nil {
+				if _, err := a.Update(context.Background(), "example", tc.initial); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Reopen storage as a new process would; schemas and numbers arrive as JSON.
+			a = configuredAdapter(t, dir)
+			schema, err := json.Marshal([]ConfigTarget{testTarget()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := &plugin{adapter: a}
+			if result := commandEnvelope(t, p, "config_schemas", string(schema)); result.Status != contract.StatusOK {
+				t.Fatalf("schema: %+v", result)
+			}
+			payload, err := json.Marshal(map[string]any{"plugin": "example", "values": tc.values})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := commandEnvelope(t, p, tc.verb, string(payload))
+			if result.Status != contract.StatusOK {
+				t.Fatalf("write: %+v", result)
+			}
+			var data struct {
+				RestartRequired *bool        `json:"restart_required"`
+				Config          TargetConfig `json:"config"`
+			}
+			if err := json.Unmarshal(result.Data, &data); err != nil {
+				t.Fatal(err)
+			}
+			if data.RestartRequired == nil || *data.RestartRequired != tc.wantRestart {
+				t.Fatalf("restart_required: %s", result.Data)
+			}
+			if data.Config.Values["enabled"] != tc.wantEnabled {
+				t.Fatalf("write result: %+v", data.Config)
+			}
+			persisted, err := configuredAdapter(t, dir).Read(context.Background(), "example")
+			if err != nil || persisted.Values["enabled"] != tc.wantEnabled {
+				t.Fatalf("persisted result: %+v %v", persisted, err)
+			}
+		})
+	}
+}

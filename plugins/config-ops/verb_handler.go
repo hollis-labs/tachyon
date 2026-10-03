@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 
 	"github.com/hollis-labs/tachyon/internal/contract"
@@ -49,17 +50,27 @@ func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMe
 			env.Error.Detail, _ = json.Marshal(validation)
 			return env, nil
 		}
+		// Declared settings apply on restart; adding a default-valued override
+		// changes storage but not the desired value that the plugin will receive.
+		before, err := p.adapter.Read(ctx, req.Plugin)
+		if err != nil {
+			return configResult(nil, err)
+		}
 		view, err := p.adapter.Update(ctx, req.Plugin, req.Values)
 		if err != nil {
 			return configResult(nil, err)
 		}
-		return contract.OK(map[string]any{"plugin": req.Plugin, "restart_required": true, "config": view})
+		return contract.OK(map[string]any{"plugin": req.Plugin, "restart_required": !reflect.DeepEqual(before.Values, view.Values), "config": view})
 	case "config_reset":
+		before, err := p.adapter.Read(ctx, req.Plugin)
+		if err != nil {
+			return configResult(nil, err)
+		}
 		view, err := p.adapter.Reset(ctx, req.Plugin)
 		if err != nil {
 			return configResult(nil, err)
 		}
-		return contract.OK(map[string]any{"plugin": req.Plugin, "restart_required": true, "config": view})
+		return contract.OK(map[string]any{"plugin": req.Plugin, "restart_required": !reflect.DeepEqual(before.Values, view.Values), "config": view})
 	}
 	return contract.Err("unknown_verb", "verb is not implemented"), nil
 }
