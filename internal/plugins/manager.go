@@ -350,8 +350,13 @@ func callProcessContextsBudgets(queueCtx, ioCtx context.Context, proc *pluginPro
 	if err := bounded.Err(); err != nil {
 		return nil, err
 	}
+	// Preserve absent lifecycle parameters: explicit JSON null is invalid in protocol 2.
+	var requestParams any
+	if params != nil {
+		requestParams = json.RawMessage(frozen)
+	}
 	// Allocate in actual serial write order: protocol 2 rejects lower/reused IDs.
-	req := subprocess.RPCRequest{JSONRPC: "2.0", ID: subprocess.NumberID(proc.requestID.Add(1)), Method: method, Params: json.RawMessage(frozen)}
+	req := subprocess.RPCRequest{JSONRPC: "2.0", ID: subprocess.NumberID(proc.requestID.Add(1)), Method: method, Params: requestParams}
 	encoded, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal envelope: %w", err)

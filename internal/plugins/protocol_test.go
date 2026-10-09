@@ -78,6 +78,12 @@ func TestProtocol2FreshGenerationAndRepeatedCalls(t *testing.T) {
 		}
 		return init
 	}
+	if _, err := m.CallPlugin(context.Background(), "fixture", "plugin/health", nil); err == nil {
+		t.Fatal("public lifecycle call admitted")
+	}
+	if _, err := callProcess(context.Background(), m.plugins["fixture"], "plugin/health", nil); err != nil {
+		t.Fatalf("empty lifecycle params refused: %v", err)
+	}
 	first := get()
 	second := get()
 	if first.Incarnation != second.Incarnation || first.Incarnation.HostInstance != m.hostInstance || first.Incarnation.OwnerGeneration == 0 || len(first.Grants) != 0 || first.HostServices != nil || first.HooksProfile != nil {
