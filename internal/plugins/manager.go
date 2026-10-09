@@ -18,8 +18,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hollis-labs/plugin-sdk/registry"
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/capability"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/registry"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/observefeed"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
@@ -28,21 +29,25 @@ import (
 // Manager is Tachyon's plugin host. It spawns plugin binaries, manages their
 // lifecycle, and builds the registry response for the browser loader.
 type Manager struct {
-	observe     *observeRecorder
-	lifecycleMu contextMutex // serialize load/restart/shutdown registration changes
-	spawn       func(context.Context, string) (*pluginProcess, error)
-	logger      *slog.Logger
-	mu          sync.RWMutex
-	plugins     map[string]*pluginProcess // keyed by plugin ID
-	retired     map[string]retiredPlugin  // recovery metadata only; never routable
-	modules     map[string]string         // module name -> owning plugin ID
-	loadOrder   []string
-	navGroups   map[string]string // group ID -> first-loaded plugin ID
-	navItems    map[string]string // item ID -> first-loaded plugin ID
+	registryRevision uint64
+	hostInstance     string
+	generation       atomic.Uint64
+	observe          *observeRecorder
+	lifecycleMu      contextMutex // serialize load/restart/shutdown registration changes
+	spawn            func(context.Context, string) (*pluginProcess, error)
+	logger           *slog.Logger
+	mu               sync.RWMutex
+	plugins          map[string]*pluginProcess // keyed by plugin ID
+	retired          map[string]retiredPlugin  // recovery metadata only; never routable
+	modules          map[string]string         // module name -> owning plugin ID
+	loadOrder        []string
+	navGroups        map[string]string // group ID -> first-loaded plugin ID
+	navItems         map[string]string // item ID -> first-loaded plugin ID
 }
 
 // pluginProcess is one spawned plugin subprocess.
 type pluginProcess struct {
+	requestID         atomic.Int64
 	observeGeneration string // opaque per-process identity, never a memory address
 	observeToken      string // immutable private init marker; never published
 	binaryPath        string
@@ -94,16 +99,24 @@ type pluginProcess struct {
 
 // NewManager creates a new plugin manager.
 func NewManager(logger *slog.Logger) *Manager {
-	return &Manager{
-		observe:   newObserveRecorder(),
-		logger:    logger,
-		spawn:     spawnProcess,
-		plugins:   make(map[string]*pluginProcess),
-		retired:   make(map[string]retiredPlugin),
-		modules:   make(map[string]string),
-		navGroups: make(map[string]string),
-		navItems:  make(map[string]string),
+	m := &Manager{
+		hostInstance: opaqueID(),
+		observe:      newObserveRecorder(),
+		logger:       logger,
+		plugins:      make(map[string]*pluginProcess),
+		retired:      make(map[string]retiredPlugin),
+		modules:      make(map[string]string),
+		navGroups:    make(map[string]string),
+		navItems:     make(map[string]string),
 	}
+	m.spawn = func(ctx context.Context, path string) (*pluginProcess, error) {
+		generation := m.generation.Add(1)
+		if generation > capability.MaxSafeInteger {
+			return nil, fmt.Errorf("plugin generation exhausted")
+		}
+		return spawnProcessWithIdentity(ctx, path, capability.RuntimeIdentity{HostInstance: m.hostInstance, OwnerID: filepath.Base(path), OwnerGeneration: generation})
+	}
+	return m
 }
 
 // LoadPlugin spawns a plugin binary and initializes it through the normal
@@ -147,9 +160,35 @@ func (m *Manager) loadPlugin(ctx context.Context, binaryPath, expectedID string)
 }
 
 func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error) {
+	return spawnProcessWithIdentity(ctx, binaryPath, capability.RuntimeIdentity{HostInstance: opaqueID(), OwnerID: filepath.Base(binaryPath), OwnerGeneration: 1})
+}
+
+func spawnProcessWithIdentity(ctx context.Context, binaryPath string, identity capability.RuntimeIdentity) (*pluginProcess, error) {
 	dataDir, config, err := pluginInitSettings(binaryPath)
 	if err != nil {
 		return nil, admissionFailure("settings", "plugin startup settings: %w", err)
+	}
+	pluginDir, err := filepath.Abs(filepath.Dir(binaryPath))
+	if err != nil {
+		return nil, err
+	}
+	cacheDir, err := pluginCacheDir(identity.OwnerID)
+	if err != nil {
+		return nil, err
+	}
+	if err = validateRuntimeRoots(pluginDir, dataDir, cacheDir); err != nil {
+		return nil, admissionFailure("settings", "plugin runtime roots: %w", err)
+	}
+	if identity.OwnerID == "observe-ops" {
+		config[observefeed.TokenConfig] = opaqueID()
+	}
+	params := subprocess.InitParams{PluginDir: pluginDir, DataDir: dataDir, CacheDir: cacheDir, Config: config, LogLevel: "info", HostInfo: subprocess.HostInfo{Version: "0.1.0", Protocol: subprocess.ProtocolVersion}, CapabilityContract: capability.ContractVersion, Incarnation: identity, Grants: capability.GrantSet{}}
+	encoded, err := json.Marshal(params)
+	if err != nil {
+		return nil, admissionFailure("handshake", "invalid init: %w", err)
+	}
+	if err = json.Unmarshal(encoded, &params); err != nil {
+		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, binaryPath)
 
@@ -170,16 +209,9 @@ func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error
 	}
 
 	proc := &pluginProcess{cmd: cmd, stdin: stdin, stdout: stdout, stdoutDec: json.NewDecoder(stdout)}
-	if filepath.Base(binaryPath) == "observe-ops" {
-		proc.observeToken = opaqueID()
-		config[observefeed.TokenConfig] = proc.observeToken
-	}
-	// Init shares the same bounded, serial transport as runtime calls. Keep the
-	// subprocess lifetime on ctx, not on the temporary call deadline.
-	raw, err := callProcess(ctx, proc, "plugin/init", subprocess.InitParams{
-		PluginDir: filepath.Dir(binaryPath), DataDir: dataDir, Config: config, LogLevel: "info",
-		HostInfo: subprocess.HostInfo{Version: "0.1.0", Protocol: subprocess.ProtocolVersion},
-	})
+	proc.observeToken = config[observefeed.TokenConfig]
+	// Init shares the bounded serial transport; the process lifetime stays on ctx.
+	raw, err := callProcess(ctx, proc, "plugin/init", params)
 	if err != nil {
 		stopProcess(proc)
 		return nil, admissionFailure("handshake", "plugin init failed: %w", err)
@@ -188,6 +220,14 @@ func spawnProcess(ctx context.Context, binaryPath string) (*pluginProcess, error
 	if err := json.Unmarshal(raw, &result); err != nil {
 		stopProcess(proc)
 		return nil, admissionFailure("handshake", "failed to unmarshal init result: %w", err)
+	}
+	if err := subprocess.ValidateInitResult(params, result); err != nil {
+		stopProcess(proc)
+		return nil, admissionFailure("handshake", "init agreement: %w", err)
+	}
+	if result.ID != identity.OwnerID {
+		stopProcess(proc)
+		return nil, admissionFailure("handshake", "plugin identity differs from executable")
 	}
 	proc.id, proc.name, proc.version = result.ID, result.Name, result.Version
 
@@ -206,7 +246,7 @@ func (m *Manager) BuildRegistry() RegistryResponse {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	resp := RegistryResponse{Response: registry.NewResponse(), RetiredPlugins: m.retiredTargetsLocked()}
+	resp := RegistryResponse{Response: registry.NewResponse(m.hostInstance, m.registryRevision+1), RetiredPlugins: m.retiredTargetsLocked()}
 
 	// For now, we're just proving the contract works — plugins are registered
 	// but have no browser UI bundles yet. Full implementation would include
@@ -214,9 +254,10 @@ func (m *Manager) BuildRegistry() RegistryResponse {
 	for id, proc := range m.plugins {
 		resp.Plugins[id] = registry.Plugin{
 			// BundleURL would go here when we have UI components
-			BundleURL:     "",
-			StylesheetURL: "",
-			BundleVersion: proc.version,
+			OwnerGeneration: observeGeneration(proc),
+			BundleURL:       "",
+			StylesheetURL:   "",
+			BundleVersion:   "",
 		}
 	}
 
@@ -286,26 +327,11 @@ func callProcessContextsBudgets(queueCtx, ioCtx context.Context, proc *pluginPro
 	if proc.dead.Load() {
 		return nil, fmt.Errorf("plugin %q is unloaded", proc.id)
 	}
-	req := subprocess.RPCRequest{
-		JSONRPC: "2.0",
-		ID:      2, // Serial custom calls share an ID; responses never overlap.
-		Method:  method,
-		Params:  params,
-	}
-
-	switch method {
-	case "plugin/init":
-		req.ID = 1
-	case "plugin/unload":
-		req.ID = 999
-	}
-	// Local serialization cannot damage the wire: reject invalid params before
-	// installing a watchdog or writing anything to a healthy subprocess.
-	encoded, err := json.Marshal(req)
+	// Freeze user values before acquiring the pipe: custom marshalers run once.
+	frozen, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	encoded = append(encoded, '\n')
 
 	// Give wire acquisition its own limit; queue time must not consume the
 	// operation budget (service_health can legitimately need up to 90s).
@@ -324,6 +350,19 @@ func callProcessContextsBudgets(queueCtx, ioCtx context.Context, proc *pluginPro
 	if err := bounded.Err(); err != nil {
 		return nil, err
 	}
+	// Preserve absent lifecycle parameters: explicit JSON null is invalid in protocol 2.
+	var requestParams any
+	if params != nil {
+		requestParams = json.RawMessage(frozen)
+	}
+	// Allocate in actual serial write order: protocol 2 rejects lower/reused IDs.
+	req := subprocess.RPCRequest{JSONRPC: "2.0", ID: subprocess.NumberID(proc.requestID.Add(1)), Method: method, Params: requestParams}
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal envelope: %w", err)
+	}
+	encoded = append(encoded, '\n')
+
 	// Once I/O starts, a host watchdog or lifecycle interruption makes completion
 	// ambiguous. Request disconnects do not reach this context. Close the exact
 	// captured pipes/process; never reuse the stream or retry the operation.
@@ -372,6 +411,10 @@ func callProcessContextsBudgets(queueCtx, ioCtx context.Context, proc *pluginPro
 		return nil, fmt.Errorf("invalid RPC response: %w", err)
 	}
 
+	if resp.JSONRPC != "2.0" || resp.ID != req.ID {
+		interruptCall(proc, bounded, errors.New("response identity mismatch"))
+		return nil, errors.New("response identity mismatch")
+	}
 	if resp.Error != nil {
 		return nil, &rpcResponseError{message: resp.Error.Message}
 	}
@@ -615,6 +658,7 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 			}
 		}
 	}
+	m.registryRevision++
 	m.plugins[proc.id] = proc
 	delete(m.retired, proc.id)
 	m.loadOrder = append(m.loadOrder, proc.id)

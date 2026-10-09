@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/observefeed"
 )
@@ -26,8 +26,9 @@ func feedProcess(t *testing.T, id string, caps contract.PluginCapabilities, comm
 		dec, enc := json.NewDecoder(reader), json.NewEncoder(writer)
 		for {
 			var req struct {
-				Method string          `json:"method"`
-				Params json.RawMessage `json:"params"`
+				ID     subprocess.RPCID `json:"id"`
+				Method string           `json:"method"`
+				Params json.RawMessage  `json:"params"`
 			}
 			if dec.Decode(&req) != nil {
 				return
@@ -45,7 +46,7 @@ func feedProcess(t *testing.T, id string, caps contract.PluginCapabilities, comm
 				}
 			}
 			raw, _ := json.Marshal(result)
-			if enc.Encode(subprocess.RPCResponse{JSONRPC: "2.0", Result: raw, Error: rpcErr}) != nil {
+			if enc.Encode(subprocess.RPCResponse{ID: req.ID, JSONRPC: "2.0", Result: raw, Error: rpcErr}) != nil {
 				return
 			}
 		}

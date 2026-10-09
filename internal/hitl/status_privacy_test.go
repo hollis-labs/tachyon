@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	core "github.com/hollis-labs/go-hitl"
+	core "github.com/hollis-labs/substrate/mesh/hitl"
 )
 
 func TestStatusDoesNotExposeTerminalPrivateData(t *testing.T) {

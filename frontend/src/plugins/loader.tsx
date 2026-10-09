@@ -20,6 +20,8 @@ export function PluginLoader() {
       try {
         // Create the plugin registry
         registry = createPluginRegistry({
+          kinds: {},
+          regions: {},
           onDiagnostic: (event) => {
             console.log("[plugin-registry]", event)
           },
@@ -30,10 +32,11 @@ export function PluginLoader() {
         if (!response.ok) {
           throw new Error(`Failed to fetch registry: ${response.statusText}`)
         }
-        const registryResponse = await response.json()
+        const registryResponse = await response.text()
 
         // Sync the registry with the response
-        await registry.sync(registryResponse)
+        const result = await registry.sync(registryResponse)
+        if (!result.accepted) throw new Error("Plugin registry response refused")
 
         if (!cancelled) {
           setSnapshot(registry.snapshot())
@@ -51,6 +54,7 @@ export function PluginLoader() {
 
     return () => {
       cancelled = true
+      void registry?.clear()
     }
   }, [])
 
@@ -83,7 +87,7 @@ export function PluginLoader() {
     <div className="rounded-lg border border-border bg-surface p-4">
       <h3 className="text-sm font-medium mb-4">Plugins</h3>
       <div className="space-y-2">
-        <p className="text-sm text-subtle">Registry Protocol: {snapshot.protocol}</p>
+        <p className="text-sm text-subtle">Registry Protocol: {snapshot.registryVersion}</p>
         <p className="text-sm text-subtle">Plugins Loaded: {pluginCount}</p>
         <p className="text-sm text-subtle">Contributions: {contributionCount}</p>
         {pluginCount > 0 && (

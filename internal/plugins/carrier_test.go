@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 )
 
@@ -26,13 +26,14 @@ func fakeProcess(t *testing.T, id, mode string, declarations ...contract.PluginC
 		loaded := false
 		for {
 			var req struct {
-				Method string          `json:"method"`
-				Params json.RawMessage `json:"params"`
+				ID     subprocess.RPCID `json:"id"`
+				Method string           `json:"method"`
+				Params json.RawMessage  `json:"params"`
 			}
 			if dec.Decode(&req) != nil {
 				return
 			}
-			resp := subprocess.RPCResponse{JSONRPC: "2.0"}
+			resp := subprocess.RPCResponse{ID: req.ID, JSONRPC: "2.0"}
 			switch req.Method {
 			case "plugin/load":
 				loaded = true

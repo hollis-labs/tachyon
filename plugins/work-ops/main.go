@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
@@ -35,7 +35,7 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 	}
 	p.adapter = NewTorqueAdapter(endpoint)
 	p.defaultProject = params.Config["default_project"]
-	return subprocess.InitResult{ID: "work-ops", Name: "Work Ops", Version: "0.1.0", Description: "Torque-backed work tracking", Protocol: subprocess.ProtocolVersion}, nil
+	return subprocess.InitResult{ID: "work-ops", Name: "Work Ops", Version: "0.1.0", Description: "Torque-backed work tracking", CapabilityContract: 1, Protocol: subprocess.ProtocolVersion}, nil
 }
 func (*plugin) Load(context.Context) (subprocess.LoadResult, error) {
 	return subprocess.LoadResult{}, nil

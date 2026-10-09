@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/plugins"
 )
 
@@ -43,10 +43,10 @@ func fakeAdmissionPlugin(dir string) {
 		if dec.Decode(&req) != nil {
 			return
 		}
-		resp := subprocess.RPCResponse{JSONRPC: "2.0", Result: json.RawMessage(`{}`)}
+		resp := subprocess.RPCResponse{ID: req.ID, JSONRPC: "2.0", Result: json.RawMessage(`{}`)}
 		switch req.Method {
 		case "plugin/init":
-			resp.Result, _ = json.Marshal(subprocess.InitResult{ID: filepath.Base(dir), Name: filepath.Base(dir), Version: "test"})
+			resp.Result, _ = json.Marshal(subprocess.InitResult{ID: filepath.Base(dir), Name: filepath.Base(dir), Version: "test", Protocol: subprocess.ProtocolVersion, CapabilityContract: 1})
 		case "plugin/load":
 			if _, err := os.Stat(filepath.Join(dir, "hang")); err == nil {
 				for {

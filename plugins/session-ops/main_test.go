@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	tether "github.com/hollis-labs/go-tether-client"
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 )
 
 // Verify Init's config/environment precedence through observable daemon reads,

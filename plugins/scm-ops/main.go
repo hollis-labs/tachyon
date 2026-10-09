@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
@@ -46,7 +46,7 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 		return subprocess.InitResult{}, err
 	}
 	p.adapter = adapter
-	return subprocess.InitResult{ID: "scm-ops", Name: "Source Control", Version: "0.1.0", Description: "Read-only local Git repository activity and status", Protocol: subprocess.ProtocolVersion}, nil
+	return subprocess.InitResult{ID: "scm-ops", Name: "Source Control", Version: "0.1.0", Description: "Read-only local Git repository activity and status", CapabilityContract: 1, Protocol: subprocess.ProtocolVersion}, nil
 }
 
 func (p *plugin) Load(context.Context) (subprocess.LoadResult, error) {

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	core "github.com/hollis-labs/go-hitl"
+	core "github.com/hollis-labs/substrate/mesh/hitl"
 	"github.com/hollis-labs/tachyon/internal/contract"
 )
 

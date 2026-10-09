@@ -99,6 +99,7 @@ func (m *Manager) detachProcess(proc *pluginProcess) {
 		return
 	}
 	delete(m.plugins, id)
+	m.registryRevision++
 	for module, owner := range m.modules {
 		if owner == id {
 			delete(m.modules, module)

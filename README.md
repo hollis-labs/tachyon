@@ -113,3 +113,24 @@ Update package.json and its lockfile together; use released packages rather than
 git branches. See [CONTRIBUTING.md](CONTRIBUTING.md) for checks and review.
 
 MIT — see [LICENSE](LICENSE).
+
+### Published monorepo dependencies
+
+Tachyon consumes `github.com/hollis-labs/substrate/mesh v0.1.0`,
+`github.com/hollis-labs/libs/ui-go v0.1.0`, and
+`github.com/hollis-labs/libs/plugin-mcp v0.1.1` with Go 1.26.8 or newer.
+The bundled plugins and host now use protocol 2; rebuild the plugin executables
+with the host. Protocol-1 executables refuse admission rather than falling back.
+
+The manager issues a fresh generation for each spawn, validates Init before
+starting the child, checks plugin identity and contract acknowledgement before
+Load, and uses unique numeric IDs on its serial wire. It offers no reverse
+services or hooks and sends an explicit empty reverse-grant set. Provider
+endpoints and their existing application policy remain separate.
+
+Persistent state keeps the existing `TACHYON_DATA_DIR`/XDG data layout.
+Cache uses `TACHYON_CACHE_DIR` or the XDG cache layout; an explicit cache override
+must be absolute. Writable roots must remain outside the plugin bundle, including
+through symlinks. The browser consumes published registry v0.2.0 and the host
+emits registry-v2 identities and revisions. No browser bundle is advertised for
+plugins without a built bundle and integrity digest.

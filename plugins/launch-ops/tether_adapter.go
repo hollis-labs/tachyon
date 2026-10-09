@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	tether "github.com/hollis-labs/go-tether-client"
+	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
 )
 
 // TetherLaunchAdapter binds durable intents to catalog launches in Tether.

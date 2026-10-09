@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 )
 
@@ -100,6 +100,7 @@ func TestConfigInvocationSyncsEveryLoadedSchema(t *testing.T) {
 		var calls []string
 		for i := 0; i < 2; i++ {
 			var req struct {
+				ID     subprocess.RPCID             `json:"id"`
 				Method string                       `json:"method"`
 				Params subprocess.CommandExecParams `json:"params"`
 			}
@@ -129,7 +130,7 @@ func TestConfigInvocationSyncsEveryLoadedSchema(t *testing.T) {
 			}
 			content, _ := json.Marshal(contract.ResultEnvelope{Status: contract.StatusOK})
 			result, _ := json.Marshal(subprocess.CommandExecResult{Action: "message", Content: string(content)})
-			if err := enc.Encode(subprocess.RPCResponse{JSONRPC: "2.0", Result: result}); err != nil {
+			if err := enc.Encode(subprocess.RPCResponse{ID: req.ID, JSONRPC: "2.0", Result: result}); err != nil {
 				done <- append(calls, "encode failed")
 				return
 			}

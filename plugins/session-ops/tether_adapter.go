@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	tether "github.com/hollis-labs/go-tether-client"
+	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
 )
 
 // Turns can outlast ordinary reads, but must release the serial plugin pipe.

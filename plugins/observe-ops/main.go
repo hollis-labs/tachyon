@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/observefeed"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
@@ -80,11 +80,12 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 	})
 
 	return subprocess.InitResult{
-		ID:          "observe-ops",
-		Name:        "Observe Ops",
-		Version:     "0.1.0",
-		Description: "Read-only observability for Tachyon — activity feeds, logs, metrics, events, status",
-		Protocol:    subprocess.ProtocolVersion,
+		ID:                 "observe-ops",
+		Name:               "Observe Ops",
+		Version:            "0.1.0",
+		Description:        "Read-only observability for Tachyon — activity feeds, logs, metrics, events, status",
+		CapabilityContract: 1,
+		Protocol:           subprocess.ProtocolVersion,
 	}, nil
 }
 

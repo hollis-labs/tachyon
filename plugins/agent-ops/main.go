@@ -44,7 +44,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
@@ -98,11 +98,12 @@ func (p *plugin) Init(ctx context.Context, params subprocess.InitParams) (subpro
 	p.adapter = NewNaniteAdapter(naniteURL)
 
 	return subprocess.InitResult{
-		ID:          "agent-ops",
-		Name:        "Agent Ops",
-		Version:     "0.1.0",
-		Description: "Agent operational capabilities for Tachyon (adapter-based, Nanite HTTP API)",
-		Protocol:    subprocess.ProtocolVersion,
+		ID:                 "agent-ops",
+		Name:               "Agent Ops",
+		Version:            "0.1.0",
+		Description:        "Agent operational capabilities for Tachyon (adapter-based, Nanite HTTP API)",
+		CapabilityContract: 1,
+		Protocol:           subprocess.ProtocolVersion,
 	}, nil
 }
 

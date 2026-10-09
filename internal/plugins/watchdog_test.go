@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 )
 
 func watchdogManager() *Manager { return NewManager(slog.New(slog.NewTextHandler(io.Discard, nil))) }
@@ -259,12 +259,12 @@ func TestWatchdogFakeSubprocess(t *testing.T) {
 		var result any = map[string]any{}
 		switch req.Method {
 		case "plugin/init":
-			result = subprocess.InitResult{ID: "helper", Name: "Fake helper"}
+			result = subprocess.InitResult{ID: "helper", Name: "Fake helper", Version: "test", Protocol: subprocess.ProtocolVersion, CapabilityContract: 1}
 		case "command/execute":
 			result = subprocess.CommandExecResult{Action: "error", Content: "legacy"}
 		}
 		raw, _ := json.Marshal(result)
-		if enc.Encode(subprocess.RPCResponse{JSONRPC: "2.0", Result: raw}) != nil {
+		if enc.Encode(subprocess.RPCResponse{ID: req.ID, JSONRPC: "2.0", Result: raw}) != nil {
 			os.Exit(0)
 		}
 	}
@@ -294,6 +294,8 @@ func TestLifecycleHungSubprocessesAreReaped(t *testing.T) {
 	for _, stage := range []string{"plugin/init", "plugin/load", "discovery", "plugin/unload"} {
 		t.Run(stage, func(t *testing.T) {
 			path, pidPath := helperBinary(t, stage)
+			t.Setenv("TACHYON_DATA_DIR", t.TempDir())
+			t.Setenv("TACHYON_CACHE_DIR", t.TempDir())
 			m := watchdogManager()
 			if stage == "plugin/unload" {
 				if err := m.LoadPlugin(context.Background(), path); err != nil {
@@ -441,7 +443,7 @@ func TestRequestCancellationDuringActiveIOPreservesPlugin(t *testing.T) {
 						close(entered)
 						<-release
 					}
-					if encoder.Encode(subprocess.RPCResponse{JSONRPC: "2.0", Result: json.RawMessage(`{"completed":true}`)}) != nil {
+					if encoder.Encode(subprocess.RPCResponse{ID: req.ID, JSONRPC: "2.0", Result: json.RawMessage(`{"completed":true}`)}) != nil {
 						return
 					}
 				}
@@ -616,6 +618,10 @@ func TestConsumedWrongResponseShapeKeepsSerialStreamUsable(t *testing.T) {
 			var req subprocess.RPCRequest
 			if decoder.Decode(&req) != nil {
 				return
+			}
+			if strings.Contains(response, `"jsonrpc"`) {
+				id, _ := json.Marshal(req.ID)
+				response = strings.Replace(response, `"jsonrpc":"2.0"`, `"jsonrpc":"2.0","id":`+string(id), 1)
 			}
 			if _, err := io.WriteString(responses, response+"\n"); err != nil {
 				return
