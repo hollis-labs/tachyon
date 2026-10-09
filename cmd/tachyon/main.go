@@ -14,7 +14,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/hitl"
 	"github.com/hollis-labs/tachyon/internal/plugins"
 	"github.com/hollis-labs/tachyon/internal/webui"

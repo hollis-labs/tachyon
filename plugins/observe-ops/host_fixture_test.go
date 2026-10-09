@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 )
 
@@ -14,7 +14,7 @@ import (
 type hostFeedFixture struct{}
 
 func (*hostFeedFixture) Init(context.Context, subprocess.InitParams) (subprocess.InitResult, error) {
-	return subprocess.InitResult{ID: "fixture-work", Name: "Fake Work", Version: "test"}, nil
+	return subprocess.InitResult{ID: "fixture-work", Name: "Fake Work", Version: "test", Protocol: subprocess.ProtocolVersion, CapabilityContract: 1}, nil
 }
 func (*hostFeedFixture) Load(context.Context) (subprocess.LoadResult, error) {
 	return subprocess.LoadResult{}, nil

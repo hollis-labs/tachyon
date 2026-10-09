@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	tether "github.com/hollis-labs/go-tether-client"
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 )
 
 func reopenStore(t *testing.T, path string) *LaunchStore {

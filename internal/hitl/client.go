@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	core "github.com/hollis-labs/go-hitl"
+	core "github.com/hollis-labs/substrate/mesh/hitl"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

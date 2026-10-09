@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
@@ -35,7 +35,7 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 		return subprocess.InitResult{}, err
 	}
 	p.adapter = adapter
-	return subprocess.InitResult{ID: "config-ops", Name: "Config Ops", Version: "0.1.0", Description: "Schema-backed plugin settings", Protocol: subprocess.ProtocolVersion}, nil
+	return subprocess.InitResult{ID: "config-ops", Name: "Config Ops", Version: "0.1.0", Description: "Schema-backed plugin settings", CapabilityContract: 1, Protocol: subprocess.ProtocolVersion}, nil
 }
 func (*plugin) Load(context.Context) (subprocess.LoadResult, error) {
 	return subprocess.LoadResult{}, nil

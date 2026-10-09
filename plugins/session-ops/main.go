@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
@@ -37,7 +37,7 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 		return subprocess.InitResult{}, fmt.Errorf("configure Tether: %w", err)
 	}
 	p.adapter = adapter
-	return subprocess.InitResult{ID: "session-ops", Name: "Session Ops", Version: "0.1.0", Description: "Tether-backed session lifecycle", Protocol: subprocess.ProtocolVersion}, nil
+	return subprocess.InitResult{ID: "session-ops", Name: "Session Ops", Version: "0.1.0", Description: "Tether-backed session lifecycle", CapabilityContract: 1, Protocol: subprocess.ProtocolVersion}, nil
 }
 func (*plugin) Load(context.Context) (subprocess.LoadResult, error) {
 	return subprocess.LoadResult{}, nil

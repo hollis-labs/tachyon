@@ -8,18 +8,19 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 )
 
 type hello struct{}
 
 func (hello) Init(ctx context.Context, params subprocess.InitParams) (subprocess.InitResult, error) {
 	return subprocess.InitResult{
-		ID:          "hello",
-		Name:        "Hello",
-		Version:     "0.1.0",
-		Description: "Minimum-viable plugin-sdk example",
-		Protocol:    subprocess.ProtocolVersion,
+		ID:                 "hello",
+		Name:               "Hello",
+		Version:            "0.1.0",
+		Description:        "Minimum-viable plugin-sdk example",
+		CapabilityContract: 1,
+		Protocol:           subprocess.ProtocolVersion,
 	}, nil
 }
 

@@ -17,6 +17,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Adopted published mesh, ui-go and plugin-mcp modules; migrated the host and bundled plugins to protocol 2 and the browser to registry v0.2.0. Rebuild bundled executables; old protocol-1 children refuse admission.
+
 - Adopted design-components AppShell and the published design-kit packages in place of the sysop-ui git dependency, preserving registry navigation and the pre-paint theme bootstrap.
 - Scaffolded from Folio's `sysop-ui` preset: a Go server embedding a Vite + React Sysop UI served under `/sysop/`.
 

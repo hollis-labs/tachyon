@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	tether "github.com/hollis-labs/go-tether-client"
+	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
 )
 
 const maxProviderResponse = 4 << 20

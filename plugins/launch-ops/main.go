@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hollis-labs/plugin-sdk/subprocess"
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
 )
@@ -88,11 +88,12 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 	p.adapter = &launchRouter{store: store, defaultProvider: defaultProvider, adapters: map[string]LaunchAdapter{"nanite": NewNaniteLaunchAdapter(naniteURL, store), "tether": tetherAdapter}}
 
 	return subprocess.InitResult{
-		ID:          "launch-ops",
-		Name:        "Launch Ops",
-		Version:     "0.1.0",
-		Description: "Two-phase agent execution orchestration for Tachyon",
-		Protocol:    subprocess.ProtocolVersion,
+		ID:                 "launch-ops",
+		Name:               "Launch Ops",
+		Version:            "0.1.0",
+		Description:        "Two-phase agent execution orchestration for Tachyon",
+		CapabilityContract: 1,
+		Protocol:           subprocess.ProtocolVersion,
 	}, nil
 }
 
