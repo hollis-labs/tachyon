@@ -467,3 +467,62 @@ R3 remains the contract until an actual disposition supersedes it.
 This PR records decisions and provenance. It does not implement the projector,
 frontend adoption, routing, menus, or deployment. Independent manager source
 and receipt review is separate from the implementation author's test execution.
+
+
+---
+
+## R3 and verification-stage amendment (2026-10-10)
+
+This appendix supersedes the static-only R3 identity grammar and the pending
+allocation/CodeQL dispositions above. It preserves the full canonical body and
+previous allocation appendix as historical evidence.
+
+Authority: PM receipt `01a12471-1396-71db-b2a2-eac3de6b03eb`, authored by
+`msg://agent/agent-mux/agt_454f2timi7` at `2026-10-10T06:12:32Z`, directly read
+and relayed by launch-worker-1 in receipt
+`01a12476-37c4-7813-8acf-e1ea7bd100de`. This records an approved disposition;
+architect review of this exact amendment and manager review remain required.
+
+### Route identity and matching
+
+A route identity starts with `/`, contains at most 128 ASCII bytes, and has
+nonempty slash-separated segments. A static first segment matches
+`[a-z0-9][a-z0-9_-]*`; subsequent static segments match `[a-z0-9_-]+`, preserving
+R3's existing static literals such as `/work/_internal`. Any whole segment may
+instead be a named parameter matching `:[a-z][a-z0-9_]*`. Parameter names must
+be unique within an identity. `/work/:id` and `/:owner/work/:work_id` are valid.
+Empty segments, including `/a//b`, are refused. The root `/`, trailing slashes,
+wildcards, optional segments, query strings and fragments are not route
+identities. Mixed literal/parameter segments are refused. Existing reserved
+route ownership rules continue to apply.
+
+The router splits the incoming pathname into segments before decoding each
+segment exactly once. An encoded slash remains parameter ID data rather than
+creating another segment. Static routes outrank parameter routes. Query state
+belongs to the page. This amendment specifies matching behavior; 0115 performs
+declaration admission, while 0116 implements the router and host-compiled page
+journeys. It does not adopt plugin-delivered components or registry transport.
+
+### Allocated checks and merge conditions
+
+The PM's complete check allocation is: include only source-only neutral
+descriptor definitions and Go declaration roundtrip scaffolding in 0115 now.
+The real schema-1 golden comparing old merged navigation with the new projector
+gates 0117. Actual Go/TS descriptor parity gates 0117/0118. Neither real check
+is complete in 0115; the local declaration fixture and normalization controls
+are scaffolding. DEC085 approves those future checks and continues to decline
+the manifest/icon/page-registry agreement check. Runtime projection remains
+0117; catalog adoption remains 0118 under its published-package prerequisites.
+
+Tachyon has no CodeQL workflow. The PM replaces the earlier allocation's
+CodeQL condition with all existing configured checks green on the exact head,
+plus independent manager source review. No CodeQL-green result is claimed.
+The PM is filing a source-only CodeQL follow-up held for Chrispian's approval;
+this amendment makes no CI posture change.
+
+This existing docs-only PR must land after architect review of the amendment,
+manager review and current green checks. Only then may 0115/0116 source be
+admitted, with exact-head existing checks green and manager source review.
+Source preparation and focused testing may proceed concurrently in each
+owned tree. Author test execution and independent source/receipt review must
+remain separately attributed; landings are reported to the manager.
