@@ -10,6 +10,7 @@ import { ACTIVE_STATUSES, CLOSED_STATUSES, workPageInfo } from "../api/work"
 import { PendingApproval } from "../components/pending-approval"
 import { workSearchNotice } from "../components/work/search-notice"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
+import { useRouteSelection } from "../routing/hash-route"
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
 interface ColumnState {
@@ -301,7 +302,7 @@ export function WorkBoardPage() {
   const [search, setSearch] = useState("")
   const [closed, setClosed] = useState(false)
   const [revision, setRevision] = useState(0)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useRouteSelection("task")
   const canList = verbs.has("work_list"),
     canRead = verbs.has("work_read"),
     canAgents = verbs.has("agent_list")
