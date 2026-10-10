@@ -48,7 +48,7 @@ export function WorkPage() {
   const listTags = searching ? "" : scope.tags
 
   // The refresh counter deliberately restarts this effect after mutations.
-  // revision triggers a new read after explicit refresh or mutation.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision triggers a new read after explicit refresh or mutation.
   useEffect(() => {
     if (!canList) {
       setLoading(false)

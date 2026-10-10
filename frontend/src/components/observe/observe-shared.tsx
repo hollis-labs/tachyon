@@ -98,7 +98,7 @@ export function useObserveRead<T>(
     },
     [queueKey],
   )
-  // revision deliberately triggers an explicit manual read.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision deliberately triggers an explicit manual read.
   useEffect(() => {
     let active = true
     if (!enabled) {

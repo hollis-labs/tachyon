@@ -50,7 +50,7 @@ export function SettingsPage() {
   const [refresh, setRefresh] = useState(0)
   const [restartNeeded, setRestartNeeded] = useState<Record<string, boolean>>({})
 
-  // refresh explicitly reloads the server snapshot.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh explicitly reloads the server snapshot.
   useEffect(() => {
     if (verbs.loading) return
     let active = true
@@ -286,7 +286,7 @@ function SettingsEditor({
     setFieldErrors(value.validation.errors ?? {})
   }, [])
 
-  // reload retries a failed read; refresh reloads the host snapshot.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reload retries a failed read; refresh reloads the host snapshot.
   useEffect(() => {
     if (!canRead) {
       setLoading(false)
