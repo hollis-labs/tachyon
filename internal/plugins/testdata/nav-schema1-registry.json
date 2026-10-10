@@ -1,0 +1,1090 @@
+{
+  "registry_version": 2,
+  "host_instance": "projection-fixture",
+  "revision": 1,
+  "plugins": {
+    "agent-ops": {
+      "owner_generation": "generation-agent-ops"
+    },
+    "config-ops": {
+      "owner_generation": "generation-config-ops"
+    },
+    "launch-ops": {
+      "owner_generation": "generation-launch-ops"
+    },
+    "observe-ops": {
+      "owner_generation": "generation-observe-ops"
+    },
+    "scm-ops": {
+      "owner_generation": "generation-scm-ops"
+    },
+    "service-ops": {
+      "owner_generation": "generation-service-ops"
+    },
+    "session-ops": {
+      "owner_generation": "generation-session-ops"
+    },
+    "work-ops": {
+      "owner_generation": "generation-work-ops"
+    }
+  },
+  "kinds": {
+    "menu.item": {
+      "schema_version": 1,
+      "metadata_schema": {},
+      "representations": [
+        "declarative"
+      ],
+      "regions": [
+        "menu.header",
+        "menu.page",
+        "menu.row",
+        "menu.hamburger"
+      ],
+      "required_capabilities": []
+    },
+    "nav.group": {
+      "schema_version": 1,
+      "metadata_schema": {},
+      "representations": [
+        "declarative"
+      ],
+      "regions": [
+        "nav.rail"
+      ],
+      "required_capabilities": []
+    },
+    "nav.item": {
+      "schema_version": 1,
+      "metadata_schema": {},
+      "representations": [
+        "declarative"
+      ],
+      "regions": [
+        "nav.rail"
+      ],
+      "required_capabilities": []
+    },
+    "page": {
+      "schema_version": 1,
+      "metadata_schema": {},
+      "representations": [
+        "declarative"
+      ],
+      "regions": [
+        "page.routes"
+      ],
+      "required_capabilities": []
+    },
+    "subnav.item": {
+      "schema_version": 1,
+      "metadata_schema": {},
+      "representations": [
+        "declarative"
+      ],
+      "regions": [
+        "nav.subnav.left",
+        "nav.subnav.top"
+      ],
+      "required_capabilities": []
+    }
+  },
+  "regions": {
+    "menu.hamburger": {
+      "kinds": [
+        "menu.item"
+      ],
+      "representations": [
+        "declarative"
+      ],
+      "context_schema": {},
+      "ordering": "priority-ascending"
+    },
+    "menu.header": {
+      "kinds": [
+        "menu.item"
+      ],
+      "representations": [
+        "declarative"
+      ],
+      "context_schema": {},
+      "ordering": "priority-ascending"
+    },
+    "menu.page": {
+      "kinds": [
+        "menu.item"
+      ],
+      "representations": [
+        "declarative"
+      ],
+      "context_schema": {},
+      "ordering": "priority-ascending"
+    },
+    "menu.row": {
+      "kinds": [
+        "menu.item"
+      ],
+      "representations": [
+        "declarative"
+      ],
+      "context_schema": {},
+      "ordering": "priority-ascending"
+    },
+    "nav.rail": {
+      "kinds": [
+        "nav.group",
+        "nav.item"
+      ],
+      "representations": [
+        "declarative"
+      ],
+      "context_schema": {},
+      "ordering": "priority-ascending"
+    },
+    "nav.subnav.left": {
+      "kinds": [
+        "subnav.item"
+      ],
+      "representations": [
+        "declarative"
+      ],
+      "context_schema": {},
+      "ordering": "priority-ascending"
+    },
+    "nav.subnav.top": {
+      "kinds": [
+        "subnav.item"
+      ],
+      "representations": [
+        "declarative"
+      ],
+      "context_schema": {},
+      "ordering": "priority-ascending"
+    },
+    "page.routes": {
+      "kinds": [
+        "page"
+      ],
+      "representations": [
+        "declarative"
+      ],
+      "context_schema": {},
+      "ordering": "manifest"
+    }
+  },
+  "contributions": {
+    "nav.group": {
+      "agent-ops/agents": {
+        "status": "accepted",
+        "owner_id": "agent-ops",
+        "owner_generation": "generation-agent-ops",
+        "local_key": "agents",
+        "kind": "nav.group",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "icon": "users",
+          "id": "agents",
+          "label": "Agents",
+          "manifest_order": 0,
+          "priority": 100
+        },
+        "declarative": {},
+        "public_binding": "agents"
+      },
+      "config-ops/settings": {
+        "status": "accepted",
+        "owner_id": "config-ops",
+        "owner_generation": "generation-config-ops",
+        "local_key": "settings",
+        "kind": "nav.group",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "icon": "settings",
+          "id": "settings",
+          "label": "Settings",
+          "manifest_order": 0,
+          "priority": 900
+        },
+        "declarative": {},
+        "public_binding": "settings"
+      },
+      "launch-ops/execution": {
+        "status": "accepted",
+        "owner_id": "launch-ops",
+        "owner_generation": "generation-launch-ops",
+        "local_key": "execution",
+        "kind": "nav.group",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "icon": "play",
+          "id": "execution",
+          "label": "Execution",
+          "manifest_order": 0,
+          "priority": 200
+        },
+        "declarative": {},
+        "public_binding": "execution"
+      },
+      "observe-ops/observability": {
+        "status": "accepted",
+        "owner_id": "observe-ops",
+        "owner_generation": "generation-observe-ops",
+        "local_key": "observability",
+        "kind": "nav.group",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "icon": "activity",
+          "id": "observability",
+          "label": "Observability",
+          "manifest_order": 0,
+          "priority": 400
+        },
+        "declarative": {},
+        "public_binding": "observability"
+      },
+      "scm-ops/source": {
+        "status": "accepted",
+        "owner_id": "scm-ops",
+        "owner_generation": "generation-scm-ops",
+        "local_key": "source",
+        "kind": "nav.group",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "icon": "git-branch",
+          "id": "source",
+          "label": "Source Control",
+          "manifest_order": 0,
+          "priority": 700
+        },
+        "declarative": {},
+        "public_binding": "source"
+      },
+      "service-ops/services": {
+        "status": "accepted",
+        "owner_id": "service-ops",
+        "owner_generation": "generation-service-ops",
+        "local_key": "services",
+        "kind": "nav.group",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "icon": "server",
+          "id": "services",
+          "label": "Services",
+          "manifest_order": 0,
+          "priority": 600
+        },
+        "declarative": {},
+        "public_binding": "services"
+      },
+      "session-ops/sessions": {
+        "status": "accepted",
+        "owner_id": "session-ops",
+        "owner_generation": "generation-session-ops",
+        "local_key": "sessions",
+        "kind": "nav.group",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "icon": "terminal",
+          "id": "sessions",
+          "label": "Sessions",
+          "manifest_order": 0,
+          "priority": 300
+        },
+        "declarative": {},
+        "public_binding": "sessions"
+      },
+      "work-ops/work": {
+        "status": "accepted",
+        "owner_id": "work-ops",
+        "owner_generation": "generation-work-ops",
+        "local_key": "work",
+        "kind": "nav.group",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "icon": "clipboard-list",
+          "id": "work",
+          "label": "Work",
+          "manifest_order": 0,
+          "priority": 500
+        },
+        "declarative": {},
+        "public_binding": "work"
+      }
+    },
+    "nav.item": {
+      "agent-ops/agent_durable_sessions": {
+        "status": "accepted",
+        "owner_id": "agent-ops",
+        "owner_generation": "generation-agent-ops",
+        "local_key": "agent_durable_sessions",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "agents",
+          "group": "agents",
+          "id": "agent_durable_sessions",
+          "label": "Durable Sessions",
+          "manifest_order": 1,
+          "page": "agent_durable_sessions",
+          "placement": "declared",
+          "priority": 200,
+          "requires_verbs": [
+            "agent_list"
+          ],
+          "route": "/agents/durable"
+        },
+        "declarative": {},
+        "public_binding": "agent_durable_sessions"
+      },
+      "agent-ops/agent_list": {
+        "status": "accepted",
+        "owner_id": "agent-ops",
+        "owner_generation": "generation-agent-ops",
+        "local_key": "agent_list",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "agents",
+          "group": "agents",
+          "id": "agent_list",
+          "label": "Agent Ops",
+          "manifest_order": 0,
+          "page": "agent_list",
+          "placement": "declared",
+          "priority": 100,
+          "requires_verbs": [
+            "agent_list"
+          ],
+          "route": "/agents"
+        },
+        "declarative": {},
+        "public_binding": "agent_list"
+      },
+      "config-ops/config_list": {
+        "status": "accepted",
+        "owner_id": "config-ops",
+        "owner_generation": "generation-config-ops",
+        "local_key": "config_list",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "settings",
+          "group": "settings",
+          "id": "config_list",
+          "label": "Configuration",
+          "manifest_order": 0,
+          "page": "config_list",
+          "placement": "declared",
+          "priority": 100,
+          "requires_verbs": [
+            "config_list"
+          ],
+          "route": "/settings"
+        },
+        "declarative": {},
+        "public_binding": "config_list"
+      },
+      "launch-ops/launch_list": {
+        "status": "accepted",
+        "owner_id": "launch-ops",
+        "owner_generation": "generation-launch-ops",
+        "local_key": "launch_list",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "execution",
+          "group": "execution",
+          "id": "launch_list",
+          "label": "Launches",
+          "manifest_order": 0,
+          "page": "launch_list",
+          "placement": "declared",
+          "priority": 100,
+          "requires_verbs": [
+            "launch_list"
+          ],
+          "route": "/launches"
+        },
+        "declarative": {},
+        "public_binding": "launch_list"
+      },
+      "observe-ops/observe_activity": {
+        "status": "accepted",
+        "owner_id": "observe-ops",
+        "owner_generation": "generation-observe-ops",
+        "local_key": "observe_activity",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "observability",
+          "group": "observability",
+          "id": "observe_activity",
+          "label": "Activity",
+          "manifest_order": 0,
+          "page": "observe_activity",
+          "placement": "declared",
+          "priority": 100,
+          "requires_verbs": [
+            "observe_activity"
+          ],
+          "route": "/observe"
+        },
+        "declarative": {},
+        "public_binding": "observe_activity"
+      },
+      "observe-ops/observe_logs": {
+        "status": "accepted",
+        "owner_id": "observe-ops",
+        "owner_generation": "generation-observe-ops",
+        "local_key": "observe_logs",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "observability",
+          "group": "observability",
+          "id": "observe_logs",
+          "label": "Logs",
+          "manifest_order": 1,
+          "page": "observe_logs",
+          "placement": "declared",
+          "priority": 200,
+          "requires_verbs": [
+            "observe_logs"
+          ],
+          "route": "/observe/logs"
+        },
+        "declarative": {},
+        "public_binding": "observe_logs"
+      },
+      "observe-ops/observe_metrics": {
+        "status": "accepted",
+        "owner_id": "observe-ops",
+        "owner_generation": "generation-observe-ops",
+        "local_key": "observe_metrics",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "observability",
+          "group": "observability",
+          "id": "observe_metrics",
+          "label": "Metrics",
+          "manifest_order": 2,
+          "page": "observe_metrics",
+          "placement": "declared",
+          "priority": 300,
+          "requires_verbs": [
+            "observe_metrics"
+          ],
+          "route": "/observe/metrics"
+        },
+        "declarative": {},
+        "public_binding": "observe_metrics"
+      },
+      "scm-ops/scm_activity": {
+        "status": "accepted",
+        "owner_id": "scm-ops",
+        "owner_generation": "generation-scm-ops",
+        "local_key": "scm_activity",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "source",
+          "group": "source",
+          "id": "scm_activity",
+          "label": "Activity",
+          "manifest_order": 1,
+          "page": "scm_activity",
+          "placement": "declared",
+          "priority": 200,
+          "requires_verbs": [
+            "scm_activity"
+          ],
+          "route": "/scm/activity"
+        },
+        "declarative": {},
+        "public_binding": "scm_activity"
+      },
+      "scm-ops/scm_repos": {
+        "status": "accepted",
+        "owner_id": "scm-ops",
+        "owner_generation": "generation-scm-ops",
+        "local_key": "scm_repos",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "source",
+          "group": "source",
+          "id": "scm_repos",
+          "label": "Repositories",
+          "manifest_order": 0,
+          "page": "scm_repos",
+          "placement": "declared",
+          "priority": 100,
+          "requires_verbs": [
+            "scm_list"
+          ],
+          "route": "/scm"
+        },
+        "declarative": {},
+        "public_binding": "scm_repos"
+      },
+      "service-ops/service_health": {
+        "status": "accepted",
+        "owner_id": "service-ops",
+        "owner_generation": "generation-service-ops",
+        "local_key": "service_health",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "services",
+          "group": "services",
+          "id": "service_health",
+          "label": "Health",
+          "manifest_order": 1,
+          "page": "service_health",
+          "placement": "declared",
+          "priority": 200,
+          "requires_verbs": [
+            "service_health"
+          ],
+          "route": "/services/health"
+        },
+        "declarative": {},
+        "public_binding": "service_health"
+      },
+      "service-ops/service_list": {
+        "status": "accepted",
+        "owner_id": "service-ops",
+        "owner_generation": "generation-service-ops",
+        "local_key": "service_list",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "services",
+          "group": "services",
+          "id": "service_list",
+          "label": "All Services",
+          "manifest_order": 0,
+          "page": "service_list",
+          "placement": "declared",
+          "priority": 100,
+          "requires_verbs": [
+            "service_list"
+          ],
+          "route": "/services"
+        },
+        "declarative": {},
+        "public_binding": "service_list"
+      },
+      "session-ops/session_history": {
+        "status": "accepted",
+        "owner_id": "session-ops",
+        "owner_generation": "generation-session-ops",
+        "local_key": "session_history",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "sessions",
+          "group": "sessions",
+          "id": "session_history",
+          "label": "Session History",
+          "manifest_order": 1,
+          "page": "session_history",
+          "placement": "declared",
+          "priority": 200,
+          "requires_verbs": [
+            "session_history"
+          ],
+          "route": "/sessions/history"
+        },
+        "declarative": {},
+        "public_binding": "session_history"
+      },
+      "session-ops/session_list": {
+        "status": "accepted",
+        "owner_id": "session-ops",
+        "owner_generation": "generation-session-ops",
+        "local_key": "session_list",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "sessions",
+          "group": "sessions",
+          "id": "session_list",
+          "label": "Active Sessions",
+          "manifest_order": 0,
+          "page": "session_list",
+          "placement": "declared",
+          "priority": 100,
+          "requires_verbs": [
+            "session_list"
+          ],
+          "route": "/sessions"
+        },
+        "declarative": {},
+        "public_binding": "session_list"
+      },
+      "work-ops/work_board": {
+        "status": "accepted",
+        "owner_id": "work-ops",
+        "owner_generation": "generation-work-ops",
+        "local_key": "work_board",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "work",
+          "group": "work",
+          "id": "work_board",
+          "label": "Board",
+          "manifest_order": 1,
+          "page": "work_board",
+          "placement": "declared",
+          "priority": 200,
+          "requires_verbs": [
+            "work_list"
+          ],
+          "route": "/work/board"
+        },
+        "declarative": {},
+        "public_binding": "work_board"
+      },
+      "work-ops/work_list": {
+        "status": "accepted",
+        "owner_id": "work-ops",
+        "owner_generation": "generation-work-ops",
+        "local_key": "work_list",
+        "kind": "nav.item",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "declared_group": "work",
+          "group": "work",
+          "id": "work_list",
+          "label": "Tasks",
+          "manifest_order": 0,
+          "page": "work_list",
+          "placement": "declared",
+          "priority": 100,
+          "requires_verbs": [
+            "work_list"
+          ],
+          "route": "/work"
+        },
+        "declarative": {},
+        "public_binding": "work_list"
+      }
+    },
+    "page": {
+      "agent-ops/agent_durable_sessions": {
+        "status": "accepted",
+        "owner_id": "agent-ops",
+        "owner_generation": "generation-agent-ops",
+        "local_key": "agent_durable_sessions",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "agent_durable_sessions",
+          "manifest_order": 1,
+          "requires_verbs": [
+            "agent_list"
+          ],
+          "route": "/agents/durable",
+          "synthesized": true,
+          "title": "Durable Sessions"
+        },
+        "declarative": {
+          "view": "legacy-route:/agents/durable"
+        },
+        "public_binding": "/agents/durable"
+      },
+      "agent-ops/agent_list": {
+        "status": "accepted",
+        "owner_id": "agent-ops",
+        "owner_generation": "generation-agent-ops",
+        "local_key": "agent_list",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "agent_list",
+          "manifest_order": 0,
+          "requires_verbs": [
+            "agent_list"
+          ],
+          "route": "/agents",
+          "synthesized": true,
+          "title": "Agent Ops"
+        },
+        "declarative": {
+          "view": "legacy-route:/agents"
+        },
+        "public_binding": "/agents"
+      },
+      "config-ops/config_list": {
+        "status": "accepted",
+        "owner_id": "config-ops",
+        "owner_generation": "generation-config-ops",
+        "local_key": "config_list",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "config_list",
+          "manifest_order": 0,
+          "requires_verbs": [
+            "config_list"
+          ],
+          "route": "/settings",
+          "synthesized": true,
+          "title": "Configuration"
+        },
+        "declarative": {
+          "view": "legacy-route:/settings"
+        },
+        "public_binding": "/settings"
+      },
+      "launch-ops/launch_list": {
+        "status": "accepted",
+        "owner_id": "launch-ops",
+        "owner_generation": "generation-launch-ops",
+        "local_key": "launch_list",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "launch_list",
+          "manifest_order": 0,
+          "requires_verbs": [
+            "launch_list"
+          ],
+          "route": "/launches",
+          "synthesized": true,
+          "title": "Launches"
+        },
+        "declarative": {
+          "view": "legacy-route:/launches"
+        },
+        "public_binding": "/launches"
+      },
+      "observe-ops/observe_activity": {
+        "status": "accepted",
+        "owner_id": "observe-ops",
+        "owner_generation": "generation-observe-ops",
+        "local_key": "observe_activity",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "observe_activity",
+          "manifest_order": 0,
+          "requires_verbs": [
+            "observe_activity"
+          ],
+          "route": "/observe",
+          "synthesized": true,
+          "title": "Activity"
+        },
+        "declarative": {
+          "view": "legacy-route:/observe"
+        },
+        "public_binding": "/observe"
+      },
+      "observe-ops/observe_logs": {
+        "status": "accepted",
+        "owner_id": "observe-ops",
+        "owner_generation": "generation-observe-ops",
+        "local_key": "observe_logs",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "observe_logs",
+          "manifest_order": 1,
+          "requires_verbs": [
+            "observe_logs"
+          ],
+          "route": "/observe/logs",
+          "synthesized": true,
+          "title": "Logs"
+        },
+        "declarative": {
+          "view": "legacy-route:/observe/logs"
+        },
+        "public_binding": "/observe/logs"
+      },
+      "observe-ops/observe_metrics": {
+        "status": "accepted",
+        "owner_id": "observe-ops",
+        "owner_generation": "generation-observe-ops",
+        "local_key": "observe_metrics",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "observe_metrics",
+          "manifest_order": 2,
+          "requires_verbs": [
+            "observe_metrics"
+          ],
+          "route": "/observe/metrics",
+          "synthesized": true,
+          "title": "Metrics"
+        },
+        "declarative": {
+          "view": "legacy-route:/observe/metrics"
+        },
+        "public_binding": "/observe/metrics"
+      },
+      "scm-ops/scm_activity": {
+        "status": "accepted",
+        "owner_id": "scm-ops",
+        "owner_generation": "generation-scm-ops",
+        "local_key": "scm_activity",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "scm_activity",
+          "manifest_order": 1,
+          "requires_verbs": [
+            "scm_activity"
+          ],
+          "route": "/scm/activity",
+          "synthesized": true,
+          "title": "Activity"
+        },
+        "declarative": {
+          "view": "legacy-route:/scm/activity"
+        },
+        "public_binding": "/scm/activity"
+      },
+      "scm-ops/scm_repos": {
+        "status": "accepted",
+        "owner_id": "scm-ops",
+        "owner_generation": "generation-scm-ops",
+        "local_key": "scm_repos",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "scm_repos",
+          "manifest_order": 0,
+          "requires_verbs": [
+            "scm_list"
+          ],
+          "route": "/scm",
+          "synthesized": true,
+          "title": "Repositories"
+        },
+        "declarative": {
+          "view": "legacy-route:/scm"
+        },
+        "public_binding": "/scm"
+      },
+      "service-ops/service_health": {
+        "status": "accepted",
+        "owner_id": "service-ops",
+        "owner_generation": "generation-service-ops",
+        "local_key": "service_health",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "service_health",
+          "manifest_order": 1,
+          "requires_verbs": [
+            "service_health"
+          ],
+          "route": "/services/health",
+          "synthesized": true,
+          "title": "Health"
+        },
+        "declarative": {
+          "view": "legacy-route:/services/health"
+        },
+        "public_binding": "/services/health"
+      },
+      "service-ops/service_list": {
+        "status": "accepted",
+        "owner_id": "service-ops",
+        "owner_generation": "generation-service-ops",
+        "local_key": "service_list",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "service_list",
+          "manifest_order": 0,
+          "requires_verbs": [
+            "service_list"
+          ],
+          "route": "/services",
+          "synthesized": true,
+          "title": "All Services"
+        },
+        "declarative": {
+          "view": "legacy-route:/services"
+        },
+        "public_binding": "/services"
+      },
+      "session-ops/session_history": {
+        "status": "accepted",
+        "owner_id": "session-ops",
+        "owner_generation": "generation-session-ops",
+        "local_key": "session_history",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "session_history",
+          "manifest_order": 1,
+          "requires_verbs": [
+            "session_history"
+          ],
+          "route": "/sessions/history",
+          "synthesized": true,
+          "title": "Session History"
+        },
+        "declarative": {
+          "view": "legacy-route:/sessions/history"
+        },
+        "public_binding": "/sessions/history"
+      },
+      "session-ops/session_list": {
+        "status": "accepted",
+        "owner_id": "session-ops",
+        "owner_generation": "generation-session-ops",
+        "local_key": "session_list",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "session_list",
+          "manifest_order": 0,
+          "requires_verbs": [
+            "session_list"
+          ],
+          "route": "/sessions",
+          "synthesized": true,
+          "title": "Active Sessions"
+        },
+        "declarative": {
+          "view": "legacy-route:/sessions"
+        },
+        "public_binding": "/sessions"
+      },
+      "work-ops/work_board": {
+        "status": "accepted",
+        "owner_id": "work-ops",
+        "owner_generation": "generation-work-ops",
+        "local_key": "work_board",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "work_board",
+          "manifest_order": 1,
+          "requires_verbs": [
+            "work_list"
+          ],
+          "route": "/work/board",
+          "synthesized": true,
+          "title": "Board"
+        },
+        "declarative": {
+          "view": "legacy-route:/work/board"
+        },
+        "public_binding": "/work/board"
+      },
+      "work-ops/work_list": {
+        "status": "accepted",
+        "owner_id": "work-ops",
+        "owner_generation": "generation-work-ops",
+        "local_key": "work_list",
+        "kind": "page",
+        "schema_version": 1,
+        "required": false,
+        "representation": "declarative",
+        "metadata": {
+          "id": "work_list",
+          "manifest_order": 0,
+          "requires_verbs": [
+            "work_list"
+          ],
+          "route": "/work",
+          "synthesized": true,
+          "title": "Tasks"
+        },
+        "declarative": {
+          "view": "legacy-route:/work"
+        },
+        "public_binding": "/work"
+      }
+    }
+  },
+  "refusals": [],
+  "nav_projection": {
+    "status": "ok",
+    "revision": 1
+  }
+}

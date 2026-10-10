@@ -102,7 +102,7 @@ func TestResolveNavigation_ReservedRoutes(t *testing.T) {
 	// Verify diagnostics recorded 4 reserved_route rejections
 	reservedDiags := 0
 	for _, diag := range res.Nav.Diagnostics {
-		if diag.Reason == "reserved_route" {
+		if diag.Reason == contract.NavReservedRoute {
 			reservedDiags++
 		}
 	}
@@ -138,7 +138,7 @@ func TestResolveNavigation_DuplicateRoutes(t *testing.T) {
 
 	foundDiag := false
 	for _, d := range res.Nav.Diagnostics {
-		if d.Reason == "route_collision" && d.Route == "/duplicate-route" && d.PluginID == "second-plugin" {
+		if d.Reason == contract.NavRouteCollision && d.Route == "/duplicate-route" && d.PluginID == "second-plugin" {
 			foundDiag = true
 			break
 		}
@@ -171,7 +171,7 @@ func TestResolveNavigation_DuplicateItemIDs(t *testing.T) {
 
 	foundDiag := false
 	for _, d := range res.Nav.Diagnostics {
-		if d.Reason == "item_collision" && d.ItemID == "same_item_id" && d.PluginID == "p2" {
+		if d.Reason == contract.NavIDCollision && d.ItemID == "same_item_id" && d.PluginID == "p2" {
 			foundDiag = true
 			break
 		}
@@ -206,7 +206,7 @@ func TestResolveNavigation_UnknownIcons(t *testing.T) {
 
 	foundDiag := false
 	for _, d := range res.Nav.Diagnostics {
-		if d.Reason == "unknown_icon" && d.GroupID == "invalid-group" {
+		if d.Reason == contract.NavIconUnknown && d.GroupID == "invalid-group" {
 			foundDiag = true
 			break
 		}

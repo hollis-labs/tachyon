@@ -112,8 +112,7 @@ func (m *Manager) detachProcess(proc *pluginProcess) {
 		}
 	}
 	m.loadOrder = order
-	// Re-elect first-loaded surviving declarations when the removed process
-	// owned shared nav IDs. Respawn is a new load at the end of loadOrder.
-	m.rebuildNavClaimsLocked()
+	// Diagnose the revision-local projection after removing this identity.
+	m.logNavProjectionLocked()
 	m.mu.Unlock()
 }

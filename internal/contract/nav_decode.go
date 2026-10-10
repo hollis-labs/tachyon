@@ -77,6 +77,8 @@ func (nav *NavDeclaration) UnmarshalJSON(data []byte) error {
 	// source-supplied diagnostics or notices into host-produced output.
 	_ = json.Unmarshal(fields["diagnostics"], &nav.Diagnostics)
 	_ = json.Unmarshal(fields["notices"], &nav.Notices)
+	_ = json.Unmarshal(fields["tree"], &nav.Tree)
+	_ = json.Unmarshal(fields["nav_projection"], &nav.Projection)
 	sections := []struct {
 		field, kind string
 		dst         any
@@ -109,6 +111,9 @@ func (nav *NavDeclaration) UnmarshalJSON(data []byte) error {
 			typ := value.Type()
 			for j := 0; j < value.NumField(); j++ {
 				key := strings.Split(typ.Field(j).Tag.Get("json"), ",")[0]
+				if key == "-" {
+					continue
+				}
 				fieldRaw, ok := object[key]
 				if !ok {
 					continue

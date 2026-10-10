@@ -416,19 +416,7 @@ func main() {
 	mux.HandleFunc("GET /api/durable-agents/{id}/sessions", agentOps.list(resourceTypeDurableAgentSession, durableAgentIDFilter))
 
 	// Plugin registry endpoint — serves the registry.Response for the browser loader
-	mux.HandleFunc("GET /api/plugins/registry", func(w http.ResponseWriter, r *http.Request) {
-		resp := pluginMgr.BuildRegistry()
-
-		payload, err := json.Marshal(resp)
-		if err != nil {
-			logger.Error("plugin registry serialization failed", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(payload)
-	})
+	mux.Handle("GET /api/plugins/registry", newRegistryHandler(pluginMgr))
 
 	// The Sysop UI — served from the embedded frontend build by go-webui.
 	webui.Mount(mux)

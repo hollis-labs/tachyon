@@ -40,11 +40,6 @@ type Manager struct {
 	retired          map[string]retiredPlugin  // recovery metadata only; never routable
 	modules          map[string]string         // module name -> owning plugin ID
 	loadOrder        []string
-	navGroups        map[string]string // group ID -> first-loaded plugin ID
-	navItems         map[string]string // item ID -> first-loaded plugin ID
-	navRoutes        map[string]string // route -> first-loaded plugin ID
-	navDiagnostics   []contract.NavDiagnostic
-	navNotices       []string
 }
 
 // pluginProcess is one spawned plugin subprocess.
@@ -108,9 +103,6 @@ func NewManager(logger *slog.Logger) *Manager {
 		plugins:      make(map[string]*pluginProcess),
 		retired:      make(map[string]retiredPlugin),
 		modules:      make(map[string]string),
-		navGroups:    make(map[string]string),
-		navItems:     make(map[string]string),
-		navRoutes:    make(map[string]string),
 	}
 	m.spawn = func(ctx context.Context, path string) (*pluginProcess, error) {
 		generation := m.generation.Add(1)
@@ -243,18 +235,29 @@ func spawnProcessWithIdentity(ctx context.Context, binaryPath string, identity c
 type RegistryResponse struct {
 	registry.Response
 	RetiredPlugins []contract.SettingsTarget `json:"retired_plugins,omitempty"`
+	NavProjection  contract.NavProjection    `json:"nav_projection"`
+	Diagnostics    []contract.NavDiagnostic  `json:"diagnostics,omitempty"`
+	Notices        []string                  `json:"notices,omitempty"`
 }
 
 func (m *Manager) BuildRegistry() RegistryResponse {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	order, navs := m.collectNavDeclarationsLocked()
+	resolved := ResolveNavigation(order, navs, nil)
+	resp := m.buildNavRegistryLocked(resolved)
+	return resp
+}
+
+func (m *Manager) buildNavRegistryLocked(resolved NavResolutionResult) RegistryResponse {
 	resp := RegistryResponse{Response: registry.NewResponse(m.hostInstance, m.registryRevision+1), RetiredPlugins: m.retiredTargetsLocked()}
 
-	// For now, we're just proving the contract works — plugins are registered
-	// but have no browser UI bundles yet. Full implementation would include
-	// bundle URLs from plugin manifests.
+	// Only declarative contributions are emitted; no plugin browser bundles.
 	for id, proc := range m.plugins {
+		if proc.dead.Load() {
+			continue
+		}
 		resp.Plugins[id] = registry.Plugin{
 			// BundleURL would go here when we have UI components
 			OwnerGeneration: observeGeneration(proc),
@@ -264,6 +267,7 @@ func (m *Manager) BuildRegistry() RegistryResponse {
 		}
 	}
 
+	projectRegistry(&resp, resolved, m.logger)
 	return resp
 }
 
@@ -657,56 +661,63 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 	m.plugins[proc.id] = proc
 	delete(m.retired, proc.id)
 	m.loadOrder = append(m.loadOrder, proc.id)
-	m.rebuildNavClaimsLocked()
+	m.logNavProjectionLocked()
 	return nil
 }
 
+// collectNavDeclarationsLocked admits only currently active process identities.
+// Snapshotting does not acquire a plugin pipe or perform plugin RPC.
 func (m *Manager) collectNavDeclarationsLocked() ([]string, map[string]*contract.NavDeclaration) {
-	navs := make(map[string]*contract.NavDeclaration, len(m.loadOrder))
-	for _, id := range m.loadOrder {
-		proc := m.plugins[id]
-		if proc != nil && proc.capabilities != nil && proc.capabilities.Nav != nil {
-			// This transitional endpoint keeps the schema-1 profile only. V2
-			// pages/placement arrive through the registry projector in 0117.
-			if proc.capabilities.NavSchema > 1 {
-				continue
-			}
-			normalized, diagnostics := contract.NormalizeNav(id, *proc.capabilities)
-			if normalized == nil {
-				continue
-			}
-			for i := range normalized.Items {
-				normalized.Items[i].Page = ""
-				normalized.Items[i].RequiresVerbs = nil
-			}
-			normalized.Pages = nil
-			normalized.Diagnostics = diagnostics
-			navs[id] = normalized
+	navs := make(map[string]*contract.NavDeclaration, len(m.plugins))
+	ids := make([]string, 0, len(m.plugins))
+	for id, proc := range m.plugins {
+		if proc.dead.Load() || proc.capabilities == nil {
+			continue
 		}
+		normalized, diagnostics := contract.NormalizeNav(id, *proc.capabilities)
+		if normalized == nil {
+			continue
+		}
+		normalized.Diagnostics = diagnostics
+		navs[id] = normalized
+		ids = append(ids, id)
 	}
-	return m.loadOrder, navs
+	return ids, navs
 }
 
-func (m *Manager) rebuildNavClaimsLocked() {
+func (m *Manager) logNavProjectionLocked() {
 	order, navs := m.collectNavDeclarationsLocked()
-	res := ResolveNavigation(order, navs, m.logger)
-	m.navGroups = res.GroupOwners
-	m.navItems = res.ItemOwners
-	m.navRoutes = res.RouteOwners
-	m.navDiagnostics = res.Nav.Diagnostics
-	m.navNotices = res.Nav.Notices
+	ResolveNavigation(order, navs, m.logger)
 }
 
-// MergedNav returns a snapshot of navigation from registered plugins. Group
-// metadata, globally unique item IDs and routes are first-loaded wins; later
-// plugins can still contribute distinct items to a shared group.
-// Host-added plugin_id attributions and bounded diagnostics/notices are
-// exposed on the returned contract. Priority zero uses the contract default
-// (1000), and IDs break ties for deterministic responses.
+// MergedNav preserves legacy groups/items and exposes the same host projection
+// as BuildRegistry, with additive resolved topology and explicit status.
 func (m *Manager) MergedNav() contract.NavDeclaration {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	order, navs := m.collectNavDeclarationsLocked()
 	res := ResolveNavigation(order, navs, nil)
+	registry := m.buildNavRegistryLocked(res)
+	res.Nav.Projection = &registry.NavProjection
+	// Existing frontend routing still consumes the schema-1 flat profile until
+	// 0118. The additive tree/pages expose v2 without changing that router.
+	flat := []contract.NavItem{}
+	for _, item := range res.Nav.Items {
+		proc := m.plugins[item.PluginID]
+		if proc != nil && proc.capabilities != nil && proc.capabilities.NavSchema <= 1 {
+			item.Page = ""
+			item.RequiresVerbs = nil
+			flat = append(flat, item)
+		}
+	}
+	res.Nav.Items = flat
+	if registry.NavProjection.Status == contract.NavProjectionFailed {
+		res.Nav.Groups = []contract.NavGroup{}
+		res.Nav.Items = []contract.NavItem{}
+		res.Nav.Tree = nil
+		res.Nav.Pages = nil
+		res.Nav.Subnav = nil
+		res.Nav.Menus = nil
+	}
 	return res.Nav
 }

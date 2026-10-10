@@ -139,15 +139,55 @@ continue their legacy command dispatch.
 each plugin declaration. `GET /api/nav` exposes the merged navigation view as
 `{ "groups": [...], "items": [...] }`.
 
-Each nav item references a group declared by the same plugin. Cross-plugin
-references are rejected so validation never depends on load order. Plugins
-may declare the same group ID: the first successfully loaded plugin's group
-metadata wins, the loser is logged, and later distinct items still contribute
-to that group. Duplicate item IDs across plugins also use first-loaded wins
-and log the loser. Within one declaration, duplicate group/item IDs are hard
-errors. Group/item IDs match `^[a-z0-9][a-z0-9_-]*$`, and a non-empty
-`requires_verb` must name a verb declared by that plugin. Merged navigation
-sorts by priority (zero means the default 1000), then by ID to break ties.
+Navigation admission now follows accepted [ADR 002](002-plugin-pages-navigation-menus.md)
+and its R3 amendment (CW-20261010-0115/0117). Malformed navigation is
+warned and dropped per entry; module/verb/effect/settings failures remain fatal.
+The earlier local-group rejection and first-loaded metadata policy are superseded.
+
+`nav_schema` absent/zero is schema 1; schema 2 enables `group_ref`, `parent`,
+explicit group `owner: true`, pages, hidden presentation, subnav and declarative
+menus. `group` still names a group declared locally. A missing local group is
+retained by normalization and becomes an orphan at host merge, never a startup
+refusal. `group_ref` resolves against all active merged groups, after load.
+
+The host resolves each snapshot in plugin-ID byte order. Explicit group owners
+rank above plain declarations; equal claims use the smallest plugin ID. Every
+losing claimant gets `nav-group-redeclared`; its distinct items survive. Item,
+page, subnav and menu IDs are global per kind; losing IDs and routes have named
+refusals. Items never rebind to a competing owner's page. Missing, dead, retired
+or restarting placement targets put surviving items in a top-level More group
+with `nav-orphan`, retaining the item's real plugin owner. More is host tree
+output only, not a minted `core` registry contribution. Group parents name
+groups; item parents name items. Cycles are dropped, and topology is bounded to
+two levels below a top-level group. Dropped nav items do not unregister pages.
+
+`/api/nav` remains transitional until 0118: schema-1 flat groups/items preserve
+the existing frontend router, while additive `tree`, `pages`, `subnav`,
+`diagnostics`, `notices` and `nav_projection` expose resolved host data. Tree
+nodes carry host-derived `plugin_id` and `owner_id`. `/api/plugins/registry`
+contains ADR002's optional declarative contributions, five kinds, eight regions,
+refusals and the same projection status. `ok` means no drops, `degraded` means
+entry drops, and `failed` explicitly signals structural projection failure with
+empty contributions/refusals. An empty catalog is valid and never implies failure.
+Schema-2 flat nav adoption and full TS catalog validation stay with 0118; menu
+execution/command projection stay with 0119. No plugin JavaScript is delivered.
+
+Group/item IDs retain the existing declaration grammar. Reserved route admission
+uses the shared DEC081 policy: `/dashboard` and `/plugin-recovery` (and their
+descendants) are host-only; only `config-ops` may claim `/settings[/...]`.
+The landed R3 grammar permits unique whole-segment named parameters, bounded to
+128 bytes, without wildcard/optional/empty/trailing/query identity. Required
+verbs form an all-of union. Unknown icons use the curated activity fallback with
+an informational diagnostic. Legacy flat order remains priority ascending
+(zero means 1000), then ID. Registry contributions publish explicit priority
+and original authored array index as `manifest_order`.
+
+DEC085 migration checks compare a sealed old resolver from `e382338` with the
+actual new registry projection of the eight unchanged schema-1 manifests. This
+temporary old-resolver oracle retires with 0118. Go descriptors and source-only
+TS descriptors share an admitted wire fixture, also exercised by the published
+TS registry; full TS kind metadata/catalog parity remains 0118's gate. This is
+not a manifest/icon/page-registry agreement check.
 
 Settings keys are unique within a declaration and match
 `^[a-z0-9][a-z0-9_.-]*$`. Types are `string`, `boolean`, `number`, or `select`.
@@ -169,9 +209,9 @@ Capability validation occurs synchronously during plugin initialization (`LoadPl
 2. **Verb Prefix Adherence**: Every verb declared in `verbs` must start with `<module>_` where `<module>` is present in the plugin's `modules` array.
 3. **Effect Validity**: Each verb's `effect` must be one of `reads`, `writes`, `destroys`, or `open_world`.
 4. **Identifier Formatting**: Module names and verb names must match `^[a-z0-9_]+$`.
-5. **Navigation and Settings**: Local references, unique declaration IDs/keys, field types/options and provided defaults follow section 7. Invalid declarations are hard load errors; cross-plugin nav metadata collisions use the documented first-loaded rule.
+5. **Settings**: Unique keys, field types/options and provided defaults follow section 7 and remain hard load errors. Navigation has the separate warn-and-drop admission and merge policy above.
 
-**Enforcement Rule**: Any validation failure is treated as a **hard load error**. The plugin is terminated, and Tachyon refuses to start. Degraded catalog admissions or silent fallbacks are prohibited.
+**Enforcement Rule**: Any non-navigation validation failure is treated as a **hard load error**. The plugin is terminated, and Tachyon refuses to start. Non-navigation degraded admission and silent fallbacks are prohibited. Navigation projection is explicitly diagnosed as described in section 7.
 
 Startup admission policy:
 
