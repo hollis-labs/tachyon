@@ -356,10 +356,7 @@ func main() {
 	})
 
 	// Merged plugin navigation, with first-loaded metadata winning collisions.
-	mux.HandleFunc("GET /api/nav", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(pluginMgr.MergedNav())
-	})
+	mux.Handle("GET /api/nav", newNavHandler(pluginMgr))
 
 	// Agents.
 	mux.HandleFunc("GET /api/agents", agentOps.list(resourceTypeAgent, nil))
