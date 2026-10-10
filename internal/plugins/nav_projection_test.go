@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,13 +49,19 @@ func hasProjectionDiag(nav contract.NavDeclaration, reason, kind, id string) boo
 }
 func TestProjectionOwnerAndOrderIndependence(t *testing.T) {
 	caps := map[string]contract.PluginCapabilities{}
-	for _, id := range []string{"a-contributor", "z-owner", "y-owner"} {
-		owner := id != "a-contributor"
+	for _, id := range []string{"a-contributor", "b-contributor", "z-owner", "y-owner"} {
+		owner := id == "z-owner" || id == "y-owner"
 		caps[id] = contract.PluginCapabilities{NavSchema: 2, Nav: &contract.NavDeclaration{Groups: []contract.NavGroup{{ID: "shared", Label: id, Owner: owner, Icon: "users", Priority: 50}}, Items: []contract.NavItem{{ID: id, GroupRef: "shared", Label: id, Route: "/" + id, PluginID: "forged"}}}}
 	}
-	order := []string{"z-owner", "a-contributor", "y-owner"}
+	order := []string{"z-owner", "b-contributor", "a-contributor", "y-owner"}
 	expected := projectCaps(caps, order)
 	before, _ := json.Marshal(caps)
+	for _, d := range expected.Nav.Diagnostics {
+		if d.Reason == contract.NavGroupRedeclared && !strings.Contains(d.Message, `owner "y-owner" wins`) {
+			t.Fatalf("notice named intermediate owner: %+v", d)
+		}
+	}
+
 	if expected.Nav.Groups[0].PluginID != "y-owner" || expected.Nav.Groups[0].Label != "y-owner" {
 		t.Fatalf("owner tier: %+v", expected.Nav.Groups)
 	}
@@ -81,7 +88,7 @@ func TestProjectionOwnerAndOrderIndependence(t *testing.T) {
 	if resp.NavProjection.Status != contract.NavProjectionDegraded || resp.Validate() != nil {
 		t.Fatalf("registry %+v", resp.NavProjection)
 	}
-	if len(resp.Contributions["nav.item"]) != 3 {
+	if len(resp.Contributions["nav.item"]) != 4 {
 		t.Fatal("metadata loser lost distinct items")
 	}
 }

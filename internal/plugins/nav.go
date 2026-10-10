@@ -56,6 +56,8 @@ func ResolveNavigation(loadOrder []string, pluginNavs map[string]*contract.NavDe
 	}
 	sort.Strings(ids)
 	groups := map[string]contract.NavGroup{}
+	type groupLoss struct{ owner, id string }
+	groupLosses := []groupLoss{}
 	localGroups := map[string]map[string]bool{}
 	pages := map[string]contract.NavPage{}
 	items := map[string]contract.NavItem{}
@@ -84,12 +86,12 @@ func ResolveNavigation(loadOrder []string, pluginNavs map[string]*contract.NavDe
 			g.Icon = icon("nav.group", owner, g.ID, g.Icon)
 			r.Orders[navOrderKey("nav.group", owner, g.ID)] = g.ManifestOrder
 			if old, exists := groups[g.ID]; exists {
-				winner, loser := old.PluginID, owner
+				loser := owner
 				if g.Owner && !old.Owner {
 					groups[g.ID] = g
-					winner, loser = owner, old.PluginID
+					loser = old.PluginID
 				}
-				diag(contract.NavGroupRedeclared, "nav.group", loser, g.ID, "", fmt.Sprintf("nav group collision %q: owner %q wins metadata over %q", g.ID, winner, loser), true, false)
+				groupLosses = append(groupLosses, groupLoss{loser, g.ID})
 			} else {
 				groups[g.ID] = g
 			}
@@ -125,6 +127,12 @@ func ResolveNavigation(loadOrder []string, pluginNavs map[string]*contract.NavDe
 			pages[p.ID] = p
 			r.RouteOwners[p.Route] = owner
 		}
+	}
+	// Diagnose losers only after final election. A later explicit owner may
+	// supersede an earlier plain winner within this same snapshot.
+	for _, loss := range groupLosses {
+		winner := groups[loss.id].PluginID
+		diag(contract.NavGroupRedeclared, "nav.group", loss.owner, loss.id, "", fmt.Sprintf("nav group collision %q: owner %q wins metadata over %q", loss.id, winner, loss.owner), true, false)
 	}
 	// IDs are independent per kind; a dropped page never rebinds to another owner.
 	for _, owner := range ids {
