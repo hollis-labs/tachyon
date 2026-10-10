@@ -142,7 +142,7 @@ export function PendingApproval({ ask }: { ask: AskDetail }) {
           <p className="text-text-muted">Requested options (read only)</p>
           <ul className="list-inside list-disc break-words">
             {ask.options.map((option, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: immutable read-only options may contain duplicate labels.
+              // immutable read-only options may contain duplicate labels.
               <li key={`${index}-${option}`}>{option}</li>
             ))}
           </ul>

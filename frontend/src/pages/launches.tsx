@@ -103,7 +103,7 @@ export function LaunchesPage() {
   const canExecute = verbs.has("launch_execute")
   const canCancel = verbs.has("launch_cancel")
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: opening the wizard explicitly refreshes agent choices.
+  // opening the wizard explicitly refreshes agent choices.
   useEffect(() => {
     if (!canChooseAgent) return
     let active = true
@@ -129,7 +129,7 @@ export function LaunchesPage() {
   }, [canChooseAgent, wizardOpen])
 
   // Poll without overlapping requests on the serial plugin pipe.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: revision explicitly restarts polling after mutations or Refresh.
+  // revision explicitly restarts polling after mutations or Refresh.
   useEffect(() => {
     if (!canList) return
     let active = true
@@ -165,7 +165,7 @@ export function LaunchesPage() {
     }
   }, [canList, revision])
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: revision invalidates in-flight detail responses after a mutation.
+  // revision invalidates in-flight detail responses after a mutation.
   useEffect(() => {
     if (!selectedId || !canRead) {
       setDetail(null)
