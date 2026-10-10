@@ -12,43 +12,6 @@ import (
 var declarationIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 var settingsKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]*$`)
 
-func (pc *PluginCapabilities) validateNav() error {
-	if pc.Nav == nil {
-		return nil
-	}
-	groups := make(map[string]bool, len(pc.Nav.Groups))
-	for _, g := range pc.Nav.Groups {
-		if !declarationIDPattern.MatchString(g.ID) {
-			return fmt.Errorf("capabilities: invalid nav group id %q", g.ID)
-		}
-		if groups[g.ID] {
-			return fmt.Errorf("capabilities: duplicate nav group %q", g.ID)
-		}
-		groups[g.ID] = true
-	}
-	items := make(map[string]bool, len(pc.Nav.Items))
-	for _, item := range pc.Nav.Items {
-		if !declarationIDPattern.MatchString(item.ID) {
-			return fmt.Errorf("capabilities: invalid nav item id %q", item.ID)
-		}
-		if items[item.ID] {
-			return fmt.Errorf("capabilities: duplicate nav item %q", item.ID)
-		}
-		items[item.ID] = true
-		// Every plugin is self-contained: cross-plugin group references
-		// would make validation depend on plugin load order.
-		if !groups[item.Group] {
-			return fmt.Errorf("capabilities: nav item %q references undeclared group %q", item.ID, item.Group)
-		}
-		if item.RequiresVerb != "" {
-			if _, ok := pc.Verbs[item.RequiresVerb]; !ok {
-				return fmt.Errorf("capabilities: nav item %q requires undeclared verb %q", item.ID, item.RequiresVerb)
-			}
-		}
-	}
-	return nil
-}
-
 func (pc *PluginCapabilities) validateSettings() error {
 	if pc.Settings == nil {
 		return nil

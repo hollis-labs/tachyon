@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -16,9 +17,10 @@ type VerbDeclaration struct {
 
 // PluginCapabilities is the capability declaration a plugin includes in
 // its plugin_capabilities command response (D-47, D-48). The host validates it at load
-// time; any violation is a hard load error, never a silently wrong
-// catalog entry.
+// time. Non-nav violations are hard load errors; navigation is normalized
+// separately with structured warn-and-drop diagnostics.
 type PluginCapabilities struct {
+	navSchemaMalformed json.RawMessage
 	// Modules lists the module namespaces this plugin claims. A module
 	// is a verb namespace representing a coherent capability domain.
 	// Only one plugin may claim a given module (D-49: collision = fatal).
@@ -28,6 +30,8 @@ type PluginCapabilities struct {
 	// follow the <module>_<verb> pattern (D-49) and be prefixed with
 	// one of this plugin's declared modules.
 	Verbs map[string]VerbDeclaration `json:"verbs"`
+
+	NavSchema int `json:"nav_schema,omitempty"`
 
 	Nav      *NavDeclaration      `json:"nav,omitempty"`
 	Settings *SettingsDeclaration `json:"settings,omitempty"`
@@ -74,9 +78,6 @@ func (pc *PluginCapabilities) Validate() error {
 		}
 	}
 
-	if err := pc.validateNav(); err != nil {
-		return err
-	}
 	return pc.validateSettings()
 }
 

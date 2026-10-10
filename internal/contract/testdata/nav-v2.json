@@ -1,0 +1,12 @@
+{
+ "modules":["work"],
+ "verbs":{"work_list":{"effect":"reads"},"work_assign":{"effect":"writes"}},
+ "nav_schema":2,
+ "nav":{
+  "groups":[{"id":"work","label":"Work","icon":"clipboard-list","priority":500,"parent":"workspace","kind":"section","collapsed":true,"footer":true,"owner":true}],
+  "items":[{"id":"tasks","label":"Tasks","group_ref":"shared","page":"tasks_page","route":"/work","requires_verb":"work_list","requires_verbs":["work_assign","work_list"],"hidden":true,"footer":true,"icon":"clipboard-list","priority":100}],
+  "pages":[{"id":"tasks_page","route":"/work","title":"Tasks","view":"work","hidden":true,"requires_verbs":["work_list"]}],
+  "subnav":[{"id":"tasks_tab","label":"Tasks","parent":"tasks","page":"tasks_page","placement":"top","priority":100,"requires_verbs":["work_list"]}],
+  "menus":[{"id":"refresh","label":"Refresh","region":"page","target":{"page":"tasks_page"},"priority":100,"icon":"activity","requires_verbs":["work_list"],"action":{"type":"command","command":"work-ops/work_list","arguments":{}}}]
+ }
+}

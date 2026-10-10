@@ -65,9 +65,10 @@ complete capability discovery before any HTTP listener opens.
 | Unbuilt/non-executable binary | Warning with build guidance; optional absence |
 | Init/load/handshake timeout | Refuse startup; 120s host I/O ceiling per stage |
 | Discovery RPC rejection or command `action:"error"` | Warning; admit legacy without module claims |
-| Malformed declaration or RPC/command shape | Refuse startup |
+| Malformed non-nav declaration or RPC/command shape | Refuse startup |
 | Module/verb ownership collision | Refuse startup |
-| Invalid nav/settings declaration or persisted settings | Refuse startup |
+| Invalid navigation contribution (including known-field type errors) | Warning; drop only the affected navigation entry |
+| Invalid settings declaration or persisted settings | Refuse startup |
 | Hello/no-capabilities | Absence is optional; explicit discovery rejection admits legacy |
 
 Unexpected filesystem failures, spawn/load failures and unexpected discovery

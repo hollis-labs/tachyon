@@ -44,7 +44,8 @@ Lefthook once if using the tracked hooks; their presence alone installs nothing.
   cannot affect its replacement. Do not reuse damaged streams or retry writes
   whose completion is unknown. Recovery is explicit restart, including retired
   tombstones; a busy restart reports 503/unchanged.
-- Present but invalid plugins refuse startup before a listener opens. Optional
+- Malformed navigation contributions are warned and dropped; all other malformed
+  declarations still refuse startup before a listener opens. Optional
   missing/unbuilt binaries and explicit discovery rejection have the documented
   different policy; do not turn malformed declarations into a silent fallback.
 - Plugins are separate executables, not embedded. `make build` alone does not

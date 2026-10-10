@@ -4,30 +4,13 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
-	"strings"
 
 	"github.com/hollis-labs/tachyon/internal/contract"
 )
 
-// Reserved host routes and their permitted plugin owners.
-// Host-owned routes cannot be claimed by arbitrary plugins.
-// Note: per DEC081, /settings and its subpaths are reserved for
-// config-ops alone; other plugin claims are dropped.
-var reservedHostRoutes = map[string]string{
-	"/dashboard":       "",           // strictly host-owned
-	"/plugin-recovery": "",           // strictly host-owned
-	"/settings":        "config-ops", // host-reserved for config-ops (DEC081)
-}
-
-// matchReservedRoute checks if route matches a reserved host route or subpath (e.g. /settings/...).
-// Returns the allowed plugin owner (if any) and whether the route is reserved.
+// matchReservedRoute delegates to the contract's shared DEC081 allowlist.
 func matchReservedRoute(route string) (allowedOwner string, isReserved bool) {
-	for prefix, owner := range reservedHostRoutes {
-		if route == prefix || strings.HasPrefix(route, prefix+"/") {
-			return owner, true
-		}
-	}
-	return "", false
+	return contract.ReservedNavRoute(route)
 }
 
 // NavResolutionResult holds the output of resolving navigation declarations
@@ -72,6 +55,11 @@ func ResolveNavigation(
 		nav := pluginNavs[pluginID]
 		if nav == nil {
 			continue
+		}
+
+		// These diagnostics are host-produced by NormalizeNav before resolution.
+		for _, diag := range nav.Diagnostics {
+			addDiag(diag)
 		}
 
 		// Groups

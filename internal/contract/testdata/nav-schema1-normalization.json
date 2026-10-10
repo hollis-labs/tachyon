@@ -1,0 +1,482 @@
+{
+  "agent-ops": {
+    "groups": [
+      {
+        "id": "agents",
+        "label": "Agents",
+        "icon": "users",
+        "priority": 100,
+        "plugin_id": "agent-ops"
+      }
+    ],
+    "items": [
+      {
+        "id": "agent_list",
+        "label": "Agent Ops",
+        "group": "agents",
+        "route": "/agents",
+        "requires_verb": "agent_list",
+        "priority": 100,
+        "requires_verbs": [
+          "agent_list"
+        ],
+        "page": "agent_list",
+        "plugin_id": "agent-ops"
+      },
+      {
+        "id": "agent_durable_sessions",
+        "label": "Durable Sessions",
+        "group": "agents",
+        "route": "/agents/durable",
+        "requires_verb": "agent_list",
+        "priority": 200,
+        "requires_verbs": [
+          "agent_list"
+        ],
+        "page": "agent_durable_sessions",
+        "plugin_id": "agent-ops"
+      }
+    ],
+    "pages": [
+      {
+        "id": "agent_list",
+        "route": "/agents",
+        "title": "Agent Ops",
+        "view": "legacy-route:/agents",
+        "synthesized": true,
+        "plugin_id": "agent-ops",
+        "requires_verbs": [
+          "agent_list"
+        ]
+      },
+      {
+        "id": "agent_durable_sessions",
+        "route": "/agents/durable",
+        "title": "Durable Sessions",
+        "view": "legacy-route:/agents/durable",
+        "synthesized": true,
+        "plugin_id": "agent-ops",
+        "requires_verbs": [
+          "agent_list"
+        ]
+      }
+    ]
+  },
+  "config-ops": {
+    "groups": [
+      {
+        "id": "settings",
+        "label": "Settings",
+        "icon": "settings",
+        "priority": 900,
+        "plugin_id": "config-ops"
+      }
+    ],
+    "items": [
+      {
+        "id": "config_list",
+        "label": "Configuration",
+        "group": "settings",
+        "route": "/settings",
+        "requires_verb": "config_list",
+        "priority": 100,
+        "requires_verbs": [
+          "config_list"
+        ],
+        "page": "config_list",
+        "plugin_id": "config-ops"
+      }
+    ],
+    "pages": [
+      {
+        "id": "config_list",
+        "route": "/settings",
+        "title": "Configuration",
+        "view": "legacy-route:/settings",
+        "synthesized": true,
+        "plugin_id": "config-ops",
+        "requires_verbs": [
+          "config_list"
+        ]
+      }
+    ]
+  },
+  "launch-ops": {
+    "groups": [
+      {
+        "id": "execution",
+        "label": "Execution",
+        "icon": "play",
+        "priority": 200,
+        "plugin_id": "launch-ops"
+      }
+    ],
+    "items": [
+      {
+        "id": "launch_list",
+        "label": "Launches",
+        "group": "execution",
+        "route": "/launches",
+        "requires_verb": "launch_list",
+        "priority": 100,
+        "requires_verbs": [
+          "launch_list"
+        ],
+        "page": "launch_list",
+        "plugin_id": "launch-ops"
+      }
+    ],
+    "pages": [
+      {
+        "id": "launch_list",
+        "route": "/launches",
+        "title": "Launches",
+        "view": "legacy-route:/launches",
+        "synthesized": true,
+        "plugin_id": "launch-ops",
+        "requires_verbs": [
+          "launch_list"
+        ]
+      }
+    ]
+  },
+  "observe-ops": {
+    "groups": [
+      {
+        "id": "observability",
+        "label": "Observability",
+        "icon": "activity",
+        "priority": 400,
+        "plugin_id": "observe-ops"
+      }
+    ],
+    "items": [
+      {
+        "id": "observe_activity",
+        "label": "Activity",
+        "group": "observability",
+        "route": "/observe",
+        "requires_verb": "observe_activity",
+        "priority": 100,
+        "requires_verbs": [
+          "observe_activity"
+        ],
+        "page": "observe_activity",
+        "plugin_id": "observe-ops"
+      },
+      {
+        "id": "observe_logs",
+        "label": "Logs",
+        "group": "observability",
+        "route": "/observe/logs",
+        "requires_verb": "observe_logs",
+        "priority": 200,
+        "requires_verbs": [
+          "observe_logs"
+        ],
+        "page": "observe_logs",
+        "plugin_id": "observe-ops"
+      },
+      {
+        "id": "observe_metrics",
+        "label": "Metrics",
+        "group": "observability",
+        "route": "/observe/metrics",
+        "requires_verb": "observe_metrics",
+        "priority": 300,
+        "requires_verbs": [
+          "observe_metrics"
+        ],
+        "page": "observe_metrics",
+        "plugin_id": "observe-ops"
+      }
+    ],
+    "pages": [
+      {
+        "id": "observe_activity",
+        "route": "/observe",
+        "title": "Activity",
+        "view": "legacy-route:/observe",
+        "synthesized": true,
+        "plugin_id": "observe-ops",
+        "requires_verbs": [
+          "observe_activity"
+        ]
+      },
+      {
+        "id": "observe_logs",
+        "route": "/observe/logs",
+        "title": "Logs",
+        "view": "legacy-route:/observe/logs",
+        "synthesized": true,
+        "plugin_id": "observe-ops",
+        "requires_verbs": [
+          "observe_logs"
+        ]
+      },
+      {
+        "id": "observe_metrics",
+        "route": "/observe/metrics",
+        "title": "Metrics",
+        "view": "legacy-route:/observe/metrics",
+        "synthesized": true,
+        "plugin_id": "observe-ops",
+        "requires_verbs": [
+          "observe_metrics"
+        ]
+      }
+    ]
+  },
+  "scm-ops": {
+    "groups": [
+      {
+        "id": "source",
+        "label": "Source Control",
+        "icon": "git-branch",
+        "priority": 700,
+        "plugin_id": "scm-ops"
+      }
+    ],
+    "items": [
+      {
+        "id": "scm_repos",
+        "label": "Repositories",
+        "group": "source",
+        "route": "/scm",
+        "requires_verb": "scm_list",
+        "priority": 100,
+        "requires_verbs": [
+          "scm_list"
+        ],
+        "page": "scm_repos",
+        "plugin_id": "scm-ops"
+      },
+      {
+        "id": "scm_activity",
+        "label": "Activity",
+        "group": "source",
+        "route": "/scm/activity",
+        "requires_verb": "scm_activity",
+        "priority": 200,
+        "requires_verbs": [
+          "scm_activity"
+        ],
+        "page": "scm_activity",
+        "plugin_id": "scm-ops"
+      }
+    ],
+    "pages": [
+      {
+        "id": "scm_repos",
+        "route": "/scm",
+        "title": "Repositories",
+        "view": "legacy-route:/scm",
+        "synthesized": true,
+        "plugin_id": "scm-ops",
+        "requires_verbs": [
+          "scm_list"
+        ]
+      },
+      {
+        "id": "scm_activity",
+        "route": "/scm/activity",
+        "title": "Activity",
+        "view": "legacy-route:/scm/activity",
+        "synthesized": true,
+        "plugin_id": "scm-ops",
+        "requires_verbs": [
+          "scm_activity"
+        ]
+      }
+    ]
+  },
+  "service-ops": {
+    "groups": [
+      {
+        "id": "services",
+        "label": "Services",
+        "icon": "server",
+        "priority": 600,
+        "plugin_id": "service-ops"
+      }
+    ],
+    "items": [
+      {
+        "id": "service_list",
+        "label": "All Services",
+        "group": "services",
+        "route": "/services",
+        "requires_verb": "service_list",
+        "priority": 100,
+        "requires_verbs": [
+          "service_list"
+        ],
+        "page": "service_list",
+        "plugin_id": "service-ops"
+      },
+      {
+        "id": "service_health",
+        "label": "Health",
+        "group": "services",
+        "route": "/services/health",
+        "requires_verb": "service_health",
+        "priority": 200,
+        "requires_verbs": [
+          "service_health"
+        ],
+        "page": "service_health",
+        "plugin_id": "service-ops"
+      }
+    ],
+    "pages": [
+      {
+        "id": "service_list",
+        "route": "/services",
+        "title": "All Services",
+        "view": "legacy-route:/services",
+        "synthesized": true,
+        "plugin_id": "service-ops",
+        "requires_verbs": [
+          "service_list"
+        ]
+      },
+      {
+        "id": "service_health",
+        "route": "/services/health",
+        "title": "Health",
+        "view": "legacy-route:/services/health",
+        "synthesized": true,
+        "plugin_id": "service-ops",
+        "requires_verbs": [
+          "service_health"
+        ]
+      }
+    ]
+  },
+  "session-ops": {
+    "groups": [
+      {
+        "id": "sessions",
+        "label": "Sessions",
+        "icon": "terminal",
+        "priority": 300,
+        "plugin_id": "session-ops"
+      }
+    ],
+    "items": [
+      {
+        "id": "session_list",
+        "label": "Active Sessions",
+        "group": "sessions",
+        "route": "/sessions",
+        "requires_verb": "session_list",
+        "priority": 100,
+        "requires_verbs": [
+          "session_list"
+        ],
+        "page": "session_list",
+        "plugin_id": "session-ops"
+      },
+      {
+        "id": "session_history",
+        "label": "Session History",
+        "group": "sessions",
+        "route": "/sessions/history",
+        "requires_verb": "session_history",
+        "priority": 200,
+        "requires_verbs": [
+          "session_history"
+        ],
+        "page": "session_history",
+        "plugin_id": "session-ops"
+      }
+    ],
+    "pages": [
+      {
+        "id": "session_list",
+        "route": "/sessions",
+        "title": "Active Sessions",
+        "view": "legacy-route:/sessions",
+        "synthesized": true,
+        "plugin_id": "session-ops",
+        "requires_verbs": [
+          "session_list"
+        ]
+      },
+      {
+        "id": "session_history",
+        "route": "/sessions/history",
+        "title": "Session History",
+        "view": "legacy-route:/sessions/history",
+        "synthesized": true,
+        "plugin_id": "session-ops",
+        "requires_verbs": [
+          "session_history"
+        ]
+      }
+    ]
+  },
+  "work-ops": {
+    "groups": [
+      {
+        "id": "work",
+        "label": "Work",
+        "icon": "clipboard-list",
+        "priority": 500,
+        "plugin_id": "work-ops"
+      }
+    ],
+    "items": [
+      {
+        "id": "work_list",
+        "label": "Tasks",
+        "group": "work",
+        "route": "/work",
+        "requires_verb": "work_list",
+        "priority": 100,
+        "requires_verbs": [
+          "work_list"
+        ],
+        "page": "work_list",
+        "plugin_id": "work-ops"
+      },
+      {
+        "id": "work_board",
+        "label": "Board",
+        "group": "work",
+        "route": "/work/board",
+        "requires_verb": "work_list",
+        "priority": 200,
+        "requires_verbs": [
+          "work_list"
+        ],
+        "page": "work_board",
+        "plugin_id": "work-ops"
+      }
+    ],
+    "pages": [
+      {
+        "id": "work_list",
+        "route": "/work",
+        "title": "Tasks",
+        "view": "legacy-route:/work",
+        "synthesized": true,
+        "plugin_id": "work-ops",
+        "requires_verbs": [
+          "work_list"
+        ]
+      },
+      {
+        "id": "work_board",
+        "route": "/work/board",
+        "title": "Board",
+        "view": "legacy-route:/work/board",
+        "synthesized": true,
+        "plugin_id": "work-ops",
+        "requires_verbs": [
+          "work_list"
+        ]
+      }
+    ]
+  }
+}
