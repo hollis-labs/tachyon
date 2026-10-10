@@ -48,7 +48,7 @@ func TestCapabilityCarrierRetainsDeclarationsAndMergesNav(t *testing.T) {
 	if len(nav.Groups) != 1 || nav.Groups[0].Label != "First label" || len(nav.Items) != 2 || nav.Items[0].ID != "first_list" || nav.Items[1].ID != "second_list" {
 		t.Fatalf("merged nav: %+v", nav)
 	}
-	for _, expected := range []string{"nav group collision", "nav item collision", `"winner":"first-plugin"`, `"loser":"second-plugin"`} {
+	for _, expected := range []string{`"reason":"nav-group-redeclared"`, `"reason":"nav-id-collision"`, `"plugin_id":"second-plugin"`} {
 		if !strings.Contains(logs.String(), expected) {
 			t.Fatalf("missing collision log %q: %s", expected, logs.String())
 		}

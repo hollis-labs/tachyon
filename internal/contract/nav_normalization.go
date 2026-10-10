@@ -190,6 +190,7 @@ func NormalizeNav(pluginID string, pc PluginCapabilities) (*NavDeclaration, []Na
 			g.Footer = false
 			g.Owner = false
 		}
+		g.ManifestOrder = i
 		g.PluginID = pluginID
 		out.Groups = append(out.Groups, g)
 	}
@@ -212,6 +213,7 @@ func NormalizeNav(pluginID string, pc PluginCapabilities) (*NavDeclaration, []Na
 				add(NavRouteCollision, "page", p.ID, p.Route, "explicit page route already admitted", false, true)
 				continue
 			}
+			p.ManifestOrder = i
 			p.PluginID = pluginID
 			p.Synthesized = false
 			pages[p.ID] = p
@@ -290,23 +292,16 @@ func NormalizeNav(pluginID string, pc PluginCapabilities) (*NavDeclaration, []Na
 					add(NavDuplicateID, "page", item.ID, item.Route, "synthesized page id already admitted", false, true)
 					continue
 				}
-				p := NavPage{ID: item.ID, Route: item.Route, Title: item.Label, View: "legacy-route:" + item.Route, RequiresVerbs: append([]string(nil), item.RequiresVerbs...), Synthesized: true, PluginID: pluginID}
+				p := NavPage{ManifestOrder: i, ID: item.ID, Route: item.Route, Title: item.Label, View: "legacy-route:" + item.Route, RequiresVerbs: append([]string(nil), item.RequiresVerbs...), Synthesized: true, PluginID: pluginID}
 				pages[p.ID] = p
 				routes[p.Route] = p.ID
 				out.Pages = append(out.Pages, p)
 				item.Page = p.ID
 			}
 		}
-		localGroup := false
-		for _, g := range out.Groups {
-			if g.ID == item.Group {
-				localGroup = true
-				break
-			}
-		}
-		if placements == 0 || (item.Group != "" && !localGroup) {
-			add(NavOrphan, "nav.item", item.ID, item.Route, "placement unavailable locally; projector will resolve to More", false, false)
-		}
+		// Placement is resolved only after every plugin is admitted. A missing
+		// local group is retained here and falls back to More in the projector.
+		item.ManifestOrder = i
 		item.PluginID = pluginID
 		out.Items = append(out.Items, item)
 	}
@@ -327,6 +322,7 @@ func NormalizeNav(pluginID string, pc PluginCapabilities) (*NavDeclaration, []Na
 				add(NavPageMissing, "subnav.item", s.ID, "", "subnav page not admitted", false, true)
 				continue
 			}
+			s.ManifestOrder = i
 			s.PluginID = pluginID
 			out.Subnav = append(out.Subnav, s)
 		}
@@ -344,6 +340,7 @@ func NormalizeNav(pluginID string, pc PluginCapabilities) (*NavDeclaration, []Na
 				target := *m.Target
 				m.Target = &target
 			}
+			m.ManifestOrder = i
 			m.PluginID = pluginID
 			out.Menus = append(out.Menus, m)
 		}

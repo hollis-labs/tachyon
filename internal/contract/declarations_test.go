@@ -61,7 +61,6 @@ func TestInvalidNavDeclarationsAreNonFatal(t *testing.T) {
 		{"duplicate group", func(c *PluginCapabilities) { c.Nav.Groups = append(c.Nav.Groups, c.Nav.Groups[0]) }},
 		{"unsafe item", func(c *PluginCapabilities) { c.Nav.Items[0].ID = "" }},
 		{"duplicate item", func(c *PluginCapabilities) { c.Nav.Items = append(c.Nav.Items, c.Nav.Items[0]) }},
-		{"missing local group", func(c *PluginCapabilities) { c.Nav.Items[0].Group = "other_plugin_group" }},
 		{"missing own verb", func(c *PluginCapabilities) { c.Nav.Items[0].RequiresVerb = "other_read" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -124,5 +123,17 @@ func TestValidDefaultTypes(t *testing.T) {
 		if err := c.Validate(); err != nil {
 			t.Fatalf("valid field %+v: %v", field, err)
 		}
+	}
+}
+
+func TestMissingLocalGroupDefersToHostMerge(t *testing.T) {
+	c := navSettingsCapabilities()
+	c.Nav.Items[0].Group = "other_plugin_group"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	nav, diagnostics := NormalizeNav("config-ops", c)
+	if len(nav.Items) != 1 || nav.Items[0].Group != "other_plugin_group" || len(diagnostics) != 0 {
+		t.Fatalf("placement was resolved during local admission: %+v %+v", nav, diagnostics)
 	}
 }

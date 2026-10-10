@@ -46,8 +46,8 @@ func TestNormalizeNavOverlap(t *testing.T) {
 			c.Nav.Items[0].Parent = "other"
 		}, 0, 1, "", NavPlacementConflict},
 		{"all placements", func(c *PluginCapabilities) { c.Nav.Items[0].GroupRef = "other"; c.Nav.Items[0].Parent = "other" }, 0, 1, "", NavPlacementConflict},
-		{"missing placement orphan", func(c *PluginCapabilities) { c.Nav.Items[0].Group = "" }, 1, 1, "explicit", NavOrphan},
-		{"missing local group orphan", func(c *PluginCapabilities) { c.Nav.Items[0].Group = "other" }, 1, 1, "explicit", NavOrphan},
+		{"missing placement deferred", func(c *PluginCapabilities) { c.Nav.Items[0].Group = "" }, 1, 1, "explicit", ""},
+		{"missing local group deferred", func(c *PluginCapabilities) { c.Nav.Items[0].Group = "other" }, 1, 1, "explicit", ""},
 		{"cross plugin ref deferred", func(c *PluginCapabilities) { c.Nav.Items[0].Group = ""; c.Nav.Items[0].GroupRef = "elsewhere" }, 1, 1, "explicit", ""},
 		{"cross plugin parent deferred", func(c *PluginCapabilities) { c.Nav.Items[0].Group = ""; c.Nav.Items[0].Parent = "elsewhere" }, 1, 1, "explicit", ""},
 	}

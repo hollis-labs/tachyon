@@ -194,7 +194,7 @@ func TestStartupEightPluginsAndCompatibility(t *testing.T) {
 	fixturePlugin(t, root, "hello", "rpc-legacy", false)
 	fixturePlugin(t, root, "legacy", "command-legacy", true)
 	for _, module := range []string{"agent", "launch", "session", "observe", "work", "service", "scm", "config"} {
-		// Cross-plugin nav IDs are soft collisions; alphabetical first owner wins.
+		// Cross-plugin nav IDs are soft collisions; stable plugin-ID owner wins.
 		caps := fmt.Sprintf(`{"modules":[%q],"nav":{"groups":[{"id":"shared","label":%q}]}}`, module, module)
 		fixturePlugin(t, root, module+"-ops", caps, true)
 	}
@@ -217,7 +217,7 @@ func TestStartupEightPluginsAndCompatibility(t *testing.T) {
 	}
 	nav := mgr.MergedNav()
 	if len(nav.Groups) != 1 || nav.Groups[0].Label != "agent" {
-		t.Fatalf("first-loaded nav lost: %+v", nav)
+		t.Fatalf("stable nav owner lost: %+v", nav)
 	}
 	// A malformed restart affects that plugin alone, never repeats startup rollback.
 	if err := os.WriteFile(filepath.Join(root, "agent-ops", "declaration"), []byte(`{`), 0600); err != nil {

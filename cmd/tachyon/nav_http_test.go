@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hollis-labs/tachyon/internal/contract"
+	"github.com/hollis-labs/tachyon/internal/plugins"
 )
 
 func TestHTTPNavEndpoint(t *testing.T) {
@@ -125,9 +126,9 @@ func TestHTTPNavEndpoint(t *testing.T) {
 		switch {
 		case d.Reason == contract.NavReservedRoute && d.Route == "/dashboard" && d.PluginID == "work-ops":
 			foundReserved = true
-		case d.Reason == "route_collision" && d.Route == "/scm" && d.PluginID == "work-ops" && strings.Contains(d.Message, "scm-ops"):
+		case d.Reason == contract.NavRouteCollision && d.Route == "/scm" && d.PluginID == "work-ops" && strings.Contains(d.Message, "scm-ops"):
 			foundDupRoute = true
-		case d.Reason == "item_collision" && d.ItemID == "scm-overview" && d.PluginID == "work-ops" && strings.Contains(d.Message, "scm-ops"):
+		case d.Reason == contract.NavIDCollision && d.ID == "scm-overview" && d.PluginID == "work-ops" && strings.Contains(d.Message, "scm-ops"):
 			foundDupID = true
 		}
 	}
@@ -144,5 +145,62 @@ func TestHTTPNavEndpoint(t *testing.T) {
 	// 3. Verify human-readable notices:
 	if len(nav.Notices) < 3 {
 		t.Errorf("expected at least 3 notices, got %d: %+v", len(nav.Notices), nav.Notices)
+	}
+}
+
+// Exercise both production handlers against actual admission and manager
+// projection; source-supplied ownership and diagnostics never become authority.
+func TestHTTPResolvedNavigationAndRegistry(t *testing.T) {
+	root, mgr, logger := startupFixture(t)
+	fixturePlugin(t, root, "z-owner", `{"modules":["owner"],"nav_schema":2,"nav":{"groups":[{"id":"work","label":"Owned Work","icon":"clipboard-list","priority":20,"owner":true,"plugin_id":"evil"}],"diagnostics":[{"reason":"spoof","plugin_id":"core"}]}}`, true)
+	fixturePlugin(t, root, "a-client", `{"modules":["client"],"nav_schema":2,"nav":{"groups":[{"id":"work","label":"Losing Work"}],"pages":[{"id":"timeline","route":"/timeline","title":"Timeline","view":"timeline","plugin_id":"evil"},{"id":"hidden","route":"/hidden","title":"Hidden","view":"hidden","hidden":true}],"items":[{"id":"timeline","group_ref":"work","page":"timeline","label":"Timeline","plugin_id":"evil"},{"id":"orphan","group_ref":"absent","page":"hidden","hidden":true,"label":"Orphan"}]}}`, true)
+	if err := loadStartupPlugins(context.Background(), mgr, root, logger); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /api/nav", newNavHandler(mgr))
+	mux.Handle("GET /api/plugins/registry", newRegistryHandler(mgr))
+	request := func(path string) []byte {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/json" {
+			t.Fatalf("handler %s: %d %s", path, rec.Code, rec.Body.String())
+		}
+		return rec.Body.Bytes()
+	}
+	rawNav := request("/api/nav")
+	var nav contract.NavDeclaration
+	if err := json.Unmarshal(rawNav, &nav); err != nil {
+		t.Fatal(err)
+	}
+	if len(nav.Items) != 0 || len(nav.Tree) != 2 || nav.Tree[0].OwnerID != "z-owner" || nav.Tree[0].Children[0].OwnerID != "a-client" || nav.Tree[1].ID != "more" || len(nav.Pages) != 2 {
+		t.Fatalf("resolved HTTP nav %s", rawNav)
+	}
+	if nav.Projection == nil || nav.Projection.Status != contract.NavProjectionDegraded {
+		t.Fatalf("no explicit projection status %s", rawNav)
+	}
+	rawRegistry := request("/api/plugins/registry")
+	var response plugins.RegistryResponse
+	if err := json.Unmarshal(rawRegistry, &response); err != nil {
+		t.Fatal(err)
+	}
+	if err := response.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if response.NavProjection.Status != nav.Projection.Status || len(response.Refusals) != 1 || len(response.Contributions["page"]) != 2 || len(response.Contributions["nav.item"]) != 2 {
+		t.Fatalf("registry HTTP %s", rawRegistry)
+	}
+	for _, d := range response.Diagnostics {
+		if d.Reason == "spoof" || d.PluginID == "core" || d.PluginID == "evil" {
+			t.Fatal("plugin minted diagnostic")
+		}
+	}
+	for _, byKey := range response.Contributions {
+		for _, c := range byKey {
+			if c.OwnerID == "core" || c.OwnerID == "evil" || c.Required || c.Representation != "declarative" {
+				t.Fatalf("invalid projection authority %+v", c)
+			}
+		}
 	}
 }

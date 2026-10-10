@@ -5,21 +5,23 @@ import "encoding/json"
 // NavGroup declares source-owned group metadata. The projector resolves owner
 // hints across plugins; PluginID is always attributed by the host.
 type NavGroup struct {
-	ID        string `json:"id"`
-	Label     string `json:"label"`
-	Icon      string `json:"icon,omitempty"`
-	Priority  int    `json:"priority,omitempty"`
-	Parent    string `json:"parent,omitempty"`
-	Kind      string `json:"kind,omitempty"`
-	Collapsed bool   `json:"collapsed,omitempty"`
-	Footer    bool   `json:"footer,omitempty"`
-	Owner     bool   `json:"owner,omitempty"`
-	PluginID  string `json:"plugin_id,omitempty"`
+	ManifestOrder int    `json:"-"` // authored array index, host-only normalization data
+	ID            string `json:"id"`
+	Label         string `json:"label"`
+	Icon          string `json:"icon,omitempty"`
+	Priority      int    `json:"priority,omitempty"`
+	Parent        string `json:"parent,omitempty"`
+	Kind          string `json:"kind,omitempty"`
+	Collapsed     bool   `json:"collapsed,omitempty"`
+	Footer        bool   `json:"footer,omitempty"`
+	Owner         bool   `json:"owner,omitempty"`
+	PluginID      string `json:"plugin_id,omitempty"`
 }
 
 // NavItem authors a navigation entry. Page is authoritative; Route, when both
 // exist, is a consistency assertion. Required verbs are an all-of union.
 type NavItem struct {
+	ManifestOrder int      `json:"-"` // authored array index, host-only normalization data
 	ID            string   `json:"id"`
 	Label         string   `json:"label"`
 	Group         string   `json:"group,omitempty"`
@@ -39,6 +41,7 @@ type NavItem struct {
 // NavPage registers a route independently of navigation visibility. View names
 // a host-compiled component in wave 1; it cannot authorize plugin JavaScript.
 type NavPage struct {
+	ManifestOrder int      `json:"-"` // authored array index, host-only normalization data
 	ID            string   `json:"id"`
 	Route         string   `json:"route"`
 	Title         string   `json:"title"`
@@ -50,6 +53,7 @@ type NavPage struct {
 }
 
 type NavSubnav struct {
+	ManifestOrder int      `json:"-"` // authored array index, host-only normalization data
 	ID            string   `json:"id"`
 	Label         string   `json:"label"`
 	Parent        string   `json:"parent"`
@@ -63,6 +67,7 @@ type NavSubnav struct {
 // NavMenu carries a declarative intent, not executable code. Action gateway
 // validation and invocation are owned by the menu implementation (0119).
 type NavMenu struct {
+	ManifestOrder int             `json:"-"` // authored array index, host-only normalization data
 	ID            string          `json:"id"`
 	Label         string          `json:"label"`
 	Region        string          `json:"region"`
@@ -94,6 +99,22 @@ type NavDiagnostic struct {
 	Dropped       bool   `json:"dropped,omitempty"`
 }
 
+// NavNode is host-only resolved topology, separate from source ownership hints.
+// More has host owner core here only; it is never a registry contribution.
+type NavNode struct {
+	Kind     string     `json:"kind"`
+	ID       string     `json:"id"`
+	Label    string     `json:"label"`
+	Icon     string     `json:"icon,omitempty"`
+	Priority int        `json:"priority"`
+	Route    string     `json:"route,omitempty"`
+	Page     string     `json:"page,omitempty"`
+	Hidden   bool       `json:"hidden,omitempty"`
+	PluginID string     `json:"plugin_id"`
+	OwnerID  string     `json:"owner_id"`
+	Children []*NavNode `json:"children"`
+}
+
 // NavDeclaration is authored solely in capabilities.json and transported over
 // plugin_capabilities / command/execute protocol 2. Schema is a sibling field
 // on PluginCapabilities (absent/0 = legacy schema 1; schema 2 enables additions).
@@ -116,6 +137,8 @@ type NavDeclaration struct {
 	Menus        []NavMenu       `json:"menus,omitempty"`
 	Diagnostics  []NavDiagnostic `json:"diagnostics,omitempty"`
 	Notices      []string        `json:"notices,omitempty"`
+	Tree         []*NavNode      `json:"tree,omitempty"`
+	Projection   *NavProjection  `json:"nav_projection,omitempty"`
 }
 
 // NavProjection is an additive registry signal. Its runtime production belongs

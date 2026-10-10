@@ -66,10 +66,10 @@ func TestRestartReloadsSettingsAndPreservesOtherPlugins(t *testing.T) {
 	if spawned[0] == m.plugins["first-plugin"] || !spawned[0].stopped || m.plugins["other-plugin"] == nil || m.ModuleOwner("other") != "other-plugin" || m.ModuleOwner("first") != "first-plugin" {
 		t.Fatal("incorrect process/module ownership")
 	}
-	// A surviving shared group becomes first-loaded after the original owner
-	// is removed; the restarted plugin contributes its distinct item again.
+	// Plugin ID ordering is stable across restart: the original lexical winner
+	// regains metadata, while both distinct items remain admitted.
 	nav := m.MergedNav()
-	if len(nav.Groups) != 1 || nav.Groups[0].Label != "Other" || len(nav.Items) != 2 {
+	if len(nav.Groups) != 1 || nav.Groups[0].Label != caps.Nav.Groups[0].Label || len(nav.Items) != 2 {
 		t.Fatalf("incorrect nav re-election: %+v", nav)
 	}
 	if _, err := callProcess(lifetime, spawned[0], "command/execute", nil); err == nil || !strings.Contains(err.Error(), "unloaded") {

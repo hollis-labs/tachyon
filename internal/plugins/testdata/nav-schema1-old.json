@@ -1,0 +1,197 @@
+{
+  "groups": [
+    {
+      "id": "agents",
+      "label": "Agents",
+      "icon": "users",
+      "priority": 100,
+      "plugin_id": "agent-ops"
+    },
+    {
+      "id": "execution",
+      "label": "Execution",
+      "icon": "play",
+      "priority": 200,
+      "plugin_id": "launch-ops"
+    },
+    {
+      "id": "sessions",
+      "label": "Sessions",
+      "icon": "terminal",
+      "priority": 300,
+      "plugin_id": "session-ops"
+    },
+    {
+      "id": "observability",
+      "label": "Observability",
+      "icon": "activity",
+      "priority": 400,
+      "plugin_id": "observe-ops"
+    },
+    {
+      "id": "work",
+      "label": "Work",
+      "icon": "clipboard-list",
+      "priority": 500,
+      "plugin_id": "work-ops"
+    },
+    {
+      "id": "services",
+      "label": "Services",
+      "icon": "server",
+      "priority": 600,
+      "plugin_id": "service-ops"
+    },
+    {
+      "id": "source",
+      "label": "Source Control",
+      "icon": "git-branch",
+      "priority": 700,
+      "plugin_id": "scm-ops"
+    },
+    {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings",
+      "priority": 900,
+      "plugin_id": "config-ops"
+    }
+  ],
+  "items": [
+    {
+      "id": "agent_list",
+      "label": "Agent Ops",
+      "group": "agents",
+      "route": "/agents",
+      "requires_verb": "agent_list",
+      "priority": 100,
+      "plugin_id": "agent-ops"
+    },
+    {
+      "id": "config_list",
+      "label": "Configuration",
+      "group": "settings",
+      "route": "/settings",
+      "requires_verb": "config_list",
+      "priority": 100,
+      "plugin_id": "config-ops"
+    },
+    {
+      "id": "launch_list",
+      "label": "Launches",
+      "group": "execution",
+      "route": "/launches",
+      "requires_verb": "launch_list",
+      "priority": 100,
+      "plugin_id": "launch-ops"
+    },
+    {
+      "id": "observe_activity",
+      "label": "Activity",
+      "group": "observability",
+      "route": "/observe",
+      "requires_verb": "observe_activity",
+      "priority": 100,
+      "plugin_id": "observe-ops"
+    },
+    {
+      "id": "scm_repos",
+      "label": "Repositories",
+      "group": "source",
+      "route": "/scm",
+      "requires_verb": "scm_list",
+      "priority": 100,
+      "plugin_id": "scm-ops"
+    },
+    {
+      "id": "service_list",
+      "label": "All Services",
+      "group": "services",
+      "route": "/services",
+      "requires_verb": "service_list",
+      "priority": 100,
+      "plugin_id": "service-ops"
+    },
+    {
+      "id": "session_list",
+      "label": "Active Sessions",
+      "group": "sessions",
+      "route": "/sessions",
+      "requires_verb": "session_list",
+      "priority": 100,
+      "plugin_id": "session-ops"
+    },
+    {
+      "id": "work_list",
+      "label": "Tasks",
+      "group": "work",
+      "route": "/work",
+      "requires_verb": "work_list",
+      "priority": 100,
+      "plugin_id": "work-ops"
+    },
+    {
+      "id": "agent_durable_sessions",
+      "label": "Durable Sessions",
+      "group": "agents",
+      "route": "/agents/durable",
+      "requires_verb": "agent_list",
+      "priority": 200,
+      "plugin_id": "agent-ops"
+    },
+    {
+      "id": "observe_logs",
+      "label": "Logs",
+      "group": "observability",
+      "route": "/observe/logs",
+      "requires_verb": "observe_logs",
+      "priority": 200,
+      "plugin_id": "observe-ops"
+    },
+    {
+      "id": "scm_activity",
+      "label": "Activity",
+      "group": "source",
+      "route": "/scm/activity",
+      "requires_verb": "scm_activity",
+      "priority": 200,
+      "plugin_id": "scm-ops"
+    },
+    {
+      "id": "service_health",
+      "label": "Health",
+      "group": "services",
+      "route": "/services/health",
+      "requires_verb": "service_health",
+      "priority": 200,
+      "plugin_id": "service-ops"
+    },
+    {
+      "id": "session_history",
+      "label": "Session History",
+      "group": "sessions",
+      "route": "/sessions/history",
+      "requires_verb": "session_history",
+      "priority": 200,
+      "plugin_id": "session-ops"
+    },
+    {
+      "id": "work_board",
+      "label": "Board",
+      "group": "work",
+      "route": "/work/board",
+      "requires_verb": "work_list",
+      "priority": 200,
+      "plugin_id": "work-ops"
+    },
+    {
+      "id": "observe_metrics",
+      "label": "Metrics",
+      "group": "observability",
+      "route": "/observe/metrics",
+      "requires_verb": "observe_metrics",
+      "priority": 300,
+      "plugin_id": "observe-ops"
+    }
+  ]
+}

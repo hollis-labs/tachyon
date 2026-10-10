@@ -73,8 +73,6 @@ func registerStalled(m *Manager, proc *pluginProcess) {
 	m.plugins[proc.id] = proc
 	m.modules["hung"] = proc.id
 	m.loadOrder = append(m.loadOrder, proc.id)
-	m.navGroups["shared"] = proc.id
-	m.navItems["hung_list"] = proc.id
 }
 
 func TestWatchdogBoundsEncodeAndDecodeAndUnloadsOwnership(t *testing.T) {
