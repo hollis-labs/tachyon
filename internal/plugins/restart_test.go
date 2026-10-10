@@ -99,7 +99,7 @@ func TestFailedRestartLeavesNoRegistration(t *testing.T) {
 				caps := declarationFor("first", "New")
 				id := "old"
 				if mode == "bad-declaration" {
-					caps.Nav.Items[0].RequiresVerb = "unknown"
+					caps.Verbs["first_list"] = contract.VerbDeclaration{Effect: "unsafe"}
 				} else {
 					id = "changed"
 				}

@@ -164,7 +164,6 @@ func TestStartupAdmissionRollback(t *testing.T) {
 		"prefix":           `{"modules":["bad"],"verbs":{"other_list":{"effect":"reads"}}}`,
 		"verb-collision":   `{"modules":["agent_list"],"verbs":{"agent_list_get":{"effect":"reads"}}}`,
 		"collision":        `{"modules":["agent"]}`,
-		"nav":              `{"modules":["bad"],"nav":{"items":[{"id":"bad","label":"Bad","group":"absent","route":"/bad"}]}}`,
 		"settings":         `{"modules":["bad"],"settings":{"fields":[{"key":"enabled","label":"Enabled","type":"boolean","default":"yes"}]}}`,
 		"rpc-shape":        "wrong-rpc-shape",
 		"command-shape":    "wrong-command-shape",
@@ -357,5 +356,41 @@ func TestStartupRollbackBoundsHungUnloads(t *testing.T) {
 	requireReaped(t, first, second, rejected)
 	if len(mgr.BuildRegistry().Plugins) != 0 {
 		t.Fatal("hung unload left registrations")
+	}
+}
+
+func TestStartupNavigationWarnDropPreservesRegistrations(t *testing.T) {
+	for _, nav := range []string{
+		`{"items":[{"id":"bad","route":"/bad","requires_verb":"other_read"},{"id":"good","label":"Good","route":"/good","group":"absent"}]}`,
+		`{"groups":"bad","items":[{"id":"bad","route":3},{"id":"good","label":"Good","route":"/good"}]}`,
+		`"not-an-object"`,
+	} {
+		t.Run(nav, func(t *testing.T) {
+			root, mgr, logger := startupFixture(t)
+			declaration := `{"modules":["work"],"verbs":{"work_list":{"effect":"reads"}},"nav":` + nav + `,"settings":{"fields":[{"key":"enabled","type":"boolean","default":false}]}}`
+			dir := fixturePlugin(t, root, "work-ops", declaration, true)
+			// Authored and discovered wire declarations exercise both admission paths.
+			if err := os.WriteFile(filepath.Join(dir, "capabilities.json"), []byte(declaration), 0600); err != nil {
+				t.Fatal(err)
+			}
+			fixturePlugin(t, root, "config-ops", `{"modules":["config"]}`, true)
+			if err := loadStartupPlugins(context.Background(), mgr, root, logger); err != nil {
+				t.Fatalf("nav refused startup: %v", err)
+			}
+			if mgr.ModuleOwner("work") != "work-ops" || mgr.ModuleOwner("config") != "config-ops" || len(mgr.BuildRegistry().Plugins) != 2 {
+				t.Fatal("navigation removed valid registration")
+			}
+			c := mgr.AllCapabilities()["work"]
+			if c.Settings == nil || len(c.Verbs) != 1 {
+				t.Fatal("nav removed settings or verbs")
+			}
+			want := 0
+			if strings.Contains(nav, `"id":"good"`) {
+				want = 1
+			}
+			if n := mgr.MergedNav(); len(n.Items) != want {
+				t.Fatalf("owned blast radius: %+v", n)
+			}
+		})
 	}
 }

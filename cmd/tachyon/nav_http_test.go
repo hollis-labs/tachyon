@@ -123,7 +123,7 @@ func TestHTTPNavEndpoint(t *testing.T) {
 	var foundReserved, foundDupRoute, foundDupID bool
 	for _, d := range nav.Diagnostics {
 		switch {
-		case d.Reason == "reserved_route" && d.Route == "/dashboard" && d.PluginID == "work-ops":
+		case d.Reason == contract.NavReservedRoute && d.Route == "/dashboard" && d.PluginID == "work-ops":
 			foundReserved = true
 		case d.Reason == "route_collision" && d.Route == "/scm" && d.PluginID == "work-ops" && strings.Contains(d.Message, "scm-ops"):
 			foundDupRoute = true

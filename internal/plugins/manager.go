@@ -612,6 +612,14 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 			if err := caps.Validate(); err != nil {
 				return admissionFailure("validation", "plugin %q capability validation failed: %w", proc.id, err)
 			}
+			_, diagnostics := contract.NormalizeNav(proc.id, caps)
+			for _, diag := range diagnostics {
+				if diag.Informational {
+					m.logger.Info("navigation declaration diagnostic", "plugin_id", proc.id, "kind", diag.Kind, "id", diag.ID, "reason", diag.Reason)
+				} else {
+					m.logger.Warn("navigation declaration diagnostic", "plugin_id", proc.id, "kind", diag.Kind, "id", diag.ID, "reason", diag.Reason, "dropped", diag.Dropped)
+				}
+			}
 			proc.capabilities = &caps
 			if _, reserved := caps.Verbs[observefeed.Command]; reserved {
 				return admissionFailure("validation", "private host command cannot be declared")
@@ -658,7 +666,22 @@ func (m *Manager) collectNavDeclarationsLocked() ([]string, map[string]*contract
 	for _, id := range m.loadOrder {
 		proc := m.plugins[id]
 		if proc != nil && proc.capabilities != nil && proc.capabilities.Nav != nil {
-			navs[id] = proc.capabilities.Nav
+			// This transitional endpoint keeps the schema-1 profile only. V2
+			// pages/placement arrive through the registry projector in 0117.
+			if proc.capabilities.NavSchema > 1 {
+				continue
+			}
+			normalized, diagnostics := contract.NormalizeNav(id, *proc.capabilities)
+			if normalized == nil {
+				continue
+			}
+			for i := range normalized.Items {
+				normalized.Items[i].Page = ""
+				normalized.Items[i].RequiresVerbs = nil
+			}
+			normalized.Pages = nil
+			normalized.Diagnostics = diagnostics
+			navs[id] = normalized
 		}
 	}
 	return m.loadOrder, navs

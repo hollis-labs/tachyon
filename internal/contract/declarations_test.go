@@ -8,7 +8,7 @@ import (
 
 func navSettingsCapabilities() PluginCapabilities {
 	return PluginCapabilities{Modules: []string{"config"}, Verbs: map[string]VerbDeclaration{"config_read": {Effect: EffectReads}},
-		Nav: &NavDeclaration{Groups: []NavGroup{{ID: "settings", Label: "Settings"}}, Items: []NavItem{{ID: "config_read", Group: "settings", RequiresVerb: "config_read"}}},
+		Nav: &NavDeclaration{Groups: []NavGroup{{ID: "settings", Label: "Settings"}}, Items: []NavItem{{ID: "config_read", Group: "settings", RequiresVerb: "config_read", Route: "/settings"}}},
 		Settings: &SettingsDeclaration{Fields: []SettingsField{
 			{Key: "endpoint", Type: SettingsFieldString, Required: true},
 			{Key: "enabled", Type: SettingsFieldBoolean, Default: false, Required: true},
@@ -52,7 +52,7 @@ func TestNavSettingsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestInvalidNavDeclarations(t *testing.T) {
+func TestInvalidNavDeclarationsAreNonFatal(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		mutate func(*PluginCapabilities)
@@ -67,8 +67,12 @@ func TestInvalidNavDeclarations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := navSettingsCapabilities()
 			tc.mutate(&c)
-			if err := c.Validate(); err == nil {
-				t.Fatal("invalid nav accepted")
+			if err := c.Validate(); err != nil {
+				t.Fatalf("nav made non-nav validation fatal: %v", err)
+			}
+			_, diagnostics := NormalizeNav("config-ops", c)
+			if len(diagnostics) == 0 {
+				t.Fatal("invalid navigation has no diagnostic")
 			}
 		})
 	}
