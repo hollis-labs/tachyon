@@ -71,8 +71,11 @@ complete capability discovery before any HTTP listener opens.
 | Hello/no-capabilities | Absence is optional; explicit discovery rejection admits legacy |
 
 Unexpected filesystem failures, spawn/load failures and unexpected discovery
-command actions also refuse startup. Cross-plugin nav group/item IDs follow
-ADR 001's first-loaded precedence; invalid local references are hard errors.
+command actions also refuse startup. Malformed non-navigation declarations remain
+fatal load errors. Cross-plugin nav group/item/route collisions and unallowlisted
+claims on reserved host routes (/dashboard, /plugin-recovery, and /settings outside
+its permitted contributor) follow first-loaded precedence and warn-and-drop policy,
+surfacing bounded diagnostics and notices in /api/nav rather than refusing startup.
 
 A refusal exits nonzero and emits one structured ERROR `plugin startup refused`
 with `plugin_id`, `path`, and `reason_class` (plus diagnostics). No listener was

@@ -3,6 +3,7 @@ export interface NavGroup {
   label: string
   icon?: string
   priority?: number
+  plugin_id?: string
 }
 export interface NavItem {
   id: string
@@ -11,10 +12,21 @@ export interface NavItem {
   route: string
   requires_verb?: string
   priority?: number
+  plugin_id?: string
+}
+export interface NavDiagnostic {
+  reason: string
+  message: string
+  plugin_id?: string
+  route?: string
+  item_id?: string
+  group_id?: string
 }
 export interface Navigation {
   groups?: NavGroup[]
   items?: NavItem[]
+  diagnostics?: NavDiagnostic[]
+  notices?: string[]
 }
 
 export async function fetchNavigation(): Promise<Navigation> {

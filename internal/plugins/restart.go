@@ -114,23 +114,6 @@ func (m *Manager) detachProcess(proc *pluginProcess) {
 	m.loadOrder = order
 	// Re-elect first-loaded surviving declarations when the removed process
 	// owned shared nav IDs. Respawn is a new load at the end of loadOrder.
-	m.navGroups = map[string]string{}
-	m.navItems = map[string]string{}
-	for _, loaded := range m.loadOrder {
-		caps := m.plugins[loaded].capabilities
-		if caps == nil || caps.Nav == nil {
-			continue
-		}
-		for _, group := range caps.Nav.Groups {
-			if _, claimed := m.navGroups[group.ID]; !claimed {
-				m.navGroups[group.ID] = loaded
-			}
-		}
-		for _, item := range caps.Nav.Items {
-			if _, claimed := m.navItems[item.ID]; !claimed {
-				m.navItems[item.ID] = loaded
-			}
-		}
-	}
+	m.rebuildNavClaimsLocked()
 	m.mu.Unlock()
 }

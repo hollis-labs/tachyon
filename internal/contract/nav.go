@@ -17,8 +17,11 @@ type NavGroup struct {
 	Icon string `json:"icon,omitempty"`
 
 	// Priority controls ordering in the nav rail. Lower values appear
-	// first. Default is 1000. User config can override.
+	// first. Default is 1000.
 	Priority int `json:"priority,omitempty"`
+
+	// PluginID is the host-attributed identifier of the plugin owning this group.
+	PluginID string `json:"plugin_id,omitempty"`
 }
 
 // NavItem declares a single navigable view within a nav group. Each
@@ -43,8 +46,22 @@ type NavItem struct {
 	RequiresVerb string `json:"requires_verb,omitempty"`
 
 	// Priority controls ordering within the group. Lower values appear
-	// first. Default is 1000. User config can override.
+	// first. Default is 1000.
 	Priority int `json:"priority,omitempty"`
+
+	// PluginID is the host-attributed identifier of the plugin that contributed this item.
+	PluginID string `json:"plugin_id,omitempty"`
+}
+
+// NavDiagnostic records an issue encountered during navigation resolution,
+// such as a route collision, duplicate item ID, or reserved route claim.
+type NavDiagnostic struct {
+	Reason   string `json:"reason"`
+	Message  string `json:"message"`
+	PluginID string `json:"plugin_id,omitempty"`
+	Route    string `json:"route,omitempty"`
+	ItemID   string `json:"item_id,omitempty"`
+	GroupID  string `json:"group_id,omitempty"`
 }
 
 // Each item references a group declared by the same plugin. Plugins may
@@ -55,6 +72,31 @@ type NavItem struct {
 // capability declaration. The host merges declarations from all
 // loaded plugins into a single nav tree for the browser loader.
 type NavDeclaration struct {
-	Groups []NavGroup `json:"groups,omitempty"`
-	Items  []NavItem  `json:"items,omitempty"`
+	Groups      []NavGroup      `json:"groups,omitempty"`
+	Items       []NavItem       `json:"items,omitempty"`
+	Diagnostics []NavDiagnostic `json:"diagnostics,omitempty"`
+	Notices     []string        `json:"notices,omitempty"`
+}
+
+// ValidNavIcons defines the set of documented valid navigation icon identifiers.
+var ValidNavIcons = map[string]bool{
+	"activity":         true,
+	"clipboard":        true,
+	"clipboard-list":   true,
+	"dashboard":        true,
+	"git":              true,
+	"git-branch":       true,
+	"layout-dashboard": true,
+	"play":             true,
+	"radio":            true,
+	"rocket":           true,
+	"server":           true,
+	"settings":         true,
+	"terminal":         true,
+	"users":            true,
+}
+
+// IsValidNavIcon returns whether an icon identifier is recognized by the host.
+func IsValidNavIcon(icon string) bool {
+	return ValidNavIcons[icon]
 }
