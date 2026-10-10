@@ -128,12 +128,12 @@ func TestNormalizeSchemaProfiles(t *testing.T) {
 }
 
 func TestNavRouteGrammarAndReservations(t *testing.T) {
-	for _, route := range []string{"/work", "/work/board", "/a_1-b", "/a//b", "/" + strings.Repeat("a", 127)} {
+	for _, route := range []string{"/work", "/work/board", "/a_1-b", "/work/_internal", "/work/-", "/work/:id", "/:owner/work/:work_id", "/" + strings.Repeat("a", 127)} {
 		if !ValidNavRoute(route) {
 			t.Errorf("valid route rejected %q", route)
 		}
 	}
-	for _, route := range []string{"", "/", "/Work", "work", "/work/", "/work?id=1", "/work#x", "/work/:id", "/work/../x", "/" + strings.Repeat("a", 128)} {
+	for _, route := range []string{"", "/", "/Work", "work", "/work/", "/a//b", "//a", "/_work", "/work?id=1", "/work#x", "/work/:id/:id", "/work/:Id", "/work/:1id", "/work/:id?", "/work/:id-extra", "/work/prefix:id", "/work/*", "/work/../x", "/" + strings.Repeat("a", 128)} {
 		if ValidNavRoute(route) {
 			t.Errorf("unsafe route accepted %q", route)
 		}

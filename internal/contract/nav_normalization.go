@@ -31,10 +31,32 @@ const (
 	NavMalformed = "nav-malformed"
 )
 
-var navRoutePattern = regexp.MustCompile(`^/[a-z0-9][a-z0-9/_-]*$`)
+var navRouteFirstLiteral = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+var navRouteLiteral = regexp.MustCompile(`^[a-z0-9_-]+$`)
+var navRouteParameter = regexp.MustCompile(`^:[a-z][a-z0-9_]*$`)
 
 func ValidNavRoute(route string) bool {
-	return len(route) <= 128 && navRoutePattern.MatchString(route) && !strings.HasSuffix(route, "/")
+	if len(route) > 128 || !strings.HasPrefix(route, "/") {
+		return false
+	}
+	names := make(map[string]bool)
+	for index, segment := range strings.Split(route[1:], "/") {
+		if navRouteParameter.MatchString(segment) {
+			if names[segment] {
+				return false
+			}
+			names[segment] = true
+			continue
+		}
+		literal := navRouteLiteral
+		if index == 0 {
+			literal = navRouteFirstLiteral
+		}
+		if !literal.MatchString(segment) {
+			return false
+		}
+	}
+	return true
 }
 
 // ReservedNavRoute is the shared DEC081 allowlist. Host-only routes include
