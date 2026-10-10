@@ -88,6 +88,19 @@ verb. Visibility requires both supported capabilities and a registered page.
 Keep API clients under `frontend/src/api/` and browser requests same-origin.
 Read the declaration validation rules in ADR 001 before adding a plugin page.
 
+### Navigation icons, reserved routes, and collisions
+
+- **Icons**: Group icons use a documented bounded vocabulary corresponding to Lucide icons:
+  `activity`, `clipboard-list` (or `clipboard`), `git-branch` (or `git`), `play` (or `rocket`),
+  `server`, `settings`, `terminal`, `users`, `radio`, `dashboard`. Unknown icon names safely
+  fall back to `activity` with host and browser diagnostic warnings.
+- **Reserved routes**: Host routes (`/dashboard`, `/plugin-recovery`) cannot be claimed by plugins;
+  `/settings` is host-reserved with an owner allowlist preserving the existing `config-ops` contributor.
+  Unallowlisted plugin claims on reserved routes are dropped with a warning and diagnostic.
+- **Collisions and attribution**: The host adds `plugin_id` attribution to all emitted groups
+  and items. When multiple plugins declare the same group ID, item ID, or route, the first-loaded
+  declaration wins. Dropped collisions are surfaced in `/api/nav` `diagnostics` and `notices`.
+
 ## Page guides
 
 | Guide | Operator behavior |

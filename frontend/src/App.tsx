@@ -1,33 +1,13 @@
 import { AppShell, Toaster } from "@hollis-labs/design-components"
 import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/kit-dashboard"
-import {
-  Activity,
-  GitBranch,
-  LayoutDashboard,
-  Radio,
-  Rocket,
-  Server,
-  Settings,
-  Terminal,
-  Users,
-} from "lucide-react"
+import { Activity, LayoutDashboard } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { fetchNavigation, type Navigation, visibleNavigation } from "./api/navigation"
 import { type ConfigTarget, retiredConfigTargets } from "./api/settings"
 import { useCapabilities } from "./hooks/use-capabilities"
+import { getNavIcon } from "./icons"
 import { PluginRecoveryPage } from "./pages/plugin-recovery"
 import { pageRegistry } from "./pages/registry"
-
-const icons = {
-  activity: Activity,
-  git: GitBranch,
-  play: Rocket,
-  server: Server,
-  settings: Settings,
-  terminal: Terminal,
-  users: Users,
-  radio: Radio,
-}
 
 export function App() {
   const capabilities = useCapabilities()
@@ -143,7 +123,7 @@ export function App() {
       : []),
     ...items.map((item) => {
       const iconName = navigation.groups?.find((group) => group.id === item.group)?.icon
-      const Icon = icons[iconName as keyof typeof icons] ?? Activity
+      const Icon = getNavIcon(iconName)
       return {
         key: item.id,
         label: item.label,

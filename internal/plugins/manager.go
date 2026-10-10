@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,6 +42,9 @@ type Manager struct {
 	loadOrder        []string
 	navGroups        map[string]string // group ID -> first-loaded plugin ID
 	navItems         map[string]string // item ID -> first-loaded plugin ID
+	navRoutes        map[string]string // route -> first-loaded plugin ID
+	navDiagnostics   []contract.NavDiagnostic
+	navNotices       []string
 }
 
 // pluginProcess is one spawned plugin subprocess.
@@ -108,6 +110,7 @@ func NewManager(logger *slog.Logger) *Manager {
 		modules:      make(map[string]string),
 		navGroups:    make(map[string]string),
 		navItems:     make(map[string]string),
+		navRoutes:    make(map[string]string),
 	}
 	m.spawn = func(ctx context.Context, path string) (*pluginProcess, error) {
 		generation := m.generation.Add(1)
@@ -642,72 +645,45 @@ func (m *Manager) initializePlugin(ctx context.Context, proc *pluginProcess) err
 			m.modules[mod] = proc.id
 		}
 	}
-	if proc.capabilities != nil && proc.capabilities.Nav != nil {
-		for _, group := range proc.capabilities.Nav.Groups {
-			if owner, exists := m.navGroups[group.ID]; exists {
-				m.logger.Warn("nav group collision; first loaded declaration wins", "group_id", group.ID, "winner", owner, "loser", proc.id)
-			} else {
-				m.navGroups[group.ID] = proc.id
-			}
-		}
-		for _, item := range proc.capabilities.Nav.Items {
-			if owner, exists := m.navItems[item.ID]; exists {
-				m.logger.Warn("nav item collision; first loaded declaration wins", "item_id", item.ID, "winner", owner, "loser", proc.id)
-			} else {
-				m.navItems[item.ID] = proc.id
-			}
-		}
-	}
 	m.registryRevision++
 	m.plugins[proc.id] = proc
 	delete(m.retired, proc.id)
 	m.loadOrder = append(m.loadOrder, proc.id)
+	m.rebuildNavClaimsLocked()
 	return nil
 }
 
+func (m *Manager) collectNavDeclarationsLocked() ([]string, map[string]*contract.NavDeclaration) {
+	navs := make(map[string]*contract.NavDeclaration, len(m.loadOrder))
+	for _, id := range m.loadOrder {
+		proc := m.plugins[id]
+		if proc != nil && proc.capabilities != nil && proc.capabilities.Nav != nil {
+			navs[id] = proc.capabilities.Nav
+		}
+	}
+	return m.loadOrder, navs
+}
+
+func (m *Manager) rebuildNavClaimsLocked() {
+	order, navs := m.collectNavDeclarationsLocked()
+	res := ResolveNavigation(order, navs, m.logger)
+	m.navGroups = res.GroupOwners
+	m.navItems = res.ItemOwners
+	m.navRoutes = res.RouteOwners
+	m.navDiagnostics = res.Nav.Diagnostics
+	m.navNotices = res.Nav.Notices
+}
+
 // MergedNav returns a snapshot of navigation from registered plugins. Group
-// metadata and globally unique item IDs are first-loaded wins; later plugins
-// can still contribute distinct items to a shared group. Priority zero uses
-// the contract default (1000), and IDs break ties for deterministic responses.
+// metadata, globally unique item IDs and routes are first-loaded wins; later
+// plugins can still contribute distinct items to a shared group.
+// Host-added plugin_id attributions and bounded diagnostics/notices are
+// exposed on the returned contract. Priority zero uses the contract default
+// (1000), and IDs break ties for deterministic responses.
 func (m *Manager) MergedNav() contract.NavDeclaration {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := contract.NavDeclaration{Groups: []contract.NavGroup{}, Items: []contract.NavItem{}}
-	for _, id := range m.loadOrder {
-		proc := m.plugins[id]
-		if proc == nil || proc.capabilities == nil || proc.capabilities.Nav == nil {
-			continue
-		}
-		for _, g := range proc.capabilities.Nav.Groups {
-			if m.navGroups[g.ID] == id {
-				out.Groups = append(out.Groups, g)
-			}
-		}
-		for _, item := range proc.capabilities.Nav.Items {
-			if m.navItems[item.ID] == id {
-				out.Items = append(out.Items, item)
-			}
-		}
-	}
-	priority := func(value int) int {
-		if value == 0 {
-			return 1000
-		}
-		return value
-	}
-	sort.Slice(out.Groups, func(i, j int) bool {
-		a, b := out.Groups[i], out.Groups[j]
-		if priority(a.Priority) == priority(b.Priority) {
-			return a.ID < b.ID
-		}
-		return priority(a.Priority) < priority(b.Priority)
-	})
-	sort.Slice(out.Items, func(i, j int) bool {
-		a, b := out.Items[i], out.Items[j]
-		if priority(a.Priority) == priority(b.Priority) {
-			return a.ID < b.ID
-		}
-		return priority(a.Priority) < priority(b.Priority)
-	})
-	return out
+	order, navs := m.collectNavDeclarationsLocked()
+	res := ResolveNavigation(order, navs, nil)
+	return res.Nav
 }
