@@ -6,16 +6,23 @@ import { fetchNavigation, type Navigation, visibleNavigation } from "./api/navig
 import { type ConfigTarget, retiredConfigTargets } from "./api/settings"
 import { useCapabilities } from "./hooks/use-capabilities"
 import { getNavIcon } from "./icons"
+import { NotAvailablePage } from "./pages/not-available"
 import { PluginRecoveryPage } from "./pages/plugin-recovery"
 import { pageRegistry } from "./pages/registry"
+import { compiledOwner } from "./routing/compiled-owners"
+import { PageRouteProvider, useHashRoute } from "./routing/hash-route"
+import { legacyRouteCatalog, parseLocation, resolveRoute, withWorkDetail } from "./routing/routes"
 
 export function App() {
   const capabilities = useCapabilities()
-  const [route, setRoute] = useState("/agents")
+  const location = useHashRoute()
+  const setRoute = location.navigate
   const [navigation, setNavigation] = useState<Navigation>({})
   const [loading, setLoading] = useState(true)
   const [navError, setNavError] = useState("")
   const [retired, setRetired] = useState<ConfigTarget[]>([])
+  const [registryError, setRegistryError] = useState("")
+  const [registryLoading, setRegistryLoading] = useState(true)
   const [restoreFocus, setRestoreFocus] = useState(false)
   useEffect(() => {
     let active = true
@@ -23,7 +30,13 @@ export function App() {
       .then((targets) => {
         if (active) setRetired(targets)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (active)
+          setRegistryError("Plugin recovery metadata is unavailable. Refresh to try again.")
+      })
+      .finally(() => {
+        if (active) setRegistryLoading(false)
+      })
     fetchNavigation()
       .then((nav) => {
         if (active) {
@@ -42,7 +55,7 @@ export function App() {
     }
   }, [])
 
-  const items = useMemo(() => {
+  const routeNavigation = useMemo(() => {
     // An older host has neither endpoint: retain the original agent surfaces
     // only when legacy provider discovery has succeeded.
     const nav =
@@ -67,8 +80,44 @@ export function App() {
             ],
           }
         : navigation
-    return visibleNavigation(nav, capabilities.has, (path) => Object.hasOwn(pageRegistry, path))
-  }, [navigation, capabilities])
+    return nav
+  }, [navigation, capabilities.available])
+  const catalog = useMemo(() => {
+    const catalog = withWorkDetail(legacyRouteCatalog(routeNavigation))
+    catalog.pages.push({
+      id: "host-dashboard",
+      route: "/dashboard",
+      title: "Dashboard",
+      view: "legacy-route:/dashboard",
+    })
+    return catalog
+  }, [routeNavigation])
+  const items = useMemo(
+    () =>
+      visibleNavigation(
+        {
+          ...routeNavigation,
+          items: routeNavigation.items?.filter((item) =>
+            catalog.items.some((admitted) => admitted.id === item.id),
+          ),
+        },
+        capabilities.has,
+        (path) => Object.hasOwn(pageRegistry, path),
+      ),
+    [routeNavigation, catalog, capabilities],
+  )
+  const resolution = resolveRoute(location, catalog, {
+    hasVerb: capabilities.has,
+    hasView: (view) =>
+      view.startsWith("legacy-route:") &&
+      Object.hasOwn(pageRegistry, view.slice("legacy-route:".length)),
+    retired,
+    compiledOwner,
+    discoveryError:
+      capabilities.available === false
+        ? undefined
+        : navError || capabilities.refreshError || undefined,
+  })
 
   // Recovery is a host surface, never a plugin capability or nav declaration.
   const recoveryAvailable =
@@ -81,7 +130,21 @@ export function App() {
     ])
     setNavigation(nextNavigation)
     setRetired(nextRetired)
-    setRestoreFocus(true)
+    setNavError("")
+    setRegistryError("")
+    const stillOnRecovery = parseLocation(window.location.hash).path === "/plugin-recovery"
+    if (
+      stillOnRecovery &&
+      (nextRetired.length === 0 || nextNavigation.items?.some((item) => item.route === "/settings"))
+    ) {
+      setRoute(
+        nextNavigation.items?.some((item) => item.route === "/settings")
+          ? "/settings"
+          : "/dashboard",
+        true,
+      )
+    }
+    setRestoreFocus(stillOnRecovery)
   }
   useEffect(() => {
     if (!restoreFocus) return
@@ -95,13 +158,10 @@ export function App() {
       ?.focus()
     setRestoreFocus(false)
   }, [restoreFocus, items, recoveryAvailable])
-  const activeRoute =
-    route === "/plugin-recovery" && recoveryAvailable
-      ? route
-      : items.some((item) => item.route === route) || route === "/dashboard"
-        ? route
-        : "/dashboard"
-  const Page = pageRegistry[activeRoute]
+  const activeRoute = location.path
+  const Page = resolution.page
+    ? pageRegistry[resolution.page.view.slice("legacy-route:".length)]
+    : undefined
   const nav: NavRailItem[] = [
     {
       key: "dashboard",
@@ -128,7 +188,7 @@ export function App() {
         key: item.id,
         label: item.label,
         icon: <Icon className="h-4 w-4" />,
-        active: activeRoute === item.route,
+        active: resolution.itemId === item.id && !resolution.reason,
         onSelect: () => setRoute(item.route),
       }
     }),
@@ -147,7 +207,7 @@ export function App() {
       }
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
-        {loading || capabilities.loading ? (
+        {loading || capabilities.loading || registryLoading ? (
           <p className="p-4" role="status">
             Loading capabilities…
           </p>
@@ -158,10 +218,58 @@ export function App() {
                 {navError || capabilities.refreshError}
               </p>
             )}
-            {activeRoute === "/plugin-recovery" ? (
+            {registryError && (
+              <p className="p-4 text-text-muted" role="status">
+                {registryError}
+              </p>
+            )}
+            {resolution.breadcrumbs.length > 0 && activeRoute !== "/plugin-recovery" && (
+              <nav aria-label="Breadcrumbs" className="border-b border-border px-4 py-2 text-sm">
+                <ol className="flex flex-wrap items-center gap-2">
+                  {resolution.breadcrumbs.map((crumb, index) => (
+                    <li key={crumb.id} className="flex items-center gap-2">
+                      {index > 0 && <span aria-hidden="true">›</span>}
+                      {crumb.route && index < resolution.breadcrumbs.length - 1 ? (
+                        <a className="underline" href={`#${crumb.route}`}>
+                          {crumb.label}
+                        </a>
+                      ) : (
+                        <span
+                          aria-current={
+                            index === resolution.breadcrumbs.length - 1 ? "page" : undefined
+                          }
+                        >
+                          {crumb.label}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+            )}
+            {activeRoute === "/plugin-recovery" && location.valid && recoveryAvailable ? (
               <PluginRecoveryPage targets={retired} onRefresh={refreshRecovery} />
+            ) : activeRoute === "/plugin-recovery" && location.valid ? (
+              <NotAvailablePage
+                path={location.path}
+                reason="recovery-unavailable"
+                detail={
+                  registryError ||
+                  (items.some((item) => item.route === "/settings")
+                    ? "Plugin recovery is available in Settings."
+                    : "The host reports no retired plugins requiring recovery.")
+                }
+              />
+            ) : resolution.reason || !Page ? (
+              <NotAvailablePage
+                path={location.path}
+                reason={resolution.reason}
+                detail={resolution.detail || "No host-compiled page is registered for this route."}
+              />
             ) : (
-              <Page />
+              <PageRouteProvider route={{ ...location, params: resolution.params }}>
+                <Page />
+              </PageRouteProvider>
             )}
           </>
         )}

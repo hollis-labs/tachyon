@@ -10,6 +10,7 @@ import { ACTIVE_STATUSES, CLOSED_STATUSES, workPageInfo } from "../api/work"
 import { PendingApproval } from "../components/pending-approval"
 import { workSearchNotice } from "../components/work/search-notice"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
+import { useWorkSelection } from "../routing/hash-route"
 
 const selectStyle = "h-8 rounded-md border border-border bg-surface px-2 text-sm text-text"
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -37,7 +38,7 @@ export function WorkPage() {
   const generation = useRef(0)
   const [assignee, setAssignee] = useState("")
   const [revision, setRevision] = useState(0)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, selectTask] = useWorkSelection()
 
   const searching = !!search.trim() && canSearch
   // These keys deliberately stay empty during search: status is then a local
@@ -387,7 +388,7 @@ export function WorkPage() {
                     key={task.id}
                     type="button"
                     disabled={!verbs.has("work_read")}
-                    onClick={() => setSelectedId(task.id)}
+                    onClick={() => selectTask(task.id)}
                     className="flex w-full items-center gap-4 bg-surface px-4 py-3 text-left transition-colors enabled:hover:bg-panel-1 disabled:cursor-default"
                   >
                     <div className="min-w-0 flex-1">
@@ -442,7 +443,7 @@ export function WorkPage() {
           verbs={verbs}
           agents={agents}
           agentError={agentError}
-          onClose={() => setSelectedId(null)}
+          onClose={() => selectTask(null)}
           onUpdated={() => setRevision((value) => value + 1)}
         />
       )}
