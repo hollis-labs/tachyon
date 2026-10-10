@@ -8,8 +8,15 @@ const server = await createServer({
   server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   appType: "custom",
 })
-const { parseLocation, validPattern, matchRoute, routePath, legacyRouteCatalog, resolveRoute } =
-  await server.ssrLoadModule("/src/routing/routes.ts")
+const {
+  parseLocation,
+  validPattern,
+  matchRoute,
+  routePath,
+  legacyRouteCatalog,
+  withWorkDetail,
+  resolveRoute,
+} = await server.ssrLoadModule("/src/routing/routes.ts")
 const { createHashStore } = await server.ssrLoadModule("/src/routing/hash-route.tsx")
 after(() => server.close())
 
@@ -78,19 +85,78 @@ test("static identity, query ownership and invalid paths do not silently normali
   assert.equal(resolve("/unknown").reason, "unknown-route")
 })
 
-test("page-owned query IDs round trip safely; colon admission stays held", () => {
-  for (const id of ["CW-20261010-0116", "A/B ?#%", "é🤖", "constructor", "__proto__", " board "]) {
-    const query = new URLSearchParams({ task: id })
-    const path = `/work?${query}`
-    assert.equal(parseLocation(path).query.get("task"), id)
-    assert.equal(resolve(path).page.id, "tasks")
+test("bounded parameters preserve opaque IDs and static precedence", () => {
+  const data = withWorkDetail(catalog)
+  for (const id of [
+    "CW-20261010-0116",
+    "A/B ?#%",
+    "é🤖",
+    "constructor",
+    "__proto__",
+    " board ",
+    "board",
+    "%2F",
+  ]) {
+    const path = routePath("/work/:id", { id })
+    assert.equal(resolve(path, {}, data).params.id, id)
+    assert.equal(resolve(path, {}, data).page.id, "host:work-detail")
   }
-  assert.equal(parseLocation("/work?task=%252F").query.get("task"), "%2F")
-  assert.equal(validPattern("/work/:id"), false)
-  assert.equal(matchRoute("/work/:id", "/work/123"), null)
-  assert.equal(resolve("/work/board").page.id, "board")
-  assert.equal(resolve("/work/123/extra").reason, "unknown-route")
-  assert.throws(() => routePath("/work/:id"), /pattern/)
+  assert.equal(validPattern("/work/_internal"), true)
+  assert.equal(validPattern("/:id/child/:other"), true)
+  assert.equal(validPattern("/work//child"), false)
+  assert.equal(resolve("/work/board", {}, data).page.id, "board")
+  assert.equal(resolve("/work/123/extra", {}, data).reason, "unknown-route")
+  assert.throws(() => routePath("/work/:id"), /parameter/)
+  assert.throws(() => routePath("/work/:constructor", {}), /parameter/)
+  assert.equal(matchRoute("/work/:id", "/work/%252F").id, "%2F")
+  assert.equal(resolve("/work?task=A%2FB").page.id, "tasks")
+})
+
+test("host detail derives only from admitted parent and retains all parent gates", () => {
+  const data = withWorkDetail(catalog)
+  const path = routePath("/work/:id", { id: "board" })
+  assert.equal(
+    resolve(path, { hasVerb: (verb) => verb !== "work_read" }, data).reason,
+    "missing-verb",
+  )
+  assert.equal(
+    resolve(path, { hasVerb: (verb) => verb !== "work_list" }, data).reason,
+    "missing-verb",
+  )
+  assert.equal(resolve(path, { hasView: () => false }, data).reason, "unregistered-page")
+  assert.equal(resolve(path, { retired: [{ id: "work-ops" }] }, data).reason, "plugin-retired")
+  const absent = withWorkDetail({
+    ...catalog,
+    pages: catalog.pages.filter((page) => page.id !== "tasks"),
+  })
+  assert.equal(resolve(path, {}, absent).reason, "unknown-route")
+  assert.deepEqual(
+    resolve(path, {}, data).breadcrumbs.map((crumb) => crumb.label),
+    ["Work", "Tasks", "Task details"],
+  )
+})
+
+test("generic parameters cannot claim concrete host or config reserved addresses", () => {
+  const data = {
+    ...catalog,
+    pages: [
+      { id: "generic", route: "/:owner/:child", title: "Generic", view: "work", owner: "work-ops" },
+    ],
+  }
+  for (const path of [
+    "/dashboard/work",
+    "/plugin-recovery/work",
+    "/settings/work",
+    "/%73ettings/work",
+    "/%64ashboard/work",
+  ])
+    assert.equal(resolve(path, {}, data).reason, "unknown-route", path)
+  assert.equal(resolve("/ordinary/work", {}, data).page.id, "generic")
+  assert.equal(
+    resolve("/settings/work", {}, { ...data, pages: [{ ...data.pages[0], owner: "config-ops" }] })
+      .page.id,
+    "generic",
+  )
 })
 
 test("hidden declared pages resolve; visibility is never registration evidence", () => {

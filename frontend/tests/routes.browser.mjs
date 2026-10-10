@@ -13,7 +13,7 @@ await mkdir(output, { recursive: true })
 const manifests = {}
 for (const id of ["work-ops", "config-ops", "agent-ops"])
   manifests[id] = JSON.parse(await readFile(join(repo, "plugins", id, "capabilities.json"), "utf8"))
-const taskId = "Sparse ID / ?#% é🤖"
+let taskId = "Sparse ID / ?#% é🤖"
 const task = {
   id: taskId,
   title: "Native routed task",
@@ -24,6 +24,8 @@ const task = {
 }
 let retiredIds = []
 let missingVerb = false
+let missingRead = false
+let missingParent = false
 let unknownPage = false
 let discoveryFails = false
 const calls = []
@@ -31,7 +33,11 @@ const nav = () => ({
   groups: Object.values(manifests).flatMap((manifest) => manifest.nav.groups),
   items: Object.entries(manifests)
     .filter(([id]) => !retiredIds.includes(id))
-    .flatMap(([id, manifest]) => manifest.nav.items.map((item) => ({ ...item, plugin_id: id }))),
+    .flatMap(([id, manifest]) =>
+      manifest.nav.items
+        .filter((item) => !(missingParent && item.route === "/work"))
+        .map((item) => ({ ...item, plugin_id: id })),
+    ),
 })
 const verbs = () =>
   Object.fromEntries(
@@ -43,7 +49,8 @@ const verbs = () =>
           modules: manifest.modules,
           verbs: Object.fromEntries(
             Object.entries(manifest.verbs).filter(
-              ([verb]) => !(missingVerb && verb === "work_list"),
+              ([verb]) =>
+                !(missingVerb && verb === "work_list") && !(missingRead && verb === "work_read"),
             ),
           ),
         },
@@ -167,7 +174,7 @@ try {
     // Hash navigation does not fetch a new host snapshot. A changed fixture
     // represents a new discovery/reload scenario, not a push to the live client.
     await page.reload()
-    await page.getByRole("heading", { name: heading, exact: true }).waitFor()
+    await page.getByRole("heading", { name: heading, exact: true, includeHidden: true }).waitFor()
   }
   await ready("/work/board", "Work Board")
   await page.reload()
@@ -183,7 +190,12 @@ try {
   await page.getByRole("heading", { name: "Work Tracking", exact: true }).waitFor()
   await page.getByRole("button", { name: /Native routed task/ }).click()
   await page.getByRole("dialog").waitFor()
-  assert.equal(new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("task"), taskId)
+  assert.equal(decodeURIComponent(new URL(page.url()).hash.slice("#/work/".length)), taskId)
+  assert.deepEqual(await page.locator('nav[aria-label="Breadcrumbs"] li').allTextContents(), [
+    "Work",
+    "›Tasks",
+    "›Task details",
+  ])
   await page.reload()
   await page.getByRole("dialog").waitFor()
   await capture("02-encoded-selection-reload")
@@ -204,10 +216,10 @@ try {
   await page.goForward()
   await page.getByRole("heading", { name: "Work Tracking", exact: true }).waitFor()
   record("native back/forward changes committed page and detail selection, no stale useState")
-  assert.deepEqual(
-    await page.getByRole("navigation", { name: "Breadcrumbs" }).locator("li").allTextContents(),
-    ["Work", "›Tasks"],
-  )
+  assert.deepEqual(await page.locator('nav[aria-label="Breadcrumbs"] li').allTextContents(), [
+    "Work",
+    "›Tasks",
+  ])
   for (const path of ["/unknown-hidden", "/work/", "/work/%ZZ", "/work/board/extra"]) {
     await ready(path, "Page not available")
     assert.equal(
@@ -218,6 +230,32 @@ try {
     )
   }
   record("unknown, malformed, trailing and extra subview routes show explicit not available")
+  // A literal sibling still opens the board; an encoded opaque ID opens detail.
+  taskId = "board"
+  task.id = taskId
+  await ready("/work/%62oard", "Work Tracking")
+  await page.getByRole("dialog").getByText("board", { exact: true }).waitFor()
+  await ready("/work/board", "Work Board")
+  taskId = "%2F"
+  task.id = taskId
+  await ready("/work/%252F", "Work Tracking")
+  await page.getByRole("dialog").getByText("%2F", { exact: true }).waitFor()
+  record("static sibling precedence and once-decoded encoded ID data")
+  missingRead = true
+  await ready("/work/%252F", "Page not available")
+  assert.equal(
+    await page.locator("[data-route-reason]").getAttribute("data-route-reason"),
+    "missing-verb",
+  )
+  missingRead = false
+  missingParent = true
+  await ready("/work/%252F", "Page not available")
+  assert.equal(
+    await page.locator("[data-route-reason]").getAttribute("data-route-reason"),
+    "unknown-route",
+  )
+  missingParent = false
+  record("detail requires work_read and currently admitted parent")
   missingVerb = true
   await ready("/work", "Page not available")
   assert.equal(
@@ -241,7 +279,7 @@ try {
   discoveryFails = false
   record("missing verb, unregistered declared page and failed discovery use distinct evidence")
   retiredIds = ["work-ops"]
-  await ready("/work", "Page not available")
+  await ready("/work/%252F", "Page not available")
   assert.equal(
     await page.locator("[data-route-reason]").getAttribute("data-route-reason"),
     "plugin-retired",

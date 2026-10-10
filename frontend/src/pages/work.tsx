@@ -10,7 +10,7 @@ import { ACTIVE_STATUSES, CLOSED_STATUSES, workPageInfo } from "../api/work"
 import { PendingApproval } from "../components/pending-approval"
 import { workSearchNotice } from "../components/work/search-notice"
 import { assigneeOf, dataOf, WorkDetail } from "../components/work/work-detail"
-import { useRouteSelection } from "../routing/hash-route"
+import { useWorkSelection } from "../routing/hash-route"
 
 const selectStyle = "h-8 rounded-md border border-border bg-surface px-2 text-sm text-text"
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -38,7 +38,7 @@ export function WorkPage() {
   const generation = useRef(0)
   const [assignee, setAssignee] = useState("")
   const [revision, setRevision] = useState(0)
-  const [selectedId, selectTask] = useRouteSelection("task")
+  const [selectedId, selectTask] = useWorkSelection()
 
   const searching = !!search.trim() && canSearch
   // These keys deliberately stay empty during search: status is then a local

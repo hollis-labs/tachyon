@@ -5,7 +5,7 @@ import {
   useEffect,
   useSyncExternalStore,
 } from "react"
-import { parseLocation, type RouteLocation } from "./routes"
+import { parseLocation, type RouteLocation, routePath } from "./routes"
 
 // pushState keeps navigation synchronous; native back/forward publishes the
 // committed hash through popstate/hashchange, never through a parallel useState.
@@ -79,4 +79,16 @@ export function useRouteSelection(key: string) {
     route.navigate(`${route.path}${suffix ? `?${suffix}` : ""}`)
   }
   return [route.query.get(key), select] as const
+}
+
+export function useWorkSelection() {
+  const route = usePageRoute()
+  function select(id: string | null) {
+    const query = new URLSearchParams(route.query)
+    query.delete("task")
+    const suffix = query.toString()
+    const path = id === null ? "/work" : routePath("/work/:id", { id })
+    route.navigate(`${path}${suffix ? `?${suffix}` : ""}`)
+  }
+  return [route.params.id ?? route.query.get("task"), select] as const
 }

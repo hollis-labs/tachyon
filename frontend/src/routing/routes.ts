@@ -63,26 +63,65 @@ export function parseLocation(hash: string): RouteLocation {
   return { path, query, valid }
 }
 
-// Canonical ADR002 R3: static declaration identity. Named-pattern admission is
-// held pending owner disposition; the bounded proposal is retained in proof
-// scratch only. Query strings belong to the page, never to route identity.
+// Bounded whole-segment names; page queries never participate in identity.
+// Static path syntax is preserved, with internal empty segments refused.
 export function validPattern(pattern: string): boolean {
-  return (
-    pattern.length <= 128 &&
-    /^\/[a-z0-9][a-z0-9/_-]*$/.test(pattern) &&
-    !pattern.endsWith("/") &&
-    !pattern.includes("//")
-  )
+  if (!pattern.startsWith("/") || pattern.length > 128) return false
+  const names = new Set<string>()
+  return pattern
+    .slice(1)
+    .split("/")
+    .every((segment, index) => {
+      if (segment.startsWith(":")) {
+        if (!/^:[a-z][a-z0-9_]*$/.test(segment) || names.has(segment)) return false
+        names.add(segment)
+        return true
+      }
+      return (index === 0 ? /^[a-z0-9][a-z0-9_-]*$/ : /^[a-z0-9_-]+$/).test(segment)
+    })
 }
 
 export function matchRoute(pattern: string, path: string): Record<string, string> | null {
   if (!validPattern(pattern) || !parseLocation(path).valid || path.includes("?")) return null
-  return pattern === path ? {} : null
+  const expected = pattern.slice(1).split("/")
+  const actual = path.slice(1).split("/")
+  if (expected.length !== actual.length) return null
+  const params: Record<string, string> = Object.create(null)
+  for (let index = 0; index < expected.length; index++) {
+    const segment = expected[index]
+    if (segment.startsWith(":")) params[segment.slice(1)] = decodeURIComponent(actual[index])
+    else if (segment !== actual[index]) return null
+  }
+  return params
 }
 
-export function routePath(pattern: string): string {
+export function routePath(pattern: string, params: Record<string, string> = {}): string {
   if (!validPattern(pattern)) throw new Error("Invalid route pattern")
   return pattern
+    .split("/")
+    .map((segment) => {
+      if (!segment.startsWith(":")) return segment
+      const name = segment.slice(1)
+      const value = Object.hasOwn(params, name) ? params[name] : undefined
+      if (!value || value === "." || value === ".." || hasControl(value))
+        throw new Error(`Missing or invalid route parameter: ${name}`)
+      // Preserve IDs that coincide with static siblings, including "board".
+      return encodeURIComponent(value).replace(
+        /^[A-Za-z0-9_.!~*'()-]/,
+        (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      )
+    })
+    .join("/")
+}
+
+function compareSpecificity(a: RoutePage, b: RoutePage) {
+  const left = a.route.split("/")
+  const right = b.route.split("/")
+  for (let index = 1; index < left.length; index++) {
+    const difference = Number(left[index].startsWith(":")) - Number(right[index].startsWith(":"))
+    if (difference) return difference
+  }
+  return 0
 }
 
 export function legacyRouteCatalog(nav: Navigation): RouteCatalog {
@@ -103,6 +142,32 @@ export function legacyRouteCatalog(nav: Navigation): RouteCatalog {
       requiresVerbs: item.requires_verb ? [item.requires_verb] : [],
     })),
     subviews: [],
+  }
+}
+
+// Current host adapter only: the existing Work detail component is addressable
+// only while its work-ops parent declaration is admitted. This never admits a
+// route from the compiled-owner attribution table or manufactures v2 wire data.
+export function withWorkDetail(catalog: RouteCatalog): RouteCatalog {
+  const parent = catalog.pages.find((page) => page.route === "/work" && page.owner === "work-ops")
+  const item = catalog.items.find((item) => item.page === parent?.id)
+  if (!parent || !item || catalog.pages.some((page) => page.route === "/work/:id")) return catalog
+  const id = "host:work-detail"
+  return {
+    ...catalog,
+    pages: [
+      ...catalog.pages,
+      {
+        id,
+        route: "/work/:id",
+        title: "Task details",
+        view: parent.view,
+        owner: parent.owner,
+        hidden: true,
+        requiresVerbs: [...(parent.requiresVerbs ?? []), "work_read"],
+      },
+    ],
+    subviews: [...catalog.subviews, { id, parent: item.id, page: id, label: "Task details" }],
   }
 }
 
@@ -145,10 +210,17 @@ export function resolveRoute(
   })
   if (!location.valid)
     return unavailable("invalid-route", "This address has invalid path encoding or route syntax.")
-  // Current declarations use exact/static paths. A prefix is never a subview.
+  const concreteRoot = decodeURIComponent(location.path.slice(1).split("/")[0])
+  // Literal segments outrank named params. Matching is whole-path, never prefix.
   const matches = catalog.pages
     .map((page) => ({ page, params: matchRoute(page.route, location.path) }))
-    .filter((match) => match.params !== null)
+    .filter(({ page, params }) => {
+      if (params === null) return false
+      if (["dashboard", "plugin-recovery"].includes(concreteRoot))
+        return page.id === "host-dashboard" && page.route === "/dashboard" && !page.owner
+      return concreteRoot !== "settings" || page.owner === "config-ops"
+    })
+    .sort((a, b) => compareSpecificity(a.page, b.page))
   const match = matches[0]
   const owner = match?.page.owner ?? inputs.compiledOwner(location.path)
   const retired = owner && inputs.retired.find((plugin) => plugin.id === owner)
@@ -175,7 +247,7 @@ export function resolveRoute(
     parentPage &&
     (() => {
       try {
-        return routePath(parentPage.route)
+        return routePath(parentPage.route, params ?? {})
       } catch {
         return undefined
       }

@@ -11,7 +11,7 @@ import { PluginRecoveryPage } from "./pages/plugin-recovery"
 import { pageRegistry } from "./pages/registry"
 import { compiledOwner } from "./routing/compiled-owners"
 import { PageRouteProvider, useHashRoute } from "./routing/hash-route"
-import { legacyRouteCatalog, parseLocation, resolveRoute } from "./routing/routes"
+import { legacyRouteCatalog, parseLocation, resolveRoute, withWorkDetail } from "./routing/routes"
 
 export function App() {
   const capabilities = useCapabilities()
@@ -83,7 +83,7 @@ export function App() {
     return nav
   }, [navigation, capabilities.available])
   const catalog = useMemo(() => {
-    const catalog = legacyRouteCatalog(routeNavigation)
+    const catalog = withWorkDetail(legacyRouteCatalog(routeNavigation))
     catalog.pages.push({
       id: "host-dashboard",
       route: "/dashboard",

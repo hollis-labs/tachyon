@@ -6,6 +6,7 @@ import scm from "../../../plugins/scm-ops/capabilities.json"
 import service from "../../../plugins/service-ops/capabilities.json"
 import session from "../../../plugins/session-ops/capabilities.json"
 import work from "../../../plugins/work-ops/capabilities.json"
+import { matchRoute } from "./routes"
 
 // Only retirement attribution, never route admission. A retired plugin is no
 // longer in /api/nav; the actual compiled source manifests establish ownership
@@ -23,4 +24,6 @@ for (const [owner, manifest] of [
 ] as const) {
   for (const item of manifest.nav.items) owners.set(item.route, owner)
 }
-export const compiledOwner = (path: string) => owners.get(path)
+export const compiledOwner = (path: string) =>
+  owners.get(path) ??
+  (owners.get("/work") === "work-ops" && matchRoute("/work/:id", path) ? "work-ops" : undefined)
