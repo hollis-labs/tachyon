@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
 import { statusTone } from '@hollis-labs/kit-dashboard'
+import { PlannerRowContent, PlannerTableHeader } from '@planner/components/planner/planner-table'
+import { PlannerStatus } from '@planner/components/planner/planner-status'
 import { BOARD_SECTIONS, CURATED_SECTIONS, boardAge, boardMore, boardRowRoute, boardWord, taskCountsText } from '@planner/lib/planner'
 import type { PlannerBoard, PlannerBoardRow, PlannerBoardSectionKey } from '@tachyon/torque-client'
 
@@ -20,16 +22,17 @@ export function PlannerBoardView({ board, nowMs, scope = 'curated', base = '/pla
   return (
     <div className="flex min-w-0 flex-col">
       {board.notices.map((n) => (
-        <p key={n} role="status" className="border-b border-zinc-800/80 bg-zinc-900/20 px-4 py-3 text-[13px] text-muted-foreground">
+        <p key={n} role="status" className="border-b border-border bg-panel px-4 py-2 text-xs leading-5 text-fg-muted">
           {n}
         </p>
       ))}
+      <PlannerTableHeader trailing="Age" />
       <div className="flex min-w-0 flex-col">
         {sections.map((s) => (
           <BoardSection key={s.key} section={s.key} title={s.title} blurb={s.blurb} empty={s.empty} rows={board.sections[s.key]} total={board.totals[s.key]} now={now} base={base} />
         ))}
       </div>
-      <p className="px-4 py-3 text-xs text-muted-foreground">
+      <p className="px-4 py-2 font-mono text-caption leading-4 text-fg-faint">
         Updated {new Date(board.generated_at).toLocaleTimeString()} · landed covers the last {board.recent_hours}h
         {scope === 'all' ? <> · a task with no update or comment for {board.active_hours}h counts as preparing, not in flight</> : <> · tag a workstream with board to put it here</>}
       </p>
@@ -39,16 +42,17 @@ export function PlannerBoardView({ board, nowMs, scope = 'curated', base = '/pla
 
 function BoardSection({ section, title, blurb, empty, rows, total, now, base }: { section: PlannerBoardSectionKey; title: string; blurb: string; empty: string; rows: PlannerBoardRow[]; total: number; now: number; base: string }) {
   const more = boardMore(rows.length, total)
+  const accent = statusTone(({ in_flight: 'doing', pre_flight: 'queued', landed: 'done', holds: 'blocked' } as const)[section])
   return (
-    <section aria-label={title} className="flex min-w-0 flex-col border-b border-zinc-800/80">
-      <header className="flex flex-wrap items-baseline gap-2 border-b border-zinc-800/80 bg-zinc-900/20 px-4 py-3">
-        <h2 className="text-[10px] font-medium uppercase tracking-[.18em] text-zinc-400">{title}</h2>
-        <span className="text-sm text-muted-foreground">{rows.length}</span>
-        {more && <span className="text-xs text-muted-foreground">({more})</span>}
-        <span className="ml-auto hidden text-xs text-muted-foreground lg:inline">{blurb}</span>
+    <section aria-label={title} className="flex min-w-0 flex-col">
+      <header className="planner-section-header">
+        <h2 className={`inline-flex items-center gap-2 font-mono text-caption font-medium uppercase tracking-label ${accent.text}`}><span className={`size-1.5 rounded-full ${accent.dot}`} />{title}</h2>
+        <span className={`font-mono text-caption tabular-nums ${accent.text}`}>{rows.length}</span>
+        {more && <span className="text-caption text-fg-faint">({more})</span>}
+        <span className="text-label text-fg-faint">{blurb}</span>
       </header>
       {rows.length === 0 ? (
-        <p className="px-4 py-5 text-sm text-muted-foreground">{empty}</p>
+        <p className="px-4 py-3 text-xs text-fg-muted">{empty}</p>
       ) : (
         <ul>
           {rows.map((r) => (
@@ -62,34 +66,22 @@ function BoardSection({ section, title, blurb, empty, rows, total, now, base }: 
 
 function BoardRow({ section, row, now, base }: { section: PlannerBoardSectionKey; row: PlannerBoardRow; now: number; base: string }) {
   const { word, tone } = boardWord(section, row)
-  const t = statusTone(tone)
   const age = boardAge(row.updated, now)
+  const taskCounts = taskCountsText(row.task_counts)
+  const summary = [
+    ...(row.blockers ?? []).map(b => `Blocked: ${b}`),
+    row.next_step ? `Next: ${row.next_step}` : '',
+  ].filter(Boolean).join(' · ')
+  const details = [row.workstream, row.owner, row.phase !== 'unknown' ? row.phase : '', taskCounts ? `tasks: ${taskCounts}` : ''].filter(Boolean).join(' · ')
   return (
-    <li className="border-b border-zinc-800/60 last:border-b-0">
-      <Link to={boardRowRoute(row, base)} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50" aria-label={`${word} ${row.id}: ${row.title}`}>
-        <span className={`inline-flex w-24 shrink-0 items-center gap-1.5 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] ${t.border} ${t.bg} ${t.text}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${t.dot}`} />
-          {word}
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="[overflow-wrap:anywhere] text-[13px] leading-5">{row.title}</span>
-          <span className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className="min-w-0 [overflow-wrap:anywhere] font-mono">{row.id}</span>
-            {row.workstream && <span className="min-w-0 [overflow-wrap:anywhere] rounded bg-muted px-1.5 py-px text-[11px]">{row.workstream}</span>}
-            {row.owner && <span className="min-w-0 [overflow-wrap:anywhere]">{row.owner}</span>}
-            {row.phase && row.phase !== 'unknown' && <span className="rounded bg-muted px-1.5 py-px text-[11px]">{row.phase}</span>}
-            {taskCountsText(row.task_counts) && <span className="min-w-0 [overflow-wrap:anywhere]">tasks: {taskCountsText(row.task_counts)}</span>}
+    <li className="planner-table-row">
+      <Link to={boardRowRoute(row, base)} className="planner-row-trigger planner-table-grid" aria-label={`${word} ${row.id}: ${row.title}`}>
+        <PlannerRowContent title={row.title} metadata={<>
+          <span className="shrink-0">{row.id}</span>
+          <span className={`planner-cell-preview ${row.blockers?.length ? 'text-warning' : ''}`} title={[summary, details].filter(Boolean).join(' · ')}>
+            {[summary, details].filter(Boolean).join(' · ')}
           </span>
-          {row.next_step && <span className="min-w-0 [overflow-wrap:anywhere] text-xs text-muted-foreground">Next: {row.next_step}</span>}
-          {row.blockers && row.blockers.length > 0 && (
-            <ul aria-label={`Blockers of ${row.id}`} className="mt-0.5 flex min-w-0 flex-col text-xs text-amber-500">
-              {row.blockers.map((b) => (
-                <li key={b} className="min-w-0 [overflow-wrap:anywhere]">Blocked: {b}</li>
-              ))}
-            </ul>
-          )}
-        </span>
-        <span className="w-10 shrink-0 text-right text-xs text-muted-foreground">{age}</span>
+        </>} status={<PlannerStatus status={word} toneKey={tone} />} trailing={<span title={row.updated ? new Date(row.updated).toLocaleString() : undefined}>{age}</span>} />
       </Link>
     </li>
   )

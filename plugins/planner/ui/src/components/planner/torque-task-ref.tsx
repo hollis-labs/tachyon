@@ -8,14 +8,14 @@ import type { PlannerTaskBrief } from '@tachyon/torque-client'
  */
 export function TorqueTaskRef({ id, brief, label }: { id: string; brief: PlannerTaskBrief | null | undefined; label?: string }) {
   return (
-    <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
-      <Link to={`/tasks/${encodeURIComponent(id)}`} className="font-mono text-xs text-primary hover:underline">
+    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+      <Link to={`/tasks/${encodeURIComponent(id)}`} className="font-mono text-label leading-4 text-info hover:underline">
         {id}
       </Link>
-      {label && <span className="text-sm text-muted-foreground">{label}</span>}
-      {brief && <span className="min-w-0 truncate text-sm">{brief.title}</span>}
-      {brief && <PlannerStatus status={brief.status} className="!px-1.5 !py-0.5 !text-[10px]" />}
-      {brief === null && <span className="text-xs text-muted-foreground">not found in Torque</span>}
+      {label && <span className="min-w-0 break-words text-control leading-5 text-fg-muted">{label}</span>}
+      {brief && <span className="min-w-0 max-w-full break-words text-control leading-5">{brief.title}</span>}
+      {brief && <PlannerStatus status={brief.status} />}
+      {brief === null && <span className="text-label leading-4 text-fg-muted">not found in Torque</span>}
     </span>
   )
 }

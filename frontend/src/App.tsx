@@ -52,7 +52,7 @@ function Shell() {
   const extras = plugins.flatMap((p) => (p.NavExtras ? [<p.NavExtras key={p.id} />] : []))
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-bg text-foreground">
+    <div className="tachyon-shell flex h-full w-full overflow-hidden bg-bg text-foreground">
       <NavRail
         items={items}
         logo={<Atom className="h-5 w-5" />}

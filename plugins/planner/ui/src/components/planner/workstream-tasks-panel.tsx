@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
+import { PlannerRowContent, PlannerTableHeader } from '@planner/components/planner/planner-table'
 import { useApi } from '@tachyon/torque-client'
 import type { PlannerWorkstreamTasks } from '@tachyon/torque-client'
 
@@ -26,37 +27,38 @@ export function WorkstreamTasksPanel({ id, refreshKey }: { id: string; refreshKe
   return (
     <section aria-label="Torque tasks" className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold">Torque tasks{data.total ? ` (${data.total})` : ''}</h3>
-        {scope && <span className="truncate text-xs text-muted-foreground">{scope}</span>}
+        <h3 className="text-control leading-5 font-semibold">Torque tasks{data.total ? ` (${data.total})` : ''}</h3>
+        {scope && <span className="truncate text-label leading-4 text-fg-muted">{scope}</span>}
       </div>
       {data.note ? (
-        <p className="text-sm text-muted-foreground">{data.note} Set torque_project_ids or torque_tag on it to see its tasks here.</p>
+        <p className="text-control leading-5 text-fg-muted">{data.note} Set torque_project_ids or torque_tag on it to see its tasks here.</p>
       ) : data.total === 0 ? (
-        <p className="text-sm text-muted-foreground">No Torque tasks match this workstream&apos;s projects and tag.</p>
+        <p className="text-control leading-5 text-fg-muted">No Torque tasks match this workstream&apos;s projects and tag.</p>
       ) : (
         <>
           <div className="flex flex-wrap gap-1.5">
             {counts.map((c) => (
               <span key={c.status} className="inline-flex items-center gap-1.5">
-                <PlannerStatus status={c.status} className="!px-1.5 !py-0.5 !text-[10px]" />
-                <span className="text-xs text-muted-foreground">{c.n}</span>
+                <PlannerStatus status={c.status} />
+                <span className="text-label leading-4 text-fg-muted">{c.n}</span>
               </span>
             ))}
           </div>
           {data.open.length > 0 && (
-            <ul className="flex flex-col gap-1">
+            <div className="min-w-0 border-t border-border">
+            <PlannerTableHeader trailing="" />
+            <ul>
               {data.open.map((t) => (
-                <li key={t.id} className="flex items-center gap-2 text-sm">
-                  <Link to={`/tasks/${encodeURIComponent(t.id)}`} className="shrink-0 font-mono text-xs text-primary hover:underline">
-                    {t.id}
+                <li key={t.id} className="planner-table-row">
+                  <Link to={`/tasks/${encodeURIComponent(t.id)}`} className="planner-row-trigger planner-table-grid" aria-label={`Open ${t.id}: ${t.title}`}>
+                    <PlannerRowContent title={t.title} metadata={<span>{t.id}</span>} status={<PlannerStatus status={t.status} />} />
                   </Link>
-                  <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                  <PlannerStatus status={t.status} className="!px-1.5 !py-0.5 !text-[10px]" />
                 </li>
               ))}
             </ul>
+            </div>
           )}
-          {data.open_total > data.open.length && <p className="text-xs text-muted-foreground">Showing {data.open.length} of {data.open_total} open tasks.</p>}
+          {data.open_total > data.open.length && <p className="text-label leading-4 text-fg-muted">Showing {data.open.length} of {data.open_total} open tasks.</p>}
         </>
       )}
     </section>
