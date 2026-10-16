@@ -6,5 +6,11 @@
     "history_session": {"effect": "reads"},
     "history_facets": {"effect": "reads"},
     "history_projects": {"effect": "reads"}
+  },
+  "settings": {
+    "fields": [
+      { "key": "fragments_url", "validation": "http_base_url", "type": "string", "label": "Fragments Engine URL", "default": "http://127.0.0.1:8091", "description": "On agent-os use http://127.0.0.1:8091; on an owner device use https://fragments.nanite.cloud." },
+      { "key": "fragments_token_file", "validation": "absolute_path", "type": "string", "label": "Fragments token file", "preserve_edge_whitespace": true, "description": "Absolute path (or ~/) of a private 0600 file holding the bearer token. Blank falls back to the environment variable, then no credential." }
+    ]
   }
 }

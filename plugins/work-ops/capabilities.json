@@ -72,7 +72,8 @@
         "type": "string",
         "label": "Default Project ID",
         "description": "Torque project to use for create and list when none specified"
-      }
+      },
+      { "key": "torque_token_file", "validation": "absolute_path", "type": "string", "label": "Torque token file", "preserve_edge_whitespace": true, "description": "Absolute path (or ~/) of a private 0600 file holding the bearer token. Blank falls back to the environment variable, then no credential." }
     ]
   }
 }

@@ -75,7 +75,8 @@
         "type": "string",
         "label": "Tether Address",
         "description": "Leave blank to use TETHER_ADDR or the Tether client default socket."
-      }
+      },
+      { "key": "tether_token_file", "validation": "absolute_path", "type": "string", "label": "Tether token file", "preserve_edge_whitespace": true, "description": "Absolute path (or ~/) of a private 0600 file holding the bearer token. Blank falls back to the environment variable, then no credential." }
     ]
   }
 }

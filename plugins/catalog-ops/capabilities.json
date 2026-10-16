@@ -19,5 +19,12 @@
     "registry_update": {"effect": "writes"},
     "registry_deregister": {"effect": "destroys"},
     "registry_sync": {"effect": "open_world"}
+  },
+  "settings": {
+    "fields": [
+      { "key": "tether_addr", "validation": "tether_addr", "type": "string", "label": "Tether Address", "description": "unix:/path, tcp:host:port or an http(s) URL. Blank uses TETHER_ADDR or the default socket." },
+      { "key": "tether_token_file", "validation": "absolute_path", "type": "string", "label": "Tether token file", "preserve_edge_whitespace": true, "description": "Absolute path (or ~/) of a private 0600 file holding the bearer token. Blank falls back to the environment variable, then no credential." },
+      { "key": "read_only", "type": "boolean", "label": "Read-only", "default": true, "description": "When on, only read verbs are offered. Turn off to enable catalog and registry writes; Tether still refuses catalog plan, apply and reload from a remote device." }
+    ]
   }
 }
