@@ -63,7 +63,7 @@ Environment variables:
 
 - **Parity first.** Keep Torque's markup, class strings, behaviour and copy. Change imports, not design.
 - **Imports:**
-  - `@hollis-labs/sysop-ui` becomes `@hollis-labs/kit-dashboard`, which re-exports design-components.
+  - `@hollis-labs/sysop-ui` primitives (Button, Dialog, Input, EmptyState, …) come from `@hollis-labs/design-components`. Dashboard idiom pieces (NavRail, PageHeader, StatusBadge, statusTone, ThemeSwitcher, …) come from `@hollis-labs/kit-dashboard`, which does **not** re-export design-components.
   - `/api` becomes `@hollis-labs/design-app-runtime`.
   - `/layout`, `/data`, `/widgets` and `/charts` keep the same subpaths under `kit-dashboard`.
   - 0.5.0 props can be stricter. For example, `EmptyState` requires `variant`.

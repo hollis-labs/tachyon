@@ -1,4 +1,27 @@
-// STUB — owned by the Agents/Builder porting agent. Replace with the real export.
+import { PageHeader } from '@hollis-labs/kit-dashboard'
+import { ApiProvider } from '@tachyon/torque-client'
+import { consoleClient } from '@console/client'
+import { FleetAgentsPanel } from './fleet-agents'
+import './fleet.css'
+
+export { FleetAgentsPanel, FleetAgentsView } from './fleet-agents'
+export { FleetAgentModal } from './fleet-agent-modal'
+export { ActivityBars, PixelRobot, useFlip } from './agent-activity'
+export { useFleetAgents } from './hooks/use-fleet-agents'
+
+/**
+ * Torque's /planner/agents (PlannerPage with db=agents) as a standalone page:
+ * same page shell and content area, minus the planner search box and tab strip.
+ */
 export function FleetAgentsPage() {
-  return <div className="p-6 text-sm text-muted-foreground">Agents port in progress.</div>
+  return (
+    <ApiProvider client={consoleClient}>
+      <div className="flex h-full min-w-0 flex-col">
+        <PageHeader title="Agents" />
+        <div className="flex-1 overflow-auto">
+          <FleetAgentsPanel />
+        </div>
+      </div>
+    </ApiProvider>
+  )
 }

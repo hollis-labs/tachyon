@@ -3,5 +3,5 @@
 @import "@hollis-labs/design-app-runtime/shell-reset.css";
 
 /* Tailwind does not scan node_modules or sibling workspaces on its own. */
-@source "../../packages/*/src";
-@source "../../plugins/*/ui/src";
+@source "../../packages/*/src/**/*";
+@source "../../plugins/*/ui/src/**/*";
