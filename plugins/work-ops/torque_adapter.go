@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 // TorqueAdapter maps provider-neutral operations onto Torque's HTTP API.
@@ -24,7 +26,22 @@ type TorqueAdapter struct {
 }
 
 func NewTorqueAdapter(baseURL string) *TorqueAdapter {
-	return &TorqueAdapter{baseURL: strings.TrimRight(baseURL, "/"), client: &http.Client{Timeout: 30 * time.Second}}
+	a, _ := NewAuthenticatedTorqueAdapter(baseURL, "")
+	return a
+}
+
+// NewAuthenticatedTorqueAdapter sends the bearer token in tokenFile with every
+// request. An empty tokenFile keeps the unauthenticated behavior.
+func NewAuthenticatedTorqueAdapter(baseURL, tokenFile string) (*TorqueAdapter, error) {
+	baseURL = strings.TrimRight(baseURL, "/")
+	rt, err := upstreamauth.Wrap(http.DefaultTransport, baseURL, tokenFile)
+	if err != nil {
+		return nil, err
+	}
+	return &TorqueAdapter{baseURL: baseURL, client: &http.Client{
+		Timeout: 30 * time.Second, Transport: rt,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}, nil
 }
 func (*TorqueAdapter) Capabilities(context.Context) (WorkCapabilities, error) {
 	return WorkCapabilities{Provider: "torque", CanCreate: true, CanRead: true, CanUpdate: true, CanList: true, CanSearch: true, CanAssign: true, CanTransition: true, CanComment: true}, nil

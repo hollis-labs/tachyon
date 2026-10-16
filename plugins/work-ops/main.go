@@ -11,6 +11,7 @@ import (
 	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 //go:embed capabilities.json
@@ -33,7 +34,11 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 	if configured := params.Config["torque_url"]; configured != "" {
 		endpoint = configured
 	}
-	p.adapter = NewTorqueAdapter(endpoint)
+	adapter, err := NewAuthenticatedTorqueAdapter(endpoint, upstreamauth.TokenFile(params.Config, "torque_token_file", "TORQUE_TOKEN_FILE"))
+	if err != nil {
+		return subprocess.InitResult{}, err
+	}
+	p.adapter = adapter
 	p.defaultProject = params.Config["default_project"]
 	return subprocess.InitResult{ID: "work-ops", Name: "Work Ops", Version: "0.1.0", Description: "Torque-backed work tracking", CapabilityContract: 1, Protocol: subprocess.ProtocolVersion}, nil
 }

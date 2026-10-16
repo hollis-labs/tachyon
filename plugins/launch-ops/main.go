@@ -12,6 +12,7 @@ import (
 	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
 	"github.com/hollis-labs/tachyon/internal/contract"
 	"github.com/hollis-labs/tachyon/internal/pluginkit"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 //go:embed capabilities.json
@@ -68,7 +69,7 @@ func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subproce
 	if addr == "" {
 		addr = strings.TrimSpace(os.Getenv("TETHER_ADDR"))
 	}
-	tetherAdapter, err := NewTetherLaunchAdapter(addr, store)
+	tetherAdapter, err := NewAuthenticatedTetherLaunchAdapter(addr, upstreamauth.TokenFile(params.Config, "tether_token_file", "TETHER_TOKEN_FILE"), store)
 	if err != nil {
 		store.Close()
 		return subprocess.InitResult{}, err

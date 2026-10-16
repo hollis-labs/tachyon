@@ -1,7 +1,7 @@
 # Tachyon
 
 A Go subprocess host serves `/api` and the embedded React UI at `/sysop/`.
-Eight module plugins are discovered from the working directory; `hello` is an
+Nine module plugins are discovered from the working directory; `hello` is an
 optional legacy example. Providers own their external state. Read the authored
 code and declarations before treating documentation or a running binary as the
 current source revision.
@@ -52,14 +52,20 @@ Lefthook once if using the tracked hooks; their presence alone installs nothing.
   rebuild them or the UI. Preserve dist/.gitkeep and omit generated artifacts.
 - config-ops is the sole writer of local settings.json. Declared values apply at
   spawn/restart. Plugin install/enable/disable is not implemented by this host.
-- Skill/MCP catalogs and durable agents remain read-only; Tether sessions have
-  their separately declared lifecycle verbs. Keep provider ownership upstream.
+- Nanite skill/MCP catalogs and durable agents (agent-ops) remain read-only;
+  Tether sessions have their separately declared lifecycle verbs. catalog-ops
+  edits Tether's catalog only as a reviewed plan applied after the local
+  operator approves it on Tether; it has no approve verb and must not gain one.
+  Keep provider ownership upstream.
 - Tangent status is read-only, fail-closed correlation. Approval cannot resume
   or redispatch a verb. Continuation remains unavailable; its design is tracked
   as a follow-up.
 - Observe records safe identity/status/effect/duration only. Never include
   payloads, prompts, settings, credentials or upstream error bodies. The private
   ingestion command and marker cannot be exposed by HTTP or capabilities.
+- Calls out to Torque and Tether carry a bearer from a private 0600 token file
+  (`internal/upstreamauth`: `*_token_file` setting or `*_TOKEN_FILE` env), never
+  from plugin config or argv, and only over https or loopback.
 - HTTP has no authentication or built-in TLS. The code default is all-interface
   `:8093`; the reference deployment overrides it to loopback behind a private
   HTTPS proxy.

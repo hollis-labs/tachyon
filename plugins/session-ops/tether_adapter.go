@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 // Turns can outlast ordinary reads, but must release the serial plugin pipe.
@@ -16,11 +17,24 @@ type TetherAdapter struct {
 }
 
 func NewTetherAdapter(listenAddr string) (*TetherAdapter, error) {
+	return NewAuthenticatedTetherAdapter(listenAddr, "")
+}
+
+// NewAuthenticatedTetherAdapter presents the bearer token in tokenFile to
+// Tether. An empty tokenFile keeps the unauthenticated behavior.
+func NewAuthenticatedTetherAdapter(listenAddr, tokenFile string) (*TetherAdapter, error) {
 	listenAddr, httpClient, err := sessionHTTPClient(listenAddr)
 	if err != nil {
 		return nil, err
 	}
-	client, err := tether.New(listenAddr, tether.WithHTTPClient(httpClient))
+	if err := upstreamauth.Guard(listenAddr, tokenFile); err != nil {
+		return nil, err
+	}
+	opts := []tether.Option{tether.WithHTTPClient(httpClient)}
+	if tokenFile != "" {
+		opts = append(opts, tether.WithTokenFile(tokenFile))
+	}
+	client, err := tether.New(listenAddr, opts...)
 	if err != nil {
 		return nil, err
 	}

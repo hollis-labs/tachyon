@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 const maxTetherResponseBytes = 2 << 20
@@ -71,7 +72,7 @@ func sessionHTTPClient(addr string) (string, *http.Client, error) {
 			return dialer.DialContext(ctx, "unix", socket)
 		}
 	}
-	return addr, &http.Client{Transport: boundedTransport{base: transport}, Timeout: 5 * time.Second,
+	return addr, &http.Client{Transport: boundedTransport{base: upstreamauth.WithHeader(transport, "Tether-Protocol", "1")}, Timeout: 5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}, nil
 }
