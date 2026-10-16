@@ -5,6 +5,7 @@ import { Check, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button, CopyableId, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Textarea } from '@hollis-labs/design-components'
 import { PlannerFields } from '@planner/components/planner/planner-fields'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
+import { PlannerFact } from '@planner/components/planner/planner-fact'
 import { TorqueTaskRef } from '@planner/components/planner/torque-task-ref'
 import { WorkstreamTasksPanel } from '@planner/components/planner/workstream-tasks-panel'
 import { useApi } from '@tachyon/torque-client'
@@ -136,7 +137,7 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-3xl" aria-describedby={undefined}>
+      <DialogContent className="planner-dialog max-h-[88vh] overflow-auto" widthClassName="max-w-3xl" aria-describedby={undefined}>
         {error ? (
           <>
             <DialogHeader>
@@ -152,18 +153,14 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
             <Skeleton className="h-24 w-full" />
           </>
         ) : (
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4">
             <DialogHeader>
               <div className="flex flex-wrap items-center gap-2 pr-8">
                 <CopyableId id={item.id} />
                 <PlannerStatus status={item.status} />
-                {itemFacts(db, item).map((f) => (
-                  <span key={f} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                    {f}
-                  </span>
-                ))}
+                {itemFacts(db, item).map((f) => <PlannerFact key={f} db={db} fact={f} />)}
               </div>
-              <DialogTitle className="text-lg">{item.title}</DialogTitle>
+              <DialogTitle className="text-base leading-6">{item.title}</DialogTitle>
               {item.tldr && <DialogDescription className="whitespace-pre-wrap">{item.tldr}</DialogDescription>}
             </DialogHeader>
 
@@ -173,7 +170,7 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Button>
               )}
-              <span className="ml-auto text-xs text-muted-foreground">
+              <span className="ml-auto text-label leading-4 text-fg-muted">
                 rev {item.rev}
                 {item.updated ? ` · updated ${item.updated}` : ''}
                 {item.author ? ` · ${item.author}` : ''}
@@ -184,7 +181,7 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
             {db === 'inbox' && <InboxPanel item={item} busy={busy} write={write} onOpen={onOpen} onChanged={onChanged} />}
 
             {editing ? (
-              <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+              <div className="flex flex-col gap-3 rounded-md border border-border p-4">
                 <PlannerFields specs={specs} draft={draft} errors={fieldErrors} idPrefix="pe" onChange={(name, value) => setDraft((d) => ({ ...d, [name]: value }))} />
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={busy}>
@@ -242,13 +239,13 @@ function FieldList({ item, specs, schemaLabels, titles, onOpen }: { item: Planne
     const v = item[n]
     return v !== undefined && v !== null && v !== '' && v !== false && !(Array.isArray(v) && v.length === 0)
   })
-  if (rows.length === 0) return <p className="text-sm text-muted-foreground">No other fields set.</p>
+  if (rows.length === 0) return <p className="text-control leading-5 text-fg-muted">No other fields set.</p>
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[10rem_1fr]">
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-2 border-y border-border-subtle py-3 sm:grid-cols-[9rem_1fr]">
       {rows.map((n) => (
         <div key={n} className="contents">
-          <dt className="text-xs uppercase tracking-wide text-muted-foreground">{schemaLabels[n] ?? n}</dt>
-          <dd className="min-w-0 text-sm">
+          <dt className="font-mono text-caption uppercase tracking-wide text-fg-faint">{schemaLabels[n] ?? n}</dt>
+          <dd className="min-w-0 text-control leading-5">
             <FieldValue name={n} value={item[n]} titles={titles} onOpen={onOpen} />
           </dd>
         </div>
@@ -262,7 +259,7 @@ function FieldValue({ name, value, titles, onOpen }: { name: string; value: unkn
     return (
       <ul className="flex flex-col gap-1">
         {value.map(String).map((id) => (
-          <li key={id}>{TORQUE_ID.test(id) ? <TorqueTaskRef id={id} brief={titles[id]} /> : <span className="font-mono text-xs">{id}</span>}</li>
+          <li key={id}>{TORQUE_ID.test(id) ? <TorqueTaskRef id={id} brief={titles[id]} /> : <span className="font-mono text-label leading-4">{id}</span>}</li>
         ))}
       </ul>
     )
@@ -273,11 +270,11 @@ function FieldValue({ name, value, titles, onOpen }: { name: string; value: unkn
         {value.map(String).map((ref) => {
           const target = dbOfId(ref)
           return target ? (
-            <button key={ref} type="button" className="rounded border border-border px-1.5 py-0.5 font-mono text-xs hover:bg-muted" onClick={() => onOpen(target, ref)}>
+            <button key={ref} type="button" className="rounded border border-border px-1.5 py-0.5 font-mono text-label leading-4 hover:bg-muted" onClick={() => onOpen(target, ref)}>
               {ref}
             </button>
           ) : (
-            <span key={ref} className="rounded border border-border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+            <span key={ref} className="rounded border border-border px-1.5 py-0.5 font-mono text-label leading-4 text-fg-muted">
               {ref}
             </span>
           )
@@ -320,21 +317,21 @@ function LinksPanel({ item, kinds, titles, busy, onAdd, onRemove }: { item: Plan
   return (
     <section aria-label="Links" className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Links</h3>
+        <h3 className="text-control leading-5 font-semibold">Links</h3>
         {!adding && (
           <Button size="sm" variant="ghost" className="gap-1" onClick={() => setAdding(true)} disabled={busy || kinds.length === 0}>
             <Plus className="h-3.5 w-3.5" /> Add link
           </Button>
         )}
       </div>
-      {links.length === 0 && !adding && <p className="text-sm text-muted-foreground">Nothing linked. Point this at Torque tasks, PRs, notes or files.</p>}
+      {links.length === 0 && !adding && <p className="text-control leading-5 text-fg-muted">Nothing linked. Point this at Torque tasks, PRs, notes or files.</p>}
       <ul className="flex flex-col gap-1">
         {links.map((l) => {
           const target = linkTarget(l)
           const text = l.label ? `${l.label} (${l.ref})` : l.ref
           return (
-            <li key={`${l.kind}:${l.ref}`} className="flex items-center gap-2 text-sm">
-              <span className="w-20 shrink-0 text-xs uppercase tracking-wide text-muted-foreground">{l.kind}</span>
+            <li key={`${l.kind}:${l.ref}`} className="flex items-center gap-2 text-control leading-5">
+              <span className="w-20 shrink-0 text-label leading-4 uppercase tracking-wide text-fg-muted">{l.kind}</span>
               {l.kind === 'torque' && target.to ? (
                 <TorqueTaskRef id={l.ref} brief={titles[l.ref]} label={l.label} />
               ) : target.to ? (
@@ -356,10 +353,10 @@ function LinksPanel({ item, kinds, titles, busy, onAdd, onRemove }: { item: Plan
         })}
       </ul>
       {adding && (
-        <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+        <div className="flex flex-col gap-2 rounded-md border border-border p-3">
           <div className="grid gap-2 sm:grid-cols-[9rem_1fr_1fr]">
             <Select value={kind} onValueChange={(v) => v && setKind(v)}>
-              <SelectTrigger className="h-8 text-sm" aria-label="Link kind">
+              <SelectTrigger className="h-8 text-control leading-5" aria-label="Link kind">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -373,7 +370,7 @@ function LinksPanel({ item, kinds, titles, busy, onAdd, onRemove }: { item: Plan
             <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Task id, URL, path…" aria-label="Link target" />
             <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" aria-label="Link label" />
           </div>
-          {problem && <p className="text-xs text-destructive">{problem}</p>}
+          {problem && <p className="text-label leading-4 text-destructive">{problem}</p>}
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="outline" onClick={() => setAdding(false)}>
               Cancel
@@ -402,11 +399,11 @@ function CommentsPanel({ item, busy, onAdd }: { item: PlannerItem; busy: boolean
 
   return (
     <section aria-label="Comments" className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold">Comments{comments.length ? ` (${comments.length})` : ''}</h3>
+      <h3 className="text-control leading-5 font-semibold">Comments{comments.length ? ` (${comments.length})` : ''}</h3>
       <ul className="flex flex-col gap-3">
         {comments.map((c) => (
-          <li key={c.id} className={`rounded-lg border p-3 text-sm ${c.kind === 'decision' ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
-            <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <li key={c.id} className={`rounded-md border p-3 text-control leading-5 ${c.kind === 'decision' ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
+            <div className="mb-1 flex items-center gap-2 text-label leading-4 text-fg-muted">
               <span className="font-medium text-foreground">{c.author || 'unknown'}</span>
               <span>{when(c.created)}</span>
               {c.kind === 'decision' && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">decision</span>}
@@ -452,9 +449,9 @@ function DecisionPanel({ item, busy, write }: { item: PlannerItem; busy: boolean
   const chosen = typeof item.selected_option === 'string' ? item.selected_option : ''
 
   return (
-    <section aria-label="Decision" className="flex flex-col gap-3 rounded-lg border border-border p-4">
+    <section aria-label="Decision" className="flex flex-col gap-3 rounded-md border border-border p-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Decision</h3>
+        <h3 className="text-control leading-5 font-semibold">Decision</h3>
         {item.status !== 'needs-decision' && (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => write(() => api.plannerReopen(item.id), 'Failed to reopen')}>
             Reopen
@@ -462,22 +459,22 @@ function DecisionPanel({ item, busy, write }: { item: PlannerItem; busy: boolean
         )}
       </div>
       {item.status === 'deferred' && typeof item.defer_note === 'string' && item.defer_note && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-control leading-5 text-fg-muted">
           <span className="font-medium text-foreground">Deferred: </span>
           {item.defer_note}
         </p>
       )}
-      {typeof item.decision === 'string' && item.decision && <p className="whitespace-pre-wrap text-sm">{item.decision}</p>}
+      {typeof item.decision === 'string' && item.decision && <p className="whitespace-pre-wrap text-control leading-5">{item.decision}</p>}
       {options.length > 0 && (
         <ul className="flex flex-col gap-2">
           {options.map((o) => (
-            <li key={o.id} className={`rounded-lg border p-3 text-sm ${o.id === chosen ? 'border-primary bg-primary/5' : 'border-border'}`}>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs text-muted-foreground">{o.id}</span>
+            <li key={o.id} className={`rounded-md border p-3 text-control leading-5 ${o.id === chosen ? 'border-primary bg-primary/5' : 'border-border'}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-label leading-4 text-fg-muted">{o.id}</span>
                 <span className="font-medium">{o.label}</span>
                 {o.recommended && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px]">recommended</span>}
                 {o.id === chosen && (
-                  <span className="inline-flex items-center gap-1 text-xs text-primary">
+                  <span className="inline-flex items-center gap-1 text-label leading-4 text-primary">
                     <Check className="h-3 w-3" /> chosen
                   </span>
                 )}
@@ -493,7 +490,7 @@ function DecisionPanel({ item, busy, write }: { item: PlannerItem; busy: boolean
                   </Button>
                 )}
               </div>
-              {o.summary && <p className="mt-1 text-muted-foreground"><HostLinkText surface="planner-comments" text={o.summary} /></p>}
+              {o.summary && <p className="mt-1 text-fg-muted"><HostLinkText surface="planner-comments" text={o.summary} /></p>}
               {(o.pros || o.cons) && (
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {o.pros && <p><span className="font-medium">Pros: </span>{o.pros}</p>}
@@ -504,7 +501,7 @@ function DecisionPanel({ item, busy, write }: { item: PlannerItem; busy: boolean
           ))}
         </ul>
       )}
-      {options.length === 0 && open && <p className="text-sm text-muted-foreground">This decision has no options to choose from yet.</p>}
+      {options.length === 0 && open && <p className="text-control leading-5 text-fg-muted">This decision has no options to choose from yet.</p>}
       {open && (
         <div className="flex flex-col gap-2">
           <Textarea value={comment} rows={2} placeholder="Why (recorded with the decision)…" aria-label="Decision comment" onChange={(e) => setComment(e.target.value)} />
@@ -533,7 +530,7 @@ function InboxPanel({ item, busy, write, onOpen, onChanged }: { item: PlannerIte
 
   if (!triageable) {
     return promoted?.id && promoted.db ? (
-      <p className="text-sm">
+      <p className="text-control leading-5">
         Promoted to{' '}
         <button type="button" className="font-mono text-primary hover:underline" onClick={() => onOpen(promoted.db as PlannerDb, promoted.id as string)}>
           {promoted.id}
@@ -557,12 +554,12 @@ function InboxPanel({ item, busy, write, onOpen, onChanged }: { item: PlannerIte
   }
 
   return (
-    <section aria-label="Triage" className="flex flex-col gap-3 rounded-lg border border-border p-4">
-      <h3 className="text-sm font-semibold">Triage</h3>
+    <section aria-label="Triage" className="flex flex-col gap-3 rounded-md border border-border p-4">
+      <h3 className="text-control leading-5 font-semibold">Triage</h3>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm">Promote to</span>
+        <span className="text-control leading-5">Promote to</span>
         <Select value={to} onValueChange={(v) => v && setTo(v as PlannerDb)}>
-          <SelectTrigger className="h-8 w-40 text-sm" aria-label="Promote to">
+          <SelectTrigger className="h-8 w-40 text-control leading-5" aria-label="Promote to">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

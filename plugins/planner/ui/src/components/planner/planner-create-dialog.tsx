@@ -56,7 +56,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-auto sm:max-w-lg">
+      <DialogContent className="planner-dialog max-h-[85vh] overflow-auto" widthClassName="max-w-lg">
         <DialogHeader>
           <DialogTitle>New {meta.singular}</DialogTitle>
           <DialogDescription>Fill in the essentials. Everything else can be edited once it exists.</DialogDescription>
@@ -64,13 +64,13 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
         {schema ? (
           <PlannerFields specs={specs} draft={draft} errors={errors} idPrefix="pc" onChange={(name, value) => setDraft((d) => ({ ...d, [name]: value }))} />
         ) : (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-control leading-5 text-fg-muted">Loading…</p>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={!schema || submitting || missing.length > 0} title={missing.length ? `Needs: ${missing.join(', ')}` : undefined}>
+          <Button size="sm" onClick={submit} disabled={!schema || submitting || missing.length > 0} title={missing.length ? `Needs: ${missing.join(', ')}` : undefined}>
             {submitting ? 'Creating…' : `Create ${meta.singular}`}
           </Button>
         </DialogFooter>

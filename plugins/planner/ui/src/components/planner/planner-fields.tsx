@@ -15,7 +15,7 @@ interface PlannerFieldsProps {
 /** A form built from the server schema: one control per field, by kind. */
 export function PlannerFields({ specs, draft, onChange, errors = [], idPrefix = 'pf' }: PlannerFieldsProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {specs.map((s) => {
         const id = `${idPrefix}-${s.name}`
         const value = draft[s.name] ?? ''
@@ -61,7 +61,7 @@ export function PlannerFields({ specs, draft, onChange, errors = [], idPrefix = 
                 </SelectContent>
               </Select>
             )}
-            {s.hint && fieldErrors.length === 0 && <p className="text-xs text-muted-foreground">{s.hint}</p>}
+            {s.hint && fieldErrors.length === 0 && <p className="text-label leading-4 text-fg-faint">{s.hint}</p>}
             {fieldErrors.map((e, i) => (
               <p key={i} className="text-xs text-destructive">
                 {e.message}

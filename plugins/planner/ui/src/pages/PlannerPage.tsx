@@ -3,18 +3,20 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Plus, X } from 'lucide-react'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { Button, EmptyState, Input, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
-import { PageHeader } from '@hollis-labs/kit-dashboard'
+import { Button, EmptyState, Input, SearchInput, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
+import { PageHeader, statusTone } from '@hollis-labs/kit-dashboard'
 import { PlannerBoardView } from '@planner/components/planner/planner-board'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { PlannerDetailDialog } from '@planner/components/planner/planner-detail-dialog'
 import { PlannerRow } from '@planner/components/planner/planner-row'
+import { PlannerRowContent, PlannerTableHeader } from '@planner/components/planner/planner-table'
 import { TorqueTaskDialog } from '@planner/components/planner/torque-task-dialog'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
+import { usePlannerRowFocus } from '@planner/hooks/use-planner-row-focus'
 import { useApi } from '@tachyon/torque-client'
 import { useSSE } from '@tachyon/torque-client'
 import { ApiError } from '@tachyon/torque-client'
-import { PLANNER_DBS, filterItems, isPlannerDb, isSettled, moveId, parseBoardOpen, plannerMeta, statusCounts } from '@planner/lib/planner'
+import { PLANNER_DBS, filterItems, isPlannerDb, isSettled, moveId, parseBoardOpen, plannerMeta, statusCounts, statusToneKey } from '@planner/lib/planner'
 import { notifyError } from '@tachyon/torque-client'
 import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerSearchHit } from '@tachyon/torque-client'
 
@@ -22,7 +24,10 @@ const SSE_EVENTS = ['planner.changed', 'task.created', 'task.updated', 'task.tra
 /** The board is a live view: it also refreshes on its own while open. */
 const BOARD_REFRESH_MS = 30_000
 
+const VIEW_ACCENTS = { board: 'info', activity: 'success', priorities: 'warning', workstreams: 'info', roadmap: 'success', ideas: 'brand', decisions: 'brand', risks: 'danger', inbox: 'warning' } as const
+
 export default function PlannerPage() {
+  const rowFocus = usePlannerRowFocus()
   const api = useApi()
   const navigate = useNavigate()
   const params = useParams<{ db?: string; id?: string }>()
@@ -202,23 +207,25 @@ export default function PlannerPage() {
   const maxRank = Math.max(0, ...(db === 'priorities' ? (items ?? []).map((i) => (typeof i.rank === 'number' ? i.rank : 0)) : [0]))
 
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <div className="planner-page flex h-full min-w-0 flex-col" data-row-focus={rowFocus} data-planner-tone={VIEW_ACCENTS[isActivity ? 'activity' : isBoard ? 'board' : db]}>
       <PageHeader title="Planner">
-        {!isDemo && <Button size="sm" className="gap-1" onClick={() => setCreating(true)} disabled={enabled === null}>
+        {!isDemo && <Button variant="outline" size="sm" className="gap-1 text-[0.8rem]" onClick={() => setCreating(true)} disabled={enabled === null}>
           <Plus className="h-3.5 w-3.5" />
           New {createMeta.singular}
         </Button>}
       </PageHeader>
 
-      <div className="border-b border-zinc-800/80 px-4 py-3">
-        <Input className="h-8 w-full sm:w-72" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search everything…" aria-label="Search the planner" />
+      <div className="shrink-0 border-b border-border bg-panel px-4 py-2">
+        <div className="planner-search flex min-w-0">
+          <SearchInput value={search} onChange={setSearch} debounceMs={0} layeredEscape retainFocusOnClear placeholder="Search the planner…" ariaLabel="Search the planner" />
+        </div>
       </div>
-      <Tabs value={isActivity ? 'activity' : isBoard ? 'board' : db} onValueChange={value => { setSearch(''); navigate(`/planner/${value}`) }} className="min-w-0 border-b border-zinc-800/80 px-4 py-3">
-        <TabsList aria-label="Planner views" className="h-auto max-w-full flex-wrap justify-start">
-          <TabsTrigger value="board">Board</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
-          {PLANNER_DBS.map(d => <TabsTrigger key={d.key} value={d.key}>
-            {d.label}{countOf(d.key) !== undefined && <span className="ml-1.5 text-[10px] text-zinc-500">{countOf(d.key)}</span>}
+      <Tabs value={isActivity ? 'activity' : isBoard ? 'board' : db} onValueChange={value => { setSearch(''); navigate(`/planner/${value}`) }} className="min-w-0 shrink-0 border-b border-border bg-panel px-4 py-2">
+        <TabsList aria-label="Planner views" className="planner-view-tabs max-w-full flex-wrap justify-start gap-1 bg-transparent p-0 group-data-horizontal/tabs:h-auto">
+          <TabsTrigger value="board" data-planner-tone={VIEW_ACCENTS.board}><span className="planner-accent-dot" />Board</TabsTrigger>
+          <TabsTrigger value="activity" data-planner-tone={VIEW_ACCENTS.activity}><span className="planner-accent-dot" />Activity</TabsTrigger>
+          {PLANNER_DBS.map(d => <TabsTrigger key={d.key} value={d.key} data-planner-tone={VIEW_ACCENTS[d.key]}>
+            <span className="planner-accent-dot" />{d.label}{countOf(d.key) !== undefined && <span className="font-mono tabular-nums opacity-70">{countOf(d.key)}</span>}
           </TabsTrigger>)}
         </TabsList>
       </Tabs>
@@ -243,19 +250,26 @@ export default function PlannerPage() {
           )
         ) : (
           <>
-            <p className="px-4 pt-3 text-[13px] text-muted-foreground">{meta.blurb}</p>
-            <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-              <Input className="h-8 w-48" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Filter ${meta.label.toLowerCase()}…`} aria-label={`Filter ${meta.label}`} />
+            <div className="planner-section-header">
+              <h2 className="planner-accent-text font-mono text-caption font-medium uppercase tracking-label">{meta.label}</h2>
+              {items && <span className="font-mono text-caption tabular-nums text-fg-faint">{visible.length} shown · {items.length} total</span>}
+              <p className="text-xs leading-4 text-fg-muted">{meta.blurb}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2">
+              <Input className="planner-filter h-7 w-full sm:w-56" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Filter ${meta.label.toLowerCase()}…`} aria-label={`Filter ${meta.label}`} />
+              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter by status">
               <button type="button" aria-pressed={status === ''} className={chip(status === '')} onClick={() => setStatus('')}>
                 All
               </button>
               {statuses.map((s) => (
-                <button key={s.status} type="button" aria-pressed={status === s.status} className={chip(status === s.status)} onClick={() => setStatus(status === s.status ? '' : s.status)}>
-                  {s.status} <span className="text-muted-foreground">{s.count}</span>
+                <button key={s.status} type="button" aria-pressed={status === s.status} className={chip(status === s.status, s.status)} onClick={() => setStatus(status === s.status ? '' : s.status)}>
+                  <span className={`size-1.5 rounded-full ${statusTone(statusToneKey(s.status)).dot}`} />
+                  {s.status} <span className="font-mono tabular-nums opacity-70">{s.count}</span>
                 </button>
               ))}
+              </div>
               {settledCount > 0 && !status && (
-                <button type="button" className="ml-auto text-xs text-primary hover:underline" onClick={() => setShowSettled((v) => !v)}>
+                <button type="button" aria-pressed={showSettled} className="ml-auto text-label text-info hover:underline" onClick={() => setShowSettled((v) => !v)}>
                   {showSettled ? `Hide ${settledCount} settled` : `Show ${settledCount} settled`}
                 </button>
               )}
@@ -276,11 +290,12 @@ export default function PlannerPage() {
                 <EmptyState variant="empty" title={`No ${meta.label.toLowerCase()} yet`} description={meta.blurb} action={{ label: `New ${meta.singular}`, onClick: () => setCreating(true) }} />
               </div>
             ) : visible.length === 0 ? (
-              <p className="px-4 py-6 text-[13px] text-muted-foreground">Nothing matches. Clear the filter or show settled items.</p>
+              <p className="px-4 py-4 text-xs text-fg-muted">Nothing matches. Clear the filter or show settled items.</p>
             ) : (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                 <SortableContext items={visible.map((i) => i.id)} strategy={verticalListSortingStrategy} disabled={!canReorder}>
-                  <ul aria-label={meta.label} className="border-t border-border">
+                  <PlannerTableHeader />
+                  <ul aria-label={meta.label}>
                     {visible.map((it) => (
                       <PlannerRow key={it.id} db={db} item={it} sortable={canReorder} onOpen={() => go(db, it.id)} />
                     ))}
@@ -289,7 +304,7 @@ export default function PlannerPage() {
               </DndContext>
             )}
             {items && items.length > 1 && !canReorder && !error && (
-              <p className="px-4 py-3 text-xs text-muted-foreground">Clear the filter and show settled items to drag-reorder.</p>
+              <p className="px-4 py-2 font-mono text-caption leading-4 text-fg-faint">Clear the filter and show settled items to drag-reorder.</p>
             )}
           </>
         )}
@@ -343,15 +358,16 @@ export default function PlannerPage() {
   )
 }
 
-function chip(active: boolean): string {
-  return `rounded border px-2 py-0.5 text-[10px] uppercase tracking-wider ${active ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'}`
+function chip(active: boolean, status?: string): string {
+  const tone = statusTone(status ? statusToneKey(status) : 'doing')
+  return `planner-filter-pill inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-caption uppercase tracking-wider transition-colors ${active ? `${tone.border} ${tone.bg} ${tone.text}` : 'border-border bg-panel-2/50 text-fg-muted hover:text-fg'}`
 }
 
 function SearchResults({ hits, query, onClear, onOpen }: { hits: PlannerSearchHit[]; query: string; onClear: () => void; onOpen: (h: PlannerSearchHit) => void }) {
   return (
     <section aria-label="Search results">
-      <div className="flex min-w-0 items-center justify-between gap-3 px-4 py-3 [overflow-wrap:anywhere]">
-        <p className="text-[13px]">
+      <div className="flex min-w-0 items-center justify-between gap-3 border-b border-border bg-panel-2/30 px-4 py-2 [overflow-wrap:anywhere]">
+        <p className="text-xs text-fg-muted">
           {hits.length} result{hits.length === 1 ? '' : 's'} for <span className="font-medium">“{query}”</span>
         </p>
         <Button size="sm" variant="ghost" className="gap-1" onClick={onClear}>
@@ -359,20 +375,20 @@ function SearchResults({ hits, query, onClear, onOpen }: { hits: PlannerSearchHi
         </Button>
       </div>
       {hits.length === 0 ? (
-        <p className="px-4 pb-6 text-[13px] text-muted-foreground">Nothing matched. Every word has to appear in an item&apos;s id, title or text.</p>
+        <p className="px-4 py-4 text-xs text-fg-muted">Nothing matched. Every word has to appear in an item&apos;s id, title or text.</p>
       ) : (
-        <ul className="border-t border-border">
+        <>
+        <PlannerTableHeader trailing="" />
+        <ul>
           {hits.map((h) => (
-            <li key={`${h.db}/${h.id}`} className="border-b border-border">
-              <button type="button" className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-muted/50" onClick={() => onOpen(h)} aria-label={`Open ${h.id}: ${h.title}`}>
-                <span className="w-24 shrink-0 text-xs uppercase tracking-wide text-muted-foreground">{plannerMeta(h.db).label}</span>
-                <span className="font-mono text-xs text-muted-foreground">{h.id}</span>
-                <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[13px] font-medium">{h.title}</span>
-                <PlannerStatus status={h.status} />
+            <li key={`${h.db}/${h.id}`} className="planner-table-row" data-planner-tone={VIEW_ACCENTS[h.db]}>
+              <button type="button" className="planner-row-trigger planner-table-grid" onClick={() => onOpen(h)} aria-label={`Open ${h.id}: ${h.title}`}>
+                <PlannerRowContent title={h.title} metadata={<><span className="shrink-0">{h.id}</span><span className="planner-accent-text">{plannerMeta(h.db).label}</span></>} status={<PlannerStatus status={h.status} />} />
               </button>
             </li>
           ))}
         </ul>
+        </>
       )}
     </section>
   )

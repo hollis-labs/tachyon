@@ -41,7 +41,7 @@ export function TorqueTaskDialog({ id, onClose }: { id: string; onClose: () => v
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[88vh] overflow-auto sm:max-w-2xl" aria-describedby={undefined}>
+      <DialogContent className="planner-dialog max-h-[88vh] overflow-auto" widthClassName="max-w-2xl" aria-describedby={undefined}>
         {error ? (
           <DialogHeader>
             <DialogTitle>{id}</DialogTitle>
@@ -60,27 +60,27 @@ export function TorqueTaskDialog({ id, onClose }: { id: string; onClose: () => v
               <div className="flex flex-wrap items-center gap-2 pr-8">
                 <CopyableId id={task.id} />
                 <StatusBadge status={task.status} />
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">P{task.priority}</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-fg-muted">P{task.priority}</span>
                 {task.tags.map((t) => (
-                  <span key={t.slug} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  <span key={t.slug} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-fg-muted">
                     {t.slug}
                   </span>
                 ))}
               </div>
-              <DialogTitle className="text-lg">{task.title}</DialogTitle>
+              <DialogTitle className="text-base leading-6">{task.title}</DialogTitle>
             </DialogHeader>
             {task.description ? (
-              <p className="max-h-72 overflow-auto whitespace-pre-wrap break-words text-sm"><HostLinkText surface="task-description" text={task.description} /></p>
+              <p className="max-h-72 overflow-auto whitespace-pre-wrap break-words text-control leading-5"><HostLinkText surface="task-description" text={task.description} /></p>
             ) : (
-              <p className="text-sm text-muted-foreground">No description.</p>
+              <p className="text-control leading-5 text-fg-muted">No description.</p>
             )}
             {comments.length > 0 && (
               <section aria-label="Latest comments" className="flex flex-col gap-2">
-                <h3 className="text-sm font-semibold">Latest comments</h3>
+                <h3 className="text-control leading-5 font-semibold">Latest comments</h3>
                 <ul className="flex flex-col gap-2">
                   {comments.map((c) => (
-                    <li key={c.id} className="rounded-lg border border-border p-3 text-sm">
-                      <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <li key={c.id} className="rounded-md border border-border p-3 text-control leading-5">
+                      <div className="mb-1 flex items-center gap-2 text-label leading-4 text-fg-muted">
                         <span className="font-medium text-foreground">{c.author || 'unknown'}</span>
                         <span>{when(c.created_at)}</span>
                       </div>
@@ -91,7 +91,7 @@ export function TorqueTaskDialog({ id, onClose }: { id: string; onClose: () => v
               </section>
             )}
             <div className="flex justify-end">
-              <Link to={`/tasks/${encodeURIComponent(task.id)}`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+              <Link to={`/tasks/${encodeURIComponent(task.id)}`} className="inline-flex items-center gap-1 text-control leading-5 text-primary hover:underline">
                 Open the full task <ExternalLink className="h-3.5 w-3.5" />
               </Link>
             </div>

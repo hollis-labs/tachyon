@@ -5,3 +5,316 @@
 /* Tailwind does not scan node_modules or sibling workspaces on its own. */
 @source "../../packages/*/src/**/*";
 @source "../../plugins/*/ui/src/**/*";
+
+/* Keep the dashboard rail stable beside dense pages and clarify its active route. */
+.tachyon-shell > nav {
+  flex: 0 0 calc(var(--spacing) * 14);
+  border-color: var(--color-border);
+}
+
+.tachyon-shell > nav [aria-current="page"] {
+  color: var(--color-fg);
+}
+
+/* The kit search control normally reserves 240px. Let it fit narrow app panes. */
+.planner-search > div,
+.planner-search input {
+  min-width: 0;
+}
+
+.planner-search > div {
+  min-height: calc(var(--spacing) * 8);
+}
+
+.planner-search:focus-within {
+  border-radius: var(--radius-control);
+  outline: 1px solid var(--color-ring);
+}
+
+.planner-page,
+.planner-dialog {
+  --planner-row-divider: color-mix(in oklab, var(--color-border) 60%, transparent);
+  /* Operations uses this amber for priority, distinct from workflow warning. */
+  --planner-priority-color: #fbbf24;
+}
+:root[data-mode="light"] :is(.planner-page, .planner-dialog) {
+  --planner-priority-color: var(--color-amber-700);
+}
+
+/* Planner accents share the dashboard's workflow palette, including light mode. */
+/* P4's brand is neutral; retain Operations' violet review cue in Planner only. */
+:root:is(:not([data-theme]), [data-theme="p4-white"], [data-theme="sysop-p4-white"])
+:is(.planner-page, .planner-dialog) {
+  --theme-color-status-review: var(--color-violet-400);
+  --theme-color-status-review-label: color-mix(
+    in oklab,
+    var(--theme-color-status-review) 60%,
+    var(--color-fg)
+  );
+}
+:root[data-mode="light"]:is(
+    :not([data-theme]),
+    [data-theme="p4-white"],
+    [data-theme="sysop-p4-white"]
+  )
+  :is(.planner-page, .planner-dialog) {
+  --theme-color-status-review: var(--color-violet-700);
+}
+[data-planner-tone="info"] {
+  --planner-accent: var(--color-info);
+  --planner-label: var(--color-dash-status-doing-label);
+}
+[data-planner-tone="success"] {
+  --planner-accent: var(--color-success);
+  --planner-label: var(--color-dash-status-done-label);
+}
+[data-planner-tone="warning"] {
+  --planner-accent: var(--color-warning);
+  --planner-label: var(--color-dash-status-queued-label);
+}
+[data-planner-tone="brand"] {
+  --planner-accent: var(--theme-color-status-review);
+  --planner-label: var(--theme-color-status-review-label);
+}
+[data-planner-tone="danger"] {
+  --planner-accent: var(--color-danger);
+  --planner-label: var(--color-dash-status-blocked-label);
+}
+
+.planner-accent-dot {
+  width: calc(var(--spacing) * 1.5);
+  height: calc(var(--spacing) * 1.5);
+  flex: none;
+  border-radius: 50%;
+  background: var(--planner-accent);
+}
+
+.planner-accent-text {
+  color: var(--planner-label);
+}
+
+/* Match Operations' individual filter pills, rather than a segmented tab bar. */
+.planner-view-tabs > [role="tab"] {
+  flex: none;
+  height: auto;
+  gap: calc(var(--spacing) * 1.5);
+  padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 2);
+  border-radius: var(--radius-control);
+  border-color: var(--color-border);
+  background: color-mix(in oklab, var(--color-panel-2) 50%, transparent);
+  color: var(--color-fg-muted);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: 1.3333;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+
+.planner-view-tabs > [role="tab"]::after {
+  display: none;
+}
+.planner-view-tabs > [role="tab"]:hover {
+  color: var(--color-fg);
+}
+.planner-view-tabs > [role="tab"][data-active] {
+  border-color: color-mix(in oklab, var(--planner-accent) 40%, transparent);
+  background: color-mix(in oklab, var(--planner-accent) 10%, transparent);
+  color: var(--planner-label);
+}
+
+.planner-filter-pill {
+  line-height: 1.3333;
+}
+.planner-filter {
+  font-size: var(--text-label);
+  border-radius: var(--radius-control);
+}
+
+/* One Operations-style table rhythm across Board, Activity, databases and search. */
+.planner-table-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 152px 64px;
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 16px;
+  font-family: var(--font-mono);
+  text-align: left;
+}
+.planner-table-row {
+  position: relative;
+  border-bottom: 1px solid var(--planner-row-divider);
+}
+.planner-table-row:hover {
+  background: var(--color-panel-hover-soft);
+}
+.planner-row-grip {
+  position: absolute;
+  /* Keep the reorder control in the trailing cell, clear of the text gutter. */
+  right: 68px;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+}
+.planner-cell-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.planner-cell-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-fg);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+}
+.planner-cell-meta {
+  display: flex;
+  min-width: 0;
+  height: 20px;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--color-fg-faint);
+  font-size: 10px;
+  line-height: 16px;
+}
+.planner-cell-meta > .planner-fact {
+  flex: none;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-block: 0;
+}
+.planner-priority {
+  flex: none;
+  font-family: var(--font-mono);
+  line-height: 16px;
+}
+.planner-priority > span {
+  border: 0;
+  border-radius: var(--radius-control);
+  background: color-mix(in oklab, var(--planner-priority-color) 22%, var(--color-bg));
+  color: var(--planner-priority-color);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+}
+.planner-cell-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.planner-cell-status {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+.planner-cell-trailing {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--color-fg-faint);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.planner-table-header {
+  min-height: 29px;
+  border-bottom: 1px solid var(--planner-row-divider);
+  color: var(--color-fg-faint);
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0.12em;
+}
+.planner-section-header {
+  display: flex;
+  min-height: 33px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  border-bottom: 1px solid var(--planner-row-divider);
+  background: color-mix(in oklab, var(--color-panel-2) 30%, transparent);
+  padding: 8px 16px;
+}
+.planner-section-header > :last-child {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--color-fg-faint);
+}
+@media (max-width: 639px) {
+  .planner-table-grid {
+    grid-template-columns: minmax(0, 1fr) 64px;
+    row-gap: 4px;
+  }
+  .planner-cell-main {
+    grid-column: 1 / -1;
+  }
+  .planner-cell-status {
+    grid-column: 1;
+  }
+  .planner-cell-meta > :first-child {
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .planner-table-header {
+    display: none;
+  }
+}
+
+/* Dialogs restore focus to their opener. Only keyboard navigation paints a row ring. */
+.planner-row-trigger:focus-visible {
+  outline: 1px solid var(--color-ring);
+  outline-offset: -2px;
+}
+.planner-page[data-row-focus="pointer"] .planner-row-trigger:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Shared detail/create forms: one label, control and body scale across databases. */
+.planner-dialog [data-slot="dialog-title"] {
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--color-fg);
+}
+.planner-dialog [data-slot="dialog-description"] {
+  font-size: var(--text-control);
+  line-height: 1.5;
+  color: var(--color-fg-muted);
+}
+.planner-dialog h3,
+.planner-dialog label:not(.sr-only) {
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-fg-muted);
+}
+.planner-dialog [data-slot="input"],
+.planner-dialog [data-slot="select-trigger"] {
+  height: calc(var(--spacing) * 8);
+  border-radius: var(--radius-control);
+  font-size: var(--text-control);
+}
+.planner-dialog textarea {
+  border-radius: var(--radius-control);
+  font-size: var(--text-control);
+  line-height: 1.5;
+}
+.planner-dialog [data-slot="button"] {
+  font-size: 0.8rem;
+}

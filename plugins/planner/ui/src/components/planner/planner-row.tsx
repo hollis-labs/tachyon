@@ -2,6 +2,8 @@ import { CSS } from '@dnd-kit/utilities'
 import { useSortable } from '@dnd-kit/sortable'
 import { GripVertical, MessageSquare } from 'lucide-react'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
+import { PlannerFact } from '@planner/components/planner/planner-fact'
+import { PlannerRowContent } from '@planner/components/planner/planner-table'
 import { itemFacts } from '@planner/lib/planner'
 import type { PlannerDb, PlannerItem } from '@tachyon/torque-client'
 
@@ -22,39 +24,27 @@ export function PlannerRow({ db, item, sortable, onOpen }: PlannerRowProps) {
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex items-start gap-2 border-b border-border px-4 py-3 ${isDragging ? 'bg-muted opacity-70' : 'hover:bg-muted/50'}`}
+      className={`planner-table-row ${isDragging ? 'bg-panel-hover opacity-70' : ''}`}
     >
       <button
         type="button"
-        className={`mt-0.5 shrink-0 cursor-grab touch-none text-muted-foreground ${sortable ? '' : 'invisible'}`}
+        className={`planner-row-grip cursor-grab touch-none rounded text-fg-faint focus-visible:outline focus-visible:outline-ring ${sortable ? '' : 'invisible'}`}
         aria-label={`Drag to reorder ${item.id}`}
         {...attributes}
         {...listeners}
         tabIndex={sortable ? 0 : -1}
       >
-        <GripVertical className="h-4 w-4" />
+        <GripVertical className="h-3 w-3" />
       </button>
-      <button type="button" className="flex min-w-0 flex-1 flex-col gap-1 text-left" onClick={onOpen} aria-label={`Open ${item.id}: ${item.title}`}>
-        <span className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-          <span className="[overflow-wrap:anywhere] font-mono text-xs text-muted-foreground">{item.id}</span>
-          <span className="min-w-0 [overflow-wrap:anywhere] text-[13px] font-medium">{item.title}</span>
-          {facts.map((f) => (
-            <span key={f} className="max-w-full [overflow-wrap:anywhere] rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-              {f}
-            </span>
-          ))}
-        </span>
-        {item.tldr && <span className="line-clamp-2 [overflow-wrap:anywhere] text-[13px] text-muted-foreground">{item.tldr}</span>}
+      <button type="button" className="planner-row-trigger planner-table-grid" onClick={onOpen} aria-label={`Open ${item.id}: ${item.title}`}>
+        <PlannerRowContent title={item.title} metadata={<>
+            <span className="shrink-0">{item.id}</span>
+            {facts.map((f) => <PlannerFact key={f} db={db} fact={f} />)}
+            {item.tldr && <span className="planner-cell-preview" title={item.tldr}>{item.tldr}</span>}
+          </>} status={<PlannerStatus status={item.status} />} trailing={<span className="inline-flex items-center gap-1" title={`${comments} comments`}>
+          {comments > 0 && <><MessageSquare className="size-3" />{comments}</>}
+        </span>} />
       </button>
-      <span className="flex shrink-0 items-center gap-3">
-        {comments > 0 && (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={`${comments} comments`}>
-            <MessageSquare className="h-3.5 w-3.5" />
-            {comments}
-          </span>
-        )}
-        <PlannerStatus status={item.status} />
-      </span>
     </li>
   )
 }
