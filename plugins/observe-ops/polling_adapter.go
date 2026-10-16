@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 const probeTimeout = 750 * time.Millisecond
@@ -35,10 +38,12 @@ type PollingAdapter struct {
 
 func NewPollingAdapter(local ObserveAdapter, config map[string]string) (*PollingAdapter, error) {
 	endpoints := make([]string, 0, 4)
-	for _, setting := range []struct{ key, fallback string }{
-		{"nanite_url", "http://127.0.0.1:8090"},
-		{"torque_url", "http://127.0.0.1:8990"},
-		{"tether_url", "http://127.0.0.1:8947"},
+	routes := routeTransport{}
+	tokenOwners := map[string]bool{}
+	for _, setting := range []struct{ key, fallback, tokenKey, tokenEnv string }{
+		{"nanite_url", "http://127.0.0.1:8090", "nanite_token_file", "NANITE_TOKEN_FILE"},
+		{"torque_url", "http://127.0.0.1:8990", "torque_token_file", "TORQUE_TOKEN_FILE"},
+		{"tether_url", "http://127.0.0.1:8947", "tether_token_file", "TETHER_TOKEN_FILE"},
 	} {
 		base := setting.fallback
 		if override := strings.TrimSpace(os.Getenv("TACHYON_OBSERVE_" + strings.ToUpper(setting.key))); override != "" {
@@ -51,11 +56,24 @@ func NewPollingAdapter(local ObserveAdapter, config map[string]string) (*Polling
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 			return nil, fmt.Errorf("%s must be an HTTP(S) base URL without credentials, query or fragment", setting.key)
 		}
-		endpoints = append(endpoints, strings.TrimRight(base, "/"))
+		base = strings.TrimRight(base, "/")
+		tokenFile := upstreamauth.TokenFile(config, setting.tokenKey, setting.tokenEnv)
+		rt, err := upstreamauth.Wrap(http.DefaultTransport, base, tokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", setting.key, err)
+		}
+		// Services on one host:port may only share a transport when neither
+		// carries a credential; otherwise one token could reach the other.
+		if _, dup := routes[u.Host]; dup && (tokenFile != "" || tokenOwners[u.Host]) {
+			return nil, fmt.Errorf("%s: shares a host with another observed service", setting.key)
+		}
+		routes[u.Host] = rt
+		tokenOwners[u.Host] = tokenOwners[u.Host] || tokenFile != ""
+		endpoints = append(endpoints, base)
 	}
 	return &PollingAdapter{
 		ObserveAdapter: local, endpoints: endpoints,
-		client: &http.Client{Timeout: probeTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		client: &http.Client{Timeout: probeTimeout, Transport: routes, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}, nil
 }
 
@@ -278,4 +296,15 @@ func (a *PollingAdapter) Status(ctx context.Context) (*StatusSummary, error) {
 	}
 	status.LastUpdated = time.Now().UTC()
 	return status, nil
+}
+
+// routeTransport sends each request through the transport built for its host,
+// so one upstream's bearer token can never be attached to another's request.
+type routeTransport map[string]http.RoundTripper
+
+func (r routeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if rt, ok := r[req.URL.Host]; ok {
+		return rt.RoundTrip(req)
+	}
+	return nil, errors.New("observe: no transport for host")
 }

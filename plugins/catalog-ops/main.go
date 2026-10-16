@@ -1,0 +1,58 @@
+// Catalog Ops is a stateless control-plane plugin over Tether's catalog
+// (agents, launches, projects, providers) and registry. Tether owns all state.
+package main
+
+import (
+	"context"
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
+	"github.com/hollis-labs/tachyon/internal/contract"
+	"github.com/hollis-labs/tachyon/internal/pluginkit"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
+)
+
+//go:embed capabilities.json
+var capabilitiesJSON []byte
+
+type plugin struct{ api *tetherAPI }
+
+func (*plugin) Capabilities() contract.PluginCapabilities {
+	var caps contract.PluginCapabilities
+	if err := json.Unmarshal(capabilitiesJSON, &caps); err != nil {
+		panic(fmt.Sprintf("catalog-ops capabilities: %v", err))
+	}
+	return caps
+}
+
+func (p *plugin) Init(_ context.Context, params subprocess.InitParams) (subprocess.InitResult, error) {
+	addr := strings.TrimSpace(params.Config["tether_addr"])
+	if addr == "" {
+		addr = strings.TrimSpace(os.Getenv("TETHER_ADDR"))
+	}
+	api, err := newTetherAPI(addr, upstreamauth.TokenFile(params.Config, "tether_token_file", "TETHER_TOKEN_FILE"))
+	if err != nil {
+		return subprocess.InitResult{}, fmt.Errorf("configure Tether: %w", err)
+	}
+	p.api = api
+	return subprocess.InitResult{ID: "catalog-ops", Name: "Catalog Ops", Version: "0.1.0", Description: "Tether catalog and registry control plane", CapabilityContract: 1, Protocol: subprocess.ProtocolVersion}, nil
+}
+func (*plugin) Load(context.Context) (subprocess.LoadResult, error) {
+	return subprocess.LoadResult{}, nil
+}
+func (*plugin) Unload(context.Context) error { return nil }
+func (p *plugin) Command(ctx context.Context, req subprocess.CommandRequest) (subprocess.CommandResult, error) {
+	if result, handled, err := pluginkit.Dispatch(ctx, p, req); handled || err != nil {
+		return result, err
+	}
+	return subprocess.CommandResult{}, fmt.Errorf("unknown command: %s", req.Name)
+}
+func main() {
+	if err := subprocess.Serve(&plugin{}); err != nil {
+		os.Exit(1)
+	}
+}

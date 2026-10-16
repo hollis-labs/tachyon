@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 // TetherLaunchAdapter binds durable intents to catalog launches in Tether.
@@ -16,11 +17,24 @@ type TetherLaunchAdapter struct {
 }
 
 func NewTetherLaunchAdapter(addr string, store *LaunchStore) (*TetherLaunchAdapter, error) {
+	return NewAuthenticatedTetherLaunchAdapter(addr, "", store)
+}
+
+// NewAuthenticatedTetherLaunchAdapter presents the bearer token in tokenFile to
+// Tether. An empty tokenFile keeps the unauthenticated behavior.
+func NewAuthenticatedTetherLaunchAdapter(addr, tokenFile string, store *LaunchStore) (*TetherLaunchAdapter, error) {
 	httpClient, err := tetherHTTPClient(addr)
 	if err != nil {
 		return nil, safeProviderError(err)
 	}
-	client, err := tether.New(addr, tether.WithHTTPClient(httpClient))
+	if err := upstreamauth.Guard(addr, tokenFile); err != nil {
+		return nil, safeProviderError(err)
+	}
+	opts := []tether.Option{tether.WithHTTPClient(httpClient)}
+	if tokenFile != "" {
+		opts = append(opts, tether.WithTokenFile(tokenFile))
+	}
+	client, err := tether.New(addr, opts...)
 	if err != nil {
 		return nil, safeProviderError(err)
 	}

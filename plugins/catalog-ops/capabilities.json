@@ -1,0 +1,23 @@
+{
+  "modules": ["catalog"],
+  "verbs": {
+    "catalog_agents": {"effect": "reads"},
+    "catalog_projects": {"effect": "reads"},
+    "catalog_providers": {"effect": "reads"},
+    "catalog_launches": {"effect": "reads"},
+    "catalog_files": {"effect": "reads"},
+    "catalog_validate": {"effect": "reads"},
+    "catalog_plan": {"effect": "writes"},
+    "catalog_plan_get": {"effect": "reads"},
+    "catalog_apply": {"effect": "open_world"},
+    "catalog_reload": {"effect": "open_world"},
+    "catalog_backups": {"effect": "reads"},
+    "catalog_audit": {"effect": "reads"},
+    "registry_search": {"effect": "reads"},
+    "registry_get": {"effect": "reads"},
+    "registry_register": {"effect": "writes"},
+    "registry_update": {"effect": "writes"},
+    "registry_deregister": {"effect": "destroys"},
+    "registry_sync": {"effect": "open_world"}
+  }
+}
