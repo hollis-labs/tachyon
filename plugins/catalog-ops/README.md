@@ -12,6 +12,16 @@ token with `tether.read` plus, for the write verbs, `tether.catalog` and
 non-loopback host, never follows redirects, and re-reads the file when it is
 rotated.
 
+## Local vs remote Tether
+
+Tether's remote listener (device token, `Tether-Protocol: 1`, sent by this
+plugin) admits catalog and registry **reads**, `catalog_validate`, and
+registry writes with the `maintain` scope. `catalog_plan`, `catalog_apply` and
+`catalog_reload` are **local-custody routes**: over the remote listener Tether
+answers 403 `route requires local custody` (checked against the hub, 2026-10-16).
+They work when `tether_addr` is the daemon's own Unix socket (Tachyon on the
+same host as Tether). Remote catalog writes need a Tether-side change.
+
 ## Catalog changes: plan, approve, apply
 
 Agents, launches, projects and the rest are edited as whole YAML files in a

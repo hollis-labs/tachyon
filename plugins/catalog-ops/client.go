@@ -19,6 +19,12 @@ import (
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
+// Tether's remote listener refuses a request that does not name its protocol.
+const (
+	tetherProtocolHeader = "Tether-Protocol"
+	tetherProtocol       = "1"
+)
+
 const (
 	maxResponseBytes = 4 << 20
 	maxRequestBytes  = 4 << 20
@@ -87,7 +93,7 @@ func newTetherAPI(addr, tokenFile string) (*tetherAPI, error) {
 	if err != nil || u.Host == "" || u.User != nil {
 		return nil, errors.New("invalid Tether address")
 	}
-	rt, err := upstreamauth.Wrap(transport, baseURL, tokenFile)
+	rt, err := upstreamauth.Wrap(upstreamauth.WithHeader(transport, tetherProtocolHeader, tetherProtocol), baseURL, tokenFile)
 	if err != nil {
 		return nil, err
 	}

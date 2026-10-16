@@ -142,3 +142,31 @@ func expandHome(p string) string {
 	}
 	return p
 }
+
+// WithHeader returns a RoundTripper that sets one header on every request, for
+// protocol markers an upstream requires (Tether's remote listener wants
+// "Tether-Protocol: 1" on every route). Place it under Wrap so it never sees
+// the credential.
+func WithHeader(base http.RoundTripper, key, value string) http.RoundTripper {
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return headerTransport{base: base, key: key, value: value}
+}
+
+type headerTransport struct {
+	base       http.RoundTripper
+	key, value string
+}
+
+func (t headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	out := req.Clone(req.Context())
+	out.Header.Set(t.key, t.value)
+	return t.base.RoundTrip(out)
+}
+
+func (t headerTransport) CloseIdleConnections() {
+	if c, ok := t.base.(interface{ CloseIdleConnections() }); ok {
+		c.CloseIdleConnections()
+	}
+}

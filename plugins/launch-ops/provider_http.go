@@ -15,6 +15,7 @@ import (
 	"time"
 
 	tether "github.com/hollis-labs/substrate/mesh/tetherclient"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 const maxProviderResponse = 4 << 20
@@ -103,5 +104,5 @@ func tetherHTTPClient(addr string) (*http.Client, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", socket)
 		}
 	}
-	return providerHTTPClient(base, 5*time.Second), nil
+	return providerHTTPClient(upstreamauth.WithHeader(base, "Tether-Protocol", "1"), 5*time.Second), nil
 }

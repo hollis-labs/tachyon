@@ -125,3 +125,21 @@ func TestTokenFilePrefersConfig(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestWithHeaderSetsMarkerUnderWrap(t *testing.T) {
+	var proto, auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proto, auth = r.Header.Get("Tether-Protocol"), r.Header.Get("Authorization")
+	}))
+	defer srv.Close()
+	rt, err := Wrap(WithHeader(nil, "Tether-Protocol", "1"), srv.URL, writeToken(t, 0o600, "tok"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&http.Client{Transport: rt}).Get(srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if proto != "1" || auth != "Bearer tok" {
+		t.Fatalf("protocol=%q auth=%q", proto, auth)
+	}
+}
