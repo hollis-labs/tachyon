@@ -50,7 +50,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	addr := env("LISTEN_ADDR", "127.0.0.1:18093")
+	addr := env("LISTEN_ADDR", env("TACHYON_ADDR", ":18093"))
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal(err)
