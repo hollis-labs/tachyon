@@ -15,5 +15,11 @@
       {"id": "session_list", "label": "Active Sessions", "group": "sessions", "route": "/sessions", "requires_verb": "session_list", "priority": 100},
       {"id": "session_history", "label": "Session History", "group": "sessions", "route": "/sessions/history", "requires_verb": "session_history", "priority": 200}
     ]
+  },
+  "settings": {
+    "fields": [
+      { "key": "tether_addr", "validation": "tether_addr", "type": "string", "label": "Tether Address", "description": "unix:/path, tcp:host:port or an http(s) URL. Blank uses TETHER_ADDR or the default socket." },
+      { "key": "tether_token_file", "validation": "absolute_path", "type": "string", "label": "Tether token file", "preserve_edge_whitespace": true, "description": "Absolute path (or ~/) of a private 0600 file holding the bearer token. Blank falls back to the environment variable, then no credential." }
+    ]
   }
 }

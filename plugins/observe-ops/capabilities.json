@@ -22,7 +22,10 @@
     "fields": [
       { "key": "nanite_url", "validation": "http_base_url", "type": "string", "label": "Nanite API URL", "default": "http://127.0.0.1:8090" },
       { "key": "torque_url", "validation": "http_base_url", "type": "string", "label": "Torque API URL", "default": "http://127.0.0.1:8990" },
-      { "key": "tether_url", "validation": "http_base_url", "type": "string", "label": "Tether API URL", "default": "http://127.0.0.1:8947" }
+      { "key": "tether_url", "validation": "http_base_url", "type": "string", "label": "Tether API URL", "default": "http://127.0.0.1:8947" },
+      { "key": "nanite_token_file", "validation": "absolute_path", "type": "string", "label": "Nanite token file", "preserve_edge_whitespace": true, "description": "Absolute path (or ~/) of a private 0600 file holding the bearer token. Blank falls back to the environment variable, then no credential." },
+      { "key": "torque_token_file", "validation": "absolute_path", "type": "string", "label": "Torque token file", "preserve_edge_whitespace": true, "description": "Absolute path (or ~/) of a private 0600 file holding the bearer token. Blank falls back to the environment variable, then no credential." },
+      { "key": "tether_token_file", "validation": "absolute_path", "type": "string", "label": "Tether token file", "preserve_edge_whitespace": true, "description": "Absolute path (or ~/) of a private 0600 file holding the bearer token. Blank falls back to the environment variable, then no credential." }
     ]
   }
 }

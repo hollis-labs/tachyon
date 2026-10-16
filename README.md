@@ -14,7 +14,7 @@ internal/contract/   capability declarations and ok/error/ask envelopes
 internal/hitl/       optional Tangent MCP bridge and read-only status
 internal/observefeed/ private host activity DTOs
 internal/webui/      embedded dist directory and go-webui handler
-plugins/             nine module plugins plus the optional hello example
+plugins/             ten module plugins plus the optional hello example
 frontend/src/        App shell, pages/registry.ts and same-origin api clients
 ```
 
@@ -61,6 +61,7 @@ is needed. The manifest-free `hello` example loads first when built.
 | `agent-ops` / `agent` | Nanite agents, grants and reflexes; skill/MCP catalogs and durable agents are read-only |
 | `launch-ops` / `launch` | Prepared launches and Tether execution; execution/cancellation are open-world effects |
 | `catalog-ops` / `catalog` | Tether catalog (agents, launches, projects, providers) via plan and apply, and the agent/project registry; plans are approved by the local operator on Tether, never here; see [plugin README](plugins/catalog-ops/README.md) |
+| `history-ops` / `history` | Read-only chat transcript history from Fragments Engine: session list, text/summary/semantic/hybrid search, session detail, facets, projects; see [plugin README](plugins/history-ops/README.md) |
 | `session-ops` / `session` | Tether sessions; creation, stop and submit are open-world effects |
 | `work-ops` / `work` | Torque work items, assignment, transitions and comments |
 | `service-ops` / `service` | Read-only Cerberus connector definitions, status and health |
