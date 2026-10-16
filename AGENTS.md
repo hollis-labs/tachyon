@@ -1,7 +1,7 @@
 # Tachyon
 
 A Go subprocess host serves `/api` and the embedded React UI at `/sysop/`.
-Nine module plugins are discovered from the working directory; `hello` is an
+Ten module plugins are discovered from the working directory; `hello` is an
 optional legacy example. Providers own their external state. Read the authored
 code and declarations before treating documentation or a running binary as the
 current source revision.
@@ -67,6 +67,8 @@ Lefthook once if using the tracked hooks; their presence alone installs nothing.
 - Calls out to Torque and Tether carry a bearer from a private 0600 token file
   (`internal/upstreamauth`: `*_token_file` setting or `*_TOKEN_FILE` env), never
   from plugin config or argv, and only over https or loopback.
+- history-ops is read-only over Fragments Engine's owner-only transcript routes.
+  Transcript content is private: never log, store or put it in Observe.
 - HTTP has no authentication or built-in TLS. The code default is all-interface
   `:8093`; the reference deployment overrides it to loopback behind a private
   HTTPS proxy.

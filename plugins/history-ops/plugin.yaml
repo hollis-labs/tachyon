@@ -1,0 +1,22 @@
+schema_version: 1
+id: history-ops
+name: History Ops
+version: 0.1.0
+description: "Read-only chat transcript history from Fragments Engine"
+author: "Hollis Labs"
+license: MIT
+homepage: https://github.com/hollis-labs/tachyon
+repository: https://github.com/hollis-labs/tachyon
+protocol: 1
+runtime: subprocess
+entrypoint: ./history-ops
+load_type: auto
+config: {}
+registers:
+release:
+  platforms:
+    - darwin-arm64
+    - darwin-amd64
+    - linux-amd64
+    - linux-arm64
+    - windows-amd64

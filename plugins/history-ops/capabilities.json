@@ -1,0 +1,10 @@
+{
+  "modules": ["history"],
+  "verbs": {
+    "history_status": {"effect": "reads"},
+    "history_sessions": {"effect": "reads"},
+    "history_session": {"effect": "reads"},
+    "history_facets": {"effect": "reads"},
+    "history_projects": {"effect": "reads"}
+  }
+}
