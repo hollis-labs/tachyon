@@ -40,6 +40,9 @@ func filesValid(files []catalogFile) bool {
 
 func (p *plugin) HandleVerb(ctx context.Context, verb string, payload json.RawMessage) (contract.ResultEnvelope, error) {
 	if _, ok := p.Capabilities().Verbs[verb]; !ok {
+		if _, known := allCapabilities().Verbs[verb]; known {
+			return contract.Err("read_only", "catalog-ops is read-only; set read_only=false (or CATALOG_OPS_READ_ONLY=false) to enable writes"), nil
+		}
 		return contract.Err("unknown_verb", "verb is not implemented"), nil
 	}
 	if p.api == nil {
