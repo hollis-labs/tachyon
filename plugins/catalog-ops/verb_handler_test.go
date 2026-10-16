@@ -36,7 +36,7 @@ func fakeTether(t *testing.T, status int, reply string) (*plugin, *seen) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &plugin{api: api}, got
+	return &plugin{api: api, writable: true}, got
 }
 
 func call(t *testing.T, p *plugin, verb, payload string) contract.ResultEnvelope {
@@ -178,5 +178,57 @@ func TestPlainHTTPToRemoteHostIsRefusedWithToken(t *testing.T) {
 	}
 	if _, err := newTetherAPI("unix:/tmp/tetherd.sock", tok); err != nil {
 		t.Fatalf("unix socket with token: %v", err)
+	}
+}
+
+func TestReadOnlyByDefault(t *testing.T) {
+	p, got := fakeTether(t, 200, `{"ok":true}`)
+	p.writable = false
+	for verb, decl := range p.Capabilities().Verbs {
+		if decl.Effect != contract.EffectReads {
+			t.Errorf("%s (%s) is advertised in read-only mode", verb, decl.Effect)
+		}
+	}
+	if len(p.Capabilities().Verbs) == 0 {
+		t.Fatal("read-only mode must keep the read verbs")
+	}
+	for _, c := range []struct{ verb, payload string }{
+		{"catalog_plan", `{"name":"n","files":[{"path":"agents/a.yaml","content":"x"}]}`},
+		{"catalog_apply", `{"plan_id":"p"}`},
+		{"catalog_reload", `{}`},
+		{"registry_register", `{"kind":"agents","profile":{"display_name":"x"}}`},
+		{"registry_update", `{"kind":"projects","urn":"msg://project/t/p","patch":{"title":"T"}}`},
+		{"registry_deregister", `{"kind":"agents","urn":"msg://agent/t/a"}`},
+		{"registry_sync", `{"kind":"agents","urn":"msg://agent/t/a"}`},
+	} {
+		env := call(t, p, c.verb, c.payload)
+		if env.Error == nil || env.Error.Code != "read_only" {
+			t.Errorf("%s: %+v", c.verb, env)
+		}
+		if got.method != "" {
+			t.Errorf("%s reached Tether in read-only mode", c.verb)
+		}
+	}
+	if env := call(t, p, "catalog_agents", `{}`); env.Status != contract.StatusOK {
+		t.Fatalf("read verb refused in read-only mode: %+v", env.Error)
+	}
+	if env := call(t, p, "no_such_verb", `{}`); env.Error == nil || env.Error.Code != "unknown_verb" {
+		t.Fatalf("%+v", env)
+	}
+}
+
+func TestWritesEnabledNeedsExplicitFalse(t *testing.T) {
+	t.Setenv("CATALOG_OPS_READ_ONLY", "")
+	for cfg, want := range map[string]bool{"": false, "true": false, "garbage": false, "false": true, " FALSE ": true, "0": true, "no": true} {
+		if got := writesEnabled(map[string]string{"read_only": cfg}); got != want {
+			t.Errorf("read_only=%q: got %v, want %v", cfg, got, want)
+		}
+	}
+	t.Setenv("CATALOG_OPS_READ_ONLY", "false")
+	if !writesEnabled(nil) {
+		t.Error("env false should enable writes")
+	}
+	if writesEnabled(map[string]string{"read_only": "true"}) {
+		t.Error("config must win over env")
 	}
 }

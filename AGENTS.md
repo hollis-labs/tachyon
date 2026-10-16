@@ -55,7 +55,8 @@ Lefthook once if using the tracked hooks; their presence alone installs nothing.
 - Nanite skill/MCP catalogs and durable agents (agent-ops) remain read-only;
   Tether sessions have their separately declared lifecycle verbs. catalog-ops
   edits Tether's catalog only as a reviewed plan applied after the local
-  operator approves it on Tether; it has no approve verb and must not gain one.
+  operator approves it on Tether; it has no approve verb and must not gain one, and it is
+  read-only unless configured `read_only=false`.
   Keep provider ownership upstream.
 - Tangent status is read-only, fail-closed correlation. Approval cannot resume
   or redispatch a verb. Continuation remains unavailable; its design is tracked

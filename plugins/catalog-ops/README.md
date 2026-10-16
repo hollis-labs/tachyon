@@ -12,6 +12,17 @@ token with `tether.read` plus, for the write verbs, `tether.catalog` and
 non-loopback host, never follows redirects, and re-reads the file when it is
 rotated.
 
+## Read-only by default
+
+Only read verbs (the `reads` effect) are advertised and run until the plugin is
+configured with `read_only=false` (or `CATALOG_OPS_READ_ONLY=false`; config wins
+over env). Anything else, including an unset or unparsable value, stays
+read-only. In read-only mode `catalog_plan`, `catalog_apply`, `catalog_reload`
+and `registry_register|update|deregister|sync` are absent from capabilities, and
+calling one directly returns `read_only` without a request to Tether. Pair this
+with a Tether device token that holds only the `read` scope, so the daemon
+enforces what the plugin hides.
+
 ## Local vs remote Tether
 
 Tether's remote listener (device token, `Tether-Protocol: 1`, sent by this
