@@ -21,7 +21,7 @@ export default defineConfig({
   },
   build: { outDir: "../internal/webui/dist", emptyOutDir: true },
   server: {
-    port: 5179,
+    port: Number(process.env.TACHYON_UI_PORT || 5179),
     strictPort: true,
     proxy: { "/api": { target: apiTarget, changeOrigin: true } },
   },

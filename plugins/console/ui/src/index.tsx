@@ -1,9 +1,9 @@
 import type { TachyonPlugin } from "@tachyon/host-sdk"
 import { Bot, Hammer } from "lucide-react"
-
-function ConsolePlaceholder() {
-  return <div className="p-6 text-sm text-muted-foreground">Console port in progress.</div>
-}
+import { BuilderPage } from "./agents"
+import { FleetAgentsPage } from "./fleet"
+import { overlayNav, overlayRoutes } from "./routes"
+import { ConsoleLayer, ConsoleNavExtras } from "./shell"
 
 export const consolePlugin: TachyonPlugin = {
   id: "console",
@@ -11,9 +11,13 @@ export const consolePlugin: TachyonPlugin = {
   nav: [
     { key: "agents", label: "Agents", to: "/agents", icon: <Bot className="h-4 w-4" />, priority: 20 },
     { key: "builder", label: "Builder", to: "/builder", icon: <Hammer className="h-4 w-4" />, priority: 30 },
+    ...overlayNav,
   ],
   routes: [
-    { path: "/agents", element: <ConsolePlaceholder /> },
-    { path: "/builder", element: <ConsolePlaceholder /> },
+    { path: "/agents", element: <FleetAgentsPage /> },
+    { path: "/builder", element: <BuilderPage /> },
+    ...overlayRoutes,
   ],
+  Shell: ConsoleLayer,
+  NavExtras: ConsoleNavExtras,
 }
