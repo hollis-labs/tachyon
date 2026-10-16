@@ -1,0 +1,18 @@
+{
+  "name": "tachyon",
+  "private": true,
+  "version": "2.0.0-dev",
+  "type": "module",
+  "workspaces": [
+    "frontend",
+    "packages/*",
+    "plugins/*/ui"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w frontend",
+    "build": "npm run build -w frontend",
+    "typecheck": "npm run typecheck -w frontend",
+    "lint": "npm run lint -w frontend",
+    "test": "npm run test -w frontend"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@tachyon/host-sdk",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": { "react": "19.3.0", "react-router-dom": "^7.14.0" }
+}

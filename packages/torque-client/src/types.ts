@@ -1,0 +1,936 @@
+// Must stay in sync with service.CanonicalStatuses (internal/service/task.go).
+// abandoned and cancelled were absent here while 160 live rows already used
+// them, so the UI could neither render nor target them (CW-20260909-0011).
+export type TaskStatus =
+  | 'backlog'
+  | 'todo'
+  | 'queued'
+  | 'doing'
+  | 'review'
+  | 'done'
+  | 'blocked'
+  | 'paused'
+  | 'archived'
+  | 'abandoned'
+  | 'cancelled'
+
+export type TagColor =
+  | 'zinc' | 'red' | 'orange' | 'amber'
+  | 'green' | 'teal' | 'blue' | 'violet' | 'pink'
+
+export interface Tag {
+  slug: string
+  name: string
+  description: string
+  color: TagColor
+  created_at: string
+  updated_at: string
+}
+
+export type OnDone = 'close' | 'review' | 'notify'
+export type OnFail = 'retry' | 'block' | 'escalate' | 'notify'
+export type OnReview = 'pause' | 'notify' | 'auto-approve'
+export type OnDoneMerge = 'none' | 'auto' | 'pr' | 'auto-resolve'
+
+export type DeliverableType =
+  | 'diff'
+  | 'test-results'
+  | 'screenshot'
+  | 'pr-link'
+  | 'branch'
+  | 'commit'
+  | 'log'
+  | 'finding'
+  | 'report'
+  | 'note'
+  | 'metrics'
+  | 'custom'
+
+export interface Deliverable {
+  type: DeliverableType
+  required: boolean
+  description?: string
+}
+
+/**
+ * Sentinel value meaning "unlimited — no cap" for the three nullable
+ * numeric task fields (cost_budget, max_duration_ms, token_budget).
+ */
+export const UNLIMITED = -1 as const
+
+export type TaskKind = 'agent' | 'external' | 'wait' | 'decision' | 'parent' | 'plan' | 'internal' | 'issue'
+export type TaskSourceType = 'agent' | 'user' | 'api' | 'system' | 'webhook' | 'import'
+export type TaskTrust = 'trusted' | 'normal' | 'untrusted'
+export type TaskCheckpointMode = 'none' | 'blocking' | 'non_blocking'
+export type TaskOnCheckpointResponse = 'resume' | 'review' | 'custom'
+
+export interface TemplateRef {
+  id: string
+  version: number
+}
+
+export interface Task {
+  id: string
+  title: string
+  description: string
+  status: TaskStatus
+  priority: number
+  tags: Tag[]
+  manual: boolean
+  executor: string
+  agent_profile: string
+  working_dir: string
+
+  // Facets (migration 007)
+  kind: TaskKind
+  source_type: TaskSourceType
+  source_ref: string | null
+  trust: TaskTrust
+  checkpoint_mode: TaskCheckpointMode
+  on_checkpoint_response: TaskOnCheckpointResponse
+
+  // Execution context
+  tools: string[]
+  permissions: Record<string, unknown>
+  environment: Record<string, string>
+  system_prompt: string
+  files: string[]
+
+  // Budget & limits
+  /**
+   * Cost budget in dollars. Sentinel values:
+   * - `null` — use default (inherit from sprint/global)
+   * - `-1` — unlimited (no cap)
+   * - `0` — explicit zero (no spend allowed)
+   * - positive — specific budget
+   */
+  cost_budget: number | null
+  max_retries: number
+  /**
+   * Max execution duration in milliseconds. Sentinel values:
+   * - `null` — use default
+   * - `-1` — unlimited
+   * - positive — specific duration
+   */
+  max_duration_ms: number | null
+  /**
+   * Max tokens per run. Sentinel values:
+   * - `null` — use default
+   * - `-1` — unlimited
+   * - positive — specific cap
+   */
+  token_budget: number | null
+
+  // Lifecycle rules (narrowed from string to enum unions)
+  on_done: OnDone
+  on_fail: OnFail
+  on_review: OnReview
+  on_done_merge: OnDoneMerge
+
+  // Lifecycle extensions
+  escalation_chain: string[]
+  quality_gates: string[]
+
+  // Deliverables
+  deliverables: Deliverable[]
+  deliverable_preset: string
+
+  // Dependencies
+  depends_on: string[]
+  blocked_reason: string
+
+  // Metadata
+  metadata: Record<string, unknown>
+
+  // Grouping
+  sprint_id: string | null
+  project_id: string | null
+  epic_id: string | null
+
+  // Parent linkage (migration 013). null = top of lineage.
+  parent_id?: string | null
+
+  // Collections (migration 020). Optional on task responses — the
+  // backend does NOT currently surface these fields on /tasks; the
+  // collections page reads membership via the dedicated
+  // /collections/{id}/tasks and /collections/inbox/tasks endpoints.
+  // Kept here so callers that hydrate tasks from a collection-aware
+  // source (or a future tasks-endpoint expansion) can still reference
+  // them without additional casts.
+  collection_id?: string | null
+  collection_name?: string | null
+  collection_position?: number | null
+  added_to_collections_at?: string | null
+
+  // Audit
+  created_at: string
+  updated_at: string
+
+  /**
+   * Run roll-up — sum of prompt/completion tokens and cost across every
+   * recorded run for this task, plus a turn count. Always present on
+   * task responses; zero-valued for tasks that have never executed.
+   */
+  stats?: TaskStats
+
+  /**
+   * Structural checklist. Populated at create time by extracting top-level
+   * `- [ ]` / `- [x]` markdown from the description, writable thereafter via
+   * MCP or the subtodos HTTP endpoints. Always an array on task responses;
+   * empty when the task has no checklist.
+   */
+  subtodos?: Subtodo[]
+}
+
+export interface TaskStats {
+  run_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  cost: number
+  /**
+   * Where the `cost` figure came from. Drives the dashboard's measured-vs-
+   * estimated badge alongside the dollar value.
+   * - `'measured'`: executor reported a real `cost_usd` (rare under
+   *   subscription billing — Claude on Pro/Max strips total_cost_usd).
+   * - `'estimated'`: backfilled from models.dev pricing using token counts.
+   *   Render with a `~` prefix or `est` badge to flag it as approximate.
+   * - `'unknown'`: ledger row exists but neither path produced a number;
+   *   render as `—` rather than `$0.00` so users don't read it as
+   *   "this run cost zero dollars."
+   * - `''` (empty): no cost_ledger rows yet (task hasn't run, or pre-
+   *   migration-017 ledger). Same render as `'unknown'`.
+   *
+   * Backend source: `internal/persistence/sqlstore/runs.go` —
+   * GetTaskRunAggregate picks the highest-priority source across the
+   * task's ledger rows (measured > estimated > unknown).
+   */
+  cost_source: TaskCostSource
+}
+
+/**
+ * Possible values for {@link TaskStats.cost_source}. Exported so
+ * formatters in utils.ts can type-check against the same union without
+ * duplicating it.
+ */
+export type TaskCostSource = 'measured' | 'estimated' | 'unknown' | ''
+
+export interface Subtodo {
+  id: string
+  text: string
+  required: boolean
+  done: boolean
+  evidence?: string
+}
+
+export interface Run {
+  id: number
+  task_id: string
+  executor: string
+  agent_profile: string
+  status: string
+  prompt_tokens: number
+  completion_tokens: number
+  cost: number
+  exit_code: number
+  error_message: string
+  started_at: string
+  completed_at: string | null
+}
+
+export interface Artifact {
+  id: number
+  task_id: string
+  run_id: number | null
+  type: string
+  content: string
+  url: string
+  file_path: string
+  /**
+   * Free-form record written by the creating agent/user. The `origin` key,
+   * if present, drives the agent/user/system badge; other keys are surfaced
+   * verbatim in the collapsed details panel.
+   */
+  metadata?: Record<string, unknown>
+  created_at: string
+}
+
+export interface Comment {
+  id: number
+  /** Polymorphic entity kind. Currently: "task". Future: "collection", "epic", "sprint", "project". */
+  entity_type: string
+  /** ID of the entity the comment is attached to. */
+  entity_id: string
+  author: string
+  content: string
+  created_at: string
+}
+
+export interface SSEEvent {
+  type: string
+  data: Record<string, unknown>
+}
+
+export interface FeatureFlags {
+  sprints: boolean
+  projects: boolean
+  epics: boolean
+  /** The portfolio planner. Older servers do not report it. */
+  planner?: boolean
+  forums?: boolean
+}
+
+export type ContainerStatus = 'active' | 'inactive' | 'completed'
+
+export interface Project {
+  id: string
+  name: string
+  description: string
+  repo_path: string
+  agent_path: string
+  read_paths: string[]
+  write_paths: string[]
+  context_paths: string[]
+  permissions: Record<string, string>
+  rules: string[]
+  status: ContainerStatus
+  icon: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectArtifact {
+  id: number
+  project_id: string
+  entry_type: 'document' | 'folder' | string
+  title: string
+  description: string
+  file_path: string
+  url: string
+  content: string
+  permissions: Record<string, string>
+  rules: string[]
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface Sprint {
+  id: string
+  name: string
+  goal: string
+  status: ContainerStatus
+  approval_mode: string
+  cost_budget: number | null
+  project_id: string | null
+  epic_id?: string | null
+  started_at: string | null
+  ended_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Epic {
+  id: string
+  name: string
+  description: string
+  status: ContainerStatus
+  priority: number | null
+  project_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * A task without its free-text bodies, as GET /tasks?fields=summary returns
+ * it. List views take this rather than Task so they work from either.
+ */
+export type TaskSummary = Omit<Task, 'description' | 'system_prompt'>
+
+/** The task columns a scope rollup can group by. */
+export type TaskScopeKey = 'project_id' | 'epic_id' | 'sprint_id'
+
+/** One scope's task counts from GET /tasks/rollup, keyed by raw status. */
+export interface TaskScopeRollup {
+  scope_id: string
+  total: number
+  counts: Record<string, number>
+}
+
+export interface TaskScopeRollupResponse {
+  group_by: TaskScopeKey
+  /** Matching tasks with the group_by scope set, in any status. */
+  total: number
+  scopes: TaskScopeRollup[]
+}
+
+export interface TaskFilter {
+  /** Static eligibility; runtime dispatch guards are not evaluated. */
+  eligible?: boolean
+  status?: TaskStatus[]
+  priority?: number[]
+  tags?: string[]
+  sprint_id?: string
+  project_id?: string
+  epic_id?: string
+  search?: string
+  limit?: number
+  offset?: number
+  cursor?: string
+  include_total?: boolean
+  /** Narrow to a single task-kind. "plan" is used by the Plans GUI. */
+  kind?: TaskKind
+  /**
+   * Parent linkage filter (migration 013). "null" returns roots
+   * (parent_id IS NULL); any other value matches that parent id.
+   */
+  parent_id?: string | 'null'
+  /** Manual-flag filter. `true` = manual-hold only, `false` = auto-eligible only. */
+  manual?: boolean
+  /**
+   * Surface kind=internal automation tasks (Reviewer end-agents and other
+   * substrate primitives, CW-20260503-0011). Default false: the backend's
+   * /api/v1/tasks endpoint hides them so user-facing views aren't polluted.
+   * An explicit `kind=internal` filter takes precedence at the SQL layer.
+   */
+  include_internal?: boolean
+  /** Server-side order; the server default is priority asc. */
+  sort_by?: 'priority' | 'status' | 'updated_at' | 'created_at' | 'title'
+  sort_dir?: 'asc' | 'desc'
+}
+
+/**
+ * Plan types — kind=plan tasks coordinate phase-scoped child tasks via
+ * parent_id + metadata.phase_id. See docs/plans-v1.md.
+ */
+export interface PlanPhase {
+  id: string
+  name: string
+  order: number
+  acceptance?: string
+}
+
+export interface PlanMetadata {
+  version: number
+  phases: PlanPhase[]
+}
+
+export interface PlanPhaseInput {
+  name: string
+  acceptance?: string
+}
+
+export interface PhaseRollup {
+  total: number
+  done: number
+  blocked: number
+}
+
+export interface PlanProgress {
+  total_children: number
+  done: number
+  blocked: number
+  by_phase: Record<string, PhaseRollup>
+}
+
+export interface PlanDetail {
+  task: Task
+  plan: PlanMetadata
+  progress: PlanProgress
+}
+
+export interface Template {
+  id: string
+  version: number
+  name: string
+  description: string
+  kind: string
+  auto_execute: boolean
+  executor: string | null
+  agent_profile: string | null
+  system_prompt: string | null
+  working_dir: string | null
+  tools: string[]
+  permissions: Record<string, unknown>
+  environment: Record<string, string>
+  cost_budget: number | null
+  max_retries: number
+  max_duration_ms: number | null
+  token_budget: number | null
+  on_done: OnDone
+  on_fail: OnFail
+  on_review: OnReview
+  on_done_merge: OnDoneMerge
+  escalation_chain: string[]
+  quality_gates: string[]
+  deliverables: Deliverable[]
+  checkpoint_mode: TaskCheckpointMode
+  on_checkpoint_response: TaskOnCheckpointResponse
+  metadata_template: Record<string, unknown>
+  required_vars: string[]
+  tags: string[]
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TemplateInstantiateRequest {
+  template_version?: number
+  title: string
+  description?: string
+  vars?: Record<string, string>
+  overrides?: Record<string, unknown>
+  sprint_id?: string
+  project_id?: string
+  epic_id?: string
+  tags?: string[]
+}
+
+export interface ModelPricing {
+  input: number
+  output: number
+  cache_write?: number
+  cache_read?: number
+  reasoning?: number
+}
+
+export interface ModelLimits {
+  context_window: number
+  max_output_tokens: number
+}
+
+export interface ModelModality {
+  input: string[]
+  output: string[]
+}
+
+export interface ModelCapabilities {
+  tool_call: boolean
+  reasoning: boolean
+  attachment: boolean
+  temperature: boolean
+}
+
+/**
+ * Mirrors httpserver.modelEntry — flat ModelRef with snake_case JSON keys.
+ * Returned by GET /api/v1/models (list) and GET /api/v1/models/{provider}/{model} (get).
+ */
+export interface ModelEntry {
+  provider_id: string
+  id: string
+  name: string
+  family: string
+  open_weights: boolean
+  release_date: string
+  knowledge_cutoff: string
+  last_updated: string
+  cost: ModelPricing
+  limit: ModelLimits
+  modality: ModelModality
+  capabilities: ModelCapabilities
+}
+
+export interface SchedulerStatus {
+  enabled: boolean
+  max_workers: number
+  active_workers: number
+  queue_depth: number
+  total_cost: number
+  subscribers: number
+  stale_heartbeat_threshold_seconds: number
+}
+
+/**
+ * Collections — kanban-style task containers (migration 020).
+ *
+ * `archived_at` is the soft-delete cursor; null = active. The backend
+ * exposes both an "active" and "archived" listing; v1 GUI only surfaces
+ * the active set and lets the user archive but not unarchive (no
+ * "show archived" toggle).
+ */
+export interface Collection {
+  id: string
+  name: string
+  description: string
+  archived_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CheckpointStatus = 'pending' | 'responded' | 'canceled' | 'timed_out'
+export type HITLWorkflowPreset = 'pr_review' | 'approval' | 'message'
+export type HITLEnforcementMode = 'none' | 'advisory' | 'required'
+
+export interface JSONSchema {
+  type?: string | string[]
+  title?: string
+  description?: string
+  required?: string[]
+  properties?: Record<string, JSONSchema>
+  additionalProperties?: boolean | JSONSchema
+  items?: JSONSchema
+  enum?: unknown[]
+  default?: unknown
+  format?: string
+}
+
+export interface HITLWorkflowRequirements {
+  response_required: boolean
+  allowed_responder_source_types?: string[]
+  min_responders?: number
+}
+
+export interface HITLTaskMetadataContract {
+  key: string
+  workflow_type_key: string
+  requirements_key: string
+  enforcement_key: string
+  requirements: HITLWorkflowRequirements
+  enforcement_mode: HITLEnforcementMode
+  behavior_reserved: boolean
+}
+
+export interface HITLWorkflowDefinition {
+  type: string
+  known: boolean
+  title: string
+  description: string
+  payload_schema: JSONSchema
+  response_schema: JSONSchema
+  task_metadata: HITLTaskMetadataContract
+}
+
+export interface HITLWorkflowListResponse {
+  workflows: HITLWorkflowDefinition[]
+}
+
+export interface Checkpoint {
+  id: number
+  task_id: string
+  run_id: number | null
+  correlation_id: string
+  type: string
+  payload_json: string
+  response_json: string | null
+  emitter_source_type: string
+  emitter_source_ref: string | null
+  responder_source_type: string | null
+  responder_source_ref: string | null
+  emitted_at: string
+  responded_at: string | null
+  timeout_at: string | null
+  status: CheckpointStatus
+}
+
+export interface CheckpointEmitRequest {
+  task_id: string
+  type: string
+  payload_json: string
+  emitter_source_type?: string
+  emitter_source_ref?: string
+  timeout_at?: string
+}
+
+// ── Messaging ──────────────────────────────────────────────────────────────
+// Wire shapes mirror go-messaging's Envelope (github.com/hollis-labs/go-messaging).
+// `from` / `to` are canonical URN strings: msg://<kind>/<authority>/<id>[/<subid>].
+
+/** Closed Envelope.Kind enum — what the message IS (routable). */
+export type MessageKind =
+  | 'request'
+  | 'response'
+  | 'notice'
+  | 'status_update'
+  | 'handoff'
+  | 'escalation'
+
+export const MESSAGE_KINDS: MessageKind[] = [
+  'request',
+  'response',
+  'notice',
+  'status_update',
+  'handoff',
+  'escalation',
+]
+
+/** Address.Kind — what a URN points at. Drives the user/agent tab split. */
+export type MessageAddressKind = 'agent' | 'user' | 'service' | 'session' | 'workflow'
+
+/** A messaging Envelope as the `/api/v1/messages/*` routes serialize it. */
+export interface MessageEnvelope {
+  id: string
+  kind: MessageKind
+  channel?: string
+  from: string
+  to: string
+  thread_id?: string
+  in_reply_to?: string
+  /** Inline payload — object, string, or any JSON value. */
+  payload?: unknown
+  content_type?: string
+  metadata?: Record<string, string>
+  created_at: string
+  delivered_at: string | null
+  consumed_at: string | null
+}
+
+/** Body for POST /api/v1/messages and /api/v1/broker/send. */
+export interface SendMessageRequest {
+  kind: MessageKind
+  from: string
+  to: string
+  thread_id?: string
+  in_reply_to?: string
+  channel?: string
+  payload?: unknown
+  content_type?: string
+  metadata?: Record<string, string>
+}
+
+/** Narrows Inbox / Thread result sets — mirrors go-messaging's Filter. */
+export interface MessageFilter {
+  kind?: MessageKind
+  channel?: string
+  thread_id?: string
+  limit?: number
+}
+
+/**
+ * Body for POST /api/v1/broker/request — a synchronous request/response
+ * exchange. The broker fixes `kind` to `request`, so it is omitted here.
+ * `timeout_seconds` bounds the wait; the route 504s if the peer is silent.
+ */
+export interface BrokerRequest {
+  from: string
+  to: string
+  thread_id?: string
+  channel?: string
+  payload?: unknown
+  content_type?: string
+  metadata?: Record<string, string>
+  timeout_seconds?: number
+}
+
+/** One bounded server list page; total is present only when requested. */
+export interface ListPage<T> {
+  items: T[]
+  meta: {
+    returned: number
+    limit: number
+    has_more: boolean
+    next_cursor: string | null
+    total_unavailable?: string
+    total?: number
+    offset?: number
+    next_offset?: number | null
+    sort_by?: string
+    sort_dir?: 'asc' | 'desc'
+  }
+}
+
+export interface ListQuery {
+  limit?: number
+  offset?: number
+  cursor?: string
+  sort_by?: string
+  sort_dir?: 'asc' | 'desc'
+  include_total?: boolean
+  search?: string
+}
+
+// -------------------------
+// Planner (the portfolio planner; features.planner)
+// -------------------------
+
+export type PlannerDb =
+  | 'priorities'
+  | 'workstreams'
+  | 'roadmap'
+  | 'ideas'
+  | 'decisions'
+  | 'risks'
+  | 'inbox'
+
+export interface PlannerComment {
+  id: string
+  author: string
+  text: string
+  created: string
+  kind?: 'comment' | 'decision'
+}
+
+/** An external pointer: a Torque task, a PR, a URL, a file. */
+export interface PlannerLink {
+  kind: string
+  ref: string
+  label?: string
+}
+
+export interface PlannerOption {
+  id: string
+  label: string
+  summary?: string
+  pros?: string
+  cons?: string
+  proposed_by?: string
+  recommended?: boolean
+}
+
+/**
+ * One planner item. Only the fields every database shares are typed; the
+ * rest are per-database (see the schema from `plannerSchema`) and may carry
+ * fields the GUI does not know.
+ */
+export interface PlannerItem {
+  id: string
+  title: string
+  rev: number
+  status?: string
+  kind?: string
+  tldr?: string
+  notes?: string
+  priority?: number
+  order?: number
+  created?: string
+  updated?: string
+  author?: string
+  related_ids?: string[]
+  links?: PlannerLink[]
+  comments?: PlannerComment[]
+  options?: PlannerOption[]
+  [field: string]: unknown
+}
+
+export interface PlannerDatabaseInfo {
+  name: PlannerDb
+  prefix: string
+  schema: string
+  updated: string
+  count: number
+}
+
+export interface PlannerFieldSchema {
+  type?: string | string[]
+  enum?: string[]
+  description?: string
+  items?: string
+  ref?: string
+  minimum?: number
+  maximum?: number
+}
+
+export interface PlannerSchemaInfo {
+  db: PlannerDb
+  id: string
+  description: string
+  required: string[]
+  fields: Record<string, PlannerFieldSchema>
+  enums: Record<string, string[]>
+  link_kinds: string[]
+}
+
+export interface PlannerSearchHit {
+  db: PlannerDb
+  id: string
+  title: string
+  status?: string
+}
+
+export interface PlannerOrdered {
+  id: string
+  order: number
+  rev: number
+}
+
+export type PlannerBoardSectionKey = 'in_flight' | 'landed' | 'pre_flight' | 'holds'
+
+/** One line of the departure board. Torque tasks have source "torque"; planner rows carry their database. */
+export interface PlannerBoardRow {
+  source: 'torque' | 'roadmap' | 'decision' | 'inbox' | 'risk' | 'workstream'
+  id: string
+  title: string
+  status: string
+  priority?: number
+  workstream?: string
+  updated: string
+  db?: PlannerDb
+  /** Workstream rows of the curated board only. task_counts are counts per Torque status, never task rows. */
+  phase?: string
+  owner?: string
+  tldr?: string
+  next_step?: string
+  blockers?: string[]
+  tags?: string[]
+  task_counts?: Record<string, number>
+}
+
+/** curated: the workstreams tagged `board`; all: the activity feed with Torque tasks. */
+export type PlannerBoardScope = 'curated' | 'all'
+
+export interface PlannerBoard {
+  scope?: PlannerBoardScope
+  generated_at: string
+  recent_hours: number
+  active_hours: number
+  limit: number
+  sections: Record<PlannerBoardSectionKey, PlannerBoardRow[]>
+  counts: Record<PlannerBoardSectionKey, number>
+  totals: Record<PlannerBoardSectionKey, number>
+  notices: string[]
+}
+
+/** A Torque task as the planner shows it beside a reference. */
+export interface PlannerTaskBrief {
+  id: string
+  title: string
+  status: string
+  priority: number
+  updated_at: string
+}
+
+export interface PlannerWorkstreamTasks {
+  workstream_id: string
+  torque_project_ids: string[]
+  torque_tag: string
+  counts: Record<string, number>
+  total: number
+  open: PlannerTaskBrief[]
+  open_total: number
+  note?: string
+}
+
+// ---------- suggestions (the enrichment ledger) ----------
+
+/** An open tag suggestion: a model's answer, kept in the ledger until a person decides. */
+export interface Suggestion {
+  id: number
+  subject_type: string
+  subject_id: string
+  set_id: string
+  question_key: string
+  answer_type: 'noul' | 'choice' | 'score'
+  choice?: string
+  noul?: number
+  confidence: number
+  suggested: string[]
+  provider: string
+  model: string
+  disposition: string
+  created_at: string
+  task_title?: string
+  task_tags?: string[]
+}
+
+export interface JudgeStatus {
+  feature_enabled: boolean
+  decider_configured: boolean
+  decider?: string
+  active: boolean
+}
+
+/** Per set: question key → disposition → rows. */
+export type JudgeSummary = Record<string, Record<string, Record<string, number>>>
+
+export interface JudgeBulkResult {
+  decided: number
+  failed?: string[]
+}

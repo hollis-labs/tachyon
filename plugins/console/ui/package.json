@@ -1,0 +1,16 @@
+{
+  "name": "@tachyon/console-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "dependencies": {
+    "@tachyon/host-sdk": "0.1.0",
+    "@tachyon/torque-client": "0.1.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "react-markdown": "^10.1.0"
+  }
+}
