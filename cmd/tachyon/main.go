@@ -7,9 +7,12 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/hollis-labs/libs/app/app-host/host"
 
@@ -29,6 +32,8 @@ func main() {
 		Upstreams: catalog.Upstreams{
 			TorqueURL:   env("TORQUE_URL", "http://127.0.0.1:8990"),
 			TorqueToken: os.Getenv("TORQUE_API_TOKEN"),
+			GitHubToken: githubToken(ctx),
+			GitHubOrg:   env("GITHUB_ORG", "hollis-labs"),
 		},
 	})
 	if err := srv.Start(ctx); err != nil {
@@ -66,6 +71,21 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func githubToken(ctx context.Context) string {
+	for _, k := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(cctx, "gh", "auth", "token").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func xdg(key, homeRel string) string {

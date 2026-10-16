@@ -15,14 +15,17 @@ import (
 
 const version = "0.1.0"
 
-type console struct{ *pluginkit.Proxy }
+type console struct {
+	proxy *pluginkit.Proxy
+	forge *ForgeHandler
+}
 
 func (console) Init(context.Context, subprocess.InitParams) (subprocess.InitResult, error) {
 	return subprocess.InitResult{
 		ID:                 "console",
 		Name:               "Console",
 		Version:            version,
-		Description:        "Operator console over Torque",
+		Description:        "Operator console: agent fleet, builder, and GitHub forge",
 		Protocol:           subprocess.ProtocolVersion,
 		CapabilityContract: 1,
 	}, nil
@@ -33,12 +36,20 @@ func (console) Load(context.Context) (subprocess.LoadResult, error) {
 }
 func (console) Unload(context.Context) error { return nil }
 
+func (c console) HTTPHandle(ctx context.Context, req subprocess.HTTPRequest) (subprocess.HTTPResponse, error) {
+	if c.forge.Match(req.Path) {
+		return c.forge.Handle(ctx, req), nil
+	}
+	return c.proxy.HTTPHandle(ctx, req)
+}
+
 func main() {
 	torque := pluginkit.Env("TORQUE_URL", "http://127.0.0.1:8990")
 	proxy := pluginkit.NewProxy("console",
 		pluginkit.Route{Prefix: "/v1", Upstream: torque, Target: "/api/v1", Bearer: os.Getenv("TORQUE_API_TOKEN"), Headers: map[string]string{"X-Client": "browser"}},
 	)
-	if err := subprocess.Serve(console{proxy}); err != nil {
+	forge := NewForgeHandler(os.Getenv("GITHUB_TOKEN"), pluginkit.Env("GITHUB_ORG", "hollis-labs"))
+	if err := subprocess.Serve(console{proxy: proxy, forge: forge}); err != nil {
 		os.Exit(1)
 	}
 }

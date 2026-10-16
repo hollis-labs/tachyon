@@ -259,24 +259,22 @@ Source: `console/autolink/*`, `console/refs/*`, [refs/BACKEND_NEEDS.md](file:///
 | Per-user autolink opt-out | localStorage | settings endpoint (C14) | P3 |
 
 ## C11. Forge: PR inbox (`/prs/inbox`), PR workspace, forge refs
-Source: `console/forge/*`, [BACKEND_REQUIREMENTS.md](file:///home/chrispian/dev/hollis-labs/apps/torque/apps/gui/src/console/forge/BACKEND_REQUIREMENTS.md) (**the spec**), [BACKEND_NEEDS.md](file:///home/chrispian/dev/hollis-labs/apps/torque/apps/gui/src/console/forge/BACKEND_NEEDS.md). `HttpForgeClient` (`http.ts`) is already written against the spec. The default is mock (`?forge=http` / `VITE_FORGE_SOURCE=http` switches). **No `/api/v1/forge` routes exist in `server.go`. Everything is GAP.**
-Owner: **Torque** HTTP facade + aggregation → **Cerberus** `cerberus-plugins/github` (today only `status`, `list_releases`, `list_workflow_runs`; all PR ops must be built). Envelope `{data: …}`, camelCase per `forge/types.ts`, errors `{error:{code,message}}` → `not_found|invalid_args|unauthorized|conflict|rate_limited(+Retry-After)|unavailable`.
+Source: `console/forge/*`, [`plugins/console/forge.go`](file:///home/chrispian/dev/hollis-labs/apps/tachyon/plugins/console/forge.go).
+**Status: LIVE in Tachyon (no Torque dependency).** Tachyon's `console` plugin subprocess serves `/api/plugins/console/v1/forge/*` directly against GitHub (`https://api.github.com`) using `GITHUB_TOKEN` / `GH_TOKEN` / `gh auth token` and `GITHUB_ORG` (default `hollis-labs`).
 
-| ForgeClient method | Route (base `/api/v1/forge`, `P=/repos/{host}/{owner}/{name}/pulls/{n}`) | Plugin op | Prio |
-|---|---|---|---|
-| `listPendingPrs()` | `GET /pulls/pending` → `{items: PendingPrSummary[]}` with `reasons` (`review_requested, checks_failed, changes_requested, conflicting, unassigned, stale, mentioned`), `checksSummary`, `reviewSummary`; cache ≤60 s; watched-repo set per project | Torque aggregation over `list_pull_requests` | **P0** (inbox view) |
-| `getPr(ref)` | `GET P` → `PullRequest` incl. `checks` (per head sha), `reviews`, `mergeable`, `headSha`, `taskId?`, `agentId?`, `mergeBlockers?` | `get_pull_request`, `list_check_runs` | **P0** (workspace) |
-| `getDiff(ref)` | `GET P/diff` → `{items: FileDiff[]}` (hunks, numbered lines, `truncated`, `binary`; ≤300 files) | `get_pull_request_diff` | **P0** |
-| `listCommits(ref)` | `GET P/commits` | `list_pull_request_commits` | P1 |
-| `listComments(ref)` | `GET P/comments` (issue + review merged, `inReplyTo`, `resolved`, `commitSha`, `outdated?`) | `list_pull_request_comments` | P1 |
-| `listPrs(q)` | `GET /repos/…/pulls` or `GET /pulls` (`state, author, assignee, q, limit, cursor`) | `list_pull_requests` | P1 (refs) |
-| `getRepo(repo)` | `GET /repos/{host}/{owner}/{name}` | `status` (exists) | P2 |
-| `addComment` | `POST P/comments` + `X-Identity-Confirm` (scope `forge.write`) + `Idempotency-Key` | `create_pull_request_comment` | P1 |
-| `reviewPr` | `POST P/reviews` (`forge.write` + `forge.review`), atomic | `submit_pull_request_review` | P1 |
-| `assign` | `PUT P/assignees` (replacement set) | `set_pull_request_assignees` | P1 |
-| Extras | `GET /repos/…/commits/{sha}` (`getCommit`), batch PR summaries, `GET /repos` (watched list), host registry config, `resolveThread`, `mergePr` (`forge.merge`), per-file lazy diff (`P/files`, `P/files/{path}/patch`), `GET /me` forge viewer, agent→forge-login mapping, single `assign_pr_to_agent` op, task-create with `source_ref` | various | P2 |
-| Live updates | console events `forge.pr.updated/merged/closed`, `forge.check.completed`, `forge.review.submitted`, `forge.comment.created`, `pr.review_requested/checks_failed/changes_requested/conflicting/stale` | Torque (webhooks or polling) | P2 |
-| Inbox triage state | StateStore keys `pr-inbox:*`, `pr-assign:*` with prefix query | C0.2 | P1 |
+| ForgeClient method | Route (base `/api/plugins/console/v1/forge`, `P=/repos/{host}/{owner}/{name}/pulls/{n}`) | Status in Tachyon |
+|---|---|---|
+| `listPendingPrs()` | `GET /pulls/pending` → `{items: PendingPrSummary[]}` with `reasons` (`review_requested, checks_failed, changes_requested, conflicting, unassigned, stale`), `checksSummary`, `reviewSummary`; 30s cache | **LIVE** (`plugins/console/forge.go`) |
+| `getPr(ref)` | `GET P` → `PullRequest` incl. `checks` (per head sha), `reviews`, `mergeable`, `headSha`, `taskId?` | **LIVE** (`plugins/console/forge.go`) |
+| `getDiff(ref)` | `GET P/diff` → `{items: FileDiff[]}` (unified diff parsed into hunks and numbered `DiffLine`s, `truncated`, `binary`) | **LIVE** (`plugins/console/forge.go`) |
+| `listCommits(ref)` | `GET P/commits` | **LIVE** (`plugins/console/forge.go`) |
+| `listComments(ref)` | `GET P/comments` (issue + review comments merged chronologically, `inReplyTo`, `commitSha`, `reviewId`) | **LIVE** (`plugins/console/forge.go`) |
+| `listPrs(q)` | `GET /repos/…/pulls` or `GET /pulls` (`state, author, assignee, q, limit`) | **LIVE** (`plugins/console/forge.go`) |
+| `getRepo(repo)` | `GET /repos/{host}/{owner}/{name}` | **LIVE** (`plugins/console/forge.go`) |
+| `addComment` | `POST P/comments` (conversation or inline diff comment) | **LIVE** (`plugins/console/forge.go`) |
+| `reviewPr` | `POST P/reviews` (`approve`, `request_changes`, `comment` + inline comments) | **LIVE** (`plugins/console/forge.go`) |
+| `assign` | `PUT P/assignees` | **LIVE** (`plugins/console/forge.go`) |
+| Inbox triage state | StateStore keys `pr-inbox:*`, `pr-assign:*` with prefix query | C0.2 (in-memory fallback active; server persistence GAP) |
 
 ## C12. Metrics (scope panels on Epic/Sprint pages, fleet charts, metric cards)
 Source: `console/metrics/*`, [metrics/BACKEND_NEEDS.md](file:///home/chrispian/dev/hollis-labs/apps/torque/apps/gui/src/console/metrics/BACKEND_NEEDS.md). Interface `MetricsSource.load(scope) → ProjectMetrics{progress[{status,count}], burn{startTs,endTs,total,completed[{t,v}],scopeChanges?[{t,label,delta}]}, tiles[{id,label,value,unit?,previous?,series?}], breakdown[], burnQuality, notes[]}`. `ScopeMetricsPanel` is mounted on `EpicDetailPage` and `SprintDetailPage` via `TorqueMetricsSource`.

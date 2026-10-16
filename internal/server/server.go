@@ -81,6 +81,9 @@ func (s *Server) spec(entry catalog.Entry, bin string) pluginhost.Spec {
 	if s.cfg.Upstreams.TorqueToken != "" {
 		secrets = append(secrets, s.cfg.Upstreams.TorqueToken)
 	}
+	if s.cfg.Upstreams.GitHubToken != "" {
+		secrets = append(secrets, s.cfg.Upstreams.GitHubToken)
+	}
 	return pluginhost.Spec{
 		ID:      entry.ID,
 		Command: bin,

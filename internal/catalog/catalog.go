@@ -17,6 +17,8 @@ import (
 type Upstreams struct {
 	TorqueURL   string
 	TorqueToken string
+	GitHubToken string
+	GitHubOrg   string
 }
 
 // Stream is a host-owned server-sent-events relay. app-host's plugin route
@@ -55,6 +57,17 @@ func torqueEnv(u Upstreams) []string {
 	return env
 }
 
+func consoleEnv(u Upstreams) []string {
+	env := torqueEnv(u)
+	if u.GitHubToken != "" {
+		env = append(env, "GITHUB_TOKEN="+u.GitHubToken)
+	}
+	if u.GitHubOrg != "" {
+		env = append(env, "GITHUB_ORG="+u.GitHubOrg)
+	}
+	return env
+}
+
 // Entries returns the reviewed first-party plugins in navigation order.
 func Entries() []Entry {
 	return []Entry{
@@ -73,7 +86,7 @@ func Entries() []Entry {
 			Name:        "Console",
 			Version:     "0.1.0",
 			Description: "Operator console: agent fleet, agent builder, alerts, messaging, forge, HITL, workflow and metrics.",
-			Env:         torqueEnv,
+			Env:         consoleEnv,
 			Streams: map[string]Stream{
 				"events":   torqueStream("/api/v1/events"),
 				"messages": torqueStream("/api/v1/messages/subscribe"),
