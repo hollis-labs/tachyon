@@ -11,8 +11,8 @@ Configure `fragments_url` (or `FRAGMENTS_URL`) and `fragments_token_file` (or
 
 | Where Tachyon runs | `fragments_url` |
 | --- | --- |
-| On agent-os (same host as FE) | `http://127.0.0.1:8091` (the default). The transcript routes require a loopback peer and Host, and Caddy's owner-device list excludes agent-os itself |
-| On an owner device (home-laptop, work-laptop, iPhone) | `https://fragments.nanite.cloud` (Caddy admits only those tailnet addresses, and rewrites Host) |
+| On the same host as Fragments Engine | `http://127.0.0.1:8091` (the default). The transcript routes require a loopback peer and a loopback Host |
+| Anywhere else | the HTTPS address of your Fragments deployment, behind a reverse proxy that admits only the owner's devices and presents a loopback Host to the app |
 
 The plugin refuses a token over plain `http` to a non-loopback host and never
 follows redirects. FE's transcript feature is off by default (`ui.transcripts.enabled`);
