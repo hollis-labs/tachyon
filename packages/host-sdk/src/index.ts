@@ -125,5 +125,5 @@ export function usePluginAvailable(id: string): boolean {
   return plugins?.some((p) => p.id === id && p.status === "running") ?? false
 }
 
-export { hostFetch, responseFreshness, useDataFreshness } from "./freshness"
+export { hostFetch, responseFreshness, useDataFreshness, dataRefreshRegistry, refreshPageData } from "./freshness"
 export type { DataFreshness } from "./freshness"

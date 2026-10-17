@@ -105,9 +105,9 @@ func (c *Cache) save(ctx context.Context, key, scope, identity string, e entry) 
 	})
 }
 
-func (c *Cache) invalidate(ctx context.Context) error {
+func (c *Cache) invalidate(ctx context.Context, scope string) error {
 	return c.store.Writer.Submit(ctx, "cache_invalidate", func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "DELETE FROM api_cache")
+		_, err := tx.ExecContext(ctx, "DELETE FROM api_cache WHERE scope = ? OR (? IN ('planner','torque','activity') AND scope IN ('planner','torque','activity'))", scope, scope)
 		return err
 	})
 }
@@ -116,6 +116,9 @@ func (c *Cache) invalidate(ctx context.Context) error {
 func (c *Cache) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		scope := Scope(r.URL.Path)
+		if r.Method != http.MethodGet && scope == "" && strings.HasPrefix(r.URL.Path, "/api/plugins/") {
+			scope = "torque"
+		}
 		if r.Method != http.MethodGet {
 			// Drain older readers before a mutation, then invalidate before new readers.
 			// Demonstration saves never send a request and never enter this branch.
@@ -128,7 +131,7 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 			out := newCapture()
 			next.ServeHTTP(out, r)
 			if out.status >= 200 && out.status < 400 {
-				if err := c.invalidate(r.Context()); err != nil {
+				if err := c.invalidate(r.Context(), scope); err != nil {
 					out.header.Set("X-Tachyon-Cache-Error", "storage")
 					c.unhealthy.Store(true)
 				}
@@ -154,19 +157,41 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 		// The fixed host credential is the current single-user identity boundary.
 		// User-scoped credentials must extend this key when the account module lands.
 		key := Digest(identity + "\n" + r.URL.Path + "?" + r.URL.Query().Encode())
+		bypass := !p.Enabled || strings.Contains(r.Header.Get("Cache-Control"), "no-cache") || strings.Contains(r.Header.Get("Cache-Control"), "no-store")
+		preferStale := strings.Contains(r.Header.Get("Prefer"), "stale-while-revalidate")
+		fast := func(e entry, err error) bool {
+			if bypass || err != nil {
+				return false
+			}
+			age := c.now().Sub(time.UnixMilli(e.updated))
+			if age < 0 {
+				return false
+			}
+			if age < time.Duration(p.FreshSeconds)*time.Second {
+				serveEntry(w, scope, "cached", e, p, "")
+				return true
+			}
+			if preferStale && p.RevalidateSeconds > 0 && age < time.Duration(p.FreshSeconds+p.RevalidateSeconds)*time.Second {
+				serveEntry(w, scope, "refreshing", e, p, "")
+				return true
+			}
+			return false
+		}
+		cached, readErr := c.get(r.Context(), key)
+		if fast(cached, readErr) {
+			return
+		}
 		hash := fnv.New32a()
 		_, _ = hash.Write([]byte(key))
 		lock := &c.locks[hash.Sum32()%uint32(len(c.locks))]
 		lock.Lock()
 		defer lock.Unlock()
-		cached, readErr := c.get(r.Context(), key)
-		exists := readErr == nil
-		age := c.now().Sub(time.UnixMilli(cached.updated))
-		bypass := !p.Enabled || strings.Contains(r.Header.Get("Cache-Control"), "no-cache") || strings.Contains(r.Header.Get("Cache-Control"), "no-store")
-		if exists && age >= 0 && age < time.Duration(p.FreshSeconds)*time.Second && !bypass {
-			serveEntry(w, scope, "cached", cached, p, "")
+		cached, readErr = c.get(r.Context(), key)
+		if fast(cached, readErr) {
 			return
 		}
+		exists := readErr == nil
+		age := c.now().Sub(time.UnixMilli(cached.updated))
 		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(p.TimeoutSeconds)*time.Second)
 		defer cancel()
 		out := newCapture()
@@ -247,6 +272,8 @@ func serveEntry(w http.ResponseWriter, scope, state string, e entry, p Policy, p
 	w.Header().Set("X-Tachyon-Cache", state)
 	w.Header().Set("X-Tachyon-Updated-At", time.UnixMilli(e.updated).UTC().Format(time.RFC3339Nano))
 	w.Header().Set("X-Tachyon-Fresh-Seconds", fmt.Sprint(p.FreshSeconds))
+	w.Header().Set("X-Tachyon-Revalidate-Seconds", fmt.Sprint(p.RevalidateSeconds))
+	w.Header().Set("X-Tachyon-Cache-Enabled", fmt.Sprint(p.Enabled))
 	if problem != "" {
 		w.Header().Set("X-Tachyon-Cache-Error", problem)
 	}

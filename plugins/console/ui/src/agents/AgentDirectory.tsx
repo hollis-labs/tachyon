@@ -1,3 +1,4 @@
+import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { EmptyState, Input } from '@hollis-labs/design-components'
@@ -229,6 +230,8 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
       active = false
     }
   }, [client, reloadVersion])
+
+  useEffect(() => dataRefreshRegistry('catalog').subscribe(() => setReloadVersion(v => v + 1)), [])
 
   const reload = () => client.listAgents().then((rows) => setAgents(rows), () => undefined)
 

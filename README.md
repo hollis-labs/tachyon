@@ -64,9 +64,20 @@ Safe JSON reads from Tether catalog, Torque activity/Planner/resources and
 GitHub Forge use per-resource policies. Streams, mutations, message-inbox drains
 and unknown routes bypass caching. Keys include the upstream and a hash of its
 credential identity, plus request path and query. Successful mutations invalidate
-snapshots; SSE-driven refetches and the Refresh button bypass freshness.
+snapshots for the affected upstream, preserving unrelated data; SSE-driven refetches and the Refresh button bypass freshness.
 
-The shared page bar shows Live, Cached, Stale data or Connection error, with
+The browser keeps a bounded, transient navigation cache (128 responses / 16 MiB
+of strings), with SQLite as the durable store. Reads show an existing snapshot
+immediately, then revalidate in the background when its freshness expires.
+An empty browser can request an older SQLite snapshot with
+`Prefer: stale-while-revalidate`; it does not wait behind a pending GitHub read.
+The background read uses `Cache-Control: no-cache`, replaces the snapshot, and
+notifies mounted consumers through the portfolio app-runtime refresh registry.
+These APIs return full snapshots, not deltas; replacement preserves removals and
+server ordering. In-place refresh retains rows, selections and drafts. A cold
+resource with no saved snapshot still waits for its first upstream response.
+
+The shared page bar shows Live, Cached, Refreshing, Stale data or Connection error, with
 the oldest successful update among that page's fetched snapshots. Agents also
 shows its separate stream connection state. Live means recently fetched from
 the source, not a promise that every source supports push updates. A stale
@@ -85,6 +96,8 @@ readable at `GET /api/cache/policy`. The general settings editor is tracked in
 CW-20261017-0014; these knobs are usable through the config file now.
 
 `fresh_seconds` avoids repeat upstream calls within its window;
+`stale_while_revalidate_seconds` allows an older snapshot to render immediately
+while the browser requests an authoritative refresh (zero opts out);
 `stale_if_error_seconds` extends that window only for transient remote failures.
 `timeout_seconds` bounds upstream waiting. `enabled: false` disables caching for
 a resource. `max_entries`, `max_bytes` (payload bytes) and `retention_seconds`

@@ -281,3 +281,57 @@ func TestNoStoreAndByteBudget(t *testing.T) {
 	w = request(h, "GET", board, true)
 	state(t, w, "stale")
 }
+
+func TestStaleWhileRevalidateDoesNotWaitForRemoteOrItsLock(t *testing.T) {
+	db := openTest(t, filepath.Join(t.TempDir(), "app.db"))
+	defer db.Close()
+	now := time.Now()
+	c := New(db, Defaults(), func(string) (string, error) { return "host", nil })
+	c.now = func() time.Time { return now }
+	path := "/api/plugins/console/v1/forge/pulls/pending"
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, `{"old":true}`) }))
+	state(t, request(h, "GET", path, false), "live")
+	now = now.Add(time.Minute)
+	started, release := make(chan struct{}), make(chan struct{})
+	h = c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+		jsonResponse(w, `{"new":true}`)
+	}))
+	finished := make(chan struct{})
+	go func() { request(h, "GET", path, true); close(finished) }()
+	<-started
+	fast := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		r := httptest.NewRequest("GET", path, nil)
+		r.Header.Set("Prefer", "stale-while-revalidate")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		fast <- w
+	}()
+	select {
+	case w := <-fast:
+		state(t, w, "refreshing")
+		if w.Body.String() != `{"old":true}` {
+			t.Error("lost snapshot")
+		}
+	case <-time.After(time.Second):
+		t.Error("cached read blocked behind remote revalidation")
+	}
+	close(release)
+	<-finished
+	state(t, request(h, "GET", path, false), "cached")
+}
+
+func TestUnrelatedWritesPreserveForgeSnapshot(t *testing.T) {
+	db := openTest(t, filepath.Join(t.TempDir(), "app.db"))
+	defer db.Close()
+	c := New(db, Defaults(), func(string) (string, error) { return "host", nil })
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, `{"ok":true}`) }))
+	path := "/api/plugins/console/v1/forge/pulls/pending"
+	state(t, request(h, "GET", path, false), "live")
+	request(h, "POST", "/api/plugins/console/v1/console/state", false)
+	state(t, request(h, "GET", path, false), "cached")
+	request(h, "POST", "/api/plugins/console/v1/forge/repos/github/org/repo/pulls/1/comments", false)
+	state(t, request(h, "GET", path, false), "live")
+}

@@ -1,5 +1,5 @@
 import { Button } from "@hollis-labs/design-components"
-import { type DataFreshness, useDataFreshness } from "@tachyon/host-sdk"
+import { type DataFreshness, refreshPageData, useDataFreshness } from "@tachyon/host-sdk"
 import { useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 
@@ -20,6 +20,7 @@ export function freshnessSummary(rows: readonly DataFreshness[], now: number) {
   if (!rows.length) return { label: "Connecting", updatedAt: null, problem: null }
   const failed = rows.find((r) => r.state === "error")
   const stale = rows.find((r) => r.state === "stale")
+  const refreshing = rows.some((r) => r.state === "refreshing")
   const problem = rows.find((r) => r.problem)?.problem
   const dates = rows.flatMap((r) => (r.updatedAt ? [r.updatedAt] : []))
   // Oldest constituent snapshot: a successful request must not make other
@@ -32,7 +33,15 @@ export function freshnessSummary(rows: readonly DataFreshness[], now: number) {
       now - Date.parse(r.updatedAt) >= r.freshSeconds * 1000,
   )
   return {
-    label: failed ? "Connection error" : stale ? "Stale data" : cached ? "Cached" : "Live",
+    label: failed
+      ? "Connection error"
+      : stale
+        ? "Stale data"
+        : refreshing
+          ? "Refreshing"
+          : cached
+            ? "Cached"
+            : "Live",
     updatedAt,
     problem: problem ? (problems[problem] ?? "Data source error.") : null,
   }
@@ -74,19 +83,7 @@ export function DataStatus() {
         )}
       </span>
       {status.problem && <span className="text-destructive">{status.problem}</span>}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="ml-auto"
-        onClick={() => {
-          try {
-            sessionStorage.setItem("tachyon:refresh-until", String(Date.now() + 10_000))
-          } catch {
-            /* optional browser storage */
-          }
-          window.location.reload()
-        }}
-      >
+      <Button variant="ghost" size="sm" className="ml-auto" onClick={() => void refreshPageData()}>
         Refresh
       </Button>
     </div>

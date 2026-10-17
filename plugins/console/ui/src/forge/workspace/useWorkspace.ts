@@ -1,3 +1,4 @@
+import { dataRefreshRegistry, refreshPageData } from "@tachyon/host-sdk"
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ActionBus } from '../../seams/action-bus'
 import type { ForgeClient } from '../client'
@@ -68,6 +69,8 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
     }
   }, [client, key, version, stable])
 
+  useEffect(() => dataRefreshRegistry('forge').subscribe(() => setVersion(v => v + 1)), [])
+
   // Reset transient state when the PR changes.
   const [seenKey, setSeenKey] = useState(key)
   if (seenKey !== key) {
@@ -118,7 +121,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
 
   return {
     load,
-    reload: () => setVersion((v) => v + 1),
+    reload: () => { void refreshPageData().then(() => setVersion((v) => v + 1)) },
     posting,
     pending,
     queueComment: (c) => setPending((p) => [...p, { ...c, id: `q-${++tmp}` }]),

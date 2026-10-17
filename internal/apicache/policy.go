@@ -15,10 +15,11 @@ import (
 )
 
 type Policy struct {
-	Enabled        bool `json:"enabled"`
-	FreshSeconds   int  `json:"fresh_seconds"`
-	StaleSeconds   int  `json:"stale_if_error_seconds"`
-	TimeoutSeconds int  `json:"timeout_seconds"`
+	Enabled           bool `json:"enabled"`
+	FreshSeconds      int  `json:"fresh_seconds"`
+	RevalidateSeconds int  `json:"stale_while_revalidate_seconds"`
+	StaleSeconds      int  `json:"stale_if_error_seconds"`
+	TimeoutSeconds    int  `json:"timeout_seconds"`
 }
 
 type Settings struct {
@@ -30,8 +31,8 @@ type Settings struct {
 
 func Defaults() Settings {
 	return Settings{MaxEntries: 1000, MaxBytes: 64 << 20, RetentionSeconds: 7 * 86400, Policies: map[string]Policy{
-		"activity": {true, 5, 300, 10}, "planner": {true, 15, 86400, 15},
-		"catalog": {true, 60, 86400, 15}, "torque": {true, 15, 3600, 15}, "forge": {true, 30, 3600, 20},
+		"activity": {true, 5, 60, 300, 10}, "planner": {true, 15, 3600, 86400, 15},
+		"catalog": {true, 60, 3600, 86400, 15}, "torque": {true, 15, 300, 3600, 15}, "forge": {true, 30, 3600, 3600, 20},
 	}}
 }
 
@@ -43,7 +44,7 @@ func (s Settings) Validate() error {
 		if _, ok := Defaults().Policies[k]; !ok {
 			return fmt.Errorf("unknown cache policy %q", k)
 		}
-		if p.FreshSeconds < 0 || p.StaleSeconds < 0 || p.TimeoutSeconds < 1 || p.TimeoutSeconds > 60 || p.FreshSeconds+p.StaleSeconds > s.RetentionSeconds {
+		if p.FreshSeconds < 0 || p.RevalidateSeconds < 0 || p.StaleSeconds < 0 || p.TimeoutSeconds < 1 || p.TimeoutSeconds > 60 || p.FreshSeconds+max(p.StaleSeconds, p.RevalidateSeconds) > s.RetentionSeconds {
 			return fmt.Errorf("invalid cache policy %q: durations must be nonnegative, timeout 1–60s, freshness + stale allowance within retention", k)
 		}
 	}
@@ -60,8 +61,22 @@ func LoadSettings(ctx context.Context, db *localstore.Store, path string) (Setti
 		return cfg, err
 	}
 	if saved != "" {
-		if err = json.Unmarshal([]byte(saved), &cfg); err != nil {
+		var old struct {
+			MaxEntries       int                        `json:"max_entries"`
+			MaxBytes         int64                      `json:"max_bytes"`
+			RetentionSeconds int                        `json:"retention_seconds"`
+			Policies         map[string]json.RawMessage `json:"policies"`
+		}
+		if err = json.Unmarshal([]byte(saved), &old); err != nil {
 			return cfg, err
+		}
+		cfg.MaxEntries, cfg.MaxBytes, cfg.RetentionSeconds = old.MaxEntries, old.MaxBytes, old.RetentionSeconds
+		for k, b := range old.Policies {
+			p := cfg.Policies[k]
+			if err = json.Unmarshal(b, &p); err != nil {
+				return cfg, err
+			}
+			cfg.Policies[k] = p
 		}
 	}
 	if path != "" {
