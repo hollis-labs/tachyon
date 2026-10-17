@@ -51,6 +51,18 @@ func Open(ctx context.Context, path string) (*Store, error) {
  PRIMARY KEY(identity,id)
  );
  CREATE INDEX IF NOT EXISTS chat_outbox_launch ON chat_outbox(identity,launch_id,created_at);
+ CREATE TABLE IF NOT EXISTS chat_turns (
+ id TEXT PRIMARY KEY, source TEXT NOT NULL, channel TEXT NOT NULL, publication_id TEXT NOT NULL,
+ launch_id TEXT NOT NULL, session_id TEXT NOT NULL, created_at TEXT NOT NULL,
+ revision INTEGER NOT NULL, body BLOB NOT NULL, imported INTEGER NOT NULL DEFAULT 0
+ );
+ CREATE UNIQUE INDEX IF NOT EXISTS chat_publication ON chat_turns(source,channel,publication_id) WHERE publication_id<>'';
+ CREATE TABLE IF NOT EXISTS chat_publications(source TEXT NOT NULL,channel TEXT NOT NULL,publication_id TEXT NOT NULL,sequence INTEGER NOT NULL,envelope BLOB NOT NULL,PRIMARY KEY(source,channel,publication_id));
+ CREATE TABLE IF NOT EXISTS chat_turn_revisions(turn_id TEXT NOT NULL,revision INTEGER NOT NULL,body BLOB NOT NULL,recorded_at TEXT NOT NULL,PRIMARY KEY(turn_id,revision));
+ CREATE TABLE IF NOT EXISTS chat_cursors(source TEXT NOT NULL,channel TEXT NOT NULL,cursor INTEGER NOT NULL,PRIMARY KEY(source,channel));
+ CREATE TABLE IF NOT EXISTS chat_sync_status(source TEXT PRIMARY KEY,updated_at TEXT NOT NULL,problem TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS chat_reply_intents(turn_id TEXT PRIMARY KEY,request_key TEXT NOT NULL,body TEXT NOT NULL,reply_id TEXT NOT NULL DEFAULT '',state TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS chat_imports(source TEXT PRIMARY KEY,checksum TEXT NOT NULL,imported_at TEXT NOT NULL,turn_count INTEGER NOT NULL, snapshot BLOB NOT NULL);
  CREATE INDEX IF NOT EXISTS api_cache_age ON api_cache(updated_at);
  `)
 	if err != nil {

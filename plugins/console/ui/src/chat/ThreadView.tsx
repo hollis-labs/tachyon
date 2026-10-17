@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Copy, Download, Info, Check } from 'lucide-react'
 import { MessageInfo } from './MessageInfo'
 import { ago } from '@console/lib/agent-activity'
-import { Linkified } from '../autolink'
+import { MessageBody } from './MessageBody'
 import { DeliveryBadge } from '../messaging'
 import { ToolChips } from './ToolChips'
 import type { ChatMessage } from './types'
@@ -39,10 +39,7 @@ function Bubble({ m, now }: { m: ChatMessage; now: number }) {
         {m.streaming && <span className="animate-pulse text-amber-300">STREAMING</span>}
       </div>
       {m.body && (
-        <p className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-zinc-200">
-          <Linkified text={m.body} preserveWhitespace />
-          {m.streaming && <span aria-hidden className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-amber-300 align-middle" />}
-        </p>
+        <MessageBody body={m.body} streaming={m.streaming} />
       )}
       <ToolChips tools={m.tools} />
       {actionError && <p role="alert" className="mt-1 font-mono text-xs text-red-300">{actionError}</p>}

@@ -42,26 +42,11 @@ export interface Sent {
   error?: string
   session_id?: string
 }
-let connecting: Promise<void> | undefined
-async function connect() {
-  if (!connecting)
-    connecting = (async () => {
-      const r = await hostFetch(TURNS + '/session', { method: 'POST' })
-      if (!r.ok) throw new Error('Could not connect to Tangent conversation history')
-    })().finally(() => {
-      connecting = undefined
-    })
-  return connecting
-}
-async function turns<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
+async function turns<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await hostFetch(TURNS + path, {
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
   })
-  if ((res.status === 401 || res.status === 403) && retry && (!init?.method || init.method === 'GET')) {
-    await connect()
-    return turns(path, { ...init, headers: { ...init?.headers, 'Cache-Control': 'no-cache' } }, false)
-  }
   if (
     new Headers(init?.headers).get('Cache-Control') === 'no-cache' &&
     ['stale', 'refreshing', 'cached'].includes(res.headers.get('X-Tachyon-Cache') ?? '')
@@ -85,11 +70,12 @@ export function replyTarget(items: Turn[], a: ChatAgent): Turn | undefined {
       (t) =>
         belongsTo(t, a) &&
         t.session_id === a.session?.id &&
-        !t.resolution &&
+        (!t.resolution || t.delivery_state === 'retryable_failure') &&
         t.replyable !== false &&
         t.source_message?.origin !== 'publication' &&
         ['question', 'failure', 'terminal'].includes(t.kind) &&
-        ['submitted', 'validated', 'staged', 'presented', 'in_progress'].includes(t.state),
+        (['submitted', 'validated', 'staged', 'presented', 'in_progress'].includes(t.state) ||
+          t.delivery_state === 'retryable_failure'),
     )
     .sort((a, b) => b.queue_sequence - a.queue_sequence)[0]
 }
@@ -258,7 +244,10 @@ export function createTetherChatClient(mail: ChatClient): ChatClient {
       let pending = drafts.get(id)
       if (pending?.body === body && pending.targetId) {
         const resolved = items.find(
-          (t) => t.item_id === pending?.targetId && t.resolution?.response_text === body,
+          (t) =>
+            t.item_id === pending?.targetId &&
+            t.resolution?.response_text === body &&
+            t.delivery_state !== 'retryable_failure',
         )
         if (resolved) {
           drafts.delete(id)
@@ -303,19 +292,15 @@ export function createTetherChatClient(mail: ChatClient): ChatClient {
       try {
         let accepted: Turn | undefined
         if (target)
-          accepted = await turns<Turn>(
-            '/items/' + encodeURIComponent(target.item_id) + '/reply',
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                expected_revision: target.revision,
-                action: 'respond',
-                response_text: body,
-              }),
-            },
-            false,
-          )
+          accepted = await turns<Turn>('/items/' + encodeURIComponent(target.item_id) + '/reply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              expected_revision: target.revision,
+              action: 'respond',
+              response_text: body,
+            }),
+          })
         else
           await chatJSON('/agents/' + encodeURIComponent(a.launch_id) + '/send', {
             method: 'POST',

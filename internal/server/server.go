@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,11 +34,12 @@ var Version = "0.0.0-dev"
 // Config is the host's resolved configuration.
 type Config struct {
 	// PluginBinDir holds built plugin executables named by plugin ID.
-	PluginBinDir    string
-	DataDir         string
-	CacheDir        string
-	CachePolicyFile string
-	Upstreams       catalog.Upstreams
+	PluginBinDir     string
+	DataDir          string
+	CacheDir         string
+	CachePolicyFile  string
+	ChatSyncInterval time.Duration
+	Upstreams        catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
@@ -55,6 +57,7 @@ type Server struct {
 	instance  string
 	store     *localstore.Store
 	cache     *apicache.Cache
+	chat      *chatbridge.Owned
 }
 
 // New resolves the catalog against built binaries. Missing binaries are
@@ -128,11 +131,33 @@ func (s *Server) Start(ctx context.Context) error {
 		store.Close()
 		return fmt.Errorf("plugin admission: %w", err)
 	}
+	source, sourceErr := chatbridge.NewSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
+	s.chat = &chatbridge.Owned{Store: store, Source: source, SourceID: s.cfg.Upstreams.TetherAddr, ConfigError: sourceErr, Interval: s.cfg.ChatSyncInterval}
+	s.chat.FreshSeconds = settings.Policies["chat-turns"].FreshSeconds
+	s.chat.RevalidateSeconds = settings.Policies["chat-turns"].RevalidateSeconds
+	s.chat.CacheEnabled = settings.Policies["chat-turns"].Enabled
+	// Move existing outgoing messages from the earlier credential-keyed cache
+	// identity into stable local ownership. Keep old rows as migration evidence.
+	if previous, e := s.cacheIdentity("chat"); e == nil {
+		next := apicache.Digest("chat-owner\n" + s.cfg.Upstreams.TetherAddr)
+		if e = store.Writer.Submit(ctx, "chat_outbox_ownership", func(ctx context.Context, tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, `INSERT INTO chat_outbox(identity,id,launch_id,body,created_at,status,error,session_id)
+    SELECT ?,id,launch_id,body,created_at,status,error,session_id FROM chat_outbox WHERE identity=?
+    ON CONFLICT(identity,id) DO NOTHING`, next, previous)
+			return err
+		}); e != nil {
+			return fmt.Errorf("chat outbox migration: %w", e)
+		}
+	}
+	s.chat.Start()
 	return nil
 }
 
 // Stop retires plugin processes after HTTP has drained.
 func (s *Server) Stop(ctx context.Context) error {
+	if s.chat != nil {
+		s.chat.Stop()
+	}
 	err := s.inventory.Stop(ctx)
 	if s.store != nil {
 		err = errors.Join(err, s.store.Close())
@@ -160,7 +185,7 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 			}
 		}
 	case "chat-turns":
-		return apicache.Digest(u.TangentURL), nil
+		return apicache.Digest("chat-owner\n" + u.TetherAddr), nil
 	case "forge":
 		return apicache.Digest("github\n" + u.GitHubOrg + "\n" + u.GitHubToken), nil
 	default:
@@ -182,7 +207,7 @@ func (s *Server) Routes() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})
 	if s.store != nil {
-		outbox := &chatbridge.Outbox{Store: s.store, Identity: func() (string, error) { return s.cacheIdentity("chat") }, Next: s.inventory.APIRoutes()}
+		outbox := &chatbridge.Outbox{Store: s.store, Identity: func() (string, error) { return apicache.Digest("chat-owner\n" + s.cfg.Upstreams.TetherAddr), nil }, Next: s.inventory.APIRoutes()}
 		handler := http.Handler(outbox)
 		if s.cache != nil {
 			handler = s.cache.Wrap(handler)
@@ -190,11 +215,9 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle("GET "+chatbridge.ChatPrefix+"/outbox", handler)
 		mux.Handle("POST "+chatbridge.ChatPrefix+"/agents/{launch}/send", handler)
 	}
-	turns := http.Handler(chatbridge.NewTurns(s.cfg.Upstreams.TangentURL))
-	if s.cache != nil {
-		turns = s.cache.Wrap(turns)
+	if s.chat != nil {
+		mux.Handle(chatbridge.Prefix+"/", s.chat)
 	}
-	mux.Handle(chatbridge.Prefix+"/", turns)
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {

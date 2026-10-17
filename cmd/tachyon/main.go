@@ -26,12 +26,12 @@ func main() {
 	defer stop()
 
 	srv := server.New(server.Config{
-		CachePolicyFile: os.Getenv("TACHYON_CACHE_POLICY_FILE"),
-		PluginBinDir:    env("TACHYON_PLUGIN_DIR", "bin/plugins"),
-		DataDir:         env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
-		CacheDir:        env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
+		CachePolicyFile:  os.Getenv("TACHYON_CACHE_POLICY_FILE"),
+		ChatSyncInterval: chatInterval(),
+		PluginBinDir:     env("TACHYON_PLUGIN_DIR", "bin/plugins"),
+		DataDir:          env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
+		CacheDir:         env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		Upstreams: catalog.Upstreams{
-			TangentURL:      env("TANGENT_URL", "http://127.0.0.1:7843"),
 			TetherAddr:      os.Getenv("TETHER_ADDR"),
 			TetherTokenFile: os.Getenv("TETHER_TOKEN_FILE"),
 			TorqueURL:       env("TORQUE_URL", "http://127.0.0.1:8990"),
@@ -102,4 +102,13 @@ func xdg(key, homeRel string) string {
 		base = filepath.Join(home, homeRel)
 	}
 	return filepath.Join(base, "tachyon")
+}
+
+func chatInterval() time.Duration {
+	value := env("TACHYON_CHAT_SYNC_INTERVAL", "5s")
+	interval, err := time.ParseDuration(value)
+	if err != nil || interval < time.Second || interval > time.Hour {
+		log.Fatal("TACHYON_CHAT_SYNC_INTERVAL must be between 1s and 1h")
+	}
+	return interval
 }

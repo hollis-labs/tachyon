@@ -160,14 +160,6 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 			failure(w, scope, "configuration", "Upstream configuration or credential file is invalid; check the Tachyon host settings.")
 			return
 		}
-		if scope == "chat-turns" {
-			cookie, e := r.Cookie("tachyon_chat_turns")
-			if e != nil || cookie.Value == "" {
-				next.ServeHTTP(w, r)
-				return
-			}
-			identity = Digest(identity + "\n" + cookie.Value)
-		}
 		// The fixed host credential is the current single-user identity boundary.
 		// User-scoped credentials must extend this key when the account module lands.
 		key := Digest(identity + "\n" + r.URL.Path + "?" + r.URL.Query().Encode())
@@ -217,10 +209,6 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 			out = errorCapture(http.StatusGatewayTimeout, "timeout", "Remote request timed out.")
 		}
 		after, identityErr := c.identity(scope)
-		if scope == "chat-turns" {
-			cookie, _ := r.Cookie("tachyon_chat_turns") // admitted above
-			after = Digest(after + "\n" + cookie.Value)
-		}
 		if identityErr != nil || after != identity {
 			failure(w, scope, "configuration", "Upstream credential changed during refresh; retry the request.")
 			return

@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "@hollis-labs/kit-chat/markdown.css";
+@import "streamdown/styles.css";
 @import "@hollis-labs/kit-dashboard/theme.css";
 @import "@hollis-labs/design-app-runtime/shell-reset.css";
 
@@ -317,4 +319,69 @@
 }
 .planner-dialog [data-slot="button"] {
   font-size: 0.8rem;
+}
+
+/* Chat prose follows Builder runtime values; metadata remains compact monospace. */
+[data-chat-prose] .tachyon-chat-prose {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.7;
+  color: var(--color-zinc-300);
+  overflow-wrap: anywhere;
+}
+[data-chat-prose] :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--color-zinc-200);
+  margin-block: 1em 0.35em;
+}
+[data-chat-prose] :is(p, ul, ol, blockquote, pre, table) {
+  margin-block: 0.65em;
+}
+[data-chat-prose] :is(ul, ol) {
+  padding-left: 1.4em;
+}
+[data-chat-prose] ul {
+  list-style-type: disc;
+}
+[data-chat-prose] ol {
+  list-style-type: decimal;
+}
+[data-chat-prose] li {
+  margin-block: 0.2em;
+}
+[data-chat-prose] strong {
+  font-weight: 500;
+  color: var(--color-zinc-200);
+}
+[data-chat-prose] :is(code, pre) {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+[data-chat-prose] pre {
+  overflow-x: auto;
+  padding: 0.75em;
+  border: 1px solid var(--color-border);
+}
+[data-chat-prose] blockquote {
+  border-left: 2px solid var(--color-zinc-600);
+  padding-left: 0.8em;
+  color: var(--color-zinc-400);
+}
+[data-chat-prose] a {
+  color: var(--color-sky-300);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-chat-prose] table {
+  display: block;
+  overflow-x: auto;
+}
+[data-chat-prose] :is(th, td) {
+  padding: 0.35em 0.65em;
+  border: 1px solid var(--color-border);
+  font-weight: 400;
 }

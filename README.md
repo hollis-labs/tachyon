@@ -187,19 +187,33 @@ icon; ordinary process agents retain mailbox actions. The host uses its existing
 Tether credential. Starting/continuing chat needs Tether's `operate` access;
 authorization failures remain visible and keep the draft.
 
-During this UI migration, `TANGENT_URL` (default `http://127.0.0.1:7843`) supplies
-Agent Turns history and revision-checked replies. The bridge exposes only history,
-participant-session establishment, and replies. Each browser has its own scoped,
-HttpOnly Tangent participant cookie; its hash partitions the SQLite response
-cache. Tangent retains custody of turns and is unchanged by this migration.
-Before sending, Tachyon refreshes the roster and turns to distinguish a live
-pending reply from a new turn/launch; stale-session turns cannot receive replies.
+Tachyon owns chat turns, operator replies, delivery observations and source
+publication records in its local SQLite database. It ingests Tether channel
+history with durable replay cursors, so it catches up after a restart without
+replacing local resolutions or duplicating imported publications. Reply intent
+and an idempotency key commit before the direct Tether reply request; acceptance
+is displayed as queued until delivery is observed. Imported resolutions are
+historical records and are never resent. The existing portfolio sqlitekit and
+serialwrite writer owns these tables, separately from the evictable API cache.
 
-Tachyon's `chat_outbox` table stores initiated messages before delivery through
-the same sqlitekit/serialwrite writer as the app cache. Successful sends replay
-locally by key; unconfirmed sends reuse their key when retried within 24 hours.
-The table survives response-cache eviction. This transport outbox is separate
-from the planned general object/history model. Conversation copies/downloads
-export the message body as Markdown; Info presents source and delivery metadata.
-`chat` and `chat-turns` cache policies use the existing host knobs. Turn updates
-are polled every five seconds; this does not claim token streaming.
+`TACHYON_CHAT_SYNC_INTERVAL` tunes ingestion (default `5s`, allowed `1s`–`1h`).
+The `chat-turns` cache policy controls the browser's fresh/revalidation windows;
+local history remains readable with an explicit source problem during an outage.
+Sending requires fresh session verification. The current deployment has one
+operator; account-scoped ownership will join the planned identity module.
+
+`go run ./cmd/import-chat-history --database <tachyon.db> --tangent-url <url>
+--tether-address <url> --token-file <path> --sync` performs the explicit migration.
+Back up the database first. It copies chat launches' turns and resolutions,
+retains the original snapshot, and recognizes publications already ingested.
+Tangent is not needed at runtime and its original records are left intact.
+Messages initiated in Tangent that exist only in a user's browser localStorage
+are not part of its server export; preserve/import those before retiring Tangent.
+
+Tachyon's `chat_outbox` stores initiated messages before delivery. Successful
+sends replay locally by key; unconfirmed sends reuse their key on explicit retry.
+Chat prose uses the portfolio kit-chat Markdown renderer, with Builder-style
+13px normal-weight text, restrained headings, lists, code, tables and safe links.
+Raw HTML and remote images are not activated. Copy/download export the original
+Markdown; Info presents source and delivery metadata. Updates are polled, not
+claimed to be a token stream.

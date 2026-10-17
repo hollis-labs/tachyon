@@ -11,57 +11,6 @@ import (
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
-func TestTurnsKeepsBrowserSessionsSeparateAndRestrictsRoutes(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "" {
-			t.Error("browser authorization leaked")
-		}
-		if r.URL.Path == "/chat" {
-			http.SetCookie(w, &http.Cookie{Name: "tangent_participant", Value: "new-session", HttpOnly: true})
-			return
-		}
-		c, e := r.Cookie("tangent_participant")
-		if e != nil || c.Value != "browser-one" {
-			t.Errorf("wrong participant: %v %v", c, e)
-		}
-		if len(r.Cookies()) != 1 {
-			t.Error("unrelated cookies forwarded")
-		}
-		if r.URL.Path != "/api/turns" {
-			t.Errorf("unexpected path %s", r.URL.Path)
-		}
-		_, _ = w.Write([]byte(`{"pending":[],"history":[]}`))
-	}))
-	defer upstream.Close()
-	h := NewTurns(upstream.URL)
-	req := httptest.NewRequest("POST", Prefix+"/session", nil)
-	res := httptest.NewRecorder()
-	h.ServeHTTP(res, req)
-	cookies := res.Result().Cookies()
-	if res.Code != 200 || len(cookies) != 1 || cookies[0].Name != CookieName || cookies[0].Path != Prefix || !cookies[0].HttpOnly {
-		t.Fatalf("bad session response: %d %v", res.Code, cookies)
-	}
-	req = httptest.NewRequest("GET", Prefix+"/inbox", nil)
-	req.Header.Set("Authorization", "private")
-	req.AddCookie(&http.Cookie{Name: CookieName, Value: "browser-one"})
-	req.AddCookie(&http.Cookie{Name: "unrelated", Value: "private"})
-	res = httptest.NewRecorder()
-	h.ServeHTTP(res, req)
-	if res.Code != 200 {
-		t.Fatal(res.Code)
-	}
-	res = httptest.NewRecorder()
-	h.ServeHTTP(res, httptest.NewRequest("GET", Prefix+"/inbox", nil))
-	if res.Code != 401 {
-		t.Fatal("missing browser session was admitted")
-	}
-	res = httptest.NewRecorder()
-	h.ServeHTTP(res, httptest.NewRequest("POST", Prefix+"/items/one/dismiss", nil))
-	if res.Code != 404 {
-		t.Fatal("unreviewed route was admitted")
-	}
-}
-
 func TestOutboxPersistsAndReplaysWithoutDuplicateSend(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chat.db")
 	db, err := localstore.Open(context.Background(), path)
