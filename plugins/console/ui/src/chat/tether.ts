@@ -1,4 +1,5 @@
-import { dataRefreshRegistry, hostFetch } from '@tachyon/host-sdk'
+import { operatorFetch } from '../operator/elevation'
+import { dataRefreshRegistry } from '@tachyon/host-sdk'
 import type { Recipient } from '../messaging'
 import { chatJSON, chatRecipient, fetchChatAgents, type ChatAgent } from './roster'
 import type { ChatCapability, ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryQuery } from './types'
@@ -43,7 +44,7 @@ export interface Sent {
   session_id?: string
 }
 async function turns<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await hostFetch(TURNS + path, {
+  const res = await operatorFetch(TURNS + path, {
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
   })

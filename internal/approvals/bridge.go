@@ -16,6 +16,7 @@ import (
 
 const Prefix = "/api/plugins/console/v1/approval-inbox"
 const CookieName = "tachyon_approvals"
+const CookiePath = "/api/plugins/console/v1/"
 
 var itemPath = regexp.MustCompile(`^/items/[a-zA-Z0-9_-]+$`)
 var mutationPath = regexp.MustCompile(`^/items/[a-zA-Z0-9_-]+/(present|resolve)$`)
@@ -47,6 +48,10 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case bootstrap:
 		target = "/hitl"
+	case path == "/status" && r.Method == http.MethodGet:
+		target = "/api/session"
+	case path == "/elevate" && r.Method == http.MethodPost:
+		target = "/api/session/elevate"
 	case path == "/inbox" && r.Method == http.MethodGet:
 		target = "/api/hitl"
 	case (itemPath.MatchString(path) || evidencePath.MatchString(path)) && r.Method == http.MethodGet:
@@ -106,29 +111,43 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer res.Body.Close()
+	// Elevation rotates the upstream session. Forward the replacement too,
+	// not just the cookie originally minted during bootstrap.
+	connected := false
+	if res.StatusCode >= 200 && res.StatusCode < 300 {
+		for _, c := range res.Cookies() {
+			if c.Name != "tangent_participant" {
+				continue
+			}
+			c.Name = CookieName
+			c.Path = CookiePath
+			c.Domain = ""
+			c.HttpOnly = true
+			c.SameSite = http.SameSiteStrictMode
+			c.Secure = r.TLS != nil || strings.HasPrefix(r.Header.Get("Origin"), "https://")
+			http.SetCookie(w, c)
+			// Remove the earlier approvals-only cookie, which otherwise shadows it.
+			http.SetCookie(w, &http.Cookie{Name: CookieName, Path: Prefix, Value: "", MaxAge: -1, HttpOnly: true, Secure: c.Secure, SameSite: http.SameSiteStrictMode})
+			connected = true
+		}
+	}
 	if bootstrap {
 		if res.StatusCode != 200 {
 			fail(w, 502, "session_unavailable", "The approval queue could not establish a participant session.")
 			return
 		}
-		connected := false
-		for _, c := range res.Cookies() {
-			if c.Name == "tangent_participant" {
-				c.Name = CookieName
-				c.Path = Prefix
-				c.Domain = ""
-				c.HttpOnly = true
-				c.SameSite = http.SameSiteStrictMode
-				c.Secure = r.TLS != nil || strings.HasPrefix(r.Header.Get("Origin"), "https://")
-				http.SetCookie(w, c)
-				connected = true
-			}
-		}
 		if !connected {
-			if _, e := r.Cookie(CookieName); e != nil {
+			c, e := r.Cookie(CookieName)
+			if e != nil {
 				fail(w, 502, "session_unavailable", "The approval queue did not issue a participant session.")
 				return
 			}
+			c.Path = CookiePath
+			c.HttpOnly = true
+			c.SameSite = http.SameSiteStrictMode
+			c.Secure = r.TLS != nil || strings.HasPrefix(r.Header.Get("Origin"), "https://")
+			http.SetCookie(w, c)
+			http.SetCookie(w, &http.Cookie{Name: CookieName, Path: Prefix, MaxAge: -1, HttpOnly: true, Secure: c.Secure, SameSite: http.SameSiteStrictMode})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"connected":true}`))

@@ -207,7 +207,8 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 // Routes returns the handler mounted by app-host at /api/.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
-	approvalHandler := http.Handler(approvals.New(s.cfg.ApprovalQueueURL))
+	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	approvalHandler := http.Handler(operator)
 	if s.cache != nil {
 		approvalHandler = s.cache.Wrap(approvalHandler)
 	}
@@ -222,10 +223,10 @@ func (s *Server) Routes() http.Handler {
 			handler = s.cache.Wrap(handler)
 		}
 		mux.Handle("GET "+chatbridge.ChatPrefix+"/outbox", handler)
-		mux.Handle("POST "+chatbridge.ChatPrefix+"/agents/{launch}/send", handler)
+		mux.Handle("POST "+chatbridge.ChatPrefix+"/agents/{launch}/send", operator.RequireOperator(handler))
 	}
 	if s.chat != nil {
-		mux.Handle(chatbridge.Prefix+"/", s.chat)
+		mux.Handle(chatbridge.Prefix+"/", operator.RequireOperator(s.chat))
 	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)

@@ -1,3 +1,4 @@
+import { OperatorPrompt } from '../operator/OperatorPrompt'
 import { useState, type ReactNode } from 'react'
 import { ApprovalProvider } from '../approvals/context'
 import { useApi } from '@tachyon/torque-client'
@@ -49,7 +50,7 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
             <HitlProvider client={hitl} present={false}>
               <WorkflowProvider client={workflow}>
                 <AlertHost rules={DEFAULT_RULE_PACK}>
-                  <ApprovalProvider><ChatDockProvider>{children}</ChatDockProvider></ApprovalProvider>
+                  <ApprovalProvider><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></ApprovalProvider>
                 </AlertHost>
               </WorkflowProvider>
             </HitlProvider>

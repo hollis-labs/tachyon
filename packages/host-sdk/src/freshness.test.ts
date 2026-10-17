@@ -13,6 +13,25 @@ beforeEach(() => { vi.resetModules() })
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe("cache-first reads", () => {
+  it("discards old participant snapshots after elevation without losing Forge navigation data", async () => {
+    const approvalURL = '/api/plugins/console/v1/approval-inbox/inbox'
+    const approval = (value: string) => {
+      const r = snapshot(value)
+      r.headers.set('X-Tachyon-Source', 'approvals')
+      return r
+    }
+    const fetch = vi.fn().mockResolvedValueOnce(snapshot('forge-saved'))
+      .mockResolvedValueOnce(approval('old-participant'))
+      .mockResolvedValueOnce(new Response('{}'))
+      .mockResolvedValueOnce(approval('elevated-participant'))
+    vi.stubGlobal('fetch', fetch)
+    const { hostFetch } = await import('./freshness')
+    await hostFetch(url)
+    await hostFetch(approvalURL)
+    await hostFetch('/api/plugins/console/v1/approval-inbox/elevate', { method: 'POST', body: '{}' })
+    expect(await (await hostFetch(approvalURL)).json()).toEqual({ value: 'elevated-participant' })
+    expect(await (await hostFetch(url)).json()).toEqual({ value: 'forge-saved' })
+  })
   it("returns a warm navigation read without another network round trip", async () => {
     const fetch = vi.fn(async () => snapshot("saved"))
     vi.stubGlobal("fetch", fetch)

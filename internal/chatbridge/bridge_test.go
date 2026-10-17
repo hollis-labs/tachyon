@@ -64,3 +64,27 @@ func TestOutboxPersistsAndReplaysWithoutDuplicateSend(t *testing.T) {
 		t.Fatal("cross-principal history disclosed")
 	}
 }
+
+func TestOutboxRetainsUpstreamScopeDenial(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "chat.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	h := &Outbox{Store: db, Identity: func() (string, error) { return "principal", nil }, Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"required scope: operate"}}`))
+	})}
+	r := httptest.NewRequest("POST", ChatPrefix+"/agents/demo/send", strings.NewReader(`{"text":"hello","idempotency_key":"key"}`))
+	r.SetPathValue("launch", "demo")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatal("scope failure concealed")
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", ChatPrefix+"/outbox?launch_id=demo", nil))
+	if !strings.Contains(w.Body.String(), `"error":"required scope: operate"`) || !strings.Contains(w.Body.String(), `"status":"failed"`) {
+		t.Fatal("saved history lost the scope failure", w.Body.String())
+	}
+}

@@ -1,4 +1,4 @@
-import { hostFetch } from "@tachyon/host-sdk"
+import { operatorFetch } from "../operator/elevation"
 
 // Tangent HITL v1 browser projection. Decisions retain the producer's contract;
 // the queue remains authoritative for revision checks and immutable outcomes.
@@ -80,7 +80,7 @@ export const isExpired = (item: ApprovalItem) =>
   !!item.request_snapshot.expires_at &&
   Date.parse(item.request_snapshot.expires_at) <= Date.now()
 
-export function createApprovalClient(fetcher: typeof fetch = hostFetch) {
+export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
   let connecting: Promise<unknown> | undefined
   const presenting = new Map<string, Promise<ApprovalItem>>()
   async function request<T>(

@@ -102,6 +102,9 @@ func (o *Outbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		SessionID string `json:"session_id"`
 		Message   string `json:"message"`
 		Code      string `json:"code"`
+		Error     struct {
+			Message string `json:"message"`
+		} `json:"error"`
 	}
 	_ = json.Unmarshal(capture.body.Bytes(), &result)
 	if capture.status >= 200 && capture.status < 300 {
@@ -109,6 +112,9 @@ func (o *Outbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		session = result.SessionID
 	} else {
 		detail = result.Message
+		if detail == "" {
+			detail = result.Error.Message
+		}
 		if detail == "" {
 			detail = "Send was not confirmed. Check the connection and retry with the same message key."
 		}

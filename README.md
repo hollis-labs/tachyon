@@ -234,8 +234,24 @@ ambient credentials, and partitions SQLite response snapshots by participant.
 The `approvals` cache policy uses the same configurable freshness/revalidation
 knobs as other APIs. Detail review and decision submission require fresh reads;
 a changed, expired or already-ended request must be reviewed again. The UI
-shows submitting state until the queue confirms an outcome and never retries
-a decision automatically. Evidence previews bypass the response cache.
+shows submitting state until the queue confirms an outcome. Evidence previews
+bypass the response cache.
+
+**Operator access** uses Tangent's `/api/session` and `/api/session/elevate`
+authority. A shared modal asks for the existing operator key when a chat send,
+reply or approval decision needs elevation; it can also be opened from Approvals.
+Successful elevation rotates the browser's HttpOnly participant cookie and lasts
+up to 12 hours, enforced by Tangent. Tachyon forwards the key only for verification
+and clears the input on submission/cancellation; it does not persist the key.
+Session status is never cached. Chat mutations check current assurance before
+writing an outgoing intent; Tangent checks approval decisions itself. The cookie
+is scoped to the Console API so both flows use the same browser session.
+
+After explicit unlock, the client retries only an unambiguous pre-action
+`assurance_insufficient` or `operator_session_required` refusal, once, with the
+same body and idempotency key/reviewed revision. Scope denials, transport failures
+and ambiguous outcomes are not retried. This temporary authorization dependency
+on Tangent does not move Tachyon's chat history or outbox back to Tangent.
 
 An approval records human intent for its requesting application. It does not
 mint credentials, grant missing Tether scopes, or automatically replay a failed

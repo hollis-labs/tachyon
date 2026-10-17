@@ -192,7 +192,7 @@ export const hostFetch: typeof fetch = async (input, init) => {
     if (method !== "GET" && method !== "HEAD" && res.ok) {
       // UI/prefs writes must not discard GitHub snapshots. Invalidate only the
       // upstream affected; the host applies the same partition on disk.
-      const scope = url.includes("/chat-turns/") ? "chat-turns" : url.includes("/chat/") ? "chat" : url.includes("/forge/") ? "forge" : url.includes("/catalog/") ? "catalog" : "torque"
+      const scope = url.includes("/approval-inbox/") ? "approvals" : url.includes("/chat-turns/") ? "chat-turns" : url.includes("/chat/") ? "chat" : url.includes("/forge/") ? "forge" : url.includes("/catalog/") ? "catalog" : "torque"
       forgetScope(scope)
       if (scope === "torque") { forgetScope("planner"); forgetScope("activity") }
     }

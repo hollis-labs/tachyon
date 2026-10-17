@@ -125,6 +125,10 @@ func (c *Cache) invalidate(ctx context.Context, scope string) error {
 // Wrap leaves response JSON contracts intact; freshness travels in headers.
 func (c *Cache) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == approvals.Prefix+"/status" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		scope := Scope(r.URL.Path)
 		if r.Method != http.MethodGet && scope == "" && strings.HasPrefix(r.URL.Path, "/api/plugins/") {
 			scope = "torque"

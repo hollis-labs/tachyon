@@ -1,14 +1,35 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ShieldCheck, RefreshCw } from "lucide-react"
+import { ShieldCheck, RefreshCw, KeyRound } from "lucide-react"
 import { useDataFreshness } from "@tachyon/host-sdk"
 import { useApprovals } from "./context"
 import { approvalButton } from "./dialog"
+import { operatorElevation } from "../operator/elevation"
 
 export function ApprovalsPage() {
   const queue = useApprovals()
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
+  const [operatorMessage, setOperatorMessage] = useState("")
+  const [unlocking, setUnlocking] = useState(false)
+  async function unlock() {
+    setUnlocking(true)
+    setOperatorMessage("")
+    try {
+      if (await operatorElevation.ensure())
+        setOperatorMessage(
+          "Operator access verified. The session lasts up to 12 hours from unlock.",
+        )
+    } catch (error) {
+      setOperatorMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not verify operator access.",
+      )
+    } finally {
+      setUnlocking(false)
+    }
+  }
   const freshness = useDataFreshness()
     .filter((s) => s.scope === "approvals" && s.url.endsWith("/inbox"))
     .at(-1)
@@ -36,6 +57,13 @@ export function ApprovalsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            className={approvalButton}
+            disabled={unlocking}
+            onClick={() => void unlock()}
+          >
+            <KeyRound className="h-3 w-3" /> Operator access
+          </button>
           <span className="font-mono text-[10px] text-zinc-500">
             {queue.error ? "Unavailable" : (freshness?.state ?? "Connecting")}
             {freshness?.updatedAt
@@ -51,6 +79,11 @@ export function ApprovalsPage() {
           </button>
         </div>
       </header>
+      {operatorMessage && (
+        <p role="status" className="text-xs text-zinc-400">
+          {operatorMessage}
+        </p>
+      )}
       {queue.error && (
         <p
           role="alert"

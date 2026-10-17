@@ -61,7 +61,7 @@ func TestParticipantIsolationAndDecisionTransport(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	cs := w.Result().Cookies()
-	if len(cs) != 1 || cs[0].Name != CookieName || !cs[0].HttpOnly || !cs[0].Secure || cs[0].Path != Prefix {
+	if len(cs) != 2 || cs[0].Name != CookieName || !cs[0].HttpOnly || !cs[0].Secure || cs[0].Path != CookiePath {
 		t.Fatal("unsafe participant cookie", cs)
 	}
 	cookie := CookieName + "=browser-a; unrelated=private"

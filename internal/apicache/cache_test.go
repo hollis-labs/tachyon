@@ -13,10 +13,33 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
 const board = "/api/plugins/planner/v1/planner/board"
+
+func TestOperatorStatusNeverUsesSavedAuthority(t *testing.T) {
+	db := openTest(t, filepath.Join(t.TempDir(), "app.db"))
+	defer db.Close()
+	c := New(db, Defaults(), func(string) (string, error) { return "host", nil })
+	body := `{"elevated":true}`
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, body) }))
+	read := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", approvals.Prefix+"/status", nil)
+		r.AddCookie(&http.Cookie{Name: approvals.CookieName, Value: "same-browser"})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := read(); w.Body.String() != body || w.Header().Get("X-Tachyon-Cache") != "" {
+		t.Fatal("status entered response cache")
+	}
+	body = `{"elevated":false}`
+	if w := read(); w.Body.String() != body {
+		t.Fatal("expired authority survived in a snapshot")
+	}
+}
 
 func openTest(t *testing.T, path string) *localstore.Store {
 	t.Helper()

@@ -1,4 +1,5 @@
-import { dataRefreshRegistry, hostFetch } from '@tachyon/host-sdk'
+import { operatorFetch } from '../operator/elevation'
+import { dataRefreshRegistry } from '@tachyon/host-sdk'
 import { useEffect, useState } from 'react'
 import type { Recipient } from '../messaging'
 
@@ -12,7 +13,7 @@ export interface ChatAgent {
 }
 export const CHAT_BASE = '/api/plugins/console/v1/chat'
 export async function chatJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await hostFetch(CHAT_BASE + path, {
+  const res = await operatorFetch(CHAT_BASE + path, {
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
   })
