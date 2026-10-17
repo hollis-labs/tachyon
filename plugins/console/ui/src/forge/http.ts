@@ -1,3 +1,4 @@
+import { hostFetch } from "@tachyon/host-sdk"
 // Typed HTTP implementation of ForgeClient against the PROPOSED Torque forge
 // REST surface specified in BACKEND_REQUIREMENTS.md. The browser talks only to
 // the Torque API; Torque fronts the Cerberus forge plugin. No tokens here.
@@ -121,7 +122,7 @@ export class HttpForgeClient implements ForgeClient {
   constructor(opts: HttpForgeClientOptions = {}) {
     this.opts = opts
     this.base = (opts.baseUrl ?? DEFAULT_FORGE_BASE).replace(/\/+$/, '')
-    this.doFetch = opts.fetch ?? ((i, init) => globalThis.fetch(i, init))
+    this.doFetch = opts.fetch ?? hostFetch
   }
 
   private async request(method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown, write = false): Promise<unknown> {

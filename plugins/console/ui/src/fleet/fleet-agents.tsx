@@ -113,7 +113,7 @@ export function FleetAgentsView({ agents, history, error, now, live, focus, onFo
           <span className="inline-flex items-center gap-1.5"><Zap className="h-3 w-3 text-emerald-400" />{c.busy}/{agents.length} working</span>
           <span>{c.idle} idle</span>
           <span>{c.unknown} unknown</span>
-          <span className={live ? 'text-emerald-300' : 'text-zinc-600'}>{live ? '● live' : '○ resyncing'}</span>
+          <span className={live ? 'text-emerald-300' : 'text-zinc-600'}>{live ? '● stream connected' : '○ resyncing'}</span>
           {error && <span className="text-red-300">stale: {error}</span>}
         </span>
       </div>

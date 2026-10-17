@@ -1,3 +1,4 @@
+import { hostFetch } from "@tachyon/host-sdk"
 import { forumResourcePath } from './forums'
 import type { ForumActivity, ForumCategory, ForumResource, ForumMutation, ForumParticipant, ForumAttachment, Forum, ForumTopic, ForumPost, ForumPage, ForumOptions } from './forums'
 import type {
@@ -297,6 +298,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
 export type TorqueStream = 'events' | 'messages' | 'activity'
 
 export class TorqueApiClient {
+  private refreshUntil = 0
   private baseUrl: string
   private streams: Partial<Record<TorqueStream, string>>
 
@@ -330,12 +332,12 @@ export class TorqueApiClient {
       const qs = search.toString()
       if (qs) url += `?${qs}`
     }
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal })
+    const res = await hostFetch(url, { headers: { 'Accept': 'application/json', ...(Date.now() < this.refreshUntil ? { 'Cache-Control': 'no-cache' } : {}) }, signal })
     return parseResponse<T>(res)
   }
 
   private async post<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(this.url(path), {
+    const res = await hostFetch(this.url(path), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -344,7 +346,7 @@ export class TorqueApiClient {
   }
 
   private async patch<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(this.url(path), {
+    const res = await hostFetch(this.url(path), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(body),
@@ -353,7 +355,7 @@ export class TorqueApiClient {
   }
 
   private async put<T>(path: string, body: unknown): Promise<T> {
-    const res = await fetch(this.url(path), {
+    const res = await hostFetch(this.url(path), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(body),
@@ -362,7 +364,7 @@ export class TorqueApiClient {
   }
 
   private async delete<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(this.url(path), {
+    const res = await hostFetch(this.url(path), {
       method: 'DELETE',
       headers: { 'Accept': 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -647,7 +649,7 @@ export class TorqueApiClient {
 
   /** Decisions identify the browser, so the ledger records the owner as the decider. */
   private async judgeSend<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(this.url(path), {
+    const res = await hostFetch(this.url(path), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Client': 'browser' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -767,7 +769,7 @@ export class TorqueApiClient {
 
   /** Planner writes identify the browser, so the server records the owner as the author. */
   private async plannerSend<T>(method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
-    const res = await fetch(this.url(`/planner${path}`), {
+    const res = await hostFetch(this.url(`/planner${path}`), {
       method,
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Client': 'browser' },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -886,6 +888,7 @@ export class TorqueApiClient {
     for (const kind of ['process.started', 'process.exited', 'session.idle', 'session.processing', 'session.heartbeat', 'gap']) {
       es.addEventListener(kind, (e) => {
         try {
+          this.refreshUntil = Date.now() + 2000
           onEvent(kind, JSON.parse((e as MessageEvent).data as string))
         } catch {
           // malformed event: ignore
@@ -1417,6 +1420,7 @@ export class TorqueApiClient {
     onStatus?: (status: 'connecting' | 'live' | 'error') => void,
   ): () => void {
     const url = this.streamUrl('events', '/events')
+    const invalidate = () => { this.refreshUntil = Date.now() + 2000 }
     let es: EventSource | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let stopped = false
@@ -1432,6 +1436,7 @@ export class TorqueApiClient {
       es.onmessage = (e: MessageEvent) => {
         try {
           const parsed = JSON.parse(e.data as string) as SSEEvent
+          if (parsed.type !== "connected") invalidate()
           onEvent(parsed)
         } catch {
           // malformed event — ignore

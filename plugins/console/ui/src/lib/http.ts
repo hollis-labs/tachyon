@@ -1,3 +1,4 @@
+import { hostFetch } from "@tachyon/host-sdk"
 // Shared HTTP plumbing for the console's real clients (state store, step-up,
 // approvals, HITL, workflow runs, ref briefs...). Every call goes through the
 // console plugin backend, which proxies /api/plugins/console/v1/* to Torque
@@ -40,7 +41,7 @@ export interface ConsoleRequestInit extends Omit<RequestInit, 'body'> {
 /** JSON request against the console plugin API. `path` is relative to CONSOLE_API_BASE (leading slash). */
 export async function consoleJson<T>(path: string, init: ConsoleRequestInit = {}): Promise<T> {
   const { body, fetch: f, headers, ...rest } = init
-  const doFetch: FetchLike = f ?? ((i, o) => fetch(i, o))
+  const doFetch: FetchLike = f ?? hostFetch
   let res: Response
   try {
     res = await doFetch(`${CONSOLE_API_BASE}${path}`, {

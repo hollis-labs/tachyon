@@ -13,6 +13,8 @@ preset (`gui_host=chimera`, then re-pointed at app-host) and the design-kit
 ```
 cmd/tachyon/            host entrypoint (app-host: SPA, /api, /healthz)
 internal/catalog/       reviewed first-party plugin list: env + SSE stream relays
+internal/localstore/    app-owned SQLite database, split pools + serialwrite queue
+internal/apicache/      policy-driven durable API snapshots
 internal/server/        plugin inventory, GET /api/plugins, SSE relay
 internal/webui/         embedded UI build (dist/)
 pkg/pluginkit/          plugin-side helpers (buffered upstream proxy)
@@ -47,6 +49,49 @@ on loopback port 8093 behind `https://tachyon.nanite.cloud/builder`. Host-specif
 upstream settings belong in `~/.config/tachyon/env`; `TETHER_TOKEN_FILE` must
 point to a Tether credential. Fragments Engine's API token is separate and does
 not authenticate Tether catalog reads.
+
+## Local database and API cache
+
+Tachyon owns `$TACHYON_DATA_DIR/tachyon.db` (normally
+`~/.local/share/tachyon/tachyon.db`). Portfolio `core/util/sqlite` supplies the
+WAL reader/writer pools and bounded in-memory `serialwrite` queue; a snapshot
+is acknowledged only after its disk transaction commits, with synchronous FULL.
+The host drains accepted writes during shutdown. The database also holds cache
+policy in `app_settings`, providing the foundation for the planned app-settings
+and user-preferences modules. API credentials are not stored in the cache.
+
+Safe JSON reads from Tether catalog, Torque activity/Planner/resources and
+GitHub Forge use per-resource policies. Streams, mutations, message-inbox drains
+and unknown routes bypass caching. Keys include the upstream and a hash of its
+credential identity, plus request path and query. Successful mutations invalidate
+snapshots; SSE-driven refetches and the Refresh button bypass freshness.
+
+The shared page bar shows Live, Cached, Stale data or Connection error, with
+the oldest successful update among that page's fetched snapshots. Agents also
+shows its separate stream connection state. Live means recently fetched from
+the source, not a promise that every source supports push updates. A stale
+fallback retains the original timestamp and displays the remote error. An
+observed 401/403 never falls back to saved data; configuration, unreachable
+remote, timeout and access-denied states remain distinct. Known revoked access
+is removed from the cache. Upstream access is rechecked when freshness expires
+or on explicit refresh, not on each cached hit.
+
+Tune policies by copying `config/cache-policy.example.json` to
+`~/.config/tachyon/cache-policy.json` and setting `TACHYON_CACHE_POLICY_FILE` to
+that absolute path in the service environment. Apply the host configuration
+through Cerberus. Partial overrides preserve the other effective settings;
+invalid/unknown knobs fail startup. Effective settings are saved in SQLite and
+readable at `GET /api/cache/policy`. The general settings editor is tracked in
+CW-20261017-0014; these knobs are usable through the config file now.
+
+`fresh_seconds` avoids repeat upstream calls within its window;
+`stale_if_error_seconds` extends that window only for transient remote failures.
+`timeout_seconds` bounds upstream waiting. `enabled: false` disables caching for
+a resource. `max_entries`, `max_bytes` (payload bytes) and `retention_seconds`
+bound retained snapshots, evicting oldest entries on writes. Expired snapshots
+are never served beyond the policy window. SQLite may retain reusable file
+pages after eviction; the payload limit is not a hard filesystem quota. Cache
+misses sharing a key coalesce, and the queue provides write backpressure.
 
 ## Plugins
 
@@ -83,6 +128,7 @@ Environment variables:
 | `TETHER_ADDR` | Tether catalog endpoint: HTTPS URL, loopback HTTP/TCP, or `unix:/path`; unset shows a configuration error in Builder |
 | `TETHER_TOKEN_FILE` | Optional private `0600` bearer-token file, read by the Console backend; never sent to the browser |
 | `TACHYON_DATA_DIR` | `$XDG_DATA_HOME/tachyon` |
+| `TACHYON_CACHE_POLICY_FILE` | Optional JSON override file; otherwise use persisted policy/defaults |
 | `TACHYON_CACHE_DIR` | `$XDG_CACHE_HOME/tachyon` |
 
 ## Porting conventions (Torque GUI → plugin UIs)

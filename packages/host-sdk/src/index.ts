@@ -124,3 +124,6 @@ export function usePluginAvailable(id: string): boolean {
   const plugins = useHostPlugins()
   return plugins?.some((p) => p.id === id && p.status === "running") ?? false
 }
+
+export { hostFetch, responseFreshness, useDataFreshness } from "./freshness"
+export type { DataFreshness } from "./freshness"

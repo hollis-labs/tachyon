@@ -253,7 +253,7 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
         <span className={live ? 'text-emerald-300' : ''}>{client.writeMode === 'demonstration' ? 'Live sessions not connected' : `${live} running`}</span>
         <span>{agents.filter((a) => !a.identity.enabled && !a.identity.retired).length} disabled</span>
         {client.writeMode !== 'demonstration' && <span>{agents.filter((a) => a.identity.retired).length} retired</span>}
-        <span className="ml-auto text-zinc-400">{client.writeMode === 'demonstration' ? 'Live Tether catalog · demonstration saves' : 'Agent catalog'}</span>
+        <span className="ml-auto text-zinc-400">{client.writeMode === 'demonstration' ? 'Tether catalog · demonstration saves' : 'Agent catalog'}</span>
       </div>
       {client.writeMode === 'demonstration' && <p className="border-b border-amber-400/30 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">Save actions are no-op demonstrations pending write access. Nothing is written to Tether or Torque.</p>}
       <div role="tablist" aria-label="Agent manager" className="flex items-center gap-1 border-b border-zinc-800/80 px-4 py-1.5">

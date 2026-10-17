@@ -26,9 +26,10 @@ func main() {
 	defer stop()
 
 	srv := server.New(server.Config{
-		PluginBinDir: env("TACHYON_PLUGIN_DIR", "bin/plugins"),
-		DataDir:      env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
-		CacheDir:     env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
+		CachePolicyFile: os.Getenv("TACHYON_CACHE_POLICY_FILE"),
+		PluginBinDir:    env("TACHYON_PLUGIN_DIR", "bin/plugins"),
+		DataDir:         env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
+		CacheDir:        env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		Upstreams: catalog.Upstreams{
 			TetherAddr:      os.Getenv("TETHER_ADDR"),
 			TetherTokenFile: os.Getenv("TETHER_TOKEN_FILE"),

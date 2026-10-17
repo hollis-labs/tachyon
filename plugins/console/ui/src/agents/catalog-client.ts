@@ -1,3 +1,4 @@
+import { hostFetch } from "@tachyon/host-sdk"
 import type { AgentsClient } from './client'
 import { filterAgents } from './filter'
 import { computeLifecyclePlan } from './lifecycle'
@@ -44,7 +45,7 @@ export function catalogAgent(a: CatalogAgent, launches: CatalogLaunch[]): AgentR
 export const DEMO_SAVE_MESSAGE = 'Demonstration save succeeded (no-op). Nothing was written to Tether or Torque. Write access is pending.'
 
 /** Live reads, local review, and an explicitly non-persistent save demonstration. */
-export function createCatalogAgentsClient(fetchImpl: typeof fetch = (...args) => fetch(...args)): AgentsClient {
+export function createCatalogAgentsClient(fetchImpl: typeof fetch = hostFetch): AgentsClient {
   const plans = new Map<string, AgentPlan>()
   const unavailable = async (): Promise<never> => { throw new Error('This read is not connected yet. No catalog changes have been made.') }
   const writesUnavailable = async (): Promise<never> => { throw new Error('Write access is pending. Use Save demonstration; no approval or write request is sent.') }

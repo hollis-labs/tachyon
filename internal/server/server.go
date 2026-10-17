@@ -19,7 +19,11 @@ import (
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/capability"
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
+	"github.com/hollis-labs/libs/security/secrets/tokenfile"
+	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/localstore"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 // Version is stamped at build time.
@@ -28,10 +32,11 @@ var Version = "0.0.0-dev"
 // Config is the host's resolved configuration.
 type Config struct {
 	// PluginBinDir holds built plugin executables named by plugin ID.
-	PluginBinDir string
-	DataDir      string
-	CacheDir     string
-	Upstreams    catalog.Upstreams
+	PluginBinDir    string
+	DataDir         string
+	CacheDir        string
+	CachePolicyFile string
+	Upstreams       catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
@@ -47,6 +52,8 @@ type Server struct {
 	inventory *plugins.Inventory
 	states    []pluginState
 	instance  string
+	store     *localstore.Store
+	cache     *apicache.Cache
 }
 
 // New resolves the catalog against built binaries. Missing binaries are
@@ -104,14 +111,66 @@ func (s *Server) spec(entry catalog.Entry, bin string) pluginhost.Spec {
 
 // Start admits every built plugin. Admission is all-or-nothing.
 func (s *Server) Start(ctx context.Context) error {
+	store, err := localstore.Open(ctx, filepath.Join(s.cfg.DataDir, "tachyon.db"))
+	if err != nil {
+		return fmt.Errorf("local database: %w", err)
+	}
+	settings, err := apicache.LoadSettings(ctx, store, s.cfg.CachePolicyFile)
+	if err != nil {
+		store.Close()
+		return fmt.Errorf("cache policy: %w", err)
+	}
+	s.store = store
+	s.cache = apicache.New(store, settings, s.cacheIdentity)
+
 	if err := s.inventory.Start(ctx); err != nil {
+		store.Close()
 		return fmt.Errorf("plugin admission: %w", err)
 	}
 	return nil
 }
 
 // Stop retires plugin processes after HTTP has drained.
-func (s *Server) Stop(ctx context.Context) error { return s.inventory.Stop(ctx) }
+func (s *Server) Stop(ctx context.Context) error {
+	err := s.inventory.Stop(ctx)
+	if s.store != nil {
+		err = errors.Join(err, s.store.Close())
+	}
+	return err
+}
+
+func (s *Server) cacheIdentity(scope string) (string, error) {
+	u := s.cfg.Upstreams
+	addr, token := u.TorqueURL, u.TorqueToken
+	switch scope {
+	case "catalog":
+		addr, token = u.TetherAddr, ""
+		if addr == "" {
+			return "", errors.New("Tether address missing")
+		}
+		if err := upstreamauth.Guard(addr, u.TetherTokenFile); err != nil {
+			return "", err
+		}
+		if u.TetherTokenFile != "" {
+			var err error
+			token, err = tokenfile.NewWatcher(u.TetherTokenFile, tokenfile.Options{}, nil).Token()
+			if err != nil {
+				return "", err
+			}
+		}
+	case "forge":
+		return apicache.Digest("github\n" + u.GitHubOrg + "\n" + u.GitHubToken), nil
+	default:
+		parsed, err := url.Parse(addr)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return "", errors.New("Torque address invalid")
+		}
+		if err := upstreamauth.Guard(addr, token); err != nil {
+			return "", err
+		}
+	}
+	return apicache.Digest(addr + "\n" + token), nil
+}
 
 // Routes returns the handler mounted by app-host at /api/.
 func (s *Server) Routes() http.Handler {
@@ -121,7 +180,12 @@ func (s *Server) Routes() http.Handler {
 	})
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
-	mux.Handle("/api/plugins/", s.inventory.APIRoutes())
+	if s.cache != nil {
+		mux.HandleFunc("GET /api/cache/policy", s.cache.PolicyHandler)
+		mux.Handle("/api/plugins/", s.cache.Wrap(s.inventory.APIRoutes()))
+	} else {
+		mux.Handle("/api/plugins/", s.inventory.APIRoutes())
+	}
 	return mux
 }
 
