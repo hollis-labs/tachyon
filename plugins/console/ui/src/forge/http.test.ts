@@ -114,3 +114,13 @@ describe('factory', () => {
     expect(createForgeClient()).toBeInstanceOf(HttpForgeClient)
   })
 })
+
+it('merges the confirmed head using the selected method and confirmation token', async () => {
+  const { client, fetch } = mk({ data: { merged: true, sha: 'merge-sha', message: 'Merged' } }, {}, { confirmToken: () => 'confirmed' })
+  expect(await client.mergePr(ref, { method: 'squash', headSha: 'head-sha' })).toMatchObject({ merged: true })
+  expect(call(fetch).url).toMatch(/\/pulls\/271\/merge$/)
+  expect(call(fetch).init).toMatchObject({ method: 'PUT', headers: { 'X-Identity-Confirm': 'confirmed' } })
+  expect(JSON.parse(call(fetch).init.body as string)).toEqual({ method: 'squash', headSha: 'head-sha' })
+  const rejected = mk({ data: { merged: false, message: 'Branch rules prevent merging' } })
+  await expect(rejected.client.mergePr(ref, { method: 'merge', headSha: 'head' })).rejects.toThrow('Branch rules prevent merging')
+})

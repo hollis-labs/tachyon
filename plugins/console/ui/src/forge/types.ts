@@ -285,3 +285,7 @@ export const FORGE_OP_EFFECTS = {
   reviewPr: 'write',
   assign: 'write',
 } as const satisfies Record<string, ForgeEffect>
+
+export type MergeMethod = 'merge' | 'squash' | 'rebase'
+export interface MergeInput { method: MergeMethod; headSha: string }
+export interface MergeResult { merged: true; sha: string; message: string }

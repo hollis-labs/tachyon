@@ -1,9 +1,9 @@
 import { dataRefreshRegistry, refreshPageData } from "@tachyon/host-sdk"
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ActionBus } from '../../seams/action-bus'
 import type { ForgeClient } from '../client'
-import { prKey, type AddCommentInput, type Commit, type FileDiff, type ForgeComment, type ForgeUser, type PrRef, type PullRequest, type ReviewInput } from '../types'
-import { commentAction, reviewAction } from './actions'
+import { prKey, type AddCommentInput, type Commit, type FileDiff, type ForgeComment, type ForgeUser, type PrRef, type PullRequest, type ReviewInput, type MergeInput } from '../types'
+import { commentAction, reviewAction, mergeAction } from './actions'
 
 export interface PendingComment extends Omit<AddCommentInput, 'inReplyTo'> {
   id: string
@@ -41,6 +41,7 @@ export interface Workspace {
   queueComment(c: Omit<PendingComment, 'id'>): void
   unqueueComment(id: string): void
   postComment(input: AddCommentInput): Promise<WriteResult>
+  mergePr(input: MergeInput): Promise<WriteResult>
   submitReview(input: Omit<ReviewInput, 'comments'>): Promise<WriteResult>
 }
 
@@ -48,6 +49,7 @@ let tmp = 0
 
 /** Loads a PR (header, diff, comments) and owns optimistic writes through the ActionBus. */
 export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, actor: ForgeUser): Workspace {
+  const readEpoch = useRef(0)
   const key = prKey(ref)
   const [state, setState] = useState<{ key: string; load: WorkspaceLoad }>({ key, load: { status: 'loading' } })
   const [version, setVersion] = useState(0)
@@ -59,10 +61,11 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
 
   useEffect(() => {
     let live = true
+    const epoch = readEpoch.current
     Promise.all([client.getPr(stable), client.getDiff(stable), client.listCommits(stable), client.listComments(stable)]).then(
-      ([pr, files, commits, comments]) => live && setState({ key, load: { status: 'ready', data: { pr, files, commits, comments } } }),
+      ([pr, files, commits, comments]) => live && epoch === readEpoch.current && setState({ key, load: { status: 'ready', data: { pr, files, commits, comments } } }),
       (e: unknown) =>
-        live && setState({ key, load: { status: 'error', message: e instanceof Error ? e.message : String(e), code: (e as { code?: string })?.code } }),
+        live && epoch === readEpoch.current && setState({ key, load: { status: 'error', message: e instanceof Error ? e.message : String(e), code: (e as { code?: string })?.code } }),
     )
     return () => {
       live = false
@@ -119,7 +122,20 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
     [bus, pending, stable],
   )
 
+  const mergePr = useCallback(async (input: MergeInput): Promise<WriteResult> => {
+    const res = await bus.dispatch(mergeAction(stable, input))
+    if (res.status !== 'ok') return { ok: false, message: res.message ?? 'Merge was not completed' }
+    // Settle immediately after GitHub confirms; older reads cannot undo the merged state.
+    readEpoch.current++
+    setState(s => s.key === key && s.load.status === 'ready'
+      ? { ...s, load: { status: 'ready', data: { ...s.load.data, pr: { ...s.load.data.pr, state: 'merged' } } } }
+      : s)
+    setPending([])
+    return { ok: true }
+  }, [bus, stable, key])
+
   return {
+    mergePr,
     load,
     reload: () => { void refreshPageData().then(() => setVersion((v) => v + 1)) },
     posting,

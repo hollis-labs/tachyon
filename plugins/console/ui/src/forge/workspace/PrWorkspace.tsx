@@ -18,6 +18,7 @@ import { Author, Badge, CommentItem, Composer, LABEL, ThreadView } from './Comme
 import { buildThreadIndex } from './diff-utils'
 import { FileDiffView, type DiffMode } from './DiffView'
 import { FileTree } from './FileTree'
+import { MergePanel } from './MergePanel'
 import { ReviewPanel } from './ReviewPanel'
 import { diffLineCount, fileAnchorId, LARGE_FILE_LINES } from './diff-utils'
 import { useWorkspace } from './useWorkspace'
@@ -98,6 +99,10 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
   const [tab, setTab] = useState<Tab>('files')
   const [mode, setMode] = useState<DiffMode>(initialMode)
   const [reviewing, setReviewing] = useState(false)
+  const [mergeBusy, setMergeBusy] = useState(false)
+  const [merging, setMerging] = useState(false)
+  const [mergeSuccess, setMergeSuccess] = useState('')
+  useEffect(() => { setMerging(false); setMergeSuccess(''); setReviewing(false) }, [prRef.repo.host, prRef.repo.owner, prRef.repo.name, prRef.number])
   const [closedFiles, setClosedFiles] = useState<Set<string> | null>(null)
   const [openedLarge, setOpenedLarge] = useState<Set<string>>(new Set())
   const [active, setActive] = useState<string | undefined>(initialFile)
@@ -177,17 +182,18 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
           </h1>
           <Pill tone={stateTone(pr)}>{pr.draft && pr.state === 'open' ? 'draft' : pr.state}</Pill>
           <span className="ml-auto flex items-center gap-2">
-            <Btn onClick={ws.reload} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
+            <Btn onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
             {href && (
               <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 border border-zinc-700 px-3 font-mono text-[11px] uppercase tracking-widest text-zinc-200 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">
                 {hostLabel(prRef.repo.host)} <ExternalLink className="h-3 w-3" />
               </a>
             )}
             {!readOnly && (
-              <Btn tone="primary" onClick={() => setReviewing((r) => !r)} aria-expanded={reviewing}>
+              <Btn tone="primary" disabled={mergeBusy} onClick={() => { setMerging(false); setReviewing((r) => !r) }} aria-expanded={reviewing}>
                 Review{ws.pending.length ? ` (${ws.pending.length})` : ''}
               </Btn>
             )}
+            {!readOnly && <Btn disabled={mergeBusy} onClick={() => { setReviewing(false); setMerging(m => !m) }} aria-expanded={merging}>Merge PR</Btn>}
           </span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-zinc-400">
@@ -218,6 +224,13 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
           ))}
         </nav>
       </header>
+
+      {mergeSuccess && <p role="status" className="border-b border-zinc-800 px-4 py-3 text-[13px] text-emerald-300">{mergeSuccess}</p>}
+      {merging && !readOnly && <MergePanel pr={pr} onBusyChange={setMergeBusy} onClose={() => setMerging(false)} onSubmit={async input => {
+        const result = await ws.mergePr(input)
+        if (result.ok) setMergeSuccess(`Pull request #${pr.ref.number} merged into ${pr.baseBranch}.`)
+        return result
+      }} />}
 
       {reviewing && !readOnly && (
         <ReviewPanel pending={ws.pending} onUnqueue={ws.unqueueComment} onClose={() => setReviewing(false)} onSubmit={({ verdict, body }) => ws.submitReview({ verdict, body })} />
@@ -341,7 +354,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
             <Section title="Merge state">
               <div className="space-y-1 px-4 py-3 text-[13px] text-zinc-300">
                 <Pill tone={merge.tone}>{merge.text}</Pill>
-                <p className="text-[12px] text-zinc-500">Merging is done on the forge for now; the Console has no merge operation yet.</p>
+                {!readOnly && <p className="text-[12px] text-zinc-500">Use Merge PR above to choose a merge method and confirm. GitHub enforces repository rules.</p>}
               </div>
             </Section>
           </div>

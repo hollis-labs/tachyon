@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { createActionBus, MockIdentityConfirm } from '../../seams'
@@ -235,5 +235,66 @@ describe('PrWorkspace', () => {
     )
     expect(await screen.findByText(/alert tray/)).toBeTruthy()
     restore()
+  })
+})
+
+
+describe('PR merging', () => {
+  it('requires explicit confirmation, submits no review and settles to merged', async () => {
+    const client = createMockForgeClient()
+    const original = client.mergePr.bind(client)
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    const merge = vi.spyOn(client, 'mergePr').mockImplementation(async (ref, input) => { await gate; return original(ref, input) })
+    const review = vi.spyOn(client, 'reviewPr')
+    const { identity } = setup(client)
+    await screen.findByText(/alert tray/)
+    const { headSha: head, baseBranch } = await client.getPr(PR1)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge PR' }))
+    fireEvent.change(screen.getByLabelText('Merge method'), { target: { value: 'squash' } })
+    expect(merge).not.toHaveBeenCalled()
+    expect(screen.getByText(`Commit ${head!.slice(0, 12)}`)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
+    await waitFor(() => expect(merge).toHaveBeenCalledExactlyOnceWith(PR1, { method: 'squash', headSha: head }))
+    expect((screen.getByRole('button', { name: 'Merging…' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Merge PR' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((await client.getPr(PR1)).state).toBe('open')
+    await act(async () => release())
+    expect(await screen.findByText(`Pull request #271 merged into ${baseBranch}.`)).toBeTruthy()
+    expect(review).not.toHaveBeenCalled()
+    expect(identity.pending()).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: 'Merge PR' })).toBeNull()
+  })
+
+  it('cancels the confirmation panel without a write', async () => {
+    const client = createMockForgeClient()
+    const merge = vi.spyOn(client, 'mergePr')
+    setup(client)
+    await screen.findByText(/alert tray/)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge PR' }))
+    fireEvent.change(screen.getByLabelText('Merge method'), { target: { value: 'rebase' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(merge).not.toHaveBeenCalled()
+    expect(screen.queryByRole('region', { name: 'Merge pull request' })).toBeNull()
+    expect((await client.getPr(PR1)).state).toBe('open')
+  })
+
+  it('shows a GitHub failure and keeps the PR open', async () => {
+    const client = createMockForgeClient()
+    vi.spyOn(client, 'mergePr').mockRejectedValue(new ForgeError('conflict', 'Head commit changed'))
+    setup(client)
+    await screen.findByText(/alert tray/)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge PR' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Head commit changed'))
+    expect((await client.getPr(PR1)).state).toBe('open')
+    expect(screen.getByRole('button', { name: 'Merge PR' })).toBeTruthy()
+  })
+
+  it('prevents merging a draft with conflicts', async () => {
+    setup(createMockForgeClient(), PR2)
+    await screen.findByText('Has merge conflicts')
+    fireEvent.click(screen.getByRole('button', { name: 'Merge PR' }))
+    expect((screen.getByRole('button', { name: 'Confirm merge' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
