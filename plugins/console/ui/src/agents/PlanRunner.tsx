@@ -1,3 +1,4 @@
+import { useAgentsClient } from './context'
 import { useState } from 'react'
 import { AGENT_ACTIONS, agentPlanAction, type AgentActionKind } from './actions'
 import { useAgentEdit } from './edit-context'
@@ -23,6 +24,7 @@ export interface PlanRunnerProps {
  * IdentityConfirm before the client is called; same path as the B2 editor.
  */
 export function PlanRunner({ plan: initial, subjectLabel, onBack, onDone, onChanged }: PlanRunnerProps) {
+  const client = useAgentsClient()
   const edit = useAgentEdit()
   const [plan, setPlan] = useState(initial)
   const [outcome, setOutcome] = useState<ApplyOutcome | null>(null)
@@ -67,6 +69,17 @@ export function PlanRunner({ plan: initial, subjectLabel, onBack, onDone, onChan
         onApprove={() => run(AGENT_ACTIONS.approve)}
         onApply={() => run(AGENT_ACTIONS.apply)}
         onRollback={() => run(AGENT_ACTIONS.rollback)}
+        onDemonstrate={async () => {
+          setBusy(true)
+          setMessage(null)
+          try {
+            if (!client.saveDemonstration) throw new Error('Demonstration save is unavailable')
+            const result = await client.saveDemonstration(plan.id)
+            setPlan(result.plan)
+            setOutcome(result)
+          } catch (e) { setMessage(e instanceof Error ? e.message : 'Demonstration failed') }
+          finally { setBusy(false) }
+        }}
         onDone={onDone}
       />
     </>

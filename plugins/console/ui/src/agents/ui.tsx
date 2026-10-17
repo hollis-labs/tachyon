@@ -13,6 +13,7 @@ export function RiskBadge({ risk }: { risk: Risk }) {
 }
 
 const STATUS_TONE: Record<PlanStatus, string> = {
+  demonstrated: 'border-emerald-400/50 text-emerald-300',
   proposed: 'border-sky-400/50 text-sky-300',
   invalid: 'border-rose-400/60 text-rose-300',
   approved: 'border-emerald-400/50 text-emerald-300',

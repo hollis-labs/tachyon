@@ -105,3 +105,54 @@ func TestForgeHandlerEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected pending PR summary: %+v", got)
 	}
 }
+
+func TestForgeMerge(t *testing.T) {
+	const sha = "0123456789012345678901234567890123456789"
+	for _, tc := range []struct {
+		name, body     string
+		upstream, want int
+		merged         bool
+		calls          int
+	}{
+		{"merge", `{"method":"merge","headSha":"` + sha + `"}`, 200, 200, true, 1},
+		{"squash", `{"method":"squash","headSha":"` + sha + `"}`, 200, 200, true, 1},
+		{"rebase", `{"method":"rebase","headSha":"` + sha + `"}`, 200, 200, true, 1},
+		{"missing sha", `{"method":"merge"}`, 200, 400, true, 0},
+		{"invalid method", `{"method":"force","headSha":"` + sha + `"}`, 200, 400, true, 0},
+		{"malformed", `{`, 200, 400, true, 0},
+		{"changed head", `{"method":"merge","headSha":"` + sha + `"}`, 409, 409, false, 1},
+		{"rules blocked", `{"method":"merge","headSha":"` + sha + `"}`, 405, 409, false, 1},
+		{"permission denied", `{"method":"merge","headSha":"` + sha + `"}`, 403, 403, false, 1},
+		{"unconfirmed", `{"method":"merge","headSha":"` + sha + `"}`, 200, 409, false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != "PUT" || r.URL.Path != "/repos/owner/repo/pulls/42/merge" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+				var payload map[string]string
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+				var input map[string]string
+				_ = json.Unmarshal([]byte(tc.body), &input)
+				if payload["sha"] != sha || payload["merge_method"] != input["method"] {
+					t.Errorf("incorrect payload: %v", payload)
+				}
+				w.WriteHeader(tc.upstream)
+				_ = json.NewEncoder(w).Encode(map[string]any{"merged": tc.merged, "sha": sha, "message": "merge result"})
+			}))
+			defer upstream.Close()
+			f := NewForgeHandler("test-token", "owner")
+			f.baseURL = upstream.URL
+			f.pendingAt = time.Now()
+			res := f.Handle(context.Background(), subprocess.HTTPRequest{Method: "PUT", Path: forgePathPrefix + "/repos/github/owner/repo/pulls/42/merge", Body: []byte(tc.body)})
+			if res.Status != tc.want || calls != tc.calls {
+				t.Fatalf("status %d, calls %d; want %d, %d: %s", res.Status, calls, tc.want, tc.calls, res.Body)
+			}
+			if tc.want == 200 && !f.pendingAt.IsZero() {
+				t.Fatal("pending list not invalidated")
+			}
+		})
+	}
+}

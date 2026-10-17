@@ -1,3 +1,4 @@
+import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import { useEffect, useState } from 'react'
 import { useApi } from '@tachyon/torque-client'
 import { applyFleetEvent, parseFleetAgents, trackTransitions, type FleetAgent, type FleetHistory } from '@console/fleet/lib/fleet-agents'
@@ -67,11 +68,13 @@ export function useFleetAgents(): { agents: FleetAgent[] | null; history: FleetH
       },
     )
     void sync()
+    const off = dataRefreshRegistry('activity').subscribe(() => void sync())
     const resync = setInterval(() => void sync(), RESYNC_MS)
     const clock = setInterval(() => setNow(Date.now()), CLOCK_MS)
     return () => {
       active = false
       unsubscribe()
+      off()
       clearInterval(resync)
       clearInterval(clock)
     }

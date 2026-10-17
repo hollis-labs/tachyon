@@ -35,7 +35,7 @@ export function FleetAgentModal({ agent, score, rank, entries, now, onClose }: {
               <PixelRobot id={agent.id} size={72} state={s.avatar} />
             </span>
             <div className="min-w-0">
-              <DialogTitle className="truncate font-mono uppercase tracking-wide">{cwdName(agent.cwd) || agent.provider}</DialogTitle>
+              <DialogTitle className="truncate font-mono uppercase tracking-wide">{agent.displayName || cwdName(agent.cwd) || agent.provider}</DialogTitle>
               <DialogDescription className="truncate font-mono text-[11px] tracking-wider" title={agent.cwd}>
                 {agent.provider}{agent.model ? ` · ${agent.model}` : ''} · {agent.cwd || 'no working directory reported'}
               </DialogDescription>
@@ -44,7 +44,7 @@ export function FleetAgentModal({ agent, score, rank, entries, now, onClose }: {
               </div>
               <div className={`mt-1 inline-flex items-center gap-1.5 font-mono text-[10px] tracking-widest ${s.text}`}>
                 <span className={`h-1.5 w-1.5 ${s.dot}`} />
-                {s.label}
+                {agent.chat && agent.chat.session?.state !== 'running' ? 'ready to start' : s.label}
                 {agent.stateConfidence && <span className="text-zinc-500">· {agent.stateConfidence}</span>}
               </div>
             </div>

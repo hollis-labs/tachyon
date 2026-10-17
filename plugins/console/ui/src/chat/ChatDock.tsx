@@ -1,3 +1,4 @@
+import { ApprovalTrigger } from '../approvals/page'
 import { useEffect, useRef } from 'react'
 import type { Recipient } from '../messaging'
 import { useRestoreFocus } from '../shell/restore-focus'
@@ -24,7 +25,8 @@ export function ChatDock({ open, onClose, agent }: { open: boolean; onClose: () 
   if (!open) return null
   return (
     <aside ref={ref} tabIndex={-1} aria-label="Chat drawer" className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-800 bg-zinc-950 shadow-xl focus-visible:outline-none">
-      <div className="flex items-center justify-end border-b border-zinc-800 px-3 py-1">
+      <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-1">
+        <ApprovalTrigger onNavigate={onClose} />
         <button type="button" onClick={onClose} aria-label="Close chat" className="font-mono text-[11px] uppercase tracking-widest text-zinc-400 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">Close</button>
       </div>
       <ChatPanel agent={agent} className="flex-1" />

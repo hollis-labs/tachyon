@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { dataRefreshRegistry } from "@tachyon/host-sdk"
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Plus, X } from 'lucide-react'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
@@ -29,6 +30,8 @@ const VIEW_ACCENTS = { board: 'info', activity: 'success', priorities: 'warning'
 export default function PlannerPage() {
   const rowFocus = usePlannerRowFocus()
   const api = useApi()
+  const reordering = useRef(false)
+  const itemReadVersion = useRef(0)
   const navigate = useNavigate()
   const params = useParams<{ db?: string; id?: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -76,10 +79,15 @@ export default function PlannerPage() {
   }, [api])
 
   const loadItems = useCallback(async () => {
+    if (reordering.current) return
+    const version = ++itemReadVersion.current
     try {
-      setItems(await api.plannerList(db))
+      const nextItems = await api.plannerList(db)
+      if (version !== itemReadVersion.current || reordering.current) return
+      setItems(nextItems)
       setError(null)
     } catch (err) {
+      if (version !== itemReadVersion.current || reordering.current) return
       if (err instanceof ApiError && err.code === 'feature_disabled') setEnabled(false)
       else setError(err instanceof Error ? err.message : 'Failed to load')
     }
@@ -132,6 +140,13 @@ export default function PlannerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastEvent])
 
+  useEffect(() => dataRefreshRegistry('planner').subscribe(() => {
+    void loadCounts()
+    if (isBoard) void loadBoard()
+    else if (!isDemo) void loadItems()
+    setRefreshKey(k => k + 1)
+  }), [isBoard, isDemo, loadBoard, loadCounts, loadItems])
+
   // Cross-database search, after a short pause in typing.
   useEffect(() => {
     const q = search.trim()
@@ -162,14 +177,20 @@ export default function PlannerPage() {
   const go = (nextDb: PlannerDb, id?: string) => navigate(id ? `/planner/${nextDb}/${encodeURIComponent(id)}` : `/planner/${nextDb}`)
 
   async function onDragEnd(e: DragEndEvent) {
-    if (!items || !e.over || e.active.id === e.over.id) return
+    if (reordering.current || !items || !e.over || e.active.id === e.over.id) return
+    const previous = items
+    reordering.current = true
+    itemReadVersion.current++
     const ids = moveId(items.map((i) => i.id), String(e.active.id), String(e.over.id))
     const byId = new Map(items.map((i) => [i.id, i]))
     setItems(ids.map((id) => byId.get(id)!)) // optimistic
     try {
       await api.plannerReorder(db, ids)
     } catch (err) {
+      setItems(previous)
       notifyError(err, 'Failed to reorder')
+    } finally {
+      reordering.current = false
       void loadItems()
     }
   }

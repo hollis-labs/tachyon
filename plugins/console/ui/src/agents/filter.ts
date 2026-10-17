@@ -7,10 +7,10 @@ export function filterAgents(agents: AgentRecord[], q: AgentListQuery = {}): Age
   const needle = q.search?.trim().toLowerCase()
   return agents
     .filter((a) => {
-      if (q.provider && a.runtime.provider !== q.provider) return false
+      if (q.provider && a.runtime.provider !== q.provider && !a.launches?.some((l) => l.provider === q.provider)) return false
       if (q.role && !a.identity.roles.includes(q.role)) return false
       if (!needle) return true
-      const hay = [a.identity.id, a.identity.name, a.identity.summary ?? '', a.runtime.provider, a.runtime.project ?? '', ...a.identity.roles, ...a.skills].join(' ').toLowerCase()
+      const hay = [a.identity.id, a.identity.name, a.identity.summary ?? '', a.runtime.provider, a.runtime.project ?? '', ...(a.launches ?? []).flatMap((l) => [l.id, l.provider ?? '', l.project ?? '']), ...a.identity.roles, ...a.skills].join(' ').toLowerCase()
       return hay.includes(needle)
     })
     .sort((a, b) => {

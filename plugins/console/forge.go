@@ -108,6 +108,8 @@ func (f *ForgeHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) s
 					return f.handleAddComment(ctx, owner, name, num, req)
 				case parts[6] == "reviews" && req.Method == http.MethodPost:
 					return f.handleReviewPr(ctx, owner, name, num, req)
+				case parts[6] == "merge" && req.Method == http.MethodPut:
+					return f.handleMergePr(ctx, owner, name, num, req)
 				case parts[6] == "assignees" && req.Method == http.MethodPut:
 					return f.handleAssignPr(ctx, owner, name, num, req)
 				}
@@ -322,17 +324,17 @@ type ghPull struct {
 		Ref string `json:"ref"`
 		SHA string `json:"sha"`
 	} `json:"head"`
-	Mergeable       *bool   `json:"mergeable"`
-	MergeableState  string  `json:"mergeable_state"`
-	Additions       int     `json:"additions"`
-	Deletions       int     `json:"deletions"`
-	ChangedFiles    int     `json:"changed_files"`
-	Comments        int     `json:"comments"`
-	ReviewComments  int     `json:"review_comments"`
-	CreatedAt       string  `json:"created_at"`
-	UpdatedAt       string  `json:"updated_at"`
-	MergedAt        *string `json:"merged_at"`
-	HTMLURL         string  `json:"html_url"`
+	Mergeable      *bool   `json:"mergeable"`
+	MergeableState string  `json:"mergeable_state"`
+	Additions      int     `json:"additions"`
+	Deletions      int     `json:"deletions"`
+	ChangedFiles   int     `json:"changed_files"`
+	Comments       int     `json:"comments"`
+	ReviewComments int     `json:"review_comments"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
+	MergedAt       *string `json:"merged_at"`
+	HTMLURL        string  `json:"html_url"`
 }
 
 type ghCheckRunsResp struct {
@@ -366,8 +368,8 @@ type ghFile struct {
 }
 
 type ghCommit struct {
-	SHA     string `json:"sha"`
-	HTMLURL string `json:"html_url"`
+	SHA     string  `json:"sha"`
+	HTMLURL string  `json:"html_url"`
 	Author  *ghUser `json:"author"`
 	Commit  struct {
 		Message string `json:"message"`
@@ -875,6 +877,40 @@ func (f *ForgeHandler) handleReviewPr(ctx context.Context, owner, name string, n
 	return forgeOK(http.StatusCreated, mapped[0])
 }
 
+// Merge the exact head shown in the confirmation; GitHub enforces repository rules.
+func (f *ForgeHandler) handleMergePr(ctx context.Context, owner, name string, number int, req subprocess.HTTPRequest) subprocess.HTTPResponse {
+	var in struct {
+		Method  string `json:"method"`
+		HeadSHA string `json:"headSha"`
+	}
+	if err := json.Unmarshal(req.Body, &in); err != nil {
+		return forgeErr(http.StatusBadRequest, "invalid_args", "invalid merge payload")
+	}
+	if in.Method != "merge" && in.Method != "squash" && in.Method != "rebase" {
+		return forgeErr(http.StatusBadRequest, "invalid_args", "choose merge, squash or rebase")
+	}
+	if !regexp.MustCompile(`^[0-9a-fA-F]{40}$`).MatchString(in.HeadSHA) {
+		return forgeErr(http.StatusBadRequest, "invalid_args", "a full head commit SHA is required; refresh the pull request")
+	}
+	var result struct {
+		Merged  bool   `json:"merged"`
+		SHA     string `json:"sha"`
+		Message string `json:"message"`
+	}
+	p := fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", url.PathEscape(owner), url.PathEscape(name), number)
+	if status, code, msg := f.ghJSON(ctx, http.MethodPut, p, map[string]string{"sha": in.HeadSHA, "merge_method": in.Method}, &result); status != 0 {
+		return forgeErr(status, code, msg)
+	}
+	if !result.Merged {
+		if result.Message == "" {
+			result.Message = "GitHub did not confirm the merge"
+		}
+		return forgeErr(http.StatusConflict, "conflict", result.Message)
+	}
+	f.invalidatePendingCache()
+	return forgeOK(http.StatusOK, result)
+}
+
 func (f *ForgeHandler) handleAssignPr(ctx context.Context, owner, name string, number int, req subprocess.HTTPRequest) subprocess.HTTPResponse {
 	var in struct {
 		Assignees []string `json:"assignees"`
@@ -1225,7 +1261,7 @@ func (f *ForgeHandler) ghJSON(ctx context.Context, method, path string, body any
 			return http.StatusForbidden, "unauthorized", msg
 		case http.StatusNotFound:
 			return http.StatusNotFound, "not_found", msg
-		case http.StatusConflict:
+		case http.StatusConflict, http.StatusMethodNotAllowed:
 			return http.StatusConflict, "conflict", msg
 		case http.StatusUnprocessableEntity, http.StatusBadRequest:
 			return http.StatusUnprocessableEntity, "invalid_args", msg

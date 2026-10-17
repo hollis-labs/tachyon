@@ -1,3 +1,4 @@
+import { hostFetch } from "@tachyon/host-sdk"
 // Typed HTTP implementation of ForgeClient against the PROPOSED Torque forge
 // REST surface specified in BACKEND_REQUIREMENTS.md. The browser talks only to
 // the Torque API; Torque fronts the Cerberus forge plugin. No tokens here.
@@ -9,6 +10,8 @@
 import type { ForgeClient } from './client'
 import {
   ForgeError,
+  type MergeInput,
+  type MergeResult,
   type AddCommentInput,
   type AssignInput,
   type Commit,
@@ -121,7 +124,7 @@ export class HttpForgeClient implements ForgeClient {
   constructor(opts: HttpForgeClientOptions = {}) {
     this.opts = opts
     this.base = (opts.baseUrl ?? DEFAULT_FORGE_BASE).replace(/\/+$/, '')
-    this.doFetch = opts.fetch ?? ((i, init) => globalThis.fetch(i, init))
+    this.doFetch = opts.fetch ?? hostFetch
   }
 
   private async request(method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown, write = false): Promise<unknown> {
@@ -201,6 +204,12 @@ export class HttpForgeClient implements ForgeClient {
 
   async reviewPr(ref: PrRef, input: ReviewInput): Promise<Review> {
     return (await this.request('POST', `${prPath(ref)}/reviews`, input, true)) as Review
+  }
+
+  async mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult> {
+    const result = await this.request('PUT', `${prPath(ref)}/merge`, input, true) as MergeResult
+    if (!result || result.merged !== true) throw new ForgeError('conflict', result?.message || 'GitHub did not confirm the merge')
+    return result
   }
 
   async assign(ref: PrRef, input: AssignInput): Promise<PullRequest> {

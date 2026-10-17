@@ -11,6 +11,7 @@ import { Atom } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 import { useApi } from "./api/context"
+import { DataStatus } from "./DataStatus"
 import { plugins } from "./plugins"
 
 const DEFAULT_ROUTE = "/planner"
@@ -64,20 +65,23 @@ function Shell() {
           </>
         }
       />
-      <main className="min-w-0 flex-1 overflow-auto bg-bg">
-        <Routes>
-          <Route path="/" element={<Navigate to={DEFAULT_ROUTE} replace />} />
-          {plugins.flatMap((p) =>
-            p.routes.map((r) => (
-              <Route
-                key={`${p.id}:${r.path}`}
-                path={r.path}
-                element={<PluginGate plugin={p}>{r.element}</PluginGate>}
-              />
-            )),
-          )}
-          <Route path="*" element={<Navigate to={DEFAULT_ROUTE} replace />} />
-        </Routes>
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
+        <DataStatus />
+        <div className="min-h-0 flex-1 overflow-auto">
+          <Routes>
+            <Route path="/" element={<Navigate to={DEFAULT_ROUTE} replace />} />
+            {plugins.flatMap((p) =>
+              p.routes.map((r) => (
+                <Route
+                  key={`${p.id}:${r.path}`}
+                  path={r.path}
+                  element={<PluginGate plugin={p}>{r.element}</PluginGate>}
+                />
+              )),
+            )}
+            <Route path="*" element={<Navigate to={DEFAULT_ROUTE} replace />} />
+          </Routes>
+        </div>
       </main>
     </div>
   )

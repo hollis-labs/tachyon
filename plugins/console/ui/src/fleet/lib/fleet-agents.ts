@@ -7,6 +7,8 @@ export type FleetState = 'waiting' | 'busy' | 'idle' | 'unknown'
 export type Confidence = 'exact' | 'derived' | 'inferred'
 
 export interface FleetAgent {
+  displayName?: string
+  chat?: import("../../chat/roster").ChatAgent
   id: string
   provider: string
   pid: number

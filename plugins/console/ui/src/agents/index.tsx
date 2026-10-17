@@ -17,16 +17,13 @@ export { AgentEditProvider, resolveStepUp, useAgentEdit } from './edit-context'
 export { AGENT_ACTIONS, agentPlanAction, registerAgentActions } from './actions'
 export * from './plan'
 
-/**
- * Torque's /planner/builder (PlannerPage with db=builder) as a standalone page:
- * same page shell and content area, minus the planner search box and tab strip.
- * The directory talks to the real HTTP AgentsClient (see http-client.ts).
- */
+/** Configuration workspace; execution and current process state belong to Agents. */
 export function BuilderPage() {
   return (
     <ApiProvider client={consoleClient}>
       <div className="flex h-full min-w-0 flex-col">
         <PageHeader title="Builder" />
+        <p className="border-b border-zinc-800/80 px-4 py-2 text-sm text-zinc-400">Define and configure agents, teams, and assignments.</p>
         <div className="flex-1 overflow-auto">
           <AgentDirectoryView />
         </div>

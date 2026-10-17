@@ -1,3 +1,4 @@
+import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import { useEffect, useState, type ReactNode } from 'react'
 import { ago } from '@console/lib/agent-activity'
 import type { RefDetailProps } from '../../autolink/extensions'
@@ -20,6 +21,8 @@ const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-zinc-500'
 type Async<T> = { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; message: string }
 
 function useForgeData<T>(key: string, load: (c: ForgeClient) => Promise<T>): Async<T> {
+  const [version, setVersion] = useState(0)
+  useEffect(() => dataRefreshRegistry("forge").subscribe(() => setVersion(v => v + 1)), [])
   const [state, setState] = useState<{ key: string; value: Async<T> }>({ key, value: { status: 'loading' } })
   useEffect(() => {
     let live = true
@@ -32,7 +35,7 @@ function useForgeData<T>(key: string, load: (c: ForgeClient) => Promise<T>): Asy
     }
     // `load` is a fresh closure per render; the key identifies the request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
+  }, [key, version])
   return state.key === key ? state.value : { status: 'loading' }
 }
 

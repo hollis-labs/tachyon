@@ -158,6 +158,17 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
           onApprove={() => run(AGENT_ACTIONS.approve)}
           onApply={() => run(AGENT_ACTIONS.apply)}
           onRollback={() => run(AGENT_ACTIONS.rollback)}
+          onDemonstrate={async () => {
+            setBusy(true)
+            setMessage(null)
+            try {
+              if (!client.saveDemonstration) throw new Error('Demonstration save is unavailable')
+              const result = await client.saveDemonstration(plan.id)
+              setPlan(result.plan)
+              setOutcome(result)
+            } catch (e) { fail(e) }
+            finally { setBusy(false) }
+          }}
           onDone={onClose}
         />
       ) : (
@@ -179,7 +190,7 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Provider" htmlFor="ed-provider" changed={changed.has('provider')} issues={issuesFor('provider')}>
                 <select id="ed-provider" value={draft.provider} onChange={(e) => set('provider', e.target.value)} className={inputCls}>
-                  {[...new Set([...PROVIDERS, draft.provider].filter(Boolean))].map((p) => <option key={p} value={p}>{p}</option>)}
+                  {[...new Set(['', ...PROVIDERS, draft.provider])].map((p) => <option key={p} value={p}>{p || 'From launch profile'}</option>)}
                 </select>
               </Field>
               <Field label="Model" htmlFor="ed-model" changed={changed.has('model')}>
@@ -203,6 +214,9 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
               <Field label="Boot profile" htmlFor="ed-boot" changed={changed.has('bootProfile')}>
                 <input id="ed-boot" value={draft.bootProfile} onChange={(e) => set('bootProfile', e.target.value)} className={`${inputCls} max-w-xs`} />
               </Field>
+              <Field label="System prompt" htmlFor="ed-system-prompt" changed={changed.has('systemPrompt')}>
+                <textarea id="ed-system-prompt" value={draft.systemPrompt} onChange={(e) => set('systemPrompt', e.target.value)} rows={5} className={`${inputCls} h-auto py-1.5`} />
+              </Field>
               <Field label={`Prompt (${draft.prompt.length}/8000)`} htmlFor="ed-prompt" changed={changed.has('prompt')} issues={issuesFor('prompt')}>
                 <textarea id="ed-prompt" value={draft.prompt} onChange={(e) => set('prompt', e.target.value)} rows={4} className={`${inputCls} h-auto py-1.5`} />
               </Field>
@@ -223,7 +237,7 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Permission mode" htmlFor="ed-perm" changed={changed.has('permissionMode')} issues={issuesFor('permissionMode')}>
                   <select id="ed-perm" value={draft.permissionMode} onChange={(e) => set('permissionMode', e.target.value)} className={inputCls}>
-                    {[...new Set([...PERMISSION_MODES, draft.permissionMode].filter(Boolean))].map((p) => <option key={p} value={p}>{p}</option>)}
+                    {[...new Set([...PERMISSION_MODES, draft.permissionMode].filter(Boolean))].map((p) => <option key={p} value={p}>{p || 'From launch profile'}</option>)}
                   </select>
                 </Field>
                 <Field label="Sandbox" htmlFor="ed-sandbox" changed={changed.has('sandbox')} issues={issuesFor('sandbox')}>

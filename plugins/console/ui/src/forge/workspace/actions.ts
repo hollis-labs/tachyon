@@ -7,11 +7,12 @@
 import type { ActionBus, ConsoleAction } from '../../seams/action-bus'
 import type { ForgeClient } from '../client'
 import { withConfirmToken } from '../confirm-token'
-import { prKey, type AddCommentInput, type PrRef, type ReviewInput } from '../types'
+import { prKey, type AddCommentInput, type PrRef, type ReviewInput, type MergeInput } from '../types'
 
 export const WORKSPACE_ACTIONS = {
   comment: 'forge.pr.comment',
   review: 'forge.pr.review',
+  merge: 'forge.pr.merge',
 } as const
 
 const subject = (ref: PrRef) => ({ type: 'forge.pr', id: prKey(ref), label: `${ref.repo.owner}/${ref.repo.name}#${ref.number}` })
@@ -61,9 +62,21 @@ export function reviewAction(ref: PrRef, input: ReviewInput): ConsoleAction {
   }
 }
 
-/** Registers both handlers on the bus; returns an unregister. */
+// MergePanel is the explicit confirmation UI. Unlike review/comment actions,
+// this operation uses the configured GitHub connection without claiming a
+// separate identity step-up or issuing a synthetic identity token.
+export function mergeAction(ref: PrRef, input: MergeInput): ConsoleAction {
+  return { kind: WORKSPACE_ACTIONS.merge, subject: subject(ref), params: { ref, input } }
+}
+
+/** Registers workspace handlers on the bus; returns an unregister. */
 export function registerWorkspaceActions(bus: ActionBus, client: ForgeClient): () => void {
   const offs = [
+    bus.register(WORKSPACE_ACTIONS.merge, async (a) => {
+      const { ref, input } = a.params as { ref: PrRef; input: MergeInput }
+      const data = await client.mergePr(ref, input)
+      return { status: 'ok', data }
+    }),
     bus.register(WORKSPACE_ACTIONS.comment, async (a, ctx) => {
       const { ref, input, onGranted } = a.params as { ref: PrRef; input: AddCommentInput; onGranted?: () => void }
       if (!ctx.confirmation) throw new Error('Missing step-up confirmation')

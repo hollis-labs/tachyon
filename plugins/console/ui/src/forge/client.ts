@@ -1,4 +1,6 @@
 import type {
+  MergeInput,
+  MergeResult,
   AddCommentInput,
   AssignInput,
   Commit,
@@ -37,6 +39,8 @@ export interface ForgeClient {
   addComment(ref: PrRef, input: AddCommentInput): Promise<ForgeComment>
   /** effect: write, ack */
   reviewPr(ref: PrRef, input: ReviewInput): Promise<Review>
+  /** effect: write, ack */
+  mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult>
   /** effect: write */
   assign(ref: PrRef, input: AssignInput): Promise<PullRequest>
   /** effect: read */

@@ -126,16 +126,18 @@ export interface PlanReviewProps {
   onApprove: () => void
   onApply: () => void
   onRollback: () => void
+  onDemonstrate?: () => void
   onDone: () => void
 }
 
-export function PlanReview({ plan, outcome, busy, message, onBack, onApprove, onApply, onRollback, onDone }: PlanReviewProps) {
-  const done = ['applied', 'failed', 'conflict', 'expired', 'rolled_back'].includes(plan.status)
+export function PlanReview({ plan, outcome, busy, message, onBack, onApprove, onApply, onRollback, onDemonstrate, onDone }: PlanReviewProps) {
+  const done = ['demonstrated', 'applied', 'failed', 'conflict', 'expired', 'rolled_back'].includes(plan.status)
   let banner: ReactNode = null
   if (done) {
-    const ok = plan.status === 'applied' || plan.status === 'rolled_back'
+    const ok = plan.status === 'demonstrated' || plan.status === 'applied' || plan.status === 'rolled_back'
     const text =
-      plan.status === 'applied' ? 'Changes applied.'
+      plan.status === 'demonstrated' ? outcome?.message ?? 'Demonstration save succeeded (no-op). Nothing was written; write access is pending.'
+      : plan.status === 'applied' ? 'Changes applied.'
       : plan.status === 'rolled_back' ? 'Changes rolled back. The previous state is restored.'
       : plan.status === 'conflict' ? 'Not applied: the definition changed since this plan was made.'
       : plan.status === 'expired' ? 'Not applied: the approval expired.'
@@ -143,7 +145,7 @@ export function PlanReview({ plan, outcome, busy, message, onBack, onApprove, on
     banner = (
       <div role="status" className={`border-b px-5 py-3 text-[13px] ${ok ? 'border-emerald-400/30 bg-emerald-400/5 text-emerald-200' : 'border-rose-400/30 bg-rose-400/5 text-rose-200'}`}>
         <div className="font-medium">{text}</div>
-        {outcome?.message && <div className="mt-0.5 text-zinc-300">{outcome.message}</div>}
+        {plan.status !== 'demonstrated' && outcome?.message && <div className="mt-0.5 text-zinc-300">{outcome.message}</div>}
         {outcome?.revisionAfter && <div className="mt-0.5 font-mono text-xs text-zinc-400">revision {outcome.revisionBefore || 'unknown'} → {outcome.revisionAfter}{outcome.auditId ? ` · audit ${outcome.auditId}` : ''}</div>}
       </div>
     )
@@ -165,11 +167,12 @@ export function PlanReview({ plan, outcome, busy, message, onBack, onApprove, on
       )}
       <PlanDiff plan={plan} />
       <div className="flex flex-wrap items-center gap-2 px-5 py-3">
-        {plan.status === 'proposed' && (<><Btn onClick={onBack} disabled={busy}>Back to edit</Btn><Btn tone="primary" onClick={onApprove} disabled={busy}>Approve…</Btn></>)}
+        {plan.status === 'proposed' && (<><Btn onClick={onBack} disabled={busy}>Back to edit</Btn>{plan.demonstration ? <Btn tone="primary" onClick={onDemonstrate} disabled={busy || !onDemonstrate}>Save demonstration</Btn> : <Btn tone="primary" onClick={onApprove} disabled={busy}>Approve…</Btn>}</>)}
         {plan.status === 'invalid' && <Btn onClick={onBack}>Back to edit</Btn>}
         {plan.status === 'approved' && (<><Btn onClick={onBack} disabled={busy}>Back to edit</Btn><Btn tone="primary" onClick={onApply} disabled={busy}>Apply…</Btn></>)}
         {plan.status === 'applied' && (<><Btn tone="danger" onClick={onRollback} disabled={busy}>Roll back…</Btn><Btn tone="primary" onClick={onDone}>Done</Btn></>)}
         {(plan.status === 'failed' || plan.status === 'conflict' || plan.status === 'expired') && (<><Btn onClick={onBack}>Re-plan</Btn><Btn onClick={onDone}>Close</Btn></>)}
+        {plan.status === 'demonstrated' && <><Btn onClick={onBack}>Back to edit</Btn><Btn tone="primary" onClick={onDone}>Done</Btn></>}
         {plan.status === 'rolled_back' && <Btn tone="primary" onClick={onDone}>Done</Btn>}
         {busy && <span className="font-mono text-[11px] uppercase tracking-widest text-zinc-500">working…</span>}
       </div>

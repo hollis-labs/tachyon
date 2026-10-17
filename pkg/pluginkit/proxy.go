@@ -4,8 +4,10 @@ package pluginkit
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
 // MaxUpstreamBody bounds a buffered upstream response. It matches app-host's
@@ -42,7 +45,7 @@ type Proxy struct {
 
 // NewProxy builds a proxy with a bounded client.
 func NewProxy(id string, routes ...Route) *Proxy {
-	return &Proxy{PluginID: id, Routes: routes, Client: &http.Client{Timeout: 60 * time.Second}}
+	return &Proxy{PluginID: id, Routes: routes, Client: &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
 // HTTPHandle implements subprocess.HTTPHandler.
@@ -68,7 +71,7 @@ func (p *Proxy) forward(ctx context.Context, rt Route, rest string, req subproce
 	}
 	out, err := http.NewRequestWithContext(ctx, req.Method, target, bytes.NewReader(req.Body))
 	if err != nil {
-		return jsonError(http.StatusBadRequest, "invalid", "bad upstream request")
+		return jsonError(http.StatusServiceUnavailable, "configuration", "Upstream address is invalid; check the Tachyon host settings.")
 	}
 	if ct := req.Headers["Content-Type"]; ct != "" {
 		out.Header.Set("Content-Type", ct)
@@ -82,12 +85,19 @@ func (p *Proxy) forward(ctx context.Context, rt Route, rest string, req subproce
 	}
 	resp, err := p.Client.Do(out)
 	if err != nil {
-		return jsonError(http.StatusBadGateway, "unavailable", "upstream unavailable")
+		if errors.Is(err, upstreamauth.ErrCredential) {
+			return jsonError(http.StatusServiceUnavailable, "configuration", "Upstream credential file is unavailable; check the Tachyon host settings.")
+		}
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+			return jsonError(http.StatusGatewayTimeout, "timeout", "Remote request timed out.")
+		}
+		return jsonError(http.StatusBadGateway, "unreachable", "Could not reach the remote service; check its availability and network connection.")
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxUpstreamBody+1))
 	if err != nil || len(body) > MaxUpstreamBody {
-		return jsonError(http.StatusBadGateway, "unavailable", "upstream response unreadable or oversized")
+		return jsonError(http.StatusBadGateway, "invalid_response", "upstream response unreadable or oversized")
 	}
 	headers := map[string]string{}
 	for _, h := range []string{"Content-Type", "Cache-Control", "ETag", "Last-Modified"} {

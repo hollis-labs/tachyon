@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Mail, MessageSquare } from 'lucide-react'
 import { ago } from '@console/lib/agent-activity'
 import type { Recipient } from '../messaging'
+import { ChatFreshness } from './ChatFreshness'
 import { CapabilityBadge } from './CapabilityBadge'
 import { ChatComposer } from './ChatComposer'
 import { useChat } from './context'
@@ -13,7 +15,7 @@ function ThreadRow({ t, now, onOpen }: { t: ChatThread; now: number; onOpen: () 
     <li className="border-b border-zinc-800/80">
       <button type="button" onClick={onOpen} className="block w-full px-3 py-2 text-left hover:bg-zinc-900/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300">
         <div className="flex items-center justify-between gap-3">
-          <span className="truncate font-mono text-xs text-zinc-100">{t.title}</span>
+          <span className="flex min-w-0 items-center gap-2 font-mono text-xs text-zinc-100">{t.capability.mode === 'session' || t.capability.mode === 'live' ? <MessageSquare aria-label="Chat" className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : <Mail aria-label="Email" className="h-3.5 w-3.5 shrink-0 text-sky-300" />}<span className="truncate">{t.title}</span></span>
           {t.unread > 0 && <span aria-label={`${t.unread} unread`} className="border border-amber-400/60 px-1.5 font-mono text-[10px] text-amber-300">{t.unread}</span>}
         </div>
         <div className="mt-1 flex items-center justify-between gap-3">
@@ -27,7 +29,7 @@ function ThreadRow({ t, now, onOpen }: { t: ChatThread; now: number; onOpen: () 
 }
 
 function Conversation({ thread, onBack }: { thread: ChatThread; onBack?: () => void }) {
-  const { messages, capability, loading, hasMore, loadOlder, send, sendError } = useChatThread(thread.id)
+  const { messages, capability, loading, hasMore, loadOlder, send, sendError, error } = useChatThread(thread.id)
   const cap = capability ?? thread.capability
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -38,8 +40,9 @@ function Conversation({ thread, onBack }: { thread: ChatThread; onBack?: () => v
         </div>
         <CapabilityBadge capability={cap} withHint />
       </header>
+      {error && <p role="alert" className="border-b border-red-500/30 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
       <ThreadView messages={messages} loading={loading} hasMore={hasMore} onLoadOlder={() => void loadOlder()} />
-      <ChatComposer onSend={send} capability={cap} error={sendError} />
+      <ChatComposer onSend={send} capability={error ? { ...cap, canSend: false } : cap} error={sendError} />
     </div>
   )
 }
@@ -53,9 +56,11 @@ export interface ChatPanelProps {
 /** Thread list plus conversation. Fits a drawer; stateless apart from the open thread. */
 export function ChatPanel({ agent, className }: ChatPanelProps) {
   const { client } = useChat()
-  const threads = useChatThreads()
+  const {threads,error:threadsError,retry} = useChatThreads()
   const [now] = useState(() => Date.now())
   const [openId, setOpenId] = useState<string | null>(null)
+  const [openVersion, setOpenVersion] = useState(0)
+  const [openError,setOpenError] = useState<string | null>(null)
   const [opened, setOpened] = useState<ChatThread | null>(null)
   const addr = agent?.address
   useEffect(() => {
@@ -63,19 +68,21 @@ export function ChatPanel({ agent, className }: ChatPanelProps) {
     let live = true
     client.openThread(agent).then((t) => {
       if (live) {
+        setOpenError(null)
         setOpened(t)
         setOpenId(t.id)
       }
-    }, () => undefined)
+    }, e => {if(live) setOpenError(e instanceof Error ? e.message : "Could not open conversation")})
     return () => {
       live = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, addr])
+  }, [client, addr, openVersion])
 
   const active = openId ? (threads?.find((t) => t.id === openId) ?? (opened?.id === openId ? opened : null)) : null
   return (
     <section aria-label="Chat" className={`flex min-h-0 flex-col bg-zinc-950 ${className ?? ''}`}>
+      <ChatFreshness />
       {active ? (
         <Conversation key={active.id} thread={active} onBack={() => setOpenId(null)} />
       ) : (
@@ -83,8 +90,9 @@ export function ChatPanel({ agent, className }: ChatPanelProps) {
           <header className="border-b border-zinc-800 px-3 py-2">
             <h2 className="font-mono text-sm text-zinc-100">Chat</h2>
           </header>
+          {(threadsError || openError) && <div role="alert" className="px-3 py-3 text-xs text-red-300">{threadsError || openError}<button type="button" onClick={() => {retry();setOpenVersion(v => v + 1)}} className="ml-2 underline">Retry</button></div>}
           {threads === null ? (
-            <p className="px-3 py-4 font-mono text-xs text-zinc-500">Loading</p>
+            <p className="px-3 py-4 font-mono text-xs text-zinc-500">{threadsError ? "Conversation list unavailable" : "Loading"}</p>
           ) : threads.length === 0 ? (
             <p className="px-3 py-4 font-mono text-xs text-zinc-500">No conversations. Open one from an agent.</p>
           ) : (

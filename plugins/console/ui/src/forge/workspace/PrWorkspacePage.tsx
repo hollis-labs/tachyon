@@ -25,7 +25,7 @@ export default function PrWorkspacePage() {
           <ChevronLeft className="h-3 w-3" /> Back
         </Link>
       </div>
-      <PrWorkspace className="min-h-0 flex-1" prRef={prRef} initialFile={search.get('file') ?? undefined} readOnly={search.get('readonly') === '1'} />
+      <PrWorkspace key={`${prRef.repo.host}/${prRef.repo.owner}/${prRef.repo.name}/${prRef.number}`} className="min-h-0 flex-1" prRef={prRef} initialFile={search.get('file') ?? undefined} readOnly={search.get('readonly') === '1'} />
     </div>
   )
 }

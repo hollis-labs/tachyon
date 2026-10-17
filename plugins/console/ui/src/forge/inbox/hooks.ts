@@ -1,3 +1,4 @@
+import { dataRefreshRegistry, refreshPageData } from "@tachyon/host-sdk"
 import { useCallback, useContext, useEffect, useState } from 'react'
 import { ItemStateContext } from '../../events/context'
 import type { ForgeClient } from '../client'
@@ -25,11 +26,11 @@ export function usePendingPrs(client: ForgeClient, opts: { pollMs?: number } = {
   }, [client])
   useEffect(() => {
     void load()
-    if (pollMs <= 0) return
-    const t = setInterval(() => void load(), pollMs)
-    return () => clearInterval(t)
+    const off = dataRefreshRegistry('forge').subscribe(() => void load())
+    const t = pollMs > 0 ? setInterval(() => void load(), pollMs) : null
+    return () => { off(); if (t) clearInterval(t) }
   }, [load, pollMs])
-  return { ...s, refresh: load }
+  return { ...s, refresh: async () => { await refreshPageData(); await load() } }
 }
 
 /** Server-backed item state mirror owned by <ConsoleProvider>. */

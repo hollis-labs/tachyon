@@ -10,14 +10,17 @@ import (
 
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 	"github.com/hollis-labs/tachyon/pkg/pluginkit"
 )
 
 const version = "0.1.0"
 
 type console struct {
-	proxy *pluginkit.Proxy
-	forge *ForgeHandler
+	proxy   *pluginkit.Proxy
+	forge   *ForgeHandler
+	catalog *CatalogHandler
+	chat    *ChatHandler
 }
 
 func (console) Init(context.Context, subprocess.InitParams) (subprocess.InitResult, error) {
@@ -37,6 +40,12 @@ func (console) Load(context.Context) (subprocess.LoadResult, error) {
 func (console) Unload(context.Context) error { return nil }
 
 func (c console) HTTPHandle(ctx context.Context, req subprocess.HTTPRequest) (subprocess.HTTPResponse, error) {
+	if c.chat != nil && c.chat.Match(req.Path) {
+		return c.chat.Handle(ctx, req), nil
+	}
+	if c.catalog != nil && c.catalog.Match(req.Path) {
+		return c.catalog.Handle(ctx, req), nil
+	}
 	if c.forge.Match(req.Path) {
 		return c.forge.Handle(ctx, req), nil
 	}
@@ -49,7 +58,7 @@ func main() {
 		pluginkit.Route{Prefix: "/v1", Upstream: torque, Target: "/api/v1", Bearer: os.Getenv("TORQUE_API_TOKEN"), Headers: map[string]string{"X-Client": "browser"}},
 	)
 	forge := NewForgeHandler(os.Getenv("GITHUB_TOKEN"), pluginkit.Env("GITHUB_ORG", "hollis-labs"))
-	if err := subprocess.Serve(console{proxy: proxy, forge: forge}); err != nil {
+	if err := subprocess.Serve(console{proxy: proxy, forge: forge, chat: NewChatHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), catalog: NewCatalogHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE"))}); err != nil {
 		os.Exit(1)
 	}
 }

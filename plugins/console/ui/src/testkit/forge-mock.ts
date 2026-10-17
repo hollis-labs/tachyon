@@ -4,6 +4,8 @@ import {
   ForgeError,
   prKey,
   repoKey,
+  type MergeInput,
+  type MergeResult,
   type AddCommentInput,
   type AssignInput,
   type CheckRun,
@@ -404,6 +406,17 @@ export class MockForgeClient implements ForgeClient {
     }
     f.pr.updatedAt = review.submittedAt!
     return clone(review)
+  }
+
+  async mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult> {
+    await this.tick()
+    const { pr } = this.get(ref)
+    if (pr.state !== 'open' || pr.draft || pr.mergeable === 'conflicting' || pr.mergeable === 'blocked') throw new ForgeError('conflict', 'Pull request cannot be merged')
+    if (pr.headSha !== input.headSha) throw new ForgeError('conflict', 'Head changed; refresh the pull request')
+    pr.state = 'merged'
+    pr.mergedAt = this.now()
+    pr.updatedAt = pr.mergedAt
+    return { merged: true, sha: input.headSha, message: 'Pull request merged' }
   }
 
   async assign(ref: PrRef, input: AssignInput): Promise<PullRequest> {

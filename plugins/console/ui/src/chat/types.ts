@@ -7,10 +7,11 @@
 import type { DeliveryState, Recipient } from '../messaging'
 
 /** How we can actually reach the agent right now. Shown in the UI, never hidden. */
-export type ChatMode = 'live' | 'mail-only' | 'offline'
+export type ChatMode = 'live' | 'mail-only' | 'offline' | 'session'
 
 export interface ChatCapability {
   mode: ChatMode
+  canSend?: boolean
   /** Why: "attached to session s-12 via Outpost hook", "no stream registered". */
   detail?: string
   /** Session id when attached to a hook-managed session. */
@@ -52,10 +53,18 @@ export interface ChatMessage {
   streaming?: boolean
   tools: ToolChip[]
   error?: string
+  info?: {
+    transport: 'tether-chat' | 'mail'
+    agentName?: string; launchId?: string; sessionId?: string; turnId?: string
+    kind?: string; delivery?: string; sender?: string; channel?: string
+    publicationId?: string; sequence?: number; outputId?: string; runtime?: string; idempotencyKey?: string
+    trace?: Array<{ stage_id: string; stage_version: string; outcome: string; duration_ms: number; failure_code?: string }>
+  }
 }
 
 /** Everything that can happen in a thread. Applied by `applyChatEvent`. */
 export type ChatEvent =
+  | { type: 'error'; message: string | null }
   | { type: 'message'; message: ChatMessage }
   | { type: 'delta'; messageId: string; text: string }
   | { type: 'tool'; messageId: string; tool: ToolChip }
@@ -91,5 +100,5 @@ export interface ChatClient {
   /** Stream events for one thread. Returns an unsubscribe. */
   subscribe(threadId: string, listener: (e: ChatEvent) => void): () => void
   /** Thread list changes (new message, unread count). */
-  subscribeThreads(listener: (threads: ChatThread[]) => void): () => void
+  subscribeThreads(listener: (threads: ChatThread[]) => void, onError?: (message: string) => void): () => void
 }

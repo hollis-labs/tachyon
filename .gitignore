@@ -1,6 +1,9 @@
 # Go binary built from `make build`
 /tachyon
 
+# Cerberus creates this transient lock before checking source freshness.
+/.cerberus-build.lock
+
 # Go test + build artefacts
 *.exe
 *.test

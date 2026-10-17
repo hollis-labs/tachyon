@@ -1,0 +1,42 @@
+{
+  "max_entries": 1000,
+  "max_bytes": 67108864,
+  "retention_seconds": 604800,
+  "policies": {
+    "activity": {
+      "enabled": true,
+      "fresh_seconds": 5,
+      "stale_if_error_seconds": 300,
+      "timeout_seconds": 10,
+      "stale_while_revalidate_seconds": 60
+    },
+    "planner": {
+      "enabled": true,
+      "fresh_seconds": 15,
+      "stale_if_error_seconds": 86400,
+      "timeout_seconds": 15,
+      "stale_while_revalidate_seconds": 3600
+    },
+    "catalog": {
+      "enabled": true,
+      "fresh_seconds": 60,
+      "stale_if_error_seconds": 86400,
+      "timeout_seconds": 15,
+      "stale_while_revalidate_seconds": 3600
+    },
+    "torque": {
+      "enabled": true,
+      "fresh_seconds": 15,
+      "stale_if_error_seconds": 3600,
+      "timeout_seconds": 15,
+      "stale_while_revalidate_seconds": 300
+    },
+    "forge": {
+      "enabled": true,
+      "fresh_seconds": 30,
+      "stale_if_error_seconds": 3600,
+      "timeout_seconds": 20,
+      "stale_while_revalidate_seconds": 3600
+    }
+  }
+}

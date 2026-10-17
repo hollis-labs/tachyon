@@ -1,6 +1,7 @@
 import type { ChatCapability, ChatMode } from './types'
 
 const STYLE: Record<ChatMode, { label: string; dot: string; text: string; hint: string }> = {
+  session: { label: 'CHAT', dot: 'bg-emerald-400', text: 'text-emerald-300', hint: 'Tether session chat' },
   live: { label: 'LIVE', dot: 'bg-emerald-400', text: 'text-emerald-300', hint: 'Replies stream in real time' },
   'mail-only': { label: 'MAIL ONLY', dot: 'bg-sky-400', text: 'text-sky-300', hint: 'Replies arrive by mail and may be delayed' },
   offline: { label: 'OFFLINE', dot: 'bg-zinc-500', text: 'text-zinc-400', hint: 'Messages queue until the agent connects' },

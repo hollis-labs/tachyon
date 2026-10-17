@@ -229,7 +229,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
         <div>
           <h2 className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-300">Pending PRs</h2>
           <p className="mt-0.5 font-mono text-[11px] text-zinc-500">
-            {views.active} need attention{refreshedAt ? ` · refreshed ${ago(refreshedAt, now)}` : ''}
+            {views.active} need attention{refreshedAt ? ` · loaded ${ago(refreshedAt, now)}` : ''}
           </p>
         </div>
         <button type="button" className={ghost} onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
