@@ -24,6 +24,22 @@ frontend/               host shell (router, nav rail, theme, plugin registry)
 docs/data-gaps.md       backend gaps for the Console port
 ```
 
+## Agent builder
+
+Builder reads the live Tether agent and launch catalogs through the Console
+backend. Configure `TETHER_ADDR` and `TETHER_TOKEN_FILE` on the host; the host
+passes them to the plugin. Authenticated remote access requires HTTPS. The
+protocol header and token-file authentication from the earlier catalog-ops
+work are reused here.
+
+Create, clone and edit produce a local review. **Save demonstration** is a
+no-op: it sends no write or approval request, does not update the directory,
+and explicitly reports that write access is pending. Drafts are not persisted.
+Agent prompts and system prompts remain separate; providers and projects from
+launch profiles are displayed as launch configuration, not agent defaults.
+Teams, assignments, templates, audit and retirement-impact reads are not yet
+connected. The adapter does not substitute sample data when a read fails.
+
 ## Plugins
 
 | Plugin | Backend | UI routes |
@@ -56,6 +72,8 @@ Environment variables:
 | `TORQUE_URL` | `http://127.0.0.1:8990` |
 | `TORQUE_API_TOKEN` | unset (optional; never sent to the browser) |
 | `TACHYON_PLUGIN_DIR` | `bin/plugins` |
+| `TETHER_ADDR` | Tether catalog endpoint: HTTPS URL, loopback HTTP/TCP, or `unix:/path`; unset shows a configuration error in Builder |
+| `TETHER_TOKEN_FILE` | Optional private `0600` bearer-token file, read by the Console backend; never sent to the browser |
 | `TACHYON_DATA_DIR` | `$XDG_DATA_HOME/tachyon` |
 | `TACHYON_CACHE_DIR` | `$XDG_CACHE_HOME/tachyon` |
 

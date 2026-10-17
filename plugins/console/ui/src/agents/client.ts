@@ -14,6 +14,8 @@ import type { AgentListQuery, AgentRecord } from './types'
  * cannot approve or apply without a fresh grant. Plans never change an agent.
  */
 export interface AgentsClient {
+  writeMode?: "demonstration"
+  saveDemonstration?: (planId: string) => Promise<ApplyOutcome>
   listAgents(query?: AgentListQuery): Promise<AgentRecord[]>
   getAgent(id: string): Promise<AgentRecord | null>
 

@@ -113,7 +113,7 @@ export const AGENT_ID_RE = /^[a-z][a-z0-9-]{1,39}$/
 export function blankDraft(): AgentDraft {
   return {
     enabled: true, summary: '', roles: [], provider: 'claude-code', model: '', project: '', worker: '', workspaceMode: 'worktree',
-    bootProfile: '', prompt: '', tools: [], skills: [], permissionMode: 'default', sandbox: 'workspace', network: false, scopes: [], rules: ['no-secrets'],
+    bootProfile: '', systemPrompt: '', prompt: '', tools: [], skills: [], permissionMode: 'default', sandbox: 'workspace', network: false, scopes: [], rules: ['no-secrets'],
   }
 }
 
@@ -125,7 +125,7 @@ export function draftFromClone(a: AgentRecord): AgentDraft {
     enabled: true,
     summary: a.identity.summary ?? '', roles: [...a.identity.roles], provider: a.runtime.provider, model: a.runtime.model ?? '',
     project: a.runtime.project ?? '', worker: a.runtime.worker ?? '', workspaceMode: a.runtime.workspaceMode ?? '',
-    bootProfile: a.runtime.bootProfile ?? '', prompt: a.runtime.prompt ?? '', tools: [...a.tools], skills: [...a.skills],
+    bootProfile: a.runtime.bootProfile ?? '', systemPrompt: a.runtime.systemPrompt ?? '', prompt: a.runtime.prompt ?? '', tools: [...a.tools], skills: [...a.skills],
     permissionMode: a.policy.permissionMode, sandbox: a.policy.sandbox ?? '', network: a.policy.network ?? false, scopes: [...a.policy.scopes], rules: [...a.policy.rules],
   }
 }
@@ -139,7 +139,7 @@ export function recordFromDraft(id: string, name: string, d: AgentDraft, meta: {
   const opt = (v: string) => (v.trim() === '' ? undefined : v.trim())
   return {
     identity: { id, name: name.trim(), roles: [...d.roles], summary: opt(d.summary), enabled: d.enabled },
-    runtime: { provider: d.provider.trim(), model: opt(d.model), project: opt(d.project), worker: opt(d.worker), workspaceMode: opt(d.workspaceMode), bootProfile: opt(d.bootProfile), prompt: d.prompt.trim() === '' ? undefined : d.prompt },
+    runtime: { provider: d.provider.trim(), model: opt(d.model), project: opt(d.project), worker: opt(d.worker), workspaceMode: opt(d.workspaceMode), bootProfile: opt(d.bootProfile), systemPrompt: d.systemPrompt.trim() === '' ? undefined : d.systemPrompt, prompt: d.prompt.trim() === '' ? undefined : d.prompt },
     policy: { permissionMode: d.permissionMode, sandbox: opt(d.sandbox), network: d.network, scopes: [...d.scopes], rules: [...d.rules] },
     tools: [...d.tools],
     skills: [...d.skills],

@@ -30,10 +30,12 @@ func main() {
 		DataDir:      env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
 		CacheDir:     env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		Upstreams: catalog.Upstreams{
-			TorqueURL:   env("TORQUE_URL", "http://127.0.0.1:8990"),
-			TorqueToken: os.Getenv("TORQUE_API_TOKEN"),
-			GitHubToken: githubToken(ctx),
-			GitHubOrg:   env("GITHUB_ORG", "hollis-labs"),
+			TetherAddr:      os.Getenv("TETHER_ADDR"),
+			TetherTokenFile: os.Getenv("TETHER_TOKEN_FILE"),
+			TorqueURL:       env("TORQUE_URL", "http://127.0.0.1:8990"),
+			TorqueToken:     os.Getenv("TORQUE_API_TOKEN"),
+			GitHubToken:     githubToken(ctx),
+			GitHubOrg:       env("GITHUB_ORG", "hollis-labs"),
 		},
 	})
 	if err := srv.Start(ctx); err != nil {

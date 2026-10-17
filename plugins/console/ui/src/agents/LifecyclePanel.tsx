@@ -31,7 +31,7 @@ export function LifecyclePanel({ agent, onClone, onChanged }: LifecyclePanelProp
 
   useEffect(() => {
     let active = true
-    if (!retired) client.getRetireImpact(id).then((i) => active && setImpact(i), (e) => active && setError(e instanceof Error ? e.message : 'Impact unavailable'))
+    if (!retired && client.writeMode !== 'demonstration') client.getRetireImpact(id).then((i) => active && setImpact(i), (e) => active && setError(e instanceof Error ? e.message : 'Impact unavailable'))
     return () => {
       active = false
     }
@@ -71,7 +71,7 @@ export function LifecyclePanel({ agent, onClone, onChanged }: LifecyclePanelProp
         <Btn onClick={() => onClone(id)} disabled={retired}>Clone {agent.identity.name}…</Btn>
       </Block>
 
-      {retired ? (
+      {client.writeMode === 'demonstration' ? <Block title="Retire and restore"><p className="text-sm text-zinc-400">Retirement impact reads are not connected yet. You can edit or clone this agent and try a demonstration save.</p></Block> : retired ? (
         <Block title="Restore">
           <p className="mb-3 text-[13px] text-zinc-300">Retired {agent.identity.retiredAt ? new Date(agent.identity.retiredAt).toISOString().slice(0, 10) : ''}. Restoring brings the definition back <strong>disabled</strong>, without its former teams or assignments.</p>
           <Field label="Reason (required)" htmlFor="lc-note"><input id="lc-note" value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} placeholder="Why restore" /></Field>

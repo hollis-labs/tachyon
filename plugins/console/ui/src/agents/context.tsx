@@ -1,8 +1,8 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { AgentsClient } from './client'
-import { createHttpAgentsClient } from './http-client'
+import { createCatalogAgentsClient } from './catalog-client'
 
-const defaultClient = createHttpAgentsClient()
+const defaultClient = createCatalogAgentsClient()
 const AgentsClientContext = createContext<AgentsClient>(defaultClient)
 
 /** Swap the client (tests, the live adapter) without touching the views. */

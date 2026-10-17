@@ -20,6 +20,7 @@ export interface AgentDraft {
   worker: string
   workspaceMode: string
   bootProfile: string
+  systemPrompt: string
   prompt: string
   tools: string[]
   skills: string[]
@@ -51,6 +52,7 @@ export const FIELDS: FieldDef[] = [
   { key: 'worker', label: 'Worker', section: 'Runtime', kind: 'text' },
   { key: 'workspaceMode', label: 'Workspace', section: 'Runtime', kind: 'text' },
   { key: 'bootProfile', label: 'Boot profile', section: 'Prompts', kind: 'text' },
+  { key: 'systemPrompt', label: 'System prompt', section: 'Prompts', kind: 'text' },
   { key: 'prompt', label: 'Prompt', section: 'Prompts', kind: 'text' },
   { key: 'tools', label: 'Tool allowlist', section: 'Tools and skills', kind: 'list' },
   { key: 'skills', label: 'Skills', section: 'Tools and skills', kind: 'list' },
@@ -88,6 +90,7 @@ export function draftFromAgent(a: AgentRecord): AgentDraft {
     worker: a.runtime.worker ?? '',
     workspaceMode: a.runtime.workspaceMode ?? '',
     bootProfile: a.runtime.bootProfile ?? '',
+    systemPrompt: a.runtime.systemPrompt ?? '',
     prompt: a.runtime.prompt ?? '',
     tools: [...a.tools],
     skills: [...a.skills],
@@ -113,6 +116,7 @@ export function applyDraft(a: AgentRecord, d: AgentDraft): AgentRecord {
       worker: opt(d.worker),
       workspaceMode: opt(d.workspaceMode),
       bootProfile: opt(d.bootProfile),
+      systemPrompt: d.systemPrompt.trim() === '' ? undefined : d.systemPrompt,
       prompt: d.prompt.trim() === '' ? undefined : d.prompt,
     },
     policy: { ...a.policy, permissionMode: d.permissionMode, sandbox: opt(d.sandbox), network: d.network, scopes: [...d.scopes], rules: [...d.rules] },
@@ -180,7 +184,7 @@ export function assessRisks(before: AgentDraft, after: AgentDraft, live = false)
     r.push({ id: 'runtime-live', level: 'medium', field: 'provider', title: 'Provider or model change on a running agent', detail: 'Live sessions keep the old runtime until restarted.' })
   if (live && before.enabled && !after.enabled)
     r.push({ id: 'disable-live', level: 'medium', field: 'enabled', title: 'Disables a running agent', detail: 'New launches are blocked; running sessions continue.' })
-  if (after.prompt !== before.prompt || after.bootProfile !== before.bootProfile)
+  if (after.systemPrompt !== before.systemPrompt || after.prompt !== before.prompt || after.bootProfile !== before.bootProfile)
     r.push({ id: 'prompt-change', level: 'low', field: 'prompt', title: 'Changes boot instructions', detail: 'Affects how every new session starts.' })
   return r
 }
@@ -199,7 +203,7 @@ export function validateDraft(d: AgentDraft, opts: { risk?: Risk; note?: string 
   const v: ValidationIssue[] = []
   const err = (field: ValidationIssue['field'], message: string) => v.push({ level: 'error', field, message })
   const warn = (field: ValidationIssue['field'], message: string) => v.push({ level: 'warning', field, message })
-  if (!d.provider.trim()) err('provider', 'Provider is required.')
+  // A catalog agent may inherit its provider from a launch profile.
   if (!d.permissionMode.trim()) err('permissionMode', 'Permission mode is required.')
   else if (!PERMISSION_MODES.includes(d.permissionMode)) warn('permissionMode', `Unrecognised permission mode "${d.permissionMode}".`)
   if (d.sandbox && !SANDBOX_MODES.includes(d.sandbox)) warn('sandbox', `Unrecognised sandbox "${d.sandbox}".`)
@@ -223,7 +227,7 @@ export const hasErrors = (v: ValidationIssue[]) => v.some((i) => i.level === 'er
 
 // ---- plan, approval, apply -------------------------------------------------
 
-export type PlanStatus = 'proposed' | 'invalid' | 'approved' | 'applied' | 'failed' | 'conflict' | 'rolled_back' | 'expired'
+export type PlanStatus = 'demonstrated' | 'proposed' | 'invalid' | 'approved' | 'applied' | 'failed' | 'conflict' | 'rolled_back' | 'expired'
 
 export interface PlanApproval {
   by: ConfirmWho
@@ -234,6 +238,7 @@ export interface PlanApproval {
 }
 
 export interface AgentPlan {
+  demonstration?: boolean
   id: string
   agentId: string
   /** Definition revision the plan was computed against; apply fails with `conflict` if it moved. */
@@ -262,7 +267,7 @@ export interface PlanRequest {
   actor?: ConfirmWho
 }
 
-export type ApplyStatus = 'applied' | 'failed' | 'conflict' | 'expired' | 'rolled_back'
+export type ApplyStatus = 'demonstrated' | 'applied' | 'failed' | 'conflict' | 'expired' | 'rolled_back'
 
 export interface ApplyOutcome {
   status: ApplyStatus

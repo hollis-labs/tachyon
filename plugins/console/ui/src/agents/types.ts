@@ -32,6 +32,7 @@ export interface AgentRuntime {
   /** Boot profile id (B2 editor). */
   bootProfile?: string
   /** Appended system prompt text (B2 editor). */
+  systemPrompt?: string
   prompt?: string
 }
 
@@ -74,6 +75,7 @@ export interface AgentRecord {
   skills: string[]
   teams: AgentTeamMembership[]
   source: AgentSource
+  launches?: { id: string; provider?: string; project?: string; enabled?: boolean }[]
   live?: AgentLiveRef
 }
 

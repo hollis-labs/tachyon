@@ -17,14 +17,15 @@ const STEPS: { id: Step; label: string }[] = [
 
 type Source = { kind: 'scratch' } | { kind: 'template'; id: string } | { kind: 'clone'; id: string }
 
-function Choice({ selected, onSelect, title, children }: { selected: boolean; onSelect: () => void; title: string; children?: ReactNode }) {
+function Choice({ selected, onSelect, title, disabled, children }: { selected: boolean; onSelect: () => void; title: string; disabled?: boolean; children?: ReactNode }) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={selected}
       onClick={onSelect}
-      className={`w-full border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 ${selected ? 'border-amber-300/70 bg-zinc-900' : 'border-zinc-800 hover:bg-zinc-900/50'}`}
+      disabled={disabled}
+      className={`w-full border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40 ${selected ? 'border-amber-300/70 bg-zinc-900' : 'border-zinc-800 hover:bg-zinc-900/50'}`}
     >
       <span className="block font-mono text-[13px] text-zinc-100">{title}</span>
       {children && <span className="mt-0.5 block text-[12px] text-zinc-400">{children}</span>}
@@ -101,7 +102,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
   )
   const idIssue = live.issues.find((i) => i.field === 'lifecycle' && /Id must|already exists/.test(i.message))
   const nameIssue = !name.trim()
-  const identityOk = !idIssue && !nameIssue && !!draft.provider.trim()
+  const identityOk = !idIssue && !nameIssue
   const hardErrors = live.issues.filter((i) => i.level === 'error')
 
   const review = async () => {
@@ -149,7 +150,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
           <Block title="Start from">
             <div role="radiogroup" aria-label="Start from" className="space-y-1.5">
               <Choice selected={source.kind === 'scratch'} onSelect={() => pick({ kind: 'scratch' })} title="From scratch">Safe defaults: asks before risky tools, workspace sandbox, no network, no privileged scopes.</Choice>
-              <Choice selected={source.kind === 'template'} onSelect={() => pick(templates[0] ? { kind: 'template', id: templates[0].id } : source)} title="From a template">A curated starting point for a common role.</Choice>
+              <Choice selected={source.kind === 'template'} onSelect={() => pick(templates[0] ? { kind: 'template', id: templates[0].id } : source)} title="From a template" disabled={templates.length === 0}>{templates.length ? 'A curated starting point for a common role.' : 'Templates are not connected yet.'}</Choice>
               <Choice selected={source.kind === 'clone'} onSelect={() => pick({ kind: 'clone', id: agents.find((a) => !a.identity.retired)?.identity.id ?? '' })} title="Clone an existing agent">Copies runtime, tools, skills and policy, including any privileges.</Choice>
             </div>
           </Block>
@@ -183,7 +184,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
             <div className="sm:col-span-2"><Field label="Summary" htmlFor="cw-summary"><input id="cw-summary" value={draft.summary} onChange={(e) => set('summary', e.target.value)} className={inputCls} /></Field></div>
             <div className="sm:col-span-2"><Field label="Roles"><ListField label="Roles" values={draft.roles} suggestions={['worker', 'reviewer', 'coordinator', 'partner']} onChange={(v) => set('roles', v)} /></Field></div>
             <Field label="Provider" htmlFor="cw-provider">
-              <select id="cw-provider" value={draft.provider} onChange={(e) => set('provider', e.target.value)} className={inputCls}>{[...new Set([...PROVIDERS, draft.provider])].map((p) => <option key={p}>{p}</option>)}</select>
+              <select id="cw-provider" value={draft.provider} onChange={(e) => set('provider', e.target.value)} className={inputCls}>{[...new Set(['', ...PROVIDERS, draft.provider])].map((p) => <option key={p} value={p}>{p || 'From launch profile'}</option>)}</select>
             </Field>
             <Field label="Model" htmlFor="cw-model"><input id="cw-model" value={draft.model} onChange={(e) => set('model', e.target.value)} className={inputCls} /></Field>
             <Field label="Project" htmlFor="cw-project"><input id="cw-project" value={draft.project} onChange={(e) => set('project', e.target.value)} className={inputCls} /></Field>
@@ -203,6 +204,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
               <Field label="Tool allowlist"><ListField label="Tools" values={draft.tools} suggestions={KNOWN_TOOLS} tone="border-emerald-400/50 bg-emerald-400/10 text-emerald-300" onChange={(v) => set('tools', v)} /></Field>
               <Field label="Skills"><ListField label="Skills" values={draft.skills} suggestions={[]} onChange={(v) => set('skills', v)} /></Field>
               <Field label="Boot profile" htmlFor="cw-boot"><input id="cw-boot" value={draft.bootProfile} onChange={(e) => set('bootProfile', e.target.value)} className={`${inputCls} max-w-xs`} /></Field>
+              <Field label="System prompt" htmlFor="cw-system-prompt"><textarea id="cw-system-prompt" value={draft.systemPrompt} onChange={(e) => set('systemPrompt', e.target.value)} rows={5} className={`${inputCls} h-auto py-1.5`} /></Field>
               <Field label={`Prompt (${draft.prompt.length}/8000)`} htmlFor="cw-prompt"><textarea id="cw-prompt" value={draft.prompt} onChange={(e) => set('prompt', e.target.value)} rows={3} className={`${inputCls} h-auto py-1.5`} /></Field>
             </div>
           </Block>
