@@ -130,7 +130,31 @@ are never served beyond the policy window. SQLite may retain reusable file
 pages after eviction; the payload limit is not a hard filesystem quota. Cache
 misses sharing a key coalesce, and the queue provides write backpressure.
 
-## Plugins
+## Transcript insights
+
+`/dashboards/transcripts` reads Fragments Engine's transcript API using the
+host's private `FRAGMENTS_ENGINE_TOKEN_FILE`. `FRAGMENTS_ENGINE_URL` defaults to
+`http://127.0.0.1:8091`; remote authenticated connections require HTTPS. The
+credential stays on the server. This dashboard does not write to Fragments Engine.
+
+Database-wide session, enrichment, project-path and tool/model counts come from
+facets. Activity, usage, distributions and metadata search use a bounded snapshot
+of the newest session metadata. `TACHYON_TRANSCRIPT_MAX_SESSIONS` defaults to 5000
+(range 200–20000). Pagination uses a fixed start-time cutoff and deduplicates IDs;
+it is not a transactional database snapshot. Undated records or concurrent
+changes can make coverage differ from the facet total. The UI labels incomplete
+coverage and keeps database totals separate from filtered calculations. Reported
+tokens include cached tokens and are not a cost estimate. Search filters metadata,
+not transcript bodies; session dialogs fetch redacted turns in pages of 50.
+
+The existing browser/SQLite cache handles both metadata and turn pages under the
+`transcripts` policy: 120 seconds fresh, 3600 seconds background revalidation,
+86400 seconds stale-on-transient-error, and a 45-second upstream budget. Endpoint,
+credential identity and snapshot limit partition its cache. Missing configuration
+or denied access remains visible; observed authorization denials discard saved
+data. This response cache does not change ownership of transcript records.
+
+## Plugin inventory
 
 | Plugin | Backend | UI routes |
 |---|---|---|

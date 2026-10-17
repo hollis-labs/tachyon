@@ -26,6 +26,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/localstore"
+	"github.com/hollis-labs/tachyon/internal/transcripts"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
@@ -35,13 +36,16 @@ var Version = "0.0.0-dev"
 // Config is the host's resolved configuration.
 type Config struct {
 	// PluginBinDir holds built plugin executables named by plugin ID.
-	PluginBinDir     string
-	DataDir          string
-	CacheDir         string
-	CachePolicyFile  string
-	ChatSyncInterval time.Duration
-	ApprovalQueueURL string
-	Upstreams        catalog.Upstreams
+	PluginBinDir          string
+	DataDir               string
+	CacheDir              string
+	CachePolicyFile       string
+	ChatSyncInterval      time.Duration
+	ApprovalQueueURL      string
+	FragmentsURL          string
+	FragmentsTokenFile    string
+	TranscriptMaxSessions int
+	Upstreams             catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
@@ -171,6 +175,8 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 	u := s.cfg.Upstreams
 	addr, token := u.TorqueURL, u.TorqueToken
 	switch scope {
+	case "transcripts":
+		return transcripts.New(s.cfg.FragmentsURL, s.cfg.FragmentsTokenFile, s.cfg.TranscriptMaxSessions).Identity()
 	case "approvals":
 		return apicache.Digest("approval-queue\n" + s.cfg.ApprovalQueueURL), nil
 	case "catalog", "chat":
@@ -207,6 +213,11 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 // Routes returns the handler mounted by app-host at /api/.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	transcriptHandler := http.Handler(transcripts.New(s.cfg.FragmentsURL, s.cfg.FragmentsTokenFile, s.cfg.TranscriptMaxSessions))
+	if s.cache != nil {
+		transcriptHandler = s.cache.Wrap(transcriptHandler)
+	}
+	mux.Handle(transcripts.Prefix+"/", transcriptHandler)
 	operator := approvals.New(s.cfg.ApprovalQueueURL)
 	approvalHandler := http.Handler(operator)
 	if s.cache != nil {

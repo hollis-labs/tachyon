@@ -62,15 +62,17 @@ export function DataStatus() {
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [])
-  const scope = pathname.startsWith("/agents")
-    ? "activity"
-    : pathname.startsWith("/builder")
-      ? "catalog"
-      : pathname.startsWith("/planner")
-        ? "planner"
-        : pathname.startsWith("/prs") || pathname.startsWith("/pr/")
-          ? "forge"
-          : "torque"
+  const scope = pathname.startsWith("/dashboards/transcripts")
+    ? "transcripts"
+    : pathname.startsWith("/agents")
+      ? "activity"
+      : pathname.startsWith("/builder")
+        ? "catalog"
+        : pathname.startsWith("/planner")
+          ? "planner"
+          : pathname.startsWith("/prs") || pathname.startsWith("/pr/")
+            ? "forge"
+            : "torque"
   const rows = snapshots.filter((r) => r.scope === scope && r.page === pathname)
   const status = freshnessSummary(rows, now)
   return (

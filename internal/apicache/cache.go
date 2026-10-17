@@ -46,6 +46,9 @@ func Digest(value string) string {
 // Scope is an allowlist of non-destructive resource reads. Unknown/new APIs
 // default to bypass until their semantics are known; streams never enter here.
 func Scope(path string) string {
+	if strings.HasPrefix(path, "/api/plugins/console/v1/transcripts/") {
+		return "transcripts"
+	}
 	if strings.HasPrefix(path, approvals.Prefix+"/") {
 		return "approvals"
 	}

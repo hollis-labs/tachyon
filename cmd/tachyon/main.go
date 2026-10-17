@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/server"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 	"github.com/hollis-labs/tachyon/internal/webui"
 )
 
@@ -26,12 +28,15 @@ func main() {
 	defer stop()
 
 	srv := server.New(server.Config{
-		CachePolicyFile:  os.Getenv("TACHYON_CACHE_POLICY_FILE"),
-		ChatSyncInterval: chatInterval(),
-		ApprovalQueueURL: env("TACHYON_APPROVAL_QUEUE_URL", "http://127.0.0.1:7843"),
-		PluginBinDir:     env("TACHYON_PLUGIN_DIR", "bin/plugins"),
-		DataDir:          env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
-		CacheDir:         env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
+		CachePolicyFile:       os.Getenv("TACHYON_CACHE_POLICY_FILE"),
+		ChatSyncInterval:      chatInterval(),
+		ApprovalQueueURL:      env("TACHYON_APPROVAL_QUEUE_URL", "http://127.0.0.1:7843"),
+		FragmentsURL:          env("FRAGMENTS_ENGINE_URL", "http://127.0.0.1:8091"),
+		FragmentsTokenFile:    upstreamauth.TokenFile(nil, "", "FRAGMENTS_ENGINE_TOKEN_FILE"),
+		TranscriptMaxSessions: transcriptLimit(),
+		PluginBinDir:          env("TACHYON_PLUGIN_DIR", "bin/plugins"),
+		DataDir:               env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
+		CacheDir:              env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		Upstreams: catalog.Upstreams{
 			TetherAddr:      os.Getenv("TETHER_ADDR"),
 			TetherTokenFile: os.Getenv("TETHER_TOKEN_FILE"),
@@ -112,4 +117,12 @@ func chatInterval() time.Duration {
 		log.Fatal("TACHYON_CHAT_SYNC_INTERVAL must be between 1s and 1h")
 	}
 	return interval
+}
+
+func transcriptLimit() int {
+	limit, err := strconv.Atoi(env("TACHYON_TRANSCRIPT_MAX_SESSIONS", "5000"))
+	if err != nil || limit < 200 || limit > 20000 {
+		log.Fatal("TACHYON_TRANSCRIPT_MAX_SESSIONS must be between 200 and 20000")
+	}
+	return limit
 }
