@@ -22,6 +22,7 @@ import (
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
@@ -143,7 +144,7 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 	u := s.cfg.Upstreams
 	addr, token := u.TorqueURL, u.TorqueToken
 	switch scope {
-	case "catalog":
+	case "catalog", "chat":
 		addr, token = u.TetherAddr, ""
 		if addr == "" {
 			return "", errors.New("Tether address missing")
@@ -158,6 +159,8 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 				return "", err
 			}
 		}
+	case "chat-turns":
+		return apicache.Digest(u.TangentURL), nil
 	case "forge":
 		return apicache.Digest("github\n" + u.GitHubOrg + "\n" + u.GitHubToken), nil
 	default:
@@ -178,6 +181,20 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})
+	if s.store != nil {
+		outbox := &chatbridge.Outbox{Store: s.store, Identity: func() (string, error) { return s.cacheIdentity("chat") }, Next: s.inventory.APIRoutes()}
+		handler := http.Handler(outbox)
+		if s.cache != nil {
+			handler = s.cache.Wrap(handler)
+		}
+		mux.Handle("GET "+chatbridge.ChatPrefix+"/outbox", handler)
+		mux.Handle("POST "+chatbridge.ChatPrefix+"/agents/{launch}/send", handler)
+	}
+	turns := http.Handler(chatbridge.NewTurns(s.cfg.Upstreams.TangentURL))
+	if s.cache != nil {
+		turns = s.cache.Wrap(turns)
+	}
+	mux.Handle(chatbridge.Prefix+"/", turns)
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {

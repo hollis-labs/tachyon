@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { Copy, Download, Info, Check } from 'lucide-react'
+import { MessageInfo } from './MessageInfo'
 import { ago } from '@console/lib/agent-activity'
 import { Linkified } from '../autolink'
 import { DeliveryBadge } from '../messaging'
@@ -7,11 +9,33 @@ import type { ChatMessage } from './types'
 
 function Bubble({ m, now }: { m: ChatMessage; now: number }) {
   const mine = m.from === 'operator'
+  const [info, setInfo] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(m.body); setCopied(true); setActionError('') }
+    catch { setActionError('Could not copy. Check clipboard permissions.') }
+  }
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([m.body], { type: 'text/markdown;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${m.from}-${new Date(m.at).toISOString().replace(/[:.]/g, '-')}.md`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  const actionClass = 'p-1 text-zinc-500 hover:text-amber-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300'
+
   return (
     <li data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} className={`border-b border-zinc-800/80 px-3 py-2 ${mine ? 'bg-zinc-900/40' : ''}`}>
       <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
         <span>{mine ? 'you' : m.from === 'system' ? 'system' : 'agent'} · {ago(m.at, now)}</span>
         {mine && m.delivery && <DeliveryBadge state={m.delivery} />}
+        <span className="ml-auto flex items-center gap-1">
+          <button type="button" aria-label={copied ? 'Message copied' : 'Copy message'} title="Copy message" className={actionClass} onClick={() => void copy()}>{copied ? <Check className="h-3 w-3 text-emerald-300" /> : <Copy className="h-3 w-3" />}</button>
+          <button type="button" aria-label="Download message" title="Download Markdown" className={actionClass} onClick={download}><Download className="h-3 w-3" /></button>
+          <button type="button" aria-label="Message details" title="Message details" className={actionClass} onClick={() => setInfo(true)}><Info className="h-3 w-3" /></button>
+        </span>
         {m.streaming && <span className="animate-pulse text-amber-300">STREAMING</span>}
       </div>
       {m.body && (
@@ -21,6 +45,8 @@ function Bubble({ m, now }: { m: ChatMessage; now: number }) {
         </p>
       )}
       <ToolChips tools={m.tools} />
+      {actionError && <p role="alert" className="mt-1 font-mono text-xs text-red-300">{actionError}</p>}
+      {info && <MessageInfo message={m} onClose={() => setInfo(false)} />}
       {m.error && <p role="alert" className="mt-1 font-mono text-xs text-red-300">{m.error}</p>}
     </li>
   )

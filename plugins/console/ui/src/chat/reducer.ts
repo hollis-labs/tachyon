@@ -3,6 +3,7 @@ import type { ChatCapability, ChatEvent, ChatMessage } from './types'
 export interface ChatThreadState {
   messages: ChatMessage[]
   capability?: ChatCapability
+  error?: string | null
 }
 
 const byTime = (a: ChatMessage, b: ChatMessage) => a.at - b.at || a.id.localeCompare(b.id)
@@ -27,6 +28,7 @@ const patch = (s: ChatThreadState, id: string, f: (m: ChatMessage) => ChatMessag
 
 export function applyChatEvent(s: ChatThreadState, e: ChatEvent): ChatThreadState {
   switch (e.type) {
+    case 'error': return { ...s, error: e.message }
     case 'message':
       return { ...s, messages: mergeMessages(s.messages, [e.message]) }
     case 'delta':

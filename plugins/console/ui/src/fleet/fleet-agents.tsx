@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useChatRoster } from '../chat/roster'
+import { mergeChatAgents } from '../chat/fleet'
 import { Crown, Zap } from 'lucide-react'
 import { EmptyState } from '@hollis-labs/design-components'
 import { MailBadge, ModelTag, Score, Stat } from '@console/fleet/fleet-parts'
@@ -13,7 +15,7 @@ import { matchFocusedAgent, busySeries, whatNow, cwdName, cwdTail, fleetCounts, 
 function Row({ agent, rank, score, leader, entries, now, onOpen }: { agent: FleetAgent; rank: number; score: number; leader: boolean; entries: FleetHistory[string]; now: number; onOpen: () => void }) {
   const s = FLEET_STATE_STYLE[agent.state]
   const waiting = agent.state === 'waiting'
-  const name = cwdName(agent.cwd) || agent.provider
+  const name = agent.displayName || cwdName(agent.cwd) || agent.provider
   const top = leader
   const windowMs = timelineWindow(entries, now)
   const share = workingShare(entries, now, windowMs)
@@ -42,7 +44,7 @@ function Row({ agent, rank, score, leader, entries, now, onOpen }: { agent: Flee
           </span>
           <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] tracking-widest ${s.text}`}>
             <span className={`h-1.5 w-1.5 ${s.dot} ${agent.state === 'busy' ? 'agent-pulse-bar' : ''}`} />
-            {s.label}
+            {agent.chat && agent.chat.session?.state !== 'running' ? 'ready to start' : s.label}
             {agent.stateConfidence && <span className="text-zinc-500">· {agent.stateConfidence}</span>}
           </span>
         </span>
@@ -69,6 +71,9 @@ function Row({ agent, rank, score, leader, entries, now, onOpen }: { agent: Flee
 /** Owns the live feed, so the stream and polling exist only while this tab is open. */
 export function FleetAgentsPanel() {
   const fleet = useFleetAgents()
+  const chat = useChatRoster()
+  const agents = fleet.agents || chat.agents ? mergeChatAgents(fleet.agents ?? [], chat.agents ?? []) : null
+  const error = [fleet.error, chat.error && `Chat roster: ${chat.error}`].filter(Boolean).join(" · ") || null
   // `?agent=<id | provider | folder name>` (agent chips deep-link here) opens that agent's modal.
   const [search, setSearch] = useSearchParams()
   const focus = search.get('agent')
@@ -77,7 +82,7 @@ export function FleetAgentsPanel() {
     next.delete('agent')
     setSearch(next, { replace: true })
   }
-  return <FleetAgentsView agents={fleet.agents} history={fleet.history} error={fleet.error} now={fleet.now} live={fleet.live} focus={focus} onFocusClose={clearFocus} />
+  return <FleetAgentsView agents={agents} history={fleet.history} error={error} now={fleet.now} live={fleet.live} focus={focus} onFocusClose={clearFocus} />
 }
 
 export function FleetAgentsView({ agents, history, error, now, live, focus, onFocusClose }: { agents: FleetAgent[] | null; history: FleetHistory; error: string | null; now: number; live: boolean; focus?: string | null; onFocusClose?: () => void }) {

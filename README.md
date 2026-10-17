@@ -179,3 +179,27 @@ Environment variables:
 - **Aliases.** Torque's `@/…` becomes `@planner/…` or `@console/…` inside each plugin. Shared Torque `lib/api`, `lib/types`, `lib/utils`, `lib/toast`, `hooks/use-api` and `hooks/use-sse` come from `@tachyon/torque-client`.
 - **No cross-plugin imports.** Use host-sdk slots instead. For example, the Planner renders `<HostLinkText>`, and Console provides the autolinker through `SlotProvider`.
 - **No mock or fixture data.** Where a backend is missing, render the real client's error or empty state. See `docs/data-gaps.md`.
+
+
+Tether session chat shares the existing chat drawer with mailbox conversations.
+Chat launches come from Tether `/chat/agents` and appear in Agents with a chat
+icon; ordinary process agents retain mailbox actions. The host uses its existing
+Tether credential. Starting/continuing chat needs Tether's `operate` access;
+authorization failures remain visible and keep the draft.
+
+During this UI migration, `TANGENT_URL` (default `http://127.0.0.1:7843`) supplies
+Agent Turns history and revision-checked replies. The bridge exposes only history,
+participant-session establishment, and replies. Each browser has its own scoped,
+HttpOnly Tangent participant cookie; its hash partitions the SQLite response
+cache. Tangent retains custody of turns and is unchanged by this migration.
+Before sending, Tachyon refreshes the roster and turns to distinguish a live
+pending reply from a new turn/launch; stale-session turns cannot receive replies.
+
+Tachyon's `chat_outbox` table stores initiated messages before delivery through
+the same sqlitekit/serialwrite writer as the app cache. Successful sends replay
+locally by key; unconfirmed sends reuse their key when retried within 24 hours.
+The table survives response-cache eviction. This transport outbox is separate
+from the planned general object/history model. Conversation copies/downloads
+export the message body as Markdown; Info presents source and delivery metadata.
+`chat` and `chat-turns` cache policies use the existing host knobs. Turn updates
+are polled every five seconds; this does not claim token streaming.

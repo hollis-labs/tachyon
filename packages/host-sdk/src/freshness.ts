@@ -192,7 +192,7 @@ export const hostFetch: typeof fetch = async (input, init) => {
     if (method !== "GET" && method !== "HEAD" && res.ok) {
       // UI/prefs writes must not discard GitHub snapshots. Invalidate only the
       // upstream affected; the host applies the same partition on disk.
-      const scope = url.includes("/forge/") ? "forge" : url.includes("/catalog/") ? "catalog" : "torque"
+      const scope = url.includes("/chat-turns/") ? "chat-turns" : url.includes("/chat/") ? "chat" : url.includes("/forge/") ? "forge" : url.includes("/catalog/") ? "catalog" : "torque"
       forgetScope(scope)
       if (scope === "torque") { forgetScope("planner"); forgetScope("activity") }
     }
@@ -200,7 +200,7 @@ export const hostFetch: typeof fetch = async (input, init) => {
   } catch (error) {
     if (!(error instanceof Error && error.name === "AbortError")) {
       const prior = snapshots.find((s) => s.url === url && s.page === page)
-      const scope = prior?.scope ?? (url.includes("/catalog/") ? "catalog" : url.includes("/activity/") ? "activity" : url.includes("/planner/") ? "planner" : url.includes("/forge/") ? "forge" : null)
+      const scope = prior?.scope ?? (url.includes("/chat-turns/") ? "chat-turns" : url.includes("/chat/") ? "chat" : url.includes("/catalog/") ? "catalog" : url.includes("/activity/") ? "activity" : url.includes("/planner/") ? "planner" : url.includes("/forge/") ? "forge" : null)
       if (scope) publish({ url, page, scope, updatedAt: null, freshSeconds: 0, ...prior, state: "error", problem: "host_unreachable" })
     }
     throw error

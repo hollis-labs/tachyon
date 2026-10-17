@@ -12,6 +12,8 @@ export interface Recipient {
   broadcast?: boolean
   /** Stable agent slug when known (used for per-agent rate limiting). */
   agentId?: string
+  /** Tether launch identity for session chat; never a mailbox destination. */
+  chatLaunchId?: string
 }
 
 export type MessageIntent = 'message' | 'nudge' | 'update_request'

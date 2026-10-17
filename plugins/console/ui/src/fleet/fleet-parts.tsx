@@ -1,4 +1,4 @@
-import { Mail } from 'lucide-react'
+import { Mail, MessageSquare } from 'lucide-react'
 import type { FleetAgent } from '@console/fleet/lib/fleet-agents'
 import { useAgentUnread } from '@console/messaging/unread-hook'
 import { fleetAgentAddress } from '@console/messaging/unread-store'
@@ -21,8 +21,9 @@ export function Score({ value }: { value: number }) {
  * When the feed has no count and `agent` is given, falls back to the Console's batched
  * MessagingClient poll (null, and no poll, while the Console is disabled).
  */
-export function MailBadge({ count: feedCount, agent }: { count: number | null; agent?: Pick<FleetAgent, 'id' | 'provider'> }) {
-  const fallback = useAgentUnread(feedCount === null && agent ? fleetAgentAddress(agent) : null)
+export function MailBadge({ count: feedCount, agent }: { count: number | null; agent?: Pick<FleetAgent, 'id' | 'provider' | 'chat'> }) {
+  const fallback = useAgentUnread(feedCount === null && agent && !agent.chat ? fleetAgentAddress(agent) : null)
+  if (agent?.chat) return <span className="text-emerald-300" title="Tether session chat"><MessageSquare className="h-4 w-4" aria-label="Chat agent" /></span>
   const count = feedCount ?? fallback
   const has = (count ?? 0) > 0
   return (
@@ -40,7 +41,7 @@ export function MailBadge({ count: feedCount, agent }: { count: number | null; a
 export function ModelTag({ agent }: { agent: FleetAgent }) {
   return (
     <span className="shrink-0 truncate font-mono text-[10px] uppercase tracking-wider text-zinc-500" title={agent.model ?? undefined}>
-      {agent.provider}
+      {agent.chat ? 'chat · tether' : `process · ${agent.provider}`}
       {agent.model && <span className="normal-case tracking-normal text-zinc-400"> · {agent.model}</span>}
     </span>
   )

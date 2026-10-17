@@ -1,3 +1,5 @@
+import type { ChatAgent } from '../chat/roster'
+import { chatRecipient } from '../chat/roster'
 import { useEffect, useState } from 'react'
 import { useOptionalChatDock } from '../shell/chat-dock'
 import { useConsoleEnabled } from '../shell/enabled'
@@ -14,7 +16,7 @@ const BTN = 'border border-zinc-700 px-2.5 py-1 font-mono text-[10px] uppercase 
  * chat drawer is not left behind it. (Full "Message" stays in the chat drawer: a fixed
  * dialog inside the modal's transformed container would mis-position.)
  */
-export function FleetMessageActions({ agent, onBeforeChat }: { agent: { id: string; provider: string }; onBeforeChat?: () => void }) {
+export function FleetMessageActions({ agent, onBeforeChat }: { agent: { id: string; provider: string; chat?: ChatAgent }; onBeforeChat?: () => void }) {
   const enabled = useConsoleEnabled()
   const dock = useOptionalChatDock()
   const { client } = useMessaging()
@@ -22,19 +24,19 @@ export function FleetMessageActions({ agent, onBeforeChat }: { agent: { id: stri
   const [recipient, setRecipient] = useState<Recipient | null>(null)
   useEffect(() => {
     if (!enabled) return
+    if (agent.chat) { setRecipient(chatRecipient(agent.chat)); return }
     let live = true
     client.resolveRecipient(address).then((r) => live && setRecipient(r), () => live && setRecipient(null))
     return () => {
       live = false
     }
-  }, [enabled, client, address])
+  }, [enabled, client, address, agent.chat])
   if (!enabled) return null
   return (
     <section aria-label="Message this agent" className="mt-3">
       <h3 className="mb-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">Message</h3>
       <div className="flex flex-wrap items-center gap-2">
-        <NudgeButton recipient={recipient} />
-        <RequestUpdateButton recipient={recipient} />
+        {!agent.chat && <><NudgeButton recipient={recipient} /><RequestUpdateButton recipient={recipient} /></>}
         <button
           type="button"
           disabled={!recipient || !dock}
@@ -45,7 +47,7 @@ export function FleetMessageActions({ agent, onBeforeChat }: { agent: { id: stri
           }}
           className={BTN}
         >
-          Chat
+          {agent.chat ? 'Chat' : 'Email'}
         </button>
       </div>
     </section>

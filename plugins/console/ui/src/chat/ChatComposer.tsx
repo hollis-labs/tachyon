@@ -12,7 +12,7 @@ export function ChatComposer({ onSend, capability, error }: { onSend: (body: str
   const area = useRef<HTMLTextAreaElement>(null)
   const empty = !body.trim()
   const submit = async () => {
-    if (empty || busy) return
+    if (empty || busy || capability?.canSend === false) return
     setBusy(true)
     try {
       await onSend(body.trim())
@@ -54,7 +54,7 @@ export function ChatComposer({ onSend, capability, error }: { onSend: (body: str
       {error && <p role="alert" className="font-mono text-xs text-red-300">{error}</p>}
       <div className="flex items-center justify-between gap-3">
         <span className="font-mono text-[10px] text-zinc-500">{note}</span>
-        <button type="submit" disabled={empty || busy} className={`${btn} border-amber-400/60 text-amber-300 hover:bg-amber-400/10`}>{busy ? 'Sending' : 'Send'}</button>
+        <button type="submit" disabled={empty || busy || capability?.canSend === false} className={`${btn} border-amber-400/60 text-amber-300 hover:bg-amber-400/10`}>{busy ? 'Sending' : 'Send'}</button>
       </div>
     </form>
   )

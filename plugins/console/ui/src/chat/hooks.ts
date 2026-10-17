@@ -12,21 +12,25 @@ const reduce = (s: ChatThreadState, a: Action): ChatThreadState =>
 export function useChatThreads() {
   const { client } = useChat()
   const [threads, setThreads] = useState<ChatThread[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [version,setVersion] = useState(0)
   useEffect(() => {
     let live = true
-    client.listThreads().then((t) => live && setThreads(t), () => live && setThreads([]))
-    const off = client.subscribeThreads((t) => live && setThreads(t))
+    const accept = (t:ChatThread[]) => { if(live) {setThreads(t);setError(null)} }
+    const failed = (e:unknown) => {if(live) setError(e instanceof Error ? e.message : String(e))}
+    client.listThreads().then(accept, failed)
+    const off = client.subscribeThreads(accept, failed)
     return () => {
       live = false
       off()
     }
-  }, [client])
-  return threads
+  }, [client,version])
+  return {threads,error,retry:()=>setVersion(v=>v+1)}
 }
 
 /** Total unread across threads. Feed this to the alert tray / a badge. */
 export function useChatUnread(): number {
-  const threads = useChatThreads()
+  const {threads} = useChatThreads()
   return (threads ?? []).reduce((n, t) => n + t.unread, 0)
 }
 
@@ -51,7 +55,7 @@ export function useChatThread(threadId: string | null) {
         setLoading(false)
         void client.markRead(threadId)
       },
-      () => live && setLoading(false),
+      (e) => { if (live) { setLoading(false); dispatch({type:'event', e:{type:'error',message:e instanceof Error ? e.message : 'Could not load conversation'}}) } },
     )
     const off = client.subscribe(threadId, (e) => {
       if (!live) return
@@ -72,6 +76,8 @@ export function useChatThread(threadId: string | null) {
       dispatch({ type: 'history', messages: p.messages })
       setHasMore(p.hasMore)
       oldest.current = p.messages[0]?.at ?? oldest.current
+    } catch (e) {
+      dispatch({type:'event',e:{type:'error',message:e instanceof Error ? e.message : 'Could not load older messages'}})
     } finally {
       setLoading(false)
     }
@@ -92,5 +98,5 @@ export function useChatThread(threadId: string | null) {
     [client, threadId],
   )
 
-  return { messages: state.messages, capability: state.capability, loading, hasMore, loadOlder, send, sendError }
+  return { messages: state.messages, capability: state.capability, loading, hasMore, loadOlder, send, sendError, error: state.error }
 }

@@ -45,6 +45,12 @@ func Open(ctx context.Context, path string) (*Store, error) {
   key TEXT PRIMARY KEY, scope TEXT NOT NULL, identity TEXT NOT NULL,
   body BLOB NOT NULL, content_type TEXT NOT NULL, updated_at INTEGER NOT NULL
  );
+ CREATE TABLE IF NOT EXISTS chat_outbox (
+ identity TEXT NOT NULL, id TEXT NOT NULL, launch_id TEXT NOT NULL, body TEXT NOT NULL,
+ created_at INTEGER NOT NULL, status TEXT NOT NULL, error TEXT NOT NULL, session_id TEXT NOT NULL,
+ PRIMARY KEY(identity,id)
+ );
+ CREATE INDEX IF NOT EXISTS chat_outbox_launch ON chat_outbox(identity,launch_id,created_at);
  CREATE INDEX IF NOT EXISTS api_cache_age ON api_cache(updated_at);
  `)
 	if err != nil {

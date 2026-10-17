@@ -15,6 +15,7 @@ import (
 // environment. Plugins never inherit the host environment; they receive only
 // the variables their entry declares.
 type Upstreams struct {
+	TangentURL      string
 	TetherAddr      string
 	TetherTokenFile string
 	TorqueURL       string
