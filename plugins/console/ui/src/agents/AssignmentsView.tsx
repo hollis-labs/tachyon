@@ -14,6 +14,7 @@ type Group = 'agent' | 'target'
 /** Agent <-> workstream/task assignments. Changes are staged, then reviewed as one plan. */
 export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[]; now?: number }) {
   const client = useAgentsClient()
+  const demonstration = client.writeMode === 'demonstration'
   const [rows, setRows] = useState<AssignmentRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [group, setGroup] = useState<Group>('agent')
@@ -63,12 +64,14 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-zinc-800/80 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-500">
-        <span>{rows.length} assignments</span>
-        <span>{new Set(rows.map((r) => r.agentId)).size} agents</span>
+        <span>{demonstration ? 'Assignment drafts' : `${rows.length} assignments`}</span>
+        {!demonstration && <span>{new Set(rows.map((r) => r.agentId)).size} agents</span>}
         <span role="group" aria-label="Group by" className="ml-auto flex gap-1">
           {(['agent', 'target'] as const).map((g) => <button key={g} type="button" aria-pressed={group === g} onClick={() => setGroup(g)} className={`px-2.5 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 ${group === g ? 'bg-zinc-800 text-zinc-100' : 'hover:text-zinc-300'}`}>By {g}</button>)}
         </span>
       </div>
+
+      {demonstration && <p className="border-b border-zinc-800/80 px-4 py-3 text-sm text-zinc-400">Stage agent-to-task or workstream assignments for review. Live assignment reads are not connected; target IDs are not verified. Team seat assignments are configured under Teams. These drafts do not dispatch work and stay here only until you leave or reload Builder.</p>}
 
       <Block title="Assign">
         <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_8rem_1fr_1fr_8rem_auto]">
@@ -81,7 +84,7 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
         </div>
       </Block>
 
-      {groups.length === 0 ? <div className="p-4"><EmptyState variant="empty" title="No assignments" description="Assign an agent to a workstream or task above." /></div> : (
+      {groups.length === 0 ? <div className="p-4"><EmptyState variant="empty" title={demonstration ? 'No live assignment feed connected' : 'No assignments'} description={demonstration ? 'Use the form to stage a demonstration. Existing assignments are not represented here.' : 'Assign an agent to a workstream or task above.'} /></div> : (
         <ul aria-label="Assignments">
           {groups.map(([key, items]) => (
             <li key={key} className="border-b border-zinc-800/80">

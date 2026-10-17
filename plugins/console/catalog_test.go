@@ -60,3 +60,29 @@ func TestCatalogConfigurationAndRedirects(t *testing.T) {
 		t.Fatalf("followed redirect: %d", got.Status)
 	}
 }
+
+func TestTeamPolicyOnlyReadsTheFixedDocument(t *testing.T) {
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != "GET" || r.URL.Path != "/catalog/files" || r.URL.RawQuery != "path=teams-policy.yaml" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"path":"teams-policy.yaml","content":"version: 1"}`))
+	}))
+	defer upstream.Close()
+	h := NewCatalogHandler(upstream.URL, "")
+	got := h.Handle(context.Background(), subprocess.HTTPRequest{Method: "GET", Path: catalogPrefix + "/team-policy", RawQuery: "path=global.yaml", Query: map[string]string{"path": "providers/private.yaml"}})
+	if got.Status != 200 || calls != 1 {
+		t.Fatalf("read: %+v calls=%d", got, calls)
+	}
+	for _, req := range []subprocess.HTTPRequest{
+		{Method: "POST", Path: catalogPrefix + "/team-policy"},
+		{Method: "GET", Path: catalogPrefix + "/files", RawQuery: "path=global.yaml"},
+	} {
+		if got := h.Handle(context.Background(), req); got.Status < 400 || calls != 1 {
+			t.Fatalf("forwarded unsupported request: %+v", req)
+		}
+	}
+}

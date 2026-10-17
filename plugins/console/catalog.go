@@ -68,6 +68,11 @@ func (h *CatalogHandler) Handle(ctx context.Context, req subprocess.HTTPRequest)
 	}
 	switch strings.TrimPrefix(req.Path, catalogPrefix) {
 	case "/agents", "/launches", "/providers", "/projects":
+	case "/team-policy":
+		// One credential-free configuration document, not arbitrary file access.
+		req.Path = catalogPrefix + "/files"
+		req.RawQuery = "path=teams-policy.yaml"
+		req.Query = map[string]string{"path": "teams-policy.yaml"}
 	default:
 		return forgeErr(404, "not_found", "Unknown catalog read")
 	}

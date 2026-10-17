@@ -18,6 +18,7 @@ export function FleetAgentsPage() {
     <ApiProvider client={consoleClient}>
       <div className="flex h-full min-w-0 flex-col">
         <PageHeader title="Agents" />
+        <p className="border-b border-zinc-800/80 px-4 py-2 text-sm text-zinc-400">Live agents, processes, and activity.</p>
         <div className="flex-1 overflow-auto">
           <FleetAgentsPanel />
         </div>

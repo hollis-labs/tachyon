@@ -2,6 +2,7 @@ import type { ConfirmResult } from '@console/seams/identity-confirm'
 import type { AgentTemplate, AssignmentRecord, LifecyclePlanRequest, RetireImpact, TeamRecord } from './lifecycle'
 import type { AgentPlan, ApplyOutcome, AuditEntry, PlanRequest } from './plan'
 import type { AgentListQuery, AgentRecord } from './types'
+import type { TeamActivationPolicy } from './team-config'
 
 /**
  * Seam for the agent directory and manager. `createHttpAgentsClient`
@@ -16,6 +17,7 @@ import type { AgentListQuery, AgentRecord } from './types'
 export interface AgentsClient {
   writeMode?: "demonstration"
   saveDemonstration?: (planId: string) => Promise<ApplyOutcome>
+  getTeamActivationPolicy?: () => Promise<TeamActivationPolicy>
   listAgents(query?: AgentListQuery): Promise<AgentRecord[]>
   getAgent(id: string): Promise<AgentRecord | null>
 

@@ -10,6 +10,7 @@ import { AuditTrail } from './AuditTrail'
 import { CreateWizard } from './CreateWizard'
 import { LifecyclePanel } from './LifecyclePanel'
 import { TeamsView } from './TeamsView'
+import { TeamBuilder } from './TeamBuilder'
 import { useAgentsClient } from './context'
 import { AgentEditProvider, useAgentEdit } from './edit-context'
 import { Btn } from './ui'
@@ -59,7 +60,7 @@ function Row({ agent, selected, onSelect }: { agent: AgentRecord; selected: bool
             {runtime.project ? ` · ${runtime.project}` : ''}
           </span>
         </span>
-        <LiveBadge live={agent.live} unknown={!!agent.launches} />
+        {agent.launches ? <span className="font-mono text-[11px] text-zinc-400">{agent.launches.length} launch profiles</span> : <LiveBadge live={agent.live} />}
       </button>
     </li>
   )
@@ -110,12 +111,12 @@ export function AgentDetail({ agent, now }: { agent: AgentRecord; now: number })
         </div>
       </header>
 
-      <Section title="Live state">
+      <Section title={agent.launches ? 'Operations' : 'Live state'}>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-          <LiveBadge live={live} unknown={!!agent.launches} />
+          {agent.launches ? <span className="text-sm text-zinc-400">Live agents and processes are managed on Agents.</span> : <LiveBadge live={live} />}
           {live && <span className="font-mono text-xs text-zinc-400">{live.sessions} session{live.sessions === 1 ? '' : 's'}</span>}
           {live?.lastActivity != null && <span className="font-mono text-xs text-zinc-400">active {ago(live.lastActivity, now)}</span>}
-          <Link to={FLEET_PATH} className="ml-auto font-mono text-[11px] uppercase tracking-widest text-amber-300 hover:underline">open in fleet</Link>
+          <Link to={FLEET_PATH} className="ml-auto font-mono text-[11px] uppercase tracking-widest text-amber-300 hover:underline">{agent.launches ? 'Open Agents' : 'open in fleet'}</Link>
         </div>
       </Section>
 
@@ -180,7 +181,7 @@ export function AgentDetail({ agent, now }: { agent: AgentRecord; now: number })
             ))}
           </ul>
         ) : (
-          <None>{agent.launches ? 'Team membership is not connected yet.' : 'Not on any team.'}</None>
+          <None>{agent.launches ? 'Configure team seats under Teams. Live memberships are managed separately.' : 'Not on any team.'}</None>
         )}
       </Section>
 
@@ -216,6 +217,7 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
   const [mode, setMode] = useState<PaneMode>('view')
   const [auditVersion, setAuditVersion] = useState(0)
   const [section, setSection] = useState<Section>('agents')
+  const [visited, setVisited] = useState<Set<Section>>(new Set(['agents']))
   const [creating, setCreating] = useState<{ cloneOf?: string } | null>(null)
   const [showRetired, setShowRetired] = useState(false)
   const [now] = useState(() => nowProp ?? Date.now())
@@ -252,18 +254,18 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-zinc-800/80 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-500">
-        <span>{agents.length} agents</span>
-        <span className={live ? 'text-emerald-300' : ''}>{client.writeMode === 'demonstration' ? 'Live sessions not connected' : `${live} running`}</span>
+        <span>{agents.length} agent definitions</span>
+        {client.writeMode !== 'demonstration' && <span className={live ? 'text-emerald-300' : ''}>{live} running</span>}
         <span>{agents.filter((a) => !a.identity.enabled && !a.identity.retired).length} disabled</span>
         {client.writeMode !== 'demonstration' && <span>{agents.filter((a) => a.identity.retired).length} retired</span>}
         <span className="ml-auto text-zinc-400">{client.writeMode === 'demonstration' ? 'Tether catalog · demonstration saves' : 'Agent catalog'}</span>
       </div>
       {client.writeMode === 'demonstration' && <p className="border-b border-amber-400/30 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">Save actions are no-op demonstrations pending write access. Nothing is written to Tether or Torque.</p>}
-      <div role="tablist" aria-label="Agent manager" className="flex items-center gap-1 border-b border-zinc-800/80 px-4 py-1.5">
+      <div role="tablist" aria-label="Builder configuration" className="flex flex-wrap items-center gap-1 border-b border-zinc-800/80 px-4 py-1.5">
         {(['agents', 'teams', 'assignments'] as const).map((sec) => (
-          <button key={sec} disabled={client.writeMode === 'demonstration' && sec !== 'agents'} title={sec !== 'agents' && client.writeMode === 'demonstration' ? 'Read API not connected yet' : undefined} type="button" role="tab" aria-selected={section === sec} onClick={() => { setSection(sec); setCreating(null) }} className={`px-2.5 py-1 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40 ${section === sec ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>{sec}</button>
+          <button key={sec} type="button" role="tab" aria-selected={section === sec} onClick={() => { setSection(sec); setVisited(v => new Set([...v, sec])); setCreating(null) }} className={`px-2.5 py-1 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 ${section === sec ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>{sec === 'agents' ? 'Definitions' : sec === 'teams' ? 'Teams' : 'Assignments'}</button>
         ))}
-        <Btn className="ml-auto" tone="primary" onClick={() => { setSection('agents'); setCreating({}) }}>New agent</Btn>
+        {section === 'agents' && <Btn className="ml-auto" tone="primary" onClick={() => { setSection('agents'); setCreating({}) }}>New agent</Btn>}
       </div>
       {creating && (
         <CreateWizard
@@ -273,8 +275,8 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
           onCreated={(a) => { setSelectedId(a.identity.id); setMode('view'); setAuditVersion((v) => v + 1); void reload() }}
         />
       )}
-      {!creating && section === 'teams' && <TeamsView agents={agents} onAgentsChanged={() => void reload()} />}
-      {!creating && section === 'assignments' && <AssignmentsView agents={agents} now={nowProp} />}
+      {visited.has('teams') && <div hidden={!!creating || section !== 'teams'}>{client.writeMode === 'demonstration' ? <TeamBuilder /> : <TeamsView agents={agents} onAgentsChanged={() => void reload()} />}</div>}
+      {visited.has('assignments') && <div hidden={!!creating || section !== 'assignments'}><AssignmentsView agents={agents} now={nowProp} /></div>}
       {!creating && section === 'agents' && (<>
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/80 px-4 py-2">
         <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search agents" aria-label="Search agents" className="max-w-xs" />

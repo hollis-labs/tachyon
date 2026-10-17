@@ -39,8 +39,21 @@ no-op: it sends no write or approval request, does not update the directory,
 and explicitly reports that write access is pending. Drafts are not persisted.
 Agent prompts and system prompts remain separate; providers and projects from
 launch profiles are displayed as launch configuration, not agent defaults.
-Teams, assignments, templates, audit and retirement-impact reads are not yet
-connected. The adapter does not substitute sample data when a read fails.
+Builder separates Definitions, Teams and Assignments; Agents remains the live
+operations surface. Teams reads the authored `teams-policy.yaml` through a
+fixed read-only proxy route, using the same browser/SQLite background-refresh
+cache as other catalog reads. Its local workspace configures fresh singleton
+seats, exact definition/launch bindings, roles, coordinator, history sharing
+and spawn limits. These previews are not live memberships or proof of host
+activation. Team drafts survive tab switches and background refresh, but not
+leaving or reloading Builder. Demonstration saves leave them as unsaved drafts.
+
+Assignments stages agent-to-task/workstream links for local review and no-op
+saves. Live assignments and target-ID validation are not connected. Persisted
+team listing, templates, audit and retirement-impact reads also remain future
+work; the adapter never substitutes sample data when a read fails. Durable
+object tables, history/links and merge/sync ownership are tracked separately
+in CW-20261017-0025 through CW-20261017-0027, beyond the response cache.
 
 The agent-os deployment is declared in `tachyon.cerberus.yaml`. Register that
 file with Cerberus, then deploy `tachyon-backend-dev` to rebuild the frontend,

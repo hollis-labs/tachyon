@@ -4,6 +4,7 @@ import { filterAgents } from './filter'
 import { computeLifecyclePlan } from './lifecycle'
 import { computePlan, type AgentPlan } from './plan'
 import type { AgentRecord } from './types'
+import { parseTeamPolicy } from './team-config'
 
 interface CatalogAgent {
   id: string
@@ -74,6 +75,13 @@ export function createCatalogAgentsClient(fetchImpl: typeof fetch = hostFetch): 
   const meta = () => ({ id: `demo-${crypto.randomUUID()}`, now: Date.now(), actor: { id: 'local-preview', label: 'Local demonstration' } })
   return {
     writeMode: 'demonstration',
+    getTeamActivationPolicy: async () => {
+      const res = await fetchImpl('/api/plugins/console/v1/catalog/team-policy', { headers: { Accept: 'application/json' } })
+      if (!res.ok) throw new Error(`Tether team policy read failed (${res.status}). ${res.status === 401 || res.status === 403 ? 'Check the host credential and read access.' : 'Check the configured source and its availability.'}`)
+      const body = await res.json()
+      if (typeof body.content !== 'string') throw new Error('Tether returned an invalid team policy document.')
+      return parseTeamPolicy(body.content)
+    },
     listAgents: async (query) => filterAgents(await agents(), query),
     getAgent: async (id) => (await agents()).find((a) => a.identity.id === id) ?? null,
     planChange: async (req) => {
@@ -82,7 +90,7 @@ export function createCatalogAgentsClient(fetchImpl: typeof fetch = hostFetch): 
       return remember(computePlan(agent, req, meta()))
     },
     planLifecycle: async (req) => {
-      if (req.op !== 'agent.create') return unavailable()
+      if (req.op !== 'agent.create' && req.op !== 'assignment.update') return unavailable()
       return remember(computeLifecyclePlan(req, { agents: await agents(), teams: [], assignments: [] }, meta()))
     },
     getPlan: async (id) => structuredClone(plans.get(id) ?? null),
@@ -99,7 +107,9 @@ export function createCatalogAgentsClient(fetchImpl: typeof fetch = hostFetch): 
     listTemplates: async () => [],
     listTeams: unavailable,
     getTeam: unavailable,
-    listAssignments: unavailable,
+    // No live assignment feed exists for this configuration view yet. The UI
+    // explicitly labels the empty baseline as a draft, not an empty live list.
+    listAssignments: async () => [],
     listAudit: unavailable,
     getRetireImpact: unavailable,
   }
