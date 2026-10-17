@@ -40,6 +40,14 @@ launch profiles are displayed as launch configuration, not agent defaults.
 Teams, assignments, templates, audit and retirement-impact reads are not yet
 connected. The adapter does not substitute sample data when a read fails.
 
+The agent-os deployment is declared in `tachyon.cerberus.yaml`. Register that
+file with Cerberus, then deploy `tachyon-backend-dev` to rebuild the frontend,
+plugins and host together. It serves the existing `tachyon` systemd user service
+on loopback port 8093 behind `https://tachyon.nanite.cloud/builder`. Host-specific
+upstream settings belong in `~/.config/tachyon/env`; `TETHER_TOKEN_FILE` must
+point to a Tether credential. Fragments Engine's API token is separate and does
+not authenticate Tether catalog reads.
+
 ## Plugins
 
 | Plugin | Backend | UI routes |

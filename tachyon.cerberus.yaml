@@ -1,0 +1,79 @@
+kind: cerberus-project/v1
+owner: tachyon
+namespace: local
+project:
+  id: tachyon
+  name: Tachyon
+  description: Headless-capable, plugin-based control plane for the Hollis Labs agent fabric
+resources:
+  - id: tachyon-backend-dev
+    name: Tachyon Backend Dev
+    type: process
+    project: tachyon
+    connector: local
+    tags:
+      - tachyon
+      - dev
+      - backend
+      - api
+      - go
+      - v2
+    config:
+      dir: ~/dev/hollis-labs/apps/tachyon
+      build_strategy:
+        kind: make_standard
+        source:
+          root: .
+        rules:
+          target: all
+          output: tachyon
+      command:
+        - ./tachyon
+      # Reuse the local systemd unit and run from the checkout so relative
+      # plugin paths resolve to the binaries built by make all.
+      mode: os_service
+      supervisor: systemd_user
+      service_name: tachyon
+      run_from: workspace
+      # make all builds frontend + plugins + server; no separate install step needed.
+      install_after_build: false
+      env_file: ~/.config/tachyon/env
+      env:
+        TACHYON_ADDR: 127.0.0.1:8093
+      port: 8093
+      url: https://tachyon.nanite.cloud/builder
+      auto_restart: true
+      restart_delay: 2s
+  - id: tachyon-frontend-dev
+    name: Tachyon Frontend Dev
+    type: process
+    project: tachyon
+    connector: local
+    depends_on:
+      - tachyon-backend-dev
+    tags:
+      - tachyon
+      - dev
+      - frontend
+      - vite
+      - react
+      - v2
+    config:
+      dir: ~/dev/hollis-labs/apps/tachyon/frontend
+      command:
+        - npm
+        - run
+        - dev
+        - --
+        - --host
+        - 127.0.0.1
+        - --port
+        - "5179"
+      mode: dev_session
+      run_from: workspace
+      env:
+        TACHYON_API_ORIGIN: http://127.0.0.1:8093
+      port: 5179
+      url: http://127.0.0.1:5179/builder
+      auto_restart: true
+      restart_delay: 2s
