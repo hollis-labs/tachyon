@@ -22,6 +22,7 @@ import (
 
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/apicache"
+	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -39,6 +40,7 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	ApprovalQueueURL string
 	Upstreams        catalog.Upstreams
 }
 
@@ -169,6 +171,8 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 	u := s.cfg.Upstreams
 	addr, token := u.TorqueURL, u.TorqueToken
 	switch scope {
+	case "approvals":
+		return apicache.Digest("approval-queue\n" + s.cfg.ApprovalQueueURL), nil
 	case "catalog", "chat":
 		addr, token = u.TetherAddr, ""
 		if addr == "" {
@@ -203,6 +207,11 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 // Routes returns the handler mounted by app-host at /api/.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	approvalHandler := http.Handler(approvals.New(s.cfg.ApprovalQueueURL))
+	if s.cache != nil {
+		approvalHandler = s.cache.Wrap(approvalHandler)
+	}
+	mux.Handle(approvals.Prefix+"/", approvalHandler)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})

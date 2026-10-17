@@ -217,3 +217,28 @@ Chat prose uses the portfolio kit-chat Markdown renderer, with Builder-style
 Raw HTML and remote images are not activated. Copy/download export the original
 Markdown; Info presents source and delivery metadata. Updates are polled, not
 claimed to be a token stream.
+
+### Approvals
+
+The **Approvals** page and chat drawer link open the same reusable review dialog.
+It shows pending requests, retained decisions, source, impact, expiry, Markdown
+and typed evidence. Approve/deny and attention acknowledgements (with optional
+notes/replies) use the existing Tangent HITL v1 participant API. Producers still
+submit to that durable queue and receive its immutable outcomes; Tachyon owns
+this presentation, not a second decision authority. Tangent remains intact.
+
+`TACHYON_APPROVAL_QUEUE_URL` defaults to `http://127.0.0.1:7843`; remote addresses
+require HTTPS. Each browser has a separate HttpOnly participant cookie. The
+host rejects cross-origin decision requests before relaying them, forwards no
+ambient credentials, and partitions SQLite response snapshots by participant.
+The `approvals` cache policy uses the same configurable freshness/revalidation
+knobs as other APIs. Detail review and decision submission require fresh reads;
+a changed, expired or already-ended request must be reviewed again. The UI
+shows submitting state until the queue confirms an outcome and never retries
+a decision automatically. Evidence previews bypass the response cache.
+
+An approval records human intent for its requesting application. It does not
+mint credentials, grant missing Tether scopes, or automatically replay a failed
+operation. A plain chat report such as “missing session.write” is not an approval
+request: the producer must submit the concrete request to the queue, and the
+credential owner must handle any missing scope separately.

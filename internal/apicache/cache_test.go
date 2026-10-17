@@ -335,3 +335,52 @@ func TestUnrelatedWritesPreserveForgeSnapshot(t *testing.T) {
 	request(h, "POST", "/api/plugins/console/v1/forge/repos/github/org/repo/pulls/1/comments", false)
 	state(t, request(h, "GET", path, false), "live")
 }
+
+func TestApprovalsCacheIsParticipantScoped(t *testing.T) {
+	db := openTest(t, filepath.Join(t.TempDir(), "app.db"))
+	defer db.Close()
+	c := New(db, Defaults(), func(string) (string, error) { return "approval-host", nil })
+	calls := 0
+	denied := false
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		participant, e := r.Cookie("tachyon_approvals")
+		if e != nil || denied {
+			w.WriteHeader(401)
+			return
+		}
+		jsonResponse(w, `{"participant":"`+participant.Value+`"}`)
+	}))
+	call := func(cookie string, force bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/api/plugins/console/v1/approval-inbox/inbox", nil)
+		if cookie != "" {
+			r.AddCookie(&http.Cookie{Name: "tachyon_approvals", Value: cookie})
+		}
+		if force {
+			r.Header.Set("Cache-Control", "no-cache")
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	state(t, call("a", false), "live")
+	state(t, call("a", false), "cached")
+	b := call("b", false)
+	state(t, b, "live")
+	if !strings.Contains(b.Body.String(), `"b"`) {
+		t.Fatal("participant a leaked into b")
+	}
+	if w := call("", false); w.Code != 401 {
+		t.Fatal("unauthenticated read used cache")
+	}
+	denied = true
+	if w := call("a", true); w.Code != 401 {
+		t.Fatal("denied participant got stale data")
+	}
+	if w := call("a", false); w.Code != 401 {
+		t.Fatal("denied participant retained cache")
+	}
+	if calls != 5 {
+		t.Fatal("unexpected cache behavior", calls)
+	}
+}

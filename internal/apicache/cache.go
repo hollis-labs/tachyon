@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
@@ -45,6 +46,9 @@ func Digest(value string) string {
 // Scope is an allowlist of non-destructive resource reads. Unknown/new APIs
 // default to bypass until their semantics are known; streams never enter here.
 func Scope(path string) string {
+	if strings.HasPrefix(path, approvals.Prefix+"/") {
+		return "approvals"
+	}
 	if strings.HasPrefix(path, "/api/plugins/console/v1/chat-turns/") {
 		return "chat-turns"
 	}
@@ -162,6 +166,14 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 		}
 		// The fixed host credential is the current single-user identity boundary.
 		// User-scoped credentials must extend this key when the account module lands.
+		if scope == "approvals" {
+			participant, e := r.Cookie(approvals.CookieName)
+			if e != nil || participant.Value == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			identity = Digest(identity + "\n" + participant.Value)
+		}
 		key := Digest(identity + "\n" + r.URL.Path + "?" + r.URL.Query().Encode())
 		bypass := !p.Enabled || strings.Contains(r.Header.Get("Cache-Control"), "no-cache") || strings.Contains(r.Header.Get("Cache-Control"), "no-store")
 		preferStale := strings.Contains(r.Header.Get("Prefer"), "stale-while-revalidate")
@@ -209,6 +221,10 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 			out = errorCapture(http.StatusGatewayTimeout, "timeout", "Remote request timed out.")
 		}
 		after, identityErr := c.identity(scope)
+		if scope == "approvals" && identityErr == nil {
+			participant, _ := r.Cookie(approvals.CookieName)
+			after = Digest(after + "\n" + participant.Value)
+		}
 		if identityErr != nil || after != identity {
 			failure(w, scope, "configuration", "Upstream credential changed during refresh; retry the request.")
 			return

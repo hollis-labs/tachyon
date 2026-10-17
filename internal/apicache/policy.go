@@ -31,6 +31,7 @@ type Settings struct {
 
 func Defaults() Settings {
 	return Settings{MaxEntries: 1000, MaxBytes: 64 << 20, RetentionSeconds: 7 * 86400, Policies: map[string]Policy{
+		"approvals":  {true, 3, 60, 300, 15},
 		"chat-turns": {true, 3, 60, 300, 15},
 		"chat":       {true, 5, 60, 300, 15},
 		"activity":   {true, 5, 60, 300, 10}, "planner": {true, 15, 3600, 86400, 15},

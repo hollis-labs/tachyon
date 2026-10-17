@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { ApprovalProvider } from '../approvals/context'
 import { useApi } from '@tachyon/torque-client'
 import { AlertHost } from '../alerts/AlertHost'
 import { CardRuntimeProvider } from '../cards/surfaces'
@@ -45,10 +46,10 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
       <AgentUnreadProvider>
         <ChatProvider client={chat} operator={OPERATOR_ADDRESS}>
           <CardRuntimeProvider registry={registry} mountSurfaces={false}>
-            <HitlProvider client={hitl}>
+            <HitlProvider client={hitl} present={false}>
               <WorkflowProvider client={workflow}>
                 <AlertHost rules={DEFAULT_RULE_PACK}>
-                  <ChatDockProvider>{children}</ChatDockProvider>
+                  <ApprovalProvider><ChatDockProvider>{children}</ChatDockProvider></ApprovalProvider>
                 </AlertHost>
               </WorkflowProvider>
             </HitlProvider>

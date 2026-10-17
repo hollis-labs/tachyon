@@ -28,6 +28,7 @@ func main() {
 	srv := server.New(server.Config{
 		CachePolicyFile:  os.Getenv("TACHYON_CACHE_POLICY_FILE"),
 		ChatSyncInterval: chatInterval(),
+		ApprovalQueueURL: env("TACHYON_APPROVAL_QUEUE_URL", "http://127.0.0.1:7843"),
 		PluginBinDir:     env("TACHYON_PLUGIN_DIR", "bin/plugins"),
 		DataDir:          env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
 		CacheDir:         env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
