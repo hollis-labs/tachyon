@@ -75,6 +75,13 @@ export function createCatalogAgentsClient(fetchImpl: typeof fetch = hostFetch): 
   const meta = () => ({ id: `demo-${crypto.randomUUID()}`, now: Date.now(), actor: { id: 'local-preview', label: 'Local demonstration' } })
   return {
     writeMode: 'demonstration',
+    getImportedTeams: async () => {
+      const res = await fetchImpl('/api/plugins/console/v1/catalog/imported-teams', { headers: { Accept: 'application/json' } })
+      if (!res.ok) throw new Error(`Local team snapshot read failed (${res.status}).`)
+      const body = await res.json()
+      if (!Array.isArray(body.teams) || typeof body.source !== 'string' || typeof body.imported_at !== 'string') throw new Error('Invalid imported team snapshot.')
+      return body
+    },
     getTeamActivationPolicy: async () => {
       const res = await fetchImpl('/api/plugins/console/v1/catalog/team-policy', { headers: { Accept: 'application/json' } })
       if (!res.ok) throw new Error(`Tether team policy read failed (${res.status}). ${res.status === 401 || res.status === 403 ? 'Check the host credential and read access.' : 'Check the configured source and its availability.'}`)

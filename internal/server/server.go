@@ -181,6 +181,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
+		mux.HandleFunc(apicache.ImportedTeamsPath, s.cache.ImportedTeamsHandler)
 		mux.HandleFunc("GET /api/cache/policy", s.cache.PolicyHandler)
 		mux.Handle("/api/plugins/", s.cache.Wrap(s.inventory.APIRoutes()))
 	} else {

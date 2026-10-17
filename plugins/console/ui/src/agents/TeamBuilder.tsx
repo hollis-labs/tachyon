@@ -5,6 +5,7 @@ import { Field, inputCls } from "./AgentEditor";
 import { useAgentsClient } from "./context";
 import { DEMO_SAVE_MESSAGE } from "./catalog-client";
 import { Block, Btn } from "./ui";
+import { ImportedTeamDetail, importedTeamKey, type ImportedTeamSnapshot } from './ImportedTeamDetail';
 import {
 	newTeamDraft,
 	teamDraftIssues,
@@ -25,6 +26,16 @@ export function TeamBuilder() {
 	);
 	const [message, setMessage] = useState<string | null>(null);
 	const [search, setSearch] = useState("");
+	const [snapshot, setSnapshot] = useState<ImportedTeamSnapshot | null>(null);
+	const [snapshotError, setSnapshotError] = useState<string | null>(null);
+	const loadSnapshot = useCallback(async () => {
+		try {
+			if (!client.getImportedTeams) return;
+			const value = await client.getImportedTeams();
+			setSnapshot(value); setSnapshotError(null);
+		} catch (e) { setSnapshotError(e instanceof Error ? e.message : 'Imported teams unavailable'); }
+	}, [client]);
+	useEffect(() => { void loadSnapshot(); return dataRefreshRegistry('catalog').subscribe(() => void loadSnapshot()); }, [loadSnapshot]);
 	const load = useCallback(async () => {
 		try {
 			if (!client.getTeamActivationPolicy)
@@ -40,6 +51,8 @@ export function TeamBuilder() {
 		return dataRefreshRegistry("catalog").subscribe(() => void load());
 	}, [load]);
 	const draft = drafts.find((d) => d.key === selected);
+	const savedTeams = [...(snapshot?.teams ?? [])].sort((a, b) => a.id.localeCompare(b.id) || b.version - a.version);
+	const imported = savedTeams.find(t => importedTeamKey(t) === selected) ?? (selected === null ? savedTeams[0] : undefined);
 	const issues = draft ? teamDraftIssues(draft, policy) : [];
 	if (draft && drafts.some((d) => d.key !== draft.key && d.id === draft.id))
 		issues.push("Another local draft has this team ID.");
@@ -80,7 +93,7 @@ export function TeamBuilder() {
 			</div>
 			<p className="border-b border-zinc-800/80 px-4 py-2 text-xs text-zinc-400">
 				Team drafts stay in this Builder workspace until you leave or reload.
-				Saved teams and live memberships are not connected here yet.
+				Imported saved teams are read-only snapshots; live memberships are not connected here yet.
 			</p>
 			{error && (
 				<div
@@ -93,6 +106,10 @@ export function TeamBuilder() {
 			)}
 			<div className="grid lg:grid-cols-[minmax(15rem,21rem)_minmax(0,1fr)]">
 				<aside className="lg:border-r lg:border-zinc-800/80">
+					<div className="border-b border-zinc-800/80 px-4 py-3"><h3 className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">Saved team snapshots</h3><p className="mt-1 text-xs text-zinc-500">{snapshot ? `${new Set(savedTeams.map(t => t.id)).size} teams · ${savedTeams.length} versions · manually imported` : 'Loading local snapshot…'}</p>
+					{snapshotError && <p role="alert" className="mt-2 text-xs text-rose-300">{snapshotError} <button type="button" className="underline" onClick={() => void loadSnapshot()}>Retry snapshot</button></p>}</div>
+					<ul aria-label="Saved teams">{savedTeams.map(t => <li key={importedTeamKey(t)}><button type="button" aria-current={imported === t ? 'true' : undefined} onClick={() => select(importedTeamKey(t))} className={`w-full border-b border-zinc-800/80 px-4 py-3 text-left focus-visible:ring-1 focus-visible:ring-amber-300 ${imported === t ? 'bg-zinc-900' : 'hover:bg-zinc-900/50'}`}><span className="block font-mono text-sm text-zinc-100">{t.id}</span><span className="mt-1 block text-xs text-zinc-400">{t.name} · version {t.version}</span></button></li>)}</ul>
+					{snapshot && !savedTeams.length && <p className="px-4 py-3 text-xs text-zinc-500">No saved team snapshot has been imported, or it has expired from the cache.</p>}
 					<div className="border-b border-zinc-800/80 px-4 py-3">
 						<h3 className="mb-2 font-mono text-[11px] uppercase tracking-widest text-zinc-400">
 							Local drafts · {drafts.length}
@@ -167,7 +184,7 @@ export function TeamBuilder() {
 						)}
 					</div>
 				</aside>
-				{!draft ? (
+				{imported && snapshot ? <ImportedTeamDetail team={imported} snapshot={snapshot} /> : !draft ? (
 					<div className="p-6">
 						<EmptyState
 							variant="empty"

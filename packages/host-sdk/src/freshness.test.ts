@@ -114,3 +114,13 @@ describe("cache-first reads", () => {
     expect(fetch).toHaveBeenCalledTimes(3)
   })
 })
+
+it('keeps imported provenance on warm reads instead of labeling the copy live', async () => {
+  const fetch = vi.fn(async () => snapshot('copied', 0, 'imported'))
+  vi.stubGlobal('fetch', fetch)
+  const { hostFetch } = await import('./freshness')
+  await hostFetch(url)
+  const warm = await hostFetch(url)
+  expect(warm.headers.get('X-Tachyon-Cache')).toBe('imported')
+  expect(fetch).toHaveBeenCalledTimes(1)
+})

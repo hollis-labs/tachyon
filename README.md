@@ -48,9 +48,20 @@ and spawn limits. These previews are not live memberships or proof of host
 activation. Team drafts survive tab switches and background refresh, but not
 leaving or reloading Builder. Demonstration saves leave them as unsaved drafts.
 
+An explicitly imported snapshot can show existing saved team definitions while
+API access is pending. `go run ./cmd/import-team-cache --database <tachyon.db>
+--input <teams.json> --source <label>` imports a JSON array through the portfolio
+SQLite writer queue into the existing bounded response cache. Builder lists
+each saved version read-only, preserving the complete original definition and
+showing the source/import time. It never labels this copy live. Refresh reads
+the local snapshot without changing its timestamp or contacting Tether. The
+running app gains no access to Tether's database; there is no HTTP import/write
+endpoint. Imports expire under cache retention (seven days by default) and
+may be evicted under its size limits; automatic sync still requires the read API.
+
 Assignments stages agent-to-task/workstream links for local review and no-op
 saves. Live assignments and target-ID validation are not connected. Persisted
-team listing, templates, audit and retirement-impact reads also remain future
+team API listing, templates, audit and retirement-impact reads also remain future
 work; the adapter never substitutes sample data when a read fails. Durable
 object tables, history/links and merge/sync ownership are tracked separately
 in CW-20261017-0025 through CW-20261017-0027, beyond the response cache.

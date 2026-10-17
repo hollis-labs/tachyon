@@ -21,6 +21,7 @@ export function freshnessSummary(rows: readonly DataFreshness[], now: number) {
   const failed = rows.find((r) => r.state === "error")
   const stale = rows.find((r) => r.state === "stale")
   const refreshing = rows.some((r) => r.state === "refreshing")
+  const imported = rows.filter((r) => r.state === "imported")
   const problem = rows.find((r) => r.problem)?.problem
   const dates = rows.flatMap((r) => (r.updatedAt ? [r.updatedAt] : []))
   // Oldest constituent snapshot: a successful request must not make other
@@ -39,10 +40,15 @@ export function freshnessSummary(rows: readonly DataFreshness[], now: number) {
         ? "Stale data"
         : refreshing
           ? "Refreshing"
-          : cached
-            ? "Cached"
-            : "Live",
-    updatedAt,
+          : imported.length
+            ? "Imported snapshot"
+            : cached
+              ? "Cached"
+              : "Live",
+    updatedAt:
+      !failed && !stale && !refreshing && imported.length
+        ? (imported.flatMap((r) => (r.updatedAt ? [r.updatedAt] : [])).sort()[0] ?? null)
+        : updatedAt,
     problem: problem ? (problems[problem] ?? "Data source error.") : null,
   }
 }
@@ -73,7 +79,7 @@ export function DataStatus() {
         {status.label === "Live" ? "●" : "○"} {status.label}
       </span>
       <span>
-        Last updated{" "}
+        {status.label === "Imported snapshot" ? "Imported" : "Last updated"}{" "}
         {status.updatedAt ? (
           <time dateTime={status.updatedAt} title={status.updatedAt}>
             {new Date(status.updatedAt).toLocaleString()}

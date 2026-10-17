@@ -5,7 +5,7 @@ export interface DataFreshness {
   url: string
   page: string
   scope: string
-  state: "live" | "cached" | "refreshing" | "stale" | "error"
+  state: "live" | "cached" | "refreshing" | "stale" | "error" | "imported"
   updatedAt: string | null
   freshSeconds: number
   problem: string | null
@@ -31,7 +31,7 @@ function publish(value: DataFreshness) {
 export function responseFreshness(res: Response, url: string, page = ""): DataFreshness | null {
   const scope = res.headers.get("X-Tachyon-Source")
   const state = res.headers.get("X-Tachyon-Cache")
-  if (!scope || !state || !["live", "cached", "refreshing", "stale", "error"].includes(state)) return null
+  if (!scope || !state || !["live", "cached", "refreshing", "stale", "error", "imported"].includes(state)) return null
   return { url, page, scope, state: state as DataFreshness["state"], updatedAt: res.headers.get("X-Tachyon-Updated-At"), freshSeconds: Number(res.headers.get("X-Tachyon-Fresh-Seconds") ?? 0), problem: res.headers.get("X-Tachyon-Cache-Error") }
 }
 
@@ -174,7 +174,7 @@ export const hostFetch: typeof fetch = async (input, init) => {
       if (age >= 0 && age < fresh + swr) {
         const recentCheck = Date.now() - saved.checkedAt < 2000
         const problem = saved.headers.get("X-Tachyon-Cache-Error")
-        const state = problem ? "stale" : age < fresh ? "cached" : "refreshing"
+        const state = problem ? "stale" : saved.headers.get("X-Tachyon-Cache") === "imported" ? "imported" : age < fresh ? "cached" : "refreshing"
         const res = materialize(saved, state)
         notifyResponse(res, url, page)
         if (age >= fresh && !recentCheck) void revalidate(url, page, init)

@@ -35,3 +35,13 @@ describe("freshness display", () => {
     expect(freshnessSummary([row, latest], now + 5000).updatedAt).toBe(row.updatedAt)
   })
 })
+
+it("labels an imported snapshot honestly even alongside current live reads", () => {
+  const imported = { ...row, state: "imported" as const, updatedAt: "2026-10-17T16:00:00.000Z" }
+  const result = freshnessSummary([row, imported], now)
+  expect(result.label).toBe("Imported snapshot")
+  expect(result.updatedAt).toBe(imported.updatedAt)
+  expect(
+    freshnessSummary([imported, { ...row, state: "error", problem: "authentication" }], now).label,
+  ).toBe("Connection error")
+})

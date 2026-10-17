@@ -27,7 +27,7 @@ launches:
     definition: {id: worker, revision: r1, digest: 'sha256:${"a".repeat(64)}'}
     source: catalog:team-definitions/worker.md
 `;
-function setup() {
+function setup(importedTeams: unknown[] = []) {
 	const fetcher = vi.fn(
 		async (input: RequestInfo | URL, init?: RequestInit) => {
 			if (init?.method && init.method !== "GET")
@@ -35,7 +35,7 @@ function setup() {
 			const kind = String(input).split("/").pop();
 			return new Response(
 				JSON.stringify(
-					kind === "team-policy"
+				kind === 'imported-teams' ? { source: 'agent-os Tether', imported_at: '2026-10-17T18:00:00Z', teams: importedTeams } : kind === "team-policy"
 						? { content: policy }
 						: kind === "agents"
 							? { agents: [{ id: "worker", name: "Worker" }] }
@@ -138,9 +138,9 @@ it("stages and reviews a work assignment without writing or inventing live assig
 	expect(await client.listAssignments()).toEqual([]);
 });
 it("surfaces team policy read failures and supports retry without replacing a draft", async () => {
-	const { fetcher } = setup();
+	const { client } = setup();
 	await screen.findByRole("list", { name: "Agents" });
-	fetcher.mockResolvedValueOnce(new Response("", { status: 401 }));
+	client.getTeamActivationPolicy = vi.fn(client.getTeamActivationPolicy!).mockRejectedValueOnce(new Error('Tether team policy read failed (401).'));
 	fireEvent.click(screen.getByRole("tab", { name: "Teams" }));
 	await screen.findByRole("alert");
 	fireEvent.click(screen.getByRole("button", { name: "New team draft" }));
@@ -153,3 +153,21 @@ it("surfaces team policy read failures and supports retry without replacing a dr
 		"Keep me",
 	);
 });
+
+it('shows imported saved versions separately from drafts without inventing membership or dropping source fields', async () => {
+  const base = { id: 'first-team', name: 'First team', slots: [{ name: 'workers', role: '', min: 1, max: 1, definition_ref: { id: 'claude-agent', revision: 'r1', digest: 'sha256:original' } }], authority: { mode: 'strict', grants: [{ verb: 'may_delegate' }] } }
+  setup([{ ...base, version: 1 }, { ...base, version: 3 }])
+  fireEvent.click(await screen.findByRole('tab', { name: 'Teams' }))
+  const detail = await screen.findByRole('article', { name: 'first-team version 3 snapshot' })
+  expect(within(detail).getByText('Imported · read only')).toBeTruthy()
+  expect(within(detail).getByText('No role specified')).toBeTruthy()
+  expect(within(detail).getByText('claude-agent@r1')).toBeTruthy()
+  expect(within(detail).queryByRole('button', { name: 'Save demonstration' })).toBeNull()
+  fireEvent.click(within(screen.getByRole('list', { name: 'Saved teams' })).getByRole('button', { name: /version 1/ }))
+  await screen.findByRole('article', { name: 'first-team version 1 snapshot' })
+  fireEvent.click(screen.getByRole('button', { name: 'New team draft' }))
+  fireEvent.change(screen.getByLabelText('Team name'), { target: { value: 'My draft' } })
+  fireEvent.click(within(screen.getByRole('list', { name: 'Saved teams' })).getByRole('button', { name: /version 3/ }))
+  fireEvent.click(within(screen.getByRole('list', { name: 'Team drafts' })).getByRole('button', { name: /My draft/ }))
+  expect((screen.getByLabelText('Team name') as HTMLInputElement).value).toBe('My draft')
+})
