@@ -171,6 +171,9 @@ func (s *Server) Start(ctx context.Context) error {
 			return fmt.Errorf("chat outbox migration: %w", e)
 		}
 	}
+	if _, err := s.chat.BackfillSessionLinks(ctx, apicache.Digest("chat-owner\n"+s.cfg.Upstreams.TetherAddr)); err != nil {
+		return fmt.Errorf("chat session identity backfill: %w", err)
+	}
 	sources, err := objectsync.Sources(s.cfg.Upstreams)
 	if err != nil {
 		return fmt.Errorf("object sync sources: %w", err)
@@ -263,7 +266,7 @@ func (s *Server) Routes() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})
 	if s.store != nil {
-		outbox := &chatbridge.Outbox{Store: s.store, Identity: func() (string, error) { return apicache.Digest("chat-owner\n" + s.cfg.Upstreams.TetherAddr), nil }, Next: s.inventory.APIRoutes()}
+		outbox := &chatbridge.Outbox{Store: s.store, SourceID: s.cfg.Upstreams.TetherAddr, Identity: func() (string, error) { return apicache.Digest("chat-owner\n" + s.cfg.Upstreams.TetherAddr), nil }, Next: s.inventory.APIRoutes()}
 		handler := http.Handler(outbox)
 		if s.cache != nil {
 			handler = s.cache.Wrap(handler)

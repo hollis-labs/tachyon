@@ -122,13 +122,14 @@ Failed reconciliation rolls back the batch and watermark together. Local deletio
 is separate and cannot be undone by sync. `TakeOwnership` records the explicit move
 to a Tachyon master: future provider changes remain observations and cannot change
 or delete the master. No operation here writes upstream, launches agents, applies
-policy or deploys machines. Definitions describe configuration, not live runtime
-state. Adapters must normalize non-secret data instead of persisting raw credentials
+policy or deploys machines. Authored definitions describe configuration; session
+and run records describe execution observations. Adapters normalize non-secret data instead of persisting raw credentials
 or provider environment/config dumps.
 
-Planner records are Tachyon-owned (CW-20261018-0017). Chat session/run identities
-(CW-20261018-0018), additional provider adapters (CW-20261018-0016), and shared verb/API/MCP/CLI
-access with policy (CW-20261018-0019) follow this foundation. The UI still reads its
+Planner records are Tachyon-owned (CW-20261018-0017). Session/run records and chat
+identity links are described below (CW-20261018-0018). Additional provider adapters
+(CW-20261018-0016) and shared verb/API/MCP/CLI access with policy (CW-20261018-0019)
+follow this foundation. The UI still reads its
 existing adapters; this slice does not silently migrate cached responses or demo
 drafts into master records. Revision retention, multi-source correlation, outbound
 sync, and large-inventory staging need explicit later policies; no history purge
@@ -218,7 +219,7 @@ for transactional table replacement, checks all FKs before commit, and restores
 enforcement before the writer queue and readers start. Existing IDs, source
 snapshots, history and links are preserved. Migration `004_planner_organization.sql`
 extends this projection and the kind constraints while preserving existing plans
-and tasks. Richer Planner databases and execution/run objects remain later slices.
+and tasks. Richer Planner databases remain later slices.
 
 ## Epics, sprints, collections and workstreams
 
@@ -256,9 +257,69 @@ organization definitions, while `planner.ImportTorque` still accepts only its
 documented task/plan DTOs. These backend contracts do not change Planner UI data
 sources or create upstream records.
 
+## Sessions, runs and owned chat history
+
+`objects.Session` and `objects.Run` share UUID identity, source observations,
+local overlays, metadata, revision checks and retained history. Status edits never
+start/stop work or send messages. `ExecutionLinks` provides optional typed local
+project, workstream, agent, team, assignment, task and machine associations.
+
+A session has lifecycle status, runtime family/provider, optional qualified
+`native_session` reference, `run_id`, `parent_id`, `resumed_from_id`, lifecycle
+timestamps (`opened_at`, `started_at`, `ended_at`) and exit code. Its source key
+identifies the provider's session record, separately from the runtime-native
+session ID. Unknown facts remain unset. Statuses are `unknown`, `created`, `ready`,
+`launching`, `running`, `paused`, `detached`, `orphaned`, `completed`, `failed`, and
+`killed`. Completed/failed/killed records retain history; status is not deletion.
+
+A run represents an execution attempt, with optional parent/retry links and
+start/end timestamps. Statuses are `unknown`, `planned`, `queued`, `running`,
+`paused`, `blocked`, `completed`, `failed`, and `cancelled`. When `workflow_id` is
+set, `workflow_revision` must identify an existing revision of that workflow.
+Later definition edits do not move the run's pin. Retries use new run identities;
+sessions link to their run, without a duplicated session membership list. Parent,
+resume and retry lineage is checked for cycles inside the queued write transaction.
+Run creation and correlation are explicit service operations; Tether session or
+launch IDs do not automatically manufacture workflow executions.
+
+`ListExecutions(ExecutionFilter)` intersects kind, status, project, workstream,
+agent, task, run and workflow filters using the transactionally maintained
+`execution_items` projection. Results use UUID keyset pagination, default 100 and
+maximum 500. Deleted results are hidden unless requested; referenced tombstones
+retain relationships.
+
+Migration `005_execution_identities.sql` adds these kinds and separate
+`chat_session_links`/`chat_outbox_session_links` tables. Host startup backfills
+known session IDs in 200-row queued batches for the configured source and owned
+outbox identity. It does not rewrite original message bodies, transport IDs,
+revisions, reply intents or cursors. New chat ingestion saves the turn and its
+identity link atomically. Successful outbox results with a known session get the
+same association. Empty session IDs remain unlinked; current launch/workspace
+state is never used to guess historical ownership.
+
+Chat evidence can create a source-owned session stub with status `unknown`.
+`EnsureSessionIdentityTx` only ensures identity: it cannot change an existing
+observation, advance its freshness or resurrect a tombstone. New stubs use epoch
+`observed_at` so an inventory read already in flight can enrich them. Later
+session imports preserve that UUID. Inbox/outbox reads add `local_session_id`
+without replacing `session_id`; the extra field is a read projection. Existing
+reply authorization and transport identity checks still use original identifiers.
+`Owned.SessionTurns` queries retained history by local UUID, scoped to the source,
+including deleted sessions, with original turn-ID keyset pagination.
+
+An offline, repeatable maintenance command supports DB-copy validation:
+
+```sh
+./tachyon backfill-session-links --data-dir /private/database-copy --tether-address https://tether.example
+```
+
+Use the original address stored on chat rows. Object keys normalize HTTP trailing
+slashes and `tcp:` consistently with inventory ingestion, but original chat data
+is preserved. Tangent browser-only history import/retirement remains separate.
+
 ## Provider ingestion and recurring jobs
 
-`internal/objectsync` imports Tether projects, agent definitions and workstreams, Cerberus
+`internal/objectsync` imports Tether projects, agent definitions, workstreams and sessions, Cerberus
 machines, and GitHub organization repositories
 through the durable object service. These are independent of response caches and
 the current UI adapters. Tether project URNs and GitHub numeric repository IDs
@@ -306,6 +367,18 @@ It never becomes a local workflow foreign key automatically. Explicit local
 project/workflow mappings and metadata survive later scans. Provider project
 association and removal semantics remain Tether tasks `CW-20261018-0009`/`0010`.
 
+Tether sessions read unfiltered `/sessions?limit=1000` and follow `next_cursor`.
+All pages and relationship resolution must succeed before one atomic import.
+Absence never deletes a session: the upstream timestamp-only cursor can skip
+equal-time boundary rows, tracked in `CW-20261018-0048`. Creation/end timestamps,
+state, provider, exit code and safe correlation references are retained; workspace,
+PID, open environment/configuration and logs are excluded. Creation time is not
+treated as execution start time. Native runtime identity and lineage remain unset
+until explicitly supplied; upstream DTO extension is `CW-20261018-0049`.
+Exact same-instance project, catalog-agent and workstream IDs/declared aliases can
+resolve to local links; missing/ambiguous references retain their facts and resolve
+on later scans. Local mappings win. Group/launch references remain opaque.
+
 Cerberus reads its daemon's full, unfiltered `GET /hosts` inventory. Configure
 `CERBERUS_ADDR=unix:/home/chrispian/.cerberus/cerberus.sock` for the local daemon, or
 an HTTP base whose `/hosts` route exposes this same contract (an `/api` prefix is
@@ -351,6 +424,7 @@ maintenance command using the same upstream environment as the service:
 ./tachyon sync-objects --source tether-projects
 ./tachyon sync-objects --source tether-agents
 ./tachyon sync-objects --source tether-workstreams
+./tachyon sync-objects --source tether-sessions
 ./tachyon sync-objects --source cerberus-machines
 ./tachyon sync-objects --source github-repositories
 # Imports again; enables each source only if its own import succeeds.
@@ -360,7 +434,7 @@ maintenance command using the same upstream environment as the service:
 ```
 
 `--data-dir <directory>` permits isolated validation. Source names are
-`tether-projects`, `tether-agents`, `tether-workstreams`, `cerberus-machines`, `github-repositories`, or
+`tether-projects`, `tether-agents`, `tether-workstreams`, `tether-sessions`, `cerberus-machines`, `github-repositories`, or
 `all`; commands exit nonzero on failure. `all` imports projects before agents;
 independently scheduled jobs converge on later scans if a target is not yet present.
 Credentials stay in the existing environment/token-file mechanism, never job

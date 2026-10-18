@@ -229,6 +229,9 @@ func (o *Owned) Import(ctx context.Context, raw []byte) (int, error) {
 					if e != nil {
 						return e
 					}
+					if e = linkTurnSession(ctx, tx, o.SourceID, id); e != nil {
+						return e
+					}
 					count++
 					continue
 				}

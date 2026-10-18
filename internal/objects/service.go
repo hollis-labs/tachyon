@@ -211,6 +211,9 @@ func persist(ctx context.Context, tx *sql.Tx, r *Record, operation, actor string
 	if err := validatePlanningGraph(ctx, tx, *r, links); err != nil {
 		return err
 	}
+	if err := validateExecutionGraph(ctx, tx, *r, links); err != nil {
+		return err
+	}
 	for _, l := range links {
 		var kind Kind
 		if err := tx.QueryRowContext(ctx, "SELECT kind FROM objects WHERE id=?", l.ToID).Scan(&kind); err != nil {
@@ -231,6 +234,9 @@ func persist(ctx context.Context, tx *sql.Tx, r *Record, operation, actor string
 		return err
 	}
 	if err := projectPlanning(ctx, tx, *r); err != nil {
+		return err
+	}
+	if err := projectExecution(ctx, tx, *r); err != nil {
 		return err
 	}
 	if r.Source != nil {
