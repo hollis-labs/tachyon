@@ -34,7 +34,7 @@ export function ListField({ label, values, suggestions, tone, onChange }: { labe
         {all.map((x) => {
           const on = values.includes(x)
           return (
-            <button key={x} type="button" aria-pressed={on} onClick={() => toggle(x)} className={`border px-1.5 py-0.5 font-mono text-label transition-colors focus-visible:bg-panel-2 focus-visible:outline-none   ${on ? (tone ?? 'border-border bg-panel-2 text-fg') : 'border-border text-fg-faint hover:text-fg-muted'}`}>
+            <button key={x} type="button" aria-pressed={on} onClick={() => toggle(x)} className={`border px-1.5 py-0.5 font-mono dash-label transition-colors focus-visible:bg-panel-2 focus-visible:outline-none   ${on ? (tone ?? 'border-border bg-panel-2 text-fg') : 'border-border text-fg-faint hover:text-fg-muted'}`}>
               {on ? '' : '+ '}{x}
             </button>
           )
@@ -136,8 +136,8 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
     <article aria-label={`Edit ${agent.identity.name}`}>
       <StepUpHost identity={identity} />
       <header className="flex flex-wrap items-center gap-3 border-b border-border/80 px-5 py-3">
-        <h2 className="font-mono text-sm font-semibold uppercase tracking-wide">Edit {agent.identity.name}</h2>
-        <span className="font-mono text-label text-fg-faint">{agent.identity.id} · revision {agent.source.revision ?? 'unknown'}</span>
+        <h2 className="font-mono dash-body font-semibold uppercase tracking-wide">Edit {agent.identity.name}</h2>
+        <span className="font-mono dash-label text-fg-faint">{agent.identity.id} · revision {agent.source.revision ?? 'unknown'}</span>
         <span className="ml-auto flex items-center gap-2">
           {!reviewing && changes.length > 0 && <RiskBadge risk={risk} />}
           <Btn onClick={onClose} disabled={busy}>Close</Btn>
@@ -172,7 +172,7 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
           {sectionBlock('Identity', (
             <div className="space-y-3">
               <Field label="Enabled" htmlFor="ed-enabled" changed={changed.has('enabled')}>
-                <label className="flex items-center gap-2 text-control text-fg"><input id="ed-enabled" type="checkbox" checked={draft.enabled} onChange={(e) => set('enabled', e.target.checked)} /> Agent can be launched</label>
+                <label className="flex items-center gap-2 dash-body text-fg"><input id="ed-enabled" type="checkbox" checked={draft.enabled} onChange={(e) => set('enabled', e.target.checked)} /> Agent can be launched</label>
               </Field>
               <Field label="Summary" htmlFor="ed-summary" changed={changed.has('summary')}>
                 <AdminInput id="ed-summary" value={draft.summary} onChange={(e) => set('summary', e.target.value)} className={inputCls} />
@@ -243,7 +243,7 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
                 </Field>
               </div>
               <Field label="Network" htmlFor="ed-network" changed={changed.has('network')}>
-                <label className="flex items-center gap-2 text-control text-fg"><input id="ed-network" type="checkbox" checked={draft.network} onChange={(e) => set('network', e.target.checked)} /> Allow network access</label>
+                <label className="flex items-center gap-2 dash-body text-fg"><input id="ed-network" type="checkbox" checked={draft.network} onChange={(e) => set('network', e.target.checked)} /> Allow network access</label>
               </Field>
               <Field label="Privileged scopes" changed={changed.has('scopes')} issues={issuesFor('scopes')}>
                 <ListField label="Scopes" values={draft.scopes} suggestions={KNOWN_SCOPES} tone="border-warning/60 bg-warning/10 text-warning" onChange={(v) => set('scopes', v)} />
@@ -251,7 +251,7 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
               <Field label="Policy rules" changed={changed.has('rules')} issues={issuesFor('rules')}>
                 <ListField label="Rules" values={draft.rules} suggestions={KNOWN_RULES} onChange={(v) => set('rules', v)} />
               </Field>
-              <p className="text-xs text-fg-faint">Rule ids follow the policy-plane vocabulary; unknown ids are accepted but flagged.</p>
+              <p className="dash-support text-fg-faint">Rule ids follow the policy-plane vocabulary; unknown ids are accepted but flagged.</p>
             </div>
           ))}
           <Block title="Reason">
@@ -259,11 +259,11 @@ export function AgentEditor({ agent, onClose, onChanged }: AgentEditorProps) {
               <AdminInput id="ed-note" value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} placeholder="Why this change" />
             </Field>
           </Block>
-          {message && <div role="alert" className="border-b border-danger/30 bg-danger/5 px-5 py-2 text-control text-danger">{message}</div>}
+          {message && <div role="alert" className="border-b border-danger/30 bg-danger/5 px-5 py-2 dash-body text-danger">{message}</div>}
           <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-border bg-bg px-5 py-3">
-            <span className="font-mono text-label uppercase tracking-widest text-fg-faint">{changes.length} change{changes.length === 1 ? '' : 's'}</span>
+            <span className="font-mono dash-label uppercase tracking-widest text-fg-faint">{changes.length} change{changes.length === 1 ? '' : 's'}</span>
             {risks.filter((r) => r.level === 'high').length > 0 && <Chip tone={'border-danger/60 text-danger'}>{risks.filter((r) => r.level === 'high').length} high-risk</Chip>}
-            {issues.some((i) => i.level === 'error') && <span className="text-xs text-danger">{issues.filter((i) => i.level === 'error').length} problem(s) to fix</span>}
+            {issues.some((i) => i.level === 'error') && <span className="dash-support text-danger">{issues.filter((i) => i.level === 'error').length} problem(s) to fix</span>}
             <span className="ml-auto flex gap-2">
               <Btn onClick={() => { setDraft(original); setNote('') }} disabled={changes.length === 0 || busy}>Reset</Btn>
               <Btn tone="primary" onClick={createPlan} disabled={changes.length === 0 || busy || issues.some((i) => i.level === 'error')}>Review plan</Btn>

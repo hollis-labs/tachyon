@@ -26,19 +26,19 @@ export function AuditTrail({ agentId, version = 0 }: { agentId: string; version?
     }
   }, [client, agentId, version])
   if (error) return <div className="p-4"><EmptyState variant="error" title="Audit trail unavailable" description={error} /></div>
-  if (rows === null) return <div className="p-4 font-mono text-xs text-fg-faint">Loading audit trail…</div>
+  if (rows === null) return <div className="p-4 font-mono dash-support text-fg-faint">Loading audit trail…</div>
   if (rows.length === 0) return <div className="p-4"><EmptyState variant="empty" title="No changes recorded" description="Plans, approvals and applies for this agent appear here." /></div>
   return (
     <ol aria-label="Audit trail">
       {rows.map((e) => (
         <li key={e.id} className="border-b border-border/80 px-5 py-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className={`border px-1.5 py-0.5 font-mono text-caption uppercase tracking-widest ${KIND_TONE[e.kind]}`}>{e.kind.replace('_', ' ')}</span>
-            <span className="text-control text-fg">{e.summary}</span>
+            <span className={`border px-1.5 py-0.5 font-mono dash-caption uppercase tracking-widest ${KIND_TONE[e.kind]}`}>{e.kind.replace('_', ' ')}</span>
+            <span className="dash-body text-fg">{e.summary}</span>
             <RiskBadge risk={e.risk} />
-            <span className="ml-auto font-mono text-label text-fg-faint">{clock(e.at)}</span>
+            <span className="ml-auto font-mono dash-label text-fg-faint">{clock(e.at)}</span>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-label text-fg-faint">
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono dash-label text-fg-faint">
             <span>by {e.actor.label ?? e.actor.id}</span>
             <span>{e.planId}</span>
             {e.revisionAfter && <span>{e.revisionBefore || 'unknown'} → {e.revisionAfter}</span>}

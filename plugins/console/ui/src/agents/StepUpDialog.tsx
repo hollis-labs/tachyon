@@ -16,7 +16,7 @@ function MockStepUp({ identity }: { identity: MockIdentityConfirm }) {
           <DialogTitle>Confirm your identity</DialogTitle>
           <DialogDescription>This change needs a fresh confirmation. Nothing happens until you confirm.</DialogDescription>
         </DialogHeader>
-        <dl className="space-y-3 px-5 py-4 text-control">
+        <dl className="space-y-3 px-5 py-4 dash-body">
           <div>
             <Heading>Who</Heading>
             <dd className="text-fg">{r.who?.label ?? r.who?.id ?? 'You (signed-in user)'}</dd>
@@ -36,7 +36,7 @@ function MockStepUp({ identity }: { identity: MockIdentityConfirm }) {
           </div>
         </dl>
         <div className="flex items-center gap-2 border-t border-border px-5 py-3">
-          <span className="mr-auto font-mono text-caption uppercase tracking-widest text-fg-faint">mock step-up</span>
+          <span className="mr-auto font-mono dash-caption uppercase tracking-widest text-fg-faint">mock step-up</span>
           <Btn autoFocus onClick={() => identity.resolve(head.id, 'cancelled', 'cancelled by user')}>Cancel</Btn>
           <Btn tone="primary" onClick={() => identity.resolve(head.id, 'granted')}>Confirm</Btn>
         </div>

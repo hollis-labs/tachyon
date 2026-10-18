@@ -1,5 +1,6 @@
-import { AdminInput, AdminSelect, AdminTextarea } from '@hollis-labs/kit-admin'
-import { EmptyState, Input } from "@hollis-labs/design-components";
+import { DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
+import { AdminInput, AdminSelect, AdminTextarea, AdminRecordButton } from '@hollis-labs/kit-admin'
+import { EmptyState } from "@hollis-labs/design-components";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Field, inputCls } from "../agents/AgentEditor";
 import { Btn, Chip } from "../agents/ui";
@@ -29,7 +30,7 @@ function Notice({ error, note }: { error?: string; note?: string }) {
 			{error && (
 				<p
 					role="alert"
-					className="border-b border-danger/30 px-4 py-3 text-sm text-danger"
+					className="border-b border-danger/30 px-4 py-3 dash-body text-danger"
 				>
 					{error}
 				</p>
@@ -37,7 +38,7 @@ function Notice({ error, note }: { error?: string; note?: string }) {
 			{note && (
 				<p
 					role="status"
-					className="border-b border-success/30 px-4 py-3 text-sm text-success"
+					className="border-b border-success/30 px-4 py-3 dash-body text-success"
 				>
 					{note}
 				</p>
@@ -87,7 +88,7 @@ function Collection({
 }) {
 	if (loading)
 		return (
-			<p role="status" className="p-4 text-sm text-fg-muted">
+			<p role="status" className="p-4 dash-body text-fg-muted">
 				Loading…
 			</p>
 		);
@@ -132,7 +133,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 	);
 	return (
 		<div>
-			<p className="border-b border-border/80 px-4 py-3 text-sm text-fg-muted">
+			<p className="border-b border-border/80 px-4 py-3 dash-body text-fg-muted">
 				Project identities and shared guidance. Saves update Tether immediately.
 			</p>
 			<Notice note={note} />
@@ -150,8 +151,8 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 				/>
 			) : (
 				<>
-					<div className="flex flex-wrap items-center gap-3 border-b border-border/80 px-4 py-3">
-						<Input
+					<DashboardToolbar>
+						<AdminInput
 							aria-label="Search projects"
 							placeholder="Search projects"
 							value={search}
@@ -181,7 +182,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 						>
 							New project
 						</Btn>
-					</div>
+					</DashboardToolbar>
 					<Collection
 						loading={collection.loading}
 						error={collection.error}
@@ -190,27 +191,16 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 						<ul aria-label="Projects">
 							{rows.map((p) => (
 								<li key={p.urn}>
-									<button
-										type="button"
-										className="flex w-full items-center gap-4 border-b border-border/80 px-4 py-4 text-left hover:bg-panel/60  "
-										onClick={() => {
-											setNote("");
-											setEditing(p);
-										}}
-									>
-										<span className="min-w-0 flex-1">
-											<span className="block font-mono text-sm text-fg">
-												{p.display_name}
-											</span>
-											<span className="mt-1 block text-sm text-fg-muted">
-												{p.description || "No description"}
-											</span>
-											<span className="mt-1 block break-all font-mono text-xs text-fg-faint">
-												{p.urn}
-											</span>
-										</span>
-										<Chip>{p.status}</Chip>
-									</button>
+									<AdminRecordButton
+                                        selected={false}
+                                        onSelect={() => { setNote(""); setEditing(p); }}
+                                        title={p.display_name}
+                                        description={<>
+                                            <span className="block dash-body text-fg-muted">{p.description || "No description"}</span>
+                                            <span className="block break-all text-fg-faint">{p.urn}</span>
+                                        </>}
+                                        badge={<Chip>{p.status}</Chip>}
+                                    />
 								</li>
 							))}
 						</ul>
@@ -269,9 +259,9 @@ function ProjectEditor({
 			}}
 		>
 			<Notice error={error} />
-			<fieldset disabled={busy} className="space-y-4 p-5">
+			<fieldset disabled={busy} className="dash-form-stack">
 				<div className="flex flex-wrap items-center gap-3">
-					<h2 className="font-mono text-sm uppercase">
+					<h2 className="font-mono dash-body uppercase">
 						{project ? "Edit project" : "New project"}
 					</h2>
 					{project && <Chip>{project.status}</Chip>}
@@ -280,7 +270,7 @@ function ProjectEditor({
 					</Btn>
 				</div>
 				{project && (
-					<p className="break-all font-mono text-xs text-fg-faint">
+					<p className="break-all font-mono dash-support text-fg-faint">
 						{project.urn}
 					</p>
 				)}
@@ -330,10 +320,10 @@ function ProjectEditor({
 				</Field>
 				{!!project?.external_ids?.length && (
 					<div>
-						<h3 className="mb-2 text-sm text-fg-muted">Linked identifiers</h3>
+						<h3 className="mb-2 dash-body text-fg-muted">Linked identifiers</h3>
 						<dl>
 							{project.external_ids.map((v) => (
-								<div key={v.substrate} className="flex gap-3 font-mono text-xs">
+								<div key={v.substrate} className="flex gap-3 font-mono dash-support">
 									<dt>{v.substrate}</dt>
 									<dd>{v.external_id}</dd>
 								</div>
@@ -360,7 +350,7 @@ function ProjectEditor({
 				</div>
 				{confirm && project && (
 					<div className="space-y-3 border border-danger/40 p-3">
-						<p className="text-sm">
+						<p className="dash-body">
 							Deprecate {project.display_name}? Its identity and history remain
 							available. Repository files and launch settings are unchanged.
 						</p>
@@ -406,7 +396,7 @@ export function WorkstreamsView({
 	);
 	return (
 		<div>
-			<p className="border-b border-border/80 px-4 py-3 text-sm text-fg-muted">
+			<p className="border-b border-border/80 px-4 py-3 dash-body text-fg-muted">
 				Durable work across sessions. Close finished workstreams or reopen them
 				to continue.
 			</p>
@@ -435,8 +425,8 @@ export function WorkstreamsView({
 				/>
 			) : (
 				<>
-					<div className="flex flex-wrap items-center gap-3 border-b border-border/80 px-4 py-3">
-						<Input
+					<DashboardToolbar>
+						<AdminInput
 							aria-label="Search workstreams"
 							placeholder="Search loaded workstreams"
 							value={search}
@@ -453,7 +443,7 @@ export function WorkstreamsView({
 							<option value="active">Active</option>
 							<option value="closed">Closed</option>
 						</AdminSelect>
-						<Input
+						<AdminInput
 							aria-label="Filter by workflow ID"
 							placeholder="Exact workflow ID"
 							value={workflow}
@@ -480,8 +470,8 @@ export function WorkstreamsView({
 						>
 							New workstream
 						</Btn>
-					</div>
-					<p className="px-4 py-2 text-xs text-fg-faint">
+					</DashboardToolbar>
+					<p className="px-4 py-2 dash-support text-fg-faint">
 						Tether returns up to the newest 100 matching workstreams. Search
 						applies to this loaded set.
 						{!collection.loading &&
@@ -498,29 +488,16 @@ export function WorkstreamsView({
 						<ul aria-label="Workstreams">
 							{rows.map((w) => (
 								<li key={w.id}>
-									<button
-										type="button"
-										className="flex w-full items-center gap-4 border-b border-border/80 px-4 py-4 text-left hover:bg-panel/60  "
-										onClick={() => {
-											setNote("");
-											setEditing(w);
-										}}
-									>
-										<span className="min-w-0 flex-1">
-											<span className="block font-mono text-sm text-fg">
-												{w.name || "Unnamed workstream"}
-											</span>
-											<span className="mt-1 block break-all font-mono text-xs text-fg-faint">
-												{w.id}
-											</span>
-											{w.workflow_id && (
-												<span className="mt-1 block text-xs text-fg-muted">
-													Workflow: {w.workflow_id}
-												</span>
-											)}
-										</span>
-										<Chip>{w.status}</Chip>
-									</button>
+									<AdminRecordButton
+                                        selected={false}
+                                        onSelect={() => { setNote(""); setEditing(w); }}
+                                        title={w.name || "Unnamed workstream"}
+                                        description={<>
+                                            <span className="block break-all text-fg-faint">{w.id}</span>
+                                            {w.workflow_id && <span className="block text-fg-muted">Workflow: {w.workflow_id}</span>}
+                                        </>}
+                                        badge={<Chip>{w.status}</Chip>}
+                                    />
 								</li>
 							))}
 						</ul>
@@ -571,9 +548,9 @@ function WorkstreamEditor({
 			}}
 		>
 			<Notice error={error} />
-			<fieldset disabled={busy} className="space-y-4 p-5">
+			<fieldset disabled={busy} className="dash-form-stack">
 				<div className="flex items-center gap-3">
-					<h2 className="font-mono text-sm uppercase">
+					<h2 className="font-mono dash-body uppercase">
 						{workstream ? "Edit workstream" : "New workstream"}
 					</h2>
 					<Btn className="ml-auto" onClick={onCancel}>
@@ -581,7 +558,7 @@ function WorkstreamEditor({
 					</Btn>
 				</div>
 				{workstream && (
-					<p className="break-all font-mono text-xs text-fg-faint">
+					<p className="break-all font-mono dash-support text-fg-faint">
 						{workstream.id}
 					</p>
 				)}
@@ -601,7 +578,7 @@ function WorkstreamEditor({
 						onChange={(e) => setWorkflow(e.target.value)}
 					/>
 				</Field>
-				<p className="text-xs text-fg-faint">
+				<p className="dash-support text-fg-faint">
 					A correlation identifier for a workflow owned by another system.
 				</p>
 				{workstream && (
@@ -673,9 +650,9 @@ function SessionWorkstreamForm({
 			}}
 		>
 			<Notice error={error} />
-			<fieldset disabled={busy} className="space-y-4 p-5">
+			<fieldset disabled={busy} className="dash-form-stack">
 				<div className="flex items-center gap-3">
-					<h2 className="font-mono text-sm uppercase">Session workstream</h2>
+					<h2 className="font-mono dash-body uppercase">Session workstream</h2>
 					<Btn className="ml-auto" onClick={onCancel}>
 						Back to workstreams
 					</Btn>
@@ -703,7 +680,7 @@ function SessionWorkstreamForm({
 				</Field>
 				{action === "ensure" && (
 					<>
-						<p className="text-sm text-fg-muted">
+						<p className="dash-body text-fg-muted">
 							Reuse the nearest workstream in the session’s lineage. If none
 							exists, Tether creates one and fills missing assignments along
 							that lineage.
@@ -730,7 +707,7 @@ function SessionWorkstreamForm({
 					</Field>
 				)}
 				{action === "clear" && (
-					<p className="text-sm text-warning">
+					<p className="dash-body text-warning">
 						Clears only this session’s association. The workstream and other
 						sessions remain intact.
 					</p>

@@ -68,33 +68,33 @@ export function LifecyclePanel({ agent, onClone, onChanged }: LifecyclePanelProp
   return (
     <article aria-label={`${agent.identity.name} lifecycle`}>
       <Block title="Clone">
-        <p className="mb-3 text-control text-fg-muted">Start a new agent from this definition. Privileges are copied and flagged in the plan.</p>
+        <p className="mb-3 dash-body text-fg-muted">Start a new agent from this definition. Privileges are copied and flagged in the plan.</p>
         <Btn onClick={() => onClone(id)} disabled={retired}>Clone {agent.identity.name}…</Btn>
       </Block>
 
-      {client.writeMode === 'demonstration' ? <Block title="Retire and restore"><p className="text-sm text-fg-muted">Retirement impact reads are not connected yet. You can edit or clone this agent and try a demonstration save.</p></Block> : retired ? (
+      {client.writeMode === 'demonstration' ? <Block title="Retire and restore"><p className="dash-body text-fg-muted">Retirement impact reads are not connected yet. You can edit or clone this agent and try a demonstration save.</p></Block> : retired ? (
         <Block title="Restore">
-          <p className="mb-3 text-control text-fg-muted">Retired {agent.identity.retiredAt ? new Date(agent.identity.retiredAt).toISOString().slice(0, 10) : ''}. Restoring brings the definition back <strong>disabled</strong>, without its former teams or assignments.</p>
+          <p className="mb-3 dash-body text-fg-muted">Retired {agent.identity.retiredAt ? new Date(agent.identity.retiredAt).toISOString().slice(0, 10) : ''}. Restoring brings the definition back <strong>disabled</strong>, without its former teams or assignments.</p>
           <Field label="Reason (required)" htmlFor="lc-note"><AdminInput id="lc-note" value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} placeholder="Why restore" /></Field>
-          {error && <p role="alert" className="mt-2 text-control text-danger">{error}</p>}
+          {error && <p role="alert" className="mt-2 dash-body text-danger">{error}</p>}
           <div className="mt-3"><Btn tone="primary" onClick={make} disabled={busy || needsNote}>Review restore plan</Btn></div>
         </Block>
       ) : (
         <Block title="Retire">
-          <div className="mb-3 flex items-center gap-3"><RiskBadge risk="high" /><span className="text-control text-fg-muted">Retiring is high risk: it needs a reason and a fresh identity confirmation.</span></div>
-          <h4 className="mb-1.5 font-mono text-caption uppercase tracking-widest text-fg-faint">Impact preview</h4>
+          <div className="mb-3 flex items-center gap-3"><RiskBadge risk="high" /><span className="dash-body text-fg-muted">Retiring is high risk: it needs a reason and a fresh identity confirmation.</span></div>
+          <h4 className="mb-1.5 font-mono dash-caption uppercase tracking-widest text-fg-faint">Impact preview</h4>
           {impact ? (
             <>
               <ImpactSummary impact={impact} />
-              {impactTotal(impact) === 0 ? <p className="mt-2 text-control text-fg-muted">Nothing depends on this agent right now.</p> : (
-                <ul aria-label="Impact detail" className="mt-3 space-y-1 text-control">
+              {impactTotal(impact) === 0 ? <p className="mt-2 dash-body text-fg-muted">Nothing depends on this agent right now.</p> : (
+                <ul aria-label="Impact detail" className="mt-3 space-y-1 dash-body">
                   {impact.sessions.count > 0 && <li className="text-warning">{impact.sessions.count} running session{impact.sessions.count === 1 ? '' : 's'} ({impact.sessions.state}) — <Link to="/agents" className="underline">open in fleet</Link></li>}
-                  {[...impact.tasks, ...impact.workstreams].map((a) => <li key={a.id} className="text-fg-muted"><span className="font-mono text-label uppercase tracking-wider text-fg-faint">{a.target.type}</span> {a.target.id}{a.target.label ? <span className="text-fg-faint"> · {a.target.label}</span> : null}</li>)}
-                  {impact.teams.map((t) => <li key={t.teamId} className={t.soleCoordinator ? 'text-danger' : 'text-fg-muted'}><span className="font-mono text-label uppercase tracking-wider text-fg-faint">team</span> {t.teamName} as {t.role}{t.soleCoordinator ? ' — the only coordinator' : ''}</li>)}
+                  {[...impact.tasks, ...impact.workstreams].map((a) => <li key={a.id} className="text-fg-muted"><span className="font-mono dash-label uppercase tracking-wider text-fg-faint">{a.target.type}</span> {a.target.id}{a.target.label ? <span className="text-fg-faint"> · {a.target.label}</span> : null}</li>)}
+                  {impact.teams.map((t) => <li key={t.teamId} className={t.soleCoordinator ? 'text-danger' : 'text-fg-muted'}><span className="font-mono dash-label uppercase tracking-wider text-fg-faint">team</span> {t.teamName} as {t.role}{t.soleCoordinator ? ' — the only coordinator' : ''}</li>)}
                 </ul>
               )}
             </>
-          ) : <p className="font-mono text-xs text-fg-faint">Loading impact…</p>}
+          ) : <p className="font-mono dash-support text-fg-faint">Loading impact…</p>}
           {impact && impact.sessions.count > 0 && (
             <div className="mt-4 max-w-sm">
               <Field label="Running sessions" htmlFor="lc-sessions">
@@ -106,7 +106,7 @@ export function LifecyclePanel({ agent, onClone, onChanged }: LifecyclePanelProp
             </div>
           )}
           <div className="mt-4"><Field label="Reason (required)" htmlFor="lc-note"><AdminInput id="lc-note" value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} placeholder="Why retire this agent" /></Field></div>
-          {error && <p role="alert" className="mt-2 text-control text-danger">{error}</p>}
+          {error && <p role="alert" className="mt-2 dash-body text-danger">{error}</p>}
           <div className="mt-3"><Btn tone="danger" onClick={make} disabled={busy || needsNote || !impact}>Review retire plan</Btn></div>
         </Block>
       )}

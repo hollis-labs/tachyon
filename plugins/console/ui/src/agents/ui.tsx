@@ -12,7 +12,7 @@ export function Chip({ tone, ...props }: { children: ReactNode; tone?: string })
 }
 
 export function RiskBadge({ risk }: { risk: Risk }) {
-  return <AdminBadge className={`text-caption uppercase tracking-widest ${RISK_STYLE[risk]}`}>{risk} risk</AdminBadge>
+  return <AdminBadge className={`dash-caption uppercase tracking-widest ${RISK_STYLE[risk]}`}>{risk} risk</AdminBadge>
 }
 
 const STATUS_TONE: Record<PlanStatus, string> = {
@@ -28,5 +28,5 @@ const STATUS_TONE: Record<PlanStatus, string> = {
 }
 
 export function StatusBadge({ status }: { status: PlanStatus }) {
-  return <AdminBadge className={`text-caption uppercase tracking-widest ${STATUS_TONE[status]}`}>{status.replace('_', ' ')}</AdminBadge>
+  return <AdminBadge className={`dash-caption uppercase tracking-widest ${STATUS_TONE[status]}`}>{status.replace('_', ' ')}</AdminBadge>
 }

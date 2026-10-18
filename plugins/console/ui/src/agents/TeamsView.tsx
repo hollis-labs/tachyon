@@ -19,22 +19,22 @@ function TeamDetail({ team, agents, onEdit, onDelete }: { team: TeamRecord; agen
     <article aria-label={`${team.name} team`}>
       <header className="flex flex-wrap items-center gap-3 border-b border-border/80 px-5 py-4">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate font-mono text-lg font-semibold uppercase tracking-wide">{team.name}</h2>
-          <div className="font-mono text-xs text-fg-faint">{team.id} · revision {team.revision}</div>
-          {team.summary && <p className="mt-1 text-control text-fg-muted">{team.summary}</p>}
+          <h2 className="truncate font-mono dash-detail-title font-semibold uppercase tracking-wide">{team.name}</h2>
+          <div className="font-mono dash-support text-fg-faint">{team.id} · revision {team.revision}</div>
+          {team.summary && <p className="mt-1 dash-body text-fg-muted">{team.summary}</p>}
         </div>
         <Btn onClick={onEdit}>Edit team</Btn>
         <Btn tone="danger" onClick={onDelete}>Delete…</Btn>
       </header>
       <Block title={`Members (${team.members.length})`}>
-        {team.members.length === 0 ? <p className="text-control text-fg-faint">No members.</p> : (
+        {team.members.length === 0 ? <p className="dash-body text-fg-faint">No members.</p> : (
           <ul aria-label="Members" className="divide-y divide-border/80 border border-border/80">
             {team.members.map((m) => {
               const a = byId.get(m.agentId)
               return (
                 <li key={m.agentId} className="flex items-center gap-3 px-3 py-2">
                   <IdentityAvatar identity={m.agentId} size="small" />
-                  <span className="min-w-0 flex-1"><span className="block truncate font-mono text-control text-fg">{a?.identity.name ?? m.agentId}</span><span className="block truncate font-mono text-label text-fg-faint">{m.agentId}{a?.identity.retired ? ' · retired' : !a?.identity.enabled ? ' · disabled' : ''}</span></span>
+                  <span className="min-w-0 flex-1"><span className="block truncate font-mono dash-body text-fg">{a?.identity.name ?? m.agentId}</span><span className="block truncate font-mono dash-label text-fg-faint">{m.agentId}{a?.identity.retired ? ' · retired' : !a?.identity.enabled ? ' · disabled' : ''}</span></span>
                   <Chip tone={TONE[m.role]}>{m.role}</Chip>
                 </li>
               )
@@ -43,11 +43,11 @@ function TeamDetail({ team, agents, onEdit, onDelete }: { team: TeamRecord; agen
         )}
       </Block>
       <Block title="Shared policy">
-        <dl className="space-y-1.5 text-control">
-          <div className="flex gap-3"><dt className="w-36 shrink-0 font-mono text-label uppercase tracking-wider text-fg-faint">Permission ceiling</dt><dd className={team.policy.permissionCeiling === 'bypass' ? 'text-warning' : 'text-fg'}>{team.policy.permissionCeiling}</dd></div>
-          <div className="flex gap-3"><dt className="w-36 shrink-0 font-mono text-label uppercase tracking-wider text-fg-faint">Scope ceiling</dt><dd className="flex flex-wrap gap-1.5">{team.policy.scopesCeiling.length ? team.policy.scopesCeiling.map((s) => <Chip key={s} tone="border-warning/60 text-warning">{s}</Chip>) : <span className="text-fg-faint">None</span>}</dd></div>
-          <div className="flex gap-3"><dt className="w-36 shrink-0 font-mono text-label uppercase tracking-wider text-fg-faint">Rules</dt><dd className="flex flex-wrap gap-1.5">{team.policy.rules.length ? team.policy.rules.map((s) => <Chip key={s}>{s}</Chip>) : <span className="text-fg-faint">None</span>}</dd></div>
-          <div className="flex gap-3"><dt className="w-36 shrink-0 font-mono text-label uppercase tracking-wider text-fg-faint">Reports to</dt><dd className="text-fg">{team.policy.reportTo ?? <span className="text-fg-faint">not set</span>}</dd></div>
+        <dl className="space-y-1.5 dash-body">
+          <div className="flex gap-3"><dt className="w-36 shrink-0 font-mono dash-label uppercase tracking-wider text-fg-faint">Permission ceiling</dt><dd className={team.policy.permissionCeiling === 'bypass' ? 'text-warning' : 'text-fg'}>{team.policy.permissionCeiling}</dd></div>
+          <div className="flex gap-3"><dt className="w-36 shrink-0 font-mono dash-label uppercase tracking-wider text-fg-faint">Scope ceiling</dt><dd className="flex flex-wrap gap-1.5">{team.policy.scopesCeiling.length ? team.policy.scopesCeiling.map((s) => <Chip key={s} tone="border-warning/60 text-warning">{s}</Chip>) : <span className="text-fg-faint">None</span>}</dd></div>
+          <div className="flex gap-3"><dt className="w-36 shrink-0 font-mono dash-label uppercase tracking-wider text-fg-faint">Rules</dt><dd className="flex flex-wrap gap-1.5">{team.policy.rules.length ? team.policy.rules.map((s) => <Chip key={s}>{s}</Chip>) : <span className="text-fg-faint">None</span>}</dd></div>
+          <div className="flex gap-3"><dt className="w-36 shrink-0 font-mono dash-label uppercase tracking-wider text-fg-faint">Reports to</dt><dd className="text-fg">{team.policy.reportTo ?? <span className="text-fg-faint">not set</span>}</dd></div>
         </dl>
       </Block>
     </article>
@@ -95,7 +95,7 @@ function TeamEditor({ team, agents, onCancel, onDone }: { team?: TeamRecord; age
   return (
     <article aria-label={team ? `Edit ${team.name}` : 'New team'}>
       <header className="flex flex-wrap items-center gap-3 border-b border-border/80 px-5 py-3">
-        <h2 className="font-mono text-sm font-semibold uppercase tracking-wide">{team ? `Edit ${team.name}` : 'New team'}</h2>
+        <h2 className="font-mono dash-body font-semibold uppercase tracking-wide">{team ? `Edit ${team.name}` : 'New team'}</h2>
         <span className="ml-auto flex items-center gap-2"><RiskBadge risk={live.risk} /><Btn onClick={onCancel}>Close</Btn></span>
       </header>
       <Block title="Team">
@@ -109,14 +109,14 @@ function TeamEditor({ team, agents, onCancel, onDone }: { team?: TeamRecord; age
         <ul aria-label="Team members" className="mb-3 divide-y divide-border/80 border border-border/80">
           {draft.members.map((m) => (
             <li key={m.agentId} className="flex items-center gap-3 px-3 py-1.5">
-              <span className="min-w-0 flex-1 truncate font-mono text-control text-fg">{agents.find((a) => a.identity.id === m.agentId)?.identity.name ?? m.agentId}</span>
-              <AdminSelect aria-label={`Role for ${m.agentId}`} value={m.role} onChange={(e) => setDraft({ ...draft, members: draft.members.map((x) => (x.agentId === m.agentId ? { ...x, role: e.target.value } : x)) })} className="h-8 border border-border bg-bg px-2 font-mono text-xs text-fg">
+              <span className="min-w-0 flex-1 truncate font-mono dash-body text-fg">{agents.find((a) => a.identity.id === m.agentId)?.identity.name ?? m.agentId}</span>
+              <AdminSelect aria-label={`Role for ${m.agentId}`} value={m.role} onChange={(e) => setDraft({ ...draft, members: draft.members.map((x) => (x.agentId === m.agentId ? { ...x, role: e.target.value } : x)) })} className="h-8 border border-border bg-bg px-2 font-mono dash-support text-fg">
                 {[...new Set([...TEAM_ROLES, m.role])].map((r) => <option key={r}>{r}</option>)}
               </AdminSelect>
               <Btn onClick={() => setDraft({ ...draft, members: draft.members.filter((x) => x.agentId !== m.agentId) })} aria-label={`Remove ${m.agentId}`}>Remove</Btn>
             </li>
           ))}
-          {draft.members.length === 0 && <li className="px-3 py-2 text-control text-fg-faint">No members yet.</li>}
+          {draft.members.length === 0 && <li className="px-3 py-2 dash-body text-fg-faint">No members yet.</li>}
         </ul>
         <div className="flex items-center gap-2">
           <AdminSelect aria-label="Add member" value={pick} onChange={(e) => setPick(e.target.value)} className={`${inputCls} max-w-xs`}>
@@ -141,11 +141,11 @@ function TeamEditor({ team, agents, onCancel, onDone }: { team?: TeamRecord; age
       </Block>
       <Block title="Reason">
         <Field label={live.risk === 'high' ? 'Reason (required for high risk)' : 'Reason (optional)'} htmlFor="tm-note" issues={live.issues.filter((i) => i.field === 'note')}><AdminInput id="tm-note" value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} /></Field>
-        {live.issues.filter((i) => i.field !== 'note').map((i, n) => <p key={n} className={`mt-1.5 text-xs ${i.level === 'error' ? 'text-danger' : 'text-warning'}`}>{i.message}</p>)}
+        {live.issues.filter((i) => i.field !== 'note').map((i, n) => <p key={n} className={`mt-1.5 dash-support ${i.level === 'error' ? 'text-danger' : 'text-warning'}`}>{i.message}</p>)}
       </Block>
-      {error && <div role="alert" className="border-b border-danger/30 bg-danger/5 px-5 py-2 text-control text-danger">{error}</div>}
+      {error && <div role="alert" className="border-b border-danger/30 bg-danger/5 px-5 py-2 dash-body text-danger">{error}</div>}
       <div className="sticky bottom-0 flex items-center gap-3 border-t border-border bg-bg px-5 py-3">
-        <span className="font-mono text-label uppercase tracking-widest text-fg-faint">{live.lifecycle?.items.length ?? 0} change{live.lifecycle?.items.length === 1 ? '' : 's'}</span>
+        <span className="font-mono dash-label uppercase tracking-widest text-fg-faint">{live.lifecycle?.items.length ?? 0} change{live.lifecycle?.items.length === 1 ? '' : 's'}</span>
         <Btn className="ml-auto" tone="primary" onClick={review} disabled={busy || errors.length > 0}>Review plan</Btn>
       </div>
     </article>
@@ -167,7 +167,7 @@ export function TeamsView({ agents, onAgentsChanged }: { agents: AgentRecord[]; 
   const load = useCallback(() => client.listTeams().then((t) => (setTeams(t), setError(null)), (e) => setError(e instanceof Error ? e.message : 'Teams unavailable')), [client])
   useEffect(() => { void load() }, [load])
 
-  if (teams === null) return error ? <div className="p-4"><EmptyState variant="error" title="Teams unavailable" description={error} /></div> : <div className="p-4 font-mono text-xs text-fg-faint">Loading teams…</div>
+  if (teams === null) return error ? <div className="p-4"><EmptyState variant="error" title="Teams unavailable" description={error} /></div> : <div className="p-4 font-mono dash-support text-fg-faint">Loading teams…</div>
   const selected = teams.find((t) => t.id === selectedId) ?? teams[0] ?? null
   const done = (t?: TeamRecord) => { void load(); onAgentsChanged?.(); if (t) setSelectedId(t.id); setPane({ kind: 'view' }); setPlan(null); setNote('') }
 
@@ -178,7 +178,7 @@ export function TeamsView({ agents, onAgentsChanged }: { agents: AgentRecord[]; 
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-border/80 px-4 py-2 font-mono text-label uppercase tracking-widest text-fg-faint">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-border/80 px-4 py-2 font-mono dash-label uppercase tracking-widest text-fg-faint">
         <span>{teams.length} teams</span>
         <span>{teams.reduce((n, t) => n + t.members.length, 0)} memberships</span>
         <Btn className="ml-auto" tone="primary" onClick={() => setPane({ kind: 'new' })}>New team</Btn>
@@ -198,13 +198,13 @@ export function TeamsView({ agents, onAgentsChanged }: { agents: AgentRecord[]; 
             <PlanRunner plan={plan} subjectLabel={selected.name} onBack={() => setPlan(null)} onDone={() => done()} onChanged={() => { void load(); onAgentsChanged?.() }} />
           ) : (
             <Block title={`Delete ${selected.name}`}>
-              <p className="mb-3 text-control text-fg-muted">All {selected.members.length} members lose this membership and the shared policy stops applying. High risk: a reason is required.</p>
+              <p className="mb-3 dash-body text-fg-muted">All {selected.members.length} members lose this membership and the shared policy stops applying. High risk: a reason is required.</p>
               <Field label="Reason (required)" htmlFor="tm-del-note"><AdminInput id="tm-del-note" value={note} onChange={(e) => setNote(e.target.value)} className={inputCls} /></Field>
-              {error && <p role="alert" className="mt-2 text-control text-danger">{error}</p>}
+              {error && <p role="alert" className="mt-2 dash-body text-danger">{error}</p>}
               <div className="mt-3 flex gap-2"><Btn onClick={() => setPane({ kind: 'view' })}>Cancel</Btn><Btn tone="danger" disabled={!note.trim()} onClick={planDelete}>Review delete plan</Btn></div>
             </Block>
           ))}
-          {pane.kind === 'view' && (selected ? <TeamDetail team={selected} agents={agents} onEdit={() => setPane({ kind: 'edit' })} onDelete={() => { setNote(''); setPlan(null); setPane({ kind: 'delete' }) }} /> : <div className="p-4"><Heading>Teams</Heading><p className="text-control text-fg-faint">Select or create a team.</p></div>)}
+          {pane.kind === 'view' && (selected ? <TeamDetail team={selected} agents={agents} onEdit={() => setPane({ kind: 'edit' })} onDelete={() => { setNote(''); setPlan(null); setPane({ kind: 'delete' }) }} /> : <div className="p-4"><Heading>Teams</Heading><p className="dash-body text-fg-faint">Select or create a team.</p></div>)}
         </div>} />
     </div>
   )
