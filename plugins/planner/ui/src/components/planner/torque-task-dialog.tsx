@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import { CopyableId, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Skeleton } from '@hollis-labs/design-components'
 import { StatusBadge } from '@planner/components/domain/status-badge'
-import { useApi } from '@tachyon/torque-client'
+import { usePlannerApi as useApi } from '@planner/api/context'
 import type { Comment, Task } from '@tachyon/torque-client'
 import { HostLinkText } from '@tachyon/host-sdk'
 
@@ -33,7 +33,7 @@ export function TorqueTaskDialog({ id, onClose }: { id: string; onClose: () => v
       if (!ctl.signal.aborted) setError(err instanceof Error ? err.message : 'Failed to load the task')
     })
     // The newest comments, when the server will give them; the dialog works without.
-    api.listComments('task', id, { limit: COMMENT_LIMIT, sort_by: 'created_at', sort_dir: 'desc' }, ctl.signal)
+    api.listTaskComments(id, { limit: COMMENT_LIMIT, sort_by: 'created_at', sort_dir: 'desc' }, ctl.signal)
       .then((page) => setComments(page.items))
       .catch(() => undefined)
     return () => ctl.abort()

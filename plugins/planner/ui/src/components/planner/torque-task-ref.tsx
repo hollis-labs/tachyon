@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
-import type { PlannerTaskBrief } from '@tachyon/torque-client'
+import type { PlannerTaskBrief } from '@planner/api/types'
 
 /**
  * A reference to a Torque task: its id, and once known its live title and

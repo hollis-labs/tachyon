@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useApi } from '@tachyon/torque-client'
-import type { PlannerTaskBrief } from '@tachyon/torque-client'
+import { usePlannerApi as useApi } from '@planner/api/context'
+import type { PlannerTaskBrief } from '@planner/api/types'
 
 /**
  * Live title and status of Torque task ids. Returns a map; an id that is

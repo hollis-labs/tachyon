@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useApi } from '@tachyon/torque-client'
-import type { PlannerDb, PlannerSchemaInfo } from '@tachyon/torque-client'
+import { usePlannerApi as useApi } from '@planner/api/context'
+import type { PlannerDb, PlannerSchemaInfo } from '@planner/api/types'
 
 // Schemas change only with a release, so each API client asks once per database.
 const cache = new WeakMap<object, Map<PlannerDb, Promise<PlannerSchemaInfo>>>()

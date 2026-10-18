@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
 import { PlannerRowContent, PlannerTableHeader } from '@planner/components/planner/planner-table'
-import { useApi } from '@tachyon/torque-client'
-import type { PlannerWorkstreamTasks } from '@tachyon/torque-client'
+import { usePlannerApi as useApi } from '@planner/api/context'
+import type { PlannerWorkstreamTasks } from '@planner/api/types'
 
 const ORDER = ['doing', 'review', 'queued', 'blocked', 'paused', 'todo', 'backlog', 'done', 'archived', 'abandoned', 'cancelled']
 
@@ -19,7 +19,7 @@ export function WorkstreamTasksPanel({ id, refreshKey }: { id: string; refreshKe
     return () => ctl.abort()
   }, [api, id, refreshKey])
 
-  if (failed) return null
+  if (failed) return <p role="status" className="dash-body text-warning">Execution tasks are currently unavailable. Planner details remain available.</p>
   if (!data) return null
   const scope = [...data.torque_project_ids, data.torque_tag ? `tag ${data.torque_tag}` : ''].filter(Boolean).join(' · ')
   const counts = ORDER.filter((s) => data.counts[s]).map((s) => ({ status: s, n: data.counts[s] }))
