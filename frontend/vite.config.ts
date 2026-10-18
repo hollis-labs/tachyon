@@ -23,7 +23,8 @@ export default defineConfig({
   server: {
     port: Number(process.env.TACHYON_UI_PORT || 5179),
     strictPort: true,
-    proxy: { "/api": { target: apiTarget, changeOrigin: true } },
+    // Preserve the browser-facing Host for the host's same-origin write guard.
+    proxy: { "/api": { target: apiTarget, changeOrigin: false } },
   },
   test: {
     environment: "jsdom",

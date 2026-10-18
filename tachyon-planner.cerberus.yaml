@@ -19,7 +19,6 @@ resources:
       run_from: workspace
       env:
         TACHYON_API_ORIGIN: http://127.0.0.1:8093
-        VITE_TACHYON_PLANNER: verify
       port: 5186
       url: http://100.112.71.40:5186/planner
       auto_restart: false

@@ -1,14 +1,11 @@
 import type { TachyonPlugin } from "@tachyon/host-sdk"
 import { PlannerApiProvider } from "@planner/api/context"
 import { TachyonPlannerClient } from "@planner/api/client"
-import { createLegacyPlannerClient } from "@planner/api/legacy"
 import { Compass } from "lucide-react"
 import PlannerPage from "@planner/pages/PlannerPage"
 
-/** Explicit verification build only. The deployed default stays on the legacy adapter. */
-const plannerClient = import.meta.env.VITE_TACHYON_PLANNER === "verify"
-  ? new TachyonPlannerClient()
-  : createLegacyPlannerClient()
+/** Planner records and revisions are owned by the Tachyon host. */
+const plannerClient = new TachyonPlannerClient()
 
 function PlannerRoute() {
   return (

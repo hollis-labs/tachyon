@@ -795,14 +795,15 @@ remain available separately from the primary Torque task event stream through
 `/api/plugins/console/stream/events`; subscribe to task events there when updating
 execution counts. No Torque `planner.changed` event is needed.
 
-The frontend integration in `CW-20261018-0066` must adopt native statuses, UUIDs,
-the guarded mutation payloads above, conflict handling and two distinct event
-sources. For example decisions are `proposed`/`accepted`, not
-`needs-decision`/`decided`; inbox dismissal is `archived`. Reads on the legacy
-prefix already use Tachyon, but the old frontend write/status assumptions still
-need updating. Retire Torque's old Planner feature only after coordinating its
-remaining writers and reconciling final changes; its execution-task APIs remain
-the primary source for execution data.
+The frontend uses the owned client by default, with native statuses, UUIDs,
+guarded mutations, conflict handling and separate Planner/task event sources.
+There is no build flag or fallback to Torque Planner. A newer revision prompts
+an explicit reload while preserving the current draft. The development proxy
+preserves the browser-facing Host so same-origin operator writes work there too.
+
+Retire Torque's old Planner feature only after coordinating its remaining
+writers and reconciling final changes; its execution-task APIs remain the primary
+source for execution data.
 
 ## Plugin inventory
 
