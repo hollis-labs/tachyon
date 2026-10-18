@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
+	"time"
 )
 
 // These migrations extend the pre-existing cache/chat schema. Each migration
@@ -13,12 +15,29 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-func migrate(ctx context.Context, db *sql.DB) error {
+func migrate(ctx context.Context, db *sql.DB) (err error) {
 	entries, err := migrations.ReadDir("migrations")
 	if err != nil {
 		return err
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	// SQLite table rebuilds require disabling FK enforcement outside the
+	// transaction. Pin the connection so the setting cannot escape into a pool;
+	// the queue/readers are not started until migration and restoration succeed.
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return err
+	}
+	defer func() {
+		restoreCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, restoreErr := conn.ExecContext(restoreCtx, "PRAGMA foreign_keys=ON")
+		err = errors.Join(err, restoreErr)
+	}()
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -45,6 +64,19 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		if _, err = tx.ExecContext(ctx, "INSERT INTO tachyon_migrations(name) VALUES(?)", entry.Name()); err != nil {
 			return err
 		}
+	}
+	rows, err := tx.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		return err
+	}
+	violations := rows.Next()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if violations {
+		return fmt.Errorf("migration foreign key validation failed")
 	}
 	return tx.Commit()
 }
