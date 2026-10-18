@@ -1,11 +1,11 @@
-import { Button } from "@hollis-labs/design-components"
+import { Button, SearchInput } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { ShieldCheck, RefreshCw, KeyRound } from "lucide-react"
 import { useDataFreshness } from "@tachyon/host-sdk"
 import { useApprovals } from "./context"
-import { approvalButton } from "./dialog"
+import { DataTable } from "@hollis-labs/kit-dashboard/data"
 import { operatorElevation } from "../operator/elevation"
 
 export function ApprovalsPage() {
@@ -66,14 +66,14 @@ export function ApprovalsPage() {
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
       {operatorMessage && (
-        <p role="status" className="text-xs text-zinc-400">
+        <p role="status" className="dash-control text-fg-muted">
           {operatorMessage}
         </p>
       )}
       {queue.error && (
         <p
           role="alert"
-          className="rounded border border-red-500/30 p-3 text-xs text-red-300"
+          className="rounded border border-danger/30 p-3 dash-control text-danger"
         >
           Approval queue unavailable: {queue.error}
         </p>
@@ -81,60 +81,49 @@ export function ApprovalsPage() {
       <div className="flex flex-wrap justify-between gap-3">
         <div className="flex gap-2">
           {(["pending", "history"] as const).map((v) => (
-            <button
+            <Button variant="outline" size="sm"
               key={v}
-              className={`${approvalButton} ${view === v ? "border-sky-500/40 bg-sky-950/30 text-sky-300" : ""}`}
+              className={`font-mono dash-label ${view === v ? "border-info/40 bg-info-muted/30 text-info" : ""}`}
               aria-pressed={view === v}
               onClick={() => setView(v)}
             >
               {v === "pending" ? "Pending" : "History"} ·{" "}
               {queue.inbox?.[v].length ?? 0}
-            </button>
+            </Button>
           ))}
         </div>
-        <input
-          aria-label="Search approvals"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search requests or agents…"
-          className="rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300"
-        />
+        <div className="dash-search-adapter w-72 max-w-full">
+          <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} slashToFocus={false} />
+        </div>
       </div>
       <section
         aria-label={
           view === "pending" ? "Pending approvals" : "Approval history"
         }
-        className="divide-y divide-zinc-800/70 border-y border-zinc-800"
+        className="divide-y divide-border/70 border-y border-border"
       >
-        {rows.map((item) => (
-          <button
-            key={item.item_id}
-            onClick={() => queue.open(item.item_id)}
-            className="flex w-full items-center justify-between gap-4 px-3 py-3 text-left hover:bg-zinc-900/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
-          >
-            <div className="min-w-0">
-              <div className="truncate text-[13px] text-zinc-200">
-                {item.request_snapshot.title}
+        <DataTable
+          ariaLabel={view === "pending" ? "Pending approvals" : "Approval history"}
+          headerVisibility="sr-only"
+          density="comfortable"
+          items={rows}
+          pageSize={Math.max(1, rows.length)}
+          getRowId={item => item.item_id}
+          onRowOpen={id => queue.open(id)}
+          guardedRows
+          rowAriaLabel={item => item.request_snapshot.title}
+          columns={[
+            { key: "request", header: "Request / source", width: "fill", cell: item => <div className="min-w-0">
+              <div className="truncate font-sans dash-body text-fg">{item.request_snapshot.title}</div>
+              <div className="mt-1 truncate font-mono dash-caption text-fg-faint">
+                {item.request_snapshot.source.agent_label ?? item.request_snapshot.source.agent_id} · {item.request_snapshot.source.application_label ?? item.request_snapshot.source.application_id} · {new Date(item.enqueued_at).toLocaleString()}
               </div>
-              <div className="mt-1 truncate font-mono text-[10px] text-zinc-500">
-                {item.request_snapshot.source.agent_label ??
-                  item.request_snapshot.source.agent_id}{" "}
-                ·{" "}
-                {item.request_snapshot.source.application_label ??
-                  item.request_snapshot.source.application_id}{" "}
-                · {new Date(item.enqueued_at).toLocaleString()}
-              </div>
-            </div>
-            <span
-              className={`shrink-0 font-mono text-[10px] uppercase ${view === "pending" ? "text-amber-300" : "text-zinc-400"}`}
-            >
-              {item.terminal_outcome?.resolution?.response.decision ??
-                item.state}
-            </span>
-          </button>
-        ))}
+            </div> },
+            { key: "state", header: "Decision / state", cell: item => <span className={`font-mono dash-caption uppercase ${view === "pending" ? "text-warning" : "text-fg-muted"}`}>{item.terminal_outcome?.resolution?.response.decision ?? item.state}</span> },
+          ]}
+        />
         {!rows.length && (
-          <p className="px-3 py-10 text-center text-sm text-zinc-500">
+          <p className="px-3 py-10 text-center dash-body text-fg-faint">
             {queue.loading
               ? "Loading approvals…"
               : search
@@ -162,16 +151,16 @@ export function ApprovalTrigger({ onNavigate }: { onNavigate?: () => void }) {
           ? `Approval queue unavailable: ${queue.error}`
           : "Approvals"
       }
-      className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-amber-300"
+      className="inline-flex items-center gap-1.5 rounded px-2 py-1 dash-support text-fg-muted hover:bg-surface-hover hover:text-warning"
     >
       <ShieldCheck className="h-4 w-4" />
       <span>Approvals</span>
       {count > 0 && (
-        <span className="rounded bg-amber-400/15 px-1 text-amber-300">
+        <span className="rounded bg-warning/15 px-1 text-warning">
           {count}
         </span>
       )}
-      {queue?.error && <span className="text-red-400">!</span>}
+      {queue?.error && <span className="text-danger">!</span>}
     </Link>
   )
 }

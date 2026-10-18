@@ -1,4 +1,6 @@
-import { Button } from '@hollis-labs/design-components'
+import { DashboardViewTabs, DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
+import { FilterChipGroup, RecordTag } from '@hollis-labs/kit-dashboard/data'
+import { Button, SearchInput, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@hollis-labs/design-components'
 import { PageHeader } from '@hollis-labs/kit-dashboard'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -33,20 +35,16 @@ import {
 import { ASSIGN_TASKS } from './assign'
 import { useAgentsClient } from '../../agents/context'
 
-const field = 'border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300'
-const btn = 'border px-2 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40'
-const ghost = `${btn} border-zinc-700 text-zinc-300 hover:bg-zinc-900`
-
 const CATEGORY_TONE: Record<InboxCategory, string> = {
-  failing_checks: 'border-red-500/60 text-red-300',
-  changes_requested: 'border-orange-400/60 text-orange-300',
-  conflicts: 'border-orange-400/60 text-orange-300',
-  needs_review: 'border-sky-400/60 text-sky-300',
-  stale: 'border-zinc-600 text-zinc-300',
-  unassigned: 'border-zinc-600 text-zinc-400',
+  failing_checks: 'border-danger/60 text-danger',
+  changes_requested: 'border-warning/60 text-warning',
+  conflicts: 'border-warning/60 text-warning',
+  needs_review: 'border-info/60 text-info',
+  stale: 'border-border text-fg-muted',
+  unassigned: 'border-border text-fg-muted',
 }
 
-const VIEWS: { id: TriageView; label: string }[] = [
+const VIEWS: { id: Exclude<TriageView, 'all'>; label: string }[] = [
   { id: 'active', label: 'Active' },
   { id: 'snoozed', label: 'Snoozed' },
   { id: 'dismissed', label: 'Dismissed' },
@@ -54,7 +52,7 @@ const VIEWS: { id: TriageView; label: string }[] = [
 ]
 
 function Pill({ category }: { category: InboxCategory }) {
-  return <span className={`border px-1 font-mono text-[9px] uppercase tracking-widest ${CATEGORY_TONE[category]}`}>{CATEGORY_LABEL[category]}</span>
+  return <RecordTag className={`font-mono uppercase tracking-widest ${CATEGORY_TONE[category]}`}>{CATEGORY_LABEL[category]}</RecordTag>
 }
 
 function Checks({ item }: { item: InboxItem }) {
@@ -62,10 +60,10 @@ function Checks({ item }: { item: InboxItem }) {
   const r = item.pr.reviewSummary
   if (!c && !r) return null
   return (
-    <span className="font-mono text-[11px] text-zinc-400">
+    <span className="font-mono dash-support text-fg-muted">
       {c && (
         <span title="checks">
-          <span className="text-emerald-400">{c.passed}✓</span> <span className={c.failed ? 'text-red-400' : ''}>{c.failed}✗</span> <span>{c.pending}…</span>
+          <span className="text-success">{c.passed}✓</span> <span className={c.failed ? 'text-danger' : ''}>{c.failed}✗</span> <span>{c.pending}…</span>
         </span>
       )}
       {c && r && ' · '}
@@ -102,28 +100,28 @@ function Row({ item, now, agentName, onAssign, onTriage }: RowProps) {
   }
   const label = `${pr.ref.repo.owner}/${pr.ref.repo.name}#${pr.ref.number}`
   return (
-    <li className={`border-b border-zinc-800/80 px-4 py-3 ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
+    <li className={`border-b border-border/80 px-4 py-3 ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link to={prWorkspaceHref(pr.ref)} className="font-mono text-sm text-zinc-100 underline-offset-2 hover:text-amber-300 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">
+            <Link to={prWorkspaceHref(pr.ref)} className="font-mono dash-body text-fg underline-offset-2 hover:text-warning hover:underline">
               {label}
             </Link>
             {item.categories.map((c) => <Pill key={c} category={c} />)}
-            {item.status === 'snoozed' && item.triage?.snoozeUntil && <span className="font-mono text-[10px] text-zinc-400">snoozed until {new Date(item.triage.snoozeUntil).toLocaleString()}</span>}
+            {item.status === 'snoozed' && item.triage?.snoozeUntil && <span className="font-mono dash-caption text-fg-muted">snoozed until {new Date(item.triage.snoozeUntil).toLocaleString()}</span>}
           </div>
-          <p className="mt-0.5 truncate text-sm text-zinc-300">{pr.title}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[11px] text-zinc-400">
+          <p className="mt-0.5 truncate dash-body text-fg-muted">{pr.title}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono dash-support text-fg-muted">
             <span>by {pr.author.login}</span>
             <span>updated {ago(Date.parse(pr.updatedAt), now)}</span>
-            {pr.additions !== undefined && <span><span className="text-emerald-400">+{pr.additions}</span> <span className="text-red-400">-{pr.deletions ?? 0}</span></span>}
+            {pr.additions !== undefined && <span><span className="text-success">+{pr.additions}</span> <span className="text-danger">-{pr.deletions ?? 0}</span></span>}
             <Checks item={item} />
           </p>
           {(pr.assignees.length > 0 || item.assignments.length > 0) && (
-            <p className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-zinc-400">
-              {pr.assignees.map((a) => <span key={a.login} className="border border-zinc-700 px-1">{a.login}</span>)}
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 font-mono dash-support text-fg-muted">
+              {pr.assignees.map((a) => <span key={a.login} className="border border-border px-1">{a.login}</span>)}
               {item.assignments.map((a) => (
-                <span key={a.key} className="border border-emerald-500/50 px-1 text-emerald-300" title={`message ${a.messageId ?? 'sent'} · ${ago(a.at, now)}`}>
+                <span key={a.key} className="border border-success/50 px-1 text-success" title={`message ${a.messageId ?? 'sent'} · ${ago(a.at, now)}`}>
                   {agentName(a.agentId)}: {ASSIGN_TASKS.find((t) => t.id === a.task)?.label.toLowerCase() ?? a.task} · sent
                 </span>
               ))}
@@ -132,32 +130,27 @@ function Row({ item, now, agentName, onAssign, onTriage }: RowProps) {
         </div>
 
         <div className="relative flex flex-wrap items-center justify-end gap-1.5">
-          <button type="button" className={`${btn} border-amber-300/70 text-amber-300 hover:bg-amber-300/10`} onClick={() => onAssign(item)} disabled={busy}>
+          <Button variant="outline" size="sm" type="button" className="font-mono dash-label uppercase tracking-widest border-warning/70 text-warning hover:bg-warning/10" onClick={() => onAssign(item)} disabled={busy}>
             {item.assignments.length ? 'Assign again' : 'Assign'}
-          </button>
+          </Button>
           {active ? (
             <>
-              <button type="button" className={ghost} aria-expanded={menu} onClick={() => setMenu((v) => !v)} disabled={busy}>Snooze</button>
-              <button type="button" className={ghost} onClick={() => run('settle')} disabled={busy}>Resolve</button>
-              <button type="button" className={ghost} onClick={() => run('dismiss')} disabled={busy}>Dismiss</button>
+              <DropdownMenu open={menu} onOpenChange={setMenu}>
+                <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="font-mono dash-label uppercase tracking-widest" disabled={busy} />}>Snooze</DropdownMenuTrigger>
+                <DropdownMenuContent aria-label="Snooze for" align="end" data-dashboard-shape="square" className="w-36">
+                  {SNOOZE_PRESETS.map(p => <DropdownMenuItem key={p.id} disabled={busy} onClick={() => void run({ snooze: now + p.ms })}>{p.label}</DropdownMenuItem>)}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button variant="outline" size="sm" type="button" className="font-mono dash-label uppercase tracking-widest" onClick={() => run('settle')} disabled={busy}>Resolve</Button>
+              <Button variant="outline" size="sm" type="button" className="font-mono dash-label uppercase tracking-widest" onClick={() => run('dismiss')} disabled={busy}>Dismiss</Button>
             </>
           ) : (
-            <button type="button" className={ghost} onClick={() => run('reopen')} disabled={busy}>Reopen</button>
+            <Button variant="outline" size="sm" type="button" className="font-mono dash-label uppercase tracking-widest" onClick={() => run('reopen')} disabled={busy}>Reopen</Button>
           )}
-          {menu && (
-            <ul role="menu" aria-label="Snooze for" className="absolute right-0 top-full z-10 mt-1 w-36 border border-zinc-700 bg-zinc-950 shadow-xl">
-              {SNOOZE_PRESETS.map((p) => (
-                <li key={p.id} role="none">
-                  <button type="button" role="menuitem" className="w-full px-3 py-1.5 text-left font-mono text-xs text-zinc-200 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300" onClick={() => run({ snooze: now + p.ms })}>
-                    {p.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+
         </div>
       </div>
-      {err && <p role="alert" className="mt-2 font-mono text-xs text-red-300">{err}</p>}
+      {err && <p role="alert" className="mt-2 font-mono dash-control text-danger">{err}</p>}
     </li>
   )
 }
@@ -226,7 +219,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const filtered = filter.categories.length > 0 || !!filter.repo || !!filter.search || filter.unassignedOnly
 
   return (
-    <section aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg">
+    <section data-dashboard-shape="square" data-dashboard-accent="yellow" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg">
       <PageHeader title="Pending PRs">
         <Button variant="outline" size="sm" className="dash-header-action" onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Button>
       </PageHeader>
@@ -234,57 +227,49 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
         {views.active} need attention{refreshedAt ? ` · loaded ${ago(refreshedAt, now)}` : ''}
       </p>
       <div className="min-h-0 flex-1 overflow-auto">
-      <div role="tablist" aria-label="Triage state" className="flex flex-wrap border-b border-zinc-800">
-        {VIEWS.map((v) => (
-          <button key={v.id} type="button" role="tab" aria-selected={filter.view === v.id} onClick={() => set({ view: v.id })} className={`border-r border-zinc-800 px-4 py-2 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300 ${filter.view === v.id ? 'bg-zinc-900 text-amber-300' : 'text-zinc-400 hover:bg-zinc-900/50'}`}>
-            {v.label} <span className="text-zinc-500">{views[v.id as keyof typeof views]}</span>
-          </button>
-        ))}
-      </div>
+      <DashboardViewTabs variant="segments" label="Triage state" value={filter.view} onChange={view => set({ view: view as TriageView })} items={VIEWS.map(v => ({ value: v.id, label: v.label, count: views[v.id] }))} />
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-4 py-2">
-        {CATEGORY_ORDER.map((c) => (
-          <button key={c} type="button" aria-pressed={filter.categories.includes(c)} onClick={() => toggleCat(c)} className={`${btn} ${filter.categories.includes(c) ? 'border-amber-300 bg-amber-300/10 text-amber-300' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-900'}`}>
-            {CATEGORY_LABEL[c]} {cats[c]}
-          </button>
-        ))}
-        <span className="mx-1 hidden h-4 w-px bg-zinc-800 sm:block" />
-        <select aria-label="Repository" value={filter.repo} onChange={(e) => set({ repo: e.target.value })} className={field}>
+      <DashboardToolbar className="border-b border-border px-4 py-2">
+        <FilterChipGroup variant="outline" ariaLabel="Reasons" chips={CATEGORY_ORDER.map(c => ({ value: c, label: <>{CATEGORY_LABEL[c]} {cats[c]}</>, activeClassName: 'border-warning bg-warning/10 text-warning' }))} selected={filter.categories} onToggle={value => toggleCat(value as InboxCategory)} />
+        <span className="mx-1 hidden h-4 w-px bg-surface-hover sm:block" />
+        <select aria-label="Repository" value={filter.repo} onChange={e => set({ repo: e.target.value })}>
           <option value="">All repos</option>
-          {repos.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          {repos.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
         </select>
-        <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className={field}>
+        <select aria-label="Group by" value={groupBy} onChange={e => setGroupBy(e.target.value as GroupBy)}>
           <option value="category">Group: reason</option>
           <option value="repo">Group: repo</option>
           <option value="none">No grouping</option>
         </select>
-        <input aria-label="Search pull requests" type="search" value={filter.search} onChange={(e) => set({ search: e.target.value })} placeholder="Search title, author, #" className={`${field} min-w-[10rem] flex-1`} />
-        <label className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-400">
-          <input type="checkbox" checked={filter.unassignedOnly} onChange={(e) => set({ unassignedOnly: e.target.checked })} className="accent-amber-400" />
+        <div className="dash-search-adapter min-w-0 flex-1 basis-40">
+          <SearchInput ariaLabel="Search pull requests" value={filter.search} onChange={search => set({ search })} placeholder="Search title, author, #" debounceMs={0} slashToFocus={false} />
+        </div>
+        <label className="flex items-center gap-1.5 font-mono dash-support text-fg-muted">
+          <input type="checkbox" checked={filter.unassignedOnly} onChange={e => set({ unassignedOnly: e.target.checked })} className="accent-primary" />
           Unassigned only
         </label>
-        {filtered && <button type="button" className={ghost} onClick={() => setFilter((f) => ({ ...DEFAULT_FILTER, view: f.view }))}>Clear</button>}
-      </div>
+        {filtered && <Button variant="outline" size="sm" className="font-mono dash-label uppercase tracking-widest" onClick={() => setFilter(f => ({ ...DEFAULT_FILTER, view: f.view }))}>Clear</Button>}
+      </DashboardToolbar>
 
       {error && (
-        <p role="alert" className="border-b border-red-500/40 bg-red-500/5 px-4 py-2 font-mono text-xs text-red-300">
+        <p role="alert" className="border-b border-danger/40 bg-danger/5 px-4 py-2 font-mono dash-control text-danger">
           Could not load pending PRs: {error}
         </p>
       )}
-      {toast && <p role="status" className="border-b border-emerald-500/40 bg-emerald-500/5 px-4 py-2 font-mono text-xs text-emerald-300">{toast}</p>}
+      {toast && <p role="status" className="border-b border-success/40 bg-success/5 px-4 py-2 font-mono dash-control text-success">{toast}</p>}
 
       {loading && prs.length === 0 && !error ? (
-        <p className="px-4 py-8 text-center font-mono text-xs text-zinc-500">Loading pending PRs…</p>
+        <p className="px-4 py-8 text-center font-mono dash-control text-fg-faint">Loading pending PRs…</p>
       ) : groups.length === 0 ? (
-        <p className="px-4 py-8 text-center font-mono text-xs text-zinc-500">
+        <p className="px-4 py-8 text-center font-mono dash-control text-fg-faint">
           {all.length === 0 ? 'Nothing pending. All PRs are reviewed, green and assigned.' : filtered || filter.view !== 'active' ? 'No pull requests match this view.' : 'Inbox clear.'}
         </p>
       ) : (
         groups.map((g) => (
           <div key={g.id} role="group" aria-label={g.label}>
             {groupBy !== 'none' && (
-              <h3 className="border-b border-zinc-800 bg-zinc-900/40 px-4 py-1.5 font-mono text-[10px] uppercase tracking-widest text-zinc-400">
-                {g.label} <span className="text-zinc-500">{g.items.length}</span>
+              <h3 className="border-b border-border bg-surface/40 px-4 py-1.5 font-mono dash-caption uppercase tracking-widest text-fg-muted">
+                {g.label} <span className="text-fg-faint">{g.items.length}</span>
               </h3>
             )}
             <ul>
