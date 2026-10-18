@@ -32,7 +32,6 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
       setErrors([])
     }
     // Reseed when the dialog opens or the schema arrives, not on every keystroke.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, schema, db])
 
   const missing = missingRequired(specs, draft)
@@ -56,7 +55,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="planner-dialog max-h-[85vh] overflow-auto" widthClassName="max-w-lg">
+      <DialogContent className="dash-detail-dialog max-h-[85vh] overflow-auto" widthClassName="max-w-lg">
         <DialogHeader>
           <DialogTitle>New {meta.singular}</DialogTitle>
           <DialogDescription>Fill in the essentials. Everything else can be edited once it exists.</DialogDescription>
@@ -64,7 +63,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
         {schema ? (
           <PlannerFields specs={specs} draft={draft} errors={errors} idPrefix="pc" onChange={(name, value) => setDraft((d) => ({ ...d, [name]: value }))} />
         ) : (
-          <p className="text-control leading-5 text-fg-muted">Loading…</p>
+          <p className="dash-body leading-5 text-fg-muted">Loading…</p>
         )}
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={submitting}>
