@@ -48,7 +48,7 @@ export function PlannerFields({ specs, draft, onChange, errors = [], idPrefix = 
             )}
             {s.kind === 'enum' && (
               <Select value={value === '' ? NONE : value} onValueChange={(v) => onChange(s.name, v === null || v === NONE ? '' : v)}>
-                <SelectTrigger id={id} className="h-8 w-full text-sm" aria-label={s.label}>
+                <SelectTrigger id={id} className="h-8 w-full dash-body" aria-label={s.label}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -61,9 +61,9 @@ export function PlannerFields({ specs, draft, onChange, errors = [], idPrefix = 
                 </SelectContent>
               </Select>
             )}
-            {s.hint && fieldErrors.length === 0 && <p className="text-label leading-4 text-fg-faint">{s.hint}</p>}
+            {s.hint && fieldErrors.length === 0 && <p className="dash-label leading-4 text-fg-faint">{s.hint}</p>}
             {fieldErrors.map((e, i) => (
-              <p key={i} className="text-xs text-destructive">
+              <p key={i} className="dash-support text-destructive">
                 {e.message}
               </p>
             ))}

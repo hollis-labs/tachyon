@@ -126,7 +126,7 @@ describe("transcript dashboard", () => {
     fireEvent.change(screen.getByLabelText("Search session metadata"), {
       target: { value: "no-match" },
     })
-    expect(screen.getByText("No sessions match these filters.")).toBeTruthy()
+    expect(await screen.findByText("No sessions match these filters.")).toBeTruthy()
   })
   it("loads a transcript on demand and renders Markdown with paged turns", async () => {
     read.mockImplementation((path: string) =>

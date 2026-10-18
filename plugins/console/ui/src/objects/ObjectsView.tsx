@@ -1,4 +1,6 @@
-import { EmptyState, Input } from "@hollis-labs/design-components";
+import { DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
+import { AdminInput, AdminSelect, AdminTextarea, AdminRecordButton } from '@hollis-labs/kit-admin'
+import { EmptyState } from "@hollis-labs/design-components";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Field, inputCls } from "../agents/AgentEditor";
 import { Btn, Chip } from "../agents/ui";
@@ -28,7 +30,7 @@ function Notice({ error, note }: { error?: string; note?: string }) {
 			{error && (
 				<p
 					role="alert"
-					className="border-b border-rose-400/30 px-4 py-3 text-sm text-rose-200"
+					className="border-b border-danger/30 px-4 py-3 dash-body text-danger"
 				>
 					{error}
 				</p>
@@ -36,7 +38,7 @@ function Notice({ error, note }: { error?: string; note?: string }) {
 			{note && (
 				<p
 					role="status"
-					className="border-b border-emerald-400/30 px-4 py-3 text-sm text-emerald-200"
+					className="border-b border-success/30 px-4 py-3 dash-body text-success"
 				>
 					{note}
 				</p>
@@ -86,7 +88,7 @@ function Collection({
 }) {
 	if (loading)
 		return (
-			<p role="status" className="p-4 text-sm text-zinc-400">
+			<p role="status" className="p-4 dash-body text-fg-muted">
 				Loading…
 			</p>
 		);
@@ -131,7 +133,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 	);
 	return (
 		<div>
-			<p className="border-b border-zinc-800/80 px-4 py-3 text-sm text-zinc-400">
+			<p className="border-b border-border/80 px-4 py-3 dash-body text-fg-muted">
 				Project identities and shared guidance. Saves update Tether immediately.
 			</p>
 			<Notice note={note} />
@@ -149,15 +151,15 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 				/>
 			) : (
 				<>
-					<div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/80 px-4 py-3">
-						<Input
+					<DashboardToolbar>
+						<AdminInput
 							aria-label="Search projects"
 							placeholder="Search projects"
 							value={search}
 							onChange={(e) => setSearch(e.target.value)}
 							className="max-w-xs"
 						/>
-						<select
+						<AdminSelect
 							aria-label="Project status"
 							className={`${inputCls} max-w-40`}
 							value={status}
@@ -166,7 +168,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 							{["active", "deprecated", "archived", "merged"].map((v) => (
 								<option key={v}>{v}</option>
 							))}
-						</select>
+						</AdminSelect>
 						<Btn onClick={collection.reload} disabled={collection.loading}>
 							Refresh
 						</Btn>
@@ -180,7 +182,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 						>
 							New project
 						</Btn>
-					</div>
+					</DashboardToolbar>
 					<Collection
 						loading={collection.loading}
 						error={collection.error}
@@ -189,27 +191,16 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 						<ul aria-label="Projects">
 							{rows.map((p) => (
 								<li key={p.urn}>
-									<button
-										type="button"
-										className="flex w-full items-center gap-4 border-b border-zinc-800/80 px-4 py-4 text-left hover:bg-zinc-900/60 focus-visible:ring-1 focus-visible:ring-amber-300"
-										onClick={() => {
-											setNote("");
-											setEditing(p);
-										}}
-									>
-										<span className="min-w-0 flex-1">
-											<span className="block font-mono text-sm text-zinc-100">
-												{p.display_name}
-											</span>
-											<span className="mt-1 block text-sm text-zinc-400">
-												{p.description || "No description"}
-											</span>
-											<span className="mt-1 block break-all font-mono text-xs text-zinc-500">
-												{p.urn}
-											</span>
-										</span>
-										<Chip>{p.status}</Chip>
-									</button>
+									<AdminRecordButton
+                                        selected={false}
+                                        onSelect={() => { setNote(""); setEditing(p); }}
+                                        title={p.display_name}
+                                        description={<>
+                                            <span className="block dash-body text-fg-muted">{p.description || "No description"}</span>
+                                            <span className="block break-all text-fg-faint">{p.urn}</span>
+                                        </>}
+                                        badge={<Chip>{p.status}</Chip>}
+                                    />
 								</li>
 							))}
 						</ul>
@@ -268,9 +259,9 @@ function ProjectEditor({
 			}}
 		>
 			<Notice error={error} />
-			<fieldset disabled={busy} className="space-y-4 p-5">
+			<fieldset disabled={busy} className="dash-form-stack">
 				<div className="flex flex-wrap items-center gap-3">
-					<h2 className="font-mono text-sm uppercase">
+					<h2 className="font-mono dash-body uppercase">
 						{project ? "Edit project" : "New project"}
 					</h2>
 					{project && <Chip>{project.status}</Chip>}
@@ -279,12 +270,12 @@ function ProjectEditor({
 					</Btn>
 				</div>
 				{project && (
-					<p className="break-all font-mono text-xs text-zinc-500">
+					<p className="break-all font-mono dash-support text-fg-faint">
 						{project.urn}
 					</p>
 				)}
 				<Field label="Project name" htmlFor="project-name">
-					<input
+					<AdminInput
 						id="project-name"
 						required
 						maxLength={200}
@@ -294,7 +285,7 @@ function ProjectEditor({
 					/>
 				</Field>
 				<Field label="Description" htmlFor="project-description">
-					<textarea
+					<AdminTextarea
 						id="project-description"
 						className={area}
 						value={description}
@@ -303,7 +294,7 @@ function ProjectEditor({
 				</Field>
 				<div className="grid gap-4 md:grid-cols-2">
 					<Field label="Tags · one per line" htmlFor="project-tags">
-						<textarea
+						<AdminTextarea
 							id="project-tags"
 							className={area}
 							value={tags}
@@ -311,7 +302,7 @@ function ProjectEditor({
 						/>
 					</Field>
 					<Field label="Entry points · one per line" htmlFor="project-entries">
-						<textarea
+						<AdminTextarea
 							id="project-entries"
 							className={area}
 							value={entries}
@@ -320,7 +311,7 @@ function ProjectEditor({
 					</Field>
 				</div>
 				<Field label="Guidelines" htmlFor="project-guidelines">
-					<textarea
+					<AdminTextarea
 						id="project-guidelines"
 						className={`${area} min-h-40`}
 						value={guidelines}
@@ -329,10 +320,10 @@ function ProjectEditor({
 				</Field>
 				{!!project?.external_ids?.length && (
 					<div>
-						<h3 className="mb-2 text-sm text-zinc-400">Linked identifiers</h3>
+						<h3 className="mb-2 dash-body text-fg-muted">Linked identifiers</h3>
 						<dl>
 							{project.external_ids.map((v) => (
-								<div key={v.substrate} className="flex gap-3 font-mono text-xs">
+								<div key={v.substrate} className="flex gap-3 font-mono dash-support">
 									<dt>{v.substrate}</dt>
 									<dd>{v.external_id}</dd>
 								</div>
@@ -358,8 +349,8 @@ function ProjectEditor({
 					)}
 				</div>
 				{confirm && project && (
-					<div className="space-y-3 border border-rose-400/40 p-3">
-						<p className="text-sm">
+					<div className="space-y-3 border border-danger/40 p-3">
+						<p className="dash-body">
 							Deprecate {project.display_name}? Its identity and history remain
 							available. Repository files and launch settings are unchanged.
 						</p>
@@ -405,7 +396,7 @@ export function WorkstreamsView({
 	);
 	return (
 		<div>
-			<p className="border-b border-zinc-800/80 px-4 py-3 text-sm text-zinc-400">
+			<p className="border-b border-border/80 px-4 py-3 dash-body text-fg-muted">
 				Durable work across sessions. Close finished workstreams or reopen them
 				to continue.
 			</p>
@@ -434,15 +425,15 @@ export function WorkstreamsView({
 				/>
 			) : (
 				<>
-					<div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/80 px-4 py-3">
-						<Input
+					<DashboardToolbar>
+						<AdminInput
 							aria-label="Search workstreams"
 							placeholder="Search loaded workstreams"
 							value={search}
 							onChange={(e) => setSearch(e.target.value)}
 							className="max-w-xs"
 						/>
-						<select
+						<AdminSelect
 							aria-label="Workstream status filter"
 							className={`${inputCls} max-w-40`}
 							value={status}
@@ -451,8 +442,8 @@ export function WorkstreamsView({
 							<option value="">All statuses</option>
 							<option value="active">Active</option>
 							<option value="closed">Closed</option>
-						</select>
-						<Input
+						</AdminSelect>
+						<AdminInput
 							aria-label="Filter by workflow ID"
 							placeholder="Exact workflow ID"
 							value={workflow}
@@ -479,8 +470,8 @@ export function WorkstreamsView({
 						>
 							New workstream
 						</Btn>
-					</div>
-					<p className="px-4 py-2 text-xs text-zinc-500">
+					</DashboardToolbar>
+					<p className="px-4 py-2 dash-support text-fg-faint">
 						Tether returns up to the newest 100 matching workstreams. Search
 						applies to this loaded set.
 						{!collection.loading &&
@@ -497,29 +488,16 @@ export function WorkstreamsView({
 						<ul aria-label="Workstreams">
 							{rows.map((w) => (
 								<li key={w.id}>
-									<button
-										type="button"
-										className="flex w-full items-center gap-4 border-b border-zinc-800/80 px-4 py-4 text-left hover:bg-zinc-900/60 focus-visible:ring-1 focus-visible:ring-amber-300"
-										onClick={() => {
-											setNote("");
-											setEditing(w);
-										}}
-									>
-										<span className="min-w-0 flex-1">
-											<span className="block font-mono text-sm text-zinc-100">
-												{w.name || "Unnamed workstream"}
-											</span>
-											<span className="mt-1 block break-all font-mono text-xs text-zinc-500">
-												{w.id}
-											</span>
-											{w.workflow_id && (
-												<span className="mt-1 block text-xs text-zinc-400">
-													Workflow: {w.workflow_id}
-												</span>
-											)}
-										</span>
-										<Chip>{w.status}</Chip>
-									</button>
+									<AdminRecordButton
+                                        selected={false}
+                                        onSelect={() => { setNote(""); setEditing(w); }}
+                                        title={w.name || "Unnamed workstream"}
+                                        description={<>
+                                            <span className="block break-all text-fg-faint">{w.id}</span>
+                                            {w.workflow_id && <span className="block text-fg-muted">Workflow: {w.workflow_id}</span>}
+                                        </>}
+                                        badge={<Chip>{w.status}</Chip>}
+                                    />
 								</li>
 							))}
 						</ul>
@@ -570,9 +548,9 @@ function WorkstreamEditor({
 			}}
 		>
 			<Notice error={error} />
-			<fieldset disabled={busy} className="space-y-4 p-5">
+			<fieldset disabled={busy} className="dash-form-stack">
 				<div className="flex items-center gap-3">
-					<h2 className="font-mono text-sm uppercase">
+					<h2 className="font-mono dash-body uppercase">
 						{workstream ? "Edit workstream" : "New workstream"}
 					</h2>
 					<Btn className="ml-auto" onClick={onCancel}>
@@ -580,12 +558,12 @@ function WorkstreamEditor({
 					</Btn>
 				</div>
 				{workstream && (
-					<p className="break-all font-mono text-xs text-zinc-500">
+					<p className="break-all font-mono dash-support text-fg-faint">
 						{workstream.id}
 					</p>
 				)}
 				<Field label="Name (optional)" htmlFor="workstream-name">
-					<input
+					<AdminInput
 						id="workstream-name"
 						className={inputCls}
 						value={name}
@@ -593,19 +571,19 @@ function WorkstreamEditor({
 					/>
 				</Field>
 				<Field label="Workflow ID (optional)" htmlFor="workstream-workflow">
-					<input
+					<AdminInput
 						id="workstream-workflow"
 						className={inputCls}
 						value={workflow}
 						onChange={(e) => setWorkflow(e.target.value)}
 					/>
 				</Field>
-				<p className="text-xs text-zinc-500">
+				<p className="dash-support text-fg-faint">
 					A correlation identifier for a workflow owned by another system.
 				</p>
 				{workstream && (
 					<Field label="Status" htmlFor="workstream-status">
-						<select
+						<AdminSelect
 							id="workstream-status"
 							className={inputCls}
 							value={status}
@@ -613,7 +591,7 @@ function WorkstreamEditor({
 						>
 							<option value="active">Active</option>
 							<option value="closed">Closed</option>
-						</select>
+						</AdminSelect>
 					</Field>
 				)}
 				<Btn type="submit" tone="primary" disabled={busy}>
@@ -672,15 +650,15 @@ function SessionWorkstreamForm({
 			}}
 		>
 			<Notice error={error} />
-			<fieldset disabled={busy} className="space-y-4 p-5">
+			<fieldset disabled={busy} className="dash-form-stack">
 				<div className="flex items-center gap-3">
-					<h2 className="font-mono text-sm uppercase">Session workstream</h2>
+					<h2 className="font-mono dash-body uppercase">Session workstream</h2>
 					<Btn className="ml-auto" onClick={onCancel}>
 						Back to workstreams
 					</Btn>
 				</div>
 				<Field label="Session ID" htmlFor="session-id">
-					<input
+					<AdminInput
 						id="session-id"
 						required
 						className={inputCls}
@@ -689,7 +667,7 @@ function SessionWorkstreamForm({
 					/>
 				</Field>
 				<Field label="Action" htmlFor="session-action">
-					<select
+					<AdminSelect
 						id="session-action"
 						className={inputCls}
 						value={action}
@@ -698,17 +676,17 @@ function SessionWorkstreamForm({
 						<option value="ensure">Find or create for this lineage</option>
 						<option value="assign">Assign an existing workstream</option>
 						<option value="clear">Clear this session’s assignment</option>
-					</select>
+					</AdminSelect>
 				</Field>
 				{action === "ensure" && (
 					<>
-						<p className="text-sm text-zinc-400">
+						<p className="dash-body text-fg-muted">
 							Reuse the nearest workstream in the session’s lineage. If none
 							exists, Tether creates one and fills missing assignments along
 							that lineage.
 						</p>
 						<Field label="Name if created (optional)" htmlFor="ensure-name">
-							<input
+							<AdminInput
 								id="ensure-name"
 								className={inputCls}
 								value={name}
@@ -719,7 +697,7 @@ function SessionWorkstreamForm({
 				)}
 				{action === "assign" && (
 					<Field label="Workstream ID" htmlFor="assign-workstream">
-						<input
+						<AdminInput
 							id="assign-workstream"
 							required
 							className={inputCls}
@@ -729,7 +707,7 @@ function SessionWorkstreamForm({
 					</Field>
 				)}
 				{action === "clear" && (
-					<p className="text-sm text-amber-200">
+					<p className="dash-body text-warning">
 						Clears only this session’s association. The workstream and other
 						sessions remain intact.
 					</p>

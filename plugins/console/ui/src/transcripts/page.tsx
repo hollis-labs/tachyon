@@ -1,15 +1,16 @@
+import { DataTable } from "@hollis-labs/kit-dashboard/data"
+import { DashboardToolbar, DashboardField } from "@hollis-labs/kit-dashboard/layout"
+import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useEffect, useMemo, useState } from "react"
-import { Button } from "@hollis-labs/design-components"
-import { Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
+import { Button, SearchInput } from "@hollis-labs/design-components"
+import { BarMeter, Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
 import { TimeSeriesChart } from "@hollis-labs/kit-dashboard/charts"
 import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import {
   Activity,
   BarChart3,
   Boxes,
-  Database,
   FileText,
-  Search,
   Sparkles,
 } from "lucide-react"
 import { TranscriptDialog } from "./detail"
@@ -27,8 +28,6 @@ import {
   type Filters,
 } from "./data"
 
-const input =
-  "rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300 focus:border-sky-500 focus:outline-none"
 const defaults: Filters = {
   days: 30,
   tool: "",
@@ -48,38 +47,10 @@ function Distribution({
   onSelect(value: string): void
 }) {
   const groups = rank(rows, field).slice(0, 7)
-  return (
-    <div className="space-y-3 p-4">
-      {groups.map((g) => (
-        <button
-          key={g.label}
-          title={g.label}
-          onClick={() => onSelect(g.label === "Unspecified" ? "" : g.label)}
-          className="block w-full rounded text-left hover:bg-zinc-800/40 focus-visible:outline focus-visible:outline-sky-400"
-        >
-          <div className="mb-1 flex justify-between gap-3 text-xs">
-            <span className="truncate text-zinc-300">
-              {field === "project" ? projectName(g.label) : g.label}
-            </span>
-            <span className="font-mono text-zinc-500">{number(g.value)}</span>
-          </div>
-          <div className="h-1 bg-zinc-800">
-            <div
-              className="h-full bg-sky-400/60"
-              style={{
-                width: `${(g.value / Math.max(1, groups[0].value)) * 100}%`,
-              }}
-            />
-          </div>
-        </button>
-      ))}
-      {!groups.length && (
-        <p className="py-8 text-center text-xs text-zinc-500">
-          No sessions in this view.
-        </p>
-      )}
-    </div>
-  )
+  return <div className="p-4">
+    <BarMeter rows={groups.map(g => ({ key: g.label, label: field === "project" ? projectName(g.label) : g.label, value: g.value, color: "var(--color-info)" }))} onSelect={row => onSelect(row.key === "Unspecified" ? "" : row.key)} formatValue={number} showTotal={false} />
+    {!groups.length && <p className="py-8 text-center dash-control text-fg-faint">No sessions in this view.</p>}
+  </div>
 }
 
 export function TranscriptDashboard() {
@@ -146,42 +117,35 @@ export function TranscriptDashboard() {
   const facets = snapshot?.facets
   const chartDays = filter.days || 90
   const colors = [
-    "var(--color-dash-status-done, #38bdf8)",
-    "var(--color-dash-status-active, #a78bfa)",
-    "var(--color-dash-status-blocked, #fbbf24)",
+    "var(--color-dash-series-1)",
+    "var(--color-dash-series-2)",
+    "var(--color-dash-series-3)",
   ]
   return (
-    <main className="space-y-5 p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-sky-400">
-            Dashboards / Fragments Engine
-          </p>
-          <h1 className="flex items-center gap-2 font-mono text-xl text-zinc-200">
-            <Database className="h-5 w-5 text-sky-300" /> Transcript insights
-          </h1>
-          <p className="mt-2 text-xs text-zinc-500">
-            Explore recorded conversations, usage, and the work behind them.
-          </p>
-        </div>
+    <div className="flex h-full min-w-0 flex-col">
+      <PageHeader title="Transcript insights" />
+      <div className="border-b border-border px-4 py-2 dash-support text-fg-muted">
+        <p className="font-mono dash-caption text-fg-faint">Dashboards / Fragments Engine</p>
+        <p>Explore recorded conversations, usage, and the work behind them.</p>
+      </div>
+      <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
         {snapshot && (
-          <div className="rounded border border-zinc-800 px-3 py-2 text-right">
-            <div className="flex items-center gap-2 font-mono text-[10px] uppercase text-sky-300">
+          <div className="rounded border border-border px-3 py-2 text-right">
+            <div className="flex items-center gap-2 font-mono dash-caption uppercase text-info">
               <Sparkles className="h-3 w-3" />
               {snapshot.status.semantic
                 ? "Semantic index available"
                 : "Text index available"}
             </div>
-            <p className="mt-1 text-[11px] text-zinc-500">
+            <p className="mt-1 dash-support text-fg-faint">
               Read-only · Fragments Engine owns the records
             </p>
           </div>
         )}
-      </header>
       {error && (
         <div
           role="alert"
-          className="rounded border border-red-500/30 bg-red-950/10 p-3 text-xs text-red-300"
+          className="rounded border border-danger/30 bg-danger-muted/10 p-3 dash-control text-danger"
         >
           Transcript source unavailable: {error}
         </div>
@@ -189,7 +153,7 @@ export function TranscriptDashboard() {
       {loading && (
         <p
           role="status"
-          className="rounded border border-zinc-800 p-6 text-sm text-zinc-400"
+          className="rounded border border-border p-6 dash-body text-fg-muted"
         >
           Building the first metadata snapshot… Subsequent visits use the saved
           snapshot.
@@ -197,9 +161,9 @@ export function TranscriptDashboard() {
       )}
       <section
         aria-label="Database overview"
-        className="overflow-hidden rounded border border-zinc-800 bg-zinc-900/20"
+        className="overflow-hidden rounded border border-border bg-surface/20"
       >
-        <div className="border-b border-zinc-800 px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+        <div className="border-b border-border px-4 py-2 font-mono dash-caption uppercase tracking-wider text-fg-faint">
           Entire transcript database
         </div>
         <KpiGrid cols="grid-cols-2 lg:grid-cols-4">
@@ -236,12 +200,11 @@ export function TranscriptDashboard() {
         </KpiGrid>
       </section>
       <section className="space-y-4" aria-label="Filtered transcript insights">
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="space-y-1 text-[10px] text-zinc-500">
-            <span className="block">Time window</span>
+        <DashboardToolbar className="items-end">
+          <DashboardField orientation="stacked" label="Time window">
             <select
               aria-label="Time window"
-              className={input}
+              className="max-w-64"
               value={filter.days}
               onChange={(e) => set({ days: Number(e.target.value) })}
             >
@@ -250,12 +213,11 @@ export function TranscriptDashboard() {
               <option value={90}>Last 90 days</option>
               <option value={0}>All recorded time</option>
             </select>
-          </label>
-          <label className="space-y-1 text-[10px] text-zinc-500">
-            <span className="block">Tool</span>
+          </DashboardField>
+          <DashboardField orientation="stacked" label="Tool">
             <select
               aria-label="Tool"
-              className={input}
+              className="max-w-64"
               value={filter.tool}
               onChange={(e) => set({ tool: e.target.value })}
             >
@@ -264,12 +226,11 @@ export function TranscriptDashboard() {
                 <option key={t}>{t}</option>
               ))}
             </select>
-          </label>
-          <label className="space-y-1 text-[10px] text-zinc-500">
-            <span className="block">Model</span>
+          </DashboardField>
+          <DashboardField orientation="stacked" label="Model">
             <select
               aria-label="Model"
-              className={`${input} max-w-[220px]`}
+              className="max-w-56"
               value={filter.model}
               onChange={(e) => set({ model: e.target.value })}
             >
@@ -278,12 +239,11 @@ export function TranscriptDashboard() {
                 <option key={t}>{t}</option>
               ))}
             </select>
-          </label>
-          <label className="space-y-1 text-[10px] text-zinc-500">
-            <span className="block">Session kind</span>
+          </DashboardField>
+          <DashboardField orientation="stacked" label="Session kind">
             <select
               aria-label="Session kind"
-              className={input}
+              className="max-w-64"
               value={filter.kind}
               onChange={(e) => set({ kind: e.target.value })}
             >
@@ -291,8 +251,8 @@ export function TranscriptDashboard() {
               <option value="main">Main sessions</option>
               <option value="subagent">Subagents</option>
             </select>
-          </label>
-          <label className="flex h-[34px] items-center gap-2 px-2 text-xs text-zinc-400">
+          </DashboardField>
+          <label className="flex h-8 items-center gap-2 px-2 dash-control text-fg-muted">
             <input
               type="checkbox"
               checked={filter.errors}
@@ -310,14 +270,14 @@ export function TranscriptDashboard() {
           >
             Reset
           </Button>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-          <span className="text-zinc-400">
+        </DashboardToolbar>
+        <div className="flex flex-wrap items-center justify-between gap-3 dash-control">
+          <span className="text-fg-muted">
             {number(rows.length)} sessions in view{" "}
-            <span className="text-zinc-600">· filtered metadata</span>
+            <span className="text-fg-faint">· filtered metadata</span>
           </span>
           <span
-            className={snapshot?.complete ? "text-zinc-500" : "text-amber-300"}
+            className={snapshot?.complete ? "text-fg-faint" : "text-warning"}
           >
             {snapshot
               ? `${number(snapshot.sessions.length)} sessions loaded · ${snapshot.complete ? "source pagination complete" : `partial snapshot, latest ${number(snapshot.limit)} maximum`}`
@@ -327,13 +287,13 @@ export function TranscriptDashboard() {
         {snapshot &&
           snapshot.complete &&
           snapshot.sessions.length !== facets?.total && (
-            <p className="text-xs text-amber-300">
+            <p className="dash-control text-warning">
               Snapshot and database totals differ. Records may be undated or may
               have changed during collection; calculations below use loaded
               sessions.
             </p>
           )}
-        <div className="overflow-hidden rounded border border-zinc-800 bg-zinc-900/20">
+        <div className="overflow-hidden rounded border border-border bg-surface/20">
           <KpiGrid cols="grid-cols-2 lg:grid-cols-4">
             <Kpi
               label="Conversation turns"
@@ -361,7 +321,7 @@ export function TranscriptDashboard() {
           title="Session activity"
           icon={<Activity className="h-4 w-4" />}
           meta={
-            <span className="text-[10px]">
+            <span className="dash-caption">
               Last {chartDays} days · UTC · sessions started
             </span>
           }
@@ -420,98 +380,43 @@ export function TranscriptDashboard() {
         </div>
       </section>
       <section
-        className="overflow-hidden rounded border border-zinc-800"
+        className="overflow-hidden rounded border border-border"
         aria-label="Transcript sessions"
       >
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 p-4">
-          <h2 className="font-mono text-xs uppercase tracking-wide text-zinc-300">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+          <h2 className="font-mono dash-control uppercase tracking-wide text-fg-muted">
             Explore sessions
           </h2>
-          <label className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-zinc-500" />
-            <input
-              aria-label="Search session metadata"
-              placeholder="Search title, project, or tag…"
-              className={`${input} w-64 max-w-full`}
-              value={filter.query}
-              onChange={(e) => set({ query: e.target.value })}
-            />
-          </label>
+          <div className="dash-search-adapter w-64 max-w-full">
+            <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} slashToFocus={false} />
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-xs">
-            <thead className="border-b border-zinc-800 font-mono text-[10px] uppercase text-zinc-500">
-              <tr>
-                {[
-                  "Session / project",
-                  "Tool / model",
-                  "Started",
-                  "Turns",
-                  "Tokens",
-                  "Errors",
-                ].map((h) => (
-                  <th key={h} className="px-4 py-3 font-normal">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/60">
-              {rows.slice(visiblePage * 20, (visiblePage + 1) * 20).map((s) => (
-                <tr key={s.id} className="hover:bg-zinc-900/60">
-                  <td className="max-w-[330px] px-4 py-3">
-                    <button
-                      onClick={() => setSelected(s)}
-                      className="block w-full truncate text-left text-[13px] text-zinc-200 hover:text-sky-300"
-                      title={s.title}
-                    >
-                      {s.title || "Untitled session"}
-                    </button>
-                    <div
-                      className="mt-1 truncate text-[10px] text-zinc-500"
-                      title={s.project}
-                    >
-                      {projectName(s.project)} · {s.kind}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sky-300">{s.tool}</span>
-                    <div className="mt-1 max-w-[200px] truncate font-mono text-[10px] text-zinc-500">
-                      {s.model || "Unspecified"}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-400">
-                    {s.started_at
-                      ? new Date(s.started_at).toLocaleDateString()
-                      : "Unknown"}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-zinc-400">
-                    {number(s.turns)}
-                  </td>
-                  <td
-                    className="px-4 py-3 font-mono text-zinc-400"
-                    title={number(s.tokens)}
-                  >
-                    {compact(s.tokens)}
-                  </td>
-                  <td
-                    className={`px-4 py-3 font-mono ${s.errors ? "text-amber-300" : "text-zinc-600"}`}
-                  >
-                    {number(s.errors)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          ariaLabel="Transcript sessions"
+          className="min-w-3xl"
+          density="comfortable"
+          items={rows.slice(visiblePage * 20, (visiblePage + 1) * 20)}
+          getRowId={s => s.id}
+          columns={[
+            { key: "session", header: "Session / project", width: "fill", cell: s => <div className="min-w-0">
+              <button onClick={() => setSelected(s)} className="block w-full truncate text-left dash-body text-fg hover:text-info" title={s.title}>{s.title || "Untitled session"}</button>
+              <div className="mt-1 truncate dash-caption text-fg-faint" title={s.project}>{projectName(s.project)} · {s.kind}</div>
+            </div> },
+            { key: "tool", header: "Tool / model", cell: s => <><span className="dash-control text-info">{s.tool}</span><div className="mt-1 max-w-52 truncate font-mono dash-caption text-fg-faint">{s.model || "Unspecified"}</div></> },
+            { key: "started", header: "Started", cell: s => <span className="dash-control text-fg-muted">{s.started_at ? new Date(s.started_at).toLocaleDateString() : "Unknown"}</span> },
+            { key: "turns", header: "Turns", cell: s => <span className="dash-control text-fg-muted">{number(s.turns)}</span> },
+            { key: "tokens", header: "Tokens", cell: s => <span className="dash-control text-fg-muted" title={number(s.tokens)}>{compact(s.tokens)}</span> },
+            { key: "errors", header: "Errors", cell: s => <span className={`dash-control ${s.errors ? "text-warning" : "text-fg-faint"}`}>{number(s.errors)}</span> },
+          ]}
+        />
         {!rows.length && !loading && (
-          <p className="p-10 text-center text-sm text-zinc-500">
+          <p className="p-10 text-center dash-body text-fg-faint">
             {snapshot
               ? "No sessions match these filters."
               : "Connect the transcript source to explore sessions."}
           </p>
         )}
-        <div className="flex items-center justify-between border-t border-zinc-800 px-4 py-3 text-xs text-zinc-500">
+        <div className="flex items-center justify-between border-t border-border px-4 py-3 dash-control text-fg-faint">
           <span>
             {rows.length
               ? `${visiblePage * 20 + 1}–${Math.min(rows.length, (visiblePage + 1) * 20)} of ${number(rows.length)}`
@@ -544,6 +449,7 @@ export function TranscriptDashboard() {
           onClose={() => setSelected(undefined)}
         />
       )}
-    </main>
+      </div>
+    </div>
   )
 }

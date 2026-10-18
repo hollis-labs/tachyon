@@ -13,6 +13,8 @@ import {
   type ApprovalClient,
 } from "./client"
 import { ApprovalDialog } from "./dialog"
+import { ApprovalProvider } from "./context"
+import { ApprovalsPage } from "./page"
 
 afterEach(cleanup)
 const item: ApprovalItem = {
@@ -205,5 +207,30 @@ describe("approval review dialog", () => {
       (screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true)
+  })
+})
+
+
+describe("approval list interaction", () => {
+  it("filters the shared rows and opens a request from the keyboard without deciding it", async () => {
+    const client = {
+      inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }),
+      present: vi.fn().mockResolvedValue(item),
+      decide: vi.fn(),
+      evidence: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ApprovalClient
+    render(<ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider>)
+    const row = await screen.findByRole("button", { name: "Create a session" })
+    row.focus()
+    fireEvent.keyDown(row, { key: "Enter" })
+    await screen.findByRole("dialog")
+    expect(client.present).toHaveBeenCalledWith(item.item_id)
+    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0])
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search approvals" }), { target: { value: "unmatched" } })
+    await screen.findByText("No matching requests.")
+    expect(screen.queryByRole("button", { name: "Create a session" })).toBeNull()
+    expect(client.decide).not.toHaveBeenCalled()
   })
 })

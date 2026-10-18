@@ -6,7 +6,7 @@ import type {
   PlannerItem,
   PlannerLink,
   PlannerSchemaInfo,
-} from '@tachyon/torque-client'
+} from '@planner/api/types'
 
 // Pure logic for the Planner pages: database metadata, status tones, form
 // fields built from the server schema, patch building, link targets. No
@@ -56,10 +56,10 @@ const TONES: Record<string, ToneKey> = {
   // in motion
   active: 'doing', 'in-progress': 'doing', discussing: 'review', exploring: 'review', mitigating: 'review', adopting: 'review',
   // settled
-  decided: 'done', done: 'done', landed: 'done', promoted: 'done', accepted: 'done',
+  decided: 'done', done: 'done', landed: 'done', promoted: 'done', accepted: 'done', achieved: 'done', completed: 'done', resolved: 'done',
   // stopped
   deferred: 'paused', parked: 'paused', paused: 'paused', blocked: 'blocked',
-  dropped: 'archived', dismissed: 'archived', closed: 'archived', superseded: 'archived', reversed: 'archived',
+  dropped: 'archived', dismissed: 'archived', closed: 'archived', superseded: 'archived', reversed: 'archived', archived: 'archived', rejected: 'archived', cancelled: 'archived',
 }
 
 export function statusToneKey(status: string | undefined): ToneKey {
@@ -67,7 +67,7 @@ export function statusToneKey(status: string | undefined): ToneKey {
 }
 
 /** Statuses that count as finished or stopped: the list hides them behind a toggle by default. */
-const SETTLED = new Set(['decided', 'done', 'landed', 'promoted', 'accepted', 'dropped', 'dismissed', 'closed', 'superseded', 'reversed'])
+const SETTLED = new Set(['decided', 'done', 'landed', 'promoted', 'accepted', 'dropped', 'dismissed', 'closed', 'superseded', 'reversed', 'achieved', 'completed', 'resolved', 'archived', 'rejected', 'cancelled'])
 
 export function isSettled(status: string | undefined): boolean {
   return SETTLED.has((status ?? '').toLowerCase())
@@ -153,6 +153,15 @@ export interface LinkTarget {
 
 /** Where a pointer leads: a Torque task opens in the app, a URL opens outside it, the rest are plain text. */
 export function linkTarget(link: PlannerLink): LinkTarget {
+  if (link.kind === 'workstream') return { to: `/planner/workstreams/${encodeURIComponent(link.ref)}`, href: null }
+  if (link.kind === 'planner') {
+    const slash = link.ref.indexOf('/')
+    const db = link.ref.slice(0, slash)
+    const id = link.ref.slice(slash + 1)
+    if (slash > 0 && isPlannerDb(db) && id) return { to: `/planner/${db}/${encodeURIComponent(id)}`, href: null }
+    const oldDb = dbOfId(link.ref)
+    if (oldDb) return { to: `/planner/${oldDb}/${encodeURIComponent(link.ref)}`, href: null }
+  }
   if (link.kind === 'torque') return { to: `/tasks/${encodeURIComponent(link.ref)}`, href: null }
   if (link.kind === 'url' && /^https?:\/\/\S+$/i.test(link.ref)) return { to: null, href: link.ref }
   return { to: null, href: null }
@@ -184,7 +193,7 @@ export interface FieldSpec {
 
 /** Fields handled by their own panel, or by the server; never in the generic form. */
 const STRUCTURAL = new Set([
-  'id', 'rev', 'created', 'updated', 'author', 'order', 'comments', 'links', 'options', 'promoted_to', 'added_by', 'source',
+  'id', 'rev', 'legacy_id', 'created', 'updated', 'author', 'order', 'comments', 'links', 'options', 'promoted_to', 'added_by', 'source',
   'supersedes', 'superseded_by', 'selected_option', 'decided_at', 'decided_by', 'defer_note',
 ])
 
@@ -344,7 +353,10 @@ export function createSpecs(schema: PlannerSchemaInfo): FieldSpec[] {
 export function createDraft(db: PlannerDb, specs: FieldSpec[], nextRank: number): Draft {
   const d = draftFrom(specs, null)
   for (const s of specs) {
-    if (s.kind === 'enum') d[s.name] = SERVER_DEFAULTS[db][s.name] ?? (s.required ? s.options?.[0] ?? '' : '')
+    if (s.kind === 'enum') {
+      const preferred = SERVER_DEFAULTS[db][s.name]
+      d[s.name] = preferred && s.options?.includes(preferred) ? preferred : (s.required ? s.options?.[0] ?? '' : '')
+    }
     if (s.name === 'rank' && s.kind === 'int') d[s.name] = String(nextRank)
   }
   return d

@@ -8,6 +8,8 @@ import {
   parseBoardOpen,
   boardWord,
   buildNewItem,
+  createDraft,
+  createSpecs,
   buildPatch,
   conflictCurrent,
   dbOfId,
@@ -24,7 +26,7 @@ import {
   validateLinkDraft,
   validationErrors,
 } from '@planner/lib/planner'
-import type { PlannerBoardRow, PlannerItem, PlannerSchemaInfo } from '@tachyon/torque-client'
+import type { PlannerBoardRow, PlannerItem, PlannerSchemaInfo } from '@planner/api/types'
 
 const item = (over: Partial<PlannerItem> & { id: string }): PlannerItem => ({ title: over.id, rev: 1, ...over })
 
@@ -311,4 +313,13 @@ describe('board', () => {
     expect(boardMore(3, 3)).toBe('')
     expect(boardMore(3, 2)).toBe('')
   })
+})
+
+it('uses the owned schema status defaults and keeps import identity read-only', () => {
+  const owned: PlannerSchemaInfo = { ...risksSchema, db: 'ideas', required: ['id', 'title', 'status'], fields: { title: { type: 'string' }, legacy_id: { type: 'string' }, status: { enum: ['draft', 'exploring', 'accepted'] } } }
+  const specs = createSpecs(owned)
+  expect(createDraft('ideas', specs, 1).status).toBe('draft')
+  expect(fieldSpecs(owned).some(field => field.name === 'legacy_id')).toBe(false)
+  expect(isSettled('archived')).toBe(true)
+  expect(isSettled('completed')).toBe(true)
 })

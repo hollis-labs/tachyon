@@ -1,8 +1,10 @@
+import { AdminInput, AdminSelect } from '@hollis-labs/kit-admin'
 import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { EmptyState, Input } from '@hollis-labs/design-components'
-import { PixelRobot } from '@console/fleet/agent-activity'
+import { EmptyState } from '@hollis-labs/design-components'
+import { AdminDirectory, AdminRecordButton, AdminSection as Section, AdminFact, AdminTabs, IdentityAvatar, ActivityStatus } from '@hollis-labs/kit-admin'
+import { DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
 import { ago } from '@console/fleet/lib/agent-activity'
 import { AgentEditor } from './AgentEditor'
 import { AssignmentsView } from './AssignmentsView'
@@ -13,110 +15,61 @@ import { TeamsView } from './TeamsView'
 import { TeamBuilder } from './TeamBuilder'
 import { useAgentsClient } from './context'
 import { AgentEditProvider, useAgentEdit } from './edit-context'
-import { Btn } from './ui'
+import { Btn, Chip } from './ui'
 import { filterAgents, isPrivileged, policySummary } from './filter'
 import type { AgentLiveRef, AgentRecord } from './types'
 
-const LIVE_STYLE: Record<AgentLiveRef['state'], { label: string; dot: string; text: string; avatar: 'blocked' | 'working' | 'idle' }> = {
-  waiting: { label: 'WAITING ON YOU', dot: 'bg-amber-400', text: 'text-amber-300', avatar: 'blocked' },
-  busy: { label: 'WORKING', dot: 'bg-emerald-400', text: 'text-emerald-300', avatar: 'working' },
-  idle: { label: 'IDLE', dot: 'bg-sky-400', text: 'text-sky-300', avatar: 'idle' },
-  offline: { label: 'OFFLINE', dot: 'bg-zinc-600', text: 'text-zinc-400', avatar: 'idle' },
-}
+const LIVE_LABEL: Record<AgentLiveRef['state'], string> = { waiting: 'WAITING ON YOU', busy: 'WORKING', idle: 'IDLE', offline: 'OFFLINE' }
 
 const FLEET_PATH = '/agents'
 
 function LiveBadge({ live, unknown }: { live?: AgentLiveRef; unknown?: boolean }) {
-  const s = LIVE_STYLE[live?.state ?? 'offline']
-  return (
-    <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] tracking-widest ${s.text}`}>
-      <span className={`h-1.5 w-1.5 ${s.dot}`} />
-      {live ? s.label : unknown ? 'NOT CONNECTED' : 'NOT RUNNING'}
-    </span>
-  )
+  return <ActivityStatus label={live ? LIVE_LABEL[live.state] : unknown ? 'NOT CONNECTED' : 'NOT RUNNING'} tone={live?.state === 'busy' ? 'positive' : live?.state === 'waiting' ? 'attention' : live?.state === 'idle' ? 'neutral' : 'muted'} />
 }
 
 function Row({ agent, selected, onSelect }: { agent: AgentRecord; selected: boolean; onSelect: () => void }) {
   const { identity, runtime } = agent
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-current={selected ? 'true' : undefined}
-        className={`flex w-full items-center gap-3 border-b border-zinc-800/80 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300 ${selected ? 'bg-zinc-900' : 'hover:bg-zinc-900/50'} ${identity.enabled ? '' : 'opacity-60'}`}
-      >
-        <PixelRobot id={identity.id} size={36} state={LIVE_STYLE[agent.live?.state ?? 'offline'].avatar} />
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-            <span className="font-mono text-sm text-zinc-100">{identity.name}</span>
-            {identity.retired && <span className="border border-rose-400/50 px-1 font-mono text-[9px] uppercase tracking-widest text-rose-300">retired</span>}
-            {!identity.enabled && !identity.retired && <span className="border border-zinc-700 px-1 font-mono text-[9px] uppercase tracking-widest text-zinc-400">disabled</span>}
-            {isPrivileged(agent) && <span className="border border-amber-400/60 px-1 font-mono text-[9px] uppercase tracking-widest text-amber-300">privileged</span>}
-          </span>
-          <span className="block truncate font-mono text-xs text-zinc-400">
-            {runtime.provider || 'Runtime from launch profiles'}
-            {runtime.model ? ` · ${runtime.model}` : ''}
-            {runtime.project ? ` · ${runtime.project}` : ''}
-          </span>
-        </span>
-        {agent.launches ? <span className="font-mono text-[11px] text-zinc-400">{agent.launches.length} launch profiles</span> : <LiveBadge live={agent.live} />}
-      </button>
-    </li>
-  )
-}
-
-const Heading = ({ children }: { children: ReactNode }) => (
-  <h3 className="mb-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">{children}</h3>
-)
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="border-b border-zinc-800/80 px-5 py-4">
-      <Heading>{title}</Heading>
-      {children}
-    </section>
-  )
-}
-
-function Chip({ children, tone = 'border-zinc-700 text-zinc-300' }: { children: ReactNode; tone?: string }) {
-  return <span className={`border px-1.5 py-0.5 font-mono text-[11px] ${tone}`}>{children}</span>
+  return <li><AdminRecordButton selected={selected} onSelect={onSelect} muted={!identity.enabled} size="comfortable"
+    avatar={<IdentityAvatar identity={identity.id} size="definition" />}
+    title={<span className="flex flex-wrap items-center gap-x-3 gap-y-0.5">{identity.name}
+      {identity.retired && <Chip tone="text-danger">retired</Chip>}
+      {!identity.enabled && !identity.retired && <Chip>disabled</Chip>}
+      {isPrivileged(agent) && <Chip tone="text-warning">privileged</Chip>}
+    </span>}
+    description={[runtime.provider || 'Runtime from launch profiles', runtime.model, runtime.project].filter(Boolean).join(' · ')}
+    badge={agent.launches ? <span className="font-mono dash-label text-fg-muted">{agent.launches.length} launch profiles</span> : <LiveBadge live={agent.live} />}
+  /></li>
 }
 
 function Fact({ k, v }: { k: string; v?: ReactNode }) {
-  return (
-    <div className="flex gap-3 py-0.5 text-[13px]">
-      <dt className="w-28 shrink-0 font-mono text-[11px] uppercase tracking-wider text-zinc-500">{k}</dt>
-      <dd className="min-w-0 break-words text-zinc-200">{v ?? <span className="text-zinc-500">not reported</span>}</dd>
-    </div>
-  )
+  return <AdminFact label={k}>{v ?? <span className="text-fg-faint">not reported</span>}</AdminFact>
 }
 
 function None({ children }: { children: ReactNode }) {
-  return <p className="text-[13px] text-zinc-500">{children}</p>
+  return <p className="dash-body text-fg-faint">{children}</p>
 }
 
 export function AgentDetail({ agent, now }: { agent: AgentRecord; now: number }) {
   const { identity, runtime, policy, source, live } = agent
   return (
     <article aria-label={`${identity.name} detail`}>
-      <header className="flex items-center gap-4 border-b border-zinc-800/80 px-5 py-4">
-        <span className="shrink-0 border border-zinc-700 bg-zinc-950 p-1.5">
-          <PixelRobot id={identity.id} size={64} state={LIVE_STYLE[live?.state ?? 'offline'].avatar} />
+      <header className="flex items-center gap-4 border-b border-border/80 px-5 py-4">
+        <span className="shrink-0 border border-border bg-bg p-1.5">
+          <IdentityAvatar identity={identity.id} size="large" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate font-mono text-lg font-semibold uppercase tracking-wide">{identity.name}</h2>
-          <div className="truncate font-mono text-xs text-zinc-500">{identity.id}{identity.urn ? ` · ${identity.urn}` : ' · address not reported'}</div>
-          {identity.summary && <p className="mt-1 text-[13px] text-zinc-400">{identity.summary}</p>}
+          <h2 className="truncate font-mono dash-detail-title font-semibold uppercase tracking-wide">{identity.name}</h2>
+          <div className="truncate font-mono dash-support text-fg-faint">{identity.id}{identity.urn ? ` · ${identity.urn}` : ' · address not reported'}</div>
+          {identity.summary && <p className="mt-1 dash-body text-fg-muted">{identity.summary}</p>}
         </div>
       </header>
 
       <Section title={agent.launches ? 'Operations' : 'Live state'}>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
-          {agent.launches ? <span className="text-sm text-zinc-400">Live agents and processes are managed on Agents.</span> : <LiveBadge live={live} />}
-          {live && <span className="font-mono text-xs text-zinc-400">{live.sessions} session{live.sessions === 1 ? '' : 's'}</span>}
-          {live?.lastActivity != null && <span className="font-mono text-xs text-zinc-400">active {ago(live.lastActivity, now)}</span>}
-          <Link to={FLEET_PATH} className="ml-auto font-mono text-[11px] uppercase tracking-widest text-amber-300 hover:underline">{agent.launches ? 'Open Agents' : 'open in fleet'}</Link>
+          {agent.launches ? <span className="dash-body text-fg-muted">Live agents and processes are managed on Agents.</span> : <LiveBadge live={live} />}
+          {live && <span className="font-mono dash-support text-fg-muted">{live.sessions} session{live.sessions === 1 ? '' : 's'}</span>}
+          {live?.lastActivity != null && <span className="font-mono dash-support text-fg-muted">active {ago(live.lastActivity, now)}</span>}
+          <Link to={FLEET_PATH} className="ml-auto font-mono dash-label uppercase tracking-widest text-warning hover:underline">{agent.launches ? 'Open Agents' : 'open in fleet'}</Link>
         </div>
       </Section>
 
@@ -138,34 +91,34 @@ export function AgentDetail({ agent, now }: { agent: AgentRecord; now: number })
       </Section>
 
       {agent.launches && <Section title="Launch profiles">
-        {agent.launches.length ? <details open={agent.launches.length <= 3}><summary className="mb-2 cursor-pointer text-sm text-zinc-300">{agent.launches.length} launch profiles</summary><ul className="space-y-2">{agent.launches.map((l) => <li key={l.id} className="text-[13px]"><span className="font-mono text-zinc-200">{l.id}</span><span className="ml-3 text-zinc-400">{[l.provider, l.project, l.enabled === false ? 'disabled' : ''].filter(Boolean).join(' · ')}</span></li>)}</ul></details> : <None>No launch profiles reference this agent.</None>}
+        {agent.launches.length ? <details open={agent.launches.length <= 3}><summary className="mb-2 cursor-pointer dash-body text-fg-muted">{agent.launches.length} launch profiles</summary><ul className="space-y-2">{agent.launches.map((l) => <li key={l.id} className="dash-body"><span className="font-mono text-fg">{l.id}</span><span className="ml-3 text-fg-muted">{[l.provider, l.project, l.enabled === false ? 'disabled' : ''].filter(Boolean).join(' · ')}</span></li>)}</ul></details> : <None>No launch profiles reference this agent.</None>}
       </Section>}
       <Section title="Prompts">
-        {runtime.systemPrompt && <details><summary className="cursor-pointer text-sm text-zinc-300">System prompt</summary><pre className="mt-2 whitespace-pre-wrap break-words text-xs text-zinc-400">{runtime.systemPrompt}</pre></details>}
-        {runtime.prompt && <details className="mt-2"><summary className="cursor-pointer text-sm text-zinc-300">Agent prompt</summary><pre className="mt-2 whitespace-pre-wrap break-words text-xs text-zinc-400">{runtime.prompt}</pre></details>}
+        {runtime.systemPrompt && <details><summary className="cursor-pointer dash-body text-fg-muted">System prompt</summary><pre className="mt-2 whitespace-pre-wrap break-words dash-support text-fg-muted">{runtime.systemPrompt}</pre></details>}
+        {runtime.prompt && <details className="mt-2"><summary className="cursor-pointer dash-body text-fg-muted">Agent prompt</summary><pre className="mt-2 whitespace-pre-wrap break-words dash-support text-fg-muted">{runtime.prompt}</pre></details>}
         {!runtime.systemPrompt && !runtime.prompt && <None>No prompts reported.</None>}
       </Section>
       <Section title="Tools and skills">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="w-16 font-mono text-[11px] uppercase tracking-wider text-zinc-500">tools</span>
-            {agent.tools.length ? agent.tools.map((t) => <Chip key={t} tone="border-emerald-400/50 text-emerald-300">{t}</Chip>) : <None>None resolved.</None>}
+            <span className="w-16 font-mono dash-label uppercase tracking-wider text-fg-faint">tools</span>
+            {agent.tools.length ? agent.tools.map((t) => <Chip key={t} tone="border-success/50 text-success">{t}</Chip>) : <None>None resolved.</None>}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="w-16 font-mono text-[11px] uppercase tracking-wider text-zinc-500">skills</span>
+            <span className="w-16 font-mono dash-label uppercase tracking-wider text-fg-faint">skills</span>
             {agent.skills.length ? agent.skills.map((t) => <Chip key={t}>{t}</Chip>) : <None>No skills equipped.</None>}
           </div>
         </div>
-        <p className="mt-2 text-[12px] text-zinc-500">Tools come from the home project, not the agent.</p>
+        <p className="mt-2 dash-support text-fg-faint">Tools come from the home project, not the agent.</p>
       </Section>
 
       <Section title="Permissions and policy">
-        <p className={`mb-2 text-[13px] ${isPrivileged(agent) ? 'text-amber-300' : 'text-zinc-300'}`}>{policySummary(agent)}</p>
+        <p className={`mb-2 dash-body ${isPrivileged(agent) ? 'text-warning' : 'text-fg-muted'}`}>{policySummary(agent)}</p>
         <dl>
           <Fact k="Permission" v={policy.permissionMode} />
           <Fact k="Sandbox" v={policy.sandbox} />
           <Fact k="Network" v={policy.network === undefined ? undefined : policy.network ? 'Online' : 'Offline'} />
-          <Fact k="Scopes" v={policy.scopes.length ? <span className="flex flex-wrap gap-1.5">{policy.scopes.map((s) => <Chip key={s} tone="border-amber-400/60 text-amber-300">{s}</Chip>)}</span> : 'None'} />
+          <Fact k="Scopes" v={policy.scopes.length ? <span className="flex flex-wrap gap-1.5">{policy.scopes.map((s) => <Chip key={s} tone="border-warning/60 text-warning">{s}</Chip>)}</span> : 'None'} />
           <Fact k="Rules" v={policy.rules.length ? <span className="flex flex-wrap gap-1.5">{policy.rules.map((s) => <Chip key={s}>{s}</Chip>)}</span> : 'None'} />
         </dl>
       </Section>
@@ -174,9 +127,9 @@ export function AgentDetail({ agent, now }: { agent: AgentRecord; now: number })
         {agent.teams.length ? (
           <ul>
             {agent.teams.map((t) => (
-              <li key={t.teamId} className="flex items-baseline gap-3 py-0.5 text-[13px]">
-                <span className="text-zinc-200">{t.teamName}</span>
-                <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">{t.role}</span>
+              <li key={t.teamId} className="flex items-baseline gap-3 py-0.5 dash-body">
+                <span className="text-fg">{t.teamName}</span>
+                <span className="font-mono dash-label uppercase tracking-wider text-fg-faint">{t.role}</span>
               </li>
             ))}
           </ul>
@@ -187,8 +140,8 @@ export function AgentDetail({ agent, now }: { agent: AgentRecord; now: number })
 
       <Section title="Source definition">
         <dl>
-          <Fact k={agent.launches ? "Catalog entry" : "File"} v={<span className="font-mono text-xs">{source.path}</span>} />
-          <Fact k="Revision" v={source.revision && <span className="font-mono text-xs">{source.revision}</span>} />
+          <Fact k={agent.launches ? "Catalog entry" : "File"} v={<span className="font-mono dash-support">{source.path}</span>} />
+          <Fact k="Revision" v={source.revision && <span className="font-mono dash-support">{source.revision}</span>} />
           <Fact k="Updated" v={source.updatedAt ? ago(source.updatedAt, now) : undefined} />
         </dl>
       </Section>
@@ -244,7 +197,7 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
     return error ? (
       <div className="p-4"><EmptyState variant="error" title="Agent catalog unavailable" description={error} /><Btn onClick={() => { setError(null); setReloadVersion((v) => v + 1) }}>Retry catalog read</Btn></div>
     ) : (
-      <div className="p-4 font-mono text-xs text-zinc-500">Loading agents…</div>
+      <div className="p-4 font-mono dash-support text-fg-faint">Loading agents…</div>
     )
   }
 
@@ -253,20 +206,19 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-zinc-800/80 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-500">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-border/80 px-4 py-2 font-mono dash-label uppercase tracking-widest text-fg-faint">
         <span>{agents.length} agent definitions</span>
-        {client.writeMode !== 'demonstration' && <span className={live ? 'text-emerald-300' : ''}>{live} running</span>}
+        {client.writeMode !== 'demonstration' && <span className={live ? 'text-success' : ''}>{live} running</span>}
         <span>{agents.filter((a) => !a.identity.enabled && !a.identity.retired).length} disabled</span>
         {client.writeMode !== 'demonstration' && <span>{agents.filter((a) => a.identity.retired).length} retired</span>}
-        <span className="ml-auto text-zinc-400">{client.writeMode === 'demonstration' ? 'Tether catalog · demonstration saves' : 'Agent catalog'}</span>
+        <span className="ml-auto text-fg-muted">{client.writeMode === 'demonstration' ? 'Tether catalog · demonstration saves' : 'Agent catalog'}</span>
       </div>
-      {client.writeMode === 'demonstration' && <p className="border-b border-amber-400/30 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">Save actions are no-op demonstrations pending write access. Nothing is written to Tether or Torque.</p>}
-      <div role="tablist" aria-label="Builder configuration" className="flex flex-wrap items-center gap-1 border-b border-zinc-800/80 px-4 py-1.5">
-        {(['agents', 'teams', 'assignments'] as const).map((sec) => (
-          <button key={sec} type="button" role="tab" aria-selected={section === sec} onClick={() => { setSection(sec); setVisited(v => new Set([...v, sec])); setCreating(null) }} className={`px-2.5 py-1 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 ${section === sec ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>{sec === 'agents' ? 'Definitions' : sec === 'teams' ? 'Teams' : 'Assignments'}</button>
-        ))}
-        {section === 'agents' && <Btn className="ml-auto" tone="primary" onClick={() => { setSection('agents'); setCreating({}) }}>New agent</Btn>}
-      </div>
+      {client.writeMode === 'demonstration' && <p className="border-b border-warning/30 bg-warning/5 px-4 py-3 dash-body text-warning">Save actions are no-op demonstrations pending write access. Nothing is written to Tether or Torque.</p>}
+      <AdminTabs label="Builder configuration" value={section}
+        onChange={sec => { setSection(sec); setVisited(v => new Set([...v, sec])); setCreating(null) }}
+        items={[{ key: 'agents', label: 'Definitions' }, { key: 'teams', label: 'Teams' }, { key: 'assignments', label: 'Assignments' }]}
+        actions={section === 'agents' && <Btn tone="primary" onClick={() => { setSection('agents'); setCreating({}) }}>New agent</Btn>}
+      />
       {creating && (
         <CreateWizard
           agents={agents}
@@ -278,30 +230,25 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
       {visited.has('teams') && <div hidden={!!creating || section !== 'teams'}>{client.writeMode === 'demonstration' ? <TeamBuilder /> : <TeamsView agents={agents} onAgentsChanged={() => void reload()} />}</div>}
       {visited.has('assignments') && <div hidden={!!creating || section !== 'assignments'}><AssignmentsView agents={agents} now={nowProp} /></div>}
       {!creating && section === 'agents' && (<>
-      <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/80 px-4 py-2">
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search agents" aria-label="Search agents" className="max-w-xs" />
-        <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Filter by provider" className="h-9 border border-zinc-800 bg-zinc-950 px-2 font-mono text-xs text-zinc-300">
+      <DashboardToolbar className="border-b border-border px-4 py-2">
+        <AdminInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search agents" aria-label="Search agents" className="max-w-xs" />
+        <AdminSelect value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Filter by provider" className="w-auto">
           <option value="">All providers</option>
           {providers.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        {client.writeMode !== 'demonstration' && <label className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-zinc-500"><input type="checkbox" checked={showRetired} onChange={(e) => setShowRetired(e.target.checked)} /> Show retired</label>}
-      </div>
+        </AdminSelect>
+        {client.writeMode !== 'demonstration' && <label className="flex items-center gap-2 font-mono dash-label uppercase tracking-widest text-fg-faint"><input type="checkbox" checked={showRetired} onChange={(e) => setShowRetired(e.target.checked)} /> Show retired</label>}
+      </DashboardToolbar>
       {rows.length === 0 ? (
         <div className="p-4"><EmptyState variant="empty" title="No agents match" description="Clear the search or provider filter." /></div>
       ) : (
-        <div className="grid lg:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]">
-          <ul aria-label="Agents" className="lg:border-r lg:border-zinc-800/80">
+        <AdminDirectory label="Agent definitions" layout="wide" records={
+          <ul aria-label="Agents">
             {rows.map((a) => <Row key={a.identity.id} agent={a} selected={a.identity.id === selected?.identity.id} onSelect={() => { setSelectedId(a.identity.id); setMode('view') }} />)}
           </ul>
-          {selected && (
+          } detail={selected && (
             <div>
-              <div role="tablist" aria-label="Agent pane" className="flex items-center gap-1 border-b border-zinc-800/80 px-5 py-2">
-                {(['view', 'edit', 'lifecycle', 'audit'] as const).map((m) => (
-                  <button key={m} disabled={client.writeMode === 'demonstration' && m === 'audit'} title={m === 'audit' && client.writeMode === 'demonstration' ? 'Audit API not connected yet' : undefined} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`px-2.5 py-1 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40 ${mode === m ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                    {m === 'view' ? 'Details' : m === 'edit' ? 'Edit' : m === 'lifecycle' ? 'Lifecycle' : 'Audit'}
-                  </button>
-                ))}
-              </div>
+              <AdminTabs label="Agent pane" value={mode} onChange={setMode}
+                items={[{ key: 'view', label: 'Details' }, { key: 'edit', label: 'Edit' }, { key: 'lifecycle', label: 'Lifecycle' }, { key: 'audit', label: 'Audit', disabled: client.writeMode === 'demonstration', title: client.writeMode === 'demonstration' ? 'Audit API not connected yet' : undefined }]} />
               {mode === 'view' && <AgentDetail agent={selected} now={now} />}
               {mode === 'edit' && (
                 <AgentEditor
@@ -328,8 +275,7 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
               )}
               {mode === 'audit' && <AuditTrail agentId={selected.identity.id} version={auditVersion} />}
             </div>
-          )}
-        </div>
+          )} />
       )}
       </>)}
     </div>
