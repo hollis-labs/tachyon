@@ -1,3 +1,5 @@
+import { Button } from '@hollis-labs/design-components'
+import { PageHeader } from '@hollis-labs/kit-dashboard'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ago } from '@console/lib/agent-activity'
@@ -224,17 +226,14 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const filtered = filter.categories.length > 0 || !!filter.repo || !!filter.search || filter.unassignedOnly
 
   return (
-    <section aria-label="Pending pull requests" className="border border-zinc-800 bg-zinc-950">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
-        <div>
-          <h2 className="font-mono text-[11px] uppercase tracking-[0.2em] text-zinc-300">Pending PRs</h2>
-          <p className="mt-0.5 font-mono text-[11px] text-zinc-500">
-            {views.active} need attention{refreshedAt ? ` · loaded ${ago(refreshedAt, now)}` : ''}
-          </p>
-        </div>
-        <button type="button" className={ghost} onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
-      </header>
-
+    <section aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg">
+      <PageHeader title="Pending PRs">
+        <Button variant="outline" size="sm" className="dash-header-action" onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Button>
+      </PageHeader>
+      <p className="border-b border-border px-4 py-2 font-mono dash-support text-fg-muted">
+        {views.active} need attention{refreshedAt ? ` · loaded ${ago(refreshedAt, now)}` : ''}
+      </p>
+      <div className="min-h-0 flex-1 overflow-auto">
       <div role="tablist" aria-label="Triage state" className="flex flex-wrap border-b border-zinc-800">
         {VIEWS.map((v) => (
           <button key={v.id} type="button" role="tab" aria-selected={filter.view === v.id} onClick={() => set({ view: v.id })} className={`border-r border-zinc-800 px-4 py-2 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300 ${filter.view === v.id ? 'bg-zinc-900 text-amber-300' : 'text-zinc-400 hover:bg-zinc-900/50'}`}>
@@ -297,6 +296,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
         ))
       )}
 
+      </div>
       {assigning && <AssignDialog pr={assigning.pr} existing={assigning.assignments} onClose={() => setAssigning(null)} onDone={(m) => { setToast(m); void refresh() }} />}
     </section>
   )
