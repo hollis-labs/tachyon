@@ -24,6 +24,10 @@ const (
 	RepositoryKind Kind = "repository"
 	PlanKind       Kind = "plan"
 	TaskKind       Kind = "task"
+	EpicKind       Kind = "epic"
+	SprintKind     Kind = "sprint"
+	CollectionKind Kind = "collection"
+	WorkstreamKind Kind = "workstream"
 )
 
 var (
@@ -216,7 +220,7 @@ type Patch struct {
 
 func validKind(k Kind) bool {
 	switch k {
-	case AgentKind, TeamKind, AssignmentKind, WorkflowKind, ProjectKind, MachineKind, RepositoryKind, PlanKind, TaskKind:
+	case AgentKind, TeamKind, AssignmentKind, WorkflowKind, ProjectKind, MachineKind, RepositoryKind, PlanKind, TaskKind, EpicKind, SprintKind, CollectionKind, WorkstreamKind:
 		return true
 	}
 	return false
@@ -294,6 +298,8 @@ func validateDefinition(kind Kind, raw json.RawMessage) (string, []referenceLink
 	switch kind {
 	case PlanKind, TaskKind:
 		return validatePlanningDefinition(kind, raw)
+	case EpicKind, SprintKind, CollectionKind, WorkstreamKind:
+		return validateOrganizationDefinition(kind, raw)
 	case AgentKind:
 		var d Agent
 		err = strict(raw, &d)

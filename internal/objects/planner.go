@@ -18,6 +18,9 @@ type Plan struct {
 	Priority           int        `json:"priority"` // 0 unspecified, 1 highest through 5 lowest
 	ProjectID          string     `json:"project_id,omitempty"`
 	WorkflowID         string     `json:"workflow_id,omitempty"`
+	EpicID             string     `json:"epic_id,omitempty"`
+	SprintID           string     `json:"sprint_id,omitempty"`
+	WorkstreamID       string     `json:"workstream_id,omitempty"`
 	AcceptanceCriteria []string   `json:"acceptance_criteria,omitempty"`
 	DueAt              *time.Time `json:"due_at,omitempty"`
 }
@@ -30,6 +33,9 @@ type Task struct {
 	Priority           int        `json:"priority"`
 	ProjectID          string     `json:"project_id,omitempty"`
 	PlanID             string     `json:"plan_id,omitempty"`
+	EpicID             string     `json:"epic_id,omitempty"`
+	SprintID           string     `json:"sprint_id,omitempty"`
+	WorkstreamID       string     `json:"workstream_id,omitempty"`
 	ParentID           string     `json:"parent_id,omitempty"` // task hierarchy; a plan uses plan_id
 	DependsOn          []string   `json:"depends_on,omitempty"`
 	AcceptanceCriteria []string   `json:"acceptance_criteria,omitempty"`
@@ -38,7 +44,13 @@ type Task struct {
 
 func (Task) ObjectKind() Kind { return TaskKind }
 
-func planningKind(kind Kind) bool { return kind == PlanKind || kind == TaskKind }
+func planningKind(kind Kind) bool {
+	switch kind {
+	case PlanKind, TaskKind, EpicKind, SprintKind, CollectionKind, WorkstreamKind:
+		return true
+	}
+	return false
+}
 func planningStatus(status string) bool {
 	switch status {
 	case "draft", "backlog", "todo", "queued", "doing", "review", "done", "blocked", "paused", "archived", "abandoned", "cancelled":
@@ -68,6 +80,9 @@ func validatePlanningDefinition(kind Kind, raw json.RawMessage) (string, []refer
 		common, status, priority, due, acceptance = d.Common, d.Status, d.Priority, d.DueAt, d.AcceptanceCriteria
 		link(d.ProjectID, ProjectKind, "project")
 		link(d.WorkflowID, WorkflowKind, "workflow")
+		link(d.EpicID, EpicKind, "epic")
+		link(d.SprintID, SprintKind, "sprint")
+		link(d.WorkstreamID, WorkstreamKind, "workstream")
 	case TaskKind:
 		var d Task
 		if err := strict(raw, &d); err != nil {
@@ -77,6 +92,9 @@ func validatePlanningDefinition(kind Kind, raw json.RawMessage) (string, []refer
 		link(d.ProjectID, ProjectKind, "project")
 		link(d.PlanID, PlanKind, "plan")
 		link(d.ParentID, TaskKind, "parent")
+		link(d.EpicID, EpicKind, "epic")
+		link(d.SprintID, SprintKind, "sprint")
+		link(d.WorkstreamID, WorkstreamKind, "workstream")
 		if len(d.DependsOn) > 256 {
 			return "", nil, fmt.Errorf("%w: at most 256 task dependencies", ErrInvalid)
 		}
@@ -139,12 +157,17 @@ func projectPlanning(ctx context.Context, tx *sql.Tx, r Record) error {
 	}
 	// Shared scalar fields; the full typed definition has already been checked.
 	var d struct {
-		Status    string     `json:"status"`
-		Priority  int        `json:"priority"`
-		ProjectID string     `json:"project_id"`
-		PlanID    string     `json:"plan_id"`
-		ParentID  string     `json:"parent_id"`
-		DueAt     *time.Time `json:"due_at"`
+		Status       string     `json:"status"`
+		Priority     int        `json:"priority"`
+		ProjectID    string     `json:"project_id"`
+		PlanID       string     `json:"plan_id"`
+		ParentID     string     `json:"parent_id"`
+		DueAt        *time.Time `json:"due_at"`
+		EpicID       string     `json:"epic_id"`
+		SprintID     string     `json:"sprint_id"`
+		WorkstreamID string     `json:"workstream_id"`
+		StartsAt     *time.Time `json:"starts_at"`
+		EndsAt       *time.Time `json:"ends_at"`
 	}
 	if err := json.Unmarshal(r.Definition, &d); err != nil {
 		return err
@@ -153,13 +176,20 @@ func projectPlanning(ctx context.Context, tx *sql.Tx, r Record) error {
 	if d.DueAt != nil {
 		due = timestamp(*d.DueAt)
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO planner_items(object_id,kind,status,priority,project_id,plan_id,parent_id,due_at) VALUES(?,?,?,?,?,?,?,?)
- ON CONFLICT(object_id) DO UPDATE SET status=excluded.status,priority=excluded.priority,project_id=excluded.project_id,plan_id=excluded.plan_id,parent_id=excluded.parent_id,due_at=excluded.due_at`, r.ID, r.Kind, d.Status, d.Priority, d.ProjectID, d.PlanID, d.ParentID, due)
+	starts, ends := "", ""
+	if d.StartsAt != nil {
+		starts = timestamp(*d.StartsAt)
+	}
+	if d.EndsAt != nil {
+		ends = timestamp(*d.EndsAt)
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO planner_items(object_id,kind,status,priority,project_id,plan_id,parent_id,due_at,epic_id,sprint_id,workstream_id,starts_at,ends_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(object_id) DO UPDATE SET status=excluded.status,priority=excluded.priority,project_id=excluded.project_id,plan_id=excluded.plan_id,parent_id=excluded.parent_id,due_at=excluded.due_at,epic_id=excluded.epic_id,sprint_id=excluded.sprint_id,workstream_id=excluded.workstream_id,starts_at=excluded.starts_at,ends_at=excluded.ends_at`, r.ID, r.Kind, d.Status, d.Priority, d.ProjectID, d.PlanID, d.ParentID, due, d.EpicID, d.SprintID, d.WorkstreamID, starts, ends)
 	return err
 }
 
 // PlannerFilter intersects exact filters, ordered by stable UUID with keyset
-// pagination. Empty Kind lists both plans and tasks. AssignedTo matches agent or
+// pagination. Empty Kind lists all planning kinds. AssignedTo matches agent or
 // team IDs through non-deleted assignment objects (any assignment state).
 type PlannerFilter struct {
 	Kind           Kind
@@ -168,6 +198,10 @@ type PlannerFilter struct {
 	ProjectID      string
 	PlanID         string
 	ParentID       string
+	EpicID         string
+	SprintID       string
+	WorkstreamID   string
+	CollectionID   string
 	AssignedTo     string
 	IncludeDeleted bool
 	AfterID        string
@@ -175,7 +209,7 @@ type PlannerFilter struct {
 }
 
 func (s *Service) ListPlanner(ctx context.Context, f PlannerFilter) ([]Record, error) {
-	if f.Kind != "" && !planningKind(f.Kind) || f.Status != "" && !planningStatus(f.Status) || f.Priority != nil && (*f.Priority < 0 || *f.Priority > 5) {
+	if f.Kind != "" && !planningKind(f.Kind) || f.Status != "" && !validPlanningStatus(f.Kind, f.Status) || f.Priority != nil && (*f.Priority < 0 || *f.Priority > 5) {
 		return nil, ErrInvalid
 	}
 	limit, err := pageLimit(f.Limit)
@@ -186,6 +220,7 @@ func (s *Service) ListPlanner(ctx context.Context, f PlannerFilter) ([]Record, e
 	args := []any{f.AfterID}
 	for _, condition := range []struct{ column, value string }{
 		{"p.kind", string(f.Kind)}, {"p.status", f.Status}, {"p.project_id", f.ProjectID}, {"p.plan_id", f.PlanID}, {"p.parent_id", f.ParentID},
+		{"p.epic_id", f.EpicID}, {"p.sprint_id", f.SprintID}, {"p.workstream_id", f.WorkstreamID},
 	} {
 		if condition.value != "" {
 			query += " AND " + condition.column + "=?"
@@ -195,6 +230,11 @@ func (s *Service) ListPlanner(ctx context.Context, f PlannerFilter) ([]Record, e
 	if f.Priority != nil {
 		query += " AND p.priority=?"
 		args = append(args, *f.Priority)
+	}
+	if f.CollectionID != "" {
+		query += ` AND EXISTS(SELECT 1 FROM object_links membership JOIN objects container ON container.id=membership.from_id
+ WHERE membership.from_id=? AND container.kind='collection' AND membership.relation='member' AND membership.to_id=o.id)`
+		args = append(args, f.CollectionID)
 	}
 	if !f.IncludeDeleted {
 		query += " AND o.deleted_at IS NULL AND (o.ownership='tachyon' OR s.deleted_at IS NULL)"

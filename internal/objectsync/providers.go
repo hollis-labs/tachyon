@@ -243,6 +243,11 @@ func Sources(u catalog.Upstreams) ([]Source, error) {
 			return nil, err
 		}
 		sources = append(sources, agents)
+		workstreams, err := NewTetherWorkstreams(u.TetherAddr, u.TetherTokenFile)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, workstreams)
 	}
 	if u.CerberusAddr != "" {
 		s, err := NewCerberusMachines(u.CerberusAddr, u.CerberusTokenFile)

@@ -126,7 +126,7 @@ policy or deploys machines. Definitions describe configuration, not live runtime
 state. Adapters must normalize non-secret data instead of persisting raw credentials
 or provider environment/config dumps.
 
-Planner will be Tachyon-owned (CW-20261018-0017). Chat session/run identities
+Planner records are Tachyon-owned (CW-20261018-0017). Chat session/run identities
 (CW-20261018-0018), additional provider adapters (CW-20261018-0016), and shared verb/API/MCP/CLI
 access with policy (CW-20261018-0019) follow this foundation. The UI still reads its
 existing adapters; this slice does not silently migrate cached responses or demo
@@ -162,13 +162,16 @@ explicit on each record; it is not inherited or rewritten when a plan changes.
 The backend contract is `objects.Service`:
 
 - `Create` / retry-safe `CreateWithID`, `Get`, revision-checked `Patch`,
-  `SetDeleted`, `History`, and `Links` work for both new kinds.
+  `SetDeleted`, `History`, and `Links` work for all planning kinds.
 - `ListPlanner(PlannerFilter)` intersects optional kind, status, exact priority,
-  project, plan, parent and assignee filters. It returns full `Record` values,
+  project, plan, parent, epic, sprint, workstream, collection and assignee filters. It returns full `Record` values,
   ordered by UUID, with `AfterID` pagination (default 100, maximum 500). Deleted
   targets are hidden unless requested. `AssignedTo` finds agent/team IDs through
   non-deleted assignments of any state; callers can inspect the assignment's state
-  through `Links`/`Get`. Empty kind lists both plans and tasks.
+  through `Links`/`Get`. Empty kind lists plans, tasks, epics, sprints, collections
+  and workstreams. Relationship filters match explicit links even when the
+  referenced container is deleted; only returned targets are hidden by default.
+  Collection filtering here uses UUID order; ordered membership has its own read below.
 - Queries use the indexed `planner_items` projection of the **effective**
   definition, updated in the same queued transaction as the object, links and
   revision. Provider observations cannot override local fields in that projection.
@@ -213,12 +216,49 @@ Migration `003_planner.sql` extends the object-kind constraint and adds the quer
 projection. Migration pins its SQLite connection, disables FK enforcement only
 for transactional table replacement, checks all FKs before commit, and restores
 enforcement before the writer queue and readers start. Existing IDs, source
-snapshots, history and links are preserved. Epics, sprints, collections, richer
-Planner databases, and execution/run objects remain later slices.
+snapshots, history and links are preserved. Migration `004_planner_organization.sql`
+extends this projection and the kind constraints while preserving existing plans
+and tasks. Richer Planner databases and execution/run objects remain later slices.
+
+## Epics, sprints, collections and workstreams
+
+These four kinds share `Common`, optional local `project_id`, CRUD, revisions,
+metadata and tombstones. All relationships use typed local UUIDs; neither matching
+names nor provider IDs establish a link. Plans and tasks may explicitly reference
+`epic_id`, `sprint_id`, and `workstream_id`. Epics, sprints and collections may
+reference `workstream_id`. Membership is not inherited or cascaded on deletion.
+
+- `Epic` adds `outcome`, priority 0–5 and optional `due_at`, with the same statuses
+  as plans/tasks. Plans/tasks point to their epic; there is no duplicate member array.
+- `Sprint` adds `goal` and optional `starts_at`/`ends_at`. Dates must both be absent
+  or form a valid window with end after start. Statuses are `draft`, `planned`,
+  `active`, `completed`, `cancelled`, and `archived`. Plans/tasks have one current
+  sprint; revision history preserves moves between sprints.
+- `Workstream` adds an optional local `workflow_id`. Statuses are `draft`, `active`,
+  `paused`, `closed`, and `archived`. Closing is a status edit, not deletion.
+- `Collection` has `active`/`archived` status and up to 1,000 ordered, unique
+  `Reference` members of any supported kind except collections. An object may be
+  in several collections. Unknown IDs, wrong kinds, duplicates and nested
+  collections are rejected atomically. Typed `member` links retain ordinal slots.
+
+`SetCollectionMembers(ctx, id, expectedRevision, members, actor)` replaces the
+ordered list, supporting addition, removal and reordering with one CAS edit.
+Null or empty members clears it. `ListCollectionMembers(ctx, id, expectedRevision,
+offset, limit)` returns each member's ordinal, typed reference and current record,
+including tombstones. Default page size is 100, maximum 500. Start at offset 0
+with expected revision 0, then pass the returned revision and `NextOffset` to
+continue. Each page reads a consistent database snapshot; collection edits cause
+stale continuations to fail with `ErrConflict`. Member contents reflect each
+page's read time. The collection's immutable history preserves earlier membership.
+
+Assignments may target any of these kinds. Shared `ImportOwned` can seed normalized
+organization definitions, while `planner.ImportTorque` still accepts only its
+documented task/plan DTOs. These backend contracts do not change Planner UI data
+sources or create upstream records.
 
 ## Provider ingestion and recurring jobs
 
-`internal/objectsync` imports Tether projects and agent definitions, Cerberus
+`internal/objectsync` imports Tether projects, agent definitions and workstreams, Cerberus
 machines, and GitHub organization repositories
 through the durable object service. These are independent of response caches and
 the current UI adapters. Tether project URNs and GitHub numeric repository IDs
@@ -254,6 +294,18 @@ later scans can resolve them to local project IDs. Local relationship overrides
 still win. Launch-specific worker/machine choices are not agent defaults. Teams,
 launch/session placement, and broader correlation are separate follow-up slices.
 
+Tether workstreams use stable IDs from unfiltered `GET /workstreams`. The current
+endpoint is bounded to the newest 100 records and has no pagination; this source
+is **non-authoritative** and never tombstones absent records. Run state records
+`bounded_inventory_observed`, not complete inventory. Pagination remains upstream
+work (`CW-20261018-0008`). Active and closed records are imported; closing/reopening
+preserves identity and local edits. An unnamed workstream uses its ID as the name.
+The provider's free-form `workflow_id` is retained as
+`properties.tether.workflow_ref`, with provider creation/update timestamps.
+It never becomes a local workflow foreign key automatically. Explicit local
+project/workflow mappings and metadata survive later scans. Provider project
+association and removal semantics remain Tether tasks `CW-20261018-0009`/`0010`.
+
 Cerberus reads its daemon's full, unfiltered `GET /hosts` inventory. Configure
 `CERBERUS_ADDR=unix:/home/chrispian/.cerberus/cerberus.sock` for the local daemon, or
 an HTTP base whose `/hosts` route exposes this same contract (an `/api` prefix is
@@ -276,10 +328,11 @@ GitHub deletion events and broader identity/correlation policies are future work
 See [GitHub's organization repository API](https://docs.github.com/en/rest/repos/repos#list-organization-repositories)
 for the upstream permissions and pagination contract.
 
-Each scan starts fresh, gathers every page, then applies one atomic reconciliation.
+Each scan starts fresh, gathers the source's available pages, then applies one atomic reconciliation.
 Partial or failed reads apply nothing. Scans are bounded to 10,000 objects, 16 MiB
 of normalized definitions, 8 MiB per HTTP response, and two minutes. Larger scans
-fail visibly and need staging support; they are never silently truncated.
+fail visibly and need staging support. These client bounds do not establish
+upstream completeness; the workstream endpoint's own bound is described above.
 `object_sync_state` records the last successful import, phase, progress, diagnostic
 checkpoint and sanitized failure; `object_sync_runs` retains attempt history.
 Page checkpoints are diagnostic, not resumable cursors. A persisted three-minute
@@ -297,6 +350,7 @@ maintenance command using the same upstream environment as the service:
 ```sh
 ./tachyon sync-objects --source tether-projects
 ./tachyon sync-objects --source tether-agents
+./tachyon sync-objects --source tether-workstreams
 ./tachyon sync-objects --source cerberus-machines
 ./tachyon sync-objects --source github-repositories
 # Imports again; enables each source only if its own import succeeds.
@@ -306,7 +360,7 @@ maintenance command using the same upstream environment as the service:
 ```
 
 `--data-dir <directory>` permits isolated validation. Source names are
-`tether-projects`, `tether-agents`, `cerberus-machines`, `github-repositories`, or
+`tether-projects`, `tether-agents`, `tether-workstreams`, `cerberus-machines`, `github-repositories`, or
 `all`; commands exit nonzero on failure. `all` imports projects before agents;
 independently scheduled jobs converge on later scans if a target is not yet present.
 Credentials stay in the existing environment/token-file mechanism, never job

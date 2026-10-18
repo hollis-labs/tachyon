@@ -19,7 +19,7 @@ import (
 func Command(ctx context.Context, dataDir string, u catalog.Upstreams, args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("tachyon sync-objects", flag.ContinueOnError)
 	flags.SetOutput(out)
-	sourceName := flags.String("source", "all", "tether-projects, tether-agents, cerberus-machines, github-repositories, or all")
+	sourceName := flags.String("source", "all", "tether-projects, tether-agents, tether-workstreams, cerberus-machines, github-repositories, or all")
 	database := flags.String("data-dir", dataDir, "directory containing tachyon.db and jobs.db")
 	status := flags.Bool("status", false, "show scan state and persisted schedules without fetching")
 	enable := flags.Bool("enable", false, "enable a recurring job after the import succeeds")
