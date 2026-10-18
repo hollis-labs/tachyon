@@ -136,7 +136,8 @@ or upstream writeback is enabled here.
 
 ## Provider ingestion and recurring jobs
 
-`internal/objectsync` imports Tether projects and GitHub organization repositories
+`internal/objectsync` imports Tether projects and agent definitions, Cerberus
+machines, and GitHub organization repositories
 through the durable object service. These are independent of response caches and
 the current UI adapters. Tether project URNs and GitHub numeric repository IDs
 retain local identity across renames. Local overrides, metadata, history and
@@ -150,6 +151,40 @@ Private callback, host and kind metadata are not requested. Deprecated/merged
 projects become source tombstones; an active observation restores the same record.
 Archived projects remain records with their upstream status. A successful complete
 inventory can tombstone absent projects.
+
+Tether agents come from the complete `/catalog/agents` inventory. Catalog IDs are
+the source key; optional registry URNs are correlation facts, so assigning a URN
+or changing a display name retains the local object. Renaming the catalog ID is
+a source identity change. Disabled definitions remain records; only absence from
+a successful full catalog scan tombstones them. `/registry/agents?status=*&include=external_ids`
+supplies correlation facts; both reads must succeed before any changes apply.
+Registry status does not override catalog presence. System instructions and agent
+prompts remain separate. Declared provider/model, inheritance, MCP server IDs and
+permission facts are preserved without importing environment variables, open
+provider overrides, or connection credentials. These facts do not grant authority
+in Tachyon, and inherited profiles are not compiled into launch configurations.
+
+Explicit registry project references resolve through project URNs or Tether
+external IDs in source observations from the same instance. Display names and
+local property overrides do not establish identity. Missing or ambiguous targets
+remain recorded as `project_ref` and `project_resolution` in `properties.tether`;
+later scans can resolve them to local project IDs. Local relationship overrides
+still win. Launch-specific worker/machine choices are not agent defaults. Teams,
+launch/session placement, and broader correlation are separate follow-up slices.
+
+Cerberus reads its daemon's full, unfiltered `GET /hosts` inventory. Configure
+`CERBERUS_ADDR=unix:/home/chrispian/.cerberus/cerberus.sock` for the local daemon, or
+an HTTP base whose `/hosts` route exposes this same contract (an `/api` prefix is
+allowed). `CERBERUS_TOKEN_FILE` is optional for authenticated HTTP endpoints.
+These settings belong to the host, not plugin environments. Cerberus's declared
+host name is its current API identity: hostname and address changes preserve the
+local object, while renaming the declared key creates a new source identity.
+Offline, unknown, and stale hosts remain records; only absence from a successful
+full inventory tombstones them. Declared platform/architecture stay separate from
+cached probe facts under `properties.cerberus`. Provider probe/check timestamps
+and stale flags are retained; the import time is not a new measurement. No probe
+is initiated. Reach credentials, token-file handles and raw probe errors are
+excluded. Tether environment IDs remain opaque correlation references.
 
 GitHub uses the configured organization and credential, follows all repository
 pages on the fixed API origin, and imports archived repositories too. Its completed
@@ -179,6 +214,8 @@ maintenance command using the same upstream environment as the service:
 
 ```sh
 ./tachyon sync-objects --source tether-projects
+./tachyon sync-objects --source tether-agents
+./tachyon sync-objects --source cerberus-machines
 ./tachyon sync-objects --source github-repositories
 # Imports again; enables each source only if its own import succeeds.
 ./tachyon sync-objects --source all --enable --interval 5m
@@ -187,7 +224,9 @@ maintenance command using the same upstream environment as the service:
 ```
 
 `--data-dir <directory>` permits isolated validation. Source names are
-`tether-projects`, `github-repositories`, or `all`; commands exit nonzero on failure.
+`tether-projects`, `tether-agents`, `cerberus-machines`, `github-repositories`, or
+`all`; commands exit nonzero on failure. `all` imports projects before agents;
+independently scheduled jobs converge on later scans if a target is not yet present.
 Credentials stay in the existing environment/token-file mechanism, never job
 payloads. `--enable` also resumes a paused job after a successful import; an
 existing job's interval must match. Interval editing is not exposed yet.

@@ -178,6 +178,13 @@ func (c *Coordinator) Run(ctx context.Context, source Source, fireID string) (ou
 	if err = c.progress(ctx, id, runID, "applying", p, snapshot.Authoritative); err != nil {
 		return out, err
 	}
+	if resolver, ok := source.(RelationshipResolver); ok {
+		snapshot, err = resolver.Resolve(ctx, snapshot, c.objects)
+		if err != nil {
+			problem = "source relationship resolution failed"
+			return out, errors.New(problem)
+		}
+	}
 	if _, err = c.objects.Reconcile(ctx, source.Scope(), at, snapshot.Observations, snapshot.Authoritative, "sync:"+source.Name()); err != nil {
 		problem = "object reconciliation failed"
 		// No raw local/provider definition is included in job diagnostics.

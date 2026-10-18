@@ -15,12 +15,14 @@ import (
 // environment. Plugins never inherit the host environment; they receive only
 // the variables their entry declares.
 type Upstreams struct {
-	TetherAddr      string
-	TetherTokenFile string
-	TorqueURL       string
-	TorqueToken     string
-	GitHubToken     string
-	GitHubOrg       string
+	TetherAddr        string
+	TetherTokenFile   string
+	CerberusAddr      string
+	CerberusTokenFile string
+	TorqueURL         string
+	TorqueToken       string
+	GitHubToken       string
+	GitHubOrg         string
 }
 
 // Stream is a host-owned server-sent-events relay. app-host's plugin route

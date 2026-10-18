@@ -40,6 +40,12 @@ type Source interface {
 	Scan(context.Context, time.Time, func(Progress) error) (Snapshot, error)
 }
 
+// RelationshipResolver enriches a complete inventory with exact local IDs
+// before atomic reconciliation. Resolution never writes provider or local data.
+type RelationshipResolver interface {
+	Resolve(context.Context, Snapshot, *objects.Service) (Snapshot, error)
+}
+
 func sourceID(scope objects.SourceScope) string {
 	b, _ := json.Marshal(scope)
 	sum := sha256.Sum256(b)
@@ -58,7 +64,7 @@ func newRemote(addr, tokenFile string, tether bool) (remote, error) {
 	tr.MaxResponseHeaderBytes = 64 << 10
 	if socket, ok := strings.CutPrefix(base, "unix:"); ok {
 		if socket == "" {
-			return remote{}, errors.New("missing Tether socket")
+			return remote{}, errors.New("missing provider socket")
 		}
 		tr.Proxy = nil
 		tr.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
