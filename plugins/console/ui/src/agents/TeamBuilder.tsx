@@ -1,3 +1,5 @@
+import { AdminDirectory, AdminRecordButton } from '@hollis-labs/kit-admin'
+import { AdminInput, AdminSelect } from '@hollis-labs/kit-admin'
 import { useCallback, useEffect, useState } from "react";
 import { dataRefreshRegistry } from "@tachyon/host-sdk";
 import { EmptyState } from "@hollis-labs/design-components";
@@ -77,12 +79,12 @@ export function TeamBuilder() {
 	};
 	return (
 		<div>
-			<div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/80 px-4 py-3">
+			<div className="flex flex-wrap items-center gap-3 border-b border-border/80 px-4 py-3">
 				<div className="min-w-0 flex-1">
 					<h2 className="font-mono text-sm font-semibold uppercase tracking-wide">
 						Team configuration
 					</h2>
-					<p className="mt-1 text-xs text-zinc-400">
+					<p className="mt-1 text-xs text-fg-muted">
 						Define seats, assign pinned launch profiles, and configure shared
 						policy.
 					</p>
@@ -91,30 +93,30 @@ export function TeamBuilder() {
 					New team draft
 				</Btn>
 			</div>
-			<p className="border-b border-zinc-800/80 px-4 py-2 text-xs text-zinc-400">
+			<p className="border-b border-border/80 px-4 py-2 text-xs text-fg-muted">
 				Team drafts stay in this Builder workspace until you leave or reload.
 				Imported saved teams are read-only snapshots; live memberships are not connected here yet.
 			</p>
 			{error && (
 				<div
 					role="alert"
-					className="flex flex-wrap items-center gap-3 border-b border-rose-400/30 bg-rose-400/5 px-4 py-3 text-sm text-rose-200"
+					className="flex flex-wrap items-center gap-3 border-b border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger"
 				>
 					{error}
 					<Btn onClick={() => void load()}>Retry team policy</Btn>
 				</div>
 			)}
-			<div className="grid lg:grid-cols-[minmax(15rem,21rem)_minmax(0,1fr)]">
-				<aside className="lg:border-r lg:border-zinc-800/80">
-					<div className="border-b border-zinc-800/80 px-4 py-3"><h3 className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">Saved team snapshots</h3><p className="mt-1 text-xs text-zinc-500">{snapshot ? `${new Set(savedTeams.map(t => t.id)).size} teams · ${savedTeams.length} versions · manually imported` : 'Loading local snapshot…'}</p>
-					{snapshotError && <p role="alert" className="mt-2 text-xs text-rose-300">{snapshotError} <button type="button" className="underline" onClick={() => void loadSnapshot()}>Retry snapshot</button></p>}</div>
-					<ul aria-label="Saved teams">{savedTeams.map(t => <li key={importedTeamKey(t)}><button type="button" aria-current={imported === t ? 'true' : undefined} onClick={() => select(importedTeamKey(t))} className={`w-full border-b border-zinc-800/80 px-4 py-3 text-left focus-visible:ring-1 focus-visible:ring-amber-300 ${imported === t ? 'bg-zinc-900' : 'hover:bg-zinc-900/50'}`}><span className="block font-mono text-sm text-zinc-100">{t.id}</span><span className="mt-1 block text-xs text-zinc-400">{t.name} · version {t.version}</span></button></li>)}</ul>
-					{snapshot && !savedTeams.length && <p className="px-4 py-3 text-xs text-zinc-500">No saved team snapshot has been imported, or it has expired from the cache.</p>}
-					<div className="border-b border-zinc-800/80 px-4 py-3">
-						<h3 className="mb-2 font-mono text-[11px] uppercase tracking-widest text-zinc-400">
+			<AdminDirectory label="Team configuration" layout="compact" records={
+				<aside>
+					<div className="border-b border-border/80 px-4 py-3"><h3 className="font-mono text-label uppercase tracking-widest text-fg-muted">Saved team snapshots</h3><p className="mt-1 text-xs text-fg-faint">{snapshot ? `${new Set(savedTeams.map(t => t.id)).size} teams · ${savedTeams.length} versions · manually imported` : 'Loading local snapshot…'}</p>
+					{snapshotError && <p role="alert" className="mt-2 text-xs text-danger">{snapshotError} <button type="button" className="underline" onClick={() => void loadSnapshot()}>Retry snapshot</button></p>}</div>
+					<ul aria-label="Saved teams">{savedTeams.map(t => <li key={importedTeamKey(t)}><AdminRecordButton selected={imported === t} onSelect={() => select(importedTeamKey(t))} size="comfortable" title={t.id} description={`${t.name} · version ${t.version}`} /></li>)}</ul>
+					{snapshot && !savedTeams.length && <p className="px-4 py-3 text-xs text-fg-faint">No saved team snapshot has been imported, or it has expired from the cache.</p>}
+					<div className="border-b border-border/80 px-4 py-3">
+						<h3 className="mb-2 font-mono text-label uppercase tracking-widest text-fg-muted">
 							Local drafts · {drafts.length}
 						</h3>
-						<input
+						<AdminInput
 							aria-label="Search team drafts"
 							placeholder="Search drafts"
 							value={search}
@@ -131,44 +133,32 @@ export function TeamBuilder() {
 							)
 							.map((d) => (
 								<li key={d.key}>
-									<button
-										type="button"
-										aria-current={selected === d.key ? "true" : undefined}
-										onClick={() => select(d.key)}
-										className={`w-full border-b border-zinc-800/80 px-4 py-3 text-left focus-visible:ring-1 focus-visible:ring-amber-300 ${selected === d.key ? "bg-zinc-900" : "hover:bg-zinc-900/50"}`}
-									>
-										<span className="block font-mono text-sm text-zinc-100">
-											{d.name || "Untitled team"}
-										</span>
-										<span className="mt-1 block text-xs text-zinc-400">
-											{d.slots.length} seats · unsaved draft
-										</span>
-									</button>
+                  <AdminRecordButton selected={selected === d.key} onSelect={() => select(d.key)} size="comfortable" title={d.name || 'Untitled team'} description={`${d.slots.length} seats · unsaved draft`} />
 								</li>
 							))}
 					</ul>
 					{!drafts.length && (
-						<p className="px-4 py-4 text-sm text-zinc-500">
+						<p className="px-4 py-4 text-sm text-fg-faint">
 							Create a draft to start configuring a team.
 						</p>
 					)}
 					<div className="px-4 py-4">
-						<h3 className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">
+						<h3 className="font-mono text-label uppercase tracking-widest text-fg-muted">
 							Tether launch bindings
 						</h3>
 						{policy ? (
 							<>
-								<p className="mt-2 text-xs text-zinc-500">
+								<p className="mt-2 text-xs text-fg-faint">
 									{policy.bindings.length} bindings in the authored activation
 									policy. Host activation may differ.
 								</p>
 								<ul className="mt-3 space-y-3">
 									{policy.bindings.map((b) => (
 										<li key={b.launch}>
-											<span className="block break-all font-mono text-xs text-zinc-200">
+											<span className="block break-all font-mono text-xs text-fg">
 												{b.launch}
 											</span>
-											<span className="block text-xs text-zinc-500">
+											<span className="block text-xs text-fg-faint">
 												{b.runtime}
 												{b.model ? ` · ${b.model}` : ""} ·{" "}
 												{b.definition.revision}
@@ -178,12 +168,12 @@ export function TeamBuilder() {
 								</ul>
 							</>
 						) : (
-							<p className="mt-2 text-xs text-zinc-500">
+							<p className="mt-2 text-xs text-fg-faint">
 								{error ? "Policy unavailable." : "Loading policy…"}
 							</p>
 						)}
 					</div>
-				</aside>
+				</aside>} detail={<>
 				{imported && snapshot ? <ImportedTeamDetail team={imported} snapshot={snapshot} /> : !draft ? (
 					<div className="p-6">
 						<EmptyState
@@ -196,11 +186,11 @@ export function TeamBuilder() {
 					<article aria-label="Team draft review">
 						<Block title="Review team draft">
 							<h2 className="text-lg font-semibold">{review.name}</h2>
-							<p className="mt-1 text-sm text-zinc-400">
+							<p className="mt-1 text-sm text-fg-muted">
 								{review.id} · version {review.version} · {review.slots.length}{" "}
 								seats
 							</p>
-							<p className="mt-3 text-sm text-zinc-400">
+							<p className="mt-3 text-sm text-fg-muted">
 								This is a local configuration review. Tether must verify pins,
 								host policy and launch eligibility before a future real save or
 								run.
@@ -210,8 +200,8 @@ export function TeamBuilder() {
 							<ul className="space-y-3">
 								{review.slots.map((s) => (
 									<li key={s.name} className="text-sm">
-										<span className="font-mono text-zinc-100">{s.name}</span>
-										<span className="text-zinc-400">
+										<span className="font-mono text-fg">{s.name}</span>
+										<span className="text-fg-muted">
 											{" "}
 											· {s.role} · {s.definition_ref.id}@
 											{s.definition_ref.revision} ·{" "}
@@ -222,11 +212,11 @@ export function TeamBuilder() {
 							</ul>
 						</Block>
 						<Block title="Shared policy">
-							<p className="text-sm text-zinc-300">
+							<p className="text-sm text-fg-muted">
 								Strict authority · coordinator {review.routing.coordinator_slot}{" "}
 								· history {review.policy.history}
 							</p>
-							<p className="mt-2 text-sm text-zinc-400">
+							<p className="mt-2 text-sm text-fg-muted">
 								Coordinator may message and assign to the other seats. Spawn
 								depth {review.policy.spawn.max_depth}, children{" "}
 								{review.policy.spawn.max_children}. These limits do not grant
@@ -235,10 +225,10 @@ export function TeamBuilder() {
 						</Block>
 						<Block title="Configuration preview">
 							<details>
-								<summary className="cursor-pointer text-sm text-zinc-300">
+								<summary className="cursor-pointer text-sm text-fg-muted">
 									View complete draft
 								</summary>
-								<pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs text-zinc-400">
+								<pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs text-fg-muted">
 									{JSON.stringify(review, null, 2)}
 								</pre>
 							</details>
@@ -246,7 +236,7 @@ export function TeamBuilder() {
 						{message && (
 							<div
 								role="status"
-								className="border-b border-emerald-400/30 bg-emerald-400/5 px-5 py-3 text-sm text-emerald-200"
+								className="border-b border-success/30 bg-success/5 px-5 py-3 text-sm text-success"
 							>
 								{message}
 							</div>
@@ -274,7 +264,7 @@ export function TeamBuilder() {
 						<Block title="Team definition">
 							<div className="grid gap-3 sm:grid-cols-2">
 								<Field label="Team name" htmlFor="team-name">
-									<input
+									<AdminInput
 										id="team-name"
 										value={draft.name}
 										onChange={(e) =>
@@ -299,7 +289,7 @@ export function TeamBuilder() {
 									/>
 								</Field>
 								<Field label="Team ID" htmlFor="team-id">
-									<input
+									<AdminInput
 										id="team-id"
 										value={draft.id}
 										onChange={(e) => update({ id: e.target.value })}
@@ -307,7 +297,7 @@ export function TeamBuilder() {
 									/>
 								</Field>
 								<Field label="Version" htmlFor="team-version">
-									<input
+									<AdminInput
 										id="team-version"
 										type="number"
 										min="1"
@@ -319,7 +309,7 @@ export function TeamBuilder() {
 									/>
 								</Field>
 								<Field label="Coordinator slot" htmlFor="team-coordinator">
-									<select
+									<AdminSelect
 										id="team-coordinator"
 										value={draft.coordinator}
 										onChange={(e) => update({ coordinator: e.target.value })}
@@ -331,12 +321,12 @@ export function TeamBuilder() {
 												{s.name || "(unnamed)"}
 											</option>
 										))}
-									</select>
+									</AdminSelect>
 								</Field>
 							</div>
 						</Block>
 						<Block title="Seats and assignments">
-							<p className="mb-3 text-sm text-zinc-400">
+							<p className="mb-3 text-sm text-fg-muted">
 								Each seat uses one fresh agent from a pinned definition. Runtime
 								instances are managed on Agents.
 							</p>
@@ -354,14 +344,14 @@ export function TeamBuilder() {
 									return (
 										<fieldset
 											key={i}
-											className="min-w-0 border border-zinc-800 p-3"
+											className="min-w-0 border border-border p-3"
 										>
-											<legend className="px-1 font-mono text-xs text-zinc-400">
+											<legend className="px-1 font-mono text-xs text-fg-muted">
 												Seat {i + 1}
 											</legend>
 											<div className="grid gap-3 sm:grid-cols-2">
 												<Field label="Slot name" htmlFor={`slot-${i}`}>
-													<input
+													<AdminInput
 														id={`slot-${i}`}
 														value={s.name}
 														onChange={(e) => patch({ name: e.target.value })}
@@ -369,7 +359,7 @@ export function TeamBuilder() {
 													/>
 												</Field>
 												<Field label="Role" htmlFor={`role-${i}`}>
-													<input
+													<AdminInput
 														id={`role-${i}`}
 														value={s.role}
 														onChange={(e) => patch({ role: e.target.value })}
@@ -378,7 +368,7 @@ export function TeamBuilder() {
 												</Field>
 												<div className="sm:col-span-2">
 													<Field label="Launch binding" htmlFor={`launch-${i}`}>
-														<select
+														<AdminSelect
 															id={`launch-${i}`}
 															value={s.launch}
 															onChange={(e) =>
@@ -399,13 +389,13 @@ export function TeamBuilder() {
 																	{b.launch} · {b.runtime} · {b.definition.id}
 																</option>
 															))}
-														</select>
+														</AdminSelect>
 													</Field>
 												</div>
 											</div>
 											{binding && (
 												<p
-													className="mt-2 break-all font-mono text-[11px] text-zinc-500"
+													className="mt-2 break-all font-mono text-label text-fg-faint"
 													title={binding.definition.digest}
 												>
 													{binding.definition.id}@{binding.definition.revision}{" "}
@@ -413,7 +403,7 @@ export function TeamBuilder() {
 												</p>
 											)}
 											<div className="mt-3 flex items-center gap-3">
-												<label className="flex items-center gap-2 text-xs text-zinc-300">
+												<label className="flex items-center gap-2 text-xs text-fg-muted">
 													<input
 														type="checkbox"
 														checked={s.min === 1}
@@ -462,7 +452,7 @@ export function TeamBuilder() {
 						<Block title="Shared policy">
 							<div className="grid gap-3 sm:grid-cols-3">
 								<Field label="History sharing" htmlFor="team-history">
-									<select
+									<AdminSelect
 										id="team-history"
 										value={draft.history}
 										onChange={(e) =>
@@ -475,10 +465,10 @@ export function TeamBuilder() {
 										<option value="none">None</option>
 										<option value="summary">Summary</option>
 										<option value="full">Full</option>
-									</select>
+									</AdminSelect>
 								</Field>
 								<Field label="Maximum depth" htmlFor="team-depth">
-									<input
+									<AdminInput
 										id="team-depth"
 										type="number"
 										min="1"
@@ -491,7 +481,7 @@ export function TeamBuilder() {
 									/>
 								</Field>
 								<Field label="Maximum children" htmlFor="team-children">
-									<input
+									<AdminInput
 										id="team-children"
 										type="number"
 										min="1"
@@ -504,7 +494,7 @@ export function TeamBuilder() {
 									/>
 								</Field>
 							</div>
-							<p className="mt-3 text-xs text-zinc-500">
+							<p className="mt-3 text-xs text-fg-faint">
 								Strict authority: the coordinator may message and assign to
 								other seats. Host policy remains the authority for effective
 								permissions.
@@ -514,7 +504,7 @@ export function TeamBuilder() {
 							{issues.length > 0 && (
 								<ul
 									aria-label="Draft validation"
-									className="mb-3 space-y-1 text-xs text-amber-200"
+									className="mb-3 space-y-1 text-xs text-warning"
 								>
 									{issues.map((issue, i) => (
 										<li key={i}>{issue}</li>
@@ -558,7 +548,7 @@ export function TeamBuilder() {
 						</div>
 					</article>
 				)}
-			</div>
+			</>} />
 		</div>
 	);
 }

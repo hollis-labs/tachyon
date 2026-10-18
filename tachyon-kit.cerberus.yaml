@@ -1,0 +1,25 @@
+kind: cerberus-project/v1
+owner: tachyon-kit
+namespace: local
+project:
+  id: tachyon-kit
+  name: Tachyon Kit Comparison
+  description: Isolated frontend worktree; same local Tachyon API for page comparison
+resources:
+  - id: tachyon-kit-frontend
+    name: Tachyon Kit Frontend
+    type: process
+    project: tachyon-kit
+    connector: local
+    tags: [tachyon, dev, frontend, design-kit]
+    config:
+      dir: ~/dev/hollis-labs/apps/tachyon-kit/frontend
+      command: [npm, run, dev, --, --host, 100.112.71.40, --port, "5181"]
+      mode: dev_session
+      run_from: workspace
+      env:
+        TACHYON_API_ORIGIN: http://127.0.0.1:8093
+      port: 5181
+      url: http://100.112.71.40:5181/builder
+      auto_restart: true
+      restart_delay: 2s

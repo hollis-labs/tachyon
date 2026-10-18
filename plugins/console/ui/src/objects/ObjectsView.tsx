@@ -1,3 +1,4 @@
+import { AdminInput, AdminSelect, AdminTextarea } from '@hollis-labs/kit-admin'
 import { EmptyState, Input } from "@hollis-labs/design-components";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Field, inputCls } from "../agents/AgentEditor";
@@ -28,7 +29,7 @@ function Notice({ error, note }: { error?: string; note?: string }) {
 			{error && (
 				<p
 					role="alert"
-					className="border-b border-rose-400/30 px-4 py-3 text-sm text-rose-200"
+					className="border-b border-danger/30 px-4 py-3 text-sm text-danger"
 				>
 					{error}
 				</p>
@@ -36,7 +37,7 @@ function Notice({ error, note }: { error?: string; note?: string }) {
 			{note && (
 				<p
 					role="status"
-					className="border-b border-emerald-400/30 px-4 py-3 text-sm text-emerald-200"
+					className="border-b border-success/30 px-4 py-3 text-sm text-success"
 				>
 					{note}
 				</p>
@@ -86,7 +87,7 @@ function Collection({
 }) {
 	if (loading)
 		return (
-			<p role="status" className="p-4 text-sm text-zinc-400">
+			<p role="status" className="p-4 text-sm text-fg-muted">
 				Loading…
 			</p>
 		);
@@ -131,7 +132,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 	);
 	return (
 		<div>
-			<p className="border-b border-zinc-800/80 px-4 py-3 text-sm text-zinc-400">
+			<p className="border-b border-border/80 px-4 py-3 text-sm text-fg-muted">
 				Project identities and shared guidance. Saves update Tether immediately.
 			</p>
 			<Notice note={note} />
@@ -149,7 +150,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 				/>
 			) : (
 				<>
-					<div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/80 px-4 py-3">
+					<div className="flex flex-wrap items-center gap-3 border-b border-border/80 px-4 py-3">
 						<Input
 							aria-label="Search projects"
 							placeholder="Search projects"
@@ -157,7 +158,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 							onChange={(e) => setSearch(e.target.value)}
 							className="max-w-xs"
 						/>
-						<select
+						<AdminSelect
 							aria-label="Project status"
 							className={`${inputCls} max-w-40`}
 							value={status}
@@ -166,7 +167,7 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 							{["active", "deprecated", "archived", "merged"].map((v) => (
 								<option key={v}>{v}</option>
 							))}
-						</select>
+						</AdminSelect>
 						<Btn onClick={collection.reload} disabled={collection.loading}>
 							Refresh
 						</Btn>
@@ -191,20 +192,20 @@ export function ProjectsView({ client = objectsClient }: { client?: Client }) {
 								<li key={p.urn}>
 									<button
 										type="button"
-										className="flex w-full items-center gap-4 border-b border-zinc-800/80 px-4 py-4 text-left hover:bg-zinc-900/60 focus-visible:ring-1 focus-visible:ring-amber-300"
+										className="flex w-full items-center gap-4 border-b border-border/80 px-4 py-4 text-left hover:bg-panel/60  "
 										onClick={() => {
 											setNote("");
 											setEditing(p);
 										}}
 									>
 										<span className="min-w-0 flex-1">
-											<span className="block font-mono text-sm text-zinc-100">
+											<span className="block font-mono text-sm text-fg">
 												{p.display_name}
 											</span>
-											<span className="mt-1 block text-sm text-zinc-400">
+											<span className="mt-1 block text-sm text-fg-muted">
 												{p.description || "No description"}
 											</span>
-											<span className="mt-1 block break-all font-mono text-xs text-zinc-500">
+											<span className="mt-1 block break-all font-mono text-xs text-fg-faint">
 												{p.urn}
 											</span>
 										</span>
@@ -279,12 +280,12 @@ function ProjectEditor({
 					</Btn>
 				</div>
 				{project && (
-					<p className="break-all font-mono text-xs text-zinc-500">
+					<p className="break-all font-mono text-xs text-fg-faint">
 						{project.urn}
 					</p>
 				)}
 				<Field label="Project name" htmlFor="project-name">
-					<input
+					<AdminInput
 						id="project-name"
 						required
 						maxLength={200}
@@ -294,7 +295,7 @@ function ProjectEditor({
 					/>
 				</Field>
 				<Field label="Description" htmlFor="project-description">
-					<textarea
+					<AdminTextarea
 						id="project-description"
 						className={area}
 						value={description}
@@ -303,7 +304,7 @@ function ProjectEditor({
 				</Field>
 				<div className="grid gap-4 md:grid-cols-2">
 					<Field label="Tags · one per line" htmlFor="project-tags">
-						<textarea
+						<AdminTextarea
 							id="project-tags"
 							className={area}
 							value={tags}
@@ -311,7 +312,7 @@ function ProjectEditor({
 						/>
 					</Field>
 					<Field label="Entry points · one per line" htmlFor="project-entries">
-						<textarea
+						<AdminTextarea
 							id="project-entries"
 							className={area}
 							value={entries}
@@ -320,7 +321,7 @@ function ProjectEditor({
 					</Field>
 				</div>
 				<Field label="Guidelines" htmlFor="project-guidelines">
-					<textarea
+					<AdminTextarea
 						id="project-guidelines"
 						className={`${area} min-h-40`}
 						value={guidelines}
@@ -329,7 +330,7 @@ function ProjectEditor({
 				</Field>
 				{!!project?.external_ids?.length && (
 					<div>
-						<h3 className="mb-2 text-sm text-zinc-400">Linked identifiers</h3>
+						<h3 className="mb-2 text-sm text-fg-muted">Linked identifiers</h3>
 						<dl>
 							{project.external_ids.map((v) => (
 								<div key={v.substrate} className="flex gap-3 font-mono text-xs">
@@ -358,7 +359,7 @@ function ProjectEditor({
 					)}
 				</div>
 				{confirm && project && (
-					<div className="space-y-3 border border-rose-400/40 p-3">
+					<div className="space-y-3 border border-danger/40 p-3">
 						<p className="text-sm">
 							Deprecate {project.display_name}? Its identity and history remain
 							available. Repository files and launch settings are unchanged.
@@ -405,7 +406,7 @@ export function WorkstreamsView({
 	);
 	return (
 		<div>
-			<p className="border-b border-zinc-800/80 px-4 py-3 text-sm text-zinc-400">
+			<p className="border-b border-border/80 px-4 py-3 text-sm text-fg-muted">
 				Durable work across sessions. Close finished workstreams or reopen them
 				to continue.
 			</p>
@@ -434,7 +435,7 @@ export function WorkstreamsView({
 				/>
 			) : (
 				<>
-					<div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/80 px-4 py-3">
+					<div className="flex flex-wrap items-center gap-3 border-b border-border/80 px-4 py-3">
 						<Input
 							aria-label="Search workstreams"
 							placeholder="Search loaded workstreams"
@@ -442,7 +443,7 @@ export function WorkstreamsView({
 							onChange={(e) => setSearch(e.target.value)}
 							className="max-w-xs"
 						/>
-						<select
+						<AdminSelect
 							aria-label="Workstream status filter"
 							className={`${inputCls} max-w-40`}
 							value={status}
@@ -451,7 +452,7 @@ export function WorkstreamsView({
 							<option value="">All statuses</option>
 							<option value="active">Active</option>
 							<option value="closed">Closed</option>
-						</select>
+						</AdminSelect>
 						<Input
 							aria-label="Filter by workflow ID"
 							placeholder="Exact workflow ID"
@@ -480,7 +481,7 @@ export function WorkstreamsView({
 							New workstream
 						</Btn>
 					</div>
-					<p className="px-4 py-2 text-xs text-zinc-500">
+					<p className="px-4 py-2 text-xs text-fg-faint">
 						Tether returns up to the newest 100 matching workstreams. Search
 						applies to this loaded set.
 						{!collection.loading &&
@@ -499,21 +500,21 @@ export function WorkstreamsView({
 								<li key={w.id}>
 									<button
 										type="button"
-										className="flex w-full items-center gap-4 border-b border-zinc-800/80 px-4 py-4 text-left hover:bg-zinc-900/60 focus-visible:ring-1 focus-visible:ring-amber-300"
+										className="flex w-full items-center gap-4 border-b border-border/80 px-4 py-4 text-left hover:bg-panel/60  "
 										onClick={() => {
 											setNote("");
 											setEditing(w);
 										}}
 									>
 										<span className="min-w-0 flex-1">
-											<span className="block font-mono text-sm text-zinc-100">
+											<span className="block font-mono text-sm text-fg">
 												{w.name || "Unnamed workstream"}
 											</span>
-											<span className="mt-1 block break-all font-mono text-xs text-zinc-500">
+											<span className="mt-1 block break-all font-mono text-xs text-fg-faint">
 												{w.id}
 											</span>
 											{w.workflow_id && (
-												<span className="mt-1 block text-xs text-zinc-400">
+												<span className="mt-1 block text-xs text-fg-muted">
 													Workflow: {w.workflow_id}
 												</span>
 											)}
@@ -580,12 +581,12 @@ function WorkstreamEditor({
 					</Btn>
 				</div>
 				{workstream && (
-					<p className="break-all font-mono text-xs text-zinc-500">
+					<p className="break-all font-mono text-xs text-fg-faint">
 						{workstream.id}
 					</p>
 				)}
 				<Field label="Name (optional)" htmlFor="workstream-name">
-					<input
+					<AdminInput
 						id="workstream-name"
 						className={inputCls}
 						value={name}
@@ -593,19 +594,19 @@ function WorkstreamEditor({
 					/>
 				</Field>
 				<Field label="Workflow ID (optional)" htmlFor="workstream-workflow">
-					<input
+					<AdminInput
 						id="workstream-workflow"
 						className={inputCls}
 						value={workflow}
 						onChange={(e) => setWorkflow(e.target.value)}
 					/>
 				</Field>
-				<p className="text-xs text-zinc-500">
+				<p className="text-xs text-fg-faint">
 					A correlation identifier for a workflow owned by another system.
 				</p>
 				{workstream && (
 					<Field label="Status" htmlFor="workstream-status">
-						<select
+						<AdminSelect
 							id="workstream-status"
 							className={inputCls}
 							value={status}
@@ -613,7 +614,7 @@ function WorkstreamEditor({
 						>
 							<option value="active">Active</option>
 							<option value="closed">Closed</option>
-						</select>
+						</AdminSelect>
 					</Field>
 				)}
 				<Btn type="submit" tone="primary" disabled={busy}>
@@ -680,7 +681,7 @@ function SessionWorkstreamForm({
 					</Btn>
 				</div>
 				<Field label="Session ID" htmlFor="session-id">
-					<input
+					<AdminInput
 						id="session-id"
 						required
 						className={inputCls}
@@ -689,7 +690,7 @@ function SessionWorkstreamForm({
 					/>
 				</Field>
 				<Field label="Action" htmlFor="session-action">
-					<select
+					<AdminSelect
 						id="session-action"
 						className={inputCls}
 						value={action}
@@ -698,17 +699,17 @@ function SessionWorkstreamForm({
 						<option value="ensure">Find or create for this lineage</option>
 						<option value="assign">Assign an existing workstream</option>
 						<option value="clear">Clear this session’s assignment</option>
-					</select>
+					</AdminSelect>
 				</Field>
 				{action === "ensure" && (
 					<>
-						<p className="text-sm text-zinc-400">
+						<p className="text-sm text-fg-muted">
 							Reuse the nearest workstream in the session’s lineage. If none
 							exists, Tether creates one and fills missing assignments along
 							that lineage.
 						</p>
 						<Field label="Name if created (optional)" htmlFor="ensure-name">
-							<input
+							<AdminInput
 								id="ensure-name"
 								className={inputCls}
 								value={name}
@@ -719,7 +720,7 @@ function SessionWorkstreamForm({
 				)}
 				{action === "assign" && (
 					<Field label="Workstream ID" htmlFor="assign-workstream">
-						<input
+						<AdminInput
 							id="assign-workstream"
 							required
 							className={inputCls}
@@ -729,7 +730,7 @@ function SessionWorkstreamForm({
 					</Field>
 				)}
 				{action === "clear" && (
-					<p className="text-sm text-amber-200">
+					<p className="text-sm text-warning">
 						Clears only this session’s association. The workstream and other
 						sessions remain intact.
 					</p>

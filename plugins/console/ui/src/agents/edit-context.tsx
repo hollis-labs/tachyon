@@ -11,7 +11,6 @@ export interface AgentEditValue {
 
 const EditContext = createContext<AgentEditValue | null>(null)
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function resolveStepUp(
   seams: { actionBus: ActionBus; identity: IdentityConfirm } | null,
   props: { bus?: ActionBus; identity?: IdentityConfirm; allowAutoGrant?: boolean },
@@ -39,7 +38,6 @@ export function AgentEditProvider({ bus, identity, allowAutoGrant, children }: {
 }
 
 /** Fallback keeps the directory working when the provider is absent (tests, previews). */
-// eslint-disable-next-line react-refresh/only-export-components
 export function useAgentEdit(): AgentEditValue | null {
   return useContext(EditContext)
 }
