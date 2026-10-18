@@ -46,7 +46,7 @@ func (Task) ObjectKind() Kind { return TaskKind }
 
 func planningKind(kind Kind) bool {
 	switch kind {
-	case PlanKind, TaskKind, EpicKind, SprintKind, CollectionKind, WorkstreamKind:
+	case PlanKind, TaskKind, EpicKind, SprintKind, CollectionKind, WorkstreamKind, InboxItemKind, IdeaKind, DecisionKind, RiskKind, RoadmapItemKind, StrategicPriorityKind:
 		return true
 	}
 	return false
@@ -192,20 +192,23 @@ func projectPlanning(ctx context.Context, tx *sql.Tx, r Record) error {
 // pagination. Empty Kind lists all planning kinds. AssignedTo matches agent or
 // team IDs through non-deleted assignment objects (any assignment state).
 type PlannerFilter struct {
-	Kind           Kind
-	Status         string
-	Priority       *int
-	ProjectID      string
-	PlanID         string
-	ParentID       string
-	EpicID         string
-	SprintID       string
-	WorkstreamID   string
-	CollectionID   string
-	AssignedTo     string
-	IncludeDeleted bool
-	AfterID        string
-	Limit          int
+	Kind                Kind
+	Status              string
+	Priority            *int
+	ProjectID           string
+	PlanID              string
+	ParentID            string
+	EpicID              string
+	SprintID            string
+	WorkstreamID        string
+	CollectionID        string
+	AssignedTo          string
+	StrategicPriorityID string
+	TargetID            string
+	Promoted            *bool
+	IncludeDeleted      bool
+	AfterID             string
+	Limit               int
 }
 
 func (s *Service) ListPlanner(ctx context.Context, f PlannerFilter) ([]Record, error) {
@@ -230,6 +233,16 @@ func (s *Service) ListPlanner(ctx context.Context, f PlannerFilter) ([]Record, e
 	if f.Priority != nil {
 		query += " AND p.priority=?"
 		args = append(args, *f.Priority)
+	}
+	for _, filter := range []struct{ relation, id string }{{"strategic_priority", f.StrategicPriorityID}, {"target", f.TargetID}} {
+		if filter.id != "" {
+			query += " AND EXISTS(SELECT 1 FROM object_links l WHERE l.from_id=o.id AND l.relation=? AND l.to_id=?)"
+			args = append(args, filter.relation, filter.id)
+		}
+	}
+	if f.Promoted != nil {
+		query += " AND EXISTS(SELECT 1 FROM planner_promotions promotion WHERE promotion.source_id=o.id)=?"
+		args = append(args, *f.Promoted)
 	}
 	if f.CollectionID != "" {
 		query += ` AND EXISTS(SELECT 1 FROM object_links membership JOIN objects container ON container.id=membership.from_id

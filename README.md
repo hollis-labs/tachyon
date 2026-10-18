@@ -165,12 +165,12 @@ The backend contract is `objects.Service`:
 - `Create` / retry-safe `CreateWithID`, `Get`, revision-checked `Patch`,
   `SetDeleted`, `History`, and `Links` work for all planning kinds.
 - `ListPlanner(PlannerFilter)` intersects optional kind, status, exact priority,
-  project, plan, parent, epic, sprint, workstream, collection and assignee filters. It returns full `Record` values,
+  project, plan, parent, epic, sprint, workstream, collection, assignee, strategic
+  priority, typed target and promotion-state filters. It returns full `Record` values,
   ordered by UUID, with `AfterID` pagination (default 100, maximum 500). Deleted
   targets are hidden unless requested. `AssignedTo` finds agent/team IDs through
   non-deleted assignments of any state; callers can inspect the assignment's state
-  through `Links`/`Get`. Empty kind lists plans, tasks, epics, sprints, collections
-  and workstreams. Relationship filters match explicit links even when the
+  through `Links`/`Get`. Empty kind lists all twelve Planner kinds. Relationship filters match explicit links even when the
   referenced container is deleted; only returned targets are hidden by default.
   Collection filtering here uses UUID order; ordered membership has its own read below.
 - Queries use the indexed `planner_items` projection of the **effective**
@@ -219,7 +219,8 @@ for transactional table replacement, checks all FKs before commit, and restores
 enforcement before the writer queue and readers start. Existing IDs, source
 snapshots, history and links are preserved. Migration `004_planner_organization.sql`
 extends this projection and the kind constraints while preserving existing plans
-and tasks. Richer Planner databases remain later slices.
+and tasks. Migration `006_planner_records.sql` extends these constraints again
+and adds immutable promotion receipts, preserving all existing projections.
 
 ## Epics, sprints, collections and workstreams
 
@@ -256,6 +257,51 @@ Assignments may target any of these kinds. Shared `ImportOwned` can seed normali
 organization definitions, while `planner.ImportTorque` still accepts only its
 documented task/plan DTOs. These backend contracts do not change Planner UI data
 sources or create upstream records.
+
+## Owned captures, decisions, risks and strategy
+
+Six additional kinds share the same object service, `Common`, metadata, typed
+local `project_id`/`workstream_id`, history and tombstones. Their statuses are
+editable descriptions, not execution commands or a mandatory transition graph.
+
+| Kind / Go type | Fields beyond common context | Statuses |
+| --- | --- | --- |
+| `inbox_item` / `InboxItem` | numeric priority, origin, captured_at | new, triaged, archived |
+| `idea` / `Idea` | numeric priority, hypothesis, expected_outcome | draft, exploring, accepted, rejected, archived |
+| `decision` / `Decision` | context, options, outcome, rationale, decided_at, typed target | proposed, accepted, rejected, superseded, archived |
+| `risk` / `Risk` | numeric priority, likelihood, impact, mitigation, contingency, due_at, typed target | open, mitigating, accepted, resolved, archived |
+| `roadmap_item` / `RoadmapItem` | numeric priority, outcome, strategic_priority_id, plan_id, epic_id, starts_at, ends_at | draft, planned, active, completed, deferred, cancelled, archived |
+| `strategic_priority` / `StrategicPriority` | numeric priority, outcome, success_criteria, starts_at, ends_at | draft, active, achieved, paused, archived |
+
+Numeric priority retains 0 unspecified, 1 highest through 5 lowest; a strategic
+priority is a separate objective record. Risk likelihood/impact use 0 unknown,
+1 lowest through 5 highest. Roadmap/objective windows may be open-ended; if both
+bounds exist, end must follow start. Optional dates must be valid RFC3339 values.
+Options and success criteria cannot contain blank entries. Decision/risk targets
+may reference any supported kind, checked against the local record. Assignments
+and collections can reference all six new kinds. `ListPlanner` adds `TargetID`,
+`StrategicPriorityID`, and optional `Promoted` filters using indexed links/receipts.
+
+`Promote(ctx, PromotionRequest, actor)` supports inbox → idea/plan/task and
+idea → plan/task. Each source has **one canonical promotion**; further breakdown
+can create tasks under the resulting plan. The caller retains a target UUID and
+source revision. Promotion copies name, description, tags, properties, numeric
+priority, project/workstream links and local metadata into a new Tachyon-owned
+record, then applies validated `Overrides` as a JSON merge patch. Default status
+is `draft` for idea/plan, `todo` for task. Kind-specific source details stay on the
+source and its history; provider identity is never copied. Source content and
+status stay intact, while its revision advances with a `promote` history entry.
+
+Target creation, both histories, immutable receipt and `promoted_to` /
+`promoted_from` links commit in one queued transaction. `GetPromotion(sourceID)`
+returns the original source/target revision anchors, actor and time. Identical
+canonical requests replay without writes and return **current** records plus the
+original receipt, even after later edits or deletion. A changed request conflicts;
+retries cannot overwrite edits, resurrect a tombstone or create duplicate work.
+Receipt-owned links survive subsequent patches and soft deletion. `Promoted`
+filters distinguish processed captures without overloading authored status.
+These are backend contracts; frontend cutover and public service/verb access are
+separate slices. Existing cache/demo Planner data is not automatically imported.
 
 ## Sessions, runs and owned chat history
 

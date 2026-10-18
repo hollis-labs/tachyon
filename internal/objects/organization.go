@@ -61,7 +61,14 @@ func (Collection) ObjectKind() Kind { return CollectionKind }
 func validPlanningStatus(kind Kind, status string) bool {
 	switch kind {
 	case "":
-		return planningStatus(status) || validPlanningStatus(SprintKind, status) || validPlanningStatus(WorkstreamKind, status)
+		for _, candidate := range []Kind{PlanKind, SprintKind, WorkstreamKind, InboxItemKind, IdeaKind, DecisionKind, RiskKind, RoadmapItemKind, StrategicPriorityKind} {
+			if validPlanningStatus(candidate, status) {
+				return true
+			}
+		}
+		return false
+	case InboxItemKind, IdeaKind, DecisionKind, RiskKind, RoadmapItemKind, StrategicPriorityKind:
+		return capturePlanningStatus(kind, status)
 	case PlanKind, TaskKind, EpicKind:
 		return planningStatus(status)
 	case SprintKind:
