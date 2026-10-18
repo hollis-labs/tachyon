@@ -314,7 +314,8 @@ func TestStaleWhileRevalidateDoesNotWaitForRemoteOrItsLock(t *testing.T) {
 	path := "/api/plugins/console/v1/forge/pulls/pending"
 	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, `{"old":true}`) }))
 	state(t, request(h, "GET", path, false), "live")
-	now = now.Add(time.Minute)
+	// Returning after a weekend must be as fast as returning after a minute.
+	now = now.Add(48 * time.Hour)
 	started, release := make(chan struct{}), make(chan struct{})
 	h = c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		close(started)
@@ -344,6 +345,69 @@ func TestStaleWhileRevalidateDoesNotWaitForRemoteOrItsLock(t *testing.T) {
 	close(release)
 	<-finished
 	state(t, request(h, "GET", path, false), "cached")
+}
+
+func TestRetainedForgeSnapshotAfterRestart(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		age           time.Duration
+		snapshotFirst bool
+		remoteStatus  int
+		want          string
+	}{
+		{"weekend", 48 * time.Hour, true, 502, "refreshing"},
+		{"retention expired", 8 * 24 * time.Hour, true, 502, "error"},
+		{"opt out", 48 * time.Hour, false, 502, "error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "app.db")
+			db := openTest(t, path)
+			cfg := Defaults()
+			p := cfg.Policies["forge"]
+			p.SnapshotFirst = tc.snapshotFirst
+			cfg.Policies["forge"] = p
+			now := time.Now()
+			identity := func(string) (string, error) { return "host", nil }
+			c := New(db, cfg, identity)
+			c.now = func() time.Time { return now }
+			url := "/api/plugins/console/v1/forge/pulls/pending"
+			h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, `{"items":["saved"]}`) }))
+			initial := request(h, "GET", url, false)
+			state(t, initial, "live")
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			db = openTest(t, path)
+			defer db.Close()
+			now = now.Add(tc.age)
+			c = New(db, cfg, identity)
+			c.now = func() time.Time { return now }
+			calls := 0
+			h = c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(tc.remoteStatus) }))
+			r := httptest.NewRequest("GET", url, nil)
+			r.Header.Set("Prefer", "stale-while-revalidate")
+			out := httptest.NewRecorder()
+			h.ServeHTTP(out, r)
+			state(t, out, tc.want)
+			if tc.want == "refreshing" {
+				if calls != 0 || out.Body.String() != initial.Body.String() || out.Header().Get("X-Tachyon-Updated-At") != initial.Header().Get("X-Tachyon-Updated-At") {
+					t.Fatal("saved snapshot was not served immediately with its original age")
+				}
+				// Transient background failures retain the old data, while denial
+				// invalidates it and cannot fall back to the saved response.
+				state(t, request(h, "GET", url, true), "stale")
+				h = c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }))
+				if denied := request(h, "GET", url, true); denied.Code != 401 {
+					t.Fatal("denial hidden by snapshot")
+				}
+				out = httptest.NewRecorder()
+				h.ServeHTTP(out, r)
+				if out.Code != 401 {
+					t.Fatal("denied data survived in cache")
+				}
+			}
+		})
+	}
 }
 
 func TestUnrelatedWritesPreserveForgeSnapshot(t *testing.T) {

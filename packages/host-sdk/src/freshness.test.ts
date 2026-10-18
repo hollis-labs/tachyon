@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const url = "/api/plugins/console/v1/forge/pulls/pending"
-function snapshot(value: string, age = 0, state = "live") {
+function snapshot(value: string, age = 0, state = "live", swr = 3600) {
   return new Response(JSON.stringify({ value }), { headers: {
     "Content-Type": "application/json", "X-Tachyon-Source": "forge", "X-Tachyon-Cache": state,
     "X-Tachyon-Cache-Enabled": "true", "X-Tachyon-Updated-At": new Date(Date.now() - age).toISOString(),
-    "X-Tachyon-Fresh-Seconds": "30", "X-Tachyon-Revalidate-Seconds": "3600",
+    "X-Tachyon-Fresh-Seconds": "30", "X-Tachyon-Revalidate-Seconds": String(swr),
   } })
 }
 
 beforeEach(() => { vi.resetModules() })
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe("cache-first reads", () => {
   it("discards old participant snapshots after elevation without losing Forge navigation data", async () => {
@@ -46,7 +46,7 @@ describe("cache-first reads", () => {
   it("returns an older disk snapshot before revalidation finishes, then replaces it in the mounted consumer", async () => {
     let resolve!: (r: Response) => void
     const waiting = new Promise<Response>(r => { resolve = r })
-    const fetch = vi.fn().mockResolvedValueOnce(snapshot("old", 40_000, "refreshing")).mockReturnValueOnce(waiting)
+    const fetch = vi.fn().mockResolvedValueOnce(snapshot("old", 48 * 3600_000, "refreshing", 604770)).mockReturnValueOnce(waiting)
     vi.stubGlobal("fetch", fetch)
     const { hostFetch, dataRefreshRegistry } = await import("./freshness")
     const changed = new Promise<void>(done => dataRefreshRegistry("forge").subscribe(done))
@@ -73,6 +73,25 @@ describe("cache-first reads", () => {
     resolve(snapshot("shared"))
     expect(await (await other).json()).toEqual({ value: "shared" })
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps a retained browser snapshot available after a long absence while updates are pending", async () => {
+    let now = Date.now()
+    vi.spyOn(Date, "now").mockImplementation(() => now)
+    let resolve!: (r: Response) => void
+    const waiting = new Promise<Response>(done => { resolve = done })
+    const fetch = vi.fn().mockResolvedValueOnce(snapshot("saved", 0, "live", 604770)).mockReturnValueOnce(waiting)
+    vi.stubGlobal("fetch", fetch)
+    const { hostFetch, dataRefreshRegistry } = await import("./freshness")
+    await hostFetch(url)
+    now += 48 * 3600_000
+    const changed = new Promise<void>(done => dataRefreshRegistry("forge").subscribe(done))
+    const returning = await hostFetch(url)
+    expect(await returning.json()).toEqual({ value: "saved" })
+    expect(returning.headers.get("X-Tachyon-Cache")).toBe("refreshing")
+    resolve(snapshot("updated", 0, "live", 604770))
+    await changed
+    expect(await (await hostFetch(url)).json()).toEqual({ value: "updated" })
   })
 
   it("removes cached identity data on access denial", async () => {

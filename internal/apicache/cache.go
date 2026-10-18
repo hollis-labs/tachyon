@@ -163,6 +163,13 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 		c.mutation.RLock()
 		defer c.mutation.RUnlock()
 		p := c.settings.Policies[scope]
+		if p.SnapshotFirst {
+			// Share the same display horizon with the browser through the existing
+			// freshness headers. Old snapshots remain useful while GitHub refreshes,
+			// including after a restart, but never beyond disk retention.
+			p.RevalidateSeconds = c.settings.RetentionSeconds - p.FreshSeconds
+			p.StaleSeconds = p.RevalidateSeconds
+		}
 		if c.unhealthy.Load() || strings.Contains(r.Header.Get("Cache-Control"), "no-store") {
 			p.Enabled = false
 		}

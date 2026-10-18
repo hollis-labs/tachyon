@@ -26,6 +26,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/localstore"
+	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/transcripts"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
@@ -62,6 +63,7 @@ type Server struct {
 	states    []pluginState
 	instance  string
 	store     *localstore.Store
+	objects   *objects.Service
 	cache     *apicache.Cache
 	chat      *chatbridge.Owned
 }
@@ -131,6 +133,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("cache policy: %w", err)
 	}
 	s.store = store
+	s.objects = objects.New(store)
 	s.cache = apicache.New(store, settings, s.cacheIdentity)
 
 	if err := s.inventory.Start(ctx); err != nil {
@@ -219,6 +222,9 @@ func (s *Server) Routes() http.Handler {
 	}
 	mux.Handle(transcripts.Prefix+"/", transcriptHandler)
 	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	// Object management uses live reads and server-verified operator mutations.
+	// Keep the whole prefix outside the generic plugin response cache.
+	mux.Handle("/api/plugins/console/v1/tether/", operator.RequireOperator(s.inventory.APIRoutes()))
 	approvalHandler := http.Handler(operator)
 	if s.cache != nil {
 		approvalHandler = s.cache.Wrap(approvalHandler)

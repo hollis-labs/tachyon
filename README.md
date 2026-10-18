@@ -28,6 +28,24 @@ docs/data-gaps.md       backend gaps for the Console port
 
 ## Agent builder
 
+Builder also has **Projects** (`/builder?section=projects`) and **Workstreams**
+(`/builder?section=workstreams`) areas backed by live Tether APIs. Projects edits
+registry identity metadata (name, description, tags, guidelines, entry points),
+shows external identifiers, and supports deprecation/restoration. It does not
+edit the separate catalog launch-context configuration. Workstreams supports
+create, edit, close/reopen, and session assignment, clearing, or lineage-aware
+find-or-create. The list is limited to Tether's newest 100 matching records;
+workflow and status filters are server-side, search is within the loaded set.
+Project association and workstream deletion await Tether API support.
+
+These areas perform real writes through the restricted Console
+`/api/plugins/console/v1/tether/` adapter. Mutations require the existing
+server-verified operator session; reads bypass response caching. The paired
+Tether credential needs `read`, `maintain` for registry projects, and `operate`
+for workstreams, and remains in the host's private token file. An uncertain
+write is not automatically retried. The agent/team configuration previews
+described below retain their demonstration-save behavior.
+
 Builder reads the live Tether agent and launch catalogs through the Console
 backend. Configure `TETHER_ADDR` and `TETHER_TOKEN_FILE` on the host; the host
 passes them to the plugin. Authenticated remote access requires HTTPS. The
@@ -63,8 +81,58 @@ Assignments stages agent-to-task/workstream links for local review and no-op
 saves. Live assignments and target-ID validation are not connected. Persisted
 team API listing, templates, audit and retirement-impact reads also remain future
 work; the adapter never substitutes sample data when a read fails. Durable
-object tables, history/links and merge/sync ownership are tracked separately
-in CW-20261017-0025 through CW-20261017-0027, beyond the response cache.
+objects are implemented in `internal/objects`; connecting these forms and source
+adapters remains separate work (CW-20261017-0030 / CW-20261018-0016).
+
+## Durable objects
+
+`internal/objects.Service` is the transport-independent data layer for agents,
+teams/slots, assignments, workflow definitions, projects, machines and repositories.
+Typed Go definitions share migrated `objects`, `object_sources`, `object_revisions`
+and `object_links` tables in the existing `tachyon.db`. JSON definitions are
+validated by kind; links have foreign keys and kind checks. Local `metadata` is
+an extensible JSON object, separate from normalized provider data. This store
+does not expire with response-cache retention. Existing chat and cache data remain
+intact. Additive migrations and their ledger entries commit together at startup.
+
+All mutations use the existing `sqlitekit` writer and `serialwrite` queue. The
+service offers create/get/list, revision-checked patch/delete/restore, history,
+incoming/outgoing links, source lookup/update-or-create, complete/partial inventory
+reconciliation, and explicit ownership promotion. Retriable local creates use a
+caller-retained UUID through `CreateWithID`; replay with different content conflicts.
+Cancellation after enqueue can leave the result uncertain; read back the known ID
+or source identity before retrying. List/history use bounded keyset pagination.
+
+Source identity is `(provider, instance, collection, kind, external_id)`, never a
+display name or repository URL. Each imported object has one authoritative source
+in this slice. Different sources remain distinct until explicitly correlated;
+cross-provider deduplication is not inferred. A source record combines its observed
+definition with sparse local overrides; updates preserve those overrides and local
+metadata. Patches merge JSON objects, replace arrays, and remove local keys on
+`null`; removing an override reveals the latest source value. Nested `properties`
+and repository `settings` permit extensions. Full source observations replace prior
+observed fields rather than leaving vanished fields behind. Source version tokens
+are opaque; scan-start timestamps order observations. Identical polls update the
+observation time without creating artificial content revisions.
+
+Explicit remote deletion retains a tombstone and history. Only a complete,
+successful, unfiltered inventory may infer removal from absence. Partial results
+never do; stale scans cannot undo newer observations or complete-scan tombstones.
+Failed reconciliation rolls back the batch and watermark together. Local deletion
+is separate and cannot be undone by sync. `TakeOwnership` records the explicit move
+to a Tachyon master: future provider changes remain observations and cannot change
+or delete the master. No operation here writes upstream, launches agents, applies
+policy or deploys machines. Definitions describe configuration, not live runtime
+state. Adapters must normalize non-secret data instead of persisting raw credentials
+or provider environment/config dumps.
+
+Planner will be Tachyon-owned (CW-20261018-0017). Chat session/run identities
+(CW-20261018-0018), provider adapters (CW-20261018-0016), and shared verb/API/MCP/CLI
+access with policy (CW-20261018-0019) follow this foundation. The UI still reads its
+existing adapters; this slice does not silently migrate cached responses or demo
+drafts into master records. Revision retention, multi-source correlation, outbound
+sync, and large-inventory staging need explicit later policies; no history purge
+or upstream writeback is enabled here.
 
 The agent-os deployment is declared in `tachyon.cerberus.yaml`. Register that
 file with Cerberus, then deploy `tachyon-backend-dev` to rebuild the frontend,
@@ -123,6 +191,12 @@ CW-20261017-0014; these knobs are usable through the config file now.
 `stale_while_revalidate_seconds` allows an older snapshot to render immediately
 while the browser requests an authoritative refresh (zero opts out);
 `stale_if_error_seconds` extends that window only for transient remote failures.
+`snapshot_first: true` (the Forge default) uses the full retention period for
+immediate display and transient-error fallback instead of those two stale windows.
+PR lists and details therefore open from saved data even after a long absence,
+then refresh in the background once `fresh_seconds` expires. Completed responses
+reconcile additions, changes and removals in place; GitHub reads here return full
+snapshots rather than a delta feed. Authentication failures still discard saved data.
 `timeout_seconds` bounds upstream waiting. `enabled: false` disables caching for
 a resource. `max_entries`, `max_bytes` (payload bytes) and `retention_seconds`
 bound retained snapshots, evicting oldest entries on writes. Expired snapshots

@@ -33,6 +33,7 @@
     },
     "forge": {
       "enabled": true,
+      "snapshot_first": true,
       "fresh_seconds": 30,
       "stale_if_error_seconds": 3600,
       "timeout_seconds": 20,
