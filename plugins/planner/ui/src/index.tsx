@@ -1,16 +1,20 @@
 import type { TachyonPlugin } from "@tachyon/host-sdk"
-import { ApiProvider, createPluginTorqueClient } from "@tachyon/torque-client"
+import { PlannerApiProvider } from "@planner/api/context"
+import { TachyonPlannerClient } from "@planner/api/client"
+import { createLegacyPlannerClient } from "@planner/api/legacy"
 import { Compass } from "lucide-react"
 import PlannerPage from "@planner/pages/PlannerPage"
 
-/** Planner API: buffered calls via /api/plugins/planner/v1, SSE via the host relay. */
-const plannerClient = createPluginTorqueClient("planner", ["events"])
+/** Explicit verification build only. The deployed default stays on the legacy adapter. */
+const plannerClient = import.meta.env.VITE_TACHYON_PLANNER === "verify"
+  ? new TachyonPlannerClient()
+  : createLegacyPlannerClient()
 
 function PlannerRoute() {
   return (
-    <ApiProvider client={plannerClient}>
+    <PlannerApiProvider client={plannerClient}>
       <PlannerPage />
-    </ApiProvider>
+    </PlannerApiProvider>
   )
 }
 

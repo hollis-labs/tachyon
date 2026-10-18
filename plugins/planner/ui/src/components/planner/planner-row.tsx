@@ -5,7 +5,7 @@ import { PlannerStatus } from '@planner/components/planner/planner-status'
 import { PlannerFact } from '@planner/components/planner/planner-fact'
 import { PlannerRowContent } from '@planner/components/planner/planner-table'
 import { itemFacts } from '@planner/lib/planner'
-import type { PlannerDb, PlannerItem } from '@tachyon/torque-client'
+import type { PlannerDb, PlannerItem } from '@planner/api/types'
 
 interface PlannerRowProps {
   db: PlannerDb

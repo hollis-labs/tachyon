@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createPlannerId } from '@planner/api/identity'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@hollis-labs/design-components'
+import { PlannerWriteError } from './planner-write-error'
 import { PlannerFields } from '@planner/components/planner/planner-fields'
-import { useApi } from '@tachyon/torque-client'
+import { usePlannerApi as useApi } from '@planner/api/context'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
-import { ApiError } from '@tachyon/torque-client'
+import { PlannerApiError as ApiError } from '@planner/api/errors'
 import { buildNewItem, createDraft, createSpecs, missingRequired, plannerMeta, validationErrors, type Draft, type FieldError } from '@planner/lib/planner'
-import { notifyError, notifySuccess } from '@tachyon/torque-client'
-import type { PlannerDb, PlannerItem } from '@tachyon/torque-client'
+import { notifyError, notifySuccess } from '@planner/api/notifications'
+import type { PlannerDb, PlannerItem } from '@planner/api/types'
 
 interface PlannerCreateDialogProps {
   db: PlannerDb
@@ -25,11 +27,15 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
   const [draft, setDraft] = useState<Draft>({})
   const [errors, setErrors] = useState<FieldError[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [writeError, setWriteError] = useState<unknown>(null)
+  const retainedId = useRef('')
 
   useEffect(() => {
     if (open && schema) {
       setDraft(createDraft(db, specs, nextRank))
       setErrors([])
+      setWriteError(null)
+      retainedId.current = createPlannerId()
     }
     // Reseed when the dialog opens or the schema arrives, not on every keystroke.
   }, [open, schema, db])
@@ -41,12 +47,13 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
     setSubmitting(true)
     setErrors([])
     try {
-      const created = await api.plannerCreate(db, buildNewItem(specs, draft))
+      const created = await api.plannerCreate(db, buildNewItem(specs, draft), retainedId.current)
       notifySuccess(`Created ${created.id}`)
       onOpenChange(false)
       onCreated(created)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'invalid') setErrors(validationErrors(err.details))
+      setWriteError(err)
       notifyError(err, `Failed to create ${meta.singular}`)
     } finally {
       setSubmitting(false)
@@ -60,6 +67,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
           <DialogTitle>New {meta.singular}</DialogTitle>
           <DialogDescription>Fill in the essentials. Everything else can be edited once it exists.</DialogDescription>
         </DialogHeader>
+        <PlannerWriteError error={writeError} />
         {schema ? (
           <PlannerFields specs={specs} draft={draft} errors={errors} idPrefix="pc" onChange={(name, value) => setDraft((d) => ({ ...d, [name]: value }))} />
         ) : (

@@ -16,14 +16,14 @@ import { PlannerRowContent, PlannerTableHeader } from '@planner/components/plann
 import { TorqueTaskDialog } from '@planner/components/planner/torque-task-dialog'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
 import { usePlannerRowFocus } from '@planner/hooks/use-planner-row-focus'
-import { useApi } from '@tachyon/torque-client'
-import { useSSE } from '@tachyon/torque-client'
-import { ApiError } from '@tachyon/torque-client'
+import { usePlannerApi as useApi } from '@planner/api/context'
+import { usePlannerEvents } from '@planner/api/context'
+import { PlannerWriteError } from '@planner/components/planner/planner-write-error'
+import { PlannerApiError as ApiError } from '@planner/api/errors'
 import { PLANNER_DBS, filterItems, isPlannerDb, isSettled, moveId, parseBoardOpen, plannerMeta, statusCounts, statusToneKey } from '@planner/lib/planner'
-import { notifyError } from '@tachyon/torque-client'
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerSearchHit } from '@tachyon/torque-client'
+import { notifyError } from '@planner/api/notifications'
+import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerSearchHit } from '@planner/api/types'
 
-const SSE_EVENTS = ['planner.changed', 'task.created', 'task.updated', 'task.transitioned']
 /** The board is a live view: it also refreshes on its own while open. */
 const BOARD_REFRESH_MS = 30_000
 
@@ -34,6 +34,8 @@ export default function PlannerPage() {
   const api = useApi()
   const reordering = useRef(false)
   const itemReadVersion = useRef(0)
+  const boardReadVersion = useRef(0)
+  const [orderError, setOrderError] = useState<unknown>(null)
   const navigate = useNavigate()
   const params = useParams<{ db?: string; id?: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -66,7 +68,7 @@ export default function PlannerPage() {
   const [hits, setHits] = useState<PlannerSearchHit[] | null>(null)
   const [creating, setCreating] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const { lastEvent } = useSSE(SSE_EVENTS)
+  const { lastEvent } = usePlannerEvents()
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))
 
@@ -88,6 +90,7 @@ export default function PlannerPage() {
       if (version !== itemReadVersion.current || reordering.current) return
       setItems(nextItems)
       setError(null)
+      return true
     } catch (err) {
       if (version !== itemReadVersion.current || reordering.current) return
       if (err instanceof ApiError && err.code === 'feature_disabled') setEnabled(false)
@@ -96,12 +99,15 @@ export default function PlannerPage() {
   }, [api, db])
 
   const loadBoard = useCallback(async () => {
+    const version = ++boardReadVersion.current
     try {
-      setBoard(await api.plannerBoard({ scope: boardScope }))
+      const next = await api.plannerBoard({ scope: boardScope })
+      if (version !== boardReadVersion.current) return
+      setBoard(next)
       setBoardError(null)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'feature_disabled') setEnabled(false)
-      else setBoardError(err instanceof Error ? err.message : 'Failed to load the board')
+      else if (version === boardReadVersion.current) setBoardError(err instanceof Error ? err.message : 'Failed to load the board')
     }
   }, [api, boardScope])
 
@@ -115,8 +121,8 @@ export default function PlannerPage() {
     setBoard(null) // the curated board and the activity feed are different documents
     void loadBoard()
     const t = setInterval(() => void loadBoard(), BOARD_REFRESH_MS)
-    return () => clearInterval(t)
-  }, [isBoard, loadBoard])
+    return () => { clearInterval(t); boardReadVersion.current++ }
+  }, [api, isBoard, loadBoard])
 
   // Switching database starts a fresh view.
   useEffect(() => {
@@ -125,7 +131,9 @@ export default function PlannerPage() {
     setQuery('')
     setShowSettled(false)
     setError(null)
+    setOrderError(null)
     if (!isBoard && !isDemo) void loadItems()
+    return () => { itemReadVersion.current++ }
   }, [loadItems, isBoard, isDemo])
 
   // The server says something changed: reload the list, the counts and any open item.
@@ -157,7 +165,7 @@ export default function PlannerPage() {
     }
     const ctl = new AbortController()
     const t = setTimeout(() => {
-      api.plannerSearch(q, undefined, ctl.signal).then(setHits).catch((err: unknown) => {
+      api.plannerSearch(q, undefined, ctl.signal).then(next => { if (!ctl.signal.aborted) setHits(next) }).catch((err: unknown) => {
         if (!ctl.signal.aborted) notifyError(err, 'Search failed')
       })
     }, 250)
@@ -173,12 +181,12 @@ export default function PlannerPage() {
     const base = (items ?? []).filter((i) => status || showSettled || !isSettled(i.status))
     return filterItems(base, { status, query })
   }, [items, status, query, showSettled])
-  const canReorder = !!items && visible.length === items.length && !status && !query.trim()
+  const canReorder = !orderError && !!items && visible.length === items.length && !status && !query.trim()
 
   const go = (nextDb: PlannerDb, id?: string) => navigate(id ? `/planner/${nextDb}/${encodeURIComponent(id)}` : `/planner/${nextDb}`)
 
   async function onDragEnd(e: DragEndEvent) {
-    if (reordering.current || !items || !e.over || e.active.id === e.over.id) return
+    if (orderError || reordering.current || !items || !e.over || e.active.id === e.over.id) return
     const previous = items
     reordering.current = true
     itemReadVersion.current++
@@ -186,9 +194,10 @@ export default function PlannerPage() {
     const byId = new Map(items.map((i) => [i.id, i]))
     setItems(ids.map((id) => byId.get(id)!)) // optimistic
     try {
-      await api.plannerReorder(db, ids)
+      await api.plannerReorder(db, ids.map(id => ({ id, rev: byId.get(id)!.rev })))
     } catch (err) {
       setItems(previous)
+      setOrderError(err)
       notifyError(err, 'Failed to reorder')
     } finally {
       reordering.current = false
@@ -198,7 +207,7 @@ export default function PlannerPage() {
 
   async function enable() {
     try {
-      await api.setSetting('features.planner', 'true')
+      await api.enable?.()
       setEnabled(true)
       setError(null)
       void loadCounts()
@@ -218,7 +227,7 @@ export default function PlannerPage() {
             variant="empty"
             title="The planner is switched off"
             description="The planner holds priorities, workstreams, the roadmap, ideas, decisions, risks and an inbox. Turn it on to use it."
-            action={{ label: 'Turn on planner', onClick: enable }}
+            action={api.enable ? { label: 'Turn on planner', onClick: enable } : undefined}
           />
         </div>
       </div>
@@ -238,6 +247,7 @@ export default function PlannerPage() {
       </PageHeader>
 
       <DashboardSearchToolbar value={search} onChange={setSearch} label="Search the planner" placeholder="Search the planner…" slashToFocus layeredEscape retainFocusOnClear />
+      <PlannerWriteError error={orderError} onReload={() => { void loadItems().then(loaded => { if (loaded) setOrderError(null) }) }} />
       <DashboardViewTabs label="Planner views" value={isActivity ? 'activity' : isBoard ? 'board' : db}
         onChange={value => { setSearch(''); navigate(`/planner/${value}`) }}
         items={[

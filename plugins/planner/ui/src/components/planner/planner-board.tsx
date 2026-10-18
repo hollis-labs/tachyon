@@ -3,7 +3,7 @@ import { statusTone } from '@hollis-labs/kit-dashboard'
 import { PlannerRowContent, PlannerTableHeader } from '@planner/components/planner/planner-table'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
 import { BOARD_SECTIONS, CURATED_SECTIONS, boardAge, boardMore, boardRowRoute, boardWord, taskCountsText } from '@planner/lib/planner'
-import type { PlannerBoard, PlannerBoardRow, PlannerBoardSectionKey } from '@tachyon/torque-client'
+import type { PlannerBoard, PlannerBoardRow, PlannerBoardSectionKey } from '@planner/api/types'
 
 interface PlannerBoardViewProps {
   board: PlannerBoard

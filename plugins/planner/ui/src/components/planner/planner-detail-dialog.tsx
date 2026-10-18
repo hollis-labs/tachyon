@@ -1,5 +1,7 @@
+import { createPlannerId } from '@planner/api/identity'
+import { isUUID } from '@planner/api/client'
 import { RecordTag } from '@hollis-labs/kit-dashboard/data'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HostLinkText } from '@tachyon/host-sdk'
 import { Link } from 'react-router-dom'
 import { Check, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -9,14 +11,14 @@ import { PlannerStatus } from '@planner/components/planner/planner-status'
 import { PlannerFact } from '@planner/components/planner/planner-fact'
 import { TorqueTaskRef } from '@planner/components/planner/torque-task-ref'
 import { WorkstreamTasksPanel } from '@planner/components/planner/workstream-tasks-panel'
-import { useApi } from '@tachyon/torque-client'
+import { usePlannerApi as useApi } from '@planner/api/context'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
 import { usePlannerTaskTitles } from '@planner/hooks/use-planner-task-titles'
-import { ApiError } from '@tachyon/torque-client'
+import { PlannerApiError as ApiError, isConflict } from '@planner/api/errors'
+import { PlannerWriteError } from './planner-write-error'
 import {
   PLANNER_DBS,
   buildPatch,
-  conflictCurrent,
   dbOfId,
   draftFrom,
   fieldSpecs,
@@ -28,8 +30,8 @@ import {
   type Draft,
   type FieldError,
 } from '@planner/lib/planner'
-import { notifyError, notifySuccess } from '@tachyon/torque-client'
-import type { PlannerDb, PlannerItem, PlannerLink, PlannerTaskBrief } from '@tachyon/torque-client'
+import { notifyError, notifySuccess } from '@planner/api/notifications'
+import type { PlannerDb, PlannerItem, PlannerLink, PlannerTaskBrief } from '@planner/api/types'
 
 interface PlannerDetailDialogProps {
   db: PlannerDb
@@ -61,18 +63,33 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
   const [draft, setDraft] = useState<Draft>({})
   const [fieldErrors, setFieldErrors] = useState<FieldError[]>([])
   const [busy, setBusy] = useState(false)
+  const [writeError, setWriteError] = useState<unknown>(null)
+  const [editBase, setEditBase] = useState<PlannerItem | null>(null)
+  const [newerAvailable, setNewerAvailable] = useState(false)
+  const readVersion = useRef(0)
 
   const specs = useMemo(() => (schema ? fieldSpecs(schema) : []), [schema])
   // Every Torque task the item points at, through a torque link or a `tasks` list: one lookup for the lot.
   const taskIds = useMemo(() => torqueIdsOf(item), [item])
   const titles = usePlannerTaskTitles(taskIds)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
+    const version = ++readVersion.current
     try {
-      setItem(await api.plannerGet(db, id))
+      const next = await api.plannerGet(db, id)
+      if (version !== readVersion.current) return
+      setItem(previous => {
+        if (refresh && previous) {
+          if (previous.rev !== next.rev) setNewerAvailable(true)
+          return previous // never replace the revision the operator is reviewing
+        }
+        return next
+      })
       setError(null)
+      return true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load')
+      if (version === readVersion.current) setError(err instanceof Error ? err.message : 'Failed to load')
+      return false
     }
   }, [api, db, id])
 
@@ -80,17 +97,31 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
     setItem(null)
     setEditing(false)
     void load()
-  }, [load, refreshKey])
+    return () => { readVersion.current++ }
+  }, [load])
+  useEffect(() => { if (refreshKey !== undefined) void load(true) }, [refreshKey, load])
+
+  async function reloadLatest() {
+    if (!(await load())) return
+    setNewerAvailable(false)
+    setWriteError(null)
+    // Keep the draft and its original base: only fields the operator changed
+    // are included in the next patch, after explicit review of the new revision.
+  }
 
   /** Run a write; put its result on screen and tell the page. */
   async function write<T extends PlannerItem>(fn: () => Promise<T>, failure: string): Promise<T | null> {
+    if (busy || isConflict(writeError)) return null
     setBusy(true)
+    setWriteError(null)
+    readVersion.current++
     try {
       const next = await fn()
       setItem(next)
       onChanged()
       return next
     } catch (err) {
+      setWriteError(err)
       notifyError(err, failure)
       return null
     } finally {
@@ -100,22 +131,25 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
 
   function startEdit() {
     if (!item) return
+    setEditBase(item)
     setDraft(draftFrom(specs, item))
     setFieldErrors([])
     setEditing(true)
   }
 
   async function saveEdit() {
-    if (!item) return
-    const patch = buildPatch(specs, item, draft)
+    if (!item || busy || isConflict(writeError)) return
+    const patch = buildPatch(specs, editBase ?? item, draft)
     if (Object.keys(patch).length === 0) {
       setEditing(false)
       return
     }
     setBusy(true)
     setFieldErrors([])
+    setWriteError(null)
+    readVersion.current++
     try {
-      const next = await api.plannerUpdate(db, id, patch, item.rev)
+      const next = await api.plannerUpdate(db, item.id, patch, item.rev)
       setItem(next)
       setEditing(false)
       onChanged()
@@ -123,13 +157,9 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
       if (err instanceof ApiError && err.code === 'invalid') {
         setFieldErrors(validationErrors(err.details))
         notifyError(err, 'Some fields are not valid')
-      } else if (err instanceof ApiError && err.code === 'conflict') {
-        const current = conflictCurrent(err.details)
-        if (current) setItem(current)
-        setEditing(false)
-        notifyError(new Error('Someone else changed this item. Showing the latest version; make your edit again.'), 'Edit conflict')
       } else {
-        notifyError(err, 'Failed to save')
+        setWriteError(err)
+        if (!isConflict(err)) notifyError(err, 'Failed to save')
       }
     } finally {
       setBusy(false)
@@ -139,7 +169,7 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="dash-detail-dialog max-h-[88vh] overflow-auto" widthClassName="max-w-3xl" aria-describedby={undefined}>
-        {error ? (
+        {error && !item ? (
           <>
             <DialogHeader>
               <DialogTitle>{id}</DialogTitle>
@@ -165,6 +195,9 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
               {item.tldr && <DialogDescription className="whitespace-pre-wrap">{item.tldr}</DialogDescription>}
             </DialogHeader>
 
+            {error && <p role="alert" className="dash-body text-destructive">{error}</p>}
+            <PlannerWriteError error={writeError} onReload={() => void reloadLatest()} />
+            {newerAvailable && <div role="status" className="flex items-center gap-2 dash-body text-fg-muted">A newer version is available. Your draft is preserved.<Button size="sm" variant="outline" onClick={() => void reloadLatest()}>Reload latest version</Button></div>}
             <div className="flex flex-wrap items-center gap-2">
               {!editing && (
                 <Button size="sm" variant="outline" className="gap-1" onClick={startEdit} disabled={!schema || busy}>
@@ -178,8 +211,8 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
               </span>
             </div>
 
-            {db === 'decisions' && <DecisionPanel item={item} busy={busy} write={write} />}
-            {db === 'inbox' && <InboxPanel item={item} busy={busy} write={write} onOpen={onOpen} onChanged={onChanged} />}
+            {db === 'decisions' && <DecisionPanel item={item} busy={busy || isConflict(writeError)} write={write} />}
+            {db === 'inbox' && <InboxPanel item={item} busy={busy || isConflict(writeError)} write={write} onOpen={onOpen} onChanged={onChanged} onReload={() => void reloadLatest()} />}
 
             {editing ? (
               <div className="flex flex-col gap-3 rounded-md border border-border p-4">
@@ -188,7 +221,7 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
                   <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={busy}>
                     Cancel
                   </Button>
-                  <Button size="sm" onClick={saveEdit} disabled={busy}>
+                  <Button size="sm" onClick={saveEdit} disabled={busy || isConflict(writeError)}>
                     {busy ? 'Saving…' : 'Save'}
                   </Button>
                 </div>
@@ -197,18 +230,18 @@ export function PlannerDetailDialog({ db, id, refreshKey, onClose, onChanged, on
               <FieldList item={item} specs={specs.map((s) => s.name)} schemaLabels={Object.fromEntries(specs.map((s) => [s.name, s.label]))} titles={titles} onOpen={onOpen} />
             )}
 
-            {db === 'workstreams' && <WorkstreamTasksPanel id={id} refreshKey={refreshKey} />}
+            {db === 'workstreams' && <WorkstreamTasksPanel id={item.id} refreshKey={refreshKey} />}
 
             <LinksPanel
               item={item}
               kinds={schema?.link_kinds ?? []}
               titles={titles}
-              busy={busy}
-              onAdd={(link) => write(() => api.plannerLinkAdd(db, id, link), 'Failed to add link')}
-              onRemove={(link) => write(() => api.plannerLinkRemove(db, id, link.kind, link.ref), 'Failed to remove link')}
+              busy={busy || isConflict(writeError)}
+              onAdd={(link) => write(() => api.plannerLinkAdd(db, item.id, link, item.rev), 'Failed to add link')}
+              onRemove={(link) => write(() => api.plannerLinkRemove(db, item.id, link.kind, link.ref, item.rev), 'Failed to remove link')}
             />
 
-            <CommentsPanel item={item} busy={busy} onAdd={(text) => write(() => api.plannerComment(db, id, text), 'Failed to add comment')} />
+            <CommentsPanel item={item} busy={busy || isConflict(writeError)} onAdd={(text) => write(() => api.plannerComment(db, item.id, text, item.rev), 'Failed to add comment')} />
           </div>
         )}
         <span className="sr-only">{meta.label}</span>
@@ -235,7 +268,7 @@ function torqueIdsOf(item: PlannerItem | null): string[] {
 type Titles = Record<string, PlannerTaskBrief | null>
 
 function FieldList({ item, specs, schemaLabels, titles, onOpen }: { item: PlannerItem; specs: string[]; schemaLabels: Record<string, string>; titles: Titles; onOpen: (db: PlannerDb, id: string) => void }) {
-  const names = specs.filter((n) => !SKIP_IN_LIST.has(n))
+  const names = [...new Set([...specs, ...Object.keys(item)])].filter(n => !SKIP_IN_LIST.has(n) && !['id', 'rev', 'created', 'updated', 'author', 'comments', 'links', 'options', 'references'].includes(n))
   const rows = names.filter((n) => {
     const v = item[n]
     return v !== undefined && v !== null && v !== '' && v !== false && !(Array.isArray(v) && v.length === 0)
@@ -247,7 +280,7 @@ function FieldList({ item, specs, schemaLabels, titles, onOpen }: { item: Planne
         <div key={n} className="contents">
           <dt className="font-mono dash-caption uppercase tracking-wide text-fg-faint">{schemaLabels[n] ?? n}</dt>
           <dd className="min-w-0 dash-body leading-5">
-            <FieldValue name={n} value={item[n]} titles={titles} onOpen={onOpen} />
+            <FieldValue name={n} value={item[n]} titles={titles} references={item.references} onOpen={onOpen} />
           </dd>
         </div>
       ))}
@@ -255,7 +288,7 @@ function FieldList({ item, specs, schemaLabels, titles, onOpen }: { item: Planne
   )
 }
 
-function FieldValue({ name, value, titles, onOpen }: { name: string; value: unknown; titles: Titles; onOpen: (db: PlannerDb, id: string) => void }) {
+function FieldValue({ name, value, titles, references, onOpen }: { name: string; value: unknown; titles: Titles; references?: PlannerItem["references"]; onOpen: (db: PlannerDb, id: string) => void }) {
   if (name === 'tasks' && Array.isArray(value)) {
     return (
       <ul className="flex flex-col gap-1">
@@ -269,11 +302,14 @@ function FieldValue({ name, value, titles, onOpen }: { name: string; value: unkn
     return (
       <div className="flex flex-wrap gap-1.5">
         {value.map(String).map((ref) => {
-          const target = dbOfId(ref)
+          const resolved = references?.[ref]
+          const target = resolved?.db ?? dbOfId(ref)
           return target ? (
-            <Button key={ref} variant="outline" size="xs" className="h-auto min-h-6 max-w-full whitespace-normal break-all py-1 text-left font-mono dash-label" onClick={() => onOpen(target, ref)}>
+            <Button key={ref} variant="outline" size="xs" className="h-auto min-h-6 max-w-full whitespace-normal break-all py-1 text-left font-mono dash-label" onClick={() => onOpen(target, resolved?.id ?? ref)}>
               {ref}
             </Button>
+          ) : isUUID(ref) ? (
+            <UnresolvedReference key={ref} id={ref} onOpen={onOpen} />
           ) : (
             <RecordTag key={ref}>
               {ref}
@@ -287,13 +323,34 @@ function FieldValue({ name, value, titles, onOpen }: { name: string; value: unkn
     return (
       <ul className="list-disc pl-4">
         {value.map((v, i) => (
-          <li key={i}>{String(v)}</li>
+          <li key={i}>{typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}</li>
         ))}
       </ul>
     )
   }
+  if (typeof value === 'object' && value !== null) return <pre className="whitespace-pre-wrap break-words font-mono dash-label">{JSON.stringify(value, null, 2)}</pre>
   if (typeof value === 'boolean') return <span>{value ? 'Yes' : 'No'}</span>
   return <span className="whitespace-pre-wrap break-words">{String(value)}</span>
+}
+
+function UnresolvedReference({ id, onOpen }: { id: string; onOpen: (db: PlannerDb, id: string) => void }) {
+  const api = useApi()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  async function open() {
+    setBusy(true)
+    setError(null)
+    try {
+      const target = await api.resolveReference(null, id)
+      onOpen(target.db, target.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to resolve this reference.')
+    } finally { setBusy(false) }
+  }
+  return <span className="min-w-0">
+    <Button variant="outline" size="xs" className="h-auto min-h-6 max-w-full whitespace-normal break-all py-1 text-left font-mono dash-label" disabled={busy} onClick={() => void open()}>{id}</Button>
+    {error && <span role="alert" className="block dash-label text-warning">{error}</span>}
+  </span>
 }
 
 // ---------- links ----------
@@ -446,20 +503,21 @@ function DecisionPanel({ item, busy, write }: { item: PlannerItem; busy: boolean
   const api = useApi()
   const [comment, setComment] = useState('')
   const options = item.options ?? []
-  const open = item.status === 'needs-decision' || item.status === 'deferred'
+  const deferred = item.status === 'deferred' || item.deferred === true
+  const open = item.status === 'needs-decision' || item.status === 'proposed' || deferred
   const chosen = typeof item.selected_option === 'string' ? item.selected_option : ''
 
   return (
     <section aria-label="Decision" className="flex flex-col gap-3 rounded-md border border-border p-4">
       <div className="flex items-center justify-between">
         <h3 className="dash-body leading-5 font-semibold">Decision</h3>
-        {item.status !== 'needs-decision' && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => write(() => api.plannerReopen(item.id), 'Failed to reopen')}>
+        {(!open || deferred) && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => write(() => api.plannerReopen(item.id, item.rev), 'Failed to reopen')}>
             Reopen
           </Button>
         )}
       </div>
-      {item.status === 'deferred' && typeof item.defer_note === 'string' && item.defer_note && (
+      {deferred && typeof item.defer_note === 'string' && item.defer_note && (
         <p className="dash-body leading-5 text-fg-muted">
           <span className="font-medium text-foreground">Deferred: </span>
           {item.defer_note}
@@ -485,7 +543,7 @@ function DecisionPanel({ item, busy, write }: { item: PlannerItem; busy: boolean
                     className="ml-auto"
                     disabled={busy}
                     aria-label={`Choose option ${o.id}: ${o.label}`}
-                    onClick={() => write(() => api.plannerDecide(item.id, o.id, comment.trim() || undefined), 'Failed to record the decision')}
+                    onClick={() => write(() => api.plannerDecide(item.id, o.id, item.rev, comment.trim() || undefined), 'Failed to record the decision')}
                   >
                     Choose
                   </Button>
@@ -506,9 +564,9 @@ function DecisionPanel({ item, busy, write }: { item: PlannerItem; busy: boolean
       {open && (
         <div className="flex flex-col gap-2">
           <Textarea value={comment} rows={2} placeholder="Why (recorded with the decision)…" aria-label="Decision comment" onChange={(e) => setComment(e.target.value)} />
-          {item.status === 'needs-decision' && (
+          {open && !deferred && (
             <div>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => write(() => api.plannerDefer(item.id, comment.trim() || undefined), 'Failed to defer')}>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => write(() => api.plannerDefer(item.id, item.rev, comment.trim() || undefined), 'Failed to defer')}>
                 Defer
               </Button>
             </div>
@@ -521,15 +579,18 @@ function DecisionPanel({ item, busy, write }: { item: PlannerItem; busy: boolean
 
 // ---------- inbox ----------
 
-function InboxPanel({ item, busy, write, onOpen, onChanged }: { item: PlannerItem; busy: boolean; write: Write; onOpen: (db: PlannerDb, id: string) => void; onChanged: () => void }) {
+function InboxPanel({ item, busy, write, onOpen, onChanged, onReload }: { item: PlannerItem; busy: boolean; write: Write; onOpen: (db: PlannerDb, id: string) => void; onChanged: () => void; onReload: () => void }) {
   const api = useApi()
   const [to, setTo] = useState<PlannerDb>('ideas')
   const [note, setNote] = useState('')
   const [promoting, setPromoting] = useState(false)
+  const [promotionError, setPromotionError] = useState<unknown>(null)
+  const targetIds = useRef<Partial<Record<PlannerDb, string>>>({})
+  useEffect(() => { setPromotionError(null) }, [item.rev])
   const triageable = item.status === 'new' || item.status === 'triaged'
   const promoted = item.promoted_to as { db?: string; id?: string } | undefined
 
-  if (!triageable) {
+  if (promoted?.id || !triageable) {
     return promoted?.id && promoted.db ? (
       <p className="dash-body leading-5">
         Promoted to{' '}
@@ -543,11 +604,13 @@ function InboxPanel({ item, busy, write, onOpen, onChanged }: { item: PlannerIte
   async function promote() {
     setPromoting(true)
     try {
-      const res = await api.plannerInboxPromote(item.id, to)
+      const targetId = targetIds.current[to] ??= createPlannerId()
+      const res = await api.plannerInboxPromote(item.id, to, item.rev, targetId)
       notifySuccess(`Promoted to ${res.item.id}`)
       onChanged()
       onOpen(to, res.item.id)
     } catch (err) {
+      setPromotionError(err)
       notifyError(err, 'Failed to promote')
     } finally {
       setPromoting(false)
@@ -557,6 +620,7 @@ function InboxPanel({ item, busy, write, onOpen, onChanged }: { item: PlannerIte
   return (
     <section aria-label="Triage" className="flex flex-col gap-3 rounded-md border border-border p-4">
       <h3 className="dash-body leading-5 font-semibold">Triage</h3>
+      <PlannerWriteError error={promotionError} onReload={onReload} />
       <div className="flex flex-wrap items-center gap-2">
         <span className="dash-body leading-5">Promote to</span>
         <Select value={to} onValueChange={(v) => v && setTo(v as PlannerDb)}>
@@ -571,13 +635,13 @@ function InboxPanel({ item, busy, write, onOpen, onChanged }: { item: PlannerIte
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" onClick={promote} disabled={busy || promoting}>
+        <Button size="sm" onClick={promote} disabled={busy || promoting || isConflict(promotionError)}>
           Promote
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Input className="max-w-sm" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why dismiss (optional)" aria-label="Dismiss note" />
-        <Button size="sm" variant="outline" disabled={busy || promoting} onClick={() => write(() => api.plannerInboxDismiss(item.id, note.trim() || undefined), 'Failed to dismiss')}>
+        <Button size="sm" variant="outline" disabled={busy || promoting || isConflict(promotionError)} onClick={() => write(() => api.plannerInboxDismiss(item.id, item.rev, note.trim() || undefined), 'Failed to dismiss')}>
           Dismiss
         </Button>
       </div>

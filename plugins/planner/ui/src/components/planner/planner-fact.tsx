@@ -1,6 +1,6 @@
 import { RankBadge, RecordTag } from '@hollis-labs/kit-dashboard/data'
 import { statusTone } from '@hollis-labs/kit-dashboard'
-import type { PlannerDb } from '@tachyon/torque-client'
+import type { PlannerDb } from '@planner/api/types'
 
 /** Reserve stronger accents for rank, severity and delivery milestones. */
 export function PlannerFact({ db, fact }: { db: PlannerDb; fact: string }) {
