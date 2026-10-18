@@ -10,5 +10,4 @@ export function AgentsClientProvider({ client, children }: { client: AgentsClien
   return <AgentsClientContext.Provider value={client}>{children}</AgentsClientContext.Provider>
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export const useAgentsClient = () => useContext(AgentsClientContext)

@@ -2,6 +2,7 @@
 @import "@hollis-labs/kit-chat/markdown.css";
 @import "streamdown/styles.css";
 @import "@hollis-labs/kit-dashboard/theme.css";
+@import "@hollis-labs/kit-admin/source.css";
 @import "@hollis-labs/design-app-runtime/shell-reset.css";
 
 /* Tailwind does not scan node_modules or sibling workspaces on its own. */

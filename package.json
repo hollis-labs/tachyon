@@ -13,6 +13,7 @@
     "build": "npm run build -w frontend",
     "typecheck": "npm run typecheck -w frontend",
     "lint": "npm run lint -w frontend",
-    "test": "npm run test -w frontend"
+    "test": "npm run test -w frontend",
+    "lint:builder": "eslint --config eslint.builder.config.js plugins/console/ui/src/agents plugins/console/ui/src/objects"
   }
 }

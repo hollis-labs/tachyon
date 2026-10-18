@@ -1,3 +1,4 @@
+import { AdminInput, AdminSelect } from '@hollis-labs/kit-admin'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '@hollis-labs/design-components'
 import { ago } from '@console/fleet/lib/agent-activity'
@@ -40,7 +41,7 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
     return [...m].sort(([a], [b]) => a.localeCompare(b))
   }, [rows, group])
 
-  if (rows === null) return error ? <div className="p-4"><EmptyState variant="error" title="Assignments unavailable" description={error} /></div> : <div className="p-4 font-mono text-xs text-zinc-500">Loading assignments…</div>
+  if (rows === null) return error ? <div className="p-4"><EmptyState variant="error" title="Assignments unavailable" description={error} /></div> : <div className="p-4 font-mono text-xs text-fg-faint">Loading assignments…</div>
 
   const stage = () => {
     if (!form.agentId || !form.targetId.trim()) return
@@ -63,23 +64,23 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-zinc-800/80 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-zinc-500">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-border/80 px-4 py-2 font-mono text-label uppercase tracking-widest text-fg-faint">
         <span>{demonstration ? 'Assignment drafts' : `${rows.length} assignments`}</span>
         {!demonstration && <span>{new Set(rows.map((r) => r.agentId)).size} agents</span>}
         <span role="group" aria-label="Group by" className="ml-auto flex gap-1">
-          {(['agent', 'target'] as const).map((g) => <button key={g} type="button" aria-pressed={group === g} onClick={() => setGroup(g)} className={`px-2.5 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 ${group === g ? 'bg-zinc-800 text-zinc-100' : 'hover:text-zinc-300'}`}>By {g}</button>)}
+          {(['agent', 'target'] as const).map((g) => <button key={g} type="button" aria-pressed={group === g} onClick={() => setGroup(g)} className={`px-2.5 py-1 focus-visible:bg-panel-2 focus-visible:outline-none   ${group === g ? 'bg-panel-2 text-fg' : 'hover:text-fg-muted'}`}>By {g}</button>)}
         </span>
       </div>
 
-      {demonstration && <p className="border-b border-zinc-800/80 px-4 py-3 text-sm text-zinc-400">Stage agent-to-task or workstream assignments for review. Live assignment reads are not connected; target IDs are not verified. Team seat assignments are configured under Teams. These drafts do not dispatch work and stay here only until you leave or reload Builder.</p>}
+      {demonstration && <p className="border-b border-border/80 px-4 py-3 text-sm text-fg-muted">Stage agent-to-task or workstream assignments for review. Live assignment reads are not connected; target IDs are not verified. Team seat assignments are configured under Teams. These drafts do not dispatch work and stay here only until you leave or reload Builder.</p>}
 
       <Block title="Assign">
-        <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_8rem_1fr_1fr_8rem_auto]">
-          <Field label="Agent" htmlFor="as-agent"><select id="as-agent" value={form.agentId} onChange={(e) => setForm({ ...form, agentId: e.target.value })} className={inputCls}><option value="">Choose…</option>{eligible.map((a) => <option key={a.identity.id} value={a.identity.id}>{a.identity.name}</option>)}</select></Field>
-          <Field label="Type" htmlFor="as-type"><select id="as-type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as AssignmentTargetType })} className={inputCls}><option value="task">task</option><option value="workstream">workstream</option></select></Field>
-          <Field label="Target id" htmlFor="as-target"><input id="as-target" value={form.targetId} onChange={(e) => setForm({ ...form, targetId: e.target.value })} className={inputCls} placeholder="CW-… or ws-…" /></Field>
-          <Field label="Label" htmlFor="as-label"><input id="as-label" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className={inputCls} /></Field>
-          <Field label="Role" htmlFor="as-role"><input id="as-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={inputCls} /></Field>
+        <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          <Field label="Agent" htmlFor="as-agent"><AdminSelect id="as-agent" value={form.agentId} onChange={(e) => setForm({ ...form, agentId: e.target.value })} className={inputCls}><option value="">Choose…</option>{eligible.map((a) => <option key={a.identity.id} value={a.identity.id}>{a.identity.name}</option>)}</AdminSelect></Field>
+          <Field label="Type" htmlFor="as-type"><AdminSelect id="as-type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as AssignmentTargetType })} className={inputCls}><option value="task">task</option><option value="workstream">workstream</option></AdminSelect></Field>
+          <Field label="Target id" htmlFor="as-target"><AdminInput id="as-target" value={form.targetId} onChange={(e) => setForm({ ...form, targetId: e.target.value })} className={inputCls} placeholder="CW-… or ws-…" /></Field>
+          <Field label="Label" htmlFor="as-label"><AdminInput id="as-label" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className={inputCls} /></Field>
+          <Field label="Role" htmlFor="as-role"><AdminInput id="as-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className={inputCls} /></Field>
           <Btn onClick={stage} disabled={!form.agentId || !form.targetId.trim()}>Stage</Btn>
         </div>
       </Block>
@@ -87,18 +88,18 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
       {groups.length === 0 ? <div className="p-4"><EmptyState variant="empty" title={demonstration ? 'No live assignment feed connected' : 'No assignments'} description={demonstration ? 'Use the form to stage a demonstration. Existing assignments are not represented here.' : 'Assign an agent to a workstream or task above.'} /></div> : (
         <ul aria-label="Assignments">
           {groups.map(([key, items]) => (
-            <li key={key} className="border-b border-zinc-800/80">
-              <div className="bg-zinc-900/40 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-zinc-400">{group === 'agent' ? nameOf.get(key) ?? key : key} <span className="text-zinc-500">· {items.length}</span></div>
+            <li key={key} className="border-b border-border/80">
+              <div className="bg-panel/40 px-4 py-1.5 font-mono text-label uppercase tracking-widest text-fg-muted">{group === 'agent' ? nameOf.get(key) ?? key : key} <span className="text-fg-faint">· {items.length}</span></div>
               <ul>
                 {items.map((r) => {
                   const releasing = removeIds.includes(r.id)
                   return (
-                    <li key={r.id} className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 ${releasing ? 'bg-rose-400/5' : ''}`}>
-                      <span className={`min-w-0 flex-1 text-[13px] ${releasing ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
-                        {group === 'agent' ? <><Chip>{r.target.type}</Chip> <span className="ml-1 font-mono">{r.target.id}</span>{r.target.label && <span className="ml-2 text-zinc-500">{r.target.label}</span>}</> : <span className="font-mono">{nameOf.get(r.agentId) ?? r.agentId}</span>}
+                    <li key={r.id} className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 ${releasing ? 'bg-danger/5' : ''}`}>
+                      <span className={`min-w-0 flex-1 text-control ${releasing ? 'text-fg-faint line-through' : 'text-fg'}`}>
+                        {group === 'agent' ? <><Chip>{r.target.type}</Chip> <span className="ml-1 font-mono">{r.target.id}</span>{r.target.label && <span className="ml-2 text-fg-faint">{r.target.label}</span>}</> : <span className="font-mono">{nameOf.get(r.agentId) ?? r.agentId}</span>}
                       </span>
-                      {r.role && <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">{r.role}</span>}
-                      <span className="font-mono text-[11px] text-zinc-500">{ago(r.since, now)}</span>
+                      {r.role && <span className="font-mono text-label uppercase tracking-wider text-fg-faint">{r.role}</span>}
+                      <span className="font-mono text-label text-fg-faint">{ago(r.since, now)}</span>
                       <Btn onClick={() => toggleRemove(r.id)} aria-label={`${releasing ? 'Keep' : 'Release'} ${r.agentId} ${r.target.id}`}>{releasing ? 'Keep' : 'Release'}</Btn>
                     </li>
                   )
@@ -110,14 +111,14 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
       )}
 
       {staged > 0 && (
-        <div className="sticky bottom-0 border-t border-zinc-800 bg-zinc-950">
-          <ul aria-label="Staged changes" className="space-y-0.5 border-b border-zinc-800/80 px-5 py-2 text-[13px]">
-            {addList.map((d, n) => <li key={`a${n}`} className="flex items-center gap-2 text-emerald-300">+ {nameOf.get(d.agentId) ?? d.agentId} to {d.target.type} {d.target.id}<button type="button" className="ml-auto font-mono text-[11px] uppercase tracking-wider text-zinc-500 hover:text-zinc-300" onClick={() => setAddList((l) => l.filter((_, i) => i !== n))}>unstage</button></li>)}
-            {removeIds.map((id) => { const r = rows.find((x) => x.id === id); return r && <li key={id} className="text-rose-300">- {nameOf.get(r.agentId) ?? r.agentId} from {r.target.type} {r.target.id}</li> })}
+        <div className="sticky bottom-0 border-t border-border bg-bg">
+          <ul aria-label="Staged changes" className="space-y-0.5 border-b border-border/80 px-5 py-2 text-control">
+            {addList.map((d, n) => <li key={`a${n}`} className="flex items-center gap-2 text-success">+ {nameOf.get(d.agentId) ?? d.agentId} to {d.target.type} {d.target.id}<button type="button" className="ml-auto font-mono text-label uppercase tracking-wider text-fg-faint hover:text-fg-muted" onClick={() => setAddList((l) => l.filter((_, i) => i !== n))}>unstage</button></li>)}
+            {removeIds.map((id) => { const r = rows.find((x) => x.id === id); return r && <li key={id} className="text-danger">- {nameOf.get(r.agentId) ?? r.agentId} from {r.target.type} {r.target.id}</li> })}
           </ul>
           <div className="flex flex-wrap items-center gap-3 px-5 py-3">
-            <input aria-label="Reason" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason (optional)" className={`${inputCls} max-w-xs`} />
-            {error && <span role="alert" className="text-[13px] text-rose-300">{error}</span>}
+            <AdminInput aria-label="Reason" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason (optional)" className={`${inputCls} max-w-xs`} />
+            {error && <span role="alert" className="text-control text-danger">{error}</span>}
             <span className="ml-auto flex gap-2"><Btn onClick={() => { setAddList([]); setRemoveIds([]) }}>Clear</Btn><Btn tone="primary" onClick={review} disabled={busy}>Review plan ({staged})</Btn></span>
           </div>
         </div>
