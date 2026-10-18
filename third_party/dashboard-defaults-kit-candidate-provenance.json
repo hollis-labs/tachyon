@@ -1,0 +1,17 @@
+{
+  "status": "local review package; no registry release",
+  "source_repo": "https://github.com/hollis-labs/design-kit",
+  "source_commit": "d1d3109587341976dfed84a7ad62a41e2f37a474",
+  "build_commands": [
+    "npm run build -w @hollis-labs/kit-dashboard",
+    "npm pack --ignore-scripts -w @hollis-labs/kit-dashboard"
+  ],
+  "packages": {
+    "kit-dashboard": {
+      "archive": "hollis-labs-kit-dashboard-0.5.0-cw0043-defaults-d578d4e4.tgz",
+      "sha256": "d578d4e44134ffb0ff4834587e28a760c734f0da74a9a6b0f36f5c058ba95ab0",
+      "source_commit": "d1d3109587341976dfed84a7ad62a41e2f37a474"
+    }
+  },
+  "scope": "CW-20261018-0043: common dashboard geometry is a stylesheet default, with no route or JavaScript activation requirement. Supersedes the Planner dashboard candidate; other package provenance is unchanged."
+}
