@@ -599,7 +599,7 @@ The host drains accepted writes during shutdown. The database also holds cache
 policy in `app_settings`, providing the foundation for the planned app-settings
 and user-preferences modules. API credentials are not stored in the cache.
 
-Safe JSON reads from Tether catalog, Torque activity/Planner/resources and
+Safe JSON reads from Tether catalog, the activity monitor, Torque resources and
 GitHub Forge use per-resource policies. Streams, mutations, message-inbox drains
 and unknown routes bypass caching. Keys include the upstream and a hash of its
 credential identity, plus request path and query. Successful mutations invalidate
@@ -675,11 +675,140 @@ credential identity and snapshot limit partition its cache. Missing configuratio
 or denied access remains visible; observed authorization denials discard saved
 data. This response cache does not change ownership of transcript records.
 
+## Activity monitor
+
+Fleet activity reads the activity monitor directly via `TACHYON_ACTIVITY_URL`
+(default `http://127.0.0.1:8099`). The Console snapshot route
+`/api/plugins/console/v1/activity/agents` maps to
+`/api/plugins/activity-monitor/agents`; its host stream
+`/api/plugins/console/stream/activity` maps to `/api/stream`. Only `since`, `kind`
+and `Last-Event-ID` reach the activity stream. No Torque/browser credentials are
+forwarded. Cache identity includes the monitor URL. Configure a trusted monitor
+endpoint; this transport does not yet support a monitor bearer credential.
+
+## Portfolio Planner migration and local maintenance
+
+`import-planner` captures all seven full Torque portfolio databases twice and
+requires identical results before proceeding. It writes a new `0600` JSON
+snapshot with source time and SHA-256. Use the host's `TORQUE_URL` and
+`TORQUE_API_TOKEN` environment, and back up `tachyon.db` with SQLite backup before
+applying. The default is a preview; `--data-dir` allows validation on a DB copy.
+
+```sh
+./tachyon import-planner --snapshot /private/torque-planner-preview.json
+./tachyon import-planner --snapshot /private/torque-planner-import.json --apply
+./tachyon local-data verbs
+./tachyon local-data --input '{"limit":100}' planner.list
+./tachyon local-data --input - objects.patch < /private/reviewed-patch.json
+```
+
+`local-data` invokes the shared verbs/services under local OS operator authority,
+using the SQLite write queue and revision checks. It has full local object access;
+it is not a scoped agent token. Flags precede the verb. Patch input uses `id`,
+`expected_revision`, and a partial `definition` or `metadata`. On conflict, re-read
+and reconcile rather than retrying a stale patch. `objects.create` requires a
+caller-retained UUID for safe retries. The external `data` API/MCP token remains
+read-only.
+
+Imported identities use provider `torque`, the configured instance URL, collection
+`planner/<database>`, and the original item ID. Priorities map to
+`strategic_priority`, roadmap to `roadmap_item`, inbox to `inbox_item`; the other
+databases map to singular kind names. Portfolio workstreams stay distinct from
+Tether inventory workstreams. The complete original item—including comments,
+options, links, source status and future fields—is retained at
+`definition.properties.torque_planner.item`, with manual list position alongside.
+Typed status mappings are explicit in `internal/planner/portfolio.go`; for
+example, `landed` becomes `completed`, `closed` risk becomes `resolved`, and a
+`decided` idea becomes `archived` without assuming acceptance. Source-only fields
+such as rank and textual risk impact remain in the preserved item. External
+references are preserved facts, not guessed local UUID relationships.
+
+Refreshes update untouched masters. If both the source and local definition have
+changed, the command reports a conflict; source changes cannot overwrite local
+edits or revive tombstones. An unchanged source preserves local edits. Metadata
+is always retained. Writes are atomic per record, not per snapshot; a mid-run
+failure reports the affected item and can be retried safely. Absent upstream
+records are never deleted locally. This is an explicit migration, not a recurring
+two-way sync.
+
+### Owned Planner API and frontend cutover
+
+The host serves `/api/plugins/console/v1/planner` from owned records. The old
+`/api/plugins/planner/v1/planner` prefix is a host alias, not a Torque proxy.
+Planner's subprocess receives no Torque address/token. Schemas and the change
+stream are local; only execution task enrichment contacts Torque, directly at
+its task API. No runtime request needs Torque's Planner feature or settings.
+
+The portfolio response is a flat item: `id` is the Tachyon UUID, `rev` its local
+revision, `title` the authored name and `status` the native status. `legacy_id`
+retains the imported ID. DB-specific GET routes also accept unambiguous legacy
+IDs, so old links resolve. `/resolve?ref=...` returns `{db,id,item}` for either
+form. Imported comments, options, ordering, external references and other details
+remain visible; authored details live in `properties.portfolio`, separately from
+the retained `properties.torque_planner` import. Native object edits remain
+visible in the portfolio projection. Source-owned inventory workstreams are
+excluded from the owned portfolio view.
+
+All paths below are relative to `/api/plugins/console/v1/planner`. Reads return
+plain JSON, not the generic verb envelope. Lists are full arrays; the underlying
+service follows object pagination internally. HTTP and the
+`planner.portfolio.*` verbs share the same service.
+
+| Method/path | Input or result |
+|---|---|
+| `GET /databases` | Database counts and schema IDs |
+| `GET /schema/:db` | Local fields and native status vocabulary |
+| `GET /:db` | Full array; exact-match field filters and `sort`/`-sort` |
+| `GET /:db/:id` | One item; UUID or unambiguous imported ID |
+| `GET /search?q=...&db=...` | `{db,id,title,status}` hits |
+| `GET /board?scope=curated\|all` | Owned board with direct task enrichment; enrichment failures appear in `notices` |
+| `POST /:db` | `{id: retainedUUID, fields: {title, status?, ...}}` |
+| `PATCH /:db/:id` | `{expected_revision, patch: {...}}`; null removes an authored field |
+| `POST /:db/:id/comments` | `{expected_revision, text, kind?}`; author/time assigned by service |
+| `POST /:db/:id/links` | `{expected_revision, link: {kind,ref,label?}}` |
+| `DELETE /:db/:id/links` | `{expected_revision, kind, ref}` |
+| `POST /:db/reorder` | `{items:[{id,expected_revision},...]}`; atomic, at most 500 |
+| `POST` / `DELETE /relate` | `{from:{db,id},to:{db,id},expected_revision,field?}`; add/remove a resolved local reference |
+| `POST /decisions/:id/decide` | `{expected_revision, option, comment?}` |
+| `POST /decisions/:id/defer` | `{expected_revision, note?}`; proposed with `deferred:true` |
+| `POST /decisions/:id/reopen` | `{expected_revision}` |
+| `POST /inbox/:id/promote` | `{expected_revision,to_db,target_id:retainedUUID,fields?}`; atomic receipt and triage |
+| `POST /inbox/:id/dismiss` | `{expected_revision,note?}`; archived |
+| `GET /torque-titles?ids=...` | Up to 100 direct Torque task lookups |
+| `GET /workstreams/:id/tasks` | Direct task API counts and newest 25 open tasks; complete scoped cursor scan |
+| `GET /tasks/:id[/comments]` | Direct read-only Torque task detail/comments |
+| `GET /events` | Local `planner.changed` SSE invalidations with revision cursor |
+
+Writes require same-origin requests and the existing elevated operator session;
+use the Console prefix because the operator cookie is scoped there. The legacy
+prefix does not relax authorization or accept the old revision-less write
+contract. Missing revisions are rejected. Conflicts return HTTP 409; item writes
+include `details.current` when available. Re-read and reconcile instead of
+retrying blindly. Create/promotion callers retain a UUID across retries.
+Deletion/restoration remains available through the generic `objects.delete` /
+`objects.restore` verbs with revision checks and retained history.
+
+`/api/plugins/planner/stream/events` is also a local SSE alias. Its cursor tracks
+persisted owned-object revisions, so CLI edits invalidate the browser too. It is
+an invalidation stream, not a replay of every intermediate revision. Task events
+remain available separately from the primary Torque task event stream through
+`/api/plugins/console/stream/events`; subscribe to task events there when updating
+execution counts. No Torque `planner.changed` event is needed.
+
+The frontend integration in `CW-20261018-0066` must adopt native statuses, UUIDs,
+the guarded mutation payloads above, conflict handling and two distinct event
+sources. For example decisions are `proposed`/`accepted`, not
+`needs-decision`/`decided`; inbox dismissal is `archived`. Reads on the legacy
+prefix already use Tachyon, but the old frontend write/status assumptions still
+need updating. Retire Torque's old Planner feature only after coordinating its
+remaining writers and reconciling final changes; its execution-task APIs remain
+the primary source for execution data.
+
 ## Plugin inventory
 
 | Plugin | Backend | UI routes |
 |---|---|---|
-| `planner` | forwards `/api/plugins/planner/v1/*` to Torque `/api/v1/*` | `/planner`, `/planner/:db`, `/planner/:db/:id` |
+| `planner` | host-owned Planner API and local change stream; direct primary task enrichment | `/planner`, `/planner/:db`, `/planner/:db/:id` |
 | `console` | forwards `/api/plugins/console/v1/*` to Torque `/api/v1/*` | `/agents`, `/builder`, `/prs/inbox`, `/pr/...` plus a shell overlay |
 
 Request flow:
@@ -706,6 +835,7 @@ Environment variables:
 | `LISTEN_ADDR` | `127.0.0.1:18093` |
 | `TORQUE_URL` | `http://127.0.0.1:8990` |
 | `TORQUE_API_TOKEN` | unset (optional; never sent to the browser) |
+| `TACHYON_ACTIVITY_URL` | `http://127.0.0.1:8099` (activity-monitor host) |
 | `TACHYON_PLUGIN_DIR` | `bin/plugins` |
 | `TETHER_ADDR` | Tether catalog endpoint: HTTPS URL, loopback HTTP/TCP, or `unix:/path`; unset shows a configuration error in Builder |
 | `TETHER_TOKEN_FILE` | Optional private `0600` bearer-token file, read by the Console backend; never sent to the browser |
@@ -803,3 +933,107 @@ mint credentials, grant missing Tether scopes, or automatically replay a failed
 operation. A plain chat report such as “missing session.write” is not an approval
 request: the producer must submit the concrete request to the queue, and the
 credential owner must handle any missing scope separately.
+
+### Planner access for agents
+
+`/api/agent/v1/data` is a separate, always-authenticated, uncached service API.
+It uses the same local data verbs as the browser surface. The first grant is
+read-only: `planner.list`, `objects.list`, `objects.get`, `objects.history`, and
+`objects.lookup_source`, restricted to explicit Planner kinds. `objects.list`
+requires a kind; an unqualified `planner.list` requires all twelve kinds.
+Discovery shows only granted verbs. Relationship IDs remain in records, but
+this API does not expand relationships or expose collection-member, execution,
+mutation, or upstream-proxy verbs. These credentials do not authorize browser
+operator routes. The existing host read boundary is unchanged.
+
+Operator-local credential administration uses the app database and serial write
+queue. It stores identity records, token hashes, expiry, grants and revocation;
+plaintext credentials exist only in private token files. Revocation and identity
+disabling are checked on every request. Issue and rotation never print a secret
+or overwrite an existing file:
+
+```sh
+./tachyon access issue --name tachyon-planner \
+  --token-file "$HOME/.config/tachyon/tokens/planner-read.token" --ttl 720h
+./tachyon access list
+./tachyon access revoke --id TOKEN_UUID
+./tachyon access disable --id IDENTITY_UUID
+```
+
+For rotation, issue with the same `--identity IDENTITY_UUID --name NAME` to a new
+file, switch the client to that file, then revoke the previous token. Lifetime
+must be between one minute and 90 days. Optional `--verbs` and `--kinds` accept
+comma-separated subsets of the supported read verbs and twelve Planner kinds.
+`TACHYON_DATA_DIR` selects the operator's database; agents must not use these local
+administration commands. The current host and worker share a trusted OS user;
+file permissions are not an isolation boundary against other processes with
+that same UID.
+
+Both the CLI and stdio MCP adapter use the remote API and re-read the private
+0600 token file on every call. HTTPS is required except for loopback IPs, and
+redirects are refused. Place flags before the verb:
+
+```sh
+export TACHYON_API_URL=https://tachyon.nanite.cloud
+export TACHYON_API_TOKEN_FILE="$HOME/.config/tachyon/tokens/planner-read.token"
+./tachyon data verbs
+./tachyon data --input '{"kind":"workstream","limit":50}' planner.list
+./tachyon data --input '{"id":"LOCAL_UUID"}' objects.get
+./tachyon data mcp
+```
+
+MCP tools use names such as `tachyon_planner_list` and `tachyon_objects_get`,
+with the same input schemas and result envelope as HTTP. Configure the client
+with the absolute Tachyon binary path, arguments `["data", "mcp"]`, and the two
+environment variables above. Only the token **path**, never its contents, goes
+into client configuration. Restart MCP after changing the granted verb set to
+refresh discovery; changed permissions are enforced immediately by the API.
+
+The reviewable catalog bundle is `config/tether/planner-catalog.json`. A Tether
+connection with `catalog.write` submits it to `tether_catalog_plan`; the operator
+then approves its returned digest with `tether catalog approve PLAN_ID` on the
+hub, and that connection applies and reloads the catalog. The draft bundle
+passes Tether's scratch catalog validation. The MCP adapter must include
+`catalog.write` in its configured scopes to submit the plan; approval remains
+a separate operator action.
+
+Once the dedicated `tachyon-planner` Tether catalog agent and launch are approved
+and installed, start or recover the retained planner launch from this checkout:
+
+```sh
+./scripts/boot-planner
+# After that session has ended, explicitly replace its retained launch key:
+./scripts/boot-planner --replace
+# Start an additional independent planner:
+./scripts/boot-planner --key planner-second
+```
+
+The script launches through the operator's existing SSH access to the Tether hub
+CLI, using the approved catalog profile and an explicit `agent-os` worker. The
+catalog holds the agent's prompt, permissions, data-client path and private
+Planner credential path; the script carries no secrets. `--hub`,
+`--tether-binary`, `--catalog`, `--worker`, and `--launch` select those deployment
+coordinates. `--print-command` shows the exact quoted command without launching.
+Retry an uncertain launch with the same key to recover its existing session.
+
+The paired-device HTTPS launch path currently drops the profile's `tether.read`
+grant because Tether compares it literally against the device's `read` scope.
+The attempted `/auth/token` exchange also returned 401 (verified caller identity
+required). The SSH CLI path is verified; no identity enforcement or worker
+fallback was disabled. Those HTTP integration issues belong to Tether.
+
+Use the session ID printed by the script to interact through the hub CLI:
+
+```sh
+ssh -t chrispian@100.74.49.44 \
+  '/var/lib/fabric/bin/tether --catalog /var/lib/fabric/tether/catalog sessions turn SESSION_UUID "Summarize the active workstreams"'
+ssh -T chrispian@100.74.49.44 \
+  '/var/lib/fabric/bin/tether --catalog /var/lib/fabric/tether/catalog sessions peek SESSION_UUID'
+```
+
+The planner reads through the CLI, reports what is present, then waits for the
+next turn without polling. It has a narrow Claude Bash allowlist for the data
+client and no blanket permission bypass. Its initial read can be empty for
+locally owned kinds not yet populated. Tether's catalog MCP registration is a
+separate integration; the standalone stdio adapter is already usable by MCP
+clients. No background agent restart job or live agent writes are enabled.

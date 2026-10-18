@@ -21,6 +21,7 @@ import (
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
+	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/catalog"
@@ -29,6 +30,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
+	"github.com/hollis-labs/tachyon/internal/planner"
 	"github.com/hollis-labs/tachyon/internal/transcripts"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
@@ -211,6 +213,8 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 	u := s.cfg.Upstreams
 	addr, token := u.TorqueURL, u.TorqueToken
 	switch scope {
+	case "activity":
+		return apicache.Digest("activity-monitor\n" + u.ActivityURL), nil
 	case "transcripts":
 		return transcripts.New(s.cfg.FragmentsURL, s.cfg.FragmentsTokenFile, s.cfg.TranscriptMaxSessions).Identity()
 	case "approvals":
@@ -258,6 +262,19 @@ func (s *Server) Routes() http.Handler {
 	if s.objects != nil {
 		// Local data is live and host-owned, independent of subprocess admission.
 		mux.Handle(dataverbs.Prefix+"/", dataverbs.NewHTTP([]dataverbs.Provider{dataverbs.NewLocal(s.objects)}, operator.RequireOperator))
+		if s.store != nil {
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}))
+		}
+	}
+	if s.store != nil {
+		ownedPlanner := planner.NewHTTP(s.store, planner.NewTasks(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken))
+		mux.Handle(planner.Prefix+"/", operator.RequireOperator(ownedPlanner))
+		mux.Handle(planner.LegacyPrefix+"/", operator.RequireOperator(ownedPlanner))
+		mux.HandleFunc("GET /api/plugins/planner/stream/events", ownedPlanner.Events)
+		for _, prefix := range []string{planner.Prefix, "/api/plugins/planner/v1"} {
+			mux.HandleFunc("GET "+prefix+"/tasks/{task}", ownedPlanner.TaskDetails)
+			mux.HandleFunc("GET "+prefix+"/tasks/{task}/comments", ownedPlanner.TaskDetails)
+		}
 	}
 	// Object management uses live reads and server-verified operator mutations.
 	// Keep the whole prefix outside the generic plugin response cache.
@@ -336,7 +353,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if decl == nil {
+	if decl == nil || decl.Upstream == nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown stream", "code": "not_found"})
 		return
 	}
@@ -354,6 +371,19 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			out := *target
 			out.RawQuery = pr.In.URL.RawQuery
+			if id == "console" && name == "activity" {
+				q := url.Values{}
+				for _, key := range []string{"since", "kind"} {
+					if value := pr.In.URL.Query().Get(key); value != "" {
+						q.Set(key, value)
+					}
+				}
+				out.RawQuery = q.Encode()
+				pr.Out.Header = http.Header{"Accept": {"text/event-stream"}}
+				if cursor := pr.In.Header.Get("Last-Event-ID"); cursor != "" {
+					pr.Out.Header.Set("Last-Event-ID", cursor)
+				}
+			}
 			pr.Out.URL = &out
 			pr.Out.Host = target.Host
 			pr.Out.Header.Del("Cookie")

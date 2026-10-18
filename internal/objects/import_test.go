@@ -8,6 +8,48 @@ import (
 	"time"
 )
 
+func TestRefreshImportedProtectsLocalEditsAndRollback(t *testing.T) {
+	s, _, _ := open(t)
+	obs := Observation{Key: SourceKey{SourceScope: SourceScope{Provider: "torque", Instance: "https://torque.test", Collection: "planner/workstreams", Kind: WorkstreamKind}, ExternalID: "WS-1"}, ObservedAt: time.Now(), Definition: body(t, Workstream{Common: Common{Name: "Before"}, Status: "draft"})}
+	r, err := s.RefreshImported(ctx, obs, "migration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs.ObservedAt = obs.ObservedAt.Add(time.Second)
+	obs.Definition = body(t, Workstream{Common: Common{Name: "After"}, Status: "active"})
+	fresh, err := s.RefreshImported(ctx, obs, "migration")
+	if err != nil || fresh.ID != r.ID || fresh.Name != "After" {
+		t.Fatal(fresh, err)
+	}
+	again, err := s.RefreshImported(ctx, obs, "migration")
+	if err != nil || again.Revision != fresh.Revision {
+		t.Fatal("retry invented a revision", err)
+	}
+	edited, err := s.Patch(ctx, r.ID, fresh.Revision, Patch{Definition: json.RawMessage(`{"name":"Operator edit"}`)}, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs.ObservedAt = obs.ObservedAt.Add(time.Second)
+	unchanged, err := s.RefreshImported(ctx, obs, "migration")
+	if err != nil || unchanged.Name != edited.Name {
+		t.Fatal("same source overwrote edit", err)
+	}
+	obs.ObservedAt = obs.ObservedAt.Add(time.Second)
+	obs.Definition = body(t, Workstream{Common: Common{Name: "Remote change"}, Status: "paused"})
+	if _, err := s.RefreshImported(ctx, obs, "migration"); !errors.Is(err, ErrConflict) {
+		t.Fatal("divergent refresh accepted", err)
+	}
+	got, err := s.Get(ctx, r.ID)
+	if err != nil || got.Revision != edited.Revision || string(got.Source.Definition) != string(fresh.Source.Definition) {
+		t.Fatal("conflict changed source baseline or history", err)
+	}
+	obs.Definition = fresh.Source.Definition
+	obs.ObservedAt = r.Source.ObservedAt.Add(-time.Second)
+	if _, err := s.RefreshImported(ctx, obs, "migration"); !errors.Is(err, ErrStaleObservation) {
+		t.Fatal("stale refresh accepted", err)
+	}
+}
+
 func TestOwnedImportIdempotencyAuthorshipAndProvenance(t *testing.T) {
 	s, _, _ := open(t)
 	at := time.Now().UTC()

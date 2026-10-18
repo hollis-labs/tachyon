@@ -32,6 +32,10 @@ type response struct {
 // mutation authorization middleware; nil fails closed. Read verbs are GET-only
 // and follow the host's existing read-access boundary. POST can only call writes.
 func NewHTTP(providers []Provider, authorize func(http.Handler) http.Handler) http.Handler {
+	return newHTTP(Prefix, providers, authorize)
+}
+
+func newHTTP(prefix string, providers []Provider, authorize func(http.Handler) http.Handler) http.Handler {
 	registered := map[string]Provider{}
 	verbs := map[string]map[string]Verb{}
 	for _, p := range providers {
@@ -55,7 +59,7 @@ func NewHTTP(providers []Provider, authorize func(http.Handler) http.Handler) ht
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		if r.URL.Path == Prefix+"/providers" {
+		if r.URL.Path == prefix+"/providers" {
 			if r.Method != http.MethodGet {
 				methodError(w, "GET")
 				return
@@ -72,7 +76,7 @@ func NewHTTP(providers []Provider, authorize func(http.Handler) http.Handler) ht
 			writeJSON(w, map[string]any{"version": ContractVersion, "providers": entries})
 			return
 		}
-		rel, ok := strings.CutPrefix(r.URL.Path, Prefix+"/providers/")
+		rel, ok := strings.CutPrefix(r.URL.Path, prefix+"/providers/")
 		parts := strings.Split(rel, "/")
 		if !ok || len(parts) != 3 || parts[1] != "verbs" {
 			writeError(w, svcerr.New(svcerr.CodeNotFound, "Unknown data route."))

@@ -15,6 +15,7 @@ import (
 // environment. Plugins never inherit the host environment; they receive only
 // the variables their entry declares.
 type Upstreams struct {
+	ActivityURL       string
 	TetherAddr        string
 	TetherTokenFile   string
 	CerberusAddr      string
@@ -29,7 +30,8 @@ type Upstreams struct {
 // adapter buffers responses, so live streams are proxied by the host directly
 // to the declared upstream and never pass through the plugin process.
 type Stream struct {
-	// Upstream returns the absolute upstream URL for this stream.
+	// Upstream returns the absolute upstream URL. Nil marks a host-owned stream
+	// mounted explicitly by the host, never a subprocess/provider relay.
 	Upstream func(Upstreams) string
 	// Bearer returns an optional bearer token for the upstream.
 	Bearer func(Upstreams) string
@@ -63,6 +65,7 @@ func torqueEnv(u Upstreams) []string {
 
 func consoleEnv(u Upstreams) []string {
 	env := append(torqueEnv(u), "TETHER_ADDR="+u.TetherAddr, "TETHER_TOKEN_FILE="+u.TetherTokenFile)
+	env = append(env, "TACHYON_ACTIVITY_URL="+u.ActivityURL)
 	if u.GitHubToken != "" {
 		env = append(env, "GITHUB_TOKEN="+u.GitHubToken)
 	}
@@ -80,10 +83,8 @@ func Entries() []Entry {
 			Name:        "Planner",
 			Version:     "0.1.0",
 			Description: "Portfolio planner: board, priorities, workstreams, roadmap, ideas, decisions, risks and inbox.",
-			Env:         torqueEnv,
-			Streams: map[string]Stream{
-				"events": torqueStream("/api/v1/events"),
-			},
+			Env:         func(Upstreams) []string { return nil },
+			Streams:     map[string]Stream{"events": {}},
 		},
 		{
 			ID:          "console",
@@ -94,7 +95,7 @@ func Entries() []Entry {
 			Streams: map[string]Stream{
 				"events":   torqueStream("/api/v1/events"),
 				"messages": torqueStream("/api/v1/messages/subscribe"),
-				"activity": torqueStream("/api/v1/activity/stream"),
+				"activity": {Upstream: func(u Upstreams) string { return join(u.ActivityURL, "/api/stream") }},
 			},
 		},
 	}

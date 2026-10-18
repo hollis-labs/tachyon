@@ -1,12 +1,14 @@
 // Command console is Tachyon's Console plugin backend: agent fleet, builder
-// and the operator console overlay. It forwards to Torque, which also relays
-// the agent activity monitor. Backends that do not exist yet answer 404 from upstream;
+// and the operator console overlay. Fleet activity comes directly from the
+// activity monitor. Backends that do not exist yet answer 404 from upstream;
 // see docs/data-gaps.md.
 package main
 
 import (
 	"context"
+	"net/http"
 	"os"
+	"strings"
 
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
@@ -41,6 +43,12 @@ func (console) Load(context.Context) (subprocess.LoadResult, error) {
 func (console) Unload(context.Context) error { return nil }
 
 func (c console) HTTPHandle(ctx context.Context, req subprocess.HTTPRequest) (subprocess.HTTPResponse, error) {
+	if strings.HasPrefix(req.Path, "/api/plugins/console/v1/activity/") {
+		if req.Path != "/api/plugins/console/v1/activity/agents" || req.Method != http.MethodGet {
+			return subprocess.HTTPResponse{Status: http.StatusNotFound}, nil
+		}
+		return c.proxy.HTTPHandle(ctx, req)
+	}
 	if c.objects != nil && c.objects.Match(req.Path) {
 		return c.objects.Handle(ctx, req), nil
 	}
@@ -59,6 +67,7 @@ func (c console) HTTPHandle(ctx context.Context, req subprocess.HTTPRequest) (su
 func main() {
 	torque := pluginkit.Env("TORQUE_URL", "http://127.0.0.1:8990")
 	proxy := pluginkit.NewProxy("console",
+		pluginkit.Route{Prefix: "/v1/activity/agents", Upstream: pluginkit.Env("TACHYON_ACTIVITY_URL", "http://127.0.0.1:8099"), Target: "/api/plugins/activity-monitor/agents"},
 		pluginkit.Route{Prefix: "/v1", Upstream: torque, Target: "/api/v1", Bearer: os.Getenv("TORQUE_API_TOKEN"), Headers: map[string]string{"X-Client": "browser"}},
 	)
 	forge := NewForgeHandler(os.Getenv("GITHUB_TOKEN"), pluginkit.Env("GITHUB_ORG", "hollis-labs"))

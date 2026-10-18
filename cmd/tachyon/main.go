@@ -17,9 +17,13 @@ import (
 
 	"github.com/hollis-labs/libs/app/app-host/host"
 
+	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/agentclient"
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
+	"github.com/hollis-labs/tachyon/internal/planner"
 	"github.com/hollis-labs/tachyon/internal/server"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 	"github.com/hollis-labs/tachyon/internal/webui"
@@ -29,6 +33,20 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if len(os.Args) > 1 && (os.Args[1] == "access" || os.Args[1] == "data" || os.Args[1] == "local-data") {
+		var err error
+		if os.Args[1] == "access" {
+			err = agentaccess.Command(ctx, env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")), os.Args[2:], os.Stdout)
+		} else if os.Args[1] == "local-data" {
+			err = dataverbs.Command(ctx, env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")), os.Args[2:], os.Stdin, os.Stdout)
+		} else {
+			err = agentclient.Command(ctx, os.Args[2:], os.Stdout)
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	cfg := server.Config{
 		CachePolicyFile:       os.Getenv("TACHYON_CACHE_POLICY_FILE"),
 		ChatSyncInterval:      chatInterval(),
@@ -40,6 +58,7 @@ func main() {
 		DataDir:               env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
 		CacheDir:              env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		Upstreams: catalog.Upstreams{
+			ActivityURL:       env("TACHYON_ACTIVITY_URL", "http://127.0.0.1:8099"),
 			TetherAddr:        os.Getenv("TETHER_ADDR"),
 			TetherTokenFile:   os.Getenv("TETHER_TOKEN_FILE"),
 			CerberusAddr:      os.Getenv("CERBERUS_ADDR"),
@@ -49,6 +68,12 @@ func main() {
 			GitHubToken:       githubToken(ctx),
 			GitHubOrg:         env("GITHUB_ORG", "hollis-labs"),
 		},
+	}
+	if len(os.Args) > 1 && os.Args[1] == "import-planner" {
+		if err := planner.Command(ctx, cfg.DataDir, cfg.Upstreams, os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "backfill-session-links" {
 		if err := chatbridge.BackfillCommand(ctx, cfg.DataDir, cfg.Upstreams.TetherAddr, os.Args[2:], os.Stdout); err != nil {

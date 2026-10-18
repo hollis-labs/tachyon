@@ -29,6 +29,7 @@ func (*Local) ID() string { return "tachyon" }
 
 func NewLocal(s *objects.Service) *Local {
 	p := &Local{service: s, operations: map[string]operation{}}
+	registerPortfolio(p)
 	register(p, "objects.list", false, "List local records with UUID keyset pagination.", nil, func(ctx context.Context, q objects.Filter, _ string) (any, error) {
 		rows, err := s.List(ctx, q)
 		return recordPage(rows, q.Limit), err

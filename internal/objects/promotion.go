@@ -17,7 +17,8 @@ type PromotionRequest struct {
 	ExpectedRevision int64           `json:"expected_revision"`
 	TargetID         string          `json:"target_id"` // caller-retained canonical UUID for retries
 	TargetKind       Kind            `json:"target_kind"`
-	Overrides        json.RawMessage `json:"overrides,omitempty"` // merge patch of copied common fields
+	Overrides        json.RawMessage `json:"overrides,omitempty"`     // merge patch of copied common fields
+	TriageSource     bool            `json:"triage_source,omitempty"` // portfolio inbox cutover; atomic with target creation
 }
 type PromotionReceipt struct {
 	SourceID       string    `json:"source_id"`
@@ -52,7 +53,8 @@ func (s *Service) GetPromotion(ctx context.Context, sourceID string) (PromotionR
 }
 
 // Promote atomically creates a distinct owned record, preserves source content,
-// and records immutable provenance. Inbox -> idea/plan/task; idea -> plan/task.
+// and records immutable provenance. Inbox -> portfolio kinds/plan/task;
+// idea -> plan/task. TriageSource atomically marks an inbox triaged when requested.
 // Each source has one canonical promotion. Same request replays without writes,
 // even after subsequent edits/deletion; another request for that source conflicts.
 // This does not dispatch work, copy a provider identity or change source status.
@@ -62,7 +64,7 @@ func (s *Service) Promote(ctx context.Context, req PromotionRequest, actor strin
 	if err != nil || id.String() != req.TargetID || strings.TrimSpace(actor) == "" || req.ExpectedRevision < 1 || req.SourceID == "" {
 		return out, fmt.Errorf("%w: source, revision, canonical target UUID and actor required", ErrInvalid)
 	}
-	if req.TargetKind != IdeaKind && req.TargetKind != PlanKind && req.TargetKind != TaskKind {
+	if req.TargetKind != IdeaKind && req.TargetKind != PlanKind && req.TargetKind != TaskKind && req.TargetKind != WorkstreamKind && req.TargetKind != RoadmapItemKind && req.TargetKind != StrategicPriorityKind && req.TargetKind != DecisionKind && req.TargetKind != RiskKind {
 		return out, ErrInvalid
 	}
 	req.Overrides, err = canonical(req.Overrides)
@@ -100,7 +102,7 @@ func (s *Service) Promote(ctx context.Context, req PromotionRequest, actor strin
 		if source.Revision != req.ExpectedRevision {
 			return ErrConflict
 		}
-		if source.Ownership != "tachyon" || source.Deleted() || (source.Kind != InboxItemKind && source.Kind != IdeaKind) || (source.Kind == IdeaKind && req.TargetKind == IdeaKind) {
+		if source.Ownership != "tachyon" || source.Deleted() || (source.Kind != InboxItemKind && source.Kind != IdeaKind) || (source.Kind == IdeaKind && (req.TargetKind != PlanKind && req.TargetKind != TaskKind || req.TriageSource)) {
 			return fmt.Errorf("%w: promotion requires an active owned inbox item or idea and an allowed destination", ErrInvalid)
 		}
 		if _, err := get(ctx, tx, req.TargetID); err == nil {
@@ -124,6 +126,18 @@ func (s *Service) Promote(ctx context.Context, req PromotionRequest, actor strin
 		if req.TargetKind == TaskKind {
 			copied["status"] = json.RawMessage(`"todo"`)
 		}
+		if req.TargetKind == DecisionKind {
+			copied["status"] = json.RawMessage(`"proposed"`)
+		}
+		if req.TargetKind == RiskKind {
+			copied["status"] = json.RawMessage(`"open"`)
+		}
+		if req.TargetKind == DecisionKind || req.TargetKind == WorkstreamKind {
+			delete(copied, "priority")
+		}
+		if req.TargetKind == WorkstreamKind {
+			delete(copied, "workstream_id")
+		}
 		// Keep arbitrary property numbers as raw JSON: decoding through any
 		// would round integers above float64's exact range.
 		seed, err := json.Marshal(copied)
@@ -142,6 +156,12 @@ func (s *Service) Promote(ctx context.Context, req PromotionRequest, actor strin
 		_, err = tx.ExecContext(ctx, `INSERT INTO planner_promotions(source_id,target_id,source_revision,target_revision,request_json,actor,created_at) VALUES(?,?,?,?,?,?,?)`, receipt.SourceID, receipt.TargetID, receipt.SourceRevision, receipt.TargetRevision, string(request), actor, timestamp(receipt.CreatedAt))
 		if err != nil {
 			return err
+		}
+		if req.TriageSource {
+			source.Local, err = merge(source.Local, json.RawMessage(`{"status":"triaged"}`), true)
+			if err != nil {
+				return err
+			}
 		}
 		if err = persist(ctx, tx, &source, "promote", actor); err != nil {
 			return err
