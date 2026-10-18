@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/libs/app/app-host/host"
 
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/objectsync"
 	"github.com/hollis-labs/tachyon/internal/server"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 	"github.com/hollis-labs/tachyon/internal/webui"
@@ -27,7 +28,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv := server.New(server.Config{
+	cfg := server.Config{
 		CachePolicyFile:       os.Getenv("TACHYON_CACHE_POLICY_FILE"),
 		ChatSyncInterval:      chatInterval(),
 		ApprovalQueueURL:      env("TACHYON_APPROVAL_QUEUE_URL", "http://127.0.0.1:7843"),
@@ -45,7 +46,14 @@ func main() {
 			GitHubToken:     githubToken(ctx),
 			GitHubOrg:       env("GITHUB_ORG", "hollis-labs"),
 		},
-	})
+	}
+	if len(os.Args) > 1 && os.Args[1] == "sync-objects" {
+		if err := objectsync.Command(ctx, cfg.DataDir, cfg.Upstreams, os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	srv := server.New(cfg)
 	if err := srv.Start(ctx); err != nil {
 		log.Fatal(err)
 	}

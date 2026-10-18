@@ -127,12 +127,77 @@ state. Adapters must normalize non-secret data instead of persisting raw credent
 or provider environment/config dumps.
 
 Planner will be Tachyon-owned (CW-20261018-0017). Chat session/run identities
-(CW-20261018-0018), provider adapters (CW-20261018-0016), and shared verb/API/MCP/CLI
+(CW-20261018-0018), additional provider adapters (CW-20261018-0016), and shared verb/API/MCP/CLI
 access with policy (CW-20261018-0019) follow this foundation. The UI still reads its
 existing adapters; this slice does not silently migrate cached responses or demo
 drafts into master records. Revision retention, multi-source correlation, outbound
 sync, and large-inventory staging need explicit later policies; no history purge
 or upstream writeback is enabled here.
+
+## Provider ingestion and recurring jobs
+
+`internal/objectsync` imports Tether projects and GitHub organization repositories
+through the durable object service. These are independent of response caches and
+the current UI adapters. Tether project URNs and GitHub numeric repository IDs
+retain local identity across renames. Local overrides, metadata, history and
+ownership promotion retain the contracts above.
+
+Tether reads `/registry/projects?status=*&include=external_ids` with the existing
+paired token file. The current endpoint returns one unpaginated full inventory;
+an unfamiliar envelope is rejected rather than assumed complete. Public authored
+fields are normalized, with props and correlation facts under `properties.tether`.
+Private callback, host and kind metadata are not requested. Deprecated/merged
+projects become source tombstones; an active observation restores the same record.
+Archived projects remain records with their upstream status. A successful complete
+inventory can tombstone absent projects.
+
+GitHub uses the configured organization and credential, follows all repository
+pages on the fixed API origin, and imports archived repositories too. Its completed
+inventory is **visibility-limited, not authoritative deletion evidence**. Missing
+repositories, 404s, and permission changes do not delete local records. Confirmed
+GitHub deletion events and broader identity/correlation policies are future work.
+See [GitHub's organization repository API](https://docs.github.com/en/rest/repos/repos#list-organization-repositories)
+for the upstream permissions and pagination contract.
+
+Each scan starts fresh, gathers every page, then applies one atomic reconciliation.
+Partial or failed reads apply nothing. Scans are bounded to 10,000 objects, 16 MiB
+of normalized definitions, 8 MiB per HTTP response, and two minutes. Larger scans
+fail visibly and need staging support; they are never silently truncated.
+`object_sync_state` records the last successful import, phase, progress, diagnostic
+checkpoint and sanitized failure; `object_sync_runs` retains attempt history.
+Page checkpoints are diagnostic, not resumable cursors. A persisted three-minute
+source lease fences concurrent manual/scheduled processes; expired runs are marked
+interrupted before a fresh scan. A crash between object application and recording
+success may repeat an idempotent import.
+
+The host uses `core/util/scheduler` and its reference `sqlstore` for durable jobs,
+fires, retries and restart recovery. Scheduler bookkeeping lives in private
+`$TACHYON_DATA_DIR/jobs.db`, using `sqlitekit` with one writer connection, separate
+from domain writes through the `tachyon.db` serialwrite queue. **No jobs are enabled
+by starting the host.** Validate a source, then enable it through the narrow
+maintenance command using the same upstream environment as the service:
+
+```sh
+./tachyon sync-objects --source tether-projects
+./tachyon sync-objects --source github-repositories
+# Imports again; enables each source only if its own import succeeds.
+./tachyon sync-objects --source all --enable --interval 5m
+./tachyon sync-objects --status
+./tachyon sync-objects --source github-repositories --disable
+```
+
+`--data-dir <directory>` permits isolated validation. Source names are
+`tether-projects`, `github-repositories`, or `all`; commands exit nonzero on failure.
+Credentials stay in the existing environment/token-file mechanism, never job
+payloads. `--enable` also resumes a paused job after a successful import; an
+existing job's interval must match. Interval editing is not exposed yet.
+The first enabled fire is due after five seconds, then every five minutes by
+default. Downtime coalesces missed scans into one; overlap is skipped, retries
+are bounded to three attempts with exponential backoff, and successful fire IDs
+deduplicate replay. Disabling prevents new dispatches (an already running scan
+may finish). Shutdown cancels provider reads and drains the job engine before
+closing either database. Job/scan history is retained; automatic pruning is not
+enabled. These are host-owned jobs, not external Cerberus schedules.
 
 The agent-os deployment is declared in `tachyon.cerberus.yaml`. Register that
 file with Cerberus, then deploy `tachyon-backend-dev` to rebuild the frontend,

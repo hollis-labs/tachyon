@@ -27,6 +27,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
+	"github.com/hollis-labs/tachyon/internal/objectsync"
 	"github.com/hollis-labs/tachyon/internal/transcripts"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
@@ -58,14 +59,15 @@ type pluginState struct {
 
 // Server owns the plugin inventory and the app routes.
 type Server struct {
-	cfg       Config
-	inventory *plugins.Inventory
-	states    []pluginState
-	instance  string
-	store     *localstore.Store
-	objects   *objects.Service
-	cache     *apicache.Cache
-	chat      *chatbridge.Owned
+	cfg        Config
+	inventory  *plugins.Inventory
+	states     []pluginState
+	instance   string
+	store      *localstore.Store
+	objects    *objects.Service
+	objectJobs *objectsync.Jobs
+	cache      *apicache.Cache
+	chat       *chatbridge.Owned
 }
 
 // New resolves the catalog against built binaries. Missing binaries are
@@ -135,9 +137,20 @@ func (s *Server) Start(ctx context.Context) error {
 	s.store = store
 	s.objects = objects.New(store)
 	s.cache = apicache.New(store, settings, s.cacheIdentity)
+	started := false
+	defer func() {
+		if !started {
+			if s.objectJobs != nil {
+				_ = s.objectJobs.Close()
+			}
+			cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.inventory.Stop(cleanup)
+			_ = store.Close()
+		}
+	}()
 
 	if err := s.inventory.Start(ctx); err != nil {
-		store.Close()
 		return fmt.Errorf("plugin admission: %w", err)
 	}
 	source, sourceErr := chatbridge.NewSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
@@ -158,16 +171,32 @@ func (s *Server) Start(ctx context.Context) error {
 			return fmt.Errorf("chat outbox migration: %w", e)
 		}
 	}
+	sources, err := objectsync.Sources(s.cfg.Upstreams)
+	if err != nil {
+		return fmt.Errorf("object sync sources: %w", err)
+	}
+	s.objectJobs, err = objectsync.OpenJobs(ctx, filepath.Join(s.cfg.DataDir, "jobs.db"), objectsync.New(store), sources)
+	if err != nil {
+		return fmt.Errorf("object sync jobs: %w", err)
+	}
+	// No schedules are created on boot. Operators validate a source with
+	// sync-objects --enable; only those persisted jobs recur across restarts.
+	s.objectJobs.Engine.Start()
 	s.chat.Start()
+	started = true
 	return nil
 }
 
 // Stop retires plugin processes after HTTP has drained.
 func (s *Server) Stop(ctx context.Context) error {
+	var jobErr error
+	if s.objectJobs != nil {
+		jobErr = s.objectJobs.Close()
+	}
 	if s.chat != nil {
 		s.chat.Stop()
 	}
-	err := s.inventory.Stop(ctx)
+	err := errors.Join(jobErr, s.inventory.Stop(ctx))
 	if s.store != nil {
 		err = errors.Join(err, s.store.Close())
 	}
