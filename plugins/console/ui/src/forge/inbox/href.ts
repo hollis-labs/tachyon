@@ -7,7 +7,7 @@ export function prWorkspaceHref(ref: PrRef): string {
 }
 
 /** Where the inbox itself lives (used by cards/alerts that link to triage). */
-export const PR_INBOX_PATH = '/prs/inbox'
+export const PR_INBOX_PATH = '/repos'
 
 /** Stable text id of a PR, e.g. "github:hollis-labs/torque#265". Re-exported for convenience. */
 export const prId = prKey

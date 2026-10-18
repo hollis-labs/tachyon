@@ -70,7 +70,7 @@ export function DataStatus() {
         ? "catalog"
         : pathname.startsWith("/planner")
           ? "planner"
-          : pathname.startsWith("/prs") || pathname.startsWith("/pr/")
+          : pathname.startsWith("/repos") || pathname.startsWith("/prs") || pathname.startsWith("/pr/")
             ? "forge"
             : "torque"
   const rows = snapshots.filter((r) => r.scope === scope && r.page === pathname)

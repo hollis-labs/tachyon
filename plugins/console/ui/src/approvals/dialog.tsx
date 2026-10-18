@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import {
+  Button,
+  Textarea,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -17,9 +19,7 @@ import {
   type Evidence,
 } from "./client"
 
-export const approvalButton =
-  "rounded border border-zinc-700 px-3 py-1.5 font-mono text-[11px] text-zinc-300 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
-const label = "font-mono text-[10px] uppercase tracking-widest text-zinc-500"
+const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
 function EvidenceView({
   evidence,
   index,
@@ -55,35 +55,35 @@ function EvidenceView({
     /* no link */
   }
   return (
-    <details className="border-t border-zinc-800 py-3">
-      <summary className="cursor-pointer text-xs text-zinc-300">
+    <details className="border-t border-border py-3">
+      <summary className="cursor-pointer dash-control text-fg-muted">
         {evidence.label}{" "}
-        <span className="text-zinc-500">· {evidence.type}</span>
+        <span className="text-fg-faint">· {evidence.type}</span>
       </summary>
       {evidence.type === "markdown" && (
         <MessageBody body={evidence.content ?? ""} />
       )}
       {["text", "diff"].includes(evidence.type) && (
-        <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-zinc-950 p-3 font-mono text-[11px] text-zinc-300">
+        <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-bg p-3 font-mono dash-support text-fg-muted">
           {evidence.content}
         </pre>
       )}
       {!["markdown", "text", "diff"].includes(evidence.type) && (
         <>
-          <pre className="my-2 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] text-zinc-500">
+          <pre className="my-2 overflow-auto whitespace-pre-wrap break-words font-mono dash-caption text-fg-faint">
             {JSON.stringify(evidence, null, 2)}
           </pre>
           {["tangent_reference", "artifact_ref"].includes(evidence.type) && (
-            <button
-              className={approvalButton}
+            <Button variant="outline" size="sm"
+              className="font-mono dash-label"
               disabled={busy}
               onClick={() => void load()}
             >
               {busy ? "Loading…" : "Load evidence"}
-            </button>
+            </Button>
           )}
           {preview && (
-            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs text-zinc-300">
+            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words dash-control text-fg-muted">
               {typeof preview.content === "string"
                 ? preview.content
                 : JSON.stringify(preview, null, 2)}
@@ -94,7 +94,7 @@ function EvidenceView({
               href={safeURL}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-sky-300"
+              className="dash-control text-info"
             >
               Open evidence
             </a>
@@ -102,7 +102,7 @@ function EvidenceView({
         </>
       )}
       {error && (
-        <p role="alert" className="mt-2 text-xs text-red-300">
+        <p role="alert" className="mt-2 dash-control text-danger">
           {error}
         </p>
       )}
@@ -184,22 +184,22 @@ export function ApprovalDialog({
         if (!open && !busy) onClose()
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="dash-detail-dialog max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <div className="flex items-center gap-4">
-            <span className="border-2 border-zinc-600 bg-zinc-950 p-3 text-amber-300">
+            <span className="border-2 border-border bg-bg p-3 text-warning">
               <ShieldCheck className="h-8 w-8" />
             </span>
             <div className="min-w-0">
-              <DialogTitle className="font-mono text-sm uppercase tracking-wide">
+              <DialogTitle className="font-mono dash-body uppercase tracking-wide">
                 {request?.title ?? "Review request"}
               </DialogTitle>
-              <DialogDescription className="mt-1 font-mono text-[11px]">
+              <DialogDescription className="mt-1 font-mono dash-support">
                 {request?.source.agent_label ?? request?.source.agent_id} ·{" "}
                 {request?.source.application_label ??
                   request?.source.application_id}
               </DialogDescription>
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-amber-300">
+              <p className="mt-1 font-mono dash-caption uppercase tracking-widest text-warning">
                 {item?.state ?? "Loading"}{" "}
                 {item && isExpired(item) && isPending(item) ? "· expired" : ""}
               </p>
@@ -209,13 +209,13 @@ export function ApprovalDialog({
         {error && (
           <p
             role="alert"
-            className="rounded border border-red-500/30 bg-red-950/20 p-3 text-xs text-red-300"
+            className="rounded border border-danger/30 bg-danger-muted/20 p-3 dash-control text-danger"
           >
             {error}
           </p>
         )}
         {!ready && !error && (
-          <p role="status" className="text-xs text-zinc-500">
+          <p role="status" className="dash-control text-fg-faint">
             Checking the current request…
           </p>
         )}
@@ -241,18 +241,18 @@ export function ApprovalDialog({
               </section>
             )}
             {request.impact && (
-              <div className="grid gap-4 border-y border-zinc-800 py-4 sm:grid-cols-2">
+              <div className="grid gap-4 border-y border-border py-4 sm:grid-cols-2">
                 <section>
-                  <h3 className={`${label} text-emerald-400`}>If approved</h3>
+                  <h3 className={`${label} text-success`}>If approved</h3>
                   <MessageBody body={request.impact.approve} />
                 </section>
                 <section>
-                  <h3 className={`${label} text-red-400`}>If denied</h3>
+                  <h3 className={`${label} text-danger`}>If denied</h3>
                   <MessageBody body={request.impact.deny} />
                 </section>
               </div>
             )}
-            <dl className="grid grid-cols-2 gap-4 text-[11px] text-zinc-400">
+            <dl className="grid grid-cols-2 gap-4 dash-support text-fg-muted">
               <div>
                 <dt className={label}>Requested</dt>
                 <dd>{new Date(item!.enqueued_at).toLocaleString()}</dd>
@@ -268,7 +268,7 @@ export function ApprovalDialog({
             </dl>
             {request.correlations && (
               <details>
-                <summary className="cursor-pointer text-xs text-zinc-400">
+                <summary className="cursor-pointer dash-control text-fg-muted">
                   Related work
                 </summary>
                 <MessageBody
@@ -291,11 +291,11 @@ export function ApprovalDialog({
               </section>
             )}
             {resolution ? (
-              <section className="rounded border border-zinc-700 bg-zinc-900/40 p-4">
-                <h3 className={`${label} text-sky-300`}>
+              <section className="rounded border border-border bg-surface/40 p-4">
+                <h3 className={`${label} text-info`}>
                   {resolution.response.decision}
                 </h3>
-                <p className="mt-2 text-xs text-zinc-400">
+                <p className="mt-2 dash-control text-fg-muted">
                   {new Date(resolution.resolved_at).toLocaleString()} ·{" "}
                   {resolution.participant.principal_ref}
                 </p>
@@ -316,35 +316,35 @@ export function ApprovalDialog({
               />
             ) : (
               <>
-                <label className="block text-xs text-zinc-400">
+                <label className="block dash-control text-fg-muted">
                   Decision note (optional)
-                  <textarea
+                  <Textarea
                     aria-label="Decision note"
                     disabled={busy}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     maxLength={8000}
                     rows={3}
-                    className="mt-2 w-full rounded border border-zinc-700 bg-zinc-950 p-2 text-[13px] text-zinc-300"
+                    className="mt-2 w-full dash-control"
                   />
                 </label>
                 {request.kind === "attention" && (
-                  <label className="block text-xs text-zinc-400">
+                  <label className="block dash-control text-fg-muted">
                     Reply (optional)
-                    <textarea
+                    <Textarea
                       aria-label="Approval reply"
                       disabled={busy}
                       value={reply}
                       onChange={(e) => setReply(e.target.value)}
                       maxLength={8000}
                       rows={3}
-                      className="mt-2 w-full rounded border border-zinc-700 bg-zinc-950 p-2 text-[13px] text-zinc-300"
+                      className="mt-2 w-full dash-control"
                     />
                   </label>
                 )}
                 {choice ? (
-                  <section className="rounded border border-amber-500/30 bg-amber-950/10 p-3">
-                    <p className="text-xs text-zinc-300">
+                  <section className="rounded border border-warning/30 bg-warning-muted/10 p-3">
+                    <p className="dash-control text-fg-muted">
                       Confirm{" "}
                       {choice === "approved"
                         ? "approval"
@@ -354,53 +354,53 @@ export function ApprovalDialog({
                       of this request?
                     </p>
                     <div className="mt-3 flex gap-2">
-                      <button
-                        className={approvalButton}
+                      <Button variant="outline" size="sm"
+                        className="font-mono dash-label"
                         disabled={!canDecide}
                         onClick={() => void decide()}
                       >
                         {busy ? "Submitting…" : "Confirm decision"}
-                      </button>
-                      <button
-                        className={approvalButton}
+                      </Button>
+                      <Button variant="outline" size="sm"
+                        className="font-mono dash-label"
                         disabled={busy}
                         onClick={() => setChoice(undefined)}
                       >
                         Back
-                      </button>
+                      </Button>
                     </div>
                   </section>
                 ) : (
                   <div className="flex gap-2">
                     {request.kind === "approval" ? (
                       <>
-                        <button
-                          className={`${approvalButton} text-emerald-300`}
+                        <Button variant="outline" size="sm"
+                          className={`font-mono dash-label text-success`}
                           disabled={!canDecide}
                           onClick={() => setChoice("approved")}
                         >
                           Approve
-                        </button>
-                        <button
-                          className={`${approvalButton} text-red-300`}
+                        </Button>
+                        <Button variant="outline" size="sm"
+                          className={`font-mono dash-label text-danger`}
                           disabled={!canDecide}
                           onClick={() => setChoice("denied")}
                         >
                           Deny
-                        </button>
+                        </Button>
                       </>
                     ) : (
-                      <button
-                        className={approvalButton}
+                      <Button variant="outline" size="sm"
+                        className="font-mono dash-label"
                         disabled={!canDecide}
                         onClick={() => setChoice("acknowledged")}
                       >
                         Acknowledge
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )}
-                <p className="text-[11px] text-zinc-500">
+                <p className="dash-support text-fg-faint">
                   Records your decision for the requesting application.
                   Execution and credential permissions are checked by that
                   application.
@@ -409,17 +409,17 @@ export function ApprovalDialog({
             )}
           </>
         )}
-        <div className="flex justify-between border-t border-zinc-800 pt-3">
-          <button
-            className={approvalButton}
+        <div className="flex justify-between border-t border-border pt-3">
+          <Button variant="outline" size="sm"
+            className="font-mono dash-label"
             disabled={busy}
             onClick={() => void refresh()}
           >
             Refresh request
-          </button>
-          <button className={approvalButton} disabled={busy} onClick={onClose}>
+          </Button>
+          <Button variant="outline" size="sm" className="font-mono dash-label" disabled={busy} onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
