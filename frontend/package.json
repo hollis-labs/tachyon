@@ -20,7 +20,7 @@
     "@hollis-labs/design-components": "0.5.0",
     "@hollis-labs/design-tokens": "0.5.0",
     "@hollis-labs/kit-admin": "file:../third_party/hollis-labs-kit-admin-0.1.0-cw0043-scale-b79a4da6.tgz",
-    "@hollis-labs/kit-dashboard": "file:../third_party/hollis-labs-kit-dashboard-0.5.0-cw0043-planner-a7bee445.tgz",
+    "@hollis-labs/kit-dashboard": "file:../third_party/hollis-labs-kit-dashboard-0.5.0-cw0043-defaults-d578d4e4.tgz",
     "@hollis-labs/kit-observe": "file:../third_party/hollis-labs-kit-observe-0.1.1-cw0043-08bd6b6b.tgz",
     "@hollis-labs/kit-settings": "file:../third_party/hollis-labs-kit-settings-0.2.0-cw0043-1196cce6.tgz",
     "@tachyon/console-ui": "0.1.0",
