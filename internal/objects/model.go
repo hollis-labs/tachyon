@@ -213,10 +213,10 @@ type Link struct {
 	ToID     string `json:"to_id"`
 }
 type Filter struct {
-	Kind           Kind
-	IncludeDeleted bool
-	AfterID        string
-	Limit          int
+	Kind           Kind   `json:"kind,omitempty"`
+	IncludeDeleted bool   `json:"include_deleted,omitempty"`
+	AfterID        string `json:"after_id,omitempty"`
+	Limit          int    `json:"limit,omitempty"`
 }
 
 // Patch uses JSON merge-patch semantics (null removes a local key, arrays replace).

@@ -199,12 +199,17 @@ func projectExecution(ctx context.Context, tx *sql.Tx, r Record) error {
 }
 
 type ExecutionFilter struct {
-	Kind                                                        Kind
-	Status                                                      string
-	ProjectID, WorkstreamID, AgentID, TaskID, RunID, WorkflowID string
-	IncludeDeleted                                              bool
-	AfterID                                                     string
-	Limit                                                       int
+	Kind           Kind   `json:"kind,omitempty"`
+	Status         string `json:"status,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
+	WorkstreamID   string `json:"workstream_id,omitempty"`
+	AgentID        string `json:"agent_id,omitempty"`
+	TaskID         string `json:"task_id,omitempty"`
+	RunID          string `json:"run_id,omitempty"`
+	WorkflowID     string `json:"workflow_id,omitempty"`
+	IncludeDeleted bool   `json:"include_deleted,omitempty"`
+	AfterID        string `json:"after_id,omitempty"`
+	Limit          int    `json:"limit,omitempty"`
 }
 
 func (s *Service) ListExecutions(ctx context.Context, f ExecutionFilter) ([]Record, error) {

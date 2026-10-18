@@ -192,23 +192,23 @@ func projectPlanning(ctx context.Context, tx *sql.Tx, r Record) error {
 // pagination. Empty Kind lists all planning kinds. AssignedTo matches agent or
 // team IDs through non-deleted assignment objects (any assignment state).
 type PlannerFilter struct {
-	Kind                Kind
-	Status              string
-	Priority            *int
-	ProjectID           string
-	PlanID              string
-	ParentID            string
-	EpicID              string
-	SprintID            string
-	WorkstreamID        string
-	CollectionID        string
-	AssignedTo          string
-	StrategicPriorityID string
-	TargetID            string
-	Promoted            *bool
-	IncludeDeleted      bool
-	AfterID             string
-	Limit               int
+	Kind                Kind   `json:"kind,omitempty"`
+	Status              string `json:"status,omitempty"`
+	Priority            *int   `json:"priority,omitempty"`
+	ProjectID           string `json:"project_id,omitempty"`
+	PlanID              string `json:"plan_id,omitempty"`
+	ParentID            string `json:"parent_id,omitempty"`
+	EpicID              string `json:"epic_id,omitempty"`
+	SprintID            string `json:"sprint_id,omitempty"`
+	WorkstreamID        string `json:"workstream_id,omitempty"`
+	CollectionID        string `json:"collection_id,omitempty"`
+	AssignedTo          string `json:"assigned_to,omitempty"`
+	StrategicPriorityID string `json:"strategic_priority_id,omitempty"`
+	TargetID            string `json:"target_id,omitempty"`
+	Promoted            *bool  `json:"promoted,omitempty"`
+	IncludeDeleted      bool   `json:"include_deleted,omitempty"`
+	AfterID             string `json:"after_id,omitempty"`
+	Limit               int    `json:"limit,omitempty"`
 }
 
 func (s *Service) ListPlanner(ctx context.Context, f PlannerFilter) ([]Record, error) {

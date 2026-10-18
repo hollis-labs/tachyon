@@ -135,6 +135,92 @@ drafts into master records. Revision retention, multi-source correlation, outbou
 sync, and large-inventory staging need explicit later policies; no history purge
 or upstream writeback is enabled here.
 
+## Shared local data verbs
+
+`internal/dataverbs` is the transport-independent provider surface over
+`objects.Service`. Provider selection is explicit (`tachyon`); verb names and
+request/response DTOs do not depend on Tether, Torque or the UI. `Provider` exposes
+`ID`, `Verbs` and `Invoke`; additional reviewed providers can be registered by the
+host without implicit fallback or cross-provider identity guessing. The local
+provider never invokes upstream APIs or launches work.
+
+The host mounts this surface at `/api/plugins/console/v1/data`, inside the existing
+operator cookie path. This is a **host-owned shared endpoint**, available to all
+plugin UIs even when the console subprocess is unavailable. It bypasses the
+response cache and returns `Cache-Control: no-store`. Existing provider proxies
+and frontend consumers continue to use their current contracts.
+
+- `GET /api/plugins/console/v1/data/providers` returns contract `version: 1`,
+  providers, and each verb's name, `mutates`, description and `input_schema`.
+  Schemas describe closed request shapes; domain validation also checks statuses,
+  kinds, dates, references, revisions and other cross-field rules.
+- Invoke a read with `GET /api/plugins/console/v1/data/providers/tachyon/verbs/{verb}`.
+  Supply a single URL-encoded `input` JSON object; omission means `{}`. GET bodies
+  and other query parameters are rejected. Read input is limited to 16 KiB.
+- Invoke a write with `POST` to the same verb path and an `application/json` body,
+  without query parameters. Every write requires same-origin browser access and
+  a currently elevated operator session, checked against the approval service on
+  every request. The host supplies audit actor `operator:browser`; request actors,
+  identity headers and ambient bearer tokens do not grant authority.
+- Read verbs are GET-only; writes are POST-only. Reads follow the host's existing
+  read-access boundary and do not require operator elevation. This is not an
+  external token-authenticated API. External API/MCP/CLI and scoped policy remain
+  separate work under CW-20261018-0019.
+
+Successful calls return `{ "version": 1, "provider": "tachyon", "verb": "…",
+"data": … }`. Errors use the host's flat `{ "code": "…", "message": "…" }`
+envelope, backed by Hollis Labs `svcerr`: `invalid` (400), `not_found` (404),
+`conflict` (409), `permission` (403), `internal` (500), `cancelled` (408), and
+`timeout` (504). HTTP/assurance errors additionally retain `method_not_allowed`,
+`unsupported_media_type`, `too_large`, `origin_denied`, `operator_session_required`
+and `assurance_insufficient`. Internal database/transport details are not exposed.
+
+| Verb | Input | Data result |
+| --- | --- | --- |
+| `objects.list` | kind?, include_deleted?, after_id?, limit? | records page |
+| `objects.get` | id | Record, including tombstones |
+| `objects.lookup_source` | provider, instance, collection, kind, external_id | Record |
+| `objects.create` | id (retained UUID), kind, definition, metadata? | Record |
+| `objects.patch` | id, expected_revision, definition?, metadata? | Record |
+| `objects.delete` / `objects.restore` | id, expected_revision | Record |
+| `objects.take_ownership` | id, expected_revision | Record |
+| `objects.history` | id, after_revision?, limit? | items, next_after_revision? |
+| `objects.links` | id, incoming? | items (current links, unpaginated) |
+| `planner.list` | snake_case PlannerFilter fields | records page |
+| `executions.list` | snake_case ExecutionFilter fields | records page |
+| `collections.members.list` | id, expected_revision?, offset?, limit? | CollectionPage |
+| `collections.members.set` | id, expected_revision, members | Record |
+| `planner.promote` | source_id, expected_revision, target_id, target_kind, overrides? | PromotionResult |
+| `planner.promotion.get` | id (source ID) | PromotionReceipt |
+
+A records page contains `items` and optional `next_after_id`. History has the
+analogous revision cursor. Page size defaults to 100, maximum 500; a full final
+page can return a cursor whose next page is empty. These are live keyset queries,
+not a multi-page snapshot. Ordered collection continuations additionally require
+the first page's revision. An omitted `members` field is an error; explicit null
+or `[]` clears membership. Unknown top-level fields, duplicate JSON keys,
+trailing JSON values, and input deeper than 64 levels are rejected. Write input
+is bounded to 3 MiB; existing per-definition and metadata limits still apply.
+
+For example, create a local idea with a caller-retained ID:
+
+```http
+POST /api/plugins/console/v1/data/providers/tachyon/verbs/objects.create
+Content-Type: application/json
+Origin: https://tachyon.nanite.cloud
+
+{"id":"019a0000-0000-7000-8000-000000000001","kind":"idea","definition":{"name":"Local orchestration","status":"draft","priority":2}}
+```
+
+The browser sends its existing operator cookie. Clients should retain a fresh UUID
+for each create/promotion intent. If a response is lost or cancelled, read back that
+ID or promotion receipt before retrying. Create retries with different current
+content conflict; promotion retries compare the original request and cannot undo
+later edits. General CAS mutations are not replay receipts: a retry after success
+conflicts on the stale revision. No write retry should invent a new UUID or replace
+the expected revision automatically. The frontend consumer cutover is a separate
+step; no cache/demo records are promoted implicitly.
+
 ## Tachyon-owned plans and tasks
 
 `objects.Plan` and `objects.Task` use the same UUID identity, ownership, CAS patch,
@@ -300,8 +386,9 @@ original receipt, even after later edits or deletion. A changed request conflict
 retries cannot overwrite edits, resurrect a tombstone or create duplicate work.
 Receipt-owned links survive subsequent patches and soft deletion. `Promoted`
 filters distinguish processed captures without overloading authored status.
-These are backend contracts; frontend cutover and public service/verb access are
-separate slices. Existing cache/demo Planner data is not automatically imported.
+These models are available through the shared local data verbs above. Frontend
+cutover and external API/MCP access remain separate. Existing cache/demo Planner
+data is not automatically imported.
 
 ## Sessions, runs and owned chat history
 

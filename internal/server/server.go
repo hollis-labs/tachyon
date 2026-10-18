@@ -25,6 +25,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
@@ -254,6 +255,10 @@ func (s *Server) Routes() http.Handler {
 	}
 	mux.Handle(transcripts.Prefix+"/", transcriptHandler)
 	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	if s.objects != nil {
+		// Local data is live and host-owned, independent of subprocess admission.
+		mux.Handle(dataverbs.Prefix+"/", dataverbs.NewHTTP([]dataverbs.Provider{dataverbs.NewLocal(s.objects)}, operator.RequireOperator))
+	}
 	// Object management uses live reads and server-verified operator mutations.
 	// Keep the whole prefix outside the generic plugin response cache.
 	mux.Handle("/api/plugins/console/v1/tether/", operator.RequireOperator(s.inventory.APIRoutes()))
