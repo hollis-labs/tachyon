@@ -1,0 +1,17 @@
+{
+  "status": "local review package; no registry release",
+  "source_repo": "https://github.com/hollis-labs/design-kit",
+  "source_commit": "19171c6f162b1cf5a57e87aa20bf4aca446fd45d",
+  "build_commands": [
+    "npm run build -w @hollis-labs/kit-dashboard",
+    "npm pack --ignore-scripts -w @hollis-labs/kit-dashboard"
+  ],
+  "packages": {
+    "kit-dashboard": {
+      "archive": "hollis-labs-kit-dashboard-0.5.0-cw0043-planner-a7bee445.tgz",
+      "sha256": "a7bee445b7f7be28dea298e1b4b5c41945b43755387a5b743871d50c8d3a24cd",
+      "source_commit": "19171c6f162b1cf5a57e87aa20bf4aca446fd45d"
+    }
+  },
+  "scope": "CW-20261018-0043: Planner shared search, view tabs, filter chips, record/status/rank compositions and compact dialog roles. Existing Builder package provenance remains in builder-kit-candidate-provenance.json."
+}

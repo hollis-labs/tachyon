@@ -24,7 +24,7 @@ export function PlannerRow({ db, item, sortable, onOpen }: PlannerRowProps) {
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`planner-table-row ${isDragging ? 'bg-panel-hover opacity-70' : ''}`}
+      className={`dash-record-list-row ${isDragging ? 'bg-panel-hover opacity-70' : ''}`}
     >
       <button
         type="button"
@@ -36,11 +36,11 @@ export function PlannerRow({ db, item, sortable, onOpen }: PlannerRowProps) {
       >
         <GripVertical className="h-3 w-3" />
       </button>
-      <button type="button" className="planner-row-trigger planner-table-grid" onClick={onOpen} aria-label={`Open ${item.id}: ${item.title}`}>
+      <button type="button" className="planner-row-trigger dash-record-grid" onClick={onOpen} aria-label={`Open ${item.id}: ${item.title}`}>
         <PlannerRowContent title={item.title} metadata={<>
             <span className="shrink-0">{item.id}</span>
             {facts.map((f) => <PlannerFact key={f} db={db} fact={f} />)}
-            {item.tldr && <span className="planner-cell-preview" title={item.tldr}>{item.tldr}</span>}
+            {item.tldr && <span className="min-w-0 overflow-hidden text-ellipsis" title={item.tldr}>{item.tldr}</span>}
           </>} status={<PlannerStatus status={item.status} />} trailing={<span className="inline-flex items-center gap-1" title={`${comments} comments`}>
           {comments > 0 && <><MessageSquare className="size-3" />{comments}</>}
         </span>} />

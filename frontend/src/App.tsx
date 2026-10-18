@@ -36,7 +36,7 @@ function PluginGate({ plugin, children }: { plugin: TachyonPlugin; children: Rea
 function Shell() {
   const navigate = useNavigate()
   const location = useLocation()
-  useDashboardDocumentScale(location.pathname.startsWith("/builder") ? "reference" : undefined)
+  useDashboardDocumentScale(["/builder", "/planner"].some(path => location.pathname.startsWith(path)) ? "reference" : undefined)
 
   const nav: (PluginNavItem & { plugin: string })[] = plugins
     .flatMap((p) => (p.nav ?? []).map((n) => ({ ...n, plugin: p.id })))
