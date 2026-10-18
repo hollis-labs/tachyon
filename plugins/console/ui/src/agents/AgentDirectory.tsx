@@ -211,9 +211,9 @@ function AgentDirectoryInner({ now: nowProp }: { now?: number } = {}) {
         {client.writeMode !== 'demonstration' && <span className={live ? 'text-success' : ''}>{live} running</span>}
         <span>{agents.filter((a) => !a.identity.enabled && !a.identity.retired).length} disabled</span>
         {client.writeMode !== 'demonstration' && <span>{agents.filter((a) => a.identity.retired).length} retired</span>}
-        <span className="ml-auto text-fg-muted">{client.writeMode === 'demonstration' ? 'Tether catalog · demonstration saves' : 'Agent catalog'}</span>
+        <span className="ml-auto text-fg-muted">{section === 'teams' && client.ownedTeams ? 'Tachyon team definitions' : client.writeMode === 'demonstration' ? 'Tether catalog · demonstration saves' : 'Agent catalog'}</span>
       </div>
-      {client.writeMode === 'demonstration' && <p className="border-b border-warning/30 bg-warning/5 px-4 py-3 dash-body text-warning">Save actions are no-op demonstrations pending write access. Nothing is written to Tether or Torque.</p>}
+      {client.writeMode === 'demonstration' && section !== 'teams' && <p className="border-b border-warning/30 bg-warning/5 px-4 py-3 dash-body text-warning">Agent and assignment saves are demonstrations pending write access. Team definitions can be saved under Teams.</p>}
       <AdminTabs label="Builder configuration" value={section}
         onChange={sec => { setSection(sec); setVisited(v => new Set([...v, sec])); setCreating(null) }}
         items={[{ key: 'agents', label: 'Definitions' }, { key: 'teams', label: 'Teams' }, { key: 'assignments', label: 'Assignments' }]}

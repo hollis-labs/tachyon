@@ -5,6 +5,7 @@ import { computeLifecyclePlan } from './lifecycle'
 import { computePlan, type AgentPlan } from './plan'
 import type { AgentRecord } from './types'
 import { parseTeamPolicy } from './team-config'
+import { createOwnedTeamsClient } from './owned-teams'
 
 interface CatalogAgent {
   id: string
@@ -75,6 +76,7 @@ export function createCatalogAgentsClient(fetchImpl: typeof fetch = hostFetch): 
   const meta = () => ({ id: `demo-${crypto.randomUUID()}`, now: Date.now(), actor: { id: 'local-preview', label: 'Local demonstration' } })
   return {
     writeMode: 'demonstration',
+    ownedTeams: fetchImpl === hostFetch ? createOwnedTeamsClient() : createOwnedTeamsClient(fetchImpl),
     getImportedTeams: async () => {
       const res = await fetchImpl('/api/plugins/console/v1/catalog/imported-teams', { headers: { Accept: 'application/json' } })
       if (!res.ok) throw new Error(`Local team snapshot read failed (${res.status}).`)

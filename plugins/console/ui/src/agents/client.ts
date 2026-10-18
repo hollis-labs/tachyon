@@ -4,6 +4,7 @@ import type { AgentPlan, ApplyOutcome, AuditEntry, PlanRequest } from './plan'
 import type { AgentListQuery, AgentRecord } from './types'
 import type { TeamActivationPolicy } from './team-config'
 import type { ImportedTeamSnapshot } from './ImportedTeamDetail'
+import type { OwnedTeamsClient } from './owned-teams'
 
 /**
  * Seam for the agent directory and manager. `createHttpAgentsClient`
@@ -16,6 +17,7 @@ import type { ImportedTeamSnapshot } from './ImportedTeamDetail'
  * cannot approve or apply without a fresh grant. Plans never change an agent.
  */
 export interface AgentsClient {
+  ownedTeams?: OwnedTeamsClient
   writeMode?: "demonstration"
   saveDemonstration?: (planId: string) => Promise<ApplyOutcome>
   getTeamActivationPolicy?: () => Promise<TeamActivationPolicy>

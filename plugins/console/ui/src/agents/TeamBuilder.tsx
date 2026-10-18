@@ -1,11 +1,11 @@
 import { AdminDirectory, AdminRecordButton } from '@hollis-labs/kit-admin'
 import { AdminInput, AdminSelect } from '@hollis-labs/kit-admin'
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { dataRefreshRegistry } from "@tachyon/host-sdk";
 import { EmptyState } from "@hollis-labs/design-components";
 import { Field, inputCls } from "./AgentEditor";
 import { useAgentsClient } from "./context";
-import { DEMO_SAVE_MESSAGE } from "./catalog-client";
+import { teamDraftFromRecord, type OwnedTeam, type TeamPage } from './owned-teams';
 import { Block, Btn } from "./ui";
 import { ImportedTeamDetail, importedTeamKey, type ImportedTeamSnapshot } from './ImportedTeamDetail';
 import {
@@ -19,6 +19,39 @@ import {
 /** Authored team workspace. Local drafts never represent live memberships. */
 export function TeamBuilder() {
 	const client = useAgentsClient();
+	const store = client.ownedTeams;
+	const [owned, setOwned] = useState<OwnedTeam[]>(() => store?.cached()?.items ?? []);
+	const [next, setNext] = useState<string | undefined>(() => store?.cached()?.next_after_id);
+	const [ownedError, setOwnedError] = useState<string | null>(null);
+	const [writeError, setWriteError] = useState<string | null>(null);
+	const [busy, setBusy] = useState(false);
+	const [bases, setBases] = useState<Record<string, OwnedTeam>>({});
+	const readVersion = useRef(0);
+	const loading = useRef(false);
+	const mounted = useRef(true);
+	const loadedPages = useRef(new Map<string, TeamPage>());
+	const loadOwned = useCallback(async (after = '') => {
+		if (!store || loading.current) return;
+		loading.current = true;
+		const version = readVersion.current;
+		try {
+			const page = await store.list(after);
+			if (!mounted.current || version !== readVersion.current) return;
+			loadedPages.current.set(after, page);
+			const pages = [...loadedPages.current.values()];
+			setOwned([...new Map(pages.flatMap(p => p.items).map(row => [row.id, row])).values()]);
+			setNext(pages.at(-1)?.next_after_id); setOwnedError(null);
+		} catch (e) { if (mounted.current) setOwnedError(e instanceof Error ? e.message : 'Saved teams unavailable'); }
+		finally { loading.current = false; }
+	}, [store]);
+	useEffect(() => {
+		mounted.current = true;
+		void loadOwned();
+		const refresh = async () => { for (const cursor of loadedPages.current.size ? loadedPages.current.keys() : ['']) await loadOwned(cursor); };
+		const off = dataRefreshRegistry('owned-teams').subscribe(() => void refresh());
+		const timer = setInterval(() => void refresh(), 30_000);
+		return () => { mounted.current = false; off(); clearInterval(timer); };
+	}, [loadOwned]);
 	const [policy, setPolicy] = useState<TeamActivationPolicy | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [drafts, setDrafts] = useState<TeamConfigDraft[]>([]);
@@ -53,6 +86,34 @@ export function TeamBuilder() {
 		return dataRefreshRegistry("catalog").subscribe(() => void load());
 	}, [load]);
 	const draft = drafts.find((d) => d.key === selected);
+	const base = selected ? bases[selected] : undefined;
+	const openOwned = async (id: string, reload = false) => {
+		if (busy || !store) return;
+		if (!reload && drafts.some(d => d.key === id)) { select(id); return; }
+		setBusy(true);
+		try {
+			const row = await store.get(id);
+			const value = teamDraftFromRecord(row);
+			if (!value) throw new Error('This team uses another editor format. Its definition is retained unchanged.');
+			setBases(b => ({ ...b, [id]: row }));
+			setDrafts(ds => [...ds.filter(d => d.key !== id), value]);
+			select(id); setOwnedError(null); setWriteError(null);
+		} catch (e) { setOwnedError(e instanceof Error ? e.message : 'Saved team unavailable'); }
+		finally { setBusy(false); }
+	};
+	const save = async (retire = false) => {
+		if (!store || !draft || !review || busy) return;
+		setBusy(true); setWriteError(null); readVersion.current++;
+		try {
+			const row = retire && base ? await store.retire(base, !!base.deleted_at) : await store.save(draft, review, base);
+			readVersion.current++;
+			setBases(b => ({ ...b, [row.id]: row }));
+			setOwned(rows => [row, ...rows.filter(r => r.id !== row.id)]);
+			for (const page of loadedPages.current.values()) page.items = page.items.map(item => item.id === row.id ? row : item);
+			setMessage(retire ? row.deleted_at ? 'Team retired. Its history is retained.' : 'Team restored.' : 'Team definition saved in Tachyon.');
+		} catch (e) { setWriteError(e instanceof Error ? e.message : 'Team save failed. Your draft is preserved.'); }
+		finally { setBusy(false); }
+	};
 	const savedTeams = [...(snapshot?.teams ?? [])].sort((a, b) => a.id.localeCompare(b.id) || b.version - a.version);
 	const imported = savedTeams.find(t => importedTeamKey(t) === selected) ?? (selected === null ? savedTeams[0] : undefined);
 	const issues = draft ? teamDraftIssues(draft, policy) : [];
@@ -73,6 +134,7 @@ export function TeamBuilder() {
 		setMessage(null);
 	};
 	const select = (key: string) => {
+		if (busy) return;
 		setSelected(key);
 		setReview(null);
 		setMessage(null);
@@ -89,14 +151,16 @@ export function TeamBuilder() {
 						policy.
 					</p>
 				</div>
-				<Btn tone="primary" onClick={create}>
+				<Btn tone="primary" onClick={create} disabled={busy}>
 					New team draft
 				</Btn>
 			</div>
 			<p className="border-b border-border/80 px-4 py-2 dash-support text-fg-muted">
-				Team drafts stay in this Builder workspace until you leave or reload.
-				Imported saved teams are read-only snapshots; live memberships are not connected here yet.
+				Save team definitions in Tachyon after reviewing them. Unsaved edits stay in this workspace.
+				Launching a team is a separate action. Imported snapshots remain read-only.
 			</p>
+			{ownedError && <div role="alert" className="border-b border-danger/30 px-4 py-3 dash-body text-danger">{ownedError} <Btn disabled={busy} onClick={() => void loadOwned()}>Refresh saved teams</Btn></div>}
+			{writeError && <div role="alert" className="border-b border-danger/30 px-4 py-3 dash-body text-danger">{writeError}</div>}
 			{error && (
 				<div
 					role="alert"
@@ -108,13 +172,16 @@ export function TeamBuilder() {
 			)}
 			<AdminDirectory label="Team configuration" layout="compact" records={
 				<aside>
+					<div className="border-b border-border/80 px-4 py-3"><h3 className="font-mono dash-label uppercase tracking-widest text-fg-muted">Tachyon team definitions</h3></div>
+					<ul aria-label="Tachyon teams">{owned.map(row => <li key={row.id}><AdminRecordButton selected={selected === row.id} onSelect={() => void openOwned(row.id)} size="comfortable" title={row.name} description={`Revision ${row.revision}${row.deleted_at ? ' · retired' : ''}${row.ownership !== 'tachyon' ? ' · provider observation' : ''}`} /></li>)}</ul>
+					{next && <Btn disabled={busy} onClick={() => void loadOwned(next)}>Load more saved teams</Btn>}
 					<div className="border-b border-border/80 px-4 py-3"><h3 className="font-mono dash-label uppercase tracking-widest text-fg-muted">Saved team snapshots</h3><p className="mt-1 dash-support text-fg-faint">{snapshot ? `${new Set(savedTeams.map(t => t.id)).size} teams · ${savedTeams.length} versions · manually imported` : 'Loading local snapshot…'}</p>
 					{snapshotError && <p role="alert" className="mt-2 dash-support text-danger">{snapshotError} <button type="button" className="underline" onClick={() => void loadSnapshot()}>Retry snapshot</button></p>}</div>
 					<ul aria-label="Saved teams">{savedTeams.map(t => <li key={importedTeamKey(t)}><AdminRecordButton selected={imported === t} onSelect={() => select(importedTeamKey(t))} size="comfortable" title={t.id} description={`${t.name} · version ${t.version}`} /></li>)}</ul>
 					{snapshot && !savedTeams.length && <p className="px-4 py-3 dash-support text-fg-faint">No saved team snapshot has been imported, or it has expired from the cache.</p>}
 					<div className="border-b border-border/80 px-4 py-3">
 						<h3 className="mb-2 font-mono dash-label uppercase tracking-widest text-fg-muted">
-							Local drafts · {drafts.length}
+									Open drafts · {drafts.length}
 						</h3>
 						<AdminInput
 							aria-label="Search team drafts"
@@ -133,7 +200,7 @@ export function TeamBuilder() {
 							)
 							.map((d) => (
 								<li key={d.key}>
-                  <AdminRecordButton selected={selected === d.key} onSelect={() => select(d.key)} size="comfortable" title={d.name || 'Untitled team'} description={`${d.slots.length} seats · unsaved draft`} />
+                  <AdminRecordButton selected={selected === d.key} onSelect={() => { if (!busy) select(d.key) }} size="comfortable" title={d.name || 'Untitled team'} description={`${d.slots.length} seats · ${bases[d.key] ? 'editing saved team' : 'unsaved draft'}`} />
 								</li>
 							))}
 					</ul>
@@ -191,9 +258,8 @@ export function TeamBuilder() {
 								seats
 							</p>
 							<p className="mt-3 dash-body text-fg-muted">
-								This is a local configuration review. Tether must verify pins,
-								host policy and launch eligibility before a future real save or
-								run.
+								Save this configuration in Tachyon. Tether verifies definition pins,
+								host policy and launch eligibility when a team is deployed.
 							</p>
 						</Block>
 						<Block title="Seat assignments">
@@ -243,6 +309,7 @@ export function TeamBuilder() {
 						)}
 						<div className="flex gap-3 px-5 py-4">
 							<Btn
+								disabled={busy}
 								onClick={() => {
 									setReview(null);
 									setMessage(null);
@@ -252,11 +319,13 @@ export function TeamBuilder() {
 							</Btn>
 							<Btn
 								tone="primary"
-								disabled={!!message}
-								onClick={() => setMessage(DEMO_SAVE_MESSAGE)}
+								disabled={busy || !!message || !store || !!base?.deleted_at}
+								onClick={() => void save()}
 							>
-								Save demonstration
+								{busy ? 'Saving…' : 'Save team definition'}
 							</Btn>
+							{(base || writeError) && <Btn disabled={busy} onClick={() => void openOwned(draft.key, true)}>Discard draft and reload saved version</Btn>}
+							{base && <Btn disabled={busy || !!message} onClick={() => void save(true)}>{base.deleted_at ? 'Restore team definition' : 'Retire team definition'}</Btn>}
 						</div>
 					</article>
 				) : (

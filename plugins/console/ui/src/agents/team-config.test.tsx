@@ -28,8 +28,22 @@ launches:
     source: catalog:team-definitions/worker.md
 `;
 function setup(importedTeams: unknown[] = []) {
+	const saved = new Map<string, import('./owned-teams').OwnedTeam>();
 	const fetcher = vi.fn(
 		async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = new URL(String(input), 'http://localhost');
+			if (url.pathname.includes('/data/providers/tachyon/verbs/')) {
+				const verb = url.pathname.split('/').pop()!;
+				const q = JSON.parse(init?.body as string || url.searchParams.get('input') || '{}');
+				let data: unknown;
+				if (verb === 'objects.list') data = { items: [...saved.values()] };
+				else if (verb === 'objects.get') data = saved.get(q.id);
+				else if (verb === 'objects.create') {
+					data = { id: q.id, kind: 'team', ownership: 'tachyon', name: q.definition.name, revision: 1, definition: q.definition };
+					saved.set(q.id, data as import('./owned-teams').OwnedTeam);
+				} else throw new Error('Unexpected owned verb');
+				return new Response(JSON.stringify({ version: 1, provider: 'tachyon', verb, data }));
+			}
 			if (init?.method && init.method !== "GET")
 				throw new Error("Unexpected write");
 			const kind = String(input).split("/").pop();
@@ -78,7 +92,7 @@ it("preserves exact definition pins and refuses missing bindings or unsupported 
 		"invalid launch",
 	);
 });
-it("configures teams from live bindings, keeps drafts across tabs and refresh, and performs a no-op save", async () => {
+it("configures teams from live bindings, keeps drafts across tabs and refresh, and saves owned configuration", async () => {
 	const { fetcher } = setup();
 	fireEvent.click(
 		await screen.findByRole("tab", { name: "Teams" }),
@@ -108,10 +122,28 @@ it("configures teams from live bindings, keeps drafts across tabs and refresh, a
 	);
 	fetcher.mockClear();
 	fireEvent.click(
-		within(review).getByRole("button", { name: "Save demonstration" }),
+		within(review).getByRole("button", { name: "Save team definition" }),
 	);
-	await within(review).findByText(DEMO_SAVE_MESSAGE);
-	expect(fetcher).not.toHaveBeenCalled();
+	await within(review).findByText('Team definition saved in Tachyon.');
+	const write = fetcher.mock.calls.find(([, init]) => init?.method === 'POST')!;
+	expect(String(write[0])).toContain('/data/providers/tachyon/verbs/objects.create');
+	const body = JSON.parse(write[1]!.body as string);
+	expect(body.definition.properties.builder_team.preview.slots[0].definition_ref.revision).toBe('r1');
+	expect(body.definition.coordinator).toBe('coordinator');
+	fireEvent.click(within(review).getByRole('button', { name: 'Discard draft and reload saved version' }));
+	await screen.findByRole('article', { name: 'Configure team draft' });
+	expect((screen.getByLabelText('Team name') as HTMLInputElement).value).toBe('Review team');
+	fireEvent.change(screen.getByLabelText('Team name'), { target: { value: 'Keep my conflicting edit' } });
+	fireEvent.click(screen.getByRole('button', { name: 'Review team draft' }));
+	const original = fetcher.getMockImplementation()!;
+	fetcher.mockImplementation((input, init) => String(input).endsWith('/objects.patch')
+		? Promise.resolve(new Response(JSON.stringify({ error: 'conflict' }), { status: 409 })) : original(input, init));
+	fireEvent.click(screen.getByRole('button', { name: 'Save team definition' }));
+	await screen.findByText(/The saved team changed/);
+	dataRefreshRegistry('owned-teams').refresh();
+	fireEvent.click(screen.getByRole('button', { name: 'Continue editing' }));
+	expect((screen.getByLabelText('Team name') as HTMLInputElement).value).toBe('Keep my conflicting edit');
+	expect(screen.getByText(/The saved team changed/)).toBeTruthy();
 	expect(screen.queryByText("Apply")).toBeNull();
 });
 it("stages and reviews a work assignment without writing or inventing live assignments", async () => {

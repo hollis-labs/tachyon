@@ -807,6 +807,21 @@ source for execution data.
 
 ## Plugin inventory
 
+Builder's Teams editor saves authored definitions through the guarded Tachyon
+`objects.create` / `objects.patch` verbs. The object UUID is retained across
+create retries; edits, retirement and restoration use the reviewed revision.
+Native slots/coordinator remain queryable, while `properties.builder_team`
+retains the editor draft and complete pinned provider preview. The preview is
+desired configuration, not evidence of provider acceptance or a running team.
+Saving never registers, launches or changes a team in Tether.
+
+Saved teams use 50-record cursor pages, an in-memory page cache and background
+refresh. Details load when selected; open drafts keep their original revision
+until explicitly reloaded. Conflicts and failed saves retain the draft. Imported
+Tether snapshots remain read-only; definitions authored in other formats are
+retained without forcing them through this editor. Agent and assignment saves
+remain demonstrations until their respective integration slices.
+
 | Plugin | Backend | UI routes |
 |---|---|---|
 | `planner` | host-owned Planner API and local change stream; direct primary task enrichment | `/planner`, `/planner/:db`, `/planner/:db/:id` |
