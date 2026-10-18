@@ -70,13 +70,13 @@ export function DataStatus() {
         ? "catalog"
         : pathname.startsWith("/planner")
           ? "planner"
-          : pathname.startsWith("/prs") || pathname.startsWith("/pr/")
+          : pathname.startsWith("/repos") || pathname.startsWith("/prs") || pathname.startsWith("/pr/")
             ? "forge"
             : "torque"
   const rows = snapshots.filter((r) => r.scope === scope && r.page === pathname)
   const status = freshnessSummary(rows, now)
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-1.5 dash-support text-muted-foreground">
       <span className={status.problem ? "text-destructive" : "text-foreground"} role="status">
         {status.label === "Live" ? "●" : "○"} {status.label}
       </span>

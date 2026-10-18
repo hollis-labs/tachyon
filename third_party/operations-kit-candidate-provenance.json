@@ -1,0 +1,17 @@
+{
+  "status": "local review package; no registry release",
+  "source_repo": "https://github.com/hollis-labs/design-kit",
+  "source_commit": "c930349e85ddfcad90e3d16a332c112555fa5dea",
+  "build_commands": [
+    "npm run build -w @hollis-labs/kit-dashboard",
+    "npm pack --ignore-scripts -w @hollis-labs/kit-dashboard"
+  ],
+  "packages": {
+    "kit-dashboard": {
+      "archive": "hollis-labs-kit-dashboard-0.5.0-cw0043-operations-60480bde.tgz",
+      "sha256": "60480bdeeac2918b8aa8bf0043bd02e71a48b60c6dbaf9e22655a12ebc11cc66",
+      "source_commit": "c930349e85ddfcad90e3d16a332c112555fa5dea"
+    }
+  },
+  "scope": "CW-20261018-0043: Transcripts, Approvals and Repos shared tables, control variants, compact metrics and categorical series. Replaces dashboard default candidate; other kit packages unchanged."
+}

@@ -15,16 +15,18 @@ import (
 )
 
 type Sent struct {
-	Key       string `json:"key"`
-	LaunchID  string `json:"launch_id"`
-	Body      string `json:"body"`
-	At        int64  `json:"at"`
-	Status    string `json:"status"`
-	Error     string `json:"error,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
+	Key            string `json:"key"`
+	LaunchID       string `json:"launch_id"`
+	Body           string `json:"body"`
+	At             int64  `json:"at"`
+	Status         string `json:"status"`
+	Error          string `json:"error,omitempty"`
+	SessionID      string `json:"session_id,omitempty"`
+	LocalSessionID string `json:"local_session_id,omitempty"`
 }
 type Outbox struct {
 	Store    *localstore.Store
+	SourceID string
 	Identity func() (string, error)
 	Next     http.Handler
 	mu       sync.Mutex
@@ -124,7 +126,10 @@ func (o *Outbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	err = o.Store.Writer.Submit(ctx, "chat_outbox_result", func(ctx context.Context, tx *sql.Tx) error {
 		_, e := tx.ExecContext(ctx, "UPDATE chat_outbox SET status=?,error=?,session_id=? WHERE identity=? AND id=?", status, detail, session, identity, in.Key)
-		return e
+		if e != nil {
+			return e
+		}
+		return linkOutboxSession(ctx, tx, o.SourceID, identity, in.Key)
 	})
 	if err != nil {
 		capture.header.Set("X-Tachyon-Outbox-Error", "storage")
@@ -138,7 +143,7 @@ func (o *Outbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(capture.body.Bytes())
 }
 func (o *Outbox) list(w http.ResponseWriter, r *http.Request, identity string) {
-	rows, err := o.Store.Reader.QueryContext(r.Context(), "SELECT id,launch_id,body,created_at,status,error,session_id FROM chat_outbox WHERE identity=? AND launch_id=? ORDER BY created_at DESC LIMIT 500", identity, r.URL.Query().Get("launch_id"))
+	rows, err := o.Store.Reader.QueryContext(r.Context(), "SELECT t.id,t.launch_id,t.body,t.created_at,t.status,t.error,t.session_id,COALESCE(l.session_object_id,'') FROM chat_outbox t LEFT JOIN chat_outbox_session_links l ON l.identity=t.identity AND l.id=t.id WHERE t.identity=? AND t.launch_id=? ORDER BY t.created_at DESC LIMIT 500", identity, r.URL.Query().Get("launch_id"))
 	if err != nil {
 		fail(w, 503, "storage", "Could not load outgoing chat history")
 		return
@@ -147,7 +152,7 @@ func (o *Outbox) list(w http.ResponseWriter, r *http.Request, identity string) {
 	out := []Sent{}
 	for rows.Next() {
 		var s Sent
-		if err = rows.Scan(&s.Key, &s.LaunchID, &s.Body, &s.At, &s.Status, &s.Error, &s.SessionID); err != nil {
+		if err = rows.Scan(&s.Key, &s.LaunchID, &s.Body, &s.At, &s.Status, &s.Error, &s.SessionID, &s.LocalSessionID); err != nil {
 			fail(w, 503, "storage", "Could not read outgoing chat history")
 			return
 		}

@@ -15,13 +15,27 @@ import (
 type Kind string
 
 const (
-	AgentKind      Kind = "agent"
-	TeamKind       Kind = "team"
-	AssignmentKind Kind = "assignment"
-	WorkflowKind   Kind = "workflow"
-	ProjectKind    Kind = "project"
-	MachineKind    Kind = "machine"
-	RepositoryKind Kind = "repository"
+	AgentKind             Kind = "agent"
+	TeamKind              Kind = "team"
+	AssignmentKind        Kind = "assignment"
+	WorkflowKind          Kind = "workflow"
+	ProjectKind           Kind = "project"
+	MachineKind           Kind = "machine"
+	RepositoryKind        Kind = "repository"
+	PlanKind              Kind = "plan"
+	TaskKind              Kind = "task"
+	EpicKind              Kind = "epic"
+	SprintKind            Kind = "sprint"
+	CollectionKind        Kind = "collection"
+	WorkstreamKind        Kind = "workstream"
+	SessionKind           Kind = "session"
+	RunKind               Kind = "run"
+	InboxItemKind         Kind = "inbox_item"
+	IdeaKind              Kind = "idea"
+	DecisionKind          Kind = "decision"
+	RiskKind              Kind = "risk"
+	RoadmapItemKind       Kind = "roadmap_item"
+	StrategicPriorityKind Kind = "strategic_priority"
 )
 
 var (
@@ -199,10 +213,10 @@ type Link struct {
 	ToID     string `json:"to_id"`
 }
 type Filter struct {
-	Kind           Kind
-	IncludeDeleted bool
-	AfterID        string
-	Limit          int
+	Kind           Kind   `json:"kind,omitempty"`
+	IncludeDeleted bool   `json:"include_deleted,omitempty"`
+	AfterID        string `json:"after_id,omitempty"`
+	Limit          int    `json:"limit,omitempty"`
 }
 
 // Patch uses JSON merge-patch semantics (null removes a local key, arrays replace).
@@ -214,7 +228,7 @@ type Patch struct {
 
 func validKind(k Kind) bool {
 	switch k {
-	case AgentKind, TeamKind, AssignmentKind, WorkflowKind, ProjectKind, MachineKind, RepositoryKind:
+	case AgentKind, TeamKind, AssignmentKind, WorkflowKind, ProjectKind, MachineKind, RepositoryKind, PlanKind, TaskKind, EpicKind, SprintKind, CollectionKind, WorkstreamKind, SessionKind, RunKind, InboxItemKind, IdeaKind, DecisionKind, RiskKind, RoadmapItemKind, StrategicPriorityKind:
 		return true
 	}
 	return false
@@ -290,6 +304,14 @@ func validateDefinition(kind Kind, raw json.RawMessage) (string, []referenceLink
 	}
 	var err error
 	switch kind {
+	case InboxItemKind, IdeaKind, DecisionKind, RiskKind, RoadmapItemKind, StrategicPriorityKind:
+		return validatePlannerRecord(kind, raw)
+	case SessionKind, RunKind:
+		return validateExecutionDefinition(kind, raw)
+	case PlanKind, TaskKind:
+		return validatePlanningDefinition(kind, raw)
+	case EpicKind, SprintKind, CollectionKind, WorkstreamKind:
+		return validateOrganizationDefinition(kind, raw)
 	case AgentKind:
 		var d Agent
 		err = strict(raw, &d)

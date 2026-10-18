@@ -23,7 +23,7 @@ func TestOutboxPersistsAndReplaysWithoutDuplicateSend(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"session_id":"s1","mode":"turn"}`))
 	})
-	handler := &Outbox{Store: db, Identity: func() (string, error) { return "principal", nil }, Next: next}
+	handler := &Outbox{Store: db, SourceID: "https://tether.example", Identity: func() (string, error) { return "principal", nil }, Next: next}
 	send := func(text string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("POST", ChatPrefix+"/agents/pm/send", strings.NewReader(`{"text":"`+text+`","idempotency_key":"message-key"}`))
 		req.SetPathValue("launch", "pm")
@@ -56,6 +56,9 @@ func TestOutboxPersistsAndReplaysWithoutDuplicateSend(t *testing.T) {
 	handler.ServeHTTP(res, httptest.NewRequest("GET", ChatPrefix+"/outbox?launch_id=pm", nil))
 	if !strings.Contains(res.Body.String(), `"status":"sent"`) || !strings.Contains(res.Body.String(), `"body":"hello"`) {
 		t.Fatal(res.Body.String())
+	}
+	if !strings.Contains(res.Body.String(), `"local_session_id":`) || !strings.Contains(res.Body.String(), `"session_id":"s1"`) {
+		t.Fatal("outbox lost transport/local identity", res.Body.String())
 	}
 	handler.Identity = func() (string, error) { return "other-principal", nil }
 	res = httptest.NewRecorder()

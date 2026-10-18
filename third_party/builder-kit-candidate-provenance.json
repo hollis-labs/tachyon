@@ -1,0 +1,35 @@
+{
+  "status": "local review packages; no registry release",
+  "source_repo": "https://github.com/hollis-labs/design-kit",
+  "source_commit": "fb38761e24abcf4931cf84ed6cb11b51886c28bf",
+  "build_commands": [
+    "npm run build -w @hollis-labs/kit-dashboard",
+    "npm run build -w @hollis-labs/kit-admin",
+    "npm pack --ignore-scripts (each listed package)"
+  ],
+  "packages": {
+    "kit-dashboard": {
+      "archive": "hollis-labs-kit-dashboard-0.5.0-cw0043-yellow-1c119269.tgz",
+      "sha256": "1c119269df885c9719e6b06456e7cb9d5c1ee2c1087a27605d78a482f0996848",
+      "source_commit": "fb38761e24abcf4931cf84ed6cb11b51886c28bf"
+    },
+    "kit-admin": {
+      "archive": "hollis-labs-kit-admin-0.1.0-cw0043-scale-b79a4da6.tgz",
+      "sha256": "b79a4da684b70ac503c9c35522fb56a30c1f9e249f9f8fca8c7e7ef3f5b9c7e3",
+      "source_commit": "859b6ba2c06e8a76fc078869228be6828a306cfe"
+    },
+    "kit-settings": {
+      "archive": "hollis-labs-kit-settings-0.2.0-cw0043-1196cce6.tgz",
+      "sha256": "1196cce64c3184044803385b1e66c6530cef39a83a2639cfb0a51b8dbf8d72f1",
+      "source_commit": "e986300aa443ce6b07e2020633873093cef2e515"
+    },
+    "kit-observe": {
+      "archive": "hollis-labs-kit-observe-0.1.1-cw0043-08bd6b6b.tgz",
+      "sha256": "08bd6b6bde147d737be6e5a52c50aefa2a42bb8d4c9927169d8cbefdcd738eff",
+      "source_commit": "e986300aa443ce6b07e2020633873093cef2e515"
+    }
+  },
+  "scaling_followup": "CW-20261018-0043: compact typography roles, configuration avatars, explicit shared reference document geometry, button role precedence and Builder adoption.",
+  "source_pr": "https://github.com/hollis-labs/design-kit/pull/115",
+  "accent_followup": "Builder opts into the shared yellow action/attention palette matching the original Tachyon amber-300 accent."
+}

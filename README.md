@@ -122,21 +122,337 @@ Failed reconciliation rolls back the batch and watermark together. Local deletio
 is separate and cannot be undone by sync. `TakeOwnership` records the explicit move
 to a Tachyon master: future provider changes remain observations and cannot change
 or delete the master. No operation here writes upstream, launches agents, applies
-policy or deploys machines. Definitions describe configuration, not live runtime
-state. Adapters must normalize non-secret data instead of persisting raw credentials
+policy or deploys machines. Authored definitions describe configuration; session
+and run records describe execution observations. Adapters normalize non-secret data instead of persisting raw credentials
 or provider environment/config dumps.
 
-Planner will be Tachyon-owned (CW-20261018-0017). Chat session/run identities
-(CW-20261018-0018), additional provider adapters (CW-20261018-0016), and shared verb/API/MCP/CLI
-access with policy (CW-20261018-0019) follow this foundation. The UI still reads its
+Planner records are Tachyon-owned (CW-20261018-0017). Session/run records and chat
+identity links are described below (CW-20261018-0018). Additional provider adapters
+(CW-20261018-0016) and shared verb/API/MCP/CLI access with policy (CW-20261018-0019)
+follow this foundation. The UI still reads its
 existing adapters; this slice does not silently migrate cached responses or demo
 drafts into master records. Revision retention, multi-source correlation, outbound
 sync, and large-inventory staging need explicit later policies; no history purge
 or upstream writeback is enabled here.
 
+## Shared local data verbs
+
+`internal/dataverbs` is the transport-independent provider surface over
+`objects.Service`. Provider selection is explicit (`tachyon`); verb names and
+request/response DTOs do not depend on Tether, Torque or the UI. `Provider` exposes
+`ID`, `Verbs` and `Invoke`; additional reviewed providers can be registered by the
+host without implicit fallback or cross-provider identity guessing. The local
+provider never invokes upstream APIs or launches work.
+
+The host mounts this surface at `/api/plugins/console/v1/data`, inside the existing
+operator cookie path. This is a **host-owned shared endpoint**, available to all
+plugin UIs even when the console subprocess is unavailable. It bypasses the
+response cache and returns `Cache-Control: no-store`. Existing provider proxies
+and frontend consumers continue to use their current contracts.
+
+- `GET /api/plugins/console/v1/data/providers` returns contract `version: 1`,
+  providers, and each verb's name, `mutates`, description and `input_schema`.
+  Schemas describe closed request shapes; domain validation also checks statuses,
+  kinds, dates, references, revisions and other cross-field rules.
+- Invoke a read with `GET /api/plugins/console/v1/data/providers/tachyon/verbs/{verb}`.
+  Supply a single URL-encoded `input` JSON object; omission means `{}`. GET bodies
+  and other query parameters are rejected. Read input is limited to 16 KiB.
+- Invoke a write with `POST` to the same verb path and an `application/json` body,
+  without query parameters. Every write requires same-origin browser access and
+  a currently elevated operator session, checked against the approval service on
+  every request. The host supplies audit actor `operator:browser`; request actors,
+  identity headers and ambient bearer tokens do not grant authority.
+- Read verbs are GET-only; writes are POST-only. Reads follow the host's existing
+  read-access boundary and do not require operator elevation. This is not an
+  external token-authenticated API. External API/MCP/CLI and scoped policy remain
+  separate work under CW-20261018-0019.
+
+Successful calls return `{ "version": 1, "provider": "tachyon", "verb": "…",
+"data": … }`. Errors use the host's flat `{ "code": "…", "message": "…" }`
+envelope, backed by Hollis Labs `svcerr`: `invalid` (400), `not_found` (404),
+`conflict` (409), `permission` (403), `internal` (500), `cancelled` (408), and
+`timeout` (504). HTTP/assurance errors additionally retain `method_not_allowed`,
+`unsupported_media_type`, `too_large`, `origin_denied`, `operator_session_required`
+and `assurance_insufficient`. Internal database/transport details are not exposed.
+
+| Verb | Input | Data result |
+| --- | --- | --- |
+| `objects.list` | kind?, include_deleted?, after_id?, limit? | records page |
+| `objects.get` | id | Record, including tombstones |
+| `objects.lookup_source` | provider, instance, collection, kind, external_id | Record |
+| `objects.create` | id (retained UUID), kind, definition, metadata? | Record |
+| `objects.patch` | id, expected_revision, definition?, metadata? | Record |
+| `objects.delete` / `objects.restore` | id, expected_revision | Record |
+| `objects.take_ownership` | id, expected_revision | Record |
+| `objects.history` | id, after_revision?, limit? | items, next_after_revision? |
+| `objects.links` | id, incoming? | items (current links, unpaginated) |
+| `planner.list` | snake_case PlannerFilter fields | records page |
+| `executions.list` | snake_case ExecutionFilter fields | records page |
+| `collections.members.list` | id, expected_revision?, offset?, limit? | CollectionPage |
+| `collections.members.set` | id, expected_revision, members | Record |
+| `planner.promote` | source_id, expected_revision, target_id, target_kind, overrides? | PromotionResult |
+| `planner.promotion.get` | id (source ID) | PromotionReceipt |
+
+A records page contains `items` and optional `next_after_id`. History has the
+analogous revision cursor. Page size defaults to 100, maximum 500; a full final
+page can return a cursor whose next page is empty. These are live keyset queries,
+not a multi-page snapshot. Ordered collection continuations additionally require
+the first page's revision. An omitted `members` field is an error; explicit null
+or `[]` clears membership. Unknown top-level fields, duplicate JSON keys,
+trailing JSON values, and input deeper than 64 levels are rejected. Write input
+is bounded to 3 MiB; existing per-definition and metadata limits still apply.
+
+For example, create a local idea with a caller-retained ID:
+
+```http
+POST /api/plugins/console/v1/data/providers/tachyon/verbs/objects.create
+Content-Type: application/json
+Origin: https://tachyon.nanite.cloud
+
+{"id":"019a0000-0000-7000-8000-000000000001","kind":"idea","definition":{"name":"Local orchestration","status":"draft","priority":2}}
+```
+
+The browser sends its existing operator cookie. Clients should retain a fresh UUID
+for each create/promotion intent. If a response is lost or cancelled, read back that
+ID or promotion receipt before retrying. Create retries with different current
+content conflict; promotion retries compare the original request and cannot undo
+later edits. General CAS mutations are not replay receipts: a retry after success
+conflicts on the stale revision. No write retry should invent a new UUID or replace
+the expected revision automatically. The frontend consumer cutover is a separate
+step; no cache/demo records are promoted implicitly.
+
+## Tachyon-owned plans and tasks
+
+`objects.Plan` and `objects.Task` use the same UUID identity, ownership, CAS patch,
+metadata, revision history and soft-delete contracts as the other domain objects.
+They are authored work descriptions; setting `queued`, `doing` or `done` does not
+dispatch work, execute a workflow, or transition a Torque task. General API/MCP
+surfaces and the current Planner UI cutover remain separate work.
+
+Both definitions embed `Common`: `name` is the title, `description` holds the body,
+with `tags` and extensible `properties`. They carry required `status`, priority
+0 (unspecified) through 5 (lowest; 1 is highest), optional `project_id`,
+`acceptance_criteria`, and an RFC3339 `due_at`. Statuses are `draft`, `backlog`,
+`todo`, `queued`, `doing`, `review`, `done`, `blocked`, `paused`, `archived`,
+`abandoned`, and `cancelled`. Transitions are authored edits guarded by revision,
+not an execution state machine. Plans may reference a `workflow_id`. Tasks may
+reference a `plan_id`, a task `parent_id`, and up to 256 unique task IDs in
+`depends_on`. Parent and dependency graphs must each be acyclic; self references,
+unknown IDs and wrong-kind references fail atomically. Deleted records retain
+their edges and history, and deleting a plan never cascades into its tasks.
+
+Agents and teams connect through existing `Assignment` objects with a typed
+`Target` pointing to a plan or task. This preserves assignment identity, state
+and history instead of duplicating assignees on the task. Project membership is
+explicit on each record; it is not inherited or rewritten when a plan changes.
+
+The backend contract is `objects.Service`:
+
+- `Create` / retry-safe `CreateWithID`, `Get`, revision-checked `Patch`,
+  `SetDeleted`, `History`, and `Links` work for all planning kinds.
+- `ListPlanner(PlannerFilter)` intersects optional kind, status, exact priority,
+  project, plan, parent, epic, sprint, workstream, collection, assignee, strategic
+  priority, typed target and promotion-state filters. It returns full `Record` values,
+  ordered by UUID, with `AfterID` pagination (default 100, maximum 500). Deleted
+  targets are hidden unless requested. `AssignedTo` finds agent/team IDs through
+  non-deleted assignments of any state; callers can inspect the assignment's state
+  through `Links`/`Get`. Empty kind lists all twelve Planner kinds. Relationship filters match explicit links even when the
+  referenced container is deleted; only returned targets are hidden by default.
+  Collection filtering here uses UUID order; ordered membership has its own read below.
+- Queries use the indexed `planner_items` projection of the **effective**
+  definition, updated in the same queued transaction as the object, links and
+  revision. Provider observations cannot override local fields in that projection.
+
+For example, using the host's existing object service:
+
+```go
+plan, err := service.Create(ctx, objects.Plan{
+    Common: objects.Common{Name: "Build the control surface"}, Status: "draft",
+}, nil, "operator")
+// Handle err, then create a task under plan.ID.
+task, err := service.Create(ctx, objects.Task{
+    Common: objects.Common{Name: "Persist planning records"},
+    Status: "todo", Priority: 2, PlanID: plan.ID,
+}, nil, "operator")
+// Handle err before using task.ID or task.Revision in a patch.
+```
+
+`planner.ImportTorque` takes a selected `TorqueRecord`, a credential-free instance
+base URL, read-start timestamp, optional `objects.Correlation`, and actor. It is
+a service operation, not a network client or background inventory job. Use Torque's
+typed lowercase task representation: `kind=plan` seeds a local plan; `agent`,
+`issue` and `task` seed local tasks. The first import creates a Tachyon master;
+repeated imports update only its source snapshot/version and preserve local
+content, links, metadata and deletion state. `objects.Service.ImportOwned` supplies
+that atomic primitive. It refuses implicit promotion of an existing source-owned
+record; use `TakeOwnership` explicitly first.
+
+To associate an already authored record, supply its local UUID and expected
+revision in `Correlation`. A source key can belong to only one object, and this
+slice allows one source per object. A title match never establishes correlation.
+External project/parent/dependency/epic/sprint/phase/collection IDs remain qualified
+facts under `properties.torque`, with provider/instance on `Record.Source`; they
+never become local foreign keys. Link known local UUIDs explicitly with `Patch`.
+Later imports retain the latest external facts on `Source.Definition` without
+rewriting those authored links. Environment, execution configuration, open remote
+metadata, credentials, runtime phases and dispatch controls are not imported.
+No existing API cache, Planner response, or Torque inventory is automatically
+converted into a master record.
+
+Migration `003_planner.sql` extends the object-kind constraint and adds the query
+projection. Migration pins its SQLite connection, disables FK enforcement only
+for transactional table replacement, checks all FKs before commit, and restores
+enforcement before the writer queue and readers start. Existing IDs, source
+snapshots, history and links are preserved. Migration `004_planner_organization.sql`
+extends this projection and the kind constraints while preserving existing plans
+and tasks. Migration `006_planner_records.sql` extends these constraints again
+and adds immutable promotion receipts, preserving all existing projections.
+
+## Epics, sprints, collections and workstreams
+
+These four kinds share `Common`, optional local `project_id`, CRUD, revisions,
+metadata and tombstones. All relationships use typed local UUIDs; neither matching
+names nor provider IDs establish a link. Plans and tasks may explicitly reference
+`epic_id`, `sprint_id`, and `workstream_id`. Epics, sprints and collections may
+reference `workstream_id`. Membership is not inherited or cascaded on deletion.
+
+- `Epic` adds `outcome`, priority 0–5 and optional `due_at`, with the same statuses
+  as plans/tasks. Plans/tasks point to their epic; there is no duplicate member array.
+- `Sprint` adds `goal` and optional `starts_at`/`ends_at`. Dates must both be absent
+  or form a valid window with end after start. Statuses are `draft`, `planned`,
+  `active`, `completed`, `cancelled`, and `archived`. Plans/tasks have one current
+  sprint; revision history preserves moves between sprints.
+- `Workstream` adds an optional local `workflow_id`. Statuses are `draft`, `active`,
+  `paused`, `closed`, and `archived`. Closing is a status edit, not deletion.
+- `Collection` has `active`/`archived` status and up to 1,000 ordered, unique
+  `Reference` members of any supported kind except collections. An object may be
+  in several collections. Unknown IDs, wrong kinds, duplicates and nested
+  collections are rejected atomically. Typed `member` links retain ordinal slots.
+
+`SetCollectionMembers(ctx, id, expectedRevision, members, actor)` replaces the
+ordered list, supporting addition, removal and reordering with one CAS edit.
+Null or empty members clears it. `ListCollectionMembers(ctx, id, expectedRevision,
+offset, limit)` returns each member's ordinal, typed reference and current record,
+including tombstones. Default page size is 100, maximum 500. Start at offset 0
+with expected revision 0, then pass the returned revision and `NextOffset` to
+continue. Each page reads a consistent database snapshot; collection edits cause
+stale continuations to fail with `ErrConflict`. Member contents reflect each
+page's read time. The collection's immutable history preserves earlier membership.
+
+Assignments may target any of these kinds. Shared `ImportOwned` can seed normalized
+organization definitions, while `planner.ImportTorque` still accepts only its
+documented task/plan DTOs. These backend contracts do not change Planner UI data
+sources or create upstream records.
+
+## Owned captures, decisions, risks and strategy
+
+Six additional kinds share the same object service, `Common`, metadata, typed
+local `project_id`/`workstream_id`, history and tombstones. Their statuses are
+editable descriptions, not execution commands or a mandatory transition graph.
+
+| Kind / Go type | Fields beyond common context | Statuses |
+| --- | --- | --- |
+| `inbox_item` / `InboxItem` | numeric priority, origin, captured_at | new, triaged, archived |
+| `idea` / `Idea` | numeric priority, hypothesis, expected_outcome | draft, exploring, accepted, rejected, archived |
+| `decision` / `Decision` | context, options, outcome, rationale, decided_at, typed target | proposed, accepted, rejected, superseded, archived |
+| `risk` / `Risk` | numeric priority, likelihood, impact, mitigation, contingency, due_at, typed target | open, mitigating, accepted, resolved, archived |
+| `roadmap_item` / `RoadmapItem` | numeric priority, outcome, strategic_priority_id, plan_id, epic_id, starts_at, ends_at | draft, planned, active, completed, deferred, cancelled, archived |
+| `strategic_priority` / `StrategicPriority` | numeric priority, outcome, success_criteria, starts_at, ends_at | draft, active, achieved, paused, archived |
+
+Numeric priority retains 0 unspecified, 1 highest through 5 lowest; a strategic
+priority is a separate objective record. Risk likelihood/impact use 0 unknown,
+1 lowest through 5 highest. Roadmap/objective windows may be open-ended; if both
+bounds exist, end must follow start. Optional dates must be valid RFC3339 values.
+Options and success criteria cannot contain blank entries. Decision/risk targets
+may reference any supported kind, checked against the local record. Assignments
+and collections can reference all six new kinds. `ListPlanner` adds `TargetID`,
+`StrategicPriorityID`, and optional `Promoted` filters using indexed links/receipts.
+
+`Promote(ctx, PromotionRequest, actor)` supports inbox → idea/plan/task and
+idea → plan/task. Each source has **one canonical promotion**; further breakdown
+can create tasks under the resulting plan. The caller retains a target UUID and
+source revision. Promotion copies name, description, tags, properties, numeric
+priority, project/workstream links and local metadata into a new Tachyon-owned
+record, then applies validated `Overrides` as a JSON merge patch. Default status
+is `draft` for idea/plan, `todo` for task. Kind-specific source details stay on the
+source and its history; provider identity is never copied. Source content and
+status stay intact, while its revision advances with a `promote` history entry.
+
+Target creation, both histories, immutable receipt and `promoted_to` /
+`promoted_from` links commit in one queued transaction. `GetPromotion(sourceID)`
+returns the original source/target revision anchors, actor and time. Identical
+canonical requests replay without writes and return **current** records plus the
+original receipt, even after later edits or deletion. A changed request conflicts;
+retries cannot overwrite edits, resurrect a tombstone or create duplicate work.
+Receipt-owned links survive subsequent patches and soft deletion. `Promoted`
+filters distinguish processed captures without overloading authored status.
+These models are available through the shared local data verbs above. Frontend
+cutover and external API/MCP access remain separate. Existing cache/demo Planner
+data is not automatically imported.
+
+## Sessions, runs and owned chat history
+
+`objects.Session` and `objects.Run` share UUID identity, source observations,
+local overlays, metadata, revision checks and retained history. Status edits never
+start/stop work or send messages. `ExecutionLinks` provides optional typed local
+project, workstream, agent, team, assignment, task and machine associations.
+
+A session has lifecycle status, runtime family/provider, optional qualified
+`native_session` reference, `run_id`, `parent_id`, `resumed_from_id`, lifecycle
+timestamps (`opened_at`, `started_at`, `ended_at`) and exit code. Its source key
+identifies the provider's session record, separately from the runtime-native
+session ID. Unknown facts remain unset. Statuses are `unknown`, `created`, `ready`,
+`launching`, `running`, `paused`, `detached`, `orphaned`, `completed`, `failed`, and
+`killed`. Completed/failed/killed records retain history; status is not deletion.
+
+A run represents an execution attempt, with optional parent/retry links and
+start/end timestamps. Statuses are `unknown`, `planned`, `queued`, `running`,
+`paused`, `blocked`, `completed`, `failed`, and `cancelled`. When `workflow_id` is
+set, `workflow_revision` must identify an existing revision of that workflow.
+Later definition edits do not move the run's pin. Retries use new run identities;
+sessions link to their run, without a duplicated session membership list. Parent,
+resume and retry lineage is checked for cycles inside the queued write transaction.
+Run creation and correlation are explicit service operations; Tether session or
+launch IDs do not automatically manufacture workflow executions.
+
+`ListExecutions(ExecutionFilter)` intersects kind, status, project, workstream,
+agent, task, run and workflow filters using the transactionally maintained
+`execution_items` projection. Results use UUID keyset pagination, default 100 and
+maximum 500. Deleted results are hidden unless requested; referenced tombstones
+retain relationships.
+
+Migration `005_execution_identities.sql` adds these kinds and separate
+`chat_session_links`/`chat_outbox_session_links` tables. Host startup backfills
+known session IDs in 200-row queued batches for the configured source and owned
+outbox identity. It does not rewrite original message bodies, transport IDs,
+revisions, reply intents or cursors. New chat ingestion saves the turn and its
+identity link atomically. Successful outbox results with a known session get the
+same association. Empty session IDs remain unlinked; current launch/workspace
+state is never used to guess historical ownership.
+
+Chat evidence can create a source-owned session stub with status `unknown`.
+`EnsureSessionIdentityTx` only ensures identity: it cannot change an existing
+observation, advance its freshness or resurrect a tombstone. New stubs use epoch
+`observed_at` so an inventory read already in flight can enrich them. Later
+session imports preserve that UUID. Inbox/outbox reads add `local_session_id`
+without replacing `session_id`; the extra field is a read projection. Existing
+reply authorization and transport identity checks still use original identifiers.
+`Owned.SessionTurns` queries retained history by local UUID, scoped to the source,
+including deleted sessions, with original turn-ID keyset pagination.
+
+An offline, repeatable maintenance command supports DB-copy validation:
+
+```sh
+./tachyon backfill-session-links --data-dir /private/database-copy --tether-address https://tether.example
+```
+
+Use the original address stored on chat rows. Object keys normalize HTTP trailing
+slashes and `tcp:` consistently with inventory ingestion, but original chat data
+is preserved. Tangent browser-only history import/retirement remains separate.
+
 ## Provider ingestion and recurring jobs
 
-`internal/objectsync` imports Tether projects and agent definitions, Cerberus
+`internal/objectsync` imports Tether projects, agent definitions, workstreams and sessions, Cerberus
 machines, and GitHub organization repositories
 through the durable object service. These are independent of response caches and
 the current UI adapters. Tether project URNs and GitHub numeric repository IDs
@@ -172,6 +488,30 @@ later scans can resolve them to local project IDs. Local relationship overrides
 still win. Launch-specific worker/machine choices are not agent defaults. Teams,
 launch/session placement, and broader correlation are separate follow-up slices.
 
+Tether workstreams use stable IDs from unfiltered `GET /workstreams`. The current
+endpoint is bounded to the newest 100 records and has no pagination; this source
+is **non-authoritative** and never tombstones absent records. Run state records
+`bounded_inventory_observed`, not complete inventory. Pagination remains upstream
+work (`CW-20261018-0008`). Active and closed records are imported; closing/reopening
+preserves identity and local edits. An unnamed workstream uses its ID as the name.
+The provider's free-form `workflow_id` is retained as
+`properties.tether.workflow_ref`, with provider creation/update timestamps.
+It never becomes a local workflow foreign key automatically. Explicit local
+project/workflow mappings and metadata survive later scans. Provider project
+association and removal semantics remain Tether tasks `CW-20261018-0009`/`0010`.
+
+Tether sessions read unfiltered `/sessions?limit=1000` and follow `next_cursor`.
+All pages and relationship resolution must succeed before one atomic import.
+Absence never deletes a session: the upstream timestamp-only cursor can skip
+equal-time boundary rows, tracked in `CW-20261018-0048`. Creation/end timestamps,
+state, provider, exit code and safe correlation references are retained; workspace,
+PID, open environment/configuration and logs are excluded. Creation time is not
+treated as execution start time. Native runtime identity and lineage remain unset
+until explicitly supplied; upstream DTO extension is `CW-20261018-0049`.
+Exact same-instance project, catalog-agent and workstream IDs/declared aliases can
+resolve to local links; missing/ambiguous references retain their facts and resolve
+on later scans. Local mappings win. Group/launch references remain opaque.
+
 Cerberus reads its daemon's full, unfiltered `GET /hosts` inventory. Configure
 `CERBERUS_ADDR=unix:/home/chrispian/.cerberus/cerberus.sock` for the local daemon, or
 an HTTP base whose `/hosts` route exposes this same contract (an `/api` prefix is
@@ -194,10 +534,11 @@ GitHub deletion events and broader identity/correlation policies are future work
 See [GitHub's organization repository API](https://docs.github.com/en/rest/repos/repos#list-organization-repositories)
 for the upstream permissions and pagination contract.
 
-Each scan starts fresh, gathers every page, then applies one atomic reconciliation.
+Each scan starts fresh, gathers the source's available pages, then applies one atomic reconciliation.
 Partial or failed reads apply nothing. Scans are bounded to 10,000 objects, 16 MiB
 of normalized definitions, 8 MiB per HTTP response, and two minutes. Larger scans
-fail visibly and need staging support; they are never silently truncated.
+fail visibly and need staging support. These client bounds do not establish
+upstream completeness; the workstream endpoint's own bound is described above.
 `object_sync_state` records the last successful import, phase, progress, diagnostic
 checkpoint and sanitized failure; `object_sync_runs` retains attempt history.
 Page checkpoints are diagnostic, not resumable cursors. A persisted three-minute
@@ -215,6 +556,8 @@ maintenance command using the same upstream environment as the service:
 ```sh
 ./tachyon sync-objects --source tether-projects
 ./tachyon sync-objects --source tether-agents
+./tachyon sync-objects --source tether-workstreams
+./tachyon sync-objects --source tether-sessions
 ./tachyon sync-objects --source cerberus-machines
 ./tachyon sync-objects --source github-repositories
 # Imports again; enables each source only if its own import succeeds.
@@ -224,7 +567,7 @@ maintenance command using the same upstream environment as the service:
 ```
 
 `--data-dir <directory>` permits isolated validation. Source names are
-`tether-projects`, `tether-agents`, `cerberus-machines`, `github-repositories`, or
+`tether-projects`, `tether-agents`, `tether-workstreams`, `tether-sessions`, `cerberus-machines`, `github-repositories`, or
 `all`; commands exit nonzero on failure. `all` imports projects before agents;
 independently scheduled jobs converge on later scans if a target is not yet present.
 Credentials stay in the existing environment/token-file mechanism, never job

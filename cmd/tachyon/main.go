@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/libs/app/app-host/host"
 
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
 	"github.com/hollis-labs/tachyon/internal/server"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
@@ -48,6 +49,12 @@ func main() {
 			GitHubToken:       githubToken(ctx),
 			GitHubOrg:         env("GITHUB_ORG", "hollis-labs"),
 		},
+	}
+	if len(os.Args) > 1 && os.Args[1] == "backfill-session-links" {
+		if err := chatbridge.BackfillCommand(ctx, cfg.DataDir, cfg.Upstreams.TetherAddr, os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "sync-objects" {
 		if err := objectsync.Command(ctx, cfg.DataDir, cfg.Upstreams, os.Args[2:], os.Stdout); err != nil {

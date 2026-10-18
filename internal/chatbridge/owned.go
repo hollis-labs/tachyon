@@ -48,21 +48,22 @@ type SourceMessage struct {
 	Attribution map[string]string `json:"attribution,omitempty"`
 }
 type Turn struct {
-	ID         string          `json:"item_id"`
-	AgentID    string          `json:"agent_id"`
-	SessionID  string          `json:"session_id,omitempty"`
-	TurnID     string          `json:"turn_id,omitempty"`
-	Kind       string          `json:"kind"`
-	Content    string          `json:"content"`
-	Created    string          `json:"created_at"`
-	Revision   int64           `json:"revision"`
-	Sequence   int64           `json:"queue_sequence"`
-	State      string          `json:"state"`
-	Delivery   string          `json:"delivery_state"`
-	Replyable  bool            `json:"replyable"`
-	Resolution *Resolution     `json:"resolution,omitempty"`
-	Source     *SourceMessage  `json:"source_message,omitempty"`
-	Trace      json.RawMessage `json:"stage_trace,omitempty"`
+	ID             string          `json:"item_id"`
+	AgentID        string          `json:"agent_id"`
+	SessionID      string          `json:"session_id,omitempty"`
+	LocalSessionID string          `json:"local_session_id,omitempty"`
+	TurnID         string          `json:"turn_id,omitempty"`
+	Kind           string          `json:"kind"`
+	Content        string          `json:"content"`
+	Created        string          `json:"created_at"`
+	Revision       int64           `json:"revision"`
+	Sequence       int64           `json:"queue_sequence"`
+	State          string          `json:"state"`
+	Delivery       string          `json:"delivery_state"`
+	Replyable      bool            `json:"replyable"`
+	Resolution     *Resolution     `json:"resolution,omitempty"`
+	Source         *SourceMessage  `json:"source_message,omitempty"`
+	Trace          json.RawMessage `json:"stage_trace,omitempty"`
 }
 type Inbox struct {
 	Pending  []Turn `json:"pending"`
@@ -105,6 +106,7 @@ func (o *Owned) Stop() {
 }
 func digest(s string) string { b := sha256.Sum256([]byte(s)); return hex.EncodeToString(b[:]) }
 func (o *Owned) saveTurn(ctx context.Context, tx *sql.Tx, t Turn, imported bool) error {
+	t.LocalSessionID = "" // derived separately, never trusted from imported JSON
 	raw, err := json.Marshal(t)
 	if err != nil {
 		return err
@@ -117,7 +119,10 @@ func (o *Owned) saveTurn(ctx context.Context, tx *sql.Tx, t Turn, imported bool)
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO chat_turns(id,source,channel,publication_id,launch_id,session_id,created_at,revision,body,imported)
  VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, t.ID, o.SourceID, channel, pub, launch, t.SessionID, t.Created, t.Revision, raw, imported)
-	return err
+	if err != nil {
+		return err
+	}
+	return linkTurnSession(ctx, tx, o.SourceID, t.ID)
 }
 func (o *Owned) get(ctx context.Context, id string) (Turn, error) {
 	var t Turn
@@ -129,6 +134,7 @@ func (o *Owned) get(ctx context.Context, id string) (Turn, error) {
 	return t, err
 }
 func (o *Owned) updateTurn(ctx context.Context, tx *sql.Tx, t Turn) error {
+	t.LocalSessionID = ""
 	raw, err := json.Marshal(t)
 	if err != nil {
 		return err
@@ -304,18 +310,14 @@ func problem(err error) string {
 }
 func (o *Owned) Inbox(ctx context.Context) (Inbox, error) {
 	out := Inbox{Pending: []Turn{}, History: []Turn{}, Owner: "tachyon"}
-	rows, err := o.Store.Reader.QueryContext(ctx, "SELECT body FROM chat_turns WHERE source=? ORDER BY created_at,id", o.SourceID)
+	rows, err := o.Store.Reader.QueryContext(ctx, "SELECT t.body,COALESCE(l.session_object_id,'') FROM chat_turns t LEFT JOIN chat_session_links l ON l.turn_id=t.id WHERE t.source=? ORDER BY t.created_at,t.id", o.SourceID)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var raw []byte
-		var t Turn
-		if err = rows.Scan(&raw); err != nil {
-			return out, err
-		}
-		if err = json.Unmarshal(raw, &t); err != nil {
+		t, err := scanLinkedTurn(rows)
+		if err != nil {
 			return out, err
 		}
 		if t.Resolution == nil && t.State == "presented" {
