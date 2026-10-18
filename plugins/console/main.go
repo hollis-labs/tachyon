@@ -21,6 +21,7 @@ type console struct {
 	forge   *ForgeHandler
 	catalog *CatalogHandler
 	chat    *ChatHandler
+	objects *ObjectHandler
 }
 
 func (console) Init(context.Context, subprocess.InitParams) (subprocess.InitResult, error) {
@@ -40,6 +41,9 @@ func (console) Load(context.Context) (subprocess.LoadResult, error) {
 func (console) Unload(context.Context) error { return nil }
 
 func (c console) HTTPHandle(ctx context.Context, req subprocess.HTTPRequest) (subprocess.HTTPResponse, error) {
+	if c.objects != nil && c.objects.Match(req.Path) {
+		return c.objects.Handle(ctx, req), nil
+	}
 	if c.chat != nil && c.chat.Match(req.Path) {
 		return c.chat.Handle(ctx, req), nil
 	}
@@ -58,7 +62,7 @@ func main() {
 		pluginkit.Route{Prefix: "/v1", Upstream: torque, Target: "/api/v1", Bearer: os.Getenv("TORQUE_API_TOKEN"), Headers: map[string]string{"X-Client": "browser"}},
 	)
 	forge := NewForgeHandler(os.Getenv("GITHUB_TOKEN"), pluginkit.Env("GITHUB_ORG", "hollis-labs"))
-	if err := subprocess.Serve(console{proxy: proxy, forge: forge, chat: NewChatHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), catalog: NewCatalogHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE"))}); err != nil {
+	if err := subprocess.Serve(console{proxy: proxy, forge: forge, objects: NewObjectHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), chat: NewChatHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), catalog: NewCatalogHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE"))}); err != nil {
 		os.Exit(1)
 	}
 }

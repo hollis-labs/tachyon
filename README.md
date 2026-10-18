@@ -28,6 +28,24 @@ docs/data-gaps.md       backend gaps for the Console port
 
 ## Agent builder
 
+Builder also has **Projects** (`/builder?section=projects`) and **Workstreams**
+(`/builder?section=workstreams`) areas backed by live Tether APIs. Projects edits
+registry identity metadata (name, description, tags, guidelines, entry points),
+shows external identifiers, and supports deprecation/restoration. It does not
+edit the separate catalog launch-context configuration. Workstreams supports
+create, edit, close/reopen, and session assignment, clearing, or lineage-aware
+find-or-create. The list is limited to Tether's newest 100 matching records;
+workflow and status filters are server-side, search is within the loaded set.
+Project association and workstream deletion await Tether API support.
+
+These areas perform real writes through the restricted Console
+`/api/plugins/console/v1/tether/` adapter. Mutations require the existing
+server-verified operator session; reads bypass response caching. The paired
+Tether credential needs `read`, `maintain` for registry projects, and `operate`
+for workstreams, and remains in the host's private token file. An uncertain
+write is not automatically retried. The agent/team configuration previews
+described below retain their demonstration-save behavior.
+
 Builder reads the live Tether agent and launch catalogs through the Console
 backend. Configure `TETHER_ADDR` and `TETHER_TOKEN_FILE` on the host; the host
 passes them to the plugin. Authenticated remote access requires HTTPS. The
@@ -63,8 +81,162 @@ Assignments stages agent-to-task/workstream links for local review and no-op
 saves. Live assignments and target-ID validation are not connected. Persisted
 team API listing, templates, audit and retirement-impact reads also remain future
 work; the adapter never substitutes sample data when a read fails. Durable
-object tables, history/links and merge/sync ownership are tracked separately
-in CW-20261017-0025 through CW-20261017-0027, beyond the response cache.
+objects are implemented in `internal/objects`; connecting these forms and source
+adapters remains separate work (CW-20261017-0030 / CW-20261018-0016).
+
+## Durable objects
+
+`internal/objects.Service` is the transport-independent data layer for agents,
+teams/slots, assignments, workflow definitions, projects, machines and repositories.
+Typed Go definitions share migrated `objects`, `object_sources`, `object_revisions`
+and `object_links` tables in the existing `tachyon.db`. JSON definitions are
+validated by kind; links have foreign keys and kind checks. Local `metadata` is
+an extensible JSON object, separate from normalized provider data. This store
+does not expire with response-cache retention. Existing chat and cache data remain
+intact. Additive migrations and their ledger entries commit together at startup.
+
+All mutations use the existing `sqlitekit` writer and `serialwrite` queue. The
+service offers create/get/list, revision-checked patch/delete/restore, history,
+incoming/outgoing links, source lookup/update-or-create, complete/partial inventory
+reconciliation, and explicit ownership promotion. Retriable local creates use a
+caller-retained UUID through `CreateWithID`; replay with different content conflicts.
+Cancellation after enqueue can leave the result uncertain; read back the known ID
+or source identity before retrying. List/history use bounded keyset pagination.
+
+Source identity is `(provider, instance, collection, kind, external_id)`, never a
+display name or repository URL. Each imported object has one authoritative source
+in this slice. Different sources remain distinct until explicitly correlated;
+cross-provider deduplication is not inferred. A source record combines its observed
+definition with sparse local overrides; updates preserve those overrides and local
+metadata. Patches merge JSON objects, replace arrays, and remove local keys on
+`null`; removing an override reveals the latest source value. Nested `properties`
+and repository `settings` permit extensions. Full source observations replace prior
+observed fields rather than leaving vanished fields behind. Source version tokens
+are opaque; scan-start timestamps order observations. Identical polls update the
+observation time without creating artificial content revisions.
+
+Explicit remote deletion retains a tombstone and history. Only a complete,
+successful, unfiltered inventory may infer removal from absence. Partial results
+never do; stale scans cannot undo newer observations or complete-scan tombstones.
+Failed reconciliation rolls back the batch and watermark together. Local deletion
+is separate and cannot be undone by sync. `TakeOwnership` records the explicit move
+to a Tachyon master: future provider changes remain observations and cannot change
+or delete the master. No operation here writes upstream, launches agents, applies
+policy or deploys machines. Definitions describe configuration, not live runtime
+state. Adapters must normalize non-secret data instead of persisting raw credentials
+or provider environment/config dumps.
+
+Planner will be Tachyon-owned (CW-20261018-0017). Chat session/run identities
+(CW-20261018-0018), additional provider adapters (CW-20261018-0016), and shared verb/API/MCP/CLI
+access with policy (CW-20261018-0019) follow this foundation. The UI still reads its
+existing adapters; this slice does not silently migrate cached responses or demo
+drafts into master records. Revision retention, multi-source correlation, outbound
+sync, and large-inventory staging need explicit later policies; no history purge
+or upstream writeback is enabled here.
+
+## Provider ingestion and recurring jobs
+
+`internal/objectsync` imports Tether projects and agent definitions, Cerberus
+machines, and GitHub organization repositories
+through the durable object service. These are independent of response caches and
+the current UI adapters. Tether project URNs and GitHub numeric repository IDs
+retain local identity across renames. Local overrides, metadata, history and
+ownership promotion retain the contracts above.
+
+Tether reads `/registry/projects?status=*&include=external_ids` with the existing
+paired token file. The current endpoint returns one unpaginated full inventory;
+an unfamiliar envelope is rejected rather than assumed complete. Public authored
+fields are normalized, with props and correlation facts under `properties.tether`.
+Private callback, host and kind metadata are not requested. Deprecated/merged
+projects become source tombstones; an active observation restores the same record.
+Archived projects remain records with their upstream status. A successful complete
+inventory can tombstone absent projects.
+
+Tether agents come from the complete `/catalog/agents` inventory. Catalog IDs are
+the source key; optional registry URNs are correlation facts, so assigning a URN
+or changing a display name retains the local object. Renaming the catalog ID is
+a source identity change. Disabled definitions remain records; only absence from
+a successful full catalog scan tombstones them. `/registry/agents?status=*&include=external_ids`
+supplies correlation facts; both reads must succeed before any changes apply.
+Registry status does not override catalog presence. System instructions and agent
+prompts remain separate. Declared provider/model, inheritance, MCP server IDs and
+permission facts are preserved without importing environment variables, open
+provider overrides, or connection credentials. These facts do not grant authority
+in Tachyon, and inherited profiles are not compiled into launch configurations.
+
+Explicit registry project references resolve through project URNs or Tether
+external IDs in source observations from the same instance. Display names and
+local property overrides do not establish identity. Missing or ambiguous targets
+remain recorded as `project_ref` and `project_resolution` in `properties.tether`;
+later scans can resolve them to local project IDs. Local relationship overrides
+still win. Launch-specific worker/machine choices are not agent defaults. Teams,
+launch/session placement, and broader correlation are separate follow-up slices.
+
+Cerberus reads its daemon's full, unfiltered `GET /hosts` inventory. Configure
+`CERBERUS_ADDR=unix:/home/chrispian/.cerberus/cerberus.sock` for the local daemon, or
+an HTTP base whose `/hosts` route exposes this same contract (an `/api` prefix is
+allowed). `CERBERUS_TOKEN_FILE` is optional for authenticated HTTP endpoints.
+These settings belong to the host, not plugin environments. Cerberus's declared
+host name is its current API identity: hostname and address changes preserve the
+local object, while renaming the declared key creates a new source identity.
+Offline, unknown, and stale hosts remain records; only absence from a successful
+full inventory tombstones them. Declared platform/architecture stay separate from
+cached probe facts under `properties.cerberus`. Provider probe/check timestamps
+and stale flags are retained; the import time is not a new measurement. No probe
+is initiated. Reach credentials, token-file handles and raw probe errors are
+excluded. Tether environment IDs remain opaque correlation references.
+
+GitHub uses the configured organization and credential, follows all repository
+pages on the fixed API origin, and imports archived repositories too. Its completed
+inventory is **visibility-limited, not authoritative deletion evidence**. Missing
+repositories, 404s, and permission changes do not delete local records. Confirmed
+GitHub deletion events and broader identity/correlation policies are future work.
+See [GitHub's organization repository API](https://docs.github.com/en/rest/repos/repos#list-organization-repositories)
+for the upstream permissions and pagination contract.
+
+Each scan starts fresh, gathers every page, then applies one atomic reconciliation.
+Partial or failed reads apply nothing. Scans are bounded to 10,000 objects, 16 MiB
+of normalized definitions, 8 MiB per HTTP response, and two minutes. Larger scans
+fail visibly and need staging support; they are never silently truncated.
+`object_sync_state` records the last successful import, phase, progress, diagnostic
+checkpoint and sanitized failure; `object_sync_runs` retains attempt history.
+Page checkpoints are diagnostic, not resumable cursors. A persisted three-minute
+source lease fences concurrent manual/scheduled processes; expired runs are marked
+interrupted before a fresh scan. A crash between object application and recording
+success may repeat an idempotent import.
+
+The host uses `core/util/scheduler` and its reference `sqlstore` for durable jobs,
+fires, retries and restart recovery. Scheduler bookkeeping lives in private
+`$TACHYON_DATA_DIR/jobs.db`, using `sqlitekit` with one writer connection, separate
+from domain writes through the `tachyon.db` serialwrite queue. **No jobs are enabled
+by starting the host.** Validate a source, then enable it through the narrow
+maintenance command using the same upstream environment as the service:
+
+```sh
+./tachyon sync-objects --source tether-projects
+./tachyon sync-objects --source tether-agents
+./tachyon sync-objects --source cerberus-machines
+./tachyon sync-objects --source github-repositories
+# Imports again; enables each source only if its own import succeeds.
+./tachyon sync-objects --source all --enable --interval 5m
+./tachyon sync-objects --status
+./tachyon sync-objects --source github-repositories --disable
+```
+
+`--data-dir <directory>` permits isolated validation. Source names are
+`tether-projects`, `tether-agents`, `cerberus-machines`, `github-repositories`, or
+`all`; commands exit nonzero on failure. `all` imports projects before agents;
+independently scheduled jobs converge on later scans if a target is not yet present.
+Credentials stay in the existing environment/token-file mechanism, never job
+payloads. `--enable` also resumes a paused job after a successful import; an
+existing job's interval must match. Interval editing is not exposed yet.
+The first enabled fire is due after five seconds, then every five minutes by
+default. Downtime coalesces missed scans into one; overlap is skipped, retries
+are bounded to three attempts with exponential backoff, and successful fire IDs
+deduplicate replay. Disabling prevents new dispatches (an already running scan
+may finish). Shutdown cancels provider reads and drains the job engine before
+closing either database. Job/scan history is retained; automatic pruning is not
+enabled. These are host-owned jobs, not external Cerberus schedules.
 
 The agent-os deployment is declared in `tachyon.cerberus.yaml`. Register that
 file with Cerberus, then deploy `tachyon-backend-dev` to rebuild the frontend,
@@ -123,6 +295,12 @@ CW-20261017-0014; these knobs are usable through the config file now.
 `stale_while_revalidate_seconds` allows an older snapshot to render immediately
 while the browser requests an authoritative refresh (zero opts out);
 `stale_if_error_seconds` extends that window only for transient remote failures.
+`snapshot_first: true` (the Forge default) uses the full retention period for
+immediate display and transient-error fallback instead of those two stale windows.
+PR lists and details therefore open from saved data even after a long absence,
+then refresh in the background once `fresh_seconds` expires. Completed responses
+reconcile additions, changes and removals in place; GitHub reads here return full
+snapshots rather than a delta feed. Authentication failures still discard saved data.
 `timeout_seconds` bounds upstream waiting. `enabled: false` disables caching for
 a resource. `max_entries`, `max_bytes` (payload bytes) and `retention_seconds`
 bound retained snapshots, evicting oldest entries on writes. Expired snapshots

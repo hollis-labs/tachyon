@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { dataRefreshRegistry } from '@tachyon/host-sdk'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConsoleProvider } from '../../events/provider'
 import { FixtureSource } from '../../testkit/events-fixture-source'
 import { MessagingProvider } from '../../messaging/context'
@@ -158,10 +159,9 @@ import { AgentsClientProvider } from '../../agents/context'
 import type { AgentsClient } from '../../agents/client'
 
 describe('<PendingPrInbox>', () => {
-  const mount = () => {
+  const mount = (forge = createMockForgeClient()) => {
     const identity = new MockIdentityConfirm()
     const bus = createActionBus({ identity })
-    const forge = createMockForgeClient()
     const messaging = createMockMessagingClient()
     const stateStore = new MemoryStateStore()
     const agents = {
@@ -201,6 +201,24 @@ describe('<PendingPrInbox>', () => {
     await waitFor(() => expect(rows()).toHaveLength(1))
     fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Reopen' }))
     await waitFor(() => expect(screen.getByText('No pull requests match this view.')).toBeTruthy())
+  })
+
+  it('keeps saved rows and filters while refreshing, then reconciles changed, added and removed PRs', async () => {
+    const forge = createMockForgeClient()
+    let finish!: (prs: PendingPrSummary[]) => void
+    const pending = new Promise<PendingPrSummary[]>(resolve => { finish = resolve })
+    vi.spyOn(forge, 'listPendingPrs').mockResolvedValueOnce([mk(1), mk(2)]).mockReturnValue(pending)
+    mount(forge)
+    await screen.findByText('PR 1')
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search pull requests' }), { target: { value: 'PR' } })
+    act(() => { dataRefreshRegistry('forge').refresh() })
+    expect(screen.getByText('PR 1')).toBeTruthy()
+    expect(screen.getByText('PR 2')).toBeTruthy()
+    await act(async () => { finish([mk(1, { title: 'PR 1 updated' }), mk(3)]); await pending })
+    await screen.findByText('PR 1 updated')
+    expect(screen.getByText('PR 3')).toBeTruthy()
+    expect(screen.queryByText('PR 2')).toBeNull()
+    expect((screen.getByRole('searchbox', { name: 'Search pull requests' }) as HTMLInputElement).value).toBe('PR')
   })
 
   it('assigns through the picker, confirms, and shows the assignment on the row', async () => {

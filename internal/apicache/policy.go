@@ -20,6 +20,9 @@ type Policy struct {
 	RevalidateSeconds int  `json:"stale_while_revalidate_seconds"`
 	StaleSeconds      int  `json:"stale_if_error_seconds"`
 	TimeoutSeconds    int  `json:"timeout_seconds"`
+	// SnapshotFirst uses retained data for immediate display and transient-error
+	// fallback; freshness still determines when the browser revalidates.
+	SnapshotFirst bool `json:"snapshot_first"`
 }
 
 type Settings struct {
@@ -31,12 +34,12 @@ type Settings struct {
 
 func Defaults() Settings {
 	return Settings{MaxEntries: 1000, MaxBytes: 64 << 20, RetentionSeconds: 7 * 86400, Policies: map[string]Policy{
-		"transcripts": {true, 120, 3600, 86400, 45},
-		"approvals":   {true, 3, 60, 300, 15},
-		"chat-turns":  {true, 3, 60, 300, 15},
-		"chat":        {true, 5, 60, 300, 15},
-		"activity":    {true, 5, 60, 300, 10}, "planner": {true, 15, 3600, 86400, 15},
-		"catalog": {true, 60, 3600, 86400, 15}, "torque": {true, 15, 300, 3600, 15}, "forge": {true, 30, 3600, 3600, 20},
+		"transcripts": {true, 120, 3600, 86400, 45, false},
+		"approvals":   {true, 3, 60, 300, 15, false},
+		"chat-turns":  {true, 3, 60, 300, 15, false},
+		"chat":        {true, 5, 60, 300, 15, false},
+		"activity":    {true, 5, 60, 300, 10, false}, "planner": {true, 15, 3600, 86400, 15, false},
+		"catalog": {true, 60, 3600, 86400, 15, false}, "torque": {true, 15, 300, 3600, 15, false}, "forge": {true, 30, 3600, 3600, 20, true},
 	}}
 }
 

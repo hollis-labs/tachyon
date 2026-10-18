@@ -69,6 +69,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := migrate(ctx, db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	reader, err := sqlitekit.OpenReader(ctx, path, sqlitekit.OpenOptions{})
 	if err != nil {
 		db.Close()
