@@ -1,3 +1,5 @@
+import { Button } from "@hollis-labs/design-components"
+import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { ShieldCheck, RefreshCw, KeyRound } from "lucide-react"
@@ -35,9 +37,10 @@ export function ApprovalsPage() {
     .at(-1)
   if (!queue)
     return (
-      <p className="p-6 text-sm text-zinc-400">
-        Enable Console to view approvals.
-      </p>
+      <div className="flex h-full min-w-0 flex-col">
+        <PageHeader title="Approvals" />
+        <p className="p-4 dash-support text-fg-muted">Enable Console to view approvals.</p>
+      </div>
     )
   const rows = (queue.inbox?.[view] ?? []).filter((item) =>
     `${item.request_snapshot.title} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
@@ -45,40 +48,23 @@ export function ApprovalsPage() {
       .includes(search.toLowerCase()),
   )
   return (
-    <main className="space-y-5 p-4 sm:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 font-mono text-lg text-zinc-200">
-            <ShieldCheck className="h-5 w-5 text-amber-300" />
-            Approvals
-          </h1>
-          <p className="mt-1 text-xs text-zinc-500">
-            Review requests, inspect evidence, and record decisions.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            className={approvalButton}
-            disabled={unlocking}
-            onClick={() => void unlock()}
-          >
-            <KeyRound className="h-3 w-3" /> Operator access
-          </button>
-          <span className="font-mono text-[10px] text-zinc-500">
-            {queue.error ? "Unavailable" : (freshness?.state ?? "Connecting")}
-            {freshness?.updatedAt
-              ? ` · Updated ${new Date(freshness.updatedAt).toLocaleTimeString()}`
-              : ""}
-          </span>
-          <button
-            aria-label="Refresh approvals"
-            className={approvalButton}
-            onClick={() => void queue.refresh(true)}
-          >
-            <RefreshCw className="h-3 w-3" />
-          </button>
-        </div>
-      </header>
+    <div className="flex h-full min-w-0 flex-col">
+      <PageHeader title="Approvals">
+        <Button variant="outline" size="sm" className="dash-header-action" disabled={unlocking} onClick={() => void unlock()}>
+          <KeyRound className="h-3 w-3" /> Operator access
+        </Button>
+        <Button variant="ghost" size="sm" aria-label="Refresh approvals" onClick={() => void queue.refresh(true)}>
+          <RefreshCw className="h-3 w-3" />
+        </Button>
+      </PageHeader>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 dash-support text-fg-muted">
+        <p>Review requests, inspect evidence, and record decisions.</p>
+        <span className="font-mono dash-caption text-fg-faint">
+          {queue.error ? "Unavailable" : (freshness?.state ?? "Connecting")}
+          {freshness?.updatedAt ? ` · Updated ${new Date(freshness.updatedAt).toLocaleTimeString()}` : ""}
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
       {operatorMessage && (
         <p role="status" className="text-xs text-zinc-400">
           {operatorMessage}
@@ -159,7 +145,8 @@ export function ApprovalsPage() {
           </p>
         )}
       </section>
-    </main>
+      </div>
+    </div>
   )
 }
 export function ApprovalTrigger({ onNavigate }: { onNavigate?: () => void }) {

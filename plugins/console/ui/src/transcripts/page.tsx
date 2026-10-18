@@ -1,3 +1,4 @@
+import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@hollis-labs/design-components"
 import { Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
@@ -7,7 +8,6 @@ import {
   Activity,
   BarChart3,
   Boxes,
-  Database,
   FileText,
   Search,
   Sparkles,
@@ -151,19 +151,13 @@ export function TranscriptDashboard() {
     "var(--color-dash-status-blocked, #fbbf24)",
   ]
   return (
-    <main className="space-y-5 p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-sky-400">
-            Dashboards / Fragments Engine
-          </p>
-          <h1 className="flex items-center gap-2 font-mono text-xl text-zinc-200">
-            <Database className="h-5 w-5 text-sky-300" /> Transcript insights
-          </h1>
-          <p className="mt-2 text-xs text-zinc-500">
-            Explore recorded conversations, usage, and the work behind them.
-          </p>
-        </div>
+    <div className="flex h-full min-w-0 flex-col">
+      <PageHeader title="Transcript insights" />
+      <div className="border-b border-border px-4 py-2 dash-support text-fg-muted">
+        <p className="font-mono dash-caption text-fg-faint">Dashboards / Fragments Engine</p>
+        <p>Explore recorded conversations, usage, and the work behind them.</p>
+      </div>
+      <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
         {snapshot && (
           <div className="rounded border border-zinc-800 px-3 py-2 text-right">
             <div className="flex items-center gap-2 font-mono text-[10px] uppercase text-sky-300">
@@ -177,7 +171,6 @@ export function TranscriptDashboard() {
             </p>
           </div>
         )}
-      </header>
       {error && (
         <div
           role="alert"
@@ -544,6 +537,7 @@ export function TranscriptDashboard() {
           onClose={() => setSelected(undefined)}
         />
       )}
-    </main>
+      </div>
+    </div>
   )
 }
