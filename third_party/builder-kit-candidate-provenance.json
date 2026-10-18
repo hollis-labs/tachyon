@@ -1,7 +1,7 @@
 {
   "status": "local review packages; no registry release",
   "source_repo": "https://github.com/hollis-labs/design-kit",
-  "source_commit": "8468e29f00f96a0217c0e10980b29da486bdac0e",
+  "source_commit": "fb38761e24abcf4931cf84ed6cb11b51886c28bf",
   "build_commands": [
     "npm run build -w @hollis-labs/kit-dashboard",
     "npm run build -w @hollis-labs/kit-admin",
@@ -9,9 +9,9 @@
   ],
   "packages": {
     "kit-dashboard": {
-      "archive": "hollis-labs-kit-dashboard-0.5.0-cw0043-scale-de5367cc.tgz",
-      "sha256": "de5367cc92c2bdbfc5f172322fabce60977b95b2f39ab73888fe1aad35a5cab2",
-      "source_commit": "8468e29f00f96a0217c0e10980b29da486bdac0e"
+      "archive": "hollis-labs-kit-dashboard-0.5.0-cw0043-yellow-1c119269.tgz",
+      "sha256": "1c119269df885c9719e6b06456e7cb9d5c1ee2c1087a27605d78a482f0996848",
+      "source_commit": "fb38761e24abcf4931cf84ed6cb11b51886c28bf"
     },
     "kit-admin": {
       "archive": "hollis-labs-kit-admin-0.1.0-cw0043-scale-b79a4da6.tgz",
@@ -30,5 +30,6 @@
     }
   },
   "scaling_followup": "CW-20261018-0043: compact typography roles, configuration avatars, explicit shared reference document geometry, button role precedence and Builder adoption.",
-  "source_pr": "https://github.com/hollis-labs/design-kit/pull/115"
+  "source_pr": "https://github.com/hollis-labs/design-kit/pull/115",
+  "accent_followup": "Builder opts into the shared yellow action/attention palette matching the original Tachyon amber-300 accent."
 }

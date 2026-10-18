@@ -25,7 +25,7 @@ export function BuilderPage() {
   const section = query.get('section') ?? 'agents'
   return (
     <ApiProvider client={consoleClient}>
-      <div className="flex h-full min-w-0 flex-col">
+      <div data-dashboard-accent="yellow" className="flex h-full min-w-0 flex-col">
         <PageHeader title="Builder" />
         <AdminTabs label="Builder areas" value={section}
           onChange={key => setQuery(current => { const next = new URLSearchParams(current); next.set('section', key); return next })}
