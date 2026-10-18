@@ -81,10 +81,10 @@ export function TeamBuilder() {
 		<div>
 			<div className="flex flex-wrap items-center gap-3 border-b border-border/80 px-4 py-3">
 				<div className="min-w-0 flex-1">
-					<h2 className="font-mono text-sm font-semibold uppercase tracking-wide">
+					<h2 className="font-mono dash-body font-semibold uppercase tracking-wide">
 						Team configuration
 					</h2>
-					<p className="mt-1 text-xs text-fg-muted">
+					<p className="mt-1 dash-support text-fg-muted">
 						Define seats, assign pinned launch profiles, and configure shared
 						policy.
 					</p>
@@ -93,14 +93,14 @@ export function TeamBuilder() {
 					New team draft
 				</Btn>
 			</div>
-			<p className="border-b border-border/80 px-4 py-2 text-xs text-fg-muted">
+			<p className="border-b border-border/80 px-4 py-2 dash-support text-fg-muted">
 				Team drafts stay in this Builder workspace until you leave or reload.
 				Imported saved teams are read-only snapshots; live memberships are not connected here yet.
 			</p>
 			{error && (
 				<div
 					role="alert"
-					className="flex flex-wrap items-center gap-3 border-b border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger"
+					className="flex flex-wrap items-center gap-3 border-b border-danger/30 bg-danger/5 px-4 py-3 dash-body text-danger"
 				>
 					{error}
 					<Btn onClick={() => void load()}>Retry team policy</Btn>
@@ -108,12 +108,12 @@ export function TeamBuilder() {
 			)}
 			<AdminDirectory label="Team configuration" layout="compact" records={
 				<aside>
-					<div className="border-b border-border/80 px-4 py-3"><h3 className="font-mono text-label uppercase tracking-widest text-fg-muted">Saved team snapshots</h3><p className="mt-1 text-xs text-fg-faint">{snapshot ? `${new Set(savedTeams.map(t => t.id)).size} teams · ${savedTeams.length} versions · manually imported` : 'Loading local snapshot…'}</p>
-					{snapshotError && <p role="alert" className="mt-2 text-xs text-danger">{snapshotError} <button type="button" className="underline" onClick={() => void loadSnapshot()}>Retry snapshot</button></p>}</div>
+					<div className="border-b border-border/80 px-4 py-3"><h3 className="font-mono dash-label uppercase tracking-widest text-fg-muted">Saved team snapshots</h3><p className="mt-1 dash-support text-fg-faint">{snapshot ? `${new Set(savedTeams.map(t => t.id)).size} teams · ${savedTeams.length} versions · manually imported` : 'Loading local snapshot…'}</p>
+					{snapshotError && <p role="alert" className="mt-2 dash-support text-danger">{snapshotError} <button type="button" className="underline" onClick={() => void loadSnapshot()}>Retry snapshot</button></p>}</div>
 					<ul aria-label="Saved teams">{savedTeams.map(t => <li key={importedTeamKey(t)}><AdminRecordButton selected={imported === t} onSelect={() => select(importedTeamKey(t))} size="comfortable" title={t.id} description={`${t.name} · version ${t.version}`} /></li>)}</ul>
-					{snapshot && !savedTeams.length && <p className="px-4 py-3 text-xs text-fg-faint">No saved team snapshot has been imported, or it has expired from the cache.</p>}
+					{snapshot && !savedTeams.length && <p className="px-4 py-3 dash-support text-fg-faint">No saved team snapshot has been imported, or it has expired from the cache.</p>}
 					<div className="border-b border-border/80 px-4 py-3">
-						<h3 className="mb-2 font-mono text-label uppercase tracking-widest text-fg-muted">
+						<h3 className="mb-2 font-mono dash-label uppercase tracking-widest text-fg-muted">
 							Local drafts · {drafts.length}
 						</h3>
 						<AdminInput
@@ -138,27 +138,27 @@ export function TeamBuilder() {
 							))}
 					</ul>
 					{!drafts.length && (
-						<p className="px-4 py-4 text-sm text-fg-faint">
+						<p className="px-4 py-4 dash-body text-fg-faint">
 							Create a draft to start configuring a team.
 						</p>
 					)}
 					<div className="px-4 py-4">
-						<h3 className="font-mono text-label uppercase tracking-widest text-fg-muted">
+						<h3 className="font-mono dash-label uppercase tracking-widest text-fg-muted">
 							Tether launch bindings
 						</h3>
 						{policy ? (
 							<>
-								<p className="mt-2 text-xs text-fg-faint">
+								<p className="mt-2 dash-support text-fg-faint">
 									{policy.bindings.length} bindings in the authored activation
 									policy. Host activation may differ.
 								</p>
 								<ul className="mt-3 space-y-3">
 									{policy.bindings.map((b) => (
 										<li key={b.launch}>
-											<span className="block break-all font-mono text-xs text-fg">
+											<span className="block break-all font-mono dash-support text-fg">
 												{b.launch}
 											</span>
-											<span className="block text-xs text-fg-faint">
+											<span className="block dash-support text-fg-faint">
 												{b.runtime}
 												{b.model ? ` · ${b.model}` : ""} ·{" "}
 												{b.definition.revision}
@@ -168,7 +168,7 @@ export function TeamBuilder() {
 								</ul>
 							</>
 						) : (
-							<p className="mt-2 text-xs text-fg-faint">
+							<p className="mt-2 dash-support text-fg-faint">
 								{error ? "Policy unavailable." : "Loading policy…"}
 							</p>
 						)}
@@ -185,12 +185,12 @@ export function TeamBuilder() {
 				) : review ? (
 					<article aria-label="Team draft review">
 						<Block title="Review team draft">
-							<h2 className="text-lg font-semibold">{review.name}</h2>
-							<p className="mt-1 text-sm text-fg-muted">
+							<h2 className="dash-detail-title font-semibold">{review.name}</h2>
+							<p className="mt-1 dash-body text-fg-muted">
 								{review.id} · version {review.version} · {review.slots.length}{" "}
 								seats
 							</p>
-							<p className="mt-3 text-sm text-fg-muted">
+							<p className="mt-3 dash-body text-fg-muted">
 								This is a local configuration review. Tether must verify pins,
 								host policy and launch eligibility before a future real save or
 								run.
@@ -199,7 +199,7 @@ export function TeamBuilder() {
 						<Block title="Seat assignments">
 							<ul className="space-y-3">
 								{review.slots.map((s) => (
-									<li key={s.name} className="text-sm">
+									<li key={s.name} className="dash-body">
 										<span className="font-mono text-fg">{s.name}</span>
 										<span className="text-fg-muted">
 											{" "}
@@ -212,11 +212,11 @@ export function TeamBuilder() {
 							</ul>
 						</Block>
 						<Block title="Shared policy">
-							<p className="text-sm text-fg-muted">
+							<p className="dash-body text-fg-muted">
 								Strict authority · coordinator {review.routing.coordinator_slot}{" "}
 								· history {review.policy.history}
 							</p>
-							<p className="mt-2 text-sm text-fg-muted">
+							<p className="mt-2 dash-body text-fg-muted">
 								Coordinator may message and assign to the other seats. Spawn
 								depth {review.policy.spawn.max_depth}, children{" "}
 								{review.policy.spawn.max_children}. These limits do not grant
@@ -225,10 +225,10 @@ export function TeamBuilder() {
 						</Block>
 						<Block title="Configuration preview">
 							<details>
-								<summary className="cursor-pointer text-sm text-fg-muted">
+								<summary className="cursor-pointer dash-body text-fg-muted">
 									View complete draft
 								</summary>
-								<pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs text-fg-muted">
+								<pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all dash-support text-fg-muted">
 									{JSON.stringify(review, null, 2)}
 								</pre>
 							</details>
@@ -236,7 +236,7 @@ export function TeamBuilder() {
 						{message && (
 							<div
 								role="status"
-								className="border-b border-success/30 bg-success/5 px-5 py-3 text-sm text-success"
+								className="border-b border-success/30 bg-success/5 px-5 py-3 dash-body text-success"
 							>
 								{message}
 							</div>
@@ -326,7 +326,7 @@ export function TeamBuilder() {
 							</div>
 						</Block>
 						<Block title="Seats and assignments">
-							<p className="mb-3 text-sm text-fg-muted">
+							<p className="mb-3 dash-body text-fg-muted">
 								Each seat uses one fresh agent from a pinned definition. Runtime
 								instances are managed on Agents.
 							</p>
@@ -346,7 +346,7 @@ export function TeamBuilder() {
 											key={i}
 											className="min-w-0 border border-border p-3"
 										>
-											<legend className="px-1 font-mono text-xs text-fg-muted">
+											<legend className="px-1 font-mono dash-support text-fg-muted">
 												Seat {i + 1}
 											</legend>
 											<div className="grid gap-3 sm:grid-cols-2">
@@ -395,7 +395,7 @@ export function TeamBuilder() {
 											</div>
 											{binding && (
 												<p
-													className="mt-2 break-all font-mono text-label text-fg-faint"
+													className="mt-2 break-all font-mono dash-label text-fg-faint"
 													title={binding.definition.digest}
 												>
 													{binding.definition.id}@{binding.definition.revision}{" "}
@@ -403,7 +403,7 @@ export function TeamBuilder() {
 												</p>
 											)}
 											<div className="mt-3 flex items-center gap-3">
-												<label className="flex items-center gap-2 text-xs text-fg-muted">
+												<label className="flex items-center gap-2 dash-support text-fg-muted">
 													<input
 														type="checkbox"
 														checked={s.min === 1}
@@ -494,7 +494,7 @@ export function TeamBuilder() {
 									/>
 								</Field>
 							</div>
-							<p className="mt-3 text-xs text-fg-faint">
+							<p className="mt-3 dash-support text-fg-faint">
 								Strict authority: the coordinator may message and assign to
 								other seats. Host policy remains the authority for effective
 								permissions.
@@ -504,7 +504,7 @@ export function TeamBuilder() {
 							{issues.length > 0 && (
 								<ul
 									aria-label="Draft validation"
-									className="mb-3 space-y-1 text-xs text-warning"
+									className="mb-3 space-y-1 dash-support text-warning"
 								>
 									{issues.map((issue, i) => (
 										<li key={i}>{issue}</li>

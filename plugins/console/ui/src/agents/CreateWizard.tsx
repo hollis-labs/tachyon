@@ -28,8 +28,8 @@ function Choice({ selected, onSelect, title, disabled, children }: { selected: b
       disabled={disabled}
       className={`w-full border px-3 py-2.5 text-left transition-colors focus-visible:bg-panel-2 focus-visible:outline-none   disabled:cursor-not-allowed disabled:opacity-40 ${selected ? 'border-warning/70 bg-panel' : 'border-border hover:bg-panel/50'}`}
     >
-      <span className="block font-mono text-control text-fg">{title}</span>
-      {children && <span className="mt-0.5 block text-xs text-fg-muted">{children}</span>}
+      <span className="block font-mono dash-body text-fg">{title}</span>
+      {children && <span className="mt-0.5 block dash-support text-fg-muted">{children}</span>}
     </button>
   )
 }
@@ -121,7 +121,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
   if (plan) {
     return (
       <article aria-label="Create agent plan">
-        <header className="border-b border-border/80 px-5 py-3"><h2 className="font-mono text-sm font-semibold uppercase tracking-wide">Create {name.trim() || effectiveId}</h2></header>
+        <header className="border-b border-border/80 px-5 py-3"><h2 className="font-mono dash-body font-semibold uppercase tracking-wide">Create {name.trim() || effectiveId}</h2></header>
         <PlanRunner
           plan={plan}
           subjectLabel={name.trim() || effectiveId}
@@ -137,8 +137,8 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
   return (
     <article aria-label="Create agent">
       <header className="flex flex-wrap items-center gap-3 border-b border-border/80 px-5 py-3">
-        <h2 className="font-mono text-sm font-semibold uppercase tracking-wide">New agent</h2>
-        <ol aria-label="Steps" className="flex flex-wrap items-center gap-x-3 font-mono text-caption uppercase tracking-widest">
+        <h2 className="font-mono dash-body font-semibold uppercase tracking-wide">New agent</h2>
+        <ol aria-label="Steps" className="flex flex-wrap items-center gap-x-3 font-mono dash-caption uppercase tracking-widest">
           {STEPS.map((s, n) => (
             <li key={s.id} aria-current={s.id === step ? 'step' : undefined} className={s.id === step ? 'text-warning' : n < at ? 'text-fg-muted' : 'text-fg-faint'}>{n + 1}. {s.label}</li>
           ))}
@@ -167,7 +167,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
               <AdminSelect aria-label="Agent to clone" value={source.id} onChange={(e) => pick({ kind: 'clone', id: e.target.value })} className={`${inputCls} max-w-sm`}>
                 {agents.filter((a) => !a.identity.retired).map((a) => <option key={a.identity.id} value={a.identity.id}>{a.identity.name} ({a.identity.id})</option>)}
               </AdminSelect>
-              <p className="mt-2 text-xs text-fg-faint">The clone gets a new identity: no teams, assignments, sessions or message address.</p>
+              <p className="mt-2 dash-support text-fg-faint">The clone gets a new identity: no teams, assignments, sessions or message address.</p>
             </Block>
           )}
         </>
@@ -193,7 +193,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
             <Field label="Workspace" htmlFor="cw-ws">
               <AdminSelect id="cw-ws" value={draft.workspaceMode} onChange={(e) => set('workspaceMode', e.target.value)} className={inputCls}>{[...new Set(['', 'worktree', 'hybrid', 'direct', draft.workspaceMode])].map((p) => <option key={p} value={p}>{p || 'not set'}</option>)}</AdminSelect>
             </Field>
-            <Field label="Enabled" htmlFor="cw-enabled"><label className="flex items-center gap-2 text-control text-fg"><input id="cw-enabled" type="checkbox" checked={draft.enabled} onChange={(e) => set('enabled', e.target.checked)} /> Can be launched once created</label></Field>
+            <Field label="Enabled" htmlFor="cw-enabled"><label className="flex items-center gap-2 dash-body text-fg"><input id="cw-enabled" type="checkbox" checked={draft.enabled} onChange={(e) => set('enabled', e.target.checked)} /> Can be launched once created</label></Field>
           </div>
         </Block>
       )}
@@ -215,7 +215,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
                 <Field label="Permission mode" htmlFor="cw-perm"><AdminSelect id="cw-perm" value={draft.permissionMode} onChange={(e) => set('permissionMode', e.target.value)} className={inputCls}>{PERMISSION_MODES.map((p) => <option key={p}>{p}</option>)}</AdminSelect></Field>
                 <Field label="Sandbox" htmlFor="cw-sandbox"><AdminSelect id="cw-sandbox" value={draft.sandbox} onChange={(e) => set('sandbox', e.target.value)} className={inputCls}>{[...new Set(['', ...SANDBOX_MODES])].map((p) => <option key={p} value={p}>{p || 'not set'}</option>)}</AdminSelect></Field>
               </div>
-              <Field label="Network" htmlFor="cw-net"><label className="flex items-center gap-2 text-control text-fg"><input id="cw-net" type="checkbox" checked={draft.network} onChange={(e) => set('network', e.target.checked)} /> Allow network access</label></Field>
+              <Field label="Network" htmlFor="cw-net"><label className="flex items-center gap-2 dash-body text-fg"><input id="cw-net" type="checkbox" checked={draft.network} onChange={(e) => set('network', e.target.checked)} /> Allow network access</label></Field>
               <Field label="Privileged scopes"><ListField label="Scopes" values={draft.scopes} suggestions={KNOWN_SCOPES} tone="border-warning/60 bg-warning/10 text-warning" onChange={(v) => set('scopes', v)} /></Field>
               <Field label="Policy rules"><ListField label="Rules" values={draft.rules} suggestions={KNOWN_RULES} onChange={(v) => set('rules', v)} /></Field>
             </div>
@@ -226,7 +226,7 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
       {step === 'reason' && (
         <>
           <Block title="Summary">
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-control">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 dash-body">
               <span className="font-mono text-fg">{name.trim() || '(no name)'}</span>
               <span className="font-mono text-fg-faint">{effectiveId}</span>
               <span className="font-mono text-fg-muted">{draft.provider}{draft.model ? ` · ${draft.model}` : ''}</span>
@@ -234,9 +234,9 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
             </div>
             {live.risks.length > 0 ? (
               <ul className="mt-3 space-y-1">
-                {live.risks.map((r) => <li key={r.id} className="flex flex-wrap items-baseline gap-x-3 text-control"><Chip tone={r.level === 'high' ? 'border-danger/60 text-danger' : r.level === 'medium' ? 'border-warning/50 text-warning' : undefined}>{r.level}</Chip><span className="text-fg">{r.title}</span><span className="text-fg-faint">{r.detail}</span></li>)}
+                {live.risks.map((r) => <li key={r.id} className="flex flex-wrap items-baseline gap-x-3 dash-body"><Chip tone={r.level === 'high' ? 'border-danger/60 text-danger' : r.level === 'medium' ? 'border-warning/50 text-warning' : undefined}>{r.level}</Chip><span className="text-fg">{r.title}</span><span className="text-fg-faint">{r.detail}</span></li>)}
               </ul>
-            ) : <p className="mt-3 text-control text-fg-muted">No privileged settings.</p>}
+            ) : <p className="mt-3 dash-body text-fg-muted">No privileged settings.</p>}
           </Block>
           <Block title="Reason">
             <Field label={live.risk === 'high' ? 'Reason (required: privileged agent)' : 'Reason (optional)'} htmlFor="cw-note" issues={live.issues.filter((i) => i.field === 'note')}>
@@ -244,11 +244,11 @@ export function CreateWizard({ agents, cloneOf, onClose, onCreated }: CreateWiza
             </Field>
           </Block>
           {hardErrors.filter((i) => i.field !== 'note').length > 0 && (
-            <ul className="border-b border-danger/30 bg-danger/5 px-5 py-2 text-control text-danger">{hardErrors.filter((i) => i.field !== 'note').map((i, n) => <li key={n}>{i.message}</li>)}</ul>
+            <ul className="border-b border-danger/30 bg-danger/5 px-5 py-2 dash-body text-danger">{hardErrors.filter((i) => i.field !== 'note').map((i, n) => <li key={n}>{i.message}</li>)}</ul>
           )}
         </>
       )}
-      {error && <div role="alert" className="border-b border-danger/30 bg-danger/5 px-5 py-2 text-control text-danger">{error}</div>}
+      {error && <div role="alert" className="border-b border-danger/30 bg-danger/5 px-5 py-2 dash-body text-danger">{error}</div>}
 
       <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-border bg-bg px-5 py-3">
         {at > 0 && <Btn onClick={() => setStep(STEPS[at - 1].id)} disabled={busy}>Back</Btn>}

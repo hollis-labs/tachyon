@@ -41,7 +41,7 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
     return [...m].sort(([a], [b]) => a.localeCompare(b))
   }, [rows, group])
 
-  if (rows === null) return error ? <div className="p-4"><EmptyState variant="error" title="Assignments unavailable" description={error} /></div> : <div className="p-4 font-mono text-xs text-fg-faint">Loading assignments…</div>
+  if (rows === null) return error ? <div className="p-4"><EmptyState variant="error" title="Assignments unavailable" description={error} /></div> : <div className="p-4 font-mono dash-support text-fg-faint">Loading assignments…</div>
 
   const stage = () => {
     if (!form.agentId || !form.targetId.trim()) return
@@ -64,7 +64,7 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-border/80 px-4 py-2 font-mono text-label uppercase tracking-widest text-fg-faint">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-border/80 px-4 py-2 font-mono dash-label uppercase tracking-widest text-fg-faint">
         <span>{demonstration ? 'Assignment drafts' : `${rows.length} assignments`}</span>
         {!demonstration && <span>{new Set(rows.map((r) => r.agentId)).size} agents</span>}
         <span role="group" aria-label="Group by" className="ml-auto flex gap-1">
@@ -72,7 +72,7 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
         </span>
       </div>
 
-      {demonstration && <p className="border-b border-border/80 px-4 py-3 text-sm text-fg-muted">Stage agent-to-task or workstream assignments for review. Live assignment reads are not connected; target IDs are not verified. Team seat assignments are configured under Teams. These drafts do not dispatch work and stay here only until you leave or reload Builder.</p>}
+      {demonstration && <p className="border-b border-border/80 px-4 py-3 dash-body text-fg-muted">Stage agent-to-task or workstream assignments for review. Live assignment reads are not connected; target IDs are not verified. Team seat assignments are configured under Teams. These drafts do not dispatch work and stay here only until you leave or reload Builder.</p>}
 
       <Block title="Assign">
         <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-6">
@@ -89,17 +89,17 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
         <ul aria-label="Assignments">
           {groups.map(([key, items]) => (
             <li key={key} className="border-b border-border/80">
-              <div className="bg-panel/40 px-4 py-1.5 font-mono text-label uppercase tracking-widest text-fg-muted">{group === 'agent' ? nameOf.get(key) ?? key : key} <span className="text-fg-faint">· {items.length}</span></div>
+              <div className="bg-panel/40 px-4 py-1.5 font-mono dash-label uppercase tracking-widest text-fg-muted">{group === 'agent' ? nameOf.get(key) ?? key : key} <span className="text-fg-faint">· {items.length}</span></div>
               <ul>
                 {items.map((r) => {
                   const releasing = removeIds.includes(r.id)
                   return (
                     <li key={r.id} className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 ${releasing ? 'bg-danger/5' : ''}`}>
-                      <span className={`min-w-0 flex-1 text-control ${releasing ? 'text-fg-faint line-through' : 'text-fg'}`}>
+                      <span className={`min-w-0 flex-1 dash-body ${releasing ? 'text-fg-faint line-through' : 'text-fg'}`}>
                         {group === 'agent' ? <><Chip>{r.target.type}</Chip> <span className="ml-1 font-mono">{r.target.id}</span>{r.target.label && <span className="ml-2 text-fg-faint">{r.target.label}</span>}</> : <span className="font-mono">{nameOf.get(r.agentId) ?? r.agentId}</span>}
                       </span>
-                      {r.role && <span className="font-mono text-label uppercase tracking-wider text-fg-faint">{r.role}</span>}
-                      <span className="font-mono text-label text-fg-faint">{ago(r.since, now)}</span>
+                      {r.role && <span className="font-mono dash-label uppercase tracking-wider text-fg-faint">{r.role}</span>}
+                      <span className="font-mono dash-label text-fg-faint">{ago(r.since, now)}</span>
                       <Btn onClick={() => toggleRemove(r.id)} aria-label={`${releasing ? 'Keep' : 'Release'} ${r.agentId} ${r.target.id}`}>{releasing ? 'Keep' : 'Release'}</Btn>
                     </li>
                   )
@@ -112,13 +112,13 @@ export function AssignmentsView({ agents, now: nowProp }: { agents: AgentRecord[
 
       {staged > 0 && (
         <div className="sticky bottom-0 border-t border-border bg-bg">
-          <ul aria-label="Staged changes" className="space-y-0.5 border-b border-border/80 px-5 py-2 text-control">
-            {addList.map((d, n) => <li key={`a${n}`} className="flex items-center gap-2 text-success">+ {nameOf.get(d.agentId) ?? d.agentId} to {d.target.type} {d.target.id}<button type="button" className="ml-auto font-mono text-label uppercase tracking-wider text-fg-faint hover:text-fg-muted" onClick={() => setAddList((l) => l.filter((_, i) => i !== n))}>unstage</button></li>)}
+          <ul aria-label="Staged changes" className="space-y-0.5 border-b border-border/80 px-5 py-2 dash-body">
+            {addList.map((d, n) => <li key={`a${n}`} className="flex items-center gap-2 text-success">+ {nameOf.get(d.agentId) ?? d.agentId} to {d.target.type} {d.target.id}<button type="button" className="ml-auto font-mono dash-label uppercase tracking-wider text-fg-faint hover:text-fg-muted" onClick={() => setAddList((l) => l.filter((_, i) => i !== n))}>unstage</button></li>)}
             {removeIds.map((id) => { const r = rows.find((x) => x.id === id); return r && <li key={id} className="text-danger">- {nameOf.get(r.agentId) ?? r.agentId} from {r.target.type} {r.target.id}</li> })}
           </ul>
           <div className="flex flex-wrap items-center gap-3 px-5 py-3">
             <AdminInput aria-label="Reason" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reason (optional)" className={`${inputCls} max-w-xs`} />
-            {error && <span role="alert" className="text-control text-danger">{error}</span>}
+            {error && <span role="alert" className="dash-body text-danger">{error}</span>}
             <span className="ml-auto flex gap-2"><Btn onClick={() => { setAddList([]); setRemoveIds([]) }}>Clear</Btn><Btn tone="primary" onClick={review} disabled={busy}>Review plan ({staged})</Btn></span>
           </div>
         </div>

@@ -9,16 +9,6 @@
 @source "../../packages/*/src/**/*";
 @source "../../plugins/*/ui/src/**/*";
 
-/* Keep the dashboard rail stable beside dense pages and clarify its active route. */
-.tachyon-shell > nav {
-  flex: 0 0 calc(var(--spacing) * 14);
-  border-color: var(--color-border);
-}
-
-.tachyon-shell > nav [aria-current="page"] {
-  color: var(--color-fg);
-}
-
 /* The kit search control normally reserves 240px. Let it fit narrow app panes. */
 .planner-search > div,
 .planner-search input {
