@@ -134,6 +134,88 @@ drafts into master records. Revision retention, multi-source correlation, outbou
 sync, and large-inventory staging need explicit later policies; no history purge
 or upstream writeback is enabled here.
 
+## Tachyon-owned plans and tasks
+
+`objects.Plan` and `objects.Task` use the same UUID identity, ownership, CAS patch,
+metadata, revision history and soft-delete contracts as the other domain objects.
+They are authored work descriptions; setting `queued`, `doing` or `done` does not
+dispatch work, execute a workflow, or transition a Torque task. General API/MCP
+surfaces and the current Planner UI cutover remain separate work.
+
+Both definitions embed `Common`: `name` is the title, `description` holds the body,
+with `tags` and extensible `properties`. They carry required `status`, priority
+0 (unspecified) through 5 (lowest; 1 is highest), optional `project_id`,
+`acceptance_criteria`, and an RFC3339 `due_at`. Statuses are `draft`, `backlog`,
+`todo`, `queued`, `doing`, `review`, `done`, `blocked`, `paused`, `archived`,
+`abandoned`, and `cancelled`. Transitions are authored edits guarded by revision,
+not an execution state machine. Plans may reference a `workflow_id`. Tasks may
+reference a `plan_id`, a task `parent_id`, and up to 256 unique task IDs in
+`depends_on`. Parent and dependency graphs must each be acyclic; self references,
+unknown IDs and wrong-kind references fail atomically. Deleted records retain
+their edges and history, and deleting a plan never cascades into its tasks.
+
+Agents and teams connect through existing `Assignment` objects with a typed
+`Target` pointing to a plan or task. This preserves assignment identity, state
+and history instead of duplicating assignees on the task. Project membership is
+explicit on each record; it is not inherited or rewritten when a plan changes.
+
+The backend contract is `objects.Service`:
+
+- `Create` / retry-safe `CreateWithID`, `Get`, revision-checked `Patch`,
+  `SetDeleted`, `History`, and `Links` work for both new kinds.
+- `ListPlanner(PlannerFilter)` intersects optional kind, status, exact priority,
+  project, plan, parent and assignee filters. It returns full `Record` values,
+  ordered by UUID, with `AfterID` pagination (default 100, maximum 500). Deleted
+  targets are hidden unless requested. `AssignedTo` finds agent/team IDs through
+  non-deleted assignments of any state; callers can inspect the assignment's state
+  through `Links`/`Get`. Empty kind lists both plans and tasks.
+- Queries use the indexed `planner_items` projection of the **effective**
+  definition, updated in the same queued transaction as the object, links and
+  revision. Provider observations cannot override local fields in that projection.
+
+For example, using the host's existing object service:
+
+```go
+plan, err := service.Create(ctx, objects.Plan{
+    Common: objects.Common{Name: "Build the control surface"}, Status: "draft",
+}, nil, "operator")
+// Handle err, then create a task under plan.ID.
+task, err := service.Create(ctx, objects.Task{
+    Common: objects.Common{Name: "Persist planning records"},
+    Status: "todo", Priority: 2, PlanID: plan.ID,
+}, nil, "operator")
+// Handle err before using task.ID or task.Revision in a patch.
+```
+
+`planner.ImportTorque` takes a selected `TorqueRecord`, a credential-free instance
+base URL, read-start timestamp, optional `objects.Correlation`, and actor. It is
+a service operation, not a network client or background inventory job. Use Torque's
+typed lowercase task representation: `kind=plan` seeds a local plan; `agent`,
+`issue` and `task` seed local tasks. The first import creates a Tachyon master;
+repeated imports update only its source snapshot/version and preserve local
+content, links, metadata and deletion state. `objects.Service.ImportOwned` supplies
+that atomic primitive. It refuses implicit promotion of an existing source-owned
+record; use `TakeOwnership` explicitly first.
+
+To associate an already authored record, supply its local UUID and expected
+revision in `Correlation`. A source key can belong to only one object, and this
+slice allows one source per object. A title match never establishes correlation.
+External project/parent/dependency/epic/sprint/phase/collection IDs remain qualified
+facts under `properties.torque`, with provider/instance on `Record.Source`; they
+never become local foreign keys. Link known local UUIDs explicitly with `Patch`.
+Later imports retain the latest external facts on `Source.Definition` without
+rewriting those authored links. Environment, execution configuration, open remote
+metadata, credentials, runtime phases and dispatch controls are not imported.
+No existing API cache, Planner response, or Torque inventory is automatically
+converted into a master record.
+
+Migration `003_planner.sql` extends the object-kind constraint and adds the query
+projection. Migration pins its SQLite connection, disables FK enforcement only
+for transactional table replacement, checks all FKs before commit, and restores
+enforcement before the writer queue and readers start. Existing IDs, source
+snapshots, history and links are preserved. Epics, sprints, collections, richer
+Planner databases, and execution/run objects remain later slices.
+
 ## Provider ingestion and recurring jobs
 
 `internal/objectsync` imports Tether projects and agent definitions, Cerberus

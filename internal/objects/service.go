@@ -208,6 +208,9 @@ func persist(ctx context.Context, tx *sql.Tx, r *Record, operation, actor string
 		return fmt.Errorf("%w: effective definition exceeds 1 MiB", ErrInvalid)
 	}
 	r.Definition, r.Name = effective, name
+	if err := validatePlanningGraph(ctx, tx, *r, links); err != nil {
+		return err
+	}
 	for _, l := range links {
 		var kind Kind
 		if err := tx.QueryRowContext(ctx, "SELECT kind FROM objects WHERE id=?", l.ToID).Scan(&kind); err != nil {
@@ -225,6 +228,9 @@ func persist(ctx context.Context, tx *sql.Tx, r *Record, operation, actor string
 	_, err = tx.ExecContext(ctx, `INSERT INTO objects(id,kind,ownership,name,revision,local_json,metadata_json,deleted_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(id) DO UPDATE SET ownership=excluded.ownership,name=excluded.name,revision=excluded.revision,local_json=excluded.local_json,metadata_json=excluded.metadata_json,deleted_at=excluded.deleted_at,updated_at=excluded.updated_at`, r.ID, r.Kind, r.Ownership, r.Name, r.Revision, string(r.Local), string(r.Metadata), nullable(r.DeletedAt), timestamp(r.CreatedAt), timestamp(r.UpdatedAt))
 	if err != nil {
+		return err
+	}
+	if err := projectPlanning(ctx, tx, *r); err != nil {
 		return err
 	}
 	if r.Source != nil {
