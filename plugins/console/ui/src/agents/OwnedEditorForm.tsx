@@ -1,7 +1,8 @@
 import { AdminInput, AdminSelect, AdminTextarea } from '@hollis-labs/kit-admin'
 import { useEffect, useState } from 'react'
 import { Field, ListField } from './AgentEditor'
-import { KNOWN_TOOLS, PROVIDERS } from './plan'
+import { KNOWN_RULES, KNOWN_SCOPES, KNOWN_TOOLS, PERMISSION_MODES, PROVIDERS, SANDBOX_MODES } from './plan'
+import { Chip } from './ui'
 import { Block, Btn } from './ui'
 import { builderDraft, builderPatch } from './owned-builder-draft'
 import { isRetired, type ObjectRecord, type OwnedBuilderClient } from './owned-builder-client'
@@ -22,6 +23,22 @@ function ReferencePicker({ client, kind, value, onChange, label }: { client: Own
     {value && !records.rows.some(row => row.id === value) && <option value={value}>{current?.name ?? value}</option>}
     {records.rows.map(row => <option key={row.id} value={row.id} disabled={isRetired(row)}>{row.name}{isRetired(row) ? ' · retired' : ''}</option>)}
   </AdminSelect>{records.error && <span role="alert">{records.error}</span>}{records.next && <Btn disabled={records.loading} onClick={() => void records.more()}>More {kind} choices</Btn>}</Field>
+}
+
+const ACCENT = 'border-warning/60 bg-warning/10 text-warning'
+
+/** Design-only: the owned agent record has no permission or policy fields yet, so these controls are shown locked and nothing here is saved. */
+function PolicyPreview() {
+  return <Block title="Permissions and policy"><fieldset disabled className="min-w-0 space-y-3">
+    <div className="flex items-center gap-2"><Chip tone="border-border text-fg-faint">not saved yet</Chip><span className="dash-support text-fg-faint">Permissions and policy are not part of the owned agent record yet.</span></div>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Field label="Permission mode" htmlFor="owned-perm"><AdminSelect id="owned-perm" className="w-full" value="" onChange={() => undefined}>{['', ...PERMISSION_MODES].map(p => <option key={p} value={p}>{p || 'From launch profile'}</option>)}</AdminSelect></Field>
+      <Field label="Sandbox" htmlFor="owned-sandbox"><AdminSelect id="owned-sandbox" className="w-full" value="" onChange={() => undefined}>{['', ...SANDBOX_MODES].map(p => <option key={p} value={p}>{p || 'not set'}</option>)}</AdminSelect></Field>
+    </div>
+    <Field label="Network" htmlFor="owned-network"><label className="flex items-center gap-2 dash-body text-fg"><input id="owned-network" type="checkbox" checked={false} onChange={() => undefined} /> Allow network access</label></Field>
+    <Field label="Privileged scopes"><ListField label="Scopes" values={[]} suggestions={KNOWN_SCOPES} tone={ACCENT} onChange={() => undefined} /></Field>
+    <Field label="Policy rules"><ListField label="Rules" values={[]} suggestions={KNOWN_RULES} tone={ACCENT} onChange={() => undefined} /></Field>
+  </fieldset></Block>
 }
 
 export const OWNED_LABELS: Record<string, string> = { name: 'Name', description: 'Description', runtime: 'Runtime', model: 'Model', roles: 'Roles (comma separated)', instructions: 'Instructions', tools: 'Tools (comma separated)', skills: 'Skills (comma separated)', enabled: 'Enabled in desired configuration', project_id: 'Project', machine_id: 'Machine', role: 'Assignment role', state: 'Planning status', agent_id: 'Agent', team_id: 'Team', target: 'Local target', external_target: 'External target', provider: 'Provider', instance: 'Instance', collection: 'Collection', external_id: 'External ID' }
@@ -53,8 +70,9 @@ export function OwnedEditorForm({ editor }: { editor: OwnedEditor }) {
     <Block title="Prompt"><Field label="Instructions" htmlFor="owned-instructions" changed={changed('instructions')}>
       <AdminTextarea id="owned-instructions" value={String(draft.instructions ?? '')} onChange={e => set('instructions', e.target.value)} rows={8} className="w-full h-auto py-1.5" /></Field></Block>
     <Block title="Tools and skills"><div className="space-y-3">
-      {chips('tools', 'Tools', KNOWN_TOOLS, 'border-success/50 bg-success/10 text-success')}{chips('skills', 'Skills', [])}
+      {chips('tools', 'Tools', KNOWN_TOOLS, ACCENT)}{chips('skills', 'Skills', [], ACCENT)}
     </div></Block>
+    <PolicyPreview />
   </>
   const assignmentForm = <>
     <Block title="Assignment"><div className="space-y-3">{input('name')}{input('description', true)}</div></Block>
