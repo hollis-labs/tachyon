@@ -13,6 +13,9 @@ type Actions struct{ Service *provideractions.Service }
 func (*Actions) ID() string { return "tether" }
 func (*Actions) Verbs() []Verb {
 	return []Verb{
+		{Name: "executions.project", Mutates: true, Description: "Repair local run projection from a retained team receipt; never sends a provider request.", InputSchema: inputSchema(reflect.TypeFor[IDRequest](), []string{"id"})},
+		{Name: "runtime.runs", Description: "List retained provider runs by saved team or attempted assignment; status is observed evidence, not live health.", InputSchema: inputSchema(reflect.TypeFor[provideractions.RunFilter](), nil)},
+		{Name: "runtime.activity", Description: "Page a local run's prepared, pending and confirmed action summaries; payloads are fetched separately.", InputSchema: inputSchema(reflect.TypeFor[provideractions.ActivityFilter](), []string{"run_id"})},
 		{Name: "agents.publish_preview", Mutates: true, Description: "Review a saved agent publication into a separate Tether catalog profile.", InputSchema: inputSchema(reflect.TypeFor[provideractions.PublishRequest](), []string{"id", "object_id", "expected_revision", "provider", "extends"})},
 		{Name: "catalog.apply_preview", Mutates: true, Description: "Retain installation of an exact provider catalog plan; approval stays with Tether.", InputSchema: inputSchema(reflect.TypeFor[provideractions.CatalogApplyRequest](), []string{"id", "plan_action_id"})},
 		{Name: "actions.reconcile", Mutates: true, Description: "Record catalog installation confirmation using provider readback only.", InputSchema: inputSchema(reflect.TypeFor[IDRequest](), []string{"id"})},
@@ -29,6 +32,21 @@ func (p *Actions) Invoke(ctx context.Context, verb string, raw json.RawMessage, 
 	var result any
 	var err error
 	switch verb {
+	case "executions.project":
+		var in IDRequest
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.Project(ctx, in.ID, actor)
+		}
+	case "runtime.runs":
+		var in provideractions.RunFilter
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.Runs(ctx, in)
+		}
+	case "runtime.activity":
+		var in provideractions.ActivityFilter
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.Activity(ctx, in)
+		}
 	case "agents.publish_preview":
 		var in provideractions.PublishRequest
 		if err = decode(raw, &in); err == nil {

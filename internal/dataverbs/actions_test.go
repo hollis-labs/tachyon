@@ -41,7 +41,7 @@ func TestProviderActionTransportRequiresAuthorizationAndClosedInputs(t *testing.
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	writes := []string{"teams.preview", "teams.apply", "runtime.preview", "actions.apply", "agents.publish_preview", "catalog.apply_preview", "actions.reconcile"}
+	writes := []string{"teams.preview", "teams.apply", "runtime.preview", "actions.apply", "agents.publish_preview", "catalog.apply_preview", "actions.reconcile", "executions.project"}
 	for _, verb := range writes {
 		if w := invoke("GET", verb, ""); w.Code != 405 {
 			t.Fatal(w.Code)
@@ -53,6 +53,14 @@ func TestProviderActionTransportRequiresAuthorizationAndClosedInputs(t *testing.
 	if authCalls != len(writes) {
 		t.Fatal("writes did not cross authorization")
 	}
+	for _, verb := range []string{"runtime.runs", "runtime.activity"} {
+		if w := invoke("POST", verb, `{}`); w.Code != 405 {
+			t.Fatal(w.Code)
+		}
+	}
+	if w := invoke("GET", "runtime.runs", ""); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
 	allow = true
 	for _, body := range []string{`{"id":"a","id":"b"}`, `{"id":"a","actor":"operator"}`, `{"id":"a","payload":{"team":{}}}`} {
 		if w := invoke("POST", "teams.apply", body); w.Code != 400 {
@@ -61,6 +69,9 @@ func TestProviderActionTransportRequiresAuthorizationAndClosedInputs(t *testing.
 	}
 	if w := invoke("POST", "teams.roster", `{}`); w.Code != 405 {
 		t.Fatal(w.Code)
+	}
+	if w := invoke("POST", "executions.project", `{"id":"a","actor":"operator","target":"https://elsewhere"}`); w.Code != 400 {
+		t.Fatal(w.Code, w.Body.String())
 	}
 	if w := invoke("POST", "actions.get", `{}`); w.Code != 405 {
 		t.Fatal(w.Code)

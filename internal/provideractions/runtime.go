@@ -216,8 +216,9 @@ func (s *Service) Roster(ctx context.Context, in RosterRequest) (RosterSnapshot,
 		out.Problem = "Tether roster refresh failed. Saved membership is retained; connectivity and permission validation is pending."
 		return out, nil
 	}
-	if len(fresh) != 1 || fresh[0].Run.ID != result.Run.ID {
-		return out, unavailable("Provider returned a mismatched roster.")
+	if len(fresh) != 1 || fresh[0].Run.ID != result.Run.ID || fresh[0].Run.TeamID != result.Run.TeamID || fresh[0].Run.TeamVersion != result.Run.TeamVersion {
+		out.Problem = "Provider returned a mismatched roster. Saved membership is retained."
+		return out, nil
 	}
 	out.Runs = fresh
 	out.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -242,7 +243,16 @@ func (s *Service) Roster(ctx context.Context, in RosterRequest) (RosterSnapshot,
 			}
 		}
 		_, e := tx.ExecContext(ctx, "INSERT INTO provider_roster_cache(identity,selection,body,observed_at) VALUES(?,?,?,?) ON CONFLICT(identity,selection) DO UPDATE SET body=excluded.body,observed_at=excluded.observed_at", bound.Identity(), origin.ID, raw, out.ObservedAt)
-		return e
+		if e != nil {
+			return e
+		}
+		if e = s.projectReceiptTx(ctx, tx, &origin); e != nil {
+			return e
+		}
+		if origin.ProjectionProblem != "" {
+			out.Problem = origin.ProjectionProblem
+		}
+		return nil
 	})
 	return out, e
 }

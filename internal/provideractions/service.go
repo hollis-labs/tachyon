@@ -30,6 +30,8 @@ type ListRequest struct {
 	Verb     string `json:"verb,omitempty"`
 }
 type Receipt struct {
+	ExecutionRunID        string          `json:"execution_run_id,omitempty"`
+	ProjectionProblem     string          `json:"projection_problem,omitempty"`
 	ID                    string          `json:"id"`
 	ObjectID              string          `json:"object_id"`
 	ObjectRevision        int64           `json:"object_revision"`
@@ -84,13 +86,13 @@ func actorRequired(actor string) error {
 	return nil
 }
 
-const columns = `id,object_id,object_revision,provider,target,verb,payload,digest,state,attempts,lease_until,result,problem,actor,created_at,updated_at,credential_identity,input_digest,origin_action_id`
+const columns = `id,object_id,object_revision,provider,target,verb,payload,digest,state,attempts,lease_until,result,problem,actor,created_at,updated_at,credential_identity,input_digest,origin_action_id,projection_problem,COALESCE((SELECT run_object_id FROM provider_run_links WHERE formation_action_id=provider_actions.id OR formation_action_id=provider_actions.origin_action_id),'')`
 
 type scanner interface{ Scan(...any) error }
 
 func scan(row scanner) (Receipt, error) {
 	var r Receipt
-	err := row.Scan(&r.ID, &r.ObjectID, &r.ObjectRevision, &r.Provider, &r.Target, &r.Verb, &r.Payload, &r.Digest, &r.State, &r.Attempts, &r.RetryAfter, &r.Result, &r.Problem, &r.Actor, &r.CreatedAt, &r.UpdatedAt, &r.identity, &r.inputDigest, &r.OriginID)
+	err := row.Scan(&r.ID, &r.ObjectID, &r.ObjectRevision, &r.Provider, &r.Target, &r.Verb, &r.Payload, &r.Digest, &r.State, &r.Attempts, &r.RetryAfter, &r.Result, &r.Problem, &r.Actor, &r.CreatedAt, &r.UpdatedAt, &r.identity, &r.inputDigest, &r.OriginID, &r.ProjectionProblem, &r.ExecutionRunID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, svcerr.New(svcerr.CodeNotFound, "Provider action not found.")
 	}
@@ -299,7 +301,10 @@ func (s *Service) Apply(ctx context.Context, in ApplyRequest, actor string) (Rec
 	defer stop()
 	err = s.Store.Writer.Submit(saveCtx, "provider_action_receipt", func(ctx context.Context, tx *sql.Tx) error {
 		_, e := tx.ExecContext(ctx, "UPDATE provider_actions SET state=?,result=?,problem=?,lease_until=0,updated_at=? WHERE id=? AND attempts=?", r.State, r.Result, r.Problem, r.UpdatedAt, r.ID, r.Attempts)
-		return e
+		if e != nil {
+			return e
+		}
+		return s.projectReceiptTx(ctx, tx, &r)
 	})
 	if err != nil {
 		return Receipt{}, unavailable("Could not retain the provider response. Reload this action; do not create a replacement request.")

@@ -881,16 +881,70 @@ operation after a disconnect. A timeout, failure or malformed receipt remains
 same request. After a host crash, the same-key retry is available when the lease
 expires. Credential or target changes refuse replay under a different caller.
 
-History loads 25 compact summaries per page by UUID cursor, with payload and
-result details fetched on selection. A receipt is a point-in-time provider
-response, not current runtime health. Formation neither changes the saved team
-nor marks planned assignments executed. Publishing agent definitions, dispatching
-assignments into runs, cancellation and explicit reconciliation after credential
-rotation remain separate actions. No production agent launches were used to
-validate this integration. Live read-only readiness on 2026-10-19 found
-`/auth/context` accepting Tachyon as a verified `device`, while `/teams/roster`
-returns `401 unauthenticated`; Tether must provide a supported caller identity
-for the team APIs before this credential can form teams.
+History loads 25 compact summaries per page, newest first, with a retained UUID
+cursor. Payload and result details load on selection. A receipt describes a
+provider response at a point in time; it is not current runtime health. Formation
+neither changes the saved team nor marks planned assignments executed.
+
+Runtime controls use `runtime.preview` and `actions.apply` for assignment dispatch,
+team messaging, adding/removing members, cancellation and dissolution. They select
+an explicit succeeded formation receipt. `teams.roster` returns saved membership
+first; `refresh: true` performs a separate provider read and retains the cache on
+failure. Catalog publication uses `agents.publish_preview`, `catalog.apply_preview`
+and `actions.apply`. Tether owns approval of its exact plan and digest. Unlike
+team operations, catalog POSTs have no durable idempotency contract here: an
+unknown installation uses `actions.reconcile` readback, never a blind POST replay.
+
+No production launches were used to validate these integrations. Connectivity and
+live acceptance are tracked separately: CW-20261019-0004 covers the paired device
+identity rejected by Tether's team APIs; CW-20261016-0248 covers remote catalog
+write/approval authority. Local tool-to-MCP policy mapping, external run adoption,
+and agent-definition pins are separate remaining integration work.
+
+### Provider execution tracking
+
+Confirmed team formations also produce ordinary Tachyon `run` objects. The source
+identity is `(tether, configured instance, teams/runs, provider run ID)`, with a
+local UUID and a link to the exact formation receipt and reviewed team revision.
+The team revision supplies the name and project association even if the saved
+team is edited later. Provider observations use the normal object merge/history
+service: local overlays, metadata, adoption and tombstones survive refresh.
+
+The receipt and run projection share the SQLite writer transaction. If projection
+fails, a savepoint rolls back partial object writes while retaining the confirmed
+provider result and a separate `projection_problem`. `execution_run_id` in action
+receipts identifies the local run when available. Repair does not resend an action
+or need a working credential; it reconstructs the link from the stored formation
+and latest retained roster. Old installations can backfill a formation the same
+way. GETs never repair or contact Tether.
+
+The `tether` provider exposes these additional verbs through the same-origin data
+API (`/api/plugins/console/v1/data/providers/tether/verbs/<verb>`):
+
+| Verb | Method / inputs | Result |
+|---|---|---|
+| `runtime.runs` | GET: optional `team_id`, `assignment_id`, `include_deleted`, `before_id`, `limit` | compact run page with `next_before_id` |
+| `runtime.activity` | GET: local `run_id`; optional `assignment_id`, `before_id`, `limit` | action summary page including prepared, pending and unknown outcomes |
+| `executions.project` | operator POST: retained action `id` | receipt with repaired `execution_run_id` |
+
+Read inputs are JSON encoded in the `input` query parameter. Pages default to 25
+and cap at 100; the returned cursor is opaque to consumers. Run pages order by
+formation confirmation time; activity pages order by action creation time. Full
+objects/history remain accessible through Tachyon's `objects.get`,
+`objects.history` and `executions.list`; full action details use `actions.get`.
+Run summaries distinguish effective `status` from raw provider `reported_status`
+and include `observed_at`. A reported `working` run maps to `running`, but that
+observation never proves current process health. Receipt times do not become
+process start/end timestamps. Unknown provider states map to `unknown`.
+
+Assignment-filtered run lists include attempted dispatches (including uncertain
+ones), not unused previews. Inspect `runtime.activity` for the outcome of each
+attempt. One run may have many assignments; no single assignment is invented as
+its owner, and dispatch never edits assignment planning status. Cancellation or
+dissolution receipts alone do not infer a terminal run status: only a roster
+observation updates it. Member actor strings are not session IDs, so this slice
+does not synthesize session records or session-to-run links. External agent-token
+scopes are unchanged; these provider verbs do not become agent-authorized writes.
 
 ## Build and run
 
