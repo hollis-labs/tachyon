@@ -13,7 +13,13 @@
     "isolatedModules": true,
     "useDefineForClassFields": true,
     "verbatimModuleSyntax": true,
-    "types": ["vite/client"]
+    "allowImportingTsExtensions": true,
+    "types": ["vite/client", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@planner/*": ["../plugins/planner/ui/src/*"],
+      "@console/*": ["../plugins/console/ui/src/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../packages/*/src", "../plugins/*/ui/src"]
 }

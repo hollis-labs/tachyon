@@ -1,0 +1,104 @@
+import { useEffect, useRef, useState } from 'react'
+import { Copy, Download, Info, Check } from 'lucide-react'
+import { MessageInfo } from './MessageInfo'
+import { ago } from '@console/lib/agent-activity'
+import { MessageBody } from './MessageBody'
+import { DeliveryBadge } from '../messaging'
+import { ToolChips } from './ToolChips'
+import type { ChatMessage } from './types'
+
+function Bubble({ m, now }: { m: ChatMessage; now: number }) {
+  const mine = m.from === 'operator'
+  const [info, setInfo] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(m.body); setCopied(true); setActionError('') }
+    catch { setActionError('Could not copy. Check clipboard permissions.') }
+  }
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([m.body], { type: 'text/markdown;charset=utf-8' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${m.from}-${new Date(m.at).toISOString().replace(/[:.]/g, '-')}.md`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  const actionClass = 'p-1 text-zinc-500 hover:text-amber-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300'
+
+  return (
+    <li data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} className={`border-b border-zinc-800/80 px-3 py-2 ${mine ? 'bg-zinc-900/40' : ''}`}>
+      <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+        <span>{mine ? 'you' : m.from === 'system' ? 'system' : 'agent'} · {ago(m.at, now)}</span>
+        {mine && m.delivery && <DeliveryBadge state={m.delivery} />}
+        <span className="ml-auto flex items-center gap-1">
+          <button type="button" aria-label={copied ? 'Message copied' : 'Copy message'} title="Copy message" className={actionClass} onClick={() => void copy()}>{copied ? <Check className="h-3 w-3 text-emerald-300" /> : <Copy className="h-3 w-3" />}</button>
+          <button type="button" aria-label="Download message" title="Download Markdown" className={actionClass} onClick={download}><Download className="h-3 w-3" /></button>
+          <button type="button" aria-label="Message details" title="Message details" className={actionClass} onClick={() => setInfo(true)}><Info className="h-3 w-3" /></button>
+        </span>
+        {m.streaming && <span className="animate-pulse text-amber-300">STREAMING</span>}
+      </div>
+      {m.body && (
+        <MessageBody body={m.body} streaming={m.streaming} />
+      )}
+      <ToolChips tools={m.tools} />
+      {actionError && <p role="alert" className="mt-1 font-mono text-xs text-red-300">{actionError}</p>}
+      {info && <MessageInfo message={m} onClose={() => setInfo(false)} />}
+      {m.error && <p role="alert" className="mt-1 font-mono text-xs text-red-300">{m.error}</p>}
+    </li>
+  )
+}
+
+export function ThreadView({ messages, loading, hasMore, onLoadOlder }: { messages: ChatMessage[]; loading: boolean; hasMore: boolean; onLoadOlder: () => void }) {
+  const box = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
+  const prevHeight = useRef(0)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    if (prevHeight.current && !pinned.current && el.scrollTop === 0) el.scrollTop = el.scrollHeight - prevHeight.current // keep place after paging
+    else if (pinned.current) el.scrollTop = el.scrollHeight
+    prevHeight.current = 0
+  }, [messages])
+
+  return (
+    <div
+      ref={box}
+      role="log"
+      aria-label="Conversation"
+      aria-live="polite"
+      className="min-h-0 flex-1 overflow-y-auto"
+      onScroll={(e) => {
+        const el = e.currentTarget
+        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+      }}
+    >
+      {hasMore && (
+        <div className="border-b border-zinc-800/80 px-3 py-2 text-center">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              prevHeight.current = box.current?.scrollHeight ?? 0
+              pinned.current = false
+              onLoadOlder()
+            }}
+            className="font-mono text-[10px] uppercase tracking-widest text-zinc-400 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:opacity-40"
+          >
+            {loading ? 'Loading' : 'Load older messages'}
+          </button>
+        </div>
+      )}
+      {messages.length === 0 ? (
+        <p className="px-3 py-4 font-mono text-xs text-zinc-500">{loading ? 'Loading' : 'No messages yet. Say something.'}</p>
+      ) : (
+        <ul>{messages.map((m) => <Bubble key={m.id} m={m} now={now} />)}</ul>
+      )}
+    </div>
+  )
+}

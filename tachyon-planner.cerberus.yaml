@@ -1,0 +1,27 @@
+kind: cerberus-project/v1
+owner: tachyon-planner-verify
+namespace: local
+project:
+  id: tachyon-planner-verify
+  name: Tachyon Planner Verification
+  description: Opt-in frontend verification; never changes the deployed Planner provider
+resources:
+  - id: tachyon-planner-verify-frontend
+    env: dev
+    owner: self
+    admin: self
+    name: Tachyon Planner Verification Frontend
+    type: process
+    project: tachyon-planner-verify
+    connector: local
+    tags: [tachyon, dev, frontend, planner, verification]
+    config:
+      dir: ~/dev/hollis-labs/apps/tachyon-rollout/frontend
+      command: [npm, run, dev, --, --host, 100.112.71.40, --port, "5186"]
+      mode: dev_session
+      run_from: workspace
+      env:
+        TACHYON_API_ORIGIN: http://127.0.0.1:8093
+      port: 5186
+      url: http://100.112.71.40:5186/planner
+      auto_restart: false

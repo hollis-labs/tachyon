@@ -1,14 +1,14 @@
 # Go binary built from `make build`
 /tachyon
 
+# Cerberus creates this transient lock before checking source freshness.
+/.cerberus-build.lock
+
 # Go test + build artefacts
 *.exe
 *.test
 *.out
 coverage.out
-
-# Cerberus build lock (held for the duration of a resource deploy)
-.cerberus-build.lock
 
 # Frontend
 frontend/node_modules/
@@ -32,10 +32,9 @@ Thumbs.db
 # Local env
 .env
 .env.local
-# Plugin build outputs (binaries named after their dir). Source, manifests and
-# declarations are tracked.
-plugins/*/[!.]*
-!plugins/*/*.go
-!plugins/*/*.yaml
-!plugins/*/*.json
-!plugins/*/*.md
+
+# Plugin binaries
+/bin/
+
+# Root workspace deps
+/node_modules/

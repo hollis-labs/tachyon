@@ -3,10 +3,9 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 import { App } from "./App"
 import { ApiProvider } from "./api/context"
-import { CapabilitiesProvider } from "./hooks/use-capabilities"
 import "./index.css"
 
-// Apply the persisted Sysop UI palette before first paint.
+// Apply the persisted dashboard palette before first paint.
 applyTheme(getInitialTheme())
 
 const root = document.getElementById("root")
@@ -17,9 +16,7 @@ if (!root) {
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <ApiProvider>
-      <CapabilitiesProvider>
-        <App />
-      </CapabilitiesProvider>
+      <App />
     </ApiProvider>
   </React.StrictMode>,
 )

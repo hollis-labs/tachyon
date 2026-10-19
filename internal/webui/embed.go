@@ -1,40 +1,17 @@
-// Package webui embeds the built Sysop UI frontend and serves it through
-// the shared go-webui harness.
+// Package webui embeds the built frontend served by app-host.
 package webui
 
 import (
 	"embed"
 	"io/fs"
-	"net/http"
-
-	gowebui "github.com/hollis-labs/libs/ui-go/webui"
 )
 
-// BasePath is the URL prefix the Sysop UI is mounted at. Keep it in sync
-// with `base` in frontend/vite.config.ts.
-const BasePath = "/sysop"
+// BasePath is where app-host mounts the UI.
+const BasePath = "/"
 
-// embedded holds the frontend build. `make ui-build` (vite) writes the
-// real assets into dist/; until then dist/ holds only a placeholder and
-// go-webui serves its "not built" page.
-//
 //go:embed all:dist
 var embedded embed.FS
 
-// Handler returns the http.Handler serving the embedded Sysop UI.
-func Handler() http.Handler {
-	dist, err := fs.Sub(embedded, "dist")
-	if err != nil {
-		panic("webui: embedded dist directory missing: " + err.Error())
-	}
-	return gowebui.Handler(gowebui.Config{FS: dist, BasePath: BasePath})
-}
-
-// Mount registers the Sysop UI handler on mux at BasePath. Both the
-// trailing-slash and bare patterns are registered so /sysop
-// and /sysop/ both resolve.
-func Mount(mux *http.ServeMux) {
-	h := Handler()
-	mux.Handle(BasePath+"/", h)
-	mux.Handle(BasePath, h)
-}
+// Assets returns the built frontend. dist/.gitkeep keeps the embed compiling
+// before the first `make ui-build`.
+func Assets() (fs.FS, error) { return fs.Sub(embedded, "dist") }

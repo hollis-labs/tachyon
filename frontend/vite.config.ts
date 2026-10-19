@@ -1,40 +1,37 @@
-import { writeFileSync } from "node:fs"
-import { join } from "node:path"
-import { fileURLToPath } from "node:url"
+/// <reference types="vitest/config" />
+import path from "node:path"
 import tailwindcss from "@tailwindcss/vite"
-import react from "@vitejs/plugin-react"
-import { defineConfig, type Plugin } from "vite"
+import { defineConfig } from "vite"
 
-const distDir = fileURLToPath(new URL("../internal/webui/dist/", import.meta.url))
+const root = path.resolve(__dirname, "..")
+const apiTarget = process.env.TACHYON_API_ORIGIN || "http://127.0.0.1:18093"
 
-// internal/webui/embed.go embeds this output with `//go:embed all:dist`,
-// which is a compile-time error when the pattern matches nothing.
-// emptyOutDir wipes the directory on every build, so restore the placeholder
-// here so bare `npm run build` preserves the tracked .gitkeep file.
-function keepDistTracked(): Plugin {
-  return {
-    name: "tachyon-keep-dist-tracked",
-    apply: "build",
-    closeBundle() {
-      writeFileSync(join(distDir, ".gitkeep"), "")
-    },
-  }
-}
-
-// The Go binary serves this SPA under base_path (see internal/webui).
-// `build.outDir` points at the Go embed directory so `npm run build`
-// drops the bundle exactly where `//go:embed all:dist` expects it.
 export default defineConfig({
-  base: "/sysop/",
-  plugins: [react(), tailwindcss(), keepDistTracked()],
-  build: {
-    outDir: "../internal/webui/dist",
-    emptyOutDir: true,
-  },
-  server: {
-    // `make ui-dev` proxies same-origin /api calls to `make run` on :8093.
-    proxy: {
-      "/api": "http://localhost:8093",
+  base: "/",
+  plugins: [tailwindcss()],
+  esbuild: { jsx: "automatic" },
+  resolve: {
+    // Plugin-scoped aliases: each plugin UI keeps its own `@<id>/` root so
+    // ported modules never collide on a shared `@/`.
+    alias: {
+      "@planner": path.join(root, "plugins/planner/ui/src"),
+      "@console": path.join(root, "plugins/console/ui/src"),
     },
+    dedupe: ["react", "react-dom", "react-router-dom"],
+  },
+  build: { outDir: "../internal/webui/dist", emptyOutDir: true },
+  server: {
+    port: Number(process.env.TACHYON_UI_PORT || 5179),
+    strictPort: true,
+    // Preserve the browser-facing Host for the host's same-origin write guard.
+    proxy: { "/api": { target: apiTarget, changeOrigin: false } },
+  },
+  test: {
+    environment: "jsdom",
+    include: [
+      "../plugins/*/ui/src/**/*.test.{ts,tsx}",
+      "../packages/*/src/**/*.test.{ts,tsx}",
+      "src/**/*.test.{ts,tsx}",
+    ],
   },
 })

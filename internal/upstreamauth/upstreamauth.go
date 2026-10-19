@@ -86,6 +86,9 @@ func Wrap(base http.RoundTripper, baseURL, tokenFile string) (http.RoundTripper,
 	}, nil
 }
 
+// ErrCredential identifies a local credential failure without exposing its value.
+var ErrCredential = errors.New("upstream credential unavailable")
+
 type transport struct {
 	base         http.RoundTripper
 	scheme, host string
@@ -99,7 +102,7 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	token, err := t.watch.Token()
 	if err != nil {
 		// The error names the path and the rule, never the token.
-		return nil, fmt.Errorf("upstream credential unavailable: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrCredential, err)
 	}
 	out := req.Clone(req.Context())
 	out.Header.Set("Authorization", "Bearer "+token)

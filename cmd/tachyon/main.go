@@ -1,441 +1,172 @@
-// Command tachyon serves the Tachyon Sysop UI.
+// Command tachyon serves the Tachyon control plane: the embedded UI, the
+// same-origin API and the first-party plugin processes, on app-host.
 package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log"
-	"log/slog"
-	"net/http"
-	"net/url"
+	"net"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
-	"github.com/hollis-labs/libs/plugin-mcp/plugin-sdk/subprocess"
-	"github.com/hollis-labs/tachyon/internal/hitl"
-	"github.com/hollis-labs/tachyon/internal/plugins"
+	"github.com/hollis-labs/libs/app/app-host/host"
+
+	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/agentclient"
+	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/internal/objectsync"
+	"github.com/hollis-labs/tachyon/internal/planner"
+	"github.com/hollis-labs/tachyon/internal/server"
+	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 	"github.com/hollis-labs/tachyon/internal/webui"
 )
 
-const agentOpsPluginID = "agent-ops"
-
-const (
-	resourceTypeAgent           = "agent"
-	resourceTypeAgentTool       = "agent-tool"
-	resourceTypeSkill           = "skill"
-	resourceTypeAgentSkill      = "agent-skill"
-	resourceTypeAgentSkillGrant = "agent-skill-grant"
-	resourceTypeMCPServer       = "mcp-server"
-	resourceTypeAgentMCPServer  = "agent-mcp-server"
-	resourceTypeReflex          = "reflex"
-
-	resourceTypeDurableAgent        = "durable-agent"
-	resourceTypeDurableAgentEvent   = "durable-agent-event"
-	resourceTypeDurableAgentSession = "durable-agent-session"
-)
-
-// unwrapCRUDResult pulls the inner JSON payload out of a crud/create,
-// crud/read, or crud/update response envelope.
-func unwrapCRUDResult(raw json.RawMessage) (json.RawMessage, error) {
-	var res subprocess.CRUDResult
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, err
-	}
-	return res.Data, nil
-}
-
-// unwrapCRUDList pulls the inner JSON array out of a crud/list response
-// envelope.
-func unwrapCRUDList(raw json.RawMessage) (json.RawMessage, error) {
-	var res subprocess.CRUDListResult
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, err
-	}
-	items := res.Items
-	if items == nil {
-		items = []json.RawMessage{}
-	}
-	return json.Marshal(items)
-}
-
-// pluginProxy bundles the plumbing every agent-ops HTTP route needs: call
-// the plugin over its CRUD wire contract, unwrap the envelope, write JSON,
-// and log failures the same way everywhere. A route becomes one call to
-// list/read/create/update/delete instead of ~25 lines of hand-rolled
-// boilerplate — see cmd/tachyon/main.go's route table below for how each
-// resource type (including agent-scoped sub-resources addressed by a
-// "<agentID>::<subID>" compound ID) maps onto it.
-type pluginProxy struct {
-	mgr      *plugins.Manager
-	pluginID string
-	logger   *slog.Logger
-}
-
-func newPluginProxy(mgr *plugins.Manager, pluginID string, logger *slog.Logger) *pluginProxy {
-	return &pluginProxy{mgr: mgr, pluginID: pluginID, logger: logger}
-}
-
-func (p *pluginProxy) fail(w http.ResponseWriter, op string, err error) {
-	p.logger.Error("agent-ops proxy call failed", "op", op, "error", err)
-	http.Error(w, err.Error(), http.StatusInternalServerError)
-}
-
-func decodeBody(r *http.Request) (map[string]interface{}, error) {
-	var data map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("invalid request body")
-	}
-	return data, nil
-}
-
-// pathValue returns a filter/id-building function that reads a single
-// named path parameter, for the common case (e.g. byID("id")).
-func pathValue(param string) func(r *http.Request) string {
-	return func(r *http.Request) string { return r.PathValue(param) }
-}
-
-// compoundID joins two path parameters into the "<agentID>::<subID>"
-// compound ID the plugin's sub-resource resourceTypes expect.
-func compoundID(agentParam, subParam string) func(r *http.Request) string {
-	return func(r *http.Request) string { return r.PathValue(agentParam) + "::" + r.PathValue(subParam) }
-}
-
-// agentIDFilter builds a crud/list filter scoping to the agent named by
-// the {id} path parameter.
-func agentIDFilter(r *http.Request) map[string]interface{} {
-	return map[string]interface{}{"agent_id": r.PathValue("id")}
-}
-
-// durableAgentIDFilter builds a crud/list filter scoping to the durable
-// agent instance named by the {id} path parameter.
-func durableAgentIDFilter(r *http.Request) map[string]interface{} {
-	return map[string]interface{}{"instance_id": r.PathValue("id")}
-}
-
-// withAgentID builds a crud/create data-merge that adds the owning
-// agent's ID (from the {id} path parameter) to the request body.
-func withAgentID(r *http.Request) map[string]interface{} {
-	return map[string]interface{}{"agent_id": r.PathValue("id")}
-}
-
-// list registers a handler for crud/list. filters is nil when the
-// resource type takes no filters (a plain catalog list).
-func (p *pluginProxy) list(resourceType string, filters func(r *http.Request) map[string]interface{}) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var f map[string]interface{}
-		if filters != nil {
-			f = filters(r)
-		}
-		raw, err := p.mgr.CallPlugin(r.Context(), p.pluginID, subprocess.MethodCRUDList, subprocess.CRUDParams{ResourceType: resourceType, Filters: f})
-		if err != nil {
-			p.fail(w, "list "+resourceType, err)
-			return
-		}
-		result, err := unwrapCRUDList(raw)
-		if err != nil {
-			p.fail(w, "decode list "+resourceType, err)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(result)
-	}
-}
-
-// read registers a handler for crud/read. id builds the resource's ID
-// from the request — a single path parameter, or a compound ID.
-func (p *pluginProxy) read(resourceType string, id func(r *http.Request) string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		raw, err := p.mgr.CallPlugin(r.Context(), p.pluginID, subprocess.MethodCRUDRead, subprocess.CRUDParams{ResourceType: resourceType, ID: id(r)})
-		if err != nil {
-			p.fail(w, "read "+resourceType, err)
-			return
-		}
-		result, err := unwrapCRUDResult(raw)
-		if err != nil {
-			p.fail(w, "decode "+resourceType, err)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(result)
-	}
-}
-
-// create registers a handler for crud/create. The JSON request body is
-// decoded as the base data map; extra (when non-nil) merges in
-// path-derived fields — e.g. an owning agent_id — on top of it.
-func (p *pluginProxy) create(resourceType string, extra func(r *http.Request) map[string]interface{}) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := decodeBody(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if extra != nil {
-			for k, v := range extra(r) {
-				data[k] = v
-			}
-		}
-		raw, err := p.mgr.CallPlugin(r.Context(), p.pluginID, subprocess.MethodCRUDCreate, subprocess.CRUDParams{ResourceType: resourceType, Data: data})
-		if err != nil {
-			p.fail(w, "create "+resourceType, err)
-			return
-		}
-		result, err := unwrapCRUDResult(raw)
-		if err != nil {
-			p.fail(w, "decode created "+resourceType, err)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write(result)
-	}
-}
-
-// update registers a handler for crud/update (used for both PUT and
-// PATCH routes).
-func (p *pluginProxy) update(resourceType string, id func(r *http.Request) string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := decodeBody(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		raw, err := p.mgr.CallPlugin(r.Context(), p.pluginID, subprocess.MethodCRUDUpdate, subprocess.CRUDParams{ResourceType: resourceType, ID: id(r), Data: data})
-		if err != nil {
-			p.fail(w, "update "+resourceType, err)
-			return
-		}
-		result, err := unwrapCRUDResult(raw)
-		if err != nil {
-			p.fail(w, "decode updated "+resourceType, err)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(result)
-	}
-}
-
-// delete registers a handler for crud/delete.
-func (p *pluginProxy) delete(resourceType string, id func(r *http.Request) string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		_, err := p.mgr.CallPlugin(r.Context(), p.pluginID, subprocess.MethodCRUDDelete, subprocess.CRUDParams{ResourceType: resourceType, ID: id(r)})
-		if err != nil {
-			p.fail(w, "delete "+resourceType, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}
-}
-
-// command registers a handler for command/execute — the wire method for
-// plugin verbs that don't fit the CRUD shape (e.g. "capabilities", a
-// read-only declaration with no input, or "launch", which needs an
-// agent_id built from the URL). buildArgs is nil for a no-input command;
-// otherwise it returns the JSON-encoded Args string sent to the plugin.
-// The plugin's CommandResult.Content is expected to already be a
-// JSON-encoded body, written through as-is.
-func (p *pluginProxy) command(commandName string, buildArgs func(r *http.Request) (string, error)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if plugins.PrivateCommand(commandName) {
-			http.Error(w, "private host command is unavailable", http.StatusForbidden)
-			return
-		}
-		var args string
-		if buildArgs != nil {
-			built, err := buildArgs(r)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			args = built
-		}
-		raw, err := p.mgr.CallPlugin(r.Context(), p.pluginID, subprocess.MethodCommandExecute, subprocess.CommandExecParams{Name: commandName, Args: args})
-		if err != nil {
-			p.fail(w, "command "+commandName, err)
-			return
-		}
-		var res subprocess.CommandExecResult
-		if err := json.Unmarshal(raw, &res); err != nil {
-			p.fail(w, "decode command "+commandName, err)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(res.Content))
-	}
-}
-
-// agentIDLaunchArgs builds the JSON Args string for the "launch" command,
-// binding the launched session to the agent named in the URL.
-func agentIDLaunchArgs(r *http.Request) (string, error) {
-	b, err := json.Marshal(map[string]string{"agent_id": r.PathValue("id")})
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
 func main() {
-	addr := ":8093"
-	if v := os.Getenv("TACHYON_ADDR"); v != "" {
-		addr = v
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var tangent hitl.Client
-	if endpoint := strings.TrimSpace(os.Getenv("TACHYON_TANGENT_MCP_URL")); endpoint != "" {
-		client, err := hitl.NewMCPClient(endpoint)
-		if err != nil {
-			logger.Error("invalid HITL configuration", "error", err)
-			os.Exit(1)
+	if len(os.Args) > 1 && (os.Args[1] == "access" || os.Args[1] == "data" || os.Args[1] == "local-data") {
+		var err error
+		if os.Args[1] == "access" {
+			err = agentaccess.Command(ctx, env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")), os.Args[2:], os.Stdout)
+		} else if os.Args[1] == "local-data" {
+			err = dataverbs.Command(ctx, env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")), os.Args[2:], os.Stdin, os.Stdout)
+		} else {
+			err = agentclient.Command(ctx, os.Args[2:], os.Stdout)
 		}
-		tangent = client
-		endpointURL, _ := url.Parse(endpoint)
-		logger.Info("Tangent MCP configured", "scheme", endpointURL.Scheme, "host", endpointURL.Host)
-	}
-	bridge, err := hitl.NewRuntime(tangent, strings.TrimSpace(os.Getenv("TACHYON_TANGENT_ITEM_BASE")), logger)
-	if err != nil {
-		logger.Error("invalid HITL configuration", "error", err)
-		os.Exit(1)
-	}
-	// Initialize plugin manager
-	pluginMgr := plugins.NewManager(logger)
-
-	// Admission and rollback finish before any HTTP listener can start.
-	if err := loadStartupPlugins(ctx, pluginMgr, "./plugins", logger); err != nil {
-		logStartupRefusal(logger, err)
-		os.Exit(1)
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("POST /api/plugins/{id}/restart", newPluginRestartHandler(pluginMgr))
-
-	// Same-origin API. The starter dashboard polls /api/health; replace
-	// this with your application's real endpoints.
-	mux.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
-
-	// Agent operations endpoints - proxy to agent-ops plugin's CRUDHandler
-	// over plugin-sdk's standard crud/* wire methods.
-	agentOps := newPluginProxy(pluginMgr, agentOpsPluginID, logger)
-
-	// Capability declaration — what the active provider (Nanite today)
-	// actually supports, for the UI to check before offering an action
-	// rather than assuming Nanite's shape is the only shape. See
-	// plugins/agent-ops/adapter.go's AgentCapabilities doc comment.
-	mux.HandleFunc("GET /api/capabilities", agentOps.command("capabilities", nil))
-
-	// Verb dispatch — unified endpoint that routes to the owning plugin
-	// by module prefix (ADR 001 §6). Coexists with the existing per-resource
-	// CRUD endpoints during migration.
-
-	registerHITL(mux, pluginMgr, bridge, logger)
-
-	// Verb registry — returns all declared modules and verbs from loaded
-	// plugins, for the frontend to gate UI actions on specific verb
-	// capabilities (D-48).
-	mux.HandleFunc("GET /api/verbs", func(w http.ResponseWriter, r *http.Request) {
-		caps := pluginMgr.AllCapabilities()
-
-		payload, err := json.Marshal(caps)
 		if err != nil {
-			logger.Error("verb registry serialization failed", "error", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(payload)
-	})
-
-	// Merged plugin navigation, with first-loaded metadata winning collisions.
-	mux.Handle("GET /api/nav", newNavHandler(pluginMgr))
-
-	// Agents.
-	mux.HandleFunc("GET /api/agents", agentOps.list(resourceTypeAgent, nil))
-	mux.HandleFunc("GET /api/agents/{id}", agentOps.read(resourceTypeAgent, pathValue("id")))
-	mux.HandleFunc("POST /api/agents", agentOps.create(resourceTypeAgent, nil))
-	mux.HandleFunc("PUT /api/agents/{id}", agentOps.update(resourceTypeAgent, pathValue("id")))
-	mux.HandleFunc("DELETE /api/agents/{id}", agentOps.delete(resourceTypeAgent, pathValue("id")))
-
-	// Launch: creates a session bound to this agent as primary and
-	// returns its ID. Deliberately minimal — Tachyon manages the agent,
-	// not the session (Tether's authority per the ownership map); this
-	// does not open or project a session view, just hands back the ID a
-	// launch actually produced instead of leaving the button as a no-op.
-	mux.HandleFunc("POST /api/agents/{id}/launch", agentOps.command("launch", agentIDLaunchArgs))
-
-	// Tool grants: GET returns the full discoverable catalog with this
-	// agent's grant state folded in; POST grants a tool_id from the body;
-	// DELETE revokes one.
-	mux.HandleFunc("GET /api/agents/{id}/tools", agentOps.list(resourceTypeAgentTool, agentIDFilter))
-	mux.HandleFunc("POST /api/agents/{id}/tools", agentOps.create(resourceTypeAgentTool, withAgentID))
-	mux.HandleFunc("DELETE /api/agents/{id}/tools/{toolId}", agentOps.delete(resourceTypeAgentTool, compoundID("id", "toolId")))
-
-	// Skill catalog (read-only from Tachyon — authoring stays on Nanite's
-	// own install/sync flow).
-	mux.HandleFunc("GET /api/skills", agentOps.list(resourceTypeSkill, nil))
-
-	// Agent skill assignment (discoverable, not yet approved to execute).
-	mux.HandleFunc("GET /api/agents/{id}/skills", agentOps.list(resourceTypeAgentSkill, agentIDFilter))
-	mux.HandleFunc("POST /api/agents/{id}/skills", agentOps.create(resourceTypeAgentSkill, withAgentID))
-	mux.HandleFunc("DELETE /api/agents/{id}/skills/{skillId}", agentOps.delete(resourceTypeAgentSkill, compoundID("id", "skillId")))
-
-	// Agent skill grant (approval to execute against the skill's current
-	// content hash).
-	mux.HandleFunc("GET /api/agents/{id}/skills/{slug}/grant", agentOps.read(resourceTypeAgentSkillGrant, compoundID("id", "slug")))
-	mux.HandleFunc("POST /api/agents/{id}/skills/{slug}/grant", agentOps.create(resourceTypeAgentSkillGrant, func(r *http.Request) map[string]interface{} {
-		return map[string]interface{}{"agent_id": r.PathValue("id"), "skill_slug": r.PathValue("slug")}
-	}))
-	mux.HandleFunc("DELETE /api/agents/{id}/skills/{slug}/grant", agentOps.delete(resourceTypeAgentSkillGrant, compoundID("id", "slug")))
-
-	// MCP server catalog (read-only from Tachyon — registration stays on
-	// Nanite's own Settings → MCP flow) and per-agent attach/detach.
-	mux.HandleFunc("GET /api/mcp-servers", agentOps.list(resourceTypeMCPServer, nil))
-	mux.HandleFunc("POST /api/agents/{id}/mcp-servers", agentOps.create(resourceTypeAgentMCPServer, withAgentID))
-	mux.HandleFunc("DELETE /api/agents/{id}/mcp-servers/{serverName}", agentOps.delete(resourceTypeAgentMCPServer, compoundID("id", "serverName")))
-
-	// Reflexes.
-	mux.HandleFunc("GET /api/agents/{id}/reflexes", agentOps.list(resourceTypeReflex, agentIDFilter))
-	mux.HandleFunc("POST /api/agents/{id}/reflexes", agentOps.create(resourceTypeReflex, withAgentID))
-	mux.HandleFunc("PATCH /api/agents/{id}/reflexes/{reflexId}", agentOps.update(resourceTypeReflex, compoundID("id", "reflexId")))
-	mux.HandleFunc("DELETE /api/agents/{id}/reflexes/{reflexId}", agentOps.delete(resourceTypeReflex, compoundID("id", "reflexId")))
-
-	// Durable agent instances (long-running agents) and their activity —
-	// read-only for MVP; start/stop/pause lifecycle actions are post-MVP.
-	mux.HandleFunc("GET /api/durable-agents", agentOps.list(resourceTypeDurableAgent, nil))
-	mux.HandleFunc("GET /api/durable-agents/{id}", agentOps.read(resourceTypeDurableAgent, pathValue("id")))
-	mux.HandleFunc("GET /api/durable-agents/{id}/events", agentOps.list(resourceTypeDurableAgentEvent, durableAgentIDFilter))
-	mux.HandleFunc("GET /api/durable-agents/{id}/sessions", agentOps.list(resourceTypeDurableAgentSession, durableAgentIDFilter))
-
-	// Plugin registry endpoint — serves the registry.Response for the browser loader
-	mux.Handle("GET /api/plugins/registry", newRegistryHandler(pluginMgr))
-
-	// The Sysop UI — served from the embedded frontend build by go-webui.
-	webui.Mount(mux)
-
-	// Handle graceful shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-
-	server := &http.Server{Addr: addr, Handler: mux}
-
-	go func() {
-		log.Printf("Tachyon listening on http://localhost%s/sysop/", addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
-	}()
+		return
+	}
+	cfg := server.Config{
+		ApprovalProducerConfigFile:  os.Getenv("TACHYON_APPROVAL_PRODUCER_CONFIG"),
+		ApprovalAssuranceConfigFile: os.Getenv("TACHYON_APPROVAL_ASSURANCE_CONFIG"),
+		CachePolicyFile:             os.Getenv("TACHYON_CACHE_POLICY_FILE"),
+		ChatSyncInterval:            chatInterval(),
+		ApprovalQueueURL:            env("TACHYON_APPROVAL_QUEUE_URL", "http://127.0.0.1:7843"),
+		FragmentsURL:                env("FRAGMENTS_ENGINE_URL", "http://127.0.0.1:8091"),
+		FragmentsTokenFile:          upstreamauth.TokenFile(nil, "", "FRAGMENTS_ENGINE_TOKEN_FILE"),
+		TranscriptMaxSessions:       transcriptLimit(),
+		PluginBinDir:                env("TACHYON_PLUGIN_DIR", "bin/plugins"),
+		DataDir:                     env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
+		CacheDir:                    env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
+		Upstreams: catalog.Upstreams{
+			ActivityURL:       env("TACHYON_ACTIVITY_URL", "http://127.0.0.1:8099"),
+			TetherAddr:        os.Getenv("TETHER_ADDR"),
+			TetherTokenFile:   os.Getenv("TETHER_TOKEN_FILE"),
+			CerberusAddr:      os.Getenv("CERBERUS_ADDR"),
+			CerberusTokenFile: upstreamauth.TokenFile(nil, "", "CERBERUS_TOKEN_FILE"),
+			TorqueURL:         env("TORQUE_URL", "http://127.0.0.1:8990"),
+			TorqueToken:       os.Getenv("TORQUE_API_TOKEN"),
+			GitHubToken:       githubToken(ctx),
+			GitHubOrg:         env("GITHUB_ORG", "hollis-labs"),
+		},
+	}
+	if len(os.Args) > 1 && os.Args[1] == "import-planner" {
+		if err := planner.Command(ctx, cfg.DataDir, cfg.Upstreams, os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "backfill-session-links" {
+		if err := chatbridge.BackfillCommand(ctx, cfg.DataDir, cfg.Upstreams.TetherAddr, os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "sync-objects" {
+		if err := objectsync.Command(ctx, cfg.DataDir, cfg.Upstreams, os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	srv := server.New(cfg)
+	if err := srv.Start(ctx); err != nil {
+		log.Fatal(err)
+	}
 
-	<-sigCh
-	logger.Info("shutting down...")
+	assets, err := webui.Assets()
+	if err != nil {
+		log.Fatal(err)
+	}
+	app, err := host.New(host.Config{
+		Name:     "Tachyon",
+		Assets:   assets,
+		BasePath: webui.BasePath,
+		Routes:   srv.Routes(),
+		Stop:     srv.Stop,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	shutdownHost(server, pluginMgr, logger, httpShutdownTimeout)
+	addr := env("LISTEN_ADDR", env("TACHYON_ADDR", ":18093"))
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Tachyon %s listening on http://%s", server.Version, listener.Addr())
+	if err := app.Serve(ctx, listener); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func env(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func githubToken(ctx context.Context) string {
+	for _, k := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(cctx, "gh", "auth", "token").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func xdg(key, homeRel string) string {
+	base := os.Getenv(key)
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = "."
+		}
+		base = filepath.Join(home, homeRel)
+	}
+	return filepath.Join(base, "tachyon")
+}
+
+func chatInterval() time.Duration {
+	value := env("TACHYON_CHAT_SYNC_INTERVAL", "5s")
+	interval, err := time.ParseDuration(value)
+	if err != nil || interval < time.Second || interval > time.Hour {
+		log.Fatal("TACHYON_CHAT_SYNC_INTERVAL must be between 1s and 1h")
+	}
+	return interval
+}
+
+func transcriptLimit() int {
+	limit, err := strconv.Atoi(env("TACHYON_TRANSCRIPT_MAX_SESSIONS", "5000"))
+	if err != nil || limit < 200 || limit > 20000 {
+		log.Fatal("TACHYON_TRANSCRIPT_MAX_SESSIONS must be between 200 and 20000")
+	}
+	return limit
 }

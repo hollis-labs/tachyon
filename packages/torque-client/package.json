@@ -1,0 +1,10 @@
+{
+  "name": "@tachyon/torque-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": { "@tachyon/host-sdk": "0.1.0" },
+  "peerDependencies": { "react": "19.3.0", "@hollis-labs/design-app-runtime": "0.5.0", "@hollis-labs/design-components": "0.5.0", "sonner": "^2.0.7" }
+}

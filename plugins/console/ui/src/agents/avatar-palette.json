@@ -1,0 +1,82 @@
+[
+ {
+  "slot": "coral",
+  "accent": "#FF6B5B",
+  "bg": "#1F2A44"
+ },
+ {
+  "slot": "amber",
+  "accent": "#FFB627",
+  "bg": "#2B2D5B"
+ },
+ {
+  "slot": "lime",
+  "accent": "#A6E22E",
+  "bg": "#3B2A4D"
+ },
+ {
+  "slot": "mint",
+  "accent": "#2EE6A6",
+  "bg": "#3A2438"
+ },
+ {
+  "slot": "cyan",
+  "accent": "#3DDCF2",
+  "bg": "#4A2C2A"
+ },
+ {
+  "slot": "sky",
+  "accent": "#5AA9FF",
+  "bg": "#2D3A2A"
+ },
+ {
+  "slot": "violet",
+  "accent": "#9B6BFF",
+  "bg": "#1D3B3A"
+ },
+ {
+  "slot": "magenta",
+  "accent": "#FF4FA3",
+  "bg": "#1E3A5F"
+ },
+ {
+  "slot": "red",
+  "accent": "#FF3B3B",
+  "bg": "#14323A"
+ },
+ {
+  "slot": "orange",
+  "accent": "#FF8A2B",
+  "bg": "#263A5E"
+ },
+ {
+  "slot": "yellow",
+  "accent": "#FFE14D",
+  "bg": "#2E2A5E"
+ },
+ {
+  "slot": "teal",
+  "accent": "#1FC8B8",
+  "bg": "#4A2B4F"
+ },
+ {
+  "slot": "pink",
+  "accent": "#FF8FC7",
+  "bg": "#243B4A"
+ },
+ {
+  "slot": "green",
+  "accent": "#44D96B",
+  "bg": "#3D2B3F"
+ },
+ {
+  "slot": "periwinkle",
+  "accent": "#7C8CFF",
+  "bg": "#3A3326"
+ },
+ {
+  "slot": "cream",
+  "accent": "#F2E3A1",
+  "bg": "#3B2B55"
+ }
+]

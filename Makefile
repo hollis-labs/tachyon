@@ -1,53 +1,46 @@
-.PHONY: all build build-plugins run install ui-build ui-dev test vet clean
+.PHONY: all build plugins run install ui-build ui-dev deps test vet clean
 
-# Build the frontend, plugins, and the Go binary — a production binary with the
-# Sysop UI embedded.
-all: ui-build build-plugins build
+PLUGINS := $(notdir $(wildcard plugins/*))
 
-# Build the Sysop UI into internal/webui/dist (the Go embed directory).
-ui-build:
-	cd frontend && npm install && npm run build
+# Frontend, plugin binaries, then the host binary with the UI embedded.
+all: ui-build plugins build
 
-# Run the Sysop UI dev server with hot reload. Proxies /api to the Go
-# server on :8093 — run `make run` in another shell. The dev UI is served
-# under /sysop/ (see `base` in frontend/vite.config.ts).
+# Install workspace dependencies (frontend, packages/*, plugins/*/ui).
+deps:
+	npm ci
+
+# Build the UI (host shell + compiled-in plugin UIs) into internal/webui/dist.
+ui-build: deps
+	npm run build
+
+# Vite dev server on 127.0.0.1:5179, proxying /api to the Go host on :18093
+# (override with TACHYON_API_ORIGIN). Run `make run` in another shell.
 ui-dev:
-	cd frontend && npm install && npm run dev
+	npm run dev
 
-# Build plugin binaries
-build-plugins:
-	@for d in plugins/*/; do \
-		id=$$(basename $$d); \
-		echo "build $$id"; \
-		go build -o plugins/$$id/$$id ./plugins/$$id || exit 1; \
-	done
+# Build each first-party plugin backend to bin/plugins/<id>.
+plugins:
+	@mkdir -p bin/plugins
+	@for p in $(PLUGINS); do echo "plugin $$p"; go build -o bin/plugins/$$p ./plugins/$$p || exit 1; done
 
-# Build the Go binary. Embeds whatever is in internal/webui/dist; run
-# `make ui-build` first for a binary that serves the real UI.
+# Build the host. Embeds whatever is in internal/webui/dist.
 build:
 	go build -o tachyon ./cmd/tachyon
 
-# Build and run the server.
-run: build
+run: plugins build
 	./tachyon
 
-# Build the embedded UI and install the binary to $GOBIN — a self-contained
-# tachyon on PATH that serves the real Sysop UI. Depends on build-plugins too:
-# Cerberus's deploy runs `make build` then `make install`, and the plugin
-# binary (spawned by path at runtime, not embedded) needs to ride along on
-# that same deploy or it silently goes stale.
-install: ui-build build-plugins
+install: ui-build plugins
 	go install ./cmd/tachyon
 
 test:
 	go test ./...
+	npm test
 
 vet:
 	go vet ./...
 
-# Remove build artifacts. Keeps internal/webui/dist/.gitkeep so the
-# //go:embed directive still compiles.
+# Keeps internal/webui/dist/.gitkeep so //go:embed still compiles.
 clean:
-	rm -f tachyon
-	rm -rf frontend/node_modules
+	rm -rf tachyon bin node_modules
 	find internal/webui/dist -mindepth 1 ! -name .gitkeep -delete
