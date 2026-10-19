@@ -27,7 +27,7 @@ function LiveBadge({ live, unknown }: { live?: AgentLiveRef; unknown?: boolean }
   return <ActivityStatus label={live ? LIVE_LABEL[live.state] : unknown ? 'NOT CONNECTED' : 'NOT RUNNING'} tone={live?.state === 'busy' ? 'positive' : live?.state === 'waiting' ? 'attention' : live?.state === 'idle' ? 'neutral' : 'muted'} />
 }
 
-function Row({ agent, selected, onSelect }: { agent: AgentRecord; selected: boolean; onSelect: () => void }) {
+export function Row({ agent, selected, onSelect }: { agent: AgentRecord; selected: boolean; onSelect: () => void }) {
   const { identity, runtime } = agent
   return <li><AdminRecordButton selected={selected} onSelect={onSelect} muted={!identity.enabled} size="comfortable"
     avatar={<IdentityAvatar identity={identity.id} size="definition" />}
