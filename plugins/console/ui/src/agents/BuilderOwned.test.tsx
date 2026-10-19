@@ -54,6 +54,7 @@ it('adopts explicitly, saves only reviewed field deltas, and preserves unknown d
   fireEvent.click(await screen.findByRole('tab', { name: 'Edit' }))
   expect((await screen.findByLabelText('Instructions') as HTMLTextAreaElement).disabled).toBe(false) // fieldset enforces the lock
   expect(screen.getByRole('button', { name: 'Review agent' }).closest('fieldset')?.disabled).toBe(true)
+  expect(screen.getByRole('button', { name: 'Edit avatar' }).closest('fieldset')).toBeNull() // the avatar is not part of the locked record
   fireEvent.click(screen.getByRole('tab', { name: 'Lifecycle' }))
   fireEvent.click(screen.getByRole('button', { name: 'Adopt definition into Tachyon' }))
   await screen.findByText(/Tachyon now owns/)

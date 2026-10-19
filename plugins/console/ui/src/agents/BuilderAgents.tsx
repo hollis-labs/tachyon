@@ -4,6 +4,7 @@ import { DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
 import { dataRefreshRegistry } from '@tachyon/host-sdk'
 import { useEffect, useMemo, useState } from 'react'
 import { AgentDetail, Row } from './AgentDirectory'
+import { AvatarControl } from './AvatarStudio'
 import { OwnedEditorForm } from './OwnedEditorForm'
 import { OwnedHistoryPane, OwnedLifecyclePane, ownershipLabel } from './OwnedPanes'
 import { useAgentsClient } from './context'
@@ -96,7 +97,7 @@ export function BuilderAgents({ client = ownedBuilderClient, now: nowProp }: { c
       <p className="border-b border-border/80 px-4 py-3 dash-body text-fg-muted">Agent definitions owned by Tachyon. Saving or enabling a definition does not start or change a running agent. Live agents and processes are managed on Agents.</p>
       {records.error && <p role="alert" className="border-b border-border/80 px-4 py-2 dash-body text-danger">{records.error} Showing the last loaded records.</p>}
       {problem && <p role="alert" className="border-b border-border/80 px-4 py-2 dash-body text-danger">{problem}</p>}
-      {message && <p role="status" className="border-b border-border/80 px-4 py-2 dash-body text-success">{message}</p>}
+      {message && <p role="status" className="border-b border-border/80 px-4 py-2 dash-body text-fg">{message}</p>}
       <DashboardToolbar className="border-b border-border px-4 py-2">
         <AdminInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Search agents" aria-label="Search agents" className="max-w-xs" />
         <AdminSelect value={provider} onChange={e => setProvider(e.target.value)} aria-label="Filter by provider" className="w-auto">
@@ -128,6 +129,7 @@ export function BuilderAgents({ client = ownedBuilderClient, now: nowProp }: { c
           {dirty && <p className="border-b border-border/80 px-5 py-2 dash-support text-fg-muted">Save or discard your edits before selecting another record.</p>}
           {mode === 'view' && <>
             <AgentDetail agent={selectedView} now={now} />
+            <Section title="Avatar"><AvatarControl key={identityOf(base)} urn={identityOf(base)} name={base.name} /></Section>
             <Section title="Tachyon configuration">
               <dl>
                 <AdminFact label="Ownership">{ownershipLabel(base)}</AdminFact>
@@ -138,7 +140,7 @@ export function BuilderAgents({ client = ownedBuilderClient, now: nowProp }: { c
               {base.ownership !== 'tachyon' && !isRetired(base) && <p className="mt-2 dash-support text-fg-faint">Provider observations are read-only. Adopt the definition under Lifecycle to manage it in Tachyon.</p>}
             </Section>
           </>}
-          {mode === 'edit' && <OwnedEditorForm editor={editor} />}
+          {mode === 'edit' && <OwnedEditorForm editor={editor} avatar={<AvatarControl key={identityOf(base)} urn={identityOf(base)} name={base.name} />} />}
           {mode === 'lifecycle' && <OwnedLifecyclePane editor={editor} />}
           {mode === 'history' && <OwnedHistoryPane editor={editor} />}
         </div>

@@ -1,5 +1,5 @@
 import { AdminInput, AdminSelect, AdminTextarea } from '@hollis-labs/kit-admin'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Field, ListField } from './AgentEditor'
 import { KNOWN_RULES, KNOWN_SCOPES, KNOWN_TOOLS, PERMISSION_MODES, PROVIDERS, SANDBOX_MODES } from './plan'
 import { Chip } from './ui'
@@ -44,7 +44,7 @@ function PolicyPreview() {
 export const OWNED_LABELS: Record<string, string> = { name: 'Name', description: 'Description', runtime: 'Runtime', model: 'Model', roles: 'Roles (comma separated)', instructions: 'Instructions', tools: 'Tools (comma separated)', skills: 'Skills (comma separated)', enabled: 'Enabled in desired configuration', project_id: 'Project', machine_id: 'Machine', role: 'Assignment role', state: 'Planning status', agent_id: 'Agent', team_id: 'Team', target: 'Local target', external_target: 'External target', provider: 'Provider', instance: 'Instance', collection: 'Collection', external_id: 'External ID' }
 
 /** Edit form, change review and save for one owned record. Lifecycle and history live in their own tabs. */
-export function OwnedEditorForm({ editor }: { editor: OwnedEditor }) {
+export function OwnedEditorForm({ editor, avatar }: { editor: OwnedEditor; avatar?: ReactNode }) {
   const { kind, client, draft, base, review, setReview, busy, issues, dirty, locked, selected, problem, set, save, checkCreate, discard } = editor
   if (!draft) return null
   const orig = base ? builderDraft(kind, base) : undefined
@@ -90,12 +90,15 @@ export function OwnedEditorForm({ editor }: { editor: OwnedEditor }) {
   </>
   return <article aria-label={`${kind} editor`}>
     {review ? <Block title="Review changes"><dl className="space-y-3">{Object.entries(builderPatch(kind, draft, base)).map(([key, value]) => <div key={key}><dt className="dash-label text-fg-muted">{OWNED_LABELS[key] ?? key}</dt><dd className="whitespace-pre-wrap break-words dash-body">{value === null ? 'Clear' : typeof value === 'string' ? value || 'Empty' : JSON.stringify(value)}</dd></div>)}</dl><div className="mt-4 flex gap-3"><Btn disabled={busy} onClick={() => setReview(false)}>Continue editing</Btn><Btn tone="primary" disabled={busy || !!issues.length} onClick={() => void save()}>Save {kind}</Btn></div></Block>
-    : <fieldset disabled={busy || locked} className="min-w-0">{kind === 'agent' ? agentForm : assignmentForm}
+    : <>
+      {/* The avatar lives in the Station service, not the record, so a locked or busy form does not lock it. */}
+      {kind === 'agent' && <Block title="Avatar">{avatar ?? <p className="dash-support text-fg-faint">Set an avatar after the first save.</p>}</Block>}
+      <fieldset disabled={busy || locked} className="min-w-0">{kind === 'agent' ? agentForm : assignmentForm}
       <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-border bg-bg px-5 py-3">
         <span className="font-mono dash-label uppercase tracking-widest text-fg-faint">{base ? `${changes} change${changes === 1 ? '' : 's'}` : `New ${kind}`}</span>
         {issues.length > 0 && <span className="dash-support text-danger">{issues.join(' ')}</span>}
         <span className="ml-auto flex gap-2"><Btn tone="primary" disabled={!dirty || !!issues.length} onClick={() => setReview(true)}>Review {kind}</Btn></span>
-      </div></fieldset>}
+      </div></fieldset></>}
     <div className="flex flex-wrap gap-3 px-5 py-3">
       <Btn disabled={busy} onClick={discard}>{base ? 'Discard draft and reload saved version' : 'Discard draft'}</Btn>
       {!base && selected && problem && <Btn disabled={busy} onClick={() => void checkCreate()}>Check whether create was saved</Btn>}
