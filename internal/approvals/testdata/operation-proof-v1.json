@@ -1,0 +1,121 @@
+{
+  "source": "libs a38183e8 mesh/core/hitl/examples/operation-proof-v1/vectors.json valid case; public synthetic evidence only",
+  "case": {
+    "operation": {
+      "profile": "privileged-operation-v1-draft",
+      "operation_id": "op-example-1",
+      "revision": "1",
+      "requester": {
+        "authority": "workload-example",
+        "subject": "agent-example"
+      },
+      "audience": "credential-service-example",
+      "class": "high",
+      "expires_at": "1900000600",
+      "authorization_details": [
+        {
+          "type": "credential_registration",
+          "action": "create",
+          "principal_id": "producer-example",
+          "owner_id": "human-example",
+          "purpose": "approval producer",
+          "credential_expires_at": "1902592000",
+          "overlap_seconds": "0",
+          "destination_id": "destination-example",
+          "destination_revision": "1",
+          "scopes": [
+            "inbox.approvals_enqueue",
+            "inbox.approvals_read"
+          ]
+        }
+      ]
+    },
+    "trusted_state": {
+      "binding": {
+        "profile": "operation-webauthn-v1-draft",
+        "authority": "human-root-example",
+        "human_subject": "human-example",
+        "key_ref": "key-example",
+        "audience": "credential-service-example",
+        "op_digest": "sha256:42d1625a368208f0d7ad46abee7c257ff9bc3a63cf9fb1d954f17bdacede4ec9",
+        "operation_id": "op-example-1",
+        "operation_revision": "1",
+        "item_id": "item-example-1",
+        "decision": "approved",
+        "proof_id": "proof-example-1",
+        "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "issued_at": "1900000000",
+        "expires_at": "1900000300"
+      },
+      "now": "1900000010",
+      "origin": "https://identity.example.com",
+      "rp_id": "identity.example.com",
+      "credential_id": "c3ludGhldGljLWNyZWRlbnRpYWwtaWQ",
+      "previous_counter": "0",
+      "check_counter": true,
+      "requester_human": "",
+      "requester_authorized": true,
+      "operation_current": true,
+      "key_revoked": false,
+      "trust_fresh": true,
+      "proof_consumed": false
+    },
+    "response": {
+      "kind": "approval",
+      "decision": "approved",
+      "assurance_evidence": {
+        "binding": {
+          "profile": "operation-webauthn-v1-draft",
+          "authority": "human-root-example",
+          "human_subject": "human-example",
+          "key_ref": "key-example",
+          "audience": "credential-service-example",
+          "op_digest": "sha256:42d1625a368208f0d7ad46abee7c257ff9bc3a63cf9fb1d954f17bdacede4ec9",
+          "operation_id": "op-example-1",
+          "operation_revision": "1",
+          "item_id": "item-example-1",
+          "decision": "approved",
+          "proof_id": "proof-example-1",
+          "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+          "issued_at": "1900000000",
+          "expires_at": "1900000300"
+        },
+        "assertion": {
+          "credential_id": "c3ludGhldGljLWNyZWRlbnRpYWwtaWQ",
+          "client_data_json": "eyJjaGFsbGVuZ2UiOiJGei1KMUlrQWQyQmxKbS0ydmp6VmdmSVdRTlVtY00xSnUzR240aFpCTVdjIiwiY3Jvc3NPcmlnaW4iOmZhbHNlLCJvcmlnaW4iOiJodHRwczovL2lkZW50aXR5LmV4YW1wbGUuY29tIiwidHlwZSI6IndlYmF1dGhuLmdldCJ9",
+          "authenticator_data": "EJ14OyhBQ4tcNwahPghRkyI-IgoskwlZzgpvkezQj4gFAAAAAQ",
+          "signature": "MEQCIBArpl08Wi2OyvdVXm8xwbFnNKrOaycJ4poUBXCZiDnVAiA7PdmWUr84lLmbxgeanR8JVFEGwIwsOYs9TVuIEs9kxw"
+        }
+      }
+    },
+    "participant": {
+      "principal_ref": "human-example",
+      "authority": "human-root-example",
+      "assurance": "webauthn-uv",
+      "proof": {
+        "scheme": "operation-webauthn-v1-draft",
+        "key_ref": "key-example",
+        "binds": [
+          {
+            "name": "op_digest",
+            "value": "sha256:42d1625a368208f0d7ad46abee7c257ff9bc3a63cf9fb1d954f17bdacede4ec9"
+          },
+          {
+            "name": "item_id",
+            "value": "item-example-1"
+          },
+          {
+            "name": "proof_id",
+            "value": "proof-example-1"
+          },
+          {
+            "name": "audience",
+            "value": "credential-service-example"
+          }
+        ]
+      }
+    },
+    "name": "valid",
+    "expected": "accept"
+  }
+}

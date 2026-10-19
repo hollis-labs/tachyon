@@ -1197,7 +1197,126 @@ digest format and preserves it; it does not verify a canonical operation or a
 digest-bound cryptographic proof. Approval grants no scopes, mints no credential,
 and does not trigger execution. Cerberus's own passkey ceremony remains the
 authority for its protected operations. Live producer acceptance requires existing
-JWT trust/identity configuration; credential enrollment remains separately held.
+JWT trust/identity configuration and supported Tether enrollment. The shared-proof
+owner hold was lifted; production enrollment still depends on its implementations.
+
+#### Trusted high-tier assurance integration (not activated)
+
+CW-20261019-0036 implements the shared operation/WebAuthn contract (Tesseract
+`01M598CCGC6DNT2PDBTS551T7A`) and Basalisk status packet
+`01M5A3B1BWRHZ8R9J6HMYC2T9G`. Ordinary browser high-tier decisions remain refused;
+Cerberus retains its existing passkey handoff. These service routes require a
+separate workload identity and never accept browser cookies or producer authority.
+
+All three routes use POST JSON under `/api/approvals/trusted/v1`, are uncached,
+and return `Cache-Control: no-store`:
+
+| Route | Exact scope | Body |
+|---|---|---|
+| `/item` | `tachyon-assurance.items_read` | `{item_id, query_id}` |
+| `/complete` | `tachyon-assurance.completions_deliver` | `{item_id, completion_id, expected_revision}` |
+| `/outcome` | `tachyon-assurance.outcomes_read` | `{item_id, query_id}` |
+
+The workload JWT audience is `tachyon-assurance`. Tokens require a pinned direct
+service/device subject and kind, `par == sub`, no session, `kid/jti/iat`, exact
+expiry and a maximum 15-minute lifetime. Each request verifies fresh issuer JWKS
+and current principal/parent scopes plus issuer/token revocation. Exact scope
+membership and server-owned caller-to-producer application allowlists apply;
+there is no wildcard or operator fallback. A caller may have only the route
+scopes it needs. Item existence outside its allowlist is concealed with 404.
+
+`/item` echoes the fresh caller `query_id` and returns `item` with `item_id`,
+`revision`, `status`, `expires_at`, original `operation` and `op_digest`.
+Respondable items use status `pending`; expired items are not pending. The
+operation must match the closed credential-registration profile and JCS digest.
+Basalisk uses this authenticated snapshot for its ceremony and presentation.
+Request operation revision and HITL interaction revision are different fields.
+
+`/complete` accepts references only: raw evidence, participant claims and
+browser operation snapshots are rejected. It loads the current item and obtains
+a fresh authenticated Basalisk completion. Success is `{outcome: <HITL outcome>}`.
+Migration 013 commits an authority/proof and authority/completion delivery receipt
+with the immutable HITL outcome in one SQLite writer transaction. Expiry and
+expected revision are checked at that boundary. Exact current/unexpired retries
+return the original outcome across concurrency and restart; changed deliveries
+and proof reuse conflict. The receipt is not the provider execution ledger.
+
+`/outcome` echoes `query_id` and returns `item_id`, current `revision`, HITL
+`state`, and `terminal_outcome` (null until terminal). This requires current
+workload authentication but deliberately does not require fresh human proof or
+contact Basalisk. It recovers the authoritative decision after response loss,
+proof expiry or Basalisk outage without creating another ceremony or grant.
+
+Missing integration returns JSON 503, invalid authentication 401, insufficient
+scope 403, invalid commands 400, and stale/conflicting decisions 409. Expired or
+invalid proof refuses; current dependency failures return 503. After an ambiguous
+completion delivery, use `/outcome`; do not infer success from a timeout or
+blindly create a new operation.
+
+Set `TACHYON_APPROVAL_ASSURANCE_CONFIG` to a host-owned JSON configuration only
+when commissioning is complete. It contains no secret values:
+
+```json
+{
+  "authentication": {
+    "issuer": "<verified issuer>",
+    "jwks_url": "https://<issuer>/.well-known/jwks.json",
+    "callers": [{
+      "subject": "<enrolled Basalisk caller>", "kind": "device",
+      "applications": ["tether"],
+      "scopes": ["tachyon-assurance.items_read", "tachyon-assurance.completions_deliver", "tachyon-assurance.outcomes_read"]
+    }]
+  },
+  "basalisk": {
+    "authority": "<persisted Basalisk installation ID>",
+    "origin": "https://basalisk.nanite.cloud", "rp_id": "basalisk.nanite.cloud"
+  },
+  "status_exchange": {
+    "origin": "https://<issuer>", "issuer": "<verified issuer>",
+    "parent_token_file": "<private enrolled status parent file>",
+    "subject": "<enrolled Tachyon status caller>", "kind": "device"
+  },
+  "current_trust": {
+    "origin": "https://<issuer>", "issuer": "<verified issuer>",
+    "reader_token_file": "<private narrow trust-reader device file>"
+  },
+  "audiences": {"tether": "tether"}
+}
+```
+
+The parent and trust-reader files use shared `security/secrets/tokenfile` custody
+(mode 0600); rotations are picked up on subsequent reads. The status parent
+exchanges at Tether `/auth/token` for audience `basalisk-status`, sole scope
+`basalisk-status.assurance_read`, requested lifetime 300 seconds, no session.
+Each status lookup exchanges anew; no status JWT or human assertion becomes an
+application credential. HTTPS destinations are pinned and redirects refused.
+
+The client POSTs `{completion_id, query_id}` to Basalisk `/assurance/v1/status`
+with a fresh unpredictable query ID and requires an exact echo, bounded no-store
+JSON, pinned installation/origin/RP, matching item/revision and selected human/key.
+Published `libs/security/webauthn v0.1.0` verifies the original assertion bytes and
+operation-bound challenge. JCS canonicalization, closed profile validation,
+freshness, current status and self-approval checks are required. Revalidating a
+retained completion does not advance its authenticator counter again. Basalisk
+owns ceremony spend and durable evidence; Tether independently verifies current
+requester authority and consumes its execution continuation once.
+
+The Tether `/auth/workload-trust` client follows contract
+`01M5A6FC2ASZEM1YQHQXBVSNNF`: fresh 32-byte query nonce, exact verified-principal
+metadata echo, active flag, five-second deadline, no target bearer, no cache.
+**That contract initially supports only basalisk-status targets. Tether must
+extend credential-bound mint tracking and current checks to the three exact
+tachyon-assurance scopes above, and commission Tachyon's narrow reader device,
+before this integration can activate.** Unsupported/currently inactive targets
+fail closed. No configured production credential or active endpoint is asserted.
+
+Tests exercise signed Ed25519 JWTs, synthetic WebAuthn registration/assertions,
+TLS status/exchange/current-trust wire adapters, mismatches/outages/revocation,
+recovery, and durable receipt races/rollback. Peer HTTP servers model the wire
+contracts; this is not deployed cross-service or real-authenticator acceptance.
+Unsigned high-tier denial, browser ceremony UI and owner-attended first-key
+registration remain separate work. Existing producer JWT revocation wiring is
+also separate from this stricter trusted-caller boundary.
 
 ### Planner access for agents
 

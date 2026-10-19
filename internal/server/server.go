@@ -42,17 +42,20 @@ var Version = "0.0.0-dev"
 // Config is the host's resolved configuration.
 type Config struct {
 	// PluginBinDir holds built plugin executables named by plugin ID.
-	PluginBinDir               string
-	DataDir                    string
-	CacheDir                   string
-	CachePolicyFile            string
-	ChatSyncInterval           time.Duration
-	ApprovalQueueURL           string
-	ApprovalProducerConfigFile string
-	FragmentsURL               string
-	FragmentsTokenFile         string
-	TranscriptMaxSessions      int
-	Upstreams                  catalog.Upstreams
+	PluginBinDir                string
+	DataDir                     string
+	CacheDir                    string
+	CachePolicyFile             string
+	ChatSyncInterval            time.Duration
+	ApprovalQueueURL            string
+	ApprovalProducerConfigFile  string
+	ApprovalAssuranceConfigFile string
+	// Optional host adapter; nil uses the configured current-workload HTTP client.
+	ApprovalCurrentWorkloadTrust approvals.CurrentWorkloadTrust
+	FragmentsURL                 string
+	FragmentsTokenFile           string
+	TranscriptMaxSessions        int
+	Upstreams                    catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
@@ -75,6 +78,7 @@ type Server struct {
 	chat             *chatbridge.Owned
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
+	approvalTrusted  *approvals.TrustedAPI
 	approvalCancel   context.CancelFunc
 }
 
@@ -171,6 +175,15 @@ func (s *Server) Start(ctx context.Context) error {
 	s.approvalProducer, err = approvals.NewProducer(approvalContext, s.approvalInbox.Service, producerConfig)
 	if err != nil {
 		return fmt.Errorf("approval producer trust: %w", err)
+	}
+
+	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
+	if err != nil {
+		return fmt.Errorf("approval assurance config: %w", err)
+	}
+	s.approvalTrusted, err = approvals.NewTrustedAPI(s.approvalInbox.Store, assuranceConfig, s.cfg.ApprovalCurrentWorkloadTrust, nil)
+	if err != nil {
+		return fmt.Errorf("approval assurance trust: %w", err)
 	}
 
 	if err := s.inventory.Start(ctx); err != nil {
@@ -309,6 +322,12 @@ func (s *Server) Routes() http.Handler {
 	// Object management uses live reads and server-verified operator mutations.
 	// Keep the whole prefix outside the generic plugin response cache.
 	mux.Handle("/api/plugins/console/v1/tether/", operator.RequireOperator(s.inventory.APIRoutes()))
+	trusted := s.approvalTrusted
+	if trusted == nil {
+		trusted = &approvals.TrustedAPI{}
+	}
+	mux.Handle(approvals.TrustedPrefix+"/", trusted)
+
 	// Native queue reads are authoritative and never use the former Tangent cache.
 	if s.store != nil {
 		inbox := s.approvalInbox

@@ -100,20 +100,24 @@ func (s *Store) Create(ctx context.Context, rec hitl.Record) (hitl.Record, bool,
 }
 func (s *Store) Swap(ctx context.Context, id string, expected int64, next hitl.Record) error {
 	return s.DB.Writer.Submit(ctx, "approval_transition", func(ctx context.Context, tx *sql.Tx) error {
-		prev, err := readRecord(tx.QueryRowContext(ctx, "SELECT record FROM approval_items WHERE id=?", id))
-		if err != nil {
-			return err
-		}
-		if err = hitl.CheckSwap(prev, expected, next); err != nil {
-			return err
-		}
-		raw, err := recordBytes(next)
-		if err != nil {
-			return err
-		}
-		_, err = tx.ExecContext(ctx, "UPDATE approval_items SET state=?,revision=?,terminal=?,record=? WHERE id=?", next.State, next.Revision, next.State.IsTerminal(), raw, id)
-		return err
+		return swapRecord(ctx, tx, id, expected, next)
 	})
+}
+
+func swapRecord(ctx context.Context, tx *sql.Tx, id string, expected int64, next hitl.Record) error {
+	prev, err := readRecord(tx.QueryRowContext(ctx, "SELECT record FROM approval_items WHERE id=?", id))
+	if err != nil {
+		return err
+	}
+	if err = hitl.CheckSwap(prev, expected, next); err != nil {
+		return err
+	}
+	raw, err := recordBytes(next)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "UPDATE approval_items SET state=?,revision=?,terminal=?,record=? WHERE id=?", next.State, next.Revision, next.State.IsTerminal(), raw, id)
+	return err
 }
 func (s *Store) DueForExpiry(ctx context.Context, now time.Time, limit int) ([]hitl.Record, error) {
 	if limit <= 0 {
