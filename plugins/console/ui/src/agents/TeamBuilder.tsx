@@ -3,6 +3,7 @@ import { AdminInput, AdminSelect } from '@hollis-labs/kit-admin'
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dataRefreshRegistry } from "@tachyon/host-sdk";
 import { EmptyState } from "@hollis-labs/design-components";
+import { DashboardToolbar } from "@hollis-labs/kit-dashboard/layout";
 import { Field, inputCls } from "./AgentEditor";
 import { useAgentsClient } from "./context";
 import { teamDraftFromRecord, type OwnedTeam, type TeamPage } from './owned-teams';
@@ -142,24 +143,14 @@ export function TeamBuilder() {
 	};
 	return (
 		<div>
-			<div className="flex flex-wrap items-center gap-3 border-b border-border/80 px-4 py-3">
-				<div className="min-w-0 flex-1">
-					<h2 className="font-mono dash-body font-semibold uppercase tracking-wide">
-						Team configuration
-					</h2>
-					<p className="mt-1 dash-support text-fg-muted">
-						Define seats, assign pinned launch profiles, and configure shared
-						policy.
-					</p>
-				</div>
-				<Btn tone="primary" onClick={create} disabled={busy}>
+			<DashboardToolbar className="px-4 py-3 border-b border-border">
+				<p className="dash-support min-w-0 flex-1">
+					Define seats, assign pinned launch profiles, and configure shared policy. Save team definitions in Tachyon after reviewing them; unsaved edits stay in this workspace. Launching a team is a separate action, and imported snapshots remain read-only.
+				</p>
+				<Btn onClick={create} disabled={busy}>
 					New team draft
 				</Btn>
-			</div>
-			<p className="border-b border-border/80 px-4 py-2 dash-support text-fg-muted">
-				Save team definitions in Tachyon after reviewing them. Unsaved edits stay in this workspace.
-				Launching a team is a separate action. Imported snapshots remain read-only.
-			</p>
+			</DashboardToolbar>
 			{ownedError && <div role="alert" className="border-b border-danger/30 px-4 py-3 dash-body text-danger">{ownedError} <Btn disabled={busy} onClick={() => void loadOwned()}>Refresh saved teams</Btn></div>}
 			{writeError && <div role="alert" className="border-b border-danger/30 px-4 py-3 dash-body text-danger">{writeError}</div>}
 			{error && (
@@ -171,14 +162,14 @@ export function TeamBuilder() {
 					<Btn onClick={() => void load()}>Retry team policy</Btn>
 				</div>
 			)}
-			<AdminDirectory label="Team configuration" layout="compact" records={
+			<AdminDirectory label="Team configuration" layout="balanced" records={
 				<aside>
 					<div className="border-b border-border/80 px-4 py-3"><h3 className="font-mono dash-label uppercase tracking-widest text-fg-muted">Tachyon team definitions</h3></div>
 					<ul aria-label="Tachyon teams">{owned.map(row => <li key={row.id}><AdminRecordButton selected={selected === row.id} onSelect={() => void openOwned(row.id)} size="comfortable" title={row.name} description={`Revision ${row.revision}${row.deleted_at ? ' · retired' : ''}${row.ownership !== 'tachyon' ? ' · provider observation' : ''}`} /></li>)}</ul>
 					{next && <Btn disabled={busy} onClick={() => void loadOwned(next)}>Load more saved teams</Btn>}
 					<div className="border-b border-border/80 px-4 py-3"><h3 className="font-mono dash-label uppercase tracking-widest text-fg-muted">Saved team snapshots</h3><p className="mt-1 dash-support text-fg-faint">{snapshot ? `${new Set(savedTeams.map(t => t.id)).size} teams · ${savedTeams.length} versions · manually imported` : 'Loading local snapshot…'}</p>
 					{snapshotError && <p role="alert" className="mt-2 dash-support text-danger">{snapshotError} <button type="button" className="underline" onClick={() => void loadSnapshot()}>Retry snapshot</button></p>}</div>
-					<ul aria-label="Saved teams">{savedTeams.map(t => <li key={importedTeamKey(t)}><AdminRecordButton selected={imported === t} onSelect={() => select(importedTeamKey(t))} size="comfortable" title={t.id} description={`${t.name} · version ${t.version}`} /></li>)}</ul>
+					<ul aria-label="Saved teams">{savedTeams.map(t => <li key={importedTeamKey(t)}><AdminRecordButton selected={imported === t} onSelect={() => select(importedTeamKey(t))} size="comfortable" title={t.name} description={`${t.id} · version ${t.version} · ${t.slots.length} seats`} /></li>)}</ul>
 					{snapshot && !savedTeams.length && <p className="px-4 py-3 dash-support text-fg-faint">No saved team snapshot has been imported, or it has expired from the cache.</p>}
 					<div className="border-b border-border/80 px-4 py-3">
 						<h3 className="mb-2 font-mono dash-label uppercase tracking-widest text-fg-muted">

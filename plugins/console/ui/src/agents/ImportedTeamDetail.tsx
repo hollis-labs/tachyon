@@ -1,4 +1,7 @@
-import { Block, Chip } from './ui'
+import { Badge, CopyableId, DetailSection } from '@hollis-labs/design-components'
+import { AdminFacts } from '@hollis-labs/kit-admin'
+import { DataTable, RecordSummary } from '@hollis-labs/kit-dashboard/data'
+import { DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
 import type { DefinitionPin } from './team-config'
 
 export interface ImportedTeam {
@@ -15,22 +18,28 @@ export interface ImportedTeamSnapshot { source: string; imported_at: string; tea
 export const importedTeamKey = (team: ImportedTeam) => `import:${team.id}@${team.version}`
 
 export function ImportedTeamDetail({ team, snapshot }: { team: ImportedTeam; snapshot: ImportedTeamSnapshot }) {
-  return <article aria-label={`${team.id} version ${team.version} snapshot`}>
-    <Block title="Saved team snapshot">
-      <div className="flex flex-wrap items-center gap-3"><h2 className="dash-detail-title font-semibold text-fg">{team.name}</h2><Chip tone="border-info/50 text-info">Imported · read only</Chip></div>
-      <p className="mt-1 font-mono dash-support text-fg-muted">{team.id} · version {team.version}</p>
-      <p className="mt-3 dash-body text-fg-muted">Copied from {snapshot.source} on <time dateTime={snapshot.imported_at}>{new Date(snapshot.imported_at).toLocaleString()}</time>.</p>
-      <p className="mt-2 dash-support text-fg-faint">Manual snapshot pending data access. This is a saved definition, not current running membership. Refresh checks the local copy.</p>
-    </Block>
-    <Block title={`Seats (${team.slots.length})`}>
-      <ul className="space-y-3">{team.slots.map((slot, index) => <li key={`${slot.name}-${index}`} className="border border-border p-3">
-        <div className="flex flex-wrap items-center gap-2"><span className="font-mono dash-body text-fg">{slot.name}</span><Chip>{slot.role || 'No role specified'}</Chip><span className="dash-support text-fg-muted">{slot.required ? 'Required' : 'Optional'} · {slot.min ?? 0}–{slot.max ?? 1} members</span></div>
-        <p className="mt-2 break-all font-mono dash-support text-fg-muted">{slot.definition_ref ? `${slot.definition_ref.id}@${slot.definition_ref.revision}` : 'No definition pin'}</p>
-        {slot.definition_ref?.digest && <p className="mt-1 break-all font-mono dash-label text-fg-faint">{slot.definition_ref.digest}</p>}
-        <p className="mt-2 dash-support text-fg-muted">{[slot.resolution, slot.activation].filter(Boolean).join(' · ')}</p>
-      </li>)}</ul>
-    </Block>
-    <Block title="Shared policy"><dl className="grid gap-x-4 gap-y-2 dash-body sm:grid-cols-2"><dt className="text-fg-faint">Coordinator</dt><dd>{team.routing?.coordinator_slot || 'Not specified'}</dd><dt className="text-fg-faint">Authority</dt><dd>{team.authority?.mode || 'Not specified'}</dd><dt className="text-fg-faint">History sharing</dt><dd>{team.policy?.history || 'Not specified'}</dd></dl></Block>
-    <Block title="Original definition"><details><summary className="cursor-pointer dash-body text-fg-muted">View complete saved configuration</summary><pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all dash-support text-fg-muted">{JSON.stringify(team, null, 2)}</pre></details></Block>
+  return <article aria-label={`${team.id} version ${team.version} snapshot`} className="dash-form-stack">
+    <DashboardToolbar>
+      <h2 className="dash-record-title min-w-0 flex-1 break-words">{team.name}</h2>
+      <Badge variant="secondary">Imported · read only</Badge>
+    </DashboardToolbar>
+    <div className="flex flex-wrap items-center gap-3"><CopyableId id={team.id} label={team.id} /><span className="dash-support text-fg-faint">version {team.version}</span></div>
+    <p className="dash-support text-fg-muted">Copied from {snapshot.source} on <time dateTime={snapshot.imported_at}>{new Date(snapshot.imported_at).toLocaleString()}</time>. This is a saved definition, not current running membership.</p>
+    <DetailSection title={`Seats (${team.slots.length})`}>
+      <DataTable items={team.slots} getRowId={(slot) => slot.name} pageSize={200}
+        columns={[
+          { key: 'name', header: 'Seat', width: 'fill', className: 'min-w-48', cell: (slot) => <RecordSummary title={slot.name} metadata={slot.role || 'No role specified'} /> },
+          { key: 'definition', header: 'Definition pin', cell: (slot) => <span className="block min-w-56 break-all whitespace-normal">{slot.definition_ref ? `${slot.definition_ref.id}@${slot.definition_ref.revision}` : 'No definition pin'}{[slot.resolution, slot.activation].filter(Boolean).length > 0 && <span className="block dash-support text-fg-faint">{[slot.resolution, slot.activation].filter(Boolean).join(' · ')}</span>}</span> },
+          { key: 'members', header: 'Members', cell: (slot) => `${slot.required ? 'Required' : 'Optional'} · ${slot.min ?? 0}–${slot.max ?? 1}` },
+        ]} />
+    </DetailSection>
+    <DetailSection title="Shared policy">
+      <AdminFacts items={[
+        { label: 'Coordinator', value: team.routing?.coordinator_slot || 'Not specified' },
+        { label: 'Authority', value: team.authority?.mode || 'Not specified' },
+        { label: 'History sharing', value: team.policy?.history || 'Not specified' },
+      ]} />
+    </DetailSection>
+    <DetailSection title="Original definition"><details><summary className="cursor-pointer dash-body text-fg-muted">View complete saved configuration</summary><pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-all dash-support text-fg-muted">{JSON.stringify(team, null, 2)}</pre></details></DetailSection>
   </article>
 }

@@ -274,7 +274,9 @@ export function OwnedBuilderView({ kind, client = ownedBuilderClient }: { kind: 
       records={<div>
         {rows.length || records.loading ? <ul aria-label={`${kind} records`}>{rows.map(row => <li key={row.id}><AdminRecordButton selected={selected === row.id} muted={row.definition.enabled === false || isRetired(row)} onSelect={() => { if (!busy && !dirty) void open(row.id) }}
           avatar={kind === 'agent' ? <IdentityAvatar identity={identityOf(row)} /> : undefined} title={title(row)} description={description(row)} badge={badge(row)} /></li>)}</ul>
-          : <EmptyState title={`No ${noun}s match`} description="Clear the search or provider filter." variant="empty" />}
+          : records.rows.length
+            ? <EmptyState title={`No ${noun}s match`} description="Clear the search or provider filter." variant="empty" />
+            : <EmptyState title={`No ${noun}s yet`} description={kind === 'agent' ? 'Create an agent definition to manage it in Tachyon.' : 'Plan work for an agent or team with New assignment. Saving does not dispatch it.'} variant="empty" />}
         {records.loading && <p role="status" className="px-4 py-2 dash-support">Refreshing…</p>}
         {records.next && <div className="px-4 py-2"><Btn disabled={records.loading} onClick={() => void records.more()}>Load more {kind}s</Btn></div>}
       </div>}
