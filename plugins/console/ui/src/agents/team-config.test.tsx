@@ -8,9 +8,9 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { dataRefreshRegistry } from "@tachyon/host-sdk";
-import { AgentDirectoryView } from "./AgentDirectory";
+import { TeamBuilder } from "./TeamBuilder";
 import { AgentsClientProvider } from "./context";
-import { createCatalogAgentsClient, DEMO_SAVE_MESSAGE } from "./catalog-client";
+import { createCatalogAgentsClient } from "./catalog-client";
 import {
 	newTeamDraft,
 	parseTeamPolicy,
@@ -27,7 +27,7 @@ launches:
     definition: {id: worker, revision: r1, digest: 'sha256:${"a".repeat(64)}'}
     source: catalog:team-definitions/worker.md
 `;
-function setup(importedTeams: unknown[] = []) {
+function setup(importedTeams: unknown[] = [], tweak?: (client: ReturnType<typeof createCatalogAgentsClient>) => void) {
 	const saved = new Map<string, import('./owned-teams').OwnedTeam>();
 	const fetcher = vi.fn(
 		async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -59,10 +59,11 @@ function setup(importedTeams: unknown[] = []) {
 		},
 	);
 	const client = createCatalogAgentsClient(fetcher);
+	tweak?.(client);
 	render(
 		<MemoryRouter>
 			<AgentsClientProvider client={client}>
-				<AgentDirectoryView />
+				<TeamBuilder />
 			</AgentsClientProvider>
 		</MemoryRouter>,
 	);
@@ -92,11 +93,8 @@ it("preserves exact definition pins and refuses missing bindings or unsupported 
 		"invalid launch",
 	);
 });
-it("configures teams from live bindings, keeps drafts across tabs and refresh, and saves owned configuration", async () => {
+it("configures teams from live bindings, keeps drafts across refresh, and saves owned configuration", async () => {
 	const { fetcher } = setup();
-	fireEvent.click(
-		await screen.findByRole("tab", { name: "Teams" }),
-	);
 	await screen.findByText("team-worker", { selector: "span" });
 	fireEvent.click(screen.getByRole("button", { name: "New team draft" }));
 	fireEvent.change(screen.getByLabelText("Team name"), {
@@ -104,11 +102,6 @@ it("configures teams from live bindings, keeps drafts across tabs and refresh, a
 	});
 	for (const select of screen.getAllByLabelText("Launch binding"))
 		fireEvent.change(select, { target: { value: "team-worker" } });
-	fireEvent.click(
-		screen.getByRole("tab", { name: "Assignments" }),
-	);
-	await screen.findByText("No live assignment feed connected");
-	fireEvent.click(screen.getByRole("tab", { name: "Teams" }));
 	dataRefreshRegistry("catalog").refresh();
 	expect((screen.getByLabelText("Team name") as HTMLInputElement).value).toBe(
 		"Review team",
@@ -146,34 +139,10 @@ it("configures teams from live bindings, keeps drafts across tabs and refresh, a
 	expect(screen.getByText(/The saved team changed/)).toBeTruthy();
 	expect(screen.queryByText("Apply")).toBeNull();
 });
-it("stages and reviews a work assignment without writing or inventing live assignments", async () => {
-	const { fetcher, client } = setup();
-	fireEvent.click(
-		await screen.findByRole("tab", { name: "Assignments" }),
-	);
-	await screen.findByText("No live assignment feed connected");
-	fireEvent.change(screen.getByLabelText("Agent"), {
-		target: { value: "worker" },
-	});
-	fireEvent.change(screen.getByLabelText("Target id"), {
-		target: { value: "CW-demo" },
-	});
-	fireEvent.click(screen.getByRole("button", { name: "Stage" }));
-	fireEvent.click(screen.getByRole("button", { name: "Review plan (1)" }));
-	const save = await screen.findByRole("button", {
-		name: "Save demonstration",
-	});
-	fetcher.mockClear();
-	fireEvent.click(save);
-	await screen.findByText(DEMO_SAVE_MESSAGE);
-	expect(fetcher).not.toHaveBeenCalled();
-	expect(await client.listAssignments()).toEqual([]);
-});
 it("surfaces team policy read failures and supports retry without replacing a draft", async () => {
-	const { client } = setup();
-	await screen.findByRole("list", { name: "Agents" });
-	client.getTeamActivationPolicy = vi.fn(client.getTeamActivationPolicy!).mockRejectedValueOnce(new Error('Tether team policy read failed (401).'));
-	fireEvent.click(screen.getByRole("tab", { name: "Teams" }));
+	setup([], (client) => {
+		client.getTeamActivationPolicy = vi.fn(client.getTeamActivationPolicy!).mockRejectedValueOnce(new Error('Tether team policy read failed (401).'));
+	});
 	await screen.findByRole("alert");
 	fireEvent.click(screen.getByRole("button", { name: "New team draft" }));
 	fireEvent.change(screen.getByLabelText("Team name"), {
@@ -189,7 +158,6 @@ it("surfaces team policy read failures and supports retry without replacing a dr
 it('shows imported saved versions separately from drafts without inventing membership or dropping source fields', async () => {
   const base = { id: 'first-team', name: 'First team', slots: [{ name: 'workers', role: '', min: 1, max: 1, definition_ref: { id: 'claude-agent', revision: 'r1', digest: 'sha256:original' } }], authority: { mode: 'strict', grants: [{ verb: 'may_delegate' }] } }
   setup([{ ...base, version: 1 }, { ...base, version: 3 }])
-  fireEvent.click(await screen.findByRole('tab', { name: 'Teams' }))
   const detail = await screen.findByRole('article', { name: 'first-team version 3 snapshot' })
   expect(within(detail).getByText('Imported · read only')).toBeTruthy()
   expect(within(detail).getByText('No role specified')).toBeTruthy()
