@@ -9,7 +9,7 @@ import { ProjectsView, WorkstreamsView } from '../objects/ObjectsView'
 import { TeamBuilder } from './TeamBuilder'
 import { useState } from 'react'
 
-export { AgentDirectoryView, AgentDetail } from './AgentDirectory'
+export { AgentDetail } from './AgentDirectory'
 export { AgentsClientProvider, useAgentsClient } from './context'
 export { createHttpAgentsClient, AgentsHttpError, AGENTS_API_BASE } from './http-client'
 export type { AgentsClient } from './client'
