@@ -58,7 +58,6 @@ export function OwnedEditorForm({ editor, avatar }: { editor: OwnedEditor; avata
     values={String(draft[key] ?? '').split(',').map(v => v.trim()).filter(Boolean)} onChange={v => set(key, v.join(', '))} /></Field>
   const agentForm = <>
     <Block title="Identity"><div className="space-y-3">
-      <Field label="Avatar">{avatar ?? <p className="dash-support text-fg-faint">Set an avatar after the first save.</p>}</Field>
       {input('name')}{input('description', true)}
       {chips('roles', 'Roles', [])}
       <Field label="Enabled" htmlFor="owned-enabled" changed={changed('enabled')}><label className="flex items-center gap-2 dash-body text-fg"><input id="owned-enabled" type="checkbox" checked={draft.enabled === true} onChange={e => set('enabled', e.target.checked)} />{draft.enabled === true ? 'Enabled in desired configuration' : 'Disabled in desired configuration'}</label></Field>
@@ -91,12 +90,15 @@ export function OwnedEditorForm({ editor, avatar }: { editor: OwnedEditor; avata
   </>
   return <article aria-label={`${kind} editor`}>
     {review ? <Block title="Review changes"><dl className="space-y-3">{Object.entries(builderPatch(kind, draft, base)).map(([key, value]) => <div key={key}><dt className="dash-label text-fg-muted">{OWNED_LABELS[key] ?? key}</dt><dd className="whitespace-pre-wrap break-words dash-body">{value === null ? 'Clear' : typeof value === 'string' ? value || 'Empty' : JSON.stringify(value)}</dd></div>)}</dl><div className="mt-4 flex gap-3"><Btn disabled={busy} onClick={() => setReview(false)}>Continue editing</Btn><Btn tone="primary" disabled={busy || !!issues.length} onClick={() => void save()}>Save {kind}</Btn></div></Block>
-    : <fieldset disabled={busy || locked} className="min-w-0">{kind === 'agent' ? agentForm : assignmentForm}
+    : <>
+      {/* The avatar lives in the Station service, not the record, so a locked or busy form does not lock it. */}
+      {kind === 'agent' && <Block title="Avatar">{avatar ?? <p className="dash-support text-fg-faint">Set an avatar after the first save.</p>}</Block>}
+      <fieldset disabled={busy || locked} className="min-w-0">{kind === 'agent' ? agentForm : assignmentForm}
       <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-border bg-bg px-5 py-3">
         <span className="font-mono dash-label uppercase tracking-widest text-fg-faint">{base ? `${changes} change${changes === 1 ? '' : 's'}` : `New ${kind}`}</span>
         {issues.length > 0 && <span className="dash-support text-danger">{issues.join(' ')}</span>}
         <span className="ml-auto flex gap-2"><Btn tone="primary" disabled={!dirty || !!issues.length} onClick={() => setReview(true)}>Review {kind}</Btn></span>
-      </div></fieldset>}
+      </div></fieldset></>}
     <div className="flex flex-wrap gap-3 px-5 py-3">
       <Btn disabled={busy} onClick={discard}>{base ? 'Discard draft and reload saved version' : 'Discard draft'}</Btn>
       {!base && selected && problem && <Btn disabled={busy} onClick={() => void checkCreate()}>Check whether create was saved</Btn>}
