@@ -31,6 +31,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
 	"github.com/hollis-labs/tachyon/internal/planner"
+	"github.com/hollis-labs/tachyon/internal/provideractions"
 	"github.com/hollis-labs/tachyon/internal/transcripts"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
@@ -261,7 +262,14 @@ func (s *Server) Routes() http.Handler {
 	operator := approvals.New(s.cfg.ApprovalQueueURL)
 	if s.objects != nil {
 		// Local data is live and host-owned, independent of subprocess admission.
-		mux.Handle(dataverbs.Prefix+"/", dataverbs.NewHTTP([]dataverbs.Provider{dataverbs.NewLocal(s.objects)}, operator.RequireOperator))
+		providers := []dataverbs.Provider{dataverbs.NewLocal(s.objects)}
+		if s.store != nil {
+			providers = append(providers, &dataverbs.Actions{Service: &provideractions.Service{
+				Store: s.store,
+				Bind:  provideractions.Tether(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile),
+			}})
+		}
+		mux.Handle(dataverbs.Prefix+"/", dataverbs.NewHTTP(providers, operator.RequireOperator))
 		if s.store != nil {
 			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}))
 		}

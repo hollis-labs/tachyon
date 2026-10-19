@@ -7,6 +7,7 @@ import { Field, inputCls } from "./AgentEditor";
 import { useAgentsClient } from "./context";
 import { teamDraftFromRecord, type OwnedTeam, type TeamPage } from './owned-teams';
 import { Block, Btn } from "./ui";
+import { TeamFormation } from "./TeamFormation";
 import { ImportedTeamDetail, importedTeamKey, type ImportedTeamSnapshot } from './ImportedTeamDetail';
 import {
 	newTeamDraft,
@@ -617,6 +618,7 @@ export function TeamBuilder() {
 						</div>
 					</article>
 				)}
+                {base && <TeamFormation key={base.id} team={base} />}
 			</>} />
 		</div>
 	);

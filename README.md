@@ -849,6 +849,49 @@ Request flow:
 
 Phase 1 compiles plugin UIs into the host frontend. Runtime-loaded bundles are tracked by CW-20261016-0165.
 
+### Reviewed team formation
+
+Saved native Builder teams can explicitly form a team in Tether. The first
+provider action surface uses `tether` data verbs `teams.preview`, `teams.apply`,
+`actions.get` and `actions.list` under the existing same-origin data API.
+Both preview and apply require live operator assurance. Preview is a local write
+only: it reads the saved team revision, validates its pinned Builder payload,
+adds the reviewed mission to each slot, and retains the exact request. Each
+formation uses `tachyon-{object UUID}-{action UUID}` as its provider definition
+ID: Tether definitions are immutable by ID/version, while missions may differ
+between runs. The authored team ID and saved definition remain unchanged. It does
+not claim that Tether has admitted the launch. Apply sends `POST /teams/form`;
+Tether remains authoritative for definition resolution, caller scopes, trust,
+activation policy and runtime admission.
+
+The first mapping supports fresh singleton seats with SHA-256 definition pins,
+at least one required worker, and an optional coordinator seat occupied by the
+authenticated Tether caller. Native `agent_id` bindings must first gain a separate
+publication mapping; this action refuses them rather than ignoring them.
+
+`provider_actions` retains immutable payloads, revision and digest, actor,
+provider target, a private credential fingerprint, and outcome receipts using
+the shared SQLite writer. Initial apply checks ownership, retirement and revision
+atomically with claiming the request. Unused previews expire after 30 minutes.
+Each action has a retained UUID and Tether idempotency key. Repeated successful
+apply reads its receipt; parallel apply is refused while a two-minute lease is
+held. Upstream calls are bounded to 40 seconds, while Tether can continue the
+operation after a disconnect. A timeout, failure or malformed receipt remains
+`unknown`; refresh is read-only and recovery requires an explicit retry of the
+same request. After a host crash, the same-key retry is available when the lease
+expires. Credential or target changes refuse replay under a different caller.
+
+History loads 25 compact summaries per page by UUID cursor, with payload and
+result details fetched on selection. A receipt is a point-in-time provider
+response, not current runtime health. Formation neither changes the saved team
+nor marks planned assignments executed. Publishing agent definitions, dispatching
+assignments into runs, cancellation and explicit reconciliation after credential
+rotation remain separate actions. No production agent launches were used to
+validate this integration. Live read-only readiness on 2026-10-19 found
+`/auth/context` accepting Tachyon as a verified `device`, while `/teams/roster`
+returns `401 unauthenticated`; Tether must provide a supported caller identity
+for the team APIs before this credential can form teams.
+
 ## Build and run
 
 Requirements: Go 1.26.9 and Node 22.12+.
