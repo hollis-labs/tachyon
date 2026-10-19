@@ -157,7 +157,7 @@ func TestNativeProducerJWTAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	token := func(over map[string]any) string {
-		claims := map[string]any{"iss": "test-tether", "aud": "tachyon", "sub": "producer-a", "exp": time.Now().Add(time.Hour).Unix(), "scope": "tachyon.approvals.enqueue tachyon.approvals.read tachyon.approvals.withdraw"}
+		claims := map[string]any{"iss": "test-tether", "aud": "tachyon", "sub": "producer-a", "exp": time.Now().Add(time.Hour).Unix(), "scope": "tachyon.approvals_enqueue tachyon.approvals_read tachyon.approvals_withdraw"}
 		for k, v := range over {
 			claims[k] = v
 		}
@@ -172,7 +172,8 @@ func TestNativeProducerJWTAndIsolation(t *testing.T) {
 		code int
 	}{
 		{"issuer", map[string]any{"iss": "someone-else"}, 401}, {"audience", map[string]any{"aud": "cerberus"}, 401},
-		{"expiry", map[string]any{"exp": time.Now().Add(-time.Hour).Unix()}, 401}, {"scope", map[string]any{"scope": "tachyon.approvals.read"}, 403},
+		{"expiry", map[string]any{"exp": time.Now().Add(-time.Hour).Unix()}, 401}, {"scope", map[string]any{"scope": "tachyon.approvals_read"}, 403},
+		{"unsupported nested scope", map[string]any{"scope": "tachyon.approvals.enqueue"}, 403},
 		{"unmapped", map[string]any{"sub": "unknown"}, 403}, {"impersonation", map[string]any{"sub": "producer-b"}, 403},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -1165,13 +1165,15 @@ Subject mappings bind each producer to a distinct application ID and minimum
 class. `source.application_id` and `caller.application_id` must match that
 binding; supplied `caller.principal_ref` must match the authenticated subject.
 Agent IDs remain producer-asserted display metadata. Cross-producer lookups return
-404 and expose no other producer's records. Tokens need only the operations used:
+404 and expose no other producer's records. Scopes use Tether's `app.verb` grammar (underscores within the verb); the earlier
+three-segment `tachyon.approvals.enqueue` spelling is not issuable. Tokens need
+only the operations used:
 
 | Operation | Required scope |
 |---|---|
-| enqueue | `tachyon.approvals.enqueue` |
-| get, await | `tachyon.approvals.read` |
-| withdraw | `tachyon.approvals.withdraw` |
+| enqueue | `tachyon.approvals_enqueue` |
+| get, await | `tachyon.approvals_read` |
+| withdraw | `tachyon.approvals_withdraw` |
 
 Enqueue uses `contract_version: "1.0"`, `kind: "approval"` or `"attention"`, a
 stable `idempotency_key`, and `source` with `application_id` and `agent_id`.

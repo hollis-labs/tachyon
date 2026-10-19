@@ -228,12 +228,12 @@ func (p *Producer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	policy, ok := p.Config.Producers[principal.ID]
-	scope := "tachyon.approvals.read"
+	scope := "tachyon.approvals_read"
 	if operation == "enqueue" {
-		scope = "tachyon.approvals.enqueue"
+		scope = "tachyon.approvals_enqueue"
 	}
 	if operation == "withdraw" {
-		scope = "tachyon.approvals.withdraw"
+		scope = "tachyon.approvals_withdraw"
 	}
 	if !ok || principal.Audience != "tachyon" || !principal.HasScope(scope) {
 		fail(w, 403, "forbidden", "Producer identity or required scope is not authorized.")
