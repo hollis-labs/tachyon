@@ -7,6 +7,9 @@ project:
   description: Opt-in frontend verification; never changes the deployed Planner provider
 resources:
   - id: tachyon-planner-verify-frontend
+    env: dev
+    owner: self
+    admin: self
     name: Tachyon Planner Verification Frontend
     type: process
     project: tachyon-planner-verify

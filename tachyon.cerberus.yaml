@@ -7,6 +7,9 @@ project:
   description: Headless-capable, plugin-based control plane for the Hollis Labs agent fabric
 resources:
   - id: tachyon-backend-dev
+    env: dev
+    owner: self
+    admin: self
     name: Tachyon Backend Dev
     type: process
     project: tachyon
@@ -45,6 +48,9 @@ resources:
       auto_restart: true
       restart_delay: 2s
   - id: tachyon-frontend-dev
+    env: dev
+    owner: self
+    admin: self
     name: Tachyon Frontend Dev
     type: process
     project: tachyon
