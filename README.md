@@ -819,8 +819,23 @@ Saved teams use 50-record cursor pages, an in-memory page cache and background
 refresh. Details load when selected; open drafts keep their original revision
 until explicitly reloaded. Conflicts and failed saves retain the draft. Imported
 Tether snapshots remain read-only; definitions authored in other formats are
-retained without forcing them through this editor. Agent and assignment saves
-remain demonstrations until their respective integration slices.
+retained without forcing them through this editor.
+
+Builder's Agents and Assignments areas edit native owned records through the
+same guarded service. They load independently of Tether's catalog, retain drafts
+between Builder tabs, fetch 50-record pages, display cached pages while refreshing,
+and fetch details/history only on demand. Saves send only the reviewed field
+deltas, so unexposed fields and metadata survive. Provider observations require
+an explicit adoption action before editing; adoption retains source provenance.
+Retirement/restoration retains UUIDs and history. History uses 25-revision pages.
+
+Assignment assignees are local agent/team UUIDs. Work targets can be local records
+or explicit provider/instance/collection/external-ID references; external IDs are
+never guessed to be local records. These are desired assignments, not dispatched
+work. Agent enabled flags likewise describe desired configuration, not runtime
+state. Deployment and runtime orchestration remain separate provider operations.
+The Provider catalog area retains the earlier read/preview interface; its
+demonstrations do not write to Tether.
 
 | Plugin | Backend | UI routes |
 |---|---|---|

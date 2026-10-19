@@ -5,6 +5,9 @@ import { AgentDirectoryView } from './AgentDirectory'
 import { AdminTabs } from '@hollis-labs/kit-admin'
 import { useSearchParams } from 'react-router-dom'
 import { ProjectsView, WorkstreamsView } from '../objects/ObjectsView'
+import { OwnedBuilderView } from './OwnedBuilderView'
+import { TeamBuilder } from './TeamBuilder'
+import { useState } from 'react'
 
 export { AgentDirectoryView, AgentDetail } from './AgentDirectory'
 export { AgentsClientProvider, useAgentsClient } from './context'
@@ -23,15 +26,19 @@ export * from './plan'
 export function BuilderPage() {
   const [query, setQuery] = useSearchParams()
   const section = query.get('section') ?? 'agents'
+  const [visited, setVisited] = useState(() => new Set([section]))
   return (
     <ApiProvider client={consoleClient}>
       <div data-dashboard-accent="yellow" className="flex h-full min-w-0 flex-col">
         <PageHeader title="Builder" />
         <AdminTabs label="Builder areas" value={section}
-          onChange={key => setQuery(current => { const next = new URLSearchParams(current); next.set('section', key); return next })}
-          items={[{ key: 'agents', label: 'Agents & teams' }, { key: 'projects', label: 'Projects' }, { key: 'workstreams', label: 'Workstreams' }]} />
+          onChange={key => { setVisited(previous => new Set([...previous, key])); setQuery(current => { const next = new URLSearchParams(current); next.set('section', key); return next }) }}
+          items={[{ key: 'agents', label: 'Agents' }, { key: 'teams', label: 'Teams' }, { key: 'assignments', label: 'Assignments' }, { key: 'catalog', label: 'Provider catalog' }, { key: 'projects', label: 'Projects' }, { key: 'workstreams', label: 'Workstreams' }]} />
         <div className="flex-1 overflow-auto">
-          {section === 'projects' ? <ProjectsView /> : section === 'workstreams' ? <WorkstreamsView /> : <AgentDirectoryView />}
+          {(visited.has('agents') || section === 'agents') && <div hidden={section !== 'agents'}><OwnedBuilderView kind="agent" /></div>}
+          {(visited.has('assignments') || section === 'assignments') && <div hidden={section !== 'assignments'}><OwnedBuilderView kind="assignment" /></div>}
+          {(visited.has('teams') || section === 'teams') && <div hidden={section !== 'teams'}><TeamBuilder /></div>}
+          {section === 'projects' ? <ProjectsView /> : section === 'workstreams' ? <WorkstreamsView /> : section === 'catalog' ? <AgentDirectoryView /> : null}
         </div>
       </div>
     </ApiProvider>
