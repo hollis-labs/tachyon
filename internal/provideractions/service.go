@@ -27,11 +27,13 @@ type ApplyRequest struct {
 type ListRequest struct {
 	ObjectID string `json:"object_id"`
 	BeforeID string `json:"before_id,omitempty"`
+	Verb     string `json:"verb,omitempty"`
 }
 type Receipt struct {
 	ID                    string          `json:"id"`
 	ObjectID              string          `json:"object_id"`
 	ObjectRevision        int64           `json:"object_revision"`
+	OriginID              string          `json:"origin_action_id,omitempty"`
 	Provider              string          `json:"provider"`
 	Target                string          `json:"target"`
 	Verb                  string          `json:"verb"`
@@ -51,6 +53,7 @@ type Summary struct {
 	ID             string `json:"id"`
 	ObjectRevision int64  `json:"object_revision"`
 	State          string `json:"state"`
+	Verb           string `json:"verb"`
 	CreatedAt      string `json:"created_at"`
 }
 type Page struct {
@@ -63,7 +66,7 @@ type Page struct {
 type Bound interface {
 	Target() string
 	Identity() string
-	Form(context.Context, string, json.RawMessage) (json.RawMessage, error)
+	Execute(context.Context, string, string, json.RawMessage) (json.RawMessage, error)
 }
 type Service struct {
 	Store *localstore.Store
@@ -81,13 +84,13 @@ func actorRequired(actor string) error {
 	return nil
 }
 
-const columns = `id,object_id,object_revision,provider,target,verb,payload,digest,state,attempts,lease_until,result,problem,actor,created_at,updated_at,credential_identity,input_digest`
+const columns = `id,object_id,object_revision,provider,target,verb,payload,digest,state,attempts,lease_until,result,problem,actor,created_at,updated_at,credential_identity,input_digest,origin_action_id`
 
 type scanner interface{ Scan(...any) error }
 
 func scan(row scanner) (Receipt, error) {
 	var r Receipt
-	err := row.Scan(&r.ID, &r.ObjectID, &r.ObjectRevision, &r.Provider, &r.Target, &r.Verb, &r.Payload, &r.Digest, &r.State, &r.Attempts, &r.RetryAfter, &r.Result, &r.Problem, &r.Actor, &r.CreatedAt, &r.UpdatedAt, &r.identity, &r.inputDigest)
+	err := row.Scan(&r.ID, &r.ObjectID, &r.ObjectRevision, &r.Provider, &r.Target, &r.Verb, &r.Payload, &r.Digest, &r.State, &r.Attempts, &r.RetryAfter, &r.Result, &r.Problem, &r.Actor, &r.CreatedAt, &r.UpdatedAt, &r.identity, &r.inputDigest, &r.OriginID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, svcerr.New(svcerr.CodeNotFound, "Provider action not found.")
 	}
@@ -104,14 +107,29 @@ func (s *Service) List(ctx context.Context, in ListRequest) (Page, error) {
 	if !validID(in.ObjectID) || (in.BeforeID != "" && !validID(in.BeforeID)) {
 		return out, invalid("Valid object and cursor UUIDs are required.")
 	}
-	rows, err := s.Store.Reader.QueryContext(ctx, "SELECT id,object_revision,state,created_at FROM provider_actions WHERE object_id=? AND (?='' OR id<?) ORDER BY id DESC LIMIT 25", in.ObjectID, in.BeforeID, in.BeforeID)
+	query := "SELECT id,object_revision,state,created_at,verb FROM provider_actions WHERE object_id=?"
+	args := []any{in.ObjectID}
+	if in.Verb != "" {
+		query += " AND verb=?"
+		args = append(args, in.Verb)
+	}
+	if in.BeforeID != "" {
+		var created string
+		if err := s.Store.Reader.QueryRowContext(ctx, "SELECT created_at FROM provider_actions WHERE id=? AND object_id=?", in.BeforeID, in.ObjectID).Scan(&created); err != nil {
+			return out, invalid("Cursor does not belong to this object's history.")
+		}
+		query += " AND (created_at,id)<(?,?)"
+		args = append(args, created, in.BeforeID)
+	}
+	query += " ORDER BY created_at DESC,id DESC LIMIT 25"
+	rows, err := s.Store.Reader.QueryContext(ctx, query, args...)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var r Summary
-		e := rows.Scan(&r.ID, &r.ObjectRevision, &r.State, &r.CreatedAt)
+		e := rows.Scan(&r.ID, &r.ObjectRevision, &r.State, &r.CreatedAt, &r.Verb)
 		if e != nil {
 			return out, e
 		}
@@ -152,31 +170,37 @@ func (s *Service) Prepare(ctx context.Context, in PrepareRequest, actor string) 
 	if err != nil {
 		return Receipt{}, unavailable("Tether configuration or credential is unavailable.")
 	}
+	return s.retain(ctx, in.ID, row, "teams.form", payload, inputDigest, "", bound, actor)
+}
+func (s *Service) retain(ctx context.Context, id string, row objects.Record, verb string, payload json.RawMessage, inputDigest, originID string, bound Bound, actor string) (Receipt, error) {
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
-	r := Receipt{ID: in.ID, ObjectID: in.ObjectID, ObjectRevision: in.ExpectedRevision, Provider: "tether", Target: bound.Target(), Verb: "teams.form", Payload: payload, Digest: digest(payload), State: "prepared", Result: json.RawMessage(`{}`), Actor: actor, CreatedAt: stamp, UpdatedAt: stamp, identity: bound.Identity(), inputDigest: inputDigest}
-	err = s.Store.Writer.Submit(ctx, "provider_action_prepare", func(ctx context.Context, tx *sql.Tx) error {
-		// Check again under the same writer as edits/retirement.
+	r := Receipt{ID: id, ObjectID: row.ID, ObjectRevision: row.Revision, Provider: "tether", Target: bound.Target(), Verb: verb, Payload: payload, Digest: digest(payload), State: "prepared", Result: json.RawMessage(`{}`), Actor: actor, CreatedAt: stamp, UpdatedAt: stamp, identity: bound.Identity(), inputDigest: inputDigest, OriginID: originID}
+	err := s.Store.Writer.Submit(ctx, "provider_action_prepare", func(ctx context.Context, tx *sql.Tx) error {
 		var revision int64
 		var ownership string
 		var deleted sql.NullString
-		if e := tx.QueryRowContext(ctx, "SELECT revision,ownership,deleted_at FROM objects WHERE id=?", r.ObjectID).Scan(&revision, &ownership, &deleted); e != nil {
+		if e := tx.QueryRowContext(ctx, "SELECT revision,ownership,deleted_at FROM objects WHERE id=?", row.ID).Scan(&revision, &ownership, &deleted); e != nil {
 			return e
 		}
-		if revision != r.ObjectRevision || ownership != "tachyon" || deleted.Valid {
-			return conflict("Team changed while preparing the action.")
+		if revision != row.Revision || ownership != "tachyon" || deleted.Valid && !cleanupVerb(verb) {
+			return conflict("Saved object changed while preparing the action.")
 		}
-		_, e := tx.ExecContext(ctx, `INSERT INTO provider_actions(id,object_id,object_revision,provider,target,verb,payload,digest,state,result,actor,created_at,updated_at,credential_identity,input_digest) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, r.ID, r.ObjectID, r.ObjectRevision, r.Provider, r.Target, r.Verb, r.Payload, r.Digest, r.State, r.Result, r.Actor, r.CreatedAt, r.UpdatedAt, r.identity, r.inputDigest)
+		_, e := tx.ExecContext(ctx, `INSERT INTO provider_actions(id,object_id,object_revision,provider,target,verb,payload,digest,state,result,actor,created_at,updated_at,credential_identity,input_digest,origin_action_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, r.ID, r.ObjectID, r.ObjectRevision, r.Provider, r.Target, r.Verb, r.Payload, r.Digest, r.State, r.Result, r.Actor, r.CreatedAt, r.UpdatedAt, r.identity, r.inputDigest, r.OriginID)
 		return e
 	})
 	if err != nil {
 		return Receipt{}, err
 	}
-	old, err := s.Get(ctx, in.ID)
+	old, err := s.Get(ctx, id)
 	if err == nil && old.inputDigest != inputDigest {
 		err = conflict("This action UUID belongs to another preview.")
 	}
 	return old, err
 }
+func cleanupVerb(verb string) bool {
+	return verb == "teams.cancel" || verb == "teams.dissolve" || verb == "teams.member_remove"
+}
+
 func (s *Service) Apply(ctx context.Context, in ApplyRequest, actor string) (Receipt, error) {
 	if err := actorRequired(actor); err != nil {
 		return Receipt{}, err
@@ -213,6 +237,9 @@ func (s *Service) Apply(ctx context.Context, in ApplyRequest, actor string) (Rec
 		if r.State == "sending" && r.RetryAfter > now.Unix() {
 			return conflict("The request is still pending. Refresh its receipt before retrying.")
 		}
+		if r.State != "prepared" && (r.Verb == "catalog.plan" || r.Verb == "catalog.apply") {
+			return conflict("This provider operation does not support safe replay. Reconcile the retained plan outcome instead.")
+		}
 		if r.State != "prepared" && !in.Retry {
 			return conflict("Outcome is unconfirmed. An explicit same-request retry is required.")
 		}
@@ -223,8 +250,8 @@ func (s *Service) Apply(ctx context.Context, in ApplyRequest, actor string) (Rec
 			if e = tx.QueryRowContext(ctx, "SELECT revision,ownership,deleted_at FROM objects WHERE id=?", r.ObjectID).Scan(&revision, &ownership, &deleted); e != nil {
 				return e
 			}
-			if revision != r.ObjectRevision || ownership != "tachyon" || deleted.Valid {
-				return conflict("Team changed or was retired. Prepare and review a new action.")
+			if revision != r.ObjectRevision || ownership != "tachyon" || deleted.Valid && !cleanupVerb(r.Verb) {
+				return conflict("Saved object changed or was retired. Prepare and review a new action.")
 			}
 			if t, e := time.Parse(time.RFC3339Nano, r.CreatedAt); e != nil || now.Sub(t) > 30*time.Minute {
 				return conflict("Preview expired. Prepare and review a new action.")
@@ -245,11 +272,14 @@ func (s *Service) Apply(ctx context.Context, in ApplyRequest, actor string) (Rec
 	}
 	// A disconnected browser must not erase a request already accepted locally.
 	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
-	result, sendErr := bound.Form(sendCtx, "tachyon-"+r.ID, r.Payload)
+	result, sendErr := bound.Execute(sendCtx, r.Verb, "tachyon-"+r.ID, r.Payload)
 	cancel()
 	r.State = "unknown"
 	r.Result = json.RawMessage(`{}`)
 	r.Problem = "Tether did not confirm the outcome. Inspect the receipt and retry this same request to recover it."
+	if r.Verb == "catalog.plan" || r.Verb == "catalog.apply" {
+		r.Problem = "Tether did not confirm the catalog outcome. Reconcile the retained plan before proceeding; this operation cannot be replayed safely."
+	}
 	if sendErr == nil {
 		r.State = "succeeded"
 		r.Result = result
@@ -259,6 +289,9 @@ func (s *Service) Apply(ctx context.Context, in ApplyRequest, actor string) (Rec
 	// partial provisioning. Never manufacture a new idempotency key on retry.
 	if failure, ok := sendErr.(*Failure); ok {
 		r.Problem = failure.Message
+		if failure.NoEffect {
+			r.State = "prepared"
+		}
 	}
 	r.RetryAfter = 0
 	r.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)

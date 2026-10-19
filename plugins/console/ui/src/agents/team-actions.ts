@@ -25,7 +25,7 @@ export function createTeamActionsClient(fetcher: typeof fetch = operatorFetch) {
     preview: (id: string, object_id: string, expected_revision: number, mission: string) => call<FormationReceipt>('teams.preview', { id, object_id, expected_revision, mission }, true),
     apply: (row: FormationReceipt, retry = false) => call<FormationReceipt>('teams.apply', { id: row.id, digest: row.digest, retry }, true),
     get: (id: string) => call<FormationReceipt>('actions.get', { id }),
-    list: (object_id: string, before_id = '') => call<FormationPage>('actions.list', { object_id, before_id }),
+    list: (object_id: string, before_id = '') => call<FormationPage>('actions.list', { object_id, before_id, verb: 'teams.form' }),
   }
 }
 export type TeamActionsClient = ReturnType<typeof createTeamActionsClient>

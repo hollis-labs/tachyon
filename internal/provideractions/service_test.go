@@ -25,7 +25,7 @@ type fakeBound struct {
 
 func (f *fakeBound) Target() string   { return "https://tether.test" }
 func (f *fakeBound) Identity() string { return f.identity }
-func (f *fakeBound) Form(_ context.Context, key string, raw json.RawMessage) (json.RawMessage, error) {
+func (f *fakeBound) Execute(_ context.Context, _ string, key string, raw json.RawMessage) (json.RawMessage, error) {
 	f.calls.Add(1)
 	if f.form != nil {
 		return f.form(key, raw)
@@ -247,5 +247,23 @@ func TestDifferentMissionsDoNotOverwriteImmutableProviderDefinition(t *testing.T
 	current, err := objects.New(s.Store).Get(ctx, row.ID)
 	if err != nil || string(current.Definition) != string(row.Definition) || current.Revision != row.Revision {
 		t.Fatal("preview edited saved definition", err)
+	}
+}
+
+func TestHistoryUsesCreationOrderAndStableCursorAcrossRandomActionIDs(t *testing.T) {
+	s, row, _ := fixture(t)
+	ids := []string{"ffffffff-ffff-4fff-8fff-ffffffffffff", "00000000-0000-4000-8000-000000000001"}
+	for _, id := range ids {
+		if _, e := s.Prepare(ctx, PrepareRequest{ID: id, ObjectID: row.ID, ExpectedRevision: row.Revision, Mission: "Review"}, "operator:test"); e != nil {
+			t.Fatal(e)
+		}
+	}
+	page, e := s.List(ctx, ListRequest{ObjectID: row.ID})
+	if e != nil || len(page.Items) != 2 || page.Items[0].ID != ids[1] {
+		t.Fatal("history sorted UUIDs instead of creation", page, e)
+	}
+	page, e = s.List(ctx, ListRequest{ObjectID: row.ID, BeforeID: ids[1]})
+	if e != nil || len(page.Items) != 1 || page.Items[0].ID != ids[0] {
+		t.Fatal("cursor skipped history", page, e)
 	}
 }

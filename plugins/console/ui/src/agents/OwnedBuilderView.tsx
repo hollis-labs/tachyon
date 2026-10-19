@@ -5,6 +5,7 @@ import { Block, Btn } from './ui'
 import { builderDraft, builderIssues, builderPatch, type BuilderDraft } from './owned-builder-draft'
 import { isRetired, newObjectID, ownedBuilderClient, type BuilderKind, type HistoryPage, type ObjectRecord, type OwnedBuilderClient } from './owned-builder-client'
 import { useOwnedRecords } from './use-owned-records'
+import { AgentPublication } from './AgentPublication'
 
 function ReferencePicker({ client, kind, value, onChange, label }: { client: OwnedBuilderClient; kind: string; value: string; onChange(value: string): void; label: string }) {
   const records = useOwnedRecords(client, kind)
@@ -126,6 +127,7 @@ export function OwnedBuilderView({ kind, client = ownedBuilderClient }: { kind: 
         {base && !dirty && (base.ownership === 'tachyon' ? <Btn disabled={busy} onClick={() => void lifecycle(base.deleted_at ? 'restore' : 'delete')}>{base.deleted_at ? 'Restore' : 'Retire'} {kind}</Btn> : !isRetired(base) && <Btn disabled={busy} onClick={() => void lifecycle('take_ownership')}>Adopt definition into Tachyon</Btn>)}
         {base && !history && <Btn disabled={busy} onClick={() => void readHistory()}>Load history</Btn>}
       </div>
+      {kind === 'agent' && base?.ownership === 'tachyon' && <AgentPublication key={base.id} agent={base} disabled={dirty || busy || isRetired(base)} />}
       {history && <Block title="Saved history"><ul>{history.items.map(item => <li key={item.record.revision} className="py-2 dash-support">Revision {item.record.revision} · {item.operation} · {item.actor} · {item.recorded_at}</li>)}</ul>{history.next_after_revision && <Btn disabled={busy} onClick={() => void readHistory()}>More history</Btn>}</Block>}
     </article> : <div className="p-6 dash-body text-fg-muted">Select a saved {kind} or create one.</div>} />
   </div>
