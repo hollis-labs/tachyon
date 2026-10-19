@@ -65,16 +65,16 @@ it('adopts explicitly, saves only reviewed field deltas, and preserves unknown d
   const write = h.fetcher.mock.calls.find(([url]) => String(url).endsWith('objects.patch'))!
   expect(JSON.parse(write[1]!.body as string)).toEqual({ id: agentID, expected_revision: 3, definition: { instructions: 'New instructions' } })
   expect(h.rows.get(agentID)?.definition.properties).toEqual({ preserve: true })
-  fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: 'Keep this draft' } })
+  fireEvent.change(screen.getByLabelText(/^Instructions/), { target: { value: 'Keep this draft' } })
   h.rows.get(agentID)!.revision++
   fireEvent.click(screen.getByRole('button', { name: 'Review agent' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save agent' }))
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: 'Continue editing' }))
-  expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe('Keep this draft')
+  expect((screen.getByLabelText(/^Instructions/) as HTMLTextAreaElement).value).toBe('Keep this draft')
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
   await screen.findByText(/A newer revision is available/)
-  expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe('Keep this draft')
+  expect((screen.getByLabelText(/^Instructions/) as HTMLTextAreaElement).value).toBe('Keep this draft')
 })
 
 it('creates assignments with explicit references and switches local targets to external targets without keeping both', async () => {
@@ -163,7 +163,7 @@ it('checks an uncertain create without discarding edits made after the response 
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Later edit' } })
   fireEvent.click(screen.getByRole('button', { name: 'Check whether create was saved' }))
   await screen.findByText(/The create was saved/)
-  expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Later edit')
+  expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe('Later edit')
   fireEvent.click(screen.getByRole('button', { name: 'Review agent' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save agent' }))
   await screen.findByText('Saved in Tachyon.')
