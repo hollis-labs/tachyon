@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { AdminRecordButton, AdminSection as Section, AdminFact, IdentityAvatar, ActivityStatus } from '@hollis-labs/kit-admin'
+import { AgentAvatar } from './AgentAvatar'
+import { AdminRecordButton, AdminSection as Section, AdminFact, ActivityStatus } from '@hollis-labs/kit-admin'
 import { ago } from '@console/fleet/lib/agent-activity'
 import { Chip } from './ui'
 import { isPrivileged, policySummary } from './filter'
@@ -17,7 +18,7 @@ function LiveBadge({ live, unknown }: { live?: AgentLiveRef; unknown?: boolean }
 export function Row({ agent, selected, onSelect }: { agent: AgentRecord; selected: boolean; onSelect: () => void }) {
   const { identity, runtime } = agent
   return <li><AdminRecordButton selected={selected} onSelect={onSelect} muted={!identity.enabled} size="comfortable"
-    avatar={<IdentityAvatar identity={identity.id} size="definition" />}
+    avatar={<AgentAvatar identity={identity.id} size="definition" />}
     title={<span className="flex flex-wrap items-center gap-x-3 gap-y-0.5">{identity.name}
       {identity.retired && <Chip tone="text-danger">retired</Chip>}
       {!identity.enabled && !identity.retired && <Chip>disabled</Chip>}
@@ -42,7 +43,7 @@ export function AgentDetail({ agent, now }: { agent: AgentRecord; now: number })
     <article aria-label={`${identity.name} detail`}>
       <header className="flex items-center gap-4 border-b border-border/80 px-5 py-4">
         <span className="shrink-0 border border-border bg-bg p-1.5">
-          <IdentityAvatar identity={identity.id} size="large" />
+          <AgentAvatar identity={identity.id} size="large" />
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-mono dash-detail-title font-semibold uppercase tracking-wide">{identity.name}</h2>

@@ -1,5 +1,5 @@
 import { AdminInput, AdminSelect, AdminTextarea } from '@hollis-labs/kit-admin'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Field, ListField } from './AgentEditor'
 import { KNOWN_RULES, KNOWN_SCOPES, KNOWN_TOOLS, PERMISSION_MODES, PROVIDERS, SANDBOX_MODES } from './plan'
 import { Chip } from './ui'
@@ -44,7 +44,7 @@ function PolicyPreview() {
 export const OWNED_LABELS: Record<string, string> = { name: 'Name', description: 'Description', runtime: 'Runtime', model: 'Model', roles: 'Roles (comma separated)', instructions: 'Instructions', tools: 'Tools (comma separated)', skills: 'Skills (comma separated)', enabled: 'Enabled in desired configuration', project_id: 'Project', machine_id: 'Machine', role: 'Assignment role', state: 'Planning status', agent_id: 'Agent', team_id: 'Team', target: 'Local target', external_target: 'External target', provider: 'Provider', instance: 'Instance', collection: 'Collection', external_id: 'External ID' }
 
 /** Edit form, change review and save for one owned record. Lifecycle and history live in their own tabs. */
-export function OwnedEditorForm({ editor }: { editor: OwnedEditor }) {
+export function OwnedEditorForm({ editor, avatar }: { editor: OwnedEditor; avatar?: ReactNode }) {
   const { kind, client, draft, base, review, setReview, busy, issues, dirty, locked, selected, problem, set, save, checkCreate, discard } = editor
   if (!draft) return null
   const orig = base ? builderDraft(kind, base) : undefined
@@ -58,6 +58,7 @@ export function OwnedEditorForm({ editor }: { editor: OwnedEditor }) {
     values={String(draft[key] ?? '').split(',').map(v => v.trim()).filter(Boolean)} onChange={v => set(key, v.join(', '))} /></Field>
   const agentForm = <>
     <Block title="Identity"><div className="space-y-3">
+      <Field label="Avatar">{avatar ?? <p className="dash-support text-fg-faint">Set an avatar after the first save.</p>}</Field>
       {input('name')}{input('description', true)}
       {chips('roles', 'Roles', [])}
       <Field label="Enabled" htmlFor="owned-enabled" changed={changed('enabled')}><label className="flex items-center gap-2 dash-body text-fg"><input id="owned-enabled" type="checkbox" checked={draft.enabled === true} onChange={e => set('enabled', e.target.checked)} />{draft.enabled === true ? 'Enabled in desired configuration' : 'Disabled in desired configuration'}</label></Field>

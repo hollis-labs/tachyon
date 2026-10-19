@@ -36,7 +36,7 @@ export function BuilderAssignments({ client = ownedBuilderClient }: { client?: O
       <p className="border-b border-border/80 px-4 py-3 dash-body text-fg-muted">Planned work for an agent or team. Saving an assignment does not dispatch it, and target references are not verified against live work.</p>
       {records.error && <p role="alert" className="border-b border-border/80 px-4 py-2 dash-body text-danger">{records.error} Showing the last loaded records.</p>}
       {problem && <p role="alert" className="border-b border-border/80 px-4 py-2 dash-body text-danger">{problem}</p>}
-      {message && <p role="status" className="border-b border-border/80 px-4 py-2 dash-body text-success">{message}</p>}
+      {message && <p role="status" className="border-b border-border/80 px-4 py-2 dash-body text-fg">{message}</p>}
       <DashboardToolbar className="border-b border-border px-4 py-2">
         <AdminInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Search assignments" aria-label="Search assignments" className="max-w-xs" />
         <span className="ml-auto flex gap-2"><Btn disabled={busy || records.loading} onClick={() => void records.refresh()}>Refresh</Btn><Btn tone="primary" disabled={busy || dirty} onClick={() => { setMode('edit'); editor.create() }}>New assignment</Btn></span>
