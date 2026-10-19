@@ -146,7 +146,15 @@ func (s *Service) PrepareRuntime(ctx context.Context, in RuntimeRequest, actor s
 		}
 	}
 	payload, _ := json.Marshal(req)
-	return s.retain(ctx, in.ID, row, verb, payload, inputDigest, origin.ID, bound, actor)
+	var dependencies []BindingDependency
+	if in.Operation == "member_add" {
+		for _, dependency := range origin.BindingDependencies {
+			if dependency.Slot == in.Slot {
+				dependencies = append(dependencies, dependency)
+			}
+		}
+	}
+	return s.retain(ctx, in.ID, row, verb, payload, inputDigest, origin.ID, bound, actor, dependencies...)
 }
 
 type RosterRequest struct {

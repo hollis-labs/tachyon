@@ -41,7 +41,7 @@ func TestProviderActionTransportRequiresAuthorizationAndClosedInputs(t *testing.
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	writes := []string{"teams.preview", "teams.apply", "runtime.preview", "actions.apply", "agents.publish_preview", "catalog.apply_preview", "actions.reconcile", "executions.project"}
+	writes := []string{"teams.preview", "teams.apply", "runtime.preview", "actions.apply", "agents.publish_preview", "catalog.apply_preview", "actions.reconcile", "executions.project", "agents.definition_preview", "bindings.preview", "bindings.confirm", "bindings.revoke"}
 	for _, verb := range writes {
 		if w := invoke("GET", verb, ""); w.Code != 405 {
 			t.Fatal(w.Code)
@@ -53,7 +53,7 @@ func TestProviderActionTransportRequiresAuthorizationAndClosedInputs(t *testing.
 	if authCalls != len(writes) {
 		t.Fatal("writes did not cross authorization")
 	}
-	for _, verb := range []string{"runtime.runs", "runtime.activity"} {
+	for _, verb := range []string{"runtime.runs", "runtime.activity", "bindings.get", "bindings.list"} {
 		if w := invoke("POST", verb, `{}`); w.Code != 405 {
 			t.Fatal(w.Code)
 		}

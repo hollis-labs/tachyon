@@ -30,25 +30,27 @@ type ListRequest struct {
 	Verb     string `json:"verb,omitempty"`
 }
 type Receipt struct {
-	ExecutionRunID        string          `json:"execution_run_id,omitempty"`
-	ProjectionProblem     string          `json:"projection_problem,omitempty"`
-	ID                    string          `json:"id"`
-	ObjectID              string          `json:"object_id"`
-	ObjectRevision        int64           `json:"object_revision"`
-	OriginID              string          `json:"origin_action_id,omitempty"`
-	Provider              string          `json:"provider"`
-	Target                string          `json:"target"`
-	Verb                  string          `json:"verb"`
-	Payload               json.RawMessage `json:"payload"`
-	Digest                string          `json:"digest"`
-	State                 string          `json:"state"`
-	Attempts              int             `json:"attempts"`
-	RetryAfter            int64           `json:"retry_after,omitempty"`
-	Result                json.RawMessage `json:"result"`
-	Problem               string          `json:"problem,omitempty"`
-	Actor                 string          `json:"actor"`
-	CreatedAt             string          `json:"created_at"`
-	UpdatedAt             string          `json:"updated_at"`
+	DefinitionArtifact    *DefinitionArtifact `json:"definition_artifact,omitempty"`
+	BindingDependencies   []BindingDependency `json:"binding_dependencies"`
+	ExecutionRunID        string              `json:"execution_run_id,omitempty"`
+	ProjectionProblem     string              `json:"projection_problem,omitempty"`
+	ID                    string              `json:"id"`
+	ObjectID              string              `json:"object_id"`
+	ObjectRevision        int64               `json:"object_revision"`
+	OriginID              string              `json:"origin_action_id,omitempty"`
+	Provider              string              `json:"provider"`
+	Target                string              `json:"target"`
+	Verb                  string              `json:"verb"`
+	Payload               json.RawMessage     `json:"payload"`
+	Digest                string              `json:"digest"`
+	State                 string              `json:"state"`
+	Attempts              int                 `json:"attempts"`
+	RetryAfter            int64               `json:"retry_after,omitempty"`
+	Result                json.RawMessage     `json:"result"`
+	Problem               string              `json:"problem,omitempty"`
+	Actor                 string              `json:"actor"`
+	CreatedAt             string              `json:"created_at"`
+	UpdatedAt             string              `json:"updated_at"`
 	identity, inputDigest string
 }
 type Summary struct {
@@ -86,15 +88,22 @@ func actorRequired(actor string) error {
 	return nil
 }
 
-const columns = `id,object_id,object_revision,provider,target,verb,payload,digest,state,attempts,lease_until,result,problem,actor,created_at,updated_at,credential_identity,input_digest,origin_action_id,projection_problem,COALESCE((SELECT run_object_id FROM provider_run_links WHERE formation_action_id=provider_actions.id OR formation_action_id=provider_actions.origin_action_id),'')`
+const columns = `id,object_id,object_revision,provider,target,verb,payload,digest,state,attempts,lease_until,result,problem,actor,created_at,updated_at,credential_identity,input_digest,origin_action_id,projection_problem,COALESCE((SELECT run_object_id FROM provider_run_links WHERE formation_action_id=provider_actions.id OR formation_action_id=provider_actions.origin_action_id),''),binding_dependencies`
 
 type scanner interface{ Scan(...any) error }
 
 func scan(row scanner) (Receipt, error) {
 	var r Receipt
-	err := row.Scan(&r.ID, &r.ObjectID, &r.ObjectRevision, &r.Provider, &r.Target, &r.Verb, &r.Payload, &r.Digest, &r.State, &r.Attempts, &r.RetryAfter, &r.Result, &r.Problem, &r.Actor, &r.CreatedAt, &r.UpdatedAt, &r.identity, &r.inputDigest, &r.OriginID, &r.ProjectionProblem, &r.ExecutionRunID)
+	var dependencies []byte
+	err := row.Scan(&r.ID, &r.ObjectID, &r.ObjectRevision, &r.Provider, &r.Target, &r.Verb, &r.Payload, &r.Digest, &r.State, &r.Attempts, &r.RetryAfter, &r.Result, &r.Problem, &r.Actor, &r.CreatedAt, &r.UpdatedAt, &r.identity, &r.inputDigest, &r.OriginID, &r.ProjectionProblem, &r.ExecutionRunID, &dependencies)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, svcerr.New(svcerr.CodeNotFound, "Provider action not found.")
+	}
+	if err == nil {
+		err = json.Unmarshal(dependencies, &r.BindingDependencies)
+	}
+	if err == nil && r.Verb == "catalog.plan" {
+		r.DefinitionArtifact = publicationArtifact(r.Payload)
 	}
 	return r, err
 }
@@ -164,19 +173,27 @@ func (s *Service) Prepare(ctx context.Context, in PrepareRequest, actor string) 
 	if row.Revision != in.ExpectedRevision {
 		return Receipt{}, conflict("Team changed. Reload the saved team before previewing formation.")
 	}
-	payload, err := formation(row, in.Mission, in.ID)
-	if err != nil {
-		return Receipt{}, err
-	}
 	bound, err := s.Bind()
 	if err != nil {
 		return Receipt{}, unavailable("Tether configuration or credential is unavailable.")
 	}
-	return s.retain(ctx, in.ID, row, "teams.form", payload, inputDigest, "", bound, actor)
+	bindings, dependencies, err := s.teamBindings(ctx, row, bound)
+	if err != nil {
+		return Receipt{}, err
+	}
+	payload, err := formation(row, in.Mission, in.ID, bindings)
+	if err != nil {
+		return Receipt{}, err
+	}
+	return s.retain(ctx, in.ID, row, "teams.form", payload, inputDigest, "", bound, actor, dependencies...)
 }
-func (s *Service) retain(ctx context.Context, id string, row objects.Record, verb string, payload json.RawMessage, inputDigest, originID string, bound Bound, actor string) (Receipt, error) {
+func (s *Service) retain(ctx context.Context, id string, row objects.Record, verb string, payload json.RawMessage, inputDigest, originID string, bound Bound, actor string, dependencies ...BindingDependency) (Receipt, error) {
 	stamp := time.Now().UTC().Format(time.RFC3339Nano)
-	r := Receipt{ID: id, ObjectID: row.ID, ObjectRevision: row.Revision, Provider: "tether", Target: bound.Target(), Verb: verb, Payload: payload, Digest: digest(payload), State: "prepared", Result: json.RawMessage(`{}`), Actor: actor, CreatedAt: stamp, UpdatedAt: stamp, identity: bound.Identity(), inputDigest: inputDigest, OriginID: originID}
+	if dependencies == nil {
+		dependencies = []BindingDependency{}
+	}
+	dependencyJSON, _ := json.Marshal(dependencies)
+	r := Receipt{BindingDependencies: dependencies, ID: id, ObjectID: row.ID, ObjectRevision: row.Revision, Provider: "tether", Target: bound.Target(), Verb: verb, Payload: payload, Digest: digest(payload), State: "prepared", Result: json.RawMessage(`{}`), Actor: actor, CreatedAt: stamp, UpdatedAt: stamp, identity: bound.Identity(), inputDigest: inputDigest, OriginID: originID}
 	err := s.Store.Writer.Submit(ctx, "provider_action_prepare", func(ctx context.Context, tx *sql.Tx) error {
 		var revision int64
 		var ownership string
@@ -187,7 +204,10 @@ func (s *Service) retain(ctx context.Context, id string, row objects.Record, ver
 		if revision != row.Revision || ownership != "tachyon" || deleted.Valid && !cleanupVerb(verb) {
 			return conflict("Saved object changed while preparing the action.")
 		}
-		_, e := tx.ExecContext(ctx, `INSERT INTO provider_actions(id,object_id,object_revision,provider,target,verb,payload,digest,state,result,actor,created_at,updated_at,credential_identity,input_digest,origin_action_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, r.ID, r.ObjectID, r.ObjectRevision, r.Provider, r.Target, r.Verb, r.Payload, r.Digest, r.State, r.Result, r.Actor, r.CreatedAt, r.UpdatedAt, r.identity, r.inputDigest, r.OriginID)
+		if e := validateBindingDependenciesTx(ctx, tx, dependencies, bound.Target(), bound.Identity()); e != nil {
+			return e
+		}
+		_, e := tx.ExecContext(ctx, `INSERT INTO provider_actions(id,object_id,object_revision,provider,target,verb,payload,digest,state,result,actor,created_at,updated_at,credential_identity,input_digest,origin_action_id,binding_dependencies) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, r.ID, r.ObjectID, r.ObjectRevision, r.Provider, r.Target, r.Verb, r.Payload, r.Digest, r.State, r.Result, r.Actor, r.CreatedAt, r.UpdatedAt, r.identity, r.inputDigest, r.OriginID, dependencyJSON)
 		return e
 	})
 	if err != nil {
@@ -246,6 +266,9 @@ func (s *Service) Apply(ctx context.Context, in ApplyRequest, actor string) (Rec
 			return conflict("Outcome is unconfirmed. An explicit same-request retry is required.")
 		}
 		if r.State == "prepared" {
+			if e := validateBindingDependenciesTx(ctx, tx, r.BindingDependencies, r.Target, r.identity); e != nil {
+				return e
+			}
 			var revision int64
 			var ownership string
 			var deleted sql.NullString

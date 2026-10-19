@@ -68,11 +68,12 @@ type Agent struct {
 func (Agent) ObjectKind() Kind { return AgentKind }
 
 type TeamSlot struct {
-	Name    string `json:"name"`
-	Role    string `json:"role"`
-	AgentID string `json:"agent_id,omitempty"`
-	Min     int    `json:"min"`
-	Max     int    `json:"max"`
+	Name            string `json:"name"`
+	Role            string `json:"role"`
+	AgentID         string `json:"agent_id,omitempty"`
+	LaunchBindingID string `json:"launch_binding_id,omitempty"`
+	Min             int    `json:"min"`
+	Max             int    `json:"max"`
 }
 type Team struct {
 	Common
@@ -336,6 +337,9 @@ func validateDefinition(kind Kind, raw json.RawMessage) (string, []referenceLink
 		link(d.WorkflowID, WorkflowKind, "workflow", "")
 		seen := map[string]bool{}
 		for _, slot := range d.Slots {
+			if slot.LaunchBindingID != "" && slot.AgentID == "" {
+				return "", nil, fmt.Errorf("%w: a launch binding requires an agent", ErrInvalid)
+			}
 			if strings.TrimSpace(slot.Name) == "" || strings.TrimSpace(slot.Role) == "" || seen[slot.Name] || slot.Min < 0 || slot.Max < 1 || slot.Min > slot.Max {
 				return "", nil, fmt.Errorf("%w: invalid or duplicate team slot", ErrInvalid)
 			}

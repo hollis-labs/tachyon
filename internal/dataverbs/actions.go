@@ -13,6 +13,12 @@ type Actions struct{ Service *provideractions.Service }
 func (*Actions) ID() string { return "tether" }
 func (*Actions) Verbs() []Verb {
 	return []Verb{
+		{Name: "agents.definition_preview", Mutates: true, Description: "Build a pinned agentdef-v2 artifact and retain a catalog publication preview; does not grant launch authority.", InputSchema: inputSchema(reflect.TypeFor[provideractions.DefinitionRequest](), []string{"id", "object_id", "expected_revision", "options"})},
+		{Name: "bindings.preview", Mutates: true, Description: "Read provider definition and launch policy; retain an explicit owned-agent binding for review.", InputSchema: inputSchema(reflect.TypeFor[provideractions.BindingRequest](), []string{"id", "agent_id", "expected_revision", "launch_id", "options"})},
+		{Name: "bindings.confirm", Mutates: true, Description: "Confirm a reviewed local binding; provider runtime activation remains unverified.", InputSchema: inputSchema(reflect.TypeFor[provideractions.BindingConfirm](), []string{"id", "digest"})},
+		{Name: "bindings.revoke", Mutates: true, Description: "Revoke a binding for new launches while retaining history.", InputSchema: inputSchema(reflect.TypeFor[IDRequest](), []string{"id"})},
+		{Name: "bindings.get", Description: "Read retained launch binding evidence.", InputSchema: inputSchema(reflect.TypeFor[IDRequest](), []string{"id"})},
+		{Name: "bindings.list", Description: "Page an agent's retained launch bindings, newest first.", InputSchema: inputSchema(reflect.TypeFor[provideractions.BindingFilter](), []string{"agent_id"})},
 		{Name: "executions.project", Mutates: true, Description: "Repair local run projection from a retained team receipt; never sends a provider request.", InputSchema: inputSchema(reflect.TypeFor[IDRequest](), []string{"id"})},
 		{Name: "runtime.runs", Description: "List retained provider runs by saved team or attempted assignment; status is observed evidence, not live health.", InputSchema: inputSchema(reflect.TypeFor[provideractions.RunFilter](), nil)},
 		{Name: "runtime.activity", Description: "Page a local run's prepared, pending and confirmed action summaries; payloads are fetched separately.", InputSchema: inputSchema(reflect.TypeFor[provideractions.ActivityFilter](), []string{"run_id"})},
@@ -32,6 +38,36 @@ func (p *Actions) Invoke(ctx context.Context, verb string, raw json.RawMessage, 
 	var result any
 	var err error
 	switch verb {
+	case "agents.definition_preview":
+		var in provideractions.DefinitionRequest
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.PrepareDefinitionPublication(ctx, in, actor)
+		}
+	case "bindings.preview":
+		var in provideractions.BindingRequest
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.PrepareBinding(ctx, in, actor)
+		}
+	case "bindings.confirm":
+		var in provideractions.BindingConfirm
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.ConfirmBinding(ctx, in, actor)
+		}
+	case "bindings.revoke":
+		var in IDRequest
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.RevokeBinding(ctx, in.ID, actor)
+		}
+	case "bindings.get":
+		var in IDRequest
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.Binding(ctx, in.ID)
+		}
+	case "bindings.list":
+		var in provideractions.BindingFilter
+		if err = decode(raw, &in); err == nil {
+			result, err = p.Service.Bindings(ctx, in)
+		}
 	case "executions.project":
 		var in IDRequest
 		if err = decode(raw, &in); err == nil {

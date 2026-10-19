@@ -866,8 +866,9 @@ activation policy and runtime admission.
 
 The first mapping supports fresh singleton seats with SHA-256 definition pins,
 at least one required worker, and an optional coordinator seat occupied by the
-authenticated Tether caller. Native `agent_id` bindings must first gain a separate
-publication mapping; this action refuses them rather than ignoring them.
+authenticated Tether caller. Native `agent_id` slots select an explicit
+`launch_binding_id`; formation resolves their exact definition pins from the
+confirmed binding. Slots without local agents keep their authored provider pins.
 
 `provider_actions` retains immutable payloads, revision and digest, actor,
 provider target, a private credential fingerprint, and outcome receipts using
@@ -898,8 +899,81 @@ unknown installation uses `actions.reconcile` readback, never a blind POST repla
 No production launches were used to validate these integrations. Connectivity and
 live acceptance are tracked separately: CW-20261019-0004 covers the paired device
 identity rejected by Tether's team APIs; CW-20261016-0248 covers remote catalog
-write/approval authority. Local tool-to-MCP policy mapping, external run adoption,
-and agent-definition pins are separate remaining integration work.
+write/approval authority. Effective tool/MCP grants, provider activation evidence,
+placement overrides and external run adoption remain separate integration work.
+
+### Owned-agent launch bindings
+
+An owned agent revision can publish an immutable agentdef-v2 file and bind to a
+specific provider launch. These backend verbs live under the same `tether` data
+provider and use the existing operator authorization boundary:
+
+| Verb | Method / inputs | Result |
+|---|---|---|
+| `agents.definition_preview` | POST: action `id`, `object_id`, `expected_revision`, `options` | retained catalog-plan preview with `definition_artifact` |
+| `bindings.preview` | POST: binding `id`, `agent_id`, `expected_revision`, `launch_id`, `options` | reviewed catalog evidence; performs GETs only upstream |
+| `bindings.confirm` | POST: binding `id`, reviewed `digest` | locally active binding |
+| `bindings.revoke` | POST: binding `id` | revoked binding with retained history |
+| `bindings.get` | GET: binding `id` | retained evidence, no provider call |
+| `bindings.list` | GET: `agent_id`, optional `before_id` | 25 bindings per page, newest first |
+
+`options` requires `permission_profile`, an explicit `tool_capabilities` map for
+all local tool declarations, and `skills` entries `{name, content: {uri, digest}}`
+for every declared skill. Skill digests cover complete packages. These are
+requirements and a named harness profile, not effective grants; provider resolve
+must verify dependencies and enforce host policy. This slice emits ephemeral
+agent definitions for fresh singleton team seats. Agent instructions become the
+Markdown body; description (or name when absent) supplies purpose. Runtime/model
+are launch selections, and local roles remain team configuration.
+
+Publication creates one versioned file under
+`team-definitions/tachyon-<agent UUID>/r<agent revision>-<semantic SHA256>.md`.
+It uses the shared `libs/mesh/core/agentdef` parser/digest contract and keeps
+semantic and exact artifact digests separate. Changing publication options
+produces a different revision/path. `definition_artifact` in the retained action
+contains the exact file and definition pin, reconstructed from saved bytes.
+Apply the preview with `actions.apply`, then use `catalog.apply_preview` and
+`actions.apply` for provider-approved installation. Unknown catalog outcomes
+retain the existing readback/reconciliation rules; publication never creates a
+launch allowlist entry or bypasses Tether approval.
+
+Once the provider has configured the launch entry, `bindings.preview` reads the
+expected definition file and `teams-policy.yaml` through `/catalog/files`. It
+validates the actual file with agentdef and requires the exact expected ID,
+revision and semantic digest, a matching `catalog:` source, and the selected
+launch runtime/model matching any values authored on the agent. Local project
+or machine placement currently refuses binding because the team API does not
+carry those overrides. An unspecified placement remains the provider launch's
+default; it is not a claim that execution happens on the hub.
+
+A binding freezes the agent UUID/revision, provider target and private caller
+fingerprint, selected launch, definition pin, artifact and policy hashes, and
+reviewed options. Confirmation requires its digest, an unchanged active/enabled
+owned agent, the same provider caller and a preview younger than 30 minutes.
+`active` means locally confirmed, not provider admission: evidence explicitly
+reports `activation: catalog_observed_runtime_unverified`. Tether currently
+starts the catalog launch associated with a trusted pin; catalog file inspection
+alone does not prove that the daemon loaded that policy or that the process uses
+the definition body and permission profile. Provider activation/execution
+attestation is a separate Tether integration requirement.
+
+Save both `agent_id` and `launch_binding_id` on each owned-agent team slot using
+normal team CRUD. The Builder preview still provides topology, routing and team
+authority; its pin for that slot is replaced by the explicit binding before
+validation. `teams.preview` retains `binding_dependencies` alongside the exact
+provider payload. Prepare and initial apply recheck binding state and agent
+revision through the shared SQLite writer. Edits, disablement, retirement,
+revocation or caller changes require another reviewed binding. `member_add`
+checks the originating slot binding too. Revocation does not stop existing
+processes or prevent cleanup; explicit recovery of an already uncertain request
+keeps its original payload and idempotency key even after local edits/revocation.
+Binding lookup never selects a newest version implicitly.
+
+Bindings and revocations persist in migration 011; old formation receipts have
+empty dependencies and retain their original behavior. Frontend binding controls
+are a follow-on consumer of these verbs. External agent-token write scopes remain
+unchanged. Validation uses fixtures; live provider writes and acceptance remain
+deferred.
 
 ### Provider execution tracking
 

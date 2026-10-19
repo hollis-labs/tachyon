@@ -16,7 +16,7 @@ import (
 
 var pinDigest = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
-func formation(row objects.Record, mission, actionID string) (json.RawMessage, error) {
+func formation(row objects.Record, mission, actionID string, bindings map[string]LaunchBinding) (json.RawMessage, error) {
 	if row.Kind != objects.TeamKind || row.Ownership != "tachyon" || row.DeletedAt != nil {
 		return nil, invalid("Select an active Tachyon-owned team.")
 	}
@@ -39,8 +39,18 @@ func formation(row objects.Record, mission, actionID string) (json.RawMessage, e
 	var team teams.Team
 	d := json.NewDecoder(bytes.NewReader(native.Properties.Builder.Preview))
 	d.DisallowUnknownFields()
-	if d.Decode(&team) != nil || teams.Validate(team) != nil {
+	if d.Decode(&team) != nil {
 		return nil, invalid("Save a valid pinned Builder team before preparing formation.")
+	}
+	// Owned slots resolve through explicit bindings. The stored Builder preview
+	// supplies team topology and authority, not a second editable agent pin.
+	for i := range team.Slots {
+		if binding, ok := bindings[team.Slots[i].Name]; ok {
+			team.Slots[i].Definition = binding.Evidence.Definition
+		}
+	}
+	if teams.Validate(team) != nil {
+		return nil, invalid("Save a valid Builder team before preparing formation.")
 	}
 	if team.Authority.Mode != teams.Strict || team.Name != native.Name || team.Routing.CoordinatorSlot != native.Coordinator || team.Phases[0].OwnerSlot != native.Coordinator || len(team.Slots) != len(native.Slots) {
 		return nil, invalid("Saved launch configuration differs from the team. Review and save it again in Builder.")
@@ -50,7 +60,10 @@ func formation(row objects.Record, mission, actionID string) (json.RawMessage, e
 		slot := &team.Slots[i]
 		n := native.Slots[i]
 		if n.AgentID != "" {
-			return nil, invalid("Local agent bindings cannot yet be published to Tether. Use a team with pinned provider definitions.")
+			binding, ok := bindings[n.Name]
+			if !ok || binding.AgentID != n.AgentID || binding.ID != n.LaunchBindingID {
+				return nil, invalid("Owned-agent slots require an explicit matching launch binding.")
+			}
 		}
 		if slot.Name != n.Name || slot.Role != n.Role || slot.Min != n.Min || slot.Max != n.Max || slot.Required != (n.Min > 0) {
 			return nil, invalid("Saved slots differ from the pinned launch configuration. Review and save the team again.")
