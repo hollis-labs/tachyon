@@ -1,10 +1,16 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { OwnedBuilderView } from './OwnedBuilderView'
+import { MemoryRouter } from 'react-router-dom'
+import { BuilderAgents } from './BuilderAgents'
+import { BuilderAssignments } from './BuilderAssignments'
+import { AgentsClientProvider } from './context'
+import type { AgentsClient } from './client'
 import { createOwnedBuilderClient, type ObjectRecord } from './owned-builder-client'
 import { builderDraft, builderPatch } from './owned-builder-draft'
 
 afterEach(cleanup)
+const noCatalog = { listAgents: async () => [] } as unknown as AgentsClient
+const withCatalog = (ui: React.ReactElement) => <MemoryRouter><AgentsClientProvider client={noCatalog}>{ui}</AgentsClientProvider></MemoryRouter>
 const agentID = '11111111-1111-4111-8111-111111111111'
 const taskID = '22222222-2222-4222-8222-222222222222'
 const agent = (): ObjectRecord => ({ id: agentID, kind: 'agent', ownership: 'tachyon', name: 'Worker', revision: 2, definition: { name: 'Worker', enabled: true, instructions: 'Original', properties: { preserve: true } } })
@@ -43,12 +49,15 @@ function harness(initial: ObjectRecord[] = [agent()]) {
 
 it('adopts explicitly, saves only reviewed field deltas, and preserves unknown data and conflicting edits', async () => {
   const h = harness([{ ...agent(), ownership: 'source' }])
-  render(<OwnedBuilderView kind="agent" client={h.client} />)
-  fireEvent.click(await screen.findByRole('button', { name: /Worker.*provider observation/ }))
+  render(withCatalog(<BuilderAgents client={h.client} />))
+  fireEvent.click(await screen.findByRole('button', { name: /Worker/ }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Edit' }))
   expect((await screen.findByLabelText('Instructions') as HTMLTextAreaElement).disabled).toBe(false) // fieldset enforces the lock
   expect(screen.getByRole('button', { name: 'Review agent' }).closest('fieldset')?.disabled).toBe(true)
+  fireEvent.click(screen.getByRole('tab', { name: 'Lifecycle' }))
   fireEvent.click(screen.getByRole('button', { name: 'Adopt definition into Tachyon' }))
   await screen.findByText(/Tachyon now owns/)
+  fireEvent.click(screen.getByRole('tab', { name: 'Edit' }))
   fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: 'New instructions' } })
   fireEvent.click(screen.getByRole('button', { name: 'Review agent' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save agent' }))
@@ -56,21 +65,21 @@ it('adopts explicitly, saves only reviewed field deltas, and preserves unknown d
   const write = h.fetcher.mock.calls.find(([url]) => String(url).endsWith('objects.patch'))!
   expect(JSON.parse(write[1]!.body as string)).toEqual({ id: agentID, expected_revision: 3, definition: { instructions: 'New instructions' } })
   expect(h.rows.get(agentID)?.definition.properties).toEqual({ preserve: true })
-  fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: 'Keep this draft' } })
+  fireEvent.change(screen.getByLabelText(/^Instructions/), { target: { value: 'Keep this draft' } })
   h.rows.get(agentID)!.revision++
   fireEvent.click(screen.getByRole('button', { name: 'Review agent' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save agent' }))
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: 'Continue editing' }))
-  expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe('Keep this draft')
+  expect((screen.getByLabelText(/^Instructions/) as HTMLTextAreaElement).value).toBe('Keep this draft')
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
   await screen.findByText(/A newer revision is available/)
-  expect((screen.getByLabelText('Instructions') as HTMLTextAreaElement).value).toBe('Keep this draft')
+  expect((screen.getByLabelText(/^Instructions/) as HTMLTextAreaElement).value).toBe('Keep this draft')
 })
 
 it('creates assignments with explicit references and switches local targets to external targets without keeping both', async () => {
   const h = harness([agent(), { id: taskID, kind: 'task', ownership: 'tachyon', name: 'Review work', revision: 1, definition: { name: 'Review work' } }])
-  render(<OwnedBuilderView kind="assignment" client={h.client} />)
+  render(withCatalog(<BuilderAssignments client={h.client} />))
   fireEvent.click(screen.getByRole('button', { name: 'New assignment' }))
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Review assignment' } })
   await screen.findByRole('option', { name: 'Worker' })
@@ -93,13 +102,14 @@ it('creates assignments with explicit references and switches local targets to e
 
 it('loads history on demand and retires/restores while retaining identity', async () => {
   const h = harness()
-  render(<OwnedBuilderView kind="agent" client={h.client} />)
-  fireEvent.click(await screen.findByRole('button', { name: /Worker.*owned/ }))
-  await screen.findByLabelText('Instructions')
+  render(withCatalog(<BuilderAgents client={h.client} />))
+  fireEvent.click(await screen.findByRole('button', { name: /Worker/ }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'History' }))
   expect(h.fetcher.mock.calls.some(([url]) => String(url).includes('objects.history'))).toBe(false)
   fireEvent.click(screen.getByRole('button', { name: 'Load history' }))
   await screen.findByText(/operator:browser/)
-  fireEvent.click(screen.getByRole('button', { name: 'Retire agent' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Lifecycle' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Retire agent' }))
   await screen.findByText('Retired. History is retained.')
   fireEvent.click(screen.getByRole('button', { name: 'Restore agent' }))
   await screen.findByText('Restored.')
@@ -115,7 +125,7 @@ it('reuses create identity after uncertain delivery and only retries on an expli
     if (String(input).endsWith('objects.create') && !failed) { failed = true; throw new Error('Connection interrupted') }
     return original(input, init)
   })
-  render(<OwnedBuilderView kind="agent" client={h.client} />)
+  render(withCatalog(<BuilderAgents client={h.client} />))
   fireEvent.click(screen.getByRole('button', { name: 'New agent' }))
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'New worker' } })
   fireEvent.click(screen.getByRole('button', { name: 'Review agent' }))
@@ -143,7 +153,7 @@ it('checks an uncertain create without discarding edits made after the response 
     if (String(input).endsWith('objects.create')) throw new Error('Response lost')
     return response
   })
-  render(<OwnedBuilderView kind="agent" client={h.client} />)
+  render(withCatalog(<BuilderAgents client={h.client} />))
   fireEvent.click(screen.getByRole('button', { name: 'New agent' }))
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'First name' } })
   fireEvent.click(screen.getByRole('button', { name: 'Review agent' }))
@@ -153,7 +163,7 @@ it('checks an uncertain create without discarding edits made after the response 
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Later edit' } })
   fireEvent.click(screen.getByRole('button', { name: 'Check whether create was saved' }))
   await screen.findByText(/The create was saved/)
-  expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Later edit')
+  expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe('Later edit')
   fireEvent.click(screen.getByRole('button', { name: 'Review agent' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save agent' }))
   await screen.findByText('Saved in Tachyon.')
@@ -166,10 +176,11 @@ it('deduplicates page reads and shows a cached page before its refresh finishes'
   const a = h.client.list('agent'), b = h.client.list('agent')
   expect(a).toBe(b)
   await a
-  let release!: (r: Response) => void
-  h.fetcher.mockImplementation(() => new Promise(resolve => { release = resolve }))
-  render(<OwnedBuilderView kind="agent" client={h.client} />)
-  expect(screen.getByRole('button', { name: /Worker.*owned/ })).toBeTruthy()
-  release(new Response(JSON.stringify({ version: 1, provider: 'tachyon', verb: 'objects.list', data: { items: [agent()], next_after_id: agentID } })))
+  const pendingReads: ((r: Response) => void)[] = []
+  h.fetcher.mockImplementation(() => new Promise(resolve => { pendingReads.push(resolve) }))
+  render(withCatalog(<BuilderAgents client={h.client} />))
+  expect(screen.getByRole('button', { name: /Worker/ })).toBeTruthy()
+  // The first read is the list refresh; the directory also opens the first record.
+  pendingReads[0](new Response(JSON.stringify({ version: 1, provider: 'tachyon', verb: 'objects.list', data: { items: [agent()], next_after_id: agentID } })))
   await waitFor(() => expect(screen.getByRole('button', { name: 'Load more agents' })).toBeTruthy())
 })

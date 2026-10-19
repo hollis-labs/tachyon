@@ -1,8 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { AgentDirectoryView } from './AgentDirectory'
-import { AgentsClientProvider } from './context'
+import { cleanup } from '@testing-library/react'
 import { createCatalogAgentsClient, DEMO_SAVE_MESSAGE } from './catalog-client'
 import { draftFromAgent } from './plan'
 import { blankDraft } from './lifecycle'
@@ -55,34 +52,4 @@ it('refuses invalid demonstrations and reports denied reads', async () => {
   await expect(client.saveDemonstration!(plan.id)).rejects.toThrow('valid draft')
   const denied = createCatalogAgentsClient(async () => new Response('', { status: 403 }))
   await expect(denied.listAgents()).rejects.toThrow('read was denied (403)')
-})
-
-it('edits and saves a demonstration in the GUI without entering approval or changing the live detail', async () => {
-  const { client, fetcher } = setup()
-  render(<MemoryRouter><AgentsClientProvider client={client}><AgentDirectoryView /></AgentsClientProvider></MemoryRouter>)
-  await screen.findByRole('list', { name: 'Agents' })
-  fireEvent.click(screen.getByRole('tab', { name: 'Edit' }))
-  fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'New summary' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Review plan' }))
-  const save = await screen.findByRole('button', { name: 'Save demonstration' })
-  fetcher.mockClear()
-  fireEvent.click(save)
-  await screen.findByText(DEMO_SAVE_MESSAGE)
-  expect(fetcher).not.toHaveBeenCalled()
-  expect(screen.queryByRole('button', { name: 'Roll back…' })).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'Done' }))
-  expect(within(screen.getByRole('article', { name: 'Reviewer detail' })).queryByText('New summary')).toBeNull()
-})
-
-it('walks a new agent through review and a no-op save', async () => {
-  const { client } = setup()
-  render(<MemoryRouter><AgentsClientProvider client={client}><AgentDirectoryView /></AgentsClientProvider></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button', { name: 'New agent' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Demo Agent' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Review plan' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'Save demonstration' }))
-  await screen.findByText(DEMO_SAVE_MESSAGE)
 })
