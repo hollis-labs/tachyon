@@ -3,7 +3,6 @@ import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { ShieldCheck, RefreshCw, KeyRound } from "lucide-react"
-import { useDataFreshness } from "@tachyon/host-sdk"
 import { useApprovals } from "./context"
 import { DataTable } from "@hollis-labs/kit-dashboard/data"
 import { operatorElevation } from "../operator/elevation"
@@ -32,9 +31,6 @@ export function ApprovalsPage() {
       setUnlocking(false)
     }
   }
-  const freshness = useDataFreshness()
-    .filter((s) => s.scope === "approvals" && s.url.endsWith("/inbox"))
-    .at(-1)
   if (!queue)
     return (
       <div className="flex h-full min-w-0 flex-col">
@@ -60,8 +56,8 @@ export function ApprovalsPage() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 dash-support text-fg-muted">
         <p>Review requests, inspect evidence, and record decisions.</p>
         <span className="font-mono dash-caption text-fg-faint">
-          {queue.error ? "Unavailable" : (freshness?.state ?? "Connecting")}
-          {freshness?.updatedAt ? ` · Updated ${new Date(freshness.updatedAt).toLocaleTimeString()}` : ""}
+          {queue.error ? "Unavailable" : (queue.inbox ? "Current" : "Connecting")}
+          {queue.inbox?.synced_at ? ` · Updated ${new Date(queue.inbox.synced_at).toLocaleTimeString()}` : ""}
         </span>
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
@@ -134,6 +130,11 @@ export function ApprovalsPage() {
           </p>
         )}
       </section>
+      <div className="flex gap-2">
+        {queue.cursors[`${view}_before`] && <Button variant="outline" size="sm" disabled={queue.loading} onClick={() => void queue.page(view)}>First page</Button>}
+        {queue.inbox?.[`next_${view}`] && <Button variant="outline" size="sm" disabled={queue.loading} onClick={() => void queue.page(view, queue.inbox?.[`next_${view}`])}>Next page</Button>}
+        <span className="dash-support text-fg-faint">Search applies to this page.</span>
+      </div>
       </div>
     </div>
   )

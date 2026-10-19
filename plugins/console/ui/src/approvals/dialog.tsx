@@ -20,94 +20,21 @@ import {
 } from "./client"
 
 const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
-function EvidenceView({
-  evidence,
-  index,
-  id,
-  client,
-}: {
-  evidence: Evidence
-  index: number
-  id: string
-  client: ApprovalClient
-}) {
-  const [preview, setPreview] = useState<Record<string, unknown>>()
-  const [error, setError] = useState("")
-  const [busy, setBusy] = useState(false)
-  async function load() {
-    setBusy(true)
-    setError("")
-    try {
-      setPreview(await client.evidence(id, index, evidence.type))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Evidence unavailable")
-    } finally {
-      setBusy(false)
-    }
-  }
-  const rawURL =
-    typeof preview?.external_url === "string" ? preview.external_url : ""
-  let safeURL: string | undefined
+function safeHTTPS(raw?: string) {
   try {
-    const u = new URL(rawURL)
-    if (u.protocol === "https:" && !u.username && !u.password) safeURL = u.href
-  } catch {
-    /* no link */
-  }
-  return (
-    <details className="border-t border-border py-3">
-      <summary className="cursor-pointer dash-control text-fg-muted">
-        {evidence.label}{" "}
-        <span className="text-fg-faint">· {evidence.type}</span>
-      </summary>
-      {evidence.type === "markdown" && (
-        <MessageBody body={evidence.content ?? ""} />
-      )}
-      {["text", "diff"].includes(evidence.type) && (
-        <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-bg p-3 font-mono dash-support text-fg-muted">
-          {evidence.content}
-        </pre>
-      )}
-      {!["markdown", "text", "diff"].includes(evidence.type) && (
-        <>
-          <pre className="my-2 overflow-auto whitespace-pre-wrap break-words font-mono dash-caption text-fg-faint">
-            {JSON.stringify(evidence, null, 2)}
-          </pre>
-          {["tangent_reference", "artifact_ref"].includes(evidence.type) && (
-            <Button variant="outline" size="sm"
-              className="font-mono dash-label"
-              disabled={busy}
-              onClick={() => void load()}
-            >
-              {busy ? "Loading…" : "Load evidence"}
-            </Button>
-          )}
-          {preview && (
-            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words dash-control text-fg-muted">
-              {typeof preview.content === "string"
-                ? preview.content
-                : JSON.stringify(preview, null, 2)}
-            </pre>
-          )}
-          {safeURL && (
-            <a
-              href={safeURL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="dash-control text-info"
-            >
-              Open evidence
-            </a>
-          )}
-        </>
-      )}
-      {error && (
-        <p role="alert" className="mt-2 dash-control text-danger">
-          {error}
-        </p>
-      )}
-    </details>
-  )
+    const u = new URL(raw ?? "")
+    if (u.protocol === "https:" && !u.username && !u.password) return u.href
+  } catch { /* No unsafe links. */ }
+  return undefined
+}
+function EvidenceView({ evidence }: { evidence: Evidence }) {
+  const url = safeHTTPS(typeof evidence.external_url === "string" ? evidence.external_url : undefined)
+  return <details className="border-t border-border py-3">
+    <summary className="cursor-pointer dash-control text-fg-muted">{evidence.label} · {evidence.type}</summary>
+    {evidence.type === "markdown" ? <MessageBody body={evidence.content ?? ""} /> :
+      <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono dash-support text-fg-muted">{evidence.content ?? JSON.stringify(evidence, null, 2)}</pre>}
+    {url && <a href={url} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open evidence</a>}
+  </details>
 }
 
 export function ApprovalDialog({
@@ -176,7 +103,7 @@ export function ApprovalDialog({
   const request = item?.request_snapshot
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
-    item && isPending(item) && !isExpired(item) && ready && !busy
+    item && isPending(item) && !isExpired(item) && ready && !busy && request?.class !== "high" && request?.source.application_id !== "cerberus"
   return (
     <Dialog
       open
@@ -283,9 +210,6 @@ export function ApprovalDialog({
                   <EvidenceView
                     key={i}
                     evidence={e}
-                    index={i}
-                    id={id}
-                    client={client}
                   />
                 ))}
               </section>
@@ -314,6 +238,11 @@ export function ApprovalDialog({
                   `Request ${item.state}`
                 }
               />
+            ) : request.class === "high" || request.source.application_id === "cerberus" ? (
+              <section className="rounded border border-warning/30 p-4">
+                <p className="dash-control text-fg-muted">Complete this decision in the provider console. This inbox cannot approve it.</p>
+                {ready && safeHTTPS(request.handoff_url) && <a href={safeHTTPS(request.handoff_url)} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open in {request.source.application_id === "cerberus" ? "Cerberus" : "provider console"}</a>}
+              </section>
             ) : (
               <>
                 <label className="block dash-control text-fg-muted">

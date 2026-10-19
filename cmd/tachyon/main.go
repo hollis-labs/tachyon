@@ -48,15 +48,16 @@ func main() {
 		return
 	}
 	cfg := server.Config{
-		CachePolicyFile:       os.Getenv("TACHYON_CACHE_POLICY_FILE"),
-		ChatSyncInterval:      chatInterval(),
-		ApprovalQueueURL:      env("TACHYON_APPROVAL_QUEUE_URL", "http://127.0.0.1:7843"),
-		FragmentsURL:          env("FRAGMENTS_ENGINE_URL", "http://127.0.0.1:8091"),
-		FragmentsTokenFile:    upstreamauth.TokenFile(nil, "", "FRAGMENTS_ENGINE_TOKEN_FILE"),
-		TranscriptMaxSessions: transcriptLimit(),
-		PluginBinDir:          env("TACHYON_PLUGIN_DIR", "bin/plugins"),
-		DataDir:               env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
-		CacheDir:              env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
+		ApprovalProducerConfigFile: os.Getenv("TACHYON_APPROVAL_PRODUCER_CONFIG"),
+		CachePolicyFile:            os.Getenv("TACHYON_CACHE_POLICY_FILE"),
+		ChatSyncInterval:           chatInterval(),
+		ApprovalQueueURL:           env("TACHYON_APPROVAL_QUEUE_URL", "http://127.0.0.1:7843"),
+		FragmentsURL:               env("FRAGMENTS_ENGINE_URL", "http://127.0.0.1:8091"),
+		FragmentsTokenFile:         upstreamauth.TokenFile(nil, "", "FRAGMENTS_ENGINE_TOKEN_FILE"),
+		TranscriptMaxSessions:      transcriptLimit(),
+		PluginBinDir:               env("TACHYON_PLUGIN_DIR", "bin/plugins"),
+		DataDir:                    env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
+		CacheDir:                   env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		Upstreams: catalog.Upstreams{
 			ActivityURL:       env("TACHYON_ACTIVITY_URL", "http://127.0.0.1:8099"),
 			TetherAddr:        os.Getenv("TETHER_ADDR"),

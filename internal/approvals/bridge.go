@@ -1,5 +1,5 @@
-// Package approvals adapts the existing durable human queue without changing
-// its decision authority. Each browser retains its own upstream participant.
+// Package approvals owns the durable human approval queue. The legacy Bridge
+// supplies browser session and elevation verification during the custody cutover.
 package approvals
 
 import (

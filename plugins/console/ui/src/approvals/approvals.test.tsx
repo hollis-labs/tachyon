@@ -234,3 +234,25 @@ describe("approval list interaction", () => {
     expect(client.decide).not.toHaveBeenCalled()
   })
 })
+
+describe("owned inbox tiers and pages", () => {
+  it("hands high-tier requests to the provider without local decision controls", async () => {
+    const high: ApprovalItem = { ...item, request_snapshot: { ...item.request_snapshot, class: "high", handoff_url: "https://cerberus.example/approve/one", source: { application_id: "cerberus", agent_id: "agent-one" } } }
+    const client = { present: vi.fn().mockResolvedValue(high), decide: vi.fn() } as unknown as ApprovalClient
+    render(<ApprovalDialog id={high.item_id} initial={high} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    expect((await screen.findByRole("link", { name: "Open in Cerberus" })).getAttribute("href")).toBe("https://cerberus.example/approve/one")
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Deny" })).toBeNull()
+    expect(client.decide).not.toHaveBeenCalled()
+  })
+  it("loads bounded next pages and can return to the newest page", async () => {
+    const second = { ...item, item_id: "older", request_snapshot: { ...item.request_snapshot, title: "Older request" } }
+    const inbox = vi.fn().mockImplementation(async (_fresh, cursors) => ({ pending: cursors?.pending_before ? [second] : [item], history: [], next_pending: cursors?.pending_before ? undefined : "req-1", synced_at: new Date().toISOString(), revision: "1" }))
+    render(<ApprovalProvider client={{ inbox } as unknown as ApprovalClient}><ApprovalsPage /></ApprovalProvider>)
+    fireEvent.click(await screen.findByRole("button", { name: "Next page" }))
+    await screen.findByText("Older request")
+    expect(inbox).toHaveBeenLastCalledWith(true, { pending_before: "req-1" })
+    fireEvent.click(screen.getByRole("button", { name: "First page" }))
+    await screen.findByText("Create a session")
+  })
+})

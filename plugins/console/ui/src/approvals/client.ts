@@ -1,6 +1,6 @@
 import { operatorFetch } from "../operator/elevation"
 
-// Tangent HITL v1 browser projection. Decisions retain the producer's contract;
+// Tachyon-owned HITL v1 browser projection. Decisions retain the producer's contract;
 // the queue remains authoritative for revision checks and immutable outcomes.
 export interface ApprovalResponse {
   kind: "approval" | "attention"
@@ -39,6 +39,9 @@ export interface ApprovalItem {
   terminal_outcome?: ApprovalOutcome
   request_snapshot: {
     kind: "approval" | "attention"
+    class?: "low" | "medium" | "high"
+    op_digest?: string
+    handoff_url?: string
     title: string
     summary: string
     request: string
@@ -59,6 +62,8 @@ export interface ApprovalItem {
 export interface ApprovalInbox {
   pending: ApprovalItem[]
   history: ApprovalItem[]
+  next_pending?: string
+  next_history?: string
   synced_at: string
   revision: string
 }
@@ -130,7 +135,10 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
   const get = (id: string, fresh = false) =>
     read<ApprovalItem>(`/items/${encodeURIComponent(id)}`, fresh)
   return {
-    inbox: (fresh = false) => read<ApprovalInbox>("/inbox", fresh),
+    inbox: (fresh = false, cursors: { pending_before?: string; history_before?: string } = {}) => {
+      const query = new URLSearchParams(Object.entries(cursors).filter((entry): entry is [string, string] => !!entry[1]))
+      return read<ApprovalInbox>(`/inbox${query.size ? `?${query}` : ""}`, fresh)
+    },
     get,
     present(id: string) {
       const existing = presenting.get(id)

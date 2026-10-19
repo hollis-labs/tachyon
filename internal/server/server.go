@@ -42,16 +42,17 @@ var Version = "0.0.0-dev"
 // Config is the host's resolved configuration.
 type Config struct {
 	// PluginBinDir holds built plugin executables named by plugin ID.
-	PluginBinDir          string
-	DataDir               string
-	CacheDir              string
-	CachePolicyFile       string
-	ChatSyncInterval      time.Duration
-	ApprovalQueueURL      string
-	FragmentsURL          string
-	FragmentsTokenFile    string
-	TranscriptMaxSessions int
-	Upstreams             catalog.Upstreams
+	PluginBinDir               string
+	DataDir                    string
+	CacheDir                   string
+	CachePolicyFile            string
+	ChatSyncInterval           time.Duration
+	ApprovalQueueURL           string
+	ApprovalProducerConfigFile string
+	FragmentsURL               string
+	FragmentsTokenFile         string
+	TranscriptMaxSessions      int
+	Upstreams                  catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
@@ -63,15 +64,18 @@ type pluginState struct {
 
 // Server owns the plugin inventory and the app routes.
 type Server struct {
-	cfg        Config
-	inventory  *plugins.Inventory
-	states     []pluginState
-	instance   string
-	store      *localstore.Store
-	objects    *objects.Service
-	objectJobs *objectsync.Jobs
-	cache      *apicache.Cache
-	chat       *chatbridge.Owned
+	cfg              Config
+	inventory        *plugins.Inventory
+	states           []pluginState
+	instance         string
+	store            *localstore.Store
+	objects          *objects.Service
+	objectJobs       *objectsync.Jobs
+	cache            *apicache.Cache
+	chat             *chatbridge.Owned
+	approvalProducer *approvals.Producer
+	approvalInbox    *approvals.Inbox
+	approvalCancel   context.CancelFunc
 }
 
 // New resolves the catalog against built binaries. Missing binaries are
@@ -144,6 +148,9 @@ func (s *Server) Start(ctx context.Context) error {
 	started := false
 	defer func() {
 		if !started {
+			if s.approvalCancel != nil {
+				s.approvalCancel()
+			}
 			if s.objectJobs != nil {
 				_ = s.objectJobs.Close()
 			}
@@ -153,6 +160,18 @@ func (s *Server) Start(ctx context.Context) error {
 			_ = store.Close()
 		}
 	}()
+
+	producerConfig, err := approvals.LoadProducerConfig(s.cfg.ApprovalProducerConfigFile)
+	if err != nil {
+		return fmt.Errorf("approval producer config: %w", err)
+	}
+	approvalContext, approvalCancel := context.WithCancel(ctx)
+	s.approvalCancel = approvalCancel
+	s.approvalInbox = approvals.NewInbox(&approvals.Store{DB: store}, approvals.New(s.cfg.ApprovalQueueURL))
+	s.approvalProducer, err = approvals.NewProducer(approvalContext, s.approvalInbox.Service, producerConfig)
+	if err != nil {
+		return fmt.Errorf("approval producer trust: %w", err)
+	}
 
 	if err := s.inventory.Start(ctx); err != nil {
 		return fmt.Errorf("plugin admission: %w", err)
@@ -196,6 +215,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 // Stop retires plugin processes after HTTP has drained.
 func (s *Server) Stop(ctx context.Context) error {
+	if s.approvalCancel != nil {
+		s.approvalCancel()
+	}
 	var jobErr error
 	if s.objectJobs != nil {
 		jobErr = s.objectJobs.Close()
@@ -287,11 +309,27 @@ func (s *Server) Routes() http.Handler {
 	// Object management uses live reads and server-verified operator mutations.
 	// Keep the whole prefix outside the generic plugin response cache.
 	mux.Handle("/api/plugins/console/v1/tether/", operator.RequireOperator(s.inventory.APIRoutes()))
-	approvalHandler := http.Handler(operator)
-	if s.cache != nil {
-		approvalHandler = s.cache.Wrap(approvalHandler)
+	// Native queue reads are authoritative and never use the former Tangent cache.
+	if s.store != nil {
+		inbox := s.approvalInbox
+		if inbox == nil {
+			inbox = approvals.NewInbox(&approvals.Store{DB: s.store}, operator)
+		}
+		producer := s.approvalProducer
+		if producer == nil {
+			producer = &approvals.Producer{Service: inbox.Service}
+		}
+		mux.Handle(approvals.Prefix+"/", inbox)
+		mux.Handle(approvals.ProducerPrefix+"/", producer)
+	} else {
+		mux.HandleFunc(approvals.Prefix+"/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == approvals.Prefix+"/session" || r.URL.Path == approvals.Prefix+"/status" || r.URL.Path == approvals.Prefix+"/elevate" {
+				operator.ServeHTTP(w, r)
+				return
+			}
+			http.Error(w, "Approval storage unavailable", http.StatusServiceUnavailable)
+		})
 	}
-	mux.Handle(approvals.Prefix+"/", approvalHandler)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})

@@ -20,6 +20,8 @@ interface ApprovalContextValue {
   error?: string
   loading: boolean
   refresh(fresh?: boolean): Promise<void>
+  page(view: "pending" | "history", cursor?: string): Promise<void>
+  cursors: { pending_before?: string; history_before?: string }
   open(id?: string): void
   client: ApprovalClient
 }
@@ -35,13 +37,14 @@ export function ApprovalProvider({
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<string>()
+  const cursors = useRef<{ pending_before?: string; history_before?: string }>({})
   const active = useRef(true)
   const sequence = useRef(0)
   const refresh = useCallback(
     async (fresh = false) => {
       const n = ++sequence.current
       try {
-        const next = await client.inbox(fresh)
+        const next = await client.inbox(fresh, cursors.current)
         if (active.current && n === sequence.current) {
           setInbox(next)
           setError(undefined)
@@ -72,9 +75,14 @@ export function ApprovalProvider({
       off()
     }
   }, [refresh])
+  const page = async (view: "pending" | "history", cursor?: string) => {
+    cursors.current = { ...cursors.current, [`${view}_before`]: cursor }
+    setLoading(true)
+    await refresh(true)
+  }
   const open = (id?: string) => setSelected(id ?? inbox?.pending[0]?.item_id)
   return (
-    <Context.Provider value={{ inbox, error, loading, refresh, open, client }}>
+    <Context.Provider value={{ inbox, error, loading, refresh, page, cursors: cursors.current, open, client }}>
       {children}
       {selected && (
         <ApprovalDialog

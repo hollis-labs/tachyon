@@ -1097,44 +1097,105 @@ claimed to be a token stream.
 
 ### Approvals
 
-The **Approvals** page and chat drawer link open the same reusable review dialog.
-It shows pending requests, retained decisions, source, impact, expiry, Markdown
-and typed evidence. Approve/deny and attention acknowledgements (with optional
-notes/replies) use the existing Tangent HITL v1 participant API. Producers still
-submit to that durable queue and receive its immutable outcomes; Tachyon owns
-this presentation, not a second decision authority. Tangent remains intact.
+The **Approvals** page uses Tachyon's own SQLite HITL store and shared
+`libs/mesh/core/hitl` service (v0.8.0). Requests, revision checks, idempotency keys
+and immutable outcomes survive restarts. The shared SQLite write queue serializes
+transitions; concurrent decisions have one winner. Existing Tangent requests stay
+in Tangent to drain; no items or decisions are copied between queues.
 
-`TACHYON_APPROVAL_QUEUE_URL` defaults to `http://127.0.0.1:7843`; remote addresses
-require HTTPS. Each browser has a separate HttpOnly participant cookie. The
-host rejects cross-origin decision requests before relaying them, forwards no
-ambient credentials, and partitions SQLite response snapshots by participant.
-The `approvals` cache policy uses the same configurable freshness/revalidation
-knobs as other APIs. Detail review and decision submission require fresh reads;
-a changed, expired or already-ended request must be reviewed again. The UI
-shows submitting state until the queue confirms an outcome. Evidence previews
-bypass the response cache.
+The browser API remains `/api/plugins/console/v1/approval-inbox`. Inbox reads are
+uncached authoritative local reads, with 25 items per pending/history page
+(maximum 100 via `limit`). `next_pending` / `next_history` are opaque item cursors
+passed as `pending_before` / `history_before`. Search applies to the loaded page.
+The UI retains the displayed page on refresh failures, polls while visible, and
+rechecks the exact reviewed revision before recording a decision. Inline evidence
+and HTTPS provider links are supported; remote evidence is not fetched through
+Tangent. Legacy `approvals` cache settings no longer affect the native queue.
 
-**Operator access** uses Tangent's `/api/session` and `/api/session/elevate`
-authority. A shared modal asks for the existing operator key when a chat send,
-reply or approval decision needs elevation; it can also be opened from Approvals.
-Successful elevation rotates the browser's HttpOnly participant cookie and lasts
-up to 12 hours, enforced by Tangent. Tachyon forwards the key only for verification
-and clears the input on submission/cancellation; it does not persist the key.
-Session status is never cached. Chat mutations check current assurance before
-writing an outgoing intent; Tangent checks approval decisions itself. The cookie
-is scoped to the Console API so both flows use the same browser session.
+Low-class requests require an explicit browser decision. Medium-class requests
+also require current operator elevation. High-class requests are provider-console
+handoffs only; Tachyon cannot resolve them. Cerberus is handoff-only until its
+proof verifier lands (CW-20261019-0014); its requests must use class `high`.
+A handoff link opening is not a decision and never marks an item approved.
+
+**Operator access** still uses Tangent's `/api/session` and `/api/session/elevate`.
+`TACHYON_APPROVAL_QUEUE_URL` defaults to `http://127.0.0.1:7843` and now selects
+only this session authority; remote addresses require HTTPS. Each browser has an
+HttpOnly participant cookie. Current assurance is checked on every inbox access;
+decisions require the Tachyon origin. Elevation rotates the cookie and lasts up
+to 12 hours. The operator key is forwarded for verification and never retained.
+Native decisions record the server-derived session reference and assurance;
+request bodies cannot supply participant metadata or proof. Bearer credentials
+are not browser decision authority. Session custody migration remains separate.
 
 After explicit unlock, the client retries only an unambiguous pre-action
 `assurance_insufficient` or `operator_session_required` refusal, once, with the
-same body and idempotency key/reviewed revision. Scope denials, transport failures
-and ambiguous outcomes are not retried. This temporary authorization dependency
-on Tangent does not move Tachyon's chat history or outbox back to Tangent.
+same reviewed revision. Transport failures and ambiguous outcomes require lookup.
 
-An approval records human intent for its requesting application. It does not
-mint credentials, grant missing Tether scopes, or automatically replay a failed
-operation. A plain chat report such as “missing session.write” is not an approval
-request: the producer must submit the concrete request to the queue, and the
-credential owner must handle any missing scope separately.
+#### Producer API
+
+`POST /api/approvals/v1/{enqueue,get,await,withdraw}` accepts the corresponding
+shared go-hitl v1 wire payloads. Producers use an **existing Tether-issued Ed25519
+JWT**, audience `tachyon`, pinned issuer, and exact configured subject. There is
+no new key issuer, pairing flow or enrollment in this slice. Unconfigured producer
+trust returns 503; invalid configuration fails startup. Existing Planner API
+credentials and paired-device tokens are not interchangeable with these JWTs.
+
+Set `TACHYON_APPROVAL_PRODUCER_CONFIG` to a host-managed JSON file. For example,
+replace the placeholder issuer, JWKS URL, subject and origin with verified
+existing deployment values before installing:
+
+```json
+{
+  "issuer": "<existing Tether issuer>",
+  "audience": "tachyon",
+  "jwks_url": "https://<Tether host>/.well-known/jwks.json",
+  "producers": {
+    "<existing Cerberus JWT subject>": {
+      "application_id": "cerberus",
+      "minimum_class": "high",
+      "handoff_origins": ["https://<Cerberus console host>"]
+    }
+  }
+}
+```
+
+An optional `bootstrap_key_file` accepts public JWKS or an Ed25519 public PEM.
+Subject mappings bind each producer to a distinct application ID and minimum
+class. `source.application_id` and `caller.application_id` must match that
+binding; supplied `caller.principal_ref` must match the authenticated subject.
+Agent IDs remain producer-asserted display metadata. Cross-producer lookups return
+404 and expose no other producer's records. Tokens need only the operations used:
+
+| Operation | Required scope |
+|---|---|
+| enqueue | `tachyon.approvals.enqueue` |
+| get, await | `tachyon.approvals.read` |
+| withdraw | `tachyon.approvals.withdraw` |
+
+Enqueue uses `contract_version: "1.0"`, `kind: "approval"` or `"attention"`, a
+stable `idempotency_key`, and `source` with `application_id` and `agent_id`.
+Required extras are `title`, `summary`, `request`, `class` (`low`, `medium`, `high`)
+and `op_digest` (`sha256:` plus 64 lowercase hex digits). `handoff_url` is required
+for high and must use a configured exact HTTPS origin. Set `expires_at` for
+operations that must time out. Extras are retained in the immutable request
+snapshot and covered by shared HITL idempotency; changed content with the same
+key conflicts rather than replacing the reviewed operation.
+
+Get/await/withdraw use `contract_version`, `item_id` from the returned handle, and
+`caller: {"application_id": "..."}`. Await accepts `wait_ms` (up to 50000); a
+waiting timeout does not cancel the request. Logical expiry applies on reads;
+late writes cannot approve expired requests. Await is also bounded by JWT expiry.
+There is deliberately no producer resolve/approve endpoint.
+
+After a terminal notification or retry, producers must **look up the authoritative
+outcome** and independently verify their expected digest, operation revision,
+expiry and current execution authorization before acting. Tachyon validates the
+digest format and preserves it; it does not verify a canonical operation or a
+digest-bound cryptographic proof. Approval grants no scopes, mints no credential,
+and does not trigger execution. Cerberus's own passkey ceremony remains the
+authority for its protected operations. Live producer acceptance requires existing
+JWT trust/identity configuration; credential enrollment remains separately held.
 
 ### Planner access for agents
 
