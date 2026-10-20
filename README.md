@@ -1118,12 +1118,26 @@ handoffs only; Tachyon cannot resolve them. Cerberus is handoff-only until its
 proof verifier lands (CW-20261019-0014); its requests must use class `high`.
 A handoff link opening is not a decision and never marks an item approved.
 
-**Operator access** still uses Tangent's `/api/session` and `/api/session/elevate`.
+**Operator access** still uses Tangent's `/api/session`, `/api/session/elevate` and `/api/session/de-elevate`.
 `TACHYON_APPROVAL_QUEUE_URL` defaults to `http://127.0.0.1:7843` and now selects
 only this session authority; remote addresses require HTTPS. Each browser has an
 HttpOnly participant cookie. Current assurance is checked on every inbox access;
-decisions require the Tachyon origin. Elevation rotates the cookie and lasts up
-to 12 hours. The operator key is forwarded for verification and never retained.
+decisions require the Tachyon origin. Elevation rotates the cookie. The operator key
+is forwarded for verification and never retained.
+
+**Elevation lifetime** is an operator setting: `always` (default; until revoked, still
+bounded by Tangent's 30-day browser session), `never` (not remembered; about one
+minute) or `<N>d` (1–365 days). It is stored in `app_settings`
+(`approvals.elevation_ttl`) and managed with `tachyon elevation-ttl [get | env | set
+VALUE]` or `GET`/`PUT /api/plugins/console/v1/settings/elevation-ttl` (PUT needs operator elevation; the route sits under the operator cookie's path so the browser sends it).
+**Tangent enforces it**, not Tachyon: Tachyon has no timer of its own and only mirrors
+`elevation_ttl` / `elevation_expires_at` from Tangent's `/api/session` for its copy.
+Launch Tangent with `TANGENT_ELEVATION_TTL` set to the value printed by
+`tachyon elevation-ttl env`; a change takes effect when Tangent restarts (Tangent has
+no runtime setting call). Shortening applies at once on restart, lengthening applies to
+new elevations only, and a lapsed elevation never revives. **Revoke elevation** (the
+Approvals page, `POST …/approval-inbox/de-elevate`) calls Tangent's
+`/api/session/de-elevate` and adopts the replacement session cookie.
 Native decisions record the server-derived session reference and assurance;
 request bodies cannot supply participant metadata or proof. Bearer credentials
 are not browser decision authority. Session custody migration remains separate.

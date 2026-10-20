@@ -350,12 +350,19 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle(approvals.ProducerPrefix+"/", producer)
 	} else {
 		mux.HandleFunc(approvals.Prefix+"/", func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == approvals.Prefix+"/session" || r.URL.Path == approvals.Prefix+"/status" || r.URL.Path == approvals.Prefix+"/elevate" {
+			if r.URL.Path == approvals.Prefix+"/session" || r.URL.Path == approvals.Prefix+"/status" || r.URL.Path == approvals.Prefix+"/elevate" || r.URL.Path == approvals.Prefix+"/de-elevate" {
 				operator.ServeHTTP(w, r)
 				return
 			}
 			http.Error(w, "Approval storage unavailable", http.StatusServiceUnavailable)
 		})
+	}
+	if s.store != nil {
+		elevation := approvals.ElevationSettings{DB: s.store}
+		// Under the operator cookie's Path (approvals.CookiePath) so the browser
+		// actually sends it; RequireOperator reads that cookie.
+		mux.HandleFunc("GET "+approvals.ElevationSettingsPath, elevation.Handler)
+		mux.Handle("PUT "+approvals.ElevationSettingsPath, operator.RequireOperator(http.HandlerFunc(elevation.Handler)))
 	}
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})

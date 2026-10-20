@@ -4,6 +4,22 @@ interface Status {
   elevated: boolean
   assurance: string
   operator_token_configured: boolean
+  elevation_ttl?: string
+  elevation_expires_at?: string
+}
+
+// Tangent owns the lifetime (always | never | <N>d) and the stamped end.
+export function elevationCopy(s?: Pick<Status, "elevation_ttl" | "elevation_expires_at">) {
+  if (s?.elevation_expires_at) {
+    const end = new Date(s.elevation_expires_at)
+    if (!Number.isNaN(end.getTime())) return `Access lasts until ${end.toLocaleString()}.`
+  }
+  const ttl = s?.elevation_ttl
+  if (ttl === "always") return "Access lasts until you revoke it or the browser session ends."
+  if (ttl === "never") return "Access is not remembered; it lasts about a minute."
+  const days = /^([1-9]\d*)d$/.exec(ttl ?? "")?.[1]
+  if (days) return `Access lasts ${days === "1" ? "1 day" : days + " days"}.`
+  return "Access lifetime is set by the authorization service."
 }
 interface Prompt {
   open: boolean
@@ -11,7 +27,7 @@ interface Prompt {
   error: string
 }
 
-// The authority and 12-hour expiry remain server-owned. Only prompt state is
+// The authority and expiry remain server-owned. Only prompt state is
 // kept here; neither the key nor a fabricated "unlocked" flag is persisted.
 export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
   let state: Prompt = { open: false, submitting: false, error: "" }
@@ -19,6 +35,7 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
     | { promise: Promise<boolean>; resolve(value: boolean): void }
     | undefined
   let connecting: Promise<unknown> | undefined
+  let lastStatus: Status | undefined
   const listeners = new Set<() => void>()
   const set = (next: Prompt) => {
     state = next
@@ -54,6 +71,19 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
     const value = (await res.json()) as Status
     if (typeof value.elevated !== "boolean")
       throw new Error("Invalid operator session response.")
+    lastStatus = value
+    return value
+  }
+  async function revoke() {
+    const res = await fetcher(BASE + "/de-elevate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: "{}",
+    })
+    if (!res.ok) throw new Error("Could not revoke operator access.")
+    const value = (await res.json()) as Status
+    if (value.elevated !== false) throw new Error("Revocation was not confirmed.")
+    lastStatus = value
     return value
   }
   async function ensure() {
@@ -135,6 +165,9 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
   }
   return {
     ensure,
+    revoke,
+    lifetimeCopy: () => elevationCopy(lastStatus),
+    status,
     submit,
     cancel: () => finish(false),
     fetch: fetchWithElevation,

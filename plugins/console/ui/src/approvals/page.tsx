@@ -5,7 +5,7 @@ import { Link } from "react-router-dom"
 import { ShieldCheck, RefreshCw, KeyRound } from "lucide-react"
 import { useApprovals } from "./context"
 import { DataTable } from "@hollis-labs/kit-dashboard/data"
-import { operatorElevation } from "../operator/elevation"
+import { elevationCopy, operatorElevation } from "../operator/elevation"
 
 export function ApprovalsPage() {
   const queue = useApprovals()
@@ -19,7 +19,7 @@ export function ApprovalsPage() {
     try {
       if (await operatorElevation.ensure())
         setOperatorMessage(
-          "Operator access verified. The session lasts up to 12 hours from unlock.",
+          `Operator access verified. ${elevationCopy(await operatorElevation.status())}`,
         )
     } catch (error) {
       setOperatorMessage(
@@ -27,6 +27,17 @@ export function ApprovalsPage() {
           ? error.message
           : "Could not verify operator access.",
       )
+    } finally {
+      setUnlocking(false)
+    }
+  }
+  async function revoke() {
+    setUnlocking(true)
+    try {
+      await operatorElevation.revoke()
+      setOperatorMessage("Operator access revoked.")
+    } catch (error) {
+      setOperatorMessage(error instanceof Error ? error.message : "Could not revoke operator access.")
     } finally {
       setUnlocking(false)
     }
@@ -48,6 +59,9 @@ export function ApprovalsPage() {
       <PageHeader title="Approvals">
         <Button variant="outline" size="sm" className="dash-header-action" disabled={unlocking} onClick={() => void unlock()}>
           <KeyRound className="h-3 w-3" /> Operator access
+        </Button>
+        <Button variant="outline" size="sm" className="dash-header-action" disabled={unlocking} onClick={() => void revoke()}>
+          Revoke elevation
         </Button>
         <Button variant="ghost" size="sm" aria-label="Refresh approvals" onClick={() => void queue.refresh(true)}>
           <RefreshCw className="h-3 w-3" />
