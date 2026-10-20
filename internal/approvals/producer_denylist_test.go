@@ -102,7 +102,7 @@ func TestProducerServiceTokenIsRevokedByTheDenyList(t *testing.T) {
 	d := newDenyIssuer(t)
 	p := d.producer(t)
 	good, revoked := d.serviceToken("svc-good"), d.serviceToken("svc-revoked")
-	eventually(t, "the first deny-list poll", func() bool { return p.revocation.Ready() })
+	eventually(t, "the first deny-list poll", func() bool { return p.current().feed.Ready() })
 	if got := enqueueStatus(t, p, revoked, "k1"); got != 200 {
 		t.Fatalf("a long-lived service token before revocation: %d", got)
 	}
@@ -118,7 +118,7 @@ func TestProducerKeepsKnownRevocationsWhileTheDenyListIsDown(t *testing.T) {
 	d.jtis.Store([]string{"svc-revoked"})
 	p := d.producer(t)
 	revoked := d.serviceToken("svc-revoked")
-	eventually(t, "the revocation to be learned", func() bool { return p.revocation.Ready() && enqueueStatus(t, p, revoked, "k1") == 401 })
+	eventually(t, "the revocation to be learned", func() bool { return p.current().feed.Ready() && enqueueStatus(t, p, revoked, "k1") == 401 })
 	d.status.Store(503) // the issuer's deny-list goes down
 	time.Sleep(200 * time.Millisecond)
 	if got := enqueueStatus(t, p, revoked, "k2"); got != 401 {
@@ -135,7 +135,7 @@ func TestProducerRefusesUntilTheFirstDenyListPollSucceeds(t *testing.T) {
 	p := d.producer(t)
 	tok := d.serviceToken("svc-1")
 	time.Sleep(150 * time.Millisecond)
-	if p.revocation.Ready() {
+	if p.current().feed.Ready() {
 		t.Fatal("ready without a successful poll")
 	}
 	if got := enqueueStatus(t, p, tok, "k1"); got != 503 {
@@ -144,10 +144,10 @@ func TestProducerRefusesUntilTheFirstDenyListPollSucceeds(t *testing.T) {
 	d.status.Store(200)
 	// The first-poll retry backs off (2s), so allow for it.
 	deadline := time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) && !p.revocation.Ready() {
+	for time.Now().Before(deadline) && !p.current().feed.Ready() {
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !p.revocation.Ready() {
+	if !p.current().feed.Ready() {
 		t.Fatal("never became ready after the deny-list recovered")
 	}
 	if got := enqueueStatus(t, p, tok, "k2"); got != 200 {
@@ -165,7 +165,7 @@ func TestProducerWithoutADenyListStillWorksAsBefore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.revocation != nil {
+	if p.current().feed != nil {
 		t.Fatal("a deny-list feed exists without deny_list_url")
 	}
 	if got := enqueueStatus(t, p, d.serviceToken("svc-1"), "k1"); got != 200 {
