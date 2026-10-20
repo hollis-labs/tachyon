@@ -9,7 +9,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@hollis-labs/kit-chat": "file:../../../third_party/hollis-labs-kit-chat-0.5.0-cw0041-1006e9be.tgz",
+    "@hollis-labs/kit-chat": "file:../../../third_party/hollis-labs-kit-chat-0.5.0-cw0041-review-e8ec62f8.tgz",
     "@tachyon/host-sdk": "0.1.0",
     "@tachyon/torque-client": "0.1.0",
     "react-markdown": "^10.1.0",
