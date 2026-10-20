@@ -3,6 +3,7 @@
 package agentclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,7 +42,7 @@ func New(base, tokenFile string) (*Client, error) {
 	}
 	return &Client{base: u, tokenFile: tokenFile, http: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
-func (c *Client) get(ctx context.Context, path string, input json.RawMessage) (json.RawMessage, error) {
+func (c *Client) request(ctx context.Context, method, path string, input json.RawMessage) (json.RawMessage, error) {
 	token, err := tokenfile.Read(c.tokenFile, tokenfile.Options{Validate: tokenfile.ValidHex})
 	if err != nil {
 		return nil, err
@@ -49,16 +50,23 @@ func (c *Client) get(ctx context.Context, path string, input json.RawMessage) (j
 	u := *c.base
 	u.Path = dataverbs.AgentPrefix + path
 	u.RawPath = ""
-	if input != nil {
+	if input != nil && method == http.MethodGet {
 		q := url.Values{}
 		q.Set("input", string(input))
 		u.RawQuery = q.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	var body io.Reader
+	if method == http.MethodPost {
+		body = bytes.NewReader(input)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		return nil, errors.New("could not create data request")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, errors.New("Tachyon data request failed (connection or timeout)")
@@ -81,7 +89,7 @@ func (c *Client) get(ctx context.Context, path string, input json.RawMessage) (j
 	return raw, nil
 }
 func (c *Client) Verbs(ctx context.Context) ([]dataverbs.Verb, error) {
-	raw, err := c.get(ctx, "/providers", nil)
+	raw, err := c.request(ctx, http.MethodGet, "/providers", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +116,26 @@ func (c *Client) Invoke(ctx context.Context, verb string, input json.RawMessage)
 	if len(input) == 0 {
 		input = json.RawMessage(`{}`)
 	}
-	if !json.Valid(input) || len(input) > 16<<10 {
-		return nil, errors.New("input must be valid JSON no larger than 16 KiB")
+	if !json.Valid(input) || len(input) > dataverbs.MaxInputBytes {
+		return nil, errors.New("input must be valid JSON no larger than 3 MiB")
 	}
-	return c.get(ctx, "/providers/tachyon/verbs/"+verb, input)
+	// Discovery is authenticated and refreshed on each call. The API still
+	// enforces current grants on the invocation; no client-side cached authority.
+	verbs, err := c.Verbs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range verbs {
+		if v.Name != verb {
+			continue
+		}
+		method := http.MethodGet
+		if v.Mutates {
+			method = http.MethodPost
+		} else if len(input) > 16<<10 {
+			return nil, errors.New("read input exceeds 16 KiB")
+		}
+		return c.request(ctx, method, "/providers/tachyon/verbs/"+verb, input)
+	}
+	return nil, errors.New("credential does not grant this verb; use data verbs to discover available operations")
 }

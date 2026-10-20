@@ -315,6 +315,7 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle(dataverbs.Prefix+"/", dataverbs.NewHTTP(providers, operator.RequireOperator))
 		if s.store != nil {
 			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}))
 		}
 	}
 	if s.store != nil {

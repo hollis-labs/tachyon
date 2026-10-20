@@ -1,6 +1,9 @@
 package dataverbs
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -8,9 +11,116 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/objects"
 )
+
+func TestAgentPortfolioWritesEnforceGrantsAndRevisionHistory(t *testing.T) {
+	_, s, db := setup(t)
+	access := &agentaccess.Store{DB: db}
+	writer, secret, err := access.Issue(ctx, "", "Portfolio Architect", agentaccess.PortfolioWrite(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, reader, err := access.Issue(ctx, "", "Reader", agentaccess.PortfolioRead(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrowGrants := agentaccess.PortfolioWrite()
+	narrowGrants.Kinds = []string{"idea"}
+	_, narrow, err := access.Issue(ctx, "", "Ideas only", narrowGrants, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := NewAgentHTTP(s, access)
+	call := func(method, verb, input, credential string, status int) map[string]any {
+		t.Helper()
+		path := AgentPrefix + "/providers/tachyon/verbs/" + verb
+		var body io.Reader
+		if method == "GET" {
+			path += "?input=" + url.QueryEscape(input)
+		} else {
+			body = strings.NewReader(input)
+		}
+		req := httptest.NewRequest(method, path, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+credential)
+		req.Header.Set("X-Actor", "operator:browser")
+		req.Header.Set("Cookie", "tachyon_approvals=forged")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != status {
+			t.Fatalf("%s: got %d want %d: %s", verb, w.Code, status, w.Body.String())
+		}
+		var out map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	ids := map[string]string{}
+	for _, database := range []string{"priorities", "workstreams", "roadmap", "ideas", "decisions", "risks", "inbox"} {
+		id := uuid.NewString()
+		ids[database] = id
+		input := fmt.Sprintf(`{"db":%q,"id":%q,"fields":{"title":"Agent authored"}}`, database, id)
+		call("POST", "planner.portfolio.create", input, reader, 404)
+		created := call("POST", "planner.portfolio.create", input, secret, 200)["data"].(map[string]any)
+		if created["author"] != "service:"+writer.IdentityID {
+			t.Fatal("forged actor", created)
+		}
+		// Retained UUID retry creates no duplicate and preserves the original revision.
+		call("POST", "planner.portfolio.create", input, secret, 200)
+	}
+	id := ids["ideas"]
+	patch := fmt.Sprintf(`{"db":"ideas","id":%q,"expected_revision":1,"patch":{"title":"Edited"}}`, id)
+	call("POST", "planner.portfolio.patch", patch, secret, 200)
+	call("POST", "planner.portfolio.patch", patch, secret, 409)
+	call("POST", "planner.portfolio.patch", fmt.Sprintf(`{"db":"ideas","id":%q,"expected_revision":2,"patch":{"author":"forged"}}`, id), secret, 400)
+	call("POST", "planner.portfolio.action", fmt.Sprintf(`{"db":"ideas","id":%q,"expected_revision":2,"action":"comments","arguments":{"text":"A note","author":"forged"}}`, id), secret, 200)
+	got := call("GET", "planner.portfolio.get", fmt.Sprintf(`{"db":"ideas","id":%q}`, id), reader, 200)["data"].(map[string]any)
+	comment := got["comments"].([]any)[0].(map[string]any)
+	if comment["author"] != "service:"+writer.IdentityID {
+		t.Fatal("spoofed comment", comment)
+	}
+	call("POST", "planner.portfolio.action", fmt.Sprintf(`{"db":"ideas","id":%q,"expected_revision":3,"action":"link-add","arguments":{"link":{"kind":"url","ref":"https://example.test"}}}`, id), secret, 200)
+	relation := fmt.Sprintf(`{"from":{"db":"ideas","id":%q},"to":{"db":"risks","id":%q},"expected_revision":4,"add":true}`, id, ids["risks"])
+	call("POST", "planner.portfolio.relate", relation, narrow, 403)
+	call("POST", "planner.portfolio.relate", relation, secret, 200)
+	call("POST", "planner.portfolio.reorder", fmt.Sprintf(`{"db":"ideas","items":[{"id":%q,"expected_revision":5}]}`, id), narrow, 200)
+	call("POST", "planner.portfolio.action", fmt.Sprintf(`{"db":"ideas","id":%q,"expected_revision":6,"action":"delete"}`, id), secret, 403)
+	call("POST", "objects.delete", fmt.Sprintf(`{"id":%q,"expected_revision":6}`, id), secret, 404)
+	call("POST", "objects.patch", fmt.Sprintf(`{"id":%q,"expected_revision":6,"metadata":{}}`, id), secret, 404)
+	call("GET", "planner.portfolio.list", `{"db":"risks"}`, narrow, 403)
+	call("GET", "planner.portfolio.resolve", fmt.Sprintf(`{"id":%q}`, ids["risks"]), narrow, 404)
+	call("GET", "planner.portfolio.resolve", fmt.Sprintf(`{"id":%q}`, id), narrow, 200)
+	call("GET", "planner.portfolio.schema", `{"db":"ideas"}`, narrow, 200)
+	call("POST", "planner.portfolio.create", fmt.Sprintf(`{"db":"risks","id":%q,"fields":{"title":"Forbidden"}}`, uuid.NewString()), narrow, 403)
+	// A granted database name cannot be used to mutate an object of another kind.
+	call("POST", "planner.portfolio.patch", fmt.Sprintf(`{"db":"ideas","id":%q,"expected_revision":1,"patch":{"title":"Forbidden"}}`, ids["risks"]), narrow, 404)
+	call("GET", "planner.portfolio.patch", patch, secret, 405)
+	call("POST", "planner.portfolio.get", fmt.Sprintf(`{"db":"ideas","id":%q}`, id), secret, 405)
+	history := call("GET", "objects.history", fmt.Sprintf(`{"id":%q}`, id), reader, 200)["data"].(map[string]any)
+	for _, value := range history["items"].([]any) {
+		revision := value.(map[string]any)
+		if revision["actor"] != "service:"+writer.IdentityID && revision["actor"] != "service:"+narrowIdentity(t, access, narrow) {
+			t.Fatal("history not attributed to authenticated principal", revision)
+		}
+	}
+	if err := access.Revoke(ctx, writer.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	call("POST", "planner.portfolio.patch", patch, secret, 401)
+}
+
+func narrowIdentity(t *testing.T, access *agentaccess.Store, secret string) string {
+	t.Helper()
+	principal, err := access.Verify(ctx, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return principal.ID
+}
 
 func TestAgentBoundaryAndKindRestrictions(t *testing.T) {
 	local, s, db := setup(t)

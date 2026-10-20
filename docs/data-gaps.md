@@ -1,5 +1,14 @@
 # Torque GUI → Tachyon v2: DATA GAPS
 
+This is the **original Torque GUI port inventory**, not the current Tachyon
+ownership or agent-access contract. Planner now uses Tachyon-owned storage,
+schemas, mutations and change events. Torque supplies execution-task enrichment.
+For current routes, agent grants and MCP/CLI setup, see the
+[Planner migration](../README.md#portfolio-planner-migration-and-local-maintenance)
+and [agent access](../README.md#planner-access-for-agents) sections. `LIVE` below
+describes the source inventory; it does not mean those Torque routes should be
+used for current portfolio planning.
+
 Repo: `/home/chrispian/dev/hollis-labs/apps/torque` (GUI at `apps/gui/src`). Routes are cited as `server.go:L<n>` (`internal/httpserver/server.go`); `/api/v1` prefix is implied.
 Target: Tachyon v2 plugins **`planner`** and **`console`**, with **no mock/fixture data** ported.
 

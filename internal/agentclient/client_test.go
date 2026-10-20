@@ -10,12 +10,98 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 )
+
+func TestRemotePortfolioWriteThroughCLIAndMCP(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := localstore.Open(ctx, filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	s := objects.New(db)
+	access := &agentaccess.Store{DB: db}
+	token, secret, err := access.Issue(ctx, "", "Portfolio Manager", agentaccess.PortfolioWrite(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "writer.token")
+	if err := tokenfile.Create(file, secret); err != nil {
+		t.Fatal(err)
+	}
+	host := httptest.NewServer(dataverbs.NewAgentHTTP(s, access))
+	defer host.Close()
+	c, err := New(host.URL, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := c.MCP(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := uuid.NewString()
+	// Writes use POST and support content larger than the GET query limit.
+	_, err = m.CallTool(ctx, "tachyon_planner_portfolio_create", map[string]any{
+		"db": "ideas", "id": id, "fields": map[string]any{"title": "Remote proposal", "tldr": strings.Repeat("a", 20<<10)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	input := `{"db":"ideas","id":"` + id + `","expected_revision":1,"action":"comments","arguments":{"text":"CLI comment"}}`
+	if err := Command(ctx, []string{"--url", host.URL, "--token-file", file, "--input", input, "planner.portfolio.action"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	record, err := s.Get(ctx, id)
+	if err != nil || !strings.Contains(string(record.Definition), "CLI comment") {
+		t.Fatal(record, err)
+	}
+	_, err = m.CallTool(ctx, "tachyon_planner_portfolio_patch", map[string]any{
+		"db": "ideas", "id": id, "expected_revision": 1, "patch": map[string]any{"title": "Stale"},
+	})
+	if err == nil {
+		t.Fatal("stale MCP write succeeded")
+	}
+	if err := access.Revoke(ctx, token.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.CallTool(ctx, "tachyon_planner_portfolio_patch", map[string]any{
+		"db": "ideas", "id": id, "expected_revision": 2, "patch": map[string]any{"title": "Revoked"},
+	})
+	if err == nil {
+		t.Fatal("revoked MCP writer succeeded")
+	}
+	_, readerSecret, err := access.Issue(ctx, "", "Reader", agentaccess.PortfolioRead(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tokenfile.Write(file, readerSecret); err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.CallTool(ctx, "tachyon_planner_portfolio_patch", map[string]any{
+		"db": "ideas", "id": id, "expected_revision": 2, "patch": map[string]any{"title": "Downgraded"},
+	})
+	if err == nil {
+		t.Fatal("running adapter retained revoked write authority")
+	}
+	readMCP, err := c.MCP(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readMCP.CallTool(ctx, "tachyon_planner_portfolio_create", map[string]any{}); err == nil {
+		t.Fatal("reader discovered writes")
+	}
+	if _, err := readMCP.CallTool(ctx, "tachyon_planner_portfolio_get", map[string]any{"db": "ideas", "id": id}); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestRemoteCLIAndMCPRevocation(t *testing.T) {
 	ctx := context.Background()

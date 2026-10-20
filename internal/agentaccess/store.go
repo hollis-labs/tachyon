@@ -17,10 +17,13 @@ import (
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
-// This first external surface is deliberately read-only. Adding a verb requires
-// implementing its authorization semantics, not just adding a string to a grant.
+// Every supported verb has authorization semantics in dataverbs.scopedLocal.
+// Existing credentials retain their exact grants; adding support never expands them.
 var readVerbs = []string{"planner.list", "objects.list", "objects.get", "objects.history", "objects.lookup_source"}
+var portfolioReadVerbs = []string{"planner.portfolio.list", "planner.portfolio.get", "planner.portfolio.schema", "planner.portfolio.resolve"}
+var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate", "planner.portfolio.reorder"}
 var plannerKinds = []string{"plan", "task", "epic", "sprint", "collection", "workstream", "inbox_item", "idea", "decision", "risk", "roadmap_item", "strategic_priority"}
+var portfolioKinds = []string{"strategic_priority", "workstream", "roadmap_item", "idea", "decision", "risk", "inbox_item"}
 
 type Grants struct {
 	Verbs []string `json:"verbs"`
@@ -30,8 +33,17 @@ type Grants struct {
 func PlannerRead() Grants {
 	return Grants{append([]string(nil), readVerbs...), append([]string(nil), plannerKinds...)}
 }
-func PlannerKinds() []string { return append([]string(nil), plannerKinds...) }
-func ReadVerb(v string) bool { return contains(readVerbs, v) }
+func PortfolioRead() Grants {
+	return Grants{append(append([]string(nil), readVerbs...), portfolioReadVerbs...), append([]string(nil), portfolioKinds...)}
+}
+func PortfolioWrite() Grants {
+	g := PortfolioRead()
+	g.Verbs = append(g.Verbs, portfolioWriteVerbs...)
+	return g
+}
+func PlannerKinds() []string      { return append([]string(nil), plannerKinds...) }
+func ReadVerb(v string) bool      { return contains(readVerbs, v) || contains(portfolioReadVerbs, v) }
+func SupportedVerb(v string) bool { return ReadVerb(v) || contains(portfolioWriteVerbs, v) }
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
 		if s == x {
@@ -45,7 +57,7 @@ func (g Grants) Validate() error {
 		return errors.New("explicit verbs and kinds are required")
 	}
 	for _, v := range g.Verbs {
-		if !ReadVerb(v) {
+		if !SupportedVerb(v) {
 			return fmt.Errorf("unsupported service verb %q", v)
 		}
 	}
