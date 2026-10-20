@@ -50,7 +50,7 @@ function Row({ agent, rank, score, leader, entries, now, onOpen }: { agent: Flee
           </span>
         </span>
         <span className="hidden gap-4 sm:flex">
-          <Stat label="up" value={agent.startedAt ? formatDuration(now - agent.startedAt) : '—'} />
+          <Stat label={agent.sessionCreatedAt ? 'created' : 'up'} value={agent.sessionCreatedAt ? `${formatDuration(now - agent.sessionCreatedAt)} ago` : agent.startedAt ? formatDuration(now - agent.startedAt) : '—'} />
           <Stat label="working" value={share === null ? '—' : `${share}%`} />
         </span>
         <span className="hidden md:flex md:flex-col md:gap-1">

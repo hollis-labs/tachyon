@@ -18,13 +18,14 @@ export interface TetherSession {
   workspace: string
   state: string
   created_at: string
+  project_id?: string
   workstream_id?: string
 }
 export interface LaunchInput { launch: string; worker?: string; prompt_append?: string; idempotency_key: string }
 export interface LaunchAttempt { input: LaunchInput; sessionId?: string }
 const BASE = '/api/plugins/console/v1/tether'
 export class LaunchRequestError extends Error {
-  constructor(message: string, public status: number) { super(message) }
+  constructor(message: string, public status: number, public code?: string) { super(message) }
 }
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
@@ -32,7 +33,11 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
     ...init, headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', ...init?.headers },
   })
   const body = await response.json().catch(() => null)
-  if (!response.ok) throw new LaunchRequestError(body?.error?.message ?? body?.message ?? (typeof body?.error === 'string' ? body.error : `Tether request failed (${response.status})`), response.status)
+  if (!response.ok) {
+    const code = body?.error?.code ?? body?.code
+    const message = body?.error?.message ?? body?.message ?? (typeof body?.error === 'string' ? body.error : 'Tether request failed')
+    throw new LaunchRequestError(`${message} (${response.status}${code ? ` · ${code}` : ''})`, response.status, code)
+  }
   if (!body) throw new Error('Tether returned an invalid response.')
   return body as T
 }

@@ -54,7 +54,7 @@ it('adds remote non-chat sessions without inventing busy state, and excludes end
   const rows = mergeTetherSessions([], [session, { ...session, id: 'ended', state: 'exited' }])
   expect(rows.map(a => a.id)).toEqual(['tether:s1'])
   expect(rows[0].state).toBe('unknown')
-  expect(rows[0].lastAction?.text).toContain('Running')
+  expect(rows[0].lastAction?.text).toContain('running')
 })
 it('merges exact chat session identity but retains multiple sessions from the same profile', () => {
   const chats = mergeChatAgents([], [{ launch_id: 'review-code', agent_id: 'reviewer', display_name: 'Reviewer', channel: 'chat', session: { id: 's1', state: 'running', last_activity_at: '', at_turn_boundary: true } }])
@@ -63,4 +63,12 @@ it('merges exact chat session identity but retains multiple sessions from the sa
 it('does not collapse distinct sessions sharing one project directory', () => {
   const rows = mergeTetherSessions([], [{ ...session, workspace: '/project' }, { ...session, id: 's2', workspace: '/project' }])
   expect(rows.map(a => a.sessionId)).toEqual(['s1', 's2'])
+})
+
+it('does not display protected workspace references as directory names or session age as uptime', () => {
+  const row = mergeTetherSessions([], [{ ...session, project_id: 'tether', workspace: 'tether-ref:workspace:opaque-hash' }])[0]
+  expect(row.cwd).toBe('')
+  expect(row.groupLabel).toBe('Tether · tether')
+  expect(row.startedAt).toBeNull()
+  expect(row.sessionCreatedAt).toBe(Date.parse(session.created_at))
 })

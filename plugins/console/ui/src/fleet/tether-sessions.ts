@@ -17,10 +17,12 @@ export function mergeTetherSessions(agents: FleetAgent[], sessions: TetherSessio
     if (candidates.length === 1) continue
     result.push({
       id: `tether:${session.id}`, sessionId: session.id, displayName: session.launch_id,
-      provider: session.provider_id, pid: 0, cwd: session.workspace || '', state: 'unknown',
-      waitingFor: null, startedAt: Date.parse(session.created_at) || null, lastActivity: null,
+      provider: session.provider_id, pid: 0, cwd: session.workspace?.startsWith('tether-ref:') ? '' : session.workspace || '', state: 'unknown',
+      groupLabel: `Tether · ${session.project_id || 'sessions'}`,
+      sessionCreatedAt: Date.parse(session.created_at) || undefined,
+      waitingFor: null, startedAt: null, lastActivity: null,
       stateConfidence: null, confidence: {}, model: null, messages: null,
-      lastAction: { text: 'Running · waiting for activity details', at: null },
+      lastAction: { text: 'Tether reports running · activity details unavailable', at: null },
       workstream: session.workstream_id ? { id: session.workstream_id, name: null } : null,
     })
   }
