@@ -1,4 +1,3 @@
-import { RecentActivity } from '../observations/RecentActivity'
 import { useObservations } from '../observations/store'
 import { activityText, latestActivity } from '../observations/model'
 import { useState } from 'react'
@@ -93,7 +92,7 @@ export function FleetAgentsPanel() {
     next.delete('agent')
     setSearch(next, { replace: true })
   }
-  return <><FleetAgentsView agents={agents} history={fleet.history} error={error} now={fleet.now} live={fleet.live} focus={focus} onFocusClose={clearFocus} /><RecentActivity /></>
+  return <FleetAgentsView agents={agents} history={fleet.history} error={error} now={fleet.now} live={fleet.live} focus={focus} onFocusClose={clearFocus} />
 }
 
 export function FleetAgentsView({ agents, history, error, now, live, focus, onFocusClose }: { agents: FleetAgent[] | null; history: FleetHistory; error: string | null; now: number; live: boolean; focus?: string | null; onFocusClose?: () => void }) {
