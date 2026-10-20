@@ -1129,7 +1129,7 @@ is forwarded for verification and never retained.
 bounded by Tangent's 30-day browser session), `never` (not remembered; about one
 minute) or `<N>d` (1–365 days). It is stored in `app_settings`
 (`approvals.elevation_ttl`) and managed with `tachyon elevation-ttl [get | env | set
-VALUE]` or `GET`/`PUT /api/settings/elevation-ttl` (PUT needs operator elevation).
+VALUE]` or `GET`/`PUT /api/plugins/console/v1/settings/elevation-ttl` (PUT needs operator elevation; the route sits under the operator cookie's path so the browser sends it).
 **Tangent enforces it**, not Tachyon: Tachyon has no timer of its own and only mirrors
 `elevation_ttl` / `elevation_expires_at` from Tangent's `/api/session` for its copy.
 Launch Tangent with `TANGENT_ELEVATION_TTL` set to the value printed by

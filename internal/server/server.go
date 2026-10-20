@@ -351,8 +351,10 @@ func (s *Server) Routes() http.Handler {
 	}
 	if s.store != nil {
 		elevation := approvals.ElevationSettings{DB: s.store}
-		mux.HandleFunc("GET /api/settings/elevation-ttl", elevation.Handler)
-		mux.Handle("PUT /api/settings/elevation-ttl", operator.RequireOperator(http.HandlerFunc(elevation.Handler)))
+		// Under the operator cookie's Path (approvals.CookiePath) so the browser
+		// actually sends it; RequireOperator reads that cookie.
+		mux.HandleFunc("GET "+approvals.ElevationSettingsPath, elevation.Handler)
+		mux.Handle("PUT "+approvals.ElevationSettingsPath, operator.RequireOperator(http.HandlerFunc(elevation.Handler)))
 	}
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})

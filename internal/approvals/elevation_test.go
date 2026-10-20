@@ -72,7 +72,7 @@ func TestElevationSettingsAPI(t *testing.T) {
 	h := http.HandlerFunc(ElevationSettings{DB: db}.Handler)
 	do := func(method, body string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		h.ServeHTTP(w, httptest.NewRequest(method, "/api/settings/elevation-ttl", strings.NewReader(body)))
+		h.ServeHTTP(w, httptest.NewRequest(method, ElevationSettingsPath, strings.NewReader(body)))
 		return w
 	}
 	if w := do("GET", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"elevation_ttl":"always"`) {
@@ -89,6 +89,12 @@ func TestElevationSettingsAPI(t *testing.T) {
 	}
 	if w := do("DELETE", ""); w.Code != 405 {
 		t.Fatal(w.Code)
+	}
+}
+
+func TestElevationSettingsPathIsInsideCookieScope(t *testing.T) {
+	if !strings.HasPrefix(ElevationSettingsPath, CookiePath) {
+		t.Fatal("settings route is outside the operator cookie path; browsers would never send the cookie")
 	}
 }
 

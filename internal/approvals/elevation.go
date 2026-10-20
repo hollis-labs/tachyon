@@ -26,6 +26,9 @@ const (
 	ElevationTTLEnv     = "TANGENT_ELEVATION_TTL"
 	DefaultElevationTTL = "always"
 	maxElevationDays    = 365
+	// ElevationSettingsPath must stay inside CookiePath: the operator cookie
+	// is not sent to any other path.
+	ElevationSettingsPath = CookiePath + "settings/elevation-ttl"
 )
 
 // ParseElevationTTL validates and normalizes always | never | <N>d.
