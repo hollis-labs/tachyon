@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -55,6 +56,7 @@ var denyListInterval = 30 * time.Second
 // the first successful poll: until then the producer cannot know what has been
 // revoked and refuses to serve.
 type revocationFeed struct {
+	url    string
 	list   *auth.DenyList
 	poller *auth.DenyListPoller
 	ready  atomic.Bool
@@ -62,7 +64,7 @@ type revocationFeed struct {
 
 func newRevocationFeed(rawURL string) *revocationFeed {
 	list := auth.NewDenyList()
-	return &revocationFeed{list: list, poller: &auth.DenyListPoller{
+	return &revocationFeed{url: rawURL, list: list, poller: &auth.DenyListPoller{
 		URL: rawURL, List: list, Interval: denyListInterval,
 		Client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}}
@@ -70,16 +72,29 @@ func newRevocationFeed(rawURL string) *revocationFeed {
 
 func (f *revocationFeed) Ready() bool { return f.ready.Load() }
 
+// host is the only part of the deny-list URL that is ever logged: the path may
+// be deployment-specific and the validated URL never carries userinfo or a
+// query, but a log line should not depend on that.
+func (f *revocationFeed) host() string {
+	if u, err := url.Parse(f.url); err == nil {
+		return u.Host
+	}
+	return "unparsable"
+}
+
 // run polls until ctx is done: it retries (2s doubling to 30s) until the first
 // poll succeeds, marks the feed ready, then polls every interval. A failed
 // poll afterwards keeps the last list in force.
 func (f *revocationFeed) run(ctx context.Context) {
 	wait := 2 * time.Second
-	for !f.ready.Load() {
+	for attempt := 1; !f.ready.Load(); attempt++ {
 		if err := f.poller.Poll(ctx); err == nil {
 			f.ready.Store(true)
+			slog.Info("approval producer revocation list ready", "host", f.host(), "attempts", attempt)
 			break
 		}
+		// The poll error is not logged: it carries the request URL.
+		slog.Warn("approval producer is refusing requests until the first revocation-list poll succeeds", "host", f.host(), "attempt", attempt, "retry_in", wait.String())
 		select {
 		case <-ctx.Done():
 			return

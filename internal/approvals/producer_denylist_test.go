@@ -1,16 +1,20 @@
 package approvals
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -206,4 +210,66 @@ func containsSecret(s string, subs ...string) bool {
 		}
 	}
 	return false
+}
+
+type lockedBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+func (l *lockedBuf) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+
+func TestProducerFirstPollWaitIsLoggedByHostOnlyAndRefusalsLeakNothing(t *testing.T) {
+	logs := &lockedBuf{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	d := newDenyIssuer(t)
+	d.status.Store(503) // the deny list is down from the start
+	old := denyListInterval
+	denyListInterval = 20 * time.Millisecond
+	t.Cleanup(func() { denyListInterval = old })
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	secretURL := d.deny.URL + "/tenant-7f3a/denylist"
+	p, err := NewProducer(ctx, NewInbox(nativeStore(t), nil).Service, ProducerConfig{Issuer: "test-tether", Audience: "tachyon", JWKSURL: d.jwks.URL, DenyListURL: secretURL,
+		Producers: map[string]ProducerPolicy{"producer-a": {ApplicationID: "test-producer", MinimumClass: "medium", HandoffOrigins: []string{"https://cerberus.example"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := strings.TrimPrefix(d.deny.URL, "http://")
+	eventually(t, "the first-poll wait log", func() bool {
+		return strings.Contains(logs.String(), "refusing requests until the first revocation-list poll succeeds")
+	})
+
+	rec := serveJSON(p, "POST", ProducerPrefix+"/enqueue", requestFixture(t, "k1", "medium"), d.serviceToken("svc-1"), "")
+	if rec.Code != 503 {
+		t.Fatalf("before the first poll: %d", rec.Code)
+	}
+	for _, leak := range []string{host, "tenant-7f3a", "denylist", "http://", "127.0.0.1"} {
+		if strings.Contains(rec.Body.String(), leak) {
+			t.Errorf("the 503 body leaks %q: %s", leak, rec.Body.String())
+		}
+	}
+	out := logs.String()
+	if !strings.Contains(out, "host="+host) || !strings.Contains(out, "level=WARN") {
+		t.Errorf("the wait log must be a WARN naming the host %q: %s", host, out)
+	}
+	for _, leak := range []string{"tenant-7f3a", "denylist", "http://", "status 503", "Get "} {
+		if strings.Contains(out, leak) {
+			t.Errorf("the log leaks %q: %s", leak, out)
+		}
+	}
+
+	d.status.Store(200) // recovery: one INFO, host only
+	eventually(t, "the ready log", func() bool { return strings.Contains(logs.String(), "revocation list ready") })
+	if strings.Contains(logs.String(), "tenant-7f3a") {
+		t.Errorf("the ready log leaks the path: %s", logs.String())
+	}
 }
