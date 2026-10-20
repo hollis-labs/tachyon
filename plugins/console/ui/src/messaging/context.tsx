@@ -5,6 +5,7 @@ import { createActionBus, HttpIdentityConfirm, type ActionBus } from '../seams'
 import { registerMessagingActions } from './actions'
 import { createNudgeLimiter, type NudgeLimiter } from './guards'
 import { createMailMessagingClient } from './adapter'
+import { fetchDeliveryTrace } from '../observations/delivery'
 import { OPERATOR_ADDRESS } from './operator'
 import type { MessagingClient } from './types'
 
@@ -15,7 +16,7 @@ export interface MessagingContextValue {
 }
 
 // Outside a provider: the live mail client and the real step-up (never a mock).
-const defaultClient = createMailMessagingClient(consoleClient, { from: OPERATOR_ADDRESS })
+const defaultClient = createMailMessagingClient(consoleClient, { from: OPERATOR_ADDRESS, trace: fetchDeliveryTrace })
 const defaultBus = createActionBus({ identity: new HttpIdentityConfirm() })
 // eslint-disable-next-line react-refresh/only-export-components
 export const defaultMessagingClient = defaultClient

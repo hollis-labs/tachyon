@@ -1,3 +1,6 @@
+import { RecentActivity } from '../observations/RecentActivity'
+import { useObservations } from '../observations/store'
+import { activityText, latestActivity } from '../observations/model'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useChatRoster } from '../chat/roster'
@@ -74,7 +77,13 @@ export function FleetAgentsPanel() {
   const fleet = useFleetAgents()
   const chat = useChatRoster()
   const tether = useTetherSessions()
-  const agents = fleet.agents || chat.agents || tether.sessions ? mergeTetherSessions(mergeChatAgents(fleet.agents ?? [], chat.agents ?? []), tether.sessions ?? []) : null
+  const observed = useObservations()
+  const merged = fleet.agents || chat.agents || tether.sessions ? mergeTetherSessions(mergeChatAgents(fleet.agents ?? [], chat.agents ?? []), tether.sessions ?? []) : null
+  const agents = merged?.map(a => {
+    const session = a.chat?.session?.id || /\/\.tether-worker\/workspaces\/([^/]+)\/workroot$/.exec(a.cwd)?.[1] || a.sessionId
+    const event = latestActivity(observed.events, session || undefined)
+    return event && event.ts > (a.lastAction?.at ?? 0) ? { ...a, lastAction: { text: `Observed: ${activityText(event)}`, at: event.ts }, lastActivity: Math.max(event.ts, a.lastActivity ?? 0) } : a
+  }) ?? null
   const error = [fleet.error, chat.error && `Chat roster: ${chat.error}`, tether.error && `Tether sessions: ${tether.error}`].filter(Boolean).join(" · ") || null
   // `?agent=<id | provider | folder name>` (agent chips deep-link here) opens that agent's modal.
   const [search, setSearch] = useSearchParams()
@@ -84,7 +93,7 @@ export function FleetAgentsPanel() {
     next.delete('agent')
     setSearch(next, { replace: true })
   }
-  return <FleetAgentsView agents={agents} history={fleet.history} error={error} now={fleet.now} live={fleet.live} focus={focus} onFocusClose={clearFocus} />
+  return <><FleetAgentsView agents={agents} history={fleet.history} error={error} now={fleet.now} live={fleet.live} focus={focus} onFocusClose={clearFocus} /><RecentActivity /></>
 }
 
 export function FleetAgentsView({ agents, history, error, now, live, focus, onFocusClose }: { agents: FleetAgent[] | null; history: FleetHistory; error: string | null; now: number; live: boolean; focus?: string | null; onFocusClose?: () => void }) {

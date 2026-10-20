@@ -5,7 +5,7 @@ import { Copy, Download, Info, Check, Forward } from 'lucide-react'
 import { MessageInfo } from './MessageInfo'
 import { ago } from '@console/lib/agent-activity'
 import { MessageBody } from './MessageBody'
-import { DeliveryBadge } from '../messaging'
+import { DeliveryBadge, ObservedDeliveryBadge } from '../messaging/DeliveryStatus'
 import { ToolChips } from './ToolChips'
 import type { ChatMessage } from './types'
 
@@ -32,7 +32,7 @@ function Bubble({ m, now, agentLabel }: { m: ChatMessage; now: number; agentLabe
     <article data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} className={`min-w-0 border-b border-border/70 px-1 pb-5 ${mine ? 'rounded-panel bg-surface p-3' : ''}`}>
       <div className="flex items-center justify-between gap-3 font-mono dash-caption uppercase tracking-widest text-fg-muted">
         <span>{mine ? 'you' : m.from === 'system' ? 'system' : 'agent'} · {ago(m.at, now)}</span>
-        {mine && m.delivery && <DeliveryBadge state={m.delivery} />}
+        {mine && m.delivery && (m.info?.transport === 'mail' ? <ObservedDeliveryBadge messageId={m.id} state={m.delivery} /> : <DeliveryBadge state={m.delivery} detail="Last known chat transport status. Delivered does not mean read." />)}
         <MessageActions className="ml-auto text-fg-muted">
           <MessageAction label={copied ? 'Message copied' : 'Copy message'} tooltip="Copy message" onClick={() => void copy()}>{copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}</MessageAction>
           <MessageAction label="Forward to agent" tooltip={m.streaming ? 'Wait for the response to finish' : 'Forward to agent'} disabled={!m.body.trim() || m.streaming} onClick={() => setForward(true)}><Forward className="size-3.5" /></MessageAction>

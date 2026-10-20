@@ -159,3 +159,71 @@ func TestObjectsQuickLaunchBoundary(t *testing.T) {
 		t.Fatal("unsupported launch payload reached upstream")
 	}
 }
+
+func TestActivityReadsAreBoundedAndCannotDrainMailOrExposeOutput(t *testing.T) {
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != "GET" || r.Header.Get("Cookie") != "" {
+			t.Error("invalid read authority")
+		}
+		switch r.URL.Path {
+		case "/events":
+			q := r.URL.Query()
+			if q.Get("limit") != "200" || q.Get("since_seq") != "12" || q.Get("cursor") != "20" || q.Get("session_id") != "s1" {
+				t.Errorf("unbounded query: %s", r.URL)
+			}
+			found := false
+			for _, kind := range q["kind"] {
+				if kind == "session.output" {
+					t.Error("raw output allowed")
+				}
+				if kind == "tool.call.started" {
+					found = true
+				}
+			}
+			if !found {
+				t.Error("missing tool activity")
+			}
+		case "/registry/bindings":
+			if r.URL.Query().Get("current") != "true" || r.URL.Query().Get("target_urn") != "msg://agent/agent-mux/a1" {
+				t.Error(r.URL)
+			}
+		case "/sessions/s1/health", "/messages/m1/trace":
+			if r.URL.RawQuery != "" {
+				t.Error("unreviewed query forwarded")
+			}
+		default:
+			t.Errorf("unexpected route %s", r.URL)
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+	h := NewObjectHandler(upstream.URL, "")
+	for _, req := range []subprocess.HTTPRequest{
+		{Method: "GET", Path: objectsPrefix + "/events", RawQuery: "since_seq=12&cursor=20&session_id=s1&limit=99999&kind=session.output"},
+		{Method: "GET", Path: objectsPrefix + "/binding", RawQuery: "urn=msg%3A%2F%2Fagent%2Fagent-mux%2Fa1"},
+		{Method: "GET", Path: objectsPrefix + "/sessions/s1/health", RawQuery: "full=true"},
+		{Method: "GET", Path: objectsPrefix + "/messages/m1/trace", RawQuery: "as=someone"},
+	} {
+		if res := h.Handle(context.Background(), req); res.Status != 200 {
+			t.Error(res.Status)
+		}
+	}
+	before := calls
+	for _, req := range []subprocess.HTTPRequest{
+		{Method: "GET", Path: objectsPrefix + "/events", RawQuery: "cursor=-1"},
+		{Method: "GET", Path: objectsPrefix + "/events", RawQuery: "session_id=../other"},
+		{Method: "GET", Path: objectsPrefix + "/events/stream"},
+		{Method: "GET", Path: objectsPrefix + "/messages/inbox"},
+		{Method: "POST", Path: objectsPrefix + "/messages/m1/trace"},
+		{Method: "GET", Path: objectsPrefix + "/binding", RawQuery: "urn=http://other"},
+	} {
+		if res := h.Handle(context.Background(), req); res.Status < 400 {
+			t.Error("unreviewed read allowed")
+		}
+	}
+	if calls != before {
+		t.Fatal("unreviewed operation reached upstream")
+	}
+}
