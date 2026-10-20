@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -175,6 +176,13 @@ func (s *Server) Start(ctx context.Context) error {
 	s.approvalProducer, err = approvals.NewProducer(approvalContext, s.approvalInbox.Service, producerConfig)
 	if err != nil {
 		return fmt.Errorf("approval producer trust: %w", err)
+	}
+	if s.cfg.ApprovalProducerConfigFile != "" && producerConfig.Issuer != "" {
+		// A changed producer config (also on SIGHUP) takes effect without a restart;
+		// a bad edit is logged and the last good configuration keeps serving.
+		go func() {
+			_ = s.approvalProducer.Watch(approvalContext, s.cfg.ApprovalProducerConfigFile, 0, slog.Default())
+		}()
 	}
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
