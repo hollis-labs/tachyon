@@ -1,5 +1,7 @@
 import { ApprovalTrigger } from '../approvals/page'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { ResizableChatPanel } from '@hollis-labs/kit-chat'
+import { Button } from '@hollis-labs/design-components'
 import type { Recipient } from '../messaging'
 import { useRestoreFocus } from '../shell/restore-focus'
 import { ChatPanel } from './ChatPanel'
@@ -7,6 +9,14 @@ import { ChatPanel } from './ChatPanel'
 /** Right-docked drawer hosting ChatPanel. The host owns `open`; Escape closes. */
 export function ChatDock({ open, onClose, agent }: { open: boolean; onClose: () => void; agent?: Recipient | null }) {
   const ref = useRef<HTMLElement>(null)
+  const [width, setWidth] = useState(() => {
+    try { const saved = Number(localStorage.getItem('tachyon.chat.width')); return saved >= 360 && saved <= 960 ? saved : 480 } catch { return 480 }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('tachyon.chat.width', String(width)) } catch { /* storage is optional */ }
+    if (open) document.documentElement.style.setProperty('--tachyon-chat-width', `${width}px`)
+    return () => { document.documentElement.style.removeProperty('--tachyon-chat-width') }
+  }, [width, open])
   useRestoreFocus(open, '[data-chat-trigger]')
   useEffect(() => {
     if (!open) return
@@ -24,22 +34,22 @@ export function ChatDock({ open, onClose, agent }: { open: boolean; onClose: () 
   }, [open, onClose])
   if (!open) return null
   return (
-    <aside ref={ref} tabIndex={-1} aria-label="Chat drawer" className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-800 bg-zinc-950 shadow-xl focus-visible:outline-none">
-      <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-1">
+    <ResizableChatPanel ref={ref} width={width} onWidthChange={setWidth} tabIndex={-1} aria-label="Chat drawer" className="fixed inset-y-0 right-0 z-40 focus-visible:outline-none">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1">
         <ApprovalTrigger onNavigate={onClose} />
-        <button type="button" onClick={onClose} aria-label="Close chat" className="font-mono text-[11px] uppercase tracking-widest text-zinc-400 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">Close</button>
+        <Button type="button" variant="ghost" size="sm" onClick={onClose} aria-label="Close chat" className="font-mono dash-caption uppercase tracking-widest text-fg-muted">Close</Button>
       </div>
       <ChatPanel agent={agent} className="flex-1" />
-    </aside>
+    </ResizableChatPanel>
   )
 }
 
 /** Compact trigger with unread badge, for agent rows and the console header. */
 export function ChatButton({ onClick, unread = 0, label = 'Chat' }: { onClick: () => void; unread?: number; label?: string }) {
   return (
-    <button type="button" onClick={onClick} className="inline-flex items-center gap-2 border border-zinc-700 px-2 py-1 font-mono text-[11px] uppercase tracking-widest text-zinc-300 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">
+    <button type="button" onClick={onClick} className="inline-flex items-center gap-2 border border-border px-2 py-1 font-mono dash-label uppercase tracking-widest text-fg-secondary hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
       {label}
-      {unread > 0 && <span aria-label={`${unread} unread`} className="border border-amber-400/60 px-1 text-amber-300">{unread}</span>}
+      {unread > 0 && <span aria-label={`${unread} unread`} className="border border-primary/60 px-1 text-primary">{unread}</span>}
     </button>
   )
 }

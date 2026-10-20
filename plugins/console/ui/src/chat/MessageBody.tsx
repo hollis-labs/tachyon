@@ -16,7 +16,7 @@ const components: StreamdownProps['components'] = {
     ) : (
       <span>{children}</span>
     ),
-  img: ({ alt }) => <span className="text-zinc-500">{alt ? `[Image: ${alt}]` : '[Image]'}</span>,
+  img: ({ alt }) => <span className="text-fg-muted">{alt ? `[Image: ${alt}]` : '[Image]'}</span>,
 }
 /** Shared portfolio renderer; raw HTML is excluded and remote images never load. */
 export const MessageBody = memo(function MessageBody({
