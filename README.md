@@ -1150,6 +1150,7 @@ existing deployment values before installing:
   "issuer": "<existing Tether issuer>",
   "audience": "tachyon",
   "jwks_url": "https://<Tether host>/.well-known/jwks.json",
+  "deny_list_url": "https://<Tether host>/auth/denylist",
   "producers": {
     "<existing Cerberus JWT subject>": {
       "application_id": "cerberus",
@@ -1161,6 +1162,8 @@ existing deployment values before installing:
 ```
 
 An optional `bootstrap_key_file` accepts public JWKS or an Ed25519 public PEM.
+
+`deny_list_url` (Tether's public `/auth/denylist`, same URL rules as `jwks_url`) makes producer tokens **revocable**: Tachyon polls the list every 30 seconds and rejects a token whose `jti` or subject is on it, within one poll interval after a successful poll. If the endpoint becomes unreachable the last list stays in force (stale), so a revoked token stays rejected through an outage. While it is configured the producer API answers 503 `producer_revocation_unavailable` until the first successful poll, because until then Tachyon cannot know what has been revoked. Configure it for any producer that holds a long-lived `kind=service` token (a very distant `exp`): without it such a token can only be ended by rotating the issuer key or removing the subject mapping and restarting.
 Subject mappings bind each producer to a distinct application ID and minimum
 class. `source.application_id` and `caller.application_id` must match that
 binding; supplied `caller.principal_ref` must match the authenticated subject.
