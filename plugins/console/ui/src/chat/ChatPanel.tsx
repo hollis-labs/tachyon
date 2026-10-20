@@ -12,17 +12,17 @@ import type { ChatThread } from './types'
 
 function ThreadRow({ t, now, onOpen }: { t: ChatThread; now: number; onOpen: () => void }) {
   return (
-    <li className="border-b border-zinc-800/80">
-      <button type="button" onClick={onOpen} className="block w-full px-3 py-2 text-left hover:bg-zinc-900/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300">
+    <li className="border-b border-border/80">
+      <button type="button" onClick={onOpen} className="block w-full px-3 py-2 text-left hover:bg-surface/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring">
         <div className="flex items-center justify-between gap-3">
-          <span className="flex min-w-0 items-center gap-2 font-mono text-xs text-zinc-100">{t.capability.mode === 'session' || t.capability.mode === 'live' ? <MessageSquare aria-label="Chat" className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : <Mail aria-label="Email" className="h-3.5 w-3.5 shrink-0 text-sky-300" />}<span className="truncate">{t.title}</span></span>
-          {t.unread > 0 && <span aria-label={`${t.unread} unread`} className="border border-amber-400/60 px-1.5 font-mono text-[10px] text-amber-300">{t.unread}</span>}
+          <span className="flex min-w-0 items-center gap-2 font-mono text-xs text-fg">{t.capability.mode === 'session' || t.capability.mode === 'live' ? <MessageSquare aria-label="Chat" className="h-3.5 w-3.5 shrink-0 text-success" /> : <Mail aria-label="Email" className="h-3.5 w-3.5 shrink-0 text-info" />}<span className="truncate">{t.title}</span></span>
+          {t.unread > 0 && <span aria-label={`${t.unread} unread`} className="border border-primary/60 px-1.5 font-mono dash-caption text-primary">{t.unread}</span>}
         </div>
         <div className="mt-1 flex items-center justify-between gap-3">
           <CapabilityBadge capability={t.capability} />
-          {t.lastAt > 0 && <span className="font-mono text-[10px] text-zinc-500">{ago(t.lastAt, now)}</span>}
+          {t.lastAt > 0 && <span className="font-mono dash-caption text-fg-faint">{ago(t.lastAt, now)}</span>}
         </div>
-        {t.lastPreview && <p className="mt-1 truncate font-mono text-[11px] text-zinc-500">{t.lastPreview}</p>}
+        {t.lastPreview && <p className="mt-1 truncate font-mono dash-label text-fg-faint">{t.lastPreview}</p>}
       </button>
     </li>
   )
@@ -33,15 +33,15 @@ function Conversation({ thread, onBack }: { thread: ChatThread; onBack?: () => v
   const cap = capability ?? thread.capability
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="space-y-1 border-b border-zinc-800 px-3 py-2">
+      <header className="space-y-1 border-b border-border px-3 py-2">
         <div className="flex items-center gap-3">
-          {onBack && <button type="button" onClick={onBack} aria-label="Back to threads" className="font-mono text-xs text-zinc-400 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">&lt; Threads</button>}
-          <h2 className="truncate font-mono text-sm text-zinc-100">{thread.title}</h2>
+          {onBack && <button type="button" onClick={onBack} aria-label="Back to threads" className="font-mono text-xs text-fg-muted hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">&lt; Threads</button>}
+          <h2 className="truncate font-mono text-sm text-fg">{thread.title}</h2>
         </div>
         <CapabilityBadge capability={cap} withHint />
       </header>
-      {error && <p role="alert" className="border-b border-red-500/30 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
-      <ThreadView messages={messages} loading={loading} hasMore={hasMore} onLoadOlder={() => void loadOlder()} />
+      {error && <p role="alert" className="border-b border-danger/30 px-3 py-2 font-mono text-xs text-danger">{error}</p>}
+      <ThreadView messages={messages} agentLabel={thread.title} loading={loading} hasMore={hasMore} onLoadOlder={() => void loadOlder()} />
       <ChatComposer onSend={send} capability={error ? { ...cap, canSend: false } : cap} error={sendError} />
     </div>
   )
@@ -81,20 +81,20 @@ export function ChatPanel({ agent, className }: ChatPanelProps) {
 
   const active = openId ? (threads?.find((t) => t.id === openId) ?? (opened?.id === openId ? opened : null)) : null
   return (
-    <section aria-label="Chat" className={`flex min-h-0 flex-col bg-zinc-950 ${className ?? ''}`}>
+    <section aria-label="Chat" className={`flex min-h-0 flex-col bg-bg ${className ?? ''}`}>
       <ChatFreshness />
       {active ? (
         <Conversation key={active.id} thread={active} onBack={() => setOpenId(null)} />
       ) : (
         <>
-          <header className="border-b border-zinc-800 px-3 py-2">
-            <h2 className="font-mono text-sm text-zinc-100">Chat</h2>
+          <header className="border-b border-border px-3 py-2">
+            <h2 className="font-mono text-sm text-fg">Chat</h2>
           </header>
-          {(threadsError || openError) && <div role="alert" className="px-3 py-3 text-xs text-red-300">{threadsError || openError}<button type="button" onClick={() => {retry();setOpenVersion(v => v + 1)}} className="ml-2 underline">Retry</button></div>}
+          {(threadsError || openError) && <div role="alert" className="px-3 py-3 text-xs text-danger">{threadsError || openError}<button type="button" onClick={() => {retry();setOpenVersion(v => v + 1)}} className="ml-2 underline">Retry</button></div>}
           {threads === null ? (
-            <p className="px-3 py-4 font-mono text-xs text-zinc-500">{threadsError ? "Conversation list unavailable" : "Loading"}</p>
+            <p className="px-3 py-4 font-mono text-xs text-fg-faint">{threadsError ? "Conversation list unavailable" : "Loading"}</p>
           ) : threads.length === 0 ? (
-            <p className="px-3 py-4 font-mono text-xs text-zinc-500">No conversations. Open one from an agent.</p>
+            <p className="px-3 py-4 font-mono text-xs text-fg-faint">No conversations. Open one from an agent.</p>
           ) : (
             <ul aria-label="Threads" className="overflow-y-auto">{threads.map((t) => <ThreadRow key={t.id} t={t} now={now} onOpen={() => setOpenId(t.id)} />)}</ul>
           )}

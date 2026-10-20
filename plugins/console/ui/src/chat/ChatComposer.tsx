@@ -1,8 +1,9 @@
 import { useId, useRef, useState } from 'react'
+import { Textarea, Button } from '@hollis-labs/design-components'
 import { MAX_BODY } from '../messaging/guards'
 import type { ChatCapability } from './types'
 
-const btn = 'border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40'
+const btn = 'border px-3 py-1.5 font-mono dash-label uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40'
 
 /** Compact chat input. Enter sends, Shift+Enter newline. Reuses M1's body cap. */
 export function ChatComposer({ onSend, capability, error }: { onSend: (body: string) => Promise<void>; capability?: ChatCapability; error?: string | null }) {
@@ -28,14 +29,14 @@ export function ChatComposer({ onSend, capability, error }: { onSend: (body: str
   return (
     <form
       aria-label="Send chat message"
-      className="space-y-2 border-t border-zinc-800 p-3"
+      className="space-y-2 border-t border-border p-3"
       onSubmit={(e) => {
         e.preventDefault()
         void submit()
       }}
     >
       <label htmlFor={id} className="sr-only">Message</label>
-      <textarea
+      <Textarea
         ref={area}
         id={id}
         rows={2}
@@ -49,12 +50,12 @@ export function ChatComposer({ onSend, capability, error }: { onSend: (body: str
           }
         }}
         placeholder="Message. Enter to send, Shift+Enter for a new line"
-        className="w-full resize-none border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-xs text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300"
+        className="w-full resize-none border border-border bg-bg px-2 py-1.5 font-sans dash-control text-fg-secondary placeholder:text-fg-faint focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
-      {error && <p role="alert" className="font-mono text-xs text-red-300">{error}</p>}
+      {error && <p role="alert" className="font-mono text-xs text-danger">{error}</p>}
       <div className="flex items-center justify-between gap-3">
-        <span className="font-mono text-[10px] text-zinc-500">{note}</span>
-        <button type="submit" disabled={empty || busy || capability?.canSend === false} className={`${btn} border-amber-400/60 text-amber-300 hover:bg-amber-400/10`}>{busy ? 'Sending' : 'Send'}</button>
+        <span className="font-mono dash-caption text-fg-faint">{note}</span>
+        <Button type="submit" variant="outline" size="sm" disabled={empty || busy || capability?.canSend === false} className={`${btn} border-primary/60 text-primary hover:bg-primary/10`}>{busy ? 'Sending' : 'Send'}</Button>
       </div>
     </form>
   )

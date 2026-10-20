@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-import { Copy, Download, Info, Check } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChatStream, MessageAction, MessageActions, type ChatItem } from '@hollis-labs/kit-chat'
+import { ForwardDialog } from './ForwardDialog'
+import { Copy, Download, Info, Check, Forward } from 'lucide-react'
 import { MessageInfo } from './MessageInfo'
 import { ago } from '@console/lib/agent-activity'
 import { MessageBody } from './MessageBody'
@@ -7,9 +9,11 @@ import { DeliveryBadge } from '../messaging'
 import { ToolChips } from './ToolChips'
 import type { ChatMessage } from './types'
 
-function Bubble({ m, now }: { m: ChatMessage; now: number }) {
+function Bubble({ m, now, agentLabel }: { m: ChatMessage; now: number; agentLabel: string }) {
   const mine = m.from === 'operator'
   const [info, setInfo] = useState(false)
+  const [forward, setForward] = useState(false)
+  const [forwarded, setForwarded] = useState('')
   const [copied, setCopied] = useState(false)
   const [actionError, setActionError] = useState('')
   const copy = async () => {
@@ -24,81 +28,45 @@ function Bubble({ m, now }: { m: ChatMessage; now: number }) {
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  const actionClass = 'p-1 text-zinc-500 hover:text-amber-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300'
-
   return (
-    <li data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} className={`border-b border-zinc-800/80 px-3 py-2 ${mine ? 'bg-zinc-900/40' : ''}`}>
-      <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+    <article data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} className={`min-w-0 border-b border-border/70 px-1 pb-5 ${mine ? 'rounded-panel bg-surface p-3' : ''}`}>
+      <div className="flex items-center justify-between gap-3 font-mono dash-caption uppercase tracking-widest text-fg-muted">
         <span>{mine ? 'you' : m.from === 'system' ? 'system' : 'agent'} · {ago(m.at, now)}</span>
         {mine && m.delivery && <DeliveryBadge state={m.delivery} />}
-        <span className="ml-auto flex items-center gap-1">
-          <button type="button" aria-label={copied ? 'Message copied' : 'Copy message'} title="Copy message" className={actionClass} onClick={() => void copy()}>{copied ? <Check className="h-3 w-3 text-emerald-300" /> : <Copy className="h-3 w-3" />}</button>
-          <button type="button" aria-label="Download message" title="Download Markdown" className={actionClass} onClick={download}><Download className="h-3 w-3" /></button>
-          <button type="button" aria-label="Message details" title="Message details" className={actionClass} onClick={() => setInfo(true)}><Info className="h-3 w-3" /></button>
-        </span>
-        {m.streaming && <span className="animate-pulse text-amber-300">STREAMING</span>}
+        <MessageActions className="ml-auto text-fg-muted">
+          <MessageAction label={copied ? 'Message copied' : 'Copy message'} tooltip="Copy message" onClick={() => void copy()}>{copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}</MessageAction>
+          <MessageAction label="Forward to agent" tooltip={m.streaming ? 'Wait for the response to finish' : 'Forward to agent'} disabled={!m.body.trim() || m.streaming} onClick={() => setForward(true)}><Forward className="size-3.5" /></MessageAction>
+          <MessageAction label="Download message" tooltip="Download Markdown" onClick={download}><Download className="size-3.5" /></MessageAction>
+          <MessageAction label="Message details" tooltip="Message details" onClick={() => setInfo(true)}><Info className="size-3.5" /></MessageAction>
+        </MessageActions>
+        {m.streaming && <span className="animate-pulse text-warning">STREAMING</span>}
       </div>
       {m.body && (
         <MessageBody body={m.body} streaming={m.streaming} />
       )}
       <ToolChips tools={m.tools} />
-      {actionError && <p role="alert" className="mt-1 font-mono text-xs text-red-300">{actionError}</p>}
+      {actionError && <p role="alert" className="mt-1 font-mono text-xs text-danger">{actionError}</p>}
+      {forwarded && <p role="status" className="mt-2 text-caption text-success">Forwarded to {forwarded}</p>}
+      {forward && <ForwardDialog message={m} sourceLabel={mine ? 'You' : m.from === 'system' ? 'System' : m.info?.agentName || agentLabel} onClose={() => setForward(false)} onSent={setForwarded} />}
       {info && <MessageInfo message={m} onClose={() => setInfo(false)} />}
-      {m.error && <p role="alert" className="mt-1 font-mono text-xs text-red-300">{m.error}</p>}
-    </li>
+      {m.error && <p role="alert" className="mt-1 font-mono text-xs text-danger">{m.error}</p>}
+    </article>
   )
 }
 
-export function ThreadView({ messages, loading, hasMore, onLoadOlder }: { messages: ChatMessage[]; loading: boolean; hasMore: boolean; onLoadOlder: () => void }) {
-  const box = useRef<HTMLDivElement>(null)
-  const pinned = useRef(true)
-  const prevHeight = useRef(0)
+const renderMessage = (item: ChatItem) => item.kind === 'message' ? item.content : null
+
+export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000)
-    return () => clearInterval(t)
+    const timer = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(timer)
   }, [])
-  useEffect(() => {
-    const el = box.current
-    if (!el) return
-    if (prevHeight.current && !pinned.current && el.scrollTop === 0) el.scrollTop = el.scrollHeight - prevHeight.current // keep place after paging
-    else if (pinned.current) el.scrollTop = el.scrollHeight
-    prevHeight.current = 0
-  }, [messages])
-
-  return (
-    <div
-      ref={box}
-      role="log"
-      aria-label="Conversation"
-      aria-live="polite"
-      className="min-h-0 flex-1 overflow-y-auto"
-      onScroll={(e) => {
-        const el = e.currentTarget
-        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
-      }}
-    >
-      {hasMore && (
-        <div className="border-b border-zinc-800/80 px-3 py-2 text-center">
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => {
-              prevHeight.current = box.current?.scrollHeight ?? 0
-              pinned.current = false
-              onLoadOlder()
-            }}
-            className="font-mono text-[10px] uppercase tracking-widest text-zinc-400 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:opacity-40"
-          >
-            {loading ? 'Loading' : 'Load older messages'}
-          </button>
-        </div>
-      )}
-      {messages.length === 0 ? (
-        <p className="px-3 py-4 font-mono text-xs text-zinc-500">{loading ? 'Loading' : 'No messages yet. Say something.'}</p>
-      ) : (
-        <ul>{messages.map((m) => <Bubble key={m.id} m={m} now={now} />)}</ul>
-      )}
-    </div>
-  )
+  const items = useMemo<ChatItem[]>(() => messages.map(m => ({
+    kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant',
+    content: <Bubble m={m} now={now} agentLabel={agentLabel} />,
+  })), [messages, now, agentLabel])
+  return <ChatStream items={items} renderItem={renderMessage} loading={loading && !messages.length}
+    history={{ hasOlder: hasMore, loading: loading && !!messages.length, onLoadOlder }}
+    viewportClassName="px-4 py-4" empty={<p className="text-control text-fg-muted">No messages yet. Say something.</p>} />
 }
