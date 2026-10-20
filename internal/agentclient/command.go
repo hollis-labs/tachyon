@@ -58,10 +58,7 @@ func (c *Client) MCP(ctx context.Context) (*mcpserver.Server, error) {
 	}
 	s := mcpserver.NewServer("tachyon-planner", "1.0.0")
 	for _, v := range verbs {
-		if v.Mutates {
-			continue
-		}
-		s.RegisterTool(mcpserver.Tool{Name: "tachyon_" + strings.ReplaceAll(v.Name, ".", "_"), Description: v.Description, InputSchema: v.InputSchema, ReadOnlyHint: true, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false, Handler: func(ctx context.Context, args map[string]any) (any, error) {
+		s.RegisterTool(mcpserver.Tool{Name: "tachyon_" + strings.ReplaceAll(v.Name, ".", "_"), Description: v.Description, InputSchema: v.InputSchema, ReadOnlyHint: !v.Mutates, DestructiveHint: v.Mutates, IdempotentHint: !v.Mutates, OpenWorldHint: false, Handler: func(ctx context.Context, args map[string]any) (any, error) {
 			input, err := json.Marshal(args)
 			if err != nil {
 				return nil, err

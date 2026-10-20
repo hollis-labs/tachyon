@@ -87,6 +87,13 @@ func (s *Owned) Relate(ctx context.Context, q RelationRequest, actor string) (It
 }
 
 var databaseKinds = map[string]objects.Kind{"priorities": objects.StrategicPriorityKind, "workstreams": objects.WorkstreamKind, "roadmap": objects.RoadmapItemKind, "ideas": objects.IdeaKind, "decisions": objects.DecisionKind, "risks": objects.RiskKind, "inbox": objects.InboxItemKind}
+
+// DatabaseKind maps the public portfolio database name to its immutable object kind.
+func DatabaseKind(db string) (objects.Kind, bool) {
+	kind, ok := databaseKinds[db]
+	return kind, ok
+}
+
 var nativeStatuses = map[string][]string{
 	"priorities":  {"draft", "active", "achieved", "paused", "archived"},
 	"workstreams": {"draft", "active", "paused", "closed", "archived"},

@@ -23,7 +23,7 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 	cmd := args[0]
 	f := flag.NewFlagSet("access "+cmd, flag.ContinueOnError)
 	f.SetOutput(io.Discard)
-	var name, identity, path, id, kinds, verbs string
+	var name, identity, path, id, kinds, verbs, preset string
 	var ttl time.Duration
 	switch cmd {
 	case "issue":
@@ -31,8 +31,9 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		f.StringVar(&identity, "identity", "", "existing identity UUID; omitted creates a new identity")
 		f.StringVar(&path, "token-file", "", "new private token file (never overwritten)")
 		f.DurationVar(&ttl, "ttl", 30*24*time.Hour, "token lifetime, maximum 2160h")
-		f.StringVar(&kinds, "kinds", strings.Join(PlannerRead().Kinds, ","), "explicit Planner kinds")
-		f.StringVar(&verbs, "verbs", strings.Join(PlannerRead().Verbs, ","), "explicit supported read verbs")
+		f.StringVar(&preset, "preset", "planner-read", "planner-read, portfolio-read or portfolio-write")
+		f.StringVar(&kinds, "kinds", "", "explicit Planner kinds; overrides the preset")
+		f.StringVar(&verbs, "verbs", "", "explicit supported verbs; overrides the preset")
 	case "revoke", "disable":
 		f.StringVar(&id, "id", "", "token UUID for revoke, identity UUID for disable")
 	case "list":
@@ -46,6 +47,23 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		return errors.New("unexpected positional arguments")
 	}
 	if cmd == "issue" {
+		var grants Grants
+		switch preset {
+		case "planner-read":
+			grants = PlannerRead()
+		case "portfolio-read":
+			grants = PortfolioRead()
+		case "portfolio-write":
+			grants = PortfolioWrite()
+		default:
+			return errors.New("unknown access preset")
+		}
+		if kinds == "" {
+			kinds = strings.Join(grants.Kinds, ",")
+		}
+		if verbs == "" {
+			verbs = strings.Join(grants.Verbs, ",")
+		}
 		if path == "" {
 			return errors.New("--token-file is required; credentials are never printed")
 		}

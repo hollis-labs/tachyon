@@ -3,12 +3,14 @@ package dataverbs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/hollis-labs/libs/core/util/svcerr"
 	"github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/objects"
+	"github.com/hollis-labs/tachyon/internal/planner"
 )
 
 const AgentPrefix = "/api/agent/v1/data"
@@ -29,7 +31,9 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier) http.Handler {
 				return
 			}
 			p := &scopedLocal{local: NewLocal(s), principal: principal}
-			newHTTP(AgentPrefix, []Provider{p}, nil).ServeHTTP(w, r)
+			// Authentication has already verified this request. scopedLocal checks
+			// the verb/kinds and supplies the principal actor for every invocation.
+			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r)
 		})).ServeHTTP(w, r)
 	})
 }
@@ -43,7 +47,7 @@ func (p *scopedLocal) ID() string { return p.local.ID() }
 func (p *scopedLocal) Verbs() []Verb {
 	out := []Verb{}
 	for _, v := range p.local.Verbs() {
-		if !v.Mutates && agentaccess.ReadVerb(v.Name) && agentaccess.Allows(p.principal, "verb", v.Name) {
+		if agentaccess.SupportedVerb(v.Name) && agentaccess.Allows(p.principal, "verb", v.Name) {
 			out = append(out, v)
 		}
 	}
@@ -55,11 +59,115 @@ func denied() error {
 func (p *scopedLocal) kind(k objects.Kind) bool {
 	return agentaccess.Allows(p.principal, "kind", string(k))
 }
+func (p *scopedLocal) database(db string) bool {
+	kind, ok := planner.DatabaseKind(db)
+	return ok && p.kind(kind)
+}
 func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessage, _ string) (json.RawMessage, error) {
-	if !agentaccess.ReadVerb(name) || !agentaccess.Allows(p.principal, "verb", name) {
+	if !agentaccess.SupportedVerb(name) || !agentaccess.Allows(p.principal, "verb", name) {
 		return nil, denied()
 	}
 	switch name {
+	case "planner.portfolio.resolve":
+		var q IDRequest
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		// Search only granted databases; a legacy ID must be unambiguous within
+		// the caller's view, without disclosing records in other kinds.
+		var found planner.Item
+		s := &planner.Owned{Objects: p.local.service}
+		for _, db := range []string{"priorities", "workstreams", "roadmap", "ideas", "decisions", "risks", "inbox"} {
+			if !p.database(db) {
+				continue
+			}
+			row, err := s.Get(ctx, db, q.ID)
+			if errors.Is(err, objects.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return nil, serviceError(err)
+			}
+			if found != nil {
+				return nil, serviceError(objects.ErrConflict)
+			}
+			found = planner.Item{"db": db, "id": row["id"], "item": row}
+		}
+		if found == nil {
+			return nil, serviceError(objects.ErrNotFound)
+		}
+		return json.Marshal(found)
+	case "planner.portfolio.list":
+		var q portfolioList
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.DB) {
+			return nil, denied()
+		}
+	case "planner.portfolio.get":
+		var q portfolioID
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.DB) {
+			return nil, denied()
+		}
+	case "planner.portfolio.schema":
+		var q struct {
+			DB string `json:"db"`
+		}
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.DB) {
+			return nil, denied()
+		}
+	case "planner.portfolio.create":
+		var q portfolioCreate
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.DB) {
+			return nil, denied()
+		}
+	case "planner.portfolio.patch":
+		var q portfolioPatch
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.DB) {
+			return nil, denied()
+		}
+	case "planner.portfolio.action":
+		var q portfolioAction
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.DB) {
+			return nil, denied()
+		}
+		switch q.Action {
+		case "comments", "link-add", "link-remove", "decide", "defer", "reopen", "dismiss":
+		default:
+			return nil, denied()
+		}
+	case "planner.portfolio.reorder":
+		var q portfolioOrder
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.DB) {
+			return nil, denied()
+		}
+	case "planner.portfolio.relate":
+		var q planner.RelationRequest
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.From.DB) || !p.database(q.To.DB) {
+			return nil, denied()
+		}
 	case "planner.list":
 		var q objects.PlannerFilter
 		if err := decode(raw, &q); err != nil {

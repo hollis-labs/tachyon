@@ -128,10 +128,10 @@ or provider environment/config dumps.
 
 Planner records are Tachyon-owned (CW-20261018-0017). Session/run records and chat
 identity links are described below (CW-20261018-0018). Additional provider adapters
-(CW-20261018-0016) and shared verb/API/MCP/CLI access with policy (CW-20261018-0019)
-follow this foundation. The UI still reads its
-existing adapters; this slice does not silently migrate cached responses or demo
-drafts into master records. Revision retention, multi-source correlation, outbound
+(CW-20261018-0016) build on this foundation. The Planner UI uses owned records;
+scoped agent HTTP/MCP/CLI access is described under **Planner access for agents**.
+The explicit portfolio migration preserved all seven Torque Planner databases;
+cached responses and demo drafts are not implicitly promoted. Revision retention, multi-source correlation, outbound
 sync, and large-inventory staging need explicit later policies; no history purge
 or upstream writeback is enabled here.
 
@@ -164,8 +164,8 @@ and frontend consumers continue to use their current contracts.
   identity headers and ambient bearer tokens do not grant authority.
 - Read verbs are GET-only; writes are POST-only. Reads follow the host's existing
   read-access boundary and do not require operator elevation. This is not an
-  external token-authenticated API. External API/MCP/CLI and scoped policy remain
-  separate work under CW-20261018-0019.
+  external token-authenticated API. Agents use the separately authenticated
+  `/api/agent/v1/data` or `/api/agent/v1/mcp` endpoints described below.
 
 Successful calls return `{ "version": 1, "provider": "tachyon", "verb": "…",
 "data": … }`. Errors use the host's flat `{ "code": "…", "message": "…" }`
@@ -226,8 +226,9 @@ step; no cache/demo records are promoted implicitly.
 `objects.Plan` and `objects.Task` use the same UUID identity, ownership, CAS patch,
 metadata, revision history and soft-delete contracts as the other domain objects.
 They are authored work descriptions; setting `queued`, `doing` or `done` does not
-dispatch work, execute a workflow, or transition a Torque task. General API/MCP
-surfaces and the current Planner UI cutover remain separate work.
+dispatch work, execute a workflow, or transition a Torque task. Scoped agent
+reads cover these models; agent writes currently cover the seven portfolio
+databases. Torque remains the source for execution tasks.
 
 Both definitions embed `Common`: `name` is the title, `description` holds the body,
 with `tags` and extensible `properties`. They carry required `status`, priority
@@ -386,9 +387,9 @@ original receipt, even after later edits or deletion. A changed request conflict
 retries cannot overwrite edits, resurrect a tombstone or create duplicate work.
 Receipt-owned links survive subsequent patches and soft deletion. `Promoted`
 filters distinguish processed captures without overloading authored status.
-These models are available through the shared local data verbs above. Frontend
-cutover and external API/MCP access remain separate. Existing cache/demo Planner
-data is not automatically imported.
+These models are available through the shared local data verbs above. The owned
+Planner frontend and scoped agent interfaces are implemented; see the migration
+and agent-access sections below. Cache/demo data is not automatically imported.
 
 ## Sessions, runs and owned chat history
 
@@ -707,7 +708,8 @@ using the SQLite write queue and revision checks. It has full local object acces
 it is not a scoped agent token. Flags precede the verb. Patch input uses `id`,
 `expected_revision`, and a partial `definition` or `metadata`. On conflict, re-read
 and reconcile rather than retrying a stale patch. `objects.create` requires a
-caller-retained UUID for safe retries. The external `data` API/MCP token remains
+caller-retained UUID for safe retries. External `data` API/MCP credentials have
+explicit verb and kind grants; the original `planner-read` credential remains
 read-only.
 
 Imported identities use provider `torque`, the configured instance URL, collection
@@ -1320,15 +1322,48 @@ also separate from this stricter trusted-caller boundary.
 
 ### Planner access for agents
 
-`/api/agent/v1/data` is a separate, always-authenticated, uncached service API.
-It uses the same local data verbs as the browser surface. The first grant is
-read-only: `planner.list`, `objects.list`, `objects.get`, `objects.history`, and
-`objects.lookup_source`, restricted to explicit Planner kinds. `objects.list`
-requires a kind; an unqualified `planner.list` requires all twelve kinds.
-Discovery shows only granted verbs. Relationship IDs remain in records, but
-this API does not expand relationships or expose collection-member, execution,
-mutation, or upstream-proxy verbs. These credentials do not authorize browser
-operator routes. The existing host read boundary is unchanged.
+`/api/agent/v1/data` is an always-authenticated, uncached service API using the
+same local data verbs as the browser. `/api/agent/v1/mcp` exposes those granted
+verbs over stateless Streamable HTTP MCP; `tachyon data mcp` remains the stdio
+adapter. Every HTTP/MCP request checks credential expiry, revocation and grants.
+Cookies and claimed actor headers cannot establish agent authority.
+
+Credentials grant an explicit set of verbs and object kinds. Available presets:
+
+| Preset | Access |
+| --- | --- |
+| `planner-read` (default) | Original five reads over twelve Planner kinds; existing credentials are unchanged |
+| `portfolio-read` | Original reads plus `planner.portfolio.list/get/schema/resolve`, restricted to the seven portfolio kinds |
+| `portfolio-write` | Portfolio reads plus `planner.portfolio.create/patch/action/relate/reorder` |
+
+The original reads are `planner.list`, `objects.list`, `objects.get`,
+`objects.history`, and `objects.lookup_source`. `objects.list` requires a kind;
+unqualified `planner.list` requires all twelve kinds. **For the UI's portfolio,
+use `planner.portfolio.list` with `db`.** Generic workstream reads also include
+source-owned Tether inventory; the portfolio projection excludes that inventory.
+
+The seven databases are `priorities`, `workstreams`, `roadmap`, `ideas`,
+`decisions`, `risks`, and `inbox`. Their grant kinds are respectively
+`strategic_priority`, `workstream`, `roadmap_item`, `idea`, `decision`, `risk`,
+and `inbox_item`. `--verbs` and `--kinds` narrow or override a preset. A verb grant
+and kind grant are both required; relations require both referenced kinds.
+Discovery only lists granted verbs. Resolve searches only granted databases.
+
+Write payloads are the existing `planner.portfolio.*` schemas returned by
+discovery. Create takes `{db,id,fields}` with a caller-retained UUID. Patch takes
+`{db,id,expected_revision,patch}`. Action takes
+`{db,id,expected_revision,action,arguments?}`; supported actions are `comments`,
+`link-add`, `link-remove`, `decide`, `defer`, `reopen`, and `dismiss`. Reorder takes
+`{db,items:[{id,expected_revision}]}`; relate takes
+`{from:{db,id},to:{db,id},expected_revision,add,field?}`.
+Writes use POST with JSON; reads use GET with the `input` query parameter.
+All writes are attributed to `service:<identity UUID>` in history and use the
+existing local change stream. Agent input cannot replace the authenticated actor.
+Existing IDs such as `PR-10` resolve through portfolio get/resolve; writes use
+the returned local UUID and revision. A stale write conflicts; re-read and
+reconcile instead of automatically retrying. No agent delete, ownership transfer,
+generic object mutation, promotion, execution or upstream-proxy verbs are exposed.
+Credentials do not authorize browser operator routes.
 
 Operator-local credential administration uses the app database and serial write
 queue. It stores identity records, token hashes, expiry, grants and revocation;
@@ -1339,6 +1374,9 @@ or overwrite an existing file:
 ```sh
 ./tachyon access issue --name tachyon-planner \
   --token-file "$HOME/.config/tachyon/tokens/planner-read.token" --ttl 720h
+# Separate principal for an authorized writer; does not expand the read token.
+./tachyon access issue --name portfolio-architect --preset portfolio-write \
+  --token-file "$HOME/.config/tachyon/tokens/portfolio-architect.token" --ttl 720h
 ./tachyon access list
 ./tachyon access revoke --id TOKEN_UUID
 ./tachyon access disable --id IDENTITY_UUID
@@ -1347,7 +1385,7 @@ or overwrite an existing file:
 For rotation, issue with the same `--identity IDENTITY_UUID --name NAME` to a new
 file, switch the client to that file, then revoke the previous token. Lifetime
 must be between one minute and 90 days. Optional `--verbs` and `--kinds` accept
-comma-separated subsets of the supported read verbs and twelve Planner kinds.
+comma-separated sets of supported verbs and twelve Planner kinds.
 `TACHYON_DATA_DIR` selects the operator's database; agents must not use these local
 administration commands. The current host and worker share a trusted OS user;
 file permissions are not an isolation boundary against other processes with
@@ -1366,12 +1404,36 @@ export TACHYON_API_TOKEN_FILE="$HOME/.config/tachyon/tokens/planner-read.token"
 ./tachyon data mcp
 ```
 
+With a portfolio credential, use `planner.portfolio.schema` to learn current
+native statuses, and `planner.portfolio.get` to obtain the local revision:
+
+```sh
+./tachyon data --input '{"db":"risks"}' planner.portfolio.list
+./tachyon data --input '{"id":"PR-10"}' planner.portfolio.resolve
+./tachyon data --input '{"db":"ideas","id":"LOCAL_UUID","expected_revision":2,"action":"comments","arguments":{"text":"Reviewed the proposal."}}' planner.portfolio.action
+```
+
 MCP tools use names such as `tachyon_planner_list` and `tachyon_objects_get`,
 with the same input schemas and result envelope as HTTP. Configure the client
 with the absolute Tachyon binary path, arguments `["data", "mcp"]`, and the two
 environment variables above. Only the token **path**, never its contents, goes
 into client configuration. Restart MCP after changing the granted verb set to
 refresh discovery; changed permissions are enforced immediately by the API.
+Remote MCP clients use `https://tachyon.nanite.cloud/api/agent/v1/mcp` with their
+own bearer credential. Tether catalog entries use `token: file:///PRIVATE/PATH`,
+not a literal token. Separate writer identities preserve agent attribution.
+Never route agent writes through a shared read identity or `local-data`.
+
+The portfolio integration bundle is `config/tether/portfolio-access-catalog.json`.
+It adds read-only origin `tachyon`, separate writer origins `tachyon_pa`
+and `tachyon_pm`, and the corresponding Portfolio Architect/Manager launch
+grants and boot instructions. Writer origins prepend `tachyon_pa_` / `tachyon_pm_` to tool names
+to avoid collisions: for example `tachyon_pa_tachyon_planner_portfolio_patch`.
+The shared read origin retains `tachyon_planner_portfolio_list`. File references
+must exist privately on the hub (and any worker directly connecting upstreams).
+The bundle requires catalog plan/approval/apply/reload; a file in this repository
+is not evidence of activation. Existing sessions need a fresh MCP connection and
+updated boot context; the bundle does not restart them.
 
 The reviewable catalog bundle is `config/tether/planner-catalog.json`. A Tether
 connection with `catalog.write` submits it to `tether_catalog_plan`; the operator
@@ -1418,6 +1480,7 @@ ssh -T chrispian@100.74.49.44 \
 The planner reads through the CLI, reports what is present, then waits for the
 next turn without polling. It has a narrow Claude Bash allowlist for the data
 client and no blanket permission bypass. Its initial read can be empty for
-locally owned kinds not yet populated. Tether's catalog MCP registration is a
-separate integration; the standalone stdio adapter is already usable by MCP
-clients. No background agent restart job or live agent writes are enabled.
+locally owned kinds not yet populated. This dedicated agent remains read-only.
+The separate portfolio writer grants do not change its charter or credential.
+No background agent restart job is enabled. Torque Planner retirement is a
+separate coordinated task; Torque execution-task APIs remain in use.
