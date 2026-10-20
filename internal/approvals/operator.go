@@ -9,7 +9,7 @@ import (
 
 // RequireOperator protects Tachyon-owned mutations with the same actual
 // participant assurance as Tangent. Never trust a browser-supplied flag or
-// a cached status; Tangent enforces the twelve-hour window on every lookup.
+// a cached status; Tangent enforces the configured elevation lifetime on every lookup.
 func (b *Bridge) RequireOperator(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
@@ -44,11 +44,10 @@ func (b *Bridge) RequireOperator(next http.Handler) http.Handler {
 			return
 		}
 		var status struct {
-			Elevated  bool   `json:"elevated"`
-			Assurance string `json:"assurance"`
+			sessionStatus
 		}
 		if json.Unmarshal([]byte(captured.body.String()), &status) != nil || !status.Elevated || status.Assurance != "operator-token" {
-			fail(w, 403, "assurance_insufficient", "Enter your operator key to continue. Elevation lasts up to 12 hours.")
+			fail(w, 403, "assurance_insufficient", "Enter your operator key to continue. "+ElevationCopy(status.ElevationTTL, status.ElevationExpiresAt))
 			return
 		}
 		next.ServeHTTP(w, r)

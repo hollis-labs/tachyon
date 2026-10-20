@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
@@ -26,16 +29,101 @@ type ProducerPolicy struct {
 	HandoffOrigins []string `json:"handoff_origins,omitempty"`
 }
 type ProducerConfig struct {
-	Issuer           string                    `json:"issuer"`
-	Audience         string                    `json:"audience"`
-	JWKSURL          string                    `json:"jwks_url,omitempty"`
-	BootstrapKeyFile string                    `json:"bootstrap_key_file,omitempty"`
-	Producers        map[string]ProducerPolicy `json:"producers"` // exact JWT subject -> application
+	Issuer           string `json:"issuer"`
+	Audience         string `json:"audience"`
+	JWKSURL          string `json:"jwks_url,omitempty"`
+	BootstrapKeyFile string `json:"bootstrap_key_file,omitempty"`
+	// DenyListURL is the issuer's revocation list (Tether's /auth/denylist,
+	// public jti/sub/sid). With it a revoked producer token, including a
+	// long-lived kind=service one, is rejected within one poll interval after a
+	// successful poll; without it a producer token cannot be revoked short of
+	// rotating the issuer key or removing the subject mapping. While it is
+	// configured, the producer API answers 503 until the first successful poll.
+	DenyListURL string                    `json:"deny_list_url,omitempty"`
+	Producers   map[string]ProducerPolicy `json:"producers"` // exact JWT subject -> application
 }
+
+// producerGeneration is everything a request needs to authenticate and
+// authorize a producer, immutable once built. A request loads one generation
+// and uses only it, so a reload that lands mid-request can never pair one
+// generation's verifier with another's subject mapping or revocation list.
+type producerGeneration struct {
+	cfg      ProducerConfig
+	verifier auth.Verifier
+	feed     *revocationFeed    // nil when no deny_list_url is configured
+	stop     context.CancelFunc // ends this generation's JWKS refresh loop
+}
+
 type Producer struct {
-	Service  *hitl.Service
-	Verifier auth.Verifier
-	Config   ProducerConfig
+	Service *hitl.Service
+	ctx     context.Context
+	mu      sync.Mutex // serialises Reload
+	gen     atomic.Pointer[producerGeneration]
+	// afterVerify, only set by tests, runs between token verification and the
+	// subject lookup to land a reload exactly there.
+	afterVerify func()
+}
+
+func (p *Producer) current() *producerGeneration { return p.gen.Load() }
+
+// denyListInterval is how often the deny-list is polled (a variable so tests
+// can shorten it).
+var denyListInterval = 30 * time.Second
+
+// revocationFeed keeps one DenyList fed from the issuer. Ready turns true after
+// the first successful poll: until then the producer cannot know what has been
+// revoked and refuses to serve.
+type revocationFeed struct {
+	url    string
+	list   *auth.DenyList
+	poller *auth.DenyListPoller
+	ready  atomic.Bool
+	stop   context.CancelFunc
+}
+
+func newRevocationFeed(rawURL string) *revocationFeed {
+	list := auth.NewDenyList()
+	return &revocationFeed{url: rawURL, list: list, poller: &auth.DenyListPoller{
+		URL: rawURL, List: list, Interval: denyListInterval,
+		Client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+	}}
+}
+
+func (f *revocationFeed) Ready() bool { return f.ready.Load() }
+
+// host is the only part of the deny-list URL that is ever logged: the path may
+// be deployment-specific and the validated URL never carries userinfo or a
+// query, but a log line should not depend on that.
+func (f *revocationFeed) host() string {
+	if u, err := url.Parse(f.url); err == nil {
+		return u.Host
+	}
+	return "unparsable"
+}
+
+// run polls until ctx is done: it retries (2s doubling to 30s) until the first
+// poll succeeds, marks the feed ready, then polls every interval. A failed
+// poll afterwards keeps the last list in force.
+func (f *revocationFeed) run(ctx context.Context) {
+	wait := 2 * time.Second
+	for attempt := 1; !f.ready.Load(); attempt++ {
+		if err := f.poller.Poll(ctx); err == nil {
+			f.ready.Store(true)
+			slog.Info("approval producer revocation list ready", "host", f.host(), "attempts", attempt)
+			break
+		}
+		// The poll error is not logged: it carries the request URL.
+		slog.Warn("approval producer is refusing requests until the first revocation-list poll succeeds", "host", f.host(), "attempt", attempt, "retry_in", wait.String())
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		if wait *= 2; wait > 30*time.Second {
+			wait = 30 * time.Second
+		}
+	}
+	f.poller.Run(ctx)
 }
 
 func LoadProducerConfig(path string) (ProducerConfig, error) {
@@ -62,6 +150,12 @@ func LoadProducerConfig(path string) (ProducerConfig, error) {
 			return cfg, errors.New("invalid approval JWKS URL")
 		}
 	}
+	if cfg.DenyListURL != "" {
+		u, err := url.Parse(cfg.DenyListURL)
+		if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || upstreamauth.Guard(cfg.DenyListURL, "public-denylist") != nil {
+			return cfg, errors.New("invalid approval deny-list URL")
+		}
+	}
 	seen := map[string]bool{}
 	for subject, p := range cfg.Producers {
 		if strings.TrimSpace(subject) == "" || p.ApplicationID == "" || len(p.ApplicationID) > 128 || seen[p.ApplicationID] || tier(p.MinimumClass) == 0 {
@@ -81,17 +175,119 @@ func LoadProducerConfig(path string) (ProducerConfig, error) {
 	return cfg, nil
 }
 func NewProducer(ctx context.Context, service *hitl.Service, cfg ProducerConfig) (*Producer, error) {
-	p := &Producer{Service: service, Config: cfg}
+	p := &Producer{Service: service, ctx: ctx}
 	if cfg.Issuer == "" {
 		return p, nil
 	} // disabled, never a permissive verifier
-	v, err := auth.NewJWTVerifier(auth.JWTConfig{Issuer: cfg.Issuer, Audience: cfg.Audience, JWKSURL: cfg.JWKSURL, BootstrapKeyFile: cfg.BootstrapKeyFile, Client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}})
+	g, err := p.build(cfg, nil, false)
 	if err != nil {
 		return nil, err
 	}
-	p.Verifier = v
-	go v.Run(ctx)
+	p.gen.Store(g)
 	return p, nil
+}
+
+// cloneProducerConfig deep-copies what a generation serves from, so a caller
+// that keeps and edits its ProducerConfig (the map, a policy's origin list)
+// cannot change a running generation.
+func cloneProducerConfig(c ProducerConfig) ProducerConfig {
+	producers := make(map[string]ProducerPolicy, len(c.Producers))
+	for subject, p := range c.Producers {
+		p.HandoffOrigins = append([]string(nil), p.HandoffOrigins...)
+		producers[subject] = p
+	}
+	c.Producers = producers
+	return c
+}
+
+var errReload = errors.New("approval producer reload")
+
+// build makes a generation. prev, when set, lets it keep the previous deny-list
+// feed: while deny_list_url is unchanged the same list and poller carry on, so
+// a reload never forgets a revocation. A reload also proves its trust sources
+// before anything is swapped: a new deny-list endpoint must answer one poll,
+// and a verifier with no bootstrap key must fetch the JWKS once. At startup
+// both stay lazy (the producer API answers 503 until the first poll).
+func (p *Producer) build(cfg ProducerConfig, prev *producerGeneration, reload bool) (*producerGeneration, error) {
+	jcfg := auth.JWTConfig{Issuer: cfg.Issuer, Audience: cfg.Audience, JWKSURL: cfg.JWKSURL, BootstrapKeyFile: cfg.BootstrapKeyFile, Client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	g := &producerGeneration{cfg: cloneProducerConfig(cfg)}
+	cfg = g.cfg
+	var newFeed *revocationFeed
+	if cfg.DenyListURL != "" {
+		if prev != nil && prev.feed != nil && prev.feed.url == cfg.DenyListURL {
+			g.feed = prev.feed
+		} else {
+			newFeed = newRevocationFeed(cfg.DenyListURL)
+			g.feed = newFeed
+		}
+		jcfg.DenyList = g.feed.list
+	}
+	v, err := auth.NewJWTVerifier(jcfg)
+	if err != nil {
+		return nil, err
+	}
+	g.verifier = v
+	if reload {
+		ctx, cancel := context.WithTimeout(p.ctx, 15*time.Second)
+		defer cancel()
+		if newFeed != nil {
+			if err := newFeed.poller.Poll(ctx); err != nil {
+				return nil, fmt.Errorf("%w: the new deny list could not be fetched", errReload)
+			}
+			newFeed.ready.Store(true)
+		}
+		if cfg.BootstrapKeyFile == "" && cfg.JWKSURL != "" {
+			if err := v.Refresh(ctx); err != nil {
+				return nil, fmt.Errorf("%w: the JWKS could not be fetched", errReload)
+			}
+		}
+	}
+	vctx, stop := context.WithCancel(p.ctx)
+	g.stop = stop
+	go v.Run(vctx)
+	if newFeed != nil {
+		fctx, fstop := context.WithCancel(p.ctx)
+		newFeed.stop = fstop
+		go newFeed.run(fctx)
+	}
+	return g, nil
+}
+
+// Reload swaps in a new producer configuration. It is all-or-nothing: on any
+// error the previous generation keeps serving. Requests already running finish
+// on the generation they started with. It cannot turn the producer API off or
+// on; that is a restart.
+func (p *Producer) Reload(cfg ProducerConfig) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	prev := p.gen.Load()
+	if prev == nil || cfg.Issuer == "" {
+		return fmt.Errorf("%w: the producer API is not enabled; restart to change that", errReload)
+	}
+	g, err := p.build(cfg, prev, true)
+	if err != nil {
+		return err
+	}
+	p.gen.Store(g)
+	prev.stop()
+	if prev.feed != nil && prev.feed != g.feed && prev.feed.stop != nil {
+		prev.feed.stop() // the deny list was moved or removed on purpose
+	}
+	return nil
+}
+
+// Watch reloads the producer config from path when its content changes, on
+// SIGHUP, or via the returned Reloader's Trigger. The startup load is the
+// caller's; a bad edit is logged and the last good configuration stays.
+func (p *Producer) Watch(ctx context.Context, path string, interval time.Duration, lg *slog.Logger) error {
+	r := &auth.Reloader{Path: path, Interval: interval, Logger: lg, Load: func(context.Context) error {
+		cfg, err := LoadProducerConfig(path)
+		if err != nil {
+			return err
+		}
+		return p.Reload(cfg)
+	}}
+	return r.Run(ctx)
 }
 func tier(class string) int {
 	switch class {
@@ -209,8 +405,16 @@ func (p *Producer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Producer bearer credentials are never accepted as browser decision authority.
-	if p.Verifier == nil {
+	g := p.current()
+	if g == nil {
 		fail(w, 503, "producer_auth_unconfigured", "Configure the existing Tether JWT trust and producer identities.")
+		return
+	}
+	// With a deny-list configured, the producer does not know what has been
+	// revoked until the first poll succeeds: refuse rather than accept a token
+	// that may already be revoked.
+	if g.feed != nil && !g.feed.Ready() {
+		fail(w, 503, "producer_revocation_unavailable", "The issuer's revocation list has not been fetched yet; retry shortly.")
 		return
 	}
 	token, state := auth.ParseBearer(r.Header.Values("Authorization"))
@@ -218,7 +422,7 @@ func (p *Producer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 401, "unauthenticated", "A producer bearer token is required.")
 		return
 	}
-	principal, err := p.Verifier.Verify(r.Context(), token)
+	principal, err := g.verifier.Verify(r.Context(), token)
 	if err != nil || !principal.Verified {
 		status := 401
 		if err != nil && !errors.Is(err, auth.ErrInvalidToken) {
@@ -227,7 +431,10 @@ func (p *Producer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, "producer_auth_failed", "Producer authentication could not be verified.")
 		return
 	}
-	policy, ok := p.Config.Producers[principal.ID]
+	if p.afterVerify != nil {
+		p.afterVerify()
+	}
+	policy, ok := g.cfg.Producers[principal.ID]
 	scope := "tachyon.approvals_read"
 	if operation == "enqueue" {
 		scope = "tachyon.approvals_enqueue"

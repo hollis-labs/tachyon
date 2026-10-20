@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { createOperatorElevation } from "./elevation"
+import { createOperatorElevation, elevationCopy } from "./elevation"
 
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
@@ -134,5 +134,30 @@ describe("operator elevation", () => {
     expect(auth.snapshot().error).toMatch(/not be confirmed/)
     auth.cancel()
     expect(await result).toBe(false)
+  })
+})
+
+describe("elevation lifetime copy and revoke", () => {
+  it("describes each mode without a fixed duration", () => {
+    expect(elevationCopy({ elevation_ttl: "always" })).toMatch(/until you revoke/)
+    expect(elevationCopy({ elevation_ttl: "never" })).toMatch(/not remembered/)
+    expect(elevationCopy({ elevation_ttl: "1d" })).toMatch(/1 day\./)
+    expect(elevationCopy({ elevation_ttl: "7d" })).toMatch(/7 days/)
+    expect(elevationCopy({ elevation_ttl: "7d", elevation_expires_at: "2026-10-27T10:30:00Z" })).toMatch(/until /)
+    for (const ttl of ["always", "never", "7d", undefined])
+      expect(elevationCopy({ elevation_ttl: ttl })).not.toMatch(/12/)
+  })
+  it("revokes through de-elevate and requires confirmation", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(json(locked))
+    const auth = createOperatorElevation(fetcher)
+    await auth.revoke()
+    expect(fetcher.mock.calls[0][0]).toMatch(/\/de-elevate$/)
+    expect(fetcher.mock.calls[0][1].method).toBe("POST")
+    await expect(
+      createOperatorElevation(vi.fn().mockResolvedValueOnce(json(unlocked))).revoke(),
+    ).rejects.toThrow()
+    await expect(
+      createOperatorElevation(vi.fn().mockResolvedValueOnce(json({}, 403))).revoke(),
+    ).rejects.toThrow()
   })
 })

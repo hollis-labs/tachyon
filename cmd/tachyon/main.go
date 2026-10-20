@@ -19,6 +19,7 @@ import (
 
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/agentclient"
+	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
@@ -43,6 +44,12 @@ func main() {
 			err = agentclient.Command(ctx, os.Args[2:], os.Stdout)
 		}
 		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "elevation-ttl" {
+		if err := approvals.ElevationCommand(ctx, env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")), os.Args[2:], os.Stdout); err != nil {
 			log.Fatal(err)
 		}
 		return

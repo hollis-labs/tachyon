@@ -1120,12 +1120,26 @@ handoffs only; Tachyon cannot resolve them. Cerberus is handoff-only until its
 proof verifier lands (CW-20261019-0014); its requests must use class `high`.
 A handoff link opening is not a decision and never marks an item approved.
 
-**Operator access** still uses Tangent's `/api/session` and `/api/session/elevate`.
+**Operator access** still uses Tangent's `/api/session`, `/api/session/elevate` and `/api/session/de-elevate`.
 `TACHYON_APPROVAL_QUEUE_URL` defaults to `http://127.0.0.1:7843` and now selects
 only this session authority; remote addresses require HTTPS. Each browser has an
 HttpOnly participant cookie. Current assurance is checked on every inbox access;
-decisions require the Tachyon origin. Elevation rotates the cookie and lasts up
-to 12 hours. The operator key is forwarded for verification and never retained.
+decisions require the Tachyon origin. Elevation rotates the cookie. The operator key
+is forwarded for verification and never retained.
+
+**Elevation lifetime** is an operator setting: `always` (default; until revoked, still
+bounded by Tangent's 30-day browser session), `never` (not remembered; about one
+minute) or `<N>d` (1–365 days). It is stored in `app_settings`
+(`approvals.elevation_ttl`) and managed with `tachyon elevation-ttl [get | env | set
+VALUE]` or `GET`/`PUT /api/plugins/console/v1/settings/elevation-ttl` (PUT needs operator elevation; the route sits under the operator cookie's path so the browser sends it).
+**Tangent enforces it**, not Tachyon: Tachyon has no timer of its own and only mirrors
+`elevation_ttl` / `elevation_expires_at` from Tangent's `/api/session` for its copy.
+Launch Tangent with `TANGENT_ELEVATION_TTL` set to the value printed by
+`tachyon elevation-ttl env`; a change takes effect when Tangent restarts (Tangent has
+no runtime setting call). Shortening applies at once on restart, lengthening applies to
+new elevations only, and a lapsed elevation never revives. **Revoke elevation** (the
+Approvals page, `POST …/approval-inbox/de-elevate`) calls Tangent's
+`/api/session/de-elevate` and adopts the replacement session cookie.
 Native decisions record the server-derived session reference and assurance;
 request bodies cannot supply participant metadata or proof. Bearer credentials
 are not browser decision authority. Session custody migration remains separate.
@@ -1152,6 +1166,7 @@ existing deployment values before installing:
   "issuer": "<existing Tether issuer>",
   "audience": "tachyon",
   "jwks_url": "https://<Tether host>/.well-known/jwks.json",
+  "deny_list_url": "https://<Tether host>/auth/denylist",
   "producers": {
     "<existing Cerberus JWT subject>": {
       "application_id": "cerberus",
@@ -1163,6 +1178,10 @@ existing deployment values before installing:
 ```
 
 An optional `bootstrap_key_file` accepts public JWKS or an Ed25519 public PEM.
+
+`deny_list_url` (Tether's public `/auth/denylist`, same URL rules as `jwks_url`) makes producer tokens **revocable**: Tachyon polls the list every 30 seconds and rejects a token whose `jti` or subject is on it, within one poll interval after a successful poll. If the endpoint becomes unreachable the last list stays in force (stale), so a revoked token stays rejected through an outage. While it is configured the producer API answers 503 `producer_revocation_unavailable` until the first successful poll, because until then Tachyon cannot know what has been revoked. Configure it for any producer that holds a long-lived `kind=service` token (a very distant `exp`): without it such a token can only be ended by rotating the issuer key or removing the subject mapping and restarting. **Release posture:** `deny_list_url` is REQUIRED whenever service tokens are admitted to the producer API; the optional, no-list configuration is a dev-posture allowance only. While the first poll has not succeeded Tachyon logs a WARN naming only the deny-list host (never the URL path, userinfo or query, and no poll error text) on every retry, then an INFO when it becomes ready.
+
+**Reload.** The producer config file is re-read when its content changes (checked every 2s, applied after two identical checks) and on `SIGHUP`, without a restart. The whole config — issuer, audience, JWKS, deny list and subject mapping — is one generation: a request is verified and authorized against the single generation it started with, so a reload landing mid-request cannot mix an old verifier with a new mapping. A reload is all-or-nothing: an invalid file, an unreachable JWKS (when there is no `bootstrap_key_file`) or an unreachable *new* `deny_list_url` is logged and the last good config keeps serving. While `deny_list_url` is unchanged the same list and poller carry over, so a reload never forgets a revocation, even during an outage. Changing or removing `deny_list_url` is an explicit act; a changed URL must answer one poll before it is adopted. Reload cannot enable or disable the producer API; that is a restart. A producer reload changes trust only (issuer, audience, JWKS, deny list, subject mapping); it has no auth mode, so there is nothing for it to loosen, and the loopback-only reload-loosening rule of `security/auth` v0.3.0 (`ReloadBind`) does not apply to it. Tighter trust (a narrower mapping, a deny-list URL added) and looser trust (a wider mapping, a removed `deny_list_url`) are both the owner's explicit edit of the producer config, logged by the reloader; the release-posture rule for owner edits (CW-20261020-0037) is where any constraint on that belongs.
 Subject mappings bind each producer to a distinct application ID and minimum
 class. `source.application_id` and `caller.application_id` must match that
 binding; supplied `caller.principal_ref` must match the authenticated subject.

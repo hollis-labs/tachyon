@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -176,6 +177,13 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("approval producer trust: %w", err)
 	}
+	if s.cfg.ApprovalProducerConfigFile != "" && producerConfig.Issuer != "" {
+		// A changed producer config (also on SIGHUP) takes effect without a restart;
+		// a bad edit is logged and the last good configuration keeps serving.
+		go func() {
+			_ = s.approvalProducer.Watch(approvalContext, s.cfg.ApprovalProducerConfigFile, 0, slog.Default())
+		}()
+	}
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
 	if err != nil {
@@ -343,12 +351,19 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle(approvals.ProducerPrefix+"/", producer)
 	} else {
 		mux.HandleFunc(approvals.Prefix+"/", func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == approvals.Prefix+"/session" || r.URL.Path == approvals.Prefix+"/status" || r.URL.Path == approvals.Prefix+"/elevate" {
+			if r.URL.Path == approvals.Prefix+"/session" || r.URL.Path == approvals.Prefix+"/status" || r.URL.Path == approvals.Prefix+"/elevate" || r.URL.Path == approvals.Prefix+"/de-elevate" {
 				operator.ServeHTTP(w, r)
 				return
 			}
 			http.Error(w, "Approval storage unavailable", http.StatusServiceUnavailable)
 		})
+	}
+	if s.store != nil {
+		elevation := approvals.ElevationSettings{DB: s.store}
+		// Under the operator cookie's Path (approvals.CookiePath) so the browser
+		// actually sends it; RequireOperator reads that cookie.
+		mux.HandleFunc("GET "+approvals.ElevationSettingsPath, elevation.Handler)
+		mux.Handle("PUT "+approvals.ElevationSettingsPath, operator.RequireOperator(http.HandlerFunc(elevation.Handler)))
 	}
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
