@@ -18,6 +18,11 @@ it('polls native activity by exact session identity, ages failed observations, a
   let view: ReturnType<typeof render>
   await act(async () => { view = render(<AgentPresence sessionId="s1" />) })
   expect(screen.getByLabelText('Agent activity').textContent).toContain('Editing a file')
+  // A successful monitor response with an old process row is not fresh health.
+  mocks.json.mockRejectedValue(new Error('offline'))
+  mocks.activity.mockResolvedValue({ agents: [{ id: 'native', session_id: 's1', state: 'unknown' }] })
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(screen.getByLabelText('Agent activity').textContent).toContain('Last seen')
   mocks.json.mockRejectedValue(new Error('offline')); mocks.activity.mockRejectedValue(new Error('offline'))
   await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
   expect(screen.getByLabelText('Agent activity').textContent).not.toContain('Editing a file')

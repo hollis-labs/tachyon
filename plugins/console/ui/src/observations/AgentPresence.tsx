@@ -32,10 +32,9 @@ export function AgentPresence({ sessionId, address }: { sessionId?: string; addr
           consoleClient.getActivityAgents(),
         ])
         const local = monitor.status === 'fulfilled' ? monitorForSession(parseFleetAgents(monitor.value), session) : undefined
-        if (active) setObserved(prev => health.status === 'rejected' && !local && prev?.session === session
-          ? { ...prev, error: true }
-          : { session, health: health.status === 'fulfilled' ? health.value : null,
-            monitor: local, checkedAt: Date.now(), error: health.status === 'rejected' && !local })
+        if (active) setObserved(prev => ({ session,
+          health: health.status === 'fulfilled' ? health.value : prev?.session === session ? prev.health : null,
+          monitor: local, checkedAt: Date.now(), error: health.status === 'rejected' }))
       } catch {
         if (active) setObserved(prev => prev && prev.session === session ? { ...prev, error: true } : { session, health: null, checkedAt: 0, error: true })
       } finally { running = false }
@@ -52,7 +51,7 @@ export function AgentPresence({ sessionId, address }: { sessionId?: string; addr
   const state = presence(observed?.health ?? null, freshEvents ? event : undefined, now, observed?.checkedAt ?? events.checkedAt, observed ? observed.error : !!events.error)
   const local = observed?.monitor
   const localAt = local?.lastAction?.at
-  const freshLocal = observed && !observed.error && now - observed.checkedAt < 20_000 && localAt && now - localAt < RECENT_MS && localAt > (event?.ts ?? 0)
+  const freshLocal = observed && now - observed.checkedAt < 20_000 && localAt && now - localAt < RECENT_MS && localAt > (event?.ts ?? 0)
   const label = freshLocal ? local?.lastAction?.text : state.text
   const at = freshLocal ? localAt : state.at
   const tone = freshLocal ? local?.state === 'busy' ? 'active' : local?.state === 'waiting' ? 'waiting' : 'quiet' : state.tone
