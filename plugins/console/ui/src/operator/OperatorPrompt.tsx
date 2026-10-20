@@ -34,8 +34,8 @@ export function OperatorPrompt() {
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs">
-            Enter your operator key to continue. Access lasts up to 12 hours;
-            the key is sent once and isn’t stored by Tachyon.
+            Enter your operator key to continue. {operatorElevation.lifetimeCopy()}{" "}
+            The key is sent once and isn’t stored by Tachyon.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -78,7 +78,7 @@ export function OperatorPrompt() {
               disabled={!key || state.submitting}
               className="rounded border border-amber-400/40 bg-amber-950/20 px-3 py-1.5 text-xs text-amber-300 disabled:opacity-40"
             >
-              {state.submitting ? "Verifying…" : "Unlock for 12 hours"}
+              {state.submitting ? "Verifying…" : "Unlock"}
             </button>
           </div>
         </form>

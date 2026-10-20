@@ -52,6 +52,8 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		target = "/api/session"
 	case path == "/elevate" && r.Method == http.MethodPost:
 		target = "/api/session/elevate"
+	case path == "/de-elevate" && r.Method == http.MethodPost:
+		target = "/api/session/de-elevate"
 	case path == "/inbox" && r.Method == http.MethodGet:
 		target = "/api/hitl"
 	case (itemPath.MatchString(path) || evidencePath.MatchString(path)) && r.Method == http.MethodGet:

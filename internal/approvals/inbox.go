@@ -33,17 +33,20 @@ func NewInbox(store *Store, sessions *Bridge) *Inbox {
 type sessionStatus struct {
 	Elevated  bool   `json:"elevated"`
 	Assurance string `json:"assurance"`
+	// Tangent owns the lifetime; these only feed operator-facing copy.
+	ElevationTTL       string `json:"elevation_ttl,omitempty"`
+	ElevationExpiresAt string `json:"elevation_expires_at,omitempty"`
 }
 
 func sameOrigin(r *http.Request) bool {
 	origin, err := url.Parse(r.Header.Get("Origin"))
 	return err == nil && origin.Host == r.Host && (origin.Scheme == "https" || origin.Scheme == "http") && origin.User == nil && origin.Path == "" && origin.RawQuery == "" && origin.Fragment == "" && r.Header.Get("Sec-Fetch-Site") != "cross-site"
 }
-func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Participant, bool) {
+func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Participant, sessionStatus, bool) {
 	// Bearer requesters cannot acquire response authority by adding a cookie.
 	if r.Header.Get("Authorization") != "" {
 		fail(w, 403, "requester_cannot_approve", "Use the operator browser session for inbox access.")
-		return hitl.Participant{}, false
+		return hitl.Participant{}, sessionStatus{}, false
 	}
 	check := r.Clone(r.Context())
 	u := *r.URL
@@ -59,13 +62,13 @@ func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Parti
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(captured.status)
 		_, _ = w.Write([]byte(captured.body.String()))
-		return hitl.Participant{}, false
+		return hitl.Participant{}, sessionStatus{}, false
 	}
 	var status sessionStatus
 	cookie, err := r.Cookie(CookieName)
 	if err != nil || cookie.Value == "" || json.Unmarshal([]byte(captured.body.String()), &status) != nil || status.Assurance == "" {
 		fail(w, 401, "session_required", "Connect an operator browser session.")
-		return hitl.Participant{}, false
+		return hitl.Participant{}, sessionStatus{}, false
 	}
 	hash := sha256.Sum256([]byte(cookie.Value))
 	ref := "browser-session:" + hex.EncodeToString(hash[:])
@@ -73,7 +76,7 @@ func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Parti
 	if status.Elevated && status.Assurance == "operator-token" {
 		assurance = "operator-token"
 	}
-	return hitl.Participant{PrincipalRef: ref, Authority: "tachyon-inbox/tangent-session", Assurance: assurance, Responder: &hitl.Responder{Kind: "human-session", Ref: ref}}, true
+	return hitl.Participant{PrincipalRef: ref, Authority: "tachyon-inbox/tangent-session", Assurance: assurance, Responder: &hitl.Responder{Kind: "human-session", Ref: ref}}, status, true
 }
 
 type browserItem struct {
@@ -108,7 +111,7 @@ func (i *Inbox) view(r *http.Request, id string) (browserItem, error) {
 func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	path := strings.TrimPrefix(r.URL.Path, Prefix)
-	if path == "/session" || path == "/status" || path == "/elevate" {
+	if path == "/session" || path == "/status" || path == "/elevate" || path == "/de-elevate" {
 		i.Sessions.ServeHTTP(w, r)
 		return
 	}
@@ -120,7 +123,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "origin_denied", "Use the Tachyon browser origin.")
 		return
 	}
-	participant, ok := i.Sessions.participant(w, r)
+	participant, session, ok := i.Sessions.participant(w, r)
 	if !ok {
 		return
 	}
@@ -186,7 +189,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if class == "medium" && participant.Assurance != "operator-token" {
-		fail(w, 403, "assurance_insufficient", "Enter your operator key to decide this request. Elevation lasts up to 12 hours.")
+		fail(w, 403, "assurance_insufficient", "Enter your operator key to decide this request. "+ElevationCopy(session.ElevationTTL, session.ElevationExpiresAt))
 		return
 	}
 	if cmd.Response == nil {
