@@ -51,7 +51,7 @@ func TestObjectsRejectUnreviewedOperationsBeforeUpstream(t *testing.T) {
 	for _, req := range []subprocess.HTTPRequest{
 		{Method: "POST", Path: objectsPrefix + "/catalog/plans", Body: []byte(`{}`)},
 		{Method: "DELETE", Path: objectsPrefix + "/workstreams/ws-1"},
-		{Method: "POST", Path: objectsPrefix + "/sessions/s1/launch", Body: []byte(`{}`)},
+		{Method: "POST", Path: objectsPrefix + "/sessions/s1/stop", Body: []byte(`{}`)},
 		{Method: "GET", Path: objectsPrefix + "/projects/item", Query: map[string]string{"urn": "msg://agent/agent-mux/agt_123"}},
 		{Method: "PATCH", Path: objectsPrefix + "/workstreams/../reload", Body: []byte(`{}`)},
 		{Method: "POST", Path: objectsPrefix + "/projects", Body: []byte(`{"display_name":"x","callback":{"target":"file:///secret"}}`)},
@@ -102,5 +102,60 @@ func TestObjectsWorkstreamEnsureClearAndFiltering(t *testing.T) {
 	res := h.Handle(context.Background(), subprocess.HTTPRequest{Method: "GET", Path: objectsPrefix + "/workstreams", RawQuery: "status=closed&workflow_id=torque%3Aworkflow&ref=url%3Aprivate"})
 	if res.Status != 200 {
 		t.Fatal(res.Status)
+	}
+}
+
+func TestObjectsQuickLaunchBoundary(t *testing.T) {
+	var calls int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("Cookie") != "" || r.Header.Get("Tether-Protocol") != "1" {
+			t.Error("incorrect launch authority")
+		}
+		switch r.URL.Path {
+		case "/sessions":
+			if r.Method == "GET" {
+				if r.URL.Query().Get("state") != "running" || r.URL.Query().Get("limit") != "1000" || r.URL.Query().Get("cursor") != "next" {
+					t.Error(r.URL)
+				}
+			} else {
+				var body map[string]string
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["launch"] != "review" || body["prompt_append"] != "Review carefully" || body["idempotency_key"] != "key-1" {
+					t.Errorf("body: %v, %v", body, err)
+				}
+			}
+		case "/sessions/s1/launch", "/sessions/s1", "/workers":
+			if r.URL.RawQuery != "" {
+				t.Error("forwarded unsupported query")
+			}
+		default:
+			t.Errorf("unexpected route %s", r.URL)
+		}
+		_, _ = w.Write([]byte(`{"id":"s1"}`))
+	}))
+	defer upstream.Close()
+	h := NewObjectHandler(upstream.URL, "")
+	for _, req := range []subprocess.HTTPRequest{
+		{Method: "POST", Path: objectsPrefix + "/sessions", Body: []byte(`{"launch":"review","worker":"worker-1","prompt_append":"Review carefully","idempotency_key":"key-1"}`)},
+		{Method: "POST", Path: objectsPrefix + "/sessions/s1/launch", Body: []byte(`{}`)},
+		{Method: "GET", Path: objectsPrefix + "/sessions/s1", RawQuery: "full=true"},
+		{Method: "GET", Path: objectsPrefix + "/workers"},
+		{Method: "GET", Path: objectsPrefix + "/sessions", RawQuery: "state=exited&cursor=next"},
+	} {
+		if res := h.Handle(context.Background(), req); res.Status != 200 {
+			t.Errorf("response: %+v", res)
+		}
+	}
+	before := calls
+	for _, body := range []string{`{"launch":"review","override":"{}"}`, `{"launch":"review","agent_inline":"{}"}`, `{"launch":"review","worker":null}`} {
+		if res := h.Handle(context.Background(), subprocess.HTTPRequest{Method: "POST", Path: objectsPrefix + "/sessions", Body: []byte(body)}); res.Status != 400 {
+			t.Error(res.Status)
+		}
+	}
+	if res := h.Handle(context.Background(), subprocess.HTTPRequest{Method: "POST", Path: objectsPrefix + "/sessions/s1/launch", Body: []byte(`{"force":true}`)}); res.Status != 400 {
+		t.Error(res.Status)
+	}
+	if calls != before {
+		t.Fatal("unsupported launch payload reached upstream")
 	}
 }

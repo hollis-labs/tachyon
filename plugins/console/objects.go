@@ -42,6 +42,17 @@ func (h *ObjectHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) 
 	query := url.Values{}
 	fields := ""
 	switch {
+	case path == "/workers" && req.Method == "GET":
+		target = "/workers"
+	case path == "/sessions" && req.Method == "POST":
+		target, fields = "/sessions", "launch worker prompt_append idempotency_key"
+	case path == "/sessions" && req.Method == "GET":
+		target = "/sessions"
+		query.Set("state", "running")
+		query.Set("limit", "1000")
+		if cursor := q.Get("cursor"); cursor != "" {
+			query.Set("cursor", cursor)
+		}
 	case path == "/projects" && req.Method == "GET":
 		target = "/registry/projects"
 		query.Set("include", "external_ids")
@@ -79,6 +90,12 @@ func (h *ObjectHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) 
 	default:
 		parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 		if len(parts) >= 2 && objectID.MatchString(parts[1]) {
+			if parts[0] == "sessions" && len(parts) == 2 && req.Method == "GET" {
+				target = path
+			}
+			if parts[0] == "sessions" && len(parts) == 3 && parts[2] == "launch" && req.Method == "POST" {
+				target, fields = path, " " // empty JSON object only
+			}
 			if parts[0] == "workstreams" && len(parts) == 2 && (req.Method == "GET" || req.Method == "PATCH") {
 				target = path
 				if req.Method == "PATCH" {

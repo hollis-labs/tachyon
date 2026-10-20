@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useChatRoster } from '../chat/roster'
+import { mergeTetherSessions, useTetherSessions } from './tether-sessions'
 import { mergeChatAgents } from '../chat/fleet'
 import { Crown, Zap } from 'lucide-react'
 import { EmptyState } from '@hollis-labs/design-components'
@@ -72,8 +73,9 @@ function Row({ agent, rank, score, leader, entries, now, onOpen }: { agent: Flee
 export function FleetAgentsPanel() {
   const fleet = useFleetAgents()
   const chat = useChatRoster()
-  const agents = fleet.agents || chat.agents ? mergeChatAgents(fleet.agents ?? [], chat.agents ?? []) : null
-  const error = [fleet.error, chat.error && `Chat roster: ${chat.error}`].filter(Boolean).join(" · ") || null
+  const tether = useTetherSessions()
+  const agents = fleet.agents || chat.agents || tether.sessions ? mergeTetherSessions(mergeChatAgents(fleet.agents ?? [], chat.agents ?? []), tether.sessions ?? []) : null
+  const error = [fleet.error, chat.error && `Chat roster: ${chat.error}`, tether.error && `Tether sessions: ${tether.error}`].filter(Boolean).join(" · ") || null
   // `?agent=<id | provider | folder name>` (agent chips deep-link here) opens that agent's modal.
   const [search, setSearch] = useSearchParams()
   const focus = search.get('agent')
