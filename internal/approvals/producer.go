@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
@@ -26,16 +28,83 @@ type ProducerPolicy struct {
 	HandoffOrigins []string `json:"handoff_origins,omitempty"`
 }
 type ProducerConfig struct {
-	Issuer           string                    `json:"issuer"`
-	Audience         string                    `json:"audience"`
-	JWKSURL          string                    `json:"jwks_url,omitempty"`
-	BootstrapKeyFile string                    `json:"bootstrap_key_file,omitempty"`
-	Producers        map[string]ProducerPolicy `json:"producers"` // exact JWT subject -> application
+	Issuer           string `json:"issuer"`
+	Audience         string `json:"audience"`
+	JWKSURL          string `json:"jwks_url,omitempty"`
+	BootstrapKeyFile string `json:"bootstrap_key_file,omitempty"`
+	// DenyListURL is the issuer's revocation list (Tether's /auth/denylist,
+	// public jti/sub/sid). With it a revoked producer token, including a
+	// long-lived kind=service one, is rejected within one poll interval after a
+	// successful poll; without it a producer token cannot be revoked short of
+	// rotating the issuer key or removing the subject mapping. While it is
+	// configured, the producer API answers 503 until the first successful poll.
+	DenyListURL string                    `json:"deny_list_url,omitempty"`
+	Producers   map[string]ProducerPolicy `json:"producers"` // exact JWT subject -> application
 }
 type Producer struct {
-	Service  *hitl.Service
-	Verifier auth.Verifier
-	Config   ProducerConfig
+	Service    *hitl.Service
+	Verifier   auth.Verifier
+	Config     ProducerConfig
+	revocation *revocationFeed // nil when no deny_list_url is configured
+}
+
+// denyListInterval is how often the deny-list is polled (a variable so tests
+// can shorten it).
+var denyListInterval = 30 * time.Second
+
+// revocationFeed keeps one DenyList fed from the issuer. Ready turns true after
+// the first successful poll: until then the producer cannot know what has been
+// revoked and refuses to serve.
+type revocationFeed struct {
+	url    string
+	list   *auth.DenyList
+	poller *auth.DenyListPoller
+	ready  atomic.Bool
+}
+
+func newRevocationFeed(rawURL string) *revocationFeed {
+	list := auth.NewDenyList()
+	return &revocationFeed{url: rawURL, list: list, poller: &auth.DenyListPoller{
+		URL: rawURL, List: list, Interval: denyListInterval,
+		Client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+	}}
+}
+
+func (f *revocationFeed) Ready() bool { return f.ready.Load() }
+
+// host is the only part of the deny-list URL that is ever logged: the path may
+// be deployment-specific and the validated URL never carries userinfo or a
+// query, but a log line should not depend on that.
+func (f *revocationFeed) host() string {
+	if u, err := url.Parse(f.url); err == nil {
+		return u.Host
+	}
+	return "unparsable"
+}
+
+// run polls until ctx is done: it retries (2s doubling to 30s) until the first
+// poll succeeds, marks the feed ready, then polls every interval. A failed
+// poll afterwards keeps the last list in force.
+func (f *revocationFeed) run(ctx context.Context) {
+	wait := 2 * time.Second
+	for attempt := 1; !f.ready.Load(); attempt++ {
+		if err := f.poller.Poll(ctx); err == nil {
+			f.ready.Store(true)
+			slog.Info("approval producer revocation list ready", "host", f.host(), "attempts", attempt)
+			break
+		}
+		// The poll error is not logged: it carries the request URL.
+		slog.Warn("approval producer is refusing requests until the first revocation-list poll succeeds", "host", f.host(), "attempt", attempt, "retry_in", wait.String())
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		if wait *= 2; wait > 30*time.Second {
+			wait = 30 * time.Second
+		}
+	}
+	f.poller.Run(ctx)
 }
 
 func LoadProducerConfig(path string) (ProducerConfig, error) {
@@ -62,6 +131,12 @@ func LoadProducerConfig(path string) (ProducerConfig, error) {
 			return cfg, errors.New("invalid approval JWKS URL")
 		}
 	}
+	if cfg.DenyListURL != "" {
+		u, err := url.Parse(cfg.DenyListURL)
+		if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || upstreamauth.Guard(cfg.DenyListURL, "public-denylist") != nil {
+			return cfg, errors.New("invalid approval deny-list URL")
+		}
+	}
 	seen := map[string]bool{}
 	for subject, p := range cfg.Producers {
 		if strings.TrimSpace(subject) == "" || p.ApplicationID == "" || len(p.ApplicationID) > 128 || seen[p.ApplicationID] || tier(p.MinimumClass) == 0 {
@@ -85,12 +160,20 @@ func NewProducer(ctx context.Context, service *hitl.Service, cfg ProducerConfig)
 	if cfg.Issuer == "" {
 		return p, nil
 	} // disabled, never a permissive verifier
-	v, err := auth.NewJWTVerifier(auth.JWTConfig{Issuer: cfg.Issuer, Audience: cfg.Audience, JWKSURL: cfg.JWKSURL, BootstrapKeyFile: cfg.BootstrapKeyFile, Client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}})
+	jcfg := auth.JWTConfig{Issuer: cfg.Issuer, Audience: cfg.Audience, JWKSURL: cfg.JWKSURL, BootstrapKeyFile: cfg.BootstrapKeyFile, Client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	if cfg.DenyListURL != "" {
+		p.revocation = newRevocationFeed(cfg.DenyListURL)
+		jcfg.DenyList = p.revocation.list
+	}
+	v, err := auth.NewJWTVerifier(jcfg)
 	if err != nil {
 		return nil, err
 	}
 	p.Verifier = v
 	go v.Run(ctx)
+	if p.revocation != nil {
+		go p.revocation.run(ctx)
+	}
 	return p, nil
 }
 func tier(class string) int {
@@ -211,6 +294,13 @@ func (p *Producer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Producer bearer credentials are never accepted as browser decision authority.
 	if p.Verifier == nil {
 		fail(w, 503, "producer_auth_unconfigured", "Configure the existing Tether JWT trust and producer identities.")
+		return
+	}
+	// With a deny-list configured, the producer does not know what has been
+	// revoked until the first poll succeeds: refuse rather than accept a token
+	// that may already be revoked.
+	if p.revocation != nil && !p.revocation.Ready() {
+		fail(w, 503, "producer_revocation_unavailable", "The issuer's revocation list has not been fetched yet; retry shortly.")
 		return
 	}
 	token, state := auth.ParseBearer(r.Header.Values("Authorization"))
