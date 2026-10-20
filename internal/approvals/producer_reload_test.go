@@ -187,3 +187,30 @@ func TestProducerReloadBetweenVerifyAndSubjectLookupDoesNotMixGenerations(t *tes
 		t.Fatalf("the next request must see the new generation: %d", got)
 	}
 }
+
+func TestProducerGenerationDoesNotAliasTheCallersConfig(t *testing.T) {
+	d := newDenyIssuer(t)
+	cfg := d.config(d.deny.URL, "test-producer")
+	p, _ := d.reloadable(t, cfg)
+	tok := d.serviceToken("svc-1")
+	// The caller edits its own copy after handing it over: neither the mapping
+	// nor an origin list may change what the running generation serves.
+	cfg.Producers["producer-a"] = ProducerPolicy{ApplicationID: "hijacked", MinimumClass: "high"}
+	delete(cfg.Producers, "producer-a")
+	if got := enqueueStatus(t, p, tok, "k1"); got != 200 {
+		t.Fatalf("editing the caller's config changed the running startup generation: %d", got)
+	}
+
+	next := d.config(d.deny.URL, "test-producer")
+	if err := p.Reload(next); err != nil {
+		t.Fatal(err)
+	}
+	next.Producers["producer-a"] = ProducerPolicy{ApplicationID: "hijacked", MinimumClass: "high"}
+	next.Producers["producer-b"] = ProducerPolicy{ApplicationID: "extra", MinimumClass: "low"}
+	if got := enqueueStatus(t, p, tok, "k2"); got != 200 {
+		t.Fatalf("editing the caller's config changed the running reloaded generation: %d", got)
+	}
+	if _, ok := p.current().cfg.Producers["producer-b"]; ok {
+		t.Fatal("an entry added to the caller's map appeared in the generation")
+	}
+}

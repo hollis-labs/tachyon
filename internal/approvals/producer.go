@@ -187,6 +187,19 @@ func NewProducer(ctx context.Context, service *hitl.Service, cfg ProducerConfig)
 	return p, nil
 }
 
+// cloneProducerConfig deep-copies what a generation serves from, so a caller
+// that keeps and edits its ProducerConfig (the map, a policy's origin list)
+// cannot change a running generation.
+func cloneProducerConfig(c ProducerConfig) ProducerConfig {
+	producers := make(map[string]ProducerPolicy, len(c.Producers))
+	for subject, p := range c.Producers {
+		p.HandoffOrigins = append([]string(nil), p.HandoffOrigins...)
+		producers[subject] = p
+	}
+	c.Producers = producers
+	return c
+}
+
 var errReload = errors.New("approval producer reload")
 
 // build makes a generation. prev, when set, lets it keep the previous deny-list
@@ -197,7 +210,8 @@ var errReload = errors.New("approval producer reload")
 // both stay lazy (the producer API answers 503 until the first poll).
 func (p *Producer) build(cfg ProducerConfig, prev *producerGeneration, reload bool) (*producerGeneration, error) {
 	jcfg := auth.JWTConfig{Issuer: cfg.Issuer, Audience: cfg.Audience, JWKSURL: cfg.JWKSURL, BootstrapKeyFile: cfg.BootstrapKeyFile, Client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
-	g := &producerGeneration{cfg: cfg}
+	g := &producerGeneration{cfg: cloneProducerConfig(cfg)}
+	cfg = g.cfg
 	var newFeed *revocationFeed
 	if cfg.DenyListURL != "" {
 		if prev != nil && prev.feed != nil && prev.feed.url == cfg.DenyListURL {
