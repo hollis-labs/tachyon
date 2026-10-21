@@ -1,7 +1,7 @@
 import { ApiError, createApiClient, type ApiClient } from '@hollis-labs/design-app-runtime'
 import type { PlannerClient, PlannerReference, PlannerRevision } from './contracts'
 import { PlannerApiError } from './errors'
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks } from './types'
+import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, ThemeBoard } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export const PLANNER_BASE = '/api/plugins/console/v1/planner'
@@ -14,7 +14,8 @@ function revision(rev: number): number {
   if (!Number.isSafeInteger(rev) || rev < 1) throw new PlannerApiError(400, 'Reload the record to obtain its current revision.', 'invalid')
   return rev
 }
-const databases = new Set(['priorities', 'workstreams', 'roadmap', 'ideas', 'decisions', 'risks', 'inbox'])
+// 'priorities' is the database's earlier name; the server still answers to it.
+const databases = new Set(['themes', 'priorities', 'workstreams', 'roadmap', 'ideas', 'decisions', 'risks', 'inbox'])
 function dbPath(db: PlannerDb): string {
   if (!databases.has(db)) throw new PlannerApiError(400, 'Unknown Planner database.', 'invalid')
   return `/${db}`
@@ -62,6 +63,7 @@ export class TachyonPlannerClient implements PlannerClient {
   }
   plannerDatabases = () => this.request<PlannerDatabaseInfo[]>('/databases')
   plannerBoard: PlannerClient['plannerBoard'] = (opts, signal) => this.request<PlannerBoard>('/board', undefined, opts, signal)
+  plannerThemeBoard: PlannerClient['plannerThemeBoard'] = (opts, signal) => this.request<ThemeBoard>('/board', undefined, { scope: 'themes', recent_hours: opts?.recent_hours, limit: opts?.limit, include_proposed: opts?.include_proposed ? 'true' : undefined }, signal)
   plannerSchema = (db: PlannerDb) => this.request<PlannerSchemaInfo>(`/schema${dbPath(db)}`)
   plannerList: PlannerClient['plannerList'] = (db, opts, signal) => this.request<PlannerItem[]>(dbPath(db), undefined, { ...opts?.filters, sort: opts?.sort }, signal)
   async plannerGet(db: PlannerDb, id: string): Promise<PlannerItem> {

@@ -6,6 +6,9 @@ import type {
   PlannerItem,
   PlannerLink,
   PlannerSchemaInfo,
+  ThemeProgress,
+  ThemeRow,
+  ThemeSectionKey,
 } from '@planner/api/types'
 
 // Pure logic for the Planner pages: database metadata, status tones, form
@@ -22,7 +25,7 @@ export interface PlannerDbMeta {
 
 /** Tab order: the tracker's, with the inbox last. */
 export const PLANNER_DBS: PlannerDbMeta[] = [
-  { key: 'priorities', label: 'Priorities', singular: 'priority', prefix: 'PR-', blurb: 'What matters most, in the order given.' },
+  { key: 'themes', label: 'Themes', singular: 'theme', prefix: 'PR-', blurb: 'The features, capabilities and topics in play. Approved themes run in order; the Flight view shows them as a board.' },
   { key: 'workstreams', label: 'Workstreams', singular: 'workstream', prefix: 'WS-', blurb: 'Tether workstreams with their Torque projects and current state.' },
   { key: 'roadmap', label: 'Roadmap', singular: 'roadmap item', prefix: 'RM-', blurb: 'Capabilities and milestones by area and horizon.' },
   { key: 'ideas', label: 'Ideas', singular: 'idea', prefix: 'ID-', blurb: 'Questions, explorations and things to discuss.' },
@@ -105,8 +108,10 @@ export function itemFacts(db: PlannerDb, it: PlannerItem): string[] {
   const s = (k: string) => (typeof it[k] === 'string' && it[k] ? (it[k] as string) : '')
   const out: string[] = []
   switch (db) {
-    case 'priorities':
-      if (typeof it.rank === 'number') out.push(`#${it.rank}`)
+    case 'themes':
+      if (it.status === 'approved' && typeof it.order === 'number') out.push(`#${it.order / 10}`)
+      else if (typeof it.rank === 'number') out.push(`#${it.rank}`)
+      out.push(s('accountable'))
       break
     case 'workstreams':
       out.push(s('phase'), s('owner'))
@@ -332,7 +337,7 @@ export function conflictCurrent(details: Record<string, unknown> | undefined): P
 
 /** What the server fills in when a create omits it (mirrors PlannerService defaults). */
 const SERVER_DEFAULTS: Record<PlannerDb, Record<string, string>> = {
-  priorities: { status: 'queued' },
+  themes: { status: 'proposed' },
   workstreams: { status: 'planned' },
   roadmap: { status: 'idea' },
   ideas: { status: 'new' },
@@ -454,4 +459,56 @@ export function boardAge(iso: string, nowMs: number): string {
 /** "(+4 more)" when a section holds more rows than it shows. */
 export function boardMore(shown: number, total: number): string {
   return total > shown ? `+${total - shown} more` : ''
+}
+
+// ---------- the flight board (themes) ----------
+
+/**
+ * Sections of the flight board, in the order a traveller meets them. The words
+ * are display only: the stored status is task-semantic (proposed, ready,
+ * approved, paused, done) and the board derives these from it plus task
+ * activity, so the words can change without touching data.
+ */
+export const THEME_SECTIONS: Array<{ key: ThemeSectionKey; title: string; blurb: string; empty: string; tone: ToneKey; word: string }> = [
+  { key: 'in_flight', title: 'In flight', word: 'IN FLIGHT', tone: 'doing', blurb: 'Approved, with work under way.', empty: 'No approved theme has work under way.' },
+  { key: 'cleared', title: 'Cleared', word: 'CLEARED', tone: 'review', blurb: 'Approved and sequenced; waiting its turn.', empty: 'No approved theme is waiting.' },
+  { key: 'queued', title: 'Queued', word: 'QUEUED', tone: 'queued', blurb: 'Ready, not yet sequenced. Only the operator approves.', empty: 'Nothing is ready to be sequenced.' },
+  { key: 'parked', title: 'Parked', word: 'PARKED', tone: 'paused', blurb: 'Set aside. Its Torque tasks are untouched.', empty: 'Nothing is parked.' },
+  { key: 'landed', title: 'Recently landed', word: 'LANDED', tone: 'done', blurb: 'Finished within the window.', empty: 'Nothing has landed in the window.' },
+  { key: 'proposed', title: 'Proposed', word: 'PROPOSED', tone: 'backlog', blurb: 'Defined, not yet ready.', empty: 'No proposed themes.' },
+]
+
+/** 0..1 of the tasks done, or null when there is nothing to measure or Torque did not answer. */
+export function themeProgressFraction(p: ThemeProgress): number | null {
+  if (!p.available || !p.total) return null
+  return Math.min(1, Math.max(0, (p.done ?? 0) / p.total))
+}
+
+/** "12/40 done", "no tasks linked" or "progress unavailable". Never 0/0. */
+export function themeProgressText(p: ThemeProgress): string {
+  if (!p.available) return 'progress unavailable'
+  if (!p.total) return p.linked === false ? 'no tasks linked' : 'no open work counted'
+  return `${p.done ?? 0}/${p.total} done`
+}
+
+/** How stale a theme's last verification is. A record nobody has verified says so. */
+export function verifiedAge(iso: string | undefined, nowMs: number, staleDays = 7): { label: string; stale: boolean } {
+  if (!iso) return { label: 'unverified', stale: true }
+  const age = boardAge(iso, nowMs)
+  if (!age) return { label: 'unverified', stale: true }
+  const days = (nowMs - Date.parse(iso)) / 86_400_000
+  return { label: `verified ${age} ago`, stale: days > staleDays }
+}
+
+/** "chrispian · nanite" : the accountable person, then the agent doing the work. */
+export function themeOwners(row: ThemeRow): string {
+  return [row.accountable, row.executing_owner].filter(Boolean).join(' · ')
+}
+
+/** What is waiting on a person: pending decisions and unmet dependencies, as short labels. */
+export function themeWaiting(row: ThemeRow): string[] {
+  const out: string[] = []
+  if (row.decision_ids?.length) out.push(`${row.decision_ids.length} decision${row.decision_ids.length === 1 ? '' : 's'} pending`)
+  if (row.unmet_dependencies > 0) out.push(`waits on ${row.unmet_dependencies} theme${row.unmet_dependencies === 1 ? '' : 's'}`)
+  return out
 }

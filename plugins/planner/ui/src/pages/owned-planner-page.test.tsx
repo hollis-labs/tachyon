@@ -31,3 +31,18 @@ it('uses the owned client for board, list, search and opening a UUID detail', as
   await screen.findByRole('dialog')
   await waitFor(() => expect(api.plannerGet).toHaveBeenCalledWith('ideas', id))
 })
+
+it('opens the flight board from its own tab and requests the themes board', async () => {
+  const sections = { in_flight: [], cleared: [{ source: 'theme', db: 'themes', id: id, title: 'Cleared theme', status: 'approved', section: 'cleared', updated: new Date().toISOString(), blocked_count: 0, unmet_dependencies: 0, progress: { available: true, done: 1, total: 4, linked: true } }], queued: [], parked: [], landed: [], proposed: [] }
+  const api = Object.assign(new TachyonPlannerClient(), {
+    subscribeEvents: () => () => {},
+    plannerDatabases: vi.fn().mockResolvedValue([{ name: 'themes', count: 1 }]),
+    plannerThemeBoard: vi.fn().mockResolvedValue({ scope: 'themes', generated_at: new Date().toISOString(), recent_hours: 336, limit: 50, sections, counts: {}, totals: {}, notices: [], progress: { done: 1, total: 4 } }),
+  })
+  render(<MemoryRouter initialEntries={['/planner/flight']}><PlannerApiProvider client={api}><Routes><Route path="/planner/:db?/:id?" element={<PlannerPage />} /></Routes></PlannerApiProvider></MemoryRouter>)
+  await waitFor(() => expect(api.plannerThemeBoard).toHaveBeenCalledWith({ include_proposed: false }))
+  expect(await screen.findByText('1. Cleared theme')).toBeTruthy()
+  expect(screen.getByRole('tab', { name: /Flight/ }).getAttribute('aria-selected')).toBe('true')
+  fireEvent.click(screen.getByRole('button', { name: 'Show proposed' }))
+  await waitFor(() => expect(api.plannerThemeBoard).toHaveBeenLastCalledWith({ include_proposed: true }))
+})
