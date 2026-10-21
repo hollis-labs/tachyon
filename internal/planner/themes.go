@@ -35,6 +35,11 @@ func IsThemeAction(action string) bool { return themeActions[action] }
 // guardTheme enforces who may change a theme's approval and sequence and stamps
 // the approval fields. before is nil on create.
 func guardTheme(before, after Item, actor string) error {
+	// The earlier priority statuses stay readable on existing records but cannot
+	// be written; an unchanged status passes so other edits to a legacy row work.
+	if now := textField(after, "status"); legacyThemeStatus(now) && (before == nil || textField(before, "status") != now) {
+		return fmt.Errorf("%w: status %q is retired for themes; use proposed, ready, approved, paused, done or archived", objects.ErrInvalid, now)
+	}
 	wasApproved := before != nil && themeApproved(before)
 	nowApproved := themeApproved(after)
 	sequenceChanged := after["order"] != nil
@@ -53,6 +58,8 @@ func guardTheme(before, after Item, actor string) error {
 	}
 	return nil
 }
+
+func legacyThemeStatus(s string) bool { return s == "draft" || s == "active" || s == "achieved" }
 
 func rankDiffers(a, b any) bool {
 	if a == nil || b == nil {

@@ -194,3 +194,17 @@ func TestThemeActionsOverHTTP(t *testing.T) {
 		t.Fatal("theme actions on another database should be invalid, got", code)
 	}
 }
+
+func TestPromoteCannotCreateApprovedThemeForAgents(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	for _, fields := range []Item{{"title": "T", "status": "approved"}, {"title": "T", "order": 5}, {"title": "T", "approved_by": "x"}} {
+		in, err := s.Create(ctx, "inbox", uuid.NewString(), Item{"title": "Capture"}, "operator")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Promote(ctx, textField(in, "id"), revision(in), "themes", uuid.NewString(), fields, "service:pm"); err == nil {
+			t.Fatalf("agent promoted into %v", fields)
+		}
+	}
+}

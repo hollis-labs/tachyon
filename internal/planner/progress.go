@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ type Progress struct {
 	Counts   map[string]int `json:"counts"`
 	Linked   bool           `json:"linked"`
 	Note     string         `json:"note,omitempty"`
+	Missing  int            `json:"missing,omitempty"` // direct task ids Torque did not return
 	AsOf     string         `json:"as_of"`
 	statuses map[string]string
 }
@@ -97,6 +99,7 @@ func (ps *progressSource) theme(ctx context.Context, theme Item, workstreams []I
 			statuses[id] = st
 		}
 	}
+	missing := 0
 	direct := []string{}
 	for _, v := range array(theme["tasks"]) {
 		if id, ok := v.(string); ok && taskID.MatchString(id) {
@@ -116,11 +119,20 @@ func (ps *progressSource) theme(ctx context.Context, theme Item, workstreams []I
 		if err != nil {
 			return Progress{}, err
 		}
-		for id, t := range found {
-			if t != nil {
+		for _, id := range batch {
+			if t := found[id]; t != nil {
 				statuses[id] = t.Status
+			} else {
+				missing++
 			}
 		}
 	}
-	return newProgress(statuses, ps.asOf), nil
+	p := newProgress(statuses, ps.asOf)
+	if missing > 0 {
+		p.Missing = missing
+		if p.Note == "" {
+			p.Note = fmt.Sprintf("%d linked task(s) not found", missing)
+		}
+	}
+	return p, nil
 }

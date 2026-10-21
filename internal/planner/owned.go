@@ -768,6 +768,16 @@ func (s *Owned) Promote(ctx context.Context, id string, rev int64, toDB, targetI
 	for k, v := range fields {
 		row[k] = v
 	}
+	if toDB == "priorities" {
+		for _, k := range approvalFields(toDB) {
+			if _, ok := fields[k]; ok {
+				return nil, fmt.Errorf("%w: %s is server managed", objects.ErrInvalid, k)
+			}
+		}
+		if err := guardTheme(nil, row, actor); err != nil {
+			return nil, err
+		}
+	}
 	b, err := definition(toDB, row, nil)
 	if err != nil {
 		return nil, err

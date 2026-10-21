@@ -103,7 +103,7 @@ func TestThemeBoardSectionsOrderAndProgress(t *testing.T) {
 	theme("Queued unset", "ready", Item{})
 	theme("Parked", "paused", Item{"workstream_ids": []any{alpha}})
 	theme("Landed", "done", Item{})
-	theme("Unmigrated", "active", Item{})
+	seedLegacyTheme(t, s, uuid.NewString(), "Unmigrated", "active")
 	theme("Archived", "archived", Item{})
 
 	board := themeRows(t, s, tasks, false)
