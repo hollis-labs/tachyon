@@ -2,13 +2,20 @@
   "status": "review candidate; no registry release",
   "source_repo": "https://github.com/hollis-labs/frontend-support",
   "source_path": "ts/design-kit",
-  "source_commit": "5805f9df421076c185cd6f7dd5e5dd8afae099bc",
-  "upstream_pr": "https://github.com/hollis-labs/frontend-support/pull/3",
+  "source_commit": "6525d3fb6e5c401b7a1e1e694429583863e4ffda",
+  "upstream_pr": "https://github.com/hollis-labs/frontend-support/pull/4",
   "task": "CW-20261020-0041",
-  "archive": "hollis-labs-kit-chat-0.5.0-cw0041-1006e9be.tgz",
-  "sha256": "1006e9bedbe9152fecdbc6efe13105f1162025e1b29d5e21c0028250bfa0d235",
+  "archive": "hollis-labs-kit-chat-0.5.0-cw0041-review-e8ec62f8.tgz",
+  "sha256": "e8ec62f8ebadaec0a9463f1ba94e6f1c30a1e457c171621a858185a0170d6ec8",
   "build_commands": [
     "npm run build -w @hollis-labs/design-tokens -w @hollis-labs/design-components -w @hollis-labs/kit-chat",
     "npm pack --workspace @hollis-labs/kit-chat --ignore-scripts"
+  ],
+  "companion_packages": [
+    {
+      "name": "design-components",
+      "archive": "hollis-labs-design-components-0.5.0-cw0041-review-41c322b7.tgz",
+      "sha256": "41c322b7fbc6b4adec3a5d06c72557d43759fa9ff271f29220f140f6e8f4ad52"
+    }
   ]
 }

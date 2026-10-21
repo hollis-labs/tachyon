@@ -17,7 +17,7 @@
     "@base-ui/react": "1.8.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@hollis-labs/design-app-runtime": "0.5.0",
-    "@hollis-labs/design-components": "0.5.0",
+    "@hollis-labs/design-components": "file:../third_party/hollis-labs-design-components-0.5.0-cw0041-review-41c322b7.tgz",
     "@hollis-labs/design-tokens": "0.5.0",
     "@hollis-labs/kit-admin": "file:../third_party/hollis-labs-kit-admin-0.1.0-cw0043-scale-b79a4da6.tgz",
     "@hollis-labs/kit-dashboard": "file:../third_party/hollis-labs-kit-dashboard-0.5.0-cw0043-operations-60480bde.tgz",
