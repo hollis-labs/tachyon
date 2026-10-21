@@ -137,6 +137,10 @@
       "type": "string",
       "description": "the agent or team doing the work"
     },
+    "legacy_status": {
+      "type": "string",
+      "description": "the status this record had before the priorities-to-themes migration (draft, active or achieved); kept so the earlier meaning stays visible. Never read as approval"
+    },
     "last_verified": {
       "type": "string",
       "format": "date-time",

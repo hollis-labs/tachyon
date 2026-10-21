@@ -130,7 +130,7 @@ func (s *Owned) themeBoard(ctx context.Context, tasks *Tasks, o BoardOptions, in
 		st := themeStatus(textField(t, "status"))
 		ws := linked(t)
 		row := Item{"source": "theme", "db": "themes", "id": t["id"], "rev": t["rev"], "title": t["title"], "status": st, "stored_status": t["status"], "updated": t["updated"]}
-		for _, k := range []string{"legacy_id", "priority", "order", "tldr", "tags", "state", "accountable", "executing_owner", "approved_by", "approved_at", "last_verified", "depends_on", "decision_ids", "risk_ids", "workstream_ids", "roadmap_ids", "comments"} {
+		for _, k := range []string{"legacy_id", "priority", "order", "tldr", "tags", "state", "accountable", "executing_owner", "approved_by", "approved_at", "last_verified", "legacy_status", "depends_on", "decision_ids", "risk_ids", "workstream_ids", "roadmap_ids", "comments"} {
 			if v, ok := t[k]; ok {
 				row[k] = v
 			}
@@ -222,6 +222,21 @@ func (s *Owned) themeBoard(ctx context.Context, tasks *Tasks, o BoardOptions, in
 	}
 	if unavailable > 0 {
 		notices = append(notices, "Task progress is unavailable for some themes; Torque's task API did not answer.")
+	}
+
+	// Each approved row carries its place in the whole approved sequence, which
+	// spans in flight and cleared and is counted before any section is cut to
+	// the limit, so a reorder from the UI never targets a position computed from
+	// a partial list. Ties break the way Resequence orders them.
+	approved := append(append([]Item{}, sections[themeInFlight]...), sections[themeCleared]...)
+	sort.SliceStable(approved, func(i, j int) bool {
+		if a, b := number(approved[i]["order"]), number(approved[j]["order"]); a != b {
+			return a < b
+		}
+		return textField(approved[i], "id") < textField(approved[j], "id")
+	})
+	for i, r := range approved {
+		r["rank"] = i + 1
 	}
 
 	count, totals := map[string]int{}, map[string]int{}

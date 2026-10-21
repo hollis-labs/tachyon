@@ -209,3 +209,31 @@ func TestThemeRowsListPendingDecisionsByTitle(t *testing.T) {
 		t.Fatal("pending decisions", got)
 	}
 }
+
+func TestApprovedRowsCarryTheirPlaceInTheWholeSequence(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	mk := func(title string, order int) {
+		if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": title, "status": "approved", "order": order}, "operator:test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("Third", 30)
+	mk("First", 10)
+	mk("Second", 20)
+	out, err := s.Board(ctx, nil, BoardOptions{Scope: "themes", Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]any{}
+	for _, r := range out["sections"].(map[string][]Item)["cleared"] {
+		got[textField(r, "title")] = r["rank"]
+	}
+	// The limit cuts the list to two rows but the ranks are those of the full sequence.
+	if len(got) != 2 || got["First"] != 1 || got["Second"] != 2 {
+		t.Fatal(got)
+	}
+	if out["totals"].(map[string]int)["cleared"] != 3 {
+		t.Fatal("the total still reports all three")
+	}
+}

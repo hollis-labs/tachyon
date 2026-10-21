@@ -231,6 +231,8 @@ export interface ThemeRow {
   updated: string
   priority?: number
   order?: number
+  /** Place in the whole approved sequence (1 first), counted by the server across in flight and cleared. */
+  rank?: number
   tldr?: string
   state?: string
   tags?: string[]

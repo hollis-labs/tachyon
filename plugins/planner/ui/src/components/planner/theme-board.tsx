@@ -21,13 +21,15 @@ interface ThemeBoardViewProps {
 interface RowAction { label: string; action: ThemeAction; position?: number; title: string }
 
 /** What the operator can do to a row from where it sits on the board. */
-export function themeRowActions(section: ThemeSectionKey, index: number, count: number, rank: number, approved: number): RowAction[] {
+export function themeRowActions(section: ThemeSectionKey, rank: number | undefined, approved: number): RowAction[] {
   switch (section) {
     case 'in_flight':
     case 'cleared':
       return [
-        ...(rank > 0 ? [{ label: 'Up', action: 'resequence' as const, position: rank, title: 'Move earlier in the sequence' }] : []),
-        ...(rank < approved - 1 ? [{ label: 'Down', action: 'resequence' as const, position: rank + 2, title: 'Move later in the sequence' }] : []),
+        // Moves are offered only when the server told us the place in the whole
+        // sequence, so a position is never worked out from a partial list.
+        ...(rank !== undefined && rank > 1 ? [{ label: 'Up', action: 'resequence' as const, position: rank - 1, title: 'Move earlier in the sequence' }] : []),
+        ...(rank !== undefined && rank < approved ? [{ label: 'Down', action: 'resequence' as const, position: rank + 1, title: 'Move later in the sequence' }] : []),
         { label: 'Park', action: 'park', title: 'Pause this theme; its tasks are untouched' },
         { label: 'Done', action: 'finish', title: 'Mark this theme finished' },
       ]
@@ -50,10 +52,8 @@ export function themeRowActions(section: ThemeSectionKey, index: number, count: 
 export function ThemeBoardView({ board, nowMs, base = '/planner/flight', showProposed = false, onAction }: ThemeBoardViewProps) {
   const now = nowMs ?? (Date.parse(board.generated_at) || Date.now())
   const sections = THEME_SECTIONS.filter((s) => s.key !== 'proposed' || showProposed)
-  // The approved sequence spans in flight and cleared, ordered by `order`.
-  const approvedIds = [...(board.sections.in_flight ?? []), ...(board.sections.cleared ?? [])]
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map((r) => r.id)
+  // The approved sequence spans in flight and cleared; the server numbers it.
+  const approved = (board.totals.in_flight ?? 0) + (board.totals.cleared ?? 0)
   return (
     <div className="flex min-w-0 flex-col">
       {board.notices.map((n) => (
@@ -64,7 +64,7 @@ export function ThemeBoardView({ board, nowMs, base = '/planner/flight', showPro
       <PlannerTableHeader trailing="Progress" />
       <div className="flex min-w-0 flex-col">
         {sections.map((s) => (
-          <ThemeSection key={s.key} section={s.key} title={s.title} blurb={s.blurb} empty={s.empty} rows={board.sections[s.key] ?? []} total={board.totals[s.key] ?? 0} now={now} base={base} approvedIds={approvedIds} onAction={onAction} />
+          <ThemeSection key={s.key} section={s.key} title={s.title} blurb={s.blurb} empty={s.empty} rows={board.sections[s.key] ?? []} total={board.totals[s.key] ?? 0} now={now} base={base} approved={approved} onAction={onAction} />
         ))}
       </div>
       <p className="px-4 py-2 font-mono dash-caption leading-4 text-fg-faint">
@@ -74,7 +74,7 @@ export function ThemeBoardView({ board, nowMs, base = '/planner/flight', showPro
   )
 }
 
-function ThemeSection({ section, title, blurb, empty, rows, total, now, base, approvedIds, onAction }: { section: ThemeSectionKey; title: string; blurb: string; empty: string; rows: ThemeRow[]; total: number; now: number; base: string; approvedIds: string[]; onAction?: ThemeBoardViewProps['onAction'] }) {
+function ThemeSection({ section, title, blurb, empty, rows, total, now, base, approved, onAction }: { section: ThemeSectionKey; title: string; blurb: string; empty: string; rows: ThemeRow[]; total: number; now: number; base: string; approved: number; onAction?: ThemeBoardViewProps['onAction'] }) {
   const more = boardMore(rows.length, total)
   const accent = statusTone(THEME_SECTIONS.find((s) => s.key === section)!.tone)
   return (
@@ -89,8 +89,8 @@ function ThemeSection({ section, title, blurb, empty, rows, total, now, base, ap
         <p className="px-4 py-3 dash-support text-fg-muted">{empty}</p>
       ) : (
         <ul>
-          {rows.map((r, i) => (
-            <ThemeRowView key={r.id} section={section} row={r} position={section === 'in_flight' || section === 'cleared' ? i + 1 : undefined} now={now} base={base} actions={onAction ? themeRowActions(section, i, rows.length, approvedIds.indexOf(r.id), approvedIds.length) : []} onAction={onAction} />
+          {rows.map((r) => (
+            <ThemeRowView key={r.id} section={section} row={r} position={section === 'in_flight' || section === 'cleared' ? r.rank : undefined} now={now} base={base} actions={onAction ? themeRowActions(section, r.rank, approved) : []} onAction={onAction} />
           ))}
         </ul>
       )}

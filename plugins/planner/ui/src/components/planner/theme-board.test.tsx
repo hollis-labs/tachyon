@@ -38,6 +38,10 @@ describe('theme progress helpers', () => {
   it('titles the pending decisions with their age, and the tasks behind done/total', () => {
     const r = row({ id: 'a', title: 'A', section: 'cleared', pending_decisions: [{ id: 'd1', title: 'Pick the auth model', created: '2026-10-18T12:00:00Z' }, { id: 'd2', title: 'Two' }] })
     expect(themeWaiting(r, NOW)).toEqual(['needs decision: Pick the auth model (3d) +1 more'])
+    // Every linked decision settled: the server sends an empty list and nothing is waiting.
+    expect(themeWaiting(row({ id: 'z', title: 'Z', section: 'cleared', decision_ids: ['d1', 'd2'], pending_decisions: [] }), NOW)).toEqual([])
+    // An older server without the field falls back to the raw count.
+    expect(themeWaiting(row({ id: 'y', title: 'Y', section: 'cleared', decision_ids: ['d1'] }), NOW)).toEqual(['1 decision pending'])
     expect(themeCountsText({ available: true, done: 3, total: 11, counts: { done: 3, doing: 2, review: 1, todo: 5, cancelled: 4 }, missing: 2 })).toBe('2 doing · 1 review · 5 todo · 2 linked tasks not found')
     expect(themeCountsText({ available: true, total: 0 })).toBe('')
   })
@@ -51,8 +55,8 @@ describe('theme progress helpers', () => {
 describe('ThemeBoardView', () => {
   it('shows each section with its themes in the order given and their progress', () => {
     view(board({
-      in_flight: [row({ id: 'b-1', title: 'Managed agent capacity', section: 'in_flight', last_verified: '2026-10-21T09:00:00Z', accountable: 'chrispian', blocked_count: 2, first_blocker: 'waiting on auth', next_step: 'ship slice 1' })],
-      cleared: [row({ id: 'b-2', title: 'Nanite as Tether provider', section: 'cleared' }), row({ id: 'b-3', title: 'Second in line', section: 'cleared' })],
+      in_flight: [row({ id: 'b-1', title: 'Managed agent capacity', section: 'in_flight', rank: 3, last_verified: '2026-10-21T09:00:00Z', accountable: 'chrispian', blocked_count: 2, first_blocker: 'waiting on auth', next_step: 'ship slice 1' })],
+      cleared: [row({ id: 'b-2', title: 'Nanite as Tether provider', section: 'cleared', rank: 1 }), row({ id: 'b-3', title: 'Second in line', section: 'cleared', rank: 2 })],
       queued: [row({ id: 'b-4', title: 'Planner MCP', section: 'queued', status: 'ready', progress: { available: true, total: 0, linked: false, note: 'no tasks linked' } })],
       parked: [row({ id: 'b-5', title: 'Mac companion', section: 'parked', status: 'paused', idle_tasks: 4 })],
     }))
@@ -91,15 +95,26 @@ describe('ThemeBoardView', () => {
 })
 
 describe('ThemeBoardView actions', () => {
-  const two = () => board({
-    in_flight: [row({ id: 'a', title: 'First', section: 'in_flight', order: 10 })],
-    cleared: [row({ id: 'b', title: 'Second', section: 'cleared', order: 20 })],
-    queued: [row({ id: 'c', title: 'Queued one', section: 'queued', status: 'ready' })],
-    parked: [row({ id: 'd', title: 'Parked one', section: 'parked', status: 'paused' })],
+  // An in-flight theme can sit after a cleared one: the sequence spans both sections.
+  const two = () => ({
+    ...board({
+      in_flight: [row({ id: 'b', title: 'Second', section: 'in_flight', order: 20, rank: 2 })],
+      cleared: [row({ id: 'a', title: 'First', section: 'cleared', order: 10, rank: 1 })],
+      queued: [row({ id: 'c', title: 'Queued one', section: 'queued', status: 'ready' })],
+      parked: [row({ id: 'd', title: 'Parked one', section: 'parked', status: 'paused' })],
+    }),
+    totals: { in_flight: 1, cleared: 1, queued: 1, parked: 1, landed: 0, proposed: 0 },
   })
   it('shows no buttons without a handler', () => {
     view(two())
     expect(screen.queryByRole('button')).toBeNull()
+  })
+  it('offers no move when the server did not number the sequence', () => {
+    const b = two()
+    b.sections.cleared = [row({ id: 'a', title: 'First', section: 'cleared', order: 10 })]
+    view(b, { onAction: vi.fn() })
+    expect(within(screen.getByRole('group', { name: 'Actions for First' })).queryByText('Down')).toBeNull()
+    expect(within(screen.getByRole('group', { name: 'Actions for First' })).getByText('Park')).toBeTruthy()
   })
   it('offers the moves that make sense where a row sits', () => {
     view(two(), { onAction: vi.fn() })
@@ -119,6 +134,9 @@ describe('ThemeBoardView actions', () => {
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ id: 'b', rev: 3 }), 'resequence', { position: 1 })
     fireEvent.click(within(screen.getByRole('group', { name: 'Actions for First' })).getByText('Down'))
     expect(onAction).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'a' }), 'resequence', { position: 2 })
+    // Positions are the server's whole-sequence ranks, not per-section counts.
+    expect(screen.getByLabelText(/CLEARED First, position 1/)).toBeTruthy()
+    expect(screen.getByLabelText(/IN FLIGHT Second, position 2/)).toBeTruthy()
     fireEvent.click(within(screen.getByRole('group', { name: 'Actions for Queued one' })).getByText('Approve'))
     expect(onAction).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'c' }), 'approve', undefined)
   })

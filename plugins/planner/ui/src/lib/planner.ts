@@ -509,11 +509,13 @@ export function themeOwners(row: ThemeRow): string {
 export function themeWaiting(row: ThemeRow, nowMs?: number): string[] {
   const out: string[] = []
   const pending = row.pending_decisions
-  if (pending?.length) {
+  // An empty list means every linked decision is settled; only a missing field
+  // (an older server) falls back to the raw count.
+  if (pending && pending.length > 0) {
     const first = pending[0]
     const age = nowMs !== undefined && first.created ? boardAge(first.created, nowMs) : ''
     out.push(`needs decision: ${first.title}${age ? ` (${age})` : ''}${pending.length > 1 ? ` +${pending.length - 1} more` : ''}`)
-  } else if (row.decision_ids?.length) {
+  } else if (!pending && row.decision_ids?.length) {
     out.push(`${row.decision_ids.length} decision${row.decision_ids.length === 1 ? '' : 's'} pending`)
   }
   if (row.unmet_dependencies > 0) out.push(`waits on ${row.unmet_dependencies} theme${row.unmet_dependencies === 1 ? '' : 's'}`)

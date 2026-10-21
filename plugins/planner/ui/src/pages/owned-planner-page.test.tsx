@@ -33,7 +33,7 @@ it('uses the owned client for board, list, search and opening a UUID detail', as
 })
 
 it('opens the flight board from its own tab and requests the themes board', async () => {
-  const sections = { in_flight: [], cleared: [{ source: 'theme', db: 'themes', id: id, title: 'Cleared theme', status: 'approved', section: 'cleared', updated: new Date().toISOString(), blocked_count: 0, unmet_dependencies: 0, progress: { available: true, done: 1, total: 4, linked: true } }], queued: [], parked: [], landed: [], proposed: [] }
+  const sections = { in_flight: [], cleared: [{ source: 'theme', db: 'themes', id: id, title: 'Cleared theme', status: 'approved', section: 'cleared', rank: 1, updated: new Date().toISOString(), blocked_count: 0, unmet_dependencies: 0, progress: { available: true, done: 1, total: 4, linked: true } }], queued: [], parked: [], landed: [], proposed: [] }
   const api = Object.assign(new TachyonPlannerClient(), {
     subscribeEvents: () => () => {},
     plannerDatabases: vi.fn().mockResolvedValue([{ name: 'themes', count: 1 }]),
