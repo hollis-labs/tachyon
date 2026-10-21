@@ -1,10 +1,13 @@
 import type { FleetAgent } from '../fleet/lib/fleet-agents'
 import type { ChatAgent } from './roster'
 
-/** Match session identity, or a unique Tether-managed workspace; never display names. */
+/** Activity shows booted sessions, not launchable profiles. Keep live manual
+ * processes and enrich matching running chat sessions by identity/workspace.
+ */
 export function mergeChatAgents(processes: FleetAgent[], roster: ChatAgent[]): FleetAgent[] {
   const result = processes.map((a) => ({ ...a }))
   for (const chat of roster) {
+    if (chat.session?.state !== 'running') continue
     // The activity source reports the provider-native session id, while Tether
     // reports its runtime session id. Its managed workspace contains the latter.
     const candidates = chat.session
@@ -21,7 +24,6 @@ export function mergeChatAgents(processes: FleetAgent[], roster: ChatAgent[]): F
       found.displayName = chat.display_name
       continue
     }
-    const running = chat.session?.state === 'running'
     result.push({
       id: `chat:${chat.launch_id}`,
       provider: 'tether',
@@ -30,19 +32,15 @@ export function mergeChatAgents(processes: FleetAgent[], roster: ChatAgent[]): F
       pid: 0,
       sessionId: chat.session?.id ?? null,
       cwd: '',
-      state: running ? (chat.session?.at_turn_boundary ? 'waiting' : 'busy') : 'unknown',
-      waitingFor: running && chat.session?.at_turn_boundary ? 'Ready for your next message' : null,
+      state: chat.session.at_turn_boundary ? 'waiting' : 'busy',
+      waitingFor: chat.session.at_turn_boundary ? 'Ready for your next message' : null,
       startedAt: null,
       lastActivity: chat.session ? Date.parse(chat.session.last_activity_at) || null : null,
       stateConfidence: 'exact',
       confidence: { state: 'exact' },
       model: null,
       lastAction: {
-        text: running
-          ? chat.session?.at_turn_boundary
-            ? 'Ready for your next message'
-            : 'Working on a turn'
-          : `Ready to start · last session ${chat.session?.state ?? 'not started'}`,
+        text: chat.session.at_turn_boundary ? 'Ready for your next message' : 'Working on a turn',
         at: null,
       },
       workstream: null,
