@@ -121,3 +121,72 @@ func TestBoardRowAppearsInOneSectionOnly(t *testing.T) {
 		t.Fatalf("expected 3 rows, got %d", len(seen))
 	}
 }
+
+func TestThemesIsTheCanonicalNameForPriorities(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	id := uuid.NewString()
+	row, err := s.Create(ctx, "themes", id, Item{"title": "Managed agent capacity"}, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row["status"] != "proposed" {
+		t.Fatalf("new theme should start proposed, got %v", row["status"])
+	}
+	// The same record is reachable under both names.
+	for _, db := range []string{"themes", "priorities"} {
+		got, err := s.Get(ctx, db, id)
+		if err != nil || got["id"] != id {
+			t.Fatal(db, got, err)
+		}
+		listed, err := s.List(ctx, db, nil, "")
+		if err != nil || len(listed) != 1 {
+			t.Fatal(db, listed, err)
+		}
+	}
+	schema, err := Schema("themes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if schema["db"] != "themes" || schema["id"] != "tachyon/planner/themes@1" {
+		t.Fatal("schema should be published under the public name", schema["db"], schema["id"])
+	}
+	enum, _ := object(object(schema["fields"])["status"])["enum"].([]string)
+	if !equalTitles(enum, themeStatuses) {
+		t.Fatalf("schema advertises %v", enum)
+	}
+	for _, k := range []string{"depends_on", "tasks", "decision_ids", "risk_ids", "accountable", "executing_owner", "last_verified", "approved_by", "approved_at"} {
+		if _, ok := object(schema["fields"])[k]; !ok {
+			t.Fatalf("schema lacks %s", k)
+		}
+	}
+	if _, err := Schema("priorities"); err != nil {
+		t.Fatal("the old name must keep working", err)
+	}
+}
+
+func TestThemeStatusesAndApprovalFieldsAreProtected(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	id := uuid.NewString()
+	// An unmigrated record keeps its earlier status and stays writable.
+	legacy, err := s.Create(ctx, "priorities", id, Item{"title": "Legacy", "status": "active"}, "test")
+	if err != nil || legacy["status"] != "active" {
+		t.Fatal(legacy, err)
+	}
+	if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "Bad", "status": "queued"}, "test"); err == nil {
+		t.Fatal("queued is no longer a theme status")
+	}
+	for _, f := range []string{"approved_by", "approved_at"} {
+		if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "Forged", f: "chrispian"}, "agent"); err == nil {
+			t.Fatalf("create accepted %s", f)
+		}
+		if _, err := s.Patch(ctx, "themes", id, revision(legacy), Item{f: "chrispian"}, "agent"); err == nil {
+			t.Fatalf("patch accepted %s", f)
+		}
+	}
+	// Other databases are unaffected.
+	if _, err := s.Create(ctx, "workstreams", uuid.NewString(), Item{"title": "ws", "approved_by": "x"}, "test"); err != nil {
+		t.Fatal("approval fields are only reserved on themes", err)
+	}
+}
