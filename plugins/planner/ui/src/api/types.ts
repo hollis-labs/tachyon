@@ -1,6 +1,6 @@
 // Planner view contracts. Task execution remains an external Torque concern.
 export type PlannerDb =
-  | 'priorities'
+  | 'themes'
   | 'workstreams'
   | 'roadmap'
   | 'ideas'
@@ -194,3 +194,76 @@ export interface JudgeBulkResult {
   decided: number
   failed?: string[]
 }
+
+// ---------- the flight board (themes) ----------
+
+/**
+ * Display sections of the flight board. They are derived from a theme's stored
+ * status and its task activity and are never stored: in_flight is approved with
+ * work under way, cleared is approved and waiting its turn in the sequence.
+ */
+export type ThemeSectionKey = 'in_flight' | 'cleared' | 'queued' | 'parked' | 'landed' | 'proposed'
+
+/** done/total over the tasks under a theme, computed by the server at read time. */
+export interface ThemeProgress {
+  available: boolean
+  done?: number
+  total?: number
+  open?: number
+  counts?: Record<string, number>
+  linked?: boolean
+  note?: string
+  /** Directly linked task ids Torque did not return. */
+  missing?: number
+  as_of?: string
+}
+
+export interface ThemeRow {
+  source: 'theme'
+  db: 'themes'
+  id: string
+  /** The record revision, sent back with an action so a stale view cannot overwrite a newer one. */
+  rev: number
+  title: string
+  status: string
+  stored_status?: string
+  section: ThemeSectionKey
+  updated: string
+  priority?: number
+  order?: number
+  /** Place in the whole approved sequence (1 first), counted by the server across in flight and cleared. */
+  rank?: number
+  tldr?: string
+  state?: string
+  tags?: string[]
+  accountable?: string
+  executing_owner?: string
+  approved_by?: string
+  approved_at?: string
+  last_verified?: string
+  depends_on?: string[]
+  decision_ids?: string[]
+  /** Linked decisions still waiting, by title. */
+  pending_decisions?: { id: string; title: string; created?: string }[]
+  risk_ids?: string[]
+  blocked_count: number
+  first_blocker?: string
+  next_step?: string
+  unmet_dependencies: number
+  idle_tasks?: number
+  progress: ThemeProgress
+}
+
+export interface ThemeBoard {
+  scope: 'themes'
+  generated_at: string
+  recent_hours: number
+  limit: number
+  sections: Record<ThemeSectionKey, ThemeRow[]>
+  counts: Record<ThemeSectionKey, number>
+  totals: Record<ThemeSectionKey, number>
+  notices: string[]
+  progress: { done: number; total: number; note?: string }
+}
+
+export type ThemeAction = 'ready' | 'approve' | 'park' | 'unpark' | 'finish' | 'archive' | 'resequence'

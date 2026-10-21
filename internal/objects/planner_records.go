@@ -110,7 +110,7 @@ func capturePlanningStatus(kind Kind, status string) bool {
 	case RoadmapItemKind:
 		allowed = "draft planned active completed deferred cancelled archived"
 	case StrategicPriorityKind:
-		allowed = "draft active achieved paused archived"
+		allowed = "proposed ready approved paused done archived draft active achieved"
 	default:
 		return false
 	}

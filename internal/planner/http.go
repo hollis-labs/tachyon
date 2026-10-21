@@ -37,6 +37,8 @@ func send(w http.ResponseWriter, status int, value any) {
 func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, db, id string, err error) {
 	status, code, message := 500, "internal", "Planner operation failed."
 	switch {
+	case errors.Is(err, ErrOperatorRequired):
+		status, code, message = 403, "operator_required", err.Error()
 	case errors.Is(err, objects.ErrInvalid):
 		status, code, message = 400, "invalid", err.Error()
 	case errors.Is(err, objects.ErrConflict):
@@ -110,7 +112,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status := 200
 	db, id := "", ""
 	if len(parts) > 0 {
-		db = parts[0]
+		db = CanonicalDB(parts[0])
 	}
 	if len(parts) > 1 {
 		id = parts[1]
@@ -133,7 +135,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						updated = textField(v, "updated")
 					}
 				}
-				rows = append(rows, Item{"name": name, "prefix": "", "schema": "tachyon/planner/" + name + "@1", "count": len(items), "updated": updated})
+				rows = append(rows, Item{"name": PublicDB(name), "prefix": "", "schema": "tachyon/planner/" + PublicDB(name) + "@1", "count": len(items), "updated": updated})
 			}
 			out = rows
 		case "search":
@@ -141,7 +143,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			query := strings.ToLower(r.URL.Query().Get("q"))
 			names := portfolioDatabases
 			if name := r.URL.Query().Get("db"); name != "" {
-				names = []string{name}
+				names = []string{CanonicalDB(name)}
 			}
 			for _, name := range names {
 				items, e := h.Owned.List(ctx, name, nil, "")
@@ -151,7 +153,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				for _, v := range items {
 					if strings.Contains(strings.ToLower(string(encode(v))), query) {
-						hits = append(hits, Item{"db": name, "id": v["id"], "title": v["title"], "status": v["status"]})
+						hits = append(hits, Item{"db": PublicDB(name), "id": v["id"], "title": v["title"], "status": v["status"]})
 					}
 				}
 			}
@@ -159,6 +161,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "board":
 			var o BoardOptions
 			o.Scope = r.URL.Query().Get("scope")
+			o.IncludeProposed = r.URL.Query().Get("include_proposed") == "true"
 			for _, param := range []struct {
 				name string
 				dest *float64
@@ -284,6 +287,12 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case "promote":
 				allowed = append(allowed, "to_db", "target_id", "fields")
 			case "reopen":
+			case "ready", "approve", "park", "unpark", "finish", "archive", "verify":
+				allowed = append(allowed, "reason", "note", "position")
+			case "resequence":
+				allowed = append(allowed, "position")
+			case "append_state":
+				allowed = append(allowed, "text")
 			default:
 				err = objects.ErrNotFound
 			}

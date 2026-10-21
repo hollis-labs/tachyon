@@ -1339,6 +1339,30 @@ Unsigned high-tier denial, browser ceremony UI and owner-attended first-key
 registration remain separate work. Existing producer JWT revocation wiring is
 also separate from this stricter trusted-caller boundary.
 
+### Themes and the Flight board
+
+`themes` is the public name of the Planner `priorities` database (the old name still
+works as an alias; the storage key, the `strategic_priority` kind and `PR-nn` ids are
+unchanged). A theme is a feature, capability, topic or whole app that groups
+workstreams and tasks. The operator approves and sequences themes; approval means
+eligible for sequencing, never launch authorization.
+
+- Statuses: `proposed`, `ready`, `approved`, `paused`, `done`, `archived`. The earlier
+  `draft`, `active` and `achieved` stay readable (as proposed, proposed, done) but cannot
+  be written, and nothing is ever inferred as approved. `approved_by`, `approved_at`
+  and `order` are server-managed.
+- Actions on `planner.portfolio.action` (HTTP `POST /themes/{id}/{action}`): `ready`,
+  `park`, `unpark`, `append_state`, `verify` are open to agents holding the write grant;
+  an agent must give a `reason` for `ready`, `park` and `unpark`, and may park an
+  approved theme. `approve`, `resequence`, `finish` and `archive` (decline) are
+  operator-only, as is any other route into or out of approval or `order`.
+- `GET /board?scope=themes` returns `in_flight`, `cleared`, `queued`, `parked`, `landed`
+  (last 14 days by default, `recent_hours`) and, with `include_proposed=true`, `proposed`.
+  These words are display only. Progress is computed at read time from the linked
+  workstreams' tasks plus the theme's `tasks`: done is Torque `done`; cancelled,
+  abandoned and archived tasks leave the total. The Flight tab (`/planner/flight`)
+  renders it with operator buttons.
+
 ### Planner access for agents
 
 `/api/agent/v1/data` is an always-authenticated, uncached service API using the
