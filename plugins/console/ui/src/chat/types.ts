@@ -41,10 +41,20 @@ export interface ToolChip {
 
 export type ChatSender = 'operator' | 'agent' | 'system'
 
+/**
+ * Who asked for the turn behind an agent reply, as Tether proved it
+ * (docs/reply-audience.md on tether). 'unknown' covers every reply Tether
+ * could not attribute: older replies, queued inputs, sends made with the
+ * shared operator token.
+ */
+export type ReplyAudience = 'operator' | 'agent' | 'system' | 'unknown'
+
 export interface ChatMessage {
   id: string
   threadId: string
   from: ChatSender
+  /** Agent replies from a Tether turn only; absent means the transport does not say. */
+  audience?: ReplyAudience
   body: string
   at: number
   /** Operator messages only. */

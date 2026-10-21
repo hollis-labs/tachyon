@@ -1,12 +1,14 @@
 import { useId, useRef, useState } from 'react'
 import { Textarea, Button } from '@hollis-labs/design-components'
 import { MAX_BODY } from '../messaging/guards'
+import { User, Users } from 'lucide-react'
+import type { ReplyFilter } from './replyFilter'
 import type { ChatCapability } from './types'
 
 const btn = 'border px-3 py-1.5 font-mono dash-label uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40'
 
 /** Compact chat input. Enter sends, Shift+Enter newline. Reuses M1's body cap. */
-export function ChatComposer({ onSend, capability, error }: { onSend: (body: string) => Promise<void>; capability?: ChatCapability; error?: string | null }) {
+export function ChatComposer({ onSend, capability, error, replyFilter, onReplyFilterChange }: { onSend: (body: string) => Promise<void>; capability?: ChatCapability; error?: string | null; replyFilter?: ReplyFilter; onReplyFilterChange?: (next: ReplyFilter) => void }) {
   const id = useId()
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
@@ -54,9 +56,33 @@ export function ChatComposer({ onSend, capability, error }: { onSend: (body: str
       />
       {error && <p role="alert" className="font-mono text-xs text-danger">{error}</p>}
       <div className="flex items-center justify-between gap-3">
-        <span className="font-mono dash-caption text-fg-faint">{note}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {replyFilter && onReplyFilterChange && <ReplyFilterToggle value={replyFilter} onChange={onReplyFilterChange} />}
+          <span className="truncate font-mono dash-caption text-fg-faint">{note}</span>
+        </span>
         <Button type="submit" variant="outline" size="sm" disabled={empty || busy || capability?.canSend === false} className={`${btn} border-primary/60 text-primary hover:bg-primary/10`}>{busy ? 'Sending' : 'Send'}</Button>
       </div>
     </form>
+  )
+}
+
+/** Icon toggle between every agent reply and only the replies addressed to the operator. */
+function ReplyFilterToggle({ value, onChange }: { value: ReplyFilter; onChange: (next: ReplyFilter) => void }) {
+  const mine = value === 'mine'
+  const Icon = mine ? User : Users
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-pressed={mine}
+      aria-label="Only show replies to me"
+      title={mine ? 'Showing only replies to you. Select to show all agent replies.' : 'Showing all agent replies. Select to show only replies to you.'}
+      onClick={() => onChange(mine ? 'all' : 'mine')}
+      className={`gap-1.5 px-2 font-mono dash-caption ${mine ? 'text-primary' : 'text-fg-muted'}`}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+      <span>{mine ? 'Replies to me' : 'All replies'}</span>
+    </Button>
   )
 }
