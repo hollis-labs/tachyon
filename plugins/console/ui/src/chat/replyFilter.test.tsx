@@ -1,6 +1,8 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { MemoryRouter } from 'react-router-dom'
 import { AutolinkProvider } from '../autolink'
 import { ChatPanel, ChatProvider } from '.'
@@ -20,6 +22,31 @@ const turn = (classes: string | string[] | undefined, over: Partial<Turn> = {}):
   item_id: 't', agent_id: 'pm', session_id: 's', turn_id: 'x', kind: 'terminal', content: 'reply',
   created_at: '2026-10-21T10:00:00Z', revision: 1, queue_sequence: 1, state: 'presented', delivery_state: 'delivered',
   source_message: { attribution: { launch_id: 'pm-chat', ...(classes === undefined ? {} : { input_classes: classes }) } }, ...over,
+})
+
+// Copies of tether docs/fixtures/reply-audience (tether#490). The metadata is what a routed message
+// carries, so these run through the same path a real reply takes.
+const FIXTURES = join(__dirname, 'fixtures', 'reply-audience')
+describe('Tether reply-audience fixtures', () => {
+  const names = readdirSync(FIXTURES).filter((n) => n.endsWith('.json') && n !== 'index.json').sort()
+  it('covers the whole contract set', () => {
+    expect(names.length).toBeGreaterThanOrEqual(10)
+  })
+  for (const name of names) {
+    const fx = JSON.parse(readFileSync(join(FIXTURES, name), 'utf8')) as { event: { audience: ReplyAudience }; message_metadata: Record<string, string> }
+    // Only an operator in input_classes may satisfy "Replies to me"; every other fixture is hidden by it.
+    const want: ReplyAudience = fx.message_metadata.input_classes === 'operator' ? 'operator' : fx.message_metadata.input_classes === 'agent' ? 'agent' : fx.message_metadata.input_classes === 'system' ? 'system' : 'unknown'
+    it(`${name}: message metadata`, () => {
+      const t = turn(undefined, { source_message: { attribution: fx.message_metadata as never } })
+      expect(replyAudience(t)).toBe(want)
+      expect(replyAudience(t) === 'operator').toBe(name === 'operator.json')
+    })
+    it(`${name}: event payload`, () => {
+      const classes = (fx.event as { input_classes?: string[] }).input_classes
+      const t = turn(classes)
+      expect(replyAudience(t)).toBe(want)
+    })
+  }
 })
 
 describe('replyAudience', () => {
