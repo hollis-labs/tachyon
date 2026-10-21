@@ -73,7 +73,9 @@ function optionalFields(o: Record<string, unknown>): Pick<FleetAgent, 'model' | 
   }
 }
 
-/** Validates the snapshot body; rows without an id are dropped, odd values degrade to 'unknown'. */
+/** Retained stale observations are history, not evidence of a live process.
+ * Running managed sessions are supplied independently by the Tether roster.
+ */
 export function parseFleetAgents(body: unknown): FleetAgent[] {
   const rows = (body as { agents?: unknown } | null)?.agents
   if (!Array.isArray(rows)) return []
@@ -81,6 +83,7 @@ export function parseFleetAgents(body: unknown): FleetAgent[] {
   for (const r of rows) {
     if (!r || typeof r !== 'object') continue
     const o = r as Record<string, unknown>
+    if (o.stale === true) continue
     const id = text(o.id)
     if (!id) continue
     const state = STATES.includes(o.state as FleetState) ? (o.state as FleetState) : 'unknown'
@@ -140,6 +143,7 @@ export function applyFleetEvent(agents: FleetAgent[], kind: string, data: unknow
   if (kind === 'process.exited') return agents.filter((a) => a.id !== id)
   if (kind !== 'process.started' && !KINDS_STATE.has(kind)) return agents
   const payload = (env.payload ?? {}) as Record<string, unknown>
+  if (payload.stale === true) return agents.filter((a) => a.id !== id)
   const proc = (env.process ?? {}) as Record<string, unknown>
   const at = time(env.time)
   const prev = agents.find((a) => a.id === id)

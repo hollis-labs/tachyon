@@ -122,7 +122,7 @@ export function FleetAgentsView({ agents, history, error, now, live, focus, onFo
   return (
     <div ref={ref} className="agent-arcade">
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <p className="text-[13px] text-muted-foreground">Who is doing what, grouped by workstream and ranked on a provisional score.</p>
+        <p className="text-[13px] text-muted-foreground">Agents in the field: booted Tether sessions and live CLI/manual sessions.</p>
         <span className="ml-auto inline-flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-widest text-zinc-400">
           <span className={c.waiting ? 'text-amber-300' : ''}>{c.waiting} waiting</span>
           <span className="inline-flex items-center gap-1.5"><Zap className="h-3 w-3 text-emerald-400" />{c.busy}/{agents.length} working</span>
@@ -133,7 +133,7 @@ export function FleetAgentsView({ agents, history, error, now, live, focus, onFo
         </span>
       </div>
       {groups.length === 0 && (
-        <div className="p-4"><EmptyState variant="empty" title="No agents running" description="The activity monitor reports no agent processes on this machine." /></div>
+        <div className="p-4"><EmptyState variant="empty" title="No agents running" description="No booted Tether runtimes or live CLI/manual sessions are currently reported." /></div>
       )}
       {groups.map((g) => (
         <section key={g.workstreamId ?? `dir:${g.name}`} aria-label={g.name} data-flip={`group:${g.name}`}>

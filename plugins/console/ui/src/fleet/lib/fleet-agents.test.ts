@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { mergeTetherSessions } from '../tether-sessions'
+import type { TetherSession } from '../launch-client'
 import { busySeries, fleetScore, groupFleet, applyFleetEvent, cwdName, cwdTail, formatDuration, stateDurations, stateSegments, trackTransitions, timelineWindow, workingShare, fleetCounts, parseFleetAgents, sortFleetAgents } from './fleet-agents'
 
 describe('fleet agents', () => {
@@ -24,6 +26,21 @@ describe('fleet agents', () => {
     )
     expect(rows.map((r) => r.id)).toEqual(['w', 'b1', 'b2', 'i', 'u'])
     expect(fleetCounts(rows).busy).toBe(2)
+  })
+
+  it('excludes retained stale hooks while keeping live manual and idle managed sessions', () => {
+    const rows = parseFleetAgents({ agents: [
+      { id: 'historical', session_id: 'old-cli', stale: true, state: 'unknown' },
+      { id: 'managed-hook', session_id: 'managed', stale: true, state: 'unknown' },
+      { id: 'live-idle', stale: false, state: 'idle', last_activity: '2026-10-01T00:00:00Z' },
+      { id: 'live-unknown', stale: false, state: 'unknown', confidence: { alive: 'exact' } },
+    ] })
+    const session = { id: 'managed', state: 'running', launch_id: 'worker', workspace: '', provider_id: 'claude', created_at: '2026-10-01T00:00:00Z' } as TetherSession
+    expect(mergeTetherSessions(rows, [session]).map(a => a.id)).toEqual(['live-idle', 'live-unknown', 'tether:managed'])
+    const stale = { session_id: 'live-idle', payload: { stale: true, state: 'unknown' } }
+    expect(applyFleetEvent(rows, 'session.heartbeat', stale).map(a => a.id)).toEqual(['live-unknown'])
+    expect(applyFleetEvent([], 'session.heartbeat', stale)).toEqual([])
+    expect(applyFleetEvent([], 'session.heartbeat', { ...stale, payload: { stale: false, state: 'idle' } }).map(a => a.id)).toEqual(['live-idle'])
   })
 
   it('shortens cwd', () => {

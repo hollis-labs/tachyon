@@ -96,10 +96,14 @@ describe('Tether chat routing', () => {
     ])
     expect(messages.filter((m) => m.from === 'operator').map((m) => m.id)).toEqual(['send:sent', 'reply:t1'])
   })
-  it('adds configured chat agents without inventing live processes, and matches an exact session once', () => {
-    const rows = mergeChatAgents([], [{ ...agent, session: { ...agent.session!, state: 'completed' } }])
-    expect(rows[0]).toMatchObject({ pid: 0, state: 'unknown', chat: { launch_id: 'pm-chat' } })
-    const existing = { ...rows[0], id: 'process-1', sessionId: 'current', chat: undefined }
+  it('shows only booted chat sessions, preserves manual processes, and matches an exact session once', () => {
+    const inactive = [
+      { ...agent, session: null },
+      ...['created', 'starting', 'completed', 'failed', 'killed'].map(state => ({ ...agent, session: { ...agent.session!, state } })),
+    ]
+    expect(mergeChatAgents([], inactive)).toEqual([])
+    const existing = { ...mergeChatAgents([], [agent])[0], id: 'process-1', sessionId: 'current', chat: undefined, pid: 123 }
+    expect(mergeChatAgents([existing], inactive)).toEqual([existing])
     expect(mergeChatAgents([existing], [agent])).toMatchObject([
       { id: 'process-1', chat: { launch_id: 'pm-chat' } },
     ])
