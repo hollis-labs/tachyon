@@ -24,6 +24,12 @@ describe('ConsolePrefs store', () => {
     expect(JSON.parse(window.localStorage.getItem('k')!)).toMatchObject({ mutedSources: ['bravo'], coalesceWindowSec: 0 })
     expect(new MemoryConsolePrefsStore().get()).toEqual(DEFAULT_CONSOLE_PREFS)
   })
+  it('persists independent toast and bell thresholds and defaults invalid bell values to all', () => {
+    const store = new LocalConsolePrefsStore()
+    store.set({ toastMinSeverity: 'critical', bellMinSeverity: 'warning' })
+    expect(new LocalConsolePrefsStore().get()).toMatchObject({ toastMinSeverity: 'critical', bellMinSeverity: 'warning' })
+    expect(sanitizePrefs({ toastMinSeverity: 'error', bellMinSeverity: 'invalid' })).toMatchObject({ toastMinSeverity: 'error', bellMinSeverity: 'debug' })
+  })
   it('quiet hours window logic', () => {
     const p = { quietHoursEnabled: true, quietHoursStart: '09:00', quietHoursEnd: '17:00' }
     expect(inQuietHours(p, new Date(2026, 0, 1, 9, 0))).toBe(true)

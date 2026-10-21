@@ -11,6 +11,7 @@ import { AlertTrayTrigger } from './AlertTrayTrigger'
 import { ConsoleShell } from './ConsoleShell'
 import { MemoryAlertPrefsStore } from './prefs'
 import { sampleAlerts } from '../testkit/alerts-samples'
+import type { ConsoleEvent } from '../events/types'
 
 afterEach(cleanup)
 
@@ -52,6 +53,62 @@ describe('AlertHost', () => {
     for (let i = 0; i < 8; i++) await act(async () => source.tick())
     expect(screen.queryAllByTestId('alert-toast')).toHaveLength(0)
     expect(screen.getByTestId('alert-badge')).toBeTruthy()
+  })
+
+  it('applies the critical threshold immediately to visible and incoming pop-up alerts', async () => {
+    const { source, prefs } = await setup()
+    await emitUntilToast(source)
+    expect(screen.getAllByTestId('alert-toast').some(e => e.dataset.severity !== 'critical')).toBe(true)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
+    const tray = screen.getByRole('dialog', { name: 'Alerts' })
+    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Prefs' })))
+    await act(async () => fireEvent.change(within(tray).getByRole('combobox', { name: 'Toast threshold' }), { target: { value: 'critical' } }))
+    expect(prefs.get().toastMinSeverity).toBe('critical')
+    expect(screen.queryByTestId('alert-toast')).toBeNull()
+    for (const severity of ['notice', 'warning', 'error', 'critical'] as const) {
+      const event: ConsoleEvent = { id: `threshold-${severity}`, ts: Date.now(), kind: 'test.alert', severity,
+        source: { id: 'threshold-check' }, subjects: [], actions: [], payload: {}, extra: {} }
+      await act(async () => source.emit(event))
+    }
+    expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['critical'])
+    await act(async () => fireEvent.click(within(tray).getByRole('checkbox', { name: 'Quiet' })))
+    expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['critical'])
+  })
+
+  it('filters the bell and both lists independently of toasts, without reading or deleting hidden alerts', async () => {
+    const { source, prefs } = await setup()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
+    const tray = screen.getByRole('dialog', { name: 'Alerts' })
+    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Prefs' })))
+    const bell = within(tray).getByRole('combobox', { name: 'Bell / list threshold' })
+    const toast = within(tray).getByRole('combobox', { name: 'Toast threshold' })
+    await act(async () => fireEvent.change(bell, { target: { value: 'critical' } }))
+    expect(screen.queryByTestId('alert-badge')).toBeNull()
+    expect(within(tray).queryByRole('list', { name: 'Active alerts' })).toBeNull()
+    expect((toast as HTMLSelectElement).value).toBe('notice')
+    for (const severity of ['warning', 'critical'] as const) {
+      await act(async () => source.emit({ id: `independent-${severity}`, ts: Date.now(), kind: `threshold.${severity}`, severity,
+        source: { id: 'threshold-check' }, subjects: [], actions: [], payload: {}, extra: {} }))
+    }
+    const active = within(tray).getByRole('list', { name: 'Active alerts' })
+    expect(within(active).queryByText('threshold.warning')).toBeNull()
+    expect(within(active).getByRole('button', { name: 'Open details: threshold.critical' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Alerts, 1 unread' })).toBeTruthy()
+    // A warning can still toast while hidden from the critical-only bell/list.
+    expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['warning', 'critical'])
+    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Mark all read' })))
+    expect(screen.queryByTestId('alert-badge')).toBeNull()
+    await act(async () => fireEvent.change(bell, { target: { value: 'debug' } }))
+    const warning = within(tray).getByRole('button', { name: 'Open details: threshold.warning' }).closest('[data-testid="alert-item"]')!
+    expect(warning.getAttribute('data-status')).toBe('unread')
+    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Dismiss: threshold.warning' })))
+    await act(async () => fireEvent.click(within(tray).getByRole('tab', { name: /history/i })))
+    expect(within(tray).getByRole('button', { name: 'Open details: threshold.warning' })).toBeTruthy()
+    await act(async () => fireEvent.change(bell, { target: { value: 'critical' } }))
+    expect(within(tray).queryByText('threshold.warning')).toBeNull()
+    await act(async () => fireEvent.click(within(tray).getByRole('checkbox', { name: 'Quiet' })))
+    expect((bell as HTMLSelectElement).disabled).toBe(false)
+    expect(prefs.get()).toMatchObject({ quiet: true, toastMinSeverity: 'notice', bellMinSeverity: 'critical' })
   })
 
   it('tray lists alerts, dismiss moves to history, restore brings it back, Escape closes', async () => {

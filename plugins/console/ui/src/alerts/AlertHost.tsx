@@ -12,6 +12,7 @@ import { createRuleMapper } from '../rules/engine'
 import type { AlertRulePack } from '../rules/types'
 import { LocalAlertPrefsStore, type AlertPrefsStore } from './prefs'
 import { ToastQueue } from './toast-queue'
+import { severityAtLeast } from './policy'
 import { summarize, useAlertEntries, useNow } from './use-alerts'
 import type { AlertEntry } from './use-alerts'
 import type { AlertMapper } from './types'
@@ -51,10 +52,12 @@ export function AlertHost({ children, mapper: mapperProp, rules, prefsStore, dec
   const windowMs = prefs.coalesceWindowSec * 1000
   const post = useCallback((e: AlertEntry[], t: number) => applyEscalation(coalesceEntries(e, windowMs), t), [windowMs])
   const entries = useAlertEntries(mapper, now, post)
-  const summary = useMemo(() => summarize(entries), [entries])
+  const summary = useMemo(() => summarize(entries.filter(e => severityAtLeast(e.alert.severity, prefs.bellMinSeverity))), [entries, prefs.bellMinSeverity])
 
   // New unread alerts -> toasts. The queue ignores the backlog present at first offer.
-  const unreadAlerts = useMemo(() => summary.active.filter((e) => e.status === 'unread').map((e) => e.alert), [summary.active])
+  // Toast eligibility uses all unread alerts, independently of the bell/list
+  // display filter. Filtering never marks hidden alerts handled or drops them.
+  const unreadAlerts = useMemo(() => entries.filter((e) => e.status === 'unread').map((e) => e.alert), [entries])
   useEffect(() => {
     // Wait for the first snapshot so the backlog is not mistaken for new events.
     if (ready) queue.offer(unreadAlerts, prefs, Date.now())
