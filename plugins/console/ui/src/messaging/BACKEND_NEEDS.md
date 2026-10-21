@@ -10,7 +10,7 @@ for it to be correct and complete.
 | Client method | Route | Notes |
 |---|---|---|
 | `send` | `POST /api/v1/messages` | Body is `SendMessageRequest`. Intent maps to `kind`: message and nudge -> `notice`, update_request -> `request`. |
-| `getDelivery` | `GET /api/v1/messages/{id}` + `GET /api/v1/messages/thread/{thread_id}` | Two calls per poll. |
+| `getDelivery` | `GET /api/v1/messages/{id}` + `GET /api/v1/messages/thread/{thread_id}` | Live client also reads the Tether delivery trace; polls every 5s. |
 | `recentThread` | `GET /api/v1/messages/thread/{thread_id}` | Only by thread id. |
 
 ## Needed
@@ -18,12 +18,13 @@ for it to be correct and complete.
 1. **Per-recipient history.** `recentThread({with})` has no route: threads are fetched by id only,
    and many envelopes have an empty `thread_id`. Need `GET /messages?peer=<urn>&limit=` (messages
    between the operator and a peer, both directions, oldest/newest ordering stated).
-2. **Delivery state.** Envelopes expose only `delivered_at` and `consumed_at`. The GUI maps
-   consumed -> `read`. Need an explicit `state` (queued/delivered/read/replied/failed) or at least
-   `failed_at` + reason, and a server-computed `replied` (a reply with `in_reply_to` = this id).
-   The adapter currently infers replied from the thread, which misses replies on other threads.
-3. **Cheaper status polling.** A batch status endpoint (`GET /messages/status?ids=`) or the SSE
-   message stream filtered to the operator, instead of polling per message.
+2. **Delivery evidence (CW-20261020-0049).** Live delivery polling now supplements envelope
+   timestamps with `GET /api/plugins/console/v1/tether/messages/{id}/trace`. Host acceptance
+   alone stays queued; turn submission confirms delivery, consumption confirms acknowledgment.
+   Replies require an explicit `in_reply_to` from the recipient; cross-thread replies remain a gap.
+3. **Shared status polling (CW-20261020-0049).** A bounded 5s metadata event poll updates visible
+   mail badges by exact message id. This is recent evidence, not complete history; older messages
+   still depend on envelope timestamps or their individual trace. No new SSE connection is used.
 4. **Recipient resolution.** `resolveRecipient` only parses the URN today. Need
    `GET /messages/recipients/resolve?ref=` (agent slug or name -> URN, kind, label, broadcast flag)
    so an agent without a registered URN is reported unresolvable server-side too, and group

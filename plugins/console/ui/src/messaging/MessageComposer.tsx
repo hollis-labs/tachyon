@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { AgentPresence } from '../observations/AgentPresence'
 import { messageAction } from './actions'
 import { useMessaging } from './context'
 import { DeliveryStatus } from './DeliveryStatus'
@@ -99,6 +100,8 @@ export function MessageComposer({ recipient, intent = 'message', replyTo, subjec
           {replyTo ? ' · reply' : ''}
         </span>
       </div>
+
+      {recipient?.kind === 'agent' && <AgentPresence address={recipient.address} />}
 
       {templates.length > 0 && (
         <div role="group" aria-label="Templates" className="flex flex-wrap gap-1.5">

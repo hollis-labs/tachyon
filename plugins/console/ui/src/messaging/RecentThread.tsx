@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { LinkText } from '../autolink/LinkText'
 import { ago } from '@console/lib/agent-activity'
 import { useMessaging } from './context'
-import { DeliveryBadge } from './DeliveryStatus'
+import { ObservedDeliveryBadge } from './DeliveryStatus'
 import type { ThreadMessage, ThreadQuery } from './types'
 
 /** Recent conversation with a recipient (or a thread), oldest first. `refreshKey` re-fetches after a send. */
@@ -38,7 +38,7 @@ export function RecentThread({ query, refreshKey = 0, operator }: { query: Threa
               <li key={m.id} className="px-3 py-2">
                 <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
                   <span>{mine ? 'you' : 'them'}{m.intent !== 'message' ? ` · ${m.intent.replace('_', ' ')}` : ''} · {ago(m.at, now)}</span>
-                  {mine && <DeliveryBadge state={m.state} />}
+                  {mine && <ObservedDeliveryBadge messageId={m.id} state={m.state} />}
                 </div>
                 <p className="mt-1 whitespace-pre-wrap font-mono text-xs text-zinc-200"><LinkText surface="messaging" text={m.body} /></p>
               </li>

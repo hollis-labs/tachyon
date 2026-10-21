@@ -4,6 +4,7 @@
 
 import type { ListPage, MessageEnvelope, MessageKind, SendMessageRequest } from '@tachyon/torque-client'
 import { messageBody, messageSubject, parseUrn } from '@console/lib/messaging'
+import { deliveryFromTrace, type DeliveryTrace } from '../observations/delivery'
 import { OPERATOR_ADDRESS } from './operator'
 import type { DeliveryState, MessageIntent, MessagingClient, SendRequest, ThreadMessage } from './types'
 
@@ -28,9 +29,9 @@ export function toEnvelopeRequest(req: SendRequest, from = OPERATOR_ADDRESS): Se
   }
 }
 
-/** consumed => read; a later inbound envelope in the same thread => replied. */
+/** Acknowledged consumption => read; only an explicit reply from the recipient => replied. */
 export function deliveryFromEnvelope(m: MessageEnvelope, thread: MessageEnvelope[] = []): DeliveryState {
-  const answered = thread.some((o) => o.in_reply_to === m.id || (o.from === m.to && Date.parse(o.created_at) > Date.parse(m.created_at)))
+  const answered = thread.some((o) => o.in_reply_to === m.id && o.from === m.to)
   if (answered) return 'replied'
   if (m.consumed_at) return 'read'
   if (m.delivered_at) return 'delivered'
@@ -52,7 +53,7 @@ export interface MailApi {
   getThread(threadId: string, filter?: { limit?: number }): Promise<ListPage<MessageEnvelope>>
 }
 
-export function createMailMessagingClient(api: MailApi, opts: { from?: string } = {}): MessagingClient {
+export function createMailMessagingClient(api: MailApi, opts: { from?: string; trace?: (id: string) => Promise<DeliveryTrace> } = {}): MessagingClient {
   return {
     async resolveRecipient(ref) {
       const p = parseUrn(ref.trim())
@@ -65,8 +66,12 @@ export function createMailMessagingClient(api: MailApi, opts: { from?: string } 
     },
     async getDelivery(id) {
       const env = await api.getMessage(id)
-      const page = await api.getThread(env.thread_id || env.id)
-      return deliveryFromEnvelope(env, page.items ?? [])
+      const [thread, trace] = await Promise.allSettled([
+        api.getThread(env.thread_id || env.id),
+        opts.trace ? opts.trace(id) : Promise.resolve(null),
+      ])
+      const state = deliveryFromEnvelope(env, thread.status === 'fulfilled' ? thread.value.items ?? [] : [])
+      return trace.status === 'fulfilled' && trace.value ? deliveryFromTrace(id, trace.value, state) : state
     },
     async recentThread(q) {
       if (!q.threadId) return []

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
@@ -41,7 +42,40 @@ func (h *ObjectHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) 
 	target := ""
 	query := url.Values{}
 	fields := ""
+	var project func([]byte) ([]byte, error)
 	switch {
+	case path == "/events" && req.Method == "GET":
+		target = "/events"
+		query.Set("limit", "200")
+		// Only the reviewed kinds are requested, and the response is rebuilt from a
+		// per-kind field allowlist (projectEvents): no text, output or arguments reach the browser.
+		project = projectEvents
+		for _, kind := range activityEventKinds {
+			query.Add("kind", kind)
+		}
+		for _, key := range []string{"since_seq", "cursor"} {
+			if v := q.Get(key); v != "" {
+				if n, e := strconv.ParseInt(v, 10, 64); e != nil || n < 0 {
+					return forgeErr(400, "invalid_request", "Invalid event cursor")
+				}
+				query.Set(key, v)
+			}
+		}
+		if id := q.Get("session_id"); id != "" {
+			if !objectID.MatchString(id) {
+				return forgeErr(400, "invalid_request", "Invalid session")
+			}
+			query.Set("session_id", id)
+		}
+	case path == "/binding" && req.Method == "GET":
+		urn := q.Get("urn")
+		if !activityRecipient.MatchString(urn) {
+			return forgeErr(400, "invalid_request", "Invalid recipient")
+		}
+		target = "/registry/bindings"
+		project = projectBinding
+		query.Set("target_urn", urn)
+		query.Set("current", "true")
 	case path == "/workers" && req.Method == "GET":
 		target = "/workers"
 	case path == "/sessions" && req.Method == "POST":
@@ -90,6 +124,13 @@ func (h *ObjectHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) 
 	default:
 		parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 		if len(parts) >= 2 && objectID.MatchString(parts[1]) {
+			if len(parts) == 3 && req.Method == "GET" && ((parts[0] == "sessions" && parts[2] == "health") || (parts[0] == "messages" && parts[2] == "trace")) {
+				target = path
+				project = projectHealth
+				if parts[0] == "messages" {
+					project = projectTrace
+				}
+			}
 			if parts[0] == "sessions" && len(parts) == 2 && req.Method == "GET" {
 				target = path
 			}
@@ -146,6 +187,27 @@ func (h *ObjectHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) 
 	res.Headers["Cache-Control"] = "no-store"
 	if res.Status >= 300 && res.Status < 400 {
 		return forgeErr(502, "upstream_redirect", "Tether returned an unexpected redirect")
+	}
+	if project != nil {
+		// Fail closed: upstream error bodies and unparseable bodies are never forwarded.
+		if res.Status < 200 || res.Status >= 300 {
+			status := res.Status
+			if status < 400 || status > 599 {
+				status = 502
+			}
+			return forgeErr(status, "upstream_error", "Tether request failed")
+		}
+		body, err := project(res.Body)
+		if err != nil {
+			return forgeErr(502, "upstream_invalid", "Tether returned an unexpected response")
+		}
+		res.Body = body
+		for k := range res.Headers {
+			if h := strings.ToLower(k); h == "content-length" || h == "content-encoding" || h == "etag" {
+				delete(res.Headers, k)
+			}
+		}
+		res.Headers["Content-Type"] = "application/json"
 	}
 	return res
 }

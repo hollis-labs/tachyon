@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { TetherPollingSource } from '../observations/source'
 import { useApi } from '@tachyon/torque-client'
 import { createActionBus, type ActionBus } from '../seams/action-bus'
 import { HttpIdentityConfirm, type IdentityConfirm } from '../seams/identity-confirm'
@@ -37,7 +38,7 @@ export interface ConsoleProviderProps {
 export function ConsoleProvider(props: ConsoleProviderProps) {
   const api = useApi()
   const [{ store, seams }] = useState<{ store: ConsoleStore; seams: ConsoleSeams }>(() => {
-    const source = props.source ?? new CompositeSource([new ActivityStreamSource(api), new TorqueEventsSource(api)])
+    const source = props.source ?? new CompositeSource([new ActivityStreamSource(api), new TorqueEventsSource(api), new TetherPollingSource()])
     const identity = props.identity ?? new HttpIdentityConfirm()
     return {
       store: createConsoleStore({ source, resyncMs: props.resyncMs }),

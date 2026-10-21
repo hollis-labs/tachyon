@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AgentPresence } from '../observations/AgentPresence'
 import { Mail, MessageSquare } from 'lucide-react'
 import { ago } from '@console/lib/agent-activity'
 import type { Recipient } from '../messaging'
@@ -39,6 +40,7 @@ function Conversation({ thread, onBack }: { thread: ChatThread; onBack?: () => v
           <h2 className="truncate font-mono text-sm text-fg">{thread.title}</h2>
         </div>
         <CapabilityBadge capability={cap} withHint />
+        <AgentPresence sessionId={cap.sessionId} address={thread.agent.address} />
       </header>
       {error && <p role="alert" className="border-b border-danger/30 px-3 py-2 font-mono text-xs text-danger">{error}</p>}
       <ThreadView messages={messages} agentLabel={thread.title} loading={loading} hasMore={hasMore} onLoadOlder={() => void loadOlder()} />

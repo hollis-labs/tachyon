@@ -9,7 +9,7 @@ export const MAIL_CAPABILITY: ChatCapability = { mode: 'mail-only', detail: 'Tet
 
 export function chatMessageFromThread(m: ThreadMessage, threadId: string, operator: string): ChatMessage {
   const mine = m.from === operator || m.from.startsWith('msg://user/')
-  return { id: m.id, threadId, from: mine ? 'operator' : 'agent', body: m.body, at: m.at, ...(mine ? { delivery: m.state } : {}), tools: [] }
+  return { id: m.id, threadId, from: mine ? 'operator' : 'agent', body: m.body, at: m.at, ...(mine ? { delivery: m.state } : {}), tools: [], info: { transport: 'mail' } }
 }
 
 export interface MailChatOptions {
@@ -50,7 +50,7 @@ export function createMailChatClient(messaging: MessagingClient, opts: MailChatO
       const to = agents.get(id)
       if (!to) throw new Error(`Unknown thread ${id}`)
       const out = await messaging.send({ to, intent: 'message', body })
-      return { id: out.id, threadId: id, from: 'operator', body, at: out.sentAt, delivery: out.state, tools: [] }
+      return { id: out.id, threadId: id, from: 'operator', body, at: out.sentAt, delivery: out.state, tools: [], info: { transport: 'mail' } }
     },
     async markRead(id) {
       unread.set(id, 0)
