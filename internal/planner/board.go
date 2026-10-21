@@ -15,6 +15,8 @@ type BoardOptions struct {
 	Scope                    string
 	RecentHours, ActiveHours float64
 	Limit                    int
+	// IncludeProposed adds proposed themes to the theme board.
+	IncludeProposed bool
 }
 
 func boardTime(value string) time.Time {
@@ -33,15 +35,63 @@ func contains(values any, want string) bool {
 	}
 	return false
 }
+
+// boardLess orders two rows of one section. The activity feed and the landed
+// section are recency lists (updated desc, then id). Curated sections are
+// ranked: a manual order beats everything, then priority 1..5 (0 means unset
+// and sorts after), then recency. Editing a row therefore never changes its
+// rank, only a deliberate reorder or priority change does.
+func boardLess(a, b Item, ranked bool) bool {
+	if ranked {
+		ao, aok := rankNumber(a["order"], true)
+		bo, bok := rankNumber(b["order"], true)
+		if aok != bok {
+			return aok
+		}
+		if aok && ao != bo {
+			return ao < bo
+		}
+		ap, apok := rankNumber(a["priority"], false)
+		bp, bpok := rankNumber(b["priority"], false)
+		if apok != bpok {
+			return apok
+		}
+		if apok && ap != bp {
+			return ap < bp
+		}
+	}
+	au, bu := textField(a, "updated"), textField(b, "updated")
+	if au == bu {
+		return textField(a, "id") < textField(b, "id")
+	}
+	return au > bu
+}
+
+// rankNumber reports whether a row carries a usable ranking value. Priority 0
+// is "unset"; an explicit order of 0 is a real position.
+func rankNumber(v any, zeroIsSet bool) (float64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	n := number(v)
+	if n == 0 && !zeroIsSet {
+		return 0, false
+	}
+	return n, true
+}
+
 func (s *Owned) Board(ctx context.Context, tasks *Tasks, o BoardOptions) (Item, error) {
 	if o.Scope == "" {
 		o.Scope = "curated"
 	}
-	if o.Scope != "curated" && o.Scope != "all" {
+	if o.Scope != "curated" && o.Scope != "all" && o.Scope != "themes" {
 		return nil, objects.ErrInvalid
 	}
 	if o.RecentHours == 0 {
 		o.RecentHours = 72
+		if o.Scope == "themes" {
+			o.RecentHours = defaultThemeWindowHours
+		}
 	}
 	if o.ActiveHours == 0 {
 		o.ActiveHours = 168
@@ -51,6 +101,9 @@ func (s *Owned) Board(ctx context.Context, tasks *Tasks, o BoardOptions) (Item, 
 	}
 	if o.RecentHours < 0 || o.RecentHours > 8760 || o.ActiveHours < 0 || o.ActiveHours > 8760 || o.Limit < 1 || o.Limit > 500 {
 		return nil, objects.ErrInvalid
+	}
+	if o.Scope == "themes" {
+		return s.themeBoard(ctx, tasks, o, o.IncludeProposed)
 	}
 	now := time.Now().UTC()
 	recent := now.Add(-time.Duration(o.RecentHours * float64(time.Hour)))
@@ -125,16 +178,15 @@ func (s *Owned) Board(ctx context.Context, tasks *Tasks, o BoardOptions) (Item, 
 			if db == "inbox" || db == "roadmap" {
 				row["source"] = db
 			}
-			for _, k := range []string{"priority", "phase", "owner", "tldr", "next_step", "blockers", "tags", "workstream_id"} {
+			for _, k := range []string{"priority", "order", "phase", "owner", "tldr", "next_step", "blockers", "tags", "workstream_id"} {
 				if x, ok := v[k]; ok {
 					row[k] = x
 				}
 			}
+			// A row lives in exactly one section. Blockers travel on the row
+			// so the UI can badge them; they never add a second copy.
 			if section != "" {
 				sections[section] = append(sections[section], row)
-			}
-			if db == "workstreams" && len(array(v["blockers"])) > 0 && section != "holds" && section != "landed" {
-				sections["holds"] = append(sections["holds"], row)
 			}
 		}
 	}
@@ -220,13 +272,8 @@ func (s *Owned) Board(ctx context.Context, tasks *Tasks, o BoardOptions) (Item, 
 	}
 	count, totals := map[string]int{}, map[string]int{}
 	for k, rows := range sections {
-		sort.SliceStable(rows, func(i, j int) bool {
-			a, b := textField(rows[i], "updated"), textField(rows[j], "updated")
-			if a == b {
-				return textField(rows[i], "id") < textField(rows[j], "id")
-			}
-			return a > b
-		})
+		ranked := o.Scope == "curated" && k != "landed"
+		sort.SliceStable(rows, func(i, j int) bool { return boardLess(rows[i], rows[j], ranked) })
 		totals[k] = len(rows)
 		if len(rows) > o.Limit {
 			rows = rows[:o.Limit]

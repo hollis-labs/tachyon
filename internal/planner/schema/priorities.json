@@ -1,5 +1,5 @@
 {
-  "description": "The owner's top-level priorities. Each points at the roadmap items, workstreams and ideas that serve it.",
+  "description": "Themes: the features, capabilities, topics or whole apps currently in play, a layer above workstreams and below the long-term roadmap. Chrispian approves and sequences themes; agents may propose a theme (status proposed, then ready, meaning proposed and ready for the operator to consider, never authorized) and may park an approved theme with a reason, but never approve, reorder, finish or archive. The operator approves, resequences, finishes and declines (archive). Approved means eligible for sequencing only, never launch authorization: Torque tasks stay manual until promoted. This is the database formerly named priorities; its storage key and PR-nn legacy ids are unchanged. Progress (done/total tasks) is computed from the linked workstreams and tasks, never stored; a task counts as done only when its Torque status is done, and cancelled, abandoned and archived tasks leave the total.",
   "fields": {
     "id": {
       "type": "string",
@@ -41,12 +41,14 @@
     },
     "status": {
       "enum": [
-        "active",
-        "exploring",
-        "queued",
+        "proposed",
+        "ready",
+        "approved",
+        "paused",
         "done",
-        "dropped"
-      ]
+        "archived"
+      ],
+      "description": "Stored lifecycle. proposed: defined, not ready. ready: ready to be sequenced. approved: Chrispian approved it for sequencing (see order). paused: parked; its Torque tasks are untouched. done: finished; stays on the board for the landed window, then drops off. archived: off the board. Earlier values draft, active, achieved are still readable on unmigrated records. Flight-board words are derived for display and never stored."
     },
     "summary": {
       "type": "string"
@@ -78,13 +80,13 @@
     },
     "order": {
       "type": "number",
-      "description": "list order within the database; items without it sort after those with it"
+      "description": "manual sequence among approved themes; lower first. The single sequencing mechanism. Changed only by the operator-only resequence action."
     },
     "priority": {
       "type": "integer",
-      "minimum": 1,
+      "minimum": 0,
       "maximum": 5,
-      "description": "1 highest, same meaning as Torque"
+      "description": "1 highest, 0 unset. Informational; sorts ready themes. Never ranks approved themes (order does)."
     },
     "author": {
       "type": "string",
@@ -98,6 +100,51 @@
       "type": "array",
       "description": "generic link to item ids in any database",
       "items": "string"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "who approved; set by the service on approve, never by a patch"
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "when approved; set by the service on approve, never by a patch"
+    },
+    "depends_on": {
+      "type": "array",
+      "items": "string",
+      "description": "ids of themes that must land first"
+    },
+    "tasks": {
+      "type": "array",
+      "items": "string",
+      "description": "direct Torque task ids counted in progress in addition to the tasks under workstream_ids"
+    },
+    "decision_ids": {
+      "type": "array",
+      "items": "string",
+      "description": "decisions waiting on or shaping this theme; the 'needs Chrispian' list, instead of free-text blockers"
+    },
+    "risk_ids": {
+      "type": "array",
+      "items": "string"
+    },
+    "accountable": {
+      "type": "string",
+      "description": "the person accountable (e.g. chrispian)"
+    },
+    "executing_owner": {
+      "type": "string",
+      "description": "the agent or team doing the work"
+    },
+    "legacy_status": {
+      "type": "string",
+      "description": "the status this record had before the priorities-to-themes migration (draft, active or achieved); kept so the earlier meaning stays visible. Never read as approval"
+    },
+    "last_verified": {
+      "type": "string",
+      "format": "date-time",
+      "description": "when someone last confirmed this record matches reality; drives the age badge on the board"
     }
   }
 }

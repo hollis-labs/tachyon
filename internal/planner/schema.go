@@ -14,6 +14,7 @@ import (
 var schemas embed.FS
 
 func Schema(db string) (Item, error) {
+	db = CanonicalDB(db)
 	if _, ok := databaseKinds[db]; !ok {
 		return nil, objects.ErrNotFound
 	}
@@ -29,7 +30,11 @@ func Schema(db string) (Item, error) {
 	fields["id"] = Item{"type": "string", "description": "Tachyon UUID; caller retained on create"}
 	fields["rev"] = Item{"type": "integer", "minimum": 1, "description": "Current Tachyon revision; expected_revision is required on every write"}
 	fields["legacy_id"] = Item{"type": "string", "description": "Read-only original imported ID"}
-	fields["status"] = Item{"type": "string", "enum": nativeStatuses[db]}
+	statuses := nativeStatuses[db]
+	if db == "priorities" {
+		statuses = themeStatuses
+	}
+	fields["status"] = Item{"type": "string", "enum": statuses}
 	if db == "risks" {
 		fields["impact"] = Item{"type": "integer", "minimum": 0, "maximum": 5}
 		fields["likelihood"] = Item{"type": "integer", "minimum": 0, "maximum": 5}
@@ -54,5 +59,5 @@ func Schema(db string) (Item, error) {
 			enums[k] = values
 		}
 	}
-	return Item{"db": db, "id": "tachyon/planner/" + db + "@1", "description": desc["description"], "required": []string{"id", "title", "status"}, "fields": fields, "enums": enums, "link_kinds": []string{"torque", "tesseract", "tether", "pr", "adr", "url", "file", "commit", "workstream"}}, nil
+	return Item{"db": PublicDB(db), "id": "tachyon/planner/" + PublicDB(db) + "@1", "description": desc["description"], "required": []string{"id", "title", "status"}, "fields": fields, "enums": enums, "link_kinds": []string{"torque", "tesseract", "tether", "pr", "adr", "url", "file", "commit", "workstream"}}, nil
 }

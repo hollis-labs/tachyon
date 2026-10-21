@@ -50,6 +50,7 @@ func (s *Owned) ResolveReference(ctx context.Context, id string) (Item, error) {
 	return found, nil
 }
 func (s *Owned) Relate(ctx context.Context, q RelationRequest, actor string) (Item, error) {
+	q.From.DB, q.To.DB = CanonicalDB(q.From.DB), CanonicalDB(q.To.DB)
 	if q.Field == "" {
 		q.Field = "related_ids"
 	}
@@ -89,13 +90,49 @@ func (s *Owned) Relate(ctx context.Context, q RelationRequest, actor string) (It
 var databaseKinds = map[string]objects.Kind{"priorities": objects.StrategicPriorityKind, "workstreams": objects.WorkstreamKind, "roadmap": objects.RoadmapItemKind, "ideas": objects.IdeaKind, "decisions": objects.DecisionKind, "risks": objects.RiskKind, "inbox": objects.InboxItemKind}
 
 // DatabaseKind maps the public portfolio database name to its immutable object kind.
+// CanonicalDB maps a public database name to its storage key. "themes" is the
+// public name of the database stored as "priorities": that key, the
+// strategic_priority object kind (a SQL CHECK constraint) and the legacy
+// source collection "planner/priorities" are persisted identifiers and stay.
+func CanonicalDB(db string) string {
+	if db == "themes" {
+		return "priorities"
+	}
+	return db
+}
+
+// PublicDB is the name callers see for a storage key.
+func PublicDB(db string) string {
+	if db == "priorities" {
+		return "themes"
+	}
+	return db
+}
+
 func DatabaseKind(db string) (objects.Kind, bool) {
-	kind, ok := databaseKinds[db]
+	kind, ok := databaseKinds[CanonicalDB(db)]
 	return kind, ok
 }
 
+// approvalFields are stamped by the service when a theme is approved. A plain
+// create or patch may not write them, so an agent cannot forge an approval.
+func approvalFields(db string) []string {
+	if db == "priorities" {
+		return []string{"approved_by", "approved_at"}
+	}
+	return nil
+}
+
+// themeStatuses is the lifecycle callers should use. Flight-board words (in
+// flight, cleared, queued, parked, landed) are derived for display and are
+// never stored.
+var themeStatuses = []string{"proposed", "ready", "approved", "paused", "done", "archived"}
+
 var nativeStatuses = map[string][]string{
-	"priorities":  {"draft", "active", "achieved", "paused", "archived"},
+	// Themes. The last three are the earlier priority statuses; existing records
+	// keep them until Chrispian migrates and re-approves, and the schema
+	// advertises only themeStatuses.
+	"priorities":  {"proposed", "ready", "approved", "paused", "done", "archived", "draft", "active", "achieved"},
 	"workstreams": {"draft", "active", "paused", "closed", "archived"},
 	"roadmap":     {"draft", "planned", "active", "completed", "deferred", "cancelled", "archived"},
 	"ideas":       {"draft", "exploring", "accepted", "rejected", "archived"},
@@ -239,6 +276,7 @@ func typedFields(db string) []string {
 }
 
 func (s *Owned) records(ctx context.Context, db string) ([]objects.Record, error) {
+	db = CanonicalDB(db)
 	kind, ok := databaseKinds[db]
 	if !ok {
 		return nil, objects.ErrNotFound
@@ -264,6 +302,7 @@ func (s *Owned) records(ctx context.Context, db string) ([]objects.Record, error
 }
 
 func (s *Owned) Resolve(ctx context.Context, db, id string) (objects.Record, error) {
+	db = CanonicalDB(db)
 	kind, ok := databaseKinds[db]
 	if !ok {
 		return objects.Record{}, objects.ErrNotFound
@@ -461,6 +500,7 @@ func (d rawDefinition) ObjectKind() objects.Kind     { return d.kind }
 func (d rawDefinition) MarshalJSON() ([]byte, error) { return d.body, nil }
 
 func (s *Owned) Create(ctx context.Context, db, id string, fields Item, actor string) (Item, error) {
+	db = CanonicalDB(db)
 	kind, ok := databaseKinds[db]
 	if !ok {
 		return nil, objects.ErrNotFound
@@ -468,7 +508,7 @@ func (s *Owned) Create(ctx context.Context, db, id string, fields Item, actor st
 	if id == "" {
 		return nil, fmt.Errorf("%w: caller-retained UUID required", objects.ErrInvalid)
 	}
-	for _, k := range []string{"rev", "legacy_id", "created", "updated", "comments", "author"} {
+	for _, k := range append([]string{"rev", "legacy_id", "created", "updated", "comments", "author"}, approvalFields(db)...) {
 		if _, ok := fields[k]; ok {
 			return nil, fmt.Errorf("%w: %s is server managed", objects.ErrInvalid, k)
 		}
@@ -477,6 +517,11 @@ func (s *Owned) Create(ctx context.Context, db, id string, fields Item, actor st
 		fields["status"] = nativeStatuses[db][0]
 	}
 	fields["author"] = actor
+	if db == "priorities" {
+		if err := guardTheme(nil, fields, actor); err != nil {
+			return nil, err
+		}
+	}
 	b, err := definition(db, fields, nil)
 	if err != nil {
 		return nil, err
@@ -488,7 +533,8 @@ func (s *Owned) Create(ctx context.Context, db, id string, fields Item, actor st
 	return View(r), nil
 }
 func (s *Owned) Patch(ctx context.Context, db, id string, rev int64, patch Item, actor string) (Item, error) {
-	for _, k := range []string{"id", "rev", "legacy_id", "created", "updated", "author", "comments", "promoted_to"} {
+	db = CanonicalDB(db)
+	for _, k := range append([]string{"id", "rev", "legacy_id", "created", "updated", "author", "comments", "promoted_to"}, approvalFields(db)...) {
 		if _, ok := patch[k]; ok {
 			return nil, fmt.Errorf("%w: %s is server managed", objects.ErrInvalid, k)
 		}
@@ -516,6 +562,7 @@ func (s *Owned) Patch(ctx context.Context, db, id string, rev int64, patch Item,
 	})
 }
 func (s *Owned) change(ctx context.Context, db, id string, rev int64, actor string, fn func(Item) error) (Item, error) {
+	db = CanonicalDB(db)
 	r, err := s.Resolve(ctx, db, id)
 	if err != nil {
 		return nil, err
@@ -524,8 +571,17 @@ func (s *Owned) change(ctx context.Context, db, id string, rev int64, actor stri
 		return nil, objects.ErrConflict
 	}
 	row := View(r)
+	before := Item{}
+	for k, v := range row {
+		before[k] = v
+	}
 	if err = fn(row); err != nil {
 		return nil, err
+	}
+	if db == "priorities" {
+		if err = guardTheme(before, row, actor); err != nil {
+			return nil, err
+		}
 	}
 	b, err := definition(db, row, r.Definition)
 	if err != nil {
@@ -551,6 +607,25 @@ func appendComment(row Item, text, kind, actor string) error {
 	return nil
 }
 func (s *Owned) Action(ctx context.Context, db, id string, rev int64, action string, args Item, actor string) (Item, error) {
+	db = CanonicalDB(db)
+	if IsThemeAction(action) {
+		if db != "priorities" {
+			return nil, objects.ErrInvalid
+		}
+		if action == "resequence" {
+			rows, err := s.Resequence(ctx, id, rev, int(number(args["position"])), actor)
+			if err != nil {
+				return nil, err
+			}
+			for _, r := range rows {
+				if r["id"] == id || r["legacy_id"] == id {
+					return r, nil
+				}
+			}
+			return s.Get(ctx, db, id)
+		}
+		return s.change(ctx, db, id, rev, actor, func(row Item) error { return s.themeAction(ctx, row, action, args, actor) })
+	}
 	return s.change(ctx, db, id, rev, actor, func(row Item) error {
 		switch action {
 		case "comments":
@@ -630,6 +705,10 @@ type OrderChange struct {
 }
 
 func (s *Owned) Reorder(ctx context.Context, db string, items []OrderChange, actor string) ([]Item, error) {
+	db = CanonicalDB(db)
+	if db == "priorities" && !isOperator(actor) {
+		return nil, fmt.Errorf("%w: sequencing themes is operator-only", ErrOperatorRequired)
+	}
 	changes := []objects.Replacement{}
 	for i, item := range items {
 		r, err := s.Resolve(ctx, db, item.ID)
@@ -655,6 +734,7 @@ func (s *Owned) Reorder(ctx context.Context, db string, items []OrderChange, act
 	return out, nil
 }
 func (s *Owned) Promote(ctx context.Context, id string, rev int64, toDB, targetID string, fields Item, actor string) (Item, error) {
+	toDB = CanonicalDB(toDB)
 	if toDB == "inbox" {
 		return nil, objects.ErrInvalid
 	}
@@ -687,6 +767,16 @@ func (s *Owned) Promote(ctx context.Context, id string, rev int64, toDB, targetI
 	row := Item{"title": seed.Name, "status": nativeStatuses[toDB][0]}
 	for k, v := range fields {
 		row[k] = v
+	}
+	if toDB == "priorities" {
+		for _, k := range approvalFields(toDB) {
+			if _, ok := fields[k]; ok {
+				return nil, fmt.Errorf("%w: %s is server managed", objects.ErrInvalid, k)
+			}
+		}
+		if err := guardTheme(nil, row, actor); err != nil {
+			return nil, err
+		}
 	}
 	b, err := definition(toDB, row, nil)
 	if err != nil {

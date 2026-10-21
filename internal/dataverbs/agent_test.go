@@ -207,3 +207,59 @@ func TestAgentBoundaryAndKindRestrictions(t *testing.T) {
 		t.Fatal("duplicate credentials accepted")
 	}
 }
+
+func TestAgentCannotApproveOrSequenceThemes(t *testing.T) {
+	_, s, db := setup(t)
+	access := &agentaccess.Store{DB: db}
+	writer, secret, err := access.Issue(ctx, "", "Portfolio Manager", agentaccess.PortfolioWrite(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := NewAgentHTTP(s, access)
+	call := func(method, verb, input string, status int) map[string]any {
+		t.Helper()
+		path := AgentPrefix + "/providers/tachyon/verbs/" + verb
+		var body io.Reader
+		if method == "GET" {
+			path += "?input=" + url.QueryEscape(input)
+		} else {
+			body = strings.NewReader(input)
+		}
+		req := httptest.NewRequest(method, path, body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+secret)
+		req.Header.Set("X-Actor", "operator:browser")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != status {
+			t.Fatalf("%s: got %d want %d: %s", verb, w.Code, status, w.Body.String())
+		}
+		var out map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		return out
+	}
+	id := uuid.NewString()
+	call("POST", "planner.portfolio.create", fmt.Sprintf(`{"db":"themes","id":%q,"fields":{"title":"Managed agent capacity","status":"ready"}}`, id), 200)
+	schema := call("GET", "planner.portfolio.schema", `{"db":"themes"}`, 200)["data"].(map[string]any)
+	if schema["db"] != "themes" {
+		t.Fatal(schema["db"])
+	}
+	call("GET", "planner.portfolio.get", fmt.Sprintf(`{"db":"priorities","id":%q}`, id), 200)
+
+	// A claimed operator header changes nothing: approval and sequencing stay refused.
+	call("POST", "planner.portfolio.action", fmt.Sprintf(`{"db":"themes","id":%q,"expected_revision":1,"action":"approve","arguments":{}}`, id), 403)
+	call("POST", "planner.portfolio.patch", fmt.Sprintf(`{"db":"themes","id":%q,"expected_revision":1,"patch":{"status":"approved"}}`, id), 403)
+	call("POST", "planner.portfolio.patch", fmt.Sprintf(`{"db":"themes","id":%q,"expected_revision":1,"patch":{"approved_by":"chrispian"}}`, id), 400)
+	call("POST", "planner.portfolio.reorder", fmt.Sprintf(`{"db":"themes","items":[{"id":%q,"expected_revision":1}]}`, id), 403)
+	call("POST", "planner.portfolio.action", fmt.Sprintf(`{"db":"themes","id":%q,"expected_revision":1,"action":"resequence","arguments":{"position":1}}`, id), 403)
+
+	// The agent's own lifecycle works and is attributed to the credential.
+	out := call("POST", "planner.portfolio.action", fmt.Sprintf(`{"db":"themes","id":%q,"expected_revision":1,"action":"append_state","arguments":{"text":"scoped with Chrispian"}}`, id), 200)["data"].(map[string]any)
+	if !strings.Contains(out["state"].(string), "service:"+writer.IdentityID+": scoped with Chrispian") {
+		t.Fatal("state not attributed to the credential", out["state"])
+	}
+	out = call("POST", "planner.portfolio.action", fmt.Sprintf(`{"db":"themes","id":%q,"expected_revision":2,"action":"park","arguments":{"reason":"blocked"}}`, id), 200)["data"].(map[string]any)
+	if out["status"] != "paused" {
+		t.Fatal(out["status"])
+	}
+}

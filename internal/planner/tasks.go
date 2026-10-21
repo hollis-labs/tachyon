@@ -175,6 +175,9 @@ type WorkstreamTasks struct {
 	Open         []TaskBrief    `json:"open"`
 	OpenTotal    int            `json:"open_total"`
 	Note         string         `json:"note,omitempty"`
+	// Statuses maps each distinct task id to its status. Themes union these
+	// across workstreams, so a shared task is counted once per theme.
+	Statuses map[string]string `json:"-"`
 }
 
 func openTask(s string) bool {
@@ -215,7 +218,7 @@ func (h *HTTP) TaskDetails(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, b)
 }
 func (t *Tasks) ForWorkstream(ctx context.Context, row Item) (WorkstreamTasks, error) {
-	out := WorkstreamTasks{WorkstreamID: textField(row, "id"), ProjectIDs: []string{}, Tag: textField(row, "torque_tag"), Counts: map[string]int{}, Open: []TaskBrief{}}
+	out := WorkstreamTasks{WorkstreamID: textField(row, "id"), ProjectIDs: []string{}, Tag: textField(row, "torque_tag"), Counts: map[string]int{}, Open: []TaskBrief{}, Statuses: map[string]string{}}
 	projects := map[string]bool{}
 	for _, v := range array(row["torque_project_ids"]) {
 		p, ok := v.(string)
@@ -256,6 +259,7 @@ func (t *Tasks) ForWorkstream(ctx context.Context, row Item) (WorkstreamTasks, e
 				continue
 			}
 			seen[r.ID] = true
+			out.Statuses[r.ID] = r.Status
 			out.Counts[r.Status]++
 			out.Total++
 			if openTask(r.Status) {

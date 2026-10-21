@@ -9,6 +9,7 @@ import { PageHeader, statusTone } from '@hollis-labs/kit-dashboard'
 import { DashboardSearchToolbar, DashboardToolbar, DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { FilterChipGroup } from '@hollis-labs/kit-dashboard/data'
 import { PlannerBoardView } from '@planner/components/planner/planner-board'
+import { ThemeBoardView } from '@planner/components/planner/theme-board'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { PlannerDetailDialog } from '@planner/components/planner/planner-detail-dialog'
 import { PlannerRow } from '@planner/components/planner/planner-row'
@@ -22,12 +23,12 @@ import { PlannerWriteError } from '@planner/components/planner/planner-write-err
 import { PlannerApiError as ApiError } from '@planner/api/errors'
 import { PLANNER_DBS, filterItems, isPlannerDb, isSettled, moveId, parseBoardOpen, plannerMeta, statusCounts, statusToneKey } from '@planner/lib/planner'
 import { notifyError } from '@planner/api/notifications'
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerSearchHit } from '@planner/api/types'
+import type { PlannerBoard, ThemeAction, ThemeBoard, ThemeRow, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerSearchHit } from '@planner/api/types'
 
 /** The board is a live view: it also refreshes on its own while open. */
 const BOARD_REFRESH_MS = 30_000
 
-const VIEW_ACCENTS = { board: 'doing', activity: 'done', priorities: 'queued', workstreams: 'doing', roadmap: 'done', ideas: 'review', decisions: 'review', risks: 'blocked', inbox: 'queued' } as const
+const VIEW_ACCENTS = { flight: 'review', board: 'doing', activity: 'done', themes: 'queued', workstreams: 'doing', roadmap: 'done', ideas: 'review', decisions: 'review', risks: 'blocked', inbox: 'queued' } as const
 
 export default function PlannerPage() {
   const rowFocus = usePlannerRowFocus()
@@ -42,13 +43,16 @@ export default function PlannerPage() {
   // /planner and /planner/board are the curated board, /planner/activity the
   // activity feed (scope=all); /planner/<db> is a list.
   const isActivity = params.db === 'activity'
+  // /planner/flight is the themes board: approved themes in order, what is queued behind them, what is parked.
+  const isFlight = params.db === 'flight'
   // Torque's agents / agents-demo / builder views live in the Console plugin
   // (its own /agents and /builder nav items), so they have no tab here.
   const isDemo = false
-  const isBoard = params.db === undefined || params.db === 'board' || isActivity
+  const isBoard = params.db === undefined || params.db === 'board' || isActivity || isFlight
   const boardScope = isActivity ? 'all' : 'curated'
-  const boardBase = isActivity ? '/planner/activity' : '/planner/board'
-  const db: PlannerDb = isPlannerDb(params.db) ? params.db : 'priorities'
+  const boardBase = isFlight ? '/planner/flight' : isActivity ? '/planner/activity' : '/planner/board'
+  // 'priorities' is the database's earlier name; old links land on themes.
+  const db: PlannerDb = isPlannerDb(params.db) ? params.db : 'themes'
   const openId = params.id ? decodeURIComponent(params.id) : undefined
   const boardOpen = isBoard ? parseBoardOpen(searchParams) : {} // the board opens items in modals over itself
   const meta = plannerMeta(db)
@@ -58,6 +62,9 @@ export default function PlannerPage() {
   const [enabled, setEnabled] = useState<boolean | null>(null)
   const [counts, setCounts] = useState<PlannerDatabaseInfo[]>([])
   const [board, setBoard] = useState<PlannerBoard | null>(null)
+  const [themeBoard, setThemeBoard] = useState<ThemeBoard | null>(null)
+  const [showProposed, setShowProposed] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [boardError, setBoardError] = useState<string | null>(null)
   const [items, setItems] = useState<PlannerItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -101,15 +108,21 @@ export default function PlannerPage() {
   const loadBoard = useCallback(async () => {
     const version = ++boardReadVersion.current
     try {
-      const next = await api.plannerBoard({ scope: boardScope })
-      if (version !== boardReadVersion.current) return
-      setBoard(next)
+      if (isFlight) {
+        const next = await api.plannerThemeBoard({ include_proposed: showProposed })
+        if (version !== boardReadVersion.current) return
+        setThemeBoard(next)
+      } else {
+        const next = await api.plannerBoard({ scope: boardScope })
+        if (version !== boardReadVersion.current) return
+        setBoard(next)
+      }
       setBoardError(null)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'feature_disabled') setEnabled(false)
       else if (version === boardReadVersion.current) setBoardError(err instanceof Error ? err.message : 'Failed to load the board')
     }
-  }, [api, boardScope])
+  }, [api, boardScope, isFlight, showProposed])
 
   useEffect(() => {
     void loadCounts()
@@ -118,7 +131,8 @@ export default function PlannerPage() {
   // The board loads when opened and then keeps itself fresh.
   useEffect(() => {
     if (!isBoard) return
-    setBoard(null) // the curated board and the activity feed are different documents
+    setBoard(null) // the curated board, the activity feed and the flight board are different documents
+    setThemeBoard(null)
     void loadBoard()
     const t = setInterval(() => void loadBoard(), BOARD_REFRESH_MS)
     return () => { clearInterval(t); boardReadVersion.current++ }
@@ -205,6 +219,16 @@ export default function PlannerPage() {
     }
   }
 
+  async function onThemeAction(row: ThemeRow, action: ThemeAction, args?: { position?: number }) {
+    setActionError(null)
+    try {
+      await api.plannerThemeAction(row.id, action, row.rev, args)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'The action failed')
+    }
+    await loadBoard() // reload either way: a refused action usually means the view was stale
+  }
+
   async function enable() {
     try {
       await api.enable?.()
@@ -235,7 +259,7 @@ export default function PlannerPage() {
   }
 
   const countOf = (key: PlannerDb) => counts.find((c) => c.name === key)?.count
-  const maxRank = Math.max(0, ...(db === 'priorities' ? (items ?? []).map((i) => (typeof i.rank === 'number' ? i.rank : 0)) : [0]))
+  const maxRank = Math.max(0, ...(db === 'themes' ? (items ?? []).map((i) => (typeof i.rank === 'number' ? i.rank : 0)) : [0]))
 
   return (
     <div className="planner-page flex h-full min-w-0 flex-col" data-row-focus={rowFocus}>
@@ -248,9 +272,10 @@ export default function PlannerPage() {
 
       <DashboardSearchToolbar value={search} onChange={setSearch} label="Search the planner" placeholder="Search the planner…" slashToFocus layeredEscape retainFocusOnClear />
       <PlannerWriteError error={orderError} onReload={() => { void loadItems().then(loaded => { if (loaded) setOrderError(null) }) }} />
-      <DashboardViewTabs label="Planner views" value={isActivity ? 'activity' : isBoard ? 'board' : db}
+      <DashboardViewTabs label="Planner views" value={isFlight ? 'flight' : isActivity ? 'activity' : isBoard ? 'board' : db}
         onChange={value => { setSearch(''); navigate(`/planner/${value}`) }}
         items={[
+          { value: 'flight', label: 'Flight', tone: VIEW_ACCENTS.flight },
           { value: 'board', label: 'Board', tone: VIEW_ACCENTS.board },
           { value: 'activity', label: 'Activity', tone: VIEW_ACCENTS.activity },
           ...PLANNER_DBS.map(d => ({ value: d.key, label: d.label, count: countOf(d.key), tone: VIEW_ACCENTS[d.key] })),
@@ -264,7 +289,7 @@ export default function PlannerPage() {
             <div className="p-4">
               <EmptyState variant="error" title="Something went wrong" description={boardError} action={{ label: 'Retry', onClick: () => void loadBoard() }} />
             </div>
-          ) : board === null ? (
+          ) : (isFlight ? themeBoard : board) === null ? (
             <div className="flex flex-col divide-y divide-border">
               <Skeleton className="h-40 w-full" />
               <Skeleton className="h-40 w-full" />
@@ -272,7 +297,19 @@ export default function PlannerPage() {
               <Skeleton className="h-40 w-full" />
             </div>
           ) : (
-            <PlannerBoardView board={board} scope={boardScope} base={boardBase} />
+            isFlight && themeBoard ? (
+              <>
+                <div className="flex items-center justify-end gap-2 border-b border-border px-4 py-2">
+                  <Button variant="outline" size="sm" aria-pressed={showProposed} onClick={() => setShowProposed((v) => !v)}>
+                    {showProposed ? 'Hide proposed' : 'Show proposed'}
+                  </Button>
+                </div>
+                {actionError && <p role="alert" className="border-b border-border bg-panel px-4 py-2 dash-support leading-5 text-destructive">{actionError}</p>}
+                <ThemeBoardView board={themeBoard} base={boardBase} showProposed={showProposed} onAction={onThemeAction} />
+              </>
+            ) : board ? (
+              <PlannerBoardView board={board} scope={boardScope} base={boardBase} />
+            ) : null
           )
         ) : (
           <>
