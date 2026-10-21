@@ -196,6 +196,10 @@ func TestActivityReadsAreBoundedAndCannotDrainMailOrExposeOutput(t *testing.T) {
 		default:
 			t.Errorf("unexpected route %s", r.URL)
 		}
+		if r.URL.Path == "/events" {
+			_, _ = w.Write([]byte(`{"events":[]}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer upstream.Close()
