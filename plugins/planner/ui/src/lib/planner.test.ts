@@ -60,7 +60,7 @@ const risksSchema: PlannerSchemaInfo = {
 
 describe('database metadata', () => {
   it('lists the seven databases with the inbox last', () => {
-    expect(PLANNER_DBS.map((d) => d.key)).toEqual(['priorities', 'workstreams', 'roadmap', 'ideas', 'decisions', 'risks', 'inbox'])
+    expect(PLANNER_DBS.map((d) => d.key)).toEqual(['themes', 'workstreams', 'roadmap', 'ideas', 'decisions', 'risks', 'inbox'])
   })
 
   it('finds the database of an id by prefix, longest first', () => {
@@ -121,7 +121,7 @@ describe('itemFacts', () => {
   it('picks the per-database facts and skips empty ones', () => {
     expect(itemFacts('roadmap', item({ id: 'RM-a', area: 'gui', horizon: 'now', mvp: true }))).toEqual(['gui', 'now', 'MVP'])
     expect(itemFacts('roadmap', item({ id: 'RM-b', area: 'gui', mvp: false }))).toEqual(['gui'])
-    expect(itemFacts('priorities', item({ id: 'PR-01', rank: 3 }))).toEqual(['#3'])
+    expect(itemFacts('themes', item({ id: 'PR-01', rank: 3 }))).toEqual(['#3'])
     expect(itemFacts('risks', item({ id: 'RK-1', kind: 'gap', severity: 'high' }))).toEqual(['gap', 'high'])
     expect(itemFacts('inbox', item({ id: 'IN-1' }))).toEqual([])
   })

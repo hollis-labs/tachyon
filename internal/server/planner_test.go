@@ -217,3 +217,47 @@ func TestOwnedPlannerHTTPWorkflow(t *testing.T) {
 		t.Fatal("owned workflow called unavailable Torque", torqueCalls.Load())
 	}
 }
+
+// Approval rests on the operator route being unreachable with an agent's
+// credentials. A bearer token and a forged actor, without the operator session,
+// must not approve a theme.
+func TestAgentCredentialsCannotApproveThemesOnTheOperatorRoute(t *testing.T) {
+	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"elevated": true, "assurance": "operator-token"})
+	}))
+	defer auth.Close()
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "tachyon.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	s := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: auth.URL})
+	s.store = db
+	s.objects = objects.New(db)
+	handler := s.Routes()
+	id := uuid.NewString()
+	send := func(method, path, body string, operator bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "https://tachyon.test"+path, strings.NewReader(body))
+		r.Header.Set("Origin", "https://tachyon.test")
+		if operator {
+			r.AddCookie(&http.Cookie{Name: approvals.CookieName, Value: "operator-session"})
+		} else {
+			r.Header.Set("Authorization", "Bearer agent-token")
+			r.Header.Set("X-Actor", "operator")
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	if w := send("POST", planner.Prefix+"/themes", `{"id":"`+id+`","fields":{"title":"T","status":"ready"}}`, true); w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := send("POST", planner.Prefix+"/themes/"+id+"/approve", `{"expected_revision":1}`, false); w.Code != 401 && w.Code != 403 {
+		t.Fatal("agent credentials reached approval", w.Code, w.Body.String())
+	}
+	got, err := s.objects.Get(context.Background(), id)
+	if err != nil || strings.Contains(string(got.Definition), `"approved"`) {
+		t.Fatal("theme changed", err)
+	}
+}

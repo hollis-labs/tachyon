@@ -148,7 +148,7 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 			return nil, denied()
 		}
 		switch q.Action {
-		case "comments", "link-add", "link-remove", "decide", "defer", "reopen", "dismiss":
+		case "comments", "link-add", "link-remove", "decide", "defer", "reopen", "dismiss", "ready", "approve", "park", "unpark", "finish", "resequence", "append_state", "verify":
 		default:
 			return nil, denied()
 		}
