@@ -15,6 +15,8 @@ type BoardOptions struct {
 	Scope                    string
 	RecentHours, ActiveHours float64
 	Limit                    int
+	// IncludeProposed adds proposed themes to the theme board.
+	IncludeProposed bool
 }
 
 func boardTime(value string) time.Time {
@@ -82,11 +84,14 @@ func (s *Owned) Board(ctx context.Context, tasks *Tasks, o BoardOptions) (Item, 
 	if o.Scope == "" {
 		o.Scope = "curated"
 	}
-	if o.Scope != "curated" && o.Scope != "all" {
+	if o.Scope != "curated" && o.Scope != "all" && o.Scope != "themes" {
 		return nil, objects.ErrInvalid
 	}
 	if o.RecentHours == 0 {
 		o.RecentHours = 72
+		if o.Scope == "themes" {
+			o.RecentHours = defaultThemeWindowHours
+		}
 	}
 	if o.ActiveHours == 0 {
 		o.ActiveHours = 168
@@ -96,6 +101,9 @@ func (s *Owned) Board(ctx context.Context, tasks *Tasks, o BoardOptions) (Item, 
 	}
 	if o.RecentHours < 0 || o.RecentHours > 8760 || o.ActiveHours < 0 || o.ActiveHours > 8760 || o.Limit < 1 || o.Limit > 500 {
 		return nil, objects.ErrInvalid
+	}
+	if o.Scope == "themes" {
+		return s.themeBoard(ctx, tasks, o, o.IncludeProposed)
 	}
 	now := time.Now().UTC()
 	recent := now.Add(-time.Duration(o.RecentHours * float64(time.Hour)))

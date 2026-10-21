@@ -6,7 +6,7 @@ import type { PlannerDb } from '@planner/api/types'
 export function PlannerFact({ db, fact }: { db: PlannerDb; fact: string }) {
   const value = fact.toLowerCase()
   // Rank is a priority badge, not an outlined metadata tag. Keep its #rank label.
-  if (db === 'priorities') return <RankBadge>{fact}</RankBadge>
+  if (db === 'themes' && fact.startsWith('#')) return <RankBadge>{fact}</RankBadge>
   const tone = db === 'risks' && ['critical', 'high'].includes(value) ? 'blocked'
     : db === 'risks' && value === 'medium' ? 'queued'
     : value === 'mvp' ? 'done'

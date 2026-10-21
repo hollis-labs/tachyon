@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"github.com/hollis-labs/tachyon/internal/objects"
 	"testing"
 
 	"github.com/google/uuid"
@@ -120,4 +121,115 @@ func TestBoardRowAppearsInOneSectionOnly(t *testing.T) {
 	if len(seen) != 3 {
 		t.Fatalf("expected 3 rows, got %d", len(seen))
 	}
+}
+
+func TestThemesIsTheCanonicalNameForPriorities(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	id := uuid.NewString()
+	row, err := s.Create(ctx, "themes", id, Item{"title": "Managed agent capacity"}, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row["status"] != "proposed" {
+		t.Fatalf("new theme should start proposed, got %v", row["status"])
+	}
+	// The same record is reachable under both names.
+	for _, db := range []string{"themes", "priorities"} {
+		got, err := s.Get(ctx, db, id)
+		if err != nil || got["id"] != id {
+			t.Fatal(db, got, err)
+		}
+		listed, err := s.List(ctx, db, nil, "")
+		if err != nil || len(listed) != 1 {
+			t.Fatal(db, listed, err)
+		}
+	}
+	schema, err := Schema("themes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if schema["db"] != "themes" || schema["id"] != "tachyon/planner/themes@1" {
+		t.Fatal("schema should be published under the public name", schema["db"], schema["id"])
+	}
+	enum, _ := object(object(schema["fields"])["status"])["enum"].([]string)
+	if !equalTitles(enum, themeStatuses) {
+		t.Fatalf("schema advertises %v", enum)
+	}
+	for _, k := range []string{"depends_on", "tasks", "decision_ids", "risk_ids", "accountable", "executing_owner", "last_verified", "approved_by", "approved_at"} {
+		if _, ok := object(schema["fields"])[k]; !ok {
+			t.Fatalf("schema lacks %s", k)
+		}
+	}
+	if _, err := Schema("priorities"); err != nil {
+		t.Fatal("the old name must keep working", err)
+	}
+}
+
+func TestThemeStatusesAndApprovalFieldsAreProtected(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	id := uuid.NewString()
+	// An unmigrated record keeps its earlier status and stays writable.
+	legacy := seedLegacyTheme(t, s, id, "Legacy", "active")
+	if legacy["status"] != "active" {
+		t.Fatal(legacy)
+	}
+	// New writes cannot use the retired statuses, but editing a legacy record
+	// that keeps its status still works.
+	if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "Retired", "status": "active"}, "test"); err == nil {
+		t.Fatal("create accepted a retired status")
+	}
+	if _, err := s.Patch(ctx, "themes", id, revision(legacy), Item{"status": "draft"}, "test"); err == nil {
+		t.Fatal("patch moved a theme to a retired status")
+	}
+	if _, err := s.Patch(ctx, "themes", id, revision(legacy), Item{"summary": "edited"}, "test"); err != nil {
+		t.Fatal("a legacy record must stay editable", err)
+	}
+	legacy = View(mustResolve(t, s, id))
+	if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "Bad", "status": "queued"}, "test"); err == nil {
+		t.Fatal("queued is no longer a theme status")
+	}
+	for _, f := range []string{"approved_by", "approved_at"} {
+		if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "Forged", f: "chrispian"}, "agent"); err == nil {
+			t.Fatalf("create accepted %s", f)
+		}
+		if _, err := s.Patch(ctx, "themes", id, revision(legacy), Item{f: "chrispian"}, "agent"); err == nil {
+			t.Fatalf("patch accepted %s", f)
+		}
+	}
+	// Other databases are unaffected.
+	if _, err := s.Create(ctx, "workstreams", uuid.NewString(), Item{"title": "ws", "approved_by": "x"}, "test"); err != nil {
+		t.Fatal("approval fields are only reserved on themes", err)
+	}
+}
+
+// seedLegacyTheme stores a theme with a retired status the way an unmigrated
+// record exists, bypassing the write guard that now refuses it.
+func seedLegacyTheme(t *testing.T, s *Owned, id, title, status string, extra ...Item) Item {
+	t.Helper()
+	row := Item{"title": title, "status": status, "author": "test"}
+	for _, e := range extra {
+		for k, v := range e {
+			row[k] = v
+		}
+	}
+	b, err := definition("priorities", row, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.Objects.CreateWithID(context.Background(), id, rawDefinition{databaseKinds["priorities"], b}, nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return View(r)
+}
+
+func mustResolve(t *testing.T, s *Owned, id string) objects.Record {
+	t.Helper()
+	r, err := s.Resolve(context.Background(), "themes", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
