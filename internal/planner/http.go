@@ -161,6 +161,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "board":
 			var o BoardOptions
 			o.Scope = r.URL.Query().Get("scope")
+			o.IncludeProposed = r.URL.Query().Get("include_proposed") == "true"
 			for _, param := range []struct {
 				name string
 				dest *float64
