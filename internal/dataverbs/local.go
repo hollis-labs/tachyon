@@ -11,6 +11,7 @@ import (
 
 	"github.com/hollis-labs/libs/core/util/svcerr"
 	"github.com/hollis-labs/tachyon/internal/objects"
+	"github.com/hollis-labs/tachyon/internal/planner"
 )
 
 type operation struct {
@@ -211,6 +212,8 @@ func serviceError(err error) error {
 		return err
 	}
 	switch {
+	case errors.Is(err, planner.ErrOperatorRequired):
+		return svcerr.Wrap(err, svcerr.CodePermission, "Approving, un-approving and sequencing themes requires operator authorization.")
 	case errors.Is(err, objects.ErrInvalid):
 		return svcerr.Wrap(err, svcerr.CodeInvalid, "Invalid object definition, reference or query.")
 	case errors.Is(err, objects.ErrNotFound):

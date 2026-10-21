@@ -37,6 +37,8 @@ func send(w http.ResponseWriter, status int, value any) {
 func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, db, id string, err error) {
 	status, code, message := 500, "internal", "Planner operation failed."
 	switch {
+	case errors.Is(err, ErrOperatorRequired):
+		status, code, message = 403, "operator_required", err.Error()
 	case errors.Is(err, objects.ErrInvalid):
 		status, code, message = 400, "invalid", err.Error()
 	case errors.Is(err, objects.ErrConflict):
@@ -284,6 +286,12 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case "promote":
 				allowed = append(allowed, "to_db", "target_id", "fields")
 			case "reopen":
+			case "ready", "approve", "park", "unpark", "finish", "verify":
+				allowed = append(allowed, "reason", "note", "position")
+			case "resequence":
+				allowed = append(allowed, "position")
+			case "append_state":
+				allowed = append(allowed, "text")
 			default:
 				err = objects.ErrNotFound
 			}

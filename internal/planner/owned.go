@@ -517,6 +517,11 @@ func (s *Owned) Create(ctx context.Context, db, id string, fields Item, actor st
 		fields["status"] = nativeStatuses[db][0]
 	}
 	fields["author"] = actor
+	if db == "priorities" {
+		if err := guardTheme(nil, fields, actor); err != nil {
+			return nil, err
+		}
+	}
 	b, err := definition(db, fields, nil)
 	if err != nil {
 		return nil, err
@@ -566,8 +571,17 @@ func (s *Owned) change(ctx context.Context, db, id string, rev int64, actor stri
 		return nil, objects.ErrConflict
 	}
 	row := View(r)
+	before := Item{}
+	for k, v := range row {
+		before[k] = v
+	}
 	if err = fn(row); err != nil {
 		return nil, err
+	}
+	if db == "priorities" {
+		if err = guardTheme(before, row, actor); err != nil {
+			return nil, err
+		}
 	}
 	b, err := definition(db, row, r.Definition)
 	if err != nil {
@@ -594,6 +608,24 @@ func appendComment(row Item, text, kind, actor string) error {
 }
 func (s *Owned) Action(ctx context.Context, db, id string, rev int64, action string, args Item, actor string) (Item, error) {
 	db = CanonicalDB(db)
+	if IsThemeAction(action) {
+		if db != "priorities" {
+			return nil, objects.ErrInvalid
+		}
+		if action == "resequence" {
+			rows, err := s.Resequence(ctx, id, rev, int(number(args["position"])), actor)
+			if err != nil {
+				return nil, err
+			}
+			for _, r := range rows {
+				if r["id"] == id || r["legacy_id"] == id {
+					return r, nil
+				}
+			}
+			return s.Get(ctx, db, id)
+		}
+		return s.change(ctx, db, id, rev, actor, func(row Item) error { return s.themeAction(ctx, row, action, args, actor) })
+	}
 	return s.change(ctx, db, id, rev, actor, func(row Item) error {
 		switch action {
 		case "comments":
@@ -674,6 +706,9 @@ type OrderChange struct {
 
 func (s *Owned) Reorder(ctx context.Context, db string, items []OrderChange, actor string) ([]Item, error) {
 	db = CanonicalDB(db)
+	if db == "priorities" && !isOperator(actor) {
+		return nil, fmt.Errorf("%w: sequencing themes is operator-only", ErrOperatorRequired)
+	}
 	changes := []objects.Replacement{}
 	for i, item := range items {
 		r, err := s.Resolve(ctx, db, item.ID)
