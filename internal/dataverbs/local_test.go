@@ -207,3 +207,31 @@ func TestLocalVerbFailuresAndDiscovery(t *testing.T) {
 		t.Fatal("internal error exposed", err)
 	}
 }
+
+// Free-form object parameters must be advertised as objects. They were once
+// typed as strings, so clients generated from the schema (MCP wrappers) sent
+// JSON text that the server rejects with "Invalid command fields or field types".
+func TestFreeFormObjectParametersAreAdvertisedAsObjects(t *testing.T) {
+	p, _, _ := setup(t)
+	want := map[string][]string{
+		"planner.portfolio.create":  {"fields"},
+		"planner.portfolio.patch":   {"patch"},
+		"planner.portfolio.action":  {"arguments"},
+		"planner.portfolio.list":    {"filters"},
+		"planner.portfolio.promote": {"fields"},
+		"planner.promote":           {"overrides"},
+	}
+	seen := 0
+	for _, verb := range p.Verbs() {
+		props, _ := verb.InputSchema["properties"].(map[string]any)
+		for _, name := range want[verb.Name] {
+			seen++
+			if got := props[name].(map[string]any)["type"]; got != "object" {
+				t.Errorf("%s.%s advertised as %v, want object", verb.Name, name, got)
+			}
+		}
+	}
+	if seen != 6 {
+		t.Fatalf("checked %d of 6 parameters", seen)
+	}
+}

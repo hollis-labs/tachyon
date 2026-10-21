@@ -127,6 +127,11 @@ func shape(t reflect.Type) map[string]any {
 		return map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
 	case reflect.Slice:
 		return map[string]any{"anyOf": []any{map[string]any{"type": "array", "items": shape(t.Elem())}, map[string]any{"type": "null"}}}
+	case reflect.Map:
+		// Free-form objects such as fields, patch, arguments and filters. They
+		// were advertised as strings, which made generated clients send JSON text
+		// the server rejects.
+		return map[string]any{"type": "object"}
 	case reflect.Bool:
 		return map[string]any{"type": "boolean"}
 	case reflect.Int, reflect.Int64:
