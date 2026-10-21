@@ -77,7 +77,7 @@ function ReplyFilterToggle({ value, onChange }: { value: ReplyFilter; onChange: 
       size="sm"
       aria-pressed={mine}
       aria-label="Only show replies to me"
-      title={mine ? 'Showing only replies to you. Select to show all agent replies.' : 'Showing all agent replies. Select to show only replies to you.'}
+      title={mine ? 'Hiding replies to other agents. Select to show all replies.' : 'Showing all replies. Select to hide replies to other agents.'}
       onClick={() => onChange(mine ? 'all' : 'mine')}
       className={`gap-1.5 px-2 font-mono dash-caption ${mine ? 'text-primary' : 'text-fg-muted'}`}
     >

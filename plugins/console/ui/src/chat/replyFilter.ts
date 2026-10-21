@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { ChatMessage } from './types'
 
-/** 'all' shows every reply; 'mine' shows only replies Tether proved were asked for by the operator. */
+/** 'all' shows every reply; 'mine' hides replies Tether says were written for other agents or the system. */
 export type ReplyFilter = 'all' | 'mine'
 
 const KEY = 'tachyon.chat.replyFilter'
@@ -22,17 +22,22 @@ export function useReplyFilter(): [ReplyFilter, (next: ReplyFilter) => void] {
 
 /**
  * Operator messages (and anything that is not an agent reply) always stay.
- * An agent reply shows under 'mine' only when its audience is proven operator;
- * unknown replies appear under 'all' only.
+ * Under 'mine' an agent reply is hidden only when Tether positively says it
+ * was written for someone else (audience agent or system). Replies of unknown
+ * audience stay: Tether reports unknown whenever the sender used the shared
+ * operator credential, which is how the operator's own messages are sent today.
  */
-export function applyReplyFilter(messages: ChatMessage[], filter: ReplyFilter): ChatMessage[] {
-  if (filter === 'all') return messages
-  return messages.filter((m) => m.from !== 'agent' || m.audience === 'operator')
+export function isForSomeoneElse(m: ChatMessage): boolean {
+  return m.from === 'agent' && (m.audience === 'agent' || m.audience === 'system')
 }
 
-/** Agent replies the filter hides, and how many of those are merely unclassified. */
-export function hiddenReplies(messages: ChatMessage[], filter: ReplyFilter): { hidden: number; unclassified: number } {
-  if (filter === 'all') return { hidden: 0, unclassified: 0 }
-  const hidden = messages.filter((m) => m.from === 'agent' && m.audience !== 'operator')
-  return { hidden: hidden.length, unclassified: hidden.filter((m) => !m.audience || m.audience === 'unknown').length }
+export function applyReplyFilter(messages: ChatMessage[], filter: ReplyFilter): ChatMessage[] {
+  if (filter === 'all') return messages
+  return messages.filter((m) => !isForSomeoneElse(m))
+}
+
+/** Agent replies the filter hides. */
+export function hiddenReplies(messages: ChatMessage[], filter: ReplyFilter): { hidden: number } {
+  if (filter === 'all') return { hidden: 0 }
+  return { hidden: messages.filter(isForSomeoneElse).length }
 }

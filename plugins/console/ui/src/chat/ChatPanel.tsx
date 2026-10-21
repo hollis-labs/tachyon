@@ -32,14 +32,13 @@ function ThreadRow({ t, now, onOpen }: { t: ChatThread; now: number; onOpen: () 
 
 /** Shown when the reply filter hides everything that has loaded so far. */
 function FilteredEmpty({ messages, filter, hasMore, onShowAll, onLoadOlder }: { messages: ChatMessage[]; filter: ReplyFilter; hasMore: boolean; onShowAll: () => void; onLoadOlder: () => void }) {
-  const { hidden, unclassified } = hiddenReplies(messages, filter)
+  const { hidden } = hiddenReplies(messages, filter)
   return (
     <div role="status" className="space-y-2 text-control text-fg-muted">
-      <p>No replies addressed to you{hasMore ? ' in what has loaded so far' : ''}.</p>
+      <p>Nothing here besides replies to other agents{hasMore ? ' in what has loaded so far' : ''}.</p>
       {hidden > 0 && (
         <p>
-          {hidden} agent {hidden === 1 ? 'reply is' : 'replies are'} hidden.
-          {unclassified > 0 && ` ${unclassified === hidden ? 'Tether could not tell who they were for' : `${unclassified} of them could not be attributed`}: older replies, or replies to messages sent with a shared token, appear only under All replies.`}
+          {hidden} {hidden === 1 ? 'reply to another agent is' : 'replies to other agents are'} hidden.
         </p>
       )}
       <div className="flex gap-3">

@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { MemoryRouter } from 'react-router-dom'
 import { AutolinkProvider } from '../autolink'
 import { ChatPanel, ChatProvider } from '.'
-import { applyReplyFilter, hiddenReplies } from './replyFilter'
+import { applyReplyFilter, hiddenReplies, isForSomeoneElse } from './replyFilter'
 import { messagesFor, replyAudience, type Turn } from './tether'
 import type { ChatAgent } from './roster'
 import type { ChatClient, ChatMessage, ChatThread, ReplyAudience } from './types'
@@ -34,12 +34,12 @@ describe('Tether reply-audience fixtures', () => {
   })
   for (const name of names) {
     const fx = JSON.parse(readFileSync(join(FIXTURES, name), 'utf8')) as { event: { audience: ReplyAudience }; message_metadata: Record<string, string> }
-    // Only an operator in input_classes may satisfy "Replies to me"; every other fixture is hidden by it.
+    // Replies to me hides a reply only when Tether says it was written for an agent or the system.
     const want: ReplyAudience = fx.message_metadata.input_classes === 'operator' ? 'operator' : fx.message_metadata.input_classes === 'agent' ? 'agent' : fx.message_metadata.input_classes === 'system' ? 'system' : 'unknown'
     it(`${name}: message metadata`, () => {
       const t = turn(undefined, { source_message: { attribution: fx.message_metadata as never } })
       expect(replyAudience(t)).toBe(want)
-      expect(replyAudience(t) === 'operator').toBe(name === 'operator.json')
+      expect(isForSomeoneElse({ id: 'x', threadId: 't', from: 'agent', audience: replyAudience(t), body: '', at: 1, tools: [] })).toBe(name === 'agent.json' || name === 'system.json')
     })
     it(`${name}: event payload`, () => {
       const classes = (fx.event as { input_classes?: string[] }).input_classes
@@ -74,12 +74,12 @@ describe('applyReplyFilter', () => {
   it('shows everything under All', () => {
     expect(applyReplyFilter(all, 'all')).toHaveLength(7)
   })
-  it('keeps operator messages and non-agent rows, and only proven replies to the operator', () => {
-    expect(applyReplyFilter(all, 'mine').map((x) => x.id)).toEqual(['mine', 'me', 'note'])
+  it('hides only replies Tether says were for an agent or the system; unknown replies stay', () => {
+    expect(applyReplyFilter(all, 'mine').map((x) => x.id)).toEqual(['mine', 'old', 'mail', 'me', 'note'])
   })
-  it('counts what is hidden and how much of it is just unclassified', () => {
-    expect(hiddenReplies(all, 'mine')).toEqual({ hidden: 4, unclassified: 2 })
-    expect(hiddenReplies(all, 'all')).toEqual({ hidden: 0, unclassified: 0 })
+  it('counts what is hidden', () => {
+    expect(hiddenReplies(all, 'mine')).toEqual({ hidden: 2 })
+    expect(hiddenReplies(all, 'all')).toEqual({ hidden: 0 })
   })
   it('carries the audience from turns into messages', () => {
     const a = { launch_id: 'pm-chat', agent_id: 'pm', display_name: 'PM', channel: 'owner' } as ChatAgent
@@ -118,14 +118,14 @@ describe('reply filter toggle', () => {
     expect(screen.getByText('reply a')).toBeTruthy()
     expect(screen.getByText('reply b')).toBeTruthy()
   })
-  it('hides replies not proven to be for the operator, keeps the operator message, and remembers the choice', async () => {
+  it('hides replies to other agents, keeps the rest and the operator message, and remembers the choice', async () => {
     await open(client(messages))
     fireEvent.click(screen.getByRole('button', { name: 'Only show replies to me' }))
     expect(screen.getByRole('button', { name: 'Only show replies to me' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByText('Replies to me')).toBeTruthy()
     expect(screen.getByText('reply a')).toBeTruthy()
     expect(screen.queryByText('reply b')).toBeNull()
-    expect(screen.queryByText('reply c')).toBeNull()
+    expect(screen.getByText('reply c')).toBeTruthy()
     expect(screen.getByText('reply me')).toBeTruthy()
     expect(localStorage.getItem('tachyon.chat.replyFilter')).toBe('mine')
     cleanup()
@@ -133,12 +133,11 @@ describe('reply filter toggle', () => {
     expect(screen.getByRole('button', { name: 'Only show replies to me' }).getAttribute('aria-pressed')).toBe('true')
   })
   it('explains an empty filtered view and offers the way out', async () => {
-    await open(client([reply('b', 'agent', 2), reply('c', 'unknown', 3)], true))
+    await open(client([reply('b', 'agent', 2), reply('c', 'system', 3)], true))
     fireEvent.click(screen.getByRole('button', { name: 'Only show replies to me' }))
     const status = screen.getByRole('status')
-    expect(within(status).getByText(/No replies addressed to you in what has loaded so far/)).toBeTruthy()
-    expect(within(status).getByText(/2 agent replies are hidden/)).toBeTruthy()
-    expect(within(status).getByText(/1 of them could not be attributed/)).toBeTruthy()
+    expect(within(status).getByText(/Nothing here besides replies to other agents in what has loaded so far/)).toBeTruthy()
+    expect(within(status).getByText(/2 replies to other agents are hidden/)).toBeTruthy()
     expect(within(status).getByText('Load older messages')).toBeTruthy()
     fireEvent.click(within(status).getByText('Show all replies'))
     expect(screen.getByText('reply b')).toBeTruthy()
