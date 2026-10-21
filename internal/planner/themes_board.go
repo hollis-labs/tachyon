@@ -125,7 +125,7 @@ func (s *Owned) themeBoard(ctx context.Context, tasks *Tasks, o BoardOptions, in
 	for i, t := range selected {
 		st := themeStatus(textField(t, "status"))
 		ws := linked(t)
-		row := Item{"source": "theme", "db": "themes", "id": t["id"], "title": t["title"], "status": st, "stored_status": t["status"], "updated": t["updated"]}
+		row := Item{"source": "theme", "db": "themes", "id": t["id"], "rev": t["rev"], "title": t["title"], "status": st, "stored_status": t["status"], "updated": t["updated"]}
 		for _, k := range []string{"legacy_id", "priority", "order", "tldr", "tags", "state", "accountable", "executing_owner", "approved_by", "approved_at", "last_verified", "depends_on", "decision_ids", "risk_ids", "workstream_ids", "roadmap_ids", "comments"} {
 			if v, ok := t[k]; ok {
 				row[k] = v

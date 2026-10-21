@@ -1,4 +1,4 @@
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, ThemeBoard } from './types'
+import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, ThemeAction, ThemeBoard } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export interface PlannerEvent { type: string }
@@ -12,6 +12,8 @@ export interface PlannerClient {
   plannerDatabases(): Promise<PlannerDatabaseInfo[]>
   plannerBoard(opts?: { scope?: 'curated' | 'all'; recent_hours?: number; active_hours?: number; limit?: number }, signal?: AbortSignal): Promise<PlannerBoard>
   plannerThemeBoard(opts?: { recent_hours?: number; limit?: number; include_proposed?: boolean }, signal?: AbortSignal): Promise<ThemeBoard>
+  /** A theme lifecycle action. approve and resequence are operator-only on the server. */
+  plannerThemeAction(id: string, action: ThemeAction, rev: number, args?: { position?: number; reason?: string }): Promise<unknown>
   plannerSchema(db: PlannerDb): Promise<PlannerSchemaInfo>
   plannerList(db: PlannerDb, opts?: { filters?: Record<string, string>; sort?: string }, signal?: AbortSignal): Promise<PlannerItem[]>
   plannerGet(db: PlannerDb, id: string): Promise<PlannerItem>

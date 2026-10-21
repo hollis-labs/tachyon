@@ -23,7 +23,7 @@ import { PlannerWriteError } from '@planner/components/planner/planner-write-err
 import { PlannerApiError as ApiError } from '@planner/api/errors'
 import { PLANNER_DBS, filterItems, isPlannerDb, isSettled, moveId, parseBoardOpen, plannerMeta, statusCounts, statusToneKey } from '@planner/lib/planner'
 import { notifyError } from '@planner/api/notifications'
-import type { PlannerBoard, ThemeBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerSearchHit } from '@planner/api/types'
+import type { PlannerBoard, ThemeAction, ThemeBoard, ThemeRow, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerSearchHit } from '@planner/api/types'
 
 /** The board is a live view: it also refreshes on its own while open. */
 const BOARD_REFRESH_MS = 30_000
@@ -64,6 +64,7 @@ export default function PlannerPage() {
   const [board, setBoard] = useState<PlannerBoard | null>(null)
   const [themeBoard, setThemeBoard] = useState<ThemeBoard | null>(null)
   const [showProposed, setShowProposed] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [boardError, setBoardError] = useState<string | null>(null)
   const [items, setItems] = useState<PlannerItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -218,6 +219,16 @@ export default function PlannerPage() {
     }
   }
 
+  async function onThemeAction(row: ThemeRow, action: ThemeAction, args?: { position?: number }) {
+    setActionError(null)
+    try {
+      await api.plannerThemeAction(row.id, action, row.rev, args)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'The action failed')
+    }
+    await loadBoard() // reload either way: a refused action usually means the view was stale
+  }
+
   async function enable() {
     try {
       await api.enable?.()
@@ -293,7 +304,8 @@ export default function PlannerPage() {
                     {showProposed ? 'Hide proposed' : 'Show proposed'}
                   </Button>
                 </div>
-                <ThemeBoardView board={themeBoard} base={boardBase} showProposed={showProposed} />
+                {actionError && <p role="alert" className="border-b border-border bg-panel px-4 py-2 dash-support leading-5 text-destructive">{actionError}</p>}
+                <ThemeBoardView board={themeBoard} base={boardBase} showProposed={showProposed} onAction={onThemeAction} />
               </>
             ) : board ? (
               <PlannerBoardView board={board} scope={boardScope} base={boardBase} />

@@ -220,6 +220,8 @@ export interface ThemeRow {
   source: 'theme'
   db: 'themes'
   id: string
+  /** The record revision, sent back with an action so a stale view cannot overwrite a newer one. */
+  rev: number
   title: string
   status: string
   stored_status?: string
@@ -257,3 +259,5 @@ export interface ThemeBoard {
   notices: string[]
   progress: { done: number; total: number; note?: string }
 }
+
+export type ThemeAction = 'ready' | 'approve' | 'park' | 'unpark' | 'finish' | 'resequence'

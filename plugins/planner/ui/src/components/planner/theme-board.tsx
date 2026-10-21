@@ -3,7 +3,8 @@ import { statusTone } from '@hollis-labs/kit-dashboard'
 import { PlannerRowContent, PlannerTableHeader } from '@planner/components/planner/planner-table'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
 import { THEME_SECTIONS, boardAge, boardMore, themeOwners, themeProgressFraction, themeProgressText, themeWaiting, verifiedAge } from '@planner/lib/planner'
-import type { ThemeBoard, ThemeRow, ThemeSectionKey } from '@planner/api/types'
+import { Button } from '@hollis-labs/design-components'
+import type { ThemeAction, ThemeBoard, ThemeRow, ThemeSectionKey } from '@planner/api/types'
 
 interface ThemeBoardViewProps {
   board: ThemeBoard
@@ -13,6 +14,32 @@ interface ThemeBoardViewProps {
   base?: string
   /** Proposed themes are hidden until asked for. */
   showProposed?: boolean
+  /** Runs a lifecycle action. Without it the board is read-only. */
+  onAction?: (row: ThemeRow, action: ThemeAction, args?: { position?: number }) => Promise<void>
+}
+
+interface RowAction { label: string; action: ThemeAction; position?: number; title: string }
+
+/** What the operator can do to a row from where it sits on the board. */
+export function themeRowActions(section: ThemeSectionKey, index: number, count: number, rank: number, approved: number): RowAction[] {
+  switch (section) {
+    case 'in_flight':
+    case 'cleared':
+      return [
+        ...(rank > 0 ? [{ label: 'Up', action: 'resequence' as const, position: rank, title: 'Move earlier in the sequence' }] : []),
+        ...(rank < approved - 1 ? [{ label: 'Down', action: 'resequence' as const, position: rank + 2, title: 'Move later in the sequence' }] : []),
+        { label: 'Park', action: 'park', title: 'Pause this theme; its tasks are untouched' },
+        { label: 'Done', action: 'finish', title: 'Mark this theme finished' },
+      ]
+    case 'queued':
+      return [{ label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }, { label: 'Park', action: 'park', title: 'Pause this theme' }]
+    case 'proposed':
+      return [{ label: 'Ready', action: 'ready', title: 'Mark ready to be considered' }, { label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }]
+    case 'parked':
+      return [{ label: 'Unpark', action: 'unpark', title: 'Return to ready' }, { label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }]
+    default:
+      return []
+  }
 }
 
 /**
@@ -20,9 +47,13 @@ interface ThemeBoardViewProps {
  * ready behind them, and what is parked. One row per theme, with how much of its
  * work is done. The words are display only; the stored status is task-semantic.
  */
-export function ThemeBoardView({ board, nowMs, base = '/planner/flight', showProposed = false }: ThemeBoardViewProps) {
+export function ThemeBoardView({ board, nowMs, base = '/planner/flight', showProposed = false, onAction }: ThemeBoardViewProps) {
   const now = nowMs ?? (Date.parse(board.generated_at) || Date.now())
   const sections = THEME_SECTIONS.filter((s) => s.key !== 'proposed' || showProposed)
+  // The approved sequence spans in flight and cleared, ordered by `order`.
+  const approvedIds = [...(board.sections.in_flight ?? []), ...(board.sections.cleared ?? [])]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((r) => r.id)
   return (
     <div className="flex min-w-0 flex-col">
       {board.notices.map((n) => (
@@ -33,7 +64,7 @@ export function ThemeBoardView({ board, nowMs, base = '/planner/flight', showPro
       <PlannerTableHeader trailing="Progress" />
       <div className="flex min-w-0 flex-col">
         {sections.map((s) => (
-          <ThemeSection key={s.key} section={s.key} title={s.title} blurb={s.blurb} empty={s.empty} rows={board.sections[s.key] ?? []} total={board.totals[s.key] ?? 0} now={now} base={base} />
+          <ThemeSection key={s.key} section={s.key} title={s.title} blurb={s.blurb} empty={s.empty} rows={board.sections[s.key] ?? []} total={board.totals[s.key] ?? 0} now={now} base={base} approvedIds={approvedIds} onAction={onAction} />
         ))}
       </div>
       <p className="px-4 py-2 font-mono dash-caption leading-4 text-fg-faint">
@@ -43,7 +74,7 @@ export function ThemeBoardView({ board, nowMs, base = '/planner/flight', showPro
   )
 }
 
-function ThemeSection({ section, title, blurb, empty, rows, total, now, base }: { section: ThemeSectionKey; title: string; blurb: string; empty: string; rows: ThemeRow[]; total: number; now: number; base: string }) {
+function ThemeSection({ section, title, blurb, empty, rows, total, now, base, approvedIds, onAction }: { section: ThemeSectionKey; title: string; blurb: string; empty: string; rows: ThemeRow[]; total: number; now: number; base: string; approvedIds: string[]; onAction?: ThemeBoardViewProps['onAction'] }) {
   const more = boardMore(rows.length, total)
   const accent = statusTone(THEME_SECTIONS.find((s) => s.key === section)!.tone)
   return (
@@ -59,7 +90,7 @@ function ThemeSection({ section, title, blurb, empty, rows, total, now, base }: 
       ) : (
         <ul>
           {rows.map((r, i) => (
-            <ThemeRowView key={r.id} section={section} row={r} position={section === 'in_flight' || section === 'cleared' ? i + 1 : undefined} now={now} base={base} />
+            <ThemeRowView key={r.id} section={section} row={r} position={section === 'in_flight' || section === 'cleared' ? i + 1 : undefined} now={now} base={base} actions={onAction ? themeRowActions(section, i, rows.length, approvedIds.indexOf(r.id), approvedIds.length) : []} onAction={onAction} />
           ))}
         </ul>
       )}
@@ -67,7 +98,7 @@ function ThemeSection({ section, title, blurb, empty, rows, total, now, base }: 
   )
 }
 
-function ThemeRowView({ section, row, position, now, base }: { section: ThemeSectionKey; row: ThemeRow; position?: number; now: number; base: string }) {
+function ThemeRowView({ section, row, position, now, base, actions, onAction }: { section: ThemeSectionKey; row: ThemeRow; position?: number; now: number; base: string; actions: RowAction[]; onAction?: ThemeBoardViewProps['onAction'] }) {
   const def = THEME_SECTIONS.find((s) => s.key === section)!
   const verified = verifiedAge(row.last_verified, now)
   const waiting = themeWaiting(row)
@@ -108,6 +139,15 @@ function ThemeRowView({ section, row, position, now, base }: { section: ThemeSec
           }
         />
       </Link>
+      {actions.length > 0 && onAction && (
+        <div className="flex flex-wrap justify-end gap-1 px-4 pb-2" role="group" aria-label={`Actions for ${row.title}`}>
+          {actions.map((a) => (
+            <Button key={a.label} variant="outline" size="sm" title={a.title} onClick={() => void onAction(row, a.action, a.position ? { position: a.position } : undefined)}>
+              {a.label}
+            </Button>
+          ))}
+        </div>
+      )}
     </li>
   )
 }

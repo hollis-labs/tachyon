@@ -1,6 +1,6 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ThemeBoardView } from '@planner/components/planner/theme-board'
 import { themeOwners, themeProgressFraction, themeProgressText, themeWaiting, verifiedAge } from '@planner/lib/planner'
 import type { ThemeBoard, ThemeRow, ThemeSectionKey } from '@planner/api/types'
@@ -9,7 +9,7 @@ afterEach(cleanup)
 
 const NOW = Date.parse('2026-10-21T12:00:00Z')
 const row = (over: Partial<ThemeRow> & { id: string; title: string; section: ThemeSectionKey }): ThemeRow => ({
-  source: 'theme', db: 'themes', status: 'approved', updated: '2026-10-21T10:00:00Z', blocked_count: 0, unmet_dependencies: 0,
+  source: 'theme', db: 'themes', rev: 3, status: 'approved', updated: '2026-10-21T10:00:00Z', blocked_count: 0, unmet_dependencies: 0,
   progress: { available: true, done: 12, total: 40, open: 20, linked: true }, ...over,
 })
 const board = (sections: Partial<Record<ThemeSectionKey, ThemeRow[]>>): ThemeBoard => ({
@@ -81,5 +81,39 @@ describe('ThemeBoardView', () => {
     expect(screen.getByRole('status').textContent).toContain('Task progress is unavailable')
     expect(screen.getByText('progress unavailable')).toBeTruthy()
     expect(screen.getByText(/unverified/)).toBeTruthy()
+  })
+})
+
+describe('ThemeBoardView actions', () => {
+  const two = () => board({
+    in_flight: [row({ id: 'a', title: 'First', section: 'in_flight', order: 10 })],
+    cleared: [row({ id: 'b', title: 'Second', section: 'cleared', order: 20 })],
+    queued: [row({ id: 'c', title: 'Queued one', section: 'queued', status: 'ready' })],
+    parked: [row({ id: 'd', title: 'Parked one', section: 'parked', status: 'paused' })],
+  })
+  it('shows no buttons without a handler', () => {
+    view(two())
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+  it('offers the moves that make sense where a row sits', () => {
+    view(two(), { onAction: vi.fn() })
+    const first = within(screen.getByRole('group', { name: 'Actions for First' }))
+    expect(first.queryByText('Up')).toBeNull() // already first
+    expect(first.getByText('Down')).toBeTruthy()
+    const second = within(screen.getByRole('group', { name: 'Actions for Second' }))
+    expect(second.getByText('Up')).toBeTruthy()
+    expect(second.queryByText('Down')).toBeNull() // already last
+    expect(within(screen.getByRole('group', { name: 'Actions for Queued one' })).getByText('Approve')).toBeTruthy()
+    expect(within(screen.getByRole('group', { name: 'Actions for Parked one' })).getByText('Unpark')).toBeTruthy()
+  })
+  it('sends the row and the target position', () => {
+    const onAction = vi.fn().mockResolvedValue(undefined)
+    view(two(), { onAction })
+    fireEvent.click(within(screen.getByRole('group', { name: 'Actions for Second' })).getByText('Up'))
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ id: 'b', rev: 3 }), 'resequence', { position: 1 })
+    fireEvent.click(within(screen.getByRole('group', { name: 'Actions for First' })).getByText('Down'))
+    expect(onAction).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'a' }), 'resequence', { position: 2 })
+    fireEvent.click(within(screen.getByRole('group', { name: 'Actions for Queued one' })).getByText('Approve'))
+    expect(onAction).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'c' }), 'approve', undefined)
   })
 })

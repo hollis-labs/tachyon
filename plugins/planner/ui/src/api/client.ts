@@ -1,7 +1,7 @@
 import { ApiError, createApiClient, type ApiClient } from '@hollis-labs/design-app-runtime'
 import type { PlannerClient, PlannerReference, PlannerRevision } from './contracts'
 import { PlannerApiError } from './errors'
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, ThemeBoard } from './types'
+import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, ThemeAction, ThemeBoard } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export const PLANNER_BASE = '/api/plugins/console/v1/planner'
@@ -64,6 +64,7 @@ export class TachyonPlannerClient implements PlannerClient {
   plannerDatabases = () => this.request<PlannerDatabaseInfo[]>('/databases')
   plannerBoard: PlannerClient['plannerBoard'] = (opts, signal) => this.request<PlannerBoard>('/board', undefined, opts, signal)
   plannerThemeBoard: PlannerClient['plannerThemeBoard'] = (opts, signal) => this.request<ThemeBoard>('/board', undefined, { scope: 'themes', recent_hours: opts?.recent_hours, limit: opts?.limit, include_proposed: opts?.include_proposed ? 'true' : undefined }, signal)
+  plannerThemeAction = (id: string, action: ThemeAction, rev: number, args?: { position?: number; reason?: string }) => this.send<unknown>(`/themes/${uuid(id)}/${action}`, { ...args, expected_revision: revision(rev) })
   plannerSchema = (db: PlannerDb) => this.request<PlannerSchemaInfo>(`/schema${dbPath(db)}`)
   plannerList: PlannerClient['plannerList'] = (db, opts, signal) => this.request<PlannerItem[]>(dbPath(db), undefined, { ...opts?.filters, sort: opts?.sort }, signal)
   async plannerGet(db: PlannerDb, id: string): Promise<PlannerItem> {
