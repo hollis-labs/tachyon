@@ -12,7 +12,7 @@ const HOUR = 3_600_000
 const BTN =
   'border border-zinc-700 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-zinc-300 hover:border-zinc-500 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300'
 
-/** Persistent tray: active alerts and history, quiet mode and toast threshold. Escape or outside click closes. */
+/** Persistent tray: active alerts and history, quiet mode and bell/list threshold. Escape or outside click closes. */
 export function AlertTray() {
   const c = useAlertsController()
   const [tab, setTab] = useState<'active' | 'history'>('active')
@@ -71,16 +71,16 @@ export function AlertTray() {
           Quiet
         </label>
         <label className="ml-auto flex items-center gap-1.5 text-zinc-400">
-          Toast at
+          Bell / list
           <select
-            value={c.prefs.toastMinSeverity}
-            onChange={(e) => c.setPrefs({ toastMinSeverity: e.target.value as AlertSeverity })}
-            disabled={c.prefs.quiet}
+            aria-label="Bell / list threshold"
+            value={c.prefs.bellMinSeverity}
+            onChange={(e) => c.setPrefs({ bellMinSeverity: e.target.value as AlertSeverity })}
             className="border border-zinc-700 bg-zinc-950 px-1 py-0.5 text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:opacity-50"
           >
-            {SEVERITY_ORDER.slice(1).map((s) => (
+            {SEVERITY_ORDER.map((s) => (
               <option key={s} value={s}>
-                {SEVERITY_STYLE[s].label.toLowerCase()}+
+                {s === 'debug' ? 'all' : `${SEVERITY_STYLE[s].label.toLowerCase()}+`}
               </option>
             ))}
           </select>
@@ -111,7 +111,7 @@ export function AlertTray() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
-          <p className="px-4 py-8 text-center font-mono text-xs text-zinc-500">{tab === 'active' ? 'Nothing needs you right now.' : 'No dismissed or snoozed alerts.'}</p>
+          <p className="px-4 py-8 text-center font-mono text-xs text-zinc-500">{c.prefs.bellMinSeverity !== 'debug' ? 'No alerts at this threshold.' : tab === 'active' ? 'Nothing needs you right now.' : 'No dismissed or snoozed alerts.'}</p>
         ) : (
           <ul aria-label={tab === 'active' ? 'Active alerts' : 'Alert history'}>
             {rows.map(({ alert, status, snoozeUntil }) => (

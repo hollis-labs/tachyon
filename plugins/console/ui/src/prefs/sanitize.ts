@@ -11,6 +11,7 @@ export function sanitizePrefs(raw: unknown): ConsolePrefs {
   return {
     quiet: typeof o.quiet === 'boolean' ? o.quiet : D.quiet,
     toastMinSeverity: SEVERITY_ORDER.includes(o.toastMinSeverity as ConsolePrefs['toastMinSeverity']) ? (o.toastMinSeverity as ConsolePrefs['toastMinSeverity']) : D.toastMinSeverity,
+    bellMinSeverity: SEVERITY_ORDER.includes(o.bellMinSeverity as ConsolePrefs['bellMinSeverity']) ? (o.bellMinSeverity as ConsolePrefs['bellMinSeverity']) : D.bellMinSeverity,
     quietHoursEnabled: typeof o.quietHoursEnabled === 'boolean' ? o.quietHoursEnabled : D.quietHoursEnabled,
     quietHoursStart: typeof o.quietHoursStart === 'string' && HHMM.test(o.quietHoursStart) ? o.quietHoursStart : D.quietHoursStart,
     quietHoursEnd: typeof o.quietHoursEnd === 'string' && HHMM.test(o.quietHoursEnd) ? o.quietHoursEnd : D.quietHoursEnd,

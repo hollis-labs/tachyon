@@ -35,6 +35,7 @@ export interface AdminSettingsGroup {
 export const PREF_FIELD_KEYS = {
   quiet: 'quiet',
   toast_min_severity: 'toastMinSeverity',
+  bell_min_severity: 'bellMinSeverity',
   quiet_hours_enabled: 'quietHoursEnabled',
   quiet_hours_start: 'quietHoursStart',
   quiet_hours_end: 'quietHoursEnd',
@@ -63,6 +64,7 @@ export function consolePrefsSettingsGroup(userId = 'me'): AdminSettingsGroup {
       properties: {
         quiet: { type: 'boolean', title: 'Quiet mode', description: 'No toasts while on. Critical alerts still break through; the tray and badge keep counting.', default: false },
         toast_min_severity: { type: 'string', title: 'Toast threshold', description: 'Lowest severity that raises a toast.', enum: SEVERITY_ORDER.slice(1), default: 'notice' },
+        bell_min_severity: { type: 'string', title: 'Bell / list threshold', description: 'Lowest severity counted by the bell and shown in the alert lists. Hidden alerts are retained.', enum: SEVERITY_ORDER, default: 'debug' },
         quiet_hours_enabled: { type: 'boolean', title: 'Quiet hours', description: 'Turn quiet mode on automatically on a daily schedule (your local time).', default: false },
         quiet_hours_start: { type: 'string', title: 'Quiet hours start', description: 'HH:MM, 24h.', pattern: HHMM, minLength: 5, maxLength: 5, default: '22:00' },
         quiet_hours_end: { type: 'string', title: 'Quiet hours end', description: 'HH:MM, 24h. May be earlier than the start (wraps midnight).', pattern: HHMM, minLength: 5, maxLength: 5, default: '07:00' },
