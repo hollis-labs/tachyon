@@ -287,7 +287,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case "promote":
 				allowed = append(allowed, "to_db", "target_id", "fields")
 			case "reopen":
-			case "ready", "approve", "park", "unpark", "finish", "verify":
+			case "ready", "approve", "park", "unpark", "finish", "archive", "verify":
 				allowed = append(allowed, "reason", "note", "position")
 			case "resequence":
 				allowed = append(allowed, "position")

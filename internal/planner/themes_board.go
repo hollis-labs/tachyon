@@ -47,6 +47,10 @@ func (s *Owned) themeBoard(ctx context.Context, tasks *Tasks, o BoardOptions, in
 	if err != nil {
 		return nil, err
 	}
+	decisions, err := s.List(ctx, "decisions", nil, "")
+	if err != nil {
+		return nil, err
+	}
 	landedSince := now.Add(-time.Duration(o.RecentHours * float64(time.Hour)))
 
 	// Select the themes on the board before reading tasks, so Torque is asked
@@ -142,6 +146,27 @@ func (s *Owned) themeBoard(ctx context.Context, tasks *Tasks, o BoardOptions, in
 				next = textField(w, "next_step")
 			}
 		}
+		// Decisions still waiting, by title, so "needs the operator" can be read
+		// off the row. Settled decisions drop out; an id that resolves to nothing
+		// stays visible by its id.
+		pending := []any{}
+		for _, v := range array(t["decision_ids"]) {
+			ref, _ := v.(string)
+			found := false
+			for _, d := range decisions {
+				if matchesRef(d, ref) {
+					found = true
+					if textField(d, "status") == "proposed" {
+						pending = append(pending, Item{"id": d["id"], "title": d["title"], "created": d["created"]})
+					}
+					break
+				}
+			}
+			if !found && ref != "" {
+				pending = append(pending, Item{"id": ref, "title": ref})
+			}
+		}
+		row["pending_decisions"] = pending
 		row["blocked_count"] = len(blockers)
 		if len(blockers) > 0 {
 			row["first_blocker"] = blockers[0]
@@ -166,7 +191,7 @@ func (s *Owned) themeBoard(ctx context.Context, tasks *Tasks, o BoardOptions, in
 			row["progress"] = Item{"available": false}
 		} else {
 			p := progress[i]
-			row["progress"] = Item{"available": true, "done": p.Done, "total": p.Total, "open": p.Open, "counts": p.Counts, "linked": p.Linked, "note": p.Note, "as_of": p.AsOf}
+			row["progress"] = Item{"available": true, "done": p.Done, "total": p.Total, "open": p.Open, "counts": p.Counts, "linked": p.Linked, "note": p.Note, "missing": p.Missing, "as_of": p.AsOf}
 			for id, status := range p.statuses {
 				if !excludedStatus(status) {
 					header[id] = status

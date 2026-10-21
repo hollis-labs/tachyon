@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/hollis-labs/tachyon/internal/objects"
 )
 
 const (
@@ -72,10 +74,13 @@ func TestAgentsCannotApproveSequenceOrLeaveApproval(t *testing.T) {
 		t.Fatal("reorder ran for an agent", err)
 	}
 
-	// Leaving approval is operator-only too.
+	// Leaving approval is operator-only too, except parking.
 	approved := mustAct(t, s, a, "approve", nil, op)
-	if _, err := act(t, s, approved, "park", nil, agent); !errors.Is(err, ErrOperatorRequired) {
-		t.Fatal("agent parked an approved theme", err)
+	if _, err := act(t, s, approved, "finish", nil, agent); !errors.Is(err, ErrOperatorRequired) {
+		t.Fatal("agent finished an approved theme", err)
+	}
+	if _, err := act(t, s, approved, "archive", Item{"reason": "no"}, agent); !errors.Is(err, ErrOperatorRequired) {
+		t.Fatal("agent archived an approved theme", err)
 	}
 	if _, err := s.Patch(ctx, "themes", approved["id"].(string), revision(approved), Item{"status": "done"}, agent); !errors.Is(err, ErrOperatorRequired) {
 		t.Fatal("agent finished an approved theme through a patch", err)
@@ -99,7 +104,10 @@ func TestAgentsKeepTheNonApprovalLifecycle(t *testing.T) {
 	if p["status"] != "paused" {
 		t.Fatal(p["status"])
 	}
-	p = mustAct(t, s, p, "unpark", nil, agent)
+	if _, err := act(t, s, p, "unpark", nil, agent); !errors.Is(err, objects.ErrInvalid) {
+		t.Fatal("an agent moved a theme without saying why", err)
+	}
+	p = mustAct(t, s, p, "unpark", Item{"reason": "tasks unblocked"}, agent)
 	if p["status"] != "ready" {
 		t.Fatal(p["status"])
 	}
@@ -206,5 +214,51 @@ func TestPromoteCannotCreateApprovedThemeForAgents(t *testing.T) {
 		if _, err := s.Promote(ctx, textField(in, "id"), revision(in), "themes", uuid.NewString(), fields, "service:pm"); err == nil {
 			t.Fatalf("agent promoted into %v", fields)
 		}
+	}
+}
+
+func TestAgentsMayParkAnApprovedThemeButNotMoreThanThat(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	approved := mustAct(t, s, newTheme(t, s, "T", "proposed"), "approve", nil, op)
+	if _, err := act(t, s, approved, "park", nil, agent); !errors.Is(err, objects.ErrInvalid) {
+		t.Fatal("parked without a reason", err)
+	}
+	parked := mustAct(t, s, approved, "park", Item{"reason": "all tasks blocked"}, agent)
+	if parked["status"] != "paused" || parked["order"] != nil {
+		t.Fatal("park left the theme approved or in the sequence", parked["status"], parked["order"])
+	}
+	// Putting it back is approval, so only the operator can.
+	if _, err := act(t, s, parked, "approve", nil, agent); !errors.Is(err, ErrOperatorRequired) {
+		t.Fatal("agent re-approved a parked theme", err)
+	}
+	// An agent cannot use a park to also change the sequence.
+	again := mustAct(t, s, newTheme(t, s, "U", "proposed"), "approve", nil, op)
+	if _, err := s.Patch(ctx, "themes", again["id"].(string), revision(again), Item{"status": "paused", "order": 3}, agent); !errors.Is(err, ErrOperatorRequired) {
+		t.Fatal("park smuggled a sequence change", err)
+	}
+}
+
+func TestOperatorCanDeclineATheme(t *testing.T) {
+	s, _ := ownedFixture(t)
+	p := newTheme(t, s, "Unwanted", "proposed")
+	if _, err := act(t, s, p, "archive", Item{"reason": "not now"}, agent); !errors.Is(err, ErrOperatorRequired) {
+		t.Fatal("agent archived a theme", err)
+	}
+	out := mustAct(t, s, p, "archive", Item{"reason": "not now"}, op)
+	if out["status"] != "archived" || !strings.Contains(fmt.Sprint(out["comments"]), "not now") {
+		t.Fatal(out["status"], out["comments"])
+	}
+}
+
+func TestCreateDefaultsToProposedAndRefusesApprovalForAgents(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	row, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "No status given"}, agent)
+	if err != nil || row["status"] != "proposed" {
+		t.Fatal(row["status"], err)
+	}
+	if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "Self-approved", "status": "approved"}, agent); !errors.Is(err, ErrOperatorRequired) {
+		t.Fatal("agent created an approved theme", err)
 	}
 }

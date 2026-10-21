@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ThemeBoardView } from '@planner/components/planner/theme-board'
-import { themeOwners, themeProgressFraction, themeProgressText, themeWaiting, verifiedAge } from '@planner/lib/planner'
+import { themeCountsText, themeOwners, themeProgressFraction, themeProgressText, themeWaiting, verifiedAge } from '@planner/lib/planner'
 import type { ThemeBoard, ThemeRow, ThemeSectionKey } from '@planner/api/types'
 
 afterEach(cleanup)
@@ -34,6 +34,12 @@ describe('theme progress helpers', () => {
     expect(verifiedAge(undefined, NOW)).toEqual({ label: 'unverified', stale: true })
     expect(verifiedAge('2026-10-20T12:00:00Z', NOW)).toEqual({ label: 'verified 24h ago', stale: false })
     expect(verifiedAge('2026-10-01T12:00:00Z', NOW).stale).toBe(true)
+  })
+  it('titles the pending decisions with their age, and the tasks behind done/total', () => {
+    const r = row({ id: 'a', title: 'A', section: 'cleared', pending_decisions: [{ id: 'd1', title: 'Pick the auth model', created: '2026-10-18T12:00:00Z' }, { id: 'd2', title: 'Two' }] })
+    expect(themeWaiting(r, NOW)).toEqual(['needs decision: Pick the auth model (3d) +1 more'])
+    expect(themeCountsText({ available: true, done: 3, total: 11, counts: { done: 3, doing: 2, review: 1, todo: 5, cancelled: 4 }, missing: 2 })).toBe('2 doing · 1 review · 5 todo · 2 linked tasks not found')
+    expect(themeCountsText({ available: true, total: 0 })).toBe('')
   })
   it('names the people and what is waiting', () => {
     const r = row({ id: 'a', title: 'A', section: 'cleared', accountable: 'chrispian', executing_owner: 'nanite-team', decision_ids: ['d1', 'd2'], unmet_dependencies: 1 })

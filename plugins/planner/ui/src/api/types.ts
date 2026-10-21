@@ -213,6 +213,8 @@ export interface ThemeProgress {
   counts?: Record<string, number>
   linked?: boolean
   note?: string
+  /** Directly linked task ids Torque did not return. */
+  missing?: number
   as_of?: string
 }
 
@@ -239,6 +241,8 @@ export interface ThemeRow {
   last_verified?: string
   depends_on?: string[]
   decision_ids?: string[]
+  /** Linked decisions still waiting, by title. */
+  pending_decisions?: { id: string; title: string; created?: string }[]
   risk_ids?: string[]
   blocked_count: number
   first_blocker?: string
@@ -260,4 +264,4 @@ export interface ThemeBoard {
   progress: { done: number; total: number; note?: string }
 }
 
-export type ThemeAction = 'ready' | 'approve' | 'park' | 'unpark' | 'finish' | 'resequence'
+export type ThemeAction = 'ready' | 'approve' | 'park' | 'unpark' | 'finish' | 'archive' | 'resequence'

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { statusTone } from '@hollis-labs/kit-dashboard'
 import { PlannerRowContent, PlannerTableHeader } from '@planner/components/planner/planner-table'
 import { PlannerStatus } from '@planner/components/planner/planner-status'
-import { THEME_SECTIONS, boardAge, boardMore, themeOwners, themeProgressFraction, themeProgressText, themeWaiting, verifiedAge } from '@planner/lib/planner'
+import { THEME_SECTIONS, boardAge, boardMore, themeOwners, themeCountsText, themeProgressFraction, themeProgressText, themeWaiting, verifiedAge } from '@planner/lib/planner'
 import { Button } from '@hollis-labs/design-components'
 import type { ThemeAction, ThemeBoard, ThemeRow, ThemeSectionKey } from '@planner/api/types'
 
@@ -32,11 +32,11 @@ export function themeRowActions(section: ThemeSectionKey, index: number, count: 
         { label: 'Done', action: 'finish', title: 'Mark this theme finished' },
       ]
     case 'queued':
-      return [{ label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }, { label: 'Park', action: 'park', title: 'Pause this theme' }]
+      return [{ label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }, { label: 'Park', action: 'park', title: 'Pause this theme' }, { label: 'Decline', action: 'archive', title: 'Archive this theme without approving it' }]
     case 'proposed':
-      return [{ label: 'Ready', action: 'ready', title: 'Mark ready to be considered' }, { label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }]
+      return [{ label: 'Ready', action: 'ready', title: 'Mark ready to be considered' }, { label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }, { label: 'Decline', action: 'archive', title: 'Archive this theme without approving it' }]
     case 'parked':
-      return [{ label: 'Unpark', action: 'unpark', title: 'Return to ready' }, { label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }]
+      return [{ label: 'Unpark', action: 'unpark', title: 'Return to ready' }, { label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }, { label: 'Decline', action: 'archive', title: 'Archive this theme without approving it' }]
     default:
       return []
   }
@@ -101,7 +101,8 @@ function ThemeSection({ section, title, blurb, empty, rows, total, now, base, ap
 function ThemeRowView({ section, row, position, now, base, actions, onAction }: { section: ThemeSectionKey; row: ThemeRow; position?: number; now: number; base: string; actions: RowAction[]; onAction?: ThemeBoardViewProps['onAction'] }) {
   const def = THEME_SECTIONS.find((s) => s.key === section)!
   const verified = verifiedAge(row.last_verified, now)
-  const waiting = themeWaiting(row)
+  const waiting = themeWaiting(row, now)
+  const counts = themeCountsText(row.progress)
   const summary = [
     row.blocked_count > 0 ? `Blocked${row.blocked_count > 1 ? ` (${row.blocked_count})` : ''}: ${row.first_blocker ?? ''}` : '',
     row.next_step ? `Next: ${row.next_step}` : '',
@@ -109,6 +110,7 @@ function ThemeRowView({ section, row, position, now, base, actions, onAction }: 
   const details = [
     ...waiting,
     themeOwners(row),
+    counts,
     section === 'parked' && row.idle_tasks ? `${row.idle_tasks} tasks idle` : '',
     verified.label,
   ].filter(Boolean).join(' · ')

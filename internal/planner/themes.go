@@ -27,7 +27,7 @@ func themeApproved(row Item) bool { return textField(row, "status") == "approved
 
 // themeActions are the lifecycle actions on a theme. Each takes only ids and
 // small arguments and handles the revision check internally.
-var themeActions = map[string]bool{"ready": true, "approve": true, "park": true, "unpark": true, "finish": true, "resequence": true, "append_state": true, "verify": true}
+var themeActions = map[string]bool{"ready": true, "approve": true, "park": true, "unpark": true, "finish": true, "archive": true, "resequence": true, "append_state": true, "verify": true}
 
 // IsThemeAction reports whether an action name belongs to the theme lifecycle.
 func IsThemeAction(action string) bool { return themeActions[action] }
@@ -46,8 +46,12 @@ func guardTheme(before, after Item, actor string) error {
 	if before != nil {
 		sequenceChanged = rankDiffers(before["order"], after["order"])
 	}
-	if (wasApproved != nowApproved || sequenceChanged) && !isOperator(actor) {
-		return fmt.Errorf("%w: approving, un-approving and sequencing themes is operator-only", ErrOperatorRequired)
+	// Parking is the one way out of approval an agent holding the write grant may
+	// take; finishing, archiving and un-approving by other means stay with the
+	// operator. Leaving approval releases the place in the sequence below.
+	parking := wasApproved && !nowApproved && textField(after, "status") == "paused"
+	if ((wasApproved != nowApproved && !parking) || sequenceChanged) && !isOperator(actor) {
+		return fmt.Errorf("%w: approving, sequencing, finishing and archiving themes is operator-only; agents may park an approved theme", ErrOperatorRequired)
 	}
 	if nowApproved && !wasApproved {
 		after["approved_by"], after["approved_at"] = actor, time.Now().UTC().Format(time.RFC3339Nano)
@@ -79,6 +83,9 @@ func (s *Owned) themeAction(ctx context.Context, row Item, action string, args I
 	}
 	switch action {
 	case "ready":
+		if err := needReason(args, actor); err != nil {
+			return err
+		}
 		if status != "proposed" && status != "draft" {
 			return fmt.Errorf("%w: only a proposed theme can be marked ready", objects.ErrInvalid)
 		}
@@ -98,17 +105,33 @@ func (s *Owned) themeAction(ctx context.Context, row Item, action string, args I
 		row["order"] = order
 		return audit("approved: %s → approved at order %v%s", status, order, reason(args))
 	case "park":
+		if err := needReason(args, actor); err != nil {
+			return err
+		}
 		if status == "paused" || status == "done" || status == "archived" {
 			return fmt.Errorf("%w: theme is already %s", objects.ErrInvalid, status)
 		}
 		row["status"] = "paused"
 		return audit("parked: %s → paused%s. Its Torque tasks are untouched.", status, reason(args))
 	case "unpark":
+		if err := needReason(args, actor); err != nil {
+			return err
+		}
 		if status != "paused" {
 			return fmt.Errorf("%w: only a paused theme can be unparked", objects.ErrInvalid)
 		}
 		row["status"] = "ready"
 		return audit("unparked: paused → ready%s", reason(args))
+	case "archive":
+		// Declining a theme the operator does not want, with a reason.
+		if !isOperator(actor) {
+			return fmt.Errorf("%w: archiving a theme is operator-only", ErrOperatorRequired)
+		}
+		if status == "archived" {
+			return fmt.Errorf("%w: theme is already archived", objects.ErrInvalid)
+		}
+		row["status"] = "archived"
+		return audit("archived: %s → archived%s", status, reason(args))
 	case "finish":
 		if status == "done" || status == "archived" {
 			return fmt.Errorf("%w: theme is already %s", objects.ErrInvalid, status)
@@ -134,6 +157,15 @@ func (s *Owned) themeAction(ctx context.Context, row Item, action string, args I
 		return nil
 	}
 	return objects.ErrInvalid
+}
+
+// needReason makes an agent say why it moved a theme, so the audit trail
+// explains the move. The operator may leave it out.
+func needReason(args Item, actor string) error {
+	if isOperator(actor) || strings.TrimSpace(textField(args, "reason")) != "" {
+		return nil
+	}
+	return fmt.Errorf("%w: a reason is required", objects.ErrInvalid)
 }
 
 func reason(args Item) string {

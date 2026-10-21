@@ -188,3 +188,24 @@ func boardNotices(b Item) any {
 	}
 	return out
 }
+
+func TestThemeRowsListPendingDecisionsByTitle(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	open, err := s.Create(ctx, "decisions", uuid.NewString(), Item{"title": "Pick the auth model", "status": "proposed"}, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled, err := s.Create(ctx, "decisions", uuid.NewString(), Item{"title": "Already settled", "status": "accepted"}, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "T", "status": "ready", "decision_ids": []any{open["id"], settled["id"], "DEC-gone"}}, "operator:test"); err != nil {
+		t.Fatal(err)
+	}
+	row := rowNamed(t, themeRows(t, s, nil, false), "queued", "T")
+	got := array(row["pending_decisions"])
+	if len(got) != 2 || textField(object(got[0]), "title") != "Pick the auth model" || textField(object(got[1]), "title") != "DEC-gone" {
+		t.Fatal("pending decisions", got)
+	}
+}

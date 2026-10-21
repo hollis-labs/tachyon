@@ -506,9 +506,28 @@ export function themeOwners(row: ThemeRow): string {
 }
 
 /** What is waiting on a person: pending decisions and unmet dependencies, as short labels. */
-export function themeWaiting(row: ThemeRow): string[] {
+export function themeWaiting(row: ThemeRow, nowMs?: number): string[] {
   const out: string[] = []
-  if (row.decision_ids?.length) out.push(`${row.decision_ids.length} decision${row.decision_ids.length === 1 ? '' : 's'} pending`)
+  const pending = row.pending_decisions
+  if (pending?.length) {
+    const first = pending[0]
+    const age = nowMs !== undefined && first.created ? boardAge(first.created, nowMs) : ''
+    out.push(`needs decision: ${first.title}${age ? ` (${age})` : ''}${pending.length > 1 ? ` +${pending.length - 1} more` : ''}`)
+  } else if (row.decision_ids?.length) {
+    out.push(`${row.decision_ids.length} decision${row.decision_ids.length === 1 ? '' : 's'} pending`)
+  }
   if (row.unmet_dependencies > 0) out.push(`waits on ${row.unmet_dependencies} theme${row.unmet_dependencies === 1 ? '' : 's'}`)
   return out
+}
+
+/** The tasks behind done/total by status, so "doing" reads differently from "todo". Done is the figure already shown. */
+export function themeCountsText(p: ThemeProgress): string {
+  const order = ['doing', 'review', 'blocked', 'todo']
+  const counts = p.counts ?? {}
+  const parts = order.filter((k) => counts[k]).map((k) => `${counts[k]} ${k}`)
+  for (const k of Object.keys(counts).sort()) {
+    if (!order.includes(k) && k !== 'done' && !['cancelled', 'abandoned', 'archived'].includes(k) && counts[k]) parts.push(`${counts[k]} ${k}`)
+  }
+  if (p.missing) parts.push(`${p.missing} linked task${p.missing === 1 ? '' : 's'} not found`)
+  return parts.join(' · ')
 }
