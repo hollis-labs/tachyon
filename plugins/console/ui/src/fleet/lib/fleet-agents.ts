@@ -7,6 +7,10 @@ export type FleetState = 'waiting' | 'busy' | 'idle' | 'unknown'
 export type Confidence = 'exact' | 'derived' | 'inferred'
 
 export interface FleetAgent {
+  /** Display grouping for a session whose remote workspace is an opaque reference. */
+  groupLabel?: string
+  /** Session creation is not process uptime. */
+  sessionCreatedAt?: number
   displayName?: string
   chat?: import("../../chat/roster").ChatAgent
   id: string
@@ -300,7 +304,7 @@ export function groupFleet(agents: FleetAgent[], history: FleetHistory, now: num
   const buckets = new Map<string, FleetGroup>()
   for (const agent of agents) {
     const ws = agent.workstream
-    const name = ws ? ws.name || ws.id : cwdName(agent.cwd) || agent.provider
+    const name = ws ? ws.name || ws.id : agent.groupLabel || cwdName(agent.cwd) || agent.provider
     const key = ws ? `ws:${ws.id}` : `dir:${name}`
     const group = buckets.get(key) ?? { workstreamId: ws?.id ?? null, name, agents: [], score: 0 }
     group.agents.push({ agent, score: fleetScore(agent, history[agent.id] ?? [], now), rank: 0 })
@@ -317,7 +321,10 @@ export function groupFleet(agents: FleetAgent[], history: FleetHistory, now: num
 
 /** "Searched tesseract · just now" when the source reports an action, else when it was last active. */
 export function whatNow(agent: FleetAgent, now: number): string {
-  if (agent.lastAction) return `${agent.lastAction.text} · ${ago(agent.lastAction.at ?? agent.lastActivity ?? now, now)}`
+  if (agent.lastAction) {
+    const at = agent.lastAction.at ?? agent.lastActivity
+    return at ? `${agent.lastAction.text} · ${ago(at, now)}` : agent.lastAction.text
+  }
   return agent.lastActivity ? `Active ${ago(agent.lastActivity, now)}` : 'No activity data'
 }
 

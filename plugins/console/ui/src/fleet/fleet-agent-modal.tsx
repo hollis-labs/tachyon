@@ -66,7 +66,7 @@ export function FleetAgentModal({ agent, score, rank, entries, now, onClose }: {
 
         <div className="grid grid-cols-2 gap-3 border-y border-border py-3 sm:grid-cols-4">
           {agent.lastAction && <Fact label="doing" value={whatNow(agent, now)} link />}
-          <Fact label="up for" value={agent.startedAt ? formatDuration(now - agent.startedAt) : '—'} title={agent.startedAt ? new Date(agent.startedAt).toLocaleString() : undefined} />
+          <Fact label={agent.sessionCreatedAt ? 'session created' : 'up for'} value={agent.sessionCreatedAt ? new Date(agent.sessionCreatedAt).toLocaleString() : agent.startedAt ? formatDuration(now - agent.startedAt) : '—'} title={agent.startedAt ? new Date(agent.startedAt).toLocaleString() : undefined} />
           <Fact label="last activity" value={agent.lastActivity ? ago(agent.lastActivity, now) : '—'} title={agent.lastActivity ? new Date(agent.lastActivity).toLocaleString() : undefined} />
           <Fact label="working (observed)" value={share === null ? '—' : `${share}%`} />
           <Fact label="state changes seen" value={String(entries.filter((e) => e.kind === 'state').length)} />
