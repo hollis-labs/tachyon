@@ -40,6 +40,17 @@ func guardTheme(before, after Item, actor string) error {
 	if now := textField(after, "status"); legacyThemeStatus(now) && (before == nil || textField(before, "status") != now) {
 		return fmt.Errorf("%w: status %q is retired for themes; use proposed, ready, approved, paused, done or archived", objects.ErrInvalid, now)
 	}
+	// Terminal statuses are the operator's: an agent cannot create a theme as
+	// done or archived, move one into either, or reopen one. One check, applied on
+	// every path that reaches this guard (create, patch, every action, promote).
+	statusNow := textField(after, "status")
+	statusWas := ""
+	if before != nil {
+		statusWas = textField(before, "status")
+	}
+	if statusNow != statusWas && (terminalThemeStatus(statusNow) || terminalThemeStatus(statusWas)) && !isOperator(actor) {
+		return fmt.Errorf("%w: finishing, archiving and reopening themes is operator-only", ErrOperatorRequired)
+	}
 	wasApproved := before != nil && themeApproved(before)
 	nowApproved := themeApproved(after)
 	sequenceChanged := after["order"] != nil
@@ -62,6 +73,8 @@ func guardTheme(before, after Item, actor string) error {
 	}
 	return nil
 }
+
+func terminalThemeStatus(s string) bool { return s == "done" || s == "archived" || s == "achieved" }
 
 func legacyThemeStatus(s string) bool { return s == "draft" || s == "active" || s == "achieved" }
 

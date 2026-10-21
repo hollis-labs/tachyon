@@ -262,3 +262,94 @@ func TestCreateDefaultsToProposedAndRefusesApprovalForAgents(t *testing.T) {
 		t.Fatal("agent created an approved theme", err)
 	}
 }
+
+// Terminal statuses (done, archived) are operator-only on every path that can
+// write a theme, from every starting status, and a refusal changes nothing.
+func TestTerminalStatusesAreOperatorOnlyOnEveryPath(t *testing.T) {
+	s, _ := ownedFixture(t)
+	ctx := context.Background()
+	start := func(status string) Item {
+		row := newTheme(t, s, "T-"+status, "proposed")
+		switch status {
+		case "ready":
+			row = mustAct(t, s, row, "ready", Item{"reason": "x"}, agent)
+		case "approved":
+			row = mustAct(t, s, row, "approve", nil, op)
+		case "paused":
+			row = mustAct(t, s, row, "ready", Item{"reason": "x"}, agent)
+			row = mustAct(t, s, row, "park", Item{"reason": "x"}, agent)
+		}
+		return row
+	}
+	same := func(t *testing.T, before Item, label string) {
+		t.Helper()
+		got, err := s.Get(ctx, "themes", before["id"].(string))
+		if err != nil || got["status"] != before["status"] || revision(got) != revision(before) {
+			t.Fatalf("%s: a refused call changed the theme (%v -> %v, rev %d -> %d, %v)", label, before["status"], got["status"], revision(before), revision(got), err)
+		}
+	}
+	for _, from := range []string{"proposed", "ready", "approved", "paused"} {
+		for _, to := range []string{"done", "archived"} {
+			label := from + "->" + to
+			finish := map[string]string{"done": "finish", "archived": "archive"}[to]
+			t.Run("patch "+label, func(t *testing.T) {
+				row := start(from)
+				if _, err := s.Patch(ctx, "themes", row["id"].(string), revision(row), Item{"status": to}, agent); !errors.Is(err, ErrOperatorRequired) {
+					t.Fatal("agent patch reached", to, err)
+				}
+				same(t, row, "patch")
+				if out, err := s.Patch(ctx, "themes", row["id"].(string), revision(row), Item{"status": to}, op); err != nil || out["status"] != to {
+					t.Fatal("operator patch refused", err)
+				}
+			})
+			t.Run("action "+label, func(t *testing.T) {
+				row := start(from)
+				if _, err := act(t, s, row, finish, Item{"reason": "x"}, agent); !errors.Is(err, ErrOperatorRequired) {
+					t.Fatal("agent action reached", to, err)
+				}
+				same(t, row, "action")
+				if out := mustAct(t, s, row, finish, Item{"reason": "x"}, op); out["status"] != to {
+					t.Fatal(out["status"])
+				}
+			})
+		}
+	}
+	for _, to := range []string{"done", "archived"} {
+		t.Run("create "+to, func(t *testing.T) {
+			if _, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "C", "status": to}, agent); !errors.Is(err, ErrOperatorRequired) {
+				t.Fatal("agent created a theme as", to, err)
+			}
+			if out, err := s.Create(ctx, "themes", uuid.NewString(), Item{"title": "C", "status": to}, op); err != nil || out["status"] != to {
+				t.Fatal("operator create refused", err)
+			}
+		})
+		t.Run("promote "+to, func(t *testing.T) {
+			in, err := s.Create(ctx, "inbox", uuid.NewString(), Item{"title": "Capture"}, op)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Promote(ctx, textField(in, "id"), revision(in), "themes", uuid.NewString(), Item{"title": "P", "status": to}, agent); !errors.Is(err, ErrOperatorRequired) {
+				t.Fatal("agent promoted into", to, err)
+			}
+			still, _ := s.Get(ctx, "inbox", in["id"].(string))
+			if still["status"] == "triaged" {
+				t.Fatal("a refused promote triaged the inbox item")
+			}
+		})
+	}
+	// Reopening a finished theme is the operator's too.
+	t.Run("reopen", func(t *testing.T) {
+		done := mustAct(t, s, start("proposed"), "finish", Item{"reason": "x"}, op)
+		if _, err := s.Patch(ctx, "themes", done["id"].(string), revision(done), Item{"status": "ready"}, agent); !errors.Is(err, ErrOperatorRequired) {
+			t.Fatal("agent reopened a done theme", err)
+		}
+		same(t, done, "reopen")
+	})
+	// An unchanged terminal status does not lock an agent out of other edits.
+	t.Run("edit while done", func(t *testing.T) {
+		done := mustAct(t, s, start("proposed"), "finish", Item{"reason": "x"}, op)
+		if _, err := s.Patch(ctx, "themes", done["id"].(string), revision(done), Item{"summary": "note"}, agent); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
