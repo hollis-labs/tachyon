@@ -2,7 +2,7 @@ import { operatorFetch } from '../operator/elevation'
 import { dataRefreshRegistry } from '@tachyon/host-sdk'
 import type { Recipient } from '../messaging'
 import { chatJSON, chatRecipient, fetchChatAgents, type ChatAgent } from './roster'
-import type { ChatCapability, ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryQuery } from './types'
+import type { ChatCapability, ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryQuery, ReplyAudience } from './types'
 
 const TURNS = '/api/plugins/console/v1/chat-turns'
 export interface Turn {
@@ -26,7 +26,8 @@ export interface Turn {
     message_id?: string
     sequence?: number
     output_id?: string
-    attribution?: { launch_id?: string; runtime?: string }
+    /** Routed-message metadata. input_classes is comma-joined (or an array); empty unless Tether proved who asked. */
+    attribution?: { launch_id?: string; runtime?: string; input_classes?: string | string[]; audience?: string }
   }
   stage_trace?: NonNullable<ChatMessage['info']>['trace']
 }
@@ -59,6 +60,18 @@ async function turns<T>(path: string, init?: RequestInit): Promise<T> {
   const b = await res.json().catch(() => null)
   if (!res.ok) throw new Error(b?.message || `Conversation history unavailable (${res.status})`)
   return b as T
+}
+/**
+ * Who asked for the turn that produced this reply, from Tether's proven
+ * input_classes only. Never from the text, the channel or timestamps: a reply
+ * with no classes (older, queued, shared-credential) is 'unknown'.
+ */
+export function replyAudience(t: Turn): ReplyAudience {
+  const raw = t.source_message?.attribution?.input_classes
+  const classes = (Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : []).map((c) => c.trim())
+  if (classes.includes('operator')) return 'operator'
+  const known = classes.filter((c): c is 'agent' | 'system' => c === 'agent' || c === 'system')
+  return known.length === 1 && classes.length === 1 ? known[0] : 'unknown'
 }
 export function belongsTo(t: Turn, a: ChatAgent): boolean {
   const launch = t.source_message?.attribution?.launch_id
@@ -125,6 +138,7 @@ export function messagesFor(a: ChatAgent, items: Turn[], sent: Sent[]): ChatMess
       id: `turn:${t.item_id}`,
       threadId: id,
       from: 'agent',
+      audience: replyAudience(t),
       body: t.content,
       at: Date.parse(t.created_at),
       tools: [],

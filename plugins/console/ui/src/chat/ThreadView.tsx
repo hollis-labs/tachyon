@@ -56,7 +56,7 @@ function Bubble({ m, now, agentLabel }: { m: ChatMessage; now: number; agentLabe
 
 const renderMessage = (item: ChatItem) => item.kind === 'message' ? item.content : null
 
-export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void }) {
+export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder, empty }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void; empty?: React.ReactNode }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000)
@@ -68,5 +68,5 @@ export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, o
   })), [messages, now, agentLabel])
   return <ChatStream items={items} renderItem={renderMessage} loading={loading && !messages.length}
     history={{ hasOlder: hasMore, loading: loading && !!messages.length, onLoadOlder }}
-    viewportClassName="px-4 py-4" empty={<p className="text-control text-fg-muted">No messages yet. Say something.</p>} />
+    viewportClassName="px-4 py-4" empty={empty ?? <p className="text-control text-fg-muted">No messages yet. Say something.</p>} />
 }
