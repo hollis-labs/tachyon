@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -121,6 +122,19 @@ func (h *ObjectHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) 
 		}
 	case path == "/workstreams" && req.Method == "POST":
 		target, fields = "/workstreams", "name workflow_id"
+	case strings.HasPrefix(path, "/plans/") && req.Method == "GET":
+		id := strings.TrimPrefix(path, "/plans/")
+		if !rePlanID.MatchString(id) {
+			return forgeErr(400, "invalid_request", "Invalid plan id")
+		}
+		target, project = "/catalog/plans/"+id, projectPlan
+	case strings.HasPrefix(path, "/agents/") && req.Method == "GET":
+		id := strings.TrimPrefix(path, "/agents/")
+		if !reAgentID.MatchString(id) {
+			return forgeErr(400, "invalid_request", "Invalid agent id")
+		}
+		target, project = "/registry/agents", projectAgent(id)
+		query.Set("status", "*")
 	default:
 		parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 		if len(parts) >= 2 && objectID.MatchString(parts[1]) {
@@ -198,6 +212,9 @@ func (h *ObjectHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) 
 			return forgeErr(status, "upstream_error", "Tether request failed")
 		}
 		body, err := project(res.Body)
+		if errors.Is(err, errAgentNotFound) {
+			return forgeErr(404, "not_found", "Agent not found")
+		}
 		if err != nil {
 			return forgeErr(502, "upstream_invalid", "Tether returned an unexpected response")
 		}
