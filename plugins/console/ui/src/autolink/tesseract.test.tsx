@@ -28,7 +28,7 @@ function fakeClient(over: Partial<TesseractReadClient> = {}): TesseractReadClien
 
 function setup(client: TesseractReadClient, ui: React.ReactNode) {
   const cache = createTesseractCache(client)
-  const api = { plannerTaskTitles: async () => ({}) }
+  const api = { plannerTaskTitles: async () => ({}), plannerResolve: async () => { throw new Error("unused") } }
   return render(
     <MemoryRouter>
       <TesseractContext.Provider value={cache}>
