@@ -19,11 +19,12 @@ import (
 const version = "0.1.0"
 
 type console struct {
-	proxy   *pluginkit.Proxy
-	forge   *ForgeHandler
-	catalog *CatalogHandler
-	chat    *ChatHandler
-	objects *ObjectHandler
+	proxy     *pluginkit.Proxy
+	forge     *ForgeHandler
+	catalog   *CatalogHandler
+	tesseract *TesseractHandler
+	chat      *ChatHandler
+	objects   *ObjectHandler
 }
 
 func (console) Init(context.Context, subprocess.InitParams) (subprocess.InitResult, error) {
@@ -58,6 +59,9 @@ func (c console) HTTPHandle(ctx context.Context, req subprocess.HTTPRequest) (su
 	if c.catalog != nil && c.catalog.Match(req.Path) {
 		return c.catalog.Handle(ctx, req), nil
 	}
+	if c.tesseract != nil && c.tesseract.Match(req.Path) {
+		return c.tesseract.Handle(ctx, req), nil
+	}
 	if c.forge.Match(req.Path) {
 		return c.forge.Handle(ctx, req), nil
 	}
@@ -71,7 +75,7 @@ func main() {
 		pluginkit.Route{Prefix: "/v1", Upstream: torque, Target: "/api/v1", Bearer: os.Getenv("TORQUE_API_TOKEN"), Headers: map[string]string{"X-Client": "browser"}},
 	)
 	forge := NewForgeHandler(os.Getenv("GITHUB_TOKEN"), pluginkit.Env("GITHUB_ORG", "hollis-labs"))
-	if err := subprocess.Serve(console{proxy: proxy, forge: forge, objects: NewObjectHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), chat: NewChatHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), catalog: NewCatalogHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE"))}); err != nil {
+	if err := subprocess.Serve(console{proxy: proxy, forge: forge, objects: NewObjectHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), chat: NewChatHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), catalog: NewCatalogHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), tesseract: NewTesseractHandler(os.Getenv("TESSERACT_URL"), upstreamauth.TokenFile(nil, "", "TESSERACT_TOKEN_FILE"))}); err != nil {
 		os.Exit(1)
 	}
 }
