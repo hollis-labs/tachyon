@@ -53,3 +53,25 @@ it('links ids wherever markdown puts them, including bold and emphasis at the st
   const found = [...container.querySelectorAll('[data-ref-kind]')].map((c) => c.textContent)
   for (let n = 101; n <= 108; n++) expect(found).toContain(`CW-20261016-0${n}`)
 })
+it('renders a tach: link as a reference chip, labelled until it resolves, and leaves unknown schemes as text', () => {
+  const body = [
+    '[Handoff: approval execution](tach:tesseract/01M4SCJHDM8FV6MDPSDTMZ0X44)',
+    '[the decision](tach:tesseract/project/agent-os/workspace/decisions#approved_action_executor)',
+    '[CW-20261019-0028](tach:torque/CW-20261019-0028)',
+    '[nope](tach:unknown/whatever)',
+    '[bad](javascript:alert(1))',
+  ].join('\n\n')
+  const { container } = render(
+    <MemoryRouter>
+      <AutolinkProvider registry={createDefaultRefRegistry()}>
+        <MessageBody body={body} />
+      </AutolinkProvider>
+    </MemoryRouter>,
+  )
+  const chips = [...container.querySelectorAll('[data-ref-kind]')]
+  expect(chips.map((c) => c.getAttribute('data-ref-kind'))).toEqual(['tesseract.item', 'tesseract.key', 'torque.task'])
+  expect(chips[0].textContent).toBe('Handoff: approval execution')
+  expect(chips[1].textContent).toBe('the decision')
+  expect(container.textContent).toContain('nope')
+  expect(container.querySelector('a[href^="tach:"], a[href^="javascript:"]')).toBeNull()
+})

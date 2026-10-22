@@ -6,6 +6,7 @@ import { createDefaultRefRegistry, TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND } fro
 import type { TesseractItem, TesseractReadClient } from '../tesseract/client'
 import { AutolinkProvider, Linkified } from '.'
 import { createLiveResolvers } from './live'
+import { setRefLabelMax, truncateLabel } from './labelPrefs'
 import { createTesseractCache, TesseractContext } from './tesseractDetail'
 
 afterEach(cleanup)
@@ -77,5 +78,39 @@ describe('createTesseractCache', () => {
     t = 2000
     await cache.ensure(TESSERACT_ITEM_KIND, ID)
     expect(client.getItem).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('resolved chip labels', () => {
+  it('reads "Type: Title" once resolved, cut to the configured length, and keeps the id until then', async () => {
+    const long: TesseractItem = { ...item, tags: ['handoff'], payload: { ...item.payload, title: 'A very long handoff title that goes on and on past any sensible chip width' } }
+    setup(fakeClient({ getItem: vi.fn(async () => long) }), <Linkified text={ID} />)
+    const chip = () => document.querySelector('[data-ref-kind]') as HTMLElement
+    expect(chip().textContent).toBe('01M4…0X44')
+    await waitFor(() => expect(chip().getAttribute('data-ref-state')).toBe('found'))
+    expect(chip().textContent).toBe('Handoff: A very long handoff title that goes on…')
+    expect(chip().textContent!.length).toBeLessThanOrEqual(48)
+    setRefLabelMax(24)
+    await waitFor(() => expect(chip().textContent!.length).toBeLessThanOrEqual(24))
+    expect(chip().textContent!.endsWith('…')).toBe(true)
+    setRefLabelMax(null)
+  })
+
+  it('labels tasks "Task: Title"', async () => {
+    const api = { plannerTaskTitles: async () => ({ 'CW-20261016-0101': { id: 'CW-20261016-0101', title: 'Reference registry', status: 'done', priority: 1, updated_at: '2026-10-16T05:00:00Z' } }), plannerResolve: async () => { throw new Error('not used') } }
+    render(
+      <MemoryRouter>
+        <AutolinkProvider registry={createDefaultRefRegistry()} resolvers={createLiveResolvers(api as never)}><Linkified text="CW-20261016-0101" /></AutolinkProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(document.querySelector('[data-ref-state="found"]')?.textContent).toBe('Task: Reference registry'))
+  })
+})
+
+describe('truncateLabel', () => {
+  it('collapses whitespace and ends with one ellipsis', () => {
+    expect(truncateLabel('a  b\nc', 10)).toBe('a b c')
+    expect(truncateLabel('abcdefghij', 5)).toBe('abcd…')
+    expect(truncateLabel('abc', 5)).toBe('abc')
   })
 })

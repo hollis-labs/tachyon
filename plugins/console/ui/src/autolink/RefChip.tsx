@@ -5,6 +5,7 @@ import { useAutolink, useRefState } from './context'
 import { RefIcon } from './RefIcon'
 import { refCardEnricher, refHover, type RefCardProps } from './extensions'
 import { PreviewCardView } from './PreviewCardView'
+import { truncateLabel, useRefLabelMax } from './labelPrefs'
 
 /** The default card source: the resolver's card, unchanged. */
 function Passthrough({ card, children }: RefCardProps) {
@@ -16,6 +17,8 @@ export interface RefChipProps {
   canonical: string
   /** The text as written, passed to the kind's `chipLabel` fallback. Defaults to the canonical id. */
   raw?: string
+  /** Shown until the reference resolves (the label an agent wrote in a `tach:` link). Never replaces a resolved title. */
+  fallbackLabel?: string
   meta?: RefMeta
   className?: string
   /** Resolve on mount (default, batched with every other chip on the page) or only on hover/focus. */
@@ -40,7 +43,7 @@ const STATE_STYLE: Record<string, string> = {
  * navigates when the kind has a page and no resolver. Modified clicks (new tab)
  * always fall through to the browser.
  */
-export function RefChip({ kind, canonical, raw, meta, className = '', resolve = 'eager', hoverDelay = 350, hovercard = true }: RefChipProps) {
+export function RefChip({ kind, canonical, raw, fallbackLabel, meta, className = '', resolve = 'eager', hoverDelay = 350, hovercard = true }: RefChipProps) {
   const { registry, client, activate, hosted } = useAutolink()
   const state = useRefState(kind, canonical)
   const ref: RefIdentity = meta ? { kind, canonical, meta } : { kind, canonical }
@@ -48,7 +51,11 @@ export function RefChip({ kind, canonical, raw, meta, className = '', resolve = 
   const card = buildPreviewCard(registry, ref, state)
   const Hover = refHover(kind)
   const Header = refCardEnricher(kind) ?? Passthrough
-  const label = def?.chipLabel?.(ref, raw ?? canonical) ?? raw ?? canonical
+  const labelMax = useRefLabelMax()
+  // A resolved reference reads as "Type: Title"; until then the author's label, else the kind's short form of the id.
+  const label = state.status === 'found' && state.entity.chipLabel
+    ? truncateLabel(state.entity.chipLabel, labelMax)
+    : fallbackLabel ?? def?.chipLabel?.(ref, raw ?? canonical) ?? raw ?? canonical
 
   useEffect(() => {
     if (resolve === 'eager') client.request([{ kind, canonical }])

@@ -34,6 +34,7 @@ export function createTorqueTaskResolver(
               status: 'found',
               entity: {
                 title: t.title,
+                chipLabel: `Task: ${t.title}`,
                 status: taskStatusPill(t.status),
                 fields: [{ label: 'Priority', value: `P${t.priority}` }],
                 updatedAt: t.updated_at,

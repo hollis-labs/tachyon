@@ -1365,6 +1365,23 @@ eligible for sequencing, never launch authorization.
   abandoned and archived tasks leave the total. The Flight tab (`/planner/flight`)
   renders it with operator buttons.
 
+### Reference links for agents
+
+Pattern matching finds ids that look like ids (`CW-…`, a 26-character item id, `namespace#key`). A bare
+key such as `approval_execution_2026_10_22` has no namespace and cannot be matched safely, so agents name
+what they mean:
+
+- `tesseract:<item_id>` (preferred; every Tesseract write returns the `item_id`), or `tesseract:<namespace>#<key>`.
+- `[label](tach:<service>/<id-or-key>)` when a label helps. It is an ordinary markdown link, so it reads as
+  its label anywhere the console is not rendering it. Services: `tesseract` (aliases `tess`, `memory`) and
+  `torque` (alias `task`); the id may be URL-encoded. An unknown service or id renders as plain text.
+- Torque ids stay bare.
+
+A resolved reference reads `Type: Title` (`Handoff: Approval execution`, `Task: …`, `Decision: …`) and keeps the
+same hovercard and drawer; until it resolves the chip shows the author's label, else a short form of the id.
+Labels are cut at 48 characters (the hovercard carries the full title). Per-device override:
+`localStorage['console.refs.labelMax.v1']` (16 to 200), or `setRefLabelMax(n)` in `autolink/labelPrefs.ts`.
+
 ### Planner access for agents
 
 `/api/agent/v1/data` is an always-authenticated, uncached service API using the

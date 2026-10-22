@@ -29,6 +29,7 @@ export function planEntity(p: Record<string, unknown>): RefEntity {
   const parts = [str(p.validation_error), lines.join('\n')].filter(Boolean)
   return {
     title: str(p.name) || str(p.plan_id),
+    chipLabel: `Plan: ${str(p.name) || str(p.plan_id)}`,
     subtitle: str(p.plan_id),
     status: state ? { label: state.replace(/_/g, ' '), tone: PLAN_TONE[state] ?? 'neutral' } : undefined,
     description: parts.length ? parts.join('\n\n') : undefined,
@@ -51,6 +52,7 @@ export function agentEntity(a: Record<string, unknown>): RefEntity {
   ].filter((f) => f.value)
   return {
     title: str(a.display_name) || str(a.urn),
+    chipLabel: `Agent: ${str(a.display_name) || str(a.urn)}`,
     status: status ? { label: status, tone: AGENT_TONE[status] ?? 'neutral' } : undefined,
     description: str(a.description) || undefined,
     fields,

@@ -1,19 +1,33 @@
-import { memo } from 'react'
+import { Children, isValidElement, memo, type ReactNode } from 'react'
 import { ChatMarkdown, type StreamdownProps } from '@hollis-labs/kit-chat/markdown'
+import { RefChip } from '../autolink/RefChip'
 import { linkifiedMarkdownComponents } from '../autolink/markdown'
+import { parseTachHref } from '../refs/tach'
 
 // Every element that holds prose is linkified, not just p and li: ids lead bullets as
 // **bold** or *emphasis*, and also sit in headings, quotes and table cells.
+/** The visible text of a link's children, used as the label until the reference resolves. */
+function plainText(node: ReactNode): string {
+  return Children.toArray(node)
+    .map((c) => (typeof c === 'string' || typeof c === 'number' ? String(c) : isValidElement<{ children?: ReactNode }>(c) ? plainText(c.props.children) : ''))
+    .join('')
+    .trim()
+}
+
 const components: StreamdownProps['components'] = {
   ...(linkifiedMarkdownComponents('messaging') as StreamdownProps['components']),
-  a: ({ children, href }) =>
-    href && /^(https?:|mailto:)/i.test(href) ? (
+  a: ({ children, href }) => {
+    // `[label](tach:service/id-or-key)`: the author names the reference, so nothing depends on pattern matching.
+    const ref = parseTachHref(href)
+    if (ref) return <RefChip kind={ref.kind} canonical={ref.canonical} fallbackLabel={plainText(children) || undefined} />
+    return href && /^(https?:|mailto:)/i.test(href) ? (
       <a href={href} target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     ) : (
       <span>{children}</span>
-    ),
+    )
+  },
   img: ({ alt }) => <span className="text-fg-muted">{alt ? `[Image: ${alt}]` : '[Image]'}</span>,
 }
 /** Shared portfolio renderer; raw HTML is excluded and remote images never load. */
