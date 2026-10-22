@@ -1,10 +1,13 @@
-import { createPlannerResolver, createTorqueTaskResolver, PLANNER_ENTITIES, TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND, type KindResolver } from '../refs'
+import { hostFetch } from '@tachyon/host-sdk'
+import { createPlannerResolver, createTetherAgentResolver, createTetherPlanResolver, createTorqueTaskResolver, PLANNER_ENTITIES, TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND, type KindResolver } from '../refs'
 import type { TorqueApiClient } from '@tachyon/torque-client'
 import { registerForgeRefs } from '../forge/refs'
 import { registerTaskRefs } from './TaskDetailPane'
 import { registerTesseractRefs } from './TesseractDetailPane'
 import { createTesseractResolver } from './tesseractResolver'
 import type { TesseractCache } from './tesseractDetail'
+
+const tetherGet = (path: string, signal?: AbortSignal) => hostFetch(path, { signal, cache: 'no-store', headers: { Accept: 'application/json' } })
 
 /**
  * Resolvers that talk to the real backend today: `torque.task`, through the
@@ -20,6 +23,9 @@ export function createLiveResolvers(api: Pick<TorqueApiClient, 'plannerTaskTitle
   const planner = createPlannerResolver((ref, signal) => api.plannerResolve(ref, signal))
   const resolvers: Record<string, KindResolver> = {
     ...forge,
+    // Operator-only reads; quiet on purpose, so a preview never raises the elevation prompt.
+    'tether.plan': createTetherPlanResolver(tetherGet),
+    'tether.agent': createTetherAgentResolver(tetherGet),
     'torque.task': createTorqueTaskResolver((ids, signal) => api.plannerTaskTitles(ids, signal)),
     ...Object.fromEntries(PLANNER_ENTITIES.map((e) => [e.id, planner])),
   }
