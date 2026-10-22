@@ -1,13 +1,11 @@
-import { Children, memo, type ReactNode } from 'react'
+import { memo } from 'react'
 import { ChatMarkdown, type StreamdownProps } from '@hollis-labs/kit-chat/markdown'
-import { Linkified } from '../autolink'
+import { linkifiedMarkdownComponents } from '../autolink/markdown'
 
-const refs = (children: ReactNode) =>
-  Children.map(children, (child) => (typeof child === 'string' ? <Linkified text={child} /> : child))
+// Every element that holds prose is linkified, not just p and li: ids lead bullets as
+// **bold** or *emphasis*, and also sit in headings, quotes and table cells.
 const components: StreamdownProps['components'] = {
-  strong: ({ children }) => <strong>{children}</strong>,
-  p: ({ children }) => <p>{refs(children)}</p>,
-  li: ({ children }) => <li>{refs(children)}</li>,
+  ...(linkifiedMarkdownComponents('messaging') as StreamdownProps['components']),
   a: ({ children, href }) =>
     href && /^(https?:|mailto:)/i.test(href) ? (
       <a href={href} target="_blank" rel="noopener noreferrer">
