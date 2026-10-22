@@ -6,7 +6,7 @@ import type { Comment, ListPage, Task } from '@tachyon/torque-client'
 import { createDefaultRefRegistry } from '../refs'
 import { createMockResolver } from '../refs/test-resolver'
 import { AutolinkProvider, Linkified } from '.'
-import { registerTaskRefs } from './TaskDetail'
+import { registerTaskRefs } from './TaskDetailPane'
 import { createTaskDetailCache, TaskDetailContext, type TaskDetailApi } from './taskDetail'
 
 afterEach(cleanup)

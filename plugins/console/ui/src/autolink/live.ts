@@ -1,7 +1,7 @@
 import { createTorqueTaskResolver, type KindResolver } from '../refs'
 import type { TorqueApiClient } from '@tachyon/torque-client'
 import { registerForgeRefs } from '../forge/refs'
-import { registerTaskRefs } from './TaskDetail'
+import { registerTaskRefs } from './TaskDetailPane'
 
 /**
  * Resolvers that talk to the real backend today: only `torque.task`, through
