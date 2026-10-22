@@ -54,6 +54,8 @@ export interface RefKind {
   /** Short text for the inline chip. Defaults to the matched text. */
   chipLabel?(ref: RefIdentity, raw: string): string
   open(ref: RefIdentity): OpenTarget
+  /** Label for the open action when the target is a route. Defaults to "Open page". */
+  openLabel?: string
 }
 
 export type Segment =
@@ -127,4 +129,5 @@ export interface PreviewCard {
   updatedAt?: string
   error?: string
   open: OpenTarget
+  openLabel?: string
 }

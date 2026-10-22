@@ -16,7 +16,7 @@ import { parseCommitCanonical, parsePrCanonical, parseRepoCanonical, prCanonical
 // Read-only drawer bodies. Anything that writes (comment, review, assign) is
 // G3/G4 and must go through ActionBus + IdentityConfirm, never from here.
 
-const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-zinc-500'
+const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-fg-faint'
 
 type Async<T> = { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; message: string }
 
@@ -41,10 +41,10 @@ function useForgeData<T>(key: string, load: (c: ForgeClient) => Promise<T>): Asy
 
 function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
-    <section className="border-t border-zinc-800/80 py-3 first:border-t-0 first:pt-0">
+    <section className="border-t border-border py-3 first:border-t-0 first:pt-0">
       <h3 className={`${LABEL} mb-2`}>
         {title}
-        {count !== undefined && <span className="ml-1.5 text-zinc-500">{count}</span>}
+        {count !== undefined && <span className="ml-1.5 text-fg-faint">{count}</span>}
       </h3>
       {children}
     </section>
@@ -58,22 +58,22 @@ function Pill({ tone, children }: { tone: StatusTone; children: ReactNode }) {
 function Loading() {
   return (
     <div className="space-y-1.5" aria-hidden>
-      <div className="h-2 w-2/3 animate-pulse bg-zinc-800" />
-      <div className="h-2 w-1/3 animate-pulse bg-zinc-800" />
+      <div className="h-2 w-2/3 animate-pulse bg-muted" />
+      <div className="h-2 w-1/3 animate-pulse bg-muted" />
     </div>
   )
 }
 
 function Failed({ message }: { message: string }) {
-  return <p className="text-[12px] text-red-300" role="alert">Could not load: {message}</p>
+  return <p className="text-[12px] text-destructive" role="alert">Could not load: {message}</p>
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <p className="text-[12px] text-zinc-500">{children}</p>
+  return <p className="text-[12px] text-fg-faint">{children}</p>
 }
 
 function Rows({ children }: { children: ReactNode }) {
-  return <ul className="divide-y divide-zinc-800/60 border-y border-zinc-800/60">{children}</ul>
+  return <ul className="divide-y divide-border border-y border-border">{children}</ul>
 }
 
 function checkTone(c: CheckRun): StatusTone {
@@ -94,7 +94,7 @@ function useNow(): number {
 }
 
 function Who({ login, agent }: { login: string; agent?: boolean }) {
-  return <span className="font-mono text-zinc-300">@{login}{agent ? ' · agent' : ''}</span>
+  return <span className="font-mono text-fg-secondary">@{login}{agent ? ' · agent' : ''}</span>
 }
 
 function PrBody({ pr }: { pr: PullRequest }) {
@@ -109,7 +109,7 @@ function PrBody({ pr }: { pr: PullRequest }) {
           <Rows>
             {pr.checks.map((c) => (
               <li key={c.id} className="flex items-center gap-2 py-1.5 text-[12px]">
-                <span className="min-w-0 flex-1 truncate text-zinc-200">{c.name}</span>
+                <span className="min-w-0 flex-1 truncate text-fg">{c.name}</span>
                 <Pill tone={checkTone(c)}>{checkLabel(c)}</Pill>
               </li>
             ))}
@@ -121,7 +121,7 @@ function PrBody({ pr }: { pr: PullRequest }) {
           <Empty>No reviews yet. {pr.reviewers?.length ? `Requested from ${pr.reviewers.map((r) => `@${r.login}`).join(', ')}.` : ''}</Empty>
         ) : (
           <>
-            <p className="mb-2 text-[12px] text-zinc-400">{reviewText(pr.reviews)}</p>
+            <p className="mb-2 text-[12px] text-fg-muted">{reviewText(pr.reviews)}</p>
             <Rows>
               {pr.reviews.map((r) => (
                 <li key={r.id} className="flex items-center gap-2 py-1.5 text-[12px]">
@@ -153,7 +153,7 @@ export function ForgePrDetail({ refId }: RefDetailProps) {
       {ref && (
         <PrWorkspaceLink
           prRef={ref}
-          className="mb-3 inline-flex h-8 items-center border border-amber-300 bg-amber-300 px-3 font-mono text-[11px] uppercase tracking-widest text-zinc-950 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300"
+          className="mb-3 inline-flex h-8 items-center border border-primary bg-primary px-3 font-mono text-[11px] uppercase tracking-widest text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           Open workspace
         </PrWorkspaceLink>
@@ -165,17 +165,17 @@ export function ForgePrDetail({ refId }: RefDetailProps) {
           {p.assignees.length > 0 && (
             <>
               <dt className={LABEL}>Assignees</dt>
-              <dd className="text-zinc-200">{p.assignees.map((a) => `@${a.login}`).join(', ')}</dd>
+              <dd className="text-fg">{p.assignees.map((a) => `@${a.login}`).join(', ')}</dd>
             </>
           )}
           <dt className={LABEL}>Branch</dt>
-          <dd className="font-mono text-zinc-200 [overflow-wrap:anywhere]">{p.headBranch} {'→'} {p.baseBranch}</dd>
+          <dd className="font-mono text-fg [overflow-wrap:anywhere]">{p.headBranch} {'→'} {p.baseBranch}</dd>
           <dt className={LABEL}>Merge</dt>
-          <dd className="text-zinc-200">{p.state === 'merged' ? `Merged ${p.mergedAt ? ago(Date.parse(p.mergedAt), now) : ''}` : p.mergeable}</dd>
+          <dd className="text-fg">{p.state === 'merged' ? `Merged ${p.mergedAt ? ago(Date.parse(p.mergedAt), now) : ''}` : p.mergeable}</dd>
           {sizeText(p) && (
             <>
               <dt className={LABEL}>Size</dt>
-              <dd className="font-mono text-zinc-200">{sizeText(p)}</dd>
+              <dd className="font-mono text-fg">{sizeText(p)}</dd>
             </>
           )}
           {p.labels && p.labels.length > 0 && (
@@ -193,7 +193,7 @@ export function ForgePrDetail({ refId }: RefDetailProps) {
             {commits.map((c: Commit) => (
               <li key={c.sha} className="flex items-baseline gap-2 py-1.5 text-[12px]">
                 <RefChip kind="forge.commit" canonical={`${refId.canonical.replace(/#\d+$/, '')}@${c.sha}`} raw={shortSha(c.sha)} hovercard={false} resolve="hover" />
-                <span className="min-w-0 flex-1 truncate text-zinc-300">{c.message.split('\n')[0]}</span>
+                <span className="min-w-0 flex-1 truncate text-fg-secondary">{c.message.split('\n')[0]}</span>
               </li>
             ))}
           </Rows>
@@ -204,9 +204,9 @@ export function ForgePrDetail({ refId }: RefDetailProps) {
           <Rows>
             {files.map((f: FileDiff) => (
               <li key={f.path} className="flex items-center gap-2 py-1.5 font-mono text-[11px]">
-                <span className="min-w-0 flex-1 truncate text-zinc-300" title={f.path}>{f.path}</span>
-                <span className="shrink-0 text-emerald-400">+{f.additions}</span>
-                <span className="shrink-0 text-red-400">{'−'}{f.deletions}</span>
+                <span className="min-w-0 flex-1 truncate text-fg-secondary" title={f.path}>{f.path}</span>
+                <span className="shrink-0 text-success">+{f.additions}</span>
+                <span className="shrink-0 text-destructive">{'−'}{f.deletions}</span>
               </li>
             ))}
           </Rows>
@@ -236,21 +236,21 @@ export function ForgeCommitDetail({ refId }: RefDetailProps) {
           <dt className={LABEL}>Author</dt>
           <dd><Who login={commit.author.login} agent={commit.author.isAgent} /></dd>
           <dt className={LABEL}>Authored</dt>
-          <dd className="text-zinc-200">{ago(Date.parse(commit.authoredAt), now)}</dd>
+          <dd className="text-fg">{ago(Date.parse(commit.authoredAt), now)}</dd>
           <dt className={LABEL}>SHA</dt>
-          <dd className="font-mono text-zinc-200 [overflow-wrap:anywhere]">{commit.sha}</dd>
+          <dd className="font-mono text-fg [overflow-wrap:anywhere]">{commit.sha}</dd>
           {commit.parents && commit.parents.length > 0 && (
             <>
               <dt className={LABEL}>Parents</dt>
-              <dd className="font-mono text-zinc-200">{commit.parents.map(shortSha).join(', ')}</dd>
+              <dd className="font-mono text-fg">{commit.parents.map(shortSha).join(', ')}</dd>
             </>
           )}
         </dl>
-        {body && <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-zinc-300 [overflow-wrap:anywhere]">{body}</p>}
+        {body && <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-fg-secondary [overflow-wrap:anywhere]">{body}</p>}
       </Section>
       <Section title="Pull request">
         <RefChip kind="forge.pr" canonical={prCanonical(pr.ref)} hovercard={false} />
-        <p className="mt-2 text-[12px] text-zinc-400">{pr.title}</p>
+        <p className="mt-2 text-[12px] text-fg-muted">{pr.title}</p>
       </Section>
     </div>
   )
@@ -272,11 +272,11 @@ export function ForgeRepoDetail({ refId }: RefDetailProps) {
       <Section title="Repository">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-[12px]">
           <dt className={LABEL}>Default branch</dt>
-          <dd className="font-mono text-zinc-200">{repo.defaultBranch}</dd>
+          <dd className="font-mono text-fg">{repo.defaultBranch}</dd>
           {repo.updatedAt && (
             <>
               <dt className={LABEL}>Pushed</dt>
-              <dd className="text-zinc-200">{ago(Date.parse(repo.updatedAt), now)}</dd>
+              <dd className="text-fg">{ago(Date.parse(repo.updatedAt), now)}</dd>
             </>
           )}
         </dl>
@@ -287,7 +287,7 @@ export function ForgeRepoDetail({ refId }: RefDetailProps) {
             {prs.map((p) => (
               <li key={p.ref.number} className="flex items-baseline gap-2 py-1.5 text-[12px]">
                 <RefChip kind="forge.pr" canonical={prCanonical(p.ref)} hovercard={false} resolve="hover" />
-                <span className="min-w-0 flex-1 truncate text-zinc-300">{p.title}</span>
+                <span className="min-w-0 flex-1 truncate text-fg-secondary">{p.title}</span>
               </li>
             ))}
           </Rows>

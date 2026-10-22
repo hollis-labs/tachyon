@@ -3,7 +3,7 @@ import { MetaList, Skeleton, type MetaItem } from '@hollis-labs/design-component
 import type { Comment, Task } from '@tachyon/torque-client'
 import { ago } from '@console/lib/agent-activity'
 import { taskStatusPill } from '../refs'
-import { registerRefCard, registerRefDetail, registerRefHover, type RefCardProps, type RefDetailProps } from './extensions'
+import { markRefInPlace, registerRefCard, registerRefDetail, registerRefHover, type RefCardProps, type RefDetailProps } from './extensions'
 import { useAutolink } from './context'
 import { LinkText } from './LinkText'
 import { useTaskDetail, type TaskDetailEntry } from './taskDetail'
@@ -188,4 +188,5 @@ export function registerTaskRefs(): void {
   registerRefDetail('torque.task', TaskDrawerPane)
   registerRefHover('torque.task', TaskHoverMeta)
   registerRefCard('torque.task', TaskCard)
+  markRefInPlace('torque.task')
 }
