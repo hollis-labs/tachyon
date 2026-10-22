@@ -6,6 +6,8 @@ import { useAutolink } from './context'
 import { createLiveResolvers } from './live'
 import { AutolinkProvider } from './Provider'
 import { createTaskDetailCache, TaskDetailContext } from './taskDetail'
+import { createTesseractCache, TesseractContext } from './tesseractDetail'
+import { createTesseractReadClient } from '../tesseract/client'
 import { Linkified, type LinkifiedProps } from './Linkified'
 import { isAutolinkSurfaceEnabled, type AutolinkSurface } from './surfaces'
 
@@ -33,11 +35,14 @@ export function LinkText({ surface, text, ...rest }: LinkTextProps) {
 /** Mount once at the shell (inside ApiProvider and the router, above ConsoleShell). */
 export function ShellAutolink({ children }: { children: ReactNode }) {
   const api = useApi()
-  const resolvers = useMemo(() => createLiveResolvers(api), [api])
+  const tesseract = useMemo(() => createTesseractCache(createTesseractReadClient()), [])
+  const resolvers = useMemo(() => createLiveResolvers(api, tesseract), [api, tesseract])
   const taskDetails = useMemo(() => createTaskDetailCache(api), [api])
   return (
     <TaskDetailContext.Provider value={taskDetails}>
-      <AutolinkProvider resolvers={resolvers}>{children}</AutolinkProvider>
+      <TesseractContext.Provider value={tesseract}>
+        <AutolinkProvider resolvers={resolvers}>{children}</AutolinkProvider>
+      </TesseractContext.Provider>
     </TaskDetailContext.Provider>
   )
 }

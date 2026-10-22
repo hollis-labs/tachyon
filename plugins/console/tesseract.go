@@ -15,8 +15,10 @@ import (
 const tesseractPrefix = "/api/plugins/console/v1/tesseract"
 
 // tesseractReads is the whole reviewed read surface: an item by id, its
-// history, and a memory revision by id. Nothing else reaches Tesseract.
-var tesseractReads = regexp.MustCompile(`^/(items/[A-Za-z0-9_-]{1,64}(/history)?|memory/revisions/[A-Za-z0-9_-]{1,64})$`)
+// history, a memory revision by id, and recall (how a namespace#key reference
+// is found; it takes a single namespace, so the UI filters the key itself).
+// Nothing else reaches Tesseract.
+var tesseractReads = regexp.MustCompile(`^/(items/[A-Za-z0-9_-]{1,64}(/history)?|memory/revisions/[A-Za-z0-9_-]{1,64}|recall)$`)
 
 // TesseractHandler is a GET-only window onto Tesseract so the operator can
 // preview and open the ids and keys agents reference. The credential is a

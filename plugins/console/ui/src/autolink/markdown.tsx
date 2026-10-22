@@ -27,7 +27,7 @@ export function linkifiedMarkdownComponents(surface: AutolinkSurface): Component
     return C
   }
   return {
-    p: wrap('p'), li: wrap('li'), h1: wrap('h1'), h2: wrap('h2'), h3: wrap('h3'), h4: wrap('h4'),
+    p: wrap('p'), li: wrap('li'), h1: wrap('h1'), h2: wrap('h2'), h3: wrap('h3'), h4: wrap('h4'), h5: wrap('h5'), h6: wrap('h6'), del: wrap('del'),
     strong: wrap('strong'), em: wrap('em'), td: wrap('td'), th: wrap('th'), blockquote: wrap('blockquote'),
   } as Components
 }
