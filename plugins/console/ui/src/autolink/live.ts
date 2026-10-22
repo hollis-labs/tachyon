@@ -1,6 +1,7 @@
 import { createTorqueTaskResolver, type KindResolver } from '../refs'
 import type { TorqueApiClient } from '@tachyon/torque-client'
 import { registerForgeRefs } from '../forge/refs'
+import { registerTaskRefs } from './TaskDetailPane'
 
 /**
  * Resolvers that talk to the real backend today: only `torque.task`, through
@@ -11,5 +12,6 @@ import { registerForgeRefs } from '../forge/refs'
 export function createLiveResolvers(api: Pick<TorqueApiClient, 'plannerTaskTitles'>): Record<string, KindResolver> {
   // Forge kinds (G2): registers pr/commit/repo (idempotent) and resolves through the ForgeClient (mock by default).
   const forge = registerForgeRefs().resolvers
+  registerTaskRefs()
   return { ...forge, 'torque.task': createTorqueTaskResolver((ids, signal) => api.plannerTaskTitles(ids, signal)) }
 }

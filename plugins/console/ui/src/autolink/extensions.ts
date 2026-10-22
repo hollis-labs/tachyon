@@ -3,7 +3,7 @@
 // `registry.register(kind)`, so a new kind gets an icon, extra quick actions
 // and a richer drawer body without touching R1 code. All registries are
 // module-level and return an unregister function.
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import {
   Bot, BookOpen, Brain, ClipboardList, FileText, FolderKanban, GitBranch, GitCommitHorizontal, GitPullRequest,
   Layers, Link as LinkIcon, ListChecks, Milestone, Workflow, ExternalLink, type LucideIcon,
@@ -57,7 +57,8 @@ export function registerRefActions(kind: string, provider: RefActionProvider): (
 
 export function refActions(ref: RefIdentity, card: PreviewCard): RefAction[] {
   const out: RefAction[] = []
-  if (card.open.type === 'route') out.push({ id: 'open', label: 'Open page', type: 'open', target: card.open })
+  // A kind with its own detail renderer is read in place: the drawer is the page.
+  if (card.open.type === 'route' && !detailRenderers.has(ref.kind)) out.push({ id: 'open', label: 'Open page', type: 'open', target: card.open })
   else if (card.open.type === 'external') out.push({ id: 'open', label: 'Open link', type: 'open', target: card.open })
   out.push({ id: 'copy', label: card.open.type === 'copy' ? 'Copy path' : 'Copy ID', type: 'copy', text: card.open.type === 'copy' ? card.open.text : ref.canonical })
   for (const p of actionProviders.get(ref.kind) ?? []) {
@@ -92,4 +93,47 @@ export function registerRefDetail(kind: string, component: ComponentType<RefDeta
 }
 export function refDetail(kind: string): ComponentType<RefDetailProps> | undefined {
   return detailRenderers.get(kind)
+}
+
+// ---------- hovercard body ----------
+
+const hoverRenderers = new Map<string, ComponentType<RefDetailProps>>()
+
+/**
+ * Replace the hovercard body for a kind, below the standard header. Shown only
+ * while the card is open, so it may fetch.
+ */
+export function registerRefHover(kind: string, component: ComponentType<RefDetailProps>): () => void {
+  hoverRenderers.set(kind, component)
+  return () => {
+    if (hoverRenderers.get(kind) === component) hoverRenderers.delete(kind)
+  }
+}
+export function refHover(kind: string): ComponentType<RefDetailProps> | undefined {
+  return hoverRenderers.get(kind)
+}
+
+// ---------- card header ----------
+
+export interface RefCardProps {
+  refId: RefIdentity
+  card: PreviewCard
+  children: (card: PreviewCard) => ReactNode
+}
+
+const cardEnrichers = new Map<string, ComponentType<RefCardProps>>()
+
+/**
+ * Let a kind correct the card header (title, status, updated) from fresher data
+ * than the reference resolver holds, so header and body come from one snapshot.
+ * The component calls `children` with the card to render.
+ */
+export function registerRefCard(kind: string, component: ComponentType<RefCardProps>): () => void {
+  cardEnrichers.set(kind, component)
+  return () => {
+    if (cardEnrichers.get(kind) === component) cardEnrichers.delete(kind)
+  }
+}
+export function refCardEnricher(kind: string): ComponentType<RefCardProps> | undefined {
+  return cardEnrichers.get(kind)
 }
