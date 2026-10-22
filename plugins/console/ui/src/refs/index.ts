@@ -14,6 +14,8 @@ export { parseTesseractKey, tesseractKeyCanonical, TESSERACT_ITEM_KIND, TESSERAC
 export { createTorqueTaskResolver, taskStatusPill } from './torque-task'
 export { createPlannerResolver, plannerEntity } from './planner-item'
 export { PLANNER_ENTITIES } from './kinds/planner'
+export { TETHER_OBJECTS } from './kinds/tether'
+export { createTetherAgentResolver, createTetherPlanResolver } from './tether-object'
 
 import { createRefRegistry, type RefRegistry } from './registry'
 import { registerBuiltinKinds } from './kinds/builtin'

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -229,5 +230,52 @@ func TestActivityReadsAreBoundedAndCannotDrainMailOrExposeOutput(t *testing.T) {
 	}
 	if calls != before {
 		t.Fatal("unreviewed operation reached upstream")
+	}
+}
+
+func TestObjectsPlanAndAgentReadsAreProjected(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.Header.Get("Authorization") != "Bearer private-token" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+		}
+		switch r.URL.Path {
+		case "/catalog/plans/cp_928c2c714c131ae1c23ff24b":
+			_, _ = w.Write([]byte(`{"plan_id":"cp_928c2c714c131ae1c23ff24b","name":"Add agent","state":"applied","diff":"SECRET DIFF","validation_ok":true,
+				"planned_by":{"principal":"x"},"files":[{"path":"agents/a.yaml","action":"create","new_sha256":"abc"}]}`))
+		case "/registry/agents":
+			if r.URL.Query().Get("status") != "*" {
+				t.Errorf("status: %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"agents":[{"urn":"msg://agent/x/agt_other00000","display_name":"Other"},
+				{"urn":"msg://agent/agent-mux/agt_abcde12345","display_name":"Reviewer","role":"review","status":"active","callback":{"target":"file:///secret"},"host_address":"10.0.0.1","tags":["a"]}]}`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+			w.WriteHeader(500)
+		}
+	}))
+	defer upstream.Close()
+	file := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(file, []byte("private-token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	h := NewObjectHandler(upstream.URL, file)
+	get := func(p string) subprocess.HTTPResponse {
+		return h.Handle(context.Background(), subprocess.HTTPRequest{Method: "GET", Path: objectsPrefix + p})
+	}
+	plan := get("/plans/cp_928c2c714c131ae1c23ff24b")
+	if plan.Status != 200 || bytes.Contains(plan.Body, []byte("SECRET")) || bytes.Contains(plan.Body, []byte("sha256")) || !bytes.Contains(plan.Body, []byte("agents/a.yaml")) {
+		t.Fatalf("plan: %d %s", plan.Status, plan.Body)
+	}
+	agent := get("/agents/agt_abcde12345")
+	if agent.Status != 200 || !bytes.Contains(agent.Body, []byte("Reviewer")) || bytes.Contains(agent.Body, []byte("secret")) || bytes.Contains(agent.Body, []byte("10.0.0.1")) {
+		t.Fatalf("agent: %d %s", agent.Status, agent.Body)
+	}
+	if got := get("/agents/agt_zzzzz99999"); got.Status != 404 {
+		t.Fatalf("missing agent: %d", got.Status)
+	}
+	for _, p := range []string{"/plans/../reload", "/plans/cp_short", "/agents/agt_x", "/agents/msg:%2F%2Fagent"} {
+		if got := get(p); got.Status != 400 && got.Status != 404 {
+			t.Errorf("accepted %s: %d", p, got.Status)
+		}
 	}
 }

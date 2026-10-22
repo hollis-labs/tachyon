@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -27,7 +28,10 @@ const (
 	fNum                    // JSON number
 	fBool                   // JSON bool
 	fCodes                  // short array of closed codes
+	fText                   // bounded display text (operator-only projections)
 )
+
+const maxDisplayText = 600
 
 var (
 	reID   = regexp.MustCompile(`^[A-Za-z0-9_.:@-]{1,128}$`)
@@ -94,6 +98,15 @@ func allowedScalar(kind fieldKind, v any) (any, bool) {
 			return s, true
 		}
 		return s, re.MatchString(s)
+	case fText:
+		s, ok := v.(string)
+		if !ok {
+			return nil, false
+		}
+		if r := []rune(s); len(r) > maxDisplayText {
+			s = string(r[:maxDisplayText]) + "…"
+		}
+		return s, true
 	case fNum:
 		n, ok := v.(json.Number)
 		return n, ok
@@ -234,3 +247,71 @@ func projectTrace(body []byte) ([]byte, error) {
 	}
 	return json.Marshal(out)
 }
+
+var (
+	rePlanID  = regexp.MustCompile(`^cp_[0-9a-f]{24}$`)
+	reAgentID = regexp.MustCompile(`^agt_[a-z0-9]{10}$`)
+)
+
+// projectPlan keeps a catalog plan's summary and the path and action of each
+// file. The diff, file hashes and caller identity never leave the hub.
+func projectPlan(body []byte) ([]byte, error) {
+	m, err := decodeObject(body)
+	if err != nil {
+		return nil, err
+	}
+	out := pick(m, fieldSet{"plan_id": fID, "name": fText, "task_id": fID, "state": fCode, "created_at": fTime, "expires_at": fTime,
+		"applied_at": fTime, "approved_at": fTime, "validation_ok": fBool, "validation_error": fText, "rollback_of": fID})
+	if raw, ok := m["files"].([]any); ok {
+		files := []map[string]any{}
+		for _, f := range raw {
+			if obj, ok := f.(map[string]any); ok && len(files) < 100 {
+				files = append(files, pick(obj, fieldSet{"path": fText, "action": fCode, "privileged": fBool}))
+			}
+		}
+		out["files"] = files
+		out["file_count"] = len(raw)
+	}
+	return json.Marshal(out)
+}
+
+// projectAgent finds one agent in a registry listing by its bare id (the last
+// URN segment) and keeps its public profile. Callback, host address and kind
+// metadata are redacted by the hub and are not named here either.
+func projectAgent(id string) func([]byte) ([]byte, error) {
+	return func(body []byte) ([]byte, error) {
+		m, err := decodeObject(body)
+		if err != nil {
+			return nil, err
+		}
+		rows, ok := m["agents"].([]any)
+		if !ok {
+			return nil, errors.New("agents must be an array")
+		}
+		for _, r := range rows {
+			row, ok := r.(map[string]any)
+			if !ok {
+				continue
+			}
+			urn, _ := row["urn"].(string)
+			if !strings.HasSuffix(urn, "/"+id) {
+				continue
+			}
+			out := pick(row, fieldSet{"urn": fText, "display_name": fText, "title": fText, "role": fText, "description": fText, "project": fText,
+				"status": fCode, "health_status": fCode, "last_seen_at": fTime, "created_at": fTime, "updated_at": fTime})
+			if tags, ok := row["tags"].([]any); ok {
+				list := []string{}
+				for _, t := range tags {
+					if s, ok := allowedScalar(fText, t); ok && len(list) < 12 {
+						list = append(list, s.(string))
+					}
+				}
+				out["tags"] = list
+			}
+			return json.Marshal(out)
+		}
+		return nil, errAgentNotFound
+	}
+}
+
+var errAgentNotFound = errors.New("agent not found")
