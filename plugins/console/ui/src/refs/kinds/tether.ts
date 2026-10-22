@@ -21,6 +21,7 @@ export function createTetherKinds(): RefKind[] {
     id: o.id,
     label: o.label,
     icon: o.icon,
+    resolveOn: 'hover',
     priority: 85,
     scan(text) {
       const hits = []
