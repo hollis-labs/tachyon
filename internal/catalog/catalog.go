@@ -15,15 +15,17 @@ import (
 // environment. Plugins never inherit the host environment; they receive only
 // the variables their entry declares.
 type Upstreams struct {
-	ActivityURL       string
-	TetherAddr        string
-	TetherTokenFile   string
-	CerberusAddr      string
-	CerberusTokenFile string
-	TorqueURL         string
-	TorqueToken       string
-	GitHubToken       string
-	GitHubOrg         string
+	ActivityURL        string
+	TetherAddr         string
+	TetherTokenFile    string
+	TesseractURL       string
+	TesseractTokenFile string
+	CerberusAddr       string
+	CerberusTokenFile  string
+	TorqueURL          string
+	TorqueToken        string
+	GitHubToken        string
+	GitHubOrg          string
 }
 
 // Stream is a host-owned server-sent-events relay. app-host's plugin route
@@ -66,6 +68,9 @@ func torqueEnv(u Upstreams) []string {
 func consoleEnv(u Upstreams) []string {
 	env := append(torqueEnv(u), "TETHER_ADDR="+u.TetherAddr, "TETHER_TOKEN_FILE="+u.TetherTokenFile)
 	env = append(env, "TACHYON_ACTIVITY_URL="+u.ActivityURL)
+	if u.TesseractURL != "" {
+		env = append(env, "TESSERACT_URL="+u.TesseractURL, "TESSERACT_TOKEN_FILE="+u.TesseractTokenFile)
+	}
 	if u.GitHubToken != "" {
 		env = append(env, "GITHUB_TOKEN="+u.GitHubToken)
 	}
