@@ -3,8 +3,13 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from './sheet'
 import { RefreshCw } from 'lucide-react'
 import { buildPreviewCard, type RefIdentity } from '../refs'
 import { useAutolink, useRefState } from './context'
-import { refDetail } from './extensions'
+import { refCardEnricher, refDetail, type RefCardProps } from './extensions'
 import { PreviewCardView } from './PreviewCardView'
+
+/** The default card source: the resolver's card, unchanged. */
+function Passthrough({ card, children }: RefCardProps) {
+  return <>{children(card)}</>
+}
 
 function DrawerBody({ target }: { target: RefIdentity }) {
   const { registry, client } = useAutolink()
@@ -15,15 +20,20 @@ function DrawerBody({ target }: { target: RefIdentity }) {
 
   const card = buildPreviewCard(registry, target, state)
   const Detail = refDetail(target.kind)
+  const Header = refCardEnricher(target.kind) ?? Passthrough
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 pb-4">
-      <PreviewCardView
-        card={card}
-        variant="drawer"
-        onRetry={() => client.invalidate(target.kind, target.canonical)}
-      >
-        {Detail ? <div className="mt-3 border-t border-border pt-3">{createElement(Detail, { refId: target, card })}</div> : undefined}
-      </PreviewCardView>
+      <Header refId={target} card={card}>
+        {(c) => (
+          <PreviewCardView
+            card={c}
+            variant="drawer"
+            onRetry={() => client.invalidate(target.kind, target.canonical)}
+          >
+            {Detail ? <div className="mt-3 border-t border-border pt-3">{createElement(Detail, { refId: target, card: c })}</div> : undefined}
+          </PreviewCardView>
+        )}
+      </Header>
       {!Detail && <button
         type="button"
         className="mt-4 inline-flex items-center gap-1.5 self-start font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

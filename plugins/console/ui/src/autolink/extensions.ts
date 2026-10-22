@@ -3,7 +3,7 @@
 // `registry.register(kind)`, so a new kind gets an icon, extra quick actions
 // and a richer drawer body without touching R1 code. All registries are
 // module-level and return an unregister function.
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import {
   Bot, BookOpen, Brain, ClipboardList, FileText, FolderKanban, GitBranch, GitCommitHorizontal, GitPullRequest,
   Layers, Link as LinkIcon, ListChecks, Milestone, Workflow, ExternalLink, type LucideIcon,
@@ -111,4 +111,29 @@ export function registerRefHover(kind: string, component: ComponentType<RefDetai
 }
 export function refHover(kind: string): ComponentType<RefDetailProps> | undefined {
   return hoverRenderers.get(kind)
+}
+
+// ---------- card header ----------
+
+export interface RefCardProps {
+  refId: RefIdentity
+  card: PreviewCard
+  children: (card: PreviewCard) => ReactNode
+}
+
+const cardEnrichers = new Map<string, ComponentType<RefCardProps>>()
+
+/**
+ * Let a kind correct the card header (title, status, updated) from fresher data
+ * than the reference resolver holds, so header and body come from one snapshot.
+ * The component calls `children` with the card to render.
+ */
+export function registerRefCard(kind: string, component: ComponentType<RefCardProps>): () => void {
+  cardEnrichers.set(kind, component)
+  return () => {
+    if (cardEnrichers.get(kind) === component) cardEnrichers.delete(kind)
+  }
+}
+export function refCardEnricher(kind: string): ComponentType<RefCardProps> | undefined {
+  return cardEnrichers.get(kind)
 }

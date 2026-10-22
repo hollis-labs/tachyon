@@ -110,32 +110,20 @@ describe('task overlays', () => {
     expect(drawer.textContent).toContain('Copy ID')
   })
 
-  it('refreshing the drawer re-reads the header as well as the body', async () => {
-    const fixtures: Record<string, { title: string; status: { label: string; tone: 'info' | 'success' } }> = { [ID]: { title: 'Old title', status: { label: 'doing', tone: 'info' } } }
-    let current = task()
-    const getTask = vi.fn(async () => current)
-    registerTaskRefs()
-    render(
-      <MemoryRouter>
-        <TaskDetailContext.Provider value={createTaskDetailCache(fakeApi({ getTask }).api)}>
-          <AutolinkProvider registry={createDefaultRefRegistry()} resolvers={{ 'torque.task': createMockResolver(fixtures) }}>
-            <Linkified text={ID} />
-          </AutolinkProvider>
-        </TaskDetailContext.Provider>
-      </MemoryRouter>,
-    )
+  it('refreshing the drawer keeps header and body on one snapshot', async () => {
+    // The reference resolver is static on purpose: the header must follow the task snapshot, not it.
+    const getTask = vi.fn<TaskDetailApi['getTask']>().mockResolvedValueOnce(task()).mockResolvedValue(task({ title: 'Changed task title', status: 'done', description: 'Rewritten.' }))
+    setup(fakeApi({ getTask }).api)
     fireEvent.click(await waitFor(() => { const c = document.querySelector('[data-ref-state="found"]'); if (!c) throw new Error('wait'); return c as HTMLElement }))
     const drawer = await screen.findByTestId('ref-drawer')
     await waitFor(() => expect(drawer.textContent).toContain('Build the registry.'))
-    expect(drawer.textContent).toContain('Old title')
-    // The task changes upstream between fetches.
-    fixtures[ID] = { title: 'New title', status: { label: 'done', tone: 'success' } }
-    current = task({ description: 'Rewritten.' })
+    expect(drawer.textContent).toContain('Reference registry')
     await act(async () => { fireEvent.click(screen.getByText('Refresh')) })
     await waitFor(() => expect(drawer.textContent).toContain('Rewritten.'))
-    await waitFor(() => expect(drawer.textContent).toContain('New title'))
-    expect(drawer.textContent).not.toContain('Old title')
+    expect(drawer.textContent).toContain('Changed task title')
+    expect(drawer.textContent).not.toContain('Reference registry')
     expect(drawer.textContent).toMatch(/done/i)
+    expect(drawer.textContent).not.toMatch(/doing/i)
   })
 
   it('does not call a partial comment list complete when Torque reports no total', async () => {

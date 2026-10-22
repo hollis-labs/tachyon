@@ -10,6 +10,11 @@ const TASK_TONE: Record<string, StatusTone> = {
   todo: 'neutral',
 }
 
+/** The status pill for a Torque task status. */
+export function taskStatusPill(status: string): { label: string; tone: StatusTone } {
+  return { label: status.replace(/_/g, ' '), tone: TASK_TONE[status] ?? 'neutral' }
+}
+
 /**
  * The real adapter for `torque.task`: wraps the existing
  * `api.plannerTaskTitles` (the endpoint behind usePlannerTaskTitles), so task
@@ -29,7 +34,7 @@ export function createTorqueTaskResolver(
               status: 'found',
               entity: {
                 title: t.title,
-                status: { label: t.status.replace(/_/g, ' '), tone: TASK_TONE[t.status] ?? 'neutral' },
+                status: taskStatusPill(t.status),
                 fields: [{ label: 'Priority', value: `P${t.priority}` }],
                 updatedAt: t.updated_at,
               },

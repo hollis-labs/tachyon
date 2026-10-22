@@ -11,7 +11,7 @@ export { registerBuiltinKinds } from './kinds/builtin'
 export { isWordChar, matches, trimTrailing } from './scan-utils'
 export { TORQUE_ENTITIES } from './kinds/torque'
 export { parseTesseractKey, tesseractKeyCanonical, TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND } from './kinds/tesseract'
-export { createTorqueTaskResolver } from './torque-task'
+export { createTorqueTaskResolver, taskStatusPill } from './torque-task'
 
 import { createRefRegistry, type RefRegistry } from './registry'
 import { registerBuiltinKinds } from './kinds/builtin'

@@ -2,7 +2,8 @@ import { AlertTriangle, MessageSquare, RefreshCw } from 'lucide-react'
 import { MetaList, Skeleton, type MetaItem } from '@hollis-labs/design-components'
 import type { Comment, Task } from '@tachyon/torque-client'
 import { ago } from '@console/lib/agent-activity'
-import { registerRefDetail, registerRefHover, type RefDetailProps } from './extensions'
+import { taskStatusPill } from '../refs'
+import { registerRefCard, registerRefDetail, registerRefHover, type RefCardProps, type RefDetailProps } from './extensions'
 import { useAutolink } from './context'
 import { LinkText } from './LinkText'
 import { useTaskDetail, type TaskDetailEntry } from './taskDetail'
@@ -172,6 +173,13 @@ export function TaskHoverMeta({ refId, card }: RefDetailProps) {
   )
 }
 
+/** Header of a task card taken from the same snapshot as the body, so a refresh cannot leave an old title or status beside new content. */
+export function TaskCard({ refId, card, children }: RefCardProps) {
+  const { entry } = useTaskDetail(refId.canonical)
+  const task = entry?.task
+  return <>{children(task ? { ...card, title: task.title, status: taskStatusPill(task.status), updatedAt: task.updated_at } : card)}</>
+}
+
 let registered = false
 /** Idempotent: gives torque.task its rich drawer and hovercard bodies. */
 export function registerTaskRefs(): void {
@@ -179,4 +187,5 @@ export function registerTaskRefs(): void {
   registered = true
   registerRefDetail('torque.task', TaskDrawerPane)
   registerRefHover('torque.task', TaskHoverMeta)
+  registerRefCard('torque.task', TaskCard)
 }

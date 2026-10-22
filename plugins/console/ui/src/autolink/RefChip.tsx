@@ -3,8 +3,13 @@ import { PreviewCard } from '@base-ui/react/preview-card'
 import { buildPreviewCard, type RefIdentity, type RefMeta } from '../refs'
 import { useAutolink, useRefState } from './context'
 import { RefIcon } from './RefIcon'
-import { refHover } from './extensions'
+import { refCardEnricher, refHover, type RefCardProps } from './extensions'
 import { PreviewCardView } from './PreviewCardView'
+
+/** The default card source: the resolver's card, unchanged. */
+function Passthrough({ card, children }: RefCardProps) {
+  return <>{children(card)}</>
+}
 
 export interface RefChipProps {
   kind: string
@@ -42,6 +47,7 @@ export function RefChip({ kind, canonical, raw, meta, className = '', resolve = 
   const def = registry.get(kind)
   const card = buildPreviewCard(registry, ref, state)
   const Hover = refHover(kind)
+  const Header = refCardEnricher(kind) ?? Passthrough
   const label = def?.chipLabel?.(ref, raw ?? canonical) ?? raw ?? canonical
 
   useEffect(() => {
@@ -90,9 +96,13 @@ export function RefChip({ kind, canonical, raw, meta, className = '', resolve = 
             data-testid="ref-hovercard"
             className="w-80 max-w-[calc(100vw-1.5rem)] border border-border bg-popover p-3 text-fg shadow-xl transition-opacity duration-100 data-ending-style:opacity-0 data-starting-style:opacity-0"
           >
-            <PreviewCardView card={card} onRetry={() => client.invalidate(kind, canonical)}>
-              {Hover && card.phase !== 'not-found' && card.phase !== 'unresolved' ? createElement(Hover, { refId: ref, card }) : undefined}
-            </PreviewCardView>
+            <Header refId={ref} card={card}>
+              {(c) => (
+                <PreviewCardView card={c} onRetry={() => client.invalidate(kind, canonical)}>
+                  {Hover && c.phase !== 'not-found' && c.phase !== 'unresolved' ? createElement(Hover, { refId: ref, card: c }) : undefined}
+                </PreviewCardView>
+              )}
+            </Header>
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
       </PreviewCard.Portal>
