@@ -48,6 +48,7 @@ export function RefChip({ kind, canonical, raw, fallbackLabel, meta, className =
   const state = useRefState(kind, canonical)
   const ref: RefIdentity = meta ? { kind, canonical, meta } : { kind, canonical }
   const def = registry.get(kind)
+  const mode = def?.resolveOn === 'hover' ? 'hover' : resolve
   const card = buildPreviewCard(registry, ref, state)
   const Hover = refHover(kind)
   const Header = refCardEnricher(kind) ?? Passthrough
@@ -58,11 +59,11 @@ export function RefChip({ kind, canonical, raw, fallbackLabel, meta, className =
     : fallbackLabel ?? def?.chipLabel?.(ref, raw ?? canonical) ?? raw ?? canonical
 
   useEffect(() => {
-    if (resolve === 'eager') client.request([{ kind, canonical }])
-  }, [client, kind, canonical, resolve])
+    if (mode === 'eager') client.request([{ kind, canonical }])
+  }, [client, kind, canonical, mode])
 
   const warm = () => {
-    if (resolve === 'hover') client.request([{ kind, canonical }])
+    if (mode === 'hover') client.request([{ kind, canonical }])
   }
 
   const href = card.open.type === 'route' ? card.open.to : card.open.type === 'external' ? card.open.href : undefined

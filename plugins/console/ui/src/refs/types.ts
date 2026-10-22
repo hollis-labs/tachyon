@@ -56,6 +56,11 @@ export interface RefKind {
   open(ref: RefIdentity): OpenTarget
   /** Label for the open action when the target is a route. Defaults to "Open page". */
   openLabel?: string
+  /**
+   * `hover` holds the lookup until the chip is hovered, focused or opened, for kinds
+   * whose read is not free (operator-gated or one request per id). Default: on mount.
+   */
+  resolveOn?: 'hover'
 }
 
 export type Segment =
