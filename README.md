@@ -1043,6 +1043,8 @@ Environment variables:
 | `TACHYON_PLUGIN_DIR` | `bin/plugins` |
 | `TETHER_ADDR` | Tether catalog endpoint: HTTPS URL, loopback HTTP/TCP, or `unix:/path`; unset shows a configuration error in Builder |
 | `TETHER_TOKEN_FILE` | Optional private `0600` bearer-token file, read by the Console backend; never sent to the browser |
+| `TESSERACT_URL` | Tesseract HTTP base (loopback or HTTPS); unset returns 503 from `/api/plugins/console/v1/tesseract/*` |
+| `TESSERACT_TOKEN_FILE` | Private `0600` file holding a Tesseract token with `tesseract.read` only; never sent to the browser |
 | `TACHYON_DATA_DIR` | `$XDG_DATA_HOME/tachyon` |
 | `TACHYON_CACHE_POLICY_FILE` | Optional JSON override file; otherwise use persisted policy/defaults |
 | `TACHYON_CACHE_DIR` | `$XDG_CACHE_HOME/tachyon` |
