@@ -22,13 +22,15 @@ export function tesseractItemTitle(item: TesseractItem): string {
 
 /** The facts a chip or hovercard header needs. Bodies are fetched by the panes, from the same cache. */
 export function tesseractEntity(item: TesseractItem): RefEntity {
+  const type = tesseractItemType(item)
   return {
     title: tesseractItemTitle(item),
+    chipLabel: `${type.charAt(0).toUpperCase()}${type.slice(1)}: ${tesseractItemTitle(item)}`,
     subtitle: item.namespace,
     description: item.payload?.summary,
     status: { label: item.domain, tone: DOMAIN_TONE[item.domain] ?? 'neutral' },
     fields: [
-      { label: 'Type', value: tesseractItemType(item) },
+      { label: 'Type', value: type },
       { label: 'ID', value: item.item_id, mono: true },
     ],
     updatedAt: item.updated_at,

@@ -24,6 +24,13 @@ function describe(item: PlannerItem): string | undefined {
   return parts.length ? parts.join('\n\n') : undefined
 }
 
+// Id prefix -> the word a chip leads with.
+const PLANNER_LABEL: Record<string, string> = { PR: 'Priority', RM: 'Roadmap', WS: 'Workstream', DEC: 'Decision', RK: 'Risk', ID: 'Idea', IN: 'Inbox' }
+const plannerChipLabel = (id: string, title: string): string => {
+  const kind = PLANNER_LABEL[id.split('-')[0]]
+  return kind ? `${kind}: ${title}` : title
+}
+
 const FIELDS: [string, string][] = [['priority', 'Priority'], ['accountable', 'Accountable'], ['executing_owner', 'Owner'], ['approved_by', 'Approved by'], ['likelihood', 'Likelihood'], ['impact', 'Impact']]
 
 /** A planner item as a preview card: title, status, a lead paragraph and the few fields worth a glance. */
@@ -35,8 +42,10 @@ export function plannerEntity(item: PlannerItem): RefEntity {
   })
   const comments = Array.isArray(item.comments) ? item.comments.length : 0
   if (comments > 0) fields.push({ label: 'Comments', value: String(comments) })
+  const title = text(item.title) || text(item.name) || text(item.id)
   return {
-    title: text(item.title) || text(item.name) || text(item.id),
+    title,
+    chipLabel: plannerChipLabel(text(item.id), title),
     status: status ? { label: status.replace(/_/g, ' '), tone: TONE[status] ?? 'neutral' } : undefined,
     description: describe(item),
     fields,

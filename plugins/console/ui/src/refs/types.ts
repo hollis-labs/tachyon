@@ -86,6 +86,8 @@ export interface RefEntity {
   fields?: { label: string; value: string; mono?: boolean }[]
   /** ISO timestamp of the thing's last change, for "updated 3m ago". */
   updatedAt?: string
+  /** What the inline chip says once resolved, untruncated: "Handoff: Approval execution". Defaults to the matched text. */
+  chipLabel?: string
 }
 
 export type ResolveOutcome = { status: 'found'; entity: RefEntity } | { status: 'not-found' }
