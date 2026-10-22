@@ -19,6 +19,8 @@ export interface TaskDetailEntry {
   commentCount: number
   /** True when more comments exist than the ones loaded. */
   moreComments: boolean
+  /** False when Torque did not report a total, so `commentCount` is only the loaded count. */
+  commentTotalKnown: boolean
   /** Comments could not be read though the task could. */
   commentsFailed: boolean
   phase: 'loading' | 'ready' | 'error'
@@ -79,6 +81,7 @@ export function createTaskDetailCache(api: TaskDetailApi, opts: { ttlMs?: number
         comments,
         commentCount: typeof total === 'number' ? total : comments.length,
         moreComments: typeof total === 'number' ? total > comments.length : Boolean(page?.meta.has_more),
+        commentTotalKnown: typeof total === 'number',
         commentsFailed: page === null,
         phase: 'ready',
         fetchedAt: now(),
@@ -86,7 +89,7 @@ export function createTaskDetailCache(api: TaskDetailApi, opts: { ttlMs?: number
     } catch (err) {
       if (inflight.get(id) !== token) return
       const message = err instanceof Error ? err.message : 'Failed to load the task'
-      set(id, { task: prev?.task ?? null, comments: prev?.comments ?? [], commentCount: prev?.commentCount ?? 0, moreComments: prev?.moreComments ?? false, commentsFailed: prev?.commentsFailed ?? false, phase: 'error', error: message, fetchedAt: prev?.fetchedAt ?? 0 })
+      set(id, { task: prev?.task ?? null, comments: prev?.comments ?? [], commentCount: prev?.commentCount ?? 0, moreComments: prev?.moreComments ?? false, commentTotalKnown: prev?.commentTotalKnown ?? false, commentsFailed: prev?.commentsFailed ?? false, phase: 'error', error: message, fetchedAt: prev?.fetchedAt ?? 0 })
     } finally {
       if (inflight.get(id) === token) inflight.delete(id)
     }
@@ -101,7 +104,7 @@ export function createTaskDetailCache(api: TaskDetailApi, opts: { ttlMs?: number
       const token = ++generation
       inflight.set(id, token)
       // Keep stale data on screen while it refreshes.
-      set(id, cur ? { ...cur, phase: 'loading' } : { task: null, comments: [], commentCount: 0, moreComments: false, commentsFailed: false, phase: 'loading', fetchedAt: 0 })
+      set(id, cur ? { ...cur, phase: 'loading' } : { task: null, comments: [], commentCount: 0, moreComments: false, commentTotalKnown: false, commentsFailed: false, phase: 'loading', fetchedAt: 0 })
       void load(id, token)
     },
     invalidate(id) {

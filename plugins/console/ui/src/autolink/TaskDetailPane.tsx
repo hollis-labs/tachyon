@@ -3,6 +3,7 @@ import { MetaList, Skeleton, type MetaItem } from '@hollis-labs/design-component
 import type { Comment, Task } from '@tachyon/torque-client'
 import { ago } from '@console/lib/agent-activity'
 import { registerRefDetail, registerRefHover, type RefDetailProps } from './extensions'
+import { useAutolink } from './context'
 import { LinkText } from './LinkText'
 import { useTaskDetail, type TaskDetailEntry } from './taskDetail'
 
@@ -18,7 +19,8 @@ function exact(iso: string | undefined): string | undefined {
   const t = iso ? Date.parse(iso) : NaN
   return Number.isFinite(t) ? new Date(t).toLocaleString() : undefined
 }
-const commentLabel = (e: TaskDetailEntry) => `${e.commentCount}${e.moreComments && e.commentCount === e.comments.length ? '+' : ''}`
+// With no reported total, the count is only what loaded; say so rather than imply it is complete.
+const commentLabel = (e: TaskDetailEntry) => `${e.commentCount}${e.moreComments && !e.commentTotalKnown ? '+' : ''}`
 
 function Meta({ task, entry, now }: { task: Task; entry: TaskDetailEntry; now: number }) {
   const items: MetaItem[] = [
@@ -54,7 +56,13 @@ function CommentItem({ c, now }: { c: Comment; now: number }) {
 
 /** Drawer body for a Torque task: description, key metadata and the latest comments, read from Torque (cached). */
 export function TaskDrawerPane({ refId }: RefDetailProps) {
-  const { entry, refresh, available } = useTaskDetail(refId.canonical)
+  const { entry, refresh: refreshTask, available } = useTaskDetail(refId.canonical)
+  const { client } = useAutolink()
+  // The header (title, status, updated) comes from the reference resolver, so a refresh re-reads both.
+  const refresh = () => {
+    client.invalidate(refId.kind, refId.canonical)
+    refreshTask()
+  }
   const now = Date.now()
   if (!available) return <p className="text-control text-fg-faint">Task details are not available here.</p>
   if (!entry || (entry.phase === 'loading' && !entry.task)) {
@@ -110,7 +118,7 @@ export function TaskDrawerPane({ refId }: RefDetailProps) {
         ) : (
           <>
             <ul className="mt-2 flex flex-col gap-2">{entry.comments.map((c) => <CommentItem key={c.id} c={c} now={now} />)}</ul>
-            {entry.moreComments && <p className="mt-2 text-caption text-fg-faint">Showing the latest {entry.comments.length} of {entry.commentCount}.</p>}
+            {entry.moreComments && <p className="mt-2 text-caption text-fg-faint">{entry.commentTotalKnown ? `Showing the latest ${entry.comments.length} of ${entry.commentCount}.` : `Showing the latest ${entry.comments.length}; more exist.`}</p>}
           </>
         )}
       </section>

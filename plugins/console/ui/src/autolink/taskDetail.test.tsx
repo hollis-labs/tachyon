@@ -110,6 +110,44 @@ describe('task overlays', () => {
     expect(drawer.textContent).toContain('Copy ID')
   })
 
+  it('refreshing the drawer re-reads the header as well as the body', async () => {
+    const fixtures: Record<string, { title: string; status: { label: string; tone: 'info' | 'success' } }> = { [ID]: { title: 'Old title', status: { label: 'doing', tone: 'info' } } }
+    let current = task()
+    const getTask = vi.fn(async () => current)
+    registerTaskRefs()
+    render(
+      <MemoryRouter>
+        <TaskDetailContext.Provider value={createTaskDetailCache(fakeApi({ getTask }).api)}>
+          <AutolinkProvider registry={createDefaultRefRegistry()} resolvers={{ 'torque.task': createMockResolver(fixtures) }}>
+            <Linkified text={ID} />
+          </AutolinkProvider>
+        </TaskDetailContext.Provider>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await waitFor(() => { const c = document.querySelector('[data-ref-state="found"]'); if (!c) throw new Error('wait'); return c as HTMLElement }))
+    const drawer = await screen.findByTestId('ref-drawer')
+    await waitFor(() => expect(drawer.textContent).toContain('Build the registry.'))
+    expect(drawer.textContent).toContain('Old title')
+    // The task changes upstream between fetches.
+    fixtures[ID] = { title: 'New title', status: { label: 'done', tone: 'success' } }
+    current = task({ description: 'Rewritten.' })
+    await act(async () => { fireEvent.click(screen.getByText('Refresh')) })
+    await waitFor(() => expect(drawer.textContent).toContain('Rewritten.'))
+    await waitFor(() => expect(drawer.textContent).toContain('New title'))
+    expect(drawer.textContent).not.toContain('Old title')
+    expect(drawer.textContent).toMatch(/done/i)
+  })
+
+  it('does not call a partial comment list complete when Torque reports no total', async () => {
+    const { api } = fakeApi({ listComments: vi.fn(async () => ({ items: [comment(2, 'a'), comment(1, 'b')], meta: { returned: 2, limit: 2, has_more: true, next_cursor: null } })) })
+    setup(api)
+    fireEvent.click(await waitFor(() => { const c = document.querySelector('[data-ref-state="found"]'); if (!c) throw new Error('wait'); return c as HTMLElement }))
+    const drawer = await screen.findByTestId('ref-drawer')
+    await waitFor(() => expect(drawer.textContent).toContain('Comments · 2+'))
+    expect(drawer.textContent).toContain('Showing the latest 2; more exist.')
+    expect(drawer.textContent).not.toContain('of 2')
+  })
+
   it('the drawer says so when the task cannot be loaded, and Retry refetches', async () => {
     const getTask = vi.fn<TaskDetailApi['getTask']>().mockRejectedValueOnce(new Error('nope')).mockResolvedValue(task())
     setup(fakeApi({ getTask }).api)
