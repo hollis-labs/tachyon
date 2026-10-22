@@ -57,7 +57,8 @@ export function registerRefActions(kind: string, provider: RefActionProvider): (
 
 export function refActions(ref: RefIdentity, card: PreviewCard): RefAction[] {
   const out: RefAction[] = []
-  if (card.open.type === 'route') out.push({ id: 'open', label: 'Open page', type: 'open', target: card.open })
+  // A kind with its own detail renderer is read in place: the drawer is the page.
+  if (card.open.type === 'route' && !detailRenderers.has(ref.kind)) out.push({ id: 'open', label: 'Open page', type: 'open', target: card.open })
   else if (card.open.type === 'external') out.push({ id: 'open', label: 'Open link', type: 'open', target: card.open })
   out.push({ id: 'copy', label: card.open.type === 'copy' ? 'Copy path' : 'Copy ID', type: 'copy', text: card.open.type === 'copy' ? card.open.text : ref.canonical })
   for (const p of actionProviders.get(ref.kind) ?? []) {
@@ -92,4 +93,22 @@ export function registerRefDetail(kind: string, component: ComponentType<RefDeta
 }
 export function refDetail(kind: string): ComponentType<RefDetailProps> | undefined {
   return detailRenderers.get(kind)
+}
+
+// ---------- hovercard body ----------
+
+const hoverRenderers = new Map<string, ComponentType<RefDetailProps>>()
+
+/**
+ * Replace the hovercard body for a kind, below the standard header. Shown only
+ * while the card is open, so it may fetch.
+ */
+export function registerRefHover(kind: string, component: ComponentType<RefDetailProps>): () => void {
+  hoverRenderers.set(kind, component)
+  return () => {
+    if (hoverRenderers.get(kind) === component) hoverRenderers.delete(kind)
+  }
+}
+export function refHover(kind: string): ComponentType<RefDetailProps> | undefined {
+  return hoverRenderers.get(kind)
 }

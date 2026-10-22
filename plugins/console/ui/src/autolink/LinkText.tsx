@@ -5,6 +5,7 @@ import { detect } from '../refs'
 import { useAutolink } from './context'
 import { createLiveResolvers } from './live'
 import { AutolinkProvider } from './Provider'
+import { createTaskDetailCache, TaskDetailContext } from './taskDetail'
 import { Linkified, type LinkifiedProps } from './Linkified'
 import { isAutolinkSurfaceEnabled, type AutolinkSurface } from './surfaces'
 
@@ -33,7 +34,12 @@ export function LinkText({ surface, text, ...rest }: LinkTextProps) {
 export function ShellAutolink({ children }: { children: ReactNode }) {
   const api = useApi()
   const resolvers = useMemo(() => createLiveResolvers(api), [api])
-  return <AutolinkProvider resolvers={resolvers}>{children}</AutolinkProvider>
+  const taskDetails = useMemo(() => createTaskDetailCache(api), [api])
+  return (
+    <TaskDetailContext.Provider value={taskDetails}>
+      <AutolinkProvider resolvers={resolvers}>{children}</AutolinkProvider>
+    </TaskDetailContext.Provider>
+  )
 }
 
 /** host-sdk `LinkText` slot: the autolinker exposed to other plugins (e.g. Planner comments). */

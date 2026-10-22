@@ -8,8 +8,8 @@ import { RefIcon } from './RefIcon'
 
 import { TONE } from './tone'
 
-const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-zinc-500'
-const BTN = 'inline-flex items-center gap-1.5 border border-zinc-700 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300'
+const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-fg-faint'
+const BTN = 'inline-flex items-center gap-1.5 border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-fg-secondary transition-colors hover:border-fg-faint hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
 
 export function StatusPill({ status }: { status: NonNullable<PreviewCard['status']> }) {
   return <span className={`inline-flex items-center border px-1.5 py-px font-mono text-[10px] uppercase tracking-wider ${TONE[status.tone]}`}>{status.label}</span>
@@ -30,7 +30,7 @@ function ActionControl({ action }: { action: RefAction }) {
           })
         }}
       >
-        {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+        {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
         {copied ? 'Copied' : action.label}
       </button>
     )
@@ -82,32 +82,32 @@ export function PreviewCardView({ card, variant = 'hover', onRetry, now, childre
   return (
     <div className="flex min-w-0 flex-col" data-phase={card.phase} data-testid="ref-card">
       <div className="flex items-center gap-2">
-        <RefIcon token={card.icon} className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+        <RefIcon token={card.icon} className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
         <span className={LABEL}>{card.kindLabel}</span>
-        {card.phase === 'loading' && <Loader2 className="ml-auto h-3 w-3 animate-spin text-zinc-500" aria-label="Loading" />}
+        {card.phase === 'loading' && <Loader2 className="ml-auto h-3 w-3 animate-spin text-fg-faint" aria-label="Loading" />}
         {card.status && <span className="ml-auto"><StatusPill status={card.status} /></span>}
       </div>
 
-      <div className={`mt-2 min-w-0 text-sm font-medium text-zinc-100 [overflow-wrap:anywhere] ${card.phase === 'loading' && !card.subtitle ? 'animate-pulse' : ''}`}>{card.title}</div>
-      {card.subtitle && <div className="mt-0.5 text-[12px] text-zinc-400 [overflow-wrap:anywhere]">{card.subtitle}</div>}
-      <div className="mt-0.5 font-mono text-[10px] text-zinc-500 [overflow-wrap:anywhere]">{card.canonical}</div>
+      <div className={`mt-2 min-w-0 text-sm font-medium text-fg [overflow-wrap:anywhere] ${card.phase === 'loading' && !card.subtitle ? 'animate-pulse' : ''}`}>{card.title}</div>
+      {card.subtitle && <div className="mt-0.5 text-[12px] text-fg-muted [overflow-wrap:anywhere]">{card.subtitle}</div>}
+      <div className="mt-0.5 font-mono text-[10px] text-fg-faint [overflow-wrap:anywhere]">{card.canonical}</div>
 
       {card.phase === 'loading' && !card.subtitle && (
         <div className="mt-3 space-y-1.5" aria-hidden>
-          <div className="h-2 w-3/4 animate-pulse bg-zinc-800" />
-          <div className="h-2 w-1/2 animate-pulse bg-zinc-800" />
+          <div className="h-2 w-3/4 animate-pulse bg-muted" />
+          <div className="h-2 w-1/2 animate-pulse bg-muted" />
         </div>
       )}
 
       {card.phase === 'not-found' && (
-        <p className="mt-3 flex items-start gap-2 text-[12px] text-zinc-400">
-          <SearchX className="mt-px h-3.5 w-3.5 shrink-0 text-zinc-500" />
+        <p className="mt-3 flex items-start gap-2 text-[12px] text-fg-muted">
+          <SearchX className="mt-px h-3.5 w-3.5 shrink-0 text-fg-faint" />
           Nothing matches this reference. It may have been deleted, or you may not have access.
         </p>
       )}
 
       {card.phase === 'error' && (
-        <div className="mt-3 flex items-start gap-2 text-[12px] text-red-300" role="alert">
+        <div className="mt-3 flex items-start gap-2 text-[12px] text-destructive" role="alert">
           <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
           <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">Could not load: {card.error}</span>
           {onRetry && (
@@ -119,19 +119,19 @@ export function PreviewCardView({ card, variant = 'hover', onRetry, now, childre
         </div>
       )}
 
-      {card.phase === 'unresolved' && <p className="mt-3 text-[12px] text-zinc-500">No preview available for this reference.</p>}
+      {card.phase === 'unresolved' && <p className="mt-3 text-[12px] text-fg-faint">No preview available for this reference.</p>}
 
       {children ?? (
         <>
           {card.description && (
-            <p className={`mt-3 text-[12px] leading-relaxed text-zinc-300 [overflow-wrap:anywhere] ${drawer ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}>{card.description}</p>
+            <p className={`mt-3 text-[12px] leading-relaxed text-fg-secondary [overflow-wrap:anywhere] ${drawer ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}>{card.description}</p>
           )}
           {card.fields.length > 0 && (
-            <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 border-t border-zinc-800/80 pt-3">
+            <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 border-t border-border pt-3">
               {card.fields.map((f) => (
                 <div key={f.label} className="contents">
                   <dt className={LABEL}>{f.label}</dt>
-                  <dd className={`min-w-0 text-[12px] text-zinc-200 [overflow-wrap:anywhere] ${f.mono ? 'font-mono' : ''}`}>{f.value}</dd>
+                  <dd className={`min-w-0 text-[12px] text-fg [overflow-wrap:anywhere] ${f.mono ? 'font-mono' : ''}`}>{f.value}</dd>
                 </div>
               ))}
             </dl>
@@ -140,9 +140,9 @@ export function PreviewCardView({ card, variant = 'hover', onRetry, now, childre
       )}
 
       {(Number.isFinite(updated) || actions.length > 0) && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-zinc-800/80 pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
           {actions.map((a) => <ActionControl key={a.id} action={a} />)}
-          {Number.isFinite(updated) && <span className="ml-auto font-mono text-[10px] text-zinc-500">updated {ago(updated, now ?? clock)}</span>}
+          {Number.isFinite(updated) && <span className="ml-auto font-mono text-[10px] text-fg-faint">updated {ago(updated, now ?? clock)}</span>}
         </div>
       )}
     </div>

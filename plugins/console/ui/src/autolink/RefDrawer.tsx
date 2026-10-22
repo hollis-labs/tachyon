@@ -22,16 +22,16 @@ function DrawerBody({ target }: { target: RefIdentity }) {
         variant="drawer"
         onRetry={() => client.invalidate(target.kind, target.canonical)}
       >
-        {Detail ? <div className="mt-3 border-t border-zinc-800/80 pt-3">{createElement(Detail, { refId: target, card })}</div> : undefined}
+        {Detail ? <div className="mt-3 border-t border-border pt-3">{createElement(Detail, { refId: target, card })}</div> : undefined}
       </PreviewCardView>
-      <button
+      {!Detail && <button
         type="button"
-        className="mt-4 inline-flex items-center gap-1.5 self-start font-mono text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300"
+        className="mt-4 inline-flex items-center gap-1.5 self-start font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={() => client.invalidate(target.kind, target.canonical)}
       >
         <RefreshCw className="h-3 w-3" />
         Refresh
-      </button>
+      </button>}
     </div>
   )
 }
@@ -45,9 +45,9 @@ export function RefDrawer({ target, onClose }: { target: RefIdentity | null; onC
 
   return (
     <Sheet open={target !== null} onOpenChange={(open: boolean) => !open && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 border-zinc-800 p-0 data-[side=right]:sm:max-w-md" data-testid="ref-drawer">
-        <div className="border-b border-zinc-800/80 px-4 py-3 pr-12">
-          <SheetTitle className="font-mono text-[11px] uppercase tracking-widest text-zinc-300">Details</SheetTitle>
+      <SheetContent side="right" className="w-full gap-0 border-border p-0 data-[side=right]:sm:max-w-md" data-testid="ref-drawer">
+        <div className="border-b border-border px-4 py-3 pr-12">
+          <SheetTitle className="font-mono text-[11px] uppercase tracking-widest text-fg-secondary">Details</SheetTitle>
           <SheetDescription className="sr-only">Details for {shown?.canonical}</SheetDescription>
         </div>
         {shown && <DrawerBody target={shown} />}

@@ -1,8 +1,9 @@
-import { useEffect, type MouseEvent } from 'react'
+import { createElement, useEffect, type MouseEvent } from 'react'
 import { PreviewCard } from '@base-ui/react/preview-card'
 import { buildPreviewCard, type RefIdentity, type RefMeta } from '../refs'
 import { useAutolink, useRefState } from './context'
 import { RefIcon } from './RefIcon'
+import { refHover } from './extensions'
 import { PreviewCardView } from './PreviewCardView'
 
 export interface RefChipProps {
@@ -20,12 +21,12 @@ export interface RefChipProps {
   hovercard?: boolean
 }
 
-const CHIP = 'inline-flex max-w-full items-baseline gap-1 border px-1 align-baseline font-mono text-[0.85em] leading-[1.4] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300'
+const CHIP = 'inline-flex max-w-full items-baseline gap-1 border px-1 align-baseline font-mono text-[0.85em] leading-[1.4] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
 const STATE_STYLE: Record<string, string> = {
-  found: 'border-zinc-700/80 bg-zinc-900/60 text-zinc-100 hover:border-zinc-500 hover:bg-zinc-900',
-  'not-found': 'border-dashed border-zinc-700 text-zinc-500 line-through decoration-zinc-600 hover:text-zinc-300',
-  error: 'border-dashed border-amber-500/50 text-amber-300 hover:bg-zinc-900',
-  default: 'border-zinc-700/70 bg-zinc-900/40 text-sky-300 hover:border-zinc-500 hover:bg-zinc-900',
+  found: 'border-border bg-surface text-fg hover:border-fg-faint hover:bg-surface-hover',
+  'not-found': 'border-dashed border-border text-fg-faint line-through decoration-fg-faint hover:text-fg-secondary',
+  error: 'border-dashed border-warning text-warning hover:bg-surface-hover',
+  default: 'border-border bg-surface text-info hover:border-fg-faint hover:bg-surface-hover',
 }
 
 /**
@@ -40,6 +41,7 @@ export function RefChip({ kind, canonical, raw, meta, className = '', resolve = 
   const ref: RefIdentity = meta ? { kind, canonical, meta } : { kind, canonical }
   const def = registry.get(kind)
   const card = buildPreviewCard(registry, ref, state)
+  const Hover = refHover(kind)
   const label = def?.chipLabel?.(ref, raw ?? canonical) ?? raw ?? canonical
 
   useEffect(() => {
@@ -86,9 +88,11 @@ export function RefChip({ kind, canonical, raw, meta, className = '', resolve = 
         <PreviewCard.Positioner sideOffset={6} align="start" className="z-[60]">
           <PreviewCard.Popup
             data-testid="ref-hovercard"
-            className="w-80 max-w-[calc(100vw-1.5rem)] border border-zinc-700 bg-zinc-950 p-3 text-zinc-100 shadow-xl transition-opacity duration-100 data-ending-style:opacity-0 data-starting-style:opacity-0"
+            className="w-80 max-w-[calc(100vw-1.5rem)] border border-border bg-popover p-3 text-fg shadow-xl transition-opacity duration-100 data-ending-style:opacity-0 data-starting-style:opacity-0"
           >
-            <PreviewCardView card={card} onRetry={() => client.invalidate(kind, canonical)} />
+            <PreviewCardView card={card} onRetry={() => client.invalidate(kind, canonical)}>
+              {Hover && card.phase !== 'not-found' && card.phase !== 'unresolved' ? createElement(Hover, { refId: ref, card }) : undefined}
+            </PreviewCardView>
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
       </PreviewCard.Portal>
