@@ -35,6 +35,7 @@ export function createPlannerKinds(): RefKind[] {
     id: e.id,
     label: e.label,
     icon: e.icon,
+    resolveOn: 'hover',
     priority: 75,
     scan(text) {
       const hits = []
