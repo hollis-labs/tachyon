@@ -1,6 +1,7 @@
 import { isWordChar, matches, trimTrailing } from '../../refs/scan-utils'
 import type { RefHit, RefKind } from '../../refs'
 import type { RepoRef } from '../types'
+import { prWorkspacePath } from '../workspace/route'
 import {
   KNOWN_HOSTS, commitCanonical, hostDomains, parseCommitCanonical, parseForgeUrl, parsePrCanonical, parseRepoCanonical,
   prCanonical, repoCanonical, repoLabel, shortSha, type ForgeRefType,
@@ -22,6 +23,18 @@ for (const r of [
   { host: 'github', owner: 'hollis-labs', name: 'torque' },
   { host: 'github', owner: 'hollis-labs', name: 'go-runtime' },
 ]) addKnown(r)
+
+/**
+ * The org's active repos, written bare with a number the way people do in chat:
+ * `tether#490`, `tachyon#113`. Only these names are read as pull requests, so
+ * `issue#12` and `C#` stay text. Generic words (tools, libs, infra) are left out.
+ */
+export const ORG = 'hollis-labs'
+const ORG_REPOS = [
+  'tether', 'tether-mail', 'nanite', 'tachyon', 'tesseract', 'loom', 'cerberus', 'parallax', 'tangent', 'mentat',
+  'basalisk', 'chimera', 'station', 'hadron', 'torque', 'sigil', 'fragments-engine', 'flux', 'nil',
+]
+const ORG_PR = new RegExp(`(?:${ORG_REPOS.join('|')})#(\\d{1,5})`, 'g')
 
 /** Replace the known-repo list (e.g. from settings or the repos agents work in). Returns a restore function. */
 export function setKnownRepos(repos: readonly RepoRef[]): () => void {
@@ -76,6 +89,17 @@ function prShorthand(text: string): RefHit[] {
   return out
 }
 
+function orgPrShorthand(text: string): RefHit[] {
+  const out: RefHit[] = []
+  for (const m of matches(ORG_PR, text)) {
+    const end = m.index + m[0].length
+    if (!boundedBefore(text, m.index) || !boundedAfter(text, end)) continue
+    const name = m[0].slice(0, m[0].indexOf('#'))
+    out.push({ start: m.index, end, canonical: prCanonical({ repo: { host: 'github', owner: ORG, name }, number: Number(m[1]) }) })
+  }
+  return out
+}
+
 function commitShorthand(text: string): RefHit[] {
   const re = new RegExp(`${HOST_PREFIX}${REPO_PART}@([0-9a-fA-F]{7,40})`, 'g')
   const out: RefHit[] = []
@@ -111,12 +135,17 @@ export function createForgeKinds(): RefKind[] {
       label: 'Pull request',
       icon: 'pr',
       priority: FORGE_PR_PRIORITY,
-      scan: (text) => [...urlHits(text, 'pr'), ...prShorthand(text)],
+      scan: (text) => [...urlHits(text, 'pr'), ...prShorthand(text), ...orgPrShorthand(text)],
       chipLabel(ref) {
         const p = parsePrCanonical(ref.canonical)
         return p ? `${repoLabel(p.repo)}#${p.number}` : ref.canonical
       },
-      open: () => ({ type: 'none' }),
+      // A pull request opens in our own workspace, not on the forge.
+      open(ref) {
+        const p = parsePrCanonical(ref.canonical)
+        return p ? { type: 'route', to: prWorkspacePath(p) } : { type: 'none' }
+      },
+      openLabel: 'Open workspace',
     },
     {
       id: 'forge.commit',

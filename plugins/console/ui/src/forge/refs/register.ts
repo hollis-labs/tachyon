@@ -1,5 +1,5 @@
 import { getRefRegistry, type KindResolver, type RefRegistry } from '../../refs'
-import { registerRefActions, registerRefDetail } from '../../autolink/extensions'
+import { markRefInPlace, registerRefActions, registerRefDetail } from '../../autolink/extensions'
 import type { ForgeClient } from '../client'
 import { ForgeCommitDetail, ForgePrDetail, ForgeRepoDetail } from './Detail'
 import { getForgeClient, setForgeClient } from './client'
@@ -35,6 +35,8 @@ export function registerForgeRefs(opts: RegisterForgeRefsOptions = {}): {
 
   for (const kind of createForgeKinds()) undo.push(registry.register(kind, { replace: true }))
 
+  // The PR drawer carries its own Open workspace button, so the default open action would repeat it.
+  undo.push(markRefInPlace('forge.pr'))
   undo.push(registerRefDetail('forge.pr', ForgePrDetail), registerRefDetail('forge.commit', ForgeCommitDetail), registerRefDetail('forge.repo', ForgeRepoDetail))
 
   // Links out to the forge. Host-neutral: the label follows the ref's host.

@@ -805,6 +805,11 @@ export class TorqueApiClient {
     return this.get<PlannerItem[]>(`/planner/${db}`, { ...opts?.filters, sort: opts?.sort }, signal)
   }
 
+  /** Find one portfolio item by id or legacy id (PR-07, DEC-052, RK-12) across the planner databases. */
+  async plannerResolve(ref: string, signal?: AbortSignal): Promise<{ db: PlannerDb; id: string; item: PlannerItem }> {
+    return this.get<{ db: PlannerDb; id: string; item: PlannerItem }>('/planner/resolve', { ref }, signal)
+  }
+
   async plannerGet(db: PlannerDb, id: string): Promise<PlannerItem> {
     return this.get<PlannerItem>(`/planner/${db}/${encodeURIComponent(id)}`)
   }

@@ -55,10 +55,20 @@ export function registerRefActions(kind: string, provider: RefActionProvider): (
   }
 }
 
+const inPlaceKinds = new Set<string>()
+
+/** Mark a kind as read entirely in its drawer: it offers no Open page action. */
+export function markRefInPlace(kind: string): () => void {
+  inPlaceKinds.add(kind)
+  return () => {
+    inPlaceKinds.delete(kind)
+  }
+}
+
 export function refActions(ref: RefIdentity, card: PreviewCard): RefAction[] {
   const out: RefAction[] = []
-  // A kind with its own detail renderer is read in place: the drawer is the page.
-  if (card.open.type === 'route' && !detailRenderers.has(ref.kind)) out.push({ id: 'open', label: 'Open page', type: 'open', target: card.open })
+  // An in-place kind is read in the drawer and has no page to open.
+  if (card.open.type === 'route' && !inPlaceKinds.has(ref.kind)) out.push({ id: 'open', label: card.openLabel ?? 'Open page', type: 'open', target: card.open })
   else if (card.open.type === 'external') out.push({ id: 'open', label: 'Open link', type: 'open', target: card.open })
   out.push({ id: 'copy', label: card.open.type === 'copy' ? 'Copy path' : 'Copy ID', type: 'copy', text: card.open.type === 'copy' ? card.open.text : ref.canonical })
   for (const p of actionProviders.get(ref.kind) ?? []) {

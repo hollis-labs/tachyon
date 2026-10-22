@@ -15,6 +15,7 @@ export function buildPreviewCard(registry: RefRegistry, ref: RefIdentity, state:
     canonical: ref.canonical,
     fields: [] as PreviewCard['fields'],
     open: kind ? kind.open(ref) : ({ type: 'none' } as const),
+    ...(kind?.openLabel ? { openLabel: kind.openLabel } : {}),
   }
   const title = kind?.chipLabel?.(ref, ref.canonical) ?? ref.canonical
   switch (state.status) {
