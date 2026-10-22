@@ -10,17 +10,33 @@ import (
 // RequireOperator protects Tachyon-owned mutations with the same actual
 // participant assurance as Tangent. Never trust a browser-supplied flag or
 // a cached status; Tangent enforces the configured elevation lifetime on every lookup.
-func (b *Bridge) RequireOperator(next http.Handler) http.Handler {
+func (b *Bridge) RequireOperator(next http.Handler) http.Handler { return b.require(next, false) }
+
+// RequireOperatorReads is RequireOperator for routes whose reads are
+// sensitive: GET and HEAD need the same operator assurance as a mutation.
+// A read carries no Origin header, so only a cross-site fetch is refused
+// before the assurance lookup.
+func (b *Bridge) RequireOperatorReads(next http.Handler) http.Handler { return b.require(next, true) }
+
+func (b *Bridge) require(next http.Handler, reads bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		read := r.Method == http.MethodGet || r.Method == http.MethodHead
+		if read && !reads {
 			next.ServeHTTP(w, r)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		origin, e := url.Parse(r.Header.Get("Origin"))
-		if e != nil || origin.Host != r.Host || (origin.Scheme != "https" && origin.Scheme != "http") || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-			fail(w, 403, "origin_denied", "Use the Tachyon browser to perform this action.")
-			return
+		if read {
+			if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+				fail(w, 403, "origin_denied", "Use the Tachyon browser to perform this action.")
+				return
+			}
+		} else {
+			origin, e := url.Parse(r.Header.Get("Origin"))
+			if e != nil || origin.Host != r.Host || (origin.Scheme != "https" && origin.Scheme != "http") || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+				fail(w, 403, "origin_denied", "Use the Tachyon browser to perform this action.")
+				return
+			}
 		}
 		// Reuse the fixed-origin, bounded bridge; this read is never cached.
 		check := r.Clone(r.Context())
