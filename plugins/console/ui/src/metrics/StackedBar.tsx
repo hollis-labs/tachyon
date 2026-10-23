@@ -21,9 +21,9 @@ export function StackedBar({ segments, label = 'Breakdown', loading, height = 12
     <figure className="w-full">
       <figcaption className="mb-1.5 flex items-baseline justify-between">
         <span className={LABEL}>{label}</span>
-        <span className="font-mono text-xs text-zinc-300">{formatNumber(total)}</span>
+        <span className="font-mono text-xs text-fg-secondary">{formatNumber(total)}</span>
       </figcaption>
-      <div role="img" aria-label={`${label}: ${alt}`} className="flex w-full gap-px bg-zinc-900" style={{ height }}>
+      <div role="img" aria-label={`${label}: ${alt}`} className="flex w-full gap-px bg-surface" style={{ height }}>
         {segments.map((s, i) =>
           s.count > 0 ? <span key={`${s.status}-${i}`} className={TONE[toneForStatus(s.status)].bg} style={{ width: `${shares[i]}%`, minWidth: 2 }} /> : null,
         )}
@@ -33,7 +33,7 @@ export function StackedBar({ segments, label = 'Breakdown', loading, height = 12
           {segments.filter((s) => s.count > 0).map((s, i) => (
             <li key={`${s.status}-${i}`} className="inline-flex items-center gap-1.5">
               <span className={`h-2 w-2 ${TONE[toneForStatus(s.status)].bg}`} aria-hidden />
-              {s.label ?? labelForStatus(s.status)} {s.count} <span className="text-zinc-500">{shares[i]}%</span>
+              {s.label ?? labelForStatus(s.status)} {s.count} <span className="text-fg-muted">{shares[i]}%</span>
             </li>
           ))}
         </Legend>

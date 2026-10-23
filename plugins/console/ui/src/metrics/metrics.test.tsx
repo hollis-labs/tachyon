@@ -72,7 +72,7 @@ it('Sparkline handles empty, single and many points', () => {
 
 it('StatTile shows delta direction with inverted tone', () => {
   render(<StatTile label="Failed" value={4} previous={2} invert />)
-  expect(screen.getByText(/\+2 \(\+100%\)/).className).toContain('rose')
+  expect(screen.getByText(/\+2 \(\+100%\)/).className).toContain('danger')
   cleanup()
   render(<StatTile label="Done" value={null} />)
   expect(screen.getByText('–')).toBeTruthy()

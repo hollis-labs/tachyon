@@ -18,12 +18,12 @@ export function Sparkline({ points, label, tone = 'neutral', width = 96, height 
   const pad = 2
   const box = { width, height, viewBox: `0 0 ${width} ${height}` }
   if (loading) {
-    return <svg {...box} role="img" aria-busy="true" aria-label={`${label} loading`}><rect width={width} height={height} className="animate-pulse fill-zinc-900" /></svg>
+    return <svg {...box} role="img" aria-busy="true" aria-label={`${label} loading`}><rect width={width} height={height} className="animate-pulse fill-surface" /></svg>
   }
   if (pts.length === 0) {
     return (
       <svg {...box} role="img" aria-label={`${label}: no data`}>
-        <line x1={pad} x2={width - pad} y1={height / 2} y2={height / 2} strokeDasharray="2 3" className="stroke-zinc-700" />
+        <line x1={pad} x2={width - pad} y1={height / 2} y2={height / 2} strokeDasharray="2 3" className="stroke-border" />
       </svg>
     )
   }

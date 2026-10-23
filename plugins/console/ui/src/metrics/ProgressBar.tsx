@@ -33,8 +33,8 @@ export function ProgressBar({ segments, label = 'Progress', loading, startTs, no
     <div className="w-full">
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
         <span id={id} className={LABEL}>{label}</span>
-        <span className="font-mono text-xs text-zinc-300">
-          {done}/{total} · {donePct}%{eta ? <span className="ml-2 text-zinc-500">{eta}</span> : null}
+        <span className="font-mono text-xs text-fg-secondary">
+          {done}/{total} · {donePct}%{eta ? <span className="ml-2 text-fg-muted">{eta}</span> : null}
         </span>
       </div>
       <div
@@ -44,7 +44,7 @@ export function ProgressBar({ segments, label = 'Progress', loading, startTs, no
         aria-valuemax={total}
         aria-valuenow={done}
         aria-valuetext={`${done} of ${total} done. ${summary}`}
-        className="flex h-2 w-full gap-px bg-zinc-900"
+        className="flex h-2 w-full gap-px bg-surface"
       >
         {segments.map((s, i) =>
           s.count > 0 ? (

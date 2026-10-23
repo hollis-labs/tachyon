@@ -21,7 +21,7 @@ export interface ScopeMetricsPanelProps {
   source?: MetricsSource
 }
 
-const TILE_GRID = 'grid grid-cols-2 border-t border-l border-zinc-800/80 md:grid-cols-4 [&>*]:border-b [&>*]:border-r [&>*]:border-zinc-800/80'
+const TILE_GRID = 'grid grid-cols-2 border-t border-l border-border-subtle md:grid-cols-4 [&>*]:border-b [&>*]:border-r [&>*]:border-border-subtle'
 
 export function ScopeMetricsPanel({ scope, title, compact, now, source }: ScopeMetricsPanelProps) {
   const fromCtx = useMetricsSource()
@@ -30,11 +30,11 @@ export function ScopeMetricsPanel({ scope, title, compact, now, source }: ScopeM
   const data = m.status === 'ready' ? m.data : null
   const heading = title ?? scope
   return (
-    <section aria-label={`Progress metrics for ${heading}`} data-metrics-scope={scope} className="border border-zinc-800">
-      <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2">
+    <section aria-label={`Progress metrics for ${heading}`} data-metrics-scope={scope} className="border border-border-subtle">
+      <header className="flex items-center gap-3 border-b border-border-subtle px-4 py-2">
         <h3 className={LABEL}>{heading}</h3>
-        {data?.origin === 'fixture' && <span className="border border-amber-400/60 px-1.5 py-px font-mono text-[10px] uppercase tracking-widest text-amber-300">fixture</span>}
-        {data?.burnQuality === 'derived' && <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">burn approximate</span>}
+        {data?.origin === 'fixture' && <span className="border border-warning/60 px-1.5 py-px font-mono text-micro uppercase tracking-label text-warning">fixture</span>}
+        {data?.burnQuality === 'derived' && <span className="font-mono text-micro uppercase tracking-label text-fg-muted">burn approximate</span>}
       </header>
       <div className="space-y-4 p-4">
         {m.status === 'error' && <Placeholder kind="error" label={heading} message={`Metrics unavailable: ${m.message}`} />}
@@ -57,7 +57,7 @@ export function ScopeMetricsPanel({ scope, title, compact, now, source }: ScopeM
               </div>
             ))}
             {data?.notes && data.notes.length > 0 && (
-              <ul className="space-y-0.5 font-mono text-[11px] text-zinc-500">{data.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+              <ul className="space-y-0.5 font-mono text-label text-fg-muted">{data.notes.map((n) => <li key={n}>{n}</li>)}</ul>
             )}
           </>
         )}
@@ -78,10 +78,10 @@ export function FleetMetricsPanel({ windowMs, now, title = 'Fleet' }: FleetMetri
   const [mounted] = useState(() => Date.now())
   const m = useMemo(() => fleetMetricsFromEvents(events, { now: now ?? Math.max(mounted, ...events.map((e) => e.ts)), windowMs }), [events, now, mounted, windowMs])
   return (
-    <section aria-label="Fleet metrics" className="border border-zinc-800">
-      <header className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2">
+    <section aria-label="Fleet metrics" className="border border-border-subtle">
+      <header className="flex items-center gap-3 border-b border-border-subtle px-4 py-2">
         <h3 className={LABEL}>{title}</h3>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">{m.total} agent{m.total === 1 ? '' : 's'}</span>
+        <span className="font-mono text-micro uppercase tracking-label text-fg-muted">{m.total} agent{m.total === 1 ? '' : 's'}</span>
       </header>
       <div className="space-y-3 p-4">
         {!m.hasData ? (
@@ -95,7 +95,7 @@ export function FleetMetricsPanel({ windowMs, now, title = 'Fleet' }: FleetMetri
             {m.cost && <StatTile label="cost" value={m.cost.points[m.cost.points.length - 1].v} series={m.cost} invert />}
           </div>
         )}
-        {m.hasData && m.notes.length > 0 && <ul className="space-y-0.5 font-mono text-[11px] text-zinc-500">{m.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+        {m.hasData && m.notes.length > 0 && <ul className="space-y-0.5 font-mono text-label text-fg-muted">{m.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
       </div>
     </section>
   )
