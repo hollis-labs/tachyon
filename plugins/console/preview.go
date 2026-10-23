@@ -16,7 +16,9 @@ const previewPrefix = "/api/plugins/console/v1/preview"
 // PreviewHandler serves the cite overlay's reads of Torque epics, projects,
 // sprints and plans. The generic /v1 passthrough hands the whole Torque object to
 // the browser with the hub bearer; these reads rebuild a short, bounded projection
-// of what a preview shows instead. The host mounts the prefix behind operator
+// of what a preview shows instead: ids, status codes, counts and short truncated
+// names (epic, project, sprint and plan titles, the sprint goal, phase names).
+// Descriptions, filesystem paths and phase acceptance text are not named. The host mounts the prefix behind operator
 // assurance on GET (RequireOperatorReads), like the Tether plan and agent reads.
 type PreviewHandler struct{ route pluginkit.Route }
 
@@ -73,7 +75,7 @@ func projectEpic(body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(pick(m, fieldSet{"id": fID, "name": fText, "description": fText, "status": fCode, "priority": fNum, "project_id": fID, "created_at": fTime, "updated_at": fTime}))
+	return json.Marshal(pick(m, fieldSet{"id": fID, "name": fShort, "status": fCode, "priority": fNum, "project_id": fID, "created_at": fTime, "updated_at": fTime}))
 }
 
 func projectProject(body []byte) ([]byte, error) {
@@ -81,7 +83,7 @@ func projectProject(body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(pick(m, fieldSet{"id": fID, "name": fText, "description": fText, "repo_path": fText, "status": fCode, "created_at": fTime, "updated_at": fTime}))
+	return json.Marshal(pick(m, fieldSet{"id": fID, "name": fShort, "status": fCode, "created_at": fTime, "updated_at": fTime}))
 }
 
 func projectSprint(body []byte) ([]byte, error) {
@@ -89,7 +91,7 @@ func projectSprint(body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(pick(m, fieldSet{"id": fID, "name": fText, "goal": fText, "status": fCode, "approval_mode": fCode, "project_id": fID, "epic_id": fID,
+	return json.Marshal(pick(m, fieldSet{"id": fID, "name": fShort, "goal": fShort, "status": fCode, "approval_mode": fCode, "project_id": fID, "epic_id": fID,
 		"started_at": fTime, "ended_at": fTime, "created_at": fTime, "updated_at": fTime}))
 }
 
@@ -103,14 +105,14 @@ func projectTorquePlan(body []byte) ([]byte, error) {
 	}
 	out := map[string]any{"task": map[string]any{}, "plan": map[string]any{"phases": []any{}}, "progress": map[string]any{"by_phase": map[string]any{}}}
 	if t, ok := m["task"].(map[string]any); ok {
-		out["task"] = pick(t, fieldSet{"id": fID, "title": fText, "status": fCode, "updated_at": fTime})
+		out["task"] = pick(t, fieldSet{"id": fID, "title": fShort, "status": fCode, "updated_at": fTime})
 	}
 	if pl, ok := m["plan"].(map[string]any); ok {
 		phases := []any{}
 		if raw, ok := pl["phases"].([]any); ok {
 			for _, r := range raw {
 				if ph, ok := r.(map[string]any); ok && len(phases) < 50 {
-					phases = append(phases, pick(ph, fieldSet{"id": fID, "name": fText, "order": fNum, "acceptance": fText}))
+					phases = append(phases, pick(ph, fieldSet{"id": fID, "name": fShort, "order": fNum}))
 				}
 			}
 		}

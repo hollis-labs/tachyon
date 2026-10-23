@@ -44,7 +44,7 @@ func TestTorquePreviewIsRebuiltFromAnAllowlistAndForwardsNothingFromTheBrowser(t
 		if res.Status != 200 {
 			t.Fatalf("%s: %d %s", kind, res.Status, res.Body)
 		}
-		if strings.Contains(string(res.Body), "SECRET") || strings.Contains(string(res.Body), "/repo/tachyon") && kind != "projects" {
+		if strings.Contains(string(res.Body), "SECRET") || strings.Contains(string(res.Body), "/repo/tachyon") || strings.Contains(string(res.Body), "Run approved actions.") || strings.Contains(string(res.Body), "The console.") || strings.Contains(string(res.Body), "tests pass") {
 			t.Errorf("%s leaked: %s", kind, res.Body)
 		}
 		var out map[string]any
@@ -76,7 +76,7 @@ func TestTorquePreviewIsRebuiltFromAnAllowlistAndForwardsNothingFromTheBrowser(t
 			ByPhase map[string]struct{ Total int } `json:"by_phase"`
 		}
 	}
-	if err := json.Unmarshal(res.Body, &plan); err != nil || plan.Task.Title != "Roll out cards" || plan.Plan.Phases[0].Acceptance != "tests pass" || plan.Progress.ByPhase["p1"].Total != 4 || plan.Progress.Done != 1 {
+	if err := json.Unmarshal(res.Body, &plan); err != nil || plan.Task.Title != "Roll out cards" || plan.Plan.Phases[0].Name != "Build" || plan.Progress.ByPhase["p1"].Total != 4 || plan.Progress.Done != 1 {
 		t.Errorf("plan shape lost: %v %s", err, res.Body)
 	}
 }
@@ -111,11 +111,59 @@ func TestTorquePreviewFailsClosed(t *testing.T) {
 	}{{404, `{"error":"SECRET"}`, 404}, {500, `SECRET stack`, 502}, {401, `SECRET`, 502}, {200, `not json SECRET`, 502}, {200, `[]`, 502}} {
 		h, _ := previewHandler(t, c.status, func(*http.Request) string { return c.body })
 		res := h.Handle(context.Background(), subprocess.HTTPRequest{Method: "GET", Path: previewPrefix + "/sprints/SP-20261023-0003"})
-		if res.Status != c.want || strings.Contains(string(res.Body), "SECRET") {
+		if res.Status != c.want || strings.Contains(string(res.Body), "SECRET") || strings.Contains(string(res.Body), "/repo/tachyon") || strings.Contains(string(res.Body), "Run approved actions.") || strings.Contains(string(res.Body), "The console.") || strings.Contains(string(res.Body), "tests pass") {
 			t.Errorf("upstream %d %q => %d %s", c.status, c.body, res.Status, res.Body)
 		}
 	}
 	if res := NewPreviewHandler(pluginkit.Route{}).Handle(context.Background(), subprocess.HTTPRequest{Method: "GET", Path: previewPrefix + "/sprints/SP-20261023-0003"}); res.Status != 503 {
 		t.Errorf("unconfigured: %d", res.Status)
+	}
+}
+
+// The Reviewer's probe (#140), kept for the fields the PM ruling removes: free-form descriptions, filesystem paths
+// and phase acceptance text. Names, titles and phase names stay, as short truncated text (ruling on CW-20261023-0030),
+// so the probe's own "synthetic-name" / "synthetic-title" / "synthetic-phase" are asserted present and truncated.
+func TestReviewerTorquePreviewDoesNotExposeRawDisplayFields(t *testing.T) {
+	for name, tc := range map[string]struct {
+		project func([]byte) ([]byte, error)
+		body    string
+		gone    []string
+		kept    []string
+	}{
+		"project": {projectProject, `{"id":"PRJ-20261023-0001","name":"synthetic-name","description":"synthetic-description","repo_path":"/synthetic/private/repository"}`,
+			[]string{"synthetic-description", "/synthetic/private/repository", "repo_path", "description"}, []string{"synthetic-name"}},
+		"plan": {projectTorquePlan, `{"task":{"id":"PL-20261023-0001","title":"synthetic-title"},"plan":{"phases":[{"id":"p1","name":"synthetic-phase","acceptance":"synthetic-acceptance"}]}}`,
+			[]string{"synthetic-acceptance", "acceptance"}, []string{"synthetic-title", "synthetic-phase"}},
+		"epic": {projectEpic, `{"id":"EP-20261023-0001","name":"synthetic-name","description":"synthetic-description"}`,
+			[]string{"synthetic-description", "description"}, []string{"synthetic-name"}},
+		"sprint": {projectSprint, `{"id":"SP-20261023-0001","name":"synthetic-name","goal":"synthetic-goal","description":"synthetic-description"}`,
+			[]string{"synthetic-description", "description"}, []string{"synthetic-name", "synthetic-goal"}},
+	} {
+		out, err := tc.project([]byte(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, g := range tc.gone {
+			if strings.Contains(string(out), g) {
+				t.Errorf("%s projection retains %q: %s", name, g, out)
+			}
+		}
+		for _, k := range tc.kept {
+			if !strings.Contains(string(out), k) {
+				t.Errorf("%s projection lost %q: %s", name, k, out)
+			}
+		}
+	}
+}
+
+func TestTorquePreviewNamesAreShortAndTruncated(t *testing.T) {
+	long := strings.Repeat("n", 500)
+	out, err := projectEpic([]byte(`{"id":"EP-20261023-0001","name":"` + long + `"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct{ Name string }
+	if json.Unmarshal(out, &got) != nil || len([]rune(got.Name)) != maxShortText+1 || !strings.HasSuffix(got.Name, "…") {
+		t.Errorf("name not cut at %d: %d runes", maxShortText, len([]rune(got.Name)))
 	}
 }

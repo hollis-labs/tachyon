@@ -9,7 +9,7 @@ const present = (fields: { label: string; value: string | number | null | undefi
 
 export function epicEntity(e: Epic): RefEntity {
   return {
-    title: e.name, chipLabel: `Epic: ${e.name}`, subtitle: e.id, status: pill(e.status), description: e.description || undefined,
+    title: e.name, chipLabel: `Epic: ${e.name}`, subtitle: e.id, status: pill(e.status),
     fields: present([{ label: 'Priority', value: e.priority === null ? null : `P${e.priority}` }, { label: 'Project', value: e.project_id, mono: true }]),
     updatedAt: e.updated_at,
   }
@@ -17,8 +17,7 @@ export function epicEntity(e: Epic): RefEntity {
 
 export function projectEntity(p: Project): RefEntity {
   return {
-    title: p.name, chipLabel: `Project: ${p.name}`, subtitle: p.id, status: pill(p.status), description: p.description || undefined,
-    fields: present([{ label: 'Repo', value: p.repo_path, mono: true }]), updatedAt: p.updated_at,
+    title: p.name, chipLabel: `Project: ${p.name}`, subtitle: p.id, status: pill(p.status), updatedAt: p.updated_at,
   }
 }
 
@@ -37,7 +36,7 @@ export function planEntity(d: PlanDetail): RefEntity {
   const phases = d.plan.phases.slice().sort((a, b) => a.order - b.order)
   const lines = phases.map((p) => {
     const r = d.progress.by_phase[p.id]
-    return `${p.order}. ${p.name}${r ? ` (${r.done}/${r.total} done${r.blocked ? `, ${r.blocked} blocked` : ''})` : ''}${p.acceptance ? `: ${p.acceptance}` : ''}`
+    return `${p.order}. ${p.name}${r ? ` (${r.done}/${r.total} done${r.blocked ? `, ${r.blocked} blocked` : ''})` : ''}`
   })
   return {
     title: d.task.title, chipLabel: `Plan: ${d.task.title}`, subtitle: d.task.id,
@@ -49,6 +48,7 @@ export function planEntity(d: PlanDetail): RefEntity {
 }
 
 /**
+ * The server projection keeps ids, status codes and short names only (no descriptions, paths or acceptance text).
  * Epics, projects, sprints and plans were chips without a preview: clicking one
  * left the console for the entity's page. One resolver per kind reads the entity
  * through the existing Torque client, and the existing drawer shows the card.

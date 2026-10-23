@@ -31,9 +31,11 @@ const (
 	fBool                   // JSON bool
 	fCodes                  // short array of closed codes
 	fText                   // bounded display text (operator-only projections)
+	fShort                  // short display text: a name, title or goal, cut at maxShortText
 )
 
 const maxDisplayText = 600
+const maxShortText = 160
 
 var (
 	reID   = regexp.MustCompile(`^[A-Za-z0-9_.:@-]{1,128}$`)
@@ -150,13 +152,17 @@ func allowedScalar(kind fieldKind, v any) (any, bool) {
 			return s, true
 		}
 		return s, re.MatchString(s)
-	case fText:
+	case fText, fShort:
 		s, ok := v.(string)
 		if !ok {
 			return nil, false
 		}
-		if r := []rune(s); len(r) > maxDisplayText {
-			s = string(r[:maxDisplayText]) + "…"
+		limit := maxDisplayText
+		if kind == fShort {
+			limit = maxShortText
+		}
+		if r := []rune(s); len(r) > limit {
+			s = string(r[:limit]) + "…"
 		}
 		return s, true
 	case fNum:

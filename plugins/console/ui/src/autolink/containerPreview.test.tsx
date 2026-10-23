@@ -11,10 +11,10 @@ afterEach(() => { cleanup(); paths.length = 0; respond = () => undefined })
 
 const at = '2026-10-23T00:00:00Z'
 const bodies: Record<string, (id: string) => unknown> = {
-  epics: (id) => ({ id, name: 'Approve and run', description: 'Run approved actions.', status: 'active', priority: 2, project_id: 'PRJ-20260917-0001', created_at: at, updated_at: at }),
-  projects: (id) => ({ id, name: 'Tachyon', description: 'The console.', repo_path: '/repo/tachyon', status: 'active', created_at: at, updated_at: at }),
+  epics: (id) => ({ id, name: 'Approve and run', status: 'active', priority: 2, project_id: 'PRJ-20260917-0001', created_at: at, updated_at: at }),
+  projects: (id) => ({ id, name: 'Tachyon', status: 'active', created_at: at, updated_at: at }),
   sprints: (id) => ({ id, name: 'Sprint 12', goal: 'Ship previews.', status: 'active', approval_mode: 'manual', project_id: 'PRJ-20260917-0001', started_at: at, created_at: at, updated_at: at }),
-  plans: (id) => ({ task: { id, title: 'Roll out cards', status: 'doing', updated_at: at }, plan: { phases: [{ id: 'p1', name: 'Build', order: 1, acceptance: 'tests pass' }] },
+  plans: (id) => ({ task: { id, title: 'Roll out cards', status: 'doing', updated_at: at }, plan: { phases: [{ id: 'p1', name: 'Build', order: 1 }] },
     progress: { total_children: 4, done: 1, blocked: 0, by_phase: { p1: { total: 4, done: 1, blocked: 0 } } } }),
 }
 const api = { plannerTaskTitles: vi.fn(async () => ({})), plannerResolve: vi.fn() }
@@ -41,10 +41,10 @@ const chipFor = async () => {
 }
 
 it.each([
-  ['EP-20261023-0002', 'torque.epic', ['Approve and run', 'Run approved actions.', 'P2']],
-  ['PRJ-20260917-0001', 'torque.project', ['Tachyon', 'The console.', '/repo/tachyon']],
+  ['EP-20261023-0002', 'torque.epic', ['Approve and run', 'P2', 'active']],
+  ['PRJ-20260917-0001', 'torque.project', ['Tachyon', 'active']],
   ['SP-20261023-0003', 'torque.sprint', ['Sprint 12', 'Ship previews.', 'manual']],
-  ['PL-20261023-0004', 'torque.plan', ['Roll out cards', '1. Build (1/4 done): tests pass', '1/4 done']],
+  ['PL-20261023-0004', 'torque.plan', ['Roll out cards', '1. Build (1/4 done)', '1/4 done']],
 ])('clicking %s opens the overlay with the object contents instead of leaving the page', async (id, kind, shown) => {
   setup(`see ${id}`)
   const chip = await waitFor(() => { const c = document.querySelector(`[data-ref-kind="${kind}"]`); if (!c) throw new Error('chip'); return c as HTMLElement })
@@ -79,5 +79,5 @@ it('a click without any prior hover (touch, keyboard) still opens the overlay wi
   setup('EP-20261023-0002')
   fireEvent.click(document.querySelector('[data-ref-kind]') as HTMLElement)
   const drawer = await screen.findByTestId('ref-drawer')
-  await waitFor(() => expect(drawer.textContent).toContain('Run approved actions.'))
+  await waitFor(() => expect(drawer.textContent).toContain('Approve and run'))
 })
