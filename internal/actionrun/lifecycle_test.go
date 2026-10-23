@@ -212,17 +212,19 @@ func TestConcurrencyBoundDefersStart(t *testing.T) {
 	r := localRig(t, testAction("test.slow", false, "sleep 1; echo ok"))
 	r.svc.Manager.MaxConcurrent = 1
 	a := r.approvedRun(t, "test.slow")
-	b := r.approvedRun(t, "test.slow")
+	_ = r.approvedRun(t, "test.slow")
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		ra, _ := r.svc.Get(context.Background(), a.ID)
-		rb, _ := r.svc.Get(context.Background(), b.ID)
-		if ra.State == StateRunning || rb.State == StateRunning {
-			if ra.State == StateRunning && rb.State == StateRunning {
-				t.Fatal("two runs active with MaxConcurrent=1")
-			}
+		_, _ = r.svc.Get(context.Background(), a.ID) // sync + retry deferred starts
+		var running, done int
+		// One query, so the two runs are observed at the same instant.
+		if err := r.db.Reader.QueryRow(`SELECT COALESCE(SUM(state='running'),0), COALESCE(SUM(state='succeeded'),0) FROM action_runs`).Scan(&running, &done); err != nil {
+			t.Fatal(err)
 		}
-		if ra.State == StateSucceeded && rb.State == StateSucceeded {
+		if running > 1 {
+			t.Fatal("two runs active with MaxConcurrent=1")
+		}
+		if done == 2 {
 			return
 		}
 		time.Sleep(30 * time.Millisecond)
