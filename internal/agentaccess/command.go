@@ -31,7 +31,7 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		f.StringVar(&identity, "identity", "", "existing identity UUID; omitted creates a new identity")
 		f.StringVar(&path, "token-file", "", "new private token file (never overwritten)")
 		f.DurationVar(&ttl, "ttl", 30*24*time.Hour, "token lifetime, maximum 2160h")
-		f.StringVar(&preset, "preset", "planner-read", "planner-read, portfolio-read or portfolio-write")
+		f.StringVar(&preset, "preset", "planner-read", "planner-read, portfolio-read, portfolio-write or actions-request")
 		f.StringVar(&kinds, "kinds", "", "explicit Planner kinds; overrides the preset")
 		f.StringVar(&verbs, "verbs", "", "explicit supported verbs; overrides the preset")
 	case "revoke", "disable":
@@ -55,6 +55,8 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 			grants = PortfolioRead()
 		case "portfolio-write":
 			grants = PortfolioWrite()
+		case "actions-request":
+			grants = ActionRequest()
 		default:
 			return errors.New("unknown access preset")
 		}
@@ -84,7 +86,7 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 	s := &Store{DB: db}
 	switch cmd {
 	case "issue":
-		t, secret, err := s.Issue(ctx, identity, name, Grants{Verbs: strings.Split(verbs, ","), Kinds: strings.Split(kinds, ",")}, ttl)
+		t, secret, err := s.Issue(ctx, identity, name, Grants{Verbs: splitList(verbs), Kinds: splitList(kinds)}, ttl)
 		if err != nil {
 			return err
 		}
@@ -106,4 +108,11 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		}
 		return json.NewEncoder(out).Encode(map[string]string{"id": id, "status": cmd + "d"})
 	}
+}
+
+func splitList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
 }

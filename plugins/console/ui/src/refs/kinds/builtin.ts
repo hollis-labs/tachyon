@@ -1,5 +1,6 @@
 import type { RefRegistry } from '../registry'
 import { createAgentKind } from './agent'
+import { createApprovalKind } from './approval'
 import { createPathKind } from './path'
 import { createPlannerKinds } from './planner'
 import { createTesseractKinds } from './tesseract'
@@ -20,6 +21,7 @@ export function registerBuiltinKinds(registry: RefRegistry): void {
     createUrlKind(),
     ...createTesseractKinds(),
     ...createTetherKinds(),
+    createApprovalKind(),
     ...createTorqueKinds(),
     ...createPlannerKinds(),
     createWorkstreamKind(),

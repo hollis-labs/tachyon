@@ -16,6 +16,11 @@ describe('parseTachHref', () => {
     expect(parseTachHref('tach:torque/CW-20261019-0028')).toEqual({ kind: 'torque.task', canonical: 'CW-20261019-0028' })
     expect(parseTachHref('tach:task/ep-20261019-0028')?.kind).toBe('torque.epic')
   })
+  it('names an approval item', () => {
+    const id = `item_${'0123456789abcdef'.repeat(2)}`
+    expect(parseTachHref(`tach:approval/${id}`)).toEqual({ kind: 'approval', canonical: id })
+    expect(parseTachHref('tach:approval/item_zz')).toBeNull()
+  })
   it('refuses what it cannot name', () => {
     for (const h of [undefined, '', 'https://x.io', 'tach:tesseract/', 'tach:tesseract/just_a_key', 'tach:unknown/CW-20261019-0028', 'tach:torque/CW-1', 'tach:tesseract/%E0%A4%A']) {
       expect(parseTachHref(h)).toBeNull()

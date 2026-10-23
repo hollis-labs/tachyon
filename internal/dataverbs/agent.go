@@ -8,6 +8,7 @@ import (
 
 	"github.com/hollis-labs/libs/core/util/svcerr"
 	"github.com/hollis-labs/libs/security/auth"
+	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/planner"
@@ -17,7 +18,11 @@ const AgentPrefix = "/api/agent/v1/data"
 
 // NewAgentHTTP authenticates every route, including discovery. Browser cookies
 // and claimed actor headers cannot establish a service principal here.
-func NewAgentHTTP(s *objects.Service, verifier auth.Verifier) http.Handler {
+func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, actions ...*actionrun.Service) http.Handler {
+	var svc *actionrun.Service
+	if len(actions) > 0 {
+		svc = actions[0]
+	}
 	guard, err := auth.New(auth.Config{Mode: auth.ModeEnforce, Verifier: verifier, OpenPath: func(string) bool { return false }})
 	if err != nil {
 		panic(err)
@@ -30,7 +35,7 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier) http.Handler {
 				writeError(w, denied())
 				return
 			}
-			p := &scopedLocal{local: NewLocal(s), principal: principal}
+			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc}
 			// Authentication has already verified this request. scopedLocal checks
 			// the verb/kinds and supplies the principal actor for every invocation.
 			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r)
@@ -41,6 +46,7 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier) http.Handler {
 type scopedLocal struct {
 	local     *Local
 	principal auth.Principal
+	actions   *actionrun.Service
 }
 
 func (p *scopedLocal) ID() string { return p.local.ID() }
@@ -49,6 +55,13 @@ func (p *scopedLocal) Verbs() []Verb {
 	for _, v := range p.local.Verbs() {
 		if agentaccess.SupportedVerb(v.Name) && agentaccess.Allows(p.principal, "verb", v.Name) {
 			out = append(out, v)
+		}
+	}
+	if p.actions != nil {
+		for _, v := range actionVerbs() {
+			if agentaccess.Allows(p.principal, "verb", v.Name) {
+				out = append(out, v)
+			}
 		}
 	}
 	return out
@@ -66,6 +79,9 @@ func (p *scopedLocal) database(db string) bool {
 func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessage, _ string) (json.RawMessage, error) {
 	if !agentaccess.SupportedVerb(name) || !agentaccess.Allows(p.principal, "verb", name) {
 		return nil, denied()
+	}
+	if agentaccess.ActionVerb(name) {
+		return invokeAction(ctx, p.actions, name, raw, "service:"+p.principal.ID)
 	}
 	switch name {
 	case "planner.portfolio.resolve":

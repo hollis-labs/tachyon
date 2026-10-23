@@ -1289,6 +1289,34 @@ digest. Closing the terminal ends an interactive run (the pty must not outlive i
 replay within that window. A finished run shows its recorded exit code and output. Any reverse proxy in front of Tachyon
 must pass websocket upgrades for that path.
 
+**Agent tools: `actions.catalog`, `actions.request`, `actions.await`.** Agents reach these
+through the planner agent surface (`/api/agent/v1/mcp` as `tachyon_actions_catalog`,
+`tachyon_actions_request`, `tachyon_actions_await`, or the `/api/agent/v1/data` HTTP verbs), not
+the producer API, so no producer enrollment is involved. Issue a credential with
+`tachyon access issue --name <agent> --preset actions-request --token-file <new file>`; it
+holds only these three verbs and no object kinds.
+
+1. `actions.catalog` lists machine ids, actions, parameters and the rules below.
+2. `actions.request {machine, action, params, reason}` validates against the registry
+   (errors list the allowed machines and actions), computes the argv and `op_digest`
+   server-side, and enqueues an approval. It returns `run_id`, the exact `command`,
+   `op_digest`, class and a `[Approval: …](tach:approval/<item_id>)` link. Nothing runs.
+3. `actions.await {run_id, wait_ms}` (max 50000) returns status, exit code and bounded
+   output (16 KiB tail) once the run finished, otherwise the current status. A credential
+   can await only runs its own identity requested; the requester is server-derived.
+
+Agent rules (also in the catalog and tool descriptions): ask only when a privileged
+command must run elsewhere; use the full machine id and exact action id; never ask for
+free-form shell; never put secrets or passphrases in params or reason (the owner types
+prompt answers into the terminal); give a concrete reason; after `denied`, `expired` or
+`refused` do not retry without new information from the owner.
+
+The owner sees the item in the Approvals queue (the Approvals link with its pending count
+is in the chat dock). The `tach:approval/<item_id>` link renders in chat as a chip that
+opens `/approvals?item=<item_id>` and the review dialog with the terminal. A full inline
+approve-in-chat card is still follow-up work: the `src/hitl` card system remains an
+unwired mock (see `plugins/console/ui/src/hitl/BACKEND_NEEDS.md`).
+
 #### Trusted high-tier assurance integration (not activated)
 
 CW-20261019-0036 implements the shared operation/WebAuthn contract (Tesseract
