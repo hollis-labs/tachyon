@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   createApprovalClient,
@@ -220,7 +221,7 @@ describe("approval list interaction", () => {
       evidence: vi.fn(),
       get: vi.fn(),
     } as unknown as ApprovalClient
-    render(<ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider>)
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     const row = await screen.findByRole("button", { name: "Create a session" })
     row.focus()
     fireEvent.keyDown(row, { key: "Enter" })
@@ -248,11 +249,24 @@ describe("owned inbox tiers and pages", () => {
   it("loads bounded next pages and can return to the newest page", async () => {
     const second = { ...item, item_id: "older", request_snapshot: { ...item.request_snapshot, title: "Older request" } }
     const inbox = vi.fn().mockImplementation(async (_fresh, cursors) => ({ pending: cursors?.pending_before ? [second] : [item], history: [], next_pending: cursors?.pending_before ? undefined : "req-1", synced_at: new Date().toISOString(), revision: "1" }))
-    render(<ApprovalProvider client={{ inbox } as unknown as ApprovalClient}><ApprovalsPage /></ApprovalProvider>)
+    render(<MemoryRouter><ApprovalProvider client={{ inbox } as unknown as ApprovalClient}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     fireEvent.click(await screen.findByRole("button", { name: "Next page" }))
     await screen.findByText("Older request")
     expect(inbox).toHaveBeenLastCalledWith(true, { pending_before: "req-1" })
     fireEvent.click(screen.getByRole("button", { name: "First page" }))
     await screen.findByText("Create a session")
+  })
+})
+
+describe("approval deep link", () => {
+  it("opens the review dialog for /approvals?item=<id> and clears the parameter", async () => {
+    const present = vi.fn().mockResolvedValue(item)
+    const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present } as unknown as ApprovalClient
+    render(
+      <MemoryRouter initialEntries={["/approvals?item=req-1"]}>
+        <ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(present).toHaveBeenCalledWith("req-1"))
   })
 })

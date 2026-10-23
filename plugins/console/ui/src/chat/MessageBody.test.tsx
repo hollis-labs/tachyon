@@ -75,3 +75,16 @@ it('renders a tach: link as a reference chip, labelled until it resolves, and le
   expect(container.textContent).toContain('nope')
   expect(container.querySelector('a[href^="tach:"], a[href^="javascript:"]')).toBeNull()
 })
+it('renders an approval link as a chip that opens the approvals page for that item', () => {
+  const id = `item_${'0123456789abcdef'.repeat(2)}`
+  const { container } = render(
+    <MemoryRouter>
+      <AutolinkProvider registry={createDefaultRefRegistry()}>
+        <MessageBody body={`[Approval: cerberus.resource.reload on hub](tach:approval/${id})`} />
+      </AutolinkProvider>
+    </MemoryRouter>,
+  )
+  const chip = container.querySelector('[data-ref-kind="approval"]')
+  expect(chip?.textContent).toBe('Approval: cerberus.resource.reload on hub')
+  expect(chip?.getAttribute('href')).toBe(`/approvals?item=${id}`)
+})

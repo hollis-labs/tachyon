@@ -1,7 +1,7 @@
 import { Button, SearchInput } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
-import { useState } from "react"
-import { Link } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, KeyRound } from "lucide-react"
 import { useApprovals } from "./context"
 import { DataTable } from "@hollis-labs/kit-dashboard/data"
@@ -9,6 +9,18 @@ import { elevationCopy, operatorElevation } from "../operator/elevation"
 
 export function ApprovalsPage() {
   const queue = useApprovals()
+  // /approvals?item=<id> (an agent's approval link) opens that request's review dialog.
+  const [params, setParams] = useSearchParams()
+  const linked = params.get("item")
+  const open = queue?.open
+  useEffect(() => {
+    if (!linked || !open) return
+    open(linked)
+    setParams((p) => {
+      p.delete("item")
+      return p
+    }, { replace: true })
+  }, [linked, open, setParams])
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
   const [operatorMessage, setOperatorMessage] = useState("")

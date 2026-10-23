@@ -1,3 +1,4 @@
+import { APPROVAL_ITEM_ID } from './kinds/approval'
 import { TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND, parseTesseractKey } from './kinds/tesseract'
 import { TORQUE_ENTITIES } from './kinds/torque'
 import type { RefIdentity } from './types'
@@ -13,6 +14,7 @@ import type { RefIdentity } from './types'
 const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
 const TESSERACT = new Set(['tesseract', 'tess', 'memory'])
 const TORQUE = new Set(['torque', 'task', 'tasks'])
+const APPROVAL = new Set(['approval', 'approvals'])
 
 /** The reference a `tach:` href names, or null when the service, id or key is not one the console knows. */
 export function parseTachHref(href: string | undefined): RefIdentity | null {
@@ -31,6 +33,7 @@ export function parseTachHref(href: string | undefined): RefIdentity | null {
     if (ULID.test(id)) return { kind: TESSERACT_ITEM_KIND, canonical: id }
     return parseTesseractKey(rest) ? { kind: TESSERACT_KEY_KIND, canonical: rest } : null
   }
+  if (APPROVAL.has(service)) return APPROVAL_ITEM_ID.test(rest) ? { kind: 'approval', canonical: rest } : null
   if (TORQUE.has(service)) {
     const id = rest.toUpperCase()
     const entity = TORQUE_ENTITIES.find((e) => new RegExp(`^${e.prefix}-\\d{8}-\\d{4}$`).test(id))

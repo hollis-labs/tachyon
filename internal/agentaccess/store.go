@@ -22,6 +22,10 @@ import (
 var readVerbs = []string{"planner.list", "objects.list", "objects.get", "objects.history", "objects.lookup_source"}
 var portfolioReadVerbs = []string{"planner.portfolio.list", "planner.portfolio.get", "planner.portfolio.schema", "planner.portfolio.resolve"}
 var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate", "planner.portfolio.reorder"}
+
+// ActionVerbs are the registered-action tools (request, then await the result).
+// They name no object kinds: a credential holding only these needs none.
+var actionVerbs = []string{"actions.catalog", "actions.request", "actions.await"}
 var plannerKinds = []string{"plan", "task", "epic", "sprint", "collection", "workstream", "inbox_item", "idea", "decision", "risk", "roadmap_item", "strategic_priority"}
 var portfolioKinds = []string{"strategic_priority", "workstream", "roadmap_item", "idea", "decision", "risk", "inbox_item"}
 
@@ -41,9 +45,13 @@ func PortfolioWrite() Grants {
 	g.Verbs = append(g.Verbs, portfolioWriteVerbs...)
 	return g
 }
-func PlannerKinds() []string      { return append([]string(nil), plannerKinds...) }
-func ReadVerb(v string) bool      { return contains(readVerbs, v) || contains(portfolioReadVerbs, v) }
-func SupportedVerb(v string) bool { return ReadVerb(v) || contains(portfolioWriteVerbs, v) }
+func ActionRequest() Grants    { return Grants{Verbs: append([]string(nil), actionVerbs...)} }
+func ActionVerb(v string) bool { return contains(actionVerbs, v) }
+func PlannerKinds() []string   { return append([]string(nil), plannerKinds...) }
+func ReadVerb(v string) bool   { return contains(readVerbs, v) || contains(portfolioReadVerbs, v) }
+func SupportedVerb(v string) bool {
+	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v)
+}
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
 		if s == x {
@@ -53,7 +61,11 @@ func contains(xs []string, x string) bool {
 	return false
 }
 func (g Grants) Validate() error {
-	if len(g.Verbs) == 0 || len(g.Kinds) == 0 {
+	onlyActions := len(g.Verbs) > 0
+	for _, v := range g.Verbs {
+		onlyActions = onlyActions && contains(actionVerbs, v)
+	}
+	if len(g.Verbs) == 0 || (len(g.Kinds) == 0 && !onlyActions) {
 		return errors.New("explicit verbs and kinds are required")
 	}
 	for _, v := range g.Verbs {
