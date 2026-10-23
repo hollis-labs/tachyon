@@ -129,7 +129,6 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
         aria-modal="true"
         aria-label={`Alert: ${alert.title}`}
         data-testid="alert-detail"
-        data-dashboard-shape="square"
         data-dashboard-accent="yellow"
         data-status={shown.status}
         tabIndex={-1}

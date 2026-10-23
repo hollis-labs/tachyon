@@ -47,7 +47,6 @@ export function AlertToast({ alert, now, durationMs, onClose, onRead, onExpand }
     <div
       role={urgent ? 'alert' : 'status'}
       data-testid="alert-toast"
-      data-dashboard-shape="square"
       data-dashboard-accent="yellow"
       data-severity={alert.severity}
       tabIndex={0}

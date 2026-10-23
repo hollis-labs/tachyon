@@ -41,7 +41,6 @@ export function AlertTray() {
       ref={ref}
       role="dialog"
       aria-label="Alerts"
-      data-dashboard-shape="square"
       data-dashboard-accent="yellow"
       tabIndex={-1}
       onKeyDown={(e) => {
