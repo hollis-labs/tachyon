@@ -67,9 +67,12 @@ type Config struct {
 	ActionDetachGrace time.Duration
 	// CardEffectsTorque lets an approved card change Torque task statuses.
 	CardEffectsTorque bool
-	// CardEventsTokenFile holds the hub credential bound to the tachyon event
-	// producer. Empty keeps card.* event publishing off.
-	CardEventsTokenFile string
+	// CardEvents configures card.* event publishing to the hub; off by default.
+	CardEvents struct {
+		Enabled   bool
+		URL       string // HOLLIS_EVENTS_URL
+		TokenFile string // HOLLIS_AUTH_TOKEN_FILE_TACHYON
+	}
 	Upstreams           catalog.Upstreams
 }
 
@@ -583,18 +586,19 @@ func (s *Server) startCardEffects(ctx context.Context, store *localstore.Store) 
 	go ex.Watch(ctx, 0)
 }
 
-// startCardEvents publishes card.* events to the hub. It runs only when a token
-// file for the tachyon producer credential is configured; Tachyon never mints
-// or stores that credential itself.
+// startCardEvents publishes card.* events to the hub. It is off unless
+// TACHYON_CARD_EVENTS=1 and both the hub URL (HOLLIS_EVENTS_URL) and the token
+// file of the tachyon producer credential (HOLLIS_AUTH_TOKEN_FILE_TACHYON) are
+// set. Tachyon never mints or stores that credential.
 func (s *Server) startCardEvents(ctx context.Context, store *localstore.Store) {
-	if s.cfg.CardEventsTokenFile == "" {
-		slog.Info("card events are off: no producer credential configured")
+	cfg := s.cfg.CardEvents
+	if !cfg.Enabled {
 		return
 	}
 	outbox := &cardevents.Store{DB: store}
-	sender, err := cardevents.NewSender(outbox, s.cfg.Upstreams.TetherAddr, s.cfg.CardEventsTokenFile)
+	sender, err := cardevents.NewSender(outbox, cfg.URL, cfg.TokenFile)
 	if err != nil {
-		slog.Warn("card events are off", "err", err)
+		slog.Warn("card events are enabled but not configured; staying off", "err", err)
 		return
 	}
 	collector := &cardevents.Collector{Items: &approvals.Store{DB: store}, Effects: s.cardFx, Outbox: outbox}

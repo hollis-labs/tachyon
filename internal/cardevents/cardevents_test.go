@@ -230,4 +230,7 @@ func TestSenderNeedsAnExplicitCredentialFile(t *testing.T) {
 	if _, err := NewSender(&Store{}, "http://127.0.0.1:1", ""); err == nil {
 		t.Fatal("no token file must mean no emitter")
 	}
+	if _, err := NewSender(&Store{}, "", "/tmp/x"); err == nil {
+		t.Fatal("no hub URL must mean no emitter")
+	}
 }
