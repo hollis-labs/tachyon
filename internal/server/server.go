@@ -411,7 +411,26 @@ func (s *Server) Routes() http.Handler {
 	} else {
 		mux.Handle("/api/plugins/", s.inventory.APIRoutes())
 	}
-	return mux
+	return decodedRoute(mux)
+}
+
+// decodedRoute closes encoded-path aliases of guarded routes. The plugin router
+// reads the decoded path, but the mux matches guarded prefixes on the escaped
+// one, so plans%2f<id> or console%2fv1/... would skip the operator guard that the
+// literal spelling gets. A request whose escaped path differs from the plain
+// encoding of its decoded path is dispatched from the top on the decoded path:
+// the same guards apply as for the literal route, and whatever falls through
+// reaches the plugin exactly as before (it already routes on the decoded path).
+func decodedRoute(mux *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawPath != "" && r.URL.EscapedPath() != (&url.URL{Path: r.URL.Path}).EscapedPath() {
+			again := r.Clone(r.Context())
+			again.URL.RawPath = ""
+			again.RequestURI = again.URL.RequestURI()
+			r = again
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 type pluginView struct {
