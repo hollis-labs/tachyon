@@ -364,6 +364,9 @@ func (s *Server) Routes() http.Handler {
 	for _, p := range []string{"plans", "agents"} {
 		mux.Handle("/api/plugins/console/v1/tether/"+p+"/", operator.RequireOperatorReads(tetherRoutes))
 	}
+	// The cite overlay's reads of Torque epics, projects, sprints and plans: projected by the plugin, and like the
+	// Tether plan/agent reads they need operator assurance on GET. Outside the plugin response cache.
+	mux.Handle("/api/plugins/console/v1/preview/", operator.RequireOperatorReads(tetherRoutes))
 	trusted := s.approvalTrusted
 	if trusted == nil {
 		trusted = &approvals.TrustedAPI{}

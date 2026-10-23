@@ -69,3 +69,20 @@ export function createTorqueContainerResolver<T>(read: (id: string, signal?: Abo
     },
   }
 }
+
+type Get = (path: string, signal?: AbortSignal) => Promise<Response>
+
+/**
+ * Reads one Torque object through Tachyon's operator-gated, projected preview route
+ * (never the raw /v1 passthrough). Quiet on purpose: a missing elevation is an
+ * error state on the chip, not a prompt.
+ */
+export function previewRead<T>(collection: 'epics' | 'projects' | 'sprints' | 'plans', get: Get): (id: string, signal?: AbortSignal) => Promise<T> {
+  return async (id, signal) => {
+    const res = await get(`/api/plugins/console/v1/preview/${collection}/${encodeURIComponent(id)}`, signal)
+    if (res.status === 404) throw Object.assign(new Error('Not found'), { status: 404 })
+    if (res.status === 401 || res.status === 403) throw new Error('Operator access is needed to read Torque objects.')
+    if (!res.ok) throw new Error(`Torque object unavailable (${res.status}).`)
+    return (await res.json()) as T
+  }
+}

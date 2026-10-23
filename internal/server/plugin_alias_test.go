@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -75,6 +76,61 @@ func TestEncodedAliasesOfGuardedMutationsAreGuarded(t *testing.T) {
 			if w.Code != 403 || checks != 1 {
 				t.Errorf("%s %s: status=%d checks=%d", method, path, w.Code, checks)
 			}
+		}
+	}
+}
+
+// The cite overlay's Torque reads are operator-gated like the Tether plan/agent reads, in every spelling.
+func TestTorquePreviewReadsNeedOperatorAssuranceInEverySpelling(t *testing.T) {
+	checks := 0
+	elevated := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		checks++
+		if elevated {
+			w.Write([]byte(`{"elevated":true,"assurance":"operator-token"}`))
+		} else {
+			w.Write([]byte(`{"elevated":false,"assurance":"loopback-unverified"}`))
+		}
+	}))
+	defer upstream.Close()
+	s := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL})
+	var paths []string
+	for _, p := range []string{"epics/EP-20261023-0002", "projects/PRJ-20260917-0001", "sprints/SP-20261023-0003", "plans/PL-20261023-0004"} {
+		paths = append(paths,
+			"/api/plugins/console/v1/preview/"+p,
+			"/api/plugins/console/v1/preview%2f"+p,
+			"/api/plugins/console/v1/preview/"+strings.Replace(p, "/", "%2F", 1),
+			"/api/plugins/console%2fv1/preview/"+p,
+			"/api/plugins/console/v1%2fpreview/"+p,
+			"/api/plugins%2fconsole/v1/preview/"+p,
+		)
+	}
+	for _, path := range paths {
+		for _, method := range []string{"GET", "HEAD"} {
+			checks = 0
+			r := httptest.NewRequest(method, "https://tachyon.test"+path, nil)
+			r.AddCookie(&http.Cookie{Name: approvals.CookieName, Value: "test"})
+			w := httptest.NewRecorder()
+			s.Routes().ServeHTTP(w, r)
+			if w.Code != 403 || checks != 1 {
+				t.Errorf("%s %s: status=%d authorityChecks=%d", method, path, w.Code, checks)
+			}
+		}
+		// No operator session at all is refused too, before anything is forwarded.
+		w := httptest.NewRecorder()
+		s.Routes().ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+path, nil))
+		if w.Code != 401 && w.Code != 403 {
+			t.Errorf("no session %s: status=%d", path, w.Code)
+		}
+	}
+	elevated = true
+	for _, path := range paths {
+		r := httptest.NewRequest("GET", "https://tachyon.test"+path, nil)
+		r.AddCookie(&http.Cookie{Name: approvals.CookieName, Value: "test"})
+		w := httptest.NewRecorder()
+		s.Routes().ServeHTTP(w, r)
+		if w.Code == 401 || w.Code == 403 {
+			t.Errorf("elevated GET %s refused by the guard: %d", path, w.Code)
 		}
 	}
 }

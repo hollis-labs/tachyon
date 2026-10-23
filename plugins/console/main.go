@@ -25,6 +25,7 @@ type console struct {
 	tesseract *TesseractHandler
 	chat      *ChatHandler
 	objects   *ObjectHandler
+	preview   *PreviewHandler
 }
 
 func (console) Init(context.Context, subprocess.InitParams) (subprocess.InitResult, error) {
@@ -50,6 +51,9 @@ func (c console) HTTPHandle(ctx context.Context, req subprocess.HTTPRequest) (su
 		}
 		return c.proxy.HTTPHandle(ctx, req)
 	}
+	if c.preview != nil && c.preview.Match(req.Path) {
+		return c.preview.Handle(ctx, req), nil
+	}
 	if c.objects != nil && c.objects.Match(req.Path) {
 		return c.objects.Handle(ctx, req), nil
 	}
@@ -70,12 +74,13 @@ func (c console) HTTPHandle(ctx context.Context, req subprocess.HTTPRequest) (su
 
 func main() {
 	torque := pluginkit.Env("TORQUE_URL", "http://127.0.0.1:8990")
+	torqueRoute := pluginkit.Route{Prefix: "/v1", Upstream: torque, Target: "/api/v1", Bearer: os.Getenv("TORQUE_API_TOKEN"), Headers: map[string]string{"X-Client": "browser"}}
 	proxy := pluginkit.NewProxy("console",
 		pluginkit.Route{Prefix: "/v1/activity/agents", Upstream: pluginkit.Env("TACHYON_ACTIVITY_URL", "http://127.0.0.1:8099"), Target: "/api/plugins/activity-monitor/agents"},
-		pluginkit.Route{Prefix: "/v1", Upstream: torque, Target: "/api/v1", Bearer: os.Getenv("TORQUE_API_TOKEN"), Headers: map[string]string{"X-Client": "browser"}},
+		torqueRoute,
 	)
 	forge := NewForgeHandler(os.Getenv("GITHUB_TOKEN"), pluginkit.Env("GITHUB_ORG", "hollis-labs"))
-	if err := subprocess.Serve(console{proxy: proxy, forge: forge, objects: NewObjectHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), chat: NewChatHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), catalog: NewCatalogHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), tesseract: NewTesseractHandler(os.Getenv("TESSERACT_URL"), upstreamauth.TokenFile(nil, "", "TESSERACT_TOKEN_FILE"))}); err != nil {
+	if err := subprocess.Serve(console{proxy: proxy, forge: forge, preview: NewPreviewHandler(torqueRoute), objects: NewObjectHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), chat: NewChatHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), catalog: NewCatalogHandler(os.Getenv("TETHER_ADDR"), upstreamauth.TokenFile(nil, "", "TETHER_TOKEN_FILE")), tesseract: NewTesseractHandler(os.Getenv("TESSERACT_URL"), upstreamauth.TokenFile(nil, "", "TESSERACT_TOKEN_FILE"))}); err != nil {
 		os.Exit(1)
 	}
 }
