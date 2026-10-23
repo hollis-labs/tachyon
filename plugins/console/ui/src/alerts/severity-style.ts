@@ -1,18 +1,23 @@
+import type { Tone } from '@hollis-labs/design-components'
 import type { AlertSeverity } from './types'
 
 export interface SeverityStyle {
   label: string
-  /** Left stripe + dot. */
+  /** Left stripe + dot (contract tone fill). */
   bar: string
+  /** Text colour for the severity label and icon. */
   text: string
-  badge: string
+  /** Contract tone for pills and count badges. */
+  tone: Tone
+  /** Critical is the one solid badge; everything else is a muted tint. Severity is never colour alone: label text and icon always accompany it. */
+  solid: boolean
 }
 
 export const SEVERITY_STYLE: Record<AlertSeverity, SeverityStyle> = {
-  debug: { label: 'DEBUG', bar: 'bg-zinc-600', text: 'text-zinc-400', badge: 'bg-zinc-500 text-zinc-950' },
-  info: { label: 'INFO', bar: 'bg-sky-400', text: 'text-sky-300', badge: 'bg-sky-400 text-zinc-950' },
-  notice: { label: 'NOTICE', bar: 'bg-emerald-400', text: 'text-emerald-300', badge: 'bg-emerald-400 text-zinc-950' },
-  warning: { label: 'WARNING', bar: 'bg-amber-400', text: 'text-amber-300', badge: 'bg-amber-400 text-zinc-950' },
-  error: { label: 'ERROR', bar: 'bg-red-400', text: 'text-red-300', badge: 'bg-red-500 text-white' },
-  critical: { label: 'CRITICAL', bar: 'bg-red-500', text: 'text-red-300', badge: 'bg-red-500 text-white' },
+  debug: { label: 'DEBUG', bar: 'bg-fg-faint', text: 'text-fg-faint', tone: 'neutral', solid: false },
+  info: { label: 'INFO', bar: 'bg-info', text: 'text-info', tone: 'info', solid: false },
+  notice: { label: 'NOTICE', bar: 'bg-success', text: 'text-success', tone: 'success', solid: false },
+  warning: { label: 'WARNING', bar: 'bg-warning', text: 'text-warning', tone: 'warning', solid: false },
+  error: { label: 'ERROR', bar: 'bg-danger', text: 'text-danger', tone: 'danger', solid: false },
+  critical: { label: 'CRITICAL', bar: 'bg-danger', text: 'text-danger', tone: 'danger', solid: true },
 }
