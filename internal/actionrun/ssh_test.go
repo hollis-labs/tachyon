@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -61,6 +62,10 @@ func sshServer(t *testing.T, clientKey ssh.PublicKey) (addr string, hostKey ssh.
 							case "exec":
 								r.Reply(true, nil)
 								cmd := string(r.Payload[4:])
+								if strings.Contains(cmd, "hang") {
+									_, _ = io.Copy(io.Discard, ch) // never answers; ends when the client goes away
+									return
+								}
 								ch.Write([]byte("ran:" + cmd + "\r\n"))
 								buf := make([]byte, 64)
 								n, _ := ch.Read(buf)

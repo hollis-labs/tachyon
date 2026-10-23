@@ -60,7 +60,10 @@ type Config struct {
 	// ActionHub configures the ssh transport to the hub for registered actions.
 	// With no address the hub machine is unavailable; agent-os runs locally.
 	ActionHub actionrun.SSH
-	Upstreams catalog.Upstreams
+	// ActionDetachGrace keeps an interactive run alive this long after its last
+	// terminal closes (default 0: end it at once).
+	ActionDetachGrace time.Duration
+	Upstreams         catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
@@ -517,7 +520,7 @@ func (s *Server) startActions(ctx context.Context, store *localstore.Store) {
 	}
 	items := &approvals.Store{DB: store}
 	runs := &actionrun.Store{DB: store}
-	manager := &actionrun.Manager{Store: runs, Items: items, Transports: transports}
+	manager := &actionrun.Manager{Store: runs, Items: items, Transports: transports, Base: ctx, DetachGrace: s.cfg.ActionDetachGrace}
 	if err := manager.Recover(ctx); err != nil {
 		slog.Warn("action runs not recovered", "err", err)
 	}

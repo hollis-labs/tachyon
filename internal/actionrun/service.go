@@ -172,6 +172,13 @@ func (s *Service) Sync(ctx context.Context) error {
 	}
 	var errs []error
 	for _, r := range open {
+		if r.State == StateApproved && !r.Interactive && !s.Manager.Live(r.ID) {
+			// Approved but not started (the concurrency bound was reached): retry.
+			if _, err := s.Manager.Start(ctx, r.ID, 120, 30); err != nil && !errors.Is(err, ErrBusy) {
+				errs = append(errs, err)
+			}
+			continue
+		}
 		if r.State != StatePending {
 			continue
 		}
@@ -194,7 +201,7 @@ func (s *Service) Sync(ctx context.Context) error {
 			if won, err := s.Store.Transition(ctx, r.ID, StatePending, next, nil); err != nil {
 				errs = append(errs, err)
 			} else if won && !r.Interactive {
-				if _, err := s.Manager.Start(ctx, r.ID, 120, 30); err != nil {
+				if _, err := s.Manager.Start(ctx, r.ID, 120, 30); err != nil && !errors.Is(err, ErrBusy) {
 					errs = append(errs, err)
 				}
 			}

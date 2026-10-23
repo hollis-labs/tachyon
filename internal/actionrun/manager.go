@@ -22,14 +22,30 @@ type Frame struct {
 
 // live is a started process and its subscribers.
 type live struct {
-	mu     sync.Mutex
-	sess   Session
-	replay ring
-	subs   map[chan Frame]struct{}
-	done   bool
-	exit   int
-	trans  transcript
+	mu          sync.Mutex
+	sess        Session
+	replay      ring
+	subs        map[chan Frame]struct{}
+	done        bool
+	exit        int
+	trans       transcript
+	cancel      context.CancelFunc // ends the run context: kills the process tree
+	interactive bool
+	reason      string      // why the manager ended the run, if it did
+	idle        *time.Timer // pending kill after the last viewer left
 }
+
+// Defaults for the lifetime and resource policy.
+const (
+	DefaultMaxRuntime    = 10 * time.Minute
+	DefaultMaxConcurrent = 4
+	// initialAttach is how long a started interactive run may wait for its first viewer.
+	initialAttach = 15 * time.Second
+)
+
+// ErrBusy is returned by Start when the concurrency bound is reached; the run
+// stays approved and is retried.
+var ErrBusy = errors.New("too many action runs are active; it will start when one finishes")
 
 // Manager owns started runs. Starting is the only place a command executes,
 // and it re-derives the command from the registry before doing so.
@@ -38,11 +54,22 @@ type Manager struct {
 	Items      ItemReader
 	Transports map[string]Transport
 	Clock      func() time.Time
+	// Base is the parent of every run context (shutdown ends the runs); nil is Background.
+	Base context.Context
+	// MaxRuntime ends any run still going after this long (default 10m).
+	MaxRuntime time.Duration
+	// MaxConcurrent bounds simultaneously active runs (default 4).
+	MaxConcurrent int
+	// DetachGrace is how long an interactive run survives with no terminal
+	// attached before it is killed. Zero (the default) kills it as soon as the
+	// last terminal closes, so a dropped connection never leaves a live pty.
+	DetachGrace time.Duration
 	// Labels, when set, replaces the Cerberus label lookup (tests).
 	Labels func(ctx context.Context, machine, resource string) (Labels, error)
 
-	mu   sync.Mutex
-	runs map[string]*live
+	mu       sync.Mutex
+	runs     map[string]*live
+	starting int
 }
 
 // ItemReader looks up the approval item behind a run.
@@ -101,6 +128,9 @@ func approvedDigest(rec hitl.Record) (approved bool, digest string) {
 // approved and the digest recomputed from the stored request equals both the
 // stored and the approved digest. cols/rows size the terminal.
 func (m *Manager) Start(ctx context.Context, runID string, cols, rows uint16) (Run, error) {
+	if err := ctx.Err(); err != nil {
+		return Run{}, err
+	}
 	run, err := m.Store.Get(ctx, runID)
 	if err != nil {
 		return Run{}, err
@@ -140,6 +170,15 @@ func (m *Manager) Start(ctx context.Context, runID string, cols, rows uint16) (R
 	if !ok {
 		return m.refuse(ctx, run, "no transport is configured for machine "+run.Machine)
 	}
+	if !m.reserve() {
+		return run, ErrBusy
+	}
+	reserved := true
+	defer func() {
+		if reserved {
+			m.release()
+		}
+	}()
 	won, err := m.Store.Transition(ctx, run.ID, run.State, StateRunning, nil)
 	if err != nil || !won {
 		if err == nil {
@@ -148,8 +187,19 @@ func (m *Manager) Start(ctx context.Context, runID string, cols, rows uint16) (R
 		return run, err
 	}
 	startedAt := m.now()
-	sess, err := transport.Start(ctx, spec.Argv, cols, rows)
+	// The process lives on the run context, never on the caller's request.
+	base := m.Base
+	if base == nil {
+		base = context.Background()
+	}
+	maxRuntime := m.MaxRuntime
+	if maxRuntime <= 0 {
+		maxRuntime = DefaultMaxRuntime
+	}
+	runCtx, cancel := context.WithTimeout(base, maxRuntime)
+	sess, err := transport.Start(runCtx, spec.Argv, cols, rows)
 	if err != nil {
+		cancel()
 		_ = m.Store.Finish(ctx, run.ID, StateRunning, StateFailed, nil, "", "could not start: "+Redact(err.Error()), m.now())
 		return m.Store.Get(ctx, runID)
 	}
@@ -160,15 +210,23 @@ func (m *Manager) Start(ctx context.Context, runID string, cols, rows uint16) (R
 		runUser = "ssh:" + run.Machine
 	}
 	_ = m.Store.Started(ctx, run.ID, runUser, startedAt)
-	l := &live{sess: sess, subs: map[chan Frame]struct{}{}}
+	act, _ := ActionByID(run.Action)
+	l := &live{sess: sess, subs: map[chan Frame]struct{}{}, cancel: cancel, interactive: act.Interactive}
 	m.mu.Lock()
 	if m.runs == nil {
 		m.runs = map[string]*live{}
 	}
 	m.runs[run.ID] = l
+	m.starting--
+	reserved = false
 	m.mu.Unlock()
+	if l.interactive {
+		l.mu.Lock()
+		l.arm(m.DetachGrace+initialAttach, "no terminal attached")
+		l.mu.Unlock()
+	}
 	slog.Info("action run started", "run_id", run.ID, "item_id", run.ItemID, "op_digest", run.OpDigest, "machine", run.Machine, "argv", spec.Argv, "user", runUser)
-	go m.pump(run, l)
+	go m.pump(run, l, runCtx)
 	return m.Store.Get(ctx, runID)
 }
 
@@ -195,7 +253,7 @@ func (m *Manager) refuse(ctx context.Context, run Run, why string) (Run, error) 
 }
 
 // pump copies output to subscribers and the transcript, then records the exit.
-func (m *Manager) pump(run Run, l *live) {
+func (m *Manager) pump(run Run, l *live, runCtx context.Context) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := l.sess.Read(buf)
@@ -218,12 +276,24 @@ func (m *Manager) pump(run Run, l *live) {
 	}
 	code, werr := l.sess.Wait()
 	_ = l.sess.Close()
+	l.cancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	state, errText := StateSucceeded, ""
-	if werr != nil {
+	l.mu.Lock()
+	reason := l.reason
+	if l.idle != nil {
+		l.idle.Stop()
+	}
+	l.mu.Unlock()
+	switch {
+	case reason != "":
+		state, errText = StateFailed, "ended by Tachyon: "+reason
+	case errors.Is(runCtx.Err(), context.DeadlineExceeded):
+		state, errText = StateFailed, "ended by Tachyon: exceeded the maximum run time"
+	case werr != nil:
 		state, errText = StateFailed, Redact(werr.Error())
-	} else if code != 0 {
+	case code != 0:
 		state = StateFailed
 	}
 	exit := code
@@ -273,6 +343,10 @@ func (m *Manager) Attach(ctx context.Context, runID string) (replay []byte, fram
 		return replay, ch, func() {}, nil
 	}
 	l.subs[ch] = struct{}{}
+	if l.idle != nil {
+		l.idle.Stop() // a terminal is attached
+		l.idle = nil
+	}
 	return replay, ch, func() {
 		l.mu.Lock()
 		defer l.mu.Unlock()
@@ -280,7 +354,56 @@ func (m *Manager) Attach(ctx context.Context, runID string) (replay []byte, fram
 			delete(l.subs, ch)
 			close(ch)
 		}
+		// The last terminal of an interactive run left: end the run after the
+		// grace period (immediately by default). Unattended runs are unaffected.
+		if l.interactive && !l.done && len(l.subs) == 0 {
+			l.arm(m.DetachGrace, "terminal closed")
+		}
 	}, nil
+}
+
+// arm schedules the run's end unless a terminal attaches first. l.mu is held.
+func (l *live) arm(after time.Duration, reason string) {
+	if l.idle != nil {
+		l.idle.Stop()
+	}
+	end := func() {
+		l.mu.Lock()
+		if l.done || len(l.subs) > 0 {
+			l.mu.Unlock()
+			return
+		}
+		l.reason = reason
+		l.mu.Unlock()
+		l.cancel()
+		_ = l.sess.Close()
+	}
+	if after <= 0 {
+		l.idle = nil
+		go end()
+		return
+	}
+	l.idle = time.AfterFunc(after, end)
+}
+
+func (m *Manager) reserve() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	limit := m.MaxConcurrent
+	if limit <= 0 {
+		limit = DefaultMaxConcurrent
+	}
+	if len(m.runs)+m.starting >= limit {
+		return false
+	}
+	m.starting++
+	return true
+}
+
+func (m *Manager) release() {
+	m.mu.Lock()
+	m.starting--
+	m.mu.Unlock()
 }
 
 // Input sends the owner's keystrokes to the process. It is not logged or

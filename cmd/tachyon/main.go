@@ -67,6 +67,7 @@ func main() {
 		PluginBinDir:                env("TACHYON_PLUGIN_DIR", "bin/plugins"),
 		DataDir:                     env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
 		CacheDir:                    env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
+		ActionDetachGrace:           durationEnv("TACHYON_ACTION_DETACH_GRACE"),
 		ActionHub: actionrun.SSH{
 			Addr:           os.Getenv("TACHYON_ACTION_HUB_SSH_ADDR"),
 			User:           env("TACHYON_ACTION_HUB_SSH_USER", "chrispian"),
@@ -185,4 +186,13 @@ func transcriptLimit() int {
 		log.Fatal("TACHYON_TRANSCRIPT_MAX_SESSIONS must be between 200 and 20000")
 	}
 	return limit
+}
+
+// durationEnv parses a Go duration such as "15s"; empty or invalid is zero.
+func durationEnv(key string) time.Duration {
+	d, err := time.ParseDuration(os.Getenv(key))
+	if err != nil || d < 0 {
+		return 0
+	}
+	return d
 }

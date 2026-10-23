@@ -1251,6 +1251,16 @@ id** and parameters. Day one: `cerberus.resource.{apply,deploy,reload,remove,sto
 - **Transcript.** Output only, ANSI-stripped, secret-shaped strings redacted, 64 KiB
   tail. Keystrokes are never stored or logged; the terminal's echo of typed bytes
   is also dropped from the stored copy, and echo-off prompts produce no output.
+- **Lifetime and limits.** A run lives on its own context, never the request's: it ends at
+  `MaxRuntime` (10 minutes), at Tachyon shutdown, or, for an interactive run, when its last
+  terminal closes (`TACHYON_ACTION_DETACH_GRACE`, a Go duration, default `0`: end at once; set
+  e.g. `15s` to let a page reload reattach). An interactive run nobody attaches to within 15s
+  is ended. Ending a run kills the whole process group locally and signals and closes the ssh
+  session remotely. At most four runs are active (`MaxConcurrent`); an approved action over the
+  bound stays `approved` and starts when one finishes. `Local.Start` refuses an already
+  cancelled context, and the ssh handshake, command and label lookups all honour cancellation.
+  The ssh key must be a regular file owned by the Tachyon user with no group or other access;
+  `known_hosts` must not be group or other writable.
 - **Result.** The run (state, exit code, bounded output, timestamps, user, machine,
   argv, digest) is returned as `action_run` on the approval inbox item and kept in
   `action_runs` (one audit row per run; start and finish are also logged).

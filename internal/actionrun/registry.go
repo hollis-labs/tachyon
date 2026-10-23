@@ -75,6 +75,9 @@ func cerberusResource(verb, title string) Action {
 	}
 }
 
+// testRegistry is set only by tests, to exercise lifecycle policy with harmless commands.
+var testRegistry []Action
+
 // Actions returns the registry in id order.
 func Actions() []Action {
 	list := []Action{
@@ -97,6 +100,7 @@ func Actions() []Action {
 			Interactive: true, Class: "medium",
 		},
 	}
+	list = append(list, testRegistry...)
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	return list
 }
