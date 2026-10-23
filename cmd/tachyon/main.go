@@ -89,6 +89,9 @@ func main() {
 			GitHubOrg:          env("GITHUB_ORG", "hollis-labs"),
 		},
 	}
+	cfg.CardEvents.Enabled = os.Getenv("TACHYON_CARD_EVENTS") == "1"
+	cfg.CardEvents.URL = os.Getenv("HOLLIS_EVENTS_URL")
+	cfg.CardEvents.TokenFile = os.Getenv("HOLLIS_AUTH_TOKEN_FILE_TACHYON")
 	if len(os.Args) > 1 && os.Args[1] == "import-planner" {
 		if err := planner.Command(ctx, cfg.DataDir, cfg.Upstreams, os.Args[2:], os.Stdout); err != nil {
 			log.Fatal(err)

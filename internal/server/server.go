@@ -26,6 +26,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
@@ -66,7 +67,13 @@ type Config struct {
 	ActionDetachGrace time.Duration
 	// CardEffectsTorque lets an approved card change Torque task statuses.
 	CardEffectsTorque bool
-	Upstreams         catalog.Upstreams
+	// CardEvents configures card.* event publishing to the hub; off by default.
+	CardEvents struct {
+		Enabled   bool
+		URL       string // HOLLIS_EVENTS_URL
+		TokenFile string // HOLLIS_AUTH_TOKEN_FILE_TACHYON
+	}
+	Upstreams catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
@@ -199,6 +206,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.startActions(approvalContext, store)
 	s.startCardEffects(approvalContext, store)
+	s.startCardEvents(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
 	if err != nil {
@@ -576,6 +584,25 @@ func (s *Server) startCardEffects(ctx context.Context, store *localstore.Store) 
 		slog.Warn("card effects not recovered", "err", err)
 	}
 	go ex.Watch(ctx, 0)
+}
+
+// startCardEvents publishes card.* events to the hub. It is off unless
+// TACHYON_CARD_EVENTS=1 and both the hub URL (HOLLIS_EVENTS_URL) and the token
+// file of the tachyon producer credential (HOLLIS_AUTH_TOKEN_FILE_TACHYON) are
+// set. Tachyon never mints or stores that credential.
+func (s *Server) startCardEvents(ctx context.Context, store *localstore.Store) {
+	cfg := s.cfg.CardEvents
+	if !cfg.Enabled {
+		return
+	}
+	outbox := &cardevents.Store{DB: store}
+	sender, err := cardevents.NewSender(outbox, cfg.URL, cfg.TokenFile)
+	if err != nil {
+		slog.Warn("card events are enabled but not configured; staying off", "err", err)
+		return
+	}
+	collector := &cardevents.Collector{Items: &approvals.Store{DB: store}, Effects: s.cardFx, Outbox: outbox}
+	go cardevents.Run(ctx, collector, sender, 0)
 }
 
 // cardReceiptView is the effects receipt attached to a card item, or nil.
