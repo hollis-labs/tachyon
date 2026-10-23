@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"log"
 	"net"
 	"os"
@@ -66,6 +67,12 @@ func main() {
 		PluginBinDir:                env("TACHYON_PLUGIN_DIR", "bin/plugins"),
 		DataDir:                     env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
 		CacheDir:                    env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
+		ActionHub: actionrun.SSH{
+			Addr:           os.Getenv("TACHYON_ACTION_HUB_SSH_ADDR"),
+			User:           env("TACHYON_ACTION_HUB_SSH_USER", "chrispian"),
+			KeyFile:        os.Getenv("TACHYON_ACTION_HUB_SSH_KEY_FILE"),
+			KnownHostsFile: os.Getenv("TACHYON_ACTION_HUB_SSH_KNOWN_HOSTS"),
+		},
 		Upstreams: catalog.Upstreams{
 			ActivityURL:        env("TACHYON_ACTIVITY_URL", "http://127.0.0.1:8099"),
 			TetherAddr:         os.Getenv("TETHER_ADDR"),

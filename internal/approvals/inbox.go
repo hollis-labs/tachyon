@@ -1,6 +1,7 @@
 package approvals
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,9 @@ type Inbox struct {
 	Store    *Store
 	Service  *hitl.Service
 	Sessions *Bridge
+	// ActionRun, when set, attaches the registered-action run for an item to its
+	// browser view (nil result means the item has no run).
+	ActionRun func(ctx context.Context, itemID string) any
 }
 
 func NewInbox(store *Store, sessions *Bridge) *Inbox {
@@ -82,6 +86,7 @@ func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Parti
 type browserItem struct {
 	hitl.ItemView
 	PresentedProjectionRevision int64 `json:"presented_projection_revision"`
+	ActionRun                   any   `json:"action_run,omitempty"`
 }
 
 // ItemView has custom marshaling; explicitly add the presentation field.
@@ -95,6 +100,9 @@ func (item browserItem) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields["presented_projection_revision"], _ = json.Marshal(item.PresentedProjectionRevision)
+	if item.ActionRun != nil {
+		fields["action_run"], _ = json.Marshal(item.ActionRun)
+	}
 	return json.Marshal(fields)
 }
 func (i *Inbox) view(r *http.Request, id string) (browserItem, error) {
@@ -106,7 +114,11 @@ func (i *Inbox) view(r *http.Request, id string) (browserItem, error) {
 	if err != nil {
 		return browserItem{}, err
 	}
-	return browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision}, nil
+	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision}
+	if i.ActionRun != nil {
+		out.ActionRun = i.ActionRun(r.Context(), id)
+	}
+	return out, nil
 }
 func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
