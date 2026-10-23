@@ -400,7 +400,9 @@ func TestLabelsAreRecheckedAtStartAndFailClosed(t *testing.T) {
 	t.Run("lookup transport failure", func(t *testing.T) {
 		r := newRig(t, printAndExit("ran\n", 0))
 		h, _ := r.svc.Request(context.Background(), RequestInput{Machine: "hub", Action: "cerberus.resource.reload", Params: map[string]string{"resource_id": "hub-tether"}, Reason: "x"})
-		r.svc.Manager.Labels = func(context.Context, string, string) (Labels, error) { return Labels{}, errors.New("ssh: connection refused") }
+		r.svc.Manager.Labels = func(context.Context, string, string) (Labels, error) {
+			return Labels{}, errors.New("ssh: connection refused")
+		}
 		r.decide(t, h.ItemID, "approved")
 		run := r.await(t, h.RunID)
 		if run.State != StateRefused || r.tr.count() != 0 {
