@@ -1,6 +1,7 @@
 // The four HITL card kinds. Each renders compact (tray/toast row), inline
 // (one line) and expanded (interactive). Nothing here auto-approves: every
 // decision is an explicit click, approve runs through ActionBus + IdentityConfirm.
+import { Button } from '@hollis-labs/design-components'
 import { useId, useState } from 'react'
 import { CardFrame } from '../cards/frame'
 import type { CardRenderProps, CardActionSpec } from '../cards/types'
@@ -16,8 +17,8 @@ const LABEL = { approval: 'Approval', question: 'Question', secret: 'Secret', fo
 function Shell({ p, s, children }: { p: CardRenderProps; s: HitlCardState; children?: React.ReactNode }) {
   if (p.density === 'inline') {
     return (
-      <span data-card-kind={p.card.kind} data-card-phase={p.card.phase} className="inline-flex items-center gap-2 font-mono text-[11px] text-zinc-300">
-        <span aria-hidden className="h-1.5 w-1.5 bg-amber-400" />
+      <span data-card-kind={p.card.kind} data-card-phase={p.card.phase} className="inline-flex items-center gap-2 font-mono text-label text-fg-secondary">
+        <span aria-hidden className="h-1.5 w-1.5 bg-warning" />
         {LABEL[s.req.type]}: {p.card.title}
         <Countdown remaining={s.req.status === 'pending' ? s.remaining : undefined} />
       </span>
@@ -37,7 +38,7 @@ function Shell({ p, s, children }: { p: CardRenderProps; s: HitlCardState; child
 function Unreadable({ p }: { p: CardRenderProps }) {
   return (
     <CardFrame card={p.card} density={p.density === 'inline' ? 'compact' : p.density} kindLabel="HITL" onExpand={p.onExpand}>
-      <p className="mt-1 font-mono text-[11px] text-red-300">Request payload could not be read.</p>
+      <p className="mt-1 font-mono text-label text-danger">Request payload could not be read.</p>
     </CardFrame>
   )
 }
@@ -55,14 +56,14 @@ export function HitlApprovalCard(p: CardRenderProps) {
   return (
     <Shell p={p} s={s}>
       {req.effects && req.effects.length > 0 && (
-        <ul className="mt-2 space-y-0.5 border-l border-zinc-700 pl-3">
-          {req.effects.map((e, i) => <li key={i} className="font-mono text-[11px] text-zinc-300">{e}</li>)}
+        <ul className="mt-2 space-y-0.5 border-l border-border pl-3">
+          {req.effects.map((e, i) => <li key={i} className="font-mono text-label text-fg-secondary">{e}</li>)}
         </ul>
       )}
-      {req.scope.length > 0 && <p className="mt-2 font-mono text-[11px] text-zinc-500">scope: <span className="text-zinc-300">{req.scope.join(', ')}</span></p>}
+      {req.scope.length > 0 && <p className="mt-2 font-mono text-label text-fg-muted">scope: <span className="text-fg-secondary">{req.scope.join(', ')}</span></p>}
       {!s.locked && (
         <div className="mt-3">
-          <label htmlFor={rid} className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">Note (optional, recorded in the audit)</label>
+          <label htmlFor={rid} className="font-mono text-micro uppercase tracking-label text-fg-muted">Note (optional, recorded in the audit)</label>
           <textarea id={rid} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} className={`${FIELD} mt-1`} />
           <div className="flex flex-wrap items-center gap-2 pt-2">
             {approvalActions(req).map((a) => (
@@ -73,7 +74,7 @@ export function HitlApprovalCard(p: CardRenderProps) {
             ))}
             <StatusLine controller={p.controller} ids={['approve', 'reject', 'defer']} />
           </div>
-          <p className="pt-1.5 font-mono text-[10px] text-zinc-500">* approving asks you to confirm your identity first</p>
+          <p className="pt-1.5 font-mono text-micro text-fg-muted">* approving asks you to confirm your identity first</p>
         </div>
       )}
     </Shell>
@@ -104,11 +105,11 @@ export function HitlQuestionCard(p: CardRenderProps) {
           ) : (
             <>
               <legend className="sr-only">Options</legend>
-              <div className="border border-zinc-800">
+              <div className="border border-border-subtle">
                 {req.options.map((o) => {
                   const on = picked.includes(o.value)
                   return (
-                    <label key={o.value} className={`flex cursor-pointer items-start gap-2.5 border-b border-zinc-800 px-3 py-2 last:border-b-0 hover:bg-zinc-900 ${on ? 'bg-zinc-900' : ''}`}>
+                    <label key={o.value} className={`flex cursor-pointer items-start gap-2.5 border-b border-border-subtle px-3 py-2 last:border-b-0 hover:bg-surface ${on ? 'bg-surface' : ''}`}>
                       <input
                         type={req.mode === 'multi' ? 'checkbox' : 'radio'}
                         name={gid}
@@ -120,11 +121,11 @@ export function HitlQuestionCard(p: CardRenderProps) {
                             setOther('')
                           }
                         }}
-                        className="mt-1 accent-amber-300"
+                        className="mt-1 accent-primary"
                       />
                       <span>
-                        <span className="block text-sm text-zinc-100">{o.label}</span>
-                        {o.description && <span className="block text-xs text-zinc-400">{o.description}</span>}
+                        <span className="block text-sm text-fg">{o.label}</span>
+                        {o.description && <span className="block text-xs text-fg-secondary">{o.description}</span>}
                       </span>
                     </label>
                   )
@@ -171,19 +172,19 @@ export function HitlSecretCard(p: CardRenderProps) {
   }
   return (
     <Shell p={p} s={s}>
-      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-[11px]">
-        <dt className="text-zinc-500">purpose</dt><dd className="text-zinc-300">{req.purpose}</dd>
-        {req.destination && (<><dt className="text-zinc-500">delivered to</dt><dd className="text-zinc-300">{req.destination}</dd></>)}
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-label">
+        <dt className="text-fg-muted">purpose</dt><dd className="text-fg-secondary">{req.purpose}</dd>
+        {req.destination && (<><dt className="text-fg-muted">delivered to</dt><dd className="text-fg-secondary">{req.destination}</dd></>)}
       </dl>
       {!s.locked && (
         <form className="mt-3" onSubmit={(e) => { e.preventDefault(); if (value && !busy) void submit() }} autoComplete="off">
-          <label htmlFor={iid} className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">{req.fieldLabel}</label>
+          <label htmlFor={iid} className="font-mono text-micro uppercase tracking-label text-fg-muted">{req.fieldLabel}</label>
           <input id={iid} type="password" autoComplete="off" spellCheck={false} data-lpignore="true" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className={`${FIELD} mt-1 font-mono`} />
           <div className="flex flex-wrap items-center gap-2 pt-2">
-            <button type="submit" disabled={!value || busy} className="border border-amber-300 bg-amber-300 px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-zinc-950 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40">{busy ? 'Sending...' : 'Send secret'}</button>
+            <Button type="submit" size="xs" disabled={!value || busy} className="font-mono uppercase tracking-label">{busy ? 'Sending...' : 'Send secret'}</Button>
             <StatusLine controller={p.controller} ids={['secret']} />
           </div>
-          <p className="pt-1.5 font-mono text-[10px] text-zinc-500">Sent once to the destination. Not stored, logged or shown again by the Console.</p>
+          <p className="pt-1.5 font-mono text-micro text-fg-muted">Sent once to the destination. Not stored, logged or shown again by the Console.</p>
         </form>
       )}
     </Shell>
@@ -207,13 +208,13 @@ function FieldInput({ f, value, onChange, disabled, error }: { f: HitlField; val
   return (
     <div>
       {f.kind === 'checkbox' ? (
-        <label className="flex items-center gap-2 text-sm text-zinc-100">
-          <input type="checkbox" {...common} checked={value === true} onChange={(e) => onChange(e.target.checked)} className="accent-amber-300" />
+        <label className="flex items-center gap-2 text-sm text-fg">
+          <input type="checkbox" {...common} checked={value === true} onChange={(e) => onChange(e.target.checked)} className="accent-primary" />
           {f.label}{f.required ? ' *' : ''}
         </label>
       ) : (
         <>
-          <label htmlFor={id} className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">{f.label}{f.required ? ' *' : ''}</label>
+          <label htmlFor={id} className="font-mono text-micro uppercase tracking-label text-fg-muted">{f.label}{f.required ? ' *' : ''}</label>
           {f.kind === 'textarea' ? (
             <textarea {...common} rows={3} value={typeof value === 'string' ? value : ''} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} className={`${FIELD} mt-1`} />
           ) : f.kind === 'select' ? (
@@ -228,8 +229,8 @@ function FieldInput({ f, value, onChange, disabled, error }: { f: HitlField; val
           )}
         </>
       )}
-      {f.help && !error && <p className="mt-0.5 text-xs text-zinc-500">{f.help}</p>}
-      {error && <p id={`${id}-e`} role="alert" className="mt-0.5 font-mono text-[11px] text-red-300">{error}</p>}
+      {f.help && !error && <p className="mt-0.5 text-xs text-fg-muted">{f.help}</p>}
+      {error && <p id={`${id}-e`} role="alert" className="mt-0.5 font-mono text-label text-danger">{error}</p>}
     </div>
   )
 }
@@ -257,7 +258,7 @@ export function HitlFormCard(p: CardRenderProps) {
             <FieldInput key={f.id} f={f} value={cur[f.id]} disabled={busy} error={errors[f.id]} onChange={(v) => { setValues({ ...cur, [f.id]: v }); if (errors[f.id]) setErrors({ ...errors, [f.id]: '' }) }} />
           ))}
           <div className="flex items-center gap-2 pt-1">
-            <button type="submit" disabled={busy} className="border border-amber-300 bg-amber-300 px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-zinc-950 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40">{busy ? 'Submitting...' : (req.submitLabel ?? 'Submit')}</button>
+            <Button type="submit" size="xs" disabled={busy} className="font-mono uppercase tracking-label">{busy ? 'Submitting...' : (req.submitLabel ?? 'Submit')}</Button>
             <StatusLine controller={p.controller} ids={['form']} />
           </div>
         </form>
