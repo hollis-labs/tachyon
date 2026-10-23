@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/hollis-labs/libs/harness/core/adapters/runtimeevents/catalog"
 )
 
 // Response projection for the non-operator-gated Tether GET proxies.
@@ -41,32 +43,80 @@ var (
 
 type fieldSet map[string]fieldKind
 
-// eventPayloadAllowlist is the complete set of event kinds that reach the
-// browser and, per kind, the only payload fields that survive.
-var eventPayloadAllowlist = map[string]fieldSet{
-	"tool.call.started":  {"tool": fTool, "server": fCode},
-	"tool.call.finished": {"tool": fTool, "server": fCode, "ok": fBool, "error_class": fCode, "duration_ms": fNum},
+// eventOverlay is one event kind the browser may see: the only payload fields
+// that survive, and whether the kind also feeds the activity list. It is the
+// single table behind both the projection and the activity query; an unlisted
+// kind is dropped. Card kinds are keyed by the shared catalog's constants, so a
+// renamed catalog kind breaks the build here instead of silently dropping.
+type eventOverlay struct {
+	kind     string
+	fields   fieldSet
+	activity bool
+}
+
+var eventOverlays = []eventOverlay{
+	{"tool.call.started", fieldSet{"tool": fTool, "server": fCode}, true},
+	{"tool.call.finished", fieldSet{"tool": fTool, "server": fCode, "ok": fBool, "error_class": fCode, "duration_ms": fNum}, true},
 	// label is free text: dropped. The UI falls back to "Reported progress".
-	"progress.checkpoint":    {"checkpoint_id": fID, "state": fCode, "attempt": fNum, "turn_id": fID},
-	"session.turn_output":    {"turn_id": fID, "kind": fCode, "stop_reason": fCode},
-	"session.turn_routed":    {"turn_id": fID, "message_id": fID, "thread_id": fID, "state": fCode},
-	"session.state_changed":  {"from": fCode, "to": fCode, "exit_code": fNum, "reasons": fCodes},
-	"session.launch_failed":  {"reason": fCode, "reasons": fCodes, "runtime": fCode, "worker_id": fID, "exit_code": fNum},
-	"session.stall_detected": {"reason": fCode, "reasons": fCodes, "duration_ms": fNum},
-	"session.stall_cleared":  {"reason": fCode, "reasons": fCodes, "duration_ms": fNum},
-	"message.sent":           msgFields(),
-	"message.queued":         msgFields(),
-	"message.delivered":      msgFields(),
-	"message.read":           msgFields(),
-	"message.consumed":       msgFields(),
-	"message.failed":         msgFields(),
-	"message.dead_lettered":  msgFields(),
-	"message.redriven":       msgFields(),
-	"message.canceled":       msgFields(),
-	"message.wake.outcome":   {"message_id": fID, "thread_id": fID, "outcome": fCode, "state": fCode, "attempt": fNum},
-	"fleet.node.down":        fleetFields(),
-	"fleet.node.up":          fleetFields(),
-	"fleet.node.degraded":    fleetFields(),
+	{"progress.checkpoint", fieldSet{"checkpoint_id": fID, "state": fCode, "attempt": fNum, "turn_id": fID}, true},
+	{"session.state_changed", fieldSet{"from": fCode, "to": fCode, "exit_code": fNum, "reasons": fCodes}, true},
+	{"session.launch_failed", fieldSet{"reason": fCode, "reasons": fCodes, "runtime": fCode, "worker_id": fID, "exit_code": fNum}, true},
+	{"session.turn_output", fieldSet{"turn_id": fID, "kind": fCode, "stop_reason": fCode}, true},
+	{"session.turn_routed", fieldSet{"turn_id": fID, "message_id": fID, "thread_id": fID, "state": fCode}, true},
+	{"session.stall_detected", fieldSet{"reason": fCode, "reasons": fCodes, "duration_ms": fNum}, true},
+	{"session.stall_cleared", fieldSet{"reason": fCode, "reasons": fCodes, "duration_ms": fNum}, true},
+	{"message.sent", msgFields(), true},
+	{"message.queued", msgFields(), true},
+	{"message.delivered", msgFields(), true},
+	{"message.read", msgFields(), true},
+	{"message.consumed", msgFields(), true},
+	{"message.failed", msgFields(), true},
+	{"message.dead_lettered", msgFields(), true},
+	{"message.redriven", msgFields(), true},
+	{"message.canceled", msgFields(), true},
+	{"message.wake.outcome", fieldSet{"message_id": fID, "thread_id": fID, "outcome": fCode, "state": fCode, "attempt": fNum}, true},
+	{"fleet.node.down", fleetFields(), true},
+	{"fleet.node.up", fleetFields(), true},
+	{"fleet.node.degraded", fleetFields(), true},
+
+	// Cards: ids, codes and times only. A card's title, summary, data, answers,
+	// the responder's identity and per-effect results are free text or identity
+	// and stay behind the operator-session inbox routes.
+	{catalog.KindCardCreated, cardFields(), true},
+	{catalog.KindCardUpdated, cardFields(), true},
+	{catalog.KindCardResolved, cardFields(), true},
+	{catalog.KindCardExpired, cardFields(), true},
+	{catalog.KindCardEffectCompleted, cardFields(), true},
+	{catalog.KindCardEffectFailed, cardFields(), true},
+}
+
+var (
+	eventPayloadAllowlist = overlayFields()
+	activityEventKinds    = overlayActivity()
+)
+
+func overlayFields() map[string]fieldSet {
+	out := make(map[string]fieldSet, len(eventOverlays))
+	for _, o := range eventOverlays {
+		out[o.kind] = o.fields
+	}
+	return out
+}
+
+func overlayActivity() []string {
+	var out []string
+	for _, o := range eventOverlays {
+		if o.activity {
+			out = append(out, o.kind)
+		}
+	}
+	return out
+}
+
+func cardFields() fieldSet {
+	return fieldSet{"card_id": fID, "revision": fNum, "card_type": fCode, "state": fCode, "risk": fCode, "op_digest": fID,
+		"source_app": fID, "supersedes": fID, "outcome": fCode, "assurance": fCode, "error_code": fCode,
+		"expires_at": fTime, "at": fTime}
 }
 
 func msgFields() fieldSet {
