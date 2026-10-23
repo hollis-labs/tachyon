@@ -1284,8 +1284,9 @@ including reads, `Authorization` headers refused). Binary frames are output and
 keystrokes; a text frame `{"type":"resize","cols":N,"rows":N}` resizes (the first one
 sizes the process on start). The socket only attaches to a run created by an
 approved request; it starts nothing by itself and the executor still re-checks the
-digest. Reloading the page reattaches to a live run with a bounded replay; a finished
-run shows its recorded exit code and output. Any reverse proxy in front of Tachyon
+digest. Closing the terminal ends an interactive run (the pty must not outlive its viewer); set
+`TACHYON_ACTION_DETACH_GRACE` (e.g. `15s`) to let a page reload reattach with a bounded
+replay within that window. A finished run shows its recorded exit code and output. Any reverse proxy in front of Tachyon
 must pass websocket upgrades for that path.
 
 #### Trusted high-tier assurance integration (not activated)

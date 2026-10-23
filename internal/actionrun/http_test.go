@@ -3,8 +3,12 @@ package actionrun
 import (
 	"context"
 	"encoding/json"
+	"github.com/hollis-labs/tachyon/internal/approvals"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +136,74 @@ func TestTerminalRejectsBearerForeignOriginAndUnknownRun(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&run)
 	if run.ID != h.RunID || run.OpDigest != h.OpDigest {
 		t.Fatalf("%+v", run)
+	}
+}
+
+// A real websocket through httputil.ReverseProxy with the real operator guard:
+// the session cookie gates the attach, and closing the socket ends the run.
+func TestTerminalThroughReverseProxyEnforcesSessionAndKillsOnDisconnect(t *testing.T) {
+	r, _, h := terminalRig(t)
+	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		cookie, e := q.Cookie("tangent_participant")
+		if e == nil && cookie.Value == "high" {
+			_, _ = io.WriteString(w, `{"elevated":true,"assurance":"operator-token"}`)
+		} else {
+			_, _ = io.WriteString(w, `{"elevated":false,"assurance":"loopback-unverified"}`)
+		}
+	}))
+	defer auth.Close()
+	backend := httptest.NewServer(approvals.New(auth.URL).RequireOperatorReads(&Handler{Service: r.svc}))
+	defer backend.Close()
+	u, _ := url.Parse(backend.URL)
+	proxy := httptest.NewServer(httputil.NewSingleHostReverseProxy(u))
+	defer proxy.Close()
+	path := Prefix + "/" + h.RunID + "/terminal"
+	for _, tc := range []struct {
+		cookie string
+		status int
+	}{{"", 401}, {"low", 403}} {
+		hdr := http.Header{}
+		if tc.cookie != "" {
+			hdr.Set("Cookie", approvals.CookieName+"="+tc.cookie)
+		}
+		c, resp, err := dial(t, proxy, path, hdr)
+		if c != nil {
+			c.CloseNow()
+		}
+		if err == nil || resp == nil || resp.StatusCode != tc.status {
+			t.Fatalf("cookie=%q: status=%v err=%v", tc.cookie, resp, err)
+		}
+	}
+	r.decide(t, h.ItemID, "approved")
+	c, _, err := dial(t, proxy, path, http.Header{"Cookie": {approvals.CookieName + "=high"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_ = c.Write(ctx, websocket.MessageText, []byte(`{"type":"resize","cols":80,"rows":24}`))
+	for {
+		typ, data, err := c.Read(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if typ == websocket.MessageBinary && strings.Contains(string(data), "Digest prefix") {
+			break
+		}
+	}
+	if !r.svc.Manager.Live(h.RunID) {
+		t.Fatal("run should be live while attached")
+	}
+	c.CloseNow() // the browser goes away
+	deadline := time.Now().Add(2 * time.Second)
+	for r.svc.Manager.Live(h.RunID) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if r.svc.Manager.Live(h.RunID) {
+		t.Fatal("the pty run stays live after the proxied websocket disconnected")
+	}
+	end, err := r.svc.Await(context.Background(), h.RunID, 3*time.Second)
+	if err != nil || end.State != StateFailed || !strings.Contains(end.Error, "terminal closed") {
+		t.Fatalf("%+v %v", end, err)
 	}
 }

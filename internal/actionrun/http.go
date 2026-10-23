@@ -186,7 +186,8 @@ func (h *Handler) terminal(w http.ResponseWriter, r *http.Request, run Run) {
 				}
 			}
 		case <-readDone:
-			// The tab went away. The run keeps going and can be reattached.
+			// The tab went away. The deferred cancel detaches this terminal; an
+			// interactive run then ends after Manager.DetachGrace (default: at once).
 			return
 		}
 	}
