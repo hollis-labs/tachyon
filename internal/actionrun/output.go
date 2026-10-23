@@ -3,7 +3,6 @@ package actionrun
 import (
 	"regexp"
 	"sync"
-	"time"
 )
 
 const (
@@ -39,48 +38,18 @@ func Redact(s string) string {
 	return s
 }
 
-// transcript collects the persisted copy of a run's output. Bytes the owner
-// typed (and the terminal echoed back) are removed from it; input itself is
-// never held beyond the short echo-matching queue.
+// transcript collects the persisted copy of an unattended run's output. Only
+// actions that take no input are recorded; interactive terminals never are.
 type transcript struct {
 	mu      sync.Mutex
 	buf     []byte
 	dropped bool
-	echo    []byte // typed bytes whose echo has not been seen yet
-	echoAt  time.Time
-}
-
-// typed notes owner input so its echo can be kept out of the transcript. The
-// bytes are only matched against output and never stored with it.
-func (t *transcript) typed(p []byte) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.echo = append(t.echo, p...)
-	t.echoAt = time.Now()
-	if len(t.echo) > 4096 {
-		t.echo = t.echo[len(t.echo)-4096:]
-	}
 }
 
 func (t *transcript) output(p []byte) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// A terminal echoes within milliseconds; with echo off (a passphrase prompt)
-	// nothing comes back, so stale pending bytes must not swallow later output.
-	if len(t.echo) > 0 && time.Since(t.echoAt) > 400*time.Millisecond {
-		t.echo = nil
-	}
-	for _, b := range p {
-		if len(t.echo) > 0 && (b == t.echo[0] || (t.echo[0] == '\r' && b == '\n')) {
-			t.echo = t.echo[1:]
-			continue
-		}
-		if len(t.echo) > 0 && b == '\b' {
-			// An erase sequence ("\b \b") after typing: forget the pending byte.
-			t.echo = t.echo[1:]
-		}
-		t.buf = append(t.buf, b)
-	}
+	t.buf = append(t.buf, p...)
 	if len(t.buf) > 4*MaxStoredOutput {
 		t.buf = t.buf[len(t.buf)-4*MaxStoredOutput:]
 		t.dropped = true

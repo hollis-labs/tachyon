@@ -105,7 +105,11 @@ func (item browserItem) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(fields)
 }
-func (i *Inbox) view(r *http.Request, id string) (browserItem, error) {
+
+// view projects one item. The action run (its command, output and exit status) is
+// attached only for an elevated operator session: the same bar as the dedicated
+// run-read route, never the weaker browser-session assurance of the queue itself.
+func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, error) {
 	rec, err := i.Store.Get(r.Context(), id)
 	if err != nil {
 		return browserItem{}, err
@@ -115,7 +119,7 @@ func (i *Inbox) view(r *http.Request, id string) (browserItem, error) {
 		return browserItem{}, err
 	}
 	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision}
-	if i.ActionRun != nil {
+	if i.ActionRun != nil && operator {
 		out.ActionRun = i.ActionRun(r.Context(), id)
 	}
 	return out, nil
@@ -140,7 +144,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/inbox" && r.Method == http.MethodGet {
-		i.list(w, r)
+		i.list(w, r, participant.Assurance == "operator-token")
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -148,7 +152,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "Unknown inbox operation.")
 		return
 	}
-	item, err := i.view(r, parts[1])
+	item, err := i.view(r, parts[1], participant.Assurance == "operator-token")
 	if err != nil {
 		writeHITLError(w, err)
 		return
@@ -222,7 +226,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	writeValue(w, outcome)
 }
-func (i *Inbox) list(w http.ResponseWriter, r *http.Request) {
+func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
 	limit := 25
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -252,7 +256,7 @@ func (i *Inbox) list(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, rec := range records {
-			item, err := i.view(r, rec.ItemID)
+			item, err := i.view(r, rec.ItemID, operator)
 			if err != nil {
 				writeHITLError(w, err)
 				return

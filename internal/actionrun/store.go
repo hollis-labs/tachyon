@@ -51,6 +51,7 @@ type Run struct {
 	User        string            `json:"user,omitempty"`
 	ExitCode    *int              `json:"exit_code,omitempty"`
 	Output      string            `json:"output,omitempty"`
+	Note        string            `json:"note,omitempty"`
 	Error       string            `json:"error,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	StartedAt   *time.Time        `json:"started_at,omitempty"`
@@ -85,6 +86,9 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 		r.Interactive = act.Interactive
 	}
 	r.Terminal = terminalState(r.State)
+	if r.Interactive && r.Terminal {
+		r.Note = InteractiveNote
+	}
 	r.CreatedAt = time.Unix(0, created).UTC()
 	if exit.Valid {
 		v := int(exit.Int64)
@@ -100,6 +104,9 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	}
 	return r, nil
 }
+
+// InteractiveNote replaces recorded output for actions that prompt the owner.
+const InteractiveNote = "Terminal output of interactive actions is not recorded. See the status and exit code."
 
 var ErrNotFound = errors.New("action run not found")
 

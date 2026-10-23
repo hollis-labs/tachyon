@@ -322,7 +322,7 @@ func TestInteractiveWaitsForAttachAndNeverStoresInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := r.await(t, h.RunID)
-	if done.State != StateSucceeded || !strings.Contains(done.Output, "approved plan") {
+	if done.State != StateSucceeded || done.Output != "" || done.Note != InteractiveNote {
 		t.Fatalf("%+v", done)
 	}
 	for _, leaked := range []string{"hunter2", "abcdef012345"} {

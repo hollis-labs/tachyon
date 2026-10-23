@@ -1248,9 +1248,12 @@ id** and parameters. Day one: `cerberus.resource.{apply,deploy,reload,remove,sto
   on approval; interactive ones (`tether catalog approve`: digest prefix, hidden
   passphrase) wait for the owner to attach a terminal. A restart fails runs that
   were mid-flight.
-- **Transcript.** Output only, ANSI-stripped, secret-shaped strings redacted, 64 KiB
-  tail. Keystrokes are never stored or logged; the terminal's echo of typed bytes
-  is also dropped from the stored copy, and echo-off prompts produce no output.
+- **Transcript.** Unattended actions record output only: ANSI-stripped, secret-shaped strings
+  redacted, 64 KiB tail. Interactive actions (`tether catalog approve`) record **no terminal
+  output at all**: it exists only on the attached operator websocket, because the echo of typed
+  input (digest prefix, passphrase) can arrive at any time and cannot be reliably filtered. Their
+  stored run and the agent's `actions.await` carry state, exit code and a fixed note. Keystrokes
+  go straight to the pty and are never stored or logged; unattended actions accept none.
 - **Lifetime and limits.** A run lives on its own context, never the request's: it ends at
   `MaxRuntime` (10 minutes), at Tachyon shutdown, or, for an interactive run, when its last
   terminal closes (`TACHYON_ACTION_DETACH_GRACE`, a Go duration, default `0`: end at once; set
@@ -1262,7 +1265,8 @@ id** and parameters. Day one: `cerberus.resource.{apply,deploy,reload,remove,sto
   The ssh key must be a regular file owned by the Tachyon user with no group or other access;
   `known_hosts` must not be group or other writable.
 - **Result.** The run (state, exit code, bounded output, timestamps, user, machine,
-  argv, digest) is returned as `action_run` on the approval inbox item and kept in
+  argv, digest) is returned as `action_run` on the approval inbox item (only to an elevated operator session,
+  the same bar as the run-read route; a plain browser session sees the queue without it) and kept in
   `action_runs` (one audit row per run; start and finish are also logged).
 - **Hub ssh.** Set `TACHYON_ACTION_HUB_SSH_ADDR` (`host:22`),
   `TACHYON_ACTION_HUB_SSH_KEY_FILE`, `TACHYON_ACTION_HUB_SSH_KNOWN_HOSTS` and

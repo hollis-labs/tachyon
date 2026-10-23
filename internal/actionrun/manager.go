@@ -259,7 +259,9 @@ func (m *Manager) pump(run Run, l *live, runCtx context.Context) {
 		n, err := l.sess.Read(buf)
 		if n > 0 {
 			chunk := append([]byte(nil), buf[:n]...)
-			l.trans.output(chunk)
+			if !l.interactive {
+				l.trans.output(chunk)
+			}
 			l.mu.Lock()
 			l.replay.add(chunk)
 			for ch := range l.subs {
@@ -297,7 +299,14 @@ func (m *Manager) pump(run Run, l *live, runCtx context.Context) {
 		state = StateFailed
 	}
 	exit := code
-	if err := m.Store.Finish(ctx, run.ID, StateRunning, state, &exit, l.trans.text(), errText, m.now()); err != nil {
+	// Interactive runs take typed input (digest prefix, passphrase) whose echo can
+	// arrive at any time, so their terminal output is never recorded: it exists only
+	// on the attached operator websocket. Unattended runs record redacted output.
+	recorded := l.trans.text()
+	if l.interactive {
+		recorded = ""
+	}
+	if err := m.Store.Finish(ctx, run.ID, StateRunning, state, &exit, recorded, errText, m.now()); err != nil {
 		slog.Error("action run result not recorded", "run_id", run.ID, "err", err)
 	}
 	slog.Info("action run finished", "run_id", run.ID, "item_id", run.ItemID, "op_digest", run.OpDigest, "machine", run.Machine, "exit_code", code, "state", state)
@@ -406,14 +415,17 @@ func (m *Manager) release() {
 	m.mu.Unlock()
 }
 
-// Input sends the owner's keystrokes to the process. It is not logged or
-// stored; only its echo is kept out of the transcript.
+// Input sends the owner's keystrokes to an interactive process. It is never
+// logged, stored or kept: bytes go straight to the pty. Unattended actions take
+// no input.
 func (m *Manager) Input(runID string, p []byte) error {
 	l := m.lookup(runID)
 	if l == nil {
 		return errors.New("run is not live")
 	}
-	l.trans.typed(p)
+	if !l.interactive {
+		return errors.New("this action takes no input")
+	}
 	_, err := l.sess.Write(p)
 	if errors.Is(err, io.EOF) {
 		return errors.New("run has ended")

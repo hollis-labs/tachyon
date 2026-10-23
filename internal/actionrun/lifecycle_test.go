@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"encoding/pem"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -408,5 +411,86 @@ func TestSSHCommandAndOutputHonourCancellation(t *testing.T) {
 	start := time.Now()
 	if _, err := tr.Output(ctx2, []string{"hang"}); err == nil || time.Since(start) > 2*time.Second {
 		t.Fatalf("Output ignored its deadline: err=%v after %s", err, time.Since(start))
+	}
+}
+
+type lockedBuf struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+func (l *lockedBuf) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+
+// An interactive terminal's output is never recorded, so a program that echoes
+// typed input late (here 700ms, past any echo-matching window) leaves nothing.
+func TestDelayedEchoOfTypedInputIsNeverStoredLoggedOrReturned(t *testing.T) {
+	const sentinel = "SENTINEL-typed-after-prompt-9d41"
+	logs := &lockedBuf{}
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	script := `printf 'Passphrase: '; read -r p; sleep 0.7; printf 'echo:%s\n' "$p"`
+	r := localRig(t, testAction("test.delayed", true, script))
+	run := r.approvedRun(t, "test.delayed")
+	if _, err := r.svc.Manager.Start(context.Background(), run.ID, 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	replay, frames, detach, err := r.svc.Manager.Attach(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detach()
+	var viewer strings.Builder
+	viewer.Write(replay)
+	for !strings.Contains(viewer.String(), "Passphrase:") {
+		f := <-frames
+		viewer.Write(f.Output)
+	}
+	if err := r.svc.Manager.Input(run.ID, []byte(sentinel+"\r")); err != nil {
+		t.Fatal(err)
+	}
+	end := r.await(t, run.ID)
+	if end.State != StateSucceeded || end.Output != "" || end.Note != InteractiveNote {
+		t.Fatalf("interactive output must not be recorded: %+v", end)
+	}
+	// The attached operator's own terminal is where the stream goes.
+	for f := range frames {
+		viewer.Write(f.Output)
+	}
+	if !strings.Contains(viewer.String(), "echo:"+sentinel) {
+		t.Fatalf("the operator terminal should have seen the program output: %q", viewer.String())
+	}
+	var stored, items string
+	_ = r.db.Reader.QueryRow(`SELECT group_concat(output||error||params||argv||reason||labels||requested_by||state,' ') FROM action_runs`).Scan(&stored)
+	_ = r.db.Reader.QueryRow(`SELECT group_concat(record,' ') FROM approval_items`).Scan(&items)
+	agent, _ := json.Marshal(end)
+	for name, hay := range map[string]string{"store": stored, "approval items": items, "agent view": string(agent), "logs": logs.String()} {
+		if strings.Contains(hay, sentinel) {
+			t.Fatalf("typed input reached %s", name)
+		}
+	}
+	// Replaying a finished run gives only the (empty) recorded output.
+	again, _, cancel, err := r.svc.Manager.Attach(context.Background(), run.ID)
+	if err != nil || len(again) != 0 {
+		t.Fatalf("finished interactive run replayed output: %q %v", again, err)
+	}
+	cancel()
+}
+
+func TestUnattendedActionsTakeNoInput(t *testing.T) {
+	r := localRig(t, testAction("test.noinput", false, "sleep 1; echo ok"))
+	run := r.approvedRun(t, "test.noinput")
+	eventually(t, "run to be live", func() bool { return r.svc.Manager.Live(run.ID) })
+	if err := r.svc.Manager.Input(run.ID, []byte("typed")); err == nil {
+		t.Fatal("an unattended action accepted keystrokes")
+	}
+	if end := r.await(t, run.ID); end.State != StateSucceeded || !strings.Contains(end.Output, "ok") || end.Note != "" {
+		t.Fatalf("%+v", end)
 	}
 }
