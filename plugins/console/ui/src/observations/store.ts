@@ -4,8 +4,8 @@ import { parseConsoleEvent } from '../events/parse'
 import type { ConsoleEvent } from '../events/types'
 
 const BASE = '/api/plugins/console/v1/tether'
-export async function observationJSON<T>(path: string): Promise<T> {
-  const r = await hostFetch(BASE + path, { headers: { 'Cache-Control': 'no-cache', Accept: 'application/json' } })
+export async function observationJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const r = await hostFetch(BASE + path, { headers: { 'Cache-Control': 'no-cache', Accept: 'application/json' }, signal })
   if (!r.ok) throw Object.assign(new Error(`Activity unavailable (${r.status})`), { status: r.status })
   if (['stale', 'cached', 'refreshing'].includes(r.headers.get('X-Tachyon-Cache') ?? '')) throw new Error('Activity refresh unavailable')
   return r.json() as Promise<T>
@@ -17,17 +17,19 @@ interface Page { events: EventRow[]; next_cursor?: number }
 export interface WorkState { working: boolean; at: number; seq: number }
 export interface Observations { events: ConsoleEvent[]; checkedAt: number; error: string | null; limited: boolean; workStates: Record<string, WorkState> }
 /** Per-session reads: a global newest-N list is dominated by chat agents, so each running session is asked for itself. */
-export interface SessionSource { running(): Promise<string[]>; page(query: string): Promise<Page> }
+export interface SessionSource { running(signal?: AbortSignal): Promise<string[]>; page(query: string, signal?: AbortSignal): Promise<Page> }
 const MAX_SESSIONS = 60
 const SESSION_CONCURRENCY = 6
 const SESSION_EVENTS = 25
+/** A stalled per-session read is cancelled after this long; the refresh never waits longer for it. */
+export const SESSION_DEADLINE_MS = 4000
 export const defaultSessionSource: SessionSource = {
-  async running() {
+  async running(signal) {
     const ids: string[] = []
     let cursor = ''
     const seen = new Set<string>()
     do {
-      const body = await observationJSON<{ sessions?: { id?: string; state?: string }[]; next_cursor?: string }>('/sessions' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''))
+      const body = await observationJSON<{ sessions?: { id?: string; state?: string }[]; next_cursor?: string }>('/sessions' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''), signal)
       if (!Array.isArray(body.sessions)) throw new Error('Invalid session list')
       for (const x of body.sessions) if (x.id && x.state === 'running') ids.push(x.id)
       cursor = body.next_cursor ?? ''
@@ -36,7 +38,7 @@ export const defaultSessionSource: SessionSource = {
     } while (cursor && ids.length < MAX_SESSIONS)
     return ids
   },
-  page: query => observationJSON<Page>('/events' + query),
+  page: (query, signal) => observationJSON<Page>('/events' + query, signal),
 }
 
 export function eventFromRow(row: EventRow): ConsoleEvent | null {
@@ -60,10 +62,13 @@ export function createObservationStore(fetchPage = (query: string) => observatio
   let high = 0
   let snapshotAt = 0
   let running: Promise<void> | null = null
+  let generation = 0 // a read that returns after a newer refresh began is dropped
   let timer: ReturnType<typeof setInterval> | undefined
   const listeners = new Set<() => void>()
   const refresh = (): Promise<void> => {
     if (running) return running
+    const mine = ++generation
+    const publish = () => listeners.forEach(f => f())
     running = (async () => {
       try {
         let cursor = 0
@@ -91,13 +96,53 @@ export function createObservationStore(fetchPage = (query: string) => observatio
         high = nextHigh
         const all = new Map(state.events.map(e => [e.id, e]))
         rows.forEach(r => { const e = eventFromRow(r); if (e) all.set(e.id, e) })
-        const workStates = sessions ? await observeSessions(sessions, rows, all, state.workStates) : state.workStates
-        state = { workStates, events: [...all.values()].sort((a,b) => b.ts - a.ts || Number(b.cursor) - Number(a.cursor)).slice(0, 600), checkedAt: Date.now(), error: null, limited: !!cursor }
+        state = { ...state, events: [...all.values()].sort((a,b) => b.ts - a.ts || Number(b.cursor) - Number(a.cursor)).slice(0, 600), checkedAt: Date.now(), error: null, limited: !!cursor }
+        publish() // the global feed is visible before any per-session read starts
+        if (sessions) await observeSessions(sessions, rows, mine)
       } catch (e) {
         state = { ...state, error: e instanceof Error ? e.message : 'Activity unavailable' }
-      } finally { running = null; listeners.forEach(f => f()) }
+      } finally { running = null; publish() }
     })()
     return running
+  }
+  /** Merge rows from one session read into the shared state, newest-first and capped, and notify at once. */
+  const apply = (id: string, rows: EventRow[], mine: number) => {
+    if (mine !== generation) return
+    const all = new Map(state.events.map(e => [e.id, e]))
+    const workStates = { ...state.workStates }
+    for (const row of rows) {
+      const e = eventFromRow(row)
+      if (e) all.set(e.id, e)
+      const w = workStateOf(row), old = workStates[id]
+      if (w && (!old || w.at > old.at || (w.at === old.at && row.seq > old.seq))) workStates[id] = { ...w, seq: row.seq }
+    }
+    state = { ...state, workStates, events: [...all.values()].sort((a,b) => b.ts - a.ts || Number(b.cursor) - Number(a.cursor)).slice(0, 600) }
+    listeners.forEach(f => f())
+  }
+  /**
+   * Reads each running session separately (recent window + newest work-state change) with 6 requests in flight in
+   * total, each under its own deadline, publishing every result as it lands. A slow or failed read affects only
+   * that session: it keeps its last state, and the refresh ends by the deadline.
+   */
+  async function observeSessions(source: SessionSource, globalRows: EventRow[], mine: number) {
+    let ids: string[]
+    try { ids = (await withDeadline(signal => source.running(signal))).slice(0, MAX_SESSIONS) } catch { return }
+    if (mine !== generation) return
+    const live = new Set(ids)
+    const kept = Object.fromEntries(Object.entries(state.workStates).filter(([id]) => live.has(id)))
+    state = { ...state, workStates: kept } // stopped sessions drop out
+    listeners.forEach(f => f())
+    for (const id of ids) { const own = globalRows.filter(r => r.session_id === id); if (own.length) apply(id, own, mine) }
+    const q = (id: string, limit: number, kind?: string) => '?' + new URLSearchParams({ session_id: id, limit: String(limit), ...(kind ? { kind } : {}) })
+    const jobs = ids.flatMap(id => [{ id, query: q(id, SESSION_EVENTS) }, { id, query: q(id, 1, 'session.work_state_changed') }])
+    await Promise.all(Array.from({ length: Math.min(SESSION_CONCURRENCY, jobs.length) }, async () => {
+      for (let job = jobs.shift(); job; job = jobs.shift()) {
+        try {
+          const page = await withDeadline(signal => source.page(job.query, signal))
+          if (Array.isArray(page.events)) apply(job.id, page.events.map(r => ({ ...r, session_id: job.id })), mine)
+        } catch { /* keep this session's last observation */ }
+      }
+    }))
   }
   const sync = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void refresh() }
   return {
@@ -130,38 +175,13 @@ function workStateOf(row: EventRow): { working: boolean; at: number } | null {
   } catch { return null }
 }
 
-/**
- * Asks the hub about each running session separately (a short recent window plus its newest work-state change)
- * and merges the rows into `all`. A session that fails to answer keeps its last known state; sessions that are
- * no longer running are dropped. Failure here never blanks the global feed.
- */
-async function observeSessions(source: SessionSource, globalRows: EventRow[], all: Map<string, ConsoleEvent>, previous: Record<string, WorkState>) {
-  let ids: string[]
-  try { ids = await source.running() } catch { return previous }
-  const next: Record<string, WorkState> = {}
-  for (const id of ids) if (previous[id]) next[id] = previous[id]
-  const note = (id: string, row: EventRow) => {
-    const w = workStateOf(row)
-    const old = next[id]
-    if (w && (!old || w.at > old.at || (w.at === old.at && row.seq > old.seq))) next[id] = { ...w, seq: row.seq }
-  }
-  for (const r of globalRows) if (r.session_id && ids.includes(r.session_id)) note(r.session_id, r)
-  const q = (id: string, limit: number, kind?: string) => '?' + new URLSearchParams({ session_id: id, limit: String(limit), ...(kind ? { kind } : {}) })
-  const queue = ids.slice(0, MAX_SESSIONS)
-  await Promise.all(Array.from({ length: Math.min(SESSION_CONCURRENCY, queue.length) }, async () => {
-    for (let id = queue.shift(); id; id = queue.shift()) {
-      const [recent, work] = await Promise.allSettled([source.page(q(id, SESSION_EVENTS)), source.page(q(id, 1, 'session.work_state_changed'))])
-      for (const result of [recent, work]) {
-        if (result.status !== 'fulfilled' || !Array.isArray(result.value.events)) continue
-        for (const row of result.value.events) {
-          const e = eventFromRow(row)
-          if (e) all.set(e.id, e)
-          note(id, { ...row, session_id: id })
-        }
-      }
-    }
-  }))
-  return next
+/** Runs a read under an AbortController deadline; it rejects on time even if the source ignores the signal. */
+function withDeadline<T>(read: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const ctl = new AbortController()
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => { ctl.abort(); reject(new Error('Session read timed out')) }, SESSION_DEADLINE_MS)
+    read(ctl.signal).then(resolve, reject).finally(() => clearTimeout(timer))
+  })
 }
 export const observations = createObservationStore(undefined, defaultSessionSource)
 export function useObservations() { return useSyncExternalStore(observations.subscribe, observations.getSnapshot, observations.getSnapshot) }

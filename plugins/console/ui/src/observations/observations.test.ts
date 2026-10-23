@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createObservationStore, eventFromRow, type SessionSource } from './store'
+import { createObservationStore, eventFromRow, SESSION_DEADLINE_MS, type SessionSource } from './store'
 import { activityText, presence, toolLabel, withObservedActivity } from './model'
 import { parseFleetAgents } from '../fleet/lib/fleet-agents'
 import { deliveryEvidence, deliveryFromTrace } from './delivery'
@@ -128,4 +128,86 @@ it('keeps the last work state when one session read fails, and never overrides a
   expect(store.getSnapshot().error).toBeNull()
   const [monitored] = parseFleetAgents({ agents: [{ id: 'm', session_id: 'w', state: 'waiting', cwd: '' }] })
   expect(withObservedActivity(monitored, 'w', store.getSnapshot()).state).toBe(monitored.state)
+})
+
+it('Reviewer: a slow session must not withhold healthy session and global updates', async () => {
+  let release!: (x: { events: [] }) => void
+  const slow = new Promise<{ events: [] }>(r => { release = r })
+  const at = new Date().toISOString()
+  const src: SessionSource = { running: async () => ['slow', 'healthy'], page: async q => new URLSearchParams(q).get('session_id') === 'slow' ? slow : { events: [{ seq: 2, at, session_id: 'healthy', kind: 'session.work_state_changed', payload_json: '{"to":"processing"}' }] } }
+  const store = createObservationStore(async () => ({ events: [{ seq: 1, at, session_id: 'healthy', kind: 'tool.call.started', payload_json: '{"tool":"Bash"}' }] }), src)
+  const refreshing = store.refresh()
+  await new Promise(r => setTimeout(r, 30))
+  const snap = store.getSnapshot()
+  release({ events: [] }); await refreshing
+  expect(snap.events.some(e => e.id === 'tether:1'), 'ready global update withheld by slow session').toBe(true)
+  expect(snap.workStates.healthy?.working, 'healthy worker withheld by slow session').toBe(true)
+})
+it('publishes the global feed and each session result as it arrives, before the slowest read', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  const src: SessionSource = { running: async () => ['a', 'b'], page: q => new URLSearchParams(q).get('session_id') === 'b' ? new Promise(() => {}) : Promise.resolve({ events: [{ seq: 9, at: new Date(now).toISOString(), kind: 'session.work_state_changed', payload_json: '{"to":"idle"}' }] }) }
+  const store = createObservationStore(async () => ({ events: [row(1)] }), src)
+  const seen: string[] = []
+  store.subscribe(() => seen.push(Object.keys(store.getSnapshot().workStates).join(',') + '|' + store.getSnapshot().events.length))
+  const refreshing = store.refresh()
+  await vi.advanceTimersByTimeAsync(10)
+  expect(seen.length).toBeGreaterThan(1)
+  expect(seen[0].endsWith('|1')).toBe(true) // global feed first
+  expect(store.getSnapshot().workStates.a?.working).toBe(false)
+  await vi.advanceTimersByTimeAsync(SESSION_DEADLINE_MS)
+  await refreshing
+})
+it('cancels a stalled read at its deadline, even if the source ignores the signal, and the next refresh is not blocked', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  const signals: AbortSignal[] = []
+  const src: SessionSource = { running: async () => ['stuck'], page: (_q, signal) => { if (signal) signals.push(signal); return new Promise(() => {}) } }
+  const store = createObservationStore(async () => ({ events: [row(1)] }), src)
+  let done = false
+  void store.refresh().then(() => { done = true })
+  await vi.advanceTimersByTimeAsync(SESSION_DEADLINE_MS - 1)
+  expect(done).toBe(false)
+  await vi.advanceTimersByTimeAsync(2)
+  expect(done).toBe(true)
+  expect(signals.length).toBe(2)
+  expect(signals.every(s => s.aborted)).toBe(true)
+  expect(store.getSnapshot().error).toBeNull()
+  const again = store.refresh() // a new poll starts; the old stalled read does not hold it
+  expect(again).not.toBeUndefined()
+  await vi.advanceTimersByTimeAsync(SESSION_DEADLINE_MS + 1)
+  await again
+  expect(signals.length).toBe(4)
+})
+it('keeps at most 6 reads in flight across both queries and reads at most 60 sessions', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let inflight = 0, peak = 0, started = 0
+  const ids = Array.from({ length: 80 }, (_, i) => `s${i}`)
+  const src: SessionSource = { running: async () => ids, page: async () => { started++; inflight++; peak = Math.max(peak, inflight); await new Promise(r => setTimeout(r, 50)); inflight--; return { events: [] } } }
+  const store = createObservationStore(async () => ({ events: [] }), src)
+  const refreshing = store.refresh()
+  await vi.advanceTimersByTimeAsync(60 * 2 * 50 / 6 + 1000)
+  await refreshing
+  expect(peak).toBe(6)
+  expect(started).toBe(120)
+})
+it('drops a read that returns after a newer refresh began', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  const late: ((x: { events: ReturnType<typeof sessionRow>[] }) => void)[] = []
+  let call = 0
+  const src: SessionSource = { running: async () => ['w'], page: q => {
+    if (new URLSearchParams(q).get('kind')) return Promise.resolve({ events: [sessionRow(2, 'w', 'session.work_state_changed', { to: ++call > 2 ? 'idle' : 'processing' })] })
+    return new Promise(r => late.push(r))
+  } }
+  const store = createObservationStore(async () => ({ events: [] }), src)
+  const first = store.refresh()
+  await vi.advanceTimersByTimeAsync(SESSION_DEADLINE_MS + 1)
+  await first
+  expect(store.getSnapshot().workStates.w?.working).toBe(true)
+  const second = store.refresh()
+  await vi.advanceTimersByTimeAsync(10)
+  // the first generation's stalled "recent" read finally returns with an old, conflicting state
+  late[0]({ events: [sessionRow(1, 'w', 'session.work_state_changed', { to: 'idle' }), sessionRow(3, 'w', 'tool.call.started', { tool: 'Old' })] })
+  await vi.advanceTimersByTimeAsync(SESSION_DEADLINE_MS + 1)
+  await second
+  expect(store.getSnapshot().events.some(e => e.id === 'tether:3')).toBe(false)
+  expect(store.getSnapshot().workStates.w?.seq).toBe(2)
 })
