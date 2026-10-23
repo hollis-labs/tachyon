@@ -1,6 +1,7 @@
 package dataverbs
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http/httptest"
@@ -131,5 +132,52 @@ func TestCardVerbsAbsentWithoutService(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != 404 {
 		t.Fatalf("cards not wired must not expose the verb: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestCardViewCarriesTheEffectsReceipt(t *testing.T) {
+	_, s, db := setup(t)
+	access := &agentaccess.Store{DB: db}
+	inbox := approvals.NewInbox(&approvals.Store{DB: db}, nil)
+	var receipt any
+	h := NewAgentHTTP(s, access, &Cards{Service: inbox.Service, Registry: approvals.CardRegistry, Receipt: func(context.Context, string) any { return receipt }})
+	_, secret, err := access.Issue(ctx, "", "Agent", agentaccess.CardAsk(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(verb, input string) map[string]any {
+		method, path, body := "POST", AgentPrefix+"/providers/tachyon/verbs/"+verb, io.Reader(strings.NewReader(input))
+		if verb == "card.get" {
+			method, path, body = "GET", path+"?input="+url.QueryEscape(input), nil
+		}
+		req := httptest.NewRequest(method, path, body)
+		req.Header.Set("Authorization", "Bearer "+secret)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		var out map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		d, ok := out["data"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: %d %s", verb, w.Code, w.Body)
+		}
+		return d
+	}
+	ask := call("card.ask", `{"kind":"card.approval","title":"Apply","effects":[{"target":"torque:task/CW-20261023-0001","op":"status","value":"done"}]}`)
+	id := ask["id"].(string)
+	rec, _ := (&approvals.Store{DB: db}).Get(ctx, id)
+	rev := rec.Revision
+	if _, err := inbox.Service.Respond(ctx, hitl.RespondCommand{ItemID: id, ExpectedRevision: &rev, Response: hitl.Response{Kind: "card.approval", Decision: "approved"},
+		Participant: hitl.Participant{PrincipalRef: "browser-session:t", Assurance: "operator-token", Responder: &hitl.Responder{Kind: "human-session", Ref: "browser-session:t"}}}); err != nil {
+		t.Fatal(err)
+	}
+	pending := call("card.get", `{"id":"`+id+`"}`)
+	if pending["receipt_pending"] != true || pending["receipt"] != nil {
+		t.Fatalf("%v", pending)
+	}
+	receipt = map[string]any{"state": "completed"}
+	done := call("card.get", `{"id":"`+id+`"}`)
+	if done["receipt"].(map[string]any)["state"] != "completed" || done["receipt_pending"] != nil {
+		t.Fatalf("%v", done)
 	}
 }

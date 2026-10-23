@@ -27,6 +27,10 @@ type Inbox struct {
 	// ActionRun, when set, attaches the registered-action run for an item to its
 	// browser view (nil result means the item has no run).
 	ActionRun func(ctx context.Context, itemID string) any
+	// CardReceipt, when set, attaches the effects receipt of an approved card
+	// (nil result means none yet). It holds ids and outcomes, no free text from
+	// the asker, so any browser session that can read the item may see it.
+	CardReceipt func(ctx context.Context, itemID string) any
 }
 
 func NewInbox(store *Store, sessions *Bridge) *Inbox {
@@ -95,6 +99,7 @@ type browserItem struct {
 	hitl.ItemView
 	PresentedProjectionRevision int64 `json:"presented_projection_revision"`
 	ActionRun                   any   `json:"action_run,omitempty"`
+	CardReceipt                 any   `json:"card_receipt,omitempty"`
 }
 
 // ItemView has custom marshaling; explicitly add the presentation field.
@@ -110,6 +115,9 @@ func (item browserItem) MarshalJSON() ([]byte, error) {
 	fields["presented_projection_revision"], _ = json.Marshal(item.PresentedProjectionRevision)
 	if item.ActionRun != nil {
 		fields["action_run"], _ = json.Marshal(item.ActionRun)
+	}
+	if item.CardReceipt != nil {
+		fields["card_receipt"], _ = json.Marshal(item.CardReceipt)
 	}
 	return json.Marshal(fields)
 }
@@ -129,6 +137,9 @@ func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, er
 	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision}
 	if i.ActionRun != nil && operator {
 		out.ActionRun = i.ActionRun(r.Context(), id)
+	}
+	if i.CardReceipt != nil {
+		out.CardReceipt = i.CardReceipt(r.Context(), id)
 	}
 	return out, nil
 }

@@ -23,6 +23,9 @@ import (
 type Cards struct {
 	Service  *hitl.Service
 	Registry *cards.Registry
+	// Receipt, when set, returns the effects receipt of an approved card (nil
+	// when there is none). It is called with the card's item id.
+	Receipt func(ctx context.Context, itemID string) any
 }
 
 type cardAsk struct {
@@ -111,7 +114,7 @@ func cardError(err error) error {
 
 // cardView is what an agent reads back. The answer is the go-envelopes
 // Response, so every app reads one shape.
-func cardView(item hitl.ItemView, status string) map[string]any {
+func cardView(ctx context.Context, c *Cards, item hitl.ItemView, status string) map[string]any {
 	var req hitl.EnqueueRequest
 	_ = json.Unmarshal(item.RequestSnapshot, &req)
 	env := cards.ToEnvelope(req)
@@ -135,6 +138,14 @@ func cardView(item hitl.ItemView, status string) map[string]any {
 			view["assurance"] = r.Resolution.Participant.Assurance
 		}
 		view["response"] = cards.ResponseToEnvelope(req.IdempotencyKey, item.State, resp, at)
+		if c.Receipt != nil && item.State == hitl.StateResolved {
+			if receipt := c.Receipt(ctx, item.ItemID); receipt != nil {
+				view["receipt"] = receipt
+			} else if len(req.Extra["effects"]) > 0 {
+				view["receipt_pending"] = true
+				view["next"] = "Approved; the effects are still being applied. Call card.get shortly for the receipt."
+			}
+		}
 	} else {
 		view["next"] = "Not settled. Call card.await again; do not re-ask."
 	}
@@ -214,7 +225,7 @@ func invokeCard(ctx context.Context, c *Cards, name string, raw json.RawMessage,
 		if err != nil {
 			return nil, cardError(err)
 		}
-		view := cardView(res.Item, "")
+		view := cardView(ctx, c, res.Item, "")
 		view["expires_at"] = expires.Format(time.RFC3339)
 		view["key"] = key
 		if q.Completion == cards.CompletionNotify {
@@ -236,7 +247,7 @@ func invokeCard(ctx context.Context, c *Cards, name string, raw json.RawMessage,
 			if err != nil {
 				return nil, cardError(err)
 			}
-			return json.Marshal(cardView(res.Item, ""))
+			return json.Marshal(cardView(ctx, c, res.Item, ""))
 		}
 		wait := int(defaultAwait / time.Millisecond)
 		if q.WaitMs != nil {
@@ -249,7 +260,7 @@ func invokeCard(ctx context.Context, c *Cards, name string, raw json.RawMessage,
 		if err != nil {
 			return nil, cardError(err)
 		}
-		return json.Marshal(cardView(res.Item, res.WaitStatus))
+		return json.Marshal(cardView(ctx, c, res.Item, res.WaitStatus))
 	case "card.cancel":
 		var q cardCancel
 		if err := decode(raw, &q); err != nil {
@@ -265,7 +276,7 @@ func invokeCard(ctx context.Context, c *Cards, name string, raw json.RawMessage,
 		if err != nil {
 			return nil, cardError(err)
 		}
-		return json.Marshal(cardView(res.Item, ""))
+		return json.Marshal(cardView(ctx, c, res.Item, ""))
 	}
 	return nil, denied()
 }
