@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createObservationStore, eventFromRow } from './store'
-import { activityText, presence, toolLabel } from './model'
+import { createObservationStore, eventFromRow, type SessionSource } from './store'
+import { activityText, presence, toolLabel, withObservedActivity } from './model'
+import { parseFleetAgents } from '../fleet/lib/fleet-agents'
 import { deliveryEvidence, deliveryFromTrace } from './delivery'
 import { deliveryFromEnvelope } from '../messaging/adapter'
 
@@ -71,4 +72,60 @@ it('does not equate host acceptance, another message, or an unrelated reply with
   expect(deliveryEvidence(events, 'm1', 'queued').state).toBe('delivered')
   expect(deliveryEvidence(events, 'm2', 'queued').state).toBe('queued')
   expect(deliveryEvidence(events, 'm1', 'read').state).toBe('read')
+})
+
+const sessionRow = (seq: number, session: string, kind: string, payload: Record<string, unknown> = {}) => ({ ...row(seq, kind, payload), session_id: session })
+function source(perSession: Record<string, ReturnType<typeof sessionRow>[]>): SessionSource & { queries: string[] } {
+  const queries: string[] = []
+  return { queries, running: async () => Object.keys(perSession),
+    page: async query => {
+      queries.push(query)
+      const p = new URLSearchParams(query)
+      const rows = perSession[p.get('session_id')!] ?? []
+      const kind = p.get('kind')
+      return { events: rows.filter(r => !kind || r.kind === kind).slice(-Number(p.get('limit') || 200)).reverse() }
+    } }
+}
+it('a flood of chat events cannot hide a quiet worker: each running session is read on its own', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  const flood = Array.from({ length: 200 }, (_, i) => sessionRow(1000 + i, 'chat1', 'tool.call.started', { tool: 'Bash' }))
+  const src = source({ chat1: flood, worker1: [sessionRow(3, 'worker1', 'session.work_state_changed', { from: 'idle', to: 'processing' })] })
+  const store = createObservationStore(async () => ({ events: flood.slice().reverse() }), src)
+  await store.refresh()
+  const snap = store.getSnapshot()
+  expect(snap.error).toBeNull()
+  expect(snap.workStates.worker1).toMatchObject({ working: true })
+  expect(snap.events.some(e => e.sessionId === 'worker1')).toBe(true)
+  expect(src.queries.every(q => new URLSearchParams(q).get('session_id'))).toBe(true)
+  expect(src.queries.filter(q => new URLSearchParams(q).get('limit') === '25')).toHaveLength(2)
+})
+it('a claude-stream session that only reports work state shows as working, then idle, and is dropped when it stops', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  const rows = { stream1: [sessionRow(5, 'stream1', 'session.work_state_changed', { from: 'idle', to: 'processing' })] }
+  let running = ['stream1']
+  const src = { ...source(rows), running: async () => running }
+  const store = createObservationStore(async () => ({ events: [] }), src)
+  await store.refresh()
+  const agents = parseFleetAgents({ agents: [{ id: 'tether:stream1', session_id: 'stream1', state: 'unknown', cwd: '' }] })
+  const shown = () => withObservedActivity(agents[0], 'stream1', store.getSnapshot())
+  expect(shown().state).toBe('busy')
+  rows.stream1.push(sessionRow(6, 'stream1', 'session.work_state_changed', { from: 'processing', to: 'idle' }))
+  await store.refresh()
+  expect(shown().state).toBe('idle')
+  running = []
+  await store.refresh()
+  expect(store.getSnapshot().workStates.stream1).toBeUndefined()
+  expect(shown().state).toBe('unknown')
+})
+it('keeps the last work state when one session read fails, and never overrides a monitored state', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  const src = source({ w: [sessionRow(1, 'w', 'session.work_state_changed', { to: 'processing' })] })
+  const store = createObservationStore(async () => ({ events: [] }), src)
+  await store.refresh()
+  src.page = async () => { throw new Error('boom') }
+  await store.refresh()
+  expect(store.getSnapshot().workStates.w?.working).toBe(true)
+  expect(store.getSnapshot().error).toBeNull()
+  const [monitored] = parseFleetAgents({ agents: [{ id: 'm', session_id: 'w', state: 'waiting', cwd: '' }] })
+  expect(withObservedActivity(monitored, 'w', store.getSnapshot()).state).toBe(monitored.state)
 })

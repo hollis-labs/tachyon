@@ -279,3 +279,40 @@ func TestObjectsPlanAndAgentReadsAreProjected(t *testing.T) {
 		}
 	}
 }
+
+func TestPerSessionEventQueriesCanOnlyNarrowTheReviewedWindow(t *testing.T) {
+	var got []url.Values
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.URL.Query())
+		_, _ = w.Write([]byte(`{"events":[]}`))
+	}))
+	defer upstream.Close()
+	h := NewObjectHandler(upstream.URL, "")
+	for _, raw := range []string{
+		"session_id=s1&limit=20",
+		"session_id=s1&limit=1&kind=session.work_state_changed",
+		"session_id=s1&limit=5000&kind=session.output", // wider/raw asks fall back to the reviewed set
+		"session_id=s1&limit=0&kind=session.work_state_changed&kind=session.output",
+	} {
+		if res := h.Handle(context.Background(), subprocess.HTTPRequest{Method: "GET", Path: objectsPrefix + "/events", RawQuery: raw}); res.Status != 200 {
+			t.Fatalf("%s: %d", raw, res.Status)
+		}
+	}
+	want := []struct {
+		limit string
+		kinds int
+	}{{"20", len(activityEventKinds)}, {"1", 1}, {"200", len(activityEventKinds)}, {"200", len(activityEventKinds)}}
+	for i, w := range want {
+		if got[i].Get("limit") != w.limit || len(got[i]["kind"]) != w.kinds || got[i].Get("session_id") != "s1" {
+			t.Errorf("query %d: %v", i, got[i])
+		}
+		for _, k := range got[i]["kind"] {
+			if k == "session.output" {
+				t.Errorf("query %d requested raw output", i)
+			}
+		}
+	}
+	if got[1]["kind"][0] != "session.work_state_changed" {
+		t.Errorf("work state kind not requested: %v", got[1])
+	}
+}

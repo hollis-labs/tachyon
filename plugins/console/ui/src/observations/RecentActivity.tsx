@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import type { ConsoleEvent } from '../events/types'
 import { ago } from '../lib/agent-activity'
-import { activityText } from './model'
+import { activityText, workStateText } from './model'
 import { useObservations } from './store'
 
 function description(e: ConsoleEvent) {
+  if (e.kind === 'session.work_state_changed') return `Session ${workStateText({ working: e.payload.to === 'processing' })!.toLowerCase()}`
   return activityText(e) || e.kind.replaceAll('.', ' ').replaceAll('_', ' ')
 }
 const FIELDS = ['tool', 'server', 'duration_ms', 'error_class', 'reason', 'runtime', 'message_id', 'thread_id', 'turn_id', 'project_id', 'workstream_id', 'worker_id', 'from', 'to']

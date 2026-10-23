@@ -47,11 +47,26 @@ func (h *ObjectHandler) Handle(ctx context.Context, req subprocess.HTTPRequest) 
 	switch {
 	case path == "/events" && req.Method == "GET":
 		target = "/events"
-		query.Set("limit", "200")
+		limit := 200
+		if v := q.Get("limit"); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n >= 1 && n < limit {
+				limit = n // callers may only ask for fewer events than the page cap
+			}
+		}
+		query.Set("limit", strconv.Itoa(limit))
 		// Only the reviewed kinds are requested, and the response is rebuilt from a
 		// per-kind field allowlist (projectEvents): no text, output or arguments reach the browser.
 		project = projectEvents
-		for _, kind := range activityEventKinds {
+		kinds := activityEventKinds
+		if k := q.Get("kind"); k != "" && len(q["kind"]) == 1 {
+			// One reviewed kind narrows the query; anything else keeps the full reviewed set.
+			for _, reviewed := range activityEventKinds {
+				if k == reviewed {
+					kinds = []string{k}
+				}
+			}
+		}
+		for _, kind := range kinds {
 			query.Add("kind", kind)
 		}
 		for _, key := range []string{"since_seq", "cursor"} {
