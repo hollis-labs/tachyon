@@ -34,6 +34,8 @@ export function AutolinkProvider({ registry, resolvers, client, navigate, childr
   const activate = useCallback(
     (ref: RefIdentity, ev: ActivateEvent) => {
       if (ev.modified) return false
+      // A hover-resolved chip clicked before any hover (touch, Safari buttons do not focus): ask now, so a kind without a resolver is known to be unsupported.
+      if (owned.get(ref.kind, ref.canonical).status === 'idle') owned.request([ref])
       const state = owned.get(ref.kind, ref.canonical)
       const open = buildPreviewCard(reg, ref, state).open
       if (open.type === 'external') return false

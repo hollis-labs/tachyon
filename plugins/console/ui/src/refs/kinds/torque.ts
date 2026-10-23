@@ -38,6 +38,8 @@ export function createTorqueKinds(): RefKind[] {
     label: e.label,
     icon: e.icon,
     priority: 80,
+    // Tasks resolve in one batch; a container is one read each, so it waits for hover, focus or a click.
+    ...(e.id === 'torque.task' ? {} : { resolveOn: 'hover' as const }),
     scan(text) {
       const hits = []
       for (const m of matches(ID, text)) {
