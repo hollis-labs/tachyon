@@ -434,7 +434,15 @@ func (m *Manager) Resize(runID string, cols, rows uint16) error {
 }
 
 // Live reports whether a process is attached to the run.
-func (m *Manager) Live(runID string) bool { return m.lookup(runID) != nil }
+func (m *Manager) Live(runID string) bool {
+	l := m.lookup(runID)
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return !l.done && l.reason == "" // a run Tachyon has decided to end is no longer live
+}
 
 // labelsFor reads the target resource's Cerberus labels on its machine.
 func (m *Manager) labelsFor(ctx context.Context, machine, resource string) (Labels, error) {

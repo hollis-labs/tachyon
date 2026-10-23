@@ -23,6 +23,7 @@ type fakeSession struct {
 	in   chan []byte
 	exit int
 	once sync.Once
+	shut chan struct{}
 	rest []byte
 	mu   sync.Mutex
 	got  []byte
@@ -34,7 +35,13 @@ func (f *fakeSession) Read(p []byte) (int, error) {
 		f.rest = f.rest[n:]
 		return n, nil
 	}
-	b, ok := <-f.out
+	var b []byte
+	var ok bool
+	select {
+	case b, ok = <-f.out:
+	case <-f.shut:
+		return 0, io.EOF
+	}
 	if !ok {
 		return 0, io.EOF
 	}
@@ -50,7 +57,7 @@ func (f *fakeSession) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 func (f *fakeSession) Resize(uint16, uint16) error { return nil }
-func (f *fakeSession) Close() error                { f.once.Do(func() {}); return nil }
+func (f *fakeSession) Close() error                { f.once.Do(func() { close(f.shut) }); return nil }
 func (f *fakeSession) Wait() (int, error)          { <-f.done(); return f.exit, nil }
 func (f *fakeSession) done() chan struct{} {
 	c := make(chan struct{})
@@ -67,7 +74,7 @@ type fakeTransport struct {
 }
 
 func (t *fakeTransport) Start(_ context.Context, argv []string, _, _ uint16) (Session, error) {
-	s := &fakeSession{out: make(chan []byte, 16), in: make(chan []byte, 16)}
+	s := &fakeSession{out: make(chan []byte, 16), in: make(chan []byte, 16), shut: make(chan struct{})}
 	t.mu.Lock()
 	t.started = append(t.started, argv)
 	t.sessions = append(t.sessions, s)

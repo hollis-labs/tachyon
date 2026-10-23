@@ -143,7 +143,7 @@ func TestClosingTheTerminalEndsAnInteractiveRun(t *testing.T) {
 	}
 	detach() // the browser went away
 	eventually(t, "run to end after the terminal closed", func() bool { return !r.svc.Manager.Live(run.ID) })
-	end, _ := r.svc.Store.Get(context.Background(), run.ID)
+	end := r.await(t, run.ID)
 	if end.State != StateFailed || !strings.Contains(end.Error, "terminal closed") {
 		t.Fatalf("%+v", end)
 	}
