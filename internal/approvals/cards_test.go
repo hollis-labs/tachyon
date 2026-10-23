@@ -120,3 +120,64 @@ func TestCardBodiesNeedAnOperatorBrowserSession(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveAcceptsCardAnswersOnlyForCards(t *testing.T) {
+	elevated := true
+	sessions := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assurance := "browser-session"
+		if elevated {
+			assurance = "operator-token"
+		}
+		writeValue(w, map[string]any{"elevated": elevated, "assurance": assurance})
+	}))
+	defer sessions.Close()
+	inbox := NewInbox(nativeStore(t), New(sessions.URL))
+	policy := ProducerPolicy{ApplicationID: "planner", MinimumClass: "medium"}
+	form := cardRequest("k-form", map[string]any{"data": map[string]any{"fields": []map[string]any{
+		{"id": "name", "type": "text", "required": true}, {"id": "token", "type": "secret"},
+	}}})
+	form.Kind = "card.form"
+	if err := prepareRequest(&form, policy); err != nil {
+		t.Fatal(err)
+	}
+	handle, err := inbox.Service.Enqueue(context.Background(), form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := Prefix + "/items/" + handle.ItemID + "/resolve"
+	send := func(response map[string]any) *httptest.ResponseRecorder {
+		return serveJSON(inbox, "POST", path, map[string]any{"expected_revision": 1, "presented_projection_revision": 1, "response": response}, "", "session")
+	}
+	answers := func(secret any) []map[string]any {
+		return []map[string]any{{"questionId": "name", "value": "x"}, {"questionId": "token", "value": secret}}
+	}
+	for name, response := range map[string]map[string]any{
+		"secret as a value":   {"kind": "card.form", "decision": "submitted", "answers": answers("hunter2")},
+		"missing answers":     {"kind": "card.form", "decision": "submitted"},
+		"wrong response kind": {"kind": "approval", "decision": "submitted", "answers": answers(map[string]string{"secret_ref": "r"})},
+	} {
+		if w := send(response); w.Code != 400 {
+			t.Fatalf("%s: %d %s", name, w.Code, w.Body)
+		}
+	}
+	if w := send(map[string]any{"kind": "card.form", "decision": "submitted", "answers": answers(map[string]string{"secret_ref": "r1"})}); w.Code != 200 {
+		t.Fatalf("valid form answers: %d %s", w.Code, w.Body)
+	}
+	rec, err := inbox.Store.Get(context.Background(), handle.ItemID)
+	if err != nil || rec.State != hitl.StateResolved {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if raw, _ := json.Marshal(rec); !strings.Contains(string(raw), "r1") || strings.Contains(string(raw), "hunter2") {
+		t.Fatalf("the reference is kept and no secret value was ever stored: %s", raw)
+	}
+	// Answers on an approval-kind item are refused: they apply only to cards.
+	old, err := inbox.Service.Enqueue(context.Background(), requestFixture(t, "old-low", "low"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPath := Prefix + "/items/" + old.ItemID + "/resolve"
+	body := map[string]any{"expected_revision": 1, "presented_projection_revision": 1, "response": map[string]any{"kind": "approval", "decision": "approved", "answers": []map[string]any{{"questionId": "a", "value": "b"}}}}
+	if w := serveJSON(inbox, "POST", oldPath, body, "", "session"); w.Code != 400 {
+		t.Fatalf("answers on an approval: %d %s", w.Code, w.Body)
+	}
+}
