@@ -3,6 +3,7 @@ import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, KeyRound } from "lucide-react"
+import { kindLabel } from "./client"
 import { useApprovals } from "./context"
 import { DataTable } from "@hollis-labs/kit-dashboard/data"
 import { elevationCopy, operatorElevation } from "../operator/elevation"
@@ -62,7 +63,7 @@ export function ApprovalsPage() {
       </div>
     )
   const rows = (queue.inbox?.[view] ?? []).filter((item) =>
-    `${item.request_snapshot.title} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
+    `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   )
@@ -138,7 +139,7 @@ export function ApprovalsPage() {
             { key: "request", header: "Request / source", width: "fill", cell: item => <div className="min-w-0">
               <div className="truncate font-sans dash-body text-fg">{item.request_snapshot.title}</div>
               <div className="mt-1 truncate font-mono dash-caption text-fg-faint">
-                {item.request_snapshot.source.agent_label ?? item.request_snapshot.source.agent_id} · {item.request_snapshot.source.application_label ?? item.request_snapshot.source.application_id} · {new Date(item.enqueued_at).toLocaleString()}
+                {kindLabel(item.request_snapshot.kind)} · {item.request_snapshot.source.agent_label ?? item.request_snapshot.source.agent_id} · {item.request_snapshot.source.application_label ?? item.request_snapshot.source.application_id} · {new Date(item.enqueued_at).toLocaleString()}
               </div>
             </div> },
             { key: "state", header: "Decision / state", cell: item => <span className={`font-mono dash-caption uppercase ${view === "pending" ? "text-warning" : "text-fg-muted"}`}>{item.terminal_outcome?.resolution?.response.decision ?? item.state}</span> },

@@ -351,3 +351,16 @@ describe("card review dialog", () => {
     expect(screen.getByText(/Torque refused: invalid transition/)).toBeTruthy()
   })
 })
+
+describe("approvals list", () => {
+  it("labels each row with its kind and searches by it", async () => {
+    const form = { ...item, item_id: "item_form", request_snapshot: { ...item.request_snapshot, kind: "card.form" as const, title: "Fill me in" } }
+    const client = { inbox: vi.fn().mockResolvedValue({ pending: [item, form], history: [], synced_at: "2026-10-23T00:00:00Z", revision: "1" }), get: vi.fn(), present: vi.fn(), decide: vi.fn(), evidence: vi.fn() } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    expect(await screen.findByText(/^Form ·/)).toBeTruthy()
+    expect(screen.getByText(/^Approval ·/)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("Search approvals"), { target: { value: "form" } })
+    await waitFor(() => expect(screen.queryByText("Create a session")).toBeNull())
+    expect(screen.getByText("Fill me in")).toBeTruthy()
+  })
+})
