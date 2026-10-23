@@ -21,6 +21,11 @@ describe('parseTachHref', () => {
     expect(parseTachHref(`tach:approval/${id}`)).toEqual({ kind: 'approval', canonical: id })
     expect(parseTachHref('tach:approval/item_zz')).toBeNull()
   })
+  it('names a card item', () => {
+    const id = `item_${'0123456789abcdef'.repeat(2)}`
+    expect(parseTachHref(`tach:card/${id}`)).toEqual({ kind: 'card', canonical: id })
+    expect(parseTachHref('tach:card/CW-20261019-0028')).toBeNull()
+  })
   it('refuses what it cannot name', () => {
     for (const h of [undefined, '', 'https://x.io', 'tach:tesseract/', 'tach:tesseract/just_a_key', 'tach:unknown/CW-20261019-0028', 'tach:torque/CW-1', 'tach:tesseract/%E0%A4%A']) {
       expect(parseTachHref(h)).toBeNull()

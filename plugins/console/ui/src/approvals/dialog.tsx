@@ -11,13 +11,16 @@ import {
 import { ShieldCheck } from "lucide-react"
 import { MessageBody } from "../chat/MessageBody"
 import {
+  isCard,
   isExpired,
   isPending,
   type ApprovalClient,
   type ApprovalItem,
   type ApprovalResponse,
+  type CardAnswer,
   type Evidence,
 } from "./client"
+import { CardData, CardForm } from "./card-body"
 import { ActionRunPanel } from "./terminal"
 
 const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
@@ -72,14 +75,16 @@ export function ApprovalDialog({
   useEffect(() => {
     void refresh()
   }, [refresh])
-  async function decide() {
-    if (!item || !choice || busy || !ready) return
+  async function decide(submitted?: CardAnswer[]) {
+    const decision = submitted ? "submitted" : choice
+    if (!item || !decision || busy || !ready) return
     setBusy(true)
     setError("")
     try {
       const outcome = await client.decide(item, {
         kind: item.request_snapshot.kind,
-        decision: choice,
+        decision,
+        ...(submitted ? { answers: submitted } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
         ...(reply.trim() && item.request_snapshot.kind === "attention"
           ? { reply: reply.trim() }
@@ -102,6 +107,7 @@ export function ApprovalDialog({
     }
   }
   const request = item?.request_snapshot
+  const card = !!request && isCard(request)
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
     item && isPending(item) && !isExpired(item) && ready && !busy && request?.class !== "high" && request?.source.application_id !== "cerberus"
@@ -151,10 +157,11 @@ export function ApprovalDialog({
           <>
             <section>
               <h3 className={label}>Request</h3>
-              <MessageBody body={request.request} />
-              {request.summary !== request.request && (
+              {request.request && <MessageBody body={request.request} />}
+              {request.summary && request.summary !== request.request && (
                 <MessageBody body={request.summary} />
               )}
+              {card && <CardData request={request} />}
             </section>
             {request.details_markdown && (
               <section>
@@ -236,6 +243,9 @@ export function ApprovalDialog({
                 {resolution.response.reply && (
                   <MessageBody body={resolution.response.reply} />
                 )}
+                {!!resolution.response.answers?.length && (
+                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono dash-support text-fg-muted">{JSON.stringify(resolution.response.answers, null, 2)}</pre>
+                )}
               </section>
             ) : item?.terminal_outcome ? (
               <MessageBody
@@ -278,7 +288,11 @@ export function ApprovalDialog({
                     />
                   </label>
                 )}
-                {choice ? (
+                {request.kind === "card.info" ? (
+                  <p className="dash-control text-fg-muted">This card is for information; there is nothing to answer.</p>
+                ) : request.kind === "card.question" || request.kind === "card.form" ? (
+                  <CardForm request={request} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
+                ) : choice ? (
                   <section className="rounded border border-warning/30 bg-warning-muted/10 p-3">
                     <p className="dash-control text-fg-muted">
                       Confirm{" "}
@@ -308,7 +322,7 @@ export function ApprovalDialog({
                   </section>
                 ) : (
                   <div className="flex gap-2">
-                    {request.kind === "approval" ? (
+                    {request.kind === "approval" || request.kind === "card.approval" ? (
                       <>
                         <Button variant="outline" size="sm"
                           className={`font-mono dash-label text-success`}

@@ -17,3 +17,17 @@ export function createApprovalKind(): RefKind {
     open: (ref) => ({ type: 'route', to: `/approvals?item=${encodeURIComponent(ref.canonical)}` }),
   }
 }
+
+// `tach:card/<item_id>` names a card the same way; cards live in the same queue
+// and open in the same review dialog.
+export function createCardKind(): RefKind {
+  return {
+    id: 'card',
+    label: 'Card',
+    icon: 'approval',
+    priority: 85,
+    scan: () => [],
+    chipLabel: () => 'Card',
+    open: (ref) => ({ type: 'route', to: `/approvals?item=${encodeURIComponent(ref.canonical)}` }),
+  }
+}

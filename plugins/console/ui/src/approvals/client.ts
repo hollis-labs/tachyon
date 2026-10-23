@@ -2,11 +2,17 @@ import { operatorFetch } from "../operator/elevation"
 
 // Tachyon-owned HITL v1 browser projection. Decisions retain the producer's contract;
 // the queue remains authoritative for revision checks and immutable outcomes.
+export type CardKind = `card.${string}`
+export interface CardAnswer {
+  questionId: string
+  value: unknown
+}
 export interface ApprovalResponse {
-  kind: "approval" | "attention"
-  decision: "approved" | "denied" | "acknowledged"
+  kind: "approval" | "attention" | CardKind
+  decision: "approved" | "denied" | "acknowledged" | "submitted"
   note?: string
   reply?: string
+  answers?: CardAnswer[]
 }
 export interface ApprovalOutcome {
   item_id: string
@@ -73,13 +79,17 @@ export interface ApprovalItem {
   updated_at: string
   terminal_outcome?: ApprovalOutcome
   request_snapshot: {
-    kind: "approval" | "attention"
+    kind: "approval" | "attention" | CardKind
     class?: "low" | "medium" | "high"
+    // card.* requests carry their body in data and may list effects.
+    data?: Record<string, unknown>
+    effects?: { target: string; [key: string]: unknown }[]
+    completion?: "wait" | "async" | "notify"
     op_digest?: string
     handoff_url?: string
     title: string
-    summary: string
-    request: string
+    summary?: string
+    request?: string
     details_markdown?: string
     recommendation?: string
     impact?: { approve: string; deny: string }
@@ -112,6 +122,8 @@ export class ApprovalError extends Error {
     super(message)
   }
 }
+export const isCard = (item: Pick<ApprovalItem["request_snapshot"], "kind">) =>
+  item.kind.startsWith("card.")
 export const isPending = (item: ApprovalItem) =>
   ["submitted", "validated", "staged", "presented", "in_progress"].includes(
     item.state,

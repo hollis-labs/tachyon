@@ -58,8 +58,10 @@ const (
 const cardRules = "Use a card when a person should see something, answer a question, fill a form or approve a change. " +
 	"kind is card.approval, card.question, card.form, card.notice or card.info. " +
 	"completion=wait means you will call card.await; async means you will check back with card.get; notify shows the card and collects nothing. " +
+	"card.question data is {question, options?}; card.form data is {fields:[{id,type,label,required,options}]} with types text, textarea, number, bool, enum, multi, date, secret. " +
+	"card.approval may list effects [{target, op?, summary?}] that describe what approval will do. " +
 	"Never put secrets in data; a form secret field returns a secret_ref, never a value. " +
-	"The risk class is set by Tachyon: you may raise it, never lower it. Retry the same key to get the same card, not a duplicate. " +
+	"The risk class is set by Tachyon: you may raise it to medium, never lower it; high is reserved for provider-console handoffs and is refused here. Retry the same key to get the same card, not a duplicate. " +
 	"If the card is denied, expired or canceled, do not re-ask the same thing without new information."
 
 func cardVerbs() []Verb {
@@ -159,6 +161,9 @@ func invokeCard(ctx context.Context, c *Cards, name string, raw json.RawMessage,
 		}
 		if ttl < time.Minute || ttl > maxCardTTL {
 			return nil, invalid("ttl_seconds must be between 60 and 604800.")
+		}
+		if q.Class == "high" {
+			return nil, invalid("class high is reserved for provider-console handoffs; ask with low or medium.")
 		}
 		key := q.Key
 		if key == "" {
