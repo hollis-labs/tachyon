@@ -131,6 +131,11 @@ export class ApprovalError extends Error {
 }
 export const isCard = (item: Pick<ApprovalItem["request_snapshot"], "kind">) =>
   item.kind.startsWith("card.")
+// "Approval", "Question", "Form"… for the kind column and search.
+export const kindLabel = (kind: string) => {
+  const name = kind.startsWith("card.") ? kind.slice(5) : kind
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
 export const isPending = (item: ApprovalItem) =>
   ["submitted", "validated", "staged", "presented", "in_progress"].includes(
     item.state,
