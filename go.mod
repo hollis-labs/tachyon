@@ -13,6 +13,7 @@ require (
 	github.com/hollis-labs/libs/security/auth v0.2.1
 	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/libs/security/webauthn v0.1.0
+	github.com/hollis-labs/libs/ui/ui-go v0.4.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/crypto v0.57.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -28,7 +29,6 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
-	github.com/hollis-labs/libs/ui/ui-go v0.1.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect

@@ -18,6 +18,7 @@ import (
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/libs/security/auth"
+	"github.com/hollis-labs/tachyon/internal/cards"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
@@ -308,6 +309,32 @@ func extraString(req hitl.EnqueueRequest, key string) string {
 	_ = json.Unmarshal(req.Extra[key], &value)
 	return value
 }
+
+// prepareRequest validates a producer request. Card kinds go through the card
+// registry, which fixes class, digest and source on the server; the older
+// approval and attention kinds keep their own checks.
+func prepareRequest(req *hitl.EnqueueRequest, policy ProducerPolicy) error {
+	if !cards.IsCard(req.Kind) {
+		return validateInboxRequest(*req, policy)
+	}
+	if err := CardRegistry.Prepare(req, policy.ApplicationID); err != nil {
+		return err
+	}
+	class := extraString(*req, "class")
+	// A producer policy sets a floor, and Cerberus is provider-handoff only.
+	if req.Source.ApplicationID == "cerberus" {
+		class = "high"
+	}
+	if tier(class) < tier(policy.MinimumClass) {
+		class = policy.MinimumClass
+	}
+	req.Extra["class"], _ = json.Marshal(class)
+	if class == "high" && extraString(*req, "handoff_url") == "" {
+		return fmt.Errorf("%w: high tier requires a provider handoff URL", hitl.ErrInvalidRequest)
+	}
+	return nil
+}
+
 func validateInboxRequest(req hitl.EnqueueRequest, policy ProducerPolicy) error {
 	if req.Kind != "approval" && req.Kind != "attention" {
 		return fmt.Errorf("%w: supported kinds are approval and attention", hitl.ErrInvalidRequest)
@@ -468,7 +495,7 @@ func (p *Producer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			if req.Source.ApplicationID != policy.ApplicationID {
 				err = hitl.ErrUnauthorized
-			} else if err = validateInboxRequest(req, policy); err == nil {
+			} else if err = prepareRequest(&req, policy); err == nil {
 				result, err = p.Service.Enqueue(r.Context(), req)
 			}
 		}

@@ -13,7 +13,12 @@ import (
 	"time"
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
+	"github.com/hollis-labs/tachyon/internal/cards"
 )
+
+// CardRegistry holds the card kinds the queue accepts. The agent surface and
+// the respond route read it too, so there is one definition of a card kind.
+var CardRegistry = cards.NewRegistry()
 
 type Inbox struct {
 	Store    *Store
@@ -26,6 +31,9 @@ type Inbox struct {
 
 func NewInbox(store *Store, sessions *Bridge) *Inbox {
 	service := hitl.NewService(store, hitl.Options{ValidateResponse: func(kind string, response hitl.Response) error {
+		if cards.IsCard(kind) {
+			return CardRegistry.ValidateResponse(kind, response)
+		}
 		if kind == "approval" && (response.Decision == "approved" || response.Decision == "denied") || kind == "attention" && response.Decision == "acknowledged" {
 			return nil
 		}
