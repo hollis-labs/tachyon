@@ -194,12 +194,9 @@ func TestActionRunRoutesCheckOperatorAssuranceAndOriginOnTheDecodedPath(t *testi
 			t.Fatalf("elevated but foreign-origin %s was not refused: %d %s", p, w.Code, w.Body.String())
 		}
 	}
-	// Encoded slashes are refused by the handler itself even for a good origin.
-	for _, p := range []string{actionrun.Prefix + "/" + run + "%2Fterminal", actionrun.Prefix + "%2F" + run} {
-		if w := r.do("GET", p, wsHeaders, true); w.Code == 200 || w.Code == 101 {
-			t.Fatalf("encoded-slash path %s was served: %d", p, w.Code)
-		}
-	}
+	// An encoded spelling is routed on its decoded path, so it gets exactly the
+	// literal route's guards: still refused for a foreign origin (above) and for an
+	// unelevated session (the variants loop earlier).
 }
 
 // The approval queue's own projections must not carry the private action run
