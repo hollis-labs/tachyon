@@ -56,6 +56,9 @@ export function cardAnswers(fields: CardField[], values: Record<string, string |
   return answers.length ? answers : undefined
 }
 
+// A field of the bound operation as text; a missing one says so rather than vanishing.
+const boundText = (v: unknown) => (v === undefined || v === null || v === "" ? "(none)" : typeof v === "string" ? v : JSON.stringify(v))
+
 export function CardData({ request }: { request: Request }) {
   const data = request.data ?? {}
   const shown = request.kind === "card.form" || request.kind === "card.question" ? undefined : data
@@ -73,7 +76,15 @@ export function CardData({ request }: { request: Request }) {
           <h3 className={label}>If approved this will</h3>
           <ul className="mt-2 list-disc pl-5 dash-control text-fg-muted">
             {request.effects.map((e, i) => (
-              <li key={i}>{typeof e.summary === "string" ? e.summary : `${typeof e.op === "string" ? e.op + " " : ""}${e.target}`}</li>
+              <li key={i}>
+                {/* The bound operation: exactly what the executor will do, always shown. */}
+                <span className="font-mono">
+                  op {boundText(e.op)} · target {boundText(e.target)} · value {boundText(e.value)}
+                </span>
+                {typeof e.summary === "string" && e.summary && (
+                  <span className="block dash-support text-fg-faint">Requester's description (unverified, not what runs): {e.summary}</span>
+                )}
+              </li>
             ))}
           </ul>
         </section>
