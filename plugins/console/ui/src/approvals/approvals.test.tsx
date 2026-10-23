@@ -290,14 +290,31 @@ describe("card review dialog", () => {
     render(<ApprovalDialog id={current.item_id} initial={current} client={clientFor(current, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
 
   it("shows a card's effects and approves with the card kind", async () => {
-    const current = card("card.approval", { changes: 2 }, { effects: [{ target: "torque:task/CW-1", op: "status=done" }] })
+    const current = card("card.approval", { changes: 2 }, { effects: [{ target: "torque:task/CW-1", op: "status", value: "done" }] })
     const decide = vi.fn().mockResolvedValue({ item_id: current.item_id, state: "resolved" })
     open(current, decide)
     await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
-    expect(screen.getByText("status=done torque:task/CW-1")).toBeTruthy()
+    expect(screen.getByText("op status · target torque:task/CW-1 · value done")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Approve" }))
     fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
     expect(decide.mock.calls[0][1]).toEqual({ kind: "card.approval", decision: "approved" })
+  })
+  it("always shows the bound operation, and labels a requester summary as unverified", async () => {
+    const current = card("card.approval", {}, {
+      effects: [
+        { target: "torque:task/CW-20261023-0001", op: "status", value: "done", summary: "No changes" },
+        { target: "torque:task/CW-20261023-0002", op: "status" },
+      ],
+    })
+    open(current, vi.fn())
+    await screen.findByText("If approved this will")
+    const rows = screen.getAllByRole("listitem")
+    expect(rows[0].textContent).toContain("op status · target torque:task/CW-20261023-0001 · value done")
+    expect(rows[0].textContent).toContain("Requester's description (unverified, not what runs): No changes")
+    expect(rows[1].textContent).toContain("value (none)")
+    expect(rows[1].textContent).not.toContain("Requester's description")
+    // The summary never stands in for the operation.
+    expect(screen.queryByText("No changes")).toBeNull()
   })
   it("submits a form's typed answers, with secrets only as references", async () => {
     const current = card("card.form", {
