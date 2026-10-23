@@ -18,6 +18,7 @@ import {
   type ApprovalResponse,
   type Evidence,
 } from "./client"
+import { ActionRunPanel } from "./terminal"
 
 const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
 function safeHTTPS(raw?: string) {
@@ -178,6 +179,12 @@ export function ApprovalDialog({
                   <MessageBody body={request.impact.deny} />
                 </section>
               </div>
+            )}
+            {item?.action_run && (
+              <ActionRunPanel
+                initial={item.action_run}
+                approved={resolution?.response.decision === "approved"}
+              />
             )}
             <dl className="grid grid-cols-2 gap-4 dash-support text-fg-muted">
               <div>
