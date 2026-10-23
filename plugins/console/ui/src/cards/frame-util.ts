@@ -1,12 +1,12 @@
 import type { ConsoleSeverity } from '../events/types'
 
 export const CARD_SEVERITY_STYLE: Record<ConsoleSeverity, { rail: string; text: string; label: string }> = {
-  debug: { rail: 'bg-zinc-700', text: 'text-zinc-500', label: 'DEBUG' },
-  info: { rail: 'bg-sky-500', text: 'text-sky-300', label: 'INFO' },
-  notice: { rail: 'bg-emerald-500', text: 'text-emerald-300', label: 'NOTICE' },
-  warning: { rail: 'bg-amber-400', text: 'text-amber-300', label: 'WARNING' },
-  error: { rail: 'bg-red-500', text: 'text-red-300', label: 'ERROR' },
-  critical: { rail: 'bg-red-400', text: 'text-red-200', label: 'CRITICAL' },
+  debug: { rail: 'bg-border', text: 'text-fg-muted', label: 'DEBUG' },
+  info: { rail: 'bg-info', text: 'text-info', label: 'INFO' },
+  notice: { rail: 'bg-success', text: 'text-success', label: 'NOTICE' },
+  warning: { rail: 'bg-warning', text: 'text-warning', label: 'WARNING' },
+  error: { rail: 'bg-danger', text: 'text-danger', label: 'ERROR' },
+  critical: { rail: 'bg-danger', text: 'text-danger', label: 'CRITICAL' },
 }
 
 export function relTime(ts: number, now = Date.now()): string {

@@ -6,7 +6,7 @@ import type { CardRenderProps } from './types'
 function subjectLine(p: CardRenderProps) {
   const subs = p.card.subjects
   if (subs.length === 0) return null
-  return <p className="mt-1 truncate font-mono text-[11px] text-zinc-500">{subs.map((s) => s.label ?? s.id).join(' / ')}</p>
+  return <p className="mt-1 truncate font-mono text-label text-fg-muted">{subs.map((s) => s.label ?? s.id).join(' / ')}</p>
 }
 
 export function InfoCard(p: CardRenderProps) {
@@ -28,10 +28,10 @@ export function ApprovalCard(p: CardRenderProps) {
   return (
     <CardFrame card={card} density={p.density} kindLabel="Approval" onExpand={p.onExpand}>
       {!compact && (
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-[11px]">
-          {by && (<><dt className="text-zinc-500">requested by</dt><dd className="truncate text-zinc-300">{by}</dd></>)}
-          {card.expiresAt && (<><dt className="text-zinc-500">expires</dt><dd className="text-zinc-300">{new Date(card.expiresAt).toLocaleString()}</dd></>)}
-          {gated && (<><dt className="text-zinc-500">confirm</dt><dd className="text-zinc-300">identity check required</dd></>)}
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-label">
+          {by && (<><dt className="text-fg-muted">requested by</dt><dd className="truncate text-fg-secondary">{by}</dd></>)}
+          {card.expiresAt && (<><dt className="text-fg-muted">expires</dt><dd className="text-fg-secondary">{new Date(card.expiresAt).toLocaleString()}</dd></>)}
+          {gated && (<><dt className="text-fg-muted">confirm</dt><dd className="text-fg-secondary">identity check required</dd></>)}
         </dl>
       )}
       {!compact && subjectLine(p)}
@@ -40,7 +40,7 @@ export function ApprovalCard(p: CardRenderProps) {
   )
 }
 
-const STATE_DOT: Record<string, string> = { busy: 'bg-emerald-400', idle: 'bg-sky-400', waiting: 'bg-amber-400', blocked: 'bg-red-400', done: 'bg-emerald-400', review: 'bg-amber-400' }
+const STATE_DOT: Record<string, string> = { busy: 'bg-success', idle: 'bg-info', waiting: 'bg-warning', blocked: 'bg-danger', done: 'bg-success', review: 'bg-warning' }
 
 export function StatusCard(p: CardRenderProps) {
   const { card } = p
@@ -49,10 +49,10 @@ export function StatusCard(p: CardRenderProps) {
   const inline = p.density === 'inline'
   if (inline) {
     return (
-      <span data-card-kind="status" data-card-phase={card.phase} className="inline-flex items-center gap-1.5 font-mono text-[11px] text-zinc-300">
-        <span aria-hidden className={`h-1.5 w-1.5 ${STATE_DOT[key] ?? 'bg-zinc-500'}`} />
+      <span data-card-kind="status" data-card-phase={card.phase} className="inline-flex items-center gap-1.5 font-mono text-label text-fg-secondary">
+        <span aria-hidden className={`h-1.5 w-1.5 ${STATE_DOT[key] ?? 'bg-fg-faint'}`} />
         {card.title}
-        {card.summary && <span className="text-zinc-500">{card.summary}</span>}
+        {card.summary && <span className="text-fg-muted">{card.summary}</span>}
       </span>
     )
   }
