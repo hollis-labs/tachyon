@@ -1,0 +1,18 @@
+{
+  "status": "review candidate; private 0.0.0, no registry release (the owner publishes)",
+  "source_repo": "https://github.com/hollis-labs/frontend-support",
+  "source_path": "ts/design-kit/packages/kit-cards",
+  "source_commit": "141f7ce4363b485417472cfaa9762869ff7c0b96",
+  "upstream_pr": "https://github.com/hollis-labs/frontend-support/pull/5",
+  "task": "CW-20261023-0010",
+  "archive": "hollis-labs-kit-cards-0.0.0-cw0010-7a073700.tgz",
+  "sha256": "7a073700953df824a4ca6fb843af43d2bcf155d2b34b8abfe90b9223fad175ab",
+  "build_commands": [
+    "npm ci (ts/design-kit)",
+    "npm run build -w @hollis-labs/design-tokens -w @hollis-labs/design-components -w @hollis-labs/design-bindings -w @hollis-labs/kit-cards",
+    "npm pack --workspace @hollis-labs/kit-cards --ignore-scripts"
+  ],
+  "companion_packages": [
+    {"name": "design-bindings", "version": "0.1.0", "source": "npm registry"}
+  ]
+}
