@@ -6,6 +6,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2
 	github.com/google/uuid v1.6.0
+	github.com/hollis-labs/libs/harness/core v0.16.0
 	github.com/hollis-labs/libs/app/app-host v0.1.0
 	github.com/hollis-labs/libs/core/util v0.6.0
 	github.com/hollis-labs/libs/mcp/plugin-mcp v0.3.0
@@ -29,7 +30,6 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
-	github.com/hollis-labs/libs/harness/core v0.16.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
