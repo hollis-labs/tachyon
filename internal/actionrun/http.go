@@ -56,6 +56,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "requester_cannot_approve", "Use the operator browser session.")
 		return
 	}
+	// Route on the one canonical decoded path: an encoded slash or backslash would
+	// let the router and this handler disagree about which route was named.
+	if escaped := strings.ToLower(r.URL.EscapedPath()); strings.Contains(escaped, "%2f") || strings.Contains(escaped, "%5c") || strings.Contains(r.URL.Path, "\\") || !strings.HasPrefix(r.URL.Path, Prefix+"/") {
+		fail(w, 404, "not_found", "Unknown action run route.")
+		return
+	}
 	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, Prefix), "/")
 	parts := strings.Split(rest, "/")
 	if len(parts) == 0 || parts[0] == "" || len(parts) > 2 {
