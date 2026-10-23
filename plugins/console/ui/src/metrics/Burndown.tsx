@@ -55,37 +55,37 @@ export function Burndown({ data, mode = 'burndown', label, now: nowProp, width =
     <figure className="w-full">
       <figcaption className="mb-1.5 flex items-baseline justify-between">
         <span className={LABEL}>{title}</span>
-        <span className="font-mono text-xs text-zinc-300">{remaining} remaining</span>
+        <span className="font-mono text-xs text-fg-secondary">{remaining} remaining</span>
       </figcaption>
       <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" role="img" aria-label={summary}>
         {ticks.map((v) => (
           <g key={v}>
-            <line x1={PAD.l} x2={width - PAD.r} y1={y(v)} y2={y(v)} className="stroke-zinc-800" />
-            <text x={PAD.l - 4} y={y(v) + 3} textAnchor="end" className="fill-zinc-500 font-mono text-[9px]">{v}</text>
+            <line x1={PAD.l} x2={width - PAD.r} y1={y(v)} y2={y(v)} className="stroke-border-subtle" />
+            <text x={PAD.l - 4} y={y(v) + 3} textAnchor="end" className="fill-fg-muted font-mono text-micro">{v}</text>
           </g>
         ))}
-        <text x={PAD.l} y={height - 4} className="fill-zinc-500 font-mono text-[9px]">{fmtDate(startTs)}</text>
-        <text x={width - PAD.r} y={height - 4} textAnchor="end" className="fill-zinc-500 font-mono text-[9px]">{fmtDate(endTs)}</text>
-        {mode === 'burnup' && <path d={stepPath(scopeSteps)} fill="none" strokeWidth={1.25} className="stroke-amber-300" />}
-        <path d={linePath(ideal)} fill="none" strokeWidth={1} strokeDasharray="4 4" className="stroke-zinc-500" />
+        <text x={PAD.l} y={height - 4} className="fill-fg-muted font-mono text-micro">{fmtDate(startTs)}</text>
+        <text x={width - PAD.r} y={height - 4} textAnchor="end" className="fill-fg-muted font-mono text-micro">{fmtDate(endTs)}</text>
+        {mode === 'burnup' && <path d={stepPath(scopeSteps)} fill="none" strokeWidth={1.25} className="stroke-warning" />}
+        <path d={linePath(ideal)} fill="none" strokeWidth={1} strokeDasharray="4 4" className="stroke-fg-muted" />
         {changes.map((m) => (
           <g key={`${m.t}-${m.label}`}>
-            <line x1={x(m.t)} x2={x(m.t)} y1={PAD.t} y2={height - PAD.b} strokeDasharray="1 3" className="stroke-amber-400/70" />
+            <line x1={x(m.t)} x2={x(m.t)} y1={PAD.t} y2={height - PAD.b} strokeDasharray="1 3" className="stroke-warning/70" />
             <title>{`${m.label} (${m.delta > 0 ? '+' : ''}${m.delta})`}</title>
-            <rect x={x(m.t) - 2.5} y={PAD.t - 2} width={5} height={5} className="fill-amber-400" />
+            <rect x={x(m.t) - 2.5} y={PAD.t - 2} width={5} height={5} className="fill-warning" />
           </g>
         ))}
         {actual.length > 1 ? (
-          <path d={linePath(actual)} fill="none" strokeWidth={2} strokeLinejoin="round" className="stroke-emerald-400" />
+          <path d={linePath(actual)} fill="none" strokeWidth={2} strokeLinejoin="round" className="stroke-success" />
         ) : null}
-        <rect x={left[0] - 2.5} y={left[1] - 2.5} width={5} height={5} className="fill-emerald-400" />
+        <rect x={left[0] - 2.5} y={left[1] - 2.5} width={5} height={5} className="fill-success" />
       </svg>
       <div className="mt-2">
         <Legend>
-          <li className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 bg-emerald-400" aria-hidden />Actual</li>
-          <li className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 border-t border-dashed border-zinc-400" aria-hidden />Ideal</li>
-          {mode === 'burnup' && <li className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 bg-amber-300" aria-hidden />Scope</li>}
-          {changes.length > 0 && <li className="inline-flex items-center gap-1.5"><span className="h-2 w-2 bg-amber-400" aria-hidden />Scope change</li>}
+          <li className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 bg-success" aria-hidden />Actual</li>
+          <li className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 border-t border-dashed border-border" aria-hidden />Ideal</li>
+          {mode === 'burnup' && <li className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 bg-warning" aria-hidden />Scope</li>}
+          {changes.length > 0 && <li className="inline-flex items-center gap-1.5"><span className="h-2 w-2 bg-warning" aria-hidden />Scope change</li>}
         </Legend>
       </div>
     </figure>

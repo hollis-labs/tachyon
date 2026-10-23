@@ -16,7 +16,7 @@ function ScopeCard(p: CardRenderProps & { variant: 'progress' | 'burndown' }) {
   return (
     <CardFrame card={p.card} density={p.density} kindLabel={p.variant === 'progress' ? 'Progress' : 'Burndown'} onExpand={p.onExpand}>
       <div className="mt-2">
-        {scope ? <ScopeMetricsPanel scope={scope} title={p.card.title} compact={p.variant === 'progress' || p.density === 'compact'} /> : <p className="font-mono text-[11px] text-zinc-500">No scope on this event.</p>}
+        {scope ? <ScopeMetricsPanel scope={scope} title={p.card.title} compact={p.variant === 'progress' || p.density === 'compact'} /> : <p className="font-mono text-label text-fg-muted">No scope on this event.</p>}
       </div>
     </CardFrame>
   )
