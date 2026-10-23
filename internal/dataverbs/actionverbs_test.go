@@ -180,6 +180,9 @@ func TestAgentAwaitOfInteractiveRunReturnsNoOutput(t *testing.T) {
 		Participant: hitl.Participant{PrincipalRef: "t", Assurance: "operator-token", Responder: &hitl.Responder{Kind: "human-session", Ref: "t"}}}); err != nil {
 		t.Fatal(err)
 	}
+	if r, err := svc.Get(ctx, runID); err != nil || r.State != actionrun.StateWaitingInput { // sync the approval
+		t.Fatalf("%+v %v", r, err)
+	}
 	if _, err := mgr.Start(ctx, runID, 80, 24); err != nil { // the owner opens the terminal
 		t.Fatal(err)
 	}
