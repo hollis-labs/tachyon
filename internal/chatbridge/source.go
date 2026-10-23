@@ -77,6 +77,16 @@ func NewSource(addr, tokenFile string) (Source, error) {
 	}
 	return &source{Client: api, http: client, base: base}, nil
 }
+
+// NewNotifier returns the Tether client over the same connection settings as
+// NewSource, for senders that need the messaging calls and not the chat roster.
+func NewNotifier(addr, tokenFile string) (*tether.Client, error) {
+	s, err := NewSource(addr, tokenFile)
+	if err != nil {
+		return nil, err
+	}
+	return s.(*source).Client, nil
+}
 func (s *source) Agents(ctx context.Context) ([]Agent, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", s.base+"/chat/agents", nil)
 	if err != nil {

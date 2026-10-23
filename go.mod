@@ -10,7 +10,7 @@ require (
 	github.com/hollis-labs/libs/core/util v0.6.0
 	github.com/hollis-labs/libs/harness/core v0.16.0
 	github.com/hollis-labs/libs/mcp/plugin-mcp v0.3.0
-	github.com/hollis-labs/libs/mesh/core v0.8.0
+	github.com/hollis-labs/libs/mesh/core v0.8.1-0.20261023051336-d0237e754c22
 	github.com/hollis-labs/libs/security/auth v0.2.1
 	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/libs/security/webauthn v0.1.0

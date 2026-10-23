@@ -26,6 +26,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/carddelivery"
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
 	"github.com/hollis-labs/tachyon/internal/catalog"
@@ -67,6 +68,9 @@ type Config struct {
 	ActionDetachGrace time.Duration
 	// CardEffectsTorque lets an approved card change Torque task statuses.
 	CardEffectsTorque bool
+	// CardDeliveryFile is the routing profile and sink file for pushing card
+	// outcomes to askers. Empty leaves card delivery pull-only.
+	CardDeliveryFile string
 	// CardEvents configures card.* event publishing to the hub; off by default.
 	CardEvents struct {
 		Enabled   bool
@@ -207,6 +211,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startActions(approvalContext, store)
 	s.startCardEffects(approvalContext, store)
 	s.startCardEvents(approvalContext, store)
+	s.startCardDelivery(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
 	if err != nil {
@@ -603,6 +608,27 @@ func (s *Server) startCardEvents(ctx context.Context, store *localstore.Store) {
 	}
 	collector := &cardevents.Collector{Items: &approvals.Store{DB: store}, Effects: s.cardFx, Outbox: outbox}
 	go cardevents.Run(ctx, collector, sender, 0)
+}
+
+// startCardDelivery pushes resolved cards to the sinks the routing profile
+// names. It is off unless TACHYON_CARD_DELIVERY_FILE is set; asking agents can
+// always pull through card.await and card.get. A file that does not load
+// leaves delivery off and says why, rather than half-routing.
+func (s *Server) startCardDelivery(ctx context.Context, store *localstore.Store) {
+	if s.cfg.CardDeliveryFile == "" {
+		return
+	}
+	var notifier carddelivery.Notifier
+	if client, err := chatbridge.NewNotifier(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile); err == nil {
+		notifier = client
+	}
+	router, sinks, err := carddelivery.Load(s.cfg.CardDeliveryFile, notifier)
+	if err != nil {
+		slog.Warn("card delivery is configured but not usable; staying off", "err", err)
+		return
+	}
+	d := carddelivery.New(&approvals.Store{DB: store}, &carddelivery.Store{DB: store}, router, carddelivery.HoldSink, sinks)
+	go d.Watch(ctx, 0)
 }
 
 // cardReceiptView is the effects receipt attached to a card item, or nil.
