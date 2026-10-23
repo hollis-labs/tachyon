@@ -9,7 +9,7 @@ const present = (fields: { label: string; value: string | number | null | undefi
 
 export function epicEntity(e: Epic): RefEntity {
   return {
-    title: e.name, chipLabel: `Epic: ${e.name}`, subtitle: e.id, status: pill(e.status), description: e.description || undefined,
+    title: e.name, chipLabel: `Epic: ${e.name}`, subtitle: e.id, status: pill(e.status),
     fields: present([{ label: 'Priority', value: e.priority === null ? null : `P${e.priority}` }, { label: 'Project', value: e.project_id, mono: true }]),
     updatedAt: e.updated_at,
   }
@@ -17,8 +17,7 @@ export function epicEntity(e: Epic): RefEntity {
 
 export function projectEntity(p: Project): RefEntity {
   return {
-    title: p.name, chipLabel: `Project: ${p.name}`, subtitle: p.id, status: pill(p.status), description: p.description || undefined,
-    fields: present([{ label: 'Repo', value: p.repo_path, mono: true }]), updatedAt: p.updated_at,
+    title: p.name, chipLabel: `Project: ${p.name}`, subtitle: p.id, status: pill(p.status), updatedAt: p.updated_at,
   }
 }
 
@@ -37,7 +36,7 @@ export function planEntity(d: PlanDetail): RefEntity {
   const phases = d.plan.phases.slice().sort((a, b) => a.order - b.order)
   const lines = phases.map((p) => {
     const r = d.progress.by_phase[p.id]
-    return `${p.order}. ${p.name}${r ? ` (${r.done}/${r.total} done${r.blocked ? `, ${r.blocked} blocked` : ''})` : ''}${p.acceptance ? `: ${p.acceptance}` : ''}`
+    return `${p.order}. ${p.name}${r ? ` (${r.done}/${r.total} done${r.blocked ? `, ${r.blocked} blocked` : ''})` : ''}`
   })
   return {
     title: d.task.title, chipLabel: `Plan: ${d.task.title}`, subtitle: d.task.id,
@@ -49,6 +48,7 @@ export function planEntity(d: PlanDetail): RefEntity {
 }
 
 /**
+ * The server projection keeps ids, status codes and short names only (no descriptions, paths or acceptance text).
  * Epics, projects, sprints and plans were chips without a preview: clicking one
  * left the console for the entity's page. One resolver per kind reads the entity
  * through the existing Torque client, and the existing drawer shows the card.
@@ -67,5 +67,22 @@ export function createTorqueContainerResolver<T>(read: (id: string, signal?: Abo
       }))
       return out
     },
+  }
+}
+
+type Get = (path: string, signal?: AbortSignal) => Promise<Response>
+
+/**
+ * Reads one Torque object through Tachyon's operator-gated, projected preview route
+ * (never the raw /v1 passthrough). Quiet on purpose: a missing elevation is an
+ * error state on the chip, not a prompt.
+ */
+export function previewRead<T>(collection: 'epics' | 'projects' | 'sprints' | 'plans', get: Get): (id: string, signal?: AbortSignal) => Promise<T> {
+  return async (id, signal) => {
+    const res = await get(`/api/plugins/console/v1/preview/${collection}/${encodeURIComponent(id)}`, signal)
+    if (res.status === 404) throw Object.assign(new Error('Not found'), { status: 404 })
+    if (res.status === 401 || res.status === 403) throw new Error('Operator access is needed to read Torque objects.')
+    if (!res.ok) throw new Error(`Torque object unavailable (${res.status}).`)
+    return (await res.json()) as T
   }
 }

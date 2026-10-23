@@ -1,6 +1,6 @@
 import { hostFetch } from '@tachyon/host-sdk'
-import { createPlannerResolver, createTorqueContainerResolver, epicEntity, projectEntity, sprintEntity, torquePlanEntity, createTetherAgentResolver, createTetherPlanResolver, createTorqueTaskResolver, PLANNER_ENTITIES, TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND, type KindResolver } from '../refs'
-import type { TorqueApiClient } from '@tachyon/torque-client'
+import { createPlannerResolver, createTorqueContainerResolver, epicEntity, previewRead, projectEntity, sprintEntity, torquePlanEntity, createTetherAgentResolver, createTetherPlanResolver, createTorqueTaskResolver, PLANNER_ENTITIES, TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND, type KindResolver } from '../refs'
+import type { Epic, PlanDetail, Project, Sprint, TorqueApiClient } from '@tachyon/torque-client'
 import { registerForgeRefs } from '../forge/refs'
 import { registerTaskRefs } from './TaskDetailPane'
 import { registerTesseractRefs } from './TesseractDetailPane'
@@ -16,7 +16,7 @@ const tetherGet = (path: string, signal?: AbortSignal) => hostFetch(path, { sign
  * unresolved (chip + link, no preview) until its endpoint exists; see BACKEND_NEEDS.md.
  * Memoise the result before handing it to AutolinkProvider.
  */
-export function createLiveResolvers(api: Pick<TorqueApiClient, 'plannerTaskTitles' | 'plannerResolve'> & Partial<Pick<TorqueApiClient, 'getEpic' | 'getProject' | 'getSprint' | 'getPlan'>>, tesseract?: TesseractCache): Record<string, KindResolver> {
+export function createLiveResolvers(api: Pick<TorqueApiClient, 'plannerTaskTitles' | 'plannerResolve'>, tesseract?: TesseractCache, get: typeof tetherGet = tetherGet): Record<string, KindResolver> {
   // Forge kinds (G2): registers pr/commit/repo (idempotent) and resolves through the ForgeClient (mock by default).
   const forge = registerForgeRefs().resolvers
   registerTaskRefs()
@@ -27,11 +27,11 @@ export function createLiveResolvers(api: Pick<TorqueApiClient, 'plannerTaskTitle
     'tether.plan': createTetherPlanResolver(tetherGet),
     'tether.agent': createTetherAgentResolver(tetherGet),
     'torque.task': createTorqueTaskResolver((ids, signal) => api.plannerTaskTitles(ids, signal)),
-    // Containers: absent client methods (test doubles) leave the kind unresolved, as before.
-    ...(api.getEpic ? { 'torque.epic': createTorqueContainerResolver((id) => api.getEpic!(id), epicEntity) } : {}),
-    ...(api.getProject ? { 'torque.project': createTorqueContainerResolver((id) => api.getProject!(id), projectEntity) } : {}),
-    ...(api.getSprint ? { 'torque.sprint': createTorqueContainerResolver((id) => api.getSprint!(id), sprintEntity) } : {}),
-    ...(api.getPlan ? { 'torque.plan': createTorqueContainerResolver((id) => api.getPlan!(id), torquePlanEntity) } : {}),
+    // Operator-only, projected reads; the raw Torque passthrough is not used for previews.
+    'torque.epic': createTorqueContainerResolver(previewRead<Epic>('epics', get), epicEntity),
+    'torque.project': createTorqueContainerResolver(previewRead<Project>('projects', get), projectEntity),
+    'torque.sprint': createTorqueContainerResolver(previewRead<Sprint>('sprints', get), sprintEntity),
+    'torque.plan': createTorqueContainerResolver(previewRead<PlanDetail>('plans', get), torquePlanEntity),
     ...Object.fromEntries(PLANNER_ENTITIES.map((e) => [e.id, planner])),
   }
   if (tesseract) {
