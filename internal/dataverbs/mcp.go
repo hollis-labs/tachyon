@@ -8,7 +8,6 @@ import (
 
 	mcpserver "github.com/hollis-labs/libs/mcp/plugin-mcp/go-mcp/server"
 	"github.com/hollis-labs/libs/security/auth"
-	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -18,11 +17,8 @@ const AgentMCPPath = "/api/agent/v1/mcp"
 // NewAgentMCP exposes the same scoped provider as the agent HTTP API. Stateless
 // requests reauthenticate and rediscover grants each time; an MCP session cannot
 // retain a revoked credential or borrow another caller's tool set.
-func NewAgentMCP(s *objects.Service, verifier auth.Verifier, actions ...*actionrun.Service) http.Handler {
-	var svc *actionrun.Service
-	if len(actions) > 0 {
-		svc = actions[0]
-	}
+func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) http.Handler {
+	svc, cardSvc := agentServices(services)
 	guard, err := auth.New(auth.Config{Mode: auth.ModeEnforce, Verifier: verifier, OpenPath: func(string) bool { return false }})
 	if err != nil {
 		panic(err)
@@ -32,7 +28,7 @@ func NewAgentMCP(s *objects.Service, verifier auth.Verifier, actions ...*actionr
 		if !ok || !principal.Verified {
 			return nil
 		}
-		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc}
+		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc}
 		server := mcpserver.NewServer("tachyon-planner", "1.0.0")
 		for _, v := range p.Verbs() {
 			server.RegisterTool(mcpserver.Tool{

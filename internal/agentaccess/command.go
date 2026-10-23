@@ -31,7 +31,7 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		f.StringVar(&identity, "identity", "", "existing identity UUID; omitted creates a new identity")
 		f.StringVar(&path, "token-file", "", "new private token file (never overwritten)")
 		f.DurationVar(&ttl, "ttl", 30*24*time.Hour, "token lifetime, maximum 2160h")
-		f.StringVar(&preset, "preset", "planner-read", "planner-read, portfolio-read, portfolio-write or actions-request")
+		f.StringVar(&preset, "preset", "planner-read", "planner-read, portfolio-read, portfolio-write, actions-request or card-ask")
 		f.StringVar(&kinds, "kinds", "", "explicit Planner kinds; overrides the preset")
 		f.StringVar(&verbs, "verbs", "", "explicit supported verbs; overrides the preset")
 	case "revoke", "disable":
@@ -57,6 +57,8 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 			grants = PortfolioWrite()
 		case "actions-request":
 			grants = ActionRequest()
+		case "card-ask":
+			grants = CardAsk()
 		default:
 			return errors.New("unknown access preset")
 		}
