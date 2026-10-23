@@ -16,7 +16,7 @@
     "test": "npm run test -w frontend",
     "lint:builder": "eslint --config eslint.builder.config.js plugins/console/ui/src/agents plugins/console/ui/src/objects",
     "lint:planner": "eslint --config eslint.planner.config.js plugins/planner/ui/src",
-    "lint:cards": "eslint --config eslint.cards.config.js plugins/console/ui/src/alerts plugins/console/ui/src/cards plugins/console/ui/src/hitl",
+    "lint:cards": "eslint --config eslint.cards.config.js plugins/console/ui/src/alerts plugins/console/ui/src/cards plugins/console/ui/src/hitl plugins/console/ui/src/workflow",
     "lint:operations": "eslint --config eslint.operations.config.js plugins/console/ui/src/transcripts/page.tsx plugins/console/ui/src/transcripts/detail.tsx plugins/console/ui/src/approvals/page.tsx plugins/console/ui/src/approvals/dialog.tsx plugins/console/ui/src/forge/inbox/PendingPrInbox.tsx plugins/console/ui/src/forge/inbox/AssignDialog.tsx"
   }
 }
