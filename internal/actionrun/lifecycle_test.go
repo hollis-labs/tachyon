@@ -496,3 +496,66 @@ func TestUnattendedActionsTakeNoInput(t *testing.T) {
 		t.Fatalf("%+v", end)
 	}
 }
+
+// A peer that authenticates but never answers channel open must not hold Start or
+// Output past their context.
+func TestSSHChannelOpenStallHonoursTheContext(t *testing.T) {
+	tr, _ := sshFixture(t, 0o600)
+	_, hpriv, _ := ed25519.GenerateKey(rand.Reader)
+	hsigner, _ := ssh.NewSignerFromKey(hpriv)
+	cfg := &ssh.ServerConfig{NoClientAuth: true}
+	cfg.AddHostKey(hsigner)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				sc, chans, reqs, err := ssh.NewServerConn(c, cfg)
+				if err != nil {
+					return
+				}
+				defer sc.Close()
+				go ssh.DiscardRequests(reqs)
+				for range chans { // never Accept or Reject the channel open
+				}
+			}()
+		}
+	}()
+	addr := ln.Addr().String()
+	tr.Addr = addr
+	_ = os.WriteFile(tr.KnownHostsFile, []byte("["+strings.Replace(addr, ":", "]:", 1)+" "+string(ssh.MarshalAuthorizedKey(hsigner.PublicKey()))), 0o600)
+
+	within := func(name string, fn func(ctx context.Context) error) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		done := make(chan error, 1)
+		go func() { done <- fn(ctx) }()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatalf("%s succeeded against a peer that never opened the channel", name)
+			}
+		case <-time.After(250 * time.Millisecond):
+			t.Fatalf("%s stayed blocked past its context while the peer ignored channel open", name)
+		}
+	}
+	within("Start", func(ctx context.Context) error {
+		s, err := tr.Start(ctx, []string{"x"}, 80, 24)
+		if s != nil {
+			s.Close()
+		}
+		return err
+	})
+	within("Output", func(ctx context.Context) error {
+		_, err := tr.Output(ctx, []string{"x"})
+		return err
+	})
+}

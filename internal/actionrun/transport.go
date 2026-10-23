@@ -236,30 +236,53 @@ type sshSession struct {
 	stop   chan struct{}
 }
 
+// watchSetup closes the client if ctx ends before the returned stop is called,
+// so a peer that never answers channel open, pty-req or exec cannot hold the
+// caller past its deadline. Call stop once setup is over (or ownership moved).
+func watchSetup(ctx context.Context, client *ssh.Client) (stop func()) {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			client.Close()
+		case <-done:
+		}
+	}()
+	return func() { close(done) }
+}
+
 func (t *SSH) Start(ctx context.Context, argv []string, cols, rows uint16) (Session, error) {
 	client, err := t.client(ctx)
 	if err != nil {
 		return nil, err
 	}
-	sess, err := client.NewSession()
-	if err != nil {
+	// Covers channel open, pty request and exec setup; the session takes over on success.
+	stopSetup := watchSetup(ctx, client)
+	defer stopSetup()
+	abort := func(err error) (Session, error) {
 		client.Close()
+		if cerr := ctx.Err(); cerr != nil {
+			return nil, cerr
+		}
 		return nil, err
 	}
-	fail := func(err error) (Session, error) { sess.Close(); client.Close(); return nil, err }
+	sess, err := client.NewSession()
+	if err != nil {
+		return abort(err)
+	}
 	if err = sess.RequestPty("xterm-256color", int(rows), int(cols), ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 38400, ssh.TTY_OP_OSPEED: 38400}); err != nil {
-		return fail(err)
+		return abort(err)
 	}
 	in, err := sess.StdinPipe()
 	if err != nil {
-		return fail(err)
+		return abort(err)
 	}
 	out, err := sess.StdoutPipe() // a pty merges stderr into stdout
 	if err != nil {
-		return fail(err)
+		return abort(err)
 	}
 	if err = sess.Start(t.remoteLine(argv)); err != nil {
-		return fail(err)
+		return abort(err)
 	}
 	s := &sshSession{client: client, sess: sess, out: out, in: in, stop: make(chan struct{})}
 	go func() {
@@ -269,7 +292,7 @@ func (t *SSH) Start(ctx context.Context, argv []string, cols, rows uint16) (Sess
 		case <-s.stop:
 		}
 	}()
-	return s, nil
+	return s, nil // stopSetup runs now; the session's own watcher is already armed
 }
 
 func (t *SSH) Output(ctx context.Context, argv []string) ([]byte, error) {
@@ -278,21 +301,17 @@ func (t *SSH) Output(ctx context.Context, argv []string) ([]byte, error) {
 		return nil, err
 	}
 	defer client.Close()
+	// Armed before channel open and kept through the command.
+	stop := watchSetup(ctx, client)
+	defer stop()
 	sess, err := client.NewSession()
 	if err != nil {
+		if cerr := ctx.Err(); cerr != nil {
+			return nil, cerr
+		}
 		return nil, err
 	}
 	defer sess.Close()
-	// Cancelling ctx closes the client, which unblocks the command.
-	done := make(chan struct{})
-	defer close(done)
-	go func() {
-		select {
-		case <-ctx.Done():
-			client.Close()
-		case <-done:
-		}
-	}()
 	out, err := sess.Output(t.remoteLine(argv))
 	if cerr := ctx.Err(); cerr != nil {
 		return nil, cerr
