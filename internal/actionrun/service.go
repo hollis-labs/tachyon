@@ -48,8 +48,6 @@ type Service struct {
 	Manager  *Manager
 	Approval *hitl.Service
 	Clock    func() time.Time
-	// Labels, when set, replaces the Cerberus lookup (tests).
-	Labels func(ctx context.Context, machine, resource string) (Labels, error)
 }
 
 func (s *Service) now() time.Time {
@@ -95,37 +93,6 @@ func newID(prefix string) string {
 	return prefix + hex.EncodeToString(b[:])
 }
 
-func (s *Service) labelsFor(ctx context.Context, machine, resource string) (Labels, error) {
-	if s.Labels != nil {
-		return s.Labels(ctx, machine, resource)
-	}
-	t, ok := s.Manager.Transports[machine]
-	if !ok {
-		return Labels{}, fmt.Errorf("machine %s has no transport configured", machine)
-	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	raw, err := t.Output(ctx, []string{"cerberus", "resource", "list", "-o", "json"})
-	if err != nil {
-		return Labels{}, fmt.Errorf("could not read Cerberus labels on %s: %w", machine, err)
-	}
-	var list []struct {
-		ID    string `json:"id"`
-		Env   string `json:"env"`
-		Owner string `json:"owner"`
-		Admin string `json:"admin"`
-	}
-	if err := json.Unmarshal(raw, &list); err != nil {
-		return Labels{}, fmt.Errorf("could not parse Cerberus resource list on %s: %w", machine, err)
-	}
-	for _, r := range list {
-		if r.ID == resource {
-			return Labels{Env: r.Env, Owner: r.Owner, Admin: r.Admin}, nil
-		}
-	}
-	return Labels{}, fmt.Errorf("Cerberus on %s has no resource %q", machine, resource)
-}
-
 // Request validates, classifies and enqueues an approval. Nothing runs until
 // the owner approves; the op_digest is computed here, never by the agent.
 func (s *Service) Request(ctx context.Context, in RequestInput) (Handle, error) {
@@ -142,7 +109,7 @@ func (s *Service) Request(ctx context.Context, in RequestInput) (Handle, error) 
 	}
 	class, labelText := act.Class, ""
 	if act.LabelParam != "" {
-		labels, err := s.labelsFor(ctx, in.Machine, spec.Params[act.LabelParam])
+		labels, err := s.Manager.labelsFor(ctx, in.Machine, spec.Params[act.LabelParam])
 		if err != nil {
 			return Handle{}, &ValidationError{err.Error()}
 		}

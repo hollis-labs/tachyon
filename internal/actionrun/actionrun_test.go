@@ -374,3 +374,45 @@ func TestLocalTransportRunsArgvOnPty(t *testing.T) {
 	}
 	_ = s.Close()
 }
+
+func TestLabelsAreRecheckedAtStartAndFailClosed(t *testing.T) {
+	for name, relabel := range map[string]string{
+		"relabelled prod":        `[{"id":"hub-tether","env":"prod","owner":"self","admin":"self"}]`,
+		"relabelled admin owner": `[{"id":"hub-tether","env":"dev","owner":"self","admin":"owner"}]`,
+		"label removed":          `[{"id":"hub-tether","env":"","owner":"","admin":""}]`,
+		"resource gone":          `[]`,
+		"lookup unparseable":     `not json`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t, printAndExit("ran\n", 0))
+			h, err := r.svc.Request(context.Background(), RequestInput{Machine: "hub", Action: "cerberus.resource.reload", Params: map[string]string{"resource_id": "hub-tether"}, Reason: "x"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.tr.labels = relabel // between request and approval
+			r.decide(t, h.ItemID, "approved")
+			run := r.await(t, h.RunID)
+			if run.State != StateRefused || r.tr.count() != 0 || run.Error == "" {
+				t.Fatalf("a non-dev or unreadable target must not run: %+v ran=%d", run, r.tr.count())
+			}
+		})
+	}
+	t.Run("lookup transport failure", func(t *testing.T) {
+		r := newRig(t, printAndExit("ran\n", 0))
+		h, _ := r.svc.Request(context.Background(), RequestInput{Machine: "hub", Action: "cerberus.resource.reload", Params: map[string]string{"resource_id": "hub-tether"}, Reason: "x"})
+		r.svc.Manager.Labels = func(context.Context, string, string) (Labels, error) { return Labels{}, errors.New("ssh: connection refused") }
+		r.decide(t, h.ItemID, "approved")
+		run := r.await(t, h.RunID)
+		if run.State != StateRefused || r.tr.count() != 0 {
+			t.Fatalf("%+v", run)
+		}
+	})
+	t.Run("still dev runs", func(t *testing.T) {
+		r := newRig(t, printAndExit("ran\n", 0))
+		h, _ := r.svc.Request(context.Background(), RequestInput{Machine: "hub", Action: "cerberus.resource.reload", Params: map[string]string{"resource_id": "hub-tether"}, Reason: "x"})
+		r.decide(t, h.ItemID, "approved")
+		if run := r.await(t, h.RunID); run.State != StateSucceeded {
+			t.Fatalf("%+v", run)
+		}
+	})
+}

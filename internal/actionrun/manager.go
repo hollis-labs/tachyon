@@ -2,6 +2,7 @@ package actionrun
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -37,6 +38,8 @@ type Manager struct {
 	Items      ItemReader
 	Transports map[string]Transport
 	Clock      func() time.Time
+	// Labels, when set, replaces the Cerberus label lookup (tests).
+	Labels func(ctx context.Context, machine, resource string) (Labels, error)
 
 	mu   sync.Mutex
 	runs map[string]*live
@@ -121,6 +124,17 @@ func (m *Manager) Start(ctx context.Context, runID string, cols, rows uint16) (R
 		return m.refuse(ctx, run, "op_digest mismatch: the request that runs is not the request that was approved")
 	case !equalArgv(spec.Argv, run.Argv):
 		return m.refuse(ctx, run, "stored argv differs from the registry's argv")
+	}
+	// Approval can wait; the target may have been relabelled since the request.
+	// Re-read its labels now and fail closed if they are not dev or unreadable.
+	if act, _ := ActionByID(run.Action); act.LabelParam != "" {
+		labels, err := m.labelsFor(ctx, run.Machine, run.Params[act.LabelParam])
+		if err != nil {
+			return m.refuse(ctx, run, "could not re-check the target's Cerberus labels: "+Redact(err.Error()))
+		}
+		if !labels.Dev() {
+			return m.refuse(ctx, run, fmt.Sprintf("the target is no longer a dev resource (%s)", labels))
+		}
 	}
 	transport, ok := m.Transports[run.Machine]
 	if !ok {
@@ -298,3 +312,35 @@ func (m *Manager) Resize(runID string, cols, rows uint16) error {
 
 // Live reports whether a process is attached to the run.
 func (m *Manager) Live(runID string) bool { return m.lookup(runID) != nil }
+
+// labelsFor reads the target resource's Cerberus labels on its machine.
+func (m *Manager) labelsFor(ctx context.Context, machine, resource string) (Labels, error) {
+	if m.Labels != nil {
+		return m.Labels(ctx, machine, resource)
+	}
+	t, ok := m.Transports[machine]
+	if !ok {
+		return Labels{}, fmt.Errorf("machine %s has no transport configured", machine)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	raw, err := t.Output(ctx, []string{"cerberus", "resource", "list", "-o", "json"})
+	if err != nil {
+		return Labels{}, fmt.Errorf("could not read Cerberus labels on %s: %w", machine, err)
+	}
+	var list []struct {
+		ID    string `json:"id"`
+		Env   string `json:"env"`
+		Owner string `json:"owner"`
+		Admin string `json:"admin"`
+	}
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return Labels{}, fmt.Errorf("could not parse Cerberus resource list on %s: %w", machine, err)
+	}
+	for _, r := range list {
+		if r.ID == resource {
+			return Labels{Env: r.Env, Owner: r.Owner, Admin: r.Admin}, nil
+		}
+	}
+	return Labels{}, fmt.Errorf("Cerberus on %s has no resource %q", machine, resource)
+}
