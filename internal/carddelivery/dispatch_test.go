@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -251,12 +252,25 @@ func mustAddr(t *testing.T, s string) messaging.Address {
 // A fake Tether hub that, like the real one, stores a send once per
 // metadata["tether.message_id"] and can lose the response after committing.
 type hub struct {
+	mu       sync.Mutex
 	stored   map[string]string // idempotency key -> message id
 	bodies   int
 	dropNext bool
 }
 
+func (h *hub) snapshot() (stored map[string]string, bodies int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	stored = map[string]string{}
+	for k, v := range h.stored {
+		stored[k] = v
+	}
+	return stored, h.bodies
+}
+
 func (h *hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	var req tether.NotifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), 400)
@@ -307,8 +321,9 @@ func TestLostResponseRetryAcrossRestartStoresOneTetherMessage(t *testing.T) {
 	if err := build().Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if row, _ := e.d.Store.Get(ctx, id); row.State != StatePending || len(h.stored) != 1 {
-		t.Fatalf("the first send committed but its response was lost: %+v stored=%d", row, len(h.stored))
+	stored, _ := h.snapshot()
+	if row, _ := e.d.Store.Get(ctx, id); row.State != StatePending || len(stored) != 1 {
+		t.Fatalf("the first send committed but its response was lost: %+v stored=%d", row, len(stored))
 	}
 	// Restart: a new dispatcher over the same delivery row, clock advanced.
 	e.now = e.now.Add(time.Hour)
@@ -316,7 +331,8 @@ func TestLostResponseRetryAcrossRestartStoresOneTetherMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, _ := e.d.Store.Get(ctx, id)
-	if row.State != StateSent || h.bodies != 1 || len(h.stored) != 1 || row.Receipt != h.stored[row.Key] {
-		t.Fatalf("the retry must reuse the stored Tether message: %+v bodies=%d stored=%v", row, h.bodies, h.stored)
+	stored, bodies := h.snapshot()
+	if row.State != StateSent || bodies != 1 || len(stored) != 1 || row.Receipt != stored[row.Key] {
+		t.Fatalf("the retry must reuse the stored Tether message: %+v bodies=%d stored=%v", row, bodies, stored)
 	}
 }
