@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, Check, Copy, ExternalLink, Loader2, RefreshCw, SearchX } from 'lucide-react'
+import { AlertTriangle, Check, Copy, ExternalLink, Loader2, PanelRight, RefreshCw, SearchX } from 'lucide-react'
 import { ago } from '@console/lib/agent-activity'
 import type { PreviewCard, RefIdentity } from '../refs'
 import { useAutolink } from './context'
@@ -78,6 +78,10 @@ export function PreviewCardView({ card, variant = 'hover', onRetry, now, childre
   const drawer = variant === 'drawer'
   const updated = card.updatedAt ? Date.parse(card.updatedAt) : NaN
   const actions = card.phase === 'loading' ? [] : refActions(ref, card)
+  const { hosted, openDrawer } = useAutolink()
+  // The hovercard is a summary; this opens the same overlay a click on the chip does. Kinds that hide Open page
+  // (tasks, pull requests) otherwise had no button at all.
+  const details = !drawer && hosted && (card.phase === 'ready' || card.phase === 'error')
 
   return (
     <div className="flex min-w-0 flex-col" data-phase={card.phase} data-testid="ref-card">
@@ -139,8 +143,14 @@ export function PreviewCardView({ card, variant = 'hover', onRetry, now, childre
         </>
       )}
 
-      {(Number.isFinite(updated) || actions.length > 0) && (
+      {(Number.isFinite(updated) || actions.length > 0 || details) && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          {details && (
+            <button type="button" className={BTN} onClick={() => openDrawer(ref)}>
+              <PanelRight className="h-3 w-3" />
+              Details
+            </button>
+          )}
           {actions.map((a) => <ActionControl key={a.id} action={a} />)}
           {Number.isFinite(updated) && <span className="ml-auto font-mono text-[10px] text-fg-faint">updated {ago(updated, now ?? clock)}</span>}
         </div>
