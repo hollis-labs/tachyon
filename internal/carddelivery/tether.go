@@ -38,7 +38,10 @@ func (s TetherSink) Deliver(ctx context.Context, m Message) (string, error) {
 	res, err := s.N.Notify(ctx, tether.NotifyRequest{
 		Kind: messaging.MsgKindNotice, From: s.From, To: s.To,
 		ThreadID: m.CardRef, Payload: payload, ContentType: "application/json",
-		Metadata: map[string]string{"card_delivery_key": m.Key, "card_id": m.ItemID, "card_revision": fmt.Sprint(m.Revision)},
+		// tether.message_id is the input Tether deduplicates a send on (scoped to
+		// the verified sender, body-digest checked), so a retry after a lost
+		// response returns the stored message instead of a second one.
+		Metadata: map[string]string{"tether.message_id": m.Key, "card_delivery_key": m.Key, "card_id": m.ItemID, "card_revision": fmt.Sprint(m.Revision)},
 		Wake:     &wake,
 	})
 	if err != nil {

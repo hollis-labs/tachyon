@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -245,4 +246,77 @@ func mustAddr(t *testing.T, s string) messaging.Address {
 		t.Fatal(err)
 	}
 	return a
+}
+
+// A fake Tether hub that, like the real one, stores a send once per
+// metadata["tether.message_id"] and can lose the response after committing.
+type hub struct {
+	stored   map[string]string // idempotency key -> message id
+	bodies   int
+	dropNext bool
+}
+
+func (h *hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var req tether.NotifyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	key := req.Metadata["tether.message_id"]
+	id, dup := h.stored[key]
+	if !dup || key == "" {
+		h.bodies++
+		id = "msg-" + strings.Repeat("x", h.bodies)
+		if key != "" {
+			h.stored[key] = id
+		}
+	}
+	if h.dropNext {
+		h.dropNext = false
+		conn, _, _ := w.(http.Hijacker).Hijack()
+		conn.Close()
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{"id": id}})
+}
+
+func TestLostResponseRetryAcrossRestartStoresOneTetherMessage(t *testing.T) {
+	h := &hub{stored: map[string]string{}, dropNext: true}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	client, err := tether.New(srv.URL, tether.WithToken(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := setup(t)
+	path := filepath.Join(t.TempDir(), "d.json")
+	writeFile(t, path, `{"from":"msg://service/tachyon/cards","sinks":{"ops":{"kind":"tether_message","to":"msg://agent/agent-mux/asker"}},"profile":`+profileJSON+`}`)
+	build := func() *Dispatcher {
+		router, sinks, err := Load(path, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := New(e.d.Items, e.d.Store, router, HoldSink, sinks)
+		d.Now = func() time.Time { return e.now }
+		return d
+	}
+	ctx := context.Background()
+	id := ask(t, e, "card.approval", "k-lost")
+	answer(t, e, id, "card.approval", "approved")
+	if err := build().Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if row, _ := e.d.Store.Get(ctx, id); row.State != StatePending || len(h.stored) != 1 {
+		t.Fatalf("the first send committed but its response was lost: %+v stored=%d", row, len(h.stored))
+	}
+	// Restart: a new dispatcher over the same delivery row, clock advanced.
+	e.now = e.now.Add(time.Hour)
+	if err := build().Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	row, _ := e.d.Store.Get(ctx, id)
+	if row.State != StateSent || h.bodies != 1 || len(h.stored) != 1 || row.Receipt != h.stored[row.Key] {
+		t.Fatalf("the retry must reuse the stored Tether message: %+v bodies=%d stored=%v", row, h.bodies, h.stored)
+	}
 }
