@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Button } from "@hollis-labs/design-components"
 import { MessageBody } from "../chat/MessageBody"
-import type { ApprovalItem, CardAnswer } from "./client"
+import type { ApprovalItem, CardAnswer, CardReceipt } from "./client"
 
 type Request = ApprovalItem["request_snapshot"]
 const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
@@ -135,5 +135,28 @@ export function CardForm({ request, busy, disabled, onSubmit }: {
         {busy ? "Submitting…" : "Submit"}
       </Button>
     </form>
+  )
+}
+
+const outcome = { ok: "Applied", failed: "Failed", skipped: "Skipped" } as const
+
+export function CardReceiptView({ receipt }: { receipt: CardReceipt }) {
+  if (receipt.state === "none") return null
+  return (
+    <section className="rounded border border-border bg-surface/40 p-4" aria-label="Effects result">
+      <h3 className={label}>Result · {receipt.state}</h3>
+      {receipt.reason && <p className="mt-2 dash-control text-fg-muted">{receipt.reason}</p>}
+      {receipt.effects && (
+        <ul className="mt-2 space-y-1 dash-control text-fg-muted">
+          {receipt.effects.map((e) => (
+            <li key={e.index}>
+              {outcome[e.status]} · {e.op ? `${e.op} ` : ""}{e.target}
+              {e.detail ? ` — ${e.detail}` : ""}
+              {e.error ? ` — ${e.error}` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

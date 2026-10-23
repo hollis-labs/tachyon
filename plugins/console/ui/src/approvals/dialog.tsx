@@ -20,7 +20,7 @@ import {
   type CardAnswer,
   type Evidence,
 } from "./client"
-import { CardData, CardForm } from "./card-body"
+import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { ActionRunPanel } from "./terminal"
 
 const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
@@ -228,6 +228,7 @@ export function ApprovalDialog({
                 ))}
               </section>
             )}
+            {item?.card_receipt && <CardReceiptView receipt={item.card_receipt} />}
             {resolution ? (
               <section className="rounded border border-border bg-surface/40 p-4">
                 <h3 className={`${label} text-info`}>

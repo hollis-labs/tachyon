@@ -26,6 +26,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/cardfx"
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
@@ -63,6 +64,8 @@ type Config struct {
 	// ActionDetachGrace keeps an interactive run alive this long after its last
 	// terminal closes (default 0: end it at once).
 	ActionDetachGrace time.Duration
+	// CardEffectsTorque lets an approved card change Torque task statuses.
+	CardEffectsTorque bool
 	Upstreams         catalog.Upstreams
 }
 
@@ -89,6 +92,7 @@ type Server struct {
 	approvalTrusted  *approvals.TrustedAPI
 	approvalCancel   context.CancelFunc
 	actions          *actionrun.Service
+	cardFx           *cardfx.Store
 }
 
 // New resolves the catalog against built binaries. Missing binaries are
@@ -194,6 +198,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	s.startActions(approvalContext, store)
+	s.startCardEffects(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
 	if err != nil {
@@ -326,7 +331,7 @@ func (s *Server) Routes() http.Handler {
 		if s.store != nil {
 			var cardTools *dataverbs.Cards
 			if s.approvalInbox != nil {
-				cardTools = &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry}
+				cardTools = &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry, Receipt: s.cardReceiptView}
 			}
 			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools))
 			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools))
@@ -369,6 +374,9 @@ func (s *Server) Routes() http.Handler {
 		}
 		if s.actions != nil && inbox == s.approvalInbox {
 			inbox.ActionRun = s.actionRunView
+		}
+		if inbox == s.approvalInbox {
+			inbox.CardReceipt = s.cardReceiptView
 		}
 		if s.actions != nil {
 			mux.Handle(actionrun.Prefix+"/", operator.RequireOperatorReads(&actionrun.Handler{Service: s.actions}))
@@ -552,6 +560,34 @@ func (s *Server) startActions(ctx context.Context, store *localstore.Store) {
 	}
 	s.actions = &actionrun.Service{Store: runs, Manager: manager, Approval: s.approvalInbox.Service}
 	go s.actions.Watch(ctx, 0)
+}
+
+// startCardEffects runs the effects of approved cards. The Torque target is off
+// unless TACHYON_CARD_EFFECTS_TORQUE is set: letting an approval change Torque
+// tasks is a deliberate grant, not a default.
+func (s *Server) startCardEffects(ctx context.Context, store *localstore.Store) {
+	s.cardFx = &cardfx.Store{DB: store}
+	var targets []cardfx.Target
+	if s.cfg.CardEffectsTorque {
+		targets = append(targets, cardfx.NewTorque(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken))
+	}
+	ex := cardfx.New(&approvals.Store{DB: store}, s.cardFx, targets...)
+	if err := ex.Recover(ctx); err != nil {
+		slog.Warn("card effects not recovered", "err", err)
+	}
+	go ex.Watch(ctx, 0)
+}
+
+// cardReceiptView is the effects receipt attached to a card item, or nil.
+func (s *Server) cardReceiptView(ctx context.Context, itemID string) any {
+	if s.cardFx == nil {
+		return nil
+	}
+	r, err := s.cardFx.Get(ctx, itemID)
+	if err != nil || r == nil {
+		return nil
+	}
+	return r
 }
 
 // actionRunView is the run attached to an approval item, or nil.

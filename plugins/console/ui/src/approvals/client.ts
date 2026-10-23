@@ -68,9 +68,16 @@ export interface ActionRun {
   started_at?: string
   ended_at?: string
 }
+// What happened after a card with effects was approved.
+export interface CardReceipt {
+  state: "running" | "completed" | "failed" | "refused" | "none"
+  reason?: string
+  effects?: { index: number; target: string; op?: string; status: "ok" | "failed" | "skipped"; detail?: string; error?: string }[]
+}
 export const ACTION_RUNS_BASE = "/api/plugins/console/v1/action-runs"
 export interface ApprovalItem {
   action_run?: ActionRun
+  card_receipt?: CardReceipt
   item_id: string
   state: string
   revision: number

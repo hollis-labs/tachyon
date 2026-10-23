@@ -340,4 +340,14 @@ describe("card review dialog", () => {
     await screen.findByText(/nothing to answer/)
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull()
   })
+  it("shows what happened after an approved card's effects ran", async () => {
+    const current = {
+      ...card("card.approval", { n: 1 }, { effects: [{ target: "torque:task/CW-1", op: "status", value: "done" }] }),
+      state: "resolved",
+      card_receipt: { state: "failed", effects: [{ index: 0, target: "torque:task/CW-1", op: "status", status: "failed", error: "Torque refused: invalid transition" }] },
+    } as ApprovalItem
+    open(current, vi.fn())
+    expect(await screen.findByText("Result · failed")).toBeTruthy()
+    expect(screen.getByText(/Torque refused: invalid transition/)).toBeTruthy()
+  })
 })

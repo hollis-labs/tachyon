@@ -79,6 +79,11 @@ func TestEventProjectionAllowsOnlyListedFieldsPerKind(t *testing.T) {
 		"fleet.node.up":              {"node_id": "n1"},
 		"fleet.node.degraded":        {"node_id": "n1", "reasons": []any{"disk"}},
 	}
+	card := map[string]any{"card_id": "item_1", "revision": 2, "card_type": "approval", "state": "pending", "risk": "medium", "op_digest": "sha256:abc",
+		"source_app": "service:1b2c", "supersedes": "item_0", "outcome": "approved", "assurance": "operator-token", "error_code": "refused", "expires_at": "2026-10-24T00:00:00Z", "at": "2026-10-23T00:00:00Z"}
+	for _, k := range []string{"created", "updated", "resolved", "expired", "effect.completed", "effect.failed"} {
+		good["card."+k] = card
+	}
 	for _, k := range []string{"sent", "queued", "delivered", "read", "consumed", "failed", "dead_lettered", "redriven", "canceled"} {
 		good["message."+k] = map[string]any{"message_id": "m1", "thread_id": "th1", "state": k, "delivery_state": "x", "attempt": 3, "stage": "turn_submitted", "error_class": "e", "reason": "r", "at": "2026-10-20T10:00:01Z"}
 	}
@@ -219,3 +224,21 @@ func TestBindingHealthTraceProjection(t *testing.T) {
 }
 
 func mustJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+func TestCardEventsCarryIdsAndCodesNeverBodiesOrIdentity(t *testing.T) {
+	row := hubRow(9, "card.resolved", map[string]any{
+		"card_id": "item_1", "revision": 3, "outcome": "approved", "source_app": "service:1b2c",
+		"title": "SECRET-TEXT-BODY", "summary": "SECRET-TEXT-BODY", "data": map[string]any{"x": "SECRET-TEXT-BODY"},
+		"answers":   []any{map[string]any{"value": "SECRET-TEXT-BODY"}},
+		"responder": map[string]any{"ref": "browser-session:SECRET-TEXT-BODY"}, "results": []any{map[string]any{"error": "SECRET-TEXT-BODY"}},
+		"assurance": "free text with SECRET-TEXT-BODY",
+	})
+	res := handleStub(t, 200, mustJSON(map[string]any{"events": []any{row}}), subprocess.HTTPRequest{Method: "GET", Path: objectsPrefix + "/events"})
+	if res.Status != 200 || strings.Contains(string(res.Body), "SECRET-TEXT-BODY") {
+		t.Fatalf("%d %s", res.Status, res.Body)
+	}
+	var out struct{ Events []map[string]any }
+	if json.Unmarshal(res.Body, &out) != nil || len(out.Events) != 1 || !strings.Contains(out.Events[0]["payload_json"].(string), `"card_id":"item_1"`) {
+		t.Fatalf("%s", res.Body)
+	}
+}
