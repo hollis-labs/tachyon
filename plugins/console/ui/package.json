@@ -12,6 +12,8 @@
     "@hollis-labs/kit-chat": "file:../../../third_party/hollis-labs-kit-chat-0.5.0-cw0041-review-e8ec62f8.tgz",
     "@tachyon/host-sdk": "0.1.0",
     "@tachyon/torque-client": "0.1.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
     "react-markdown": "^10.1.0",
     "streamdown": "^2.7.0",
     "yaml": "^2.9.1"

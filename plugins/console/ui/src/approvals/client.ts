@@ -29,7 +29,42 @@ export interface Evidence {
   content?: string
   [key: string]: unknown
 }
+export type ActionRunState =
+  | "pending_approval"
+  | "approved"
+  | "waiting_input"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "refused"
+  | "denied"
+  | "expired"
+// A registered action bound to an approval (see README "Registered actions").
+export interface ActionRun {
+  run_id: string
+  item_id: string
+  machine: string
+  action: string
+  argv: string[]
+  command: string
+  op_digest: string
+  class: string
+  labels?: string
+  state: ActionRunState
+  terminal: boolean
+  interactive: boolean
+  user?: string
+  exit_code?: number
+  output?: string
+  note?: string
+  error?: string
+  created_at: string
+  started_at?: string
+  ended_at?: string
+}
+export const ACTION_RUNS_BASE = "/api/plugins/console/v1/action-runs"
 export interface ApprovalItem {
+  action_run?: ActionRun
   item_id: string
   state: string
   revision: number

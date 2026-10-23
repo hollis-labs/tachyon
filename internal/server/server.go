@@ -366,6 +366,9 @@ func (s *Server) Routes() http.Handler {
 		if s.actions != nil && inbox == s.approvalInbox {
 			inbox.ActionRun = s.actionRunView
 		}
+		if s.actions != nil {
+			mux.Handle(actionrun.Prefix+"/", operator.RequireOperatorReads(&actionrun.Handler{Service: s.actions}))
+		}
 		mux.Handle(approvals.Prefix+"/", inbox)
 		mux.Handle(approvals.ProducerPrefix+"/", producer)
 	} else {

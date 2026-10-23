@@ -1275,6 +1275,20 @@ id** and parameters. Day one: `cerberus.resource.{apply,deploy,reload,remove,sto
   today, so the allowlist is enforced here; use a dedicated key with a forced command
   before this runs beyond dev.
 
+**Terminal modal.** An approval item that carries an `action_run` shows the machine,
+exact command, class and `op_digest` in the Approvals dialog. After the owner
+approves, the dialog polls `GET /api/plugins/console/v1/action-runs/{run_id}` and,
+when the run waits for input or is running, attaches an xterm.js terminal over
+`GET …/action-runs/{run_id}/terminal` (websocket, same origin, operator assurance
+including reads, `Authorization` headers refused). Binary frames are output and
+keystrokes; a text frame `{"type":"resize","cols":N,"rows":N}` resizes (the first one
+sizes the process on start). The socket only attaches to a run created by an
+approved request; it starts nothing by itself and the executor still re-checks the
+digest. Closing the terminal ends an interactive run (the pty must not outlive its viewer); set
+`TACHYON_ACTION_DETACH_GRACE` (e.g. `15s`) to let a page reload reattach with a bounded
+replay within that window. A finished run shows its recorded exit code and output. Any reverse proxy in front of Tachyon
+must pass websocket upgrades for that path.
+
 #### Trusted high-tier assurance integration (not activated)
 
 CW-20261019-0036 implements the shared operation/WebAuthn contract (Tesseract
