@@ -122,9 +122,7 @@ func ResponseFromEnvelope(kind string, resp envelopes.Response) (hitl.Response, 
 	switch {
 	case len(resp.Decisions) == 1:
 		out.Decision = resp.Decisions[0].Action
-		if resp.Decisions[0].Note != "" {
-			out.Extra["note"], _ = json.Marshal(resp.Decisions[0].Note)
-		}
+		out.Note = resp.Decisions[0].Note
 	case len(resp.Decisions) > 1:
 		out.Decision = "submitted"
 		out.Extra["decisions"], _ = json.Marshal(resp.Decisions)
@@ -159,7 +157,7 @@ func ResponseToEnvelope(envelopeID string, state hitl.State, resp *hitl.Response
 			out.Decisions = decisions
 		} else if resp.Decision != "submitted" {
 			d := envelopes.Decision{ItemID: envelopeID, Action: resp.Decision}
-			_ = json.Unmarshal(resp.Extra["note"], &d.Note)
+			d.Note = resp.Note
 			out.Decisions = []envelopes.Decision{d}
 		}
 		if raw, ok := resp.Extra["payload"]; ok {

@@ -26,6 +26,10 @@ var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfoli
 // ActionVerbs are the registered-action tools (request, then await the result).
 // They name no object kinds: a credential holding only these needs none.
 var actionVerbs = []string{"actions.catalog", "actions.request", "actions.await"}
+
+// CardVerbs are the card tools: ask the operator, then read, await or withdraw
+// the card. A credential only ever sees cards its own identity asked.
+var cardVerbs = []string{"card.ask", "card.get", "card.await", "card.cancel"}
 var plannerKinds = []string{"plan", "task", "epic", "sprint", "collection", "workstream", "inbox_item", "idea", "decision", "risk", "roadmap_item", "strategic_priority"}
 var portfolioKinds = []string{"strategic_priority", "workstream", "roadmap_item", "idea", "decision", "risk", "inbox_item"}
 
@@ -47,10 +51,12 @@ func PortfolioWrite() Grants {
 }
 func ActionRequest() Grants    { return Grants{Verbs: append([]string(nil), actionVerbs...)} }
 func ActionVerb(v string) bool { return contains(actionVerbs, v) }
+func CardAsk() Grants          { return Grants{Verbs: append([]string(nil), cardVerbs...)} }
+func CardVerb(v string) bool   { return contains(cardVerbs, v) }
 func PlannerKinds() []string   { return append([]string(nil), plannerKinds...) }
 func ReadVerb(v string) bool   { return contains(readVerbs, v) || contains(portfolioReadVerbs, v) }
 func SupportedVerb(v string) bool {
-	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v)
+	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v)
 }
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
@@ -63,7 +69,7 @@ func contains(xs []string, x string) bool {
 func (g Grants) Validate() error {
 	onlyActions := len(g.Verbs) > 0
 	for _, v := range g.Verbs {
-		onlyActions = onlyActions && contains(actionVerbs, v)
+		onlyActions = onlyActions && (contains(actionVerbs, v) || contains(cardVerbs, v))
 	}
 	if len(g.Verbs) == 0 || (len(g.Kinds) == 0 && !onlyActions) {
 		return errors.New("explicit verbs and kinds are required")
