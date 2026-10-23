@@ -187,6 +187,11 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Decision string `json:"decision"`
 			Note     string `json:"note,omitempty"`
 			Reply    string `json:"reply,omitempty"`
+			// Answers, Decisions and Payload are card-only; a card response
+			// is checked against the stored request before it is recorded.
+			Answers   json.RawMessage `json:"answers,omitempty"`
+			Decisions json.RawMessage `json:"decisions,omitempty"`
+			Payload   json.RawMessage `json:"payload,omitempty"`
 		} `json:"response,omitempty"`
 	}
 	if err = strictJSON(raw, &cmd); err != nil {
@@ -226,6 +231,26 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if cmd.Response.Reply != "" {
 		response.Extra["reply"], _ = json.Marshal(cmd.Response.Reply)
+	}
+	for name, raw := range map[string]json.RawMessage{"answers": cmd.Response.Answers, "decisions": cmd.Response.Decisions, "payload": cmd.Response.Payload} {
+		if len(raw) == 0 {
+			continue
+		}
+		if !cards.IsCard(request.Kind) {
+			writeHITLError(w, fmt.Errorf("%w: %s apply only to cards", hitl.ErrInvalidRequest, name))
+			return
+		}
+		response.Extra[name] = raw
+	}
+	if cards.IsCard(request.Kind) {
+		if response.Kind != request.Kind {
+			writeHITLError(w, fmt.Errorf("%w: response kind must be %s", hitl.ErrInvalidRequest, request.Kind))
+			return
+		}
+		if err = CardRegistry.ValidateAnswers(request, response); err != nil {
+			writeHITLError(w, err)
+			return
+		}
 	}
 	outcome, err := i.Service.Respond(r.Context(), hitl.RespondCommand{ItemID: item.ItemID, ExpectedRevision: &cmd.ExpectedRevision, Response: response, Participant: participant})
 	if err != nil {
