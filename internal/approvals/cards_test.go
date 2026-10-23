@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -86,6 +88,35 @@ func TestCardRoundTripRecordsResponder(t *testing.T) {
 	for _, want := range []string{`"assurance":"operator-token"`, `browser-session:abc`} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("resolution must retain %s: %s", want, raw)
+		}
+	}
+}
+
+// Card bodies reach the browser only through the session-gated inbox routes;
+// the unauthenticated events poll route carries ids and codes, never a body.
+func TestCardBodiesNeedAnOperatorBrowserSession(t *testing.T) {
+	sessions := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeValue(w, map[string]any{"elevated": false, "assurance": "browser-session"})
+	}))
+	defer sessions.Close()
+	inbox := NewInbox(nativeStore(t), New(sessions.URL))
+	req := cardRequest("k-body", map[string]any{"data": map[string]any{"secretish": "proposed change set"}})
+	if err := prepareRequest(&req, ProducerPolicy{ApplicationID: "planner", MinimumClass: "low"}); err != nil {
+		t.Fatal(err)
+	}
+	handle, err := inbox.Service.Enqueue(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{Prefix + "/inbox", Prefix + "/items/" + handle.ItemID} {
+		if w := serveJSON(inbox, "GET", path, nil, "", ""); w.Code != 401 || strings.Contains(w.Body.String(), "proposed change set") {
+			t.Fatalf("%s without a session: %d %s", path, w.Code, w.Body)
+		}
+		if w := serveJSON(inbox, "GET", path, nil, "producer-token", "session"); w.Code != 403 || strings.Contains(w.Body.String(), "proposed change set") {
+			t.Fatalf("%s with a bearer token: %d %s", path, w.Code, w.Body)
+		}
+		if w := serveJSON(inbox, "GET", path, nil, "", "session"); w.Code != 200 || !strings.Contains(w.Body.String(), "proposed change set") {
+			t.Fatalf("%s with a browser session: %d %s", path, w.Code, w.Body)
 		}
 	}
 }
