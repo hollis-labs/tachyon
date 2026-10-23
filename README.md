@@ -1223,6 +1223,58 @@ authority for its protected operations. Live producer acceptance requires existi
 JWT trust/identity configuration and supported Tether enrollment. The shared-proof
 owner hold was lifted; production enrollment still depends on its implementations.
 
+#### Registered actions (approve and run)
+
+`internal/actionrun` runs an approved action on a chosen machine and records the
+result against the approval. It is not a shell: the registry (`actionrun.Actions`)
+holds fixed argv templates with typed, pattern-checked parameters, and a request
+names a **machine id** (`agent-os` runs locally, `hub` runs over ssh), an **action
+id** and parameters. Day one: `cerberus.resource.{apply,deploy,reload,remove,stop,sync}`
+(`--ack` is part of the template) and `tether.catalog.approve` (hub only).
+
+- **Digest.** The server computes `op_digest` = sha256 of the canonical machine,
+  action, params and argv when the request is made; the approval item carries it.
+  Before starting, the executor re-resolves the stored request from the registry and
+  refuses (`refused`) unless the digest equals both the stored and the approved one.
+- **Environment class.** For Cerberus actions the target resource's own labels are
+  read on the target machine (`cerberus resource list -o json`). `env=dev owner=self
+  admin=self` becomes a class-`medium` approval (operator elevation required);
+  prod, `admin=owner`, unlabeled or unknown targets are refused at request time
+  because they need the Cerberus passkey path. The labels are read again when the run
+  starts (approval can wait up to 30 minutes); a target relabelled non-dev since, or whose
+  labels cannot be read, is `refused` (fail closed).
+- **Lifecycle.** `pending_approval` → `approved`/`waiting_input` → `running` →
+  `succeeded`/`failed`; also `denied`, `expired`, `refused`. Actions that need no input start
+  on approval; interactive ones (`tether catalog approve`: digest prefix, hidden
+  passphrase) wait for the owner to attach a terminal. A restart fails runs that
+  were mid-flight.
+- **Transcript.** Unattended actions record output only: ANSI-stripped, secret-shaped strings
+  redacted, 64 KiB tail. Interactive actions (`tether catalog approve`) record **no terminal
+  output at all**: it exists only on the attached operator websocket, because the echo of typed
+  input (digest prefix, passphrase) can arrive at any time and cannot be reliably filtered. Their
+  stored run and the agent's `actions.await` carry state, exit code and a fixed note. Keystrokes
+  go straight to the pty and are never stored or logged; unattended actions accept none.
+- **Lifetime and limits.** A run lives on its own context, never the request's: it ends at
+  `MaxRuntime` (10 minutes), at Tachyon shutdown, or, for an interactive run, when its last
+  terminal closes (`TACHYON_ACTION_DETACH_GRACE`, a Go duration, default `0`: end at once; set
+  e.g. `15s` to let a page reload reattach). An interactive run nobody attaches to within 15s
+  is ended. Ending a run kills the whole process group locally and signals and closes the ssh
+  session remotely. At most four runs are active (`MaxConcurrent`); an approved action over the
+  bound stays `approved` and starts when one finishes. `Local.Start` refuses an already
+  cancelled context, and the ssh handshake, command and label lookups all honour cancellation.
+  The ssh key must be a regular file owned by the Tachyon user with no group or other access;
+  `known_hosts` must not be group or other writable.
+- **Result.** The run (state, exit code, bounded output, timestamps, user, machine,
+  argv, digest) is returned as `action_run` on the approval inbox item (only to an elevated operator session,
+  the same bar as the run-read route; a plain browser session sees the queue without it) and kept in
+  `action_runs` (one audit row per run; start and finish are also logged).
+- **Hub ssh.** Set `TACHYON_ACTION_HUB_SSH_ADDR` (`host:22`),
+  `TACHYON_ACTION_HUB_SSH_KEY_FILE`, `TACHYON_ACTION_HUB_SSH_KNOWN_HOSTS` and
+  optionally `TACHYON_ACTION_HUB_SSH_USER` (default `chrispian`). Host keys are
+  verified against that known_hosts file. The agent-os key is not gated on the hub
+  today, so the allowlist is enforced here; use a dedicated key with a forced command
+  before this runs beyond dev.
+
 #### Trusted high-tier assurance integration (not activated)
 
 CW-20261019-0036 implements the shared operation/WebAuthn contract (Tesseract

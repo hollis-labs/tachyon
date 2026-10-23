@@ -22,6 +22,7 @@ import (
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
+	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -56,7 +57,13 @@ type Config struct {
 	FragmentsURL                 string
 	FragmentsTokenFile           string
 	TranscriptMaxSessions        int
-	Upstreams                    catalog.Upstreams
+	// ActionHub configures the ssh transport to the hub for registered actions.
+	// With no address the hub machine is unavailable; agent-os runs locally.
+	ActionHub actionrun.SSH
+	// ActionDetachGrace keeps an interactive run alive this long after its last
+	// terminal closes (default 0: end it at once).
+	ActionDetachGrace time.Duration
+	Upstreams         catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
@@ -81,6 +88,7 @@ type Server struct {
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
 	approvalCancel   context.CancelFunc
+	actions          *actionrun.Service
 }
 
 // New resolves the catalog against built binaries. Missing binaries are
@@ -184,6 +192,8 @@ func (s *Server) Start(ctx context.Context) error {
 			_ = s.approvalProducer.Watch(approvalContext, s.cfg.ApprovalProducerConfigFile, 0, slog.Default())
 		}()
 	}
+
+	s.startActions(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
 	if err != nil {
@@ -353,6 +363,9 @@ func (s *Server) Routes() http.Handler {
 		if producer == nil {
 			producer = &approvals.Producer{Service: inbox.Service}
 		}
+		if s.actions != nil && inbox == s.approvalInbox {
+			inbox.ActionRun = s.actionRunView
+		}
 		mux.Handle(approvals.Prefix+"/", inbox)
 		mux.Handle(approvals.ProducerPrefix+"/", producer)
 	} else {
@@ -493,4 +506,33 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// startActions wires the registered-action executor: agent-os runs locally and
+// the hub over ssh when configured. A request can only name registry entries.
+func (s *Server) startActions(ctx context.Context, store *localstore.Store) {
+	transports := map[string]actionrun.Transport{actionrun.MachineAgentOS: actionrun.Local{}}
+	if hub := s.cfg.ActionHub; hub.Addr != "" {
+		if hub.PathPrefix == "" {
+			hub.PathPrefix = "$HOME/.local/bin"
+		}
+		transports[actionrun.MachineHub] = &hub
+	}
+	items := &approvals.Store{DB: store}
+	runs := &actionrun.Store{DB: store}
+	manager := &actionrun.Manager{Store: runs, Items: items, Transports: transports, Base: ctx, DetachGrace: s.cfg.ActionDetachGrace}
+	if err := manager.Recover(ctx); err != nil {
+		slog.Warn("action runs not recovered", "err", err)
+	}
+	s.actions = &actionrun.Service{Store: runs, Manager: manager, Approval: s.approvalInbox.Service}
+	go s.actions.Watch(ctx, 0)
+}
+
+// actionRunView is the run attached to an approval item, or nil.
+func (s *Server) actionRunView(ctx context.Context, itemID string) any {
+	run, err := s.actions.Store.ByItem(ctx, itemID)
+	if err != nil {
+		return nil
+	}
+	return run
 }

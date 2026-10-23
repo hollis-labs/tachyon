@@ -1,6 +1,7 @@
 package approvals
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,9 @@ type Inbox struct {
 	Store    *Store
 	Service  *hitl.Service
 	Sessions *Bridge
+	// ActionRun, when set, attaches the registered-action run for an item to its
+	// browser view (nil result means the item has no run).
+	ActionRun func(ctx context.Context, itemID string) any
 }
 
 func NewInbox(store *Store, sessions *Bridge) *Inbox {
@@ -82,6 +86,7 @@ func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Parti
 type browserItem struct {
 	hitl.ItemView
 	PresentedProjectionRevision int64 `json:"presented_projection_revision"`
+	ActionRun                   any   `json:"action_run,omitempty"`
 }
 
 // ItemView has custom marshaling; explicitly add the presentation field.
@@ -95,9 +100,16 @@ func (item browserItem) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields["presented_projection_revision"], _ = json.Marshal(item.PresentedProjectionRevision)
+	if item.ActionRun != nil {
+		fields["action_run"], _ = json.Marshal(item.ActionRun)
+	}
 	return json.Marshal(fields)
 }
-func (i *Inbox) view(r *http.Request, id string) (browserItem, error) {
+
+// view projects one item. The action run (its command, output and exit status) is
+// attached only for an elevated operator session: the same bar as the dedicated
+// run-read route, never the weaker browser-session assurance of the queue itself.
+func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, error) {
 	rec, err := i.Store.Get(r.Context(), id)
 	if err != nil {
 		return browserItem{}, err
@@ -106,7 +118,11 @@ func (i *Inbox) view(r *http.Request, id string) (browserItem, error) {
 	if err != nil {
 		return browserItem{}, err
 	}
-	return browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision}, nil
+	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision}
+	if i.ActionRun != nil && operator {
+		out.ActionRun = i.ActionRun(r.Context(), id)
+	}
+	return out, nil
 }
 func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -128,7 +144,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/inbox" && r.Method == http.MethodGet {
-		i.list(w, r)
+		i.list(w, r, participant.Assurance == "operator-token")
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -136,7 +152,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "Unknown inbox operation.")
 		return
 	}
-	item, err := i.view(r, parts[1])
+	item, err := i.view(r, parts[1], participant.Assurance == "operator-token")
 	if err != nil {
 		writeHITLError(w, err)
 		return
@@ -210,7 +226,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	writeValue(w, outcome)
 }
-func (i *Inbox) list(w http.ResponseWriter, r *http.Request) {
+func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
 	limit := 25
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -240,7 +256,7 @@ func (i *Inbox) list(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, rec := range records {
-			item, err := i.view(r, rec.ItemID)
+			item, err := i.view(r, rec.ItemID, operator)
 			if err != nil {
 				writeHITLError(w, err)
 				return
