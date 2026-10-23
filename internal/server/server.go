@@ -324,8 +324,12 @@ func (s *Server) Routes() http.Handler {
 		}
 		mux.Handle(dataverbs.Prefix+"/", dataverbs.NewHTTP(providers, operator.RequireOperator))
 		if s.store != nil {
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry}))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry}))
+			var cardTools *dataverbs.Cards
+			if s.approvalInbox != nil {
+				cardTools = &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry}
+			}
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools))
 		}
 	}
 	if s.store != nil {
