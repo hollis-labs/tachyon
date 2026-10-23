@@ -15,6 +15,7 @@ const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
 const TESSERACT = new Set(['tesseract', 'tess', 'memory'])
 const TORQUE = new Set(['torque', 'task', 'tasks'])
 const APPROVAL = new Set(['approval', 'approvals'])
+const CARD = new Set(['card', 'cards'])
 
 /** The reference a `tach:` href names, or null when the service, id or key is not one the console knows. */
 export function parseTachHref(href: string | undefined): RefIdentity | null {
@@ -34,6 +35,7 @@ export function parseTachHref(href: string | undefined): RefIdentity | null {
     return parseTesseractKey(rest) ? { kind: TESSERACT_KEY_KIND, canonical: rest } : null
   }
   if (APPROVAL.has(service)) return APPROVAL_ITEM_ID.test(rest) ? { kind: 'approval', canonical: rest } : null
+  if (CARD.has(service)) return APPROVAL_ITEM_ID.test(rest) ? { kind: 'card', canonical: rest } : null
   if (TORQUE.has(service)) {
     const id = rest.toUpperCase()
     const entity = TORQUE_ENTITIES.find((e) => new RegExp(`^${e.prefix}-\\d{8}-\\d{4}$`).test(id))

@@ -60,6 +60,7 @@ func TestAgentCardToolsAskAwaitAndStayScoped(t *testing.T) {
 	// Unknown kinds, a lowered or invalid class, and a client digest are refused.
 	call("POST", "card.ask", `{"kind":"card.bogus","title":"x"}`, secretA, 400)
 	call("POST", "card.ask", `{"kind":"card.approval","title":"x","class":"urgent"}`, secretA, 400)
+	call("POST", "card.ask", `{"kind":"card.approval","title":"x","class":"high"}`, secretA, 400)
 	call("POST", "card.ask", `{"kind":"card.approval","title":"x","op_digest":"sha256:00"}`, secretA, 400)
 	call("POST", "card.ask", `{"kind":"card.approval","title":"x","ttl_seconds":5}`, secretA, 400)
 

@@ -88,3 +88,17 @@ it('renders an approval link as a chip that opens the approvals page for that it
   expect(chip?.textContent).toBe('Approval: cerberus.resource.reload on hub')
   expect(chip?.getAttribute('href')).toBe(`/approvals?item=${id}`)
 })
+
+it('renders a card link as a chip that opens the review dialog route for that item', () => {
+  const id = `item_${'0123456789abcdef'.repeat(2)}`
+  const { container } = render(
+    <MemoryRouter>
+      <AutolinkProvider registry={createDefaultRefRegistry()}>
+        <MessageBody body={`[Card: apply 2 status changes](tach:card/${id})`} />
+      </AutolinkProvider>
+    </MemoryRouter>,
+  )
+  const chip = container.querySelector('[data-ref-kind="card"]')
+  expect(chip?.textContent).toBe('Card: apply 2 status changes')
+  expect(chip?.getAttribute('href')).toBe(`/approvals?item=${id}`)
+})

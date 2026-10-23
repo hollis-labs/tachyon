@@ -270,3 +270,74 @@ describe("approval deep link", () => {
     await waitFor(() => expect(present).toHaveBeenCalledWith("req-1"))
   })
 })
+
+describe("card review dialog", () => {
+  const card = (kind: `card.${string}`, data: Record<string, unknown>, extra = {}): ApprovalItem => ({
+    ...item,
+    item_id: "item_card",
+    request_snapshot: {
+      kind,
+      title: "Planner asks",
+      source: { agent_id: "planner", application_id: "service:abc" },
+      class: "low",
+      data,
+      ...extra,
+    },
+  })
+  const clientFor = (current: ApprovalItem, decide = vi.fn().mockResolvedValue({ item_id: current.item_id, state: "resolved" })) =>
+    ({ present: vi.fn().mockResolvedValue(current), decide, evidence: vi.fn() }) as unknown as ApprovalClient
+  const open = (current: ApprovalItem, decide: ReturnType<typeof vi.fn>) =>
+    render(<ApprovalDialog id={current.item_id} initial={current} client={clientFor(current, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
+
+  it("shows a card's effects and approves with the card kind", async () => {
+    const current = card("card.approval", { changes: 2 }, { effects: [{ target: "torque:task/CW-1", op: "status=done" }] })
+    const decide = vi.fn().mockResolvedValue({ item_id: current.item_id, state: "resolved" })
+    open(current, decide)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    expect(screen.getByText("status=done torque:task/CW-1")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
+    fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
+    expect(decide.mock.calls[0][1]).toEqual({ kind: "card.approval", decision: "approved" })
+  })
+  it("submits a form's typed answers, with secrets only as references", async () => {
+    const current = card("card.form", {
+      fields: [
+        { id: "name", type: "text", label: "Name", required: true },
+        { id: "count", type: "number", label: "Count" },
+        { id: "token", type: "secret", label: "Token ref" },
+      ],
+    })
+    const decide = vi.fn().mockResolvedValue({ item_id: current.item_id, state: "resolved" })
+    open(current, decide)
+    const submit = await screen.findByRole("button", { name: "Submit" })
+    expect((submit as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "x" } })
+    fireEvent.change(screen.getByLabelText("Count"), { target: { value: "3" } })
+    fireEvent.change(screen.getByLabelText("Token ref"), { target: { value: "vault/key" } })
+    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(submit)
+    expect(decide.mock.calls[0][1]).toEqual({
+      kind: "card.form",
+      decision: "submitted",
+      answers: [
+        { questionId: "name", value: "x" },
+        { questionId: "count", value: 3 },
+        { questionId: "token", value: { secret_ref: "vault/key" } },
+      ],
+    })
+  })
+  it("answers a question card under the id answer and leaves info cards unanswerable", async () => {
+    const q = card("card.question", { question: "Which branch?", options: ["main", "dev"] })
+    const decide = vi.fn().mockResolvedValue({ item_id: q.item_id, state: "resolved" })
+    open(q, decide)
+    const submit = await screen.findByRole("button", { name: "Submit" })
+    fireEvent.change(screen.getByLabelText("Which branch?"), { target: { value: "dev" } })
+    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(submit)
+    expect(decide.mock.calls[0][1]).toEqual({ kind: "card.question", decision: "submitted", answers: [{ questionId: "answer", value: "dev" }] })
+    cleanup()
+    open(card("card.info", { fact: 1 }), vi.fn())
+    await screen.findByText(/nothing to answer/)
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull()
+  })
+})
