@@ -330,7 +330,13 @@ func (s *Server) Routes() http.Handler {
 	}
 	// Object management uses live reads and server-verified operator mutations.
 	// Keep the whole prefix outside the generic plugin response cache.
-	mux.Handle("/api/plugins/console/v1/tether/", operator.RequireOperator(s.inventory.APIRoutes()))
+	tetherRoutes := s.inventory.APIRoutes()
+	mux.Handle("/api/plugins/console/v1/tether/", operator.RequireOperator(tetherRoutes))
+	// Plan and agent reads expose hub objects, so unlike the rest of the prefix
+	// they need operator assurance on GET as well.
+	for _, p := range []string{"plans", "agents"} {
+		mux.Handle("/api/plugins/console/v1/tether/"+p+"/", operator.RequireOperatorReads(tetherRoutes))
+	}
 	trusted := s.approvalTrusted
 	if trusted == nil {
 		trusted = &approvals.TrustedAPI{}
