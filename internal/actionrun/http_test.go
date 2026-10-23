@@ -99,19 +99,31 @@ func TestTerminalAttachRunsInteractiveActionAfterApproval(t *testing.T) {
 	if exit.State != StateSucceeded || exit.Code == nil || *exit.Code != 0 || !strings.Contains(out.String(), "done") {
 		t.Fatalf("%+v %q", exit, out.String())
 	}
-	// Reattach after the run ended replays the recorded output and the exit.
+	// Reattaching after the run ended replays no terminal output (none is recorded
+	// for interactive runs) and ends with the exit event.
 	c2, _, err := dial(t, srv, path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c2.CloseNow()
-	_, data, _ = c2.Read(ctx)
-	if !strings.Contains(string(data), "done") {
-		t.Fatalf("replay %q", data)
+	var seen strings.Builder
+	var again serverEvent
+	for again.Type != "exit" {
+		typ, data, err := c2.Read(ctx)
+		if err != nil {
+			t.Fatalf("reattach: %v (%q)", err, seen.String())
+		}
+		seen.Write(data)
+		if typ == websocket.MessageText {
+			_ = json.Unmarshal(data, &again)
+		}
+	}
+	if strings.Contains(seen.String(), "done") || again.State != StateSucceeded {
+		t.Fatalf("finished interactive run replayed output: %q %+v", seen.String(), again)
 	}
 	run, _ := r.svc.Store.Get(context.Background(), h.RunID)
-	if strings.Contains(run.Output, "abcdef012345") {
-		t.Fatalf("input stored: %q", run.Output)
+	if run.Output != "" || strings.Contains(run.Output, "abcdef012345") {
+		t.Fatalf("interactive output stored: %q", run.Output)
 	}
 }
 

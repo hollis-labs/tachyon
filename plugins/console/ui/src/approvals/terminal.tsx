@@ -196,6 +196,7 @@ export function ActionRunPanel({
         {run.started_at ? ` · ${elapsed(run, now)}` : ""}
       </p>
       {run.error && <p className="mt-1 dash-support text-danger">{run.error}</p>}
+      {run.terminal && run.note && <p className="mt-1 dash-support text-fg-muted">{run.note}</p>}
       {error && <p role="alert" className="mt-1 dash-support text-danger">{error}</p>}
       {open && !run.terminal && <div className="mt-3"><LiveTerminal run={run} onExit={onExit} /></div>}
       {run.terminal && run.output && (

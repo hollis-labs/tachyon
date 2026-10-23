@@ -108,6 +108,13 @@ describe("action run panel", () => {
     expect(screen.getByText("boom")).toBeTruthy()
   })
 
+  it("shows the fixed note, not output, for a finished interactive run", () => {
+    const done = { ...base, state: "succeeded" as const, terminal: true, exit_code: 0, note: "Terminal output of interactive actions is not recorded. See the status and exit code." }
+    render(<ActionRunPanel initial={done} approved fetcher={vi.fn()} />)
+    expect(screen.getByText(/not recorded/)).toBeTruthy()
+    expect(screen.queryByText(/Recorded output/)).toBeNull()
+  })
+
   it("states a digest refusal plainly", () => {
     const refused = { ...base, state: "refused" as const, terminal: true, error: "op_digest mismatch" }
     render(<ActionRunPanel initial={refused} approved fetcher={vi.fn()} />)

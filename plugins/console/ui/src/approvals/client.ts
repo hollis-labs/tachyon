@@ -56,6 +56,7 @@ export interface ActionRun {
   user?: string
   exit_code?: number
   output?: string
+  note?: string
   error?: string
   created_at: string
   started_at?: string
