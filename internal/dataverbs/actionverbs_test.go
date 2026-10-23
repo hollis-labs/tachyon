@@ -145,3 +145,59 @@ func TestActionVerbsAbsentWithoutService(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 }
+
+// An interactive run's agent view carries status, exit code and the fixed note, never output.
+func TestAgentAwaitOfInteractiveRunReturnsNoOutput(t *testing.T) {
+	_, s, db := setup(t)
+	access := &agentaccess.Store{DB: db}
+	items := &approvals.Store{DB: db}
+	inbox := approvals.NewInbox(items, nil)
+	machine := fakeMachine{ran: make(chan []string, 4)}
+	mgr := &actionrun.Manager{Store: &actionrun.Store{DB: db}, Items: items, Transports: map[string]actionrun.Transport{"hub": machine, "agent-os": machine}}
+	svc := &actionrun.Service{Store: mgr.Store, Manager: mgr, Approval: inbox.Service}
+	_, secret, _ := access.Issue(ctx, "", "Agent A", agentaccess.ActionRequest(), time.Hour)
+	h := NewAgentHTTP(s, access, svc)
+	post := func(verb, input string) map[string]any {
+		req := httptest.NewRequest("POST", AgentPrefix+"/providers/tachyon/verbs/"+verb, strings.NewReader(input))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+secret)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		var out map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &out)
+		if w.Code != 200 {
+			t.Fatalf("%s: %d %s", verb, w.Code, w.Body.String())
+		}
+		return out["data"].(map[string]any)
+	}
+	req := post("actions.request", `{"machine":"hub","action":"tether.catalog.approve","params":{"plan_id":"plan-1"},"reason":"approve it"}`)
+	runID := req["run_id"].(string)
+	run, _ := svc.Store.Get(ctx, runID)
+	rec, _ := items.Get(ctx, run.ItemID)
+	rev := rec.Revision
+	if _, err := inbox.Service.Respond(ctx, hitl.RespondCommand{ItemID: run.ItemID, ExpectedRevision: &rev,
+		Response:    hitl.Response{Kind: "approval", Decision: "approved"},
+		Participant: hitl.Participant{PrincipalRef: "t", Assurance: "operator-token", Responder: &hitl.Responder{Kind: "human-session", Ref: "t"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mgr.Start(ctx, runID, 80, 24); err != nil { // the owner opens the terminal
+		t.Fatal(err)
+	}
+	// Whatever the process printed (here the fake's "reloaded"), nothing is returned or stored.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		r, _ := svc.Store.Get(ctx, runID)
+		if r.Terminal || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	url := AgentPrefix + "/providers/tachyon/verbs/actions.await?input=" + url.QueryEscape(`{"run_id":"`+runID+`","wait_ms":0}`)
+	r2 := httptest.NewRequest("GET", url, nil)
+	r2.Header.Set("Authorization", "Bearer "+secret)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r2)
+	if w.Code != 200 || strings.Contains(w.Body.String(), "reloaded") || !strings.Contains(w.Body.String(), "not recorded") || !strings.Contains(w.Body.String(), `"exit_code":0`) {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+}

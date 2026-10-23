@@ -176,6 +176,9 @@ func invokeAction(ctx context.Context, svc *actionrun.Service, name string, raw 
 		if run.ExitCode != nil {
 			view["exit_code"] = *run.ExitCode
 		}
+		if run.Note != "" {
+			view["note"] = run.Note
+		}
 		if !run.Terminal {
 			view["next"] = "Not finished. Call actions.await again; do not re-request."
 		}

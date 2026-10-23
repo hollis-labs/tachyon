@@ -31,6 +31,11 @@ func newActionRig(t *testing.T) *actionRig {
 	elevated := false
 	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if c, err := r.Cookie("tangent_participant"); err == nil && c.Value == "expired" {
+			w.WriteHeader(401)
+			_, _ = w.Write([]byte(`{"code":"session_expired"}`))
+			return
+		}
 		if elevated {
 			_, _ = w.Write([]byte(`{"elevated":true,"assurance":"operator-token"}`))
 			return
@@ -62,6 +67,16 @@ func newActionRig(t *testing.T) *actionRig {
 		t.Fatal(err)
 	}
 	return &actionRig{handler: s.Routes(), runID: h.RunID, itemID: h.ItemID, secret: secret, elevated: &elevated, svc: s.actions}
+}
+
+func (r *actionRig) doCookie(method, target, cookie string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, "https://tachyon.test"+target, nil)
+	if cookie != "" {
+		req.AddCookie(&http.Cookie{Name: approvals.CookieName, Value: cookie})
+	}
+	w := httptest.NewRecorder()
+	r.handler.ServeHTTP(w, req)
+	return w
 }
 
 func (r *actionRig) do(method, target string, hdr map[string]string, cookie bool) *httptest.ResponseRecorder {
@@ -183,6 +198,32 @@ func TestActionRunRoutesCheckOperatorAssuranceAndOriginOnTheDecodedPath(t *testi
 	for _, p := range []string{actionrun.Prefix + "/" + run + "%2Fterminal", actionrun.Prefix + "%2F" + run} {
 		if w := r.do("GET", p, wsHeaders, true); w.Code == 200 || w.Code == 101 {
 			t.Fatalf("encoded-slash path %s was served: %d", p, w.Code)
+		}
+	}
+}
+
+// The approval queue's own projections must not carry the private action run
+// below the bar of the dedicated run-read route.
+func TestApprovalInboxPathsAttachTheActionRunOnlyForAnElevatedOperator(t *testing.T) {
+	r := newActionRig(t)
+	paths := []string{approvals.Prefix + "/items/" + r.itemID, approvals.Prefix + "/inbox"}
+	for _, p := range paths {
+		for name, cookie := range map[string]string{"missing": "", "expired": "expired"} {
+			w := r.doCookie("GET", p, cookie)
+			if w.Code == 200 || strings.Contains(w.Body.String(), "op_digest") || strings.Contains(w.Body.String(), "action_run") {
+				t.Fatalf("%s session on %s: %d %s", name, p, w.Code, w.Body.String())
+			}
+		}
+		// A connected but unelevated browser session sees the queue, not the run.
+		*r.elevated = false
+		w := r.doCookie("GET", p, "operator-session")
+		if w.Code != 200 || strings.Contains(w.Body.String(), "action_run") || strings.Contains(w.Body.String(), r.runID) {
+			t.Fatalf("unelevated session on %s: %d %s", p, w.Code, w.Body.String())
+		}
+		*r.elevated = true
+		w = r.doCookie("GET", p, "operator-session")
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"action_run"`) || !strings.Contains(w.Body.String(), r.runID) {
+			t.Fatalf("elevated operator on %s: %d %s", p, w.Code, w.Body.String())
 		}
 	}
 }
