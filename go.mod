@@ -3,6 +3,7 @@ module github.com/hollis-labs/tachyon
 go 1.26.10
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2
 	github.com/google/uuid v1.6.0
@@ -10,7 +11,7 @@ require (
 	github.com/hollis-labs/libs/core/util v0.6.0
 	github.com/hollis-labs/libs/harness/core v0.16.0
 	github.com/hollis-labs/libs/mcp/plugin-mcp v0.3.0
-	github.com/hollis-labs/libs/mesh/core v0.8.0
+	github.com/hollis-labs/libs/mesh/core v0.9.0
 	github.com/hollis-labs/libs/security/auth v0.2.1
 	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/libs/security/webauthn v0.1.0
@@ -21,7 +22,6 @@ require (
 )
 
 require (
-	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
