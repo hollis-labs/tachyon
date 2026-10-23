@@ -6,9 +6,9 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/cyberphone/json-canonicalization v0.0.0-20261011152517-32a48195b9b2
 	github.com/google/uuid v1.6.0
-	github.com/hollis-labs/libs/harness/core v0.16.0
 	github.com/hollis-labs/libs/app/app-host v0.1.0
 	github.com/hollis-labs/libs/core/util v0.6.0
+	github.com/hollis-labs/libs/harness/core v0.16.0
 	github.com/hollis-labs/libs/mcp/plugin-mcp v0.3.0
 	github.com/hollis-labs/libs/mesh/core v0.8.0
 	github.com/hollis-labs/libs/security/auth v0.2.1
