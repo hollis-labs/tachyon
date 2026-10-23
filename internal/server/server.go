@@ -73,7 +73,7 @@ type Config struct {
 		URL       string // HOLLIS_EVENTS_URL
 		TokenFile string // HOLLIS_AUTH_TOKEN_FILE_TACHYON
 	}
-	Upstreams           catalog.Upstreams
+	Upstreams catalog.Upstreams
 }
 
 // pluginState is one catalog entry's admission result.
