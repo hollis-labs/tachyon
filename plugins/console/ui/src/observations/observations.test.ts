@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createObservationStore, eventFromRow, SESSION_DEADLINE_MS, type SessionSource } from './store'
+import { createObservationStore, eventFromRow, SESSION_BUDGET_MS, SESSION_DEADLINE_MS, type SessionSource } from './store'
 import { activityText, presence, toolLabel, withObservedActivity } from './model'
 import { parseFleetAgents } from '../fleet/lib/fleet-agents'
 import { deliveryEvidence, deliveryFromTrace } from './delivery'
@@ -210,4 +210,64 @@ it('drops a read that returns after a newer refresh began', async () => {
   await second
   expect(store.getSnapshot().events.some(e => e.id === 'tether:3')).toBe(false)
   expect(store.getSnapshot().workStates.w?.seq).toBe(2)
+})
+
+it('Reviewer: several stalled sessions must not prevent the next global poll', async () => {
+  vi.useFakeTimers()
+  let globalReads = 0
+  const source: SessionSource = { running: async () => Array.from({ length: 6 }, (_, i) => `s${i}`), page: () => new Promise(() => {}) }
+  const store = createObservationStore(async () => { globalReads++; return { events: [] } }, source)
+  const first = store.refresh()
+  await vi.advanceTimersByTimeAsync(5001)
+  const second = store.refresh()
+  await vi.advanceTimersByTimeAsync(1)
+  const readsAtNextPoll = globalReads
+  await vi.advanceTimersByTimeAsync(SESSION_DEADLINE_MS * 3)
+  await Promise.all([first, second])
+  expect(readsAtNextPoll, 'global poll coalesced behind another batch of expired session reads').toBe(2)
+})
+it('abandons the session pass at its budget: remaining jobs are cancelled, never started, and the refresh resolves', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let started = 0, inflight = 0, peak = 0
+  const signals: AbortSignal[] = []
+  const src: SessionSource = { running: async () => Array.from({ length: 60 }, (_, i) => `s${i}`),
+    page: (_q, signal) => { started++; inflight++; peak = Math.max(peak, inflight); signals.push(signal!); signal!.addEventListener('abort', () => inflight--); return new Promise(() => {}) } }
+  const store = createObservationStore(async () => ({ events: [] }), src)
+  let done = false
+  void store.refresh().then(() => { done = true })
+  await vi.advanceTimersByTimeAsync(SESSION_BUDGET_MS + 10)
+  expect(done).toBe(true)
+  expect(peak).toBeLessThanOrEqual(6)
+  expect(started).toBeLessThanOrEqual(12) // one stalled batch at its deadline, one cut by the budget; not 120
+  const after = started
+  await vi.advanceTimersByTimeAsync(SESSION_DEADLINE_MS * 20)
+  expect(started).toBe(after)
+  expect(signals.every(sig => sig.aborted)).toBe(true)
+})
+it('the next poll supersedes an unfinished session pass and discards its late results', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let globalReads = 0
+  const lateResolvers: (() => void)[] = []
+  const src: SessionSource = { running: async () => ['w'], page: () => new Promise(r => lateResolvers.push(() => r({ events: [sessionRow(7, 'w', 'session.work_state_changed', { to: 'processing' }), sessionRow(8, 'w', 'tool.call.started', { tool: 'Late' })] }))) }
+  const store = createObservationStore(async () => { globalReads++; return { events: [] } }, src)
+  const first = store.refresh()
+  await vi.advanceTimersByTimeAsync(1000)
+  const stale = lateResolvers.splice(0) // the first pass's in-flight reads
+  expect(stale.length).toBe(2)
+  const second = store.refresh() // next poll arrives while the first pass is still waiting
+  await vi.advanceTimersByTimeAsync(1)
+  expect(globalReads).toBe(2)
+  stale.forEach(f => f()) // the stale generation's reads finally answer
+  await vi.advanceTimersByTimeAsync(SESSION_BUDGET_MS + 10)
+  await Promise.all([first, second])
+  expect(store.getSnapshot().workStates.w).toBeUndefined()
+  expect(store.getSnapshot().events.some(e => e.id === 'tether:8')).toBe(false)
+})
+it('a healthy session keeps updating across polls while another stays stuck', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let n = 0
+  const src: SessionSource = { running: async () => ['stuck', 'ok'], page: q => new URLSearchParams(q).get('session_id') === 'stuck' ? new Promise(() => {}) : Promise.resolve({ events: [{ seq: ++n, at: new Date(now).toISOString(), kind: 'tool.call.started', payload_json: '{"tool":"Bash"}' }] }) }
+  const store = createObservationStore(async () => ({ events: [] }), src)
+  for (let poll = 0; poll < 3; poll++) { void store.refresh(); await vi.advanceTimersByTimeAsync(5001) }
+  expect(store.getSnapshot().events.length).toBeGreaterThanOrEqual(3)
 })
