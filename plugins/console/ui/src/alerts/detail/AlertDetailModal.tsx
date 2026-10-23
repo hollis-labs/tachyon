@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button, Input, Pill, Textarea } from '@hollis-labs/design-components'
 import { X } from 'lucide-react'
 import { ago } from '@console/lib/agent-activity'
 import { Linkified } from '../../autolink'
@@ -20,15 +21,10 @@ import { relatedEvents, replyTarget, structuredFields } from './detail-data'
 import { useAlertActions } from './use-alert-actions'
 import { useRestoreFocus } from '../../shell/restore-focus'
 
-const INTENT: Record<AlertActionSpec['intent'], string> = {
-  primary: 'border-amber-300 bg-amber-300 text-zinc-950 hover:bg-amber-200',
-  neutral: 'border-zinc-700 text-zinc-200 hover:bg-zinc-800',
-  danger: 'border-red-500/70 text-red-300 hover:bg-red-950/50',
-}
-const FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300'
-const CHIP = `border border-zinc-700 px-2 py-1 font-mono text-[11px] text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 ${FOCUS}`
-const FIELD = `border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-100 placeholder:text-zinc-500 ${FOCUS}`
-const H = 'font-mono text-[10px] uppercase tracking-widest text-zinc-500'
+const VARIANT: Record<AlertActionSpec['intent'], 'default' | 'outline' | 'destructive'> = { primary: 'default', neutral: 'outline', danger: 'destructive' }
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+const MONO = 'font-mono uppercase tracking-label'
+const H = 'font-mono text-label uppercase tracking-label text-fg-muted'
 
 type Panel = null | 'snooze' | 'defer' | 'settle' | 'reply' | 'decide'
 
@@ -133,47 +129,48 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
         aria-modal="true"
         aria-label={`Alert: ${alert.title}`}
         data-testid="alert-detail"
+        data-dashboard-accent="yellow"
         data-status={shown.status}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="relative mb-8 w-full max-w-2xl border border-zinc-700 bg-zinc-950 outline-none"
+        className="relative mb-8 w-full max-w-2xl border border-border bg-bg-elevated outline-none"
       >
         <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 ${sev.bar}`} />
-        <header className="flex items-center gap-2 border-b border-zinc-800 py-2.5 pl-5 pr-3">
+        <header className="flex items-center gap-2 border-b border-border-subtle py-2.5 pl-5 pr-3">
           <AlertIcon icon={alert.icon} severity={alert.severity} />
-          <span className={`font-mono text-[10px] uppercase tracking-widest ${sev.text}`}>{sev.label}</span>
-          <span className="font-mono text-[10px] text-zinc-500">{alert.kind}</span>
-          <span className="ml-auto font-mono text-[10px] text-zinc-500">{ago(alert.ts, now)}</span>
-          <button type="button" onClick={onClose} aria-label="Close alert detail" className={`h-6 w-6 text-zinc-500 hover:text-zinc-100 ${FOCUS}`}>
-            <X aria-hidden="true" className="mx-auto h-3.5 w-3.5" />
-          </button>
+          <span className={`font-mono text-label uppercase tracking-label ${sev.text}`}>{sev.label}</span>
+          <span className="font-mono text-caption text-fg-muted">{alert.kind}</span>
+          <span className="ml-auto font-mono text-caption text-fg-muted">{ago(alert.ts, now)}</span>
+          <Button type="button" variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close alert detail" className="text-fg-muted">
+            <X aria-hidden="true" />
+          </Button>
         </header>
 
-        <section className="border-b border-zinc-800 py-3 pl-5 pr-4">
+        <section className="border-b border-border-subtle py-3 pl-5 pr-4">
           <div className="flex items-start gap-2">
-            <h2 className="min-w-0 flex-1 break-words text-sm font-medium text-zinc-50">{alert.title}</h2>
+            <h2 className="min-w-0 flex-1 break-words text-sm font-medium text-fg">{alert.title}</h2>
             {handled && (
-              <span data-testid="alert-status" className="shrink-0 border border-zinc-700 px-1.5 py-px font-mono text-[10px] uppercase tracking-widest text-zinc-400">
+              <Pill tone="neutral" className="shrink-0 font-mono uppercase tracking-label"><span data-testid="alert-status">
                 {shown.status === 'snoozed' && shown.snoozeUntil ? `snoozed until ${new Date(shown.snoozeUntil).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}` : (shown.resolution ?? shown.status)}
-              </span>
+              </span></Pill>
             )}
           </div>
           {alert.detail && (
-            <p className="mt-1 break-words text-xs text-zinc-300">
+            <p className="mt-1 break-words text-xs text-fg-secondary">
               <Linkified text={alert.detail} />
             </p>
           )}
-          <p className="mt-1 font-mono text-[11px] text-zinc-500">{alert.source}</p>
+          <p className="mt-1 font-mono text-label text-fg-muted">{alert.source}</p>
         </section>
 
         {fields.length > 0 && (
-          <section aria-label="Details" className="border-b border-zinc-800 py-3 pl-5 pr-4">
+          <section aria-label="Details" className="border-b border-border-subtle py-3 pl-5 pr-4">
             <h3 className={H}>Details</h3>
             <dl className="mt-2 grid grid-cols-[minmax(6rem,9rem)_1fr] gap-x-3 gap-y-1">
               {fields.map((f) => (
                 <div key={f.label} className="contents">
-                  <dt className="truncate font-mono text-[11px] text-zinc-500">{f.label}</dt>
-                  <dd className="min-w-0 break-words font-mono text-xs text-zinc-200">
+                  <dt className="truncate font-mono text-label text-fg-muted">{f.label}</dt>
+                  <dd className="min-w-0 break-words font-mono text-xs text-fg">
                     <Linkified text={f.value} />
                   </dd>
                 </div>
@@ -183,16 +180,16 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
         )}
 
         {(refs.length > 0 || alert.primary) && (
-          <section aria-label="Linked" className="border-b border-zinc-800 py-3 pl-5 pr-4">
+          <section aria-label="Linked" className="border-b border-border-subtle py-3 pl-5 pr-4">
             <h3 className={H}>Linked</h3>
             <ul className="mt-2 flex flex-wrap items-center gap-2">
               {refs.map((s) => {
                 const href = safeHref(s.url)
                 return (
-                  <li key={`${s.type}:${s.id}`} className="flex items-center gap-1.5 font-mono text-xs text-zinc-200">
-                    <span className="text-[10px] uppercase tracking-widest text-zinc-500">{s.type}</span>
+                  <li key={`${s.type}:${s.id}`} className="flex items-center gap-1.5 font-mono text-xs text-fg">
+                    <span className="text-label uppercase tracking-label text-fg-muted">{s.type}</span>
                     {href ? (
-                      <a href={href} className="underline decoration-zinc-600 hover:decoration-zinc-300" {...(href.startsWith('/') ? {} : { target: '_blank', rel: 'noopener noreferrer' })}>
+                      <a href={href} className="underline decoration-fg-faint hover:decoration-fg-secondary" {...(href.startsWith('/') ? {} : { target: '_blank', rel: 'noopener noreferrer' })}>
                         {s.label ?? s.id}
                       </a>
                     ) : (
@@ -210,14 +207,14 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
           </section>
         )}
 
-        <section aria-label="Timeline" className="border-b border-zinc-800 py-3 pl-5 pr-4">
+        <section aria-label="Timeline" className="border-b border-border-subtle py-3 pl-5 pr-4">
           <h3 className={H}>Timeline</h3>
           <ol className="mt-2 space-y-1">
             {related.map((e) => (
               <TimelineRow key={e.id} e={e} mapper={mapper} now={now} />
             ))}
-            <li className="flex gap-3 font-mono text-xs text-zinc-100">
-              <span className="w-16 shrink-0 text-zinc-500">{ago(alert.ts, now)}</span>
+            <li className="flex gap-3 font-mono text-xs text-fg">
+              <span className="w-16 shrink-0 text-fg-muted">{ago(alert.ts, now)}</span>
               <span>{alert.kind} (this alert)</span>
             </li>
           </ol>
@@ -240,18 +237,18 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
         )}
         {panel === 'reply' && <ReplyPanel key={alert.id} alert={alert} event={event} onDone={() => setPanel(null)} />}
 
-        <div className="min-h-[2rem] border-t border-zinc-800 py-1.5 pl-5 pr-4 font-mono text-[11px]">
+        <div className="min-h-[2rem] border-t border-border-subtle py-1.5 pl-5 pr-4 font-mono text-label">
           {runner.error ? (
-            <span role="alert" className="text-red-300">{runner.error}</span>
+            <span role="alert" className="text-danger">{runner.error}</span>
           ) : runner.notice ? (
-            <span role="status" className="text-emerald-300">{runner.notice}</span>
+            <span role="status" className="text-success">{runner.notice}</span>
           ) : (
-            <span className="text-zinc-500">{specs.map((s) => `${s.shortcut.toUpperCase()} ${s.label.toLowerCase()}`).join(' · ')} · Esc close</span>
+            <span className="text-fg-muted">{specs.map((s) => `${s.shortcut.toUpperCase()} ${s.label.toLowerCase()}`).join(' · ')} · Esc close</span>
           )}
           {closed && (
-            <button type="button" onClick={() => void runner.restore()} className={`ml-3 border border-zinc-700 px-1.5 py-px uppercase tracking-widest text-zinc-300 hover:bg-zinc-800 ${FOCUS}`}>
+            <Button type="button" variant="outline" size="xs" onClick={() => void runner.restore()} className={`ml-3 ${MONO}`}>
               Restore
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -264,8 +261,8 @@ const specOf = (specs: AlertActionSpec[], id: AlertActionId): AlertActionSpec =>
 function TimelineRow({ e, mapper, now }: { e: ConsoleEvent; mapper: AlertMapper; now: number }) {
   const m = mapper(e)
   return (
-    <li className="flex gap-3 font-mono text-xs text-zinc-400">
-      <span className="w-16 shrink-0 text-zinc-500">{ago(e.ts, now)}</span>
+    <li className="flex gap-3 font-mono text-xs text-fg-secondary">
+      <span className="w-16 shrink-0 text-fg-muted">{ago(e.ts, now)}</span>
       <span className="min-w-0 break-words">{m?.title ?? e.kind}</span>
     </li>
   )
@@ -275,18 +272,20 @@ function ActionBar({ specs, onPick, disabled, active, pending }: { specs: AlertA
   return (
     <div role="toolbar" aria-label="Alert actions" className="flex flex-wrap items-center gap-2 py-3 pl-5 pr-4">
       {specs.map((s) => (
-        <button
+        <Button
           key={s.id}
           type="button"
+          variant={VARIANT[s.intent]}
+          size="sm"
           disabled={disabled}
           aria-pressed={active === s.id}
           aria-keyshortcuts={s.shortcut}
           onClick={() => onPick(s)}
-          className={`border px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS} ${INTENT[s.intent]}`}
+          className={MONO}
         >
           {pending === s.id ? `${s.label}...` : s.label}
           {s.confirm && <span aria-label="requires identity confirmation" className="ml-1 opacity-70">*</span>}
-        </button>
+        </Button>
       ))}
     </div>
   )
@@ -294,7 +293,7 @@ function ActionBar({ specs, onPick, disabled, active, pending }: { specs: AlertA
 
 function PanelShell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section aria-label={title} className="border-t border-zinc-800 bg-zinc-900/40 py-3 pl-5 pr-4">
+    <section aria-label={title} className="border-t border-border-subtle bg-surface/40 py-3 pl-5 pr-4">
       <h3 className={H}>{title}</h3>
       <div className="mt-2">{children}</div>
     </section>
@@ -308,16 +307,16 @@ function TimePanel({ title, presets, onPick, busy, customLabel }: { title: strin
     <PanelShell title={title}>
       <div className="flex flex-wrap items-center gap-2">
         {presets.map((p) => (
-          <button key={p.id} type="button" disabled={busy} className={CHIP} onClick={() => onPick(p.until)}>
+          <Button key={p.id} type="button" variant="outline" size="xs" disabled={busy} onClick={() => onPick(p.until)}>
             {p.label}
-          </button>
+          </Button>
         ))}
-        <label className="flex items-center gap-1.5 font-mono text-[11px] text-zinc-400">
+        <label className="flex items-center gap-1.5 font-mono text-label text-fg-secondary">
           Custom
-          <input type="number" min={1} value={custom} onChange={(e) => setCustom(e.target.value)} aria-label={`Custom ${customLabel}`} className={`${FIELD} w-20`} placeholder={customLabel} />
-          <button type="button" disabled={busy || !(mins > 0)} className={CHIP} onClick={() => onPick(Date.now() + mins * 60_000)}>
+          <Input type="number" min={1} value={custom} onChange={(e) => setCustom(e.target.value)} aria-label={`Custom ${customLabel}`} className="h-7 w-20 font-mono text-xs" placeholder={customLabel} />
+          <Button type="button" variant="outline" size="xs" disabled={busy || !(mins > 0)} onClick={() => onPick(Date.now() + mins * 60_000)}>
             Set
-          </button>
+          </Button>
         </label>
       </div>
     </PanelShell>
@@ -328,9 +327,9 @@ function DeferPanel({ onPick, busy }: { onPick: (i: { until?: number; context?: 
   const [mode, setMode] = useState<'time' | 'context'>('time')
   return (
     <PanelShell title="Defer">
-      <div role="tablist" aria-label="Defer to" className="mb-2 flex gap-4 font-mono text-[10px] uppercase tracking-widest">
+      <div role="tablist" aria-label="Defer to" className="mb-2 flex gap-4 font-mono text-label uppercase tracking-label">
         {(['time', 'context'] as const).map((m) => (
-          <button key={m} role="tab" type="button" aria-selected={mode === m} onClick={() => setMode(m)} className={`border-b-2 pb-0.5 ${FOCUS} ${mode === m ? 'border-amber-300 text-zinc-100' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>
+          <button key={m} role="tab" type="button" aria-selected={mode === m} onClick={() => setMode(m)} className={`border-b-2 pb-0.5 ${FOCUS} ${mode === m ? 'border-primary text-fg' : 'border-transparent text-fg-muted hover:text-fg-secondary'}`}>
             To a {m}
           </button>
         ))}
@@ -340,9 +339,9 @@ function DeferPanel({ onPick, busy }: { onPick: (i: { until?: number; context?: 
       ) : (
         <div className="flex flex-wrap gap-2">
           {DEFER_CONTEXTS.map((c) => (
-            <button key={c.id} type="button" disabled={busy} className={CHIP} onClick={() => onPick({ context: c.label })}>
+            <Button key={c.id} type="button" variant="outline" size="xs" disabled={busy} onClick={() => onPick({ context: c.label })}>
               {c.label}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -357,14 +356,14 @@ function TimePanelBody({ onPick, busy }: { onPick: (until: number) => void; busy
   return (
     <div className="flex flex-wrap items-center gap-2">
       {deferPresets(mountedAt).map((p) => (
-        <button key={p.id} type="button" disabled={busy} className={CHIP} onClick={() => onPick(p.until)}>
+        <Button key={p.id} type="button" variant="outline" size="xs" disabled={busy} onClick={() => onPick(p.until)}>
           {p.label}
-        </button>
+        </Button>
       ))}
-      <input type="datetime-local" aria-label="Defer until" value={at} onChange={(e) => setAt(e.target.value)} className={FIELD} />
-      <button type="button" disabled={busy || !(when > mountedAt)} className={CHIP} onClick={() => onPick(when)}>
+      <Input type="datetime-local" aria-label="Defer until" value={at} onChange={(e) => setAt(e.target.value)} className="h-7 w-auto font-mono text-xs" />
+      <Button type="button" variant="outline" size="xs" disabled={busy || !(when > mountedAt)} onClick={() => onPick(when)}>
         Set
-      </button>
+      </Button>
     </div>
   )
 }
@@ -382,11 +381,11 @@ function NotePanel({ title, cta, onSubmit, busy, optional = true, intent = 'prim
         }}
         className="flex flex-col gap-2"
       >
-        <textarea ref={ref} value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000} aria-label="Note" placeholder={optional ? 'Note (optional)' : 'Note'} className={`${FIELD} w-full resize-y`} />
+        <Textarea ref={ref} value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000} aria-label="Note" placeholder={optional ? 'Note (optional)' : 'Note'} className="w-full resize-y font-mono text-xs" />
         <div>
-          <button type="submit" disabled={busy} className={`border px-3 py-1.5 font-mono text-[11px] uppercase tracking-widest disabled:opacity-40 ${FOCUS} ${INTENT[intent]}`}>
+          <Button type="submit" variant={VARIANT[intent]} size="sm" disabled={busy} className={MONO}>
             {busy ? 'Working...' : cta}
-          </button>
+          </Button>
         </div>
       </form>
     </PanelShell>
@@ -413,9 +412,9 @@ function ReplyPanel({ alert, event, onDone }: { alert: Alert; event?: ConsoleEve
   return (
     <PanelShell title="Reply">
       {recipient === undefined ? (
-        <p className="font-mono text-xs text-zinc-500">Resolving recipient...</p>
+        <p className="font-mono text-xs text-fg-muted">Resolving recipient...</p>
       ) : recipient === null ? (
-        <p role="alert" className="font-mono text-xs text-red-300">No messageable sender for this alert.</p>
+        <p role="alert" className="font-mono text-xs text-danger">No messageable sender for this alert.</p>
       ) : (
         <MessageComposer
           recipient={recipient}
