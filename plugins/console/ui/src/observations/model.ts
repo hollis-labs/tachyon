@@ -28,6 +28,10 @@ export function latestActivity(events: ConsoleEvent[], sessionId?: string): Cons
   return sessionId ? events.filter(e => e.sessionId === sessionId && activityText(e)).sort((a,b) => b.ts - a.ts || Number(b.cursor) - Number(a.cursor))[0] : undefined
 }
 
+export function workStateText(w: { working: boolean } | undefined): string | null {
+  return w ? (w.working ? 'Working' : 'Idle') : null
+}
+
 export interface SessionHealth { alive?: boolean; live_state?: string; last_activity_at?: string; pending_approval?: boolean; pending_question?: boolean }
 export interface Presence { text: string; tone: 'active' | 'waiting' | 'quiet'; at?: number; detail: string }
 export function presence(health: SessionHealth | null, event: ConsoleEvent | undefined, now: number, checkedAt: number, error: boolean): Presence {
@@ -50,3 +54,14 @@ export function monitorForSession(agents: FleetAgent[], session: string) {
   return matches.length === 1 ? matches[0] : undefined
 }
 
+
+/** Overlays observed tool activity and the hub's per-session work state on a fleet row. */
+export function withObservedActivity(a: FleetAgent, session: string | undefined, observed: { events: ConsoleEvent[]; workStates: Record<string, { working: boolean; at: number }> }): FleetAgent {
+  const event = latestActivity(observed.events, session)
+  const seen = event && event.ts > (a.lastAction?.at ?? 0) ? { ...a, lastAction: { text: `Observed: ${activityText(event)}`, at: event.ts }, lastActivity: Math.max(event.ts, a.lastActivity ?? 0) } : a
+  // The hub reports work state for every session; claude-stream ones emit no tool events, so this is their only signal.
+  const work = session ? observed.workStates[session] : undefined
+  if (!work || seen.state !== 'unknown') return seen
+  return { ...seen, state: work.working ? 'busy' : 'idle', lastActivity: Math.max(work.at, seen.lastActivity ?? 0),
+    lastAction: seen.lastAction?.at ? seen.lastAction : { text: `Observed: ${workStateText(work)}`, at: work.at } }
+}

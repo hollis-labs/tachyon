@@ -64,19 +64,20 @@ func assertNoInjection(t *testing.T, body []byte) {
 
 func TestEventProjectionAllowsOnlyListedFieldsPerKind(t *testing.T) {
 	good := map[string]map[string]any{
-		"tool.call.started":      {"tool": "mcp__tether__send", "server": "tether"},
-		"tool.call.finished":     {"tool": "Bash", "server": "x", "ok": false, "error_class": "timeout", "duration_ms": 12},
-		"progress.checkpoint":    {"checkpoint_id": "c1", "state": "open", "attempt": 2, "turn_id": "t1"},
-		"session.turn_output":    {"turn_id": "t1", "kind": "final", "stop_reason": "end_turn"},
-		"session.turn_routed":    {"turn_id": "t1", "message_id": "m1", "thread_id": "th1", "state": "routed"},
-		"session.state_changed":  {"from": "idle", "to": "busy", "exit_code": 0, "reasons": []any{"a_b", "c"}},
-		"session.launch_failed":  {"reason": "no_worker", "runtime": "claude", "worker_id": "w1"},
-		"session.stall_detected": {"reason": "no_output", "duration_ms": 5},
-		"session.stall_cleared":  {"reason": "output", "duration_ms": 6},
-		"message.wake.outcome":   {"message_id": "m1", "outcome": "woken", "attempt": 1},
-		"fleet.node.down":        {"node_id": "n1", "from": "up", "to": "down", "reason": "ping"},
-		"fleet.node.up":          {"node_id": "n1"},
-		"fleet.node.degraded":    {"node_id": "n1", "reasons": []any{"disk"}},
+		"tool.call.started":          {"tool": "mcp__tether__send", "server": "tether"},
+		"tool.call.finished":         {"tool": "Bash", "server": "x", "ok": false, "error_class": "timeout", "duration_ms": 12},
+		"progress.checkpoint":        {"checkpoint_id": "c1", "state": "open", "attempt": 2, "turn_id": "t1"},
+		"session.turn_output":        {"turn_id": "t1", "kind": "final", "stop_reason": "end_turn"},
+		"session.turn_routed":        {"turn_id": "t1", "message_id": "m1", "thread_id": "th1", "state": "routed"},
+		"session.state_changed":      {"from": "idle", "to": "busy", "exit_code": 0, "reasons": []any{"a_b", "c"}},
+		"session.work_state_changed": {"from": "idle", "to": "processing", "at": "2026-10-20T10:00:00Z"},
+		"session.launch_failed":      {"reason": "no_worker", "runtime": "claude", "worker_id": "w1"},
+		"session.stall_detected":     {"reason": "no_output", "duration_ms": 5},
+		"session.stall_cleared":      {"reason": "output", "duration_ms": 6},
+		"message.wake.outcome":       {"message_id": "m1", "outcome": "woken", "attempt": 1},
+		"fleet.node.down":            {"node_id": "n1", "from": "up", "to": "down", "reason": "ping"},
+		"fleet.node.up":              {"node_id": "n1"},
+		"fleet.node.degraded":        {"node_id": "n1", "reasons": []any{"disk"}},
 	}
 	card := map[string]any{"card_id": "item_1", "revision": 2, "card_type": "approval", "state": "pending", "risk": "medium", "op_digest": "sha256:abc",
 		"source_app": "service:1b2c", "supersedes": "item_0", "outcome": "approved", "assurance": "operator-token", "error_code": "refused", "expires_at": "2026-10-24T00:00:00Z", "at": "2026-10-23T00:00:00Z"}

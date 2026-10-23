@@ -60,6 +60,8 @@ var eventOverlays = []eventOverlay{
 	// label is free text: dropped. The UI falls back to "Reported progress".
 	{"progress.checkpoint", fieldSet{"checkpoint_id": fID, "state": fCode, "attempt": fNum, "turn_id": fID}, true},
 	{"session.state_changed", fieldSet{"from": fCode, "to": fCode, "exit_code": fNum, "reasons": fCodes}, true},
+	// Hub-emitted for every session, including claude-stream ones, which emit no tool events.
+	{"session.work_state_changed", fieldSet{"from": fCode, "to": fCode, "at": fTime}, true},
 	{"session.launch_failed", fieldSet{"reason": fCode, "reasons": fCodes, "runtime": fCode, "worker_id": fID, "exit_code": fNum}, true},
 	{"session.turn_output", fieldSet{"turn_id": fID, "kind": fCode, "stop_reason": fCode}, true},
 	{"session.turn_routed", fieldSet{"turn_id": fID, "message_id": fID, "thread_id": fID, "state": fCode}, true},
