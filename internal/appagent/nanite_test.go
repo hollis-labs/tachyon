@@ -170,6 +170,15 @@ func newNanite(t *testing.T) (*fakeNanite, *Nanite) {
 	return f, n
 }
 
+func mustCfg(t *testing.T, n *Nanite) NaniteConfig {
+	t.Helper()
+	c, err := n.config()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
 func collect(t *testing.T, n *Nanite) ([]TurnEvent, error) {
 	t.Helper()
 	var evs []TurnEvent
@@ -229,16 +238,18 @@ func TestObserveReportsAStalledOrCutStream(t *testing.T) {
 func TestEnsureReusesALiveSessionAndReplacesAMissingOne(t *testing.T) {
 	f, n := newNanite(t)
 	ctx := context.Background()
-	if s, err := n.Ensure(ctx, "sess-live"); err != nil || s != "sess-live" {
+	cfg, _ := n.config()
+	pin := pinOf(cfg.Session)
+	if s, err := n.Ensure(ctx, pin+"~sess-live"); err != nil || s != pin+"~sess-live" {
 		t.Fatalf("live: %q %v", s, err)
 	}
-	if s, err := n.Ensure(ctx, "sess-stopped"); err != nil || s != "sess-new" {
+	if s, err := n.Ensure(ctx, pin+"~sess-stopped"); err != nil || s != pin+"~sess-new" {
 		t.Fatalf("stopped: %q %v", s, err)
 	}
-	if s, err := n.Ensure(ctx, "sess-unknown"); err != nil || s != "sess-new" {
+	if s, err := n.Ensure(ctx, pin+"~sess-unknown"); err != nil || s != pin+"~sess-new" {
 		t.Fatalf("unknown: %q %v", s, err)
 	}
-	if s, err := n.Ensure(ctx, ""); err != nil || s != "sess-new" {
+	if s, err := n.Ensure(ctx, ""); err != nil || s != pin+"~sess-new" {
 		t.Fatalf("fresh: %q %v", s, err)
 	}
 	calls, auths := f.authLog()
@@ -252,7 +263,7 @@ func TestEnsureReusesALiveSessionAndReplacesAMissingOne(t *testing.T) {
 func TestSubmitSendsTextAtIdleAndMapsRefusals(t *testing.T) {
 	f, n := newNanite(t)
 	ctx := context.Background()
-	turn, err := n.Submit(ctx, "sess-live", "what is up")
+	turn, err := n.Submit(ctx, pinOf(mustCfg(t, n).Session)+"~sess-live", "what is up")
 	if err != nil || turn != "turn-7" || f.lastTurnBody() != "what is up|at_idle" {
 		t.Fatalf("submit: %q %v body=%q", turn, err, f.turnBody)
 	}
@@ -277,7 +288,7 @@ func TestSubmitSendsTextAtIdleAndMapsRefusals(t *testing.T) {
 
 func TestResultReadsTheAuthoritativeTurn(t *testing.T) {
 	_, n := newNanite(t)
-	r, err := n.Result(context.Background(), "sess-live", "turn-7")
+	r, err := n.Result(context.Background(), pinOf(mustCfg(t, n).Session)+"~sess-live", "turn-7")
 	if err != nil || !r.Terminal() || r.State != "completed" || r.Text != "first\n\nsecond" || len(r.Tools) != 1 || r.Tools[0].Status != "ok" {
 		t.Fatalf("result: %+v %v", r, err)
 	}
@@ -302,7 +313,7 @@ func TestConfigErrorsAreExplainedAndTokenFilesAreReadEveryTime(t *testing.T) {
 	b, _ := os.ReadFile(n.ConfigFile)
 	json.Unmarshal(b, &cfg)
 	os.WriteFile(cfg.TokenFile, []byte("rotated-token\n"), 0o600)
-	if _, err := n.Ensure(context.Background(), "sess-live"); err != nil {
+	if _, err := n.Ensure(context.Background(), ""); err != nil {
 		t.Fatal(err)
 	}
 	_, auths := f.authLog()
@@ -310,7 +321,45 @@ func TestConfigErrorsAreExplainedAndTokenFilesAreReadEveryTime(t *testing.T) {
 		t.Fatalf("token not re-read: %q", auths[len(auths)-1])
 	}
 	os.Remove(cfg.TokenFile)
-	if _, err := n.Ensure(context.Background(), "sess-live"); !errors.Is(err, ErrRuntimeDown) {
+	if _, err := n.Ensure(context.Background(), ""); !errors.Is(err, ErrRuntimeDown) {
 		t.Fatalf("missing token file: %v", err)
+	}
+}
+
+// A session belongs to the pins it was created under (and to that host row's tool grants).
+// After a reinstall the old session would run with no tools, silently; a changed pin, or a
+// session id stored before pins were tracked, starts a new session instead.
+func TestEnsureStartsANewSessionWhenThePinsChange(t *testing.T) {
+	_, n := newNanite(t)
+	ctx := context.Background()
+	first, err := n.Ensure(ctx, "")
+	if err != nil || !strings.HasSuffix(first, "~sess-new") {
+		t.Fatalf("first: %q %v", first, err)
+	}
+	// A legacy id (no pin) is never reused.
+	if s, err := n.Ensure(ctx, "sess-live"); err != nil || s == "sess-live" || !strings.HasSuffix(s, "~sess-new") {
+		t.Fatalf("legacy id reused: %q %v", s, err)
+	}
+	// A session created under other pins is never reused, even though Nanite says it is alive.
+	if s, err := n.Ensure(ctx, "deadbeef0000~sess-live"); err != nil || strings.Contains(s, "sess-live") {
+		t.Fatalf("other-pin session reused: %q %v", s, err)
+	}
+	// Changing the configured pins changes the fingerprint.
+	var cfg NaniteConfig
+	b, _ := os.ReadFile(n.ConfigFile)
+	json.Unmarshal(b, &cfg)
+	oldPin := pinOf(cfg.Session)
+	cfg.Session = json.RawMessage(`{"definition_ref":{"definition_id":"def:tachyon/app-chat","revision":"4"},"host_settings":{"id":"h2"}}`)
+	raw, _ := json.Marshal(cfg)
+	os.WriteFile(n.ConfigFile, raw, 0o600)
+	if pinOf(cfg.Session) == oldPin {
+		t.Fatal("pin fingerprint did not change")
+	}
+	if s, err := n.Ensure(ctx, oldPin+"~sess-live"); err != nil || strings.Contains(s, "sess-live") || !strings.HasPrefix(s, pinOf(cfg.Session)+"~") {
+		t.Fatalf("session from the old pins reused: %q %v", s, err)
+	}
+	// Key order in the config file does not change the pin.
+	if pinOf(json.RawMessage(`{"a":1,"b":2}`)) != pinOf(json.RawMessage(`{"b":2,"a":1}`)) {
+		t.Fatal("pin depends on key order")
 	}
 }
