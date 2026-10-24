@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -159,13 +161,38 @@ func statusErr(resp *http.Response) error {
 
 func (n *Nanite) config() (NaniteConfig, error) { return LoadNaniteConfig(n.ConfigFile) }
 
+// A stored session id is "<pin>~<id>": pin fingerprints the definition and host settings the
+// session was created under. A session is bound to its pins and to the tool grants of that
+// host row, so after a reinstall (a new definition revision gets a new host row and the old
+// authority is revoked) an old session would silently run with no tools. When the configured
+// pins change, the next turn starts a new session instead.
+func pinOf(session json.RawMessage) string {
+	var v any
+	if json.Unmarshal(session, &v) != nil {
+		return ""
+	}
+	canon, _ := json.Marshal(v) // object keys come out sorted
+	sum := sha256.Sum256(canon)
+	return hex.EncodeToString(sum[:6])
+}
+
+func splitSession(s string) (pin, id string) {
+	if i := strings.Index(s, "~"); i >= 0 {
+		return s[:i], s[i+1:]
+	}
+	return "", s // legacy id stored before pins were tracked
+}
+
+func joinSession(pin, id string) string { return pin + "~" + id }
+
 func (n *Nanite) Ensure(ctx context.Context, existing string) (string, error) {
 	cfg, err := n.config()
 	if err != nil {
 		return "", err
 	}
-	if existing != "" {
-		resp, cancel, err := n.do(ctx, cfg, http.MethodGet, "/sessions/"+url.PathEscape(existing), nil, "application/json", 15*time.Second)
+	pin := pinOf(cfg.Session)
+	if oldPin, oldID := splitSession(existing); existing != "" && oldPin == pin {
+		resp, cancel, err := n.do(ctx, cfg, http.MethodGet, "/sessions/"+url.PathEscape(oldID), nil, "application/json", 15*time.Second)
 		if err != nil {
 			return "", err
 		}
@@ -203,7 +230,7 @@ func (n *Nanite) Ensure(ctx context.Context, existing string) (string, error) {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&s); err != nil || s.ID == "" {
 		return "", fmt.Errorf("%w: unexpected session response", ErrRuntimeDown)
 	}
-	return s.ID, nil
+	return joinSession(pin, s.ID), nil
 }
 
 func (n *Nanite) Submit(ctx context.Context, session, text string) (string, error) {
@@ -211,6 +238,7 @@ func (n *Nanite) Submit(ctx context.Context, session, text string) (string, erro
 	if err != nil {
 		return "", err
 	}
+	_, session = splitSession(session)
 	body := map[string]any{"content": []map[string]string{{"kind": "text", "text": text}}, "delivery": "at_idle", "delta_mode": "live"}
 	resp, cancel, err := n.do(ctx, cfg, http.MethodPost, "/sessions/"+url.PathEscape(session)+"/turns", body, "application/json", 30*time.Second)
 	if err != nil {
@@ -254,6 +282,7 @@ func (n *Nanite) Observe(ctx context.Context, session, turn string, emit func(Tu
 	if err != nil {
 		return err
 	}
+	_, session = splitSession(session)
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 	// Watchdog, started before the request so a server that never answers is also
@@ -372,6 +401,7 @@ func (n *Nanite) Result(ctx context.Context, session, turn string) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
+	_, session = splitSession(session)
 	resp, cancel, err := n.do(ctx, cfg, http.MethodGet, "/sessions/"+url.PathEscape(session)+"/turns/"+url.PathEscape(turn), nil, "application/json", 20*time.Second)
 	if err != nil {
 		return Result{}, err
