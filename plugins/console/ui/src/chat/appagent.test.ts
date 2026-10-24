@@ -36,6 +36,17 @@ describe('app agent ChatClient', () => {
     await expect(c.listThreads()).rejects.toThrow('boom')
   })
 
+  it('shows the server message for the operator-session guard and the app agent error shape', async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(json({ code: 'operator_session_required', message: 'Connect your operator session before continuing.' }, 401))
+      .mockResolvedValueOnce(json({ error: { code: 'busy', message: 'The agent is still answering. Wait for the reply to finish.' } }, 409))
+      .mockResolvedValueOnce(json({ code: 'origin_denied', message: 'Use the Tachyon browser to perform this action.' }, 403))
+    const c = createAppAgentChatClient(f as never)
+    await expect(c.send('app-tachyon', 'x')).rejects.toThrow('operator session')
+    await expect(c.send('app-tachyon', 'x')).rejects.toThrow('still answering')
+    await expect(c.send('app-tachyon', 'x')).rejects.toThrow('Use the Tachyon browser')
+  })
+
   it('opens the thread for an app agent address and refuses an unknown one', async () => {
     const f = vi.fn().mockImplementation(async () => json({ threads: [thread('app-tachyon', 5)] }))
     const c = createAppAgentChatClient(f as never)

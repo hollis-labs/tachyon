@@ -30,8 +30,11 @@ async function api<T>(f: typeof fetch, path: string, init?: RequestInit): Promis
   })
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    const e = body?.error
+    // This API answers {error:{code,message}}; the operator-session guard answers {code,message}.
+    const e = body?.error ?? body
     if (res.status === 503 && e?.code === 'not_configured') throw new NotConfigured(e.message)
+    if (e?.code === 'operator_session_required' || e?.code === 'assurance_insufficient')
+      throw new Error('Sending needs your operator session. Enter the operator key when asked, then send again.')
     throw new Error(e?.message ?? `The app agent request failed (${res.status})`)
   }
   return body as T
