@@ -1,12 +1,13 @@
 // ChatClient for Tachyon's own in-app agent. Tachyon owns the threads and history;
 // the runtime behind the agent (Nanite today) is invisible here. Server contract:
-// internal/appagent (/api/app-agent/v1). Transport details stay in this file.
+// internal/appagent (/api/plugins/console/v1/app-agent). Transport details stay in this file.
 
 import { operatorFetch } from '../operator/elevation'
 import type { Recipient } from '../messaging'
 import type { ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryPage, HistoryQuery } from './types'
 
-export const APP_AGENT_BASE = '/api/app-agent/v1'
+// Must stay under /api/plugins/console/v1/: the operator session cookie is scoped to that path.
+export const APP_AGENT_BASE = '/api/plugins/console/v1/app-agent'
 export const APP_THREAD_PREFIX = 'app-'
 export const APP_AGENT_ADDRESS_PREFIX = 'tachyon://agent/'
 export const isAppThread = (threadId: string) => threadId.startsWith(APP_THREAD_PREFIX)

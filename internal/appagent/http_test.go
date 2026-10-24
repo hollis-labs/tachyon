@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hollis-labs/tachyon/internal/approvals"
 )
 
 func newHandler(t *testing.T, rt *fakeRuntime) (*Handler, *Service, *httptest.Server) {
@@ -166,5 +168,14 @@ func TestEventsStreamStartsWithTheInFlightSnapshotThenDeltas(t *testing.T) {
 	}
 	if code, _ := call(t, srv, "GET", Prefix+"/threads/nope/events", ""); code != 404 {
 		t.Fatalf("events for unknown thread: %d", code)
+	}
+}
+
+// The operator session cookie is scoped to approvals.CookiePath. A route outside
+// it never receives the cookie, so every send is refused as "session required"
+// even though the operator is connected (found live on 2026-10-24).
+func TestPrefixIsInsideTheOperatorSessionCookiePath(t *testing.T) {
+	if !strings.HasPrefix(Prefix+"/", approvals.CookiePath) {
+		t.Fatalf("Prefix %q is outside the operator cookie path %q", Prefix, approvals.CookiePath)
 	}
 }
