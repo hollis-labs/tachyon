@@ -60,6 +60,7 @@ func main() {
 		ApprovalAssuranceConfigFile: os.Getenv("TACHYON_APPROVAL_ASSURANCE_CONFIG"),
 		CachePolicyFile:             os.Getenv("TACHYON_CACHE_POLICY_FILE"),
 		ChatSyncInterval:            chatInterval(),
+		AppAgentConfigFile:          upstreamauth.TokenFile(nil, "", "TACHYON_APP_AGENT_CONFIG"),
 		ApprovalQueueURL:            env("TACHYON_APPROVAL_QUEUE_URL", "http://127.0.0.1:7843"),
 		FragmentsURL:                env("FRAGMENTS_ENGINE_URL", "http://127.0.0.1:8091"),
 		FragmentsTokenFile:          upstreamauth.TokenFile(nil, "", "FRAGMENTS_ENGINE_TOKEN_FILE"),
