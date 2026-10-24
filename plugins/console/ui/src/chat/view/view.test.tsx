@@ -44,6 +44,11 @@ describe('ThreadList', () => {
     expect(onSelect).toHaveBeenCalledWith('c')
   })
 
+  it('keeps the search field inside dash-search-adapter so the inner input is not a second box', () => {
+    render(<ThreadList threads={T} activeId={null} onSelect={() => undefined} />)
+    expect(screen.getByLabelText('Search conversations').closest('.dash-search-adapter')).toBeTruthy()
+  })
+
   it('filters by title and preview, and says when nothing matches', async () => {
     render(<ThreadList threads={T} activeId={null} onSelect={() => undefined} />)
     const search = screen.getByLabelText('Search conversations')

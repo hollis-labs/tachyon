@@ -37,7 +37,8 @@ export function ThreadList({ threads, activeId, onSelect, newChatActions = [], e
   return (
     <section aria-label="Conversations" className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <div className="min-w-0 flex-1">
+        {/* dash-search-adapter strips the global input border/padding from SearchInput's inner <input>; without it the field is a box in a box. */}
+        <div className="dash-search-adapter min-w-0 flex-1">
           <SearchInput value={query} onChange={setQuery} ariaLabel="Search conversations" placeholder="Search conversations" slashToFocus={false} />
         </div>
         {newChatActions.length > 0 && <OverflowMenu ariaLabel="New chat" actions={newChatActions} align="end" />}

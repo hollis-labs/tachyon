@@ -43,7 +43,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
     <div className="flex min-h-0 flex-1 flex-col">
       {error && <p role="alert" className="border-b border-danger/30 px-4 py-2 text-xs text-danger">{error}</p>}
       <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty} />
-      <div className="shrink-0 space-y-1 border-t border-border p-3">
+      <div className="shrink-0 space-y-1 px-3 pb-3 pt-2">
         {sendError && <p role="alert" className="text-xs text-danger">{sendError}</p>}
         <ChatInput
           value={value}
