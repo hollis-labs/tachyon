@@ -12,7 +12,14 @@ export function createCompositeChatClient(primary: ChatClient, app: ChatClient):
   const merge = (a: ChatThread[], b: ChatThread[]) => [...a, ...b].sort((x, y) => y.lastAt - x.lastAt)
   return {
     async listThreads() {
-      const [p, a] = await Promise.all([primary.listThreads(), app.listThreads().catch(() => [] as ChatThread[])])
+      const [p, a] = await Promise.all([
+        primary.listThreads(),
+        // The app agent must never hide the Tether threads, but a failure must not be silent either.
+        app.listThreads().catch((e) => {
+          console.warn('App agent threads unavailable:', e instanceof Error ? e.message : e)
+          return [] as ChatThread[]
+        }),
+      ])
       return merge(p, a)
     },
     openThread: (agent: Recipient) => (isAppAgent(agent) ? app : primary).openThread(agent),

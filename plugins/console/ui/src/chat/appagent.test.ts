@@ -176,8 +176,11 @@ describe('composite ChatClient', () => {
   })
 
   it('keeps the primary threads when the app agent is down, and merges live updates', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const c = createCompositeChatClient(stub('chat-1', 10), stub('app-tachyon', 20, true))
     expect((await c.listThreads()).map((t) => t.id)).toEqual(['chat-1'])
+    expect(warn).toHaveBeenCalledWith('App agent threads unavailable:', 'down')
+    warn.mockRestore()
     const seen: string[][] = []
     createCompositeChatClient(stub('chat-1', 10), stub('app-tachyon', 20)).subscribeThreads((t) => seen.push(t.map((x) => x.id)))
     expect(seen.at(-1)).toEqual(['app-tachyon', 'chat-1'])
