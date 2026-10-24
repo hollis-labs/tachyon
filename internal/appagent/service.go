@@ -139,7 +139,14 @@ func (s *Service) pollFor() time.Duration {
 }
 
 func ui(m Message, delivery string) UIMessage {
-	u := UIMessage{ID: m.ID, Seq: m.Seq, ThreadID: m.ThreadID, From: m.Role, Body: m.Body, At: m.CreatedAt.UnixMilli(), Tools: m.Tools, Error: m.Error}
+	// The operator message and its reply are stored in one transaction with the same
+	// timestamp, and the UI orders by time then id, so the reply could sort above the
+	// message it answers. The reply follows its message by a millisecond.
+	at := m.CreatedAt.UnixMilli()
+	if m.Role == RoleAgent {
+		at++
+	}
+	u := UIMessage{ID: m.ID, Seq: m.Seq, ThreadID: m.ThreadID, From: m.Role, Body: m.Body, At: at, Tools: m.Tools, Error: m.Error}
 	if u.Tools == nil {
 		u.Tools = []Tool{}
 	}
