@@ -38,6 +38,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/objectsync"
 	"github.com/hollis-labs/tachyon/internal/planner"
 	"github.com/hollis-labs/tachyon/internal/provideractions"
+	"github.com/hollis-labs/tachyon/internal/tesseractread"
 	"github.com/hollis-labs/tachyon/internal/torqueread"
 	"github.com/hollis-labs/tachyon/internal/transcripts"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
@@ -362,8 +363,14 @@ func (s *Server) Routes() http.Handler {
 			if s.approvalInbox != nil {
 				cardTools = &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry, Receipt: s.cardReceiptView}
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken)))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken)))
+			// Read-only Tesseract search and read for agents; nil (feature off) when no address is set.
+			tesseractReader, err := tesseractread.New(s.cfg.Upstreams.TesseractURL, s.cfg.Upstreams.TesseractTokenFile)
+			if err != nil {
+				slog.Warn("tesseract reads for agents disabled", "error", err)
+				tesseractReader = nil
+			}
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader))
 		}
 	}
 	if s.store != nil {

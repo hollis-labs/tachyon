@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/tesseractread"
 	"github.com/hollis-labs/tachyon/internal/torqueread"
 )
 
@@ -235,5 +236,83 @@ func TestAgentMCPTorqueToolsAreOptInAndKindGated(t *testing.T) {
 	}
 	if got := call("tools/call", map[string]any{"name": "tachyon_torque_task_get", "arguments": map[string]any{"id": "CW-9"}}, plain); strings.Contains(got, "Nine") {
 		t.Fatalf("planner-read token reached Torque: %s", got)
+	}
+}
+
+// Tesseract reads are an opt-in grant needing no object kinds, and the namespace
+// allowlist applies even to a credential that holds the verbs.
+func TestAgentMCPTesseractToolsAreOptInAndNamespaceGated(t *testing.T) {
+	_, s, db := setup(t)
+	tess := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/v1/tesseract/lookup":
+			json.NewEncoder(w).Encode(map[string]any{"results": []any{map[string]any{"score": 0.5, "revision": map[string]any{
+				"item_id": "i1", "namespace": "project/tachyon/memory/decisions", "memory_key": "embedded_agent", "domain": "memory", "status": "canonical", "tags": []string{"d"},
+				"payload": map[string]any{"summary": "the summary"}}}}, "manifest": map[string]any{"results_total": 1}})
+		case r.Method == "GET" && r.URL.Path == "/v1/items/i1":
+			json.NewEncoder(w).Encode(map[string]any{"item_id": "i1", "namespace": "project/tachyon/memory/decisions", "memory_key": "embedded_agent", "domain": "memory",
+				"payload": map[string]any{"summary": "the summary", "body": "the full body"}, "session_id": "SESSION-LEAK"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer tess.Close()
+	reader, err := tesseractread.New(tess.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	access := &agentaccess.Store{DB: db}
+	issue := func(name string, g agentaccess.Grants) string {
+		_, secret, err := access.Issue(ctx, "", name, g, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return secret
+	}
+	plain := issue("Planner", agentaccess.PlannerTorqueRead())
+	only := issue("Tesseract only", agentaccess.TesseractRead())
+	app := issue("App agent", agentaccess.AppAgentRead())
+	handler := NewAgentMCP(s, access, torqueread.New("http://127.0.0.1:1", ""), reader)
+	call := func(method string, params any, credential string) string {
+		t.Helper()
+		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+		req := httptest.NewRequest("POST", "https://tachyon.test"+AgentMCPPath, strings.NewReader(string(raw)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Authorization", "Bearer "+credential)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w.Body.String()
+	}
+	if l := call("tools/list", map[string]any{}, plain); strings.Contains(l, "tachyon_tesseract_") {
+		t.Fatalf("a planner+torque token sees Tesseract tools: %s", l)
+	}
+	l := call("tools/list", map[string]any{}, only)
+	if !strings.Contains(l, "tachyon_tesseract_recall") || !strings.Contains(l, "tachyon_tesseract_get") || strings.Contains(l, "tachyon_planner_list") || strings.Contains(l, "tachyon_torque_") {
+		t.Fatalf("tesseract-only token: %s", l)
+	}
+	l = call("tools/list", map[string]any{}, app)
+	for _, tool := range []string{"tachyon_planner_list", "tachyon_objects_get", "tachyon_torque_task_get", "tachyon_torque_task_comments", "tachyon_torque_task_list", "tachyon_tesseract_recall", "tachyon_tesseract_get"} {
+		if !strings.Contains(l, tool) {
+			t.Fatalf("app-agent token lacks %s: %s", tool, l)
+		}
+	}
+	if strings.Contains(l, "portfolio_create") || strings.Contains(l, "actions_request") {
+		t.Fatalf("write tools listed: %s", l)
+	}
+	got := call("tools/call", map[string]any{"name": "tachyon_tesseract_recall", "arguments": map[string]any{"namespaces": []string{"project/tachyon/memory/decisions"}, "query": "agent"}}, app)
+	if !strings.Contains(got, "embedded_agent") || !strings.Contains(got, "untrusted_data") || strings.Contains(got, "the full body") {
+		t.Fatalf("recall: %s", got)
+	}
+	got = call("tools/call", map[string]any{"name": "tachyon_tesseract_get", "arguments": map[string]any{"item_id": "i1"}}, app)
+	if !strings.Contains(got, "the full body") || strings.Contains(got, "SESSION-LEAK") {
+		t.Fatalf("get: %s", got)
+	}
+	got = call("tools/call", map[string]any{"name": "tachyon_tesseract_recall", "arguments": map[string]any{"namespaces": []string{"user/chrispian/memory"}}}, app)
+	if !strings.Contains(got, "isError") || !strings.Contains(got, "project/ and system/") {
+		t.Fatalf("private namespace not refused: %s", got)
+	}
+	if got := call("tools/call", map[string]any{"name": "tachyon_tesseract_get", "arguments": map[string]any{"item_id": "i1"}}, plain); strings.Contains(got, "the full body") {
+		t.Fatalf("token without the verb reached Tesseract: %s", got)
 	}
 }

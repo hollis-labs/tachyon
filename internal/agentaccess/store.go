@@ -28,6 +28,11 @@ var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfoli
 // A credential gets them only from the torque-read or planner-torque-read preset.
 var torqueVerbs = []string{"torque.task.get", "torque.task.comments", "torque.task.list"}
 
+// TesseractVerbs read Tesseract (a search and an item read) through Tachyon. Like the
+// Torque verbs they are not in readVerbs: only the presets below grant them. They name
+// no object kinds, so a credential holding only these needs none.
+var tesseractVerbs = []string{"tesseract.recall", "tesseract.get"}
+
 // ActionVerbs are the registered-action tools (request, then await the result).
 // They name no object kinds: a credential holding only these needs none.
 var actionVerbs = []string{"actions.catalog", "actions.request", "actions.await"}
@@ -62,6 +67,16 @@ func PlannerTorqueRead() Grants {
 	g.Verbs = append(g.Verbs, torqueVerbs...)
 	return g
 }
+
+// TesseractRead grants only the Tesseract read verbs.
+func TesseractRead() Grants { return Grants{Verbs: append([]string(nil), tesseractVerbs...)} }
+
+// AppAgentRead is what the in-app agent holds: Tachyon's own data, Torque and Tesseract, read-only.
+func AppAgentRead() Grants {
+	g := PlannerTorqueRead()
+	g.Verbs = append(g.Verbs, tesseractVerbs...)
+	return g
+}
 func PortfolioWrite() Grants {
 	g := PortfolioRead()
 	g.Verbs = append(g.Verbs, portfolioWriteVerbs...)
@@ -69,13 +84,16 @@ func PortfolioWrite() Grants {
 }
 func ActionRequest() Grants    { return Grants{Verbs: append([]string(nil), actionVerbs...)} }
 func TorqueVerb(v string) bool { return contains(torqueVerbs, v) }
+func TesseractVerb(v string) bool {
+	return contains(tesseractVerbs, v)
+}
 func ActionVerb(v string) bool { return contains(actionVerbs, v) }
 func CardAsk() Grants          { return Grants{Verbs: append([]string(nil), cardVerbs...)} }
 func CardVerb(v string) bool   { return contains(cardVerbs, v) }
 func PlannerKinds() []string   { return append([]string(nil), plannerKinds...) }
 func ReadVerb(v string) bool   { return contains(readVerbs, v) || contains(portfolioReadVerbs, v) }
 func SupportedVerb(v string) bool {
-	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v) || contains(torqueVerbs, v)
+	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v) || contains(torqueVerbs, v) || contains(tesseractVerbs, v)
 }
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
@@ -88,7 +106,7 @@ func contains(xs []string, x string) bool {
 func (g Grants) Validate() error {
 	onlyActions := len(g.Verbs) > 0
 	for _, v := range g.Verbs {
-		onlyActions = onlyActions && (contains(actionVerbs, v) || contains(cardVerbs, v))
+		onlyActions = onlyActions && (contains(actionVerbs, v) || contains(cardVerbs, v) || contains(tesseractVerbs, v))
 	}
 	if len(g.Verbs) == 0 || (len(g.Kinds) == 0 && !onlyActions) {
 		return errors.New("explicit verbs and kinds are required")
