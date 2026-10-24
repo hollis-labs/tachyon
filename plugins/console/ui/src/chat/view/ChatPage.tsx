@@ -2,31 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { OverflowAction } from '@hollis-labs/design-components'
 import { useChat } from '../context'
-import { useChatThread, useChatThreads } from '../hooks'
+import { useChatThreads } from '../hooks'
 import { chatRecipient, useChatRoster } from '../roster'
 import type { ChatThread } from '../types'
 import { ChatView } from './ChatView'
-import { ConversationView } from './ConversationView'
-
-/** Keyed on the thread so hook state starts fresh per conversation. */
-function ThreadConversation({ thread }: { thread: ChatThread }) {
-  const c = useChatThread(thread.id)
-  const cap = c.capability ?? thread.capability
-  return (
-    <ConversationView
-      threadId={thread.id}
-      messages={c.messages}
-      agentLabel={thread.title}
-      loading={c.loading}
-      hasMore={c.hasMore}
-      onLoadOlder={() => void c.loadOlder()}
-      onSend={c.send}
-      canSend={cap.canSend !== false}
-      error={c.error}
-      sendError={c.sendError}
-    />
-  )
-}
+import { ThreadConversation } from './ThreadConversation'
 
 /** /chat and /chat/:threadId. Wires the mail ChatClient into ChatView. */
 export function ChatPage() {
