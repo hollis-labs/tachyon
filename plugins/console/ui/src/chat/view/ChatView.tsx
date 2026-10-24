@@ -50,7 +50,10 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
 
   if (variant === 'compact') {
     return (
-      <div className="flex min-h-0 flex-1 flex-col bg-bg">
+      // relative + overflow-hidden is load-bearing: the message action buttons contain
+      // position:absolute sr-only labels. With no positioned, clipping ancestor they escape the
+      // message scroller and stretch the whole page's scroll height.
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-bg">
         <ChatFreshness />
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-3 py-2">
           {activeThread && onBack && <button type="button" onClick={onBack} aria-label="Back to threads" className="font-mono text-xs text-fg-muted hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">&lt; Threads</button>}
@@ -94,7 +97,7 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
   )
 
   return (
-    <div className="flex h-full min-h-0 bg-bg">
+    <div className="relative flex h-full min-h-0 overflow-hidden bg-bg">
       {!narrow && threadsOpen && (
         <aside aria-label="Conversations" className="flex w-72 shrink-0 flex-col border-r border-border">
           {list()}
