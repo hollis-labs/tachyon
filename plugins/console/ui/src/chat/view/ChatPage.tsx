@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { OverflowAction } from '@hollis-labs/design-components'
 import { useChat } from '../context'
@@ -19,7 +19,11 @@ export function ChatPage() {
   const [openError, setOpenError] = useState<string | null>(null)
 
   const select = useCallback((id: string) => navigate(`/chat/${encodeURIComponent(id)}`), [navigate])
-  const active = threadId ? (threads?.find((t) => t.id === threadId) ?? (opened?.id === threadId ? opened : null)) : null
+  const found = threadId ? (threads?.find((t) => t.id === threadId) ?? (opened?.id === threadId ? opened : null)) : null
+  // A refresh of the list that briefly lacks the open thread must not unmount its conversation.
+  const lastActive = useRef<ChatThread | null>(null)
+  if (found) lastActive.current = found
+  const active = found ?? (threadId && lastActive.current?.id === threadId ? lastActive.current : null)
 
   // A thread the list does not know yet (deep link, or just created) is looked up once it loads.
   useEffect(() => { if (opened && threads?.some((t) => t.id === opened.id)) setOpened(null) }, [threads, opened])

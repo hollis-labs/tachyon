@@ -113,13 +113,12 @@ describe('app agent ChatClient', () => {
     expect(got.filter((e) => e.type === 'delta')).toHaveLength(0)
     s.push(d.slice(15) + ': keepalive\n\n' + frame({ type: 'tool', messageId: 'ag1', tool: { id: 'c', name: 't', status: 'ok' } }) + frame({ type: 'end', messageId: 'ag1' }))
     await tick()
-    expect(got.map((e) => e.type)).toEqual(['error', 'delta', 'tool', 'end'])
-    expect((got[0] as { message: string | null }).message).toBeNull()
+    expect(got.map((e) => e.type)).toEqual(['delta', 'tool', 'end'])
     off()
     expect(signal?.aborted).toBe(true)
   })
 
-  it('reports a dropped stream, reconnects with backoff and resyncs what finished meanwhile', async () => {
+  it('reconnects quietly after a dropped stream and resyncs what finished meanwhile', async () => {
     const first = sse()
     const second = sse()
     const streams = [first, second]
@@ -133,13 +132,39 @@ describe('app agent ChatClient', () => {
     await tick()
     first.close()
     await tick()
-    expect(got.at(-1)).toEqual({ type: 'error', message: 'Live updates paused. Reconnecting.' })
-    await tick(1100)
+    // A hiccup that heals at once shows nothing: no error, no paused notice, composer stays usable.
+    expect(got).toEqual([])
+    await tick(300)
     expect(f.mock.calls.filter(([u]) => String(u).includes('/events'))).toHaveLength(2)
     const resynced = got.find((e) => e.type === 'message') as { message: ChatMessage } | undefined
     expect(resynced?.message.body).toBe('final answer')
-    expect(got.at(-1)).toEqual(expect.objectContaining({ type: 'message' }))
-    expect(got.filter((e) => e.type === 'error' && (e as { message: string | null }).message === null)).toHaveLength(2)
+    expect(got.some((e) => e.type === 'error' || e.type === 'capability')).toBe(false)
+  })
+
+  it('says so calmly after a real outage, never blocks sending, and clears the notice on reconnect', async () => {
+    const back = sse()
+    let up = false
+    const f = vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/messages')) return json({ messages: [], has_more: false })
+      if (!up) throw new TypeError('network down')
+      return new Response(back.body, { status: 200 })
+    })
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+    const c = createAppAgentChatClient(f as never)
+    const got: ChatEvent[] = []
+    c.subscribe('app-tachyon', (e) => got.push(e))
+    await tick(5000)
+    expect(got).toEqual([]) // still inside the grace period
+    await tick(6000)
+    const paused = got.find((e) => e.type === 'capability') as { capability: { canSend: boolean; detail?: string } } | undefined
+    expect(paused?.capability.canSend).toBe(true)
+    expect(paused?.capability.detail).toMatch(/paused/i)
+    expect(got.some((e) => e.type === 'error')).toBe(false)
+    up = true
+    await tick(11000)
+    const last = got.filter((e) => e.type === 'capability').at(-1) as { capability: { canSend: boolean; detail?: string } }
+    expect(last.capability).toEqual({ mode: 'live', canSend: true })
+    debug.mockRestore()
   })
 
   it('polls threads and reports failures', async () => {
@@ -148,7 +173,8 @@ describe('app agent ChatClient', () => {
     const lists: string[][] = []
     const errors: string[] = []
     const off = c.subscribeThreads((t) => lists.push(t.map((x) => x.id)), (m) => errors.push(m))
-    await tick(5000)
+    await tick() // the first answer does not wait a poll interval
+    expect(lists).toEqual([['app-tachyon']])
     await tick(5000)
     off()
     await tick(10000)
@@ -184,6 +210,17 @@ describe('composite ChatClient', () => {
     await c.openThread({ address: 'chat://tether/launch/1', label: 'x', kind: 'agent' })
     expect(app.calls).toEqual(['history', 'send', 'read', 'subscribe', 'open'])
     expect(tether.calls).toEqual(['history', 'send', 'open'])
+  })
+
+  it('never drops the app thread when the Tether poll answers before the app poll', async () => {
+    const tether = stub('chat-1', 10)
+    const quiet = stub('app-tachyon', 20)
+    quiet.subscribeThreads = () => () => {} // the app poll has not answered yet
+    const c = createCompositeChatClient(tether, quiet)
+    await c.listThreads() // what the hook loads first
+    const seen: string[][] = []
+    c.subscribeThreads((t) => seen.push(t.map((x) => x.id)))
+    expect(seen).toEqual([['app-tachyon', 'chat-1']])
   })
 
   it('keeps the primary threads when the app agent is down, and merges live updates', async () => {

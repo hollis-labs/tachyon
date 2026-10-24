@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChatInput } from '@hollis-labs/kit-chat'
+import { getDraft, setDraft } from '../drafts'
 import { ThreadView } from '../ThreadView'
 import type { ChatMessage } from '../types'
 
@@ -28,7 +29,8 @@ export interface ConversationViewProps {
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
 export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note }: ConversationViewProps) {
-  const [value, setValue] = useState('')
+  const [value, setValueState] = useState(() => getDraft(threadId))
+  const setValue = (v: string) => { setValueState(v); setDraft(threadId, v) }
   const [busy, setBusy] = useState(false)
   const area = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { area.current?.focus() }, [threadId])

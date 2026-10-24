@@ -8,6 +8,7 @@ import type { ChatClient, ChatThread } from './types'
  * sees ordinary threads. A failing app agent never hides the primary threads.
  */
 export function createCompositeChatClient(primary: ChatClient, app: ChatClient): ChatClient {
+  let lastApp: ChatThread[] = [] // newest app agent threads we know of
   const forThread = (id: string) => (isAppThread(id) ? app : primary)
   const merge = (a: ChatThread[], b: ChatThread[]) => [...a, ...b].sort((x, y) => y.lastAt - x.lastAt)
   return {
@@ -17,9 +18,10 @@ export function createCompositeChatClient(primary: ChatClient, app: ChatClient):
         // The app agent must never hide the Tether threads, but a failure must not be silent either.
         app.listThreads().catch((e) => {
           console.warn('App agent threads unavailable:', e instanceof Error ? e.message : e)
-          return [] as ChatThread[]
+          return lastApp
         }),
       ])
+      lastApp = a
       return merge(p, a)
     },
     openThread: (agent: Recipient) => (isAppAgent(agent) ? app : primary).openThread(agent),
@@ -29,11 +31,13 @@ export function createCompositeChatClient(primary: ChatClient, app: ChatClient):
     subscribe: (id, l) => forThread(id).subscribe(id, l),
     subscribeThreads(listener, onError) {
       let p: ChatThread[] = []
-      let a: ChatThread[] = []
+      // Start from what listThreads last saw: the Tether poll often fires first, and an empty
+      // app list would make the Tachyon thread vanish until the app poll arrives.
+      let a: ChatThread[] = lastApp
       const push = () => listener(merge(p, a))
       const offP = primary.subscribeThreads((t) => { p = t; push() }, onError)
       // The app agent is optional: its failures are not reported as chat errors.
-      const offA = app.subscribeThreads((t) => { a = t; push() })
+      const offA = app.subscribeThreads((t) => { a = lastApp = t; push() })
       return () => { offP(); offA() }
     },
   }
