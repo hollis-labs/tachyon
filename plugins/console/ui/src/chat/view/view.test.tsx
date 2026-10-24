@@ -111,6 +111,19 @@ describe('ChatView', () => {
   })
 })
 
+// jsdom has no layout, so this pins the classes that stop the page scrolling: the message
+// action buttons hold position:absolute sr-only labels, and without a positioned, clipping
+// ancestor they escape the message scroller and stretch the whole page (seen live, 2026-10-24).
+describe('ChatView containment', () => {
+  const clipped = (el: Element | null) => !!el && el.classList.contains('relative') && el.classList.contains('overflow-hidden')
+  it('is a positioned, clipping container in both variants', () => {
+    const { container, rerender } = render(<ChatView threads={T} activeThread={T[0]} onSelectThread={() => undefined}><p>x</p></ChatView>)
+    expect(clipped(container.firstElementChild)).toBe(true)
+    rerender(<ChatView variant="compact" threads={T} activeThread={T[0]} onSelectThread={() => undefined}><p>x</p></ChatView>)
+    expect(clipped(container.firstElementChild)).toBe(true)
+  })
+})
+
 describe('ChatView compact (the dock)', () => {
   it('shows the thread list, then the conversation with a way back, and no side columns', () => {
     const onSelect = vi.fn()
