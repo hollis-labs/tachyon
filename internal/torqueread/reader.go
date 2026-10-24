@@ -260,8 +260,10 @@ type CommentPage struct {
 	ContentTrust string    `json:"content_trust"`
 }
 
-// Comments returns a page of a task's comments, oldest first. The cursor is an
-// opaque offset. A page is cut at a comment boundary once it reaches 32 KiB.
+// Comments returns a page of a task's comments, oldest first. The cursor is
+// Torque's own opaque cursor, passed through; Torque's comments endpoint has no
+// offset. A page that would exceed 32 KiB is re-requested with a smaller limit,
+// so the returned cursor always follows exactly the comments returned.
 func (r *Reader) Comments(ctx context.Context, id string, limit int, cursor string) (CommentPage, error) {
 	if !idPattern.MatchString(id) {
 		return CommentPage{}, ErrInvalid
@@ -272,57 +274,56 @@ func (r *Reader) Comments(ctx context.Context, id string, limit int, cursor stri
 	if limit < 1 || limit > MaxComments {
 		return CommentPage{}, ErrInvalid
 	}
-	offset := 0
-	if cursor != "" {
-		n, err := strconv.Atoi(cursor)
-		if err != nil || n < 0 || n > 1_000_000 {
-			return CommentPage{}, ErrInvalid
+	if cursor != "" && !cursorPattern.MatchString(cursor) {
+		return CommentPage{}, ErrInvalid
+	}
+	path := "/api/v1/tasks/" + url.PathEscape(id) + "/comments"
+	for attempt := 0; attempt < 8; attempt++ {
+		q := url.Values{"limit": {strconv.Itoa(limit)}, "sort_by": {"created_at"}, "sort_dir": {"asc"}}
+		if cursor != "" {
+			q.Set("cursor", cursor)
 		}
-		offset = n
-	}
-	q := url.Values{"limit": {strconv.Itoa(limit)}, "offset": {strconv.Itoa(offset)}, "sort_by": {"created_at"}, "sort_dir": {"asc"}}
-	b, err := r.get(ctx, "/api/v1/tasks/"+url.PathEscape(id)+"/comments", q)
-	if err != nil {
-		return CommentPage{}, err
-	}
-	var in struct {
-		Items []struct {
-			ID        json.Number `json:"id"`
-			Author    string      `json:"author"`
-			Content   string      `json:"content"`
-			CreatedAt string      `json:"created_at"`
-		} `json:"items"`
-		Meta struct {
-			HasMore bool `json:"has_more"`
-		} `json:"meta"`
-	}
-	if json.Unmarshal(b, &in) != nil || in.Items == nil {
-		return CommentPage{}, ErrUnavailable
-	}
-	out := CommentPage{TaskID: id, Items: []Comment{}, ContentTrust: ContentTrust}
-	size := 0
-	for i, c := range in.Items {
-		item := Comment{ID: c.ID.String(), CreatedAt: c.CreatedAt}
-		item.Author, _ = cut(redact.Text(c.Author), 120)
-		item.Content, item.ContentTruncated = cut(redact.Text(c.Content), CommentBytes)
-		raw, _ := json.Marshal(item)
-		if i > 0 && size+len(raw) > ResponseBytes {
-			out.HasMore = true
-			break
+		b, err := r.get(ctx, path, q)
+		if err != nil {
+			return CommentPage{}, err
 		}
-		size += len(raw)
-		out.Items = append(out.Items, item)
+		var in struct {
+			Items []struct {
+				ID        json.Number `json:"id"`
+				Author    string      `json:"author"`
+				Content   string      `json:"content"`
+				CreatedAt string      `json:"created_at"`
+			} `json:"items"`
+			Meta struct {
+				HasMore    bool   `json:"has_more"`
+				NextCursor string `json:"next_cursor"`
+			} `json:"meta"`
+		}
+		if json.Unmarshal(b, &in) != nil || in.Items == nil {
+			return CommentPage{}, ErrUnavailable
+		}
+		out := CommentPage{TaskID: id, Items: []Comment{}, ContentTrust: ContentTrust}
+		size := 0
+		for _, c := range in.Items {
+			item := Comment{ID: c.ID.String(), CreatedAt: c.CreatedAt}
+			item.Author, _ = cut(redact.Text(c.Author), 120)
+			item.Content, item.ContentTruncated = cut(redact.Text(c.Content), CommentBytes)
+			raw, _ := json.Marshal(item)
+			size += len(raw)
+			out.Items = append(out.Items, item)
+		}
+		if size > ResponseBytes && len(in.Items) > 1 {
+			limit = len(in.Items) / 2
+			continue
+		}
+		out.Returned = len(out.Items)
+		out.HasMore = in.Meta.HasMore
+		if in.Meta.HasMore {
+			out.NextCursor = in.Meta.NextCursor
+		}
+		return out, nil
 	}
-	out.Returned = len(out.Items)
-	if len(out.Items) < len(in.Items) {
-		out.HasMore = true
-	} else if in.Meta.HasMore {
-		out.HasMore = true
-	}
-	if out.HasMore {
-		out.NextCursor = strconv.Itoa(offset + len(out.Items))
-	}
-	return out, nil
+	return CommentPage{}, ErrUnavailable
 }
 
 type ListFilter struct {

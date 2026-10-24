@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -145,36 +146,66 @@ func TestStatusesMapToTypedErrorsWithoutLeakingTheBody(t *testing.T) {
 	}
 }
 
-func TestCommentsPageByOffsetAndCutAtTheSizeBudget(t *testing.T) {
+// Torque's comments endpoint rejects unknown parameters (offset gets a 400), so
+// the fake does too. It honours limit and returns its own cursor.
+func TestCommentsUseTorquesCursorAndShrinkToTheSizeBudget(t *testing.T) {
 	big := strings.Repeat("x", CommentBytes+500)
+	var limits []string
 	f := newFake(t, func(w http.ResponseWriter, r *http.Request) {
+		for k := range r.URL.Query() {
+			switch k {
+			case "limit", "cursor", "sort_by", "sort_dir":
+			default:
+				http.Error(w, `{"error":"unknown query parameter: `+k+`"}`, http.StatusBadRequest)
+				return
+			}
+		}
+		limits = append(limits, r.URL.Query().Get("limit"))
+		n := 20
+		if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l < n {
+			n = l
+		}
 		items := []map[string]any{}
-		for i := 0; i < 20; i++ {
+		for i := 0; i < n; i++ {
 			items = append(items, map[string]any{"id": 100 + i, "author": "a", "content": big + secret, "created_at": "2026-10-24T00:00:00Z", "entity_id": "CW-1", "entity_type": "task"})
 		}
-		json.NewEncoder(w).Encode(map[string]any{"items": items, "meta": map[string]any{"has_more": false}})
+		json.NewEncoder(w).Encode(map[string]any{"items": items, "meta": map[string]any{"has_more": true, "next_cursor": "cur_" + strconv.Itoa(n)}})
 	})
-	page, err := New(f.URL, "").Comments(context.Background(), "CW-1", 20, "40")
+	page, err := New(f.URL, "").Comments(context.Background(), "CW-1", 20, "start_CUR")
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(page)
-	if len(raw) > ResponseBytes+2048 || page.Returned == 0 || page.Returned >= 20 || !page.HasMore {
+	if len(raw) > ResponseBytes+1024 || page.Returned == 0 || page.Returned >= 20 || !page.HasMore {
 		t.Fatalf("budget: returned=%d has_more=%v bytes=%d", page.Returned, page.HasMore, len(raw))
 	}
-	if page.NextCursor != fmt.Sprint(40+page.Returned) {
-		t.Fatalf("cursor %q, returned %d", page.NextCursor, page.Returned)
+	// The cursor must follow exactly the comments returned: it comes from the request that fit.
+	if page.NextCursor != "cur_"+strconv.Itoa(page.Returned) || len(limits) < 2 || limits[len(limits)-1] != strconv.Itoa(page.Returned) {
+		t.Fatalf("cursor %q returned %d limits %v", page.NextCursor, page.Returned, limits)
 	}
 	for _, c := range page.Items {
 		if !c.ContentTruncated || len(c.Content) > CommentBytes || strings.Contains(c.Content, secret) {
 			t.Fatalf("comment not bounded/redacted: %d truncated=%v", len(c.Content), c.ContentTruncated)
 		}
 	}
-	if !strings.Contains(f.reqs[0], "offset=40") || !strings.Contains(f.reqs[0], "limit=20") {
-		t.Fatalf("request %v", f.reqs)
+	if !strings.Contains(f.reqs[0], "cursor=start_CUR") || strings.Contains(strings.Join(f.reqs, " "), "offset") {
+		t.Fatalf("requests %v", f.reqs)
 	}
-	if _, err := New(f.URL, "").Comments(context.Background(), "CW-1", 0, "abc"); err != ErrInvalid {
+	if _, err := New(f.URL, "").Comments(context.Background(), "CW-1", 0, "has space"); err != ErrInvalid {
 		t.Fatalf("bad cursor: %v", err)
+	}
+	if _, err := New(f.URL, "").Comments(context.Background(), "CW-1", 51, ""); err != ErrInvalid {
+		t.Fatalf("limit over max: %v", err)
+	}
+}
+
+func TestCommentsSmallPageIsOneRequestAndLastPageHasNoCursor(t *testing.T) {
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"id": 1, "author": "a", "content": "hi", "created_at": "t"}}, "meta": map[string]any{"has_more": false}})
+	})
+	page, err := New(f.URL, "").Comments(context.Background(), "CW-1", 0, "")
+	if err != nil || page.Returned != 1 || page.HasMore || page.NextCursor != "" || len(f.reqs) != 1 || !strings.Contains(f.reqs[0], "limit=10") {
+		t.Fatalf("page=%+v err=%v reqs=%v", page, err, f.reqs)
 	}
 }
 
