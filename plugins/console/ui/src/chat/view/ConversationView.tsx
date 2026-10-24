@@ -18,10 +18,16 @@ export interface ConversationViewProps {
   /** Failure of the last send. The draft is kept. */
   sendError?: string | null
   empty?: ReactNode
+  /** Strip above the messages: reachability, presence. */
+  status?: ReactNode
+  /** Left of the send button, e.g. the reply filter. */
+  toolbarStart?: ReactNode
+  /** Short caption beside the send button, e.g. 'Mail only'. */
+  note?: string | null
 }
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
-export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty }: ConversationViewProps) {
+export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note }: ConversationViewProps) {
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
   const area = useRef<HTMLTextAreaElement>(null)
@@ -41,6 +47,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {status}
       {error && <p role="alert" className="border-b border-danger/30 px-4 py-2 text-xs text-danger">{error}</p>}
       <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty} />
       <div className="shrink-0 space-y-1 px-3 pb-3 pt-2">
@@ -53,6 +60,8 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
           disabled={!canSend || !!error}
           textareaRef={area}
           aria-label="Message"
+          toolbarStart={toolbarStart}
+          toolbarEnd={note ? <span className="truncate dash-caption text-fg-faint">{note}</span> : undefined}
           placeholder={canSend ? 'Message. Enter to send, Shift+Enter for a new line' : 'This agent cannot receive messages right now'}
         />
       </div>

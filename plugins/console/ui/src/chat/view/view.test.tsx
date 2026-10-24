@@ -111,6 +111,22 @@ describe('ChatView', () => {
   })
 })
 
+describe('ChatView compact (the dock)', () => {
+  it('shows the thread list, then the conversation with a way back, and no side columns', () => {
+    const onSelect = vi.fn()
+    const onBack = vi.fn()
+    const { rerender } = render(<ChatView variant="compact" threads={T} activeThread={null} onSelectThread={onSelect} onBack={onBack}><p>conversation body</p></ChatView>)
+    expect(screen.getByRole('list', { name: 'Threads' })).toBeTruthy()
+    expect(screen.queryByLabelText('Back to threads')).toBeNull()
+    expect(screen.queryByLabelText('Show thread details')).toBeNull()
+    rerender(<ChatView variant="compact" threads={T} activeThread={T[0]} onSelectThread={onSelect} onBack={onBack}><p>conversation body</p></ChatView>)
+    expect(screen.getByText('conversation body')).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Threads' })).toBeNull()
+    fireEvent.click(screen.getByLabelText('Back to threads'))
+    expect(onBack).toHaveBeenCalled()
+  })
+})
+
 describe('ConversationView', () => {
   const base = { threadId: 't', messages: [], agentLabel: 'Alpha', loading: false, hasMore: false, onLoadOlder: () => undefined }
 

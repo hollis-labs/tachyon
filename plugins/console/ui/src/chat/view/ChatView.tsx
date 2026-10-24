@@ -14,6 +14,13 @@ export interface ChatViewProps {
   activeThread: ChatThread | null
   onSelectThread: (id: string) => void
   newChatActions?: OverflowAction[]
+  /**
+   * 'page' (default): threads | conversation | details. 'compact': one column for a
+   * drawer, showing the thread list or the open conversation with a back button.
+   */
+  variant?: 'page' | 'compact'
+  /** Compact only: return from the conversation to the thread list. */
+  onBack?: () => void
   /** The conversation for `activeThread`. Rendered in the centre column. */
   children?: ReactNode
 }
@@ -23,7 +30,7 @@ export interface ChatViewProps {
  * selected thread and the conversation (children). Below 1024px the side
  * columns open as overlays; the details column starts collapsed.
  */
-export function ChatView({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, newChatActions, children }: ChatViewProps) {
+export function ChatView({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, newChatActions, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
   const [threadsOpen, setThreadsOpen] = useState(true)
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -40,6 +47,19 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
       onRetry={onRetryThreads}
     />
   )
+
+  if (variant === 'compact') {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col bg-bg">
+        <ChatFreshness />
+        <header className="flex shrink-0 items-center gap-3 border-b border-border px-3 py-2">
+          {activeThread && onBack && <button type="button" onClick={onBack} aria-label="Back to threads" className="font-mono text-xs text-fg-muted hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">&lt; Threads</button>}
+          <h2 className="min-w-0 flex-1 truncate text-sm font-normal normal-case tracking-normal text-fg">{activeThread?.title ?? 'Chat'}</h2>
+        </header>
+        {activeThread ? children : list()}
+      </div>
+    )
+  }
 
   const iconBtn = 'shrink-0 text-fg-muted'
   const threadsToggle = narrow ? (

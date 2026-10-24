@@ -52,7 +52,7 @@ export function ThreadList({ threads, activeId, onSelect, newChatActions = [], e
       {threads === null ? (
         !error && <p className="px-3 py-4 text-caption text-fg-faint">Loading</p>
       ) : threads.length === 0 ? (
-        <EmptyState variant="empty" title="No conversations" description="Start one with an agent from the menu above." />
+        <EmptyState variant="empty" title="No conversations" description={newChatActions.length > 0 ? 'Start one with an agent from the menu above.' : 'Open one from an agent.'} />
       ) : shown.length === 0 ? (
         <EmptyState variant="no-results" title="No matches" description={`Nothing matches "${query.trim()}".`} />
       ) : (
