@@ -25,6 +25,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/apicache"
+	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/carddelivery"
 	"github.com/hollis-labs/tachyon/internal/cardevents"
@@ -48,11 +49,13 @@ var Version = "0.0.0-dev"
 // Config is the host's resolved configuration.
 type Config struct {
 	// PluginBinDir holds built plugin executables named by plugin ID.
-	PluginBinDir                string
-	DataDir                     string
-	CacheDir                    string
-	CachePolicyFile             string
-	ChatSyncInterval            time.Duration
+	PluginBinDir     string
+	DataDir          string
+	CacheDir         string
+	CachePolicyFile  string
+	ChatSyncInterval time.Duration
+	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
+	AppAgentConfigFile          string
 	ApprovalQueueURL            string
 	ApprovalProducerConfigFile  string
 	ApprovalAssuranceConfigFile string
@@ -99,6 +102,7 @@ type Server struct {
 	objectJobs       *objectsync.Jobs
 	cache            *apicache.Cache
 	chat             *chatbridge.Owned
+	appAgent         *appagent.Service
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
@@ -209,6 +213,14 @@ func (s *Server) Start(ctx context.Context) error {
 		}()
 	}
 
+	if s.cfg.AppAgentConfigFile != "" {
+		// The adapter re-reads this file on every call, so reinstalling the agent
+		// (a new definition revision gets a new host row) needs no restart.
+		s.appAgent = &appagent.Service{Store: &appagent.Store{DB: store}, Runtime: appagent.NewNanite(s.cfg.AppAgentConfigFile), Label: "Tachyon"}
+		if err := s.appAgent.Start(ctx); err != nil {
+			return fmt.Errorf("app agent: %w", err)
+		}
+	}
 	s.startActions(approvalContext, store)
 	s.startCardEffects(approvalContext, store)
 	s.startCardEvents(approvalContext, store)
@@ -274,6 +286,9 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 	if s.chat != nil {
 		s.chat.Stop()
+	}
+	if s.appAgent != nil {
+		s.appAgent.Stop()
 	}
 	err := errors.Join(jobErr, s.inventory.Stop(ctx))
 	if s.store != nil {
@@ -431,6 +446,9 @@ func (s *Server) Routes() http.Handler {
 	if s.chat != nil {
 		mux.Handle(chatbridge.Prefix+"/", operator.RequireOperator(s.chat))
 	}
+	// The app agent chat holds conversation history: reads need the same operator
+	// assurance as sends. Without a config file the routes answer 503 and say why.
+	mux.Handle(appagent.Prefix+"/", operator.RequireOperatorReads(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
