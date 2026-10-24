@@ -20,6 +20,7 @@ const (
 // UIMessage is a message in the shape the chat UI reads (ChatMessage).
 type UIMessage struct {
 	ID        string `json:"id"`
+	Seq       int64  `json:"seq"`
 	ThreadID  string `json:"threadId"`
 	From      string `json:"from"`
 	Body      string `json:"body"`
@@ -138,7 +139,7 @@ func (s *Service) pollFor() time.Duration {
 }
 
 func ui(m Message, delivery string) UIMessage {
-	u := UIMessage{ID: m.ID, ThreadID: m.ThreadID, From: m.Role, Body: m.Body, At: m.CreatedAt.UnixMilli(), Tools: m.Tools, Error: m.Error}
+	u := UIMessage{ID: m.ID, Seq: m.Seq, ThreadID: m.ThreadID, From: m.Role, Body: m.Body, At: m.CreatedAt.UnixMilli(), Tools: m.Tools, Error: m.Error}
 	if u.Tools == nil {
 		u.Tools = []Tool{}
 	}

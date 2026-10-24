@@ -5,6 +5,8 @@ import { useApi } from '@tachyon/torque-client'
 import { AlertHost } from '../alerts/AlertHost'
 import { CardRuntimeProvider } from '../cards/surfaces'
 import { createDefaultCardRegistry } from '../cards/kinds'
+import { createAppAgentChatClient } from '../chat/appagent'
+import { createCompositeChatClient } from '../chat/composite'
 import { createTetherChatClient } from '../chat/tether'
 import { createMailChatClient } from '../chat/mail'
 import { ChatProvider } from '../chat/context'
@@ -34,7 +36,11 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
   const api = useApi()
   const [{ messaging, chat, registry, hitl, workflow }] = useState(() => {
     const messaging = createMailMessagingClient(api, { from: OPERATOR_ADDRESS })
-    const chat = createTetherChatClient(createMailChatClient(messaging, { operator: OPERATOR_ADDRESS, agents: [] }))
+    // Tether chat plus Tachyon's own app agent, as ordinary threads in one list.
+    const chat = createCompositeChatClient(
+      createTetherChatClient(createMailChatClient(messaging, { operator: OPERATOR_ADDRESS, agents: [] })),
+      createAppAgentChatClient(),
+    )
     // Card kinds only: no toast/modal surface (AlertHost owns those).
     const registry = createDefaultCardRegistry()
     registerMetricCardKinds(registry)
