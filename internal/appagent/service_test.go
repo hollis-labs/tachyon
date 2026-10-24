@@ -352,3 +352,33 @@ func TestRestartFinishesOrFailsRepliesThatWereInFlight(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// The UI orders messages by time, then id. A turn's two messages are stored with the same
+// timestamp, so a reply could render above the message it answers (seen live on 2026-10-24:
+// "no response from Tachyon" while the reply sat above the operator's message).
+func TestAReplyAlwaysSortsAfterTheMessageItAnswers(t *testing.T) {
+	rt := &fakeRuntime{events: []TurnEvent{{Kind: EventText, Text: "ok"}, {Kind: EventFinish, Reason: "stop"}}}
+	s, st := newService(t, rt)
+	s.Threads(context.Background())
+	fixed := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return fixed }
+	ch, cancel := s.Subscribe(DefaultThread)
+	defer cancel()
+	op, reply, err := s.Send(context.Background(), DefaultThread, "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !(reply.At > op.At) {
+		t.Fatalf("live: reply at %d must be after operator at %d", reply.At, op.At)
+	}
+	drain(t, ch, isEnd)
+	msgs, _, _ := s.Messages(context.Background(), DefaultThread, 0, 10)
+	if len(msgs) != 2 || !(msgs[1].At > msgs[0].At) || msgs[0].From != "operator" {
+		t.Fatalf("history: %+v", msgs)
+	}
+	// Existing rows stored with identical timestamps are corrected on read.
+	stored, _, _ := st.Messages(context.Background(), DefaultThread, 0, 10)
+	if !stored[0].CreatedAt.Equal(stored[1].CreatedAt) {
+		t.Fatalf("test premise: rows should share a timestamp: %v %v", stored[0].CreatedAt, stored[1].CreatedAt)
+	}
+}
