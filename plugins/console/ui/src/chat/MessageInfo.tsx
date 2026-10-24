@@ -12,8 +12,8 @@ function Fact({ label, value }: { label: string; value: string | number | undefi
   if (value === undefined || value === '') return null
   return (
     <div className="min-w-0">
-      <dt className="font-mono text-[9px] uppercase tracking-widest text-zinc-500">{label}</dt>
-      <dd className="mt-1 break-words font-mono text-xs text-zinc-200 [overflow-wrap:anywhere]">{value}</dd>
+      <dt className="font-mono text-[9px] uppercase tracking-widest text-fg-faint">{label}</dt>
+      <dd className="mt-1 break-words font-mono text-xs text-fg [overflow-wrap:anywhere]">{value}</dd>
     </div>
   )
 }
@@ -26,16 +26,16 @@ export function MessageInfo({ message: m, onClose }: { message: ChatMessage; onC
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <div className="flex items-center gap-4">
-            <span className="border-2 border-zinc-600 bg-zinc-950 p-3 text-sky-300">
+            <span className="border-2 border-border bg-bg p-3 text-info">
               <Icon className="h-8 w-8" />
             </span>
             <div className="min-w-0">
-              <DialogTitle className="font-mono uppercase tracking-wide">Message details</DialogTitle>
+              <DialogTitle>Message details</DialogTitle>
               <DialogDescription className="mt-1 font-mono text-[11px]">
                 {m.from === 'operator' ? 'You' : (d?.agentName ?? 'Agent')} ·{' '}
                 {new Date(m.at).toLocaleString()}
               </DialogDescription>
-              <span className="mt-1 inline-block font-mono text-[10px] uppercase tracking-widest text-sky-300">
+              <span className="mt-1 inline-block font-mono text-[10px] uppercase tracking-widest text-info">
                 {d?.transport === 'tether-chat' ? 'Tether chat' : 'Mailbox message'}
               </span>
             </div>
@@ -58,11 +58,11 @@ export function MessageInfo({ message: m, onClose }: { message: ChatMessage; onC
           <Fact label="Idempotency key" value={d?.idempotencyKey} />
         </dl>
         {m.error && (
-          <p className="border border-red-500/30 bg-red-950/20 px-3 py-2 text-xs text-red-300">{m.error}</p>
+          <p className="border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{m.error}</p>
         )}
         {d?.trace?.length ? (
           <section aria-label="Stage trace">
-            <h3 className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-zinc-400">
+            <h3 className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-fg-muted">
               <GitBranch className="h-3 w-3" />
               Stage trace
             </h3>
@@ -73,19 +73,19 @@ export function MessageInfo({ message: m, onClose }: { message: ChatMessage; onC
                   className="flex flex-wrap items-center gap-3 px-3 py-2 font-mono text-[11px]"
                 >
                   <Activity
-                    className={`h-3 w-3 ${t.outcome === 'passed' ? 'text-emerald-300' : 'text-amber-300'}`}
+                    className={`h-3 w-3 ${t.outcome === 'passed' ? 'text-success' : 'text-warning'}`}
                   />
                   <span className="min-w-0 flex-1 break-words">
-                    {t.stage_id} <span className="text-zinc-500">{t.stage_version}</span>
+                    {t.stage_id} <span className="text-fg-faint">{t.stage_version}</span>
                   </span>
-                  <span className={t.outcome === 'passed' ? 'text-emerald-300' : 'text-amber-300'}>
+                  <span className={t.outcome === 'passed' ? 'text-success' : 'text-warning'}>
                     {t.outcome}
                   </span>
-                  <span className="flex items-center gap-1 text-zinc-500">
+                  <span className="flex items-center gap-1 text-fg-faint">
                     <Clock className="h-3 w-3" />
                     {t.duration_ms} ms
                   </span>
-                  {t.failure_code && <span className="w-full text-red-300">{t.failure_code}</span>}
+                  {t.failure_code && <span className="w-full text-danger">{t.failure_code}</span>}
                 </li>
               ))}
             </ul>

@@ -11,8 +11,8 @@ export function ChatFreshness() {
   const cached = rows.some((r) => r.state === 'cached')
   const updated = rows.flatMap((r) => (r.updatedAt ? [r.updatedAt] : [])).sort()[0]
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 font-mono text-[10px] text-zinc-500">
-      <span className={error ? 'text-amber-300' : 'text-zinc-400'}>
+    <div className="flex items-center gap-2 px-3 py-1.5 font-mono text-[10px] text-fg-faint">
+      <span className={error ? 'text-warning' : 'text-fg-muted'}>
         {error
           ? 'Source unavailable'
           : refreshing
@@ -31,7 +31,7 @@ export function ChatFreshness() {
         aria-label="Refresh chat"
         title="Refresh chat"
         onClick={() => void refreshPageData()}
-        className="ml-auto p-1 hover:text-amber-300"
+        className="ml-auto p-1 hover:text-fg"
       >
         <RefreshCw className="h-3 w-3" />
       </button>
