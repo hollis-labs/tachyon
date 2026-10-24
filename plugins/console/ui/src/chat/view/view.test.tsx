@@ -10,6 +10,7 @@ import { ChatPage } from './ChatPage'
 import { ChatView } from './ChatView'
 import { ConversationView } from './ConversationView'
 import { ThreadList } from './ThreadList'
+import { resetDraftsForTest } from '../drafts'
 
 vi.mock('../roster', async (orig) => ({
   ...(await orig<typeof import('../roster')>()),
@@ -17,6 +18,7 @@ vi.mock('../roster', async (orig) => ({
 }))
 
 beforeEach(() => {
+  resetDraftsForTest()
   vi.useFakeTimers()
   Element.prototype.scrollTo ??= () => undefined
   window.requestAnimationFrame = ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0)) as never
@@ -165,6 +167,26 @@ describe('ConversationView', () => {
     expect(box.value).toBe('draft')
     rerender(<ConversationView {...base} onSend={onSend} sendError="nope" />)
     expect(screen.getByRole('alert').textContent).toBe('nope')
+  })
+
+  it('keeps an unsent draft per thread across switching away and back, and clears it after a send', async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined)
+    const { unmount } = render(<ConversationView {...base} threadId="a" onSend={onSend} />)
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'half written' } })
+    unmount()
+    cleanup()
+    render(<ConversationView {...base} threadId="b" onSend={onSend} />)
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('')
+    cleanup()
+    render(<ConversationView {...base} threadId="a" onSend={onSend} />)
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement
+    expect(box.value).toBe('half written')
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await flush()
+    expect(onSend).toHaveBeenCalledWith('half written')
+    cleanup()
+    render(<ConversationView {...base} threadId="a" onSend={onSend} />)
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('')
   })
 
   it('disables the composer when the agent cannot receive', () => {

@@ -21,7 +21,8 @@ interface WireMessage extends ChatMessage {
 }
 
 const THREAD_POLL_MS = 5000
-const RETRY_MIN_MS = 1000
+const RETRY_FIRST_MS = 250
+const PAUSE_NOTICE_AFTER_MS = 8000
 const RETRY_MAX_MS = 10000
 
 async function api<T>(f: typeof fetch, path: string, init?: RequestInit): Promise<T> {
@@ -115,16 +116,22 @@ export function createAppAgentChatClient(f: typeof fetch = operatorFetch): ChatC
   }
 
   async function run(threadId: string, ac: AbortController) {
-    let delay = RETRY_MIN_MS
+    let delay = RETRY_FIRST_MS
     let first = true
+    let paused = false
+    let notice: ReturnType<typeof setTimeout> | undefined
+    const clearNotice = () => { if (notice) clearTimeout(notice); notice = undefined }
+    ac.signal.addEventListener('abort', clearNotice, { once: true })
     while (!ac.signal.aborted) {
       try {
         const res = await f(`${APP_AGENT_BASE}/threads/${encodeURIComponent(threadId)}/events`, { headers: { Accept: 'text/event-stream' }, signal: ac.signal })
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
-        emit(threadId, { type: 'error', message: null })
+        clearNotice()
+        if (paused) emit(threadId, { type: 'capability', capability: { mode: 'live', canSend: true } })
+        paused = false
         if (!first) await resync(threadId)
         first = false
-        delay = RETRY_MIN_MS
+        delay = RETRY_FIRST_MS
         await readFrames(res.body, ac.signal, (json) => {
           let e: ChatEvent
           try { e = JSON.parse(json) as ChatEvent } catch { return }
@@ -132,11 +139,17 @@ export function createAppAgentChatClient(f: typeof fetch = operatorFetch): ChatC
           if (e.type === 'delta') seenIn(threadId).add(e.messageId)
           emit(threadId, e)
         })
-      } catch {
+      } catch (err) {
         if (ac.signal.aborted) return
+        console.debug('App agent stream dropped:', err instanceof Error ? err.message : err)
       }
       if (ac.signal.aborted) return
-      emit(threadId, { type: 'error', message: 'Live updates paused. Reconnecting.' })
+      // A hiccup that heals within seconds is invisible. A longer outage is said calmly in the
+      // status strip, and never blocks sending: the reply is stored and recovered on reconnect.
+      notice ??= setTimeout(() => {
+        paused = true
+        emit(threadId, { type: 'capability', capability: { mode: 'live', canSend: true, detail: 'Live updates paused. Reconnecting.' } })
+      }, PAUSE_NOTICE_AFTER_MS)
       await sleep(delay, ac.signal)
       delay = Math.min(delay * 2, RETRY_MAX_MS)
     }
@@ -183,6 +196,7 @@ export function createAppAgentChatClient(f: typeof fetch = operatorFetch): ChatC
     subscribeThreads(listener, onError) {
       let live = true
       const tick = () => listThreads().then((t) => { if (live) listener(t) }, (e) => { if (live) onError?.(e instanceof Error ? e.message : String(e)) })
+      void tick() // first answer now, not after one poll interval
       const timer = setInterval(tick, THREAD_POLL_MS)
       return () => { live = false; clearInterval(timer) }
     },

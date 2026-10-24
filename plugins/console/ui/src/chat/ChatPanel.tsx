@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Recipient } from '../messaging'
 import { useChat } from './context'
 import { useChatThreads } from './hooks'
@@ -40,7 +40,10 @@ export function ChatPanel({ agent, className }: ChatPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, addr, openVersion])
 
-  const active = openId ? (threads?.find((t) => t.id === openId) ?? (opened?.id === openId ? opened : null)) : null
+  const found = openId ? (threads?.find((t) => t.id === openId) ?? (opened?.id === openId ? opened : null)) : null
+  const lastActive = useRef<ChatThread | null>(null)
+  if (found) lastActive.current = found
+  const active = found ?? (openId && lastActive.current?.id === openId ? lastActive.current : null)
   return (
     <section aria-label="Chat" className={`flex min-h-0 flex-col bg-bg ${className ?? ''}`}>
       <ChatView
