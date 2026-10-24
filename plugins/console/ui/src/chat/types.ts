@@ -94,6 +94,17 @@ export interface HistoryPage {
   hasMore: boolean
 }
 
+/** Reserved. See ChatClient.send and DescribeView. */
+export interface SendOptions {
+  context?: Record<string, unknown>
+}
+
+/**
+ * Reserved hook: a route returns a small, redacted description of what the operator
+ * is looking at, to be passed as `SendOptions.context`. Nothing calls it yet.
+ */
+export type DescribeView = () => Record<string, unknown> | null
+
 /**
  * Seam for console chat. The mock implements it today; the mail impl wraps a
  * MessagingClient (no streaming); a session impl follows when the Nanite
@@ -104,8 +115,12 @@ export interface ChatClient {
   /** Find or create the conversation with an agent. */
   openThread(agent: Recipient): Promise<ChatThread>
   history(threadId: string, q?: HistoryQuery): Promise<HistoryPage>
-  /** Sends an operator message; further updates arrive through subscribe. */
-  send(threadId: string, body: string): Promise<ChatMessage>
+  /**
+   * Sends an operator message; further updates arrive through subscribe.
+   * `opts.context` is reserved for the app agent (what the user is viewing).
+   * No client reads it yet.
+   */
+  send(threadId: string, body: string, opts?: SendOptions): Promise<ChatMessage>
   markRead(threadId: string): Promise<void>
   /** Stream events for one thread. Returns an unsubscribe. */
   subscribe(threadId: string, listener: (e: ChatEvent) => void): () => void
