@@ -109,3 +109,35 @@ func TestTorqueVerbsAreOptInPresets(t *testing.T) {
 		t.Fatal("planner-torque-read lost the planner verbs")
 	}
 }
+
+// The Tesseract verbs are opt-in like the Torque ones, and need no object kinds.
+func TestTesseractVerbsAreOptInPresets(t *testing.T) {
+	for _, v := range []string{"tesseract.recall", "tesseract.get"} {
+		if !SupportedVerb(v) || !TesseractVerb(v) || ReadVerb(v) {
+			t.Fatalf("%s: supported=%v tesseract=%v readVerb=%v", v, SupportedVerb(v), TesseractVerb(v), ReadVerb(v))
+		}
+		for name, g := range map[string]Grants{"planner-read": PlannerRead(), "planner-torque-read": PlannerTorqueRead(), "torque-read": TorqueRead(), "portfolio-write": PortfolioWrite()} {
+			if contains(g.Verbs, v) {
+				t.Fatalf("%s leaked into %s", v, name)
+			}
+		}
+		if !contains(TesseractRead().Verbs, v) || !contains(AppAgentRead().Verbs, v) {
+			t.Fatalf("%s missing from its presets", v)
+		}
+	}
+	if err := TesseractRead().Validate(); err != nil {
+		t.Fatalf("a Tesseract-only credential needs no kinds: %v", err)
+	}
+	if err := (Grants{Verbs: []string{"planner.list"}}).Validate(); err == nil {
+		t.Fatal("a planner verb without kinds must still be refused")
+	}
+	g := AppAgentRead()
+	if err := g.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []string{"planner.list", "objects.get", "torque.task.get", "torque.task.comments", "torque.task.list", "tesseract.recall", "tesseract.get"} {
+		if !contains(g.Verbs, v) {
+			t.Fatalf("app-agent-read lacks %s", v)
+		}
+	}
+}
