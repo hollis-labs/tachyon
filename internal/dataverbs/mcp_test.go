@@ -2,6 +2,7 @@ package dataverbs
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/torqueread"
 )
 
 func TestNetworkMCPDoesNotRetainOrShareAuthority(t *testing.T) {
@@ -151,5 +153,87 @@ func TestAgentMCPHandshakeShapeForNaniteClient(t *testing.T) {
 	// tools/list still works after the discovery probe.
 	if w = do("POST", rpc(4, "tools/list")); w.Code != 200 || !strings.Contains(w.Body.String(), "tachyon_planner_list") {
 		t.Fatalf("tools/list: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// Torque reads are an opt-in grant: a planner-read credential must not see the
+// tools, and a credential without the Torque row kinds cannot call them.
+func TestAgentMCPTorqueToolsAreOptInAndKindGated(t *testing.T) {
+	_, s, db := setup(t)
+	torque := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("non-GET to Torque: %s", r.Method)
+		}
+		switch {
+		case r.URL.Path == "/api/v1/tasks/CW-9":
+			json.NewEncoder(w).Encode(map[string]any{"id": "CW-9", "kind": "agent", "title": "Nine", "status": "todo", "priority": 1, "description": "d", "updated_at": "2026-10-24T00:00:00Z", "system_prompt": "NOPE", "environment": "NOPE"})
+		case r.URL.Path == "/api/v1/tasks/CW-9/comments":
+			json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"id": 1, "author": "a", "content": "hello", "created_at": "2026-10-24T00:00:00Z"}}, "meta": map[string]any{"has_more": false}})
+		case r.URL.Path == "/api/v1/tasks":
+			json.NewEncoder(w).Encode(map[string]any{"items": []any{map[string]any{"id": "CW-9", "kind": "agent", "title": "Nine", "status": "todo"}}, "meta": map[string]any{"has_more": false}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer torque.Close()
+	access := &agentaccess.Store{DB: db}
+	_, plain, err := access.Issue(ctx, "", "Planner", agentaccess.PlannerRead(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, withTorque, err := access.Issue(ctx, "", "App agent", agentaccess.PlannerTorqueRead(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, epicOnly, err := access.Issue(ctx, "", "Epic only", agentaccess.Grants{Verbs: []string{"torque.task.get"}, Kinds: []string{"epic"}}, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewAgentMCP(s, access, torqueread.New(torque.URL, ""))
+	call := func(method string, params any, credential string) string {
+		t.Helper()
+		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+		req := httptest.NewRequest("POST", "https://tachyon.test"+AgentMCPPath, strings.NewReader(string(raw)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Authorization", "Bearer "+credential)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w.Body.String()
+	}
+	if listed := call("tools/list", map[string]any{}, plain); strings.Contains(listed, "tachyon_torque_") || !strings.Contains(listed, "tachyon_planner_list") {
+		t.Fatalf("planner-read token sees Torque tools or lost its own: %s", listed)
+	}
+	listed := call("tools/list", map[string]any{}, withTorque)
+	for _, tool := range []string{"tachyon_torque_task_get", "tachyon_torque_task_comments", "tachyon_torque_task_list", "tachyon_planner_list"} {
+		if !strings.Contains(listed, tool) {
+			t.Fatalf("missing %s: %s", tool, listed)
+		}
+	}
+	if strings.Contains(listed, "tachyon_objects_delete") || strings.Contains(listed, "write") {
+		t.Fatalf("write-capable tool listed: %s", listed)
+	}
+	got := call("tools/call", map[string]any{"name": "tachyon_torque_task_get", "arguments": map[string]any{"id": "CW-9"}}, withTorque)
+	if !strings.Contains(got, `\"title\":\"Nine\"`) || !strings.Contains(got, "untrusted_data") || strings.Contains(got, "NOPE") {
+		t.Fatalf("task.get: %s", got)
+	}
+	if got := call("tools/call", map[string]any{"name": "tachyon_torque_task_comments", "arguments": map[string]any{"id": "CW-9"}}, withTorque); !strings.Contains(got, "hello") {
+		t.Fatalf("task.comments: %s", got)
+	}
+	if got := call("tools/call", map[string]any{"name": "tachyon_torque_task_list", "arguments": map[string]any{"status": "todo"}}, withTorque); !strings.Contains(got, "CW-9") {
+		t.Fatalf("task.list: %s", got)
+	}
+	if got := call("tools/call", map[string]any{"name": "tachyon_torque_task_get", "arguments": map[string]any{"id": "CW-404"}}, withTorque); !strings.Contains(got, "not_found") && !strings.Contains(got, "No such Torque record") {
+		t.Fatalf("missing record not reported as not found: %s", got)
+	}
+	if got := call("tools/call", map[string]any{"name": "tachyon_torque_task_get", "arguments": map[string]any{"id": "../x"}}, withTorque); !strings.Contains(got, "isError") {
+		t.Fatalf("bad id accepted: %s", got)
+	}
+	// A credential with the verb but not the task/plan kinds, and one without the verb, are refused.
+	if got := call("tools/call", map[string]any{"name": "tachyon_torque_task_get", "arguments": map[string]any{"id": "CW-9"}}, epicOnly); strings.Contains(got, "Nine") {
+		t.Fatalf("kind gate bypassed: %s", got)
+	}
+	if got := call("tools/call", map[string]any{"name": "tachyon_torque_task_get", "arguments": map[string]any{"id": "CW-9"}}, plain); strings.Contains(got, "Nine") {
+		t.Fatalf("planner-read token reached Torque: %s", got)
 	}
 }

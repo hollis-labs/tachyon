@@ -44,6 +44,8 @@ github.com/hollis-labs/libs/mesh/core v0.9.0 h1:+VZqBJscIqOteRLnocrm+zEa2ulzK8GV
 github.com/hollis-labs/libs/mesh/core v0.9.0/go.mod h1:4MIXuPovKfdlaHGpI2Va9nINuNKmfsed4XX53UxeoSk=
 github.com/hollis-labs/libs/security/auth v0.2.1 h1:EPRHtZ7LwPPnz9BMXbunYFbhndySyr8SeZa13UIqzu4=
 github.com/hollis-labs/libs/security/auth v0.2.1/go.mod h1:GGJqJuSZwR57ygyml3kPt6Aw2rwPqAzTV2M9CXjTjo8=
+github.com/hollis-labs/libs/security/redact v0.1.0 h1:Tz6KMduh5cUJyWTsiEpWMOPErjGcW0FRDxNuyqqTEd8=
+github.com/hollis-labs/libs/security/redact v0.1.0/go.mod h1:WkIIK5n9hIoPY9Sm9yvPkmDYL1r93Obe1v4CsNmKU40=
 github.com/hollis-labs/libs/security/secrets v0.1.0 h1:/wrYAM5viUnYMpDhvbQmPlTMesqMIVfvfz+GiZ7jMAs=
 github.com/hollis-labs/libs/security/secrets v0.1.0/go.mod h1:Krd1kgmisOVmeN1G/ltaLMva58tIBki9xShsySqd86Y=
 github.com/hollis-labs/libs/security/webauthn v0.1.0 h1:m4YRsByFkFV88av/ouLjF3XLjZ1WCTM24lLFg5vAYyo=

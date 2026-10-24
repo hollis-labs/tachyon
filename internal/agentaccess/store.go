@@ -23,6 +23,11 @@ var readVerbs = []string{"planner.list", "objects.list", "objects.get", "objects
 var portfolioReadVerbs = []string{"planner.portfolio.list", "planner.portfolio.get", "planner.portfolio.schema", "planner.portfolio.resolve"}
 var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate", "planner.portfolio.reorder"}
 
+// TorqueVerbs read Torque's tasks and comments through Tachyon. They are NOT in
+// readVerbs on purpose: existing planner-read credentials keep their exact grants.
+// A credential gets them only from the torque-read or planner-torque-read preset.
+var torqueVerbs = []string{"torque.task.get", "torque.task.comments", "torque.task.list"}
+
 // ActionVerbs are the registered-action tools (request, then await the result).
 // They name no object kinds: a credential holding only these needs none.
 var actionVerbs = []string{"actions.catalog", "actions.request", "actions.await"}
@@ -44,19 +49,33 @@ func PlannerRead() Grants {
 func PortfolioRead() Grants {
 	return Grants{append(append([]string(nil), readVerbs...), portfolioReadVerbs...), append([]string(nil), portfolioKinds...)}
 }
+
+// TorqueRead grants only the Torque read verbs, over the Torque row kinds
+// (plans are task rows with kind=plan).
+func TorqueRead() Grants {
+	return Grants{append([]string(nil), torqueVerbs...), []string{"task", "plan", "epic", "sprint"}}
+}
+
+// PlannerTorqueRead is PlannerRead plus TorqueRead: what the in-app agent holds.
+func PlannerTorqueRead() Grants {
+	g := PlannerRead()
+	g.Verbs = append(g.Verbs, torqueVerbs...)
+	return g
+}
 func PortfolioWrite() Grants {
 	g := PortfolioRead()
 	g.Verbs = append(g.Verbs, portfolioWriteVerbs...)
 	return g
 }
 func ActionRequest() Grants    { return Grants{Verbs: append([]string(nil), actionVerbs...)} }
+func TorqueVerb(v string) bool { return contains(torqueVerbs, v) }
 func ActionVerb(v string) bool { return contains(actionVerbs, v) }
 func CardAsk() Grants          { return Grants{Verbs: append([]string(nil), cardVerbs...)} }
 func CardVerb(v string) bool   { return contains(cardVerbs, v) }
 func PlannerKinds() []string   { return append([]string(nil), plannerKinds...) }
 func ReadVerb(v string) bool   { return contains(readVerbs, v) || contains(portfolioReadVerbs, v) }
 func SupportedVerb(v string) bool {
-	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v)
+	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v) || contains(torqueVerbs, v)
 }
 func contains(xs []string, x string) bool {
 	for _, s := range xs {

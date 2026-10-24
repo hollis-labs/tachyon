@@ -80,3 +80,32 @@ func TestCredentialLifecycle(t *testing.T) {
 		}
 	}
 }
+
+// Existing planner-read credentials keep their exact grants; the Torque verbs are
+// opt-in through their own presets and are never part of PlannerRead.
+func TestTorqueVerbsAreOptInPresets(t *testing.T) {
+	for _, v := range []string{"torque.task.get", "torque.task.comments", "torque.task.list"} {
+		if !SupportedVerb(v) || !TorqueVerb(v) || ReadVerb(v) {
+			t.Fatalf("%s: supported=%v torque=%v readVerb=%v", v, SupportedVerb(v), TorqueVerb(v), ReadVerb(v))
+		}
+		if contains(PlannerRead().Verbs, v) || contains(PortfolioRead().Verbs, v) || contains(PortfolioWrite().Verbs, v) {
+			t.Fatalf("%s leaked into an existing preset", v)
+		}
+		if !contains(TorqueRead().Verbs, v) || !contains(PlannerTorqueRead().Verbs, v) {
+			t.Fatalf("%s missing from its own preset", v)
+		}
+	}
+	for _, g := range []Grants{TorqueRead(), PlannerTorqueRead()} {
+		if err := g.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range []string{"task", "plan", "epic", "sprint"} {
+			if !contains(g.Kinds, k) {
+				t.Fatalf("kind %s missing", k)
+			}
+		}
+	}
+	if !contains(PlannerTorqueRead().Verbs, "planner.list") || !contains(PlannerTorqueRead().Verbs, "objects.get") {
+		t.Fatal("planner-torque-read lost the planner verbs")
+	}
+}

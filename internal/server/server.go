@@ -37,6 +37,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/objectsync"
 	"github.com/hollis-labs/tachyon/internal/planner"
 	"github.com/hollis-labs/tachyon/internal/provideractions"
+	"github.com/hollis-labs/tachyon/internal/torqueread"
 	"github.com/hollis-labs/tachyon/internal/transcripts"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
@@ -346,8 +347,8 @@ func (s *Server) Routes() http.Handler {
 			if s.approvalInbox != nil {
 				cardTools = &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry, Receipt: s.cardReceiptView}
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools))
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken)))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken)))
 		}
 	}
 	if s.store != nil {
