@@ -1,12 +1,13 @@
 // ChatClient for Tachyon's own in-app agent. Tachyon owns the threads and history;
 // the runtime behind the agent (Nanite today) is invisible here. Server contract:
-// internal/appagent (/api/app-agent/v1). Transport details stay in this file.
+// internal/appagent (/api/plugins/console/v1/app-agent). Transport details stay in this file.
 
 import { operatorFetch } from '../operator/elevation'
 import type { Recipient } from '../messaging'
 import type { ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryPage, HistoryQuery } from './types'
 
-export const APP_AGENT_BASE = '/api/app-agent/v1'
+// Must stay under /api/plugins/console/v1/: the operator session cookie is scoped to that path.
+export const APP_AGENT_BASE = '/api/plugins/console/v1/app-agent'
 export const APP_THREAD_PREFIX = 'app-'
 export const APP_AGENT_ADDRESS_PREFIX = 'tachyon://agent/'
 export const isAppThread = (threadId: string) => threadId.startsWith(APP_THREAD_PREFIX)
@@ -30,8 +31,11 @@ async function api<T>(f: typeof fetch, path: string, init?: RequestInit): Promis
   })
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    const e = body?.error
+    // This API answers {error:{code,message}}; the operator-session guard answers {code,message}.
+    const e = body?.error ?? body
     if (res.status === 503 && e?.code === 'not_configured') throw new NotConfigured(e.message)
+    if (e?.code === 'operator_session_required' || e?.code === 'assurance_insufficient')
+      throw new Error('Sending needs your operator session. Enter the operator key when asked, then send again.')
     throw new Error(e?.message ?? `The app agent request failed (${res.status})`)
   }
   return body as T

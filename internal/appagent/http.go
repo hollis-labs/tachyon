@@ -9,9 +9,11 @@ import (
 	"time"
 )
 
-// Prefix is where the handler is mounted. Reads need an authenticated operator
-// session; sends need operator elevation (the server wraps them).
-const Prefix = "/api/app-agent/v1"
+// Prefix is where the handler is mounted. It must stay inside the operator
+// session cookie's path (approvals.CookiePath): the browser sends that cookie only
+// to paths under it, and without it every send is refused as "session required".
+// Sends need operator assurance (the server wraps them).
+const Prefix = "/api/plugins/console/v1/app-agent"
 
 // Handler serves the app agent chat to Tachyon's own UI.
 type Handler struct {
