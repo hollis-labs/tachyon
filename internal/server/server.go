@@ -446,9 +446,10 @@ func (s *Server) Routes() http.Handler {
 	if s.chat != nil {
 		mux.Handle(chatbridge.Prefix+"/", operator.RequireOperator(s.chat))
 	}
-	// The app agent chat holds conversation history: reads need the same operator
-	// assurance as sends. Without a config file the routes answer 503 and say why.
-	mux.Handle(appagent.Prefix+"/", operator.RequireOperatorReads(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
+	// Reads match the other chat history routes above (no operator session needed to
+	// read); sends need operator assurance. Without a config file the routes answer
+	// 503 and say why. Tightening reads is a one-word change to RequireOperatorReads.
+	mux.Handle(appagent.Prefix+"/", operator.RequireOperator(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
