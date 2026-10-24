@@ -1,0 +1,7 @@
+# How this host runs the Tachyon app chat agent (host settings, not authored behavior).
+# Temporary runtime: Nanite's native loop. The embedded runtime replaces it later;
+# agent.md is portable and stays the same.
+version: "1"
+runtime: api
+provider: anthropic
+model: claude-opus-5-5
