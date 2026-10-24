@@ -12,6 +12,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/planner"
+	"github.com/hollis-labs/tachyon/internal/torqueread"
 )
 
 const AgentPrefix = "/api/agent/v1/data"
@@ -19,7 +20,7 @@ const AgentPrefix = "/api/agent/v1/data"
 // NewAgentHTTP authenticates every route, including discovery. Browser cookies
 // and claimed actor headers cannot establish a service principal here.
 func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) http.Handler {
-	svc, cardSvc := agentServices(services)
+	svc, cardSvc, torque := agentServices(services)
 	guard, err := auth.New(auth.Config{Mode: auth.ModeEnforce, Verifier: verifier, OpenPath: func(string) bool { return false }})
 	if err != nil {
 		panic(err)
@@ -32,7 +33,7 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) h
 				writeError(w, denied())
 				return
 			}
-			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc}
+			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque}
 			// Authentication has already verified this request. scopedLocal checks
 			// the verb/kinds and supplies the principal actor for every invocation.
 			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r)
@@ -45,22 +46,26 @@ type scopedLocal struct {
 	principal auth.Principal
 	actions   *actionrun.Service
 	cards     *Cards
+	torque    *torqueread.Reader
 }
 
 // agentServices picks the optional host services out of the constructor's
-// variadic list: a *actionrun.Service and a *Cards, in any order.
-func agentServices(services []any) (*actionrun.Service, *Cards) {
+// variadic list: a *actionrun.Service, a *Cards and a *torqueread.Reader, in any order.
+func agentServices(services []any) (*actionrun.Service, *Cards, *torqueread.Reader) {
 	var actions *actionrun.Service
 	var c *Cards
+	var t *torqueread.Reader
 	for _, s := range services {
 		switch v := s.(type) {
 		case *actionrun.Service:
 			actions = v
 		case *Cards:
 			c = v
+		case *torqueread.Reader:
+			t = v
 		}
 	}
-	return actions, c
+	return actions, c, t
 }
 
 func (p *scopedLocal) ID() string { return p.local.ID() }
@@ -73,6 +78,13 @@ func (p *scopedLocal) Verbs() []Verb {
 	}
 	if p.actions != nil {
 		for _, v := range actionVerbs() {
+			if agentaccess.Allows(p.principal, "verb", v.Name) {
+				out = append(out, v)
+			}
+		}
+	}
+	if p.torque != nil {
+		for _, v := range torqueVerbs() {
 			if agentaccess.Allows(p.principal, "verb", v.Name) {
 				out = append(out, v)
 			}
@@ -103,6 +115,9 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 	}
 	if agentaccess.ActionVerb(name) {
 		return invokeAction(ctx, p.actions, name, raw, "service:"+p.principal.ID)
+	}
+	if agentaccess.TorqueVerb(name) {
+		return invokeTorque(ctx, p.torque, name, raw, p.principal)
 	}
 	if agentaccess.CardVerb(name) {
 		return invokeCard(ctx, p.cards, name, raw, "service:"+p.principal.ID)

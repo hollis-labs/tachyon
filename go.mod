@@ -13,6 +13,7 @@ require (
 	github.com/hollis-labs/libs/mcp/plugin-mcp v0.3.0
 	github.com/hollis-labs/libs/mesh/core v0.9.0
 	github.com/hollis-labs/libs/security/auth v0.2.1
+	github.com/hollis-labs/libs/security/redact v0.1.0
 	github.com/hollis-labs/libs/security/secrets v0.1.0
 	github.com/hollis-labs/libs/security/webauthn v0.1.0
 	github.com/hollis-labs/libs/ui/ui-go v0.4.0
