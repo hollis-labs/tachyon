@@ -56,6 +56,14 @@ func startAlerts(ctx context.Context, s *Server, db *localstore.Store) {
 	if !forgeStubsOn() {
 		s.ext.Store(stateWrapKey, func(next http.Handler) http.Handler { return api.StateCompat(alertsapi.StatePrefix, next) })
 	}
+	// AL5: approval alerts settle when the queue item is decided or expires; the detail shows its state.
+	st.ApprovalState = func(ctx context.Context, id string) string {
+		if rec, err := (&approvals.Store{DB: db}).Get(ctx, id); err == nil {
+			return string(rec.State)
+		}
+		return ""
+	}
+	go st.FollowApprovals(ctx, approvalFeed{approvals.Changes(db)}, func(err error) { slog.Warn("alerts: approval follow failed", "err", err) })
 	// AL3: snooze and defer wake-ups and escalation, on the server clock.
 	go st.Maintain(ctx, func(err error) { slog.Warn("alerts: maintenance failed", "err", err) })
 	go func() {
@@ -98,5 +106,40 @@ func mountAlerts(s *Server, mux *http.ServeMux, _ *approvals.Bridge) {
 	h := api.Handler()
 	for _, pat := range api.Routes() {
 		mux.Handle(pat, h)
+	}
+}
+
+// approvalFeed adapts the Approvals change broker to alertstore.ApprovalEvents.
+type approvalFeed struct{ b *approvals.Broker }
+
+func (f approvalFeed) Subscribe() (<-chan alertstore.ApprovalChange, func()) {
+	_, in, _ := f.b.Since(0, true)
+	out := make(chan alertstore.ApprovalChange, 64)
+	done := make(chan struct{})
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case c, ok := <-in:
+				if !ok {
+					return
+				}
+				select {
+				case out <- alertstore.ApprovalChange{Type: c.Type, ItemID: c.ItemID, State: c.State}:
+				case <-done:
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	return out, func() {
+		select {
+		case <-done:
+		default:
+			close(done)
+			f.b.Unsubscribe(in)
+		}
 	}
 }
