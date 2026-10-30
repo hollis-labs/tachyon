@@ -276,9 +276,9 @@ describe("transcript dashboard", () => {
     // Untrusted text is shown as text, never parsed as markup.
     expect(screen.getByText("<b>boom</b>")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Next error" }))
-    expect(screen.getByText("Error 1 of 2")).toBeTruthy()
+    expect(screen.getByText("1 of 2 failed calls")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Next error" }))
-    expect(screen.getByText("Error 2 of 2")).toBeTruthy()
+    expect(screen.getByText("2 of 2 failed calls")).toBeTruthy()
   })
   it("opens a valid deep-linked id outside the snapshot and says when it is not found", async () => {
     const id = "c".repeat(64)

@@ -3,7 +3,7 @@ import { Button, Input, Skeleton } from "@hollis-labs/design-components"
 import { ArrowLeft, ChevronDown, ChevronUp, Copy, X } from "lucide-react"
 import { Segmented } from "../components/segmented"
 import { MessageBody } from "../chat/MessageBody"
-import { failed, normalizeSession, read, number, size, took, TranscriptError, type Session, type Detail } from "./data"
+import { normalizeSession, read, number, size, took, TranscriptError, type Session, type Detail } from "./data"
 import { ago } from "./sessions"
 
 type Turn = Detail["turns"][number]
@@ -16,7 +16,7 @@ export function roleLabel(role: string) {
   return role ? role[0].toUpperCase() + role.slice(1) : "Event"
 }
 
-function CopyTurn({ text }: { text: string }) {
+function CopyTurn({ text, label = "Copy turn text" }: { text: string; label?: string }) {
   const [done, setDone] = useState(false)
   // Copies only on this click; nothing is copied or logged automatically.
   const copy = () => {
@@ -26,21 +26,57 @@ function CopyTurn({ text }: { text: string }) {
     })
   }
   return (
-    <Button variant="ghost" size="sm" onClick={copy} aria-label="Copy turn text">
-      <Copy className="h-3 w-3" /> {done ? "Copied" : "Copy"}
+    <Button variant="ghost" size="sm" onClick={copy} aria-label={label}>
+      <Copy className="h-3 w-3" /> {done ? "Copied" : label === "Copy turn text" ? "Copy" : label}
     </Button>
   )
 }
 
-function ToolCalls({ calls }: { calls: NonNullable<Detail["turns"][number]["tool_calls"]> }) {
+const FRIENDLY: Record<string, string> = {
+  Bash: "Ran shell",
+  Read: "Read file",
+  Edit: "Edited file",
+  MultiEdit: "Edited file",
+  Write: "Wrote file",
+  Grep: "Searched files",
+  Glob: "Listed files",
+  WebFetch: "Fetched page",
+  WebSearch: "Searched the web",
+}
+
+function ToolCalls({
+  seq,
+  calls,
+}: {
+  seq: number
+  calls: NonNullable<Detail["turns"][number]["tool_calls"]>
+}) {
   const [open, setOpen] = useState<number>(-1)
+  const [all, setAll] = useState(false)
+  const anyFailed = calls.some((c) => c.status === "error")
+  // More than three calls fold under a summary, unless one failed (so Next error can land on it).
+  if (calls.length > 3 && !all && !anyFailed)
+    return (
+      <button
+        type="button"
+        aria-expanded={false}
+        onClick={() => setAll(true)}
+        className="mt-2 dash-control text-fg-muted underline"
+      >
+        {calls.length} tool calls
+      </button>
+    )
   return (
     <ul className="mt-2 space-y-1 dash-control text-fg-muted" aria-label="Tool calls">
       {calls.map((c, i) => (
-        <li key={i}>
-          <span className="font-mono">{c.name}</span>
-          {c.target && <span> {c.target}</span>}
-          {c.status === "error" && <span className="text-danger"> · failed</span>}
+        <li key={i} id={`call-${seq}-${i}`} tabIndex={-1} className="outline-none focus-visible:bg-surface">
+          {FRIENDLY[c.name] ? <span>{FRIENDLY[c.name]}</span> : <span className="font-mono dash-caption">{c.name}</span>}
+          {c.target && <span className="break-all"> {c.target}</span>}
+          {c.status === "error" && (
+            <span className="text-danger">
+              {" "}· <X className="inline h-3 w-3" aria-hidden /> failed
+            </span>
+          )}
           {c.result_bytes != null && <span className="text-fg-faint"> · {size(c.result_bytes)}</span>}
           {took(c) && <span className="text-fg-faint"> · {took(c)}</span>}
           {c.error_excerpt && (
@@ -50,9 +86,12 @@ function ToolCalls({ calls }: { calls: NonNullable<Detail["turns"][number]["tool
                 {open === i ? "Hide error" : "Show error"}
               </button>
               {open === i && (
-                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle p-2 dash-caption text-fg-secondary">
-                  {c.error_excerpt}
-                </pre>
+                <div className="mt-1">
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle p-2 dash-caption text-fg-secondary">
+                    {c.error_excerpt}
+                  </pre>
+                  <CopyTurn text={c.error_excerpt} label="Copy error" />
+                </div>
               )}
             </>
           )}
@@ -114,7 +153,8 @@ export function TranscriptReader({
       })
       .catch((e) => {
         if (controller.signal.aborted) return
-        if (e instanceof TranscriptError && e.code === "not_found") setMissing(true)
+        // Unreadable and unknown ids read the same, so existence is not revealed.
+        if (e instanceof TranscriptError && (e.code === "not_found" || e.status === 403 || e.status === 404)) setMissing(true)
         else setError(e instanceof Error ? e.message : "Could not load transcript.")
         setLoading(false)
       })
@@ -144,15 +184,31 @@ export function TranscriptReader({
     setCur((at + by + hits.length) % hits.length)
   }
   // Failed tool calls in the loaded turns; Next error steps through them.
-  const bad = shown.filter(failed).map((t) => t.seq)
+  const bad = shown.flatMap((t) =>
+    (t.tool_calls ?? []).flatMap((c, i) => (c.status === "error" ? [{ seq: t.seq, i }] : [])),
+  )
   const eAt = bad.length ? Math.min(errCur, bad.length - 1) : -1
-  const nextError = () => {
+  const nextError = (by = 1) => {
     if (!bad.length) return
-    const to = last === "error" ? (eAt + 1) % bad.length : 0
+    const to = last === "error" ? (eAt + by + bad.length) % bad.length : by > 0 ? 0 : bad.length - 1
     setLast("error")
     setErrCur(to)
-    document.getElementById(`turn-${bad[to]}`)?.scrollIntoView?.({ block: "center" })
+    const row = document.getElementById(`call-${bad[to].seq}-${bad[to].i}`)
+    row?.scrollIntoView?.({ block: "center" })
+    row?.focus()
   }
+  // E / Shift+E jump between failed calls while not typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "e" || e.metaKey || e.ctrlKey || e.altKey) return
+      if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable], [role=dialog]")) return
+      if (!bad.length) return
+      e.preventDefault()
+      nextError(e.shiftKey ? -1 : 1)
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  })
 
   // Ctrl/Cmd+F finds in the transcript only while focus is inside the reader.
   const box = useRef<HTMLElement>(null)
@@ -264,13 +320,13 @@ export function TranscriptReader({
           <ChevronDown className="h-4 w-4" />
         </Button>
         {bad.length > 0 && (
-          <Button variant="outline" size="sm" onClick={nextError}>
+          <Button variant="outline" size="sm" onClick={() => nextError(1)}>
             Next error
           </Button>
         )}
         <span role="status" aria-live="polite" className="dash-control text-fg-faint">
           {last === "error" && bad.length
-            ? `Error ${eAt + 1} of ${bad.length}${next !== undefined ? " in loaded turns" : ""}`
+            ? `${eAt + 1} of ${bad.length} failed calls${next !== undefined ? " in loaded turns" : ""}`
             : q
             ? hits.length
               ? `${at + 1} of ${hits.length}${next !== undefined ? " in loaded turns" : ""}`
@@ -305,8 +361,8 @@ export function TranscriptReader({
           <article
             key={turn.seq}
             id={`turn-${turn.seq}`}
-            aria-current={turn.seq === current || (last === "error" && turn.seq === bad[eAt]) ? "true" : undefined}
-            className={`py-4 [contain-intrinsic-size:auto_120px] [content-visibility:auto] ${turn.seq === current || (last === "error" && turn.seq === bad[eAt]) ? "bg-surface" : ""}`}
+            aria-current={turn.seq === current || (last === "error" && turn.seq === bad[eAt]?.seq) ? "true" : undefined}
+            className={`py-4 [contain-intrinsic-size:auto_120px] [content-visibility:auto] ${turn.seq === current || (last === "error" && turn.seq === bad[eAt]?.seq) ? "bg-surface" : ""}`}
           >
             <div className="mb-2 flex items-center gap-3 dash-control">
               <span className="font-medium text-fg-secondary">{roleLabel(turn.role)}</span>
@@ -327,7 +383,7 @@ export function TranscriptReader({
             ) : (
               <p className="dash-control italic text-fg-faint">No text recorded for this event.</p>
             )}
-            {!!turn.tool_calls?.length && <ToolCalls calls={turn.tool_calls} />}
+            {!!turn.tool_calls?.length && <ToolCalls seq={turn.seq} calls={turn.tool_calls} />}
           </article>
         ))}
       </div>
