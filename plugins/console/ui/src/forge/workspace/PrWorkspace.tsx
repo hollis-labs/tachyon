@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ExternalLink, GitPullRequest, RefreshCw } from 'lucide-react'
 import { ago } from '@console/lib/agent-activity'
 import { SeamsContext } from '../../events/context'
+import { Sheet, SheetContent, SheetTitle } from '@hollis-labs/design-components'
 import { Btn } from '../../agents/ui'
 import { StepUpHost } from '../../agents/StepUpDialog'
 import { Linkified } from '../../autolink/Linkified'
@@ -37,9 +38,6 @@ export interface PrWorkspaceProps {
 }
 
 type Tab = 'files' | 'conversation' | 'checks'
-
-// The shared Btn is uppercase mono; the workspace wants sentence case.
-const FLAT = '!font-sans !normal-case !tracking-normal'
 
 const ACTOR: ForgeUser = { login: 'you' }
 
@@ -108,6 +106,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
   const [tab, setTab] = useState<Tab>('files')
   const [mode, setMode] = useState<DiffMode>(initialMode)
   const [reviewing, setReviewing] = useState(false)
+  const [treeOpen, setTreeOpen] = useState(false)
   const [mergeBusy, setMergeBusy] = useState(false)
   const [merging, setMerging] = useState(false)
   const [mergeSuccess, setMergeSuccess] = useState('')
@@ -202,23 +201,23 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
       <header className="shrink-0 border-b border-border px-4 pb-0 pt-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <GitPullRequest className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />
+          <Pill tone={stateTone(pr)}>{pr.draft && pr.state === 'open' ? 'draft' : pr.state}</Pill>
           <h1 className="min-w-0 font-sans text-[15px] font-semibold normal-case tracking-normal text-fg [overflow-wrap:anywhere]">
             {pr.title} <span className="font-mono text-fg-faint">#{pr.ref.number}</span>
           </h1>
-          <Pill tone={stateTone(pr)}>{pr.draft && pr.state === 'open' ? 'draft' : pr.state}</Pill>
           <span className="ml-auto flex items-center gap-2">
-            <Btn className={FLAT} onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
+            <Btn onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
             {href && (
               <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 border border-border px-3 text-[12px] text-fg hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                 {hostLabel(prRef.repo.host)} <ExternalLink className="h-3 w-3" />
               </a>
             )}
             {!readOnly && (
-              <Btn className={FLAT} tone="primary" disabled={mergeBusy} onClick={() => { setMerging(false); setReviewing((r) => !r) }} aria-expanded={reviewing}>
+              <Btn tone="primary" disabled={mergeBusy} onClick={() => { setMerging(false); setReviewing((r) => !r) }} aria-expanded={reviewing}>
                 Review{ws.pending.length ? ` (${ws.pending.length})` : ''}
               </Btn>
             )}
-            {!readOnly && <Btn className={FLAT} disabled={mergeBusy} onClick={() => { setReviewing(false); setMerging(m => !m) }} aria-expanded={merging}>Merge PR</Btn>}
+            {!readOnly && <Btn disabled={mergeBusy} onClick={() => { setReviewing(false); setMerging(m => !m) }} aria-expanded={merging}>Merge PR</Btn>}
           </span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-fg-muted">
@@ -281,7 +280,8 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
                   </button>
                 ))}
               </div>
-              <Btn className={`!h-7 ${FLAT}`} onClick={() => (allOpen ? setClosedFiles(new Set(files.map((f) => f.path))) : setClosedFiles(new Set()))}>
+              <Btn className="!h-7 md:hidden" onClick={() => setTreeOpen(true)} aria-haspopup="dialog">Files ({files.length})</Btn>
+              <Btn className="!h-7" onClick={() => (allOpen ? setClosedFiles(new Set(files.map((f) => f.path))) : setClosedFiles(new Set()))}>
                 {allOpen ? 'Collapse all' : 'Expand all'}
               </Btn>
               <span className="font-mono text-[11px] text-fg-faint">
@@ -310,6 +310,17 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
             ))}
           </div>
         </div>
+      )}
+
+      {treeOpen && (
+        <Sheet open onOpenChange={(o) => { if (!o) setTreeOpen(false) }}>
+          <SheetContent side="bottom" aria-label="Files changed" className="flex max-h-[80dvh] flex-col gap-0 rounded-t-xl p-0 md:hidden">
+            <SheetTitle className="border-b border-border px-4 py-3 font-sans text-base font-semibold normal-case tracking-normal text-fg">Files changed</SheetTitle>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <FileTree files={files} active={active} threads={threadsByPath} onSelect={(path) => { setTreeOpen(false); select(path) }} />
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
 
       {tab === 'conversation' && (
