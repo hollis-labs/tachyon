@@ -64,7 +64,19 @@ export function FileViewerPane({ refId }: RefDetailProps) {
   }, [seen, canOpen, path])
 
   return (
-    <section aria-label={`File ${path.split('/').pop()}`} className="space-y-3">
+    // Ctrl/Cmd+F opens our find only while focus is inside the viewer and a find box exists (raw text).
+    <section
+      aria-label={`File ${path.split('/').pop()}`}
+      className="space-y-3"
+      onKeyDown={(e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f') return
+        const box = e.currentTarget.querySelector<HTMLInputElement>('input[aria-label="Find in file"]:not(:disabled)')
+        if (!box) return
+        e.preventDefault()
+        box.focus()
+        box.select()
+      }}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={reload}>
           <RefreshCw className="h-3 w-3" aria-hidden /> Reload
@@ -305,6 +317,7 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
             ]}
           />
         )}
+        {markdown && !raw && <Input type="search" aria-label="Find in file" placeholder="Find works in Raw view" disabled className="h-8 min-w-0 flex-1" />}
         {raw && (
           <div className="flex min-w-0 flex-1 items-center gap-1">
             <Input
