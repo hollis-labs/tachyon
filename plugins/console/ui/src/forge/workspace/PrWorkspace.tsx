@@ -41,8 +41,10 @@ type Tab = 'files' | 'conversation' | 'checks'
 
 const ACTOR: ForgeUser = { login: 'you' }
 
+// Monochrome: only danger carries colour; every other tone reads as muted text in a quiet box.
 function Pill({ tone, children }: { tone: StatusTone; children: ReactNode }) {
-  return <span className={`inline-flex shrink-0 items-center border px-1.5 py-px font-mono text-[10px] uppercase tracking-wider ${TONE[tone]}`}>{children}</span>
+  const cls = tone === 'danger' ? TONE.danger : 'border-border text-fg-muted'
+  return <span className={`inline-flex shrink-0 items-center border px-1.5 py-px text-[11px] ${cls}`}>{children}</span>
 }
 
 function stateTone(pr: PullRequest): StatusTone {
@@ -184,7 +186,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
           <span className="ml-auto flex items-center gap-2">
             <Btn onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
             {href && (
-              <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 border border-border px-3 font-mono text-[11px] uppercase tracking-widest text-fg hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 border border-border px-3 text-[12px] text-fg hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                 {hostLabel(prRef.repo.host)} <ExternalLink className="h-3 w-3" />
               </a>
             )}
@@ -205,12 +207,12 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
           <Pill tone={checksTone(checks)}>{checksText(checks)}</Pill>
           <span className="text-fg-muted">{reviewText(pr.reviews)}</span>
         </div>
-        <nav className="mt-2 flex gap-0 font-mono text-[11px] uppercase tracking-widest" aria-label="Workspace sections" role="tablist">
+        <nav className="mt-2 flex gap-0 overflow-x-auto whitespace-nowrap text-[13px]" aria-label="Workspace sections" role="tablist">
           {([
-            ['files', `Files changed ${files.length}`],
-            ['conversation', `Conversation ${ready.comments.length}`],
-            ['checks', `Checks ${pr.checks.length}`],
-          ] as [Tab, string][]).map(([id, label]) => (
+            ['files', 'Files changed', files.length],
+            ['conversation', 'Conversation', ready.comments.length],
+            ['checks', 'Checks', pr.checks.length],
+          ] as [Tab, string, number][]).map(([id, label, n]) => (
             <button
               key={id}
               role="tab"
@@ -219,7 +221,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
               onClick={() => setTab(id)}
               className={`-mb-px border-b-2 px-3 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${tab === id ? 'border-fg text-fg' : 'border-transparent text-fg-faint hover:text-fg'}`}
             >
-              {label}
+              {label} <span className="text-fg-faint">{n}</span>
             </button>
           ))}
         </nav>
@@ -250,7 +252,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
                     type="button"
                     aria-pressed={mode === m}
                     onClick={() => setMode(m)}
-                    className={`h-7 border px-3 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${mode === m ? 'border-fg bg-surface text-fg-muted' : 'border-border text-fg-muted hover:text-fg'}`}
+                    className={`h-7 border px-3 text-[12px] capitalize focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${mode === m ? 'border-fg bg-surface text-fg-muted' : 'border-border text-fg-muted hover:text-fg'}`}
                   >
                     {m}
                   </button>
