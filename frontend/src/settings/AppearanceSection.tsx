@@ -1,4 +1,4 @@
-import { type Mode, MODES, useMode } from "../mode"
+import { MODES, type Mode, useMode } from "../mode"
 
 const LABEL: Record<Mode, string> = { light: "Light", dark: "Dark", system: "System" }
 const HINT: Record<Mode, string> = {
@@ -12,30 +12,42 @@ export function AppearanceSection() {
   const [mode, setMode] = useMode()
   return (
     <section aria-labelledby="settings-appearance-h" className="space-y-4">
-      <h2 id="settings-appearance-h" tabIndex={-1} className="text-lg font-semibold text-foreground">
+      <h2
+        id="settings-appearance-h"
+        tabIndex={-1}
+        className="text-lg font-semibold text-foreground"
+      >
         Appearance
       </h2>
-      <div role="radiogroup" aria-label="Colour mode" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <fieldset aria-label="Colour mode" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {MODES.map((m) => (
-          <button
+          <label
             key={m}
-            type="button"
-            role="radio"
-            aria-checked={mode === m}
-            onClick={() => setMode(m)}
-            className={`rounded-md border p-3 text-left transition-colors hover:bg-panel-hover ${
+            className={`cursor-pointer rounded-md border p-3 transition-colors hover:bg-panel-hover has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${
               mode === m ? "border-primary" : "border-border"
             }`}
           >
+            <input
+              type="radio"
+              name="mode"
+              value={m}
+              checked={mode === m}
+              onChange={() => setMode(m)}
+              className="sr-only"
+            />
             <Preview mode={m} />
             <span className="mt-2 block text-sm font-medium text-foreground">{LABEL[m]}</span>
             <span className="block text-xs text-text-subtle">{HINT[m]}</span>
-          </button>
+          </label>
         ))}
-      </div>
+      </fieldset>
       <label className="block max-w-xs space-y-1">
         <span className="text-xs text-text-subtle">Theme</span>
-        <select disabled aria-label="Theme" className="w-full rounded-md border border-border bg-panel px-2 py-1.5 text-sm text-text-subtle">
+        <select
+          disabled
+          aria-label="Theme"
+          className="w-full rounded-md border border-border bg-panel px-2 py-1.5 text-sm text-text-subtle"
+        >
           <option>Nanite (default)</option>
         </select>
         <span className="block text-xs text-text-subtle">More themes later.</span>
@@ -48,7 +60,10 @@ export function AppearanceSection() {
 function Preview({ mode }: { mode: Mode }) {
   if (mode === "system") {
     return (
-      <div className="grid grid-cols-2 overflow-hidden rounded-sm border border-border-subtle" aria-hidden="true">
+      <div
+        className="grid grid-cols-2 overflow-hidden rounded-sm border border-border-subtle"
+        aria-hidden="true"
+      >
         <Half mode="light" />
         <Half mode="dark" />
       </div>

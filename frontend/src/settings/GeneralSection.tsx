@@ -1,3 +1,4 @@
+import { Button, EmptyState } from "@hollis-labs/design-components"
 import {
   type SettingsChanges,
   type SettingsDraft,
@@ -5,7 +6,6 @@ import {
   SettingsProvenanceRenderer,
   type SettingsProvenanceState,
 } from "@hollis-labs/kit-settings"
-import { Button, EmptyState } from "@hollis-labs/design-components"
 import { useState } from "react"
 
 /** What the host knows about the settings service. */
@@ -34,7 +34,11 @@ export function GeneralSection({ settings }: { settings: GeneralSettings }) {
         </div>
       )}
       {settings.status === "unavailable" && (
-        <EmptyState variant="error" title="Settings are not available" description={settings.reason} />
+        <EmptyState
+          variant="error"
+          title="Settings are not available"
+          description={settings.reason}
+        />
       )}
       {settings.status === "ready" && <Ready settings={settings} />}
     </section>
@@ -81,8 +85,14 @@ function Ready({ settings }: { settings: Extract<GeneralSettings, { status: "rea
         const n = Object.keys(drafts[id] ?? {}).length
         return n === 0 ? null : (
           <div className="flex items-center gap-2 text-xs text-text-subtle">
-            <span>{n} {n === 1 ? "change" : "changes"}</span>
-            <Button type="button" variant="ghost" onClick={() => setDrafts((all) => ({ ...all, [id]: {} }))}>
+            <span>
+              {n} {n === 1 ? "change" : "changes"}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDrafts((all) => ({ ...all, [id]: {} }))}
+            >
               Discard
             </Button>
           </div>

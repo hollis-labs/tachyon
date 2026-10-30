@@ -22,6 +22,7 @@ export function SettingsPage() {
   }, [section, active, navigate])
 
   // Land with focus on the section heading.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when the section changes
   useEffect(() => {
     panel.current?.querySelector<HTMLElement>("h2")?.focus()
   }, [active])
@@ -34,7 +35,11 @@ export function SettingsPage() {
       >
         {SETTINGS_SECTIONS.map((s) =>
           s.soon ? (
-            <span key={s.id} aria-disabled="true" className="rounded-md px-3 py-1.5 text-sm text-text-subtle opacity-60">
+            <span
+              key={s.id}
+              aria-disabled="true"
+              className="rounded-md px-3 py-1.5 text-sm text-text-subtle opacity-60"
+            >
               {s.label} <span className="text-xs">soon</span>
             </span>
           ) : (

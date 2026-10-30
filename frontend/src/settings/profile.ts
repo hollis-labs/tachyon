@@ -12,7 +12,10 @@ export function readProfile(storage: Pick<Storage, "getItem"> | null = safeStora
     const raw = storage?.getItem(PROFILE_KEY)
     if (!raw) return EMPTY
     const v = JSON.parse(raw) as Partial<Profile>
-    return { name: typeof v.name === "string" ? v.name : "", email: typeof v.email === "string" ? v.email : "" }
+    return {
+      name: typeof v.name === "string" ? v.name : "",
+      email: typeof v.email === "string" ? v.email : "",
+    }
   } catch {
     return EMPTY
   }
