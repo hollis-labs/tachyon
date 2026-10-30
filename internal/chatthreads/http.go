@@ -302,7 +302,14 @@ func fromUI(m appagent.UIMessage) Message {
 		meta["blocked"] = true
 	}
 	role := m.From
-	return Message{Seq: m.Seq, ID: m.ID, Role: role, Kind: "text", Text: m.Body, At: m.At, Meta: meta}
+	kind := m.Kind
+	if kind == "" {
+		kind = "text"
+	}
+	for k, v := range m.Meta { // a card or plan reference rides in meta
+		meta[k] = v
+	}
+	return Message{Seq: m.Seq, ID: m.ID, Role: role, Kind: kind, Text: m.Body, At: m.At, Meta: meta}
 }
 
 func (h *Handler) tetherGroup(ctx context.Context, ref string) (tgroup, error) {

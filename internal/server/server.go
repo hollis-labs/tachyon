@@ -34,6 +34,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/chatthreads"
 	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
@@ -117,6 +118,7 @@ type Server struct {
 	chatThreads      *chatthreads.Handler
 	chatWorkspace    *chatworkspace.Handler
 	chatTopics       *chattopics.Handler
+	chatPlan         *chatplan.Service
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
@@ -275,6 +277,36 @@ func (s *Server) Start(ctx context.Context) error {
 			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, map[string]any{"op": op, "id": id})
 		},
 	}
+	s.chatPlan = &chatplan.Service{
+		Store:  &chatplan.Store{DB: store},
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		ProjectOf: func(ctx context.Context, ref string) (string, error) {
+			st, err := s.chatThreads.Agg.State.Get(ctx, ref)
+			return st.ProjectID, err
+		},
+		Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+		},
+		Note: func(ctx context.Context, thread string, p chatplan.Plan) {
+			t, err := chatapi.ParseRef(thread)
+			if err != nil || t.Source != chatapi.SourceApp || s.appAgent == nil {
+				return
+			}
+			title := "Plan"
+			if p.Title != nil && *p.Title != "" {
+				title = *p.Title
+			}
+			_, _ = s.appAgent.AppendNote(ctx, t.ID, "plan", title, map[string]any{"plan_id": p.ID})
+		},
+		Notify: s.chatThreads.Notify,
+	}
+	s.chatThreads.Agg.PlanProgress = func(ctx context.Context, refs []string) map[string]chatthreads.Progress {
+		out := map[string]chatthreads.Progress{}
+		for ref, pr := range s.chatPlan.Store.Progress(ctx, refs) {
+			out[ref] = chatthreads.Progress{Done: pr.Done, Total: pr.Total}
+		}
+		return out
+	}
 	if s.appAgent != nil && s.cfg.ChatClientContext {
 		s.appAgent.ClientContext = func(ctx context.Context, id string) any {
 			cc, err := ws.ClientContextFor(ctx, chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
@@ -428,8 +460,12 @@ func (s *Server) Routes() http.Handler {
 						_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventTopic, map[string]any{"op": op, "id": id})
 					}}
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools))
+			var planTools *dataverbs.ChatPlan
+			if s.chatPlan != nil {
+				planTools = &dataverbs.ChatPlan{Service: s.chatPlan}
+			}
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools))
 		}
 	}
 	if s.store != nil {
@@ -522,6 +558,13 @@ func (s *Server) Routes() http.Handler {
 	if s.chatThreads != nil {
 		real := s.chatThreads.Mux()
 		for _, route := range chatthreads.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatPlan != nil {
+		real := (&chatplan.Handler{Service: s.chatPlan}).Mux()
+		for _, route := range chatplan.Routes {
 			method, path, _ := strings.Cut(route, " ")
 			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
 		}

@@ -495,3 +495,35 @@ func TestWritesRefusedWithoutOperatorSessionOrOrigin(t *testing.T) {
 		t.Errorf("elevated create: %d", c)
 	}
 }
+
+func TestPlanMessagesAndProgressAppearInThreads(t *testing.T) {
+	e := setup(t)
+	e.do(t, "GET", "/threads", "")
+	e.h.Agg.PlanProgress = func(_ context.Context, refs []string) map[string]Progress {
+		return map[string]Progress{"app:app-tachyon": {Done: 2, Total: 5}}
+	}
+	if _, err := e.h.Agg.App.AppendNote(context.Background(), "app-tachyon", "plan", "Ship it", map[string]any{"plan_id": "pl_1"}); err != nil {
+		t.Fatal(err)
+	}
+	_, out := e.do(t, "GET", "/threads/app:app-tachyon/messages", "")
+	ms := out["messages"].([]any)
+	m := ms[len(ms)-1].(map[string]any)
+	if m["kind"] != "plan" || m["text"] != "Ship it" || m["role"] != "agent" || m["meta"].(map[string]any)["plan_id"] != "pl_1" {
+		t.Fatalf("plan message: %v", m)
+	}
+	_, th := e.do(t, "GET", "/threads/app:app-tachyon", "")
+	pp := th["plan_progress"].(map[string]any)
+	if pp["done"] != 2.0 || pp["total"] != 5.0 || th["unread"] != 1.0 {
+		t.Fatalf("thread: %v", th)
+	}
+	_, out = e.do(t, "GET", "/threads?lens=work", "")
+	if len(threads(t, out)) != 1 {
+		t.Fatal("a thread with a plan belongs to the work lens")
+	}
+	if _, err := e.h.Agg.App.AppendNote(context.Background(), "app-tachyon", "text", "x", nil); err == nil {
+		t.Fatal("AppendNote accepted kind text")
+	}
+	if _, err := e.h.Agg.App.AppendNote(context.Background(), "missing", "plan", "x", nil); err == nil {
+		t.Fatal("AppendNote accepted a missing thread")
+	}
+}

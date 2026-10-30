@@ -41,6 +41,10 @@ var chatWorkspaceVerbs = []string{"chat.workspace.list", "chat.workspace.get"}
 // chat-topic-add preset grants them; they name no object kinds.
 var chatTopicVerbs = []string{"chat.topic.add"}
 
+// ChatPlanVerbs read and write the working plan of an app chat thread. Only the chat-plan preset
+// grants them; they name no object kinds.
+var chatPlanVerbs = []string{"chat.plan.get", "chat.plan.write", "chat.plan.step"}
+
 // ActionVerbs are the registered-action tools (request, then await the result).
 // They name no object kinds: a credential holding only these needs none.
 var actionVerbs = []string{"actions.catalog", "actions.request", "actions.await"}
@@ -98,8 +102,12 @@ func ChatWorkspaceVerb(v string) bool { return contains(chatWorkspaceVerbs, v) }
 // ChatTopicAdd grants only chat.topic.add.
 func ChatTopicAdd() Grants        { return Grants{Verbs: append([]string(nil), chatTopicVerbs...)} }
 func ChatTopicVerb(v string) bool { return contains(chatTopicVerbs, v) }
-func ActionRequest() Grants       { return Grants{Verbs: append([]string(nil), actionVerbs...)} }
-func TorqueVerb(v string) bool    { return contains(torqueVerbs, v) }
+
+// ChatPlan grants only the chat plan verbs.
+func ChatPlan() Grants           { return Grants{Verbs: append([]string(nil), chatPlanVerbs...)} }
+func ChatPlanVerb(v string) bool { return contains(chatPlanVerbs, v) }
+func ActionRequest() Grants      { return Grants{Verbs: append([]string(nil), actionVerbs...)} }
+func TorqueVerb(v string) bool   { return contains(torqueVerbs, v) }
 func TesseractVerb(v string) bool {
 	return contains(tesseractVerbs, v)
 }
@@ -109,7 +117,7 @@ func CardVerb(v string) bool   { return contains(cardVerbs, v) }
 func PlannerKinds() []string   { return append([]string(nil), plannerKinds...) }
 func ReadVerb(v string) bool   { return contains(readVerbs, v) || contains(portfolioReadVerbs, v) }
 func SupportedVerb(v string) bool {
-	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v) || contains(torqueVerbs, v) || contains(tesseractVerbs, v) || contains(chatWorkspaceVerbs, v) || contains(chatTopicVerbs, v)
+	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v) || contains(torqueVerbs, v) || contains(tesseractVerbs, v) || contains(chatWorkspaceVerbs, v) || contains(chatTopicVerbs, v) || contains(chatPlanVerbs, v)
 }
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
@@ -122,7 +130,7 @@ func contains(xs []string, x string) bool {
 func (g Grants) Validate() error {
 	onlyActions := len(g.Verbs) > 0
 	for _, v := range g.Verbs {
-		onlyActions = onlyActions && (contains(actionVerbs, v) || contains(cardVerbs, v) || contains(tesseractVerbs, v) || contains(chatWorkspaceVerbs, v) || contains(chatTopicVerbs, v))
+		onlyActions = onlyActions && (contains(actionVerbs, v) || contains(cardVerbs, v) || contains(tesseractVerbs, v) || contains(chatWorkspaceVerbs, v) || contains(chatTopicVerbs, v) || contains(chatPlanVerbs, v))
 	}
 	if len(g.Verbs) == 0 || (len(g.Kinds) == 0 && !onlyActions) {
 		return errors.New("explicit verbs and kinds are required")

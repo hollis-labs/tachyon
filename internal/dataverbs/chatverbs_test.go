@@ -13,6 +13,7 @@ import (
 	"github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
+	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -216,6 +217,82 @@ func TestChatTopicAddVerb(t *testing.T) {
 	for _, g := range []agentaccess.Grants{agentaccess.AppAgentRead(), agentaccess.ChatWorkspaceRead(), agentaccess.CardAsk()} {
 		for _, v := range g.Verbs {
 			if agentaccess.ChatTopicVerb(v) {
+				t.Errorf("a preset widened with %s", v)
+			}
+		}
+	}
+}
+
+func TestChatPlanVerbs(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var notes int
+	svc := &chatplan.Service{
+		Store: &chatplan.Store{DB: db},
+		Exists: func(_ context.Context, ref string) error {
+			if ref == "app:ghost" {
+				return errors.New("none")
+			}
+			return nil
+		},
+		Note: func(context.Context, string, chatplan.Plan) { notes++ },
+	}
+	p := &scopedLocal{local: NewLocal(nil), plan: &ChatPlan{Service: svc}, principal: auth.Principal{Verified: true, ID: "agent",
+		Scopes: []string{"verb:chat.plan.get", "verb:chat.plan.write", "verb:chat.plan.step"}}}
+	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"app:t1"}`); err == nil {
+		t.Fatal("get before any plan should be not found")
+	}
+	out, err := chatCall(p, "chat.plan.write", `{"thread_ref":"app:t1","title":"Ship","steps":[{"title":"One"},{"title":"Two","status":"doing"}]}`)
+	if err != nil || out["revision"] != 1.0 || out["status"] != "proposed" || out["created_by"] != "agent" {
+		t.Fatal(out, err)
+	}
+	if notes != 1 {
+		t.Fatalf("plan message not posted: %d", notes)
+	}
+	steps := out["steps"].([]any)
+	one := steps[0].(map[string]any)["id"].(string)
+	// Writing over an existing plan without its revision is refused.
+	if _, err := chatCall(p, "chat.plan.write", `{"thread_ref":"app:t1","steps":[{"title":"x"}]}`); err == nil {
+		t.Fatal("blind overwrite accepted")
+	}
+	out, err = chatCall(p, "chat.plan.step", `{"thread_ref":"app:t1","step_id":"`+one+`","status":"done","expected_revision":1}`)
+	if err != nil || out["status"] != "done" || out["plan_revision"] != 2.0 {
+		t.Fatal(out, err)
+	}
+	if _, err = chatCall(p, "chat.plan.step", `{"thread_ref":"app:t1","step_id":"`+one+`","status":"todo","expected_revision":1}`); err == nil {
+		t.Fatal("stale revision accepted")
+	}
+	got, err := chatCall(p, "chat.plan.get", `{"thread_ref":"app:t1"}`)
+	if err != nil || got["revision"] != 2.0 {
+		t.Fatal(got, err)
+	}
+	for name, args := range map[string]string{
+		"tether":  `{"thread_ref":"tether:s","steps":[]}`,
+		"ghost":   `{"thread_ref":"app:ghost","steps":[]}`,
+		"project": `{"thread_ref":"app:t1","scope":"project","steps":[]}`,
+		"status":  `{"thread_ref":"app:t2","steps":[{"title":"a","status":"nope"}]}`,
+		"task":    `{"thread_ref":"app:t2","steps":[{"title":"a","task_ref":"CW-1"}]}`,
+	} {
+		if _, err := chatCall(p, "chat.plan.write", args); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+	if v := p.Verbs(); len(v) != 3 {
+		t.Fatalf("verbs: %v", v)
+	}
+	p.principal.Scopes = []string{"verb:chat.plan.get"}
+	if _, err := chatCall(p, "chat.plan.write", `{"thread_ref":"app:t3","steps":[]}`); err == nil {
+		t.Fatal("write ran with a read-only grant")
+	}
+	if err := agentaccess.ChatPlan().Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range []agentaccess.Grants{agentaccess.AppAgentRead(), agentaccess.ChatWorkspaceRead(), agentaccess.ChatTopicAdd(), agentaccess.CardAsk()} {
+		for _, v := range g.Verbs {
+			if agentaccess.ChatPlanVerb(v) {
 				t.Errorf("a preset widened with %s", v)
 			}
 		}
