@@ -26,3 +26,27 @@ Derivation (state, one-liners, context) is A2; the bus feed is A4; the sessions 
   with a receipt in `agents_collector_state`. Samples (downsampling) arrive with A2.
 - **Not here yet**: `dropped_output_frames` stays 0 until A2 parses output in memory and can shed it under
   load; strategy B does not call per-session health; bus topics report `off`/`no_emitter` until A4.
+
+## Derivation (A2)
+
+`internal/agentsderive` is pure (no I/O) and read-time: `Derive(Input, now, staleAfter)` computes state when
+a session is read, so changing `stale_after_s` takes effect on the next read with no backfill.
+
+- **Stale** (addendum 1): working or waiting with no event for `stale_after` (default 15 min), or dead
+  (`alive` false, `orphaned`, process gone) -> `not_alive`, or worker offline -> `worker_offline`. Idle is
+  never stale by age; a quiet idle session keeps `last_activity_at`. A stale waiting session keeps `needs_you`.
+  `alive`, `worker_online` and Chimera's process-gone are stored columns A3 or A5 fill; until then they are
+  unknown and only the no-events rule applies.
+- **Output (E3)**: the collector hands each `session.output` payload to a sink in memory. `ExtractOutput`
+  reads Claude stream-json lines (tool_use name and a few named fields, message usage, result
+  `contextWindow`, `compact_boundary`) and returns derived values only. Bash yields its first token and
+  nothing else; every line passes the secret redactor and is cut to 160 characters. Unknown or cut-short
+  lines are skipped. Context = input + cache read + cache creation of the last call; the window falls back
+  to a model table. No source exists for a context breakdown and none is invented (`breakdown` stays null).
+- **Markers**: a real `compact_boundary` is recorded as not inferred; a drop over 40% is an inferred
+  compaction; falling under 5% of the window is an inferred clear.
+- **Tokens** come from sanitized `session.usage` events (per finished turn). A session with none has NULL
+  tokens (not metered), never 0. Samples: per-minute buckets kept 48 h, hour buckets 30 d.
+- Not done here: `alive`/`worker_online` producers, tool-run grouping and the sparkline are helpers
+  (`GroupRuns`, `Spark`) that A3 calls when serving the API. The sink saves at most once a second per
+  session, so the last figures of a turn can lag until the next output.

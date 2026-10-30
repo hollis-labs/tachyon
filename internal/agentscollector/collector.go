@@ -30,7 +30,11 @@ type Collector struct {
 	// Backoff bounds (defaults 3 s doubling to 1 min, reset on a successful stream).
 	BackoffMin, BackoffMax time.Duration
 	Watchdog               time.Duration
-	PruneEvery             time.Duration
+	// Sink, if set, receives session.output payloads in memory (A2 derivation). Nil discards them.
+	Sink OutputSink
+	// TurnEnded, if set, is told when a session returns to idle (resets per-turn counters).
+	TurnEnded  func(sessionID string)
+	PruneEvery time.Duration
 
 	mu       sync.Mutex
 	src      SourceStatus
@@ -283,6 +287,14 @@ func (c *Collector) follow(ctx context.Context, after int64) error {
 		switch {
 		case f.Output:
 			c.outputs.Add(1)
+			if c.Sink != nil && f.SessionID != "" && len(f.Payload) > 0 {
+				at := f.At
+				if at.IsZero() {
+					at = c.now()
+				}
+				c.Sink.Output(ctx, f.SessionID, at, f.Payload)
+			}
+			f.Payload = nil
 			if f.SessionID != "" {
 				at := f.At
 				if at.IsZero() {
@@ -302,6 +314,9 @@ func (c *Collector) follow(ctx context.Context, after int64) error {
 			return errors.New("stream reported a gap; resyncing")
 		case f.Synchronized:
 			return nil
+		}
+		if c.TurnEnded != nil && f.Kind == "session.work_state_changed" && f.WorkState == "idle" && f.SessionID != "" {
+			c.TurnEnded(f.SessionID)
 		}
 		select {
 		case queue <- f:

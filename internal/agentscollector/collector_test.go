@@ -3,9 +3,11 @@ package agentscollector
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hollis-labs/tachyon/internal/agentsderive"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -439,6 +441,60 @@ func TestHTTPSourceStreamsAndGuardsTheToken(t *testing.T) {
 }
 
 func mustTime(v string) time.Time { t, _ := time.Parse(time.RFC3339, v); return t }
+
+type liveSink struct{ l *agentsderive.Live }
+
+func (s liveSink) Output(ctx context.Context, id string, at time.Time, p []byte) {
+	s.l.Output(ctx, id, at, p)
+}
+
+func TestDerivationEndToEndFromOutputAndUsage(t *testing.T) {
+	planted := "ghp_" + "Pq8Rs2Tu4Vw6Xy1Za3Bc5De7Fg9Hi0Jk"
+	line := func(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+	out := frameJSON("e:2", "session.output", "s1", "2026-10-30T01:00:01Z", `{"data":"`+line(
+		`{"type":"assistant","message":{"model":"claude-sonnet-5-5","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/w/internal/appagent/store.go","note":"`+planted+`"}}],"usage":{"input_tokens":100,"cache_read_input_tokens":599900,"cache_creation_input_tokens":0,"output_tokens":9}}}`)+`"}`)
+	src := &fakeSource{
+		snap: Snapshot{Env: "e", HighWater: 1},
+		streamFrame: []string{
+			frameJSON("e:3", "session.work_state_changed", "s1", "2026-10-30T01:00:00Z", `{"from":"idle","to":"processing"}`),
+			out,
+			frameJSON("e:4", "session.usage", "s1", "2026-10-30T01:00:02Z", `{"input":100,"output":9,"cache_read":599900,"cache_write":0,"model":"claude-sonnet-5-5","final":true}`),
+			frameJSON("e:5", "tool.call.finished", "s1", "2026-10-30T01:00:03Z", `{"tool":"Read"}`),
+		},
+	}
+	c := newCollector(t, src)
+	live := &agentsderive.Live{}
+	live.Save = func(ctx context.Context, id string, d agentsderive.Saved) error {
+		return c.Store.SetDerived(ctx, id, Derived{OneLiner: d.OneLiner, CallsInTurn: d.CallsInTurn, At: d.At, CtxUsed: d.Meter.Used, CtxWindow: d.Meter.Window, CtxModel: d.Meter.Model, CtxSeen: d.Meter.Seen})
+	}
+	c.Sink = liveSink{live}
+	runUntil(t, c, func() bool {
+		return count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id='s1' AND ctx_used IS NOT NULL AND tok_in IS NOT NULL AND tool_calls=1`) == 1
+	})
+	rows, err := c.Store.Sessions(context.Background())
+	if err != nil || len(rows) != 1 {
+		t.Fatal(rows, err)
+	}
+	r := rows[0]
+	if r.CtxUsed == nil || *r.CtxUsed != 600_000 || r.CtxWindow == nil || *r.CtxWindow != 1_000_000 || r.Tokens == nil || r.Tokens[0] != 100 || r.Tokens[2] != 599_900 {
+		t.Fatalf("%+v", r)
+	}
+	var ol map[string]any
+	if err := json.Unmarshal(r.OneLiner, &ol); err != nil || ol["verb"] != "Reading" || ol["target"] != "appagent/" || ol["calls_this_turn"] != 1.0 {
+		t.Fatalf("one-liner: %s", r.OneLiner)
+	}
+	if strings.Contains(string(r.OneLiner), planted) {
+		t.Fatal("tool input leaked")
+	}
+	// state from the stored facts, at read time
+	in := agentsderive.Input{WorkState: r.WorkState, LastActivity: r.LastActivity, PendingApproval: r.PendingApproval, PendingQuestion: r.PendingQuestion}
+	if got := agentsderive.Derive(in, time.Date(2026, 10, 30, 1, 10, 0, 0, time.UTC), 0); got.State != agentsderive.Working {
+		t.Fatalf("7 minutes after the last event it is still working: %+v", got)
+	}
+	if got := agentsderive.Derive(in, time.Date(2026, 10, 30, 1, 30, 0, 0, time.UTC), 0); got.State != agentsderive.Stale || got.StaleReason != agentsderive.NoEvents {
+		t.Fatalf("27 minutes after: %+v", got)
+	}
+}
 
 // Shapes seen against live Tether: the snapshot names the environment environment_id, and
 // /sessions pages with an opaque string cursor.

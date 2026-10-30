@@ -13,7 +13,10 @@ const (
 	EventRetention   = 7 * 24 * time.Hour
 	GapRetention     = 30 * 24 * time.Hour
 	SessionRetention = 30 * 24 * time.Hour
-	pruneBatch       = 1000
+	// Minute buckets are kept 48 h; hour buckets 30 d (the downsampled history).
+	MinuteSampleRetention = 48 * time.Hour
+	HourSampleRetention   = 30 * 24 * time.Hour
+	pruneBatch            = 1000
 )
 
 type Store struct {
@@ -117,10 +120,46 @@ func (s *Store) Apply(ctx context.Context, frames []Frame) error {
 			if err := upsertSession(ctx, tx, f, at, now); err != nil {
 				return err
 			}
+			if err := sample(ctx, tx, f, at); err != nil {
+				return err
+			}
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE agents_collector_state SET last_seq=MAX(last_seq,?), last_event_at_ns=MAX(last_event_at_ns,?) WHERE id=1`, maxSeq, lastAt)
 		return err
 	})
+}
+
+// sample counts one event into the minute and hour buckets, and adds a turn's tokens.
+func sample(ctx context.Context, tx *sql.Tx, f Frame, at int64) error {
+	if f.Kind == "session.snapshot" || (Type(f.Kind) == "" && f.Usage == nil) {
+		return nil
+	}
+	var in, out, cr, cw, calls int64
+	if f.Usage != nil {
+		in, out, cr, cw = f.Usage[0], f.Usage[1], f.Usage[2], f.Usage[3]
+		if _, err := tx.ExecContext(ctx, `UPDATE agents_sessions SET tok_in=COALESCE(tok_in,0)+?, tok_out=COALESCE(tok_out,0)+?, tok_cr=COALESCE(tok_cr,0)+?, tok_cw=COALESCE(tok_cw,0)+? WHERE session_id=?`, in, out, cr, cw, f.SessionID); err != nil {
+			return err
+		}
+	}
+	if f.Kind == "tool.call.finished" {
+		calls = 1
+	}
+	act := int64(0)
+	if Type(f.Kind) != "" {
+		act = 1
+	}
+	t := time.Unix(0, at).UTC()
+	for _, b := range []struct {
+		kind string
+		ns   int64
+	}{{"min", t.Truncate(time.Minute).UnixNano()}, {"hour", t.Truncate(time.Hour).UnixNano()}} {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO agents_samples(session_id,bucket_ns,bucket_kind,activity,tok_in,tok_out,tok_cr,tok_cw,tool_calls) VALUES(?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(session_id,bucket_kind,bucket_ns) DO UPDATE SET activity=activity+excluded.activity, tok_in=tok_in+excluded.tok_in, tok_out=tok_out+excluded.tok_out, tok_cr=tok_cr+excluded.tok_cr, tok_cw=tok_cw+excluded.tok_cw, tool_calls=tool_calls+excluded.tool_calls`,
+			f.SessionID, b.ns, b.kind, act, in, out, cr, cw, calls); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func upsertSession(ctx context.Context, tx *sql.Tx, f Frame, at, now int64) error {
@@ -244,6 +283,8 @@ func (s *Store) Prune(ctx context.Context) (int64, error) {
 	}{
 		{`DELETE FROM agents_events WHERE id IN (SELECT id FROM agents_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
 		{`DELETE FROM agents_gaps WHERE id IN (SELECT id FROM agents_gaps WHERE end_ns<? LIMIT ?)`, now.Add(-GapRetention)},
+		{`DELETE FROM agents_samples WHERE rowid IN (SELECT rowid FROM agents_samples WHERE bucket_kind='min' AND bucket_ns<? LIMIT ?)`, now.Add(-MinuteSampleRetention)},
+		{`DELETE FROM agents_samples WHERE rowid IN (SELECT rowid FROM agents_samples WHERE bucket_kind='hour' AND bucket_ns<? LIMIT ?)`, now.Add(-HourSampleRetention)},
 		{`DELETE FROM agents_sessions WHERE session_id IN (SELECT session_id FROM agents_sessions WHERE ended_ns>0 AND ended_ns<? LIMIT ?)`, now.Add(-SessionRetention)},
 	} {
 		for {
