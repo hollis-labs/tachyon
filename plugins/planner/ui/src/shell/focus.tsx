@@ -13,6 +13,8 @@ import { themeSegments } from '@planner/shell/spine'
 import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
 interface FocusProps {
+  /** Writes are disabled while the connection is down. */
+  paused?: boolean
   row: ThemeRow
   board: ThemeBoard
   view: 'board' | 'timeline'
@@ -22,7 +24,7 @@ interface FocusProps {
   onDetails: () => void
 }
 
-export function Focus({ row, board, view, onView, onAction, onBack, onDetails }: FocusProps) {
+export function Focus({ paused, row, board, view, onView, onAction, onBack, onDetails }: FocusProps) {
   const seg = themeSegments(row)
   const panels = useContributions('planner.focus.panel')
   const approved = (board.totals.in_flight ?? 0) + (board.totals.cleared ?? 0)
@@ -49,7 +51,7 @@ export function Focus({ row, board, view, onView, onAction, onBack, onDetails }:
               const a = actions.find((x) => x.label === label)
               if (a) void onAction(row, a.action, a.position === undefined ? undefined : { position: a.position })
             }}
-            disabled={actions.length === 0}
+            disabled={actions.length === 0 || paused}
           />
         </div>
         {owners && <p className="dash-support text-fg-muted">{owners}</p>}

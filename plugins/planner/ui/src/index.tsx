@@ -2,10 +2,9 @@ import type { TachyonPlugin } from "@tachyon/host-sdk"
 import { PlannerApiProvider } from "@planner/api/context"
 import { TachyonPlannerClient } from "@planner/api/client"
 import { Compass } from "lucide-react"
-import PlannerPage from "@planner/pages/PlannerPage"
 import PlannerShell from "@planner/shell/PlannerShell"
 import LensPage from "@planner/shell/lens-page"
-import { useParams } from "react-router-dom"
+import { Navigate, useParams } from "react-router-dom"
 import { isPlannerDb } from "@planner/lib/planner"
 
 /** Planner records and revisions are owned by the Tachyon host. */
@@ -21,10 +20,13 @@ function ShellRoute() {
 
 function PlannerRoute() {
   const { db } = useParams<{ db?: string }>()
-  // The six other lenses open on the shell; /planner, /planner/flight, board and activity keep the earlier page until their routes are retired.
+  // The old pages' routes land on the lens or facet that replaced them.
+  if (db === undefined || db === "board" || db === "flight" || db === "priorities") return <Navigate to="/planner/themes" replace />
+  if (db === "activity") return <Navigate to="/planner/themes?facet=need-you" replace />
+  if (!isPlannerDb(db)) return <Navigate to="/planner/themes" replace />
   return (
     <PlannerApiProvider client={plannerClient}>
-      {isPlannerDb(db) && db !== "themes" ? <LensPage key={db} db={db} /> : <PlannerPage />}
+      {db === "themes" ? <PlannerShell /> : <LensPage key={db} db={db} />}
     </PlannerApiProvider>
   )
 }
