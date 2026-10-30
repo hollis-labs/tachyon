@@ -81,6 +81,7 @@ func fixture(t *testing.T, sess SessionSource) (*Reader, *http.ServeMux, *fakeSo
 	src := &fakeSource{plan: "plan_1", files: map[string]string{
 		"agents/builder.yaml":        agentV1,
 		"agents/base.yaml":           "id: base\nabstract: true\nskills: [commit]\npermissions:\n  network: restricted\n  mcp_scopes: [tether:read]\nprompt:\n  system_prompt: Be careful.\n",
+		"projects/other.yaml":        "id: other\n",
 		"projects/tachyon.yaml":      "id: tachyon\nmcp:\n  servers: [tether, extra]\n",
 		"agents/old.yaml":            "id: old\nenabled: false\nprovider: codex\nmodel: gpt-5\n",
 		"launches/builder-main.yaml": launchYAML,
@@ -99,8 +100,14 @@ func fixture(t *testing.T, sess SessionSource) (*Reader, *http.ServeMux, *fakeSo
 
 func get(t *testing.T, mux *http.ServeMux, path string, want int) map[string]any {
 	t.Helper()
+	return getAt(t, mux, builderapi.Prefix+path, want)
+}
+
+// getAt is get with a full path, for the registry prefix.
+func getAt(t *testing.T, mux *http.ServeMux, path string, want int) map[string]any {
+	t.Helper()
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("GET", builderapi.Prefix+path, nil))
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 	if rec.Code != want {
 		t.Fatalf("GET %s = %d, want %d: %s", path, rec.Code, want, rec.Body)
 	}

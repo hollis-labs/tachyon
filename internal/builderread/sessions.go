@@ -65,14 +65,14 @@ type tetherSessions struct {
 	client *http.Client
 }
 
-// NewTetherSessions reads running sessions from Tether with the read-scope token. Wire names are UNVERIFIED
-// (launch_id, logical_agent_id or agent_id); a session without a launch still counts for its agent.
-func NewTetherSessions(addr, tokenFile string) (SessionSource, error) {
+// tetherClient builds the read-scope HTTP client for a Tether address (unix:, tcp: or http(s) URL): the same
+// guards as the catalog index (credential never over plain http to a remote host, redirects refused).
+func tetherClient(addr, tokenFile string) (string, *http.Client, error) {
 	if strings.TrimSpace(addr) == "" {
-		return nil, errors.New("Tether address is missing")
+		return "", nil, errors.New("Tether address is missing")
 	}
 	if err := upstreamauth.Guard(addr, tokenFile); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	base := strings.TrimRight(addr, "/")
 	tr := http.DefaultTransport.(*http.Transport).Clone()
@@ -88,10 +88,20 @@ func NewTetherSessions(addr, tokenFile string) (SessionSource, error) {
 	}
 	rt, err := upstreamauth.Wrap(tr, base, tokenFile)
 	if err != nil {
+		return "", nil, err
+	}
+	return base, &http.Client{Transport: header{rt}, Timeout: 20 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
+}
+
+// NewTetherSessions reads running sessions from Tether with the read-scope token. Wire names are UNVERIFIED
+// (launch_id, logical_agent_id or agent_id); a session without a launch still counts for its agent.
+func NewTetherSessions(addr, tokenFile string) (SessionSource, error) {
+	base, client, err := tetherClient(addr, tokenFile)
+	if err != nil {
 		return nil, err
 	}
-	return &tetherSessions{base: base, client: &http.Client{Transport: header{rt}, Timeout: 20 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	return &tetherSessions{base: base, client: client}, nil
 }
 
 type header struct{ http.RoundTripper }
