@@ -32,6 +32,7 @@ export const consolePlugin: TachyonPlugin = {
     { path: "/builder/classic", element: <BuilderPage /> },
     { path: "/builder/agents", element: <BuilderAgentsPage /> },
     { path: "/builder/agents/:id", element: <BuilderAgentsPage /> },
+    { path: "/builder/projects", element: <Navigate to="/registry/projects" replace /> },
     { path: "/builder/teams", element: <BuilderTeamsPage /> },
     { path: "/builder/launches", element: <BuilderLaunchesPage /> },
     { path: "/builder/library", element: <BuilderLibraryPage /> },
