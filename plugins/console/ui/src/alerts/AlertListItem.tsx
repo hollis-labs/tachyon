@@ -21,7 +21,7 @@ export interface AlertListItemProps {
   onExpand?: () => void
 }
 
-const BTN = 'text-fg-muted hover:text-fg'
+const BTN = 'text-fg-muted hover:text-fg max-md:min-h-10 max-md:min-w-10'
 
 /** One alert row: icon, severity stripe, title, one-line detail, source/age, primary link, state actions. */
 export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRead, onDismiss, onSnooze, onRestore, onExpand }: AlertListItemProps) {
