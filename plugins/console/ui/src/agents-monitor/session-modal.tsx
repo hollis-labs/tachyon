@@ -60,7 +60,7 @@ export function SessionModal({ session, paused, now, onClose, onRestarted }: { s
           <div className="min-h-0 flex-1 overflow-auto p-4">
             {tab === 'now' && <NowTab s={session} now={now} />}
             {tab === 'timeline' && <TimelineTab key={nudgeSeq} s={session} now={now} />}
-            {tab === 'context' && <ContextTab s={session} />}
+            {tab === 'context' && <ContextTab s={session} now={now} />}
             {tab === 'history' && <HistoryTab s={session} />}
           </div>
         </Tabs>
