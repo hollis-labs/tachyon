@@ -36,4 +36,15 @@ describe('Activity', () => {
     render(<ActivityTab busTick={0} now={NOW} />)
     expect(await screen.findByText('No events yet; collecting')).toBeTruthy()
   })
+
+  it('lists connected and not connected sources and explains an empty source', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.endsWith('/collector')) return Promise.resolve(new Response(JSON.stringify({ bus_topics: { deploy: 'live', restart: 'no_emitter', task: 'off', failure: 'live' } }), { status: 200 }))
+      return page([ev({ id: 'a', seq: 3 })], null)
+    }))
+    render(<ActivityTab busTick={0} now={NOW} />)
+    expect((await screen.findByTestId('activity-sources')).textContent).toMatch(/Connected sources: deploys, failures\. Not connected: restarts, tasks\./)
+    fireEvent.click(screen.getByRole('button', { name: /^Restarts/ }))
+    expect(await screen.findByText('No host events yet - emitter not connected')).toBeTruthy()
+  })
 })

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Skeleton } from '@hollis-labs/design-components'
-import { DashboardSearchToolbar } from '@hollis-labs/kit-dashboard/layout'
-import { EventTimeline, type TimelineEvent } from '@planner/shared'
-import { agentsGet } from './api'
+import { SearchInput, Skeleton } from '@hollis-labs/design-components'
+import { Chip } from '@planner/shared'
+import { agentsGet, useAgentsRead } from './api'
+import { Cite, EventFeed, clock, dayLabel, type Entry } from './session-events'
 import { AGENTS } from './vocabulary'
 
 const A = AGENTS.activity
@@ -22,26 +22,30 @@ export interface BusEvent {
 interface BusResponse { events: BusEvent[]; next_before: number | null }
 
 const FACET_OF: Partial<Record<BusEvent['type'], string>> = { deploy: 'deploys', restart: 'restarts', task: 'tasks', failure: 'failures' }
-const dayLabel = (at: number, now: number) => {
-  const days = Math.floor(now / 86_400_000) - Math.floor(at / 86_400_000)
-  return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : new Date(at).toLocaleDateString()
-}
+const TOPIC_OF: Record<string, BusEvent['type']> = { deploys: 'deploy', restarts: 'restart', tasks: 'task', failures: 'failure' }
+type TopicState = 'live' | 'off' | 'no_emitter'
+const SOURCE_LABEL: Record<string, string> = { deploy: 'deploys', restart: 'restarts', task: 'tasks', failure: 'failures', host: 'host', workstream: 'workstreams', lifecycle: 'lifecycle', card: 'cards' }
 
-/** Bus events as timeline rows. Failures (and errors) are the only coloured rows; refs are named in text. */
-export function toBusTimeline(events: readonly BusEvent[], now: number): TimelineEvent[] {
+/** Bus events as rail entries. Failures (and errors) are the only coloured rows; refs are named in text. */
+export function toBusTimeline(events: readonly BusEvent[], now: number): Entry[] {
   return events.map((e) => ({
     id: e.id,
+    at: e.at,
     day: dayLabel(e.at, now),
-    time: new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    time: clock(e.at),
     facet: FACET_OF[e.type] ?? 'other',
+    type: e.type,
     tone: e.type === 'failure' || e.severity === 'error' ? 'blocked' : 'neutral',
+    summary: e.subject,
     body: (
       <span>
-        {e.subject} <span className="text-fg-faint">{e.app} · {e.actor}</span>
-        {e.refs.length > 0 && <span className="ml-2 font-mono dash-caption text-fg-muted">{e.refs.map((r) => r.label).join(' ')}</span>}
+        {e.subject}
+        {e.refs.length > 0 && !e.card && <span className="ml-1.5 inline-flex gap-1">{e.refs.map((r) => <Cite key={r.ref}>{r.label} ↗</Cite>)}</span>}
+        <span className="text-fg-faint"> · {e.app}{e.actor ? ` · ${e.actor}` : ''}</span>
       </span>
     ),
-    card: e.card ? <span><strong className="text-fg">{e.card.title}</strong> {e.card.summary}</span> : undefined,
+    card: e.card,
+    cites: e.refs.map((r) => r.label),
   }))
 }
 
@@ -52,6 +56,8 @@ export function ActivityTab({ busTick, now }: { busTick: number; now: number }) 
   const [error, setError] = useState<string | null>(null)
   const [app, setApp] = useState('')
   const [query, setQuery] = useState('')
+  const [facet, setFacet] = useState('all')
+  const collector = useAgentsRead<{ bus_topics: Record<string, TopicState> }>('/collector')
 
   const loadHead = useCallback(async () => {
     try {
@@ -85,28 +91,52 @@ export function ActivityTab({ busTick, now }: { busTick: number; now: number }) 
   const apps = useMemo(() => [...new Set((events ?? []).map((e) => e.app))].sort(), [events])
   const shown = useMemo(() => (events ?? []).filter((e) => (!app || e.app === app) && (!query.trim() || `${e.subject} ${e.app} ${e.actor}`.toLowerCase().includes(query.trim().toLowerCase()))), [events, app, query])
   const rows = useMemo(() => toBusTimeline(shown, now), [shown, now])
-  const facets = (Object.keys(A.facets) as (keyof typeof A.facets)[]).map((f) => ({ id: f, label: A.facets[f], count: f === 'all' ? rows.length : rows.filter((r) => r.facet === f).length }))
+  const topics = collector.data?.bus_topics ?? null
+  const topicState = (facet: string): TopicState | null => (topics && TOPIC_OF[facet] ? topics[TOPIC_OF[facet]] ?? null : null)
+  const count = (f: string) => (f === 'all' ? rows.length : rows.filter((r) => r.facet === f).length)
+  const visible = facet === 'all' ? rows : rows.filter((r) => r.facet === facet)
+  const connected = topics ? (Object.keys(topics) as string[]).filter((t) => topics[t] === 'live').map((t) => SOURCE_LABEL[t] ?? t) : []
+  const notConnected = topics ? (Object.keys(topics) as string[]).filter((t) => topics[t] !== 'live').map((t) => SOURCE_LABEL[t] ?? t) : []
+  const emptyCopy = () => {
+    if (events !== null && events.length === 0) return A.empty
+    const st = topicState(facet)
+    if (visible.length === 0 && st === 'no_emitter') return A.noEmitter
+    if (visible.length === 0 && st === 'off') return A.topicOff(SOURCE_LABEL[TOPIC_OF[facet]] ?? facet)
+    return A.noMatch
+  }
 
-  if (error && events === null) return <p role="alert" className="p-4 dash-support text-danger">{A.loadFailed}: {error} <button type="button" className="underline" onClick={() => void loadHead()}>{A.retry}</button></p>
+  if (error && events === null) return <p role="alert" className="p-4 text-xs text-danger">{A.loadFailed}: {error} <button type="button" className="underline" onClick={() => void loadHead()}>{A.retry}</button></p>
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-      <DashboardSearchToolbar value={query} onChange={setQuery} label={A.searchLabel} placeholder={A.searchPlaceholder}>
-        <label className="flex items-center gap-2 dash-caption text-fg-muted">
-          {A.appLabel}
-          <select value={app} onChange={(e) => setApp(e.target.value)} className="rounded-md border border-border bg-panel px-2 py-1 dash-caption text-fg">
-            <option value="">{A.allApps}</option>
-            {apps.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </label>
-      </DashboardSearchToolbar>
-      <div className="p-4">
-        {error && <p role="alert" className="mb-2 dash-caption text-danger">{error}</p>}
+    <div className="min-h-0 flex-1 overflow-auto">
+      <div className="flex max-w-[860px] flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-48 flex-1"><SearchInput value={query} onChange={setQuery} placeholder={A.searchPlaceholder} ariaLabel={A.searchLabel} slashToFocus={false} /></div>
+          <div role="toolbar" aria-label={A.filtersLabel} className="flex flex-wrap items-center gap-1.5">
+            {(Object.keys(A.facets) as (keyof typeof A.facets)[]).map((f) => (
+              <button key={f} type="button" aria-pressed={facet === f} onClick={() => setFacet(f)} className="rounded-full">
+                <Chip tone={f === 'failures' && count(f) > 0 ? 'danger' : 'neutral'} selected={facet === f} className="h-6 cursor-pointer hover:bg-selection">{A.facets[f]}{(f === 'all' || count(f) > 0) && <span className="font-mono tabular-nums">{count(f)}</span>}</Chip>
+              </button>
+            ))}
+            {/* KIT-GAP: a chip-styled select (kit Combobox is a heavier control); native select for now. */}
+            <select aria-label={A.appLabel} value={app} onChange={(e) => setApp(e.target.value)} className="h-6 rounded-full border border-border bg-transparent px-2 text-label text-fg-secondary">
+              <option value="">{A.apps}</option>
+              {apps.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+        </div>
+        {topics && (
+          <p className="text-label text-fg-muted" data-testid="activity-sources">
+            {A.sourcesConnected}: {connected.length ? connected.join(', ') : A.none}. {A.sourcesNot}: {notConnected.length ? notConnected.join(', ') : A.none}.
+          </p>
+        )}
+        {error && <p role="alert" className="text-label text-danger">{error}</p>}
         {events === null ? (
           <div aria-busy className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+        ) : visible.length === 0 ? (
+          <p className="py-2 text-xs text-fg-muted">{emptyCopy()}</p>
         ) : (
-          <EventTimeline events={rows} facets={facets} allFacet="all" facetsLabel={A.filtersLabel} streamLabel={A.streamLabel} emptyLabel={events.length === 0 ? A.empty : A.noMatch} filteredEmptyLabel={A.noMatch} />
+          <EventFeed entries={visible} now={now} label={A.streamLabel} time="clock" onMore={next !== null ? { label: A.showMore(50), run: () => void more() } : undefined} />
         )}
-        {next !== null && <Button className="mt-3" size="sm" variant="outline" onClick={() => void more()}>{A.showMore(50)}</Button>}
       </div>
     </div>
   )

@@ -90,26 +90,28 @@ export function AgentsPage() {
         <Btn tone="primary" className="shrink-0" onClick={() => setLaunchOpen(true)}>{AGENTS.launch}</Btn>
       </div>
 
+      {tab !== 'teams' && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle px-4 py-2.5 text-xs text-fg-secondary">
+          {([['working', counts.working], ['waiting', counts.waiting], ['idle', counts.idle], ['unknown', counts.unknown]] as const).map(([k, n]) => (
+            <span key={k} className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{data ? n : AGENTS.na}</b> {k}</span>
+          ))}
+          {counts.stale > 0 && <span className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{counts.stale}</b> stale</span>}
+          <div className="w-full sm:w-[200px]">
+            <SegmentedProgress
+              label={AGENTS.summaryText(counts)}
+              items={[{ state: 'done', count: counts.working }, { state: 'blocked', count: counts.waiting }, { state: 'todo', count: counts.idle + counts.stale + counts.unknown }]}
+            />
+          </div>
+          <span className="flex-1" />
+          {/* The page's one live region: counts per state, polite. */}
+          <p role="status" aria-live="polite" className="sr-only">{AGENTS.summaryText(counts)}</p>
+          <span className="ml-auto text-fg-muted sm:ml-0">{AGENTS.streamStatus[status]}</span>
+        </div>
+      )}
       {tab === 'teams' && <div className="flex-1 overflow-auto"><TeamOperations /></div>}
       {tab === 'activity' && <ActivityTab busTick={busTick} now={now} />}
       {tab === 'sessions' && (
         <>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle px-4 py-2.5 text-xs text-fg-secondary">
-            {([['working', counts.working], ['waiting', counts.waiting], ['idle', counts.idle], ['unknown', counts.unknown]] as const).map(([k, n]) => (
-              <span key={k} className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{data ? n : AGENTS.na}</b> {k}</span>
-            ))}
-            {counts.stale > 0 && <span className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{counts.stale}</b> stale</span>}
-            <div className="w-full sm:w-[200px]">
-              <SegmentedProgress
-                label={AGENTS.summaryText(counts)}
-                items={[{ state: 'done', count: counts.working }, { state: 'blocked', count: counts.waiting }, { state: 'todo', count: counts.idle + counts.stale + counts.unknown }]}
-              />
-            </div>
-            <span className="flex-1" />
-            {/* The page's one live region: counts per state, polite. */}
-            <p role="status" aria-live="polite" className="sr-only">{AGENTS.summaryText(counts)}</p>
-            <span className="ml-auto text-fg-muted sm:ml-0">{AGENTS.streamStatus[status]}</span>
-          </div>
           {stale && <p role="status" className="border-b border-border px-4 py-2 dash-caption text-fg-muted">{AGENTS.reconnecting}</p>}
           <DashboardSearchToolbar value={query} onChange={setQuery} label={AGENTS.searchLabel} placeholder={AGENTS.searchPlaceholder} slashToFocus>
             <FilterChipGroup ariaLabel={AGENTS.filtersLabel} variant="outline" chips={(Object.keys(AGENTS.filters) as FilterId[]).map((f) => ({ value: f, label: filterLabel(f), activeClassName: f === 'needs_you' ? 'text-danger' : undefined }))} selected={[filter]} onToggle={(v) => setFilter(v as FilterId)} />
