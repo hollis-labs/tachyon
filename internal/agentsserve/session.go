@@ -126,6 +126,7 @@ type row struct {
 	clearInferred                                          bool
 	tok                                                    *[4]int64
 	toolCalls                                              int64
+	taskRef                                                string
 }
 
 // extras are the per-minute figures of the last hour: sparkline and the hour token rollup.
@@ -135,7 +136,7 @@ type extras struct {
 	any   bool
 }
 
-const sessionCols = `session_id,session_state,work_state,work_known,pending_approval,pending_question,alive,worker_online,started_ns,last_activity_ns,ended_ns,provider,model,workroot,agent_urn,logical_agent_id,agent_name,parent_session_id,replaced_by,one_liner_json,ctx_used,ctx_window,compactions_json,last_clear_ns,last_clear_inferred,tok_in,tok_out,tok_cr,tok_cw,tool_calls FROM agents_sessions`
+const sessionCols = `session_id,session_state,work_state,work_known,pending_approval,pending_question,alive,worker_online,started_ns,last_activity_ns,ended_ns,provider,model,workroot,agent_urn,logical_agent_id,agent_name,parent_session_id,replaced_by,one_liner_json,ctx_used,ctx_window,compactions_json,last_clear_ns,last_clear_inferred,tok_in,tok_out,tok_cr,tok_cw,tool_calls,task_ref FROM agents_sessions`
 
 func tri(n sql.NullInt64) *bool {
 	if !n.Valid {
@@ -172,7 +173,7 @@ func (s *Server) rows(ctx context.Context, where string, args ...any) ([]row, er
 		var pa, pq, al, wo, cu, cw, ti, to, tcr, tcw sql.NullInt64
 		var st, la, en, lc, ci int64
 		if err := rs.Scan(&r.id, &r.sessionState, &r.workState, &known, &pa, &pq, &al, &wo, &st, &la, &en, &r.provider, &r.model, &r.workroot, &r.urn, &r.logical, &r.name,
-			&r.parent, &r.replaced, &r.oneLiner, &cu, &cw, &r.compactions, &lc, &ci, &ti, &to, &tcr, &tcw, &r.toolCalls); err != nil {
+			&r.parent, &r.replaced, &r.oneLiner, &cu, &cw, &r.compactions, &lc, &ci, &ti, &to, &tcr, &tcw, &r.toolCalls, &r.taskRef); err != nil {
 			return nil, err
 		}
 		if known == 0 {
@@ -375,6 +376,14 @@ func Summary(ss []Session) map[string]int {
 	return out
 }
 
+// withAssignment fills the A5 join for a session launched with a task; without an Assigner it stays null.
+func (s *Server) withAssignment(ctx context.Context, sess Session, r row) Session {
+	if s.Assigner != nil && r.taskRef != "" {
+		sess.Assignment = s.Assigner.Assignment(ctx, r.id, r.taskRef)
+	}
+	return sess
+}
+
 // all builds every stored session.
 func (s *Server) all(ctx context.Context) ([]Session, error) {
 	now := s.now()
@@ -389,7 +398,7 @@ func (s *Server) all(ctx context.Context) ([]Session, error) {
 	stale := s.staleAfter(ctx)
 	out := make([]Session, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, build(r, ex[r.id], now, stale))
+		out = append(out, s.withAssignment(ctx, build(r, ex[r.id], now, stale), r))
 	}
 	return out, nil
 }
