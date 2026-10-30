@@ -45,17 +45,20 @@ type Tool struct {
 }
 
 type Message struct {
-	ID          string    `json:"id"`
-	ThreadID    string    `json:"thread_id"`
-	Seq         int64     `json:"seq"`
-	Role        string    `json:"role"`
-	Body        string    `json:"body"`
-	State       string    `json:"state"`
-	Error       string    `json:"error,omitempty"`
-	RuntimeTurn string    `json:"runtime_turn,omitempty"`
-	Tools       []Tool    `json:"tools"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string `json:"id"`
+	ThreadID    string `json:"thread_id"`
+	Seq         int64  `json:"seq"`
+	Role        string `json:"role"`
+	Body        string `json:"body"`
+	State       string `json:"state"`
+	Error       string `json:"error,omitempty"`
+	RuntimeTurn string `json:"runtime_turn,omitempty"`
+	Tools       []Tool `json:"tools"`
+	// Kind is text, card, plan or system; Meta is the kind's reference (a card item id, a plan id).
+	Kind      string         `json:"kind"`
+	Meta      map[string]any `json:"meta,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 type Thread struct {
@@ -142,13 +145,13 @@ func (s *Store) SetSession(ctx context.Context, threadID, session string) error 
 	})
 }
 
-const messageColumns = "id,thread_id,seq,role,body,state,error,runtime_turn,tools,created_ns,updated_ns"
+const messageColumns = "id,thread_id,seq,role,body,state,error,runtime_turn,tools,created_ns,updated_ns,kind,COALESCE(meta_json,'')"
 
 func scanMessage(row interface{ Scan(...any) error }) (Message, error) {
 	var m Message
-	var tools string
+	var tools, meta string
 	var created, updated int64
-	if err := row.Scan(&m.ID, &m.ThreadID, &m.Seq, &m.Role, &m.Body, &m.State, &m.Error, &m.RuntimeTurn, &tools, &created, &updated); err != nil {
+	if err := row.Scan(&m.ID, &m.ThreadID, &m.Seq, &m.Role, &m.Body, &m.State, &m.Error, &m.RuntimeTurn, &tools, &created, &updated, &m.Kind, &meta); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Message{}, ErrNotFound
 		}
@@ -157,6 +160,9 @@ func scanMessage(row interface{ Scan(...any) error }) (Message, error) {
 	m.Tools = []Tool{}
 	if err := json.Unmarshal([]byte(tools), &m.Tools); err != nil {
 		return Message{}, err
+	}
+	if meta != "" {
+		_ = json.Unmarshal([]byte(meta), &m.Meta)
 	}
 	m.CreatedAt = time.Unix(0, created).UTC()
 	m.UpdatedAt = time.Unix(0, updated).UTC()
@@ -194,7 +200,7 @@ func (s *Store) AppendTurn(ctx context.Context, threadID, body string, now time.
 		}
 		operator.Seq, agent.Seq = seq+1, seq+2
 		for _, m := range []Message{operator, agent} {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO app_agent_messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+			if _, err := tx.ExecContext(ctx, `INSERT INTO app_agent_messages(id,thread_id,seq,role,body,state,error,runtime_turn,tools,created_ns,updated_ns) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
 				m.ID, m.ThreadID, m.Seq, m.Role, m.Body, m.State, m.Error, m.RuntimeTurn, "[]", ns(m.CreatedAt), ns(m.UpdatedAt)); err != nil {
 				return err
 			}
@@ -326,4 +332,36 @@ func (s *Store) MessageSeq(ctx context.Context, threadID, messageID string) (int
 		return 0, ErrNotFound
 	}
 	return seq, err
+}
+
+// AppendNote adds a finished agent-side message of a non-text kind (a plan card, say) to the
+// thread, in sequence. It is not a turn: no runtime is involved and the thread stays free.
+func (s *Store) AppendNote(ctx context.Context, threadID, kind, body string, meta map[string]any, now time.Time) (Message, error) {
+	if kind != "card" && kind != "plan" && kind != "system" {
+		return Message{}, ErrInvalid
+	}
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		return Message{}, err
+	}
+	m := Message{ID: uuid.NewString(), ThreadID: threadID, Role: RoleAgent, Body: body, State: StateComplete, Tools: []Tool{}, Kind: kind, Meta: meta, CreatedAt: now, UpdatedAt: now}
+	err = s.DB.Writer.Submit(ctx, "app_agent_note", func(ctx context.Context, tx *sql.Tx) error {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM app_agent_threads WHERE id=?`, threadID).Scan(&exists); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM app_agent_messages WHERE thread_id=?`, threadID).Scan(&m.Seq); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO app_agent_messages(id,thread_id,seq,role,body,state,error,runtime_turn,tools,created_ns,updated_ns,kind,meta_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			m.ID, threadID, m.Seq, m.Role, m.Body, m.State, "", "", "[]", ns(now), ns(now), kind, string(raw)); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE app_agent_threads SET updated_ns=? WHERE id=?`, ns(now), threadID)
+		return err
+	})
+	return m, err
 }

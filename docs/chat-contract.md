@@ -56,3 +56,12 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   `message_ref` must be a message of that thread (400 otherwise); a topic's `seq` is resolved server-side for click-to-jump.
   POST bookmark is idempotent per (thread, message): 201 on create, 200 with the existing row on repeat (a repeat note updates it).
   Caps: 200 topics, 500 bookmarks per thread (413 `limit_reached`). Agent verb `chat.topic.add` (app threads, preset `chat-topic-add`).
+- T2 (plan/todos): one plan per thread (`scope=thread`) and one per project (`scope=project`, resolved from the thread's
+  `project_id`; 409 `no_project` when the chat has none). A todo list is a plan with `title: null`. `PUT .../plan` replaces the
+  whole plan (`expected_revision` 0 to create; 409 on a stale one; `id`, if sent, must name the existing plan); steps keep
+  their ids, steps you omit are removed, new steps get server ids. `PATCH .../plan/steps/{id}`, `POST .../plan/steps` and
+  `POST .../plan/reorder` also need the plan's `expected_revision`; every change bumps the plan revision. A step linked to a Torque
+  task (`task_ref`, set only by the Dispatch card in T5) follows the task's status: by hand it can only be parked (`blocked`) and
+  unparked (`todo`), else 409 `linked_step`. `SyncTaskStatuses` is the one-way Torque sync (not scheduled yet). Agent writes
+  (`chat.plan.get|write|step`, preset `chat-plan`) can propose and cancel but never approve, post a `kind: "plan"` message
+  (`meta.plan_id`) to the thread and send a `panel` signal. Events: `plan {plan_id, revision, progress}`.

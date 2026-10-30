@@ -19,17 +19,19 @@ const (
 
 // UIMessage is a message in the shape the chat UI reads (ChatMessage).
 type UIMessage struct {
-	ID        string `json:"id"`
-	Seq       int64  `json:"seq"`
-	ThreadID  string `json:"threadId"`
-	From      string `json:"from"`
-	Body      string `json:"body"`
-	At        int64  `json:"at"`
-	Delivery  string `json:"delivery,omitempty"`
-	Streaming bool   `json:"streaming,omitempty"`
-	Blocked   bool   `json:"blocked,omitempty"`
-	Tools     []Tool `json:"tools"`
-	Error     string `json:"error,omitempty"`
+	ID        string         `json:"id"`
+	Seq       int64          `json:"seq"`
+	ThreadID  string         `json:"threadId"`
+	From      string         `json:"from"`
+	Body      string         `json:"body"`
+	At        int64          `json:"at"`
+	Delivery  string         `json:"delivery,omitempty"`
+	Streaming bool           `json:"streaming,omitempty"`
+	Blocked   bool           `json:"blocked,omitempty"`
+	Kind      string         `json:"kind,omitempty"`
+	Meta      map[string]any `json:"meta,omitempty"`
+	Tools     []Tool         `json:"tools"`
+	Error     string         `json:"error,omitempty"`
 }
 
 // Event is one change a subscriber sees (ChatEvent).
@@ -154,6 +156,9 @@ func ui(m Message, delivery string) UIMessage {
 		at++
 	}
 	u := UIMessage{ID: m.ID, Seq: m.Seq, ThreadID: m.ThreadID, From: m.Role, Body: m.Body, At: at, Tools: m.Tools, Error: m.Error}
+	if m.Kind != "" && m.Kind != "text" {
+		u.Kind, u.Meta = m.Kind, m.Meta
+	}
 	if u.Tools == nil {
 		u.Tools = []Tool{}
 	}
@@ -494,4 +499,20 @@ func (s *Service) poll(ctx context.Context, l *live, session, turn string) {
 		msg = errText(last)
 	}
 	s.finish(l, StateFailed, msg)
+}
+
+// AppendNote stores a plan/card/system message in the thread and tells its subscribers.
+func (s *Service) AppendNote(ctx context.Context, threadID, kind, body string, meta map[string]any) (UIMessage, error) {
+	m, err := s.Store.AppendNote(ctx, threadID, kind, body, meta, s.now())
+	if err != nil {
+		return UIMessage{}, err
+	}
+	u := ui(m, "")
+	s.mu.Lock()
+	s.publish(threadID, Event{Type: "message", Message: &u})
+	s.mu.Unlock()
+	if s.OnChange != nil {
+		s.OnChange(threadID)
+	}
+	return u, nil
 }

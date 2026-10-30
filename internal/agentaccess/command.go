@@ -31,7 +31,7 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		f.StringVar(&identity, "identity", "", "existing identity UUID; omitted creates a new identity")
 		f.StringVar(&path, "token-file", "", "new private token file (never overwritten)")
 		f.DurationVar(&ttl, "ttl", 30*24*time.Hour, "token lifetime, maximum 2160h")
-		f.StringVar(&preset, "preset", "planner-read", "planner-read, planner-torque-read, torque-read, tesseract-read, app-agent-read, chat-workspace-read, chat-topic-add, portfolio-read, portfolio-write, actions-request or card-ask")
+		f.StringVar(&preset, "preset", "planner-read", "planner-read, planner-torque-read, torque-read, tesseract-read, app-agent-read, chat-workspace-read, chat-topic-add, chat-plan, portfolio-read, portfolio-write, actions-request or card-ask")
 		f.StringVar(&kinds, "kinds", "", "explicit Planner kinds; overrides the preset")
 		f.StringVar(&verbs, "verbs", "", "explicit supported verbs; overrides the preset")
 	case "revoke", "disable":
@@ -59,6 +59,8 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 			grants = ChatWorkspaceRead()
 		case "chat-topic-add":
 			grants = ChatTopicAdd()
+		case "chat-plan":
+			grants = ChatPlan()
 		case "app-agent-read":
 			grants = AppAgentRead()
 		case "planner-torque-read":
