@@ -11,3 +11,5 @@ export { CAPTION, Chip, GroupHeading, Kbd, StateDot, type ChipTone, type DotStat
 export { FloatingPrompt, type FloatingPromptProps } from './floating-prompt'
 export { InlineEdit, type InlineEditProps } from './inline-edit'
 export { SegmentedSwitch, type SegmentedSwitchProps } from './segmented-switch'
+export { MilestoneTrack, type Milestone } from './milestone-track'
+export { ProgressLine } from './progress-line'
