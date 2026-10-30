@@ -216,6 +216,7 @@ type Projection struct {
 	Recommend     string
 	ReasonReq     bool
 	DeferredUntil *time.Time
+	Gate          Gate
 }
 
 // Project builds the projection of a record at now. batchable and batch_blockers
@@ -242,7 +243,7 @@ func Project(rec hitl.Record, now time.Time, deferredUntil *time.Time) Projectio
 		Requester:  map[string]string{"id": f.ReqID, "label": f.ReqLabel, "kind": f.ReqKind},
 		SessionRef: f.SessionRef, AskedAt: rec.CreatedAt, Risk: f.Risk, RiskReasons: reasons, Group: f.Group,
 		Batchable: len(blockers) == 0, BatchBlockers: blockers, EffectClasses: classes, ExpiresAt: rec.ExpiresAt,
-		ServerNowMs: now.UnixMilli(), Recommend: f.Recommend, ReasonReq: f.ReasonReq, DeferredUntil: deferredUntil}
+		ServerNowMs: now.UnixMilli(), Recommend: f.Recommend, ReasonReq: f.ReasonReq, DeferredUntil: deferredUntil, Gate: CanResolve(rec, now)}
 }
 
 func (p Projection) fields() map[string]any {
@@ -262,6 +263,13 @@ func (p Projection) fields() map[string]any {
 	}
 	if p.Recommend != "" {
 		m["recommendation"] = p.Recommend
+	}
+	m["approvable"] = p.Gate.Approvable
+	if !p.Gate.Approvable {
+		m["approvable_reason"] = p.Gate.Reason
+	}
+	if p.Gate.Phrase != "" {
+		m["confirm"] = map[string]string{"phrase": p.Gate.Phrase}
 	}
 	return m
 }

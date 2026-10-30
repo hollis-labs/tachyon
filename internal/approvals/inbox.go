@@ -3,6 +3,7 @@ package approvals
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -291,6 +292,8 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Decision string `json:"decision"`
 			Note     string `json:"note,omitempty"`
 			Reply    string `json:"reply,omitempty"`
+			// Confirmation is the typed phrase an approval of a stored-high or cerberus item carries.
+			Confirmation string `json:"confirmation,omitempty"`
 			// Answers, Decisions and Payload are card-only; a card response
 			// is checked against the stored request before it is recorded.
 			Answers   json.RawMessage `json:"answers,omitempty"`
@@ -315,13 +318,28 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var request hitl.EnqueueRequest
 	_ = json.Unmarshal(item.RequestSnapshot, &request)
 	class := extraString(request, "class")
-	if class == "high" || request.Source.ApplicationID == "cerberus" {
-		fail(w, 403, "provider_handoff_required", "Complete this decision in the provider console.")
+	rec, err := i.Store.Get(r.Context(), item.ItemID)
+	if err != nil {
+		writeHITLError(w, err)
 		return
 	}
-	if class != "low" && class != "medium" {
+	// Terminal and expired items fall through to the service, which answers them as before; the gate
+	// only refuses what the browser can never decide.
+	gate := CanResolve(rec, time.Now())
+	if gate.Reason == ReasonUnsupportedKind {
 		fail(w, 403, "unsupported_class", "This request cannot be decided here.")
 		return
+	}
+	if gate.Phrase != "" {
+		if !assurance.Satisfies(assurance.ParseLevel(participant.Assurance), assurance.ActionResolveHigh) {
+			fail(w, 403, "assurance_insufficient", "Enter your operator key to decide this request. "+ElevationCopy(session.ElevationTTL, session.ElevationExpiresAt))
+			return
+		}
+		if cmd.Response != nil && cmd.Response.Decision == "approved" && subtle.ConstantTimeCompare([]byte(strings.TrimSpace(cmd.Response.Confirmation)), []byte(gate.Phrase)) != 1 {
+			_ = i.Store.LogEvent(r.Context(), Event{EventID: "evt_" + item.ItemID + "_confirm_failed_" + strconv.FormatInt(time.Now().UnixNano(), 36), ItemID: item.ItemID, Kind: "confirmation_failed", ActorRef: participant.PrincipalRef, Assurance: participant.Assurance, Revision: item.Revision, ReasonCode: "phrase"})
+			fail(w, 422, "confirmation_required", "Type the confirmation phrase exactly.")
+			return
+		}
 	}
 	if class == "medium" && !assurance.Satisfies(assurance.ParseLevel(participant.Assurance), assurance.ActionResolveMedium) {
 		fail(w, 403, "assurance_insufficient", "Enter your operator key to decide this request. "+ElevationCopy(session.ElevationTTL, session.ElevationExpiresAt))
