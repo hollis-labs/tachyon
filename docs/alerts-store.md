@@ -67,6 +67,5 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
 
 ## Not here
 
-The stream (AL4), humanised detail and approval linkage (AL5), prefs semantics (AL6). Detail returns an empty `technical`, `actions`
-and `approval` until AL5. Ingest adapters are not started by the server yet, so coalescing runs on whatever feeds `Store.Ingest`
-(today the forge poller).
+Coalescing, escalation and wake-ups (AL3) and humanised detail with approval linkage (AL5) arrive in their own PRs; prefs semantics are
+AL6. Torque and Tether-poll adapters, and `GET /alerts/rules`, do not exist yet.
