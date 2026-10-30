@@ -40,7 +40,7 @@ function fakeClient(active: ServerAlert[], history: ServerAlert[] = []) {
     prefs: vi.fn(async () => prefs),
     savePrefs: vi.fn(async (p: ServerPrefs) => p),
     migratePrefs: vi.fn(),
-    sources: vi.fn(),
+    sources: vi.fn(async () => ({ sources: [{ source: 'torque', state: 'down', last_event_ms: 0, note: 'HTTP 401' }, { source: 'activity', state: 'ok', last_event_ms: 1, note: '' }], server_now_ms: 1 })),
     streamUrl: vi.fn((after?: number) => `/stream?after=${after ?? ''}`),
   }
   return c as typeof c & AlertsClient
@@ -95,6 +95,20 @@ describe('ServerAlertsStore', () => {
   })
 })
 
+describe('retry', () => {
+  it('refetches and opens a fresh stream after the connection gave up', async () => {
+    const client = fakeClient([alert('al_1')])
+    vi.stubGlobal('EventSource', class {})
+    const made: string[] = []
+    const store = new ServerAlertsStore(client, (u) => { made.push(u); return {} as EventSource })
+    await store.load()
+    await store.retry()
+    expect(client.list).toHaveBeenCalledTimes(4)
+    expect(made).toEqual(['/stream?after=5'])
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('server prefs mapping', () => {
   it('derives the bell and toast thresholds from notify_level and keeps the zone', () => {
     const p = fromServerPrefs({ ...prefs, notify_level: 'everything', quiet: true })
@@ -124,6 +138,7 @@ describe('ServerAlertHost', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
     const tray = screen.getByRole('dialog', { name: 'Alerts' })
     expect(within(tray).getByText('Deploy failed')).toBeTruthy()
+    expect(within(tray).getByText(/Alerts from torque are not updating/)).toBeTruthy()
     expect(within(tray).getByText('Needs you')).toBeTruthy()
     await act(async () => fireEvent.click(within(tray).getByRole('button', { name: /Mark all read/ })))
     expect(client.bulk).toHaveBeenCalledWith('read', { ids: ['al_1'] })

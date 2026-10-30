@@ -24,7 +24,7 @@ export interface AlertsController {
   /** Server alerts: close an alert as handled (an optional resolution text). */
   settle?: (id: string, resolution?: string) => void
   /** Server alerts only: connection to the alerts stream. Absent for the console-event feed. */
-  feed?: { ready: boolean; status: 'live' | 'connecting' | 'reconnecting' | 'error' }
+  feed?: { ready: boolean; status: 'live' | 'connecting' | 'reconnecting' | 'error'; sourcesDown?: string[]; retry?: () => void }
   /** Server alerts only: last failed write, plain text. */
   error?: string | null
   /** Alert open in the detail modal (A2), or null. */
