@@ -57,6 +57,15 @@ func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, db, id string, err e
 		status, code, message = 502, "source_unavailable", err.Error()
 	}
 	body := Item{"error": message, "code": code}
+	var tc ErrTaskConflict
+	switch {
+	case errors.As(err, &tc):
+		send(w, 409, Item{"error": "Task status changed; read and reconcile before retrying.", "code": "conflict", "details": Item{"current": Item{"id": tc.ID, "status": tc.Status}}})
+		return
+	case errors.Is(err, ErrNeedsReason):
+		send(w, 400, Item{"error": "A reason is required to block a task.", "code": "invalid", "details": Item{"field": "reason"}})
+		return
+	}
 	if status == 409 && db != "" && id != "" {
 		if v, e := h.Owned.Get(r.Context(), db, id); e == nil {
 			body["details"] = Item{"current": v}
@@ -220,11 +229,20 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				out, err = Schema(id)
 			case len(parts) == 3 && parts[2] == "links" && db != "schema":
 				out, err = h.Owned.Links(ctx, db, id)
+			case len(parts) == 3 && db == "priorities" && parts[2] == "tasks":
+				out, err = h.ThemeTasks(ctx, id)
 			case len(parts) == 3 && db == "workstreams" && parts[2] == "tasks":
 				var row Item
 				row, err = h.Owned.Get(ctx, db, id)
 				if err == nil {
-					out, err = h.Tasks.ForWorkstream(ctx, row)
+					var wt WorkstreamTasks
+					if wt, err = h.Tasks.ForWorkstream(ctx, row); err == nil {
+						var all []TaskBrief
+						if all, _, err = h.Tasks.scopeTasks(ctx, []Item{row}); err == nil {
+							wt.Lanes, wt.LaneCounts, err = h.lanes(ctx, all)
+						}
+						out = wt
+					}
 				}
 			case len(parts) == 1:
 				filters := map[string]string{}
@@ -253,6 +271,18 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					from, to := object(b["from"]), object(b["to"])
 					out, err = h.Owned.Relate(ctx, RelationRequest{From: PortfolioRef{textField(from, "db"), textField(from, "id")}, To: PortfolioRef{textField(to, "db"), textField(to, "id")}, ExpectedRevision: rev, Field: textField(b, "field"), Add: r.Method == http.MethodPost}, actor)
 				}
+			}
+		case r.Method == http.MethodPost && len(parts) == 3 && parts[0] == "tasks" && parts[2] == "transition":
+			var b Item
+			b, err = readBody(w, r, "to", "expected_status", "reason", "summary", "pr")
+			if err == nil {
+				out, err = h.Transition(ctx, parts[1], b, actor)
+			}
+		case r.Method == http.MethodPut && len(parts) == 3 && parts[0] == "tasks" && parts[2] == "meta":
+			var b Item
+			b, err = readBody(w, r, "done_summary", "pr_cites")
+			if err == nil {
+				out, err = h.PutMeta(ctx, parts[1], b, actor)
 			}
 		case r.Method == http.MethodPut && len(parts) == 3 && parts[2] == "pin":
 			var b Item
@@ -331,7 +361,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			allowed := []string{"expected_revision"}
 			switch action {
 			case "comments":
-				allowed = append(allowed, "text", "kind")
+				allowed = append(allowed, "text", "kind", "status", "pin")
 			case "links":
 				if r.Method == http.MethodPost {
 					allowed = append(allowed, "link")
@@ -375,6 +405,8 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							default:
 								err = objects.ErrInvalid
 							}
+						} else if action == "comments" {
+							out, err = h.Owned.CommentWithStatus(ctx, db, id, rev, b, actor)
 						} else {
 							out, err = h.Owned.Action(ctx, db, id, rev, action, b, actor)
 						}
