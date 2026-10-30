@@ -255,6 +255,12 @@ func (a *API) current(ctx context.Context) (alertsapi.Prefs, bool, error) {
 	return *p, true, nil
 }
 
+// CurrentPrefs returns the saved prefs, or the defaults, for in-process users such as the stream's toast flag.
+func (a *API) CurrentPrefs(ctx context.Context) (alertsapi.Prefs, error) {
+	p, _, err := a.current(ctx)
+	return p, err
+}
+
 func (a *API) getPrefs(w http.ResponseWriter, r *http.Request) {
 	p, _, err := a.current(r.Context())
 	if err != nil {

@@ -6,6 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hollis-labs/tachyon/internal/alertsapi"
+	"github.com/hollis-labs/tachyon/internal/alertsource"
+	"github.com/hollis-labs/tachyon/internal/alertstore"
 )
 
 func TestAlertsStubIsMountedOnlyWhenEnabled(t *testing.T) {
@@ -78,5 +83,50 @@ func TestAlertsRealRoutes(t *testing.T) {
 	}
 	if w := do("GET", "/console/state", "", false); w.Code != 200 || !strings.Contains(w.Body.String(), `"data"`) {
 		t.Errorf("state list: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestAlertsFeedStreamAndSources(t *testing.T) {
+	t.Setenv("TACHYON_ALERTS_SOURCES", "0")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }))
+	defer upstream.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	s := New(Config{PluginBinDir: t.TempDir(), DataDir: t.TempDir(), CacheDir: t.TempDir(), ApprovalQueueURL: upstream.URL, TranscriptMaxSessions: 5000})
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cancel(); _ = s.Stop(context.Background()) }()
+	h := s.Routes()
+	base := "https://tachyon.test/api/plugins/console/v1/alerts"
+	get := func(path string, hdr map[string]string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", base+path, nil)
+		for k, v := range hdr {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := get("/sources", nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"sources"`) {
+		t.Errorf("sources: %d %s", w.Code, w.Body)
+	}
+	if w := get("/sources", map[string]string{"Authorization": "Bearer x"}); w.Code != 403 {
+		t.Errorf("agent token on sources: %d", w.Code)
+	}
+	if w := get("/stream?once=1", nil); w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") || !strings.Contains(w.Body.String(), `"counts"`) {
+		t.Errorf("stream: %d %s", w.Code, w.Body)
+	}
+	v, ok := s.ext.Load(alertsKey)
+	if !ok {
+		t.Fatal("alerts store missing")
+	}
+	ev := alertsource.Event{Source: "t", SourceEventID: "1", Kind: "alert.raised", AtMS: time.Now().UnixMilli(),
+		Payload: map[string]any{"title": "Disk full"}, Subjects: []alertsapi.Subject{{Kind: "svc", Ref: "db", Label: "db"}}, SeverityHint: "error"}
+	if err := v.(*alertstore.API).Store.Ingest(ev); err != nil {
+		t.Fatal(err)
+	}
+	w := get("/stream?after=0&once=1", nil)
+	if !strings.Contains(w.Body.String(), `"type":"alert.created"`) || !strings.Contains(w.Body.String(), `"toast":true`) {
+		t.Errorf("a created alert is streamed with a toast flag: %s", w.Body)
 	}
 }

@@ -52,6 +52,19 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
   wakes when an ingested event carries that subject.
 - `OnChange(id, seq, change)` now also reports `updated`, `woke` and `escalated`; the stream (AL4) turns those into toasts.
 
+## Wiring (CW-20261030-0131, register_alertsfeed.go)
+
+- `Store.OnChange` publishes to an in-process `alertsstream.Hub`: an `alert.<change>` frame with the server-computed `toast`
+  (`alertsprefs.ToastFor`: created/updated=raise/woke/escalated can toast, state changes never) plus a `counts` frame, both under
+  the alert's seq.
+- `GET /alerts/stream` (Last-Event-ID or `?after=`, resync on a gap) and `GET /alerts/sources` are mounted explicitly; like the rest of the
+  alert surface they refuse an Authorization header.
+- Adapters started with the server, each under `alertsource.Supervise` (backoff to 1 min, health in `/sources`): the activity monitor
+  stream (`TACHYON_ACTIVITY_URL` + `/api/stream`, cursor-resumed) and the Agents bus feed (`bus_events`, polled every 5 s). A 200/min
+  per-source limiter raises the "N events dropped" alert. `TACHYON_ALERTS_SOURCES=0` leaves the adapters off; `TACHYON_ALERTS_STUBS=1`
+  leaves all of this to the stub.
+- Not started because they do not exist yet: the Torque and Tether-poll adapters. `GET /alerts/rules` is not served.
+
 ## Not here
 
 The stream (AL4), humanised detail and approval linkage (AL5), prefs semantics (AL6). Detail returns an empty `technical`, `actions`
