@@ -5,6 +5,8 @@ export type Mode = "light" | "dark" | "system"
 /** What actually paints: `system` resolved against the OS preference. */
 export type ResolvedMode = "light" | "dark"
 
+/** The one palette. Its tokens ship in design-tokens (themes.css); modes switch light/dark. */
+export const NANITE_DEFAULT = "nanite-default"
 export const MODE_KEY = "mode"
 export const DEFAULT_MODE: Mode = "system"
 export const MODES: readonly Mode[] = ["light", "dark", "system"]

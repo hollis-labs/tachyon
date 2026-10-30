@@ -18,7 +18,7 @@
         } catch {}
         const dark = window.matchMedia("(prefers-color-scheme: dark)");
         const apply = () => root.setAttribute("data-mode", mode === "system" ? (dark.matches ? "dark" : "light") : mode);
-        root.setAttribute("data-theme", "p4-white");
+        root.setAttribute("data-theme", "nanite-default");
         apply();
       })();
     </script>
