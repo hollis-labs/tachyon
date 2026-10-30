@@ -24,3 +24,11 @@ export const SECTIONS = [
   { id: 'history', label: 'History' },
 ] as const
 export type SectionId = (typeof SECTIONS)[number]['id']
+
+export const LIBRARY_KINDS = [
+  { id: 'prompts', label: 'Prompts' },
+  { id: 'skills', label: 'Skills' },
+  { id: 'tool_servers', label: 'Tool servers' },
+  { id: 'policies', label: 'Policies' },
+] as const
+export const TAB_PATH: Record<BuilderTab, string> = { agents: '/builder/agents', launches: '/builder/launches', library: '/builder/library/prompts' }
