@@ -28,12 +28,13 @@ export interface ChatViewProps {
 /**
  * Three columns: threads, conversation, details. The host owns the data, the
  * selected thread and the conversation (children). Below 1024px the side
- * columns open as overlays; the details column starts collapsed.
+ * columns open as overlays; the details column starts open from 1280px up.
  */
 export function ChatView({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, newChatActions, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
   const [threadsOpen, setThreadsOpen] = useState(true)
-  const [detailsOpen, setDetailsOpen] = useState(false)
+  // Open from 1280px up so the column is seen; below that it stays collapsed (overlay under 1024px).
+  const [detailsOpen, setDetailsOpen] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches)
   const [threadsOverlay, setThreadsOverlay] = useState(false)
   const [detailsOverlay, setDetailsOverlay] = useState(false)
 
@@ -91,8 +92,9 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
       <ThreadDetails thread={activeThread} />
     </OverlaySidebar>
   ) : (
-    <Button type="button" variant="ghost" size="sm" aria-label={detailsOpen ? 'Hide thread details' : 'Show thread details'} aria-expanded={detailsOpen} onClick={() => setDetailsOpen((o) => !o)} className={iconBtn}>
+    <Button type="button" variant="ghost" size="sm" aria-label={detailsOpen ? 'Hide thread details' : 'Show thread details'} aria-expanded={detailsOpen} onClick={() => setDetailsOpen((o) => !o)} className={`${iconBtn} gap-1.5`}>
       {detailsOpen ? <PanelRightClose className="size-4" aria-hidden="true" /> : <PanelRight className="size-4" aria-hidden="true" />}
+      <span className="text-caption">Details</span>
     </Button>
   )
 

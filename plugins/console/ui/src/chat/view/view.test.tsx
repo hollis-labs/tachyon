@@ -89,6 +89,19 @@ describe('ChatView', () => {
     <ChatView threads={T} activeThread={active} onSelectThread={() => undefined}><p>conversation body</p></ChatView>
   )
 
+  it('starts with the details column open on a wide screen and lists what chat can do', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('1280'), addEventListener() {}, removeEventListener() {} }))
+    try {
+      render(view())
+      const aside = screen.getByRole('complementary', { name: 'Thread details' })
+      expect(within(aside).getByText('Chat can')).toBeTruthy()
+      expect(within(aside).getByText('Waiting on the backend')).toBeTruthy()
+      expect(screen.getByText('Details')).toBeTruthy()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('starts with the details column collapsed and toggles it', () => {
     render(view())
     expect(screen.queryByRole('complementary', { name: 'Thread details' })).toBeNull()
