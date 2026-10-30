@@ -230,6 +230,28 @@ describe("transcript dashboard", () => {
     expect(screen.queryByText("alpha two")).toBeNull()
     expect(await screen.findByText("1 of 1")).toBeTruthy()
   })
+  it("says when nothing is recorded and offers one action when the source is not connected", async () => {
+    read.mockResolvedValue({ ...snapshot, sessions: [] })
+    const first = render(<TranscriptDashboard />)
+    expect(await screen.findByText("No transcripts have been recorded yet.")).toBeTruthy()
+    first.unmount()
+    read.mockRejectedValue(new TranscriptError(403, "authentication", "Access denied"))
+    render(<TranscriptDashboard />)
+    expect(await screen.findByText("Connect the transcript source to explore sessions.")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy()
+  })
+  it("focuses transcript find on Ctrl+F only inside the reader", async () => {
+    read.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/snapshot" ? snapshot : { session: base, turns: [], turn_total: 0 },
+      ),
+    )
+    render(<TranscriptDashboard />)
+    fireEvent.click(await screen.findByRole("button", { name: /Fix routing/ }))
+    const find = await screen.findByLabelText("Find in transcript")
+    fireEvent.keyDown(screen.getByLabelText("Transcript reader"), { key: "f", ctrlKey: true })
+    expect(document.activeElement).toBe(find)
+  })
   it("removes prior private data when source authorization is revoked", async () => {
     read.mockResolvedValue(snapshot)
     render(<TranscriptDashboard />)

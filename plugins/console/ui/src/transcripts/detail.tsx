@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Button, Input } from "@hollis-labs/design-components"
+import { Button, Input, Skeleton } from "@hollis-labs/design-components"
 import { ArrowLeft, ChevronDown, ChevronUp, Copy, X } from "lucide-react"
 import { Segmented } from "../components/segmented"
 import { MessageBody } from "../chat/MessageBody"
@@ -104,6 +104,15 @@ export function TranscriptReader({
   const step = (by: number) =>
     hits.length && setCur((at + by + hits.length) % hits.length)
 
+  // Ctrl/Cmd+F finds in the transcript only while focus is inside the reader.
+  const box = useRef<HTMLElement>(null)
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault()
+      box.current?.querySelector<HTMLInputElement>("input[aria-label='Find in transcript']")?.focus()
+    }
+  }
+
   // Esc closes the reader (on a phone: back to the list).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -129,6 +138,8 @@ export function TranscriptReader({
 
   return (
     <article
+      ref={box}
+      onKeyDown={onKeyDown}
       aria-label="Transcript reader"
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto"
     >
@@ -271,9 +282,12 @@ export function TranscriptReader({
         </p>
       )}
       {loading && !error && (
-        <p role="status" className="px-4 py-6 dash-body text-fg-faint">
-          Loading transcript…
-        </p>
+        <div role="status" className="space-y-3 px-4 py-4">
+          <span className="sr-only">Loading transcript…</span>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       )}
       <div ref={end} className="px-4 py-3">
         {next !== undefined && !loading && !error && (
