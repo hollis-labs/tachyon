@@ -94,7 +94,7 @@ export function PlannerFrame({ active, onLens, counts, portfolio, needYou, fresh
             <Tabs value={active} onValueChange={(v) => LENSES.some((l) => l.db === v) && onLens(v as PlannerDb)} className="gap-0">
               <TabsList variant="line" className="w-full flex-wrap justify-start gap-1 p-0 group-data-horizontal/tabs:h-auto max-sm:flex-nowrap max-sm:overflow-x-auto">
                 {LENSES.map((l) => (
-                  <TabsTrigger key={l.db} value={l.db} className="h-5.5 flex-none rounded-full border-transparent px-2 text-label font-normal text-fg-muted after:hidden hover:text-fg data-active:border-border data-active:bg-selection data-active:text-fg">
+                  <TabsTrigger key={l.db} value={l.db} className="h-5.5 flex-none rounded-full border-transparent px-2 text-label font-normal text-fg-muted after:hidden hover:text-fg data-active:border-border! data-active:bg-selection! data-active:text-fg!">
                     {l.label}
                     {counts?.[l.db] !== undefined && <b className="font-mono text-caption font-normal tabular-nums text-fg-faint">{counts[l.db]}</b>}
                   </TabsTrigger>

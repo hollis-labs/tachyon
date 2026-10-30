@@ -11,7 +11,7 @@ import { CommandPalette, LinkLayer, PaletteHint, SpineList, type PaletteCommand 
 import { Context } from '@planner/shell/context'
 import { LinkKindPicker } from '@planner/shell/link-picker'
 import { usePlannerKeys } from '@planner/shell/use-planner-keys'
-import { LENSES, LINK_KINDS, type LinkKind } from '@planner/lib/vocabulary'
+import { LENSES, LINK_KINDS, lensPath, type LinkKind } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
 import { Focus } from '@planner/shell/focus'
 import { themeRowActions } from '@planner/components/planner/theme-board'
@@ -92,7 +92,7 @@ export default function PlannerShell() {
   // On a wide screen the focus pane is never left empty: with nothing open, open the first theme.
   // (Narrow screens keep the list, since opening a theme replaces it.)
   useEffect(() => {
-    if (openId || !board || typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 1024px)').matches) return
+    if (openId || !board || typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 640px)').matches) return
     // The first theme that needs the operator, else the first in the list.
     const rows = rowsOf(board)
     const first = rows.find((r) => (needYouIds ? needYouIds.has(r.id) : needsYou(r))) ?? rows[0]
@@ -215,7 +215,7 @@ export default function PlannerShell() {
       lens: (k) => {
         if (k === 'n') return setNeedYouOnly(true)
         const lens = LENSES.find((l) => l.key === k)
-        if (lens && lens.db !== 'themes') navigate(`/planner/${lens.db}`)
+        if (lens && lens.db !== 'themes') navigate(lensPath(lens.db))
       },
       view: (v) => row && setParams(v === 'timeline' ? { view: 'timeline' } : {}),
       pin: () => row && void togglePin(row.id),
@@ -278,7 +278,7 @@ export default function PlannerShell() {
     <LinkLayer titleOf={titleOf} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} onLink={(from, to) => setPendingLink({ from, to })}>
       <PlannerFrame
         active="themes"
-        onLens={(db: PlannerDb) => navigate(`/planner/${db}`)}
+        onLens={(db: PlannerDb) => navigate(lensPath(db))}
         counts={counts}
         portfolio={board?.progress}
         needYou={{ count: all.filter(needs).length, active: needYouOnly, onToggle: () => setNeedYouOnly((v) => !v) }}
