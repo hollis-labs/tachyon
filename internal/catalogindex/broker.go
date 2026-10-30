@@ -42,7 +42,7 @@ func (b *Broker) Publish(typ string, data map[string]any) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	e := Event{Type: typ, At: b.now().UnixMilli(), Data: data}
-	if typ == "catalog" {
+	if typ == "catalog" || typ == "change" { // builderapi.IDed: replayable
 		b.n++
 		e.ID = b.base + b.n
 		b.ring = append(b.ring, e)
