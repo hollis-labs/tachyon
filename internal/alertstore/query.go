@@ -208,8 +208,9 @@ type TimelineEntry struct {
 	Ref   json.RawMessage `json:"ref"`
 }
 
-// Detail is GET /{id}: the alert plus what AL1 can say about it. Humanised labels, technical fields,
-// actions and the approval block arrive with AL5; until then they are present and empty.
+// Detail is GET /{id}: the alert, its timeline, linked subjects, allowlisted technical fields from the latest
+// event, actions, and the approval block when the alert is about a queue item (the drawer decides through the
+// Approvals endpoints, never here).
 type Detail struct {
 	Alert     alertsapi.Alert     `json:"alert"`
 	Timeline  []TimelineEntry     `json:"timeline"`
@@ -250,5 +251,18 @@ func (s *Store) Detail(ctx context.Context, id string) (Detail, error) {
 	if a.Primary != nil {
 		d.Actions = append(d.Actions, map[string]any{"id": "open", "label": a.Primary.Label, "kind": "link"})
 	}
-	return d, rows.Err()
+	if err := rows.Err(); err != nil {
+		return d, err
+	}
+	if d.Approval = s.approvalBlock(ctx, a); d.Approval != nil {
+		d.Actions = append(d.Actions, map[string]any{"id": "approval", "label": "Review approval", "kind": "approval"})
+	}
+	var tj sql.NullString
+	if err := s.DB.Reader.QueryRowContext(ctx, `SELECT technical_json FROM alert_events WHERE alert_id = ? ORDER BY at_ms DESC, event_id DESC LIMIT 1`, id).Scan(&tj); err == nil && tj.Valid {
+		var fields []map[string]string
+		if json.Unmarshal([]byte(tj.String), &fields) == nil && len(fields) > 0 {
+			d.Technical = map[string]any{"fields": fields}
+		}
+	}
+	return d, nil
 }
