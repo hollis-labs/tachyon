@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { applyStreamEvent } from './data'
 import { ContextMeter, OneLiner, ageText, stateText } from './session-parts'
-import { matchesFilter, matchesQuery } from './sessions-view'
+import { SessionCards, matchesFilter, matchesQuery } from './sessions-view'
 import type { Session, SessionsResponse } from './types'
 
 afterEach(cleanup)
@@ -67,5 +67,15 @@ describe('filters', () => {
   it('searches name, workroot, tool and task', () => {
     const s = session({ id: 'a', one_liner: { verb: 'running', target: 'go test', tool: 'Bash', at: 0, calls_this_turn: 1 }, assignment: { task_ref: 'CW-1' } })
     expect(['builder', 'tachyon', 'bash', 'cw-1', 'nope'].map((q) => matchesQuery(s, q))).toEqual([true, true, true, true, false])
+  })
+})
+
+describe('session body', () => {
+  it('omits what is unknown instead of printing placeholders', () => {
+    const { rerender } = render(<SessionCards sessions={[session({ id: 'a' })]} now={0} onSelect={() => undefined} />)
+    for (const t of ['no activity yet', 'context unknown']) expect(screen.queryByText(t)).toBeNull()
+    expect(screen.queryByText(/^up /)).toBeNull()
+    rerender(<SessionCards sessions={[session({ id: 'a', runtime_ms: 120000, context: { used: 1, window: 2, pct: 50, source: 'stream', breakdown: null } })]} now={0} onSelect={() => undefined} />)
+    expect(screen.getByRole('progressbar')).toBeTruthy()
   })
 })

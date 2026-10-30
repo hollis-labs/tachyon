@@ -301,6 +301,20 @@ describe("held decisions", () => {
 })
 
 describe("history", () => {
+  it("sorts newest first and keeps one group per day", async () => {
+    const day = (n: number) => new Date(Date.now() - n * 86400000).toISOString()
+    const ev = (id: string, at: string, extra = {}) => ({ event_id: id, item_id: id, kind: "expired", status: "expired", at, actor: { ref: "", label: "System" }, mini: { title: id }, ...extra })
+    const history = vi.fn().mockResolvedValue({ events: [ev("old1", day(3)), ev("new1", day(0)), ev("mid", day(1), { reason: "deadline" }), ev("new2", day(0))] })
+    const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present: vi.fn().mockResolvedValue(item), history } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: /History/ }))
+    const list = await screen.findByRole("list", { name: "Decision history" })
+    const text = list.textContent ?? ""
+    expect(text.match(/Today/g)).toHaveLength(1)
+    expect(text.indexOf("Today")).toBeLessThan(text.indexOf("Yesterday"))
+    expect(text.indexOf("Yesterday")).toBeLessThan(text.indexOf("Expired · old1"))
+    expect(text).toContain("Deadline passed")
+  })
   it("shows decisions under day pills with who and why, and opens an item", async () => {
     const now = new Date().toISOString()
     const history = vi.fn().mockResolvedValue({ facets: { requesters: [{ id: "agent-one", label: "agent-one", count: 3 }, { id: "agent-two", label: "agent-two", count: 1 }], statuses: [] }, events: [

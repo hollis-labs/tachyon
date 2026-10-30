@@ -101,9 +101,7 @@ function Pick({
       onValueChange={(v) => onChange(v === null || v === ALL ? "" : String(v))}
     >
       <SelectTrigger className="h-8 w-44 dash-body" aria-label={label}>
-        <SelectValue>
-          {(v: unknown) => (v === ALL || v == null ? all : (options.find((o) => o.value === v)?.label ?? String(v)))}
-        </SelectValue>
+        <SelectValue>{(v: unknown) => (v === ALL || v == null ? all : (options.find((o) => o.value === v)?.label ?? String(v)))}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={ALL}>{all}</SelectItem>
