@@ -8,12 +8,14 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
+	"github.com/hollis-labs/tachyon/internal/plannerapi"
 )
 
 const Prefix = "/api/plugins/console/v1/planner"
@@ -222,6 +224,10 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "events":
 			h.Events(w, r)
 			return
+		case "need-you":
+			out, err = h.NeedYou(ctx)
+		case "momentum":
+			out, err = h.Momentum(ctx)
 		default:
 			switch {
 			case len(parts) == 2 && db == "schema":
@@ -248,13 +254,30 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case len(parts) == 1:
 				filters := map[string]string{}
 				for k, v := range r.URL.Query() {
-					if k != "sort" && len(v) > 0 {
+					if k != "sort" && k != "need_you" && len(v) > 0 {
 						filters[k] = v[0]
 					}
 				}
-				out, err = h.Owned.List(ctx, db, filters, r.URL.Query().Get("sort"))
+				need := r.URL.Query().Get("need_you")
+				if need != "" && need != "any" && !slices.Contains(plannerapi.NeedYouReasons, need) {
+					err = objects.ErrInvalid
+					break
+				}
+				var list []Item
+				if list, err = h.Owned.List(ctx, db, filters, r.URL.Query().Get("sort")); err == nil {
+					out, err = h.enrich(ctx, db, list, need)
+				}
 			case len(parts) == 2:
-				out, err = h.Owned.Get(ctx, db, id)
+				var row Item
+				if row, err = h.Owned.Get(ctx, db, id); err == nil {
+					out = row
+					if db == "priorities" || db == "decisions" {
+						var one []Item
+						if one, err = h.enrich(ctx, db, []Item{row}, ""); err == nil {
+							out = one[0]
+						}
+					}
+				}
 			default:
 				err = objects.ErrNotFound
 			}

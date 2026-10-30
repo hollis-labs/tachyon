@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/localstore"
-	"github.com/hollis-labs/tachyon/internal/plannerapi"
 )
 
 // Ingest turns planner revisions, Torque task changes and merged PRs into timeline events and
@@ -403,11 +402,31 @@ func (g *Ingest) pass(ctx context.Context) {
 			failed = append(failed, name)
 		}
 	}
-	_ = g.Events.Prune(ctx, plannerapi.RetentionDays)
+	_ = g.Events.Prune(ctx, LoadSettings(ctx, g.DB).RetentionDays)
+	g.announceNeedYou(ctx)
 	_ = g.DB.Writer.Submit(ctx, "planner_ingest_status", func(ctx context.Context, tx *sql.Tx) error {
 		if err := statePut(ctx, tx, "last_pass_ms", strconv.FormatInt(time.Now().UnixMilli(), 10)); err != nil {
 			return err
 		}
 		return statePut(ctx, tx, "failed_steps", strings.Join(failed, ","))
+	})
+}
+
+// announceNeedYou puts planner.need_you on the stream when the number of items needing the operator changes.
+func (g *Ingest) announceNeedYou(ctx context.Context) {
+	h := &HTTP{Owned: g.Owned, Tasks: g.Tasks, Store: g.DB}
+	n, err := h.NeedYou(ctx)
+	if err != nil {
+		return
+	}
+	total := int(number(n["total"]))
+	if old, ok := stateGet(ctx, g.DB.Reader, "need_you_total"); ok && old == strconv.Itoa(total) {
+		return
+	}
+	_ = g.DB.Writer.Submit(ctx, "planner_need_you", func(ctx context.Context, tx *sql.Tx) error {
+		if err := streamAppend(ctx, tx, "planner.need_you", Item{"total": total}); err != nil {
+			return err
+		}
+		return statePut(ctx, tx, "need_you_total", strconv.Itoa(total))
 	})
 }
