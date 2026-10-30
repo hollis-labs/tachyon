@@ -21,6 +21,11 @@ function Marker({ e }: { e: HistoryEvent }) {
     </span>
   )
 }
+const REASON: Record<string, string> = { deadline: "Deadline passed" }
+const reasonText = (e: HistoryEvent) => {
+  const t = e.note ?? e.reason
+  return t ? (REASON[t.trim().toLowerCase()] ?? t) : undefined
+}
 const verb = (e: HistoryEvent) => VERB[e.status ?? ""] ?? VERB[e.decision ?? ""] ?? e.kind.replace(/_/g, " ")
 
 function dayLabel(at: string, now = new Date()) {
@@ -54,10 +59,12 @@ export function HistoryTimeline({ client, search, status, requester, onOpen, onF
     }
   }, [client, search, status, requester, onFacets])
   useEffect(() => { void load() }, [load])
+  // Newest first by event time, then one group per day, however the pages arrived.
   const days: { label: string; items: HistoryEvent[] }[] = []
-  for (const e of events ?? []) {
+  for (const e of [...(events ?? [])].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))) {
     const label = dayLabel(e.at)
-    if (days.at(-1)?.label === label) days.at(-1)!.items.push(e)
+    const day = days.find((d) => d.label === label)
+    if (day) day.items.push(e)
     else days.push({ label, items: [e] })
   }
   return (
@@ -84,8 +91,8 @@ export function HistoryTimeline({ client, search, status, requester, onOpen, onF
                     <span className="dash-body text-fg"><span className="font-medium">{verb(e)}</span> · {e.mini?.title ?? e.item_id}</span>
                     <span className="block font-mono dash-caption text-fg-faint" title={new Date(e.at).toLocaleString()}>{e.actor.label} · {ago(e.at)}</span>
                   </button>
-                  {(e.note || e.reason) && (
-                    <p className="mt-1 border-l-2 border-border pl-2 dash-support text-fg-muted">{e.note ?? e.reason}</p>
+                  {reasonText(e) && (
+                    <p className="mt-1 border-l-2 border-border pl-2 dash-support text-fg-muted">{reasonText(e)}</p>
                   )}
                 </li>
               ))}
