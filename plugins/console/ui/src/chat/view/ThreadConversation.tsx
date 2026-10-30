@@ -1,5 +1,6 @@
 import { sessionThreadId } from '../chatapi'
 import { useChatThread } from '../hooks'
+import { useBlocks } from '../cards/useBlocks'
 import { applyReplyFilter, hiddenReplies, useReplyFilter, type ReplyFilter } from '../replyFilter'
 import { ReplyFilterToggle } from '../ReplyFilterToggle'
 import type { ChatMessage, ChatThread } from '../types'
@@ -34,6 +35,7 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
   const ref = thread.sessionRef ?? thread.sessions?.[0]?.ref
   const convId = ref ? sessionThreadId(ref) : thread.id
   const { messages, capability, loading, hasMore, loadOlder, send, sendError, error } = useChatThread(convId)
+  const { blocks, commit } = useBlocks(ref)
   const cap = capability ?? thread.capability
   const [replyFilter, setReplyFilter] = useReplyFilter()
   const shown = applyReplyFilter(messages, replyFilter)
@@ -52,6 +54,8 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
       sendError={sendError}
       note={note}
       palette={palette}
+      blocks={blocks}
+      commit={commit}
       toolbarStart={<ReplyFilterToggle value={replyFilter} onChange={setReplyFilter} />}
       empty={messages.length > 0 ? <FilteredEmpty messages={messages} filter={replyFilter} hasMore={hasMore} onShowAll={() => setReplyFilter('all')} onLoadOlder={() => void loadOlder()} /> : undefined}
     />
