@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/builderapi"
 	"github.com/hollis-labs/tachyon/internal/builderchange"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
@@ -22,25 +23,36 @@ func init() {
 	registerServerMount(mountBuilderChange)
 }
 
-// startBuilderChange builds the change service (B3) when the catalog index is on and a Tether control token
-// file is named (TACHYON_TETHER_CONTROL_TOKEN_FILE: catalog.write; it never holds the approval passphrase;
-// TACHYON_TETHER_CONTROL_ADDR optionally points it at Tether's local listener),
-// and watches awaiting plans for the host's approval. Without it the change routes answer 503.
+// startBuilderChange builds the change service (B3) when the catalog index is on. With a Tether control token
+// file (TACHYON_TETHER_CONTROL_TOKEN_FILE: catalog.write; it never holds the approval passphrase;
+// TACHYON_TETHER_CONTROL_ADDR optionally points it at Tether's local listener) it plans and applies itself and
+// watches awaiting plans for the host's approval. Without one it runs in handoff mode on the read token.
+// With neither the change routes answer 503.
 func startBuilderChange(ctx context.Context, s *Server, db *localstore.Store) {
 	if s.cfg.BuilderStubs || s.catalogIndex == nil {
 		return
 	}
-	tf := os.Getenv("TACHYON_TETHER_CONTROL_TOKEN_FILE")
+	// With a control token the service plans and applies itself (direct). Without one, which is the default,
+	// it runs in handoff mode on the read token: changes end at a bundle the operator plans in Tether and
+	// "applied" is detected from file shas. Without a read token the routes answer 503.
+	mode, tf := builderapi.ModeDirect, os.Getenv("TACHYON_TETHER_CONTROL_TOKEN_FILE")
+	addr := controlAddr(s.cfg.Upstreams.TetherAddr)
 	if tf == "" {
-		slog.Info("builder changes are off: TACHYON_TETHER_CONTROL_TOKEN_FILE is not set")
+		mode, tf, addr = builderapi.ModeHandoff, s.cfg.Upstreams.TetherTokenFile, s.cfg.Upstreams.TetherAddr
+	}
+	if tf == "" {
+		slog.Info("builder changes are off: no Tether token file is set")
 		return
 	}
-	t, err := builderchange.NewTether(controlAddr(s.cfg.Upstreams.TetherAddr), tf)
+	t, err := builderchange.NewTether(addr, tf)
 	if err != nil {
 		slog.Warn("builder changes are off", "err", err)
 		return
 	}
-	svc := &builderchange.Service{DB: db, Tether: t, Index: s.catalogIndex.Store, Bus: s.catalogIndex.Bus}
+	if mode == builderapi.ModeHandoff {
+		t = builderchange.ReadOnly(t)
+	}
+	svc := &builderchange.Service{Mode: mode, DB: db, Tether: t, Index: s.catalogIndex.Store, Bus: s.catalogIndex.Bus}
 	builderChanges.Store(svc)
 	go svc.Run(ctx)
 }
@@ -80,6 +92,7 @@ func mountBuilderChange(s *Server, mux *http.ServeMux, operator *approvals.Bridg
 			next.ServeHTTP(w, r)
 		})
 	}
+	h.MountCapabilities(mux, operator.RequireOperator) // answers "unavailable" itself, so it is outside the gate
 	h.Mount(mux, func(n http.Handler) http.Handler { return operator.RequireOperator(gate(n)) },
 		func(n http.Handler) http.Handler { return operator.RequireOperator(gate(n)) })
 }

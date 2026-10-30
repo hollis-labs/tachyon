@@ -52,7 +52,7 @@ Everything is optional unless noted. Unset means the default in the last column.
 | `GITHUB_TOKEN` / `GH_TOKEN`, else `gh auth token`; `GITHUB_ORG` | Forge | poller identity and org | org `hollis-labs`; no token means saved rows only, `GET /status` says so |
 | `TETHER_ADDR`, `TETHER_TOKEN_FILE` (read scope) | Agents, Builder reads, Alerts Tether poll | collector and catalog index | those features stay off |
 | `TACHYON_AGENTS_COLLECTOR=0`, `TACHYON_CATALOG_INDEX=0` | Agents, Builder | turn the collector or catalog index off | on when Tether is set |
-| `TACHYON_TETHER_CONTROL_TOKEN_FILE` | Builder changes | a Tether token with `catalog.write` and sessions scope, never the approval passphrase | `builder/changes*` answer 503 |
+| `TACHYON_TETHER_CONTROL_TOKEN_FILE` | Builder changes (direct mode) | a Tether token with `catalog.write` and sessions scope, never the approval passphrase | handoff mode on the read token (see below); `unavailable` with no read token either |
 | `TACHYON_TETHER_CONTROL_ADDR` (optional) | Builder changes | where the change service reaches Tether, for example `http://127.0.0.1:8948`; used only by that client, reads keep `TETHER_ADDR` | `TETHER_ADDR` |
 | `TACHYON_CASTER_TOKEN_FILE`, `CASTER_URL` | File viewer V5 | read-scoped device token from `caster pair -scope read -label tachyon` | `caster://` refs answer 501 |
 | `TACHYON_APP_AGENT_CONFIG`, `TACHYON_CHAT_CLIENT_CONTEXT=1`, `TACHYON_CHAT_SYNC_INTERVAL` | Chat | Nanite config for the app agent; forward client context; sync period | app agent not configured; off; `5s` |
@@ -68,7 +68,7 @@ replace that feature's real routes with fixtures. **For the deploy none of them 
 
 ## 3. What is inert until configured
 
-- Builder changes (save, submit, apply): off without `TACHYON_TETHER_CONTROL_TOKEN_FILE`; reads still work from the catalog index.
+- Builder changes: without `TACHYON_TETHER_CONTROL_TOKEN_FILE` they run in **handoff mode** on the read token. A change stops at `awaiting_handoff` with a bundle (`GET builder/changes/{id}/bundle`) the operator plans in Tether (`tether catalog plan`, `approve`, `apply`; CLI flags unverified); Tachyon detects the apply from file shas. `GET builder/capabilities` reports `direct`, `handoff` or `unavailable` (no read token). Reads always work from the catalog index.
 - Builder reads and the Agents collector: off without `TETHER_ADDR`/`TETHER_TOKEN_FILE` (a token is refused over plain http to a non-loopback host).
 - File viewer `caster://`: 501 without the caster token file. Local files work without it.
 - Secret submit: 503 without `TACHYON_SECRET_KEY_FILE`.

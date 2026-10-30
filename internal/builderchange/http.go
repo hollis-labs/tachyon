@@ -23,7 +23,60 @@ func (h *HTTP) Mount(mux *http.ServeMux, reads, writes func(http.Handler) http.H
 	mux.Handle("POST "+builderapi.Prefix+"/changes/{id}/submit", id(h.submit))
 	mux.Handle("POST "+builderapi.Prefix+"/changes/{id}/cancel", id(h.cancel))
 	mux.Handle("POST "+builderapi.Prefix+"/changes/{id}/rearm", id(h.rearm))
+	mux.Handle("GET "+builderapi.Prefix+"/changes/{id}/bundle", reads(http.HandlerFunc(h.bundle)))
+	mux.Handle("POST "+builderapi.Prefix+"/changes/{id}/mark_planned", id(h.markPlanned))
+	mux.Handle("POST "+builderapi.Prefix+"/changes/{id}/check", id(h.check))
 	mux.Handle("POST "+builderapi.Prefix+"/launches/{id}/launch", id(h.launch))
+}
+
+// MountCapabilities registers GET /capabilities on its own, outside the change gate, so it answers
+// "unavailable" instead of the 503 the other change routes give when the service is not configured.
+func (h *HTTP) MountCapabilities(mux *http.ServeMux, guard func(http.Handler) http.Handler) {
+	mux.Handle("GET "+builderapi.Prefix+"/capabilities", guard(http.HandlerFunc(h.capabilities)))
+}
+
+func (h *HTTP) capabilities(w http.ResponseWriter, r *http.Request) {
+	mode, modes := builderapi.ModeUnavailable, []string{}
+	if s := h.Service(); s != nil {
+		mode = s.ModeName()
+		if mode == builderapi.ModeHandoff {
+			modes = append(modes, builderapi.HandoffCopy)
+		}
+	}
+	write(w, 200, map[string]any{"changes": map[string]any{"mode": mode, "handoff": modes}})
+}
+
+func (h *HTTP) bundle(w http.ResponseWriter, r *http.Request) {
+	b, e := h.Service().Bundle(r.Context(), r.PathValue("id"))
+	if e != nil {
+		fail(w, e)
+		return
+	}
+	write(w, 200, b)
+}
+
+func (h *HTTP) markPlanned(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		PlanID string `json:"plan_id"`
+	}
+	if !decode(w, r, &in, 1<<10) {
+		return
+	}
+	c, e := h.Service().MarkPlanned(r.Context(), r.PathValue("id"), in.PlanID)
+	if e != nil {
+		fail(w, e)
+		return
+	}
+	write(w, 200, c)
+}
+
+func (h *HTTP) check(w http.ResponseWriter, r *http.Request) {
+	c, e := h.Service().Check(r.Context(), r.PathValue("id"))
+	if e != nil {
+		fail(w, e)
+		return
+	}
+	write(w, 200, c)
 }
 
 func write(w http.ResponseWriter, status int, v any) {
