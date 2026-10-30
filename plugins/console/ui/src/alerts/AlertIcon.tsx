@@ -15,5 +15,10 @@ const ICONS: Record<AlertIconKey, LucideIcon> = {
 
 export function AlertIcon({ icon, severity }: { icon: AlertIconKey; severity: AlertSeverity }) {
   const I = ICONS[icon]
-  return <I aria-hidden="true" className={`h-4 w-4 shrink-0 ${SEVERITY_STYLE[severity].text}`} />
+  const danger = SEVERITY_STYLE[severity].tone === 'danger'
+  return (
+    <span aria-hidden="true" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${danger ? 'border-danger/60 text-danger' : 'border-border text-fg-muted'}`}>
+      <I className="h-3.5 w-3.5" />
+    </span>
+  )
 }
