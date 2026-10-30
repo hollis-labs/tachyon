@@ -418,6 +418,7 @@ export function TranscriptDashboard() {
           )}
         </section>
       )}
+      </div>
     </div>
   )
 }
