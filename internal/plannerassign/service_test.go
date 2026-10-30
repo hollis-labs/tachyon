@@ -187,3 +187,36 @@ func TestHTTPAndWork(t *testing.T) {
 		t.Errorf("work for nobody: %v", m)
 	}
 }
+
+func TestAssignUnassignAndListFilter(t *testing.T) {
+	f, ctx := setup(t), context.Background()
+	theme := Target{DB: "themes", ID: f.theme}
+	a, err := f.s.Assign(ctx, Create{Target: theme, AgentID: f.agent}, Actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := f.s.Assign(ctx, Create{Target: theme, AgentID: f.agent}, Actor)
+	if err != nil || again.ID != a.ID {
+		t.Fatalf("assign must be repeat-safe: %+v %v", again, err)
+	}
+	if all, _ := f.s.List(ctx, Filter{}); len(all) != 1 {
+		t.Fatalf("one assignment expected: %d", len(all))
+	}
+	rows, err := f.s.Owned.List(ctx, "themes", map[string]string{"assigned_to": f.agent}, "")
+	if err != nil || len(rows) != 1 || rows[0]["id"] != f.theme {
+		t.Fatalf("assigned_to filter: %v %v", rows, err)
+	}
+	if rows, _ := f.s.Owned.List(ctx, "themes", map[string]string{"assigned_to": "nobody"}, ""); len(rows) != 0 {
+		t.Fatalf("unknown assignee matches nothing: %v", rows)
+	}
+	ended, err := f.s.Unassign(ctx, Create{Target: theme, AgentID: f.agent}, Actor)
+	if err != nil || len(ended) != 1 || ended[0].State != StateCancelled {
+		t.Fatalf("unassign: %+v %v", ended, err)
+	}
+	if rows, _ := f.s.Owned.List(ctx, "themes", map[string]string{"assigned_to": f.agent}, ""); len(rows) != 0 {
+		t.Fatalf("ended assignment no longer filters: %v", rows)
+	}
+	if none, err := f.s.Unassign(ctx, Create{Target: theme, AgentID: f.agent}, Actor); err != nil || len(none) != 0 {
+		t.Fatalf("unassign with nothing active: %v %v", none, err)
+	}
+}

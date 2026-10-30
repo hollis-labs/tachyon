@@ -82,7 +82,12 @@ func (j *Jobs) Enqueue(ctx context.Context, job scheduler.Job) error {
 	}
 	s, ok := j.sources[job.ScheduleID]
 	if !ok {
-		return errors.New("sync source is not configured in this process")
+		// An orphan schedule (its source is no longer configured here) can never succeed: skip the fire and
+		// disable the schedule so it stops retrying and logging errors every interval.
+		if err := j.Store.DisableSchedule(ctx, job.ScheduleID); err != nil {
+			slog.Warn("object sync: disabling orphan schedule failed", "schedule", job.ScheduleID, "err", err)
+		}
+		return scheduler.ErrDuplicateJob
 	}
 	sch, exists, err := j.Store.GetSchedule(ctx, job.ScheduleID)
 	if err != nil {

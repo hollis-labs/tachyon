@@ -61,6 +61,25 @@ Everything is optional unless noted. Unset means the default in the last column.
 | `TACHYON_TRANSCRIPT_MAX_SESSIONS` | Transcripts | session cap | `5000` |
 | `TACHYON_ACTION_HUB_SSH_ADDR`, `_USER`, `_KEY_FILE`, `_KNOWN_HOSTS`, `TACHYON_ACTION_DETACH_GRACE` | Approval actions | SSH hub for run actions | no hub |
 
+### Credentials per app (`GET /api/plugins/console/v1/access/apps`)
+
+Tachyon is the operator: it should hold full read and write on every app it talks to. The route answers, per app, the base URL, whether a credential is `configured`, `missing` or `rejected` (a refused read means the token itself is wrong), a `read_probe` and a `write_probe` (`ok`, `denied`, `unreachable`, `not_probed`). A `denied` write with an `ok` read is a missing write scope. `?refresh=1` skips the 30 s cache. Behind the operator guard; tokens are never returned. Probes are harmless: a write probe only exists where the app can answer "no such thing" without creating anything (Torque: a comment on a task that does not exist). Authorization is read from HTTP 401/403 only.
+
+| App | Base URL variable | Credential variable | Needs | Read probe | Write probe |
+|---|---|---|---|---|---|
+| Tether | `TETHER_ADDR` | `TETHER_TOKEN_FILE` (builder changes: `TACHYON_TETHER_CONTROL_TOKEN_FILE`, address `TACHYON_TETHER_CONTROL_ADDR`; forge assign: `TACHYON_TETHER_MESSAGE_TOKEN_FILE`) | read scope; control token adds `catalog.write` and sessions | `GET /catalog/history` | not probed |
+| Torque | `TORQUE_URL` | `TORQUE_API_TOKEN` (value, not a file) | read and write on tasks, comments and the other resources | `GET /api/v1/tasks` | `POST` comment on a task id that does not exist |
+| Tesseract | `TESSERACT_URL` | `TESSERACT_TOKEN_FILE` | read; writes create items | `GET /v1/items/{id}` | not probed |
+| Cerberus | `CERBERUS_ADDR` | `CERBERUS_TOKEN_FILE` | read | `GET /hosts` | not probed |
+| Nanite (app agent) | `url` in the file named by `TACHYON_APP_AGENT_CONFIG` | `token_file` in that file | `operate`+`tools` client credential | `GET /api/agent/v1/sessions` | not probed |
+| Fragments Engine | `FRAGMENTS_ENGINE_URL` | `FRAGMENTS_ENGINE_TOKEN_FILE` | read | `GET /v1/transcripts/status` | not probed |
+| Forge (GitHub) | `GITHUB_ORG` | `GITHUB_TOKEN` / `GH_TOKEN`, else `gh auth token` | repo read; PR comments for forge writes | `GET /rate_limit` | not probed |
+| Caster (file viewer) | `CASTER_URL` | `TACHYON_CASTER_TOKEN_FILE` | read-scoped device token | not in the route | not in the route |
+| Cards events | `HOLLIS_EVENTS_URL` | `HOLLIS_AUTH_TOKEN_FILE_TACHYON` | publish | not in the route | not in the route |
+| Tangent | none | none | Tachyon has no Tangent integration | not probed | not probed |
+
+Token files must be mode 0600 and are refused over plain http to a non-loopback host.
+
 **Stub flags.** `TACHYON_ALERTS_STUBS`, `TACHYON_FORGE_STUBS`, `TACHYON_PLANNER_STUBS`, `TACHYON_CHAT_STUBS`, `TACHYON_AGENTS_STUBS`,
 `TACHYON_BUILDER_STUBS`, `TACHYON_FILEVIEW_STUBS`, `TACHYON_APPROVALS_STUBS`, `TACHYON_SETTINGS_STUBS`, `TACHYON_TRANSCRIPTS_STUBS`
 replace that feature's real routes with fixtures. **For the deploy none of them should be set to 1.** Transcripts has no real backend yet

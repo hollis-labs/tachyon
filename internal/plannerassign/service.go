@@ -328,3 +328,75 @@ func dbOf(k objects.Kind) string {
 	}
 	return ""
 }
+
+func init() {
+	planner.AssignedTo = func(ctx context.Context, o *objects.Service, assignee string) (map[string]bool, error) {
+		return New(o, "").AssignedTargets(ctx, assignee)
+	}
+}
+
+// AssignedTargets is the set of planner object ids an agent or team (catalog id or object id) is actively
+// assigned to. An unknown assignee has none; a nil result is never returned, so callers can tell "filter on
+// nothing" from "no filter".
+func (s *Service) AssignedTargets(ctx context.Context, assignee string) (map[string]bool, error) {
+	views, err := s.List(ctx, Filter{Agent: assignee, State: StateActive})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, v := range views {
+		if v.targetObj != "" {
+			out[v.targetObj] = true
+		}
+	}
+	return out, nil
+}
+
+// Assign starts an assignment unless the same assignee already holds an active one on the target, in which
+// case that one is returned (assign is safe to repeat).
+func (s *Service) Assign(ctx context.Context, c Create, actor string) (View, error) {
+	if (c.AgentID == "") == (c.TeamID == "") {
+		return View{}, fmt.Errorf("%w: exactly one of agent_id and team_id", objects.ErrInvalid)
+	}
+	existing, err := s.activeFor(ctx, c.AgentID+c.TeamID, c.Target)
+	if err != nil {
+		return View{}, err
+	}
+	if len(existing) > 0 {
+		return existing[0], nil
+	}
+	return s.Create(ctx, c, actor)
+}
+
+// Unassign cancels the assignee's active assignments on the target and returns them. None is not an error.
+func (s *Service) Unassign(ctx context.Context, c Create, actor string) ([]View, error) {
+	if (c.AgentID == "") == (c.TeamID == "") {
+		return nil, fmt.Errorf("%w: exactly one of agent_id and team_id", objects.ErrInvalid)
+	}
+	active, err := s.activeFor(ctx, c.AgentID+c.TeamID, c.Target)
+	if err != nil {
+		return nil, err
+	}
+	out := []View{}
+	for _, v := range active {
+		ended, err := s.End(ctx, v.ID, StateCancelled, actor)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ended)
+	}
+	return out, nil
+}
+
+func (s *Service) activeFor(ctx context.Context, assignee string, t Target) ([]View, error) {
+	f := Filter{Agent: assignee, State: StateActive}
+	switch {
+	case t.Kind == "torque.task" && t.Ref != "":
+		f.Target = t.Ref
+	case t.DB != "" && t.ID != "":
+		f.Target = t.DB + "/" + t.ID
+	default:
+		return nil, fmt.Errorf("%w: target must be {db,id} or {kind:torque.task,ref}", objects.ErrInvalid)
+	}
+	return s.List(ctx, f)
+}

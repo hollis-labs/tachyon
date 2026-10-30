@@ -21,7 +21,7 @@ import (
 // Existing credentials retain their exact grants; adding support never expands them.
 var readVerbs = []string{"planner.list", "objects.list", "objects.get", "objects.history", "objects.lookup_source"}
 var portfolioReadVerbs = []string{"planner.portfolio.list", "planner.portfolio.get", "planner.portfolio.schema", "planner.portfolio.resolve"}
-var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate", "planner.portfolio.reorder"}
+var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate", "planner.portfolio.reorder", "planner.portfolio.assign", "planner.portfolio.unassign"}
 
 // TorqueVerbs read Torque's tasks and comments through Tachyon. They are NOT in
 // readVerbs on purpose: existing planner-read credentials keep their exact grants.

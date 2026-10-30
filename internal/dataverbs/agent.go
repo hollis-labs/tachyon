@@ -286,6 +286,14 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 		if !p.database(q.DB) {
 			return nil, denied()
 		}
+	case "planner.portfolio.assign", "planner.portfolio.unassign":
+		var q portfolioAssign
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		if !p.database(q.DB) {
+			return nil, denied()
+		}
 	case "planner.portfolio.relate":
 		var q planner.RelationRequest
 		if err := decode(raw, &q); err != nil {

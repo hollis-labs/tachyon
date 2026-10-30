@@ -108,3 +108,19 @@ func TestTetherPoll(t *testing.T) {
 		t.Fatalf("nothing new: %v %d", err, len(sink.events))
 	}
 }
+
+func TestFromTetherMessageFailedTerminalOnly(t *testing.T) {
+	at := time.Now()
+	for _, state := range []string{"retry_scheduled", "wake_deferred"} {
+		if _, ok := FromTether(agentscollector.Frame{Seq: 1, Kind: "message.failed", DeliveryState: state, At: at}); ok {
+			t.Fatalf("%s must not alert", state)
+		}
+	}
+	if _, ok := FromTether(agentscollector.Frame{Seq: 2, Kind: "message.wake_deferred", At: at}); ok {
+		t.Fatal("wake_deferred kind must not alert")
+	}
+	e, ok := FromTether(agentscollector.Frame{Seq: 3, Kind: "message.failed", DeliveryState: "expired", Reason: "ttl", From: "agent-a", At: at})
+	if !ok || e.Kind != "message.failed" || e.Payload["state"] != "expired" || e.Payload["reason"] != "ttl" || e.Payload["from"] != "agent-a" {
+		t.Fatalf("terminal failure stays visible: %v %+v", ok, e)
+	}
+}
