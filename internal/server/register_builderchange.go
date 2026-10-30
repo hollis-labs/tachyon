@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -22,7 +23,8 @@ func init() {
 }
 
 // startBuilderChange builds the change service (B3) when the catalog index is on and a Tether control token
-// file is named (TACHYON_TETHER_CONTROL_TOKEN_FILE: catalog.write; it never holds the approval passphrase),
+// file is named (TACHYON_TETHER_CONTROL_TOKEN_FILE: catalog.write; it never holds the approval passphrase;
+// TACHYON_TETHER_CONTROL_ADDR optionally points it at Tether's local listener),
 // and watches awaiting plans for the host's approval. Without it the change routes answer 503.
 func startBuilderChange(ctx context.Context, s *Server, db *localstore.Store) {
 	if s.cfg.BuilderStubs || s.catalogIndex == nil {
@@ -33,7 +35,7 @@ func startBuilderChange(ctx context.Context, s *Server, db *localstore.Store) {
 		slog.Info("builder changes are off: TACHYON_TETHER_CONTROL_TOKEN_FILE is not set")
 		return
 	}
-	t, err := builderchange.NewTether(s.cfg.Upstreams.TetherAddr, tf)
+	t, err := builderchange.NewTether(controlAddr(s.cfg.Upstreams.TetherAddr), tf)
 	if err != nil {
 		slog.Warn("builder changes are off", "err", err)
 		return
@@ -41,6 +43,16 @@ func startBuilderChange(ctx context.Context, s *Server, db *localstore.Store) {
 	svc := &builderchange.Service{DB: db, Tether: t, Index: s.catalogIndex.Store, Bus: s.catalogIndex.Bus}
 	builderChanges.Store(svc)
 	go svc.Run(ctx)
+}
+
+// controlAddr is where the change service reaches Tether. Tether's plan-write routes answer only on its local
+// listener, so TACHYON_TETHER_CONTROL_ADDR (for example http://127.0.0.1:8948) can point the control client
+// there while reads keep TETHER_ADDR. It is used by builderchange.NewTether only; unset means TETHER_ADDR.
+func controlAddr(tetherAddr string) string {
+	if a := strings.TrimSpace(os.Getenv("TACHYON_TETHER_CONTROL_ADDR")); a != "" {
+		return a
+	}
+	return tetherAddr
 }
 
 func mountBuilderChange(s *Server, mux *http.ServeMux, operator *approvals.Bridge) {
