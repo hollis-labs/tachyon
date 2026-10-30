@@ -22,7 +22,7 @@ function useChange(initial: Change): [Change, (c: Change) => void] {
   return [change, setChange]
 }
 
-function Diff({ text }: { text: string }) {
+export function Diff({ text }: { text: string }) {
   return (
     <pre aria-label="Changes" className="max-h-56 overflow-auto border border-border bg-surface p-2 font-mono dash-support text-fg">
       {text.split('\n').map((l, i) => (

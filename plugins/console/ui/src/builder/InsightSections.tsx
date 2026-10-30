@@ -1,6 +1,8 @@
 import { type ReactNode, useState } from 'react'
-import { type Check, type HistoryEntry, builderApi } from './api'
-import { useLoad, type Load } from './useLoad'
+import { type Check, type HistoryEntry, builderApi, errorMessage } from './api'
+import { relativeTime } from './changes'
+import { Diff } from './ReviewDialog'
+import { type Load, useLoad } from './useLoad'
 import { NOT_REPORTED, SECTIONS } from './vocab'
 
 const BTN = 'border border-border px-2 py-1 dash-control text-fg-secondary hover:bg-surface-hover'
@@ -10,7 +12,7 @@ function Block({ id, children }: { id: string; children: ReactNode }) {
   const label = SECTIONS.find((s) => s.id === id)?.label ?? id
   return (
     <section id={`section-${id}`} aria-labelledby={`h-${id}`} className="scroll-mt-4 px-5 py-4">
-      <h3 id={`h-${id}`} className="mb-2 font-mono dash-label uppercase tracking-widest text-fg-faint">
+      <h3 id={`h-${id}`} className="mb-2 dash-label font-medium text-fg-muted">
         {label}
       </h3>
       {children}
@@ -32,8 +34,17 @@ function Body<T>({ load, retry, children }: { load: Load<T>; retry: () => void; 
   return <>{children(load.data)}</>
 }
 
+function Item({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-1 border-b border-border-subtle py-2 md:grid-cols-[10rem_1fr] md:gap-3">
+      <dt className="dash-support text-fg-muted">{label}</dt>
+      <dd className="min-w-0 dash-body text-fg [overflow-wrap:anywhere]">{children}</dd>
+    </div>
+  )
+}
+
 const none = <span className="text-fg-faint">none</span>
-const when = (at: number) => new Date(at > 1e12 ? at : at * 1000).toLocaleString()
+const absolute = (at: number) => new Date(at > 1e12 ? at : at * 1000).toLocaleString()
 
 export function ResolvedSection({ id }: { id: string }) {
   const [load, retry] = useLoad(() => builderApi.resolved(id), [id])
@@ -41,13 +52,13 @@ export function ResolvedSection({ id }: { id: string }) {
     <Block id="resolved">
       <Body load={load} retry={retry}>
         {(r) => (
-          <dl className="space-y-1 dash-body text-fg">
+          <dl>
             <p className="dash-support text-fg-muted">{r.resolved_by === 'tether' ? 'Computed by Tether.' : 'Approximated by Tachyon; Tether did not compute this.'}</p>
-            <div>Tool servers: {r.tool_servers?.length ? r.tool_servers.map((t) => `${t.id} (${t.status}${t.tool_count != null ? `, ${t.tool_count} tools` : ''})`).join(', ') : none}</div>
-            <div>Skills: {r.skills?.length ? r.skills.map((x) => x.name || x.id).join(', ') : none}</div>
-            <div>Scopes: {r.scopes?.length ? r.scopes.join(', ') : none}</div>
-            <div>Extends: {r.extends_chain?.length ? r.extends_chain.join(' → ') : none}</div>
-            <div>Prompt: {r.prompt_tokens_est != null ? `${r.prompt_tokens_estimated ? '~' : ''}${r.prompt_tokens_est} tokens` : NOT_REPORTED}</div>
+            <Item label="Tool servers">{r.tool_servers?.length ? r.tool_servers.map((t) => `${t.id} (${t.status}${t.tool_count != null ? `, ${t.tool_count} tools` : ''})`).join(', ') : none}</Item>
+            <Item label="Skills">{r.skills?.length ? r.skills.map((x) => x.name || x.id).join(', ') : none}</Item>
+            <Item label="Scopes">{r.scopes?.length ? r.scopes.join(', ') : none}</Item>
+            <Item label="Extends">{r.extends_chain?.length ? r.extends_chain.join(' → ') : none}</Item>
+            <Item label="Prompt">{r.prompt_tokens_est != null ? `${r.prompt_tokens_estimated ? '~' : ''}${r.prompt_tokens_est} tokens` : NOT_REPORTED}</Item>
             {(r.notes ?? []).map((n) => (
               <p key={n} className="dash-support text-fg-muted">
                 {n}
@@ -66,12 +77,12 @@ export function UsedBySection({ id }: { id: string }) {
     <Block id="used_by">
       <Body load={load} retry={retry}>
         {(u) => (
-          <dl className="space-y-1 dash-body text-fg">
-            <div>Live sessions: {u.live_sessions?.length ?? 0}</div>
-            <div>Launches: {u.launches?.length ? u.launches.map((l) => `${l.project}${l.enabled ? '' : ' (disabled)'}`).join(', ') : none}</div>
-            <div>Teams: {u.teams?.length ? u.teams.map((t) => t.name).join(', ') : none}</div>
-            <div>Extended by: {u.extended_by?.length ? u.extended_by.join(', ') : none}</div>
-            <div>Assigned items: {NOT_REPORTED}</div>
+          <dl>
+            <Item label="Live sessions">{u.live_sessions?.length ?? 0}</Item>
+            <Item label="Launches">{u.launches?.length ? u.launches.map((l) => `${l.project}${l.enabled ? '' : ' (disabled)'}`).join(', ') : none}</Item>
+            <Item label="Teams">{u.teams?.length ? u.teams.map((t) => t.name).join(', ') : none}</Item>
+            <Item label="Extended by">{u.extended_by?.length ? u.extended_by.join(', ') : none}</Item>
+            <Item label="Assigned items">{NOT_REPORTED}</Item>
           </dl>
         )}
       </Body>
@@ -109,11 +120,27 @@ export function ChecksSection({ id }: { id: string }) {
   )
 }
 
+function FoldedDiff({ text }: { text: string }) {
+  const long = text.split('\n').length > 8
+  const [open, setOpen] = useState(!long)
+  return (
+    <div className="mt-1">
+      {long && (
+        <button type="button" className={BTN} onClick={() => setOpen((o) => !o)}>
+          {open ? 'Hide changes' : 'Show changes'}
+        </button>
+      )}
+      {open && <Diff text={text} />}
+    </div>
+  )
+}
+
 export function HistorySection({ id }: { id: string }) {
   const [load, retry] = useLoad(() => builderApi.history(id), [id])
   const [more, setMore] = useState<HistoryEntry[]>([])
   const [cursor, setCursor] = useState<string | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
+  const [moreError, setMoreError] = useState('')
   return (
     <Block id="history">
       <Body load={load} retry={retry}>
@@ -129,15 +156,11 @@ export function HistorySection({ id }: { id: string }) {
                     <p>
                       {e.name || e.plan_id}{' '}
                       <span className="dash-support text-fg-muted">
-                        {when(e.at)} · {e.actor || NOT_REPORTED}
+                        <span title={absolute(e.at)}>{relativeTime(e.at)}</span> · {e.actor || NOT_REPORTED}
                       </span>
                     </p>
                     {e.activation && <p className="dash-support text-fg-secondary">{e.activation}</p>}
-                    {e.diff ? (
-                      <pre className="mt-1 max-h-40 overflow-auto bg-surface p-2 font-mono dash-support text-fg">{e.diff}</pre>
-                    ) : (
-                      <p className="dash-support text-fg-faint">No diff held for this change.</p>
-                    )}
+                    {e.diff ? <FoldedDiff text={e.diff} /> : <p className="dash-support text-fg-faint">No diff held for this change.</p>}
                   </li>
                 ))}
               </ul>
@@ -148,10 +171,13 @@ export function HistorySection({ id }: { id: string }) {
                   className={BTN}
                   onClick={async () => {
                     setBusy(true)
+                    setMoreError('')
                     try {
                       const page = await builderApi.history(id, next)
                       setMore((m) => [...m, ...page.entries])
                       setCursor(page.next_cursor ?? null)
+                    } catch (e) {
+                      setMoreError(errorMessage(e))
                     } finally {
                       setBusy(false)
                     }
@@ -159,6 +185,11 @@ export function HistorySection({ id }: { id: string }) {
                 >
                   {busy ? 'Loading' : 'Load more'}
                 </button>
+              )}
+              {moreError && (
+                <p role="alert" className="dash-support text-fg-secondary">
+                  Could not load more. {moreError}
+                </p>
               )}
             </div>
           )
