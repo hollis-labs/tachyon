@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { EmptyState, Sheet, SheetContent, SheetTitle, type OverflowAction } from '@hollis-labs/design-components'
+import { EmptyState, type OverflowAction } from '@hollis-labs/design-components'
+import { Aside } from '../aside/Aside'
+import { AsideProvider, useAside } from '../aside/context'
+import { useScratchPlacement } from '../drawer/model'
 import { ChatFreshness } from '../ChatFreshness'
 import type { ChatThread } from '../types'
-import { ThreadDetails } from './ThreadDetails'
 import { ThreadList } from './ThreadList'
 import { Header } from '../workbench/Header'
 import { Spine, type StartOption } from '../workbench/Spine'
@@ -37,11 +39,20 @@ export interface ChatViewProps {
  * the home screen (a conversation opens full width with a back control) and the details open as a bottom
  * sheet; the details column starts open from 1280px up.
  */
-export function ChatView({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, startOptions, onTogglePin, variant = 'page', onBack, children }: ChatViewProps) {
+export function ChatView(props: ChatViewProps) {
+  const wide = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches
+  return (
+    <AsideProvider wide={wide}>
+      <ChatViewInner {...props} />
+    </AsideProvider>
+  )
+}
+
+function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, startOptions, onTogglePin, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
-  // Open from 1280px up so the column is seen; below that it stays collapsed (overlay under 1024px).
-  const [detailsOpen] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches)
-  const [detailsOverlay, setDetailsOverlay] = useState(false)
+  const aside = useAside()
+  const scratchPlacement = useScratchPlacement()
+  const detailsOverlay = aside.open
 
   // Esc returns to the list on a narrow screen, unless it is meant for a field or an open sheet.
   const inThread = narrow && !!activeThread && !!onBack
@@ -101,7 +112,7 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
       {!narrow && <div className="flex w-72 shrink-0 border-r border-border-subtle">{spine}</div>}
       <main aria-label="Conversation" className="flex min-w-0 flex-1 flex-col">
         {activeThread ? (
-          <Header thread={activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={narrow ? onBack : undefined} onDetails={narrow ? () => setDetailsOverlay(true) : undefined} detailsOpen={detailsOverlay} />
+          <Header thread={activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={narrow ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} />
         ) : (
           <header className="h-12 shrink-0 border-b border-border-subtle" />
         )}
@@ -112,21 +123,7 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
           </div>
         )}
       </main>
-      {narrow ? (
-        <Sheet open={detailsOverlay} onOpenChange={setDetailsOverlay}>
-          <SheetContent side="bottom" className="max-h-[72vh] overflow-y-auto">
-            <SheetTitle className="px-4 pt-4">Details</SheetTitle>
-            <ThreadDetails thread={activeThread} onSelectSession={onSelectSession} />
-          </SheetContent>
-        </Sheet>
-      ) : (
-        detailsOpen && (
-          // Interim: slice C-D replaces this static list with the aside host and its panels.
-          <aside aria-label="Details" className="w-80 shrink-0 overflow-y-auto border-l border-border-subtle bg-bg-elevated">
-            <ThreadDetails thread={activeThread} onSelectSession={onSelectSession} />
-          </aside>
-        )
-      )}
+      {activeThread && <Aside thread={activeThread} scratchInAside={scratchPlacement === 'aside'} sessionRef={activeThread.sessionRef ?? activeThread.sessions?.[0]?.ref} />}
     </div>
   )
 }
