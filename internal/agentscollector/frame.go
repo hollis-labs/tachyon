@@ -38,6 +38,11 @@ type Frame struct {
 	Gap          bool // a gap frame: events were missed
 	Synchronized bool // the catch-up is over, live frames follow
 	Output       bool // session.output: counted, never stored
+	// Payload is set ONLY on session.output frames. It is handed to the OutputSink in memory and then
+	// dropped; no code path stores or logs it.
+	Payload []byte
+	// Usage is a turn's token counts from a sanitized session.usage event: input, output, cache read, cache write.
+	Usage *[4]int64
 }
 
 type wireFrame struct {
@@ -99,7 +104,14 @@ func ParseFrame(raw []byte) (Frame, bool) {
 		f.Synchronized = true
 	case "session.output":
 		f.Output = true
-		return f, true // the payload is never read
+		body := []byte(w.Payload)
+		if len(body) == 0 {
+			body = []byte(w.PayloadJS)
+		}
+		if len(body) <= 1<<20 {
+			f.Payload = append([]byte(nil), body...)
+		}
+		return f, true // the collector never reads it; the OutputSink may, in memory
 	}
 	body := w.Payload
 	if len(body) == 0 && len(w.PayloadJS) > 0 {
@@ -125,6 +137,10 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			PendingQuestion *bool  `json:"pending_question"`
 			Tool            string `json:"tool"`
 			Reason          string `json:"reason"`
+			In              *int64 `json:"input"`
+			Out             *int64 `json:"output"`
+			CacheRead       *int64 `json:"cache_read"`
+			CacheWrite      *int64 `json:"cache_write"`
 		}
 		if json.Unmarshal(body, &p) == nil {
 			f.WorkState = clean(firstNonEmpty(p.To, p.WorkState), 40)
@@ -135,12 +151,22 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			f.TaskRef = clean(p.TaskID, 60)
 			f.PendingApproval, f.PendingQuestion = p.PendingApproval, p.PendingQuestion
 			f.Tool = clean(p.Tool, 80)
+			if f.Kind == "session.usage" && (p.In != nil || p.Out != nil) {
+				f.Usage = &[4]int64{val(p.In), val(p.Out), val(p.CacheRead), val(p.CacheWrite)}
+			}
 			if f.Reason == "" {
 				f.Reason = clean(p.Reason, 80)
 			}
 		}
 	}
 	return f, true
+}
+
+func val(p *int64) int64 {
+	if p == nil || *p < 0 {
+		return 0
+	}
+	return *p
 }
 
 func firstNonEmpty(a, b string) string {

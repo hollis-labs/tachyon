@@ -27,6 +27,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/agentsapi"
 	"github.com/hollis-labs/tachyon/internal/agentscollector"
+	"github.com/hollis-labs/tachyon/internal/agentsderive"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -653,7 +654,13 @@ func (s *Server) startAgentsCollector(ctx context.Context, store *localstore.Sto
 		slog.Warn("agents collector is enabled but not configured; staying off", "err", err)
 		return
 	}
-	s.agentsCollector = &agentscollector.Collector{Source: src, Store: &agentscollector.Store{DB: store}}
+	cstore := &agentscollector.Store{DB: store}
+	// Output payloads are reduced in memory by the derivation sink and never stored.
+	live := &agentsderive.Live{Save: func(ctx context.Context, id string, d agentsderive.Saved) error {
+		return cstore.SetDerived(ctx, id, agentscollector.Derived{OneLiner: d.OneLiner, CallsInTurn: d.CallsInTurn, At: d.At,
+			CtxUsed: d.Meter.Used, CtxWindow: d.Meter.Window, CtxModel: d.Meter.Model, CtxSeen: d.Meter.Seen, Compactions: d.Meter.Compactions, LastClear: d.Meter.LastClear})
+	}}
+	s.agentsCollector = &agentscollector.Collector{Source: src, Store: cstore, Sink: live, TurnEnded: live.EndTurn}
 	s.agentsCollector.Start(ctx)
 }
 
