@@ -19,6 +19,8 @@ type Service struct {
 	Publish func(ctx context.Context, thread, typ string, fields map[string]any)
 	// Note appends the plan card message to an app thread; may be nil.
 	Note func(ctx context.Context, thread string, p Plan)
+	// Activity records the change in the thread's feed (by is "user" or "agent"); may be nil.
+	Activity func(ctx context.Context, thread, by, reason string, p Plan)
 	// Notify refreshes the thread's summary on its stream and the spine; may be nil.
 	Notify func(ctx context.Context, thread string)
 }
@@ -68,6 +70,9 @@ func (s *Service) after(ctx context.Context, ref chatapi.ThreadRef, p Plan, by, 
 		if by == "agent" {
 			s.Publish(ctx, ref.String(), chatapi.EventPanel, map[string]any{"panel": "plan", "ref": p.ID, "reason": reason, "source": "agent"})
 		}
+	}
+	if s.Activity != nil {
+		s.Activity(ctx, ref.String(), by, reason, p)
 	}
 	if s.Notify != nil {
 		s.Notify(ctx, ref.String())

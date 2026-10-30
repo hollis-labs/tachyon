@@ -32,6 +32,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/chatactivity"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/chatplan"
@@ -119,6 +120,7 @@ type Server struct {
 	chatWorkspace    *chatworkspace.Handler
 	chatTopics       *chattopics.Handler
 	chatPlan         *chatplan.Service
+	chatActivity     *chatactivity.Handler
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
@@ -261,12 +263,25 @@ func (s *Server) Start(ctx context.Context) error {
 		Agg: &chatthreads.Aggregator{App: s.appAgent, Chat: s.chat, State: &chatthreads.StateStore{DB: store}},
 		Hub: &chatthreads.Hub{DB: store},
 	}
+	// Activity feed and context meter. The service seams below record into it; a failed record
+	// never fails the change that caused it.
+	rec := &chatactivity.Recorder{Store: &chatactivity.Store{DB: store}, Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+		_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+	}}
+	s.chatActivity = &chatactivity.Handler{Rec: rec, Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err }}
 	ws := &chatworkspace.Store{DB: store, Dir: filepath.Join(s.cfg.DataDir, "workspace")}
 	s.chatWorkspace = &chatworkspace.Handler{
 		Store:  ws,
 		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
 		Published: func(ctx context.Context, thread, op, id string) {
 			_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventWorkspace, map[string]any{"op": op, "id": id})
+			if op == "share" {
+				name := id
+				if it, err := ws.Get(ctx, thread, id); err == nil {
+					name = it.Name
+				}
+				rec.Quiet(ctx, thread, "file.shared", "user", "tachyon", []chatactivity.Cite{{Kind: "file", Ref: id, Label: name}}, chatactivity.Card("Shared "+name, "Shared with the agent", nil))
+			}
 		},
 	}
 	s.chatTopics = &chattopics.Handler{
@@ -275,6 +290,9 @@ func (s *Server) Start(ctx context.Context) error {
 		MessageSeq: s.chatThreads.MessageSeq,
 		Published: func(ctx context.Context, thread, typ, op, id string) {
 			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, map[string]any{"op": op, "id": id})
+			if op == "add" {
+				rec.Quiet(ctx, thread, typ+".added", "user", "tachyon", nil, chatactivity.Card(strings.ToUpper(typ[:1])+typ[1:]+" added", "", nil))
+			}
 		},
 	}
 	s.chatPlan = &chatplan.Service{
@@ -299,6 +317,18 @@ func (s *Server) Start(ctx context.Context) error {
 			_, _ = s.appAgent.AppendNote(ctx, t.ID, "plan", title, map[string]any{"plan_id": p.ID})
 		},
 		Notify: s.chatThreads.Notify,
+		Activity: func(ctx context.Context, thread, by, reason string, p chatplan.Plan) {
+			actor := "user"
+			if by == "agent" {
+				actor = "agent"
+			}
+			pr := p.Progress()
+			title := "Plan"
+			if p.Title != nil && *p.Title != "" {
+				title = *p.Title
+			}
+			rec.Quiet(ctx, thread, "plan.changed", actor, "tachyon", nil, chatactivity.Card(title+": "+reason, fmt.Sprintf("%d of %d steps done", pr.Done, pr.Total), nil))
+		},
 	}
 	s.chatThreads.Agg.PlanProgress = func(ctx context.Context, refs []string) map[string]chatthreads.Progress {
 		out := map[string]chatthreads.Progress{}
@@ -317,6 +347,16 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}
 	if s.appAgent != nil {
+		s.appAgent.OnTool = func(id string, t appagent.Tool) {
+			status := t.Status
+			if status != "ok" && status != "error" {
+				return
+			}
+			rec.Quiet(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String(), "tool.call", "agent", "runtime", nil, chatactivity.Card(t.Name, status, nil))
+		}
+		s.appAgent.OnContext = func(id string, used, window int64, model string) {
+			rec.SetContext(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String(), used, window, model)
+		}
 		s.appAgent.OnChange = func(id string) {
 			s.chatThreads.Notify(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
 		}
@@ -458,14 +498,21 @@ func (s *Server) Routes() http.Handler {
 				topicTools = &dataverbs.ChatTopics{Store: s.chatTopics.Store, Thread: s.chatTopics.Exists, MessageSeq: s.chatTopics.MessageSeq,
 					Published: func(ctx context.Context, thread, op, id string) {
 						_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventTopic, map[string]any{"op": op, "id": id})
+						if op == "add" && s.chatActivity != nil {
+							s.chatActivity.Rec.Quiet(ctx, thread, "topic.added", "agent", "tachyon", nil, chatactivity.Card("Topic added", "", nil))
+						}
 					}}
+			}
+			var activityTools *dataverbs.ChatActivity
+			if s.chatActivity != nil {
+				activityTools = &dataverbs.ChatActivity{Rec: s.chatActivity.Rec, Thread: s.chatActivity.Exists}
 			}
 			var planTools *dataverbs.ChatPlan
 			if s.chatPlan != nil {
 				planTools = &dataverbs.ChatPlan{Service: s.chatPlan}
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools))
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools))
 		}
 	}
 	if s.store != nil {
@@ -565,6 +612,13 @@ func (s *Server) Routes() http.Handler {
 	if s.chatPlan != nil {
 		real := (&chatplan.Handler{Service: s.chatPlan}).Mux()
 		for _, route := range chatplan.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatActivity != nil {
+		real := s.chatActivity.Mux()
+		for _, route := range chatactivity.Routes {
 			method, path, _ := strings.Cut(route, " ")
 			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
 		}

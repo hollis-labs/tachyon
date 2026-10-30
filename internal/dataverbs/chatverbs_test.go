@@ -12,6 +12,7 @@ import (
 
 	"github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/chatactivity"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/chattopics"
@@ -293,6 +294,84 @@ func TestChatPlanVerbs(t *testing.T) {
 	for _, g := range []agentaccess.Grants{agentaccess.AppAgentRead(), agentaccess.ChatWorkspaceRead(), agentaccess.ChatTopicAdd(), agentaccess.CardAsk()} {
 		for _, v := range g.Verbs {
 			if agentaccess.ChatPlanVerb(v) {
+				t.Errorf("a preset widened with %s", v)
+			}
+		}
+	}
+}
+
+func TestChatActivityAndPanelVerbs(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var events []string
+	rec := &chatactivity.Recorder{Store: &chatactivity.Store{DB: db}, Publish: func(_ context.Context, thread, typ string, f map[string]any) {
+		events = append(events, thread+" "+typ)
+	}}
+	act := &ChatActivity{Rec: rec, Thread: func(_ context.Context, ref string) error {
+		if ref == "app:ghost" {
+			return errors.New("none")
+		}
+		return nil
+	}}
+	p := &scopedLocal{local: NewLocal(nil), activity: act, principal: auth.Principal{Verified: true, ID: "agt_1", Scopes: []string{"verb:chat.activity.append", "verb:chat.panel.open"}}}
+	out, err := chatCall(p, "chat.activity.append", `{"thread_ref":"app:t1","type":"task.closed","title":"T2 closed","summary":"merged","cite":[{"kind":"pr","ref":"hollis-labs/tachyon#176","label":"#176"}]}`)
+	if err != nil || out["actor"] != "agent:agt_1" || out["source"] != "agent:agt_1" || out["type"] != "task.closed" {
+		t.Fatal(out, err)
+	}
+	for name, args := range map[string]string{
+		"card.answered is Tachyon's": `{"thread_ref":"app:t1","type":"card.answered","title":"x"}`,
+		"user comment":               `{"thread_ref":"app:t1","type":"comment","title":"x"}`,
+		"no title":                   `{"thread_ref":"app:t1","type":"note","title":" "}`,
+		"actor spoof":                `{"thread_ref":"app:t1","type":"note","title":"x","actor":"user"}`,
+		"source spoof":               `{"thread_ref":"app:t1","type":"note","title":"x","source":"tachyon"}`,
+		"tether":                     `{"thread_ref":"tether:s","type":"note","title":"x"}`,
+		"ghost":                      `{"thread_ref":"app:ghost","type":"note","title":"x"}`,
+		"bad cite":                   `{"thread_ref":"app:t1","type":"note","title":"x","cite":[{"kind":"url","ref":"x"}]}`,
+	} {
+		if _, err := chatCall(p, "chat.activity.append", args); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+	if _, err := chatCall(p, "chat.panel.open", `{"thread_ref":"app:t1","panel":"plan","ref":"pl_1","reason":"plan ready"}`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := chatCall(p, "chat.panel.open", `{"thread_ref":"app:t1","panel":"terminal"}`); err == nil {
+		t.Error("a panel outside the allowlist opened")
+	}
+	if len(events) < 3 || events[0] != "app:t1 activity" {
+		t.Fatalf("events: %v", events)
+	}
+	// 5 more panel opens fit in the budget of 6, the next one does not.
+	for i := 0; i < 5; i++ {
+		if _, err := chatCall(p, "chat.panel.open", `{"thread_ref":"app:t1","panel":"files"}`); err != nil {
+			t.Fatal(i, err)
+		}
+	}
+	if _, err := chatCall(p, "chat.panel.open", `{"thread_ref":"app:t1","panel":"files"}`); err == nil {
+		t.Error("the rate limit did not apply")
+	}
+	if v := p.Verbs(); len(v) != 2 {
+		t.Fatalf("verbs: %v", v)
+	}
+	// Each preset grants its own verb only.
+	p.principal.Scopes = []string{"verb:chat.panel.open"}
+	if len(p.Verbs()) != 1 {
+		t.Fatalf("verbs with the panel grant: %v", p.Verbs())
+	}
+	if _, err := chatCall(p, "chat.activity.append", `{"thread_ref":"app:t1","type":"note","title":"x"}`); err == nil {
+		t.Fatal("ran without its grant")
+	}
+	for _, g := range []agentaccess.Grants{agentaccess.ChatActivityAppend(), agentaccess.ChatPanelOpen()} {
+		if err := g.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, g := range []agentaccess.Grants{agentaccess.AppAgentRead(), agentaccess.ChatWorkspaceRead(), agentaccess.ChatTopicAdd(), agentaccess.ChatPlan(), agentaccess.CardAsk()} {
+		for _, v := range g.Verbs {
+			if agentaccess.ChatActivityVerb(v) {
 				t.Errorf("a preset widened with %s", v)
 			}
 		}

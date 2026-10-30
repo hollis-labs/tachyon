@@ -33,6 +33,7 @@ const (
 	EventToolEnd   = "tool_end"   // Tool finished (ok | error)
 	EventFinish    = "finish"     // Reason says why; the turn is over
 	EventError     = "error"      // Err says what failed; the turn is over
+	EventContext   = "context"    // Used, Window and Model are the runtime's context meter (a signal, not the end)
 )
 
 type TurnEvent struct {
@@ -41,6 +42,9 @@ type TurnEvent struct {
 	Tool   Tool
 	Reason string
 	Err    string
+	// Context meter, for EventContext. Zero means the runtime did not say.
+	Used, Window int64
+	Model        string
 }
 
 // Result is a turn's state as the runtime sees it now.
