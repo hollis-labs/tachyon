@@ -16,8 +16,8 @@ const session = {
 const json = (status: number, body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 
 function open() {
-  render(<NudgeControl session={session} paused={false} onSent={vi.fn()} />)
-  fireEvent.click(screen.getByRole('button', { name: 'Nudge' }))
+  render(<NudgeControl session={session} paused={false} live onSent={vi.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: /^Nudge/ }))
 }
 
 describe('Nudge', () => {
@@ -28,8 +28,8 @@ describe('Nudge', () => {
       return json(200, { nudge_presets: ['Continue'] })
     }))
     open()
-    fireEvent.change(await screen.findByLabelText('Message to the agent'), { target: { value: 'run the tests' } })
-    const send = screen.getByRole('button', { name: 'Send' })
+    fireEvent.change(await screen.findByLabelText('Nudge or steer'), { target: { value: 'run the tests' } })
+    const send = screen.getByRole('button', { name: /^Send/ })
     fireEvent.click(send)
     fireEvent.click(send)
     await waitFor(() => expect(calls).toHaveLength(1))
@@ -46,18 +46,25 @@ describe('Nudge', () => {
       return b.interrupt ? json(409, { code: 'interrupt_unsupported', message: 'This provider cannot interrupt' }) : json(202, { request_id: 'r', state: 'delivered' })
     }))
     open()
-    const box = (await screen.findByLabelText('Message to the agent')) as HTMLTextAreaElement
+    const box = (await screen.findByLabelText('Nudge or steer')) as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'wrap up' } })
     fireEvent.click(screen.getByLabelText('Interrupt the current turn'))
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Send/ }))
     fireEvent.click(await screen.findByRole('button', { name: 'Send without interrupt' }))
     await waitFor(() => expect(bodies).toHaveLength(2))
     expect(bodies.map((b) => b.interrupt)).toEqual([true, false])
   })
 
+  it('is disabled with a visible reason until the backend controls are approved', () => {
+    render(<NudgeControl session={session} paused={false} onSent={vi.fn()} />)
+    const b = screen.getByRole('button', { name: /^Nudge/ }) as HTMLButtonElement
+    expect(b.disabled).toBe(true)
+    expect(b.title).toMatch(/waiting for backend approval/)
+  })
+
   it('is disabled with a visible reason while reconnecting', () => {
-    render(<NudgeControl session={session} paused onSent={vi.fn()} />)
-    const b = screen.getByRole('button', { name: 'Nudge' }) as HTMLButtonElement
+    render(<NudgeControl session={session} paused live onSent={vi.fn()} />)
+    const b = screen.getByRole('button', { name: /^Nudge/ }) as HTMLButtonElement
     expect(b.disabled).toBe(true)
     expect(b.title).toBe('Controls are paused while reconnecting')
   })
