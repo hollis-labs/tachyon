@@ -1,14 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { cn } from '@hollis-labs/design-components'
-import { LaneBoard, SpineList, type Lane, type SpineGroup } from '@planner/shared'
+import { LaneBoard, type Lane } from '@planner/shared'
+import { needsYou } from './session-rows'
 import { ContextMeter, OneLiner, Sparkline, ageText, stateText } from './session-parts'
 import { AGENTS, type FilterId } from './vocabulary'
 import type { Session } from './types'
 
 export type SessionView = 'rows' | 'cards' | 'board'
-export type GroupBy = 'workroot' | 'agent' | 'none'
-
-export const needsYou = (s: Session) => s.needs_you.reason !== null
+export { SessionRows, needsYou, type GroupBy } from './session-rows'
 
 export function matchesFilter(s: Session, f: FilterId): boolean {
   if (f === 'working') return s.state === 'working'
@@ -23,9 +22,6 @@ export function matchesQuery(s: Session, q: string): boolean {
   const hay = [s.agent.name, s.workroot, s.provider, s.model ?? '', s.one_liner?.tool ?? '', s.one_liner?.target ?? '', s.assignment?.task_ref ?? '', s.assignment?.theme_ref ?? ''].join(' ').toLowerCase()
   return hay.includes(needle)
 }
-
-const groupKey = (s: Session, by: GroupBy) => (by === 'workroot' ? s.workroot : by === 'agent' ? s.agent.name : '')
-const groupTitle = (key: string) => (key ? key.split('/').filter(Boolean).pop() ?? key : AGENTS.sessionsList)
 
 function Chips({ s }: { s: Session }) {
   return (
@@ -54,19 +50,6 @@ function Body({ s, now, wide }: { s: Session; now: number; wide?: boolean }) {
       )}
     </span>
   )
-}
-
-export function SessionRows({ sessions, groupBy, now, selectedId, onSelect }: { sessions: readonly Session[]; groupBy: GroupBy; now: number; selectedId?: string; onSelect: (id: string) => void }) {
-  const groups = useMemo<SpineGroup[]>(() => {
-    const by = new Map<string, Session[]>()
-    for (const s of sessions) by.set(groupKey(s, groupBy), [...(by.get(groupKey(s, groupBy)) ?? []), s])
-    return [...by].map(([key, list]) => ({
-      id: key || 'all',
-      title: groupTitle(key),
-      items: list.map((s) => ({ id: s.id, title: s.agent.name, flags: <Chips s={s} />, progress: <Body s={s} now={now} wide /> })),
-    }))
-  }, [sessions, groupBy, now])
-  return <SpineList label={AGENTS.sessionsList} groups={groups} selectedId={selectedId} onSelect={onSelect} />
 }
 
 export function SessionCards({ sessions, now, onSelect }: { sessions: readonly Session[]; now: number; onSelect: (id: string) => void }) {
