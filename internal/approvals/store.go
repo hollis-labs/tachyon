@@ -129,6 +129,7 @@ func swapRecord(ctx context.Context, tx *sql.Tx, id string, expected int64, next
 	_, err = tx.ExecContext(ctx, "UPDATE approval_items SET state=?,revision=?,terminal=?,record=? WHERE id=?", next.State, next.Revision, next.State.IsTerminal(), raw, id)
 	if err == nil {
 		indexTx(ctx, tx, next)
+		logTerminalTx(ctx, tx, next)
 	}
 	return err
 }

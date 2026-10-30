@@ -170,7 +170,8 @@ func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, er
 	if err != nil {
 		return browserItem{}, err
 	}
-	proj := Project(rec, time.Now())
+	now := time.Now()
+	proj := Project(rec, now, i.Store.DeferredUntil(r.Context(), id, now))
 	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision, Projection: &proj}
 	if i.ActionRun != nil && operator {
 		out.ActionRun = i.ActionRun(r.Context(), id)
@@ -195,11 +196,15 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		i.Sessions.ServeHTTP(w, r)
 		return
 	}
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		fail(w, 405, "method_not_allowed", "Use GET or POST.")
 		return
 	}
-	if r.Method == http.MethodPost && !sameOrigin(r) {
+	if r.Method == http.MethodDelete && !strings.HasSuffix(path, "/defer") {
+		fail(w, 405, "method_not_allowed", "Use GET or POST.")
+		return
+	}
+	if r.Method != http.MethodGet && !sameOrigin(r) {
 		fail(w, 403, "origin_denied", "Use the Tachyon browser origin.")
 		return
 	}
@@ -219,6 +224,10 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		i.events(w, r)
 		return
 	}
+	if r.Method == http.MethodGet && path == "/history" {
+		i.history(w, r, participant.PrincipalRef)
+		return
+	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) < 2 || parts[0] != "items" || !itemPath.MatchString("/items/"+parts[1]) {
 		fail(w, 404, "not_found", "Unknown inbox operation.")
@@ -231,6 +240,21 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 2 && r.Method == http.MethodGet {
 		writeValue(w, item)
+		return
+	}
+	if len(parts) == 3 && parts[2] == "audit" && r.Method == http.MethodGet {
+		i.audit(w, r, item.ItemID, participant.PrincipalRef)
+		return
+	}
+	if len(parts) == 3 && parts[2] == "defer" && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {
+		var raw []byte
+		if r.Method == http.MethodPost {
+			if raw, err = commandBody(w, r); err != nil {
+				writeHITLError(w, err)
+				return
+			}
+		}
+		i.deferItem(w, r, item, participant, raw)
 		return
 	}
 	if len(parts) != 3 || r.Method != http.MethodPost || (parts[2] != "present" && parts[2] != "resolve") {
@@ -267,6 +291,8 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if parts[2] == "present" {
+		// One presentation event per session and item, so reopening a card does not flood the audit.
+		_ = i.Store.LogEvent(r.Context(), Event{EventID: "evt_" + item.ItemID + "_presented_" + participant.PrincipalRef[len(participant.PrincipalRef)-12:], ItemID: item.ItemID, Kind: "presented", ActorRef: participant.PrincipalRef, Assurance: participant.Assurance, Revision: item.Revision})
 		writeValue(w, item)
 		return
 	}
