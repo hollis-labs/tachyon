@@ -1,5 +1,5 @@
 import { operatorFetch } from '../operator/elevation'
-import { dataRefreshRegistry } from '@tachyon/host-sdk'
+import { dataRefreshRegistry, hostFetch } from '@tachyon/host-sdk'
 import { useEffect, useState } from 'react'
 import type { Recipient } from '../messaging'
 
@@ -11,9 +11,15 @@ export interface ChatAgent {
   worker?: string
   session: { id: string; state: string; last_activity_at: string; at_turn_boundary: boolean } | null
 }
+/**
+ * Reads never raise the OPERATOR ACCESS dialog: only a write (send, answer, approve) asks for elevation, so
+ * opening /chat shows the page and a refused read is an inline error instead of a modal over the stream.
+ */
+const quiet = (input: RequestInfo | URL, init?: RequestInit) => (init?.method ?? 'GET').toUpperCase() === 'GET' || String(input instanceof Request ? input.url : input).endsWith('/read')
+export const chatFetch: typeof fetch = (input, init) => (quiet(input, init) ? hostFetch(input, init) : operatorFetch(input, init))
 export const CHAT_BASE = '/api/plugins/console/v1/chat'
 export async function chatJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await operatorFetch(CHAT_BASE + path, {
+  const res = await chatFetch(CHAT_BASE + path, {
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
   })

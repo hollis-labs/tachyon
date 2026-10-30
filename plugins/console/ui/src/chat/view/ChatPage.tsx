@@ -7,6 +7,7 @@ import { chatRecipient, useChatRoster } from '../roster'
 import type { ChatThread } from '../types'
 import { ChatView } from './ChatView'
 import { ThreadConversation } from './ThreadConversation'
+import { consoleJson } from '../../lib/http'
 
 /** /chat and /chat/:threadId. Wires the mail ChatClient into ChatView. */
 export function ChatPage() {
@@ -53,6 +54,26 @@ export function ChatPage() {
     [agents, client, select],
   )
 
+  const startOptions = useMemo(
+    () => (agents ?? []).map((a) => ({
+      id: a.launch_id,
+      label: a.display_name,
+      onSelect: () => {
+        setOpenError(null)
+        client.openThread(chatRecipient(a)).then(
+          (t) => { setOpened(t); select(t.id) },
+          (e) => setOpenError(e instanceof Error ? e.message : 'Could not open conversation'),
+        )
+      },
+    })),
+    [agents, client, select],
+  )
+  const togglePin = useCallback(() => {
+    const ref = active?.sessionRef ?? active?.sessions?.[0]?.ref
+    if (!active || !ref) return
+    consoleJson(`/chat/threads/${encodeURIComponent(ref)}`, { method: 'PATCH', body: { pinned: !active.pinned } }).then(retry, (e) => setOpenError(e instanceof Error ? e.message : 'Could not pin'))
+  }, [active, retry])
+
   return (
     <ChatView
       threads={threads}
@@ -63,8 +84,16 @@ export function ChatPage() {
       onSelectSession={(ref) => active && setPicked({ thread: active.id, ref })}
       onBack={() => navigate('/chat')}
       newChatActions={newChatActions}
+      startOptions={startOptions}
+      onTogglePin={togglePin}
     >
-      {active && <ThreadConversation key={`${active.id}|${active.sessionRef ?? ''}`} thread={active} />}
+      {active && (
+        <ThreadConversation
+          key={`${active.id}|${active.sessionRef ?? ''}`}
+          thread={active}
+          palette={{ threads: threads ?? [], active, onOpenThread: select, startOptions, onTogglePin: togglePin, onCopyLink: () => void navigator.clipboard?.writeText(location.href) }}
+        />
+      )}
     </ChatView>
   )
 }

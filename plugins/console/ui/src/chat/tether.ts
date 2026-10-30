@@ -1,7 +1,6 @@
-import { operatorFetch } from '../operator/elevation'
 import { dataRefreshRegistry } from '@tachyon/host-sdk'
 import type { Recipient } from '../messaging'
-import { chatJSON, chatRecipient, fetchChatAgents, type ChatAgent } from './roster'
+import { chatFetch, chatJSON, chatRecipient, fetchChatAgents, type ChatAgent } from './roster'
 import type { ChatCapability, ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryQuery, ReplyAudience } from './types'
 
 const TURNS = '/api/plugins/console/v1/chat-turns'
@@ -45,7 +44,7 @@ export interface Sent {
   session_id?: string
 }
 async function turns<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await operatorFetch(TURNS + path, {
+  const res = await chatFetch(TURNS + path, {
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
   })

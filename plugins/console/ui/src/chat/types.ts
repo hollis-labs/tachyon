@@ -30,6 +30,14 @@ export interface ChatThread {
   needsYou?: boolean
   /** The agent's sessions, newest first (chat API threads). Absent when the chat API has none. */
   sessions?: ThreadSession[]
+  /** Any of this agent's sessions is pinned. */
+  pinned?: boolean
+  /** Count of open cards and questions waiting on the operator, summed over the agent's sessions. */
+  blocked?: number
+  /** Plan progress of the newest session that has a plan. */
+  plan?: { done: number; total: number }
+  /** Context window use of the newest session (chat API `context`). */
+  context?: { used: number | null; window: number | null; model: string | null }
   /** The session shown in the conversation (a `sessions` ref). Absent: the agent's own thread. */
   sessionRef?: string
 }

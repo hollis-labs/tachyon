@@ -2,7 +2,7 @@
 // the runtime behind the agent (Nanite today) is invisible here. Server contract:
 // internal/appagent (/api/plugins/console/v1/app-agent). Transport details stay in this file.
 
-import { operatorFetch } from '../operator/elevation'
+import { chatFetch } from './roster'
 import type { Recipient } from '../messaging'
 import type { ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryPage, HistoryQuery } from './types'
 
@@ -73,7 +73,7 @@ async function readFrames(body: ReadableStream<Uint8Array>, signal: AbortSignal,
   }
 }
 
-export function createAppAgentChatClient(f: typeof fetch = operatorFetch): ChatClient {
+export function createAppAgentChatClient(f: typeof fetch = chatFetch): ChatClient {
   const listeners = new Map<string, Set<(e: ChatEvent) => void>>()
   const streams = new Map<string, AbortController>()
   const seen = new Map<string, Set<string>>() // thread -> message ids the stream has shown

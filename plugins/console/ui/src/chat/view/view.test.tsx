@@ -95,12 +95,11 @@ describe('ChatView', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('1280'), addEventListener() {}, removeEventListener() {} }))
     try {
       render(view())
-      const aside = screen.getByRole('complementary', { name: 'Thread details' })
+      const aside = screen.getByRole('complementary', { name: 'Details' })
       expect(within(aside).getByText('Reachability')).toBeTruthy()
       expect(within(aside).getByText('No activity in this thread yet.')).toBeTruthy()
       expect(within(aside).getByText('No files shared in this thread.')).toBeTruthy()
       expect(within(aside).getByText('No tasks or plan items linked to this thread.')).toBeTruthy()
-      expect(screen.getByText('Details')).toBeTruthy()
     } finally {
       vi.unstubAllGlobals()
     }
@@ -111,10 +110,10 @@ describe('ChatView', () => {
     const onBack = vi.fn()
     try {
       const { rerender } = render(<ChatView threads={T} activeThread={null} onSelectThread={() => undefined} onBack={onBack} />)
-      expect(screen.getByRole('list', { name: 'Threads' })).toBeTruthy()
-      expect(screen.queryByText('Select a conversation')).toBeNull()
+      expect(screen.getByRole('listbox', { name: 'Chats' })).toBeTruthy()
+      expect(screen.queryByText('Select a chat')).toBeNull()
       rerender(<ChatView threads={T} activeThread={T[0]} onSelectThread={() => undefined} onBack={onBack}><p>conversation body</p></ChatView>)
-      fireEvent.click(screen.getByLabelText('Back to conversations'))
+      fireEvent.click(screen.getByLabelText('Back to chats'))
       expect(onBack).toHaveBeenCalledTimes(1)
       fireEvent.keyDown(document.body, { key: 'Escape' })
       expect(onBack).toHaveBeenCalledTimes(2)
@@ -124,26 +123,14 @@ describe('ChatView', () => {
     }
   })
 
-  it('starts with the details column collapsed and toggles it', () => {
+  it('shows the chats spine on a wide screen', () => {
     render(view())
-    expect(screen.queryByRole('complementary', { name: 'Thread details' })).toBeNull()
-    fireEvent.click(screen.getByLabelText('Show thread details'))
-    const aside = screen.getByRole('complementary', { name: 'Thread details' })
-    expect(within(aside).getAllByText('Alpha').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByLabelText('Hide thread details'))
-    expect(screen.queryByRole('complementary', { name: 'Thread details' })).toBeNull()
-  })
-
-  it('collapses the thread column', () => {
-    render(view())
-    expect(screen.getByRole('complementary', { name: 'Conversations' })).toBeTruthy()
-    fireEvent.click(screen.getByLabelText('Hide conversations'))
-    expect(screen.queryByRole('complementary', { name: 'Conversations' })).toBeNull()
+    expect(screen.getByRole('navigation', { name: 'Chats' })).toBeTruthy()
   })
 
   it('asks for a selection when no thread is open', () => {
     render(view(null))
-    expect(screen.getByText('Select a conversation')).toBeTruthy()
+    expect(screen.getByText('Select a chat')).toBeTruthy()
     expect(screen.queryByText('conversation body')).toBeNull()
   })
 })
@@ -201,7 +188,7 @@ describe('ConversationView', () => {
     await flush()
     expect(box.value).toBe('draft')
     rerender(<ConversationView {...base} onSend={onSend} sendError="nope" />)
-    expect(screen.getByRole('alert').textContent).toBe('nope')
+    expect(screen.getByRole('alert').textContent).toContain('nope')
   })
 
   it('keeps an unsent draft per thread across switching away and back, and clears it after a send', async () => {
@@ -253,8 +240,8 @@ describe('ChatPage', () => {
   it('lists real threads, opens one into the URL, and shows its conversation', async () => {
     setup()
     await flush()
-    expect(screen.getByText('Select a conversation')).toBeTruthy()
-    const list = screen.getByRole('list', { name: 'Threads' })
+    expect(screen.getByText('Select a chat')).toBeTruthy()
+    const list = screen.getByRole('listbox', { name: 'Chats' })
     fireEvent.click(within(list).getByText(MOCK_CHAT_AGENTS[1].agent.label))
     await flush()
     expect(screen.getByTestId('where').textContent).toMatch(/^\/chat\/.+/)
@@ -277,7 +264,7 @@ describe('ChatPage', () => {
   it('sends through the client from the composer', async () => {
     const client = setup()
     await flush()
-    fireEvent.click(within(screen.getByRole('list', { name: 'Threads' })).getByText(MOCK_CHAT_AGENTS[0].agent.label))
+    fireEvent.click(within(screen.getByRole('listbox', { name: 'Chats' })).getByText(MOCK_CHAT_AGENTS[0].agent.label))
     await flush()
     const box = screen.getByLabelText('Message')
     fireEvent.change(box, { target: { value: 'status?' } })
