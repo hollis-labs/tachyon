@@ -1,4 +1,4 @@
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
+import type { LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export interface PlannerEvent { type: string }
@@ -39,6 +39,12 @@ export interface PlannerClient {
   plannerTaskTransition(task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }): Promise<TaskTransitionResult>
   /** Attach "what shipped" and PR cites after a move; never blocks the move. */
   plannerTaskMeta(task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }): Promise<TaskMeta>
+  /** Outbound, inbound and external links of an item, relations and legacy arrays merged. */
+  plannerLinks(db: PlannerDb, id: string, signal?: AbortSignal): Promise<LinksView>
+  /** Add a typed relation; a needs cycle is 422 code cycle, a stale revision 409. */
+  plannerRelationAdd(db: PlannerDb, id: string, kind: RelationKind, to: PlannerRef, rev: number): Promise<RelationResult>
+  /** Remove a typed relation (the Undo of an add). */
+  plannerRelationRemove(db: PlannerDb, id: string, kind: RelationKind, to: PlannerRef, rev: number): Promise<RelationResult>
   getTask(id: string, signal?: AbortSignal): Promise<Task>
   listTaskComments(id: string, query?: { limit?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }, signal?: AbortSignal): Promise<ListPage<Comment>>
   resolveReference(db: PlannerDb | null, id: string): Promise<PlannerReference>

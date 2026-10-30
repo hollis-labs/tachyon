@@ -41,7 +41,7 @@ describe('timeline', () => {
     setup(vi.fn().mockResolvedValue(page()))
     const list = await screen.findByRole('list', { name: /Milestones/i })
     expect(list.textContent).toContain('Approved')
-    expect(list.textContent).toContain('50% of tasks done · next')
+    expect(list.textContent).toContain('Half of tasks done · next')
     expect(list.textContent).not.toMatch(/v1/i)
     expect(screen.getByText(/History starts Oct 29/)).toBeTruthy()
   })
