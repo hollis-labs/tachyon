@@ -5,20 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tachyon</title>
     <script>
-      // Set the persisted theme attribute synchronously, before first paint
-      // and before the deferred module script runs — otherwise the page
-      // paints with no data-theme attribute (default light styling) and
-      // flips to the stored theme a moment later, which reads as a flash.
-      // Mirrors @hollis-labs/kit-dashboard's applyTheme/getInitialTheme.
+      // Set the palette and colour mode synchronously, before first paint and
+      // before the deferred module script runs, so there is no flash. `mode` is
+      // light | dark | system (default system, follows prefers-color-scheme).
+      // Keep in step with src/mode.ts.
       (() => {
-        const KEY = "sysop.theme";
-        const KNOWN = ["p1-green-phosphor", "p3-amber-phosphor", "p4-white", "hi-contrast"];
-        let theme = "p4-white";
+        const root = document.documentElement;
+        let mode = "system";
         try {
-          const stored = window.localStorage.getItem(KEY);
-          if (stored && KNOWN.indexOf(stored) !== -1) theme = stored;
+          const stored = window.localStorage.getItem("mode");
+          if (stored === "light" || stored === "dark") mode = stored;
         } catch {}
-        document.documentElement.setAttribute("data-theme", theme);
+        const dark = window.matchMedia("(prefers-color-scheme: dark)");
+        const apply = () => root.setAttribute("data-mode", mode === "system" ? (dark.matches ? "dark" : "light") : mode);
+        root.setAttribute("data-theme", "p4-white");
+        apply();
       })();
     </script>
   </head>

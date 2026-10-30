@@ -1,12 +1,14 @@
-import { applyTheme, getInitialTheme } from "@hollis-labs/kit-dashboard"
+import { applyTheme, DEFAULT_THEME } from "@hollis-labs/kit-dashboard"
 import React from "react"
 import ReactDOM from "react-dom/client"
 import { App } from "./App"
 import { ApiProvider } from "./api/context"
+import { initMode } from "./mode"
 import "./index.css"
 
-// Apply the persisted dashboard palette before first paint.
-applyTheme(getInitialTheme())
+// One palette; colour mode is the user choice. index.html set both before first paint.
+applyTheme(DEFAULT_THEME)
+initMode()
 
 const root = document.getElementById("root")
 if (!root) {

@@ -1,5 +1,5 @@
 import { EmptyState, Toaster, TooltipProvider } from "@hollis-labs/design-components"
-import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/kit-dashboard"
+import { NavRail, type NavRailItem } from "@hollis-labs/kit-dashboard"
 import {
   type HostPluginInfo,
   HostPluginsProvider,
@@ -12,6 +12,7 @@ import { type ReactNode, useEffect, useState } from "react"
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 import { useApi } from "./api/context"
 import { DataStatus } from "./DataStatus"
+import { ModeMenu } from "./ModeMenu"
 import { plugins } from "./plugins"
 
 const DEFAULT_ROUTE = "/planner"
@@ -61,7 +62,7 @@ function Shell() {
         footerExtra={
           <>
             {extras}
-            <ThemeSwitcher />
+            <ModeMenu />
           </>
         }
       />
