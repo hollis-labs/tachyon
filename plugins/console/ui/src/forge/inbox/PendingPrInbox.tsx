@@ -1,5 +1,5 @@
 import { DashboardViewTabs, DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
-import { FilterChipGroup, RecordTag } from '@hollis-labs/kit-dashboard/data'
+import { RecordTag } from '@hollis-labs/kit-dashboard/data'
 import { Button, SearchInput, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@hollis-labs/design-components'
 import { PageHeader } from '@hollis-labs/kit-dashboard'
 import { useEffect, useMemo, useState } from 'react'
@@ -53,20 +53,22 @@ const VIEWS: { id: Exclude<TriageView, 'all'>; label: string }[] = [
 ]
 
 function Pill({ category }: { category: InboxCategory }) {
-  return <RecordTag className={`font-mono ${CATEGORY_TONE[category]}`}>{CATEGORY_LABEL[category]}</RecordTag>
+  return <RecordTag className={CATEGORY_TONE[category]}>{CATEGORY_LABEL[category]}</RecordTag>
 }
 
 function Checks({ item }: { item: InboxItem }) {
   const c = item.pr.checksSummary
   const r = item.pr.reviewSummary
   if (!c && !r) return null
+  const parts: string[] = []
+  if (c) {
+    if (c.failed) parts.push(`${c.failed} failing`)
+    if (c.pending) parts.push(`${c.pending} running`)
+    if (!c.failed && !c.pending) parts.push('Checks passing')
+  }
   return (
-    <span className="font-mono dash-support text-fg-muted">
-      {c && (
-        <span title="checks">
-          <span>{c.passed}✓</span> <span className={c.failed ? 'text-danger' : ''}>{c.failed}✗</span> <span>{c.pending}…</span>
-        </span>
-      )}
+    <span className="text-fg-muted">
+      {c && <span title="checks" className={c.failed ? 'text-danger' : ''}>{parts.join(', ')}</span>}
       {c && r && ' · '}
       {r && <span title="reviews">{r.approved} approved{r.changesRequested ? `, ${r.changesRequested} blocking` : ''}</span>}
     </span>
@@ -104,19 +106,19 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle, onP
   }
   const label = `${pr.ref.repo.owner}/${pr.ref.repo.name}#${pr.ref.number}`
   return (
-    <li className={`border-b border-border/80 px-4 py-3 ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
+    <li className={`group border-b border-border/80 px-4 py-3 ${active ? '' : 'opacity-70'} ${selected ? 'bg-surface' : ''}`} data-testid={`pr-row-${item.key}`}>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
         <input type="checkbox" aria-label={`Select ${label}`} checked={selected} onChange={() => onToggle(item)} className="mt-1 accent-primary" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link to={prWorkspaceHref(pr.ref)} className="font-mono dash-body text-fg underline-offset-2 hover:text-fg hover:underline">
+            <Link to={prWorkspaceHref(pr.ref)} className="font-mono dash-body text-fg underline-offset-2 hover:underline">
               {label}
             </Link>
             {item.categories.map((c) => <Pill key={c} category={c} />)}
             {item.status === 'snoozed' && item.triage?.snoozeUntil && <span className="font-mono dash-caption text-fg-muted">snoozed until {new Date(item.triage.snoozeUntil).toLocaleString()}</span>}
           </div>
           <button type="button" onClick={() => onPreview(item)} aria-label={`Preview ${label}: ${pr.title}`} className="mt-0.5 block max-w-full truncate text-left dash-body text-fg-muted hover:text-fg hover:underline">{pr.title}</button>
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono dash-support text-fg-muted">
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 dash-support text-fg-muted">
             <span>by {pr.author.login}</span>
             <span>updated {ago(Date.parse(pr.updatedAt), now)}</span>
             {pr.additions !== undefined && <span><span>+{pr.additions}</span> <span className="text-danger">-{pr.deletions ?? 0}</span></span>}
@@ -134,25 +136,25 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle, onP
           )}
         </div>
 
-        <div className="relative flex flex-wrap items-center justify-end gap-1.5">
-          <Button variant="outline" size="sm" type="button" className="dash-label" onClick={() => onAssign(item)} disabled={busy}>
+        <div className={`flex items-center justify-end gap-1.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 ${selected ? 'opacity-100' : 'md:opacity-0'}`}>
+          <Button variant="outline" size="sm" type="button" className="max-md:hidden" onClick={() => onAssign(item)} disabled={busy}>
             {item.assignments.length ? 'Assign again' : 'Assign'}
           </Button>
-          {active ? (
-            <>
-              <DropdownMenu open={menu} onOpenChange={setMenu}>
-                <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="dash-label" disabled={busy} />}>Snooze</DropdownMenuTrigger>
-                <DropdownMenuContent aria-label="Snooze for" align="end" data-dashboard-shape="square" className="w-36">
-                  {SNOOZE_PRESETS.map(p => <DropdownMenuItem key={p.id} disabled={busy} onClick={() => void run({ snooze: now + p.ms })}>{p.label}</DropdownMenuItem>)}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button variant="outline" size="sm" type="button" className="dash-label" onClick={() => run('settle')} disabled={busy}>Resolve</Button>
-              <Button variant="outline" size="sm" type="button" className="dash-label" onClick={() => run('dismiss')} disabled={busy}>Dismiss</Button>
-            </>
-          ) : (
-            <Button variant="outline" size="sm" type="button" className="dash-label" onClick={() => run('reopen')} disabled={busy}>Reopen</Button>
-          )}
-
+          <DropdownMenu open={menu} onOpenChange={setMenu}>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={`More actions for ${label}`} disabled={busy} />}>⋯</DropdownMenuTrigger>
+            <DropdownMenuContent aria-label="Row actions" align="end" data-dashboard-shape="square" className="w-44">
+              <DropdownMenuItem className="md:hidden" onClick={() => onAssign(item)}>{item.assignments.length ? 'Assign again' : 'Assign'}</DropdownMenuItem>
+              {active ? (
+                <>
+                  {SNOOZE_PRESETS.map(p => <DropdownMenuItem key={p.id} disabled={busy} onClick={() => void run({ snooze: now + p.ms })}>Snooze {p.label.replace(/^Snooze\s*/i, '').toLowerCase()}</DropdownMenuItem>)}
+                  <DropdownMenuItem disabled={busy} onClick={() => void run('settle')}>Resolve</DropdownMenuItem>
+                  <DropdownMenuItem disabled={busy} onClick={() => void run('dismiss')}>Dismiss</DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem disabled={busy} onClick={() => void run('reopen')}>Reopen</DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       {err && <p role="alert" className="mt-2 font-mono dash-control text-danger">{err}</p>}
@@ -250,40 +252,45 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const allSelected = items.length > 0 && picked.length === items.length
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(items.map((i) => i.key)))
   const set = (p: Partial<InboxFilter>) => setFilter((f) => ({ ...f, ...p }))
-  const toggleCat = (c: InboxCategory) => set({ categories: filter.categories.includes(c) ? filter.categories.filter((x) => x !== c) : [...filter.categories, c] })
-  const filtered = filter.categories.length > 0 || !!filter.repo || !!filter.search || filter.unassignedOnly
+    const filtered = filter.categories.length > 0 || !!filter.repo || !!filter.search || filter.unassignedOnly
 
   return (
     <section data-dashboard-shape="square" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg" onKeyDown={(e) => { if (e.key === 'Escape' && selected.size > 0 && !assigning && !bulkAssigning && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) setSelected(new Set()) }}>
       <PageHeader title="Pull requests">
         <Button variant="outline" size="sm" className="dash-header-action" onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Button>
       </PageHeader>
-      <p className="border-b border-border px-4 py-2 font-mono dash-support text-fg-muted">
+      <p className="border-b border-border px-4 py-2 dash-support text-fg-muted">
         {views.active} need attention{refreshedAt ? ` · loaded ${ago(refreshedAt, now)}` : ''}
       </p>
       <div className="min-h-0 flex-1 overflow-auto">
       <DashboardViewTabs variant="segments" label="Triage state" value={filter.view} onChange={view => set({ view: view as TriageView })} items={VIEWS.map(v => ({ value: v.id, label: v.label, count: views[v.id] }))} />
 
       <DashboardToolbar className="border-b border-border px-4 py-2">
-        <FilterChipGroup variant="outline" ariaLabel="Reasons" chips={CATEGORY_ORDER.map(c => ({ value: c, label: <>{CATEGORY_LABEL[c]} {cats[c]}</>, activeClassName: 'border-fg bg-surface text-fg' }))} selected={filter.categories} onToggle={value => toggleCat(value as InboxCategory)} />
-        <span className="mx-1 hidden h-4 w-px bg-surface-hover sm:block" />
-        <select aria-label="Repository" value={filter.repo} onChange={e => set({ repo: e.target.value })}>
-          <option value="">All repos</option>
-          {repos.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-        </select>
-        <select aria-label="Group by" value={groupBy} onChange={e => setGroupBy(e.target.value as GroupBy)}>
-          <option value="category">Group: reason</option>
-          <option value="repo">Group: repo</option>
-          <option value="none">No grouping</option>
-        </select>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" size="sm" aria-label="Needs you" />}>
+            Needs you: {filter.categories.length === 1 ? CATEGORY_LABEL[filter.categories[0]].toLowerCase() : 'all'}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent aria-label="Needs you" align="start" data-dashboard-shape="square" className="w-52">
+            <DropdownMenuItem onClick={() => set({ categories: [] })}>{filter.categories.length === 0 ? '✓ ' : ''}All reasons</DropdownMenuItem>
+            {CATEGORY_ORDER.map(c => <DropdownMenuItem key={c} onClick={() => set({ categories: [c] })}>{filter.categories[0] === c && filter.categories.length === 1 ? '✓ ' : ''}{CATEGORY_LABEL[c]} {cats[c]}</DropdownMenuItem>)}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" size="sm" aria-label="Filters" />}>
+            Filters{(filter.repo ? 1 : 0) + (groupBy !== 'category' ? 1 : 0) > 0 ? ` · ${(filter.repo ? 1 : 0) + (groupBy !== 'category' ? 1 : 0)}` : ''}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent aria-label="Filters" align="start" data-dashboard-shape="square" className="w-56">
+            <DropdownMenuItem onClick={() => set({ repo: '' })}>{filter.repo === '' ? '✓ ' : ''}All repos</DropdownMenuItem>
+            {repos.map(r => <DropdownMenuItem key={r.id} onClick={() => set({ repo: r.id })}>{filter.repo === r.id ? '✓ ' : ''}{r.label}</DropdownMenuItem>)}
+            <DropdownMenuItem onClick={() => setGroupBy('category')}>{groupBy === 'category' ? '✓ ' : ''}Group by reason</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setGroupBy('repo')}>{groupBy === 'repo' ? '✓ ' : ''}Group by repo</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setGroupBy('none')}>{groupBy === 'none' ? '✓ ' : ''}No grouping</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="dash-search-adapter min-w-0 flex-1 basis-40">
           <SearchInput ariaLabel="Search pull requests" value={filter.search} onChange={search => set({ search })} placeholder="Search title, author, #" debounceMs={0} slashToFocus={false} />
         </div>
-        <label className="flex items-center gap-1.5 font-mono dash-support text-fg-muted">
-          <input type="checkbox" checked={filter.unassignedOnly} onChange={e => set({ unassignedOnly: e.target.checked })} className="accent-primary" />
-          Unassigned only
-        </label>
-        {filtered && <Button variant="outline" size="sm" className="dash-label" onClick={() => setFilter(f => ({ ...DEFAULT_FILTER, view: f.view }))}>Clear</Button>}
+        {filtered && <Button variant="ghost" size="sm" onClick={() => setFilter(f => ({ ...DEFAULT_FILTER, view: f.view }))}>Clear</Button>}
       </DashboardToolbar>
 
       {picked.length > 0 && (
@@ -323,7 +330,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
         {groups.map((g) => (
           <div key={g.id} role="group" aria-label={g.label}>
             {groupBy !== 'none' && (
-              <h3 className="border-b border-border bg-surface/40 px-4 py-1.5 font-mono dash-caption uppercase tracking-widest text-fg-muted">
+              <h3 className="border-b border-border bg-surface/40 px-4 py-1.5 dash-support font-medium text-fg-muted">
                 {g.label} <span className="text-fg-faint">{g.items.length}</span>
               </h3>
             )}
