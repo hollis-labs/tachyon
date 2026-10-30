@@ -160,4 +160,6 @@ Client text may not contain either marker (`marker_forbidden`), so text cannot f
 
 **Read side.** `GET library/prompts|policies` (list, detail with `body`/`bundle` and `referencing_agents[{id,rev,drifted}]`, `used_by`, `history` by revision), `agents/{id}` `parts[]` and `prompt.parts`, and `summary.library.prompts|policies` / `open_changes` are real.
 
+Migration `039_library_parts.sql` (take the next free number at merge).
+
 **Not done:** multi-agent *rollback* of a partly applied fleet is Tether's (one plan, atomic); a policy edit does not unset a field a newer bundle dropped; bodies are not read from Tether, only from the masked index.
