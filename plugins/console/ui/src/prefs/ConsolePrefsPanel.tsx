@@ -1,100 +1,124 @@
-import { useState } from 'react'
-import { Switch } from '@hollis-labs/design-components'
+import { useState, type ReactNode } from 'react'
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Switch } from '@hollis-labs/design-components'
+import { X } from 'lucide-react'
+import { Chip } from '../components/chip'
 import { Segmented } from '../components/segmented'
-import { levelOf, levelPatch, NOTIFY_LEVELS, previewLine } from './levels'
-import { PREF_FIELD_KEYS, consolePrefsSettingsGroup } from './manifest'
+import { levelOf, levelPatch, NOTIFY_LEVELS, previewLine, seeLine } from './levels'
+import { consolePrefsSettingsGroup } from './manifest'
 import type { ConsolePrefs } from './types'
 
-const LABEL = 'text-sm font-medium text-fg'
 const INPUT =
-  'border border-border bg-bg px-1.5 py-1 text-sm text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50'
-const HELP = 'mt-1 text-xs leading-snug text-fg-muted'
+  'border border-border bg-bg px-1.5 py-1 dash-control text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50'
+const WINDOWS = [[0, 'Off'], [30, '30 seconds'], [120, '2 minutes'], [600, '10 minutes']] as const
 
 export interface ConsolePrefsPanelProps {
   prefs: ConsolePrefs
   onChange: (patch: Partial<ConsolePrefs>) => void
 }
 
+function Row({ title, help, children }: { title: string; help: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border px-4 py-3 last:border-b-0">
+      <div className="min-w-0 flex-1 basis-56">
+        <p className="dash-control font-medium text-fg">{title}</p>
+        <p className="mt-0.5 dash-support text-fg-muted">{help}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">{children}</div>
+    </div>
+  )
+}
+
 /**
- * In-app preferences form, built on plain controls. Field titles and help text
- * come from the manifest group (consolePrefsSettingsGroup), so swapping this for
- * kit-settings' <SettingsRenderer> changes the chrome, not the data. Edits apply
- * immediately (no draft/save step) because the store is local; see BACKEND_NEEDS.md.
+ * In-app preferences, one card row per setting. Help text for the stored fields comes from the
+ * manifest group (consolePrefsSettingsGroup), so swapping this for kit-settings' <SettingsRenderer>
+ * changes the chrome, not the data. Edits apply immediately (no draft/save step).
  */
 export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
   const props = consolePrefsSettingsGroup().schema.properties
-  const help = (field: keyof typeof PREF_FIELD_KEYS) => String(props[field]?.description ?? '')
-  // Muted sources edit as free text; commit on blur so typing a comma is not eaten by normalising.
-  const [mutedDraft, setMuted] = useState<string | null>(null)
-  const muted = mutedDraft ?? prefs.mutedSources.join(', ')
+  const help = (field: string) => String(props[field]?.description ?? '')
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+  const addSource = () => {
+    if (draft.trim()) onChange({ mutedSources: [...prefs.mutedSources, draft] })
+    setDraft('')
+    setAdding(false)
+  }
+  const window = WINDOWS.find(([s]) => s === prefs.coalesceWindowSec)?.[1] ?? `${prefs.coalesceWindowSec} seconds`
 
   return (
-    <form aria-label="Alert preferences" className="space-y-5" onSubmit={(e) => e.preventDefault()}>
-      <div>
-        <div className="flex items-center gap-3">
+    <form aria-label="Alert preferences" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+      <div className="rounded-md border border-border">
+        <Row title="Notify me about" help="Sets what appears in the bell, the list and toasts.">
+          <Segmented
+            label="Notify me about"
+            value={levelOf(prefs)}
+            onChange={(id) => onChange(levelPatch(id))}
+            bare
+            items={NOTIFY_LEVELS.map((l) => ({ value: l.id, label: l.label }))}
+          />
+        </Row>
+        <p className="sr-only" aria-live="polite">{previewLine(levelOf(prefs), prefs.quiet)}</p>
+        <Row title="Pop-up toasts" help="Critical alerts always pop up and stay until dismissed.">
+          <Switch aria-label="Pop-up toasts" checked={prefs.toastsEnabled} onCheckedChange={(v) => onChange({ toastsEnabled: v })} />
+        </Row>
+      </div>
+
+      <div className="rounded-md border border-border">
+        <Row title="Quiet" help={help('quiet')}>
           <Switch aria-label="Quiet mode" checked={prefs.quiet} onCheckedChange={(v) => onChange({ quiet: v })} />
-          <span className={LABEL} aria-hidden="true">Quiet mode</span>
-        </div>
-        <p className="mt-1 text-xs leading-snug text-fg-muted">{help('quiet')}</p>
-      </div>
-
-      <div>
-        <p className={LABEL} id="notify-level">Notify me about</p>
-        <Segmented
-          label="Notify me about"
-          value={levelOf(prefs)}
-          onChange={(id) => onChange(levelPatch(id))}
-          className="!border-b-0 !px-0"
-          items={NOTIFY_LEVELS.map((l) => ({ value: l.id, label: l.label }))}
-        />
-        <p className={HELP} aria-live="polite">{previewLine(levelOf(prefs), prefs.quiet)}</p>
-      </div>
-
-      <fieldset className="space-y-1.5">
-        <legend className="sr-only">Quiet hours</legend>
-        <div className="flex items-center gap-3">
+        </Row>
+        <Row title="Quiet hours" help="Repeats every day in your local time.">
           <Switch aria-label="Quiet hours" checked={prefs.quietHoursEnabled} onCheckedChange={(v) => onChange({ quietHoursEnabled: v })} />
-          <span className={LABEL} aria-hidden="true">Quiet hours</span>
-        </div>
-        <div className="flex items-center gap-2">
           <input type="time" aria-label="Quiet hours start" value={prefs.quietHoursStart} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursStart: e.target.value })} className={INPUT} />
-          <span className={LABEL}>to</span>
+          <span className="dash-control text-fg-muted">to</span>
           <input type="time" aria-label="Quiet hours end" value={prefs.quietHoursEnd} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursEnd: e.target.value })} className={INPUT} />
-        </div>
-        <p className="text-xs leading-snug text-fg-muted">{help('quiet_hours_enabled')}</p>
-      </fieldset>
-
-      <div>
-        <label className="block">
-          <span className={LABEL}>Muted sources</span>
-          <input
-            type="text"
-            value={muted}
-            placeholder="agent-bravo, laptop"
-            onChange={(e) => setMuted(e.target.value)}
-            onBlur={() => {
-              if (mutedDraft !== null) onChange({ mutedSources: mutedDraft.split(',') })
-              setMuted(null)
-            }}
-            className={`${INPUT} mt-1 w-full`}
-          />
-        </label>
-        <p className="mt-1 text-xs leading-snug text-fg-muted">{help('muted_sources')}</p>
+        </Row>
       </div>
 
-      <div>
-        <label className="flex items-center gap-2">
-          <span className={LABEL}>Coalesce window (s)</span>
-          <input
-            type="number"
-            min={0}
-            max={3600}
-            value={prefs.coalesceWindowSec}
-            onChange={(e) => onChange({ coalesceWindowSec: e.target.valueAsNumber })}
-            className={`${INPUT} w-20`}
-          />
-        </label>
-        <p className="mt-1 text-xs leading-snug text-fg-muted">{help('coalesce_window_sec')}</p>
+      <div className="rounded-md border border-border">
+        <Row title="Muted sources" help="Agents or machines that never raise a toast. Critical still does.">
+          <ul aria-label="Muted sources" className="flex flex-wrap items-center justify-end gap-1.5">
+            {prefs.mutedSources.map((s) => (
+              <li key={s}>
+                <Chip className="gap-1.5 py-0.5">
+                  {s}
+                  <button type="button" aria-label={`Unmute ${s}`} onClick={() => onChange({ mutedSources: prefs.mutedSources.filter((m) => m !== s) })} className="text-fg-muted hover:text-fg">
+                    <X aria-hidden className="size-3" />
+                  </button>
+                </Chip>
+              </li>
+            ))}
+            <li>
+              {adding ? (
+                <input
+                  autoFocus
+                  aria-label="Source to mute"
+                  placeholder="agent-bravo"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={addSource}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSource() } if (e.key === 'Escape') { setDraft(''); setAdding(false) } }}
+                  className={`${INPUT} w-36`}
+                />
+              ) : (
+                <Button type="button" variant="outline" size="xs" onClick={() => setAdding(true)}>+ Add source</Button>
+              )}
+            </li>
+          </ul>
+        </Row>
+        <Row title="Group repeats" help="Same alert within this window becomes one entry (×4).">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Group repeats window" />}>{window} ▾</DropdownMenuTrigger>
+            <DropdownMenuContent aria-label="Group repeats window" align="end" data-dashboard-shape="square" className="w-40">
+              {WINDOWS.map(([s, l]) => <DropdownMenuItem key={s} onClick={() => onChange({ coalesceWindowSec: s })}>{l}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </Row>
+      </div>
+
+      <div className="rounded-md border border-dashed border-border px-4 py-3">
+        <p className="font-mono dash-caption uppercase tracking-label text-fg-faint">What you will see</p>
+        <p className="mt-1 dash-control text-fg-muted" aria-live="polite">{seeLine(prefs)}</p>
       </div>
     </form>
   )

@@ -2,7 +2,6 @@ import { Button } from '@hollis-labs/design-components'
 import { ago } from '@console/lib/agent-activity'
 import { AlertIcon } from './AlertIcon'
 import { AlertLinkButton } from './AlertLinkButton'
-import { SEVERITY_STYLE } from './severity-style'
 import type { ItemStatus } from '../seams/state-store'
 import type { Alert } from './types'
 import { LinkText } from '../autolink/LinkText'
@@ -22,18 +21,22 @@ export interface AlertListItemProps {
 }
 
 const BTN = 'text-fg-muted hover:text-fg max-md:min-h-10 max-md:min-w-10'
+const age = (ts: number, now: number) => ago(ts, now).replace(/ ago$/, '')
 
-/** One alert row: icon, severity stripe, title, one-line detail, source/age, primary link, state actions. */
+/** One alert row: rail icon, title (with a x4 for repeats), one-line sub, age. Actions appear on hover or focus. */
 export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRead, onDismiss, onSnooze, onRestore, onExpand }: AlertListItemProps) {
-  const sev = SEVERITY_STYLE[alert.severity]
   const unread = status === 'unread'
   const handled = status === 'dismissed' || status === 'snoozed' || status === 'settled'
+  const title = alert.count && alert.count > 1 ? `${alert.title} ×${alert.count}` : alert.title
+  const sub = status === 'snoozed' && snoozeUntil
+    ? `Snoozed until ${new Date(snoozeUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : status === 'dismissed' ? 'Dismissed' : null
   return (
     <li
       data-testid="alert-item"
       data-alert-id={alert.id}
       data-status={status}
-      className={`group relative flex gap-3 border-b border-border-subtle px-4 py-2.5 ${handled ? 'opacity-60' : ''}`}
+      className={`group relative flex gap-3 px-4 py-2.5 hover:bg-surface/30 ${handled ? 'opacity-60' : ''}`}
     >
       <span className="pt-0.5">
         <AlertIcon icon={alert.icon} severity={alert.severity} />
@@ -41,34 +44,22 @@ export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRe
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           {onExpand ? (
-            <button type="button" onClick={onExpand} aria-label={`Open details: ${alert.title}`} className={`min-w-0 flex-1 truncate text-left text-[13px] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${unread ? 'font-semibold text-fg' : 'text-fg-secondary'}`}>
-              {alert.title}
+            <button type="button" onClick={onExpand} aria-label={`Open details: ${alert.title}`} className={`min-w-0 truncate text-left dash-control hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${unread ? 'font-semibold text-fg' : 'text-fg-secondary'}`}>
+              {title}
             </button>
           ) : (
-            <span className={`min-w-0 flex-1 truncate text-[13px] ${unread ? 'font-semibold text-fg' : 'text-fg-secondary'}`}>{alert.title}</span>
+            <span className={`min-w-0 truncate dash-control ${unread ? 'font-semibold text-fg' : 'text-fg-secondary'}`}>{title}</span>
           )}
-          {unread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg" role="img" aria-label="unread" />}
+          {unread && <span className="size-1.5 shrink-0 self-center rounded-full bg-fg" role="img" aria-label="unread" />}
+          <span className="ml-auto shrink-0 font-mono dash-caption text-fg-faint">{age(alert.ts, now)}</span>
         </div>
-        {alert.detail && <p className="line-clamp-2 text-xs text-fg-muted"><LinkText surface="alerts" text={alert.detail} /></p>}
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-fg-faint">
-          {sev.named && <span className={sev.text}>{sev.label}</span>}
-          <span>{alert.sourceLabel ?? alert.source}</span>
-          <span>{ago(alert.ts, now)}</span>
-          {alert.count && alert.count > 1 && <span>{alert.count} times</span>}
-          {status === 'snoozed' && snoozeUntil && <span>snoozed until {new Date(snoozeUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
-          {status === 'dismissed' && <span>dismissed</span>}
-        </p>
-        {alert.primary && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <AlertLinkButton link={alert.primary} onFollow={onRead} />
-          </div>
-        )}
-        {(onDismiss || onSnooze || onRestore) && (
-          <div className="mt-1 flex items-center gap-1.5 md:absolute md:right-3 md:top-1.5 md:mt-0 md:group-hover:bg-bg-elevated md:group-focus-within:bg-bg-elevated">
-            <span className="flex items-center gap-1.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 md:opacity-0">
+        {(alert.detail || sub) && <p className="line-clamp-1 dash-support text-fg-muted">{sub ?? <LinkText surface="alerts" text={alert.detail ?? ''} />}</p>}
+        {(alert.primary || onDismiss || onSnooze || onRestore) && (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 md:h-0 md:overflow-hidden md:opacity-0 md:group-focus-within:h-auto md:group-hover:h-auto">
+            {alert.primary && <AlertLinkButton link={alert.primary} onFollow={onRead} />}
             {onSnooze && (
               <Button type="button" variant="ghost" size="xs" className={BTN} onClick={onSnooze} aria-label={`Snooze for 1 hour: ${alert.title}`}>
-                Snooze 1h
+                Snooze
               </Button>
             )}
             {onDismiss && (
@@ -81,7 +72,6 @@ export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRe
                 Restore
               </Button>
             )}
-            </span>
           </div>
         )}
       </div>

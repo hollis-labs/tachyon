@@ -39,6 +39,12 @@ async function emitUntilToast(source: FixtureSource, max = 8) {
   for (let i = 0; i < max && screen.queryAllByTestId('alert-toast').length === 0; i++) await act(async () => source.tick())
 }
 
+// Tray options live in an overflow menu.
+const pick = async (root: HTMLElement, name: string | RegExp) => {
+  await act(async () => fireEvent.click(within(root).getByRole('button', { name: 'Alert options' })))
+  await act(async () => fireEvent.click(await screen.findByRole('menuitem', { name })))
+}
+
 describe('AlertTray keyboard', () => {
   it('moves between rows with the arrows, dismisses with D, marks all read with Shift+R, and ignores keys in fields', async () => {
     await setup()
@@ -88,7 +94,7 @@ describe('AlertHost', () => {
       await act(async () => source.emit(event))
     }
     expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['critical'])
-    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Quiet' })))
+    await pick(tray, /Quiet/)
     expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['critical'])
   })
 
@@ -111,7 +117,7 @@ describe('AlertHost', () => {
     expect(screen.getByRole('button', { name: 'Alerts, 1 unread' })).toBeTruthy()
     // A warning can still toast while hidden from the critical-only bell/list.
     expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['warning', 'critical'])
-    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Mark all read' })))
+    await pick(tray, 'Mark all read')
     expect(screen.queryByTestId('alert-badge')).toBeNull()
     await setBell('debug')
     const warning = within(tray).getByRole('button', { name: 'Open details: threshold.warning' }).closest('[data-testid="alert-item"]')!
@@ -121,7 +127,7 @@ describe('AlertHost', () => {
     expect(within(tray).getByRole('button', { name: 'Open details: threshold.warning' })).toBeTruthy()
     await setBell('critical')
     expect(within(tray).queryByText('threshold.warning')).toBeNull()
-    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Quiet' })))
+    await pick(tray, /Quiet/)
     expect(prefs.get()).toMatchObject({ quiet: true, toastMinSeverity: 'notice', bellMinSeverity: 'critical' })
   })
 
@@ -146,7 +152,7 @@ describe('AlertHost', () => {
   it('mark all read clears the badge', async () => {
     await setup()
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Mark all read' })))
+    await pick(screen.getByRole('dialog', { name: 'Alerts' }), 'Mark all read')
     expect(screen.queryByTestId('alert-badge')).toBeNull()
   })
 })

@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@hollis-labs/design-components'
 import { X } from 'lucide-react'
-import { ago } from '@console/lib/agent-activity'
 import { AlertIcon } from './AlertIcon'
 import { AlertLinkButton } from './AlertLinkButton'
 import { TOAST_EXPIRE_MS } from './policy'
-import { SEVERITY_STYLE } from './severity-style'
 import type { Alert } from './types'
 import { LinkText } from '../autolink/LinkText'
 
@@ -22,7 +20,7 @@ export interface AlertToastProps {
 
 /** Compact toast card. Expires per severity; hover or focus pauses the clock; Escape closes. */
 export function AlertToast({ alert, now, durationMs, onClose, onRead, onExpand }: AlertToastProps) {
-  const sev = SEVERITY_STYLE[alert.severity]
+  const title = alert.count && alert.count > 1 ? `${alert.title} ×${alert.count}` : alert.title
   const total = durationMs === undefined ? TOAST_EXPIRE_MS[alert.severity] : durationMs
   const [paused, setPaused] = useState(false)
   const remaining = useRef(total)
@@ -70,26 +68,23 @@ export function AlertToast({ alert, now, durationMs, onClose, onRead, onExpand }
       </span>
       <div className="min-w-0 flex-1">
         {onExpand ? (
-          <button type="button" onClick={() => { onRead?.(); onClose(); onExpand() }} aria-label={`Open details: ${alert.title}`} className="block w-full truncate text-left text-[13px] font-semibold text-fg hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{alert.title}</button>
+          <button type="button" onClick={() => { onRead?.(); onClose(); onExpand() }} aria-label={`Open details: ${alert.title}`} className="block w-full truncate text-left dash-control font-semibold text-fg hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{title}</button>
         ) : (
-          <p className="truncate text-[13px] font-semibold text-fg">{alert.title}</p>
+          <p className="truncate dash-control font-semibold text-fg">{title}</p>
         )}
-        {alert.detail && <p className="truncate text-xs text-fg-muted"><LinkText surface="alerts" text={alert.detail} /></p>}
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-fg-faint">
-          {sev.named && <span className={sev.text}>{sev.label}</span>}
-          <span>{alert.sourceLabel ?? alert.source}</span>
-          <span>{ago(alert.ts, now)}</span>
-          {total === null && <span>stays until dismissed</span>}
-        </p>
-        {alert.primary && (
-          <div className="mt-1.5">
-            <AlertLinkButton
-              link={alert.primary}
-              onFollow={() => {
-                onRead?.()
-                onClose()
-              }}
-            />
+        {alert.detail && <p className="truncate dash-support text-fg-muted"><LinkText surface="alerts" text={alert.detail} /></p>}
+        {(alert.primary || total === null) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            {alert.primary && (
+              <AlertLinkButton
+                link={alert.primary}
+                onFollow={() => {
+                  onRead?.()
+                  onClose()
+                }}
+              />
+            )}
+            {total === null && <span className="dash-support text-fg-faint">Stays until you dismiss it</span>}
           </div>
         )}
       </div>
