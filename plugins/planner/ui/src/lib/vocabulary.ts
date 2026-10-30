@@ -239,11 +239,13 @@ export const TEXT = {
   mitigatedBy: 'Mitigated by',
   mitigatedByNone: 'No theme mitigates this yet',
   statusLabel: 'Status',
-  triageCount: (n: number) => `${n} to triage`,
+  inboxHeading: (n: number) => `Inbox · ${n} to triage`,
+  inboxLabel: 'Inbox triage',
+  triagePosition: (i: number, n: number) => `${i} of ${n}`,
+  capturedBy: (who: string) => `captured by ${who}`,
   allTriaged: 'All triaged',
   triageInto: 'Triage into',
   dismiss: 'Dismiss',
-  nextUp: (t: string) => `Next: ${t}`,
   changed: 'This changed; reloaded',
   reconnecting: (time: string) => `Reconnecting, showing data from ${time}`,
   writesPaused: 'Changes are paused until the connection returns',
@@ -270,8 +272,8 @@ export const FACETS = [
 
 /** Where an inbox card can go, with its one-key shortcut. */
 export const TRIAGE_ROUTES = [
-  { id: 'themes', label: 'Theme', key: 't' },
-  { id: 'ideas', label: 'Idea', key: 'i' },
-  { id: 'decisions', label: 'Decision', key: 'd' },
-  { id: 'risks', label: 'Risk', key: 'k' },
+  { id: 'themes', label: 'Theme', key: '1' },
+  { id: 'ideas', label: 'Idea', key: '2' },
+  { id: 'decisions', label: 'Decision', key: '3' },
+  { id: 'risks', label: 'Risk', key: '4' },
 ] as const

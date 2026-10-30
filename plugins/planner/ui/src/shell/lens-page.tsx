@@ -84,8 +84,8 @@ export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: 
     }
     case 'inbox':
       return drop([
-        { id: 'new', title: TEXT.groupToTriage, items: pick((i) => i.status === 'new').map((i) => entry(i, { meta: str(i.kind) ? chip(str(i.kind)) : undefined })) },
-        { id: 'archived', title: TEXT.groupArchived, collapsed: true, items: pick((i) => i.status !== 'new').map((i) => entry(i, { meta: str(i.kind) ? chip(str(i.kind)) : undefined })) },
+        { id: 'new', title: TEXT.groupToTriage, items: pick((i) => i.status === 'new').map((i) => entry(i, { meta: str(i.kind) ? <span className="flex w-fit">{chip(str(i.kind))}</span> : undefined })) },
+        { id: 'archived', title: TEXT.groupArchived, collapsed: true, items: pick((i) => i.status !== 'new').map((i) => entry(i, { meta: str(i.kind) ? <span className="flex w-fit">{chip(str(i.kind))}</span> : undefined })) },
       ])
     default:
       return []
@@ -136,7 +136,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   }, [load, lastEvent, api])
 
   const needIds = useMemo(() => new Set((need?.items ?? []).filter((n) => n.db === db).map((n) => n.id)), [need, db])
-  const item = items?.find((i) => i.id === openId)
+  const item = items?.find((i) => i.id === openId) ?? (db === 'inbox' ? items?.find((i) => i.status === 'new') : undefined)
   useEffect(() => {
     if (!item) return setLinks([])
     let live = true
@@ -218,7 +218,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   )
   const selected = Boolean(item) || db === 'inbox'
   const body = db === 'inbox'
-    ? <InboxFocus items={(items ?? []).filter((i) => i.status === 'new')} loading={items === null} onChanged={load} />
+    ? <InboxFocus items={(items ?? []).filter((i) => i.status === 'new')} selectedId={openId} loading={items === null} onChanged={load} />
     : item
       ? <LensFocus db={db} item={item} statuses={schema?.enums.status ?? []} severities={schema?.enums.severity ?? []} write={write} onPin={() => void togglePin(item)}>
           {db === 'workstreams' && <StreamBody item={item} />}
@@ -251,7 +251,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
             {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
           </p>
         ) : null}
-        context={db === 'inbox' ? undefined : context}
+        context={context}
       >
         {body}
       </PlannerFrame>
