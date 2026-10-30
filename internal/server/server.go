@@ -51,6 +51,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/tesseractread"
 	"github.com/hollis-labs/tachyon/internal/torqueread"
 	"github.com/hollis-labs/tachyon/internal/transcripts"
+	"github.com/hollis-labs/tachyon/internal/transcriptsapi"
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
 )
 
@@ -67,6 +68,8 @@ type Config struct {
 	ChatSyncInterval time.Duration
 	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
 	AgentsStubs bool
+	// TranscriptsStubs replaces the transcripts bridge with the fixture-backed contract (TACHYON_TRANSCRIPTS_STUBS=1) for GUI development.
+	TranscriptsStubs bool
 	// AgentsCollector runs the always-on Agents collector (TACHYON_AGENTS_COLLECTOR=0 turns it off for debugging).
 	// It needs a Tether address; the read-scope token is the usual TETHER_TOKEN_FILE.
 	AgentsCollector bool
@@ -478,6 +481,10 @@ func (s *Server) Routes() http.Handler {
 	transcriptHandler := http.Handler(transcripts.New(s.cfg.FragmentsURL, s.cfg.FragmentsTokenFile, s.cfg.TranscriptMaxSessions))
 	if s.cache != nil {
 		transcriptHandler = s.cache.Wrap(transcriptHandler)
+	}
+	if s.cfg.TranscriptsStubs {
+		// Dev only: GET-only fixtures replace the bridge under the same prefix; no cache, no upstream.
+		transcriptHandler = transcriptsapi.Stub{}.Handler()
 	}
 	mux.Handle(transcripts.Prefix+"/", transcriptHandler)
 	operator := approvals.New(s.cfg.ApprovalQueueURL)

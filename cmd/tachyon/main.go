@@ -71,6 +71,7 @@ func main() {
 		ActionDetachGrace:           durationEnv("TACHYON_ACTION_DETACH_GRACE"),
 		AgentsCollector:             os.Getenv("TACHYON_AGENTS_COLLECTOR") != "0",
 		AgentsStubs:                 os.Getenv("TACHYON_AGENTS_STUBS") == "1",
+		TranscriptsStubs:            os.Getenv("TACHYON_TRANSCRIPTS_STUBS") == "1",
 		ChatClientContext:           os.Getenv("TACHYON_CHAT_CLIENT_CONTEXT") == "1",
 		ChatStubs:                   os.Getenv("TACHYON_CHAT_STUBS") == "1",
 		CardEffectsTorque:           os.Getenv("TACHYON_CARD_EFFECTS_TORQUE") == "1",
