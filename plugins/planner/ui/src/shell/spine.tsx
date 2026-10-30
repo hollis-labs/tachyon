@@ -47,7 +47,15 @@ export function useThemeGroups({ board, pins, needYouOnly, needs, links, itemMen
       }
     }
     const pinned = all.filter((r) => pins.has(r.id) && pass(r)).map(entry)
-    const rest = THEME_SECTIONS.map((s) => ({ id: s.key, title: s.title, items: (board?.sections[s.key] ?? []).filter((r) => pass(r) && !pins.has(r.id)).map(entry) })).filter((g) => g.items.length > 0)
-    return [...(pinned.length ? [{ id: 'pinned', title: TEXT.pinned, items: pinned }] : []), ...rest]
+    const of = (keys: readonly string[]) => THEME_SECTIONS.filter((s) => keys.includes(s.key)).flatMap((s) => (board?.sections[s.key] ?? []).filter((r) => pass(r) && !pins.has(r.id)).map(entry))
+    const live = of(['in_flight']), cleared = of(['cleared']), settled = of(['queued', 'parked', 'landed']), proposed = of(['proposed'])
+    const groups: SpineGroup[] = [
+      ...(pinned.length ? [{ id: 'pinned', title: TEXT.pinned, items: pinned }] : []),
+      { id: 'in_flight', title: TEXT.groupLive, items: live },
+      { id: 'cleared', title: TEXT.groupCleared, items: cleared },
+      { id: 'settled', title: TEXT.groupSettled, items: settled, collapsed: true },
+      { id: 'proposed', title: TEXT.groupProposed, items: proposed, collapsed: true },
+    ]
+    return groups.filter((g) => g.items.length > 0)
   }, [all, board, itemMenu, links, needYouOnly, needs, pins])
 }

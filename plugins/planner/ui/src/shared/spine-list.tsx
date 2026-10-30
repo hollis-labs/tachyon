@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Pin } from 'lucide-react'
 import { cn } from '@hollis-labs/design-components'
 import { GroupHeading } from './primitives'
@@ -31,6 +31,8 @@ export interface SpineGroup {
   id: string
   title: string
   items: readonly SpineEntry[]
+  /** Starts folded to its heading and count; the heading opens it. */
+  collapsed?: boolean
 }
 
 export interface SpineListProps {
@@ -53,7 +55,10 @@ export interface SpineListProps {
  */
 export function SpineList({ groups, selectedId, onSelect, onTogglePin, label, pendingLabel = 'Saving', pinnedLabel = 'Pinned', emptyLabel, className }: SpineListProps) {
   const root = useRef<HTMLDivElement>(null)
-  const all = groups.flatMap((g) => g.items)
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set())
+  const folded = (g: SpineGroup) => Boolean(g.collapsed) && !opened.has(g.id)
+  const all = groups.filter((g) => !folded(g)).flatMap((g) => g.items)
+  const toggle = (id: string) => setOpened((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); return n })
 
   const focusAt = (i: number) => {
     const rows = root.current?.querySelectorAll<HTMLElement>('[role="option"]')
@@ -75,8 +80,8 @@ export function SpineList({ groups, selectedId, onSelect, onTogglePin, label, pe
     <div ref={root} role="listbox" aria-label={label} onKeyDown={onKeyDown} className={cn('flex min-w-0 flex-col', className)}>
       {groups.map((g) => (
         <div key={g.id} role="group" aria-labelledby={`spine-${g.id}`} className="flex flex-col">
-          <GroupHeading id={`spine-${g.id}`} count={g.items.length}>{g.title}</GroupHeading>
-          {g.items.map((it) => {
+          <GroupHeading id={`spine-${g.id}`} count={g.items.length} onToggle={g.collapsed ? () => toggle(g.id) : undefined} open={!folded(g)}>{g.title}</GroupHeading>
+          {!folded(g) && g.items.map((it) => {
             const selected = it.id === selectedId
             return (
               <div
