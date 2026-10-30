@@ -16,10 +16,12 @@ interface PlannerCreateDialogProps {
   onOpenChange: (open: boolean) => void
   /** The rank a new priority starts at. */
   nextRank?: number
+  /** Prefills the title, e.g. what was typed in the palette. */
+  initialTitle?: string
   onCreated: (item: PlannerItem) => void
 }
 
-export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCreated }: PlannerCreateDialogProps) {
+export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, initialTitle, onCreated }: PlannerCreateDialogProps) {
   const api = useApi()
   const schema = usePlannerSchema(db)
   const meta = plannerMeta(db)
@@ -32,7 +34,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
 
   useEffect(() => {
     if (open && schema) {
-      setDraft(createDraft(db, specs, nextRank))
+      setDraft({ ...createDraft(db, specs, nextRank), ...(initialTitle ? { title: initialTitle } : {}) })
       setErrors([])
       setWriteError(null)
       retainedId.current = createPlannerId()

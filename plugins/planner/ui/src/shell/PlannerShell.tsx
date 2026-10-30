@@ -7,7 +7,7 @@ import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
 import { PlannerApiError as ApiError } from '@planner/api/errors'
 import { notifyError, notifyWriteError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
-import { CommandPalette, LinkLayer, SpineList, type PaletteCommand } from '@planner/shared'
+import { CommandPalette, LinkLayer, PaletteHint, SpineList, type PaletteCommand } from '@planner/shared'
 import { Context } from '@planner/shell/context'
 import { LinkKindPicker } from '@planner/shell/link-picker'
 import { usePlannerKeys } from '@planner/shell/use-planner-keys'
@@ -60,6 +60,7 @@ export default function PlannerShell() {
   const [counts, setCounts] = useState<Partial<Record<PlannerDb, number>>>({})
   const [paletteOpen, setPaletteOpen] = useState<'main' | 'link' | null>(null)
   const [creating, setCreating] = useState<'themes' | 'ideas' | null>(null)
+  const [createTitle, setCreateTitle] = useState('')
   const [linksView, setLinksView] = useState<LinksView | null>(null)
   const [pendingLink, setPendingLink] = useState<{ from: string; to: string } | null>(null)
   const extraCommands = useContributions('planner.palette.command')
@@ -224,14 +225,14 @@ export default function PlannerShell() {
     },
     !off,
   )
-  const commands = useMemo<PaletteCommand[]>(
-    () => [
-      { id: 'create:themes', mode: 'create', text: TEXT.createTheme, label: TEXT.createTheme, group: TEXT.modeCreate },
-      { id: 'create:ideas', mode: 'create', text: TEXT.createIdea, label: TEXT.createIdea, group: TEXT.modeCreate },
+  const commands = useCallback(
+    (q: string): PaletteCommand[] => [
+      { id: 'create:themes', mode: 'create', text: TEXT.createTheme, label: q ? TEXT.createThemeIn(q) : TEXT.createTheme, group: TEXT.paletteKindTheme, hint: '↵', always: true },
+      { id: 'create:ideas', mode: 'create', text: TEXT.createIdea, label: q ? TEXT.createIdeaNamed(q) : TEXT.createIdea, group: TEXT.paletteKindIdea, hint: 'I', always: true },
       ...extraCommands.map((c) => ({ id: `ext:${c.id}`, mode: String((c.data as { mode?: string } | undefined)?.mode ?? 'create'), text: c.label ?? c.id, label: c.label ?? c.id })),
-      ...all.map((r) => ({ id: `open:${r.id}`, mode: 'open', text: `${r.id} ${r.title}`, label: <span><span className="mr-2 font-mono dash-caption text-fg-faint">{r.id}</span>{r.title}</span> })),
+      ...all.map((r) => ({ id: `open:${r.id}`, mode: 'open', group: TEXT.paletteKindTheme, hint: row && r.id !== row.id ? TEXT.paletteLink : undefined, text: `${r.id} ${r.title}`, label: r.title })),
     ],
-    [all, extraCommands],
+    [all, extraCommands, row],
   )
   const linkCommands = useMemo<PaletteCommand[]>(() => all.filter((r) => r.id !== openId).map((r) => ({ id: r.id, mode: 'link', text: `${r.id} ${r.title}`, label: <span><span className="mr-2 font-mono dash-caption text-fg-faint">{r.id}</span>{r.title}</span> })), [all, openId])
 
@@ -252,7 +253,7 @@ export default function PlannerShell() {
       links={rowLinks}
       decisions={row.pending_decisions}
       onCommented={() => void load()}
-      mentionable={all}
+      mentionable={all.map((r) => ({ id: r.id, title: r.title, ref: `#${r.rank}` }))}
       statusOptions={actions.map((a) => ({ value: a.label, label: a.label }))}
       onStatus={async (label) => { const a = actions.find((x) => x.label === label); if (a) await act(row, a.action, a.position === undefined ? undefined : { position: a.position }) }}
     />
@@ -315,15 +316,16 @@ export default function PlannerShell() {
         modes={[{ id: 'create', label: TEXT.modeCreate }, { id: 'open', label: TEXT.modeOpen }]}
         commands={commands}
         emptyLabel={TEXT.paletteEmpty}
-        onRun={(cmd) => {
+        hints={<><PaletteHint k="↵">{TEXT.hintEnter}</PaletteHint>{row && <PaletteHint k="⇥">{TEXT.hintTab(`#${row.rank}`)}</PaletteHint>}<PaletteHint k="@">{TEXT.hintAt}</PaletteHint><PaletteHint k="esc">{TEXT.hintEsc}</PaletteHint></>}
+        onRun={(cmd, q) => {
           if (cmd.startsWith('open:')) open(cmd.slice(5))
-          else if (cmd === 'create:themes' || cmd === 'create:ideas') setCreating(cmd === 'create:ideas' ? 'ideas' : 'themes')
+          else if (cmd === 'create:themes' || cmd === 'create:ideas') (setCreateTitle(q), setCreating(cmd === 'create:ideas' ? 'ideas' : 'themes'))
         }}
         onRunAndLink={row ? (cmd) => cmd.startsWith('open:') && setPendingLink({ from: row.id, to: cmd.slice(5) }) : undefined}
       />
       <CommandPalette key="link" open={paletteOpen === 'link'} onOpenChange={(o) => !o && setPaletteOpen(null)} title={TEXT.linkTo} modes={[{ id: 'link', label: TEXT.linkTo }]} commands={linkCommands} emptyLabel={TEXT.paletteEmpty} onRun={(to) => row && setPendingLink({ from: row.id, to })} />
       <LinkKindPicker open={pendingLink !== null} from={pendingLink ? titleOf(pendingLink.from) : ''} to={pendingLink ? titleOf(pendingLink.to) : ''} onPick={(k) => void addLink(k)} onCancel={() => setPendingLink(null)} />
-      <PlannerCreateDialog db={creating ?? 'themes'} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={(board?.totals.in_flight ?? 0) + (board?.totals.cleared ?? 0) + 1} onCreated={(it) => { void load(); if (creating === 'themes') open(it.id) }} />
+      <PlannerCreateDialog db={creating ?? 'themes'} initialTitle={createTitle} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={(board?.totals.in_flight ?? 0) + (board?.totals.cleared ?? 0) + 1} onCreated={(it) => { void load(); if (creating === 'themes') open(it.id) }} />
     </LinkLayer>
   )
 }
