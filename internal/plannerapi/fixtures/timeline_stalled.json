@@ -1,0 +1,4 @@
+{"milestones":[{"key":"approved","state":"reached","at":"2026-10-15T10:00:00Z"},{"key":"first_done","state":"next"},{"key":"half_done","state":"pending"}],
+"momentum":{"label":"stalled","score":0.02,"text":"Stalled: nothing finished in 14 days, 2 blockers.","signals":[{"kind":"blockers","count":2,"window":"now","weight":-0.5,"effect":"down"},{"kind":"idle_days","count":14,"window":"14d","weight":-1.0,"effect":"down"}],"series":[{"at":"2026-10-16T00:00:00Z","done":0,"total":5},{"at":"2026-10-30T00:00:00Z","done":0,"total":5}]},
+"events":[{"seq":300,"at":"2026-10-16T10:00:00Z","kind":"blocker","text":"Blocked: Settings contract review","refs":[],"delta":{"done":0,"doing":-1,"review":0,"blocked":1},"arrow":"down"}],
+"next_before_seq":null}
