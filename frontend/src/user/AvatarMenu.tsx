@@ -29,7 +29,11 @@ export function AvatarMenu() {
         className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-xs font-medium text-foreground transition-colors hover:bg-panel-hover"
       >
         {/* No name yet: the gear instead of a "?" */}
-        {profile.name.trim() ? initials(profile.name) : <Settings aria-hidden="true" className="h-4 w-4" />}
+        {profile.name.trim() ? (
+          initials(profile.name)
+        ) : (
+          <Settings aria-hidden="true" className="h-4 w-4" />
+        )}
       </PopoverTrigger>
       <PopoverContent side="right" align="end" className="w-56 p-1">
         <div role="menu" aria-label="Account">
