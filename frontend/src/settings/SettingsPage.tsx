@@ -1,15 +1,17 @@
 import { AlertsSettingsSection } from "@tachyon/console-ui"
-import { useEffect, useRef } from "react"
-import { NavLink, useNavigate, useParams } from "react-router-dom"
+import { useEffect, useMemo, useRef } from "react"
+import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { AppearanceSection } from "./AppearanceSection"
 import { Card } from "./Card"
-import { GeneralSection, type GeneralSettings } from "./GeneralSection"
+import { GeneralSection } from "./GeneralSection"
+import { stubApi } from "./general"
 import { resolveSection, SETTINGS_SECTIONS } from "./sections"
 
-// No settings-manifest endpoint exists yet (BACKEND NEEDS in the flow spec).
-const GENERAL: GeneralSettings = {
-  status: "unavailable",
-  reason: "The settings service is not connected yet. Nothing here has been changed.",
+// KIT-GAP: no settings manifest route is live, so General runs on a fixture. `?settings-stub=fail|conflict|slow|error` shows the failure states.
+const useGeneralApi = () => {
+  const [params] = useSearchParams()
+  const mode = params.get("settings-stub")
+  return useMemo(() => stubApi(mode), [mode])
 }
 
 const ITEM = "block whitespace-nowrap rounded-control px-3 py-[7px] text-xs leading-normal sm:mx-2"
@@ -20,6 +22,7 @@ export function SettingsPage() {
   const { section } = useParams()
   const navigate = useNavigate()
   const active = resolveSection(section)
+  const api = useGeneralApi()
   const panel = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -74,7 +77,7 @@ export function SettingsPage() {
           <div className="w-full max-w-[680px]">
             {active === "appearance" && <AppearanceSection />}
             {active === "alerts" && <AlertsSettingsSection card={Card} />}
-            {active === "general" && <GeneralSection settings={GENERAL} />}
+            {active === "general" && <GeneralSection api={api} />}
           </div>
         </div>
       </div>

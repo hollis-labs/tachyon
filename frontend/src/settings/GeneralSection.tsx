@@ -1,102 +1,379 @@
-import { Button } from "@hollis-labs/design-components"
 import {
-  type SettingsChanges,
-  type SettingsDraft,
-  type SettingsGroup,
-  SettingsProvenanceRenderer,
-  type SettingsProvenanceState,
-} from "@hollis-labs/kit-settings"
-import { useState } from "react"
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Pill,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Skeleton,
+} from "@hollis-labs/design-components"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  ConflictError,
+  type FieldResult,
+  type GeneralApi,
+  type SettingField,
+  type SettingGroup,
+} from "./general"
+import { SetCard, SettingsColumn } from "./parts"
 
-/** What the host knows about the settings service. */
-export type GeneralSettings =
+const INTRO = "Defaults for how Tachyon behaves. Each setting shows where its value comes from."
+const SOURCE: Record<SettingField["source"], string> = {
+  default: "Default",
+  overridden: "Overridden",
+  env: "From environment",
+}
+
+type Load =
   | { status: "loading" }
-  | { status: "unavailable"; reason: string }
-  | {
-      status: "ready"
-      contractVersion: number
-      groups: readonly SettingsGroup[]
-      states: Readonly<Record<string, SettingsProvenanceState>>
-      save: (groupId: string, changes: SettingsChanges) => Promise<void>
-    }
+  | { status: "error"; reason: string }
+  | { status: "ready"; groups: readonly SettingGroup[] }
 
-export function GeneralSection({ settings }: { settings: GeneralSettings }) {
+interface Outcome {
+  ok: number
+  failed: { key: string; label: string; error: string }[]
+}
+
+export function GeneralSection({ api }: { api: GeneralApi }) {
+  const [load, setLoad] = useState<Load>({ status: "loading" })
+  // Draft is kept across reloads so a conflict never loses the user's edits.
+  const [draft, setDraft] = useState<Record<string, string>>({})
+  const [review, setReview] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [outcome, setOutcome] = useState<Outcome | null>(null)
+  const [conflict, setConflict] = useState(false)
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      setLoad({ status: "ready", groups: await api.load() })
+    } catch (e) {
+      setLoad({
+        status: "error",
+        reason: e instanceof Error ? e.message : "Could not load settings.",
+      })
+    }
+  }, [api])
+
+  useEffect(() => {
+    void fetchGroups()
+  }, [fetchGroups])
+
+  const groups = load.status === "ready" ? load.groups : []
+  const fields = useMemo(() => groups.flatMap((g) => g.fields), [groups])
+  // Only keys that still differ from the loaded value count as changes.
+  const changes = useMemo(
+    () => fields.filter((f) => f.key in draft && draft[f.key] !== f.value && !f.readOnlyReason),
+    [fields, draft],
+  )
+
+  const edit = (f: SettingField, value: string) => {
+    setOutcome(null)
+    setDraft((d) => {
+      const next = { ...d }
+      if (value === f.value) delete next[f.key]
+      else next[f.key] = value
+      return next
+    })
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setConflict(false)
+    const total: Outcome = { ok: 0, failed: [] }
+    try {
+      for (const g of groups) {
+        const set = Object.fromEntries(
+          g.fields.filter((f) => changes.includes(f)).map((f) => [f.key, draft[f.key]]),
+        )
+        if (Object.keys(set).length === 0) continue
+        const { results } = await api.save(g.id, set)
+        for (const [key, r] of Object.entries(results as Record<string, FieldResult>)) {
+          if (r === "ok") total.ok++
+          else
+            total.failed.push({
+              key,
+              label: fields.find((f) => f.key === key)?.label ?? key,
+              error: r.error,
+            })
+        }
+      }
+      setOutcome(total)
+      // Failed fields keep their draft; saved ones are cleared.
+      setDraft((d) =>
+        Object.fromEntries(
+          Object.entries(d).filter(([k]) => total.failed.some((f) => f.key === k)),
+        ),
+      )
+      await fetchGroups()
+    } catch (e) {
+      if (e instanceof ConflictError) setConflict(true)
+      else
+        total.failed.push({
+          key: "",
+          label: "Save",
+          error: e instanceof Error ? e.message : "Save failed",
+        })
+      if (!(e instanceof ConflictError)) setOutcome(total)
+    } finally {
+      setSaving(false)
+      setReview(false)
+    }
+  }
+
+  const reload = async () => {
+    setConflict(false)
+    await fetchGroups()
+  }
+
   return (
-    <section aria-labelledby="settings-general-h" className="space-y-4">
-      <h2 id="settings-general-h" tabIndex={-1} className="sr-only">
-        General
-      </h2>
-      {settings.status === "loading" && (
-        <div aria-busy="true" className="space-y-2">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-9 animate-pulse rounded-md bg-muted" />
-          ))}
+    <SettingsColumn id="settings-general-h" title="General" intro={INTRO}>
+      {load.status === "loading" && (
+        <div
+          role="status"
+          aria-busy="true"
+          aria-label="Loading settings"
+          className="flex flex-col gap-3.5"
+        >
+          <SetCard>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-4 border-t border-border-subtle px-4 py-3 first:border-t-0"
+              >
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-3 w-56" />
+                </div>
+                <Skeleton className="h-7 w-32" />
+              </div>
+            ))}
+          </SetCard>
         </div>
       )}
-      {settings.status === "unavailable" && (
-        <div className="rounded-md border border-border bg-panel px-4 py-3">
-          <p className="text-sm font-medium text-foreground">Settings are not available</p>
-          <p className="text-xs text-text-subtle">{settings.reason}</p>
-        </div>
+      {load.status === "error" && (
+        <SetCard>
+          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5">
+            <div>
+              <p className="font-bold text-fg">Settings are not available</p>
+              <p className="text-xs leading-normal text-fg-muted">
+                {load.reason} Nothing here has been changed.
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => void fetchGroups()}>
+              Try again
+            </Button>
+          </div>
+        </SetCard>
       )}
-      {settings.status === "ready" && <Ready settings={settings} />}
-    </section>
+      {load.status === "ready" &&
+        groups.map((g) => (
+          <SetCard key={g.id}>
+            {g.fields.map((f) => (
+              <FieldRow
+                key={f.key}
+                field={f}
+                value={draft[f.key] ?? f.value}
+                disabled={saving}
+                onChange={(v) => edit(f, v)}
+              />
+            ))}
+          </SetCard>
+        ))}
+      <div className="sticky bottom-0 flex flex-col gap-2 empty:hidden">
+        {conflict && (
+          <Bar role="alert" tone="danger">
+            <span>
+              <b>This changed elsewhere.</b>{" "}
+              <span className="text-fg-muted">Reload and re-apply. Your edits are kept.</span>
+            </span>
+            <Button type="button" variant="outline" onClick={() => void reload()}>
+              Reload
+            </Button>
+          </Bar>
+        )}
+        {outcome && changes.length === 0 && (
+          <Bar role="status" tone={outcome.failed.length ? "danger" : "ok"}>
+            <span>
+              <b>
+                Saved {outcome.ok} of {outcome.ok + outcome.failed.length}
+                {outcome.failed.length ? `, ${outcome.failed.length} failed` : ""}
+              </b>{" "}
+              <span className="text-fg-muted">
+                {outcome.failed.map((f) => `${f.label}: ${f.error}`).join(" ")}
+              </span>
+            </span>
+            <Button type="button" variant="outline" onClick={() => setOutcome(null)}>
+              Dismiss
+            </Button>
+          </Bar>
+        )}
+        {outcome && changes.length > 0 && outcome.failed.length > 0 && (
+          <Bar role="status" tone="danger">
+            <span>
+              <b>
+                Saved {outcome.ok} of {outcome.ok + outcome.failed.length}, {outcome.failed.length}{" "}
+                failed
+              </b>{" "}
+              <span className="text-fg-muted">
+                {outcome.failed.map((f) => `${f.label}: ${f.error}`).join(" ")}
+              </span>
+            </span>
+          </Bar>
+        )}
+        {changes.length > 0 && (
+          <Bar>
+            <span className="min-w-0">
+              <b>
+                {changes.length} {changes.length === 1 ? "change" : "changes"}
+              </b>{" "}
+              <span className="text-fg-muted">
+                {changes.length === 1
+                  ? describe(changes[0], draft[changes[0].key])
+                  : changes.map((c) => c.label).join(", ")}
+              </span>
+            </span>
+            <span className="flex shrink-0 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving}
+                onClick={() => setDraft({})}
+              >
+                Discard
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={saving || conflict}
+                onClick={() => setReview(true)}
+              >
+                Review and save
+              </Button>
+            </span>
+          </Bar>
+        )}
+      </div>
+      <Dialog open={review} onOpenChange={(o) => !saving && setReview(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Review changes</DialogTitle>
+            <DialogDescription>These apply to this Tachyon, not just to you.</DialogDescription>
+          </DialogHeader>
+          <ul className="flex flex-col gap-2 text-xs">
+            {changes.map((c) => (
+              <li
+                key={c.key}
+                className="flex flex-wrap items-baseline justify-between gap-2 rounded-control border border-border-subtle px-3 py-2"
+              >
+                <b className="text-fg">{c.label}</b>
+                <span className="text-fg-muted">
+                  {c.value} to <span className="text-fg">{draft[c.key]}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={() => setReview(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={saving} onClick={() => void save()}>
+              {saving ? "Saving" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SettingsColumn>
   )
 }
 
-function Ready({ settings }: { settings: Extract<GeneralSettings, { status: "ready" }> }) {
-  const [drafts, setDrafts] = useState<Record<string, SettingsDraft>>({})
-  const [saving, setSaving] = useState<string | null>(null)
-  const [errors, setErrors] = useState<Record<string, string>>({})
+function describe(f: SettingField, to: string) {
+  return `${f.label}: ${f.value.replace(/ minutes$/, "")} to ${to}`
+}
 
-  const states = Object.fromEntries(
-    settings.groups.map((g) => [
-      g.id,
-      {
-        ...settings.states[g.id],
-        draft: drafts[g.id] ?? {},
-        busy: saving === g.id,
-        error: errors[g.id],
-      },
-    ]),
-  )
-
+function Bar({
+  children,
+  tone,
+  role,
+}: {
+  children: React.ReactNode
+  tone?: "danger" | "ok"
+  role?: "alert" | "status"
+}) {
   return (
-    <SettingsProvenanceRenderer
-      contractVersion={settings.contractVersion}
-      groups={settings.groups}
-      states={states}
-      onDraftChange={(id, d) => setDrafts((all) => ({ ...all, [id]: d }))}
-      onSave={async (id, changes) => {
-        setSaving(id)
-        setErrors((e) => ({ ...e, [id]: "" }))
-        try {
-          await settings.save(id, changes)
-          setDrafts((all) => ({ ...all, [id]: {} }))
-        } catch (e) {
-          // Draft is kept; the error shows under the group.
-          setErrors((all) => ({ ...all, [id]: e instanceof Error ? e.message : "Save failed" }))
-        } finally {
-          setSaving(null)
-        }
-      }}
-      groupFooter={(id) => {
-        const n = Object.keys(drafts[id] ?? {}).length
-        return n === 0 ? null : (
-          <div className="flex items-center gap-2 text-xs text-text-subtle">
-            <span>
-              {n} {n === 1 ? "change" : "changes"}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setDrafts((all) => ({ ...all, [id]: {} }))}
-            >
-              Discard
-            </Button>
-          </div>
-        )
-      }}
-    />
+    <div
+      role={role}
+      className={`flex items-center gap-2.5 rounded-panel border bg-elevated px-3.5 py-2.5 text-xs shadow-lg max-sm:flex-wrap ${
+        tone === "danger" ? "border-danger" : "border-surface-hover"
+      } [&>span:first-child]:flex-1`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function FieldRow({
+  field,
+  value,
+  disabled,
+  onChange,
+}: {
+  field: SettingField
+  value: string
+  disabled: boolean
+  onChange: (v: string) => void
+}) {
+  const locked = !!field.readOnlyReason
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border-subtle px-4 py-3 first:border-t-0">
+      <div className="flex max-w-80 flex-col gap-0.5">
+        <p className="font-bold text-fg">{field.label}</p>
+        <p className="text-xs leading-normal text-fg-muted">{field.help}</p>
+        {locked && (
+          <p className="text-xs leading-normal text-fg-muted">
+            {field.readOnlyReason}. {field.note ? `${field.note}. ` : ""}
+            <a href="/user" className="text-fg underline">
+              Get operator access
+            </a>
+          </p>
+        )}
+        {!locked && field.note && (
+          <p className="text-xs leading-normal text-fg-muted">{field.note}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Select
+          value={value}
+          disabled={locked || disabled}
+          onValueChange={(v) => v && onChange(String(v))}
+        >
+          <SelectTrigger aria-label={field.label} className="h-7 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {/* Registered settings only; unregistered fields would show no chip. */}
+        <Pill className="rounded-xs font-mono text-caption normal-case">
+          {SOURCE[field.source]}
+        </Pill>
+      </div>
+    </div>
   )
 }
