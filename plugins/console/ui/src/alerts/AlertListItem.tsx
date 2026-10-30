@@ -21,7 +21,7 @@ export interface AlertListItemProps {
   onExpand?: () => void
 }
 
-const BTN = 'font-mono uppercase tracking-label text-fg-secondary'
+const BTN = 'text-fg-muted hover:text-fg'
 
 /** One alert row: icon, severity stripe, title, one-line detail, source/age, primary link, state actions. */
 export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRead, onDismiss, onSnooze, onRestore, onExpand }: AlertListItemProps) {
@@ -31,35 +31,40 @@ export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRe
   return (
     <li
       data-testid="alert-item"
+      data-alert-id={alert.id}
       data-status={status}
-      className={`relative flex gap-3 border-b border-border-subtle py-2.5 pl-4 pr-3 ${handled ? 'opacity-60' : ''}`}
+      className={`group relative flex gap-3 border-b border-border-subtle px-4 py-2.5 ${handled ? 'opacity-60' : ''}`}
     >
-      <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 ${sev.bar}`} />
       <span className="pt-0.5">
         <AlertIcon icon={alert.icon} severity={alert.severity} />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           {onExpand ? (
-            <button type="button" onClick={onExpand} aria-label={`Open details: ${alert.title}`} className={`min-w-0 flex-1 truncate text-left font-mono text-xs hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${unread ? 'font-semibold text-fg' : 'text-fg-secondary'}`}>
+            <button type="button" onClick={onExpand} aria-label={`Open details: ${alert.title}`} className={`min-w-0 flex-1 truncate text-left text-[13px] hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${unread ? 'font-semibold text-fg' : 'text-fg-secondary'}`}>
               {alert.title}
             </button>
           ) : (
-            <span className={`min-w-0 flex-1 truncate font-mono text-xs ${unread ? 'font-semibold text-fg' : 'text-fg-secondary'}`}>{alert.title}</span>
+            <span className={`min-w-0 flex-1 truncate text-[13px] ${unread ? 'font-semibold text-fg' : 'text-fg-secondary'}`}>{alert.title}</span>
           )}
-          {unread && <span className="h-1.5 w-1.5 shrink-0 bg-primary" role="img" aria-label="unread" />}
+          {unread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg" role="img" aria-label="unread" />}
         </div>
-        {alert.detail && <p className="truncate font-mono text-xs text-fg-secondary"><LinkText surface="alerts" text={alert.detail} /></p>}
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-label uppercase tracking-label text-fg-muted">
-          <span className={sev.text}>{sev.label}</span>
-          <span className="normal-case tracking-normal">{alert.source}</span>
-          <span className="normal-case tracking-normal">{ago(alert.ts, now)}</span>
-          {status === 'snoozed' && snoozeUntil && <span className="normal-case tracking-normal">snoozed until {new Date(snoozeUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
-          {status === 'dismissed' && <span className="normal-case tracking-normal">dismissed</span>}
+        {alert.detail && <p className="truncate text-xs text-fg-muted"><LinkText surface="alerts" text={alert.detail} /></p>}
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-fg-faint">
+          {sev.named && <span className={sev.text}>{sev.label}</span>}
+          <span>{alert.source}</span>
+          <span>{ago(alert.ts, now)}</span>
+          {status === 'snoozed' && snoozeUntil && <span>snoozed until {new Date(snoozeUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+          {status === 'dismissed' && <span>dismissed</span>}
         </p>
-        {(alert.primary || onDismiss || onSnooze || onRestore) && (
+        {alert.primary && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {alert.primary && <AlertLinkButton link={alert.primary} onFollow={onRead} />}
+            <AlertLinkButton link={alert.primary} onFollow={onRead} />
+          </div>
+        )}
+        {(onDismiss || onSnooze || onRestore) && (
+          <div className="mt-1 flex items-center gap-1.5 md:absolute md:right-3 md:top-1.5 md:mt-0 md:group-hover:bg-bg-elevated md:group-focus-within:bg-bg-elevated">
+            <span className="flex items-center gap-1.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 md:opacity-0">
             {onSnooze && (
               <Button type="button" variant="ghost" size="xs" className={BTN} onClick={onSnooze} aria-label={`Snooze for 1 hour: ${alert.title}`}>
                 Snooze 1h
@@ -75,6 +80,7 @@ export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRe
                 Restore
               </Button>
             )}
+            </span>
           </div>
         )}
       </div>

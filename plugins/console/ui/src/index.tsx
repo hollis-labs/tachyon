@@ -7,6 +7,8 @@ import { AgentsPage } from "./agents-monitor/page"
 import { overlayNav, overlayRoutes } from "./routes"
 import { ConsoleLayer, ConsoleNavExtras } from "./shell"
 
+export { AlertsSettingsSection } from "./alerts/AlertsSettingsSection"
+
 export const consolePlugin: TachyonPlugin = {
   id: "console",
   name: "Console",

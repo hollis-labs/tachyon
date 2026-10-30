@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Input, Pill, Textarea } from '@hollis-labs/design-components'
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Pill, Textarea } from '@hollis-labs/design-components'
 import { X } from 'lucide-react'
 import { ago } from '@console/lib/agent-activity'
 import { Linkified } from '../../autolink'
@@ -23,8 +23,8 @@ import { useRestoreFocus } from '../../shell/restore-focus'
 
 const VARIANT: Record<AlertActionSpec['intent'], 'default' | 'outline' | 'destructive'> = { primary: 'default', neutral: 'outline', danger: 'destructive' }
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-const MONO = 'font-mono uppercase tracking-label'
-const H = 'font-mono text-label uppercase tracking-label text-fg-muted'
+const MONO = ''
+const H = 'font-sans text-xs font-medium normal-case tracking-normal text-fg-muted'
 
 type Panel = null | 'snooze' | 'defer' | 'settle' | 'reply' | 'decide'
 
@@ -122,35 +122,32 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
   const refs = event?.subjects ?? []
 
   return (
-    <div data-overlay="" className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/60 px-3 pt-[8vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div data-overlay="" className="fixed inset-0 z-[60] flex justify-end bg-black/60" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={`Alert: ${alert.title}`}
         data-testid="alert-detail"
-        data-dashboard-accent="yellow"
         data-status={shown.status}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="relative mb-8 w-full max-w-2xl border border-border bg-bg-elevated outline-none"
+        className="relative h-full w-full overflow-y-auto border-l border-border bg-bg-elevated outline-none md:max-w-xl"
       >
-        <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 ${sev.bar}`} />
-        <header className="flex items-center gap-2 border-b border-border-subtle py-2.5 pl-5 pr-3">
+        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border-subtle bg-bg-elevated px-4 py-2.5">
           <AlertIcon icon={alert.icon} severity={alert.severity} />
-          <span className={`font-mono text-label uppercase tracking-label ${sev.text}`}>{sev.label}</span>
-          <span className="font-mono text-caption text-fg-muted">{alert.kind}</span>
-          <span className="ml-auto font-mono text-caption text-fg-muted">{ago(alert.ts, now)}</span>
+          {sev.named && <span className={`text-xs ${sev.text}`}>{sev.label}</span>}
+          <span className="ml-auto text-xs text-fg-muted">{ago(alert.ts, now)}</span>
           <Button type="button" variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close alert detail" className="text-fg-muted">
             <X aria-hidden="true" />
           </Button>
         </header>
 
-        <section className="border-b border-border-subtle py-3 pl-5 pr-4">
+        <section className="border-b border-border-subtle px-4 py-3">
           <div className="flex items-start gap-2">
-            <h2 className="min-w-0 flex-1 break-words text-sm font-medium text-fg">{alert.title}</h2>
+            <h2 className="min-w-0 flex-1 break-words font-sans text-base font-semibold normal-case tracking-normal text-fg">{alert.title}</h2>
             {handled && (
-              <Pill tone="neutral" className="shrink-0 font-mono uppercase tracking-label"><span data-testid="alert-status">
+              <Pill tone="neutral" className="shrink-0"><span data-testid="alert-status">
                 {shown.status === 'snoozed' && shown.snoozeUntil ? `snoozed until ${new Date(shown.snoozeUntil).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}` : (shown.resolution ?? shown.status)}
               </span></Pill>
             )}
@@ -160,34 +157,34 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
               <Linkified text={alert.detail} />
             </p>
           )}
-          <p className="mt-1 font-mono text-label text-fg-muted">{alert.source}</p>
+          <p className="mt-1 text-xs text-fg-muted">{alert.source}</p>
         </section>
 
-        {fields.length > 0 && (
-          <section aria-label="Details" className="border-b border-border-subtle py-3 pl-5 pr-4">
-            <h3 className={H}>Details</h3>
-            <dl className="mt-2 grid grid-cols-[minmax(6rem,9rem)_1fr] gap-x-3 gap-y-1">
-              {fields.map((f) => (
-                <div key={f.label} className="contents">
-                  <dt className="truncate font-mono text-label text-fg-muted">{f.label}</dt>
-                  <dd className="min-w-0 break-words font-mono text-xs text-fg">
-                    <Linkified text={f.value} />
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        )}
+        <details className="border-b border-border-subtle px-4 py-3">
+          <summary className="cursor-pointer text-xs font-medium text-fg-muted">Technical details</summary>
+          <dl aria-label="Details" className="mt-2 grid grid-cols-[minmax(6rem,9rem)_1fr] gap-x-3 gap-y-1">
+            <dt className="truncate font-mono text-label text-fg-muted">kind</dt>
+            <dd className="min-w-0 break-words font-mono text-xs text-fg">{alert.kind}</dd>
+            {fields.map((f) => (
+              <div key={f.label} className="contents">
+                <dt className="truncate font-mono text-label text-fg-muted">{f.label}</dt>
+                <dd className="min-w-0 break-words font-mono text-xs text-fg">
+                  <Linkified text={f.value} />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </details>
 
         {(refs.length > 0 || alert.primary) && (
-          <section aria-label="Linked" className="border-b border-border-subtle py-3 pl-5 pr-4">
+          <section aria-label="Linked" className="border-b border-border-subtle px-4 py-3">
             <h3 className={H}>Linked</h3>
             <ul className="mt-2 flex flex-wrap items-center gap-2">
               {refs.map((s) => {
                 const href = safeHref(s.url)
                 return (
                   <li key={`${s.type}:${s.id}`} className="flex items-center gap-1.5 font-mono text-xs text-fg">
-                    <span className="text-label uppercase tracking-label text-fg-muted">{s.type}</span>
+                    <span className="text-xs text-fg-muted">{s.type}</span>
                     {href ? (
                       <a href={href} className="underline decoration-fg-faint hover:decoration-fg-secondary" {...(href.startsWith('/') ? {} : { target: '_blank', rel: 'noopener noreferrer' })}>
                         {s.label ?? s.id}
@@ -207,7 +204,7 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
           </section>
         )}
 
-        <section aria-label="Timeline" className="border-b border-border-subtle py-3 pl-5 pr-4">
+        <section aria-label="Timeline" className="border-b border-border-subtle px-4 py-3">
           <h3 className={H}>Timeline</h3>
           <ol className="mt-2 space-y-1">
             {related.map((e) => (
@@ -215,7 +212,7 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
             ))}
             <li className="flex gap-3 font-mono text-xs text-fg">
               <span className="w-16 shrink-0 text-fg-muted">{ago(alert.ts, now)}</span>
-              <span>{alert.kind} (this alert)</span>
+              <span>{humanKind(alert.kind)} (this alert)</span>
             </li>
           </ol>
         </section>
@@ -237,13 +234,13 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
         )}
         {panel === 'reply' && <ReplyPanel key={alert.id} alert={alert} event={event} onDone={() => setPanel(null)} />}
 
-        <div className="min-h-[2rem] border-t border-border-subtle py-1.5 pl-5 pr-4 font-mono text-label">
+        <div className="min-h-[2rem] border-t border-border-subtle px-4 py-1.5 font-mono text-label">
           {runner.error ? (
             <span role="alert" className="text-danger">{runner.error}</span>
           ) : runner.notice ? (
             <span role="status" className="text-success">{runner.notice}</span>
           ) : (
-            <span className="text-fg-muted">{specs.map((s) => `${s.shortcut.toUpperCase()} ${s.label.toLowerCase()}`).join(' · ')} · Esc close</span>
+            <span className="hidden text-fg-muted md:inline">{specs.map((s) => `${s.shortcut.toUpperCase()} ${s.label.toLowerCase()}`).join(' · ')} · Esc close</span>
           )}
           {closed && (
             <Button type="button" variant="outline" size="xs" onClick={() => void runner.restore()} className={`ml-3 ${MONO}`}>
@@ -256,6 +253,12 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
   )
 }
 
+/** 'approval.requested' -> 'Approval requested'. */
+const humanKind = (kind: string) => {
+  const t = kind.replace(/[._]/g, ' ').trim()
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 const specOf = (specs: AlertActionSpec[], id: AlertActionId): AlertActionSpec => specs.find((s) => s.id === id) ?? { id, label: id, intent: 'neutral', shortcut: '' }
 
 function TimelineRow({ e, mapper, now }: { e: ConsoleEvent; mapper: AlertMapper; now: number }) {
@@ -263,15 +266,20 @@ function TimelineRow({ e, mapper, now }: { e: ConsoleEvent; mapper: AlertMapper;
   return (
     <li className="flex gap-3 font-mono text-xs text-fg-secondary">
       <span className="w-16 shrink-0 text-fg-muted">{ago(e.ts, now)}</span>
-      <span className="min-w-0 break-words">{m?.title ?? e.kind}</span>
+      <span className="min-w-0 break-words">{m?.title ?? humanKind(e.kind)}</span>
     </li>
   )
 }
 
 function ActionBar({ specs, onPick, disabled, active, pending }: { specs: AlertActionSpec[]; onPick: (s: AlertActionSpec) => void; disabled: boolean; active: Panel; pending: string | null }) {
+  // Approve and Deny are the visible decision; everything else lives under More. An alert with no
+  // decision shows its first action.
+  const decision = specs.filter((s) => s.id === 'approve' || s.id === 'deny')
+  const visible = decision.length ? decision : specs.slice(0, 1)
+  const more = specs.filter((s) => !visible.includes(s))
   return (
-    <div role="toolbar" aria-label="Alert actions" className="flex flex-wrap items-center gap-2 py-3 pl-5 pr-4">
-      {specs.map((s) => (
+    <div role="toolbar" aria-label="Alert actions" className="flex flex-wrap items-center gap-2 px-4 py-3">
+      {visible.map((s) => (
         <Button
           key={s.id}
           type="button"
@@ -281,19 +289,28 @@ function ActionBar({ specs, onPick, disabled, active, pending }: { specs: AlertA
           aria-pressed={active === s.id}
           aria-keyshortcuts={s.shortcut}
           onClick={() => onPick(s)}
-          className={MONO}
         >
           {pending === s.id ? `${s.label}...` : s.label}
-          {s.confirm && <span aria-label="requires identity confirmation" className="ml-1 opacity-70">*</span>}
+          {s.confirm && <span className="sr-only"> (requires identity confirmation)</span>}
         </Button>
       ))}
+      {more.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" disabled={disabled} aria-label="More actions" />}>More</DropdownMenuTrigger>
+          <DropdownMenuContent aria-label="More actions" align="start" data-dashboard-shape="square" className="w-40">
+            {more.map((s) => (
+              <DropdownMenuItem key={s.id} onClick={() => onPick(s)}>{pending === s.id ? `${s.label}...` : s.label}</DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
 
 function PanelShell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section aria-label={title} className="border-t border-border-subtle bg-surface/40 py-3 pl-5 pr-4">
+    <section aria-label={title} className="border-t border-border-subtle bg-surface/40 px-4 py-3">
       <h3 className={H}>{title}</h3>
       <div className="mt-2">{children}</div>
     </section>
@@ -327,9 +344,9 @@ function DeferPanel({ onPick, busy }: { onPick: (i: { until?: number; context?: 
   const [mode, setMode] = useState<'time' | 'context'>('time')
   return (
     <PanelShell title="Defer">
-      <div role="tablist" aria-label="Defer to" className="mb-2 flex gap-4 font-mono text-label uppercase tracking-label">
+      <div role="tablist" aria-label="Defer to" className="mb-2 flex gap-4 text-xs">
         {(['time', 'context'] as const).map((m) => (
-          <button key={m} role="tab" type="button" aria-selected={mode === m} onClick={() => setMode(m)} className={`border-b-2 pb-0.5 ${FOCUS} ${mode === m ? 'border-primary text-fg' : 'border-transparent text-fg-muted hover:text-fg-secondary'}`}>
+          <button key={m} role="tab" type="button" aria-selected={mode === m} onClick={() => setMode(m)} className={`border-b-2 pb-0.5 ${FOCUS} ${mode === m ? 'border-fg text-fg' : 'border-transparent text-fg-muted hover:text-fg-secondary'}`}>
             To a {m}
           </button>
         ))}

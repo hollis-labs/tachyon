@@ -1,3 +1,4 @@
+import { AlertsSettingsSection } from "@tachyon/console-ui"
 import { useEffect, useRef } from "react"
 import { NavLink, useNavigate, useParams } from "react-router-dom"
 import { AppearanceSection } from "./AppearanceSection"
@@ -64,6 +65,7 @@ export function SettingsPage() {
         </nav>
         <div ref={panel} className="min-w-0 flex-1 overflow-auto p-4 md:p-6">
           {active === "appearance" && <AppearanceSection />}
+          {active === "alerts" && <AlertsSettingsSection />}
           {active === "general" && <GeneralSection settings={GENERAL} />}
         </div>
       </div>

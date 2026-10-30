@@ -23,3 +23,22 @@ describe('ConsolePrefsPanel', () => {
     expect(onChange).toHaveBeenLastCalledWith({ mutedSources: ['a', ' b'] })
   })
 })
+
+describe('Notify me about', () => {
+  it('maps stored thresholds to one level and sets both thresholds from it', async () => {
+    const { levelOf, levelPatch } = await import('./levels')
+    expect(levelOf({ bellMinSeverity: 'critical' })).toBe('blockers')
+    expect(levelOf({ bellMinSeverity: 'error' })).toBe('blockers')
+    expect(levelOf({ bellMinSeverity: 'warning' })).toBe('warnings')
+    expect(levelOf({ bellMinSeverity: 'debug' })).toBe('everything')
+    expect(levelPatch('warnings')).toEqual({ bellMinSeverity: 'warning', toastMinSeverity: 'warning' })
+  })
+  it('shows the level control with a preview line and patches on change', () => {
+    const onChange = vi.fn()
+    render(<ConsolePrefsPanel prefs={DEFAULT_CONSOLE_PREFS} onChange={onChange} />)
+    expect(screen.getByRole('tab', { name: 'Everything' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText(/Every alert shows in the bell/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'Blockers' }))
+    expect(onChange).toHaveBeenLastCalledWith({ bellMinSeverity: 'error', toastMinSeverity: 'error' })
+  })
+})
