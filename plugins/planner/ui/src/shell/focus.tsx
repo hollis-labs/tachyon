@@ -1,14 +1,12 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { toast } from 'sonner'
-import { Button, Input } from '@hollis-labs/design-components'
 import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { StatusBadge } from '@hollis-labs/kit-dashboard'
 import { themeRowActions } from '@planner/components/planner/theme-board'
 import { statusToneKey, themeOwners } from '@planner/lib/planner'
-import { FACETS, LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
+import { FACETS, TEXT } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
-import { fixtureEvents, fixtureMilestones, fixtureMomentum, fixtureTasks } from '@planner/fixtures/themes'
-import { EventTimeline, LaneBoard, SegmentedProgress, StatusMenu, type Lane } from '@planner/shared'
+import { fixtureEvents, fixtureMilestones, fixtureMomentum } from '@planner/fixtures/themes'
+import { EventTimeline, SegmentedProgress, StatusMenu } from '@planner/shared'
+import { TaskBoard } from '@planner/shell/task-board'
 import { themeSegments } from '@planner/shell/spine'
 import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
@@ -68,59 +66,9 @@ export function Focus({ paused, row, board, view, onView, onAction, onBack, onDe
         <DashboardViewTabs variant="segments" label={TEXT.viewLabel} value={view} onChange={(v) => onView(v === 'timeline' ? 'timeline' : 'board')} items={[{ value: 'board', label: TEXT.board }, { value: 'timeline', label: TEXT.timeline }]} />
       </header>
       <div className="min-w-0 flex-1 p-4">
-        {view === 'board' ? <TaskBoard themeId={row.id} /> : <ThemeTimeline />}
+        {view === 'board' ? <TaskBoard themeId={row.id} paused={paused} /> : <ThemeTimeline />}
       </div>
     </section>
-  )
-}
-
-function TaskBoard({ themeId }: { themeId: string }) {
-  const [tasks, setTasks] = useState(() => fixtureTasks(themeId))
-  const [shipped, setShipped] = useState<string | null>(null)
-  const [summary, setSummary] = useState('')
-  const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
-  const lanes: Lane[] = LANES.map((l) => ({
-    id: l.id,
-    title: l.title,
-    collapsed: l.id === 'done',
-    cards: tasks.filter((t) => t.lane === l.id).map((t) => ({ id: t.id, content: <span className="dash-support text-fg">{t.title}{t.pr ? <span className="ml-2 font-mono dash-caption text-fg-muted">PR {t.pr}</span> : null}</span> })),
-  }))
-  // Optimistic: the card moves at once, the write settles after, Undo for 8s.
-  // The sample board has no write behind it yet, so nothing is left pending.
-  const move = (id: string, from: string, to: string) => {
-    const t = byId.get(id)
-    if (!t) return
-    setTasks((all) => all.map((x) => (x.id === id ? { ...x, lane: to as LaneId } : x)))
-    // Dropping on Done saves at once; the summary is optional and attached after.
-    if (to === 'done') { setShipped(id); setSummary('') }
-    toast(TEXT.moved(t.title, LANES.find((l) => l.id === to)?.title ?? to), {
-      duration: 8000,
-      action: { label: TEXT.undo, onClick: () => setTasks((all) => all.map((x) => (x.id === id ? { ...x, lane: from as LaneId } : x))) },
-    })
-  }
-  const endPrompt = (add: boolean) => {
-    if (add && shipped && summary.trim()) setTasks((all) => all.map((x) => (x.id === shipped ? { ...x, summary: summary.trim() } : x)))
-    setShipped(null)
-  }
-  const onSubmit = (e: FormEvent) => { e.preventDefault(); endPrompt(true) }
-  return (
-    <>
-      {shipped && (
-        <form onSubmit={onSubmit} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); endPrompt(false) } }} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
-          <label htmlFor="shipped" className="dash-caption text-fg-muted">{TEXT.doneSummaryLabel}</label>
-          <Input id="shipped" autoFocus value={summary} onChange={(e) => setSummary(e.target.value)} className="min-w-0 flex-1" />
-          <Button type="submit" size="sm">{TEXT.doneSummaryAdd}</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => endPrompt(false)}>{TEXT.doneSummarySkip}</Button>
-          <span className="w-full dash-caption text-fg-faint">{TEXT.doneSummaryHint}</span>
-        </form>
-      )}
-      <LaneBoard
-        lanes={lanes}
-        cardTitle={(id) => byId.get(id)?.title ?? id}
-        onMove={move}
-        labels={{ lane: TEXT.lane, empty: TEXT.laneEmpty, pickedUp: TEXT.pickedUp, movedOver: TEXT.movedOver, dropped: TEXT.dropped, cancelled: TEXT.cancelled, pending: TEXT.saving, dragHint: TEXT.dragHint }}
-      />
-    </>
   )
 }
 

@@ -1,7 +1,7 @@
 import { ApiError, createApiClient, type ApiClient } from '@hollis-labs/design-app-runtime'
 import type { PlannerClient, PlannerReference, PlannerRevision } from './contracts'
 import { PlannerApiError } from './errors'
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, ThemeAction, ThemeBoard } from './types'
+import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export const PLANNER_BASE = '/api/plugins/console/v1/planner'
@@ -94,6 +94,9 @@ export class TachyonPlannerClient implements PlannerClient {
     return titles
   }
   plannerWorkstreamTasks = (id: string, signal?: AbortSignal) => this.request<PlannerWorkstreamTasks>(`/workstreams/${uuid(id)}/tasks`, undefined, undefined, signal)
+  plannerThemeTasks = (themeId: string, signal?: AbortSignal) => this.request<ThemeTasks>(`/themes/${encodeURIComponent(themeId)}/tasks`, undefined, undefined, signal)
+  plannerTaskTransition = (task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }) => this.send<TaskTransitionResult>(`/tasks/${encodeURIComponent(task)}/transition`, { to, expected_status: expectedStatus, ...(args?.reason ? { reason: args.reason } : {}) })
+  plannerTaskMeta = (task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }) => this.send<TaskMeta>(`/tasks/${encodeURIComponent(task)}/meta`, meta, 'PUT')
   getTask = (id: string, signal?: AbortSignal) => this.request<Task>(`/tasks/${encodeURIComponent(id)}`, undefined, undefined, signal)
   listTaskComments: PlannerClient['listTaskComments'] = (id, query, signal) => this.request<ListPage<Comment>>(`/tasks/${encodeURIComponent(id)}/comments`, undefined, query, signal)
   async resolveReference(db: PlannerDb | null, id: string): Promise<PlannerReference> {
