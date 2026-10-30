@@ -49,12 +49,28 @@ export function StateDot({ state, className }: { state: DotState; className?: st
   return <i aria-hidden className={cn('inline-block size-1.5 shrink-0 rounded-full', DOT[state], className)} />
 }
 
-/** A caption with an optional trailing count. */
-export function GroupHeading({ children, count, id, className }: { children: ReactNode; count?: ReactNode; id?: string; className?: string }) {
-  return (
-    <h3 id={id} className={cn('flex items-center justify-between px-2 pb-1 pt-3', CAPTION, className)}>
+/** A caption with an optional trailing count. With `onToggle` the heading is a button that folds the group. */
+export function GroupHeading({ children, count, id, className, onToggle, open }: { children: ReactNode; count?: ReactNode; id?: string; className?: string; onToggle?: () => void; open?: boolean }) {
+  const inner = (
+    <>
       <span>{children}</span>
       {count !== undefined && <span className="tabular-nums">{count}</span>}
+    </>
+  )
+  return (
+    <h3 id={id} className={cn('flex items-center justify-between px-2 pb-1 pt-3', CAPTION, className)}>
+      {onToggle ? <button type="button" aria-expanded={open} onClick={onToggle} className="flex w-full items-center justify-between uppercase tracking-label hover:text-fg-secondary">{inner}</button> : inner}
     </h3>
+  )
+}
+
+/** A row of filled and empty pips — a small ordinal level (severity, likelihood) without a number. */
+export function Pips({ level, of, label, className }: { level: number; of: number; label?: string; className?: string }) {
+  return (
+    <span role="img" aria-label={label} className={`inline-flex items-center gap-0.5 ${className ?? ''}`}>
+      {Array.from({ length: of }, (_, i) => (
+        <span key={i} className={`h-1.5 w-3 rounded-full ${i < level ? 'bg-fg/62' : 'bg-border-subtle'}`} />
+      ))}
+    </span>
   )
 }

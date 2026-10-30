@@ -7,7 +7,7 @@ export { CommandPalette, type CommandPaletteProps, type PaletteCommand } from '.
 export { LinkDropZone, LinkLayer, LinkPort, LinkTag, type LinkAnchorLabels } from './link-anchor'
 export { OptionCompare, type CompareOption, type OptionCompareLabels } from './option-compare'
 export { TriageStack, type TriageRoute, type TriageStackLabels } from './triage-stack'
-export { CAPTION, Chip, GroupHeading, Kbd, StateDot, type ChipTone, type DotState } from './primitives'
+export { CAPTION, Chip, GroupHeading, Kbd, Pips, StateDot, type ChipTone, type DotState } from './primitives'
 export { FloatingPrompt, type FloatingPromptProps } from './floating-prompt'
 export { InlineEdit, type InlineEditProps } from './inline-edit'
 export { SegmentedSwitch, type SegmentedSwitchProps } from './segmented-switch'

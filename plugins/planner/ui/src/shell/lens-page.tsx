@@ -1,20 +1,101 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Skeleton, Textarea } from '@hollis-labs/design-components'
-import { StatusBadge } from '@hollis-labs/kit-dashboard'
-import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
+import { ChevronDown, Pin } from 'lucide-react'
+import { OverflowMenu, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-labs/design-components'
 import { createPlannerId } from '@planner/api/identity'
 import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
-import { notifyError, notifySuccess } from '@planner/api/notifications'
+import { notifyError } from '@planner/api/notifications'
+import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
-import { statusToneKey } from '@planner/lib/planner'
-import { LENSES, TEXT, TRIAGE_ROUTES } from '@planner/lib/vocabulary'
-import { OptionCompare, SegmentedProgress, SpineList, StatusMenu, TriageStack, type SpineGroup } from '@planner/shared'
-import type { IdeaPromoteTarget, PlannerDb, PlannerItem, PlannerWorkstreamTasks } from '@planner/api/types'
+import { boardAge } from '@planner/lib/planner'
+import { LENSES, TEXT } from '@planner/lib/vocabulary'
+import { CAPTION, Chip, CommandPalette, InlineEdit, Pips, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
+import { Context, type ContextLink } from '@planner/shell/context'
+import { PlannerFrame } from '@planner/shell/frame'
+import { usePlannerKeys } from '@planner/shell/use-planner-keys'
+import { DecisionBody } from '@planner/shell/lenses/decisions'
+import { IdeaBody } from '@planner/shell/lenses/ideas'
+import { InboxFocus } from '@planner/shell/lenses/inbox'
+import { RiskBody } from '@planner/shell/lenses/risks'
+import { RoadmapBody } from '@planner/shell/lenses/roadmap'
+import { StreamBody } from '@planner/shell/lenses/streams'
+import type { NeedYou, PlannerDb, PlannerItem } from '@planner/api/types'
 
 const REFRESH_MS = 30_000
 
-/** One of the non-Themes lenses: a spine of the database's items and a focus pane shaped by the lens. */
+const SEVERITY_DOT: Record<string, DotState> = { critical: 'blocked', high: 'blocked', medium: 'review', low: 'todo' }
+const DECIDED = new Set(['accepted', 'decided', 'superseded', 'reversed', 'rejected'])
+const str = (v: unknown) => (typeof v === 'string' ? v : '')
+
+/** The spine's groups and rows for one lens. Rows say what the golden's spine says for that lens. */
+export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: (i: PlannerItem) => boolean, now: number): SpineGroup[] {
+  const pick = (f: (i: PlannerItem) => boolean) => items.filter(f)
+  const entry = (i: PlannerItem, extra: Partial<SpineGroup['items'][number]> = {}) => ({ id: i.id, title: i.title, ...extra })
+  const chip = (t: string) => <Chip square>{t}</Chip>
+  const quiet = (t: ReactNode) => <span className="text-label text-fg-muted">{t}</span>
+  const drop = (gs: SpineGroup[]) => gs.filter((g) => g.items.length > 0)
+  switch (db) {
+    case 'workstreams': {
+      const row = (i: PlannerItem) => entry(i, { flags: str(i.phase) ? chip(str(i.phase)) : undefined })
+      return drop([
+        { id: 'active', title: TEXT.groupActive, items: pick((i) => i.status === 'active').map(row) },
+        { id: 'quiet', title: TEXT.groupPausedDraft, collapsed: true, items: pick((i) => i.status === 'paused' || i.status === 'draft').map(row) },
+        { id: 'closed', title: TEXT.groupClosed, collapsed: true, items: pick((i) => i.status === 'closed').map(row) },
+      ])
+    }
+    case 'roadmap': {
+      const row = (i: PlannerItem) => entry(i, { flags: i.mvp === true ? chip('MVP') : undefined, meta: str(i.area) ? <span className={CAPTION}>{str(i.area)}</span> : undefined })
+      const live = (i: PlannerItem) => i.status !== 'completed' && i.status !== 'cancelled'
+      return drop([
+        { id: 'now', title: TEXT.horizonNow, items: pick((i) => live(i) && i.horizon === 'now').map(row) },
+        { id: 'next', title: TEXT.horizonNext, items: pick((i) => live(i) && i.horizon === 'next').map(row) },
+        { id: 'later', title: TEXT.horizonLater, collapsed: true, items: pick((i) => live(i) && i.horizon === 'later').map(row) },
+        { id: 'done', title: TEXT.groupDelivered, collapsed: true, items: pick((i) => !live(i)).map(row) },
+      ])
+    }
+    case 'ideas': {
+      const row = (i: PlannerItem) => entry(i, { meta: <span className="flex items-center gap-2">{str(i.kind) && chip(str(i.kind))}{str(i.discuss_in) && quiet(str(i.discuss_in))}</span> })
+      return drop([
+        { id: 'discussing', title: TEXT.groupDiscussing, items: pick((i) => i.status === 'exploring' || i.status === 'discussing').map(row) },
+        { id: 'new', title: TEXT.groupNew, items: pick((i) => i.status === 'draft').map(row) },
+        { id: 'archived', title: TEXT.groupArchived, collapsed: true, items: pick((i) => i.status !== 'draft' && i.status !== 'exploring' && i.status !== 'discussing').map(row) },
+      ])
+    }
+    case 'decisions': {
+      const open = (i: PlannerItem) => !DECIDED.has(i.status ?? '')
+      const row = (i: PlannerItem) => entry(i, {
+        leading: <StateDot state={open(i) ? 'review' : 'done'} className="self-center" />,
+        meta: quiet(open(i) ? [i.options?.length ? TEXT.optionCount(i.options.length) : '', boardAge(i.created ?? i.updated ?? '', now)].filter(Boolean).join(' · ') : str(i.date)),
+      })
+      return drop([
+        { id: 'open', title: TEXT.groupNeedsDecision, items: pick(open).map(row) },
+        { id: 'decided', title: TEXT.groupDecided, collapsed: true, items: pick((i) => !open(i)).map(row) },
+      ])
+    }
+    case 'risks': {
+      const row = (i: PlannerItem) => entry(i, {
+        leading: <StateDot state={SEVERITY_DOT[str(i.severity)] ?? 'todo'} className="self-center" />,
+        meta: <Pips level={['low', 'medium', 'high', 'critical'].indexOf(str(i.severity)) + 1} of={4} label={str(i.severity)} className="ml-5" />,
+      })
+      return drop([
+        { id: 'open', title: TEXT.groupOpen, items: pick((i) => i.status === 'open').map(row) },
+        { id: 'handled', title: TEXT.groupMitigatingResolved, collapsed: true, items: pick((i) => i.status !== 'open').map(row) },
+      ])
+    }
+    case 'inbox':
+      return drop([
+        { id: 'new', title: TEXT.groupToTriage, items: pick((i) => i.status === 'new').map((i) => entry(i, { meta: str(i.kind) ? chip(str(i.kind)) : undefined })) },
+        { id: 'archived', title: TEXT.groupArchived, collapsed: true, items: pick((i) => i.status !== 'new').map((i) => entry(i, { meta: str(i.kind) ? chip(str(i.kind)) : undefined })) },
+      ])
+    default:
+      return []
+  }
+  void needs
+}
+
+const KIND: Record<string, string> = { workstreams: 'Workstream', roadmap: 'Roadmap', ideas: 'Idea', decisions: 'Decision', risks: 'Risk', inbox: 'Inbox' }
+
+/** One of the non-Themes lenses on the shared Planner frame: a spine of the database's items and a focus pane shaped by the lens. */
 export default function LensPage({ db }: { db: PlannerDb }) {
   const api = usePlannerApi()
   const navigate = useNavigate()
@@ -23,12 +104,22 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   const schema = usePlannerSchema(db)
   const [items, setItems] = useState<PlannerItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [goodAt, setGoodAt] = useState<number | null>(null)
+  const [counts, setCounts] = useState<Partial<Record<PlannerDb, number>>>({})
+  const [need, setNeed] = useState<NeedYou | null>(null)
+  const [needOnly, setNeedOnly] = useState(false)
+  const [ctxCollapsed, setCtxCollapsed] = useState(false)
+  const [details, setDetails] = useState(false)
+  const [palette, setPalette] = useState(false)
+  const [creating, setCreating] = useState<'themes' | 'ideas' | null>(null)
+  const [links, setLinks] = useState<ContextLink[]>([])
   const lens = LENSES.find((l) => l.db === db)!
   const openId = id ? decodeURIComponent(id) : undefined
 
   const load = useCallback(async () => {
     try {
       setItems(await api.plannerList(db))
+      setGoodAt(Date.now())
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : TEXT.loadFailed)
@@ -37,18 +128,28 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   useEffect(() => {
     setItems(null)
     void load()
+    api.plannerDatabases().then((d) => setCounts(Object.fromEntries(d.map((x) => [x.name, x.count]))), () => undefined)
+    api.plannerNeedYou().then(setNeed, () => setNeed(null))
     const t = setInterval(() => void load(), REFRESH_MS)
     return () => clearInterval(t)
-  }, [load, lastEvent])
+  }, [load, lastEvent, api])
 
+  const needIds = useMemo(() => new Set((need?.items ?? []).filter((n) => n.db === db).map((n) => n.id)), [need, db])
   const item = items?.find((i) => i.id === openId)
-  const groups = useMemo<SpineGroup[]>(() => {
-    const by = new Map<string, PlannerItem[]>()
-    for (const it of items ?? []) by.set(it.status ?? '', [...(by.get(it.status ?? '') ?? []), it])
-    return [...by].map(([status, list]) => ({ id: status || 'none', title: status || '—', items: list.map((i) => ({ id: i.id, title: i.title })) }))
-  }, [items])
+  useEffect(() => {
+    if (!item) return setLinks([])
+    let live = true
+    api.plannerLinks(db, item.id).then((v) => live && setLinks([
+      ...v.outbound.map((l) => ({ kind: l.kind, label: l.title })),
+      ...v.inbound.map((l) => ({ kind: l.kind, label: l.title, note: TEXT.linkedFromNote })),
+      ...v.external.map((l) => ({ kind: l.kind, label: l.label })),
+    ]), () => live && setLinks([]))
+    return () => { live = false }
+  }, [api, db, item?.id, item?.rev])
+
+  const shown = useMemo(() => (items ?? []).filter((i) => !needOnly || needIds.has(i.id)), [items, needOnly, needIds])
+  const groups = useMemo(() => lensGroups(db, shown, (i) => needIds.has(i.id), Date.now()), [db, shown, needIds])
   const open = (next: string) => navigate(`/planner/${db}/${encodeURIComponent(next)}`)
-  const selected = Boolean(item)
 
   // A write that lost to a newer revision reloads and says so; anything else is reported as it came.
   const [busy, setBusy] = useState(false)
@@ -68,198 +169,152 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     }
   }
 
-  return (
-    <div className="flex h-full min-h-0 w-full bg-bg">
-      <nav aria-label={TEXT.appName} className={`${selected ? 'hidden lg:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-r border-border lg:w-72`}>
-        <div className="overflow-x-auto border-b border-border px-3 py-2">
-          <DashboardViewTabs label={TEXT.lensesLabel} value={db} items={LENSES.map((l) => ({ value: l.db, label: l.label }))} onChange={(v) => navigate(`/planner/${v === 'themes' ? 'themes' : v}`)} />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {items ? <SpineList label={TEXT.spineLabel} groups={groups} selectedId={openId} onSelect={open} emptyLabel={TEXT.lensEmpty(lens.label)} /> : <div className="flex flex-col gap-2 p-3" aria-busy>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>}
-        </div>
-        {error && (
-          <p role="alert" className="border-t border-border px-3 py-2 dash-caption text-danger">
-            {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
-          </p>
-        )}
-      </nav>
-      <main className={`${selected || db === 'inbox' ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-1 flex-col overflow-y-auto`}>
-        {db === 'inbox' ? (
-          <InboxFocus items={(items ?? []).filter((i) => i.status === 'new')} loading={items === null} onChanged={load} />
-        ) : item ? (
-          <section aria-labelledby="lens-title" className="flex flex-col gap-4 p-4">
-            <header className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => navigate(`/planner/${db}`)} className="dash-caption text-fg-muted hover:text-fg lg:hidden">← {TEXT.back}</button>
-                <span className="rounded-md border border-border px-1.5 font-mono dash-caption text-fg-muted">{item.id}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 id="lens-title" className="min-w-0 flex-1 text-lg font-medium text-fg">{item.title}</h1>
-                <StatusPick db={db} item={item} statuses={schema?.enums.status ?? []} write={write} />
-              </div>
-              {item.tldr && <p className="dash-support text-fg">{item.tldr}</p>}
-            </header>
-            {db === 'workstreams' && <StreamBody item={item} />}
-            {db === 'roadmap' && <RoadmapBody item={item} horizons={schema?.enums.horizon ?? []} write={write} />}
-            {db === 'ideas' && <IdeaBody item={item} write={write} />}
-            {db === 'decisions' && <DecisionBody item={item} write={write} busy={busy} />}
-            {db === 'risks' && <RiskBody item={item} levels={schema?.enums.severity ?? []} />}
-          </section>
-        ) : (
-          <p className="m-auto dash-support text-fg-muted">{TEXT.selectItem}</p>
-        )}
-      </main>
-    </div>
-  )
-}
+  usePlannerKeys({
+    palette: () => setPalette(true),
+    create: () => setCreating('themes'),
+    link: () => undefined,
+    lens: (k) => {
+      if (k === 'n') return setNeedOnly(true)
+      const l = LENSES.find((x) => x.key === k)
+      if (l) navigate(`/planner/${l.db}`)
+    },
+    view: () => undefined,
+    pin: () => item && void togglePin(item),
+    finish: () => undefined,
+    step: (delta) => {
+      const rows = [...document.querySelectorAll<HTMLElement>('[role="listbox"] [role="option"]')]
+      const at = rows.findIndex((r) => r.getAttribute('aria-selected') === 'true')
+      const next = rows[Math.max(0, Math.min(rows.length - 1, at + delta))]
+      next?.click()
+      next?.focus()
+    },
+    clearFilter: () => (needOnly ? (setNeedOnly(false), true) : false),
+  }, true)
 
-function StatusPick({ db, item, statuses, write }: { db: PlannerDb; item: PlannerItem; statuses: string[]; write: (fn: () => Promise<unknown>) => Promise<void> }) {
-  const api = usePlannerApi()
-  if (statuses.length === 0) return <StatusBadge status={item.status ?? ''} tone={statusToneKey(item.status)} />
-  return (
-    <StatusMenu
-      trigger={<StatusBadge status={item.status ?? ''} tone={statusToneKey(item.status)} />}
-      triggerLabel={`${item.status ?? ''}. ${TEXT.moveTo}`}
-      heading={TEXT.moveTo}
-      current={item.status ?? ''}
-      options={statuses.map((s) => ({ value: s, label: s }))}
-      onSelect={(status) => void write(() => api.plannerUpdate(db, item.id, { status }, item.rev))}
+  const togglePin = (i: PlannerItem) => write(() => api.plannerPin(db, i.id, !i.pinned, i.rev))
+  const commands = useMemo<PaletteCommand[]>(
+    () => [
+      { id: 'create:themes', mode: 'create', text: TEXT.createTheme, label: TEXT.createTheme, group: TEXT.modeCreate },
+      { id: 'create:ideas', mode: 'create', text: TEXT.createIdea, label: TEXT.createIdea, group: TEXT.modeCreate },
+      ...(items ?? []).map((r) => ({ id: `open:${r.id}`, mode: 'open', text: r.title, label: <span>{r.title}</span> })),
+    ],
+    [items],
+  )
+
+  const context = item && (
+    <Context
+      db={db}
+      id={item.id}
+      rev={item.rev}
+      pinned={Boolean(item.pinned)}
+      comments={item.comments ?? []}
+      links={links}
+      onCommented={() => void load()}
+      mentionable={items ?? []}
+      statusOptions={(schema?.enums.status ?? []).map((s) => ({ value: s, label: s }))}
+      onStatus={async (status) => { await api.plannerUpdate(db, item.id, { status }, item.rev + 1) }}
     />
   )
-}
+  const selected = Boolean(item) || db === 'inbox'
+  const body = db === 'inbox'
+    ? <InboxFocus items={(items ?? []).filter((i) => i.status === 'new')} loading={items === null} onChanged={load} />
+    : item
+      ? <LensFocus db={db} item={item} statuses={schema?.enums.status ?? []} write={write} onPin={() => void togglePin(item)}>
+          {db === 'workstreams' && <StreamBody item={item} />}
+          {db === 'roadmap' && <RoadmapBody item={item} horizons={schema?.enums.horizon ?? []} write={write} />}
+          {db === 'ideas' && <IdeaBody item={item} write={write} />}
+          {db === 'decisions' && <DecisionBody item={item} write={write} busy={busy} />}
+          {db === 'risks' && <RiskBody item={item} levels={schema?.enums.severity ?? []} />}
+        </LensFocus>
+      : <p className="m-auto text-xs text-fg-muted">{items === null ? '' : TEXT.selectItemFor(lens.label)}</p>
 
-function StreamBody({ item }: { item: PlannerItem }) {
-  const api = usePlannerApi()
-  const [t, setT] = useState<PlannerWorkstreamTasks | null>(null)
-  useEffect(() => {
-    let live = true
-    setT(null)
-    api.plannerWorkstreamTasks(item.id).then((r) => live && setT(r), () => live && setT(null))
-    return () => { live = false }
-  }, [api, item.id])
-  if (!t) return <Skeleton className="h-16 w-full" />
-  const c = t.counts
-  const done = c.done ?? 0
-  const blocked = c.blocked ?? 0
-  const doing = c.doing ?? 0
-  const review = c.review ?? 0
-  const label = TEXT.progressText(done, t.total, blocked)
   return (
-    <div className="flex flex-col gap-3">
-      <SegmentedProgress label={label} items={[{ state: 'done', count: done }, { state: 'doing', count: doing }, { state: 'review', count: review }, { state: 'blocked', count: blocked }, { state: 'todo', count: Math.max(0, t.total - done - doing - review - blocked) }]} />
-      <p className="dash-caption text-fg-muted">{label} · {TEXT.streamNote}</p>
-      <h2 className="font-mono dash-caption uppercase tracking-label text-fg-faint">{TEXT.streamTasks}</h2>
-      {t.open.length === 0 ? <p className="dash-support text-fg-muted">{TEXT.streamNoTasks}</p> : (
-        <ul className="flex flex-col gap-1">{t.open.map((o) => <li key={o.id} className="dash-support text-fg"><span className="mr-2 font-mono dash-caption text-fg-faint">{o.id}</span>{o.title}<span className="ml-2 dash-caption text-fg-muted">{o.status}</span></li>)}</ul>
-      )}
-    </div>
-  )
-}
-
-function RoadmapBody({ item, horizons, write }: { item: PlannerItem; horizons: string[]; write: (fn: () => Promise<unknown>) => Promise<void> }) {
-  const api = usePlannerApi()
-  const current = typeof item.horizon === 'string' ? item.horizon : ''
-  if (horizons.length === 0) return null
-  return (
-    <div className="flex flex-col gap-2">
-      <h2 className="font-mono dash-caption uppercase tracking-label text-fg-faint">{TEXT.horizon}</h2>
-      <DashboardViewTabs variant="segments" label={TEXT.horizonLabel} value={current} items={horizons.map((h) => ({ value: h, label: h }))} onChange={(horizon) => void write(() => api.plannerUpdate('roadmap', item.id, { horizon }, item.rev))} />
-    </div>
-  )
-}
-
-const PROMOTE_TARGETS: { to: IdeaPromoteTarget; label: string }[] = [
-  { to: 'themes', label: 'Theme' },
-  { to: 'roadmap', label: 'Roadmap item' },
-  { to: 'decisions', label: 'Decision' },
-]
-
-function IdeaBody({ item, write }: { item: PlannerItem; write: (fn: () => Promise<unknown>) => Promise<void> }) {
-  const api = usePlannerApi()
-  const [notes, setNotes] = useState(item.notes ?? '')
-  useEffect(() => setNotes(item.notes ?? ''), [item.id, item.rev])
-  // One target id per (idea, target), so a retry after a failure never creates twice.
-  const [targets] = useState(() => new Map<string, string>())
-  const promote = (to: IdeaPromoteTarget) => write(async () => {
-    const key = `${item.id}:${to}`
-    const targetId = targets.get(key) ?? createPlannerId()
-    targets.set(key, targetId)
-    const res = await api.plannerIdeaPromote(item.id, to, item.rev, targetId)
-    notifySuccess(TEXT.promoted(res.created.id))
-  })
-  const save = () => notes !== (item.notes ?? '') && void write(() => api.plannerUpdate('ideas', item.id, { notes }, item.rev))
-  return (
-    <div className="flex flex-col gap-3">
-      <label className="font-mono dash-caption uppercase tracking-label text-fg-faint" htmlFor="idea-notes">{TEXT.notes}</label>
-      <Textarea id="idea-notes" rows={10} value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save() } }} />
-      <div role="group" aria-label={TEXT.promoteTo} className="flex flex-wrap items-center gap-2 dash-caption text-fg-faint">
-        {TEXT.promoteTo}:
-        {PROMOTE_TARGETS.map((t) => (
-          <Button key={t.to} size="sm" variant="outline" onClick={() => void promote(t.to)}>{t.label}</Button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function DecisionBody({ item, write, busy }: { item: PlannerItem; write: (fn: () => Promise<unknown>) => Promise<void>; busy: boolean }) {
-  const api = usePlannerApi()
-  const options = item.options ?? []
-  const chosen = typeof item.chosen === 'string' ? item.chosen : typeof item.decision === 'string' ? item.decision : item.status === 'decided' ? '' : undefined
-  if (options.length === 0) return <p className="dash-support text-fg-muted">{TEXT.noOptions}</p>
-  return <OptionCompare options={options} chosenId={chosen || undefined} onChoose={(opt) => void write(() => api.plannerDecide(item.id, opt, item.rev))} busy={busy} labels={{ choose: TEXT.chooseOption, chooseButton: TEXT.chooseButton, recommended: TEXT.recommended, chosen: TEXT.chosen, pros: TEXT.pros, cons: TEXT.cons, groupLabel: TEXT.optionsGroup }} />
-}
-
-function RiskBody({ item, levels }: { item: PlannerItem; levels: string[] }) {
-  const sev = typeof item.severity === 'string' ? item.severity : ''
-  const at = Math.max(0, levels.indexOf(sev))
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="flex items-center gap-2 dash-support text-fg">
-        <span className="font-mono dash-caption uppercase tracking-label text-fg-faint">{TEXT.severity}</span>
-        <span aria-hidden className="flex gap-1">{levels.map((l, i) => <span key={l} className={`size-2 rounded-full ${i <= at && sev ? 'bg-fg' : 'bg-surface-hover'}`} />)}</span>
-        {sev}
-      </p>
-      {(item.related_ids ?? []).length > 0 && <p className="dash-caption text-fg-muted">{TEXT.mitigatedBy}: {item.related_ids!.join(', ')}</p>}
-    </div>
-  )
-}
-
-function InboxFocus({ items, loading, onChanged }: { items: PlannerItem[]; loading: boolean; onChanged: () => Promise<void> }) {
-  const api = usePlannerApi()
-  const [busy, setBusy] = useState(false)
-  const [targets] = useState(() => new Map<string, string>()) // one target id per (card, route), so a retry never creates twice
-  const card = items[0]
-  const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true)
-    try {
-      await fn()
-    } catch (err) {
-      notifyError(err, TEXT.writeFailed)
-    } finally {
-      setBusy(false)
-      await onChanged()
-    }
-  }
-  if (loading) return <Skeleton className="m-4 h-32" />
-  return (
-    <div className="p-4">
-      <TriageStack
-        card={card ? <div className="flex flex-col gap-1"><h1 className="dash-support font-medium text-fg">{card.title}</h1>{card.tldr && <p className="dash-support text-fg-muted">{card.tldr}</p>}</div> : null}
-        remaining={items.length}
-        nextTitle={items[1]?.title}
-        routes={TRIAGE_ROUTES}
-        busy={busy}
-        onRoute={(to) => card && void run(async () => {
-          const key = `${card.id}:${to}`
-          const targetId = targets.get(key) ?? createPlannerId()
-          targets.set(key, targetId)
-          const res = await api.plannerInboxPromote(card.id, to as PlannerDb, card.rev, targetId)
-          notifySuccess(TEXT.promoted(res.item.id))
-        })}
-        onDismiss={() => card && void run(() => api.plannerInboxDismiss(card.id, card.rev))}
-        labels={{ count: TEXT.triageCount, allTriaged: TEXT.allTriaged, routeHeading: TEXT.triageInto, dismiss: TEXT.dismiss, next: TEXT.nextUp }}
+    <>
+      <PlannerFrame
+        active={db}
+        onLens={(next) => navigate(`/planner/${next}`)}
+        counts={counts}
+        needYou={{ count: need?.total ?? 0, active: needOnly, onToggle: () => setNeedOnly((v) => !v) }}
+        freshAt={goodAt}
+        stale={Boolean(error)}
+        onPalette={() => setPalette(true)}
+        onNew={() => setCreating('themes')}
+        onDetails={() => setDetails(true)}
+        contextCollapsed={ctxCollapsed}
+        onToggleContext={() => setCtxCollapsed((v) => !v)}
+        focused={selected && (Boolean(item) || db === 'inbox')}
+        onBack={() => navigate(`/planner/${db}`)}
+        spine={items ? <SpineList label={TEXT.spineLabel} groups={groups} selectedId={openId} onSelect={open} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needOnly ? TEXT.needYouEmpty : TEXT.lensEmpty(lens.label)} /> : error ? null : <div className="flex flex-col gap-2 p-1" aria-busy>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>}
+        spineNotice={error ? (
+          <p role="alert" className="border-t border-border-subtle px-3 py-2 text-caption text-danger">
+            {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
+          </p>
+        ) : null}
+        context={db === 'inbox' ? undefined : context}
+      >
+        {body}
+      </PlannerFrame>
+      <Sheet open={details && Boolean(item)} onOpenChange={setDetails}>
+        <SheetContent className="lg:hidden">
+          <SheetTitle className="sr-only">{TEXT.detailsLabel}</SheetTitle>
+          {context}
+        </SheetContent>
+      </Sheet>
+      <CommandPalette
+        open={palette}
+        onOpenChange={setPalette}
+        title={TEXT.paletteTitle}
+        modes={[{ id: 'create', label: TEXT.modeCreate }, { id: 'open', label: TEXT.modeOpen }]}
+        commands={commands}
+        emptyLabel={TEXT.paletteEmpty}
+        onRun={(cmd) => {
+          if (cmd.startsWith('open:')) open(cmd.slice(5))
+          else if (cmd === 'create:themes' || cmd === 'create:ideas') setCreating(cmd === 'create:ideas' ? 'ideas' : 'themes')
+        }}
       />
-    </div>
+      <PlannerCreateDialog db={creating ?? 'themes'} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={1} onCreated={(it) => { void load(); navigate(`/planner/${creating ?? 'themes'}/${encodeURIComponent(it.id)}`) }} />
+    </>
   )
 }
+
+/** The common head of a lens focus pane: id chip, kind, pin, title, status, description, then the lens body. */
+function LensFocus({ db, item, statuses, write, onPin, children }: { db: PlannerDb; item: PlannerItem; statuses: string[]; write: (fn: () => Promise<unknown>) => Promise<void>; onPin: () => void; children: ReactNode }) {
+  const api = usePlannerApi()
+  const short = item.legacy_id && typeof item.legacy_id === 'string' ? item.legacy_id : item.id.slice(0, 8)
+  const edit = (patch: Record<string, unknown>) => void write(() => api.plannerUpdate(db, item.id, patch, item.rev))
+  return (
+    <section aria-labelledby="lens-title" className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5 max-sm:px-4 max-sm:py-4">
+      <header className="flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Chip square title={item.id}>{short}</Chip>
+          <span className={CAPTION}>{KIND[db]}{typeof item.kind === 'string' ? ` · ${item.kind}` : typeof item.area === 'string' ? ` · ${item.area}` : ''}</span>
+          <span className="flex-1" />
+          <button type="button" aria-pressed={Boolean(item.pinned)} onClick={onPin} className="rounded-full">
+            <Chip selected={Boolean(item.pinned)} className="h-6 cursor-pointer hover:bg-selection"><Pin className="size-3" />{TEXT.pin}</Chip>
+          </button>
+          <OverflowMenu ariaLabel={TEXT.moreActions} actions={[{ label: TEXT.copyLink, onSelect: () => void navigator.clipboard?.writeText(`${location.origin}/planner/${db}/${encodeURIComponent(item.id)}`) }]} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <InlineEdit as="h1" id="lens-title" label={TEXT.titleLabel} value={item.title} onCommit={(title) => edit({ title })} className="min-w-0 font-sans text-xl font-semibold normal-case leading-tight tracking-normal text-fg" />
+          <StatusPick status={item.status ?? ''} statuses={statuses} onPick={(status) => edit({ status })} />
+        </div>
+        {item.tldr && <InlineEdit as="p" multiline label={TEXT.descriptionLabel} value={item.tldr} onCommit={(tldr) => edit({ tldr })} className="max-w-prose text-control text-fg-muted" />}
+      </header>
+      {children}
+    </section>
+  )
+}
+
+function StatusPick({ status, statuses, onPick }: { status: string; statuses: string[]; onPick: (s: string) => void }) {
+  const chip = (
+    <Chip tone="strong" className="h-6 cursor-pointer">
+      <StateDot state="doing" />
+      {status || TEXT.noStatus}
+      {statuses.length > 0 && <ChevronDown className="size-3" />}
+    </Chip>
+  )
+  if (statuses.length === 0) return chip
+  return <StatusMenu trigger={chip} triggerLabel={`${status}. ${TEXT.moveTo}`} heading={TEXT.moveTo} current={status} options={statuses.map((s) => ({ value: s, label: s }))} onSelect={onPick} />
+}
+
+export { createPlannerId }
