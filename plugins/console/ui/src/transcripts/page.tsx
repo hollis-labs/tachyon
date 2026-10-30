@@ -1,12 +1,12 @@
 import { PageHeader } from "@hollis-labs/kit-dashboard"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button, SearchInput } from "@hollis-labs/design-components"
 import { BarMeter, Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
 import { TimeSeriesChart } from "@hollis-labs/kit-dashboard/charts"
 import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import { Activity, BarChart3, Boxes, FileText, RefreshCw } from "lucide-react"
 import { Segmented } from "../components/segmented"
-import { TranscriptDialog } from "./detail"
+import { TranscriptReader } from "./detail"
 import { SessionFilters, SessionList, WindowPicker } from "./sessions"
 import {
   read,
@@ -77,6 +77,7 @@ export function TranscriptDashboard() {
   const [linkedId, setLinkedId] = useState(linkedSession)
   const [loadedAt, setLoadedAt] = useState(0)
   const [now, setNow] = useState(() => new Date().getTime())
+  const listPane = useRef<HTMLDivElement>(null)
   const reload = useRef<() => void>(() => {})
   useEffect(() => {
     let active = true,
@@ -134,7 +135,17 @@ export function TranscriptDashboard() {
     setSelected(s)
     setLinkedId(s?.id ?? "")
     writeSessionParam(s?.id ?? "")
+    if (s) setActiveId(s.id)
   }
+  // Closing keeps the list mounted, so scroll and selection are where you left them.
+  const close = useCallback(() => {
+    open(undefined)
+    setTimeout(() => {
+      listPane.current
+        ?.querySelector<HTMLElement>("[aria-current=true]")
+        ?.focus({ preventScroll: true })
+    }, 0)
+  }, [])
   const rows = useMemo(
     () => filterSessions(snapshot?.sessions ?? [], filter),
     [snapshot, filter],
@@ -168,7 +179,7 @@ export function TranscriptDashboard() {
         <p className="font-mono dash-caption text-fg-faint">Dashboards / Fragments Engine</p>
         <p>Explore recorded conversations, usage, and the work behind them. Read-only; Fragments Engine owns the records.</p>
       </div>
-      <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
+      <div className={`min-h-0 flex-1 p-4 ${tab === "sessions" ? "flex flex-col gap-5 overflow-hidden" : "space-y-5 overflow-auto"}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Segmented<Tab>
             bare
@@ -252,7 +263,7 @@ export function TranscriptDashboard() {
           />
         </KpiGrid>
       </section>}
-      <section className="space-y-4" aria-label="Filtered transcript insights">
+      <section className={`shrink-0 space-y-4 ${tab === "sessions" && selected ? "max-md:hidden" : ""}`} aria-label="Filtered transcript insights">
         {tab === "sessions" ? (
           <SessionFilters filter={filter} facets={facets} set={set} reset={reset} />
         ) : (
@@ -371,37 +382,42 @@ export function TranscriptDashboard() {
         )}
       </section>
       {tab === "sessions" && (
-        <section aria-label="Transcript sessions" className="-mx-4">
-          <div className="px-4 pb-3">
-            <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} />
+        <section aria-label="Transcript sessions" className="-mx-4 -mb-4 flex min-h-0 flex-1 border-t border-border">
+          <div
+            ref={listPane}
+            className={`${selected ? "max-md:hidden" : ""} flex min-h-0 w-full flex-col overflow-auto md:w-[26rem] md:shrink-0 md:border-r md:border-border`}
+          >
+            <div className="px-4 py-3">
+              <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} />
+            </div>
+            {!!rows.length && (
+              <SessionList
+                key={JSON.stringify(filter)}
+                rows={rows}
+                activeId={activeId}
+                onActive={setActiveId}
+                onOpen={open}
+                keys
+              />
+            )}
+            {!rows.length && !loading && (
+              <p className="p-10 text-center dash-body text-fg-faint">
+                {snapshot
+                  ? "No sessions match these filters."
+                  : "Connect the transcript source to explore sessions."}
+              </p>
+            )}
           </div>
-          {!!rows.length && (
-            <SessionList
-              key={JSON.stringify(filter)}
-              rows={rows}
-              activeId={activeId}
-              onActive={setActiveId}
-              onOpen={open}
-              keys={!selected}
-            />
+          {selected && (
+            <TranscriptReader key={selected.id} session={selected} onClose={close} />
           )}
-          {!rows.length && !loading && (
-            <p className="p-10 text-center dash-body text-fg-faint">
-              {snapshot
-                ? "No sessions match these filters."
-                : "Connect the transcript source to explore sessions."}
+          {!selected && (
+            <p className="hidden flex-1 items-center justify-center dash-body text-fg-faint md:flex">
+              Select a session to read it.
             </p>
           )}
         </section>
       )}
-      {selected && (
-        <TranscriptDialog
-          key={selected.id}
-          session={selected}
-          onClose={() => open(undefined)}
-        />
-      )}
-      </div>
     </div>
   )
 }

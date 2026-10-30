@@ -218,7 +218,7 @@ export function SessionList({
   activeId: string
   onOpen(s: Session): void
   onActive(id: string): void
-  /** J/K move through rows; off while a reader or sheet is open. */
+  /** J/K move through rows (not while typing or reading). */
   keys: boolean
 }) {
   const [limit, setLimit] = useState(STEP)
@@ -229,7 +229,7 @@ export function SessionList({
     const onKey = (e: KeyboardEvent) => {
       if ((e.key !== "j" && e.key !== "k") || e.metaKey || e.ctrlKey || e.altKey) return
       const t = e.target as HTMLElement
-      if (t.closest("input, textarea, select, [contenteditable]")) return
+      if (t.closest("input, textarea, select, [contenteditable], [aria-label='Transcript reader']")) return
       const btns = Array.from(box.current?.querySelectorAll<HTMLButtonElement>("[data-row]") ?? [])
       if (!btns.length) return
       const i = btns.findIndex((b) => b.dataset.row === activeId)
