@@ -50,6 +50,9 @@ func (h *HTTP) Timeline(ctx context.Context, db, id string, q url.Values) (Item,
 		}
 	} else {
 		out["milestones"] = h.milestones(ctx, row)
+		set := LoadSettings(ctx, h.Store)
+		m := DeriveMomentum(set.Momentum, h.themeSignals(ctx, textField(row, "id"), time.Now(), set))
+		out["momentum"] = Item{"label": m.Label, "score": m.Score, "text": m.Text, "signals": m.Signals, "series": h.themeSeries(ctx, row, 7)}
 	}
 	events, next, err := ev.Timeline(ctx, textField(row, "id"), subjects, facet, before, limit)
 	if err != nil {
