@@ -228,6 +228,10 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		i.submitSecret(w, r, participant, session)
 		return
 	}
+	if r.Method == http.MethodPost && (path == "/access/challenge" || path == "/access/verify") && i.Assurance != nil {
+		i.stepUp(w, r, path)
+		return
+	}
 	if r.Method == http.MethodGet && path == "/events" {
 		i.events(w, r)
 		return

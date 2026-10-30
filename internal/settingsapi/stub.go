@@ -240,10 +240,6 @@ func (s *Stub) operatorKey(group string, keys []string) string {
 	return ""
 }
 
-func methods(available bool) []Method {
-	return []Method{{MethodOperatorToken, true}, {MethodPassword, available}, {MethodPasskey, available}}
-}
-
 // access builds the extended /access body for the current state or the X-Stub-Scenario override.
 func (s *Stub) access(r *http.Request) Access {
 	now := s.now()
@@ -327,21 +323,6 @@ func (s *Stub) putProfile(w http.ResponseWriter, r *http.Request) {
 	s.account(w, r)
 }
 
-func risk(action string) string {
-	switch assurance.Action(action) {
-	case assurance.ActionResolveHigh:
-		return "high"
-	case assurance.ActionDestructive:
-		return "destructive"
-	case assurance.ActionResolveMedium, assurance.ActionBatch, assurance.ActionSecretSubmit, assurance.ActionActionRunRead:
-		return "medium"
-	}
-	if strings.HasPrefix(action, "settings.") {
-		return "medium"
-	}
-	return "low"
-}
-
 func (s *Stub) challenge(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Action, Ref, Digest string
@@ -362,7 +343,7 @@ func (s *Stub) challenge(w http.ResponseWriter, r *http.Request) {
 	s.challenges[id] = exp
 	s.mu.Unlock()
 	write(w, 200, Challenge{ChallengeID: id, Methods: methods(false), ExpiresAt: exp.UTC().Format(time.RFC3339),
-		Display: StepUp{Action: in.Action, Risk: risk(in.Action), Ref: in.Ref}})
+		Display: StepUp{Action: in.Action, Risk: assurance.Risk(assurance.Action(in.Action)), Ref: in.Ref}})
 }
 
 // verify scripts every dialog state: the credential "stub-operator-token" signs in; anything else fails, and the

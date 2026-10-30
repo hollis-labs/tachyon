@@ -21,6 +21,7 @@ Stub controls (request headers; the stub only):
 | `X-Stub-Status: 401\|403\|404\|409\|422\|429\|503` | forces that error with the `{code,message}` shape |
 | `X-Stub-Scenario: not_elevated` | no operator-token assurance |
 | `X-Stub-Scenario: secrets_unavailable` | `POST /secrets` answers 503 |
+| `X-Stub-Scenario: not_elevated`, `item_not_pending`, `secret_field_unknown`, `rate_limited` | `POST /secrets` answers the matching error; `secret_ref_invalid` makes resolve answer 422 |
 | `X-Stub-Scenario: gap` | `/events` answers one `resync` |
 | `X-Stub-Fail-Item: <id>` | that item's result in a batch is `error` |
 
@@ -37,7 +38,7 @@ Stub controls (request headers; the stub only):
 | `GET /history` | decision timeline with reasons; filters `status requester q from to limit cursor` |
 | `GET /events` | SSE; replay with `Last-Event-ID` or `?after=`; `?once=1` ends after the replay (stub) |
 | `GET /access` | `{state: none\|elevated, expires_in_s, can_elevate, ttl_policy, required_for}` |
-| `POST /secrets` | returns a `secret://tachyon/<id>` reference, never the value |
+| `POST /secrets` | JSON `{item_id, field, value<=16 KiB}` or multipart (`file<=64 KiB`); 201 `{secret_ref, created_at, expires_at, size, fingerprint}`, never the value. `Idempotency-Key` replays. Errors: 400, 403 `assurance_insufficient` (+`step_up`), 404, 409 `item_not_pending` / `secret_field_unknown` / `idempotency_key_reuse`, 413, 429, 503. Resolve takes `answers[field] = {secret_ref}`, else 422 `secret_ref_invalid` |
 
 ## Decisions the fixtures carry (addendum 1)
 
@@ -72,7 +73,7 @@ History: approved, denied with reason, expired, withdrawn, answered, batch-resol
 ## Error codes
 
 `stale_revision` 409 (carries `revision`), `already_resolved` 409 (carries `terminal_outcome`), `batch_id_reuse` 409,
-`confirmation_required` 422, `reason_required` 422, `invalid_secret_ref` 422, `operator_access_required` 403,
+`confirmation_required` 422, `reason_required` 422, `secret_ref_invalid` 422, `operator_access_required` 403,
 `requester_cannot_approve` 403, `session_required` 401,
 `secrets_unavailable` 503, `rate_limited` 429, `invalid` 400, `not_found` 404.
 
