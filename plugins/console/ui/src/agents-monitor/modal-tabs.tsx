@@ -37,10 +37,8 @@ function Kpi({ label, value, title }: { label: string; value: ReactNode; title?:
   )
 }
 
-export function NowTab({ s, now }: { s: Session; now: number }) {
-  const latest = useAgentsRead<EventsResponse>(`/sessions/${encodeURIComponent(s.id)}/events?group_runs=1&limit=8`)
-  const a = s.assignment
-  const hasAssignment = !!a && !!(a.task_ref || a.theme_ref)
+/** The six facts every tab opens with. Unknown is n/a or not metered with the reason on hover, inferred values carry "~". */
+export function KpiStrip({ s, now }: { s: Session; now: number }) {
   const na = { value: M.na, title: AGENTS.naReason }
   const tokens = s.tokens.metered ? { value: fmt((s.tokens.input ?? 0) + (s.tokens.output ?? 0)), title: undefined } : { value: M.unmetered, title: M.unmeteredReason }
   const clear = s.last_clear_at ? { value: `${s.last_clear_at.inferred ? '~' : ''}${ageText(now - s.last_clear_at.at)} ago`, title: s.last_clear_at.inferred ? M.inferred : undefined } : { value: M.never, title: undefined }
@@ -52,12 +50,21 @@ export function NowTab({ s, now }: { s: Session; now: number }) {
     [M.kpi.calls, s.tool_call_count === null ? na.value : fmt(s.tool_call_count), s.tool_call_count === null ? na.title : undefined],
     [M.kpi.lastClear, clear.value, clear.title],
   ]
+  return (
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-control border border-border-subtle bg-border-subtle sm:grid-cols-3 lg:grid-cols-6">
+      {kpis.map(([k, v, t]) => <Kpi key={k} label={k} value={v} title={t} />)}
+    </div>
+  )
+}
+
+export function NowTab({ s, now }: { s: Session; now: number }) {
+  const latest = useAgentsRead<EventsResponse>(`/sessions/${encodeURIComponent(s.id)}/events?group_runs=1&limit=8`)
+  const a = s.assignment
+  const hasAssignment = !!a && !!(a.task_ref || a.theme_ref)
   const st = a?.stats
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-control border border-border-subtle bg-border-subtle sm:grid-cols-3 lg:grid-cols-6">
-        {kpis.map(([k, v, t]) => <Kpi key={k} label={k} value={v} title={t} />)}
-      </div>
+      <KpiStrip s={s} now={now} />
       <div className={cn('grid items-start gap-3.5', hasAssignment && 'lg:grid-cols-[1fr_320px]')}>
         <section aria-labelledby="now-right" className="flex flex-col gap-1.5">
           <h3 id="now-right" className={caption}>{M.rightNow}</h3>
@@ -151,56 +158,79 @@ export function TimelineTab({ s, now }: { s: Session; now: number }) {
 
 // ---------- Context ----------
 
-interface Series { points: { at: number; pct: number }[]; compactions: { at: number; inferred: boolean }[]; clears: { at: number; inferred: boolean }[]; warn_pct: number }
+interface Series { points: { at: number; pct: number }[]; compactions: { at: number; before?: number; after?: number; inferred: boolean }[]; clears: { at: number; inferred: boolean }[]; warn_pct: number }
 interface Tokens { metered: boolean; hour: Record<string, number> | null; session: Record<string, number> | null; share: number | null; trend: 'up' | 'down' | 'flat' | null }
 
+const compact = (n: number | null | undefined) => {
+  if (n === null || n === undefined) return M.unknown
+  if (n >= 1e6) return `${+(n / 1e6).toFixed(1)}M`
+  if (n >= 1e3) return `${Math.round(n / 1e3)}K`
+  return String(n)
+}
+
+const CHART_H = 110
+
+/** Context use over time: the line, a dashed warning line, and a dot where context was compacted (hollow when inferred). */
 function ContextChart({ d }: { d: Series }) {
-  const w = 600
-  const h = 140
   const t0 = d.points[0].at
   const span = Math.max(1, d.points[d.points.length - 1].at - t0)
-  const x = (at: number) => ((at - t0) / span) * w
-  const y = (pct: number) => h - (Math.min(100, pct) / 100) * h
-  const path = d.points.map((p, i) => `${i ? 'L' : 'M'}${x(p.at).toFixed(1)} ${y(p.pct).toFixed(1)}`).join(' ')
+  const x = (at: number) => ((at - t0) / span) * 100
+  const y = (pct: number) => CHART_H - (Math.min(100, pct) / 100) * CHART_H
+  const pts = d.points.map((p) => `${(x(p.at) * 6).toFixed(1)},${y(p.pct).toFixed(1)}`).join(' ')
+  // The dot sits on the line: the reading at the moment of compaction, interpolated between the two points around it.
+  const pctAt = (t: number) => {
+    const i = d.points.findIndex((p) => p.at >= t)
+    if (i <= 0) return d.points[Math.max(0, i)].pct
+    const [a, b] = [d.points[i - 1], d.points[i]]
+    return a.pct + ((b.pct - a.pct) * (t - a.at)) / Math.max(1, b.at - a.at)
+  }
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label={M.contextOverTime} className="h-40 w-full text-fg" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <line x1="0" x2={w} y1={y(d.warn_pct)} y2={y(d.warn_pct)} strokeDasharray="4 4" className="text-danger" />
-      <path d={path} />
-      {d.compactions.map((c) => <line key={c.at} x1={x(c.at)} x2={x(c.at)} y1="0" y2={h} strokeDasharray={c.inferred ? '2 3' : undefined} className="text-fg-faint" strokeWidth="1" />)}
-    </svg>
+    <div className="relative" style={{ height: CHART_H }}>
+      <svg viewBox={`0 0 600 ${CHART_H}`} preserveAspectRatio="none" role="img" aria-label={M.contextOverTime} className="size-full overflow-visible text-fg">
+        <line x1="0" x2="600" y1={y(d.warn_pct)} y2={y(d.warn_pct)} stroke="currentColor" strokeDasharray="4 4" className="text-danger" opacity="0.6" vectorEffect="non-scaling-stroke" />
+        <polyline fill="none" stroke="currentColor" strokeWidth="1.5" points={pts} vectorEffect="non-scaling-stroke" />
+      </svg>
+      {d.compactions.map((c) => (
+        <i key={c.at} aria-hidden title={c.inferred ? M.inferred : undefined} className={cn('absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-fg', c.inferred ? 'bg-bg-elevated' : 'bg-fg')} style={{ left: `${x(c.at)}%`, top: y(pctAt(c.at)) }} />
+      ))}
+    </div>
   )
 }
 
-export function ContextTab({ s }: { s: Session }) {
+export function ContextTab({ s, now }: { s: Session; now: number }) {
   const series = useAgentsRead<Series>(`/sessions/${encodeURIComponent(s.id)}/context-series`)
   const tokens = useAgentsRead<Tokens>(`/sessions/${encodeURIComponent(s.id)}/tokens`)
   return (
-    <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2">
-        <h3 className={heading}>{M.contextOverTime}</h3>
+    <div className="flex flex-col gap-3.5">
+      <KpiStrip s={s} now={now} />
+      <section aria-labelledby="ctx-chart" className="flex flex-col gap-2 rounded-panel border border-border p-3">
+        <h3 id="ctx-chart" className={caption}>{M.contextOverTime}</h3>
         <Panel read={series}>
-          {(d) => d.points.length < 2 ? <p className="dash-support text-fg-muted">{M.noSeries}</p> : (
+          {(d) => d.points.length < 2 ? <p className="text-xs text-fg-muted">{M.noSeries}</p> : (
             <>
               <ContextChart d={d} />
-              <p className="dash-caption text-fg-faint">{M.warnLine(d.warn_pct)} · {d.compactions.length} compactions · {d.clears.length} clears</p>
+              <div className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-caption text-fg-muted">
+                {d.compactions.map((c) => <span key={c.at}>⟲ {M.compaction}{c.before != null && c.after != null ? ` ${compact(c.before)} → ${compact(c.after)}` : ''} ({ageText(now - c.at)} ago){c.inferred ? ` · ${M.inferred}` : ''}</span>)}
+                <span>- - {M.warnLine(d.warn_pct)}</span>
+                {d.clears.length > 0 && <span>{M.lastClearLegend} {ageText(now - d.clears[d.clears.length - 1].at)} ago{d.clears[d.clears.length - 1].inferred ? ` · ${M.inferred}` : ''}</span>}
+              </div>
             </>
           )}
         </Panel>
       </section>
-      <section className="flex flex-col gap-2">
-        <h3 className={heading}>{M.tokensTitle}</h3>
+      <section aria-labelledby="ctx-tokens" className="flex flex-col gap-2 rounded-panel border border-border p-3">
+        <h3 id="ctx-tokens" className={caption}>{M.tokensTitle}</h3>
         <Panel read={tokens}>
-          {(t) => !t.metered ? <p className="dash-support text-fg-muted">{M.unmetered}</p> : (
+          {(t) => !t.metered ? <p title={M.unmeteredReason} className="text-xs text-fg-muted">{M.unmetered}</p> : (
             <>
-              <table className="w-full dash-support">
-                <thead><tr className="text-left text-fg-faint"><th className="py-1 font-normal"> </th><th className="font-normal">{M.thisHour}</th><th className="font-normal">{M.thisSession}</th></tr></thead>
-                <tbody>
-                  {([['input', M.input], ['output', M.output], ['cache_read', M.cacheRead], ['cache_write', M.cacheWrite]] as const).map(([k, label]) => (
-                    <tr key={k} className="border-t border-border-subtle"><td className="py-1 text-fg-muted">{label}</td><td className="tabular-nums text-fg">{fmt(t.hour?.[k])}</td><td className="tabular-nums text-fg">{fmt(t.session?.[k])}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="dash-caption text-fg-faint">{M.share}: {t.share === null ? M.unknown : `${Math.round(t.share * 100)}%`}{t.trend ? ` · ${M.trend[t.trend]}` : ''}</p>
+              {/* KIT-GAP: golden also draws a per-kind share and trend sparkline; the API reports one share and trend for the whole session, so they are shown below, not per row. */}
+              <div className="grid grid-cols-[1.4fr_1fr_1fr] gap-x-2 text-xs text-fg-secondary">
+                {[M.kind, M.thisHour, M.thisSession].map((h) => <div key={h} className={cn('border-b border-border-subtle pb-1', caption)}>{h}</div>)}
+                {([['input', M.input], ['output', M.output], ['cache_read', M.cacheRead], ['cache_write', M.cacheWrite]] as const).map(([k, label]) => (
+                  <div key={k} className="contents"><div className="border-b border-border-subtle py-1.5">{label}</div><div className="border-b border-border-subtle py-1.5 font-mono tabular-nums">{compact(t.hour?.[k])}</div><div className="border-b border-border-subtle py-1.5 font-mono tabular-nums">{compact(t.session?.[k])}</div></div>
+                ))}
+              </div>
+              <p className="text-xs text-fg-muted">{M.share}: {t.share === null ? M.na : `${Math.round(t.share * 100)}%`}{t.trend ? ` · ${M.trend[t.trend]}` : ''}</p>
             </>
           )}
         </Panel>
@@ -213,23 +243,31 @@ export function ContextTab({ s }: { s: Session }) {
 
 interface History { sessions: { session_id: string; started_at: number; ran_ms: number; tokens: Record<string, number>; tool_calls: number; ended_at: number; end_reason: string }[] }
 
+const when = (at: number) => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+const failed = (reason: string) => /fail|error/i.test(reason)
+
 export function HistoryTab({ s }: { s: Session }) {
   const read = useAgentsRead<History>(`/sessions/${encodeURIComponent(s.id)}/history`)
+  const total = s.tokens.metered ? compact((s.tokens.input ?? 0) + (s.tokens.output ?? 0)) : M.unmetered
   return (
-    <Panel read={read}>
-      {(d) => d.sessions.length === 0 ? <p className="dash-support text-fg-muted">{M.historyEmpty}</p> : (
-        <table className="w-full dash-support">
-          <thead><tr className="text-left text-fg-faint"><th className="font-normal">{M.started}</th><th className="font-normal">{M.ran}</th><th className="font-normal">{M.tokensTitle}</th><th className="font-normal">{M.toolCalls}</th><th className="font-normal">{M.endReason}</th></tr></thead>
-          <tbody>
-            {d.sessions.map((h) => (
-              <tr key={h.session_id} className="border-t border-border-subtle text-fg">
-                <td className="py-1">{new Date(h.started_at).toLocaleString()}</td><td>{ageText(h.ran_ms)}</td>
-                <td className="tabular-nums">{fmt((h.tokens.input ?? 0) + (h.tokens.output ?? 0))}</td><td className="tabular-nums">{fmt(h.tool_calls)}</td><td>{h.end_reason}</td>
-              </tr>
+    <section aria-labelledby="hist" className="flex flex-col gap-3.5">
+      <h3 id="hist" className={caption}>{M.historyTitle}</h3>
+      <Panel read={read}>
+        {(d) => d.sessions.length === 0 ? <p className="text-xs text-fg-muted">{M.historyEmpty}</p> : (
+          <div className="grid grid-cols-[1.2fr_80px_90px_90px_1.4fr] gap-x-2 text-xs text-fg-secondary max-sm:grid-cols-[1fr_70px_70px]">
+            {[M.started, M.ran, M.tokensTitle, M.toolCalls, M.ended].map((h, i) => <div key={h} className={cn('border-b border-border-subtle pb-1', caption, i > 2 && 'max-sm:hidden')}>{h}</div>)}
+            {[{ id: s.id, started_at: s.started_at, ran_ms: s.runtime_ms, tokens: total, tools: s.tool_call_count, reason: M.running, current: true }, ...d.sessions.map((h) => ({ id: h.session_id, started_at: h.started_at, ran_ms: h.ran_ms, tokens: s.tokens.metered || h.tokens ? compact((h.tokens.input ?? 0) + (h.tokens.output ?? 0)) : M.unmetered, tools: h.tool_calls, reason: h.end_reason, current: false }))].map((h) => (
+              <div key={h.id} className="contents">
+                <div className="border-b border-border-subtle py-1.5 text-fg">{when(h.started_at)}{h.current && ` · ${M.current}`}</div>
+                <div className="border-b border-border-subtle py-1.5 font-mono">{h.ran_ms > 0 ? ageText(h.ran_ms) : M.na}</div>
+                <div className="border-b border-border-subtle py-1.5 font-mono">{h.tokens}</div>
+                <div className="border-b border-border-subtle py-1.5 font-mono max-sm:hidden">{h.tools === null ? M.na : fmt(h.tools)}</div>
+                <div className="border-b border-border-subtle py-1.5 max-sm:hidden">{failed(h.reason) ? <Chip tone="danger">{h.reason}</Chip> : <span className="text-fg-muted">{h.reason}</span>}</div>
+              </div>
             ))}
-          </tbody>
-        </table>
-      )}
-    </Panel>
+          </div>
+        )}
+      </Panel>
+    </section>
   )
 }
