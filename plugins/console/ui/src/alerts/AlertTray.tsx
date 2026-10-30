@@ -5,12 +5,14 @@ import { SEVERITY_ORDER } from '../events/types'
 import { useAlertsController } from './context'
 import { ConsolePrefsPanel } from '../prefs/ConsolePrefsPanel'
 import { useRestoreFocus } from '../shell/restore-focus'
+import { Segmented } from '../components/segmented'
 import { AlertListItem } from './AlertListItem'
+import { groupActive, groupHistory } from './group'
 import { SEVERITY_STYLE } from './severity-style'
 import type { AlertSeverity } from './types'
 
 const HOUR = 3_600_000
-const BTN = 'font-mono uppercase tracking-label'
+const BTN = ''
 
 /** Persistent tray: active alerts and history, quiet mode and bell/list threshold. Escape or outside click closes. */
 export function AlertTray() {
@@ -41,16 +43,15 @@ export function AlertTray() {
       ref={ref}
       role="dialog"
       aria-label="Alerts"
-      data-dashboard-accent="yellow"
-      tabIndex={-1}
+            tabIndex={-1}
       onKeyDown={(e) => {
         if (e.key === 'Escape') c.setOpen(false)
       }}
       className="fixed bottom-3 left-14 z-50 flex max-h-[min(36rem,calc(100vh-1.5rem))] w-[min(26rem,calc(100vw-4.5rem))] flex-col border border-border bg-bg-elevated shadow-xl shadow-black/30 focus-visible:outline-none"
     >
       <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
-        <h2 className="flex-1 font-mono text-label uppercase tracking-label text-fg-secondary">
-          Alerts{c.unread > 0 ? ` · ${c.unread} unread` : ''}
+        <h2 className="flex-1 font-sans text-sm font-semibold normal-case tracking-normal text-fg">
+          Alerts{c.unread > 0 ? <span className="ml-2 font-normal text-fg-muted">{c.unread} unread</span> : ''}
         </h2>
         <Button type="button" variant="outline" size="xs" className={BTN} onClick={c.markAllRead} disabled={c.unread === 0}>
           Mark all read
@@ -60,7 +61,7 @@ export function AlertTray() {
         </Button>
       </header>
 
-      <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2 font-mono text-label uppercase tracking-label">
+      <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2 text-xs">
         <label className="flex items-center gap-1.5 text-fg-secondary">
           <input
             type="checkbox"
@@ -92,42 +93,36 @@ export function AlertTray() {
       </div>
       {prefsOpen && <ConsolePrefsPanel prefs={c.prefs} onChange={c.setPrefs} />}
 
-      <div role="tablist" aria-label="Alert views" className="flex border-b border-border-subtle">
-        {(['active', 'history'] as const).map((t) => {
-          const n = t === 'active' ? c.active.length : c.history.length
-          return (
-            <button
-              key={t}
-              role="tab"
-              type="button"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
-              className={`flex-1 border-b-2 px-4 py-2 font-mono text-label uppercase tracking-label focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${tab === t ? 'border-primary text-fg' : 'border-transparent text-fg-muted hover:text-fg-secondary'}`}
-            >
-              {t} · {n}
-            </button>
-          )
-        })}
-      </div>
+      <Segmented label="Alert views" value={tab} onChange={setTab} className="border-border-subtle" items={[
+        { value: 'active' as const, label: 'Active', count: c.active.length },
+        { value: 'history' as const, label: 'History', count: c.history.length },
+      ]} />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
-          <p className="px-4 py-8 text-center font-mono text-xs text-fg-muted">{c.prefs.bellMinSeverity !== 'debug' ? 'No alerts at this threshold.' : tab === 'active' ? 'Nothing needs you right now.' : 'No dismissed or snoozed alerts.'}</p>
+          <p className="px-4 py-8 text-center text-sm text-fg-muted">{c.prefs.bellMinSeverity !== 'debug' ? 'No alerts at this level.' : tab === 'active' ? 'Nothing needs you right now.' : 'No dismissed or snoozed alerts.'}</p>
         ) : (
           <ul aria-label={tab === 'active' ? 'Active alerts' : 'Alert history'}>
-            {rows.map(({ alert, status, snoozeUntil }) => (
-              <AlertListItem
-                key={alert.id}
-                alert={alert}
-                status={status}
-                snoozeUntil={snoozeUntil}
-                now={c.now}
-                onRead={() => c.markRead(alert.id)}
-                onDismiss={tab === 'active' ? () => c.dismiss(alert.id) : undefined}
-                onSnooze={tab === 'active' ? () => c.snooze(alert.id, HOUR) : undefined}
-                onRestore={tab === 'history' ? () => c.restore(alert.id) : undefined}
-                onExpand={() => c.expand(alert.id)}
-              />
+            {(tab === 'active' ? groupActive(rows) : groupHistory(rows, c.now)).map((g) => (
+              <li key={g.id} aria-label={g.label} className="list-none">
+                <h3 className="border-b border-border-subtle bg-surface/40 px-4 py-1 font-sans text-xs font-medium normal-case tracking-normal text-fg-muted">{g.label} <span className="text-fg-faint">{g.items.length}</span></h3>
+                <ul>
+                  {g.items.map(({ alert, status, snoozeUntil }) => (
+                    <AlertListItem
+                      key={alert.id}
+                      alert={alert}
+                      status={status}
+                      snoozeUntil={snoozeUntil}
+                      now={c.now}
+                      onRead={() => c.markRead(alert.id)}
+                      onDismiss={tab === 'active' ? () => c.dismiss(alert.id) : undefined}
+                      onSnooze={tab === 'active' ? () => c.snooze(alert.id, HOUR) : undefined}
+                      onRestore={tab === 'history' ? () => c.restore(alert.id) : undefined}
+                      onExpand={() => c.expand(alert.id)}
+                    />
+                  ))}
+                </ul>
+              </li>
             ))}
           </ul>
         )}

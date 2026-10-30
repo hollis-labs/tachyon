@@ -56,9 +56,13 @@ export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRe
           {status === 'snoozed' && snoozeUntil && <span>snoozed until {new Date(snoozeUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
           {status === 'dismissed' && <span>dismissed</span>}
         </p>
-        {(alert.primary || onDismiss || onSnooze || onRestore) && (
+        {alert.primary && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {alert.primary && <AlertLinkButton link={alert.primary} onFollow={onRead} />}
+            <AlertLinkButton link={alert.primary} onFollow={onRead} />
+          </div>
+        )}
+        {(onDismiss || onSnooze || onRestore) && (
+          <div className="mt-1 flex items-center gap-1.5 md:absolute md:right-3 md:top-1.5 md:mt-0 md:group-hover:bg-bg-elevated md:group-focus-within:bg-bg-elevated">
             <span className="flex items-center gap-1.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 md:opacity-0">
             {onSnooze && (
               <Button type="button" variant="ghost" size="xs" className={BTN} onClick={onSnooze} aria-label={`Snooze for 1 hour: ${alert.title}`}>

@@ -14,7 +14,7 @@ export function Segmented<T extends string>({ label, value, onChange, items, cla
   className?: string
 }) {
   return (
-    <div role="tablist" aria-label={label} className={`flex overflow-x-auto border-b border-border px-4 py-2 ${className}`}>
+    <div role="tablist" aria-label={label} className={`flex shrink-0 overflow-x-auto border-b border-border px-4 py-2 ${className}`}>
       <div className="inline-flex shrink-0 border border-border">
         {items.map((it, i) => {
           const on = it.value === value
