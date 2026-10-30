@@ -24,9 +24,10 @@ paths:
         "503": {$ref: "#/components/responses/Error"}
   /status:
     get:
-      summary: Fragments Engine status passthrough (modes, semantic availability) plus ingest {last_ingest_at, state} (Stage 2).
+      summary: Fragments Engine status passthrough (modes, semantic availability) plus ingest {last_ingest_at, state} (Stage 2) and capabilities.
+      description: "capabilities {search, find, errors, stats} say which of those routes exist. When capabilities is absent the client probes (first 404 means absent). TR1 sets search=true when /search ships."
       responses:
-        "200": {description: ok}
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {available: {type: boolean}, enabled: {type: boolean}, semantic: {type: boolean}, modes: {type: array, items: {type: string}}, ingest: {type: object}, capabilities: {type: object, properties: {search: {type: boolean}, find: {type: boolean}, errors: {type: boolean}, stats: {type: boolean}}}}}}}}
   /search:
     get:
       summary: Content search, session-level in Stage 1. Never cached; the query text is not logged or audited.
@@ -37,9 +38,9 @@ paths:
         - {name: cursor, in: query, schema: {type: string}, description: "Opaque FE cursor. Semantic has no cursor (max 100 results)."}
         - {name: since, in: query, schema: {type: string}}
         - {name: until, in: query, schema: {type: string}}
-        - {name: tool, in: query, schema: {type: string}}
+        - {name: tool, in: query, description: "the product: claude|codex|chatgpt", schema: {type: string}}
         - {name: model, in: query, schema: {type: string}}
-        - {name: kind, in: query, schema: {type: string}}
+        - {name: kind, in: query, description: "main|subagent", schema: {type: string, enum: [main, subagent]}}
         - {name: project, in: query, schema: {type: string}}
         - {name: has_error, in: query, schema: {type: boolean}}
         - {name: tag, in: query, schema: {type: string}}
@@ -115,18 +116,19 @@ components:
       type: object
       properties:
         id: {type: string}
-        kind: {type: string, description: claude|codex|chatgpt}
+        tool: {type: string, description: "the product that ran the session: claude|codex|chatgpt (facets.tools lists these)"}
+        kind: {type: string, enum: [main, subagent]}
         title: {type: string}
         project: {type: string}
         model: {type: string}
-        started_at: {type: integer, nullable: true}
-        ended_at: {type: integer, nullable: true}
-        turn_count: {type: integer}
-        tool_call_count: {type: integer}
-        error_count: {type: integer}
-        tools: {type: array, items: {type: string}}
+        started_at: {type: string, format: date-time, nullable: true, description: ISO 8601; absent or null when undated}
+        ended_at: {type: string, format: date-time, nullable: true}
+        turns: {type: integer}
+        tokens: {type: integer}
+        tool_calls: {type: integer}
+        errors: {type: integer}
         tags: {type: array, items: {type: string}}
-        has_enrichment: {type: boolean}
+        enriched: {type: boolean}
     ToolCall:
       type: object
       properties:

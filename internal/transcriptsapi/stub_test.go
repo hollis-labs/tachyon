@@ -184,7 +184,7 @@ func TestSearchModesNoticesAndValidation(t *testing.T) {
 			t.Errorf("%q: %d", bad, w.Code)
 		}
 	}
-	if get("/search?q=a&tool=Bash&model=m&kind=claude&project=p&tag=t&since=1&until=2&has_error=true").Code != 200 {
+	if get("/search?q=a&tool=claude&model=m&kind=main&project=p&tag=t&since=1&until=2&has_error=true").Code != 200 {
 		t.Error("filters")
 	}
 }
@@ -226,5 +226,30 @@ func TestFindErrorsStatsStatusAndGuards(t *testing.T) {
 	Stub{}.Handler().ServeHTTP(w, r)
 	if w.Code != 405 {
 		t.Errorf("writes: %d", w.Code)
+	}
+}
+
+func TestLiveSessionNamesAndCapabilities(t *testing.T) {
+	do := func(path string) map[string]any { return decode(t, get(path)) }
+	st := do("/status")
+	caps, _ := st["capabilities"].(map[string]any)
+	for _, k := range []string{"search", "find", "errors", "stats"} {
+		if _, ok := caps[k].(bool); !ok {
+			t.Errorf("status.capabilities.%s missing", k)
+		}
+	}
+	s := do("/snapshot")["sessions"].([]any)[0].(map[string]any)
+	for _, k := range []string{"tool", "kind", "turns", "tokens", "tool_calls", "errors", "enriched"} {
+		if _, ok := s[k]; !ok {
+			t.Errorf("session.%s missing", k)
+		}
+	}
+	for _, k := range []string{"turn_count", "tool_call_count", "error_count", "has_enrichment", "tools"} {
+		if _, ok := s[k]; ok {
+			t.Errorf("old name %s still present", k)
+		}
+	}
+	if _, ok := s["started_at"].(string); !ok {
+		t.Errorf("started_at should be an ISO string: %v", s["started_at"])
 	}
 }

@@ -25,6 +25,18 @@ An `Authorization` header is refused (403 `forbidden`): browser session only; th
 design means no agent surface. The real guard is the assurance requirement `transcripts.read`
 (browser-session, reserved operator mapping for search/find and tool target/excerpt fields).
 
+## Session fields (live shape)
+
+The live bridge and the Transcripts page use these names; the contract follows them. A session summary is
+`{id, tool, kind, title, project, model, started_at, ended_at, turns, tokens, tool_calls, errors, tags, enriched}`:
+`tool` is the product (`claude`, `codex`, `chatgpt`; `facets.tools` lists them), `kind` is `main` or `subagent`,
+`started_at` and `ended_at` are ISO 8601 strings (absent or null when undated), the counts are `turns`, `tokens`,
+`tool_calls` and `errors`, and `enriched` replaces the old `has_enrichment`. The earlier TR0 names (`turn_count`,
+`tool_call_count`, `error_count`, unix-ms times, `kind` claude|codex|chatgpt, `tools[]`) are gone. Turn and tool-call
+entries inside `GET /sessions/{id}` still carry their TR0 shapes (`started_at` in unix ms); they have no live
+counterpart yet. `GET /status` adds `capabilities {search, find, errors, stats}`; a client without it probes and
+treats a 404 as absent. The stub reports all four true.
+
 ## What the data can and cannot say
 
 - Tool cards: Stage 1 has name, status (ok/error/none), result size and times. `target` and
