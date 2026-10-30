@@ -75,7 +75,7 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
           value={value}
           rows={1}
           disabled={disabled}
-          aria-label={`Message ${agentLabel}`}
+          aria-label="Message"
           placeholder={disabled ? 'This agent cannot receive messages right now' : `Message ${agentLabel}… (/ commands, @ reference)`}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}

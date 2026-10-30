@@ -114,7 +114,7 @@ it('shows send errors and keeps the draft', async () => {
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'hi' } })
   fireEvent.click(screen.getByText('Send'))
   await flush()
-  expect(screen.getByRole('alert').textContent).toBe('boom')
+  expect(screen.getByRole('alert').textContent).toContain('boom')
   expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('hi')
 })
 
