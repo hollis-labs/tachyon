@@ -54,6 +54,7 @@ export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRe
           {sev.named && <span className={sev.text}>{sev.label}</span>}
           <span>{alert.sourceLabel ?? alert.source}</span>
           <span>{ago(alert.ts, now)}</span>
+          {alert.count && alert.count > 1 && <span>{alert.count} times</span>}
           {status === 'snoozed' && snoozeUntil && <span>snoozed until {new Date(snoozeUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
           {status === 'dismissed' && <span>dismissed</span>}
         </p>
