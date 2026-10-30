@@ -227,6 +227,18 @@ describe('ChatPage', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(MOCK_CHAT_AGENTS[1].agent.label)
   })
 
+  it('opens the most recent conversation on a wide screen', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('1024'), addEventListener() {}, removeEventListener() {} }))
+    try {
+      setup()
+      await flush()
+      expect(screen.getByTestId('where').textContent).toMatch(/^\/chat\/.+/)
+      expect(screen.getByLabelText('Message')).toBeTruthy()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('sends through the client from the composer', async () => {
     const client = setup()
     await flush()
