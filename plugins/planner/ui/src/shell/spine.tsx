@@ -29,6 +29,8 @@ export function rowsOf(board: ThemeBoard | null): ThemeRow[] {
 }
 
 interface SpineProps {
+  /** The last read failed: the list stays but dimmed. */
+  stale?: boolean
   board: ThemeBoard | null
   selectedId?: string
   onSelect: (id: string) => void
@@ -41,7 +43,7 @@ interface SpineProps {
   links: ReadonlyMap<string, { kind: string; other: string }>
 }
 
-export function Spine({ board, selectedId, onSelect, onLens, pins, onTogglePin, needYouOnly, onNeedYou, links }: SpineProps) {
+export function Spine({ stale, board, selectedId, onSelect, onLens, pins, onTogglePin, needYouOnly, onNeedYou, links }: SpineProps) {
   const lensExtras = useContributions('planner.lens')
   const itemMenu = useContributions('planner.spine.item.menu')
   const all = useMemo(() => rowsOf(board), [board])
@@ -82,8 +84,8 @@ export function Spine({ board, selectedId, onSelect, onLens, pins, onTogglePin, 
           </button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <SpineList label={TEXT.spineLabel} groups={groups} selectedId={selectedId} onSelect={onSelect} onTogglePin={onTogglePin} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needYouOnly ? TEXT.needYouEmpty : undefined} />
+      <div className={`min-h-0 flex-1 overflow-y-auto ${stale ? 'opacity-60' : ''}`}>
+        <SpineList label={TEXT.spineLabel} groups={groups} selectedId={selectedId} onSelect={onSelect} onTogglePin={onTogglePin} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needYouOnly ? TEXT.needYouEmpty : TEXT.lensEmpty('Themes')} />
       </div>
     </div>
   )

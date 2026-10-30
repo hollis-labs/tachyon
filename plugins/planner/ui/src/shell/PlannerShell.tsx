@@ -43,7 +43,8 @@ export default function PlannerShell() {
   const [error, setError] = useState<string | null>(null)
   const [off, setOff] = useState(false)
   const [pins, setPins] = useState(loadPins)
-  const [needYouOnly, setNeedYouOnly] = useState(false)
+  const [needYouOnly, setNeedYouOnly] = useState(params.get('facet') === 'need-you')
+  const [goodAt, setGoodAt] = useState<number | null>(null)
   const [comments, setComments] = useState<PlannerComment[]>([])
   const [details, setDetails] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState<'main' | 'link' | null>(null)
@@ -58,6 +59,7 @@ export default function PlannerShell() {
   const load = useCallback(async () => {
     try {
       setBoard(await api.plannerThemeBoard({ include_proposed: true }))
+      setGoodAt(Date.now())
       setError(null)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'feature_disabled') setOff(true)
@@ -152,12 +154,17 @@ export default function PlannerShell() {
       <nav aria-label={TEXT.appName} className={`${selected ? 'hidden lg:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-r border-border lg:w-72`}>
         {board ? (
           <LinkLayer titleOf={titleOf} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} onLink={(from, to) => setPendingLink({ from, to })}>
-          <Spine links={spineLinks} board={board} selectedId={openId} onSelect={open} onLens={(db: PlannerDb) => navigate(`/planner/${db}`)} pins={pins} onTogglePin={togglePin} needYouOnly={needYouOnly} onNeedYou={setNeedYouOnly} />
+          <Spine stale={Boolean(error)} links={spineLinks} board={board} selectedId={openId} onSelect={open} onLens={(db: PlannerDb) => navigate(`/planner/${db}`)} pins={pins} onTogglePin={togglePin} needYouOnly={needYouOnly} onNeedYou={setNeedYouOnly} />
           </LinkLayer>
         ) : (
           <div className="flex flex-col gap-2 p-3" aria-busy>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
         )}
-        {error && (
+        {error && board && (
+          <p role="status" className="border-t border-border px-3 py-2 dash-caption text-fg-muted">
+            {TEXT.reconnecting(new Date(goodAt ?? Date.now()).toLocaleTimeString())}. {TEXT.writesPaused} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
+          </p>
+        )}
+        {error && !board && (
           <p role="alert" className="border-t border-border px-3 py-2 dash-caption text-danger">
             {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
           </p>
@@ -166,7 +173,7 @@ export default function PlannerShell() {
       <main className={`${selected ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-1`}>
         {board && row ? (
           <>
-            <Focus row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
+            <Focus paused={Boolean(error)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
             <div className="hidden w-80 shrink-0 border-l border-border xl:flex xl:flex-col 2xl:w-96">
               <Context row={row} comments={comments} onCommented={() => void load()} mentionable={all} links={rowLinks} />
             </div>

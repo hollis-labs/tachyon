@@ -119,6 +119,8 @@ export const TEXT = {
   dismiss: 'Dismiss',
   nextUp: (t: string) => `Next: ${t}`,
   changed: 'This changed; reloaded',
+  reconnecting: (time: string) => `Reconnecting, showing data from ${time}`,
+  writesPaused: 'Changes are paused until the connection returns',
   promoted: (id: string) => `Promoted to ${id}`,
 } as const
 
