@@ -165,9 +165,15 @@ export interface AuditEvent {
   note?: string
   reason?: string
 }
+export interface HistoryFacets {
+  requesters: { id: string; label: string; count: number }[]
+  statuses: { status: string; count: number }[]
+}
 export interface HistoryPage {
   events: HistoryEvent[]
   next_cursor?: string
+  // Computed over the current filter except each facet's own, so a menu still lists the other choices.
+  facets?: HistoryFacets
 }
 export class ApprovalError extends Error {
   constructor(

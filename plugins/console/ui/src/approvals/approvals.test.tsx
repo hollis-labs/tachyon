@@ -303,7 +303,7 @@ describe("held decisions", () => {
 describe("history", () => {
   it("shows decisions under day pills with who and why, and opens an item", async () => {
     const now = new Date().toISOString()
-    const history = vi.fn().mockResolvedValue({ events: [
+    const history = vi.fn().mockResolvedValue({ facets: { requesters: [{ id: "agent-one", label: "agent-one", count: 3 }, { id: "agent-two", label: "agent-two", count: 1 }], statuses: [] }, events: [
       { event_id: "e1", item_id: "req-1", kind: "resolved", status: "approved", at: now, actor: { ref: "s", label: "You" }, mini: { title: "Create a session" }, note: "Looks right" },
       { event_id: "e2", item_id: "req-2", kind: "expired", status: "expired", at: now, actor: { ref: "", label: "System" }, mini: { title: "Rotate token" } },
     ] })
@@ -319,6 +319,8 @@ describe("history", () => {
     // Filters go to the server: a decision menu and a requester field.
     fireEvent.click(screen.getByRole("button", { name: "Filter by requester" }))
     await act(async () => {})
+    // Requesters come from the server's facets when present.
+    expect(screen.getByRole("menuitem", { name: "agent-two" })).toBeTruthy()
     fireEvent.click(screen.getByRole("menuitem", { name: "agent-one" }))
     await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "", requester: "agent-one", cursor: undefined }))
     fireEvent.click(screen.getByRole("button", { name: "Filter by decision" }))

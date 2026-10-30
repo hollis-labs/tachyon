@@ -4,7 +4,7 @@ import { Segmented } from "../components/segmented"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
-import { ApprovalError, kindLabel, type ApprovalItem } from "./client"
+import { ApprovalError, kindLabel, type ApprovalItem, type HistoryFacets } from "./client"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
@@ -32,6 +32,7 @@ export function ApprovalsPage() {
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState("")
   const [requester, setRequester] = useState("")
+  const [facets, setFacets] = useState<HistoryFacets>()
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [confirming, setConfirming] = useState<"approved" | "denied">()
   const [batchBusy, setBatchBusy] = useState(false)
@@ -51,7 +52,8 @@ export function ApprovalsPage() {
       </div>
     )
   // Requesters we know of: agents on items in the inbox. The server filters by substring, so any of these narrows history.
-  const requesters = [...new Set((queue.inbox ? [...queue.inbox.pending, ...queue.inbox.history] : []).map((i) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id))].sort()
+  const seen = [...new Set((queue.inbox ? [...queue.inbox.pending, ...queue.inbox.history] : []).map((i) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id))].sort()
+  const requesters = facets?.requesters.length ? facets.requesters.map((r) => r.label) : seen
   const pendingCount = queue.inbox?.pending.length ?? 0
   const rows = (queue.inbox?.[view] ?? []).filter((item) =>
     `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
@@ -151,7 +153,7 @@ export function ApprovalsPage() {
         </p>
       )}
       {view === "history" ? (
-        <HistoryTimeline client={queue.client} search={search} status={status} requester={requester} onOpen={queue.open} />
+        <HistoryTimeline client={queue.client} search={search} status={status} requester={requester} onOpen={queue.open} onFacets={setFacets} />
       ) : (
       <div className="flex min-h-0 flex-1">
         <section
