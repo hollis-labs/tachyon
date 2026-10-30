@@ -33,6 +33,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/internal/fileviewapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
@@ -55,6 +56,8 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// FileviewStubs mounts the fixture-backed file viewer contract (TACHYON_FILEVIEW_STUBS=1) for GUI development.
+	FileviewStubs bool
 	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
 	AppAgentConfigFile          string
 	ApprovalQueueURL            string
@@ -457,6 +460,13 @@ func (s *Server) Routes() http.Handler {
 	// read); sends need operator assurance. Without a config file the routes answer
 	// 503 and say why. Tightening reads is a one-word change to RequireOperatorReads.
 	mux.Handle(appagent.Prefix+"/", operator.RequireOperator(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
+	// File viewer contract stub (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. Every route needs an operator session, reads included, except the frame documents: a
+	// sandboxed iframe has an opaque origin and no cookie, so the single-use 256-bit id is the capability.
+	if s.cfg.FileviewStubs {
+		mux.Handle("GET "+fileviewapi.FramesPrefix, fileviewapi.Stub{}.FrameHandler())
+		mux.Handle(fileviewapi.Prefix+"/", operator.RequireOperatorReads(fileviewapi.Stub{}.Handler()))
+	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
