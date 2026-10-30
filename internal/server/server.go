@@ -667,6 +667,7 @@ func (s *Server) Routes() http.Handler {
 	// unguarded. GETs are open; every write (nudge, restart, skip, settings) needs an operator session.
 	if s.agentsCollector != nil {
 		mux.Handle("GET "+agentscollector.Path, operator.RequireOperator(s.agentsCollector.Handler()))
+		mux.Handle("GET "+agentscollector.BusPath, operator.RequireOperator(s.agentsCollector.BusHandler()))
 	}
 	if s.cfg.AgentsStubs {
 		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))

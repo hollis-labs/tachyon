@@ -43,6 +43,9 @@ type Frame struct {
 	Payload []byte
 	// Usage is a turn's token counts from a sanitized session.usage event: input, output, cache read, cache write.
 	Usage *[4]int64
+
+	// Bus fields (app-published events): validated and bounded by NormalizeBus.
+	Name, State, Version, PR, Title, BusActor string
 }
 
 type wireFrame struct {
@@ -141,6 +144,16 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			Out             *int64 `json:"output"`
 			CacheRead       *int64 `json:"cache_read"`
 			CacheWrite      *int64 `json:"cache_write"`
+			Name            string `json:"name"`
+			Resource        string `json:"resource"`
+			Subject         string `json:"subject"`
+			Status          string `json:"status"`
+			Version         string `json:"version"`
+			PR              string `json:"pr"`
+			PullRequest     string `json:"pull_request"`
+			Title           string `json:"title"`
+			Actor           string `json:"actor"`
+			Task            string `json:"task"`
 		}
 		if json.Unmarshal(body, &p) == nil {
 			f.WorkState = clean(firstNonEmpty(p.To, p.WorkState), 40)
@@ -148,7 +161,13 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			f.SessionState = clean(firstNonEmpty(p.SessionState, p.State), 40)
 			f.Provider, f.Model = clean(p.Provider, 60), clean(p.Model, 80)
 			f.Workroot = clean(firstNonEmpty(p.Workroot, p.WorkingDir), 300)
-			f.TaskRef = clean(p.TaskID, 60)
+			f.TaskRef = clean(firstNonEmpty(p.TaskID, p.Task), 60)
+			if w.App != "" || strings.Contains(f.Kind, ".state_changed") || strings.HasPrefix(f.Kind, "alert.") || strings.HasPrefix(f.Kind, "fleet.") || strings.HasPrefix(f.Kind, "card.") || strings.HasPrefix(f.Kind, "workstream.") {
+				f.Name = clean(firstNonEmpty(p.Name, firstNonEmpty(p.Resource, p.Subject)), 80)
+				f.State = clean(firstNonEmpty(p.State, firstNonEmpty(p.To, p.Status)), 24)
+				f.Version, f.PR = clean(p.Version, 40), clean(firstNonEmpty(p.PR, p.PullRequest), 140)
+				f.Title, f.BusActor = clean(p.Title, 200), clean(p.Actor, 80)
+			}
 			f.PendingApproval, f.PendingQuestion = p.PendingApproval, p.PendingQuestion
 			f.Tool = clean(p.Tool, 80)
 			if f.Kind == "session.usage" && (p.In != nil || p.Out != nil) {
