@@ -25,23 +25,26 @@ const page = (over: Partial<ThemeTimeline> = {}): ThemeTimeline => ({
 
 function Harness() {
   const t = useThemeTimeline('t1')
-  return <ThemeTimelineView state={t} />
+  return <ThemeTimelineView state={t} progress={{ done: 3, total: 10 }} />
 }
 const setup = (fn: ReturnType<typeof vi.fn>) => render(<PlannerApiProvider client={{ provider: 'tachyon', subscribeEvents: () => () => {}, plannerThemeTimeline: fn } as never}><Harness /></PlannerApiProvider>)
 
 describe('timeline', () => {
-  it('writes times as relative lines and arrows with their text', () => {
+  it('groups by Today, Yesterday and Earlier, and writes arrows with their text', () => {
     expect(ago('2026-10-30T11:48:00Z', now)).toBe('12m ago')
     expect(ago('2026-10-30T09:00:00Z', now)).toBe('3h ago')
     const e = toTimelineEvent(page().events[0], now)
-    expect(e).toMatchObject({ day: 'Today', time: '12m ago', facet: 'tasks', delta: 'doing −1, review +1', momentum: { glyph: '↗', label: 'Raises momentum' } })
-    expect(toTimelineEvent(page().events[1], now)).toMatchObject({ day: 'Yesterday', tone: 'blocked', facet: 'blockers' })
+    expect(e).toMatchObject({ day: 'Today', facet: 'tasks', dot: 'doing', delta: 'doing −1, review +1', momentum: { glyph: '▲', label: 'Raises momentum' } })
+    expect(e.time).toMatch(/^\d{2}:\d{2}$/)
+    expect(toTimelineEvent(page().events[1], now)).toMatchObject({ day: 'Yesterday', tone: 'blocked', facet: 'blockers', dot: 'blocked' })
+    expect(toTimelineEvent({ ...page().events[1], at: '2026-10-20T10:00:00Z' }, now)).toMatchObject({ day: 'Earlier', time: 'Oct 20' })
   })
   it('shows only the milestones the server sends (no v1 tag) and says where history starts', async () => {
     setup(vi.fn().mockResolvedValue(page()))
     const list = await screen.findByRole('list', { name: /Milestones/i })
     expect(list.textContent).toContain('Approved')
-    expect(list.textContent).toContain('Half of tasks done · next')
+    expect(list.textContent).toContain('Half of tasks done')
+    expect(list.textContent).toContain('next · 2 to go')
     expect(list.textContent).not.toMatch(/v1/i)
     expect(screen.getByText(/History starts Oct 29/)).toBeTruthy()
   })
@@ -51,7 +54,7 @@ describe('timeline', () => {
       .mockResolvedValueOnce(page({ events: [{ seq: 300, at: '2026-10-20T10:00:00Z', kind: 'pr', text: 'PR 160 merged', refs: [], arrow: 'up' }], next_before_seq: null }))
     setup(fn)
     fireEvent.click(await screen.findByRole('button', { name: 'Load earlier' }))
-    expect(await screen.findByText('PR 160 merged')).toBeTruthy()
+    expect(await screen.findByText(/merged/)).toBeTruthy()
     expect(fn).toHaveBeenLastCalledWith('t1', { before_seq: 400, limit: 30 })
     expect(screen.queryByRole('button', { name: 'Load earlier' })).toBeNull()
   })

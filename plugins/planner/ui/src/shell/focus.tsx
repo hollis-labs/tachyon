@@ -13,7 +13,6 @@ import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
 const ACCESS_NOTE = 'planner-access-note'
 const SECTION_DOT: Record<string, DotState> = { in_flight: 'doing', cleared: 'review', queued: 'review', proposed: 'todo', parked: 'todo', landed: 'done' }
-const MOMENTUM_GLYPH = { rising: '▲', steady: '▶', cooling: '▼', stalled: '■' } as const
 
 interface FocusProps {
   /** Changes when the Planner stream says something changed: the board and timeline refetch. */
@@ -117,7 +116,7 @@ export function Focus({ tick, paused, needsAccess, onRetryAccess, onNeedsAccess,
             <div className="ml-auto flex flex-col items-end gap-1 text-right">
               <span className={CAPTION}>{TEXT.momentum}</span>
               <button type="button" aria-expanded={why} onClick={() => setWhy((v) => !v)} className="text-control font-semibold text-fg">
-                <span aria-hidden>{MOMENTUM_GLYPH[momentum.label]}</span> {TEXT.momentumLabels[momentum.label]}
+                <span aria-hidden>{TEXT.momentumGlyph[momentum.label]}</span> {TEXT.momentumLabels[momentum.label]}
               </button>
             </div>
           )}
@@ -126,7 +125,7 @@ export function Focus({ tick, paused, needsAccess, onRetryAccess, onNeedsAccess,
         {why && momentum && <p className="text-xs text-fg-muted">{momentum.text}</p>}
         <p className="sr-only">{seg.label}{momentum ? `. ${TEXT.momentum}: ${TEXT.momentumLabels[momentum.label]}. ${momentum.text}` : ''}</p>
       </div>
-      {view === 'board' ? <TaskBoard themeId={row.id} tick={tick} paused={locked} onNeedsAccess={onNeedsAccess} accessNoteId={needsAccess ? ACCESS_NOTE : undefined} /> : <ThemeTimelineView state={timeline} />}
+      {view === 'board' ? <TaskBoard themeId={row.id} tick={tick} paused={locked} onNeedsAccess={onNeedsAccess} accessNoteId={needsAccess ? ACCESS_NOTE : undefined} /> : <ThemeTimelineView state={timeline} progress={{ done, total }} />}
     </section>
   )
 }
