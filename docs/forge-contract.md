@@ -66,6 +66,22 @@ files have no hunks; at most 3000 files) and `.../pulls/{num}/checks` (head sha,
 passing, plus commit statuses). A rate limit is `429 rate_limited` with `retry_after_s`. Other hosts are `501 unavailable`.
 Mergeable retry belongs to merge preflight (PR5). The stub (`TACHYON_FORGE_STUBS=1`) still owns these patterns when on.
 
+## Review validate, atomic review and drafts (PR6, real)
+
+`internal/forgereview`, mounted explicitly (stand down under `TACHYON_FORGE_STUBS=1`; replaces the legacy console plugin's review route). Writes
+sit behind the operator route guard and the API cache; the draft read is never cached. Nothing here adds a guard, audit row or rate limit.
+
+- `POST .../pulls/{n}/reviews/validate` `{head_sha, comments[{path,line,side,body}]}`: reads the current head and diff and answers
+  `{head_sha_current, head_moved, comments[{index, status: ok|outdated|invalid_line}]}`. A comment is `ok` when its line (RIGHT = new file,
+  LEFT = old file) appears in a hunk of the current diff, `outdated` when it does but the head moved, `invalid_line` otherwise.
+- `POST .../pulls/{n}/reviews` `{verdict, body?, comments[], head_sha}`, `Idempotency-Key` required: refuses 409 `head_moved` (with the
+  current head) unless the head matches, then sends ONE GitHub review (`commit_id` = the pinned head) and returns 201
+  `{review_id, comment_ids[], state}`. `approve` needs no body; `request_changes` and `comment` need a body or comments. The key is written into
+  the review body as `<!-- tachyon:idem=<key> -->`; a retry with the same key finds that review, posts nothing and returns 200 with
+  `replayed: true`. GitHub's refusals (an inline comment off the diff, approving one's own PR) are 422 `invalid_args` with its message.
+- `GET|PUT|DELETE .../pulls/{n}/review-draft`: one draft per pull request (`forge_review_drafts`, migration 046), `{head_sha, draft}` in,
+  `{pr_key, head_sha, updated_ms, draft}` out; no draft is 404. The draft is not cleared by a submit; the page deletes it.
+
 ## Merge preflight and merge (PR5, real)
 
 `internal/forgemerge`, mounted explicitly (stand down under `TACHYON_FORGE_STUBS=1`). Preflight is open like the other forge reads; the
