@@ -112,10 +112,10 @@ describe('Inbox lens', () => {
     api.plannerInboxPromote.mockRejectedValueOnce(new Error('network'))
     page(api, 'inbox')
     const stack = (await screen.findByRole('heading', { name: 'Look at this' })).closest('[tabindex="0"]') as HTMLElement
-    fireEvent.keyDown(stack, { key: 't' })
+    fireEvent.keyDown(stack, { key: '1' })
     await waitFor(() => expect(api.plannerInboxPromote).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(api.plannerList).toHaveBeenCalledTimes(2))
-    fireEvent.keyDown(stack, { key: 't' })
+    fireEvent.keyDown(stack, { key: '1' })
     await waitFor(() => expect(api.plannerInboxPromote).toHaveBeenCalledTimes(2))
     const [first, second] = api.plannerInboxPromote.mock.calls
     expect(first.slice(0, 3)).toEqual(['IN-1', 'themes', 4])

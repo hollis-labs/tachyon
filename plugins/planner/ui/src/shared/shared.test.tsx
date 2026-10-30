@@ -43,11 +43,11 @@ describe('EventTimeline', () => {
 describe('TriageStack', () => {
   it('routes with its key and says so when everything is triaged', () => {
     const onRoute = vi.fn()
-    const labels = { count: (n: number) => `${n} left`, allTriaged: 'All triaged', routeHeading: 'Into', dismiss: 'Dismiss', next: (t: string) => t }
-    const { container, rerender } = render(<TriageStack card={<b>Card</b>} remaining={1} routes={[{ id: 'a', label: 'A', key: 'a' }]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
+    const labels = { heading: (n: number) => `${n} left`, position: (i: number, n: number) => `${i} of ${n}`, allTriaged: 'All triaged', routeHeading: 'Into', dismiss: 'Dismiss' }
+    const { container, rerender } = render(<TriageStack card={<b>Card</b>} index={0} remaining={1} routes={[{ id: 'a', label: 'A', key: 'a' }]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
     fireEvent.keyDown(container.firstElementChild!, { key: 'a' })
     expect(onRoute).toHaveBeenCalledWith('a')
-    rerender(<TriageStack card={null} remaining={0} routes={[]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
+    rerender(<TriageStack card={null} index={0} remaining={0} routes={[]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
     expect(screen.getByText('All triaged')).toBeTruthy()
   })
 })
