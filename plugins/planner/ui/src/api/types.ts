@@ -321,6 +321,9 @@ export interface ThemeTimeline {
 export type NeedYouReason = 'review' | 'decide' | 'blocked' | 'stale'
 /** Items that need the operator, by reason and lens. */
 export interface NeedYou { total: number; by_reason: Partial<Record<NeedYouReason, number>>; by_lens: Record<string, number>; items: { db: string; id: string; reasons: NeedYouReason[] }[]; stale_days: number }
+/** Promoting an idea marks it promoted and creates the target, linked back. */
+export type IdeaPromoteTarget = 'themes' | 'roadmap' | 'decisions'
+export interface IdeaPromoteResult { receipt: { from: { db: string; id: string }; to: { db: string; id: string }; at: string }; idea: { id: string; status: string }; created: { id: string; db: string; title?: string } }
 /** A typed relation, stored on the source item. */
 export type RelationKind = 'needs' | 'delivers' | 'mitigates' | 'relates'
 export interface PlannerRef { db: PlannerDb; id: string }

@@ -15,11 +15,9 @@
   "enriched": 2,
   "project_count": 2,
   "tools": [
-   "Bash",
-   "Edit",
-   "Read",
-   "apply_patch",
-   "shell"
+   "chatgpt",
+   "claude",
+   "codex"
   ],
   "models": [
    "claude-opus-5-5",
@@ -31,60 +29,56 @@
  "sessions": [
   {
    "id": "d3cf2597d1b39167aa6e3a423879aa980691c155eacd3a50c3882646b3234fb7",
-   "kind": "claude",
+   "tool": "claude",
+   "kind": "main",
    "title": "Wire the forge stubs",
    "project": "tachyon",
    "model": "claude-sonnet-5-5",
-   "started_at": 1761800000000,
-   "ended_at": 1761803600000,
-   "turn_count": 60,
-   "tool_call_count": 34,
-   "error_count": 2,
-   "tools": [
-    "Bash",
-    "Edit",
-    "Read"
-   ],
+   "started_at": "2025-10-30T04:53:20Z",
+   "ended_at": "2025-10-30T05:53:20Z",
+   "turns": 60,
+   "tokens": 72000,
+   "tool_calls": 34,
+   "errors": 2,
    "tags": [
     "go",
     "stubs"
    ],
-   "has_enrichment": true
+   "enriched": true
   },
   {
    "id": "e11020b390a5d4d8a7992e8c29a213dfe2639b4d72afdce16ee74d1c86a4f039",
-   "kind": "codex",
+   "tool": "codex",
+   "kind": "main",
    "title": "Fix flaky approvals test",
    "project": "tachyon",
    "model": "gpt-5-codex",
-   "started_at": 1761713600000,
-   "ended_at": 1761714320000,
-   "turn_count": 12,
-   "tool_call_count": 9,
-   "error_count": 1,
-   "tools": [
-    "apply_patch",
-    "shell"
-   ],
+   "started_at": "2025-10-29T04:53:20Z",
+   "ended_at": "2025-10-29T05:05:20Z",
+   "turns": 12,
+   "tokens": 14400,
+   "tool_calls": 9,
+   "errors": 1,
    "tags": [
     "tests"
    ],
-   "has_enrichment": true
+   "enriched": true
   },
   {
    "id": "fa6b92ee82e23741c5f415097de72ca70a1f2e5b4e60457990fe8b8b07c61c32",
-   "kind": "chatgpt",
+   "tool": "chatgpt",
+   "kind": "main",
    "title": "Notes on snapshot caching",
    "project": "",
    "model": "gpt-5",
-   "started_at": 1761627200000,
-   "ended_at": 1761627560000,
-   "turn_count": 6,
-   "tool_call_count": 0,
-   "error_count": 0,
-   "tools": [],
+   "started_at": "2025-10-28T04:53:20Z",
+   "ended_at": "2025-10-28T04:59:20Z",
+   "turns": 6,
+   "tokens": 7200,
+   "tool_calls": 0,
+   "errors": 0,
    "tags": [],
-   "has_enrichment": false
+   "enriched": false
   }
  ],
  "complete": false,

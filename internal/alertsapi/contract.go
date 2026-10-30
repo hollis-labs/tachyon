@@ -137,6 +137,11 @@ type Alert struct {
 	Version      int64     `json:"version"`
 	CreatedMS    int64     `json:"created_ms"`
 	UpdatedMS    int64     `json:"updated_ms"`
+	// Display fields, all optional and omitted when unknown (see Decorate). Title, Source and Subjects remain the fallback.
+	DisplayTitle string       `json:"display_title,omitempty"`
+	SubjectView  *SubjectView `json:"subject,omitempty"`
+	Links        []Link       `json:"links,omitempty"`
+	SourceLabel  string       `json:"source_label,omitempty"`
 }
 
 // Counts drive the bell badge.
