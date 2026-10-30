@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Segmented } from '../components/segmented'
 import { useLoad } from '../builder/useLoad'
 import { BuilderError } from '../builder/api'
 import { useDiscardGuard } from '../builder/DiscardGuard'
@@ -232,6 +233,8 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
   )
 }
 
+type LinkFilter = 'all' | 'linked' | 'unlinked'
+
 /** Registry projects: list and profile. Profile edits write directly (operator session); catalog tool servers go through Builder changes. */
 export function RegistryProjectsPage() {
   const { id } = useParams()
@@ -243,7 +246,9 @@ export function RegistryProjectsPage() {
     return () => clearTimeout(t)
   }, [q])
   const [load, retry] = useLoad(() => registryApi.list(debounced), [debounced])
-  const rows: ProjectRow[] = load.status === 'ready' ? load.data.projects : []
+  const [link, setLink] = useState<LinkFilter>('all')
+  const all: ProjectRow[] = load.status === 'ready' ? load.data.projects : []
+  const rows = all.filter((r) => link === 'all' || (link === 'linked') === (r.link.state === 'linked'))
   useEffect(() => {
     if (!id && rows.length > 0 && window.matchMedia?.('(min-width: 768px)').matches) navigate(`/registry/projects/${encodeURIComponent(rows[0].id)}`, { replace: true })
   }, [id, rows, navigate])
@@ -258,6 +263,16 @@ export function RegistryProjectsPage() {
           <div className="border-b border-border p-3">
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search projects" aria-label="Search projects" />
           </div>
+          <Segmented<LinkFilter>
+            label="Catalog link"
+            value={link}
+            onChange={setLink}
+            items={[
+              { value: 'all', label: 'All' },
+              { value: 'linked', label: 'Linked' },
+              { value: 'unlinked', label: 'Not linked' },
+            ]}
+          />
           <div className="min-h-0 flex-1 overflow-auto">
             {load.status === 'loading' && (
               <div aria-busy="true" className="space-y-2 p-4">
@@ -274,7 +289,11 @@ export function RegistryProjectsPage() {
                 </Button>
               </div>
             )}
-            {load.status === 'ready' && rows.length === 0 && <p className="p-4 dash-body text-fg-faint">No projects match.</p>}
+            {load.status === 'ready' && rows.length === 0 && (
+              <p className="p-4 dash-body text-fg-faint">
+                {all.length === 0 && !debounced ? 'No projects in the registry yet.' : 'No projects match.'}
+              </p>
+            )}
             <ul aria-label="Projects" className="divide-y divide-border-subtle">
               {rows.map((r) => (
                 <li key={r.id}>
