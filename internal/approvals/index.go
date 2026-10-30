@@ -215,15 +215,16 @@ type Projection struct {
 	ServerNowMs   int64
 	Recommend     string
 	ReasonReq     bool
+	DeferredUntil *time.Time
 }
 
 // Project builds the projection of a record at now. batchable and batch_blockers
 // describe the item itself; whether the caller may batch at all (elevated access)
 // is /access's answer, so needs_operator_access never appears here.
-func Project(rec hitl.Record, now time.Time) Projection {
+func Project(rec hitl.Record, now time.Time, deferredUntil *time.Time) Projection {
 	f := factsOf(rec)
 	expired := rec.ExpiresAt != nil && !rec.ExpiresAt.After(now)
-	blockers := approvalsapi.Eligibility(f.subject(string(rec.State), expired, false, true))
+	blockers := approvalsapi.Eligibility(f.subject(string(rec.State), expired, deferredUntil != nil, true))
 	classes := []string{}
 	for _, op := range f.EffectOps {
 		if c := effectClass(op); !slices.Contains(classes, c) {
@@ -241,7 +242,7 @@ func Project(rec hitl.Record, now time.Time) Projection {
 		Requester:  map[string]string{"id": f.ReqID, "label": f.ReqLabel, "kind": f.ReqKind},
 		SessionRef: f.SessionRef, AskedAt: rec.CreatedAt, Risk: f.Risk, RiskReasons: reasons, Group: f.Group,
 		Batchable: len(blockers) == 0, BatchBlockers: blockers, EffectClasses: classes, ExpiresAt: rec.ExpiresAt,
-		ServerNowMs: now.UnixMilli(), Recommend: f.Recommend, ReasonReq: f.ReasonReq}
+		ServerNowMs: now.UnixMilli(), Recommend: f.Recommend, ReasonReq: f.ReasonReq, DeferredUntil: deferredUntil}
 }
 
 func (p Projection) fields() map[string]any {
@@ -253,6 +254,11 @@ func (p Projection) fields() map[string]any {
 		m["expires_at"] = p.ExpiresAt.UTC().Format(time.RFC3339)
 	} else {
 		m["expires_at"] = nil
+	}
+	if p.DeferredUntil != nil {
+		m["deferred_until"] = p.DeferredUntil.UTC().Format(time.RFC3339)
+	} else {
+		m["deferred_until"] = nil
 	}
 	if p.Recommend != "" {
 		m["recommendation"] = p.Recommend
@@ -513,6 +519,11 @@ func (i *Inbox) Maintain(ctx context.Context, every time.Duration, logf func(msg
 		logf("approval index backfill failed", "error", err)
 	} else if n > 0 {
 		logf("approval index backfilled", "rows", n)
+	}
+	if n, err := i.Store.BackfillLog(ctx); err != nil {
+		logf("approval decision log backfill failed", "error", err)
+	} else if n > 0 {
+		logf("approval decision log backfilled", "events", n)
 	}
 	t := time.NewTicker(every)
 	defer t.Stop()
