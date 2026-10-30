@@ -53,7 +53,7 @@ export function AlertTray() {
         <h2 className="flex-1 font-sans text-sm font-semibold normal-case tracking-normal text-fg">
           Alerts{c.unread > 0 ? <span className="ml-2 font-normal text-fg-muted">{c.unread} unread</span> : ''}
         </h2>
-        <Button type="button" variant="outline" size="xs" className={BTN} onClick={c.markAllRead} disabled={c.unread === 0}>
+        <Button type="button" variant="ghost" size="xs" className={BTN} onClick={c.markAllRead} disabled={c.unread === 0}>
           Mark all read
         </Button>
         <Button type="button" variant="ghost" size="icon-xs" onClick={() => c.setOpen(false)} aria-label="Close alerts" className="text-fg-muted">
