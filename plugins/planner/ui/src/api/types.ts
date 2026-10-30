@@ -224,6 +224,8 @@ export interface ThemeRow {
   id: string
   /** The record revision, sent back with an action so a stale view cannot overwrite a newer one. */
   rev: number
+  /** Pinned on the server (pin is item state). */
+  pinned?: boolean
   title: string
   status: string
   stored_status?: string

@@ -57,6 +57,7 @@ export const TEXT = {
   decisionsEmpty: 'No decisions waiting',
   activity: 'Activity',
   activityEmpty: 'No comments yet',
+  pinWithComment: 'Pin this theme',
   commentPlaceholder: 'Comment or update',
   commentSend: 'Send',
   timelineEmpty: 'Nothing has happened yet. Approve the theme to start the timeline',
