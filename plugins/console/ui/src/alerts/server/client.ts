@@ -1,6 +1,6 @@
 import { hostFetch } from '@tachyon/host-sdk'
 import { CONSOLE_API_BASE, type FetchLike } from '../../lib/http'
-import type { ServerAlert, ServerAlertList, ServerCounts, ServerOp, ServerPrefs, ServerSource } from './types'
+import type { ServerAlert, ServerAlertDetail, ServerAlertList, ServerCounts, ServerOp, ServerPrefs, ServerSource } from './types'
 import type { ConsolePrefs } from '../../prefs/types'
 
 export const ALERTS_BASE = '/alerts'
@@ -23,6 +23,7 @@ export const isVersionConflict = (e: unknown): e is AlertsApiError => e instance
 export interface AlertsClient {
   list(view: 'active' | 'history', opts?: { limit?: number; cursor?: string }): Promise<ServerAlertList>
   counts(): Promise<ServerCounts>
+  detail(id: string): Promise<ServerAlertDetail>
   op(id: string, op: ServerOp, expectedVersion: number): Promise<ServerAlert>
   bulk(op: 'read' | 'dismiss', scope: { ids: string[] } | { scope: 'all_active' }, expectedSeq?: number): Promise<{ updated: string[]; skipped: string[]; counts: ServerCounts; seq: number }>
   prefs(): Promise<ServerPrefs>
@@ -56,6 +57,7 @@ export function createAlertsClient(fetcher: FetchLike = hostFetch): AlertsClient
       return json<ServerAlertList>(`?${q}`)
     },
     counts: () => json<ServerCounts>('/counts'),
+    detail: (id) => json<ServerAlertDetail>(`/${encodeURIComponent(id)}`),
     op: (id, op, expectedVersion) => json<ServerAlert>(`/${encodeURIComponent(id)}/ops`, { method: 'POST', body: { ...op, expected_version: expectedVersion } }),
     bulk: (op, scope, expectedSeq) => json('/ops/bulk', { method: 'POST', body: { op, ...scope, ...(expectedSeq ? { expected_seq: expectedSeq } : {}) } }),
     prefs: () => json<ServerPrefs>('/prefs'),
