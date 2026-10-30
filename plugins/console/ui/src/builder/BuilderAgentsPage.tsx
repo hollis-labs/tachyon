@@ -72,7 +72,7 @@ export function BuilderAgentsPage() {
               <SearchInput value={q} onChange={setQ} placeholder="Search agents" ariaLabel="Search agents" />
             </div>
             <Select value={provider === '' ? ALL : provider} onValueChange={(v) => setProvider(v === null || v === ALL ? '' : String(v))}>
-              <SelectTrigger className="h-6 w-auto shrink-0 gap-1 rounded-full px-2.5 py-0 text-label" aria-label="Filter by provider">
+              <SelectTrigger className="h-6 w-auto shrink-0 gap-1 rounded-full px-2.5 py-0 text-label data-[size=default]:h-6" aria-label="Filter by provider">
                 <SelectValue>{(v: unknown) => (v === ALL || v == null ? 'All providers' : String(v))}</SelectValue>
               </SelectTrigger>
               <SelectContent>

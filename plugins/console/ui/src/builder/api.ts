@@ -139,6 +139,7 @@ export interface Launch {
   project: string
   worker: string
   env?: { keys: string[]; secret_like_count: number }
+  workspace?: { mode?: string; base?: string } | null
   route?: string | null
   chat?: boolean
   enabled: boolean
@@ -323,6 +324,8 @@ export const builderApi = {
   cancel: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/cancel`, {}),
   rearm: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/rearm`, {}),
   capabilities: () => get<Capabilities>('/capabilities'),
+  /** Starts a session from a catalog launch. Not a catalog change; the request carries only an id. */
+  launch: (id: string, requestId: string) => send<{ session_id: string; agents_url?: string }>(`/launches/${encodeURIComponent(id)}/launch`, { request_id: requestId }),
   /** The bundle holds full file content: fetch it on demand for copy or download, never keep or log it. */
   bundle: (id: string) => get<Bundle>(`/changes/${encodeURIComponent(id)}/bundle`),
   check: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/check`, {}),

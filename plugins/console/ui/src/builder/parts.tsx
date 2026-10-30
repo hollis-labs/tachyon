@@ -34,10 +34,10 @@ export function Cap({ children, id }: { children: ReactNode; id?: string }) {
 }
 
 /** One label and value, 130px label column. `hint` marks the value as editable on hover. */
-export function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
+export function Field({ label, children, className = '', stacked = false }: { label: string; children: ReactNode; className?: string; stacked?: boolean }) {
   return (
-    <div className={`grid gap-0.5 py-[3px] sm:grid-cols-[130px_1fr] sm:gap-3 ${className}`}>
-      <dt className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-[7px]">{label}</dt>
+    <div className={`grid gap-0.5 py-[3px] ${stacked ? '' : 'sm:grid-cols-[130px_1fr] sm:gap-3'} ${className}`}>
+      <dt className={`font-mono text-caption uppercase tracking-label text-fg-muted ${stacked ? '' : 'sm:pt-[7px]'}`}>{label}</dt>
       <dd className="-mx-2 -my-1 flex min-h-[30px] min-w-0 flex-wrap items-center gap-1.5 rounded-control px-2 py-1 text-control text-fg [overflow-wrap:anywhere] hover:bg-selection">{children}</dd>
     </div>
   )
