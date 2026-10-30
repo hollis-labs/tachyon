@@ -240,6 +240,9 @@ func (n *Nanite) Submit(ctx context.Context, session, text string) (string, erro
 	}
 	_, session = splitSession(session)
 	body := map[string]any{"content": []map[string]string{{"kind": "text", "text": text}}, "delivery": "at_idle", "delta_mode": "live"}
+	if cc := ClientContextFrom(ctx); cc != nil {
+		body["client_context"] = cc
+	}
 	resp, cancel, err := n.do(ctx, cfg, http.MethodPost, "/sessions/"+url.PathEscape(session)+"/turns", body, "application/json", 30*time.Second)
 	if err != nil {
 		return "", err
@@ -271,6 +274,14 @@ type frame struct {
 		Detail  string `json:"detail"`
 		IsError bool   `json:"is_error"`
 	} `json:"meta"`
+	// Usage is the runtime's context meter on run.finish and usage events (Nanite, CW-20261030-0010):
+	// used = context tokens after the last model call, window from the model catalog. Older Nanite
+	// builds send only scope/total, which leaves these zero.
+	Usage struct {
+		Used   int64  `json:"used"`
+		Window int64  `json:"window"`
+		Model  string `json:"model"`
+	} `json:"usage"`
 	Error json.RawMessage `json:"error"`
 	Final struct {
 		Summary string `json:"summary"`
@@ -337,6 +348,9 @@ func (n *Nanite) Observe(ctx context.Context, session, turn string, emit func(Tu
 		var f frame
 		if json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &f) != nil {
 			continue
+		}
+		if f.Usage.Used > 0 || f.Usage.Window > 0 {
+			emit(TurnEvent{Kind: EventContext, Used: f.Usage.Used, Window: f.Usage.Window, Model: f.Usage.Model})
 		}
 		switch {
 		case f.Verb == "part.delta" && f.Text != "":

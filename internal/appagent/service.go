@@ -19,16 +19,19 @@ const (
 
 // UIMessage is a message in the shape the chat UI reads (ChatMessage).
 type UIMessage struct {
-	ID        string `json:"id"`
-	Seq       int64  `json:"seq"`
-	ThreadID  string `json:"threadId"`
-	From      string `json:"from"`
-	Body      string `json:"body"`
-	At        int64  `json:"at"`
-	Delivery  string `json:"delivery,omitempty"`
-	Streaming bool   `json:"streaming,omitempty"`
-	Tools     []Tool `json:"tools"`
-	Error     string `json:"error,omitempty"`
+	ID        string         `json:"id"`
+	Seq       int64          `json:"seq"`
+	ThreadID  string         `json:"threadId"`
+	From      string         `json:"from"`
+	Body      string         `json:"body"`
+	At        int64          `json:"at"`
+	Delivery  string         `json:"delivery,omitempty"`
+	Streaming bool           `json:"streaming,omitempty"`
+	Blocked   bool           `json:"blocked,omitempty"`
+	Kind      string         `json:"kind,omitempty"`
+	Meta      map[string]any `json:"meta,omitempty"`
+	Tools     []Tool         `json:"tools"`
+	Error     string         `json:"error,omitempty"`
 }
 
 // Event is one change a subscriber sees (ChatEvent).
@@ -65,6 +68,16 @@ type Service struct {
 	Now       func() time.Time
 	PollEvery time.Duration
 	PollFor   time.Duration
+	// OnChange, if set, is called after a thread's summary-visible state changed
+	// (a reply finished or became blocked). It must not block.
+	OnChange func(threadID string)
+	// OnTool, if set, is called when a tool call finishes (status ok or error). It must not block.
+	OnTool func(threadID string, t Tool)
+	// OnContext, if set, receives the runtime's context meter for a thread. It must not block.
+	OnContext func(threadID string, used, window int64, model string)
+	// ClientContext, if set, supplies the per-turn client_context payload for a thread
+	// (nil = none). It is handed to the runtime adapter through the turn's context.
+	ClientContext func(ctx context.Context, threadID string) any
 
 	mu   sync.Mutex
 	subs map[*sub]struct{}
@@ -147,6 +160,9 @@ func ui(m Message, delivery string) UIMessage {
 		at++
 	}
 	u := UIMessage{ID: m.ID, Seq: m.Seq, ThreadID: m.ThreadID, From: m.Role, Body: m.Body, At: at, Tools: m.Tools, Error: m.Error}
+	if m.Kind != "" && m.Kind != "text" {
+		u.Kind, u.Meta = m.Kind, m.Meta
+	}
 	if u.Tools == nil {
 		u.Tools = []Tool{}
 	}
@@ -155,6 +171,7 @@ func ui(m Message, delivery string) UIMessage {
 	} else {
 		u.From = "agent"
 		u.Streaming = m.State == StateStreaming
+		u.Blocked = m.State == StateBlocked
 	}
 	return u
 }
@@ -166,7 +183,7 @@ func delivery(reply *Message) string {
 		return "delivered"
 	case reply.State == StateFailed && reply.RuntimeTurn == "":
 		return "failed"
-	case reply.State == StateComplete:
+	case reply.State == StateComplete || reply.State == StateBlocked:
 		return "replied"
 	case reply.RuntimeTurn != "":
 		return "delivered"
@@ -295,6 +312,11 @@ func (s *Service) run(ctx context.Context, th Thread, l *live, text string) {
 			return
 		}
 	}
+	if s.ClientContext != nil {
+		if cc := s.ClientContext(ctx, th.ID); cc != nil {
+			ctx = WithClientContext(ctx, cc)
+		}
+	}
 	turn, err := s.Runtime.Submit(ctx, sess, text)
 	if errors.Is(err, ErrSessionGone) {
 		if sess, err = s.Runtime.Ensure(ctx, ""); err == nil {
@@ -377,6 +399,13 @@ func (s *Service) apply(l *live, e TurnEvent) {
 		t := e.Tool
 		s.publish(l.agent.ThreadID, Event{Type: "tool", MessageID: l.agent.ID, Tool: &t})
 		s.mu.Unlock()
+		if e.Kind == EventToolEnd && s.OnTool != nil {
+			s.OnTool(l.agent.ThreadID, t)
+		}
+	case EventContext:
+		if s.OnContext != nil {
+			s.OnContext(l.agent.ThreadID, e.Used, e.Window, e.Model)
+		}
 	case EventFinish:
 		if e.Reason == "" || e.Reason == "stop" || e.Reason == "end_turn" || e.Reason == "complete" {
 			s.finish(l, StateComplete, "")
@@ -412,11 +441,14 @@ func (s *Service) finish(l *live, state, errText string) {
 		}
 	}
 	s.mu.Lock()
-	s.publish(l.agent.ThreadID, Event{Type: "end", MessageID: l.agent.ID, Error: errText})
+	s.publish(l.agent.ThreadID, Event{Type: "end", MessageID: l.agent.ID, Error: errText, State: state})
 	if l.operator != "" {
 		s.publish(l.agent.ThreadID, Event{Type: "delivery", MessageID: l.operator, State: d})
 	}
 	s.mu.Unlock()
+	if s.OnChange != nil {
+		s.OnChange(l.agent.ThreadID)
+	}
 }
 
 // fail marks a message that never reached or never got an answer from the runtime.
@@ -459,6 +491,9 @@ func (s *Service) poll(ctx context.Context, l *live, session, turn string) {
 			s.mu.Unlock()
 			if res.State == "completed" {
 				s.finish(l, StateComplete, "")
+			} else if res.State == "input_required" {
+				// The agent is waiting on the operator: a blocker, not a failure.
+				s.finish(l, StateBlocked, "")
 			} else {
 				s.finish(l, StateFailed, redact.Text(firstNonEmpty(res.Error, "The agent run "+res.State+".")))
 			}
@@ -475,4 +510,20 @@ func (s *Service) poll(ctx context.Context, l *live, session, turn string) {
 		msg = errText(last)
 	}
 	s.finish(l, StateFailed, msg)
+}
+
+// AppendNote stores a plan/card/system message in the thread and tells its subscribers.
+func (s *Service) AppendNote(ctx context.Context, threadID, kind, body string, meta map[string]any) (UIMessage, error) {
+	m, err := s.Store.AppendNote(ctx, threadID, kind, body, meta, s.now())
+	if err != nil {
+		return UIMessage{}, err
+	}
+	u := ui(m, "")
+	s.mu.Lock()
+	s.publish(threadID, Event{Type: "message", Message: &u})
+	s.mu.Unlock()
+	if s.OnChange != nil {
+		s.OnChange(threadID)
+	}
+	return u, nil
 }
