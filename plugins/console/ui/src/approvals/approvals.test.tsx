@@ -138,7 +138,6 @@ describe("approval review dialog", () => {
         client={mockClient(decide)}
         onClose={vi.fn()}
         onChanged={changed}
-        holdSeconds={0}
       />,
     )
     await waitFor(() =>
@@ -181,16 +180,6 @@ describe("approval review dialog", () => {
     expect(screen.getByText("approved")).toBeTruthy()
     expect(changed).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
-  })
-  it("holds an approval so it can be undone, and sends nothing when undone", async () => {
-    const decide = vi.fn().mockResolvedValue({ item_id: item.item_id, state: "resolved" })
-    render(<ApprovalDialog id={item.item_id} initial={item} client={mockClient(decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
-    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
-    expect(screen.getByText(/Approving in \d s/)).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
-    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy()
-    expect(decide).not.toHaveBeenCalled()
   })
   it("keeps a failed decision unresolved and requires a fresh review", async () => {
     const decide = vi.fn().mockRejectedValue(new Error("Request changed"))
@@ -271,6 +260,21 @@ describe("owned inbox tiers and pages", () => {
   })
 })
 
+describe("held decisions", () => {
+  it("holds an approval in a toast so it can be undone, and sends nothing when undone", async () => {
+    const decide = vi.fn().mockResolvedValue({ item_id: item.item_id, state: "resolved" })
+    const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present: vi.fn().mockResolvedValue(item), get: vi.fn(), decide, evidence: vi.fn() } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
+    expect(screen.getByRole("list", { name: "Pending decisions" }).textContent).toMatch(/Approving in \d+s/)
+    expect(decide).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: /Undo/ }))
+    expect(screen.queryByRole("list", { name: "Pending decisions" })).toBeNull()
+    expect(decide).not.toHaveBeenCalled()
+  })
+})
+
 describe("approval deep link", () => {
   it("selects the request for /approvals?item=<id> and clears the parameter", async () => {
     const present = vi.fn().mockResolvedValue(item)
@@ -300,7 +304,7 @@ describe("card review dialog", () => {
   const clientFor = (current: ApprovalItem, decide = vi.fn().mockResolvedValue({ item_id: current.item_id, state: "resolved" })) =>
     ({ present: vi.fn().mockResolvedValue(current), decide, evidence: vi.fn() }) as unknown as ApprovalClient
   const open = (current: ApprovalItem, decide: ReturnType<typeof vi.fn>) =>
-    render(<ApprovalDialog id={current.item_id} initial={current} client={clientFor(current, decide)} onClose={vi.fn()} onChanged={vi.fn()} holdSeconds={0} />)
+    render(<ApprovalDialog id={current.item_id} initial={current} client={clientFor(current, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
 
   it("shows a card's effects and approves with the card kind", async () => {
     const current = card("card.approval", { changes: 2 }, { effects: [{ target: "torque:task/CW-1", op: "status", value: "done" }] })

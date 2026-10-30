@@ -12,7 +12,10 @@ import {
   approvalClient,
   type ApprovalClient,
   type ApprovalInbox,
+  type ApprovalItem,
+  type ApprovalResponse,
 } from "./client"
+import { HeldToasts } from "./toasts"
 import { ApprovalDialog } from "./dialog"
 
 interface ApprovalContextValue {
@@ -24,7 +27,20 @@ interface ApprovalContextValue {
   cursors: { pending_before?: string; history_before?: string }
   open(id?: string): void
   client: ApprovalClient
+  /** Decisions held for HOLD_MS so they can be undone; committed when the deadline passes. */
+  held: HeldDecision[]
+  hold(item: ApprovalItem, response: ApprovalResponse): void
+  undo(itemId: string): void
 }
+export interface HeldDecision {
+  itemId: string
+  verb: string
+  deadline: number
+  item: ApprovalItem
+  response: ApprovalResponse
+}
+export const HOLD_MS = 8000
+const MAX_VISIBLE = 3
 const Context = createContext<ApprovalContextValue | null>(null)
 export function ApprovalProvider({
   children,
@@ -80,10 +96,74 @@ export function ApprovalProvider({
     setLoading(true)
     await refresh(true)
   }
+  const [held, setHeld] = useState<HeldDecision[]>([])
+  const heldRef = useRef<HeldDecision[]>([])
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const [notice, setNotice] = useState("")
+  const drop = useCallback((id: string) => {
+    clearTimeout(timers.current.get(id))
+    timers.current.delete(id)
+    heldRef.current = heldRef.current.filter((h) => h.itemId !== id)
+    setHeld(heldRef.current)
+  }, [])
+  const commit = useCallback(
+    async (h: HeldDecision, keepalive = false) => {
+      drop(h.itemId)
+      try {
+        await client.decide(h.item, h.response, { keepalive })
+        setNotice(`${h.response.decision === "approved" ? "Approved" : "Decided"}: ${h.item.request_snapshot.title}`)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Decision not confirmed. Refresh to check the outcome.")
+      }
+      if (!keepalive) void refresh(true)
+    },
+    [client, drop, refresh],
+  )
+  const hold = useCallback(
+    (item: ApprovalItem, response: ApprovalResponse) => {
+      if (heldRef.current.some((h) => h.itemId === item.item_id)) return
+      const entry: HeldDecision = {
+        itemId: item.item_id,
+        verb: response.decision === "approved" ? "Approving" : "Denying",
+        deadline: Date.now() + HOLD_MS,
+        item,
+        response,
+      }
+      heldRef.current = [...heldRef.current, entry]
+      setHeld(heldRef.current)
+      setNotice(`${entry.verb} in ${HOLD_MS / 1000}s. Undo is available.`)
+      timers.current.set(item.item_id, setTimeout(() => void commit(entry), HOLD_MS))
+      // At most MAX_VISIBLE toasts: the oldest commits first.
+      const extra = heldRef.current.length - MAX_VISIBLE
+      if (extra > 0) heldRef.current.slice(0, extra).forEach((h) => void commit(h))
+    },
+    [commit],
+  )
+  const undo = useCallback(
+    (id: string) => {
+      drop(id)
+      setNotice("Undone")
+    },
+    [drop],
+  )
+  // Closing or hiding the tab commits what was held: a silent loss is worse than losing undo.
+  useEffect(() => {
+    const flush = () => heldRef.current.slice().forEach((h) => void commit(h, true))
+    const hide = () => {
+      if (document.visibilityState === "hidden") flush()
+    }
+    document.addEventListener("visibilitychange", hide)
+    window.addEventListener("pagehide", flush)
+    return () => {
+      document.removeEventListener("visibilitychange", hide)
+      window.removeEventListener("pagehide", flush)
+    }
+  }, [commit])
   const open = (id?: string) => setSelected(id ?? inbox?.pending[0]?.item_id)
   return (
-    <Context.Provider value={{ inbox, error, loading, refresh, page, cursors: cursors.current, open, client }}>
+    <Context.Provider value={{ inbox, error, loading, refresh, page, cursors: cursors.current, open, client, held, hold, undo }}>
       {children}
+      <HeldToasts held={held} onUndo={undo} notice={notice} />
       {selected && (
         <ApprovalDialog
           key={selected}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Button, Textarea } from "@hollis-labs/design-components"
 import { ChevronRight } from "lucide-react"
 import { MessageBody } from "../chat/MessageBody"
@@ -15,6 +15,7 @@ import {
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { ActionRunPanel } from "./terminal"
 import { Countdown, RiskChip, ago, timeLeft } from "./parts"
+import { useApprovals } from "./context"
 
 const label = "font-mono dash-caption uppercase tracking-wide text-fg-faint"
 function safeHTTPS(raw?: string) {
@@ -50,7 +51,6 @@ function RunCard({ request }: { request: ApprovalItem["request_snapshot"] }) {
 }
 
 const PHRASE = "approve"
-const HOLD_SECONDS = 8
 
 function EvidenceView({ evidence }: { evidence: Evidence }) {
   const url = safeHTTPS(typeof evidence.external_url === "string" ? evidence.external_url : undefined)
@@ -70,14 +70,12 @@ export function DecisionDetail({
   client,
   onChanged,
   footer,
-  holdSeconds = HOLD_SECONDS,
 }: {
   id: string
   initial?: ApprovalItem
   client: ApprovalClient
   onChanged(): void
   footer?: ReactNode
-  holdSeconds?: number
 }) {
   const [item, setItem] = useState(initial)
   const [ready, setReady] = useState(false)
@@ -102,49 +100,6 @@ export function DecisionDetail({
   useEffect(() => {
     void refresh()
   }, [refresh])
-  // Low/medium approvals are held locally for HOLD_SECONDS so they can be undone, then sent
-  // with the originally presented revision. Leaving the page flushes the held decision.
-  const [held, setHeld] = useState<number | null>(null)
-  const heldRef = useRef(false)
-  const tick = useRef<ReturnType<typeof setInterval>>(undefined)
-  const decideRef = useRef<() => void>(() => {})
-  const stopHold = useCallback(() => {
-    clearInterval(tick.current)
-    heldRef.current = false
-    setHeld(null)
-  }, [])
-  const flushHold = useCallback(() => {
-    if (!heldRef.current) return
-    stopHold()
-    decideRef.current()
-  }, [stopHold])
-  function startHold() {
-    if (holdSeconds <= 0) return void decide(undefined, "approved")
-    heldRef.current = true
-    setHeld(holdSeconds)
-    tick.current = setInterval(() => {
-      setHeld((left) => {
-        if (left === null) return left
-        if (left <= 1) {
-          queueMicrotask(flushHold)
-          return left
-        }
-        return left - 1
-      })
-    }, 1000)
-  }
-  useEffect(() => {
-    const hide = () => {
-      if (document.visibilityState === "hidden") flushHold()
-    }
-    document.addEventListener("visibilitychange", hide)
-    window.addEventListener("pagehide", flushHold)
-    return () => {
-      document.removeEventListener("visibilitychange", hide)
-      window.removeEventListener("pagehide", flushHold)
-      flushHold()
-    }
-  }, [flushHold])
   async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"]) {
     const decision = submitted ? "submitted" : (direct ?? choice)
     if (!item || !decision || busy || !ready) return
@@ -176,14 +131,27 @@ export function DecisionDetail({
       setBusy(false)
     }
   }
-  decideRef.current = () => void decide(undefined, "approved")
+  const queue = useApprovals()
+  const isHeld = !!queue?.held.some((h) => h.itemId === id)
+  // Low/medium decisions are held for undo in the queue provider; high-risk and the
+  // no-provider case decide at once.
+  function decideOrHold(decision: "approved" | "denied") {
+    if (!item || !ready || busy) return
+    if (!queue || item.request_snapshot.class === "high")
+      return void decide(undefined, decision)
+    queue.hold(item, {
+      kind: item.request_snapshot.kind,
+      decision,
+      ...(note.trim() ? { note: note.trim() } : {}),
+    })
+  }
   const request = item?.request_snapshot
   // High-risk requests are approvable here, gated by a typed phrase (the server still enforces).
   const needsPhrase = request?.class === "high"
   const card = !!request && isCard(request)
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
-    item && isPending(item) && !isExpired(item) && ready && !busy && held === null && request?.approvable !== false
+    item && isPending(item) && !isExpired(item) && ready && !busy && !isHeld && request?.approvable !== false
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
@@ -361,12 +329,7 @@ export function DecisionDetail({
                     />
                   </label>
                 )}
-                {held !== null ? (
-                  <div className="flex items-center gap-3" role="status">
-                    <span className="dash-control text-fg-muted">Approving in {held} s</span>
-                    <Button variant="outline" onClick={stopHold}>Undo</Button>
-                  </div>
-                ) : request.kind === "card.info" ? (
+                {request.kind === "card.info" ? (
                   <p className="dash-control text-fg-muted">This card is for information; there is nothing to answer.</p>
                 ) : request.kind === "card.question" || request.kind === "card.form" ? (
                   <CardForm request={request} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
@@ -415,14 +378,14 @@ export function DecisionDetail({
                         <Button
                           className="flex-1 sm:flex-none"
                           disabled={!canDecide}
-                          onClick={() => (needsPhrase ? setChoice("approved") : startHold())}
+                          onClick={() => (needsPhrase ? setChoice("approved") : decideOrHold("approved"))}
                         >
-                          {busy ? "Approving…" : item?.action_run ? "Approve and run" : "Approve"}
+                          {busy || isHeld ? "Approving…" : item?.action_run ? "Approve and run" : "Approve"}
                         </Button>
                         <Button variant="outline"
                           className="flex-1 sm:flex-none"
                           disabled={!canDecide}
-                          onClick={() => void decide(undefined, "denied")}
+                          onClick={() => decideOrHold("denied")}
                         >
                           Deny
                         </Button>

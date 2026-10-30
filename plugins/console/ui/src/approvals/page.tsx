@@ -85,6 +85,7 @@ export function ApprovalsPage() {
             selectedId={current?.item_id}
             onSelect={select}
             history={view === "history"}
+            held={new Set(queue.held.map((h) => h.itemId))}
             empty={
               queue.loading
                 ? "Loading approvals…"
