@@ -299,6 +299,25 @@ describe("held decisions", () => {
   })
 })
 
+describe("history", () => {
+  it("shows decisions under day pills with who and why, and opens an item", async () => {
+    const now = new Date().toISOString()
+    const history = vi.fn().mockResolvedValue({ events: [
+      { event_id: "e1", item_id: "req-1", kind: "resolved", status: "approved", at: now, actor: { ref: "s", label: "You" }, mini: { title: "Create a session" }, note: "Looks right" },
+      { event_id: "e2", item_id: "req-2", kind: "expired", status: "expired", at: now, actor: { ref: "", label: "System" }, mini: { title: "Rotate token" } },
+    ] })
+    const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present: vi.fn().mockResolvedValue(item), history } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: /History/ }))
+    const list = await screen.findByRole("list", { name: "Decision history" })
+    expect(list.textContent).toContain("Today")
+    expect(list.textContent).toContain("Approved · Create a session")
+    expect(list.textContent).toContain("Looks right")
+    expect(list.textContent).toContain("Expired · Rotate token")
+    expect(history).toHaveBeenCalledWith({ q: "", cursor: undefined })
+  })
+})
+
 describe("approval deep link", () => {
   it("selects the request for /approvals?item=<id> and clears the parameter", async () => {
     const present = vi.fn().mockResolvedValue(item)
