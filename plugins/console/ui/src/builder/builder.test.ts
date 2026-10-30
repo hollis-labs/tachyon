@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type AgentDetail, BuilderError, errorMessage } from './api'
-import { buildOps, buildPartOps, changedPartPaths, changedPaths, isOpen, minutesAndSeconds, relativeTime } from './changes'
+import { buildOps, buildPartOps, changedPartPaths, changingText, changedPaths, isOpen, minutesAndSeconds, relativeTime } from './changes'
 import { SECTIONS, STATE_LABEL } from './vocab'
 
 describe('builder helpers', () => {
@@ -54,5 +54,14 @@ describe('part ops', () => {
     expect(buildPartOps('policies', policy, { network: 'on' })).toEqual([
       { target: { kind: 'part', id: 'strict', part_kind: 'policy' }, expected_sha: '4', op: { type: 'set', path: 'network', value: 'on' } },
     ])
+  })
+})
+
+
+describe('changingText', () => {
+  it('lists what changed', () => {
+    expect(changingText([])).toBe('No unsaved changes')
+    expect(changingText(['Body'])).toBe('Changing 1 field: Body')
+    expect(changingText(['Body', 'Summary'])).toBe('Changing 2 fields: Body, Summary')
   })
 })

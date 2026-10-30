@@ -143,3 +143,14 @@ export function buildPartOps(kind: PartKind, it: PartItem, draft: Draft): Change
     op: { type: 'set', path, value: draft[path] },
   }))
 }
+
+/** Dirty-bar text shared by every edit surface: 'Changing 2 fields: body, summary'. */
+export function changingText(labels: (string | undefined)[]): string {
+  if (labels.length === 0) return 'No unsaved changes'
+  return `Changing ${labels.length} field${labels.length === 1 ? '' : 's'}: ${labels.join(', ')}`
+}
+
+/** Discard asks only when something would be lost. */
+export function confirmDiscard(n: number): boolean {
+  return n === 0 || window.confirm(`Discard ${n} change${n === 1 ? '' : 's'}?`)
+}

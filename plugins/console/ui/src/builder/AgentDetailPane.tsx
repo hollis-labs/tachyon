@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useRef, useState } from 'react'
 import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
-import { buildOps, changedPaths, type Draft, fieldByPath, newRequestId } from './changes'
+import { buildOps, changedPaths, changingText, confirmDiscard, type Draft, fieldByPath, newRequestId } from './changes'
 import { OutlineNav } from './OutlineNav'
 import { ChecksSection, HistorySection, ResolvedSection, UsedBySection } from './InsightSections'
 import { ReviewDialog } from './ReviewDialog'
@@ -170,7 +170,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
           <span className="mr-auto">
-            {dirty.length === 0 ? 'No unsaved changes' : `${dirty.length} unsaved change${dirty.length === 1 ? '' : 's'} — ${dirty.map((p) => fieldByPath(p)?.label).join(', ')}`}
+            {changingText(dirty.map((p) => fieldByPath(p)?.label))}
           </span>
           {error && (
             <span role="alert" className="text-danger">
@@ -181,6 +181,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             type="button"
             className="border border-border px-3 py-1 dash-control hover:bg-surface-hover"
             onClick={() => {
+              if (!confirmDiscard(dirty.length)) return
               setEditing(false)
               setDraft({})
               setError('')

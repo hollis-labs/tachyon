@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Segmented } from '../components/segmented'
 import { BuilderShell } from './BuilderShell'
 import { type Change, type LibraryItem, type LibraryKind, builderApi, errorMessage } from './api'
-import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, newRequestId, partRead } from './changes'
+import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, changingText, confirmDiscard, newRequestId, partRead } from './changes'
 import { ReviewDialog } from './ReviewDialog'
 import { useLoad } from './useLoad'
 import { LIBRARY_KINDS, NOT_REPORTED } from './vocab'
@@ -114,7 +114,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border border-border bg-surface px-3 py-2 dash-support text-fg-secondary">
           <span className="mr-auto">
-            {dirty.length === 0 ? 'No unsaved changes' : `${dirty.length} unsaved change${dirty.length === 1 ? '' : 's'} — ${dirty.map((d) => fields.find((f) => f.path === d)?.label).join(', ')}`}
+            {changingText(dirty.map((d) => fields.find((f) => f.path === d)?.label))}
           </span>
           {error && (
             <span role="alert" className="text-danger">
@@ -125,6 +125,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
             type="button"
             className={BTN}
             onClick={() => {
+              if (!confirmDiscard(dirty.length)) return
               setEditing(false)
               setDraft({})
               setError('')
