@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useRef, useState } from 'react'
 import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
 import { buildOps, changedPaths, type Draft, fieldByPath, newRequestId } from './changes'
 import { OutlineNav } from './OutlineNav'
+import { ChecksSection, HistorySection, ResolvedSection, UsedBySection } from './InsightSections'
 import { ReviewDialog } from './ReviewDialog'
 import { useLoad } from './useLoad'
 import { INHERITS, NOT_REPORTED, SECTIONS, STATE_LABEL } from './vocab'
@@ -277,6 +278,10 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
               <Chips items={a.policy?.mcp_scopes} />
             </Field>
           </Section>
+          <ResolvedSection id={a.id} />
+          <UsedBySection id={a.id} />
+          <ChecksSection id={a.id} />
+          <HistorySection id={a.id} />
         </div>
       </div>
     </div>

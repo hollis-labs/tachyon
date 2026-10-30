@@ -83,6 +83,47 @@ export interface AgentDetail {
   }
 }
 
+export interface Resolved {
+  resolved_by: 'tether' | 'tachyon_approx'
+  tool_servers?: { id: string; status: string; tool_count?: number | null }[]
+  skills?: { id: string; name: string }[]
+  policy?: { permission_mode?: string | null; network?: string | null; default_sandbox?: string | null }
+  scopes?: string[]
+  prompt_parts?: { label: string; bytes: number; tokens_est: number }[]
+  prompt_tokens_est?: number
+  prompt_tokens_estimated?: boolean
+  extends_chain?: string[]
+  notes?: string[]
+}
+
+export interface UsedBy {
+  live_sessions?: { session_id: string; launch_id: string; state: string }[]
+  launches?: { id: string; project: string; enabled: boolean }[]
+  teams?: { id: string; name: string; launch_id?: string | null }[]
+  extended_by?: string[]
+}
+
+export interface Checks {
+  checks: Check[]
+  summary?: { ok: number; warn: number; fail: number }
+}
+
+export interface HistoryEntry {
+  at: number
+  plan_id: string
+  name: string
+  actor: string
+  files?: string[]
+  privileged?: string[]
+  activation?: string
+  diff?: string | null
+}
+
+export interface History {
+  entries: HistoryEntry[]
+  next_cursor?: string | null
+}
+
 export type ChangeState = 'draft' | 'awaiting_approval' | 'approved' | 'applying' | 'applied' | 'failed' | 'rolled_back' | 'stale' | 'expired' | 'cancelled'
 
 export interface ChangeOp {
@@ -208,6 +249,10 @@ export const builderApi = {
     return get<AgentList>(`/agents${qs ? `?${qs}` : ''}`)
   },
   agent: (id: string) => get<AgentDetail>(`/agents/${encodeURIComponent(id)}`),
+  resolved: (id: string) => get<Resolved>(`/agents/${encodeURIComponent(id)}/resolved`),
+  usedBy: (id: string) => get<UsedBy>(`/agents/${encodeURIComponent(id)}/used_by`),
+  checks: (id: string) => get<Checks>(`/agents/${encodeURIComponent(id)}/checks`),
+  history: (id: string, cursor?: string) => get<History>(`/agents/${encodeURIComponent(id)}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
   change: (id: string) => get<Change>(`/changes/${encodeURIComponent(id)}`),
   createChange: (request: { request_id: string; note?: string; ops: ChangeOp[] }) => send<Change>('/changes', request),
   submit: (id: string, ackPrivileged: boolean) => send<Change>(`/changes/${encodeURIComponent(id)}/submit`, { ack_privileged: ackPrivileged }),

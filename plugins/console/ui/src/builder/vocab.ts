@@ -18,5 +18,9 @@ export const SECTIONS = [
   { id: 'prompt', label: 'Prompt' },
   { id: 'tools', label: 'Tools and skills' },
   { id: 'policy', label: 'Policy' },
+  { id: 'resolved', label: 'Resolved' },
+  { id: 'used_by', label: 'Used by' },
+  { id: 'checks', label: 'Checks' },
+  { id: 'history', label: 'History' },
 ] as const
 export type SectionId = (typeof SECTIONS)[number]['id']
