@@ -542,3 +542,26 @@ func TestHTTPSourceReadsTheLiveSnapshotKeyAndOpaqueSessionCursors(t *testing.T) 
 		t.Fatalf("an opaque /events cursor ends the walk, it does not fail it: %d %v", next, err)
 	}
 }
+
+func TestSSEGapEventWithoutKindIsRecognised(t *testing.T) {
+	data := `{"environment_id":"e","reason":"purged","earliest_available":23836,"high_water_seq":2479807,"snapshot_required":true}`
+	f, ok := ParseFrame(withKind([]byte(data), "gap"))
+	if !ok || !f.Gap || f.Reason != "purged" {
+		t.Fatalf("gap by event name: %+v %v", f, ok)
+	}
+	if _, ok := ParseFrame(withKind([]byte(data), "")); ok {
+		t.Fatal("without an event name the frame has no kind and is skipped")
+	}
+	if f, ok := ParseFrame(withKind([]byte(`{"kind":"synchronized"}`), "gap")); !ok || f.Gap {
+		t.Fatalf("an explicit kind wins: %+v", f)
+	}
+}
+
+func TestGapReseedsTheCursorBackwards(t *testing.T) {
+	src := &fakeSource{snap: Snapshot{Env: "e", HighWater: 50}, streamFrame: []string{`{"kind":"gap","reason":"ahead"}`}}
+	c := newCollector(t, src)
+	if err := c.Store.Seed(context.Background(), "e", 900); err != nil { // a cursor from before Tether was reset
+		t.Fatal(err)
+	}
+	runUntil(t, c, func() bool { return count(t, c, `SELECT COUNT(*) FROM agents_collector_state WHERE last_seq=50`) >= 1 })
+}
