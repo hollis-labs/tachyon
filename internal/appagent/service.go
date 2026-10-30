@@ -69,6 +69,9 @@ type Service struct {
 	// OnChange, if set, is called after a thread's summary-visible state changed
 	// (a reply finished or became blocked). It must not block.
 	OnChange func(threadID string)
+	// ClientContext, if set, supplies the per-turn client_context payload for a thread
+	// (nil = none). It is handed to the runtime adapter through the turn's context.
+	ClientContext func(ctx context.Context, threadID string) any
 
 	mu   sync.Mutex
 	subs map[*sub]struct{}
@@ -298,6 +301,11 @@ func (s *Service) run(ctx context.Context, th Thread, l *live, text string) {
 		if err := s.Store.SetSession(ctx, th.ID, sess); err != nil {
 			s.fail(l.agent, l.operator, "Tachyon could not save the session.")
 			return
+		}
+	}
+	if s.ClientContext != nil {
+		if cc := s.ClientContext(ctx, th.ID); cc != nil {
+			ctx = WithClientContext(ctx, cc)
 		}
 	}
 	turn, err := s.Runtime.Submit(ctx, sess, text)

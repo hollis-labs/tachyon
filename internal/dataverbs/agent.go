@@ -21,7 +21,7 @@ const AgentPrefix = "/api/agent/v1/data"
 // NewAgentHTTP authenticates every route, including discovery. Browser cookies
 // and claimed actor headers cannot establish a service principal here.
 func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) http.Handler {
-	svc, cardSvc, torque, tess := agentServices(services)
+	svc, cardSvc, torque, tess, chat := agentServices(services)
 	guard, err := auth.New(auth.Config{Mode: auth.ModeEnforce, Verifier: verifier, OpenPath: func(string) bool { return false }})
 	if err != nil {
 		panic(err)
@@ -34,7 +34,7 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) h
 				writeError(w, denied())
 				return
 			}
-			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess}
+			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat}
 			// Authentication has already verified this request. scopedLocal checks
 			// the verb/kinds and supplies the principal actor for every invocation.
 			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r)
@@ -49,15 +49,17 @@ type scopedLocal struct {
 	cards     *Cards
 	torque    *torqueread.Reader
 	tesseract *tesseractread.Reader
+	chat      *ChatWorkspace
 }
 
 // agentServices picks the optional host services out of the constructor's
 // variadic list: a *actionrun.Service, a *Cards and a *torqueread.Reader, in any order.
-func agentServices(services []any) (*actionrun.Service, *Cards, *torqueread.Reader, *tesseractread.Reader) {
+func agentServices(services []any) (*actionrun.Service, *Cards, *torqueread.Reader, *tesseractread.Reader, *ChatWorkspace) {
 	var actions *actionrun.Service
 	var c *Cards
 	var t *torqueread.Reader
 	var te *tesseractread.Reader
+	var chat *ChatWorkspace
 	for _, s := range services {
 		switch v := s.(type) {
 		case *actionrun.Service:
@@ -68,9 +70,11 @@ func agentServices(services []any) (*actionrun.Service, *Cards, *torqueread.Read
 			t = v
 		case *tesseractread.Reader:
 			te = v
+		case *ChatWorkspace:
+			chat = v
 		}
 	}
-	return actions, c, t, te
+	return actions, c, t, te, chat
 }
 
 func (p *scopedLocal) ID() string { return p.local.ID() }
@@ -97,6 +101,13 @@ func (p *scopedLocal) Verbs() []Verb {
 	}
 	if p.tesseract != nil {
 		for _, v := range tesseractVerbs() {
+			if agentaccess.Allows(p.principal, "verb", v.Name) {
+				out = append(out, v)
+			}
+		}
+	}
+	if p.chat != nil {
+		for _, v := range chatVerbs() {
 			if agentaccess.Allows(p.principal, "verb", v.Name) {
 				out = append(out, v)
 			}
@@ -130,6 +141,9 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 	}
 	if agentaccess.TesseractVerb(name) {
 		return invokeTesseract(ctx, p.tesseract, name, raw, p.principal)
+	}
+	if agentaccess.ChatWorkspaceVerb(name) {
+		return invokeChat(ctx, p.chat, name, raw, p.principal)
 	}
 	if agentaccess.TorqueVerb(name) {
 		return invokeTorque(ctx, p.torque, name, raw, p.principal)
