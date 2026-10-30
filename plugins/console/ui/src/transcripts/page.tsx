@@ -184,6 +184,39 @@ export function TranscriptDashboard() {
     "var(--color-fg-muted)",
     "var(--color-fg-faint)",
   ]
+  // No snapshot and no access: only the access state, not a healthy-looking page with its own Connect prompts.
+  if (!snapshot && error && access)
+    return (
+      <div className="flex h-full min-w-0 flex-col">
+        <PageHeader title="Transcripts" />
+        <div role={access === "denied" ? "alert" : "status"} className="flex flex-col items-center gap-2 px-4 py-16 text-center">
+          <p className="dash-body font-medium text-fg">{access === "session" ? "Operator access needed" : "Access denied"}</p>
+          <p className="max-w-md dash-support text-fg-muted">
+            {access === "session"
+              ? "Transcripts use the same operator session as Approvals. Connect it to read them."
+              : error}
+          </p>
+          {access === "session" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={connecting}
+              onClick={() => {
+                setConnecting(true)
+                void connectSession()
+                  .catch(() => undefined)
+                  .finally(() => {
+                    setConnecting(false)
+                    reload.current()
+                  })
+              }}
+            >
+              {connecting ? "Connecting" : "Connect"}
+            </Button>
+          )}
+        </div>
+      </div>
+    )
   return (
     <div className="flex h-full min-w-0 flex-col">
       <PageHeader title="Transcripts" />
@@ -214,34 +247,6 @@ export function TranscriptDashboard() {
             </Button>
           </div>
         </div>
-      {error && access && (
-        <div role={access === "denied" ? "alert" : "status"} className="flex flex-col items-center gap-2 px-4 py-16 text-center">
-          <p className="dash-body font-medium text-fg">{access === "session" ? "Operator access needed" : "Access denied"}</p>
-          <p className="max-w-md dash-support text-fg-muted">
-            {access === "session"
-              ? "Transcripts use the same operator session as Approvals. Connect it to read them."
-              : error}
-          </p>
-          {access === "session" && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={connecting}
-              onClick={() => {
-                setConnecting(true)
-                void connectSession()
-                  .catch(() => undefined)
-                  .finally(() => {
-                    setConnecting(false)
-                    reload.current()
-                  })
-              }}
-            >
-              {connecting ? "Connecting" : "Connect"}
-            </Button>
-          )}
-        </div>
-      )}
       {error && !access && (
         <p
           role="alert"
