@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from './sheet'
 import { RefreshCw } from 'lucide-react'
 import { buildPreviewCard, type RefIdentity } from '../refs'
 import { useAutolink, useRefState } from './context'
-import { refCardEnricher, refDetail, type RefCardProps } from './extensions'
+import { refCardEnricher, refDetail, refOwnsChrome, type RefCardProps } from './extensions'
 import { PreviewCardView } from './PreviewCardView'
 
 /** The default card source: the resolver's card, unchanged. */
@@ -11,7 +11,7 @@ function Passthrough({ card, children }: RefCardProps) {
   return <>{children(card)}</>
 }
 
-function DrawerBody({ target }: { target: RefIdentity }) {
+function DrawerBody({ target, onClose, expanded, onExpandedChange }: { target: RefIdentity; onClose: () => void; expanded: boolean; onExpandedChange: (v: boolean) => void }) {
   const { registry, client } = useAutolink()
   const state = useRefState(target.kind, target.canonical)
   useEffect(() => {
@@ -21,6 +21,9 @@ function DrawerBody({ target }: { target: RefIdentity }) {
   const card = buildPreviewCard(registry, target, state)
   const Detail = refDetail(target.kind)
   const Header = refCardEnricher(target.kind) ?? Passthrough
+  if (Detail && refOwnsChrome(target.kind)) {
+    return <div className="flex min-h-0 flex-1 flex-col">{createElement(Detail, { refId: target, card, onClose, expanded, onExpandedChange })}</div>
+  }
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 pb-4">
       <Header refId={target} card={card}>
@@ -52,15 +55,35 @@ export function RefDrawer({ target, onClose }: { target: RefIdentity | null; onC
   const [last, setLast] = useState<RefIdentity | null>(target)
   if (target && target !== last) setLast(target)
   const shown = target ?? last
+  const [expanded, setExpanded] = useState(false)
+  const own = !!shown && !!refDetail(shown.kind) && refOwnsChrome(shown.kind)
+  // A new target opens collapsed.
+  const [seen, setSeen] = useState(target)
+  if (target !== seen) {
+    setSeen(target)
+    setExpanded(false)
+  }
 
   return (
     <Sheet open={target !== null} onOpenChange={(open: boolean) => !open && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 border-border p-0 data-[side=right]:sm:max-w-md" data-testid="ref-drawer">
-        <div className="border-b border-border px-4 py-3 pr-12">
-          <SheetTitle className="font-mono text-[11px] uppercase tracking-widest text-fg-secondary">Details</SheetTitle>
-          <SheetDescription className="sr-only">Details for {shown?.canonical}</SheetDescription>
-        </div>
-        {shown && <DrawerBody target={shown} />}
+      <SheetContent
+        side="right"
+        showCloseButton={!own}
+        className={`w-full gap-0 border-border p-0 ${own ? `data-[side=right]:w-full ${expanded ? 'data-[side=right]:sm:w-[calc(100vw-3.5rem)] data-[side=right]:sm:max-w-none' : 'data-[side=right]:sm:max-w-[480px]'}` : 'data-[side=right]:sm:max-w-md'}`}
+        data-testid="ref-drawer"
+      >
+        {own ? (
+          <>
+            <SheetTitle className="sr-only">Details</SheetTitle>
+            <SheetDescription className="sr-only">Details for {shown?.canonical}</SheetDescription>
+          </>
+        ) : (
+          <div className="border-b border-border px-4 py-3 pr-12">
+            <SheetTitle className="font-mono text-[11px] uppercase tracking-widest text-fg-secondary">Details</SheetTitle>
+            <SheetDescription className="sr-only">Details for {shown?.canonical}</SheetDescription>
+          </div>
+        )}
+        {shown && <DrawerBody target={shown} onClose={onClose} expanded={expanded} onExpandedChange={setExpanded} />}
       </SheetContent>
     </Sheet>
   )

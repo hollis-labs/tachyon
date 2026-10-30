@@ -1,45 +1,68 @@
-import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Input, Popover, PopoverContent, PopoverTrigger, Skeleton } from '@hollis-labs/design-components'
-import { Check, ChevronDown, ChevronUp, Copy, Download, ExternalLink, Maximize2, Minus, MoreHorizontal, Plus, RefreshCw } from 'lucide-react'
+import { Button, Popover, PopoverContent, PopoverTrigger, Skeleton } from '@hollis-labs/design-components'
+import { Ban, ChevronDown, ChevronUp, Code, FileText, File as FileIcon, Image as ImageIcon, Maximize2, Minimize2, PanelsTopLeft, RefreshCw, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import type { RefDetailProps } from '../autolink/extensions'
-import { Segmented } from '../components/segmented'
 import { relativeTime } from '../builder/changes'
+import { Segmented } from '../components/segmented'
 import { contentUrl, denyMessage, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame } from './api'
+import { FileAccessDialog } from './FileAccessDialog'
 
-const BTN =
-  'inline-flex items-center gap-1.5 border border-border px-2 py-1 text-control text-fg-secondary transition-colors hover:border-fg-faint hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50'
-const ITEM = 'flex min-h-10 w-full items-center gap-2 px-2 text-left text-control text-fg-secondary hover:bg-surface-hover'
 const TEXT_KINDS: readonly FileKind[] = ['text', 'json', 'yaml', 'toml', 'csv', 'code']
+const KIND_WORD: Record<string, string> = { markdown: 'Markdown', html: 'HTML', image: 'Image', json: 'JSON', yaml: 'YAML', toml: 'TOML', csv: 'CSV', code: 'Code', text: 'Text', binary: 'Binary' }
+const LANG: Record<string, string> = { go: 'Go', ts: 'TypeScript', tsx: 'TSX', js: 'JavaScript', py: 'Python', rs: 'Rust', sh: 'Shell', sql: 'SQL', css: 'CSS', json: 'JSON', yaml: 'YAML', toml: 'TOML', md: 'Markdown' }
+const KIND_ICON: Record<string, typeof FileIcon> = { html: PanelsTopLeft, markdown: FileText, code: Code, image: ImageIcon, text: FileText, json: Code, yaml: Code, toml: Code, csv: FileText }
 
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; stat: FileStat }
 
-/** Drawer body for a file path: stat first, then the viewer that fits the kind. */
-export function FileViewerPane({ refId }: RefDetailProps) {
+const CHIP = 'rounded-xs border border-border px-1.5 py-0.5 font-mono text-caption text-fg-secondary'
+const HEAD = 'text-control font-bold text-fg'
+const MUTED = 'text-control text-fg-muted'
+
+const basename = (p: string) => p.split('/').pop() ?? p
+const extOf = (p: string) => basename(p).split('.').pop()?.toLowerCase() ?? ''
+
+export function metaLine(stat: FileStat | null, path: string): string {
+  if (!stat) return ''
+  if (!stat.exists || !stat.allowed) return stat.deny_reason === 'too_large' ? ['Large', formatSize(stat.size)].filter(Boolean).join(' · ') : 'Blocked'
+  const kind = stat.kind ?? 'binary'
+  const word = kind === 'code' ? (LANG[stat.language ?? extOf(path)] ?? 'Code') : (KIND_WORD[kind] ?? kind)
+  const when = stat.mtime ? `modified ${relativeTime(new Date(stat.mtime).getTime())}` : ''
+  return [word, formatSize(stat.size), when].filter(Boolean).join(' · ')
+}
+
+/** Drawer for a file path: header and actions, the viewer that fits the kind, the path footer. */
+export function FileViewerPane({ refId, onClose, expanded = false, onExpandedChange }: RefDetailProps) {
   const path = refId.canonical
   const line = typeof refId.meta?.line === 'number' ? refId.meta.line : undefined
   const [load, setLoad] = useState<Load>({ status: 'loading' })
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((n) => n + 1), [])
   const [copied, setCopied] = useState(false)
-  const [expanded, setExpanded] = useState(false)
   const [changed, setChanged] = useState(false)
-  const copyPath = () => {
-    void navigator.clipboard?.writeText(path)
+  const [access, setAccess] = useState(false)
+  const [text, setText] = useState<string | null>(null)
+  const [dims, setDims] = useState('')
+  const stat = load.status === 'ready' ? load.stat : null
+  const canOpen = !!stat && stat.exists && stat.allowed && stat.type !== 'dir'
+  const kind = stat?.kind ?? 'binary'
+  const name = basename(path)
+
+  const copy = (value: string) => {
+    void navigator.clipboard?.writeText(value)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
-  const stat = load.status === 'ready' ? load.stat : null
-  const canOpen = !!stat && stat.exists && stat.allowed && stat.type !== 'dir'
-  const kindOf = stat?.kind ?? 'binary'
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick re-runs the stat on Reload
   useEffect(() => {
     let live = true
     setChanged(false)
+    setText(null)
+    setDims('')
     setLoad({ status: 'loading' })
     fileApi.stat(path).then(
-      (stat) => live && setLoad({ status: 'ready', stat }),
+      (s) => live && setLoad({ status: 'ready', stat: s }),
       (e) => live && setLoad({ status: 'error', message: errorMessage(e) }),
     )
     return () => {
@@ -47,7 +70,7 @@ export function FileViewerPane({ refId }: RefDetailProps) {
     }
   }, [path, tick])
 
-  // Every 30s while visible, ask again; a different etag, size or mtime means the file moved on.
+  // Every 30s while visible, ask again; a different etag, size or mtime means the file moved on. Never auto-reloads.
   const seen = stat ? `${stat.etag ?? ''}|${stat.size ?? ''}|${stat.mtime ?? ''}` : null
   useEffect(() => {
     if (!seen || !canOpen) return
@@ -63,11 +86,18 @@ export function FileViewerPane({ refId }: RefDetailProps) {
     return () => clearInterval(t)
   }, [seen, canOpen, path])
 
+  const blocked = !!stat && (!stat.exists || !stat.allowed)
+  const large = blocked && stat?.deny_reason === 'too_large'
+  const Icon = blocked ? Ban : (KIND_ICON[kind] ?? FileIcon)
+  const textual = canOpen && (kind === 'markdown' || TEXT_KINDS.includes(kind))
+  const meta = kind === 'image' && dims ? `${(stat?.language ?? extOf(path)).toUpperCase()} · ${dims} · ${formatSize(stat?.size)}` : metaLine(stat, path)
+  const sm = 'h-7 text-label'
+
   return (
     // Ctrl/Cmd+F opens our find only while focus is inside the viewer and a find box exists (raw text).
     <section
-      aria-label={`File ${path.split('/').pop()}`}
-      className="space-y-3"
+      aria-label={`File ${name}`}
+      className="flex min-h-0 flex-1 flex-col"
       onKeyDown={(e) => {
         if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f') return
         const box = e.currentTarget.querySelector<HTMLInputElement>('input[aria-label="Find in file"]:not(:disabled)')
@@ -77,143 +107,200 @@ export function FileViewerPane({ refId }: RefDetailProps) {
         box.select()
       }}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={reload}>
-          <RefreshCw className="h-3 w-3" aria-hidden /> Reload
-        </Button>
-        <div className="hidden items-center gap-2 sm:flex">
-          <Button type="button" variant="outline" size="sm" onClick={copyPath}>
-            {copied ? <Check className="h-3 w-3" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />} {copied ? 'Copied' : 'Copy path'}
-          </Button>
-          {canOpen && (
-            <>
-              <Button type="button" variant="outline" size="sm" onClick={() => setExpanded(true)}>
-                <Maximize2 className="h-3 w-3" aria-hidden /> Expand
-              </Button>
-              {kindOf !== 'html' && (
-                <a className={BTN} href={contentUrl(path)} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-3 w-3" aria-hidden /> Open in tab
-                </a>
-              )}
-              <a className={BTN} href={contentUrl(path)} download={path.split('/').pop()}>
-                <Download className="h-3 w-3" aria-hidden /> Download
-              </a>
-            </>
+      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-border-subtle px-4 py-3">
+        <span aria-hidden className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-control bg-surface text-fg-secondary">
+          <Icon className="size-3.5" />
+        </span>
+        <div className="min-w-0 flex-1 basis-40">
+          <h2 className="truncate font-mono text-control font-bold normal-case tracking-normal text-fg" title={path}>
+            {name}
+            {line ? `:${line}` : ''}
+          </h2>
+          <p className="text-label text-fg-muted">{meta || ' '}</p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {canOpen && onExpandedChange && (
+            <Button type="button" variant="outline" size="sm" className={sm} onClick={() => onExpandedChange(!expanded)}>
+              {expanded ? <Minimize2 aria-hidden className="size-3" /> : <Maximize2 aria-hidden className="size-3" />}
+              {expanded ? 'Collapse' : 'Expand'}
+            </Button>
+          )}
+          {textual && text !== null && (
+            <Button type="button" variant="outline" size="sm" className={sm} onClick={() => copy(text)}>
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+          )}
+          {(canOpen || large) && (
+            <Button type="button" variant="outline" size="sm" className={sm} render={<a href={contentUrl(path)} download={name} />}>
+              Download
+            </Button>
+          )}
+          {(!textual || text === null) && kind !== 'html' && (
+            <Button type="button" variant="outline" size="sm" className={sm} onClick={() => copy(path)}>
+              {copied ? 'Copied' : 'Copy path'}
+            </Button>
+          )}
+          {canOpen && kind !== 'html' && kind !== 'markdown' && !TEXT_KINDS.includes(kind) && (
+            <Button type="button" variant="outline" size="sm" className={sm} render={<a href={contentUrl(path)} target="_blank" rel="noopener noreferrer" />}>
+              Open in tab ↗
+            </Button>
+          )}
+          {canOpen && kind === 'html' && (
+            <Button type="button" variant="outline" size="sm" className={sm} render={<a href={contentUrl(path)} target="_blank" rel="noopener noreferrer" />}>
+              Open in tab ↗
+            </Button>
+          )}
+          {kind !== 'image' && (
+            <Button type="button" variant="outline" size="sm" className={sm} aria-label="Reload" onClick={reload}>
+              <RefreshCw aria-hidden className="size-3" />
+            </Button>
+          )}
+          {onClose && (
+            <Button type="button" variant="outline" size="sm" className={sm} aria-label="Close" onClick={onClose}>
+              <X aria-hidden className="size-3" />
+            </Button>
           )}
         </div>
-        <Popover>
-          <PopoverTrigger aria-label="More actions" className={`${BTN} min-h-10 sm:hidden`}>
-            <MoreHorizontal className="h-4 w-4" aria-hidden /> More
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-56 p-1">
-            <div role="menu" aria-label="File actions">
-              <button type="button" role="menuitem" className={ITEM} onClick={copyPath}>
-                {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />} {copied ? 'Copied' : 'Copy path'}
-              </button>
-              {canOpen && (
-                <>
-                  <button type="button" role="menuitem" className={ITEM} onClick={() => setExpanded(true)}>
-                    <Maximize2 className="h-4 w-4" aria-hidden /> Expand
-                  </button>
-                  {kindOf !== 'html' && (
-                    <a role="menuitem" className={ITEM} href={contentUrl(path)} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4" aria-hidden /> Open in tab
-                    </a>
-                  )}
-                  <a role="menuitem" className={ITEM} href={contentUrl(path)} download={path.split('/').pop()}>
-                    <Download className="h-4 w-4" aria-hidden /> Download
-                  </a>
-                </>
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
+      </header>
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 py-3">
+        {changed && (
+          <p role="status" className="flex items-center gap-2 text-label text-fg-muted">
+            Changed on disk.
+            <Button type="button" variant="link" size="xs" onClick={reload}>
+              Reload
+            </Button>
+          </p>
+        )}
+        {load.status === 'loading' && (
+          <div role="status" aria-busy="true" aria-label="Loading file" className="space-y-2">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-40 w-full" />
+          </div>
+        )}
+        {load.status === 'error' && (
+          <div role="alert" className="space-y-2 pt-3">
+            <p className={HEAD}>Could not open this file</p>
+            <p className={MUTED}>{load.message}</p>
+            <Button type="button" variant="outline" size="sm" className={sm} onClick={reload}>
+              Try again
+            </Button>
+          </div>
+        )}
+        {load.status === 'ready' && (
+          <Body stat={load.stat} path={path} line={line} tick={tick} expanded={expanded} onText={setText} onDims={setDims} onAccess={() => setAccess(true)} onCopyPath={() => copy(path)} />
+        )}
       </div>
-      {changed && (
-        <p role="status" className="text-caption text-fg-muted">
-          Changed on disk.{' '}
-          <Button type="button" variant="link" size="xs" onClick={reload}>
-            Reload
-          </Button>
-        </p>
-      )}
-      {load.status === 'loading' && <Skeleton className="h-40 w-full" />}
-      {load.status === 'error' && (
-        <p role="alert" className="text-control text-fg-secondary">
-          {load.message}
-        </p>
-      )}
-      {load.status === 'ready' && <Body stat={load.stat} path={path} line={line} tick={tick} />}
-      {load.status === 'ready' && (
-        <Dialog open={expanded} onOpenChange={setExpanded}>
-          <DialogContent className="max-h-[92vh] w-[min(96vw,72rem)] max-w-none overflow-auto">
-            <DialogTitle className="truncate text-control">{path.split('/').pop()}</DialogTitle>
-            <DialogDescription className="sr-only">Expanded view of {path}</DialogDescription>
-            {expanded && <Body stat={load.stat} path={path} line={line} tick={tick} expanded />}
-          </DialogContent>
-        </Dialog>
-      )}
-      <p className="break-all font-mono text-caption text-fg-faint">{path}</p>
+      <footer className="truncate border-t border-border-subtle px-4 py-2.5 font-mono text-caption text-fg-muted" title={path}>
+        {path}
+      </footer>
+      <FileAccessDialog open={access} onOpenChange={setAccess} />
     </section>
   )
 }
 
-const KIND_WORD: Record<string, string> = { markdown: 'Markdown', html: 'HTML', image: 'Image', json: 'JSON', yaml: 'YAML', toml: 'TOML', csv: 'CSV', code: 'Code', text: 'Text', binary: 'Binary' }
-
-export function Body({ stat, path, line, tick, expanded = false }: { stat: FileStat; path: string; line?: number; tick: number; expanded?: boolean }) {
-  if (!stat.exists || !stat.allowed) {
-    return <p className="text-control text-fg-secondary">{denyMessage(stat.deny_reason, stat.exists)}</p>
-  }
-  if (stat.type === 'dir') return <p className="text-control text-fg-secondary">This is a folder. Folders are not listed.</p>
-  const kind = stat.kind ?? 'binary'
-  return (
-    <>
-      <p className="text-caption text-fg-muted" title={stat.mtime ? new Date(stat.mtime).toLocaleString() : undefined}>
-        {[KIND_WORD[kind] ?? kind, formatSize(stat.size), stat.mtime ? relativeTime(new Date(stat.mtime).getTime()) : ''].filter(Boolean).join(', ')}
-      </p>
-      {kind === 'image' && <Picture path={path} />}
-      {kind === 'html' && <Page path={path} tick={tick} expanded={expanded} />}
-      {kind === 'markdown' && <TextBody path={path} markdown tick={tick} expanded={expanded} />}
-      {TEXT_KINDS.includes(kind) && <TextBody path={path} line={line} tick={tick} expanded={expanded} />}
-      {kind === 'binary' && <p className="text-control text-fg-secondary">No preview for this type. Copy the path to open it elsewhere.</p>}
-    </>
-  )
+interface BodyProps {
+  stat: FileStat
+  path: string
+  line?: number
+  tick: number
+  expanded?: boolean
+  onText?: (text: string) => void
+  onDims?: (dims: string) => void
+  onAccess?: () => void
+  onCopyPath?: () => void
 }
 
-const ZOOMS = [1, 1.5, 2, 3] as const
-
-function Picture({ path }: { path: string }) {
-  const [zoom, setZoom] = useState(0)
-  const [broken, setBroken] = useState(false)
-  if (broken)
+export function Body({ stat, path, line, tick, expanded = false, onText, onDims, onAccess, onCopyPath }: BodyProps) {
+  if (!stat.exists || !stat.allowed) {
+    if (stat.deny_reason === 'too_large') {
+      return (
+        <div className="space-y-1 pt-3">
+          <p className={HEAD}>File is {formatSize(stat.size)}, too large to preview</p>
+          <p className={MUTED}>Previews are limited to 5 MB for text and 20 MB for images. Download the file to read it.</p>
+        </div>
+      )
+    }
+    const generic = !stat.exists || stat.deny_reason === 'not_found_or_hidden' || !stat.deny_reason
     return (
-      <p role="alert" className="text-control text-fg-secondary">
+      <div className="space-y-2 pt-3">
+        <p className={HEAD}>{generic ? 'Not found or not available to view' : 'Not available to view'}</p>
+        <p className={MUTED}>{denyMessage(stat.deny_reason, stat.exists)}</p>
+        <p className="font-mono text-control text-fg-secondary">{path}</p>
+        <div className="flex gap-2">
+          {onAccess && (
+            <Button type="button" variant="outline" size="sm" className="h-7 text-label" onClick={onAccess}>
+              File access settings
+            </Button>
+          )}
+          {onCopyPath && (
+            <Button type="button" variant="outline" size="sm" className="h-7 text-label" onClick={onCopyPath}>
+              Copy path
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
+  if (stat.type === 'dir') return <p className={MUTED}>This is a folder. Folders are not listed.</p>
+  const kind = stat.kind ?? 'binary'
+  if (kind === 'image') return <Picture path={path} ext={stat.language ?? extOf(path)} size={stat.size} onDims={onDims} />
+  if (kind === 'html') return <Page path={path} tick={tick} expanded={expanded} onText={onText} />
+  if (kind === 'markdown') return <TextBody path={path} markdown tick={tick} expanded={expanded} onText={onText} />
+  if (TEXT_KINDS.includes(kind)) return <TextBody path={path} line={line} tick={tick} expanded={expanded} language={stat.language ?? extOf(path)} onText={onText} />
+  return <p className={MUTED}>No preview for this type. Copy the path to open it elsewhere.</p>
+}
+
+function Picture({ path, ext, size, onDims }: { path: string; ext: string; size?: number | null; onDims?: (d: string) => void }) {
+  const [fit, setFit] = useState<'fit' | 'full'>('fit')
+  const [broken, setBroken] = useState(false)
+  const [dims, setDims] = useState('')
+  if (broken) {
+    return (
+      <p role="alert" className={MUTED}>
         The image could not be loaded.
       </p>
     )
-  const scale = ZOOMS[zoom]
-  // SVG is only ever shown through <img>, as the contract requires.
+  }
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 text-caption text-fg-muted">
-        <Button type="button" variant="outline" size="sm" aria-label="Zoom out" disabled={zoom === 0} onClick={() => setZoom((z) => Math.max(0, z - 1))}>
-          <Minus className="h-3 w-3" aria-hidden />
-        </Button>
-        <span aria-live="polite">{zoom === 0 ? 'Fit' : `${Math.round(scale * 100)}%`}</span>
-        <Button type="button" variant="outline" size="sm" aria-label="Zoom in" disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))}>
-          <Plus className="h-3 w-3" aria-hidden />
-        </Button>
+      <div className="flex items-center gap-2">
+        <span className={CHIP}>{ext}</span>
+        <span className="text-label text-fg-muted">{[dims, formatSize(size)].filter(Boolean).join(' · ')}</span>
+        <span className="flex-1" />
+        <Segmented<'fit' | 'full'>
+          bare
+          label="Image size"
+          value={fit}
+          onChange={setFit}
+          items={[
+            { value: 'fit', label: 'Fit' },
+            { value: 'full', label: '100%' },
+          ]}
+        />
       </div>
-      <div className="max-h-[70vh] overflow-auto border border-border bg-surface">
-        <img src={contentUrl(path)} alt={path.split('/').pop() ?? 'image'} onError={() => setBroken(true)} className="h-auto max-w-none" style={{ width: `${scale * 100}%` }} />
+      {/* KIT-GAP: the checkerboard is drawn from tokens here until the kit has a transparency ground. */}
+      <div className="max-h-[70vh] overflow-auto rounded-panel border border-border bg-[repeating-conic-gradient(var(--color-surface)_0_25%,var(--color-bg)_0_50%)] bg-[length:12px_12px] p-2">
+        {/* SVG is only ever shown through <img>, as the contract requires. */}
+        <img
+          src={contentUrl(path)}
+          alt={basename(path)}
+          onLoad={(e) => {
+            const d = `${e.currentTarget.naturalWidth} × ${e.currentTarget.naturalHeight}`
+            setDims(d)
+            onDims?.(d)
+          }}
+          onError={() => setBroken(true)}
+          className={fit === 'fit' ? 'mx-auto h-auto max-w-full' : 'h-auto max-w-none'}
+        />
       </div>
     </div>
   )
 }
 
 /** HTML renders in a single-use sandboxed frame (no scripts, no same-origin); Source shows the text. */
-function Page({ path, tick, expanded = false }: { path: string; tick: number; expanded?: boolean }) {
+function Page({ path, tick, expanded, onText }: { path: string; tick: number; expanded: boolean; onText?: (t: string) => void }) {
   const [view, setView] = useState<'rendered' | 'source'>('rendered')
+  const [width, setWidth] = useState<'desktop' | 'mobile'>('desktop')
   const [frame, setFrame] = useState<Frame | { error: string } | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick re-mints the frame on Reload
   useEffect(() => {
@@ -230,37 +317,54 @@ function Page({ path, tick, expanded = false }: { path: string; tick: number; ex
   }, [path, view, tick])
   return (
     <div className="space-y-2">
-      <Segmented<'rendered' | 'source'>
-        bare
-        label="HTML view"
-        value={view}
-        onChange={setView}
-        items={[
-          { value: 'rendered', label: 'Rendered' },
-          { value: 'source', label: 'Source' },
-        ]}
-      />
-      {view === 'source' && <TextBody path={path} tick={tick} expanded={expanded} />}
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented<'rendered' | 'source'>
+          bare
+          label="HTML view"
+          value={view}
+          onChange={setView}
+          items={[
+            { value: 'rendered', label: 'Rendered' },
+            { value: 'source', label: 'Source' },
+          ]}
+        />
+        {view === 'rendered' && (
+          <Segmented<'desktop' | 'mobile'>
+            bare
+            label="Preview width"
+            value={width}
+            onChange={setWidth}
+            items={[
+              { value: 'desktop', label: 'Desktop 1440' },
+              { value: 'mobile', label: 'Mobile 390' },
+            ]}
+          />
+        )}
+      </div>
+      {view === 'source' && <TextBody path={path} tick={tick} expanded={expanded} language="html" onText={onText} />}
       {view === 'rendered' && frame === null && <Skeleton className="h-64 w-full" />}
       {view === 'rendered' && frame && 'error' in frame && (
-        <p role="alert" className="text-control text-fg-secondary">
+        <p role="alert" className={MUTED}>
           {frame.error} Try Source.
         </p>
       )}
       {view === 'rendered' && frame && 'frame_url' in frame && (
-        <iframe
-          title={`Preview of ${path.split('/').pop()}`}
-          src={frame.frame_url}
-          sandbox=""
-          referrerPolicy="no-referrer"
-          className={`${expanded ? 'h-[70vh]' : 'h-96'} w-full border border-border bg-white`}
-        />
+        <div className="overflow-auto rounded-panel border border-border p-2">
+          <iframe
+            title={`Preview of ${basename(path)}`}
+            src={frame.frame_url}
+            sandbox=""
+            referrerPolicy="no-referrer"
+            className={`${expanded ? 'h-[70vh]' : 'h-96'} ${width === 'mobile' ? 'mx-auto w-[390px] max-w-full' : 'w-full'} rounded-control border border-border-subtle bg-white`}
+          />
+        </div>
       )}
+      {view === 'rendered' && <p className="text-label text-fg-muted">Scripts, network, navigation and external files are blocked; the page must be self-contained.</p>}
     </div>
   )
 }
 
-function TextBody({ path, line, markdown, tick, expanded = false }: { path: string; line?: number; markdown?: boolean; tick: number; expanded?: boolean }) {
+function TextBody({ path, line, markdown, tick, expanded = false, language, onText }: { path: string; line?: number; markdown?: boolean; tick: number; expanded?: boolean; language?: string; onText?: (t: string) => void }) {
   const [state, setState] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; text: string }>({ status: 'loading' })
   const [raw, setRaw] = useState(!markdown)
   const [wrap, setWrap] = useState(false)
@@ -268,12 +372,17 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
   const [find, setFind] = useState('')
   const [at, setAt] = useState(0)
   const rows = useRef(new Map<number, HTMLSpanElement>())
+  const rendered = useRef<HTMLDivElement>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick re-reads on Reload
   useEffect(() => {
     let live = true
     setState({ status: 'loading' })
     fileApi.text(path).then(
-      (r) => live && setState({ status: 'ready', text: r.text }),
+      (r) => {
+        if (!live) return
+        setState({ status: 'ready', text: r.text })
+        onText?.(r.text)
+      },
       (e) => live && setState({ status: 'error', message: errorMessage(e) }),
     )
     return () => {
@@ -285,12 +394,13 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
   }, [state.status])
 
   if (state.status === 'loading') return <Skeleton className="h-40 w-full" />
-  if (state.status === 'error')
+  if (state.status === 'error') {
     return (
-      <p role="alert" className="text-control text-fg-secondary">
+      <p role="alert" className={MUTED}>
         {state.message}
       </p>
     )
+  }
   const lines = state.text.split('\n')
   const needle = find.trim().toLowerCase()
   const hits = needle ? lines.flatMap((l, i) => (l.toLowerCase().includes(needle) ? [i] : [])) : []
@@ -302,10 +412,15 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
     setAt(n)
     rows.current.get(hits[n])?.scrollIntoView?.({ block: 'center' })
   }
+  const headings = markdown ? lines.flatMap((l, i) => (/^#{1,3}\s+\S/.test(l) ? [{ i, text: l.replace(/^#+\s+/, ''), depth: l.match(/^#+/)?.[0].length ?? 1 }] : [])) : []
+  const jump = (n: number, line: number) => {
+    if (!raw) rendered.current?.querySelectorAll('h1,h2,h3')[n]?.scrollIntoView?.({ block: 'start' })
+    else rows.current.get(line)?.scrollIntoView?.({ block: 'start' })
+  }
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
-        {markdown && (
+      <div className="flex flex-wrap items-center gap-2">
+        {markdown ? (
           <Segmented<'rendered' | 'raw'>
             bare
             label="Markdown view"
@@ -316,11 +431,34 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
               { value: 'raw', label: 'Raw' },
             ]}
           />
+        ) : (
+          <>
+            {language && <span className={CHIP}>{language}</span>}
+            <span className="text-label text-fg-muted">{lines.length} lines · UTF-8</span>
+          </>
         )}
-        {markdown && !raw && <Input type="search" aria-label="Find in file" placeholder="Find works in Raw view" disabled className="h-8 min-w-0 flex-1" />}
+        <span className="flex-1" />
+        {markdown && headings.length > 0 && (
+          <Popover>
+            <PopoverTrigger className="inline-flex h-7 items-center gap-1 rounded-control px-2 text-label text-fg-muted hover:text-fg">
+              Outline <ChevronDown aria-hidden className="size-3" />
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-1">
+              <ul aria-label="Outline">
+                {headings.map((h, n) => (
+                  <li key={h.i}>
+                    <button type="button" className="block w-full truncate rounded-xs px-2 py-1 text-left text-control text-fg-secondary hover:bg-selection" style={{ paddingLeft: `${0.5 + (h.depth - 1) * 0.75}rem` }} onClick={() => jump(n, h.i)}>
+                      {h.text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
         {raw && (
-          <div className="flex min-w-0 flex-1 items-center gap-1">
-            <Input
+          <div className="flex items-center gap-1">
+            <input
               type="search"
               aria-label="Find in file"
               placeholder="Find in file"
@@ -330,35 +468,35 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
                 setAt(0)
               }}
               onKeyDown={(e) => e.key === 'Enter' && step(e.shiftKey ? -1 : 1)}
-              className="h-8 min-w-0 flex-1"
+              className="h-7 w-36 rounded-control border border-border bg-transparent px-2 text-label text-fg placeholder:text-fg-muted"
             />
             {needle && (
-              <span className="shrink-0 text-caption text-fg-muted" aria-live="polite">
+              <span className="text-caption text-fg-muted" aria-live="polite">
                 {hits.length ? `${(at % hits.length) + 1} of ${hits.length}` : 'No matches'}
               </span>
             )}
-            <Button type="button" variant="outline" size="sm" aria-label="Previous match" disabled={!hits.length} onClick={() => step(-1)}>
-              <ChevronUp className="h-3 w-3" aria-hidden />
-            </Button>
-            <Button type="button" variant="outline" size="sm" aria-label="Next match" disabled={!hits.length} onClick={() => step(1)}>
-              <ChevronDown className="h-3 w-3" aria-hidden />
+            {needle && (
+              <>
+                <Button type="button" variant="outline" size="sm" className="h-7" aria-label="Previous match" disabled={!hits.length} onClick={() => step(-1)}>
+                  <ChevronUp aria-hidden className="size-3" />
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="h-7" aria-label="Next match" disabled={!hits.length} onClick={() => step(1)}>
+                  <ChevronDown aria-hidden className="size-3" />
+                </Button>
+              </>
+            )}
+            <Button type="button" variant="outline" size="sm" className="h-7 text-label" aria-pressed={wrap} onClick={() => setWrap((w) => !w)}>
+              Wrap
             </Button>
           </div>
         )}
-        {raw && (
-          <Button type="button" variant="outline" size="sm" aria-pressed={wrap} onClick={() => setWrap((w) => !w)}>
-            Wrap
-          </Button>
-        )}
       </div>
       {markdown && !raw ? (
-        <div className="prose-sm max-w-none text-control text-fg">
+        <div ref={rendered} className="max-w-none text-control text-fg [&_:is(h1,h2,h3,h4)]:font-sans [&_:is(h1,h2,h3,h4)]:normal-case [&_:is(h1,h2,h3,h4)]:tracking-normal [&_:is(h1,h2,h3,h4)]:font-bold [&_:is(h1,h2,h3,h4)]:text-fg [&_h1]:mb-2 [&_h1]:text-lg [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-control [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:font-mono [&_code]:text-label [&_pre]:overflow-auto [&_pre]:rounded-control [&_pre]:border [&_pre]:border-border-subtle [&_pre]:p-2">
           <Markdown>{state.text}</Markdown>
         </div>
       ) : (
-        <pre
-          className={`${expanded ? 'max-h-[75vh]' : 'max-h-[60vh]'} overflow-auto border border-border bg-surface p-2 font-mono text-caption leading-relaxed text-fg ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : ''}`}
-        >
+        <pre className={`${expanded ? 'max-h-[75vh]' : 'max-h-[60vh]'} overflow-auto rounded-panel border border-border-subtle bg-bg py-2 font-mono text-caption leading-relaxed text-fg ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : ''}`}>
           {lines.map((l, i) => (
             <span
               key={i}
@@ -367,12 +505,12 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
                 else rows.current.delete(i)
                 if (line === i + 1) target.current = el
               }}
-              className={`flex ${i === current ? 'bg-selection' : hitSet.has(i) ? 'bg-surface-hover' : line === i + 1 ? 'bg-surface-hover' : ''}`}
+              className={`flex ${i === current ? 'bg-selection' : hitSet.has(i) ? 'bg-surface' : line === i + 1 ? 'bg-selection font-bold' : ''}`}
             >
-              <span aria-hidden className="w-10 shrink-0 select-none pr-2 text-right text-fg-faint">
+              <span aria-hidden className="w-12 shrink-0 select-none pr-3 text-right text-fg-muted">
                 {i + 1}
               </span>
-              <span className="min-w-0 flex-1">{l || ' '}</span>
+              <span className="min-w-0 flex-1 pr-3">{l || ' '}</span>
             </span>
           ))}
         </pre>
