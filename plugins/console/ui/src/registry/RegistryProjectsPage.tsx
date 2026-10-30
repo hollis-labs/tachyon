@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLoad } from '../builder/useLoad'
 import { BuilderError } from '../builder/api'
+import { confirmDiscard } from '../builder/changes'
 import { NOT_REPORTED } from '../builder/vocab'
 import { type Project, type ProjectPatch, type ProjectRow, type ProjectStatus, errorMessage, profilePatch, registryApi } from './api'
 
@@ -107,6 +108,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
             type="button"
             className={BTN}
             onClick={() => {
+              if (!confirmDiscard(dirty)) return
               setEditing(false)
               setDraft({})
               setError('')
