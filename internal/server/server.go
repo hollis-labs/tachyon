@@ -306,6 +306,21 @@ func (s *Server) Start(ctx context.Context) error {
 		Agg: &chatthreads.Aggregator{App: s.appAgent, Chat: s.chat, State: &chatthreads.StateStore{DB: store}},
 		Hub: &chatthreads.Hub{DB: store},
 	}
+	// A Tether turn arriving or a reply changing delivery state is announced on the thread stream, so the
+	// focused thread fetches it instead of polling.
+	s.chat.Changed = func(ctx context.Context, kind string, t chatbridge.Turn) {
+		id := t.SessionID
+		if id == "" {
+			id = t.LocalSessionID
+		}
+		if id == "" {
+			return
+		}
+		ref := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: id}.String()
+		fields := map[string]any{"message_id": t.ID, "state": t.State, "delivery_state": t.Delivery, "kind": t.Kind}
+		_, _ = s.chatThreads.Hub.Publish(context.WithoutCancel(ctx), ref, kind, fields)
+		s.chatThreads.Notify(ctx, ref)
+	}
 	// Activity feed and context meter. The service seams below record into it; a failed record
 	// never fails the change that caused it.
 	rec := &chatactivity.Recorder{Store: &chatactivity.Store{DB: store}, Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
