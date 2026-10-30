@@ -93,7 +93,7 @@ plan/apply step with a hand-off. Design: Tesseract `design_tachyon_builder_chang
 - Handoff states: `draft -> awaiting_handoff -> [awaiting_approval] -> applied`, or `stale`, `cancelled`,
   `failed`. `POST /changes` answers `awaiting_handoff` when nothing needs an ack (a privileged change stays a `draft`
   until `submit` with `ack_privileged`, which also lands at `awaiting_handoff`). `awaiting_handoff` has no expiry.
-  `change.handoff = {mode, name, bundle_sha256, files, session_available, reason?}`; each target gains `new_sha`.
+  `change.handoff = {mode, name, bundle_sha256, files, session_available, reason?, commands:[{step:"plan"|"approve"|"apply", label, command}]}` (commands are built server-side so the UI never hard-codes CLI flags; `<plan_id>` placeholder until `mark_planned`; the bundle response carries the same `commands`); each target gains `new_sha`.
 - `GET /changes/{id}/bundle` -> `{name, note, files:[{path,content}], sha256}`: exactly the `POST /catalog/plans` body.
   Browser session only, `Cache-Control: no-store`. It carries full file content (may include env values): download or
   copy only, never Tesseract, mail, a prompt or a log. The UI shows `tether catalog plan --name "<name>" --file
