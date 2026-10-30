@@ -66,7 +66,7 @@ func checkFields(data json.RawMessage) (secret bool, err error) {
 // responseExtras are the only members a card response may carry beyond
 // kind and decision. assurance_evidence is written by the trusted path.
 var responseExtras = map[string]bool{
-	"note": true, "reply": true, "answers": true, "decisions": true, "payload": true, "assurance_evidence": true,
+	"note": true, "reply": true, "answers": true, "decisions": true, "payload": true, "assurance_evidence": true, "alternative_id": true,
 }
 
 // ValidateResponse is the hitl.Options.ValidateResponse check for card kinds.

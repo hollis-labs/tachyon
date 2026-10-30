@@ -294,6 +294,8 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Reply    string `json:"reply,omitempty"`
 			// Confirmation is the typed phrase an approval of a stored-high or cerberus item carries.
 			Confirmation string `json:"confirmation,omitempty"`
+			// AlternativeID chooses one of the item's alternatives instead of its main effects.
+			AlternativeID string `json:"alternative_id,omitempty"`
 			// Answers, Decisions and Payload are card-only; a card response
 			// is checked against the stored request before it is recorded.
 			Answers   json.RawMessage `json:"answers,omitempty"`
@@ -330,16 +332,25 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "unsupported_class", "This request cannot be decided here.")
 		return
 	}
-	if gate.Phrase != "" {
-		if !assurance.Satisfies(assurance.ParseLevel(participant.Assurance), assurance.ActionResolveHigh) {
+	if gate.Destructive || gate.Phrase != "" {
+		need := assurance.ActionResolveHigh
+		if gate.Destructive {
+			need = assurance.ActionDestructive
+		}
+		if !assurance.Satisfies(assurance.ParseLevel(participant.Assurance), need) {
 			fail(w, 403, "assurance_insufficient", "Enter your operator key to decide this request. "+ElevationCopy(session.ElevationTTL, session.ElevationExpiresAt))
 			return
 		}
-		if cmd.Response != nil && cmd.Response.Decision == "approved" && subtle.ConstantTimeCompare([]byte(strings.TrimSpace(cmd.Response.Confirmation)), []byte(gate.Phrase)) != 1 {
-			_ = i.Store.LogEvent(r.Context(), Event{EventID: "evt_" + item.ItemID + "_confirm_failed_" + strconv.FormatInt(time.Now().UnixNano(), 36), ItemID: item.ItemID, Kind: "confirmation_failed", ActorRef: participant.PrincipalRef, Assurance: participant.Assurance, Revision: item.Revision, ReasonCode: "phrase"})
-			fail(w, 422, "confirmation_required", "Type the confirmation phrase exactly.")
+	}
+	if cmd.Response != nil && cmd.Response.AlternativeID != "" {
+		if cmd.Response.Decision != "approved" || !slices.Contains(gate.Alternatives, cmd.Response.AlternativeID) {
+			writeHITLError(w, fmt.Errorf("%w: alternative_id must name one of the item's alternatives and goes with an approval", hitl.ErrInvalidRequest))
 			return
 		}
+	} else if gate.Phrase != "" && cmd.Response != nil && cmd.Response.Decision == "approved" && subtle.ConstantTimeCompare([]byte(strings.TrimSpace(cmd.Response.Confirmation)), []byte(gate.Phrase)) != 1 {
+		_ = i.Store.LogEvent(r.Context(), Event{EventID: "evt_" + item.ItemID + "_confirm_failed_" + strconv.FormatInt(time.Now().UnixNano(), 36), ItemID: item.ItemID, Kind: "confirmation_failed", ActorRef: participant.PrincipalRef, Assurance: participant.Assurance, Revision: item.Revision, ReasonCode: "phrase"})
+		fail(w, 422, "confirmation_required", "Type the confirmation phrase exactly.")
+		return
 	}
 	if class == "medium" && !assurance.Satisfies(assurance.ParseLevel(participant.Assurance), assurance.ActionResolveMedium) {
 		fail(w, 403, "assurance_insufficient", "Enter your operator key to decide this request. "+ElevationCopy(session.ElevationTTL, session.ElevationExpiresAt))
@@ -355,6 +366,9 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if cmd.Response.Reply != "" {
 		response.Extra["reply"], _ = json.Marshal(cmd.Response.Reply)
+	}
+	if cmd.Response.AlternativeID != "" {
+		response.Extra["alternative_id"], _ = json.Marshal(cmd.Response.AlternativeID)
 	}
 	for name, raw := range map[string]json.RawMessage{"answers": cmd.Response.Answers, "decisions": cmd.Response.Decisions, "payload": cmd.Response.Payload} {
 		if len(raw) == 0 {

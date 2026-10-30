@@ -59,3 +59,21 @@ arrive with the defer slice through the same broker (`approvals.Changes(db).Publ
 
 Changes are published after commit from `Store.Create`, `Store.Swap` and the trusted completion path.
 `scripts/approvals-sse-replay` (from A0) replays the stream.
+
+## Destructive requests, affected items and alternatives (A3b)
+
+Card requests (`card.approval`, through `card.ask`) may carry three members, validated and cleaned in
+`cards.Prepare` and covered by the `op_digest` (`cards.DigestOf`; a request without them digests exactly as before):
+
+- `affected_items: [{ref, label, kind, note?}]`, 1 to 200. The projection adds `affected_total`.
+- `destructive: {irreversible, summary}`. The server raises it when any effect op is `delete`, `purge`, `drop` or
+  `force_*` (and forces `irreversible: true`); the asker may raise it but never clear it. A destructive request is at
+  least class medium.
+- `alternatives: [{id, label, effects[]}]`, 0 to 3 (for example "Archive instead").
+
+Deciding a destructive item needs `operator-token` assurance for any decision (`resolve_destructive`). Approving it
+needs `response.confirmation` equal to the server phrase `DELETE <n> ITEMS` (`n` = affected total; the A3a
+`APPROVE ...` phrase when there are no affected items), or `response.alternative_id` naming one of its
+alternatives (approval only; otherwise 400). `cardfx` then runs the chosen alternative's effects instead of the main
+set, after re-verifying the digest, and records `alternative_id` on the receipt. Plain (non-card) approvals keep
+their existing behaviour.

@@ -180,4 +180,12 @@ func TestCardViewCarriesTheEffectsReceipt(t *testing.T) {
 	if done["receipt"].(map[string]any)["state"] != "completed" || done["receipt_pending"] != nil {
 		t.Fatalf("%v", done)
 	}
+	// A destructive ask carries its affected items and alternatives; the server raises the flag itself.
+	d := call("card.ask", `{"kind":"card.approval","title":"Purge","effects":[{"target":"torque:task/CW-1","op":"delete"}],"affected_items":[{"ref":"torque:task/CW-1","label":"CW-1","kind":"task"}],"alternatives":[{"id":"archive","label":"Archive instead","effects":[{"target":"torque:task/CW-1","op":"status","value":"archived"}]}]}`)
+	drec, _ := (&approvals.Store{DB: db}).Get(ctx, d["id"].(string))
+	var dreq hitl.EnqueueRequest
+	_ = json.Unmarshal(drec.Request, &dreq)
+	if !strings.Contains(string(dreq.Extra["destructive"]), `"irreversible":true`) || len(dreq.Extra["alternatives"]) == 0 || len(dreq.Extra["affected_items"]) == 0 {
+		t.Fatalf("%v", dreq.Extra)
+	}
 }

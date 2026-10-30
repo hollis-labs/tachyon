@@ -165,7 +165,10 @@ func (e *Executor) Execute(ctx context.Context, rec hitl.Record) error {
 	at := res.ResolvedAt
 	receipt.ApprovedAt = &at
 	rawEffects := req.Extra["effects"]
-	if len(rawEffects) == 0 || res.Response.Decision != "approved" {
+	var altID string
+	_ = json.Unmarshal(res.Response.Extra["alternative_id"], &altID)
+	receipt.Alternative = altID
+	if (len(rawEffects) == 0 && altID == "") || res.Response.Decision != "approved" {
 		return finish()
 	}
 	refuse := func(reason string) error {
@@ -173,14 +176,31 @@ func (e *Executor) Execute(ctx context.Context, rec hitl.Record) error {
 		return finish()
 	}
 
-	// The digest binds the approval to the exact change set; recompute it from
-	// what is stored rather than trusting the stored value.
-	want, err := cards.Digest(req.Kind, req.Extra["data"], rawEffects)
+	// The digest binds the approval to the exact change set, destructive flag, affected items and
+	// alternatives; recompute it from what is stored rather than trusting the stored value.
+	want, err := cards.DigestOf(req.Kind, req.Extra)
 	var stored string
 	_ = json.Unmarshal(req.Extra["op_digest"], &stored)
 	receipt.OpDigest = stored
 	if err != nil || want != stored {
 		return refuse("The stored change set no longer matches the approved digest.")
+	}
+	if altID != "" {
+		// The operator chose an alternative: run its effects, not the main set.
+		var alts []struct {
+			ID      string          `json:"id"`
+			Effects json.RawMessage `json:"effects"`
+		}
+		_ = json.Unmarshal(req.Extra["alternatives"], &alts)
+		rawEffects = nil
+		for _, a := range alts {
+			if a.ID == altID {
+				rawEffects = a.Effects
+			}
+		}
+		if len(rawEffects) == 0 {
+			return refuse(fmt.Sprintf("The chosen alternative %q is not part of the approved request.", altID))
+		}
 	}
 	effects, err := parseEffects(rawEffects)
 	if err != nil {

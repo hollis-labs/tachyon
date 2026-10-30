@@ -255,7 +255,15 @@ func (r *Registry) Prepare(req *hitl.EnqueueRequest, verifiedApp string) error {
 	}
 	req.Extra["class"], _ = json.Marshal(class)
 
-	digest, err := Digest(req.Kind, data, effects)
+	if err := normalizeDestructive(req); err != nil {
+		return err
+	}
+	if req.Extra["destructive"] != nil {
+		// A destructive request is never low risk.
+		class = maxClass(class, "medium")
+		req.Extra["class"], _ = json.Marshal(class)
+	}
+	digest, err := DigestOf(req.Kind, req.Extra)
 	if err != nil {
 		return fmt.Errorf("%w: data is not canonicalizable", hitl.ErrInvalidRequest)
 	}
