@@ -293,7 +293,14 @@ describe("transcript dashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to sessions" }))
     await waitFor(() => expect(screen.queryByLabelText("Transcript reader")).toBeNull())
   })
-  it("offers content search only when the bridge says it exists and shows snippets as text", async () => {
+  it("does not request /status while the backend has no such route (TR1)", async () => {
+    read.mockResolvedValue(snapshot)
+    render(<TranscriptDashboard />)
+    await screen.findByText(/partial snapshot/)
+    expect(read.mock.calls.map((c) => c[0])).not.toContain("/status")
+  })
+  // Re-enable with useSearchStatus when TR1 ships /transcripts/status.
+  it.skip("offers content search only when the bridge says it exists and shows snippets as text", async () => {
     read.mockImplementation((path: string) => {
       if (path === "/snapshot") return Promise.resolve(snapshot)
       if (path === "/status")
