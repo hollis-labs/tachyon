@@ -1,6 +1,6 @@
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@hollis-labs/design-components'
+import { Button, Sheet, SheetContent, SheetDescription, SheetTitle, Textarea } from '@hollis-labs/design-components'
+import { X } from 'lucide-react'
 import { useState } from 'react'
-import { Btn } from '../../agents/ui'
 import type { ReviewVerdict } from '../types'
 import { LABEL } from './Comments'
 import type { PendingComment, WriteResult } from './useWorkspace'
@@ -12,13 +12,15 @@ const OPTIONS: { value: ReviewVerdict; label: string; hint: string }[] = [
 ]
 
 export interface ReviewPanelProps {
+  /** Short PR reference shown beside the title, e.g. tether#507. */
+  prLabel: string
   pending: PendingComment[]
   onSubmit: (v: { verdict: ReviewVerdict; body?: string }) => Promise<WriteResult>
   onUnqueue: (id: string) => void
   onClose: () => void
 }
 
-export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPanelProps) {
+export function ReviewPanel({ prLabel, pending, onSubmit, onUnqueue, onClose }: ReviewPanelProps) {
   const [verdict, setVerdict] = useState<ReviewVerdict>('comment')
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
@@ -38,52 +40,58 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
 
   return (
     <Sheet open onOpenChange={(open) => { if (!open && !busy) onClose() }}>
-    <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-4 sm:max-w-md" aria-label="Submit review" data-testid="forge-review-panel">
-      <SheetTitle className="mb-1 font-sans text-base font-semibold normal-case tracking-normal text-fg">Finish your review</SheetTitle>
-      <SheetDescription className="mb-3 dash-support text-fg-muted">Inline comments you queued are kept if you close this and come back.</SheetDescription>
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={3}
-        placeholder="Leave a review summary…"
-        aria-label="Review summary"
-        disabled={busy}
-        className="mb-3 w-full resize-y border border-border bg-bg px-2 py-1.5 text-[13px] text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none"
-      />
-      <fieldset className="mb-3 space-y-1.5" disabled={busy}>
-        <legend className="sr-only">Review verdict</legend>
-        {OPTIONS.map((o) => (
-          <label key={o.value} className="flex cursor-pointer items-start gap-2 text-[13px]">
-            <input type="radio" name="verdict" value={o.value} checked={verdict === o.value} onChange={() => setVerdict(o.value)} className="mt-1 accent-primary" />
-            <span>
-              <span className="text-fg">{o.label}</span>
-              <span className="ml-2 text-[12px] text-fg-faint">{o.hint}</span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
-      {pending.length > 0 && (
-        <div className="mb-3">
-          <p className={`${LABEL} mb-1`}>{pending.length} pending inline comment{pending.length === 1 ? '' : 's'}</p>
-          <ul className="divide-y divide-border border-y border-border">
-            {pending.map((p) => (
-              <li key={p.id} className="flex items-baseline gap-2 py-1.5 text-[12px]">
-                <span className="shrink-0 font-mono text-fg-faint">{p.path}:{p.line}</span>
-                <span className="min-w-0 flex-1 truncate text-fg">{p.body}</span>
-                <button type="button" onClick={() => onUnqueue(p.id)} className="font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-danger">Discard</button>
-              </li>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md" aria-label="Submit review" data-testid="forge-review-panel">
+        <header className="flex items-baseline gap-2 border-b border-border px-4 py-3 pr-12">
+          <SheetTitle className="font-sans text-control font-semibold normal-case tracking-normal text-fg">Review</SheetTitle>
+          <SheetDescription className="font-mono text-caption text-fg-muted">{prLabel}</SheetDescription>
+        </header>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+          <fieldset className="space-y-2" disabled={busy}>
+            <legend className="sr-only">Review verdict</legend>
+            {OPTIONS.map((o) => (
+              <label key={o.value} className={`flex cursor-pointer items-start gap-3 rounded border border-border px-3 py-2.5 ${verdict === o.value ? 'bg-surface-hover' : 'hover:bg-surface/40'}`}>
+                <input type="radio" name="verdict" value={o.value} checked={verdict === o.value} onChange={() => setVerdict(o.value)} className="mt-1 accent-primary" />
+                <span className="min-w-0">
+                  <span className="block text-control font-medium text-fg">{o.label}</span>
+                  <span className="block text-xs text-fg-muted">{o.hint}</span>
+                </span>
+              </label>
             ))}
-          </ul>
+          </fieldset>
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={4}
+            placeholder="Review summary (required with queued comments off)…"
+            aria-label="Review summary"
+            disabled={busy}
+            className="w-full resize-y text-control"
+          />
+          {pending.length > 0 && (
+            <div>
+              <h3 className={`${LABEL} mb-2`}>Queued inline comments · {pending.length}</h3>
+              <ul className="divide-y divide-border rounded border border-border">
+                {pending.map((p) => (
+                  <li key={p.id} className="flex items-start gap-2 px-3 py-2">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-xs font-medium text-fg">{p.path}:{p.line}</span>
+                      <span className="block text-xs text-fg-muted">{p.body}</span>
+                    </span>
+                    <Button variant="outline" size="icon-xs" aria-label={`Discard comment on ${p.path}:${p.line}`} onClick={() => onUnqueue(p.id)}><X className="size-3" /></Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {needsText && <p className="text-xs text-fg-muted">Requesting changes needs a summary or at least one inline comment.</p>}
+          {error && <p className="text-xs text-danger" role="alert">{error}</p>}
+          <p className="text-xs text-fg-muted">Posts to the forge as the token owner. Drafts and queued comments are kept if you close this panel.</p>
         </div>
-      )}
-      {needsText && <p className="mb-2 text-[12px] text-fg-muted">Requesting changes needs a summary or at least one inline comment.</p>}
-      {error && <p className="mb-2 text-[12px] text-danger" role="alert">{error}</p>}
-      <div className="flex items-center gap-2">
-        <span className="mr-auto font-mono text-[10px] text-fg-faint">You will be asked to confirm your identity.</span>
-        <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
-        <Btn tone="primary" onClick={() => void submit()} disabled={busy || blocked}>{busy ? 'Submitting…' : 'Submit review'}</Btn>
-      </div>
-    </SheetContent>
+        <footer className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button size="sm" onClick={() => void submit()} disabled={busy || blocked}>{busy ? 'Submitting…' : 'Submit review'}</Button>
+        </footer>
+      </SheetContent>
     </Sheet>
   )
 }

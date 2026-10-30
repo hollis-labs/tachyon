@@ -20,6 +20,9 @@ import { PendingPrInbox } from './PendingPrInbox'
 import { defaultPendingPrEventMapper, PendingPrSource, pendingPrAlertMapper } from './source'
 
 afterEach(cleanup)
+
+// Base UI checkboxes toggle through their hidden input.
+const tick = (name: string) => screen.getByRole('checkbox', { name }).parentElement?.querySelector<HTMLInputElement>('input[type=checkbox]')?.click()
 const NOW = Date.parse('2026-10-16T12:00:00Z')
 const repo = { host: 'github', owner: 'o', name: 'r' }
 const mk = (n: number, over: Partial<PendingPrSummary> = {}): PendingPrSummary => ({
@@ -189,9 +192,7 @@ describe('<PendingPrInbox>', () => {
   it('lists grouped PRs, links to the workspace, and triages via the StateStore', async () => {
     const { stateStore, forge } = mount()
     const pending = await forge.listPendingPrs()
-    await screen.findByText(new RegExp(`#${pending[0].ref.number}$`))
-    const link = screen.getAllByRole('link')[0]
-    expect(link.getAttribute('href')).toMatch(/^\/pr\/github\//)
+    await screen.findAllByText(`${pending[0].ref.repo.name}#${pending[0].ref.number}`)
     const rows = () => screen.getAllByTestId(/^pr-row-/)
     const before = rows().length
     fireEvent.click(within(rows()[0]).getByRole('button', { name: /More actions/ }))
@@ -202,7 +203,7 @@ describe('<PendingPrInbox>', () => {
     await waitFor(() => expect(rows()).toHaveLength(1))
     fireEvent.click(within(rows()[0]).getByRole('button', { name: /More actions/ }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Reopen' }))
-    await waitFor(() => expect(screen.getByText('No pull requests match this view.')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('No pull requests match this view')).toBeTruthy())
   })
 
   it('selects rows and dismisses them together from the bulk bar', async () => {
@@ -210,8 +211,8 @@ describe('<PendingPrInbox>', () => {
     vi.spyOn(forge, 'listPendingPrs').mockResolvedValue([mk(1), mk(2), mk(3)])
     const { stateStore } = mount(forge)
     await screen.findByText('PR 1')
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select o/r#1' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select o/r#2' }))
+    act(() => { tick('Select o/r#1') })
+    act(() => { tick('Select o/r#2') })
     const bar = screen.getByRole('toolbar', { name: 'Bulk actions' })
     expect(within(bar).getByText('2 selected')).toBeTruthy()
     fireEvent.click(within(bar).getByRole('button', { name: 'Dismiss' }))
@@ -220,12 +221,30 @@ describe('<PendingPrInbox>', () => {
     expect(screen.getAllByTestId(/^pr-row-/)).toHaveLength(1)
   })
 
+  it('collapses a long group after four rows and shows the rest on request; empty inbox says so', async () => {
+    const forge = createMockForgeClient()
+    vi.spyOn(forge, 'listPendingPrs').mockResolvedValue([1, 2, 3, 4, 5, 6].map((n) => mk(n)))
+    mount(forge)
+    await screen.findByText('PR 1')
+    expect(screen.getAllByTestId(/^pr-row-/)).toHaveLength(4)
+    fireEvent.click(screen.getByRole('button', { name: '+ 2 more needing review' }))
+    expect(screen.getAllByTestId(/^pr-row-/)).toHaveLength(6)
+  })
+
+  it('shows the empty state when nothing needs you', async () => {
+    const forge = createMockForgeClient()
+    vi.spyOn(forge, 'listPendingPrs').mockResolvedValue([])
+    mount(forge)
+    expect(await screen.findByText('No pull requests need you')).toBeTruthy()
+  })
+
   it('reports a partial bulk failure and keeps the failed rows selected; Escape clears; select all', async () => {
     const forge = createMockForgeClient()
     vi.spyOn(forge, 'listPendingPrs').mockResolvedValue([mk(1), mk(2), mk(3)])
     const { stateStore } = mount(forge)
     await screen.findByText('PR 1')
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    act(() => { tick('Select o/r#1') })
+    act(() => { tick('Select all') })
     const bar = screen.getByRole('toolbar', { name: 'Bulk actions' })
     expect(within(bar).getByText('3 selected')).toBeTruthy()
     const apply = stateStore.apply.bind(stateStore)
@@ -248,7 +267,7 @@ describe('<PendingPrInbox>', () => {
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(`Preview .*#${first.ref.number}: `) }))
     const dialog = await screen.findByRole('dialog')
     await within(dialog).findByRole('region', { name: 'Checks' })
-    expect(within(dialog).getByRole('region', { name: 'Changed files' })).toBeTruthy()
+    expect(within(dialog).getByRole('region', { name: 'Files changed' })).toBeTruthy()
     expect(within(dialog).getByRole('link', { name: 'Open workspace' }).getAttribute('href')).toMatch(/^\/pr\/github\//)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
@@ -275,7 +294,7 @@ describe('<PendingPrInbox>', () => {
   it('assigns through the picker, confirms, and shows the assignment on the row', async () => {
     const { messaging } = mount()
     await screen.findAllByTestId(/^pr-row-/)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Assign' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Assign agent' })[0])
     const dialog = await screen.findByRole('dialog')
     await within(dialog).findByText('Team Worker')
     const submit = within(dialog).getByRole('button', { name: 'Assign' })

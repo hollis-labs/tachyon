@@ -198,6 +198,9 @@ export interface PendingPrSummary {
   updatedAt: string
   additions?: number
   deletions?: number
+  /** Draft PRs show a Draft chip in the inbox. */
+  draft?: boolean
+  changedFiles?: number
   url?: string
 }
 

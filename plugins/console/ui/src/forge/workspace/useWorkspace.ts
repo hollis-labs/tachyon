@@ -34,6 +34,8 @@ export interface WriteResult {
 export interface Workspace {
   load: WorkspaceLoad
   reload(): void
+  /** When the data last arrived (ms). */
+  loadedAt: number
   /** Optimistic placeholders currently being posted. */
   posting: ForgeComment[]
   /** Review comments queued for the next review submission. */
@@ -53,6 +55,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
   const key = prKey(ref)
   const [state, setState] = useState<{ key: string; load: WorkspaceLoad }>({ key, load: { status: 'loading' } })
   const [version, setVersion] = useState(0)
+  const [loadedAt, setLoadedAt] = useState(() => Date.now())
   const [posting, setPosting] = useState<ForgeComment[]>([])
   const [pending, setPending] = useState<PendingComment[]>([])
   const { host, owner, name } = ref.repo
@@ -63,7 +66,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
     let live = true
     const epoch = readEpoch.current
     Promise.all([client.getPr(stable), client.getDiff(stable), client.listCommits(stable), client.listComments(stable)]).then(
-      ([pr, files, commits, comments]) => live && epoch === readEpoch.current && setState({ key, load: { status: 'ready', data: { pr, files, commits, comments } } }),
+      ([pr, files, commits, comments]) => { if (live && epoch === readEpoch.current) { setState({ key, load: { status: 'ready', data: { pr, files, commits, comments } } }); setLoadedAt(Date.now()) } },
       (e: unknown) =>
         live && epoch === readEpoch.current && setState({ key, load: { status: 'error', message: e instanceof Error ? e.message : String(e), code: (e as { code?: string })?.code } }),
     )
@@ -137,6 +140,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
   return {
     mergePr,
     load,
+    loadedAt,
     reload: () => { void refreshPageData().then(() => setVersion((v) => v + 1)) },
     posting,
     pending,
