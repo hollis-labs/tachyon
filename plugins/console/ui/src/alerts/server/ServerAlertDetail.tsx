@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Pill } from '@hollis-labs/design-components'
+import { Button, Textarea, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Pill } from '@hollis-labs/design-components'
 import { X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { ago } from '@console/lib/agent-activity'
 import { Linkified } from '../../autolink'
 import { approvalClient, type ApprovalClient } from '../../approvals/client'
@@ -9,6 +10,7 @@ import { DecisionDetail } from '../../approvals/detail'
 import { useRestoreFocus } from '../../shell/restore-focus'
 import { AlertIcon } from '../AlertIcon'
 import { Chip } from '../../components/chip'
+import { Keycap } from '../../components/keycap'
 import { AlertLinkButton } from '../AlertLinkButton'
 import { useAlertsController } from '../context'
 import { safeHref } from '../policy'
@@ -16,11 +18,11 @@ import { SEVERITY_STYLE } from '../severity-style'
 import { createAlertsClient, type AlertsClient } from './client'
 import type { ServerAlertDetail as Detail } from './types'
 
+const MAX_LINKED = 4
 const H = 'font-mono dash-caption uppercase tracking-label text-fg-faint'
 const SNOOZES = [
   { label: '15 minutes', ms: 15 * 60_000 },
   { label: '1 hour', ms: 3_600_000 },
-  { label: '4 hours', ms: 4 * 3_600_000 },
 ]
 
 /** ms until 09:00 tomorrow, local time. */
@@ -50,6 +52,9 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
   const [client] = useState(() => clientProp ?? createAlertsClient())
   const [detail, setDetail] = useState<Detail | null>(null)
   const [failed, setFailed] = useState(false)
+  // What this visit just did, so the footer can offer Undo instead of a generic Restore.
+  const [did, setDid] = useState<string | null>(null)
+  const [settling, setSettling] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const entry = c.entries.find((e) => e.alert.id === id)
   const onClose = () => c.expand(null)
@@ -80,6 +85,11 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
       onClose()
       return
     }
+    if ((e.key === 'd' || e.key === 'D') && !e.metaKey && !e.ctrlKey && !e.altKey && !(e.target as HTMLElement).closest('input, textarea, select, [contenteditable], [role="menuitem"]') && !closed && !handled && !approval) {
+      e.preventDefault()
+      dismiss()
+      return
+    }
     if (e.key !== 'Tab') return
     const f = ref.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')
     if (!f?.length) return
@@ -94,11 +104,15 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
     }
   }
 
-  const handleItems = [
-    ...SNOOZES.map((x) => ({ label: `Snooze ${x.label}`, run: () => c.snooze(id, x.ms) })),
-    { label: 'Snooze until tomorrow 09:00', run: () => c.snooze(id, untilTomorrow(c.now)) },
-    ...(c.settle ? [{ label: 'Mark handled', run: () => c.settle?.(id) }] : []),
-    { label: 'Dismiss', run: () => { c.dismiss(id); onClose() } },
+  const act = (label: string, run: () => void) => () => { run(); setDid(label) }
+  const dismiss = act('Dismissed', () => c.dismiss(id))
+  const linkedRef = detail?.linked[0]
+  const handleItems: { label: string; run: () => void; key?: string }[] = [
+    ...SNOOZES.map((x) => ({ label: `Snooze ${x.label}`, run: act(`Snoozed ${x.label}`, () => c.snooze(id, x.ms)) })),
+    { label: 'Snooze until tomorrow 09:00', run: act('Snoozed until tomorrow', () => c.snooze(id, untilTomorrow(c.now))) },
+    ...(c.deferUntilChange && linkedRef ? [{ label: 'Defer until this changes…', run: act('Deferred until it changes', () => c.deferUntilChange?.(id, { kind: linkedRef.kind, ref: linkedRef.ref })) }] : []),
+    ...(c.settle ? [{ label: 'Settle with a note…', run: () => setSettling('') }] : []),
+    { label: 'Dismiss', run: dismiss, key: 'D' },
   ]
   const showActions = !(approval && !closed)
 
@@ -139,16 +153,14 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
             {alert.detail && <p className="break-words dash-control text-fg-muted"><Linkified text={alert.detail} /></p>}
           </section>
 
-          {approval &&
-            (approval.provider_handoff ? (
-              <section aria-label="Approval" className="px-4 pb-4">
-                <p className="rounded border border-border bg-surface/40 p-3 dash-support text-fg-muted">Approved through the provider. Nothing to decide here.</p>
-              </section>
-            ) : (
-              <section aria-label="Decision" className="border-y border-border-subtle">
-                <DecisionDetail id={approval.item_id} client={approvals} onChanged={() => { void queue?.refresh(true); load() }} />
-              </section>
-            ))}
+          {approval && (
+            <section aria-label="Decision" className="border-y border-border-subtle">
+              <DecisionDetail id={approval.item_id} client={approvals} onChanged={() => { void queue?.refresh(true); load() }} />
+              <p className="px-4 pb-3 dash-support text-fg-muted">
+                <Link to={`/approvals?item=${encodeURIComponent(approval.item_id)}`} onClick={onClose} className="underline decoration-fg-faint hover:decoration-fg-secondary">Open full view in Approvals</Link>
+              </p>
+            </section>
+          )}
 
           {failed && !detail && <p role="status" className="px-4 py-3 dash-support text-fg-muted">Could not load the details. <button type="button" className="underline" onClick={load}>Try again</button></p>}
 
@@ -173,22 +185,16 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
             <section aria-label="Linked" className="px-4 pb-4">
               <h3 className={H}>Linked</h3>
               <ul className="mt-2 flex flex-wrap items-center gap-2">
-                {detail?.linked.map((s) => {
-                  const href = safeHref(s.url)
-                  const text = s.label && s.label !== s.ref ? s.label : s.ref
-                  return (
-                    <li key={`${s.kind}:${s.ref}`}>
-                      <Chip className="py-0.5">
-                        <span className="text-fg-faint">{s.kind}</span>
-                        {href ? (
-                          <a href={href} className="underline decoration-fg-faint hover:decoration-fg-secondary" {...(href.startsWith('/') ? {} : { target: '_blank', rel: 'noopener noreferrer' })}>{text}</a>
-                        ) : (
-                          <Linkified text={text} />
-                        )}
-                      </Chip>
-                    </li>
-                  )
-                })}
+                {detail?.linked.slice(0, MAX_LINKED).map((s) => (
+                  <li key={`${s.kind}:${s.ref}`}>
+                    {/* A plain label: a link to a thing may not be reachable or allowed from here. */}
+                    <Chip tone="faint" className="py-0.5">
+                      <span className="text-fg-faint">{s.kind}</span>
+                      <Linkified text={s.label && s.label !== s.ref ? s.label : s.ref} />
+                    </Chip>
+                  </li>
+                ))}
+                {(detail?.linked.length ?? 0) > MAX_LINKED && <li className="dash-support text-fg-muted">{(detail?.linked.length ?? 0) - MAX_LINKED} more</li>}
               </ul>
             </section>
           )}
@@ -210,15 +216,33 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
           )}
         </div>
 
+        {settling !== null && (
+          <form
+            aria-label="Settle with a note"
+            className="space-y-2 border-t border-border-subtle px-4 py-3"
+            onSubmit={(e) => { e.preventDefault(); c.settle?.(id, settling.trim() || undefined); setDid('Settled'); setSettling(null) }}
+          >
+            <Textarea aria-label="Note" autoFocus rows={2} value={settling} onChange={(e) => setSettling(e.target.value)} placeholder="What was done?" />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSettling(null)}>Cancel</Button>
+              <Button type="submit" size="sm">Settle</Button>
+            </div>
+          </form>
+        )}
+        {did && <p role="status" className="px-4 pb-1 dash-support text-fg-muted">{did}.</p>}
         <footer role="toolbar" aria-label="Alert actions" className="flex items-center gap-2 border-t border-border-subtle px-4 py-3">
           {alert.primary && <AlertLinkButton link={alert.primary} onFollow={onClose} />}
-          {showActions && (closed || status === 'snoozed' ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => c.restore(id)}>{closed ? 'Restore' : 'Bring back now'}</Button>
+          {showActions && (closed || status === 'snoozed' || did ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => { c.restore(id); setDid(null) }}>{did ? 'Undo' : closed ? 'Restore' : 'Bring back now'}</Button>
           ) : (
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Handle" />}>Handle ▾</DropdownMenuTrigger>
               <DropdownMenuContent aria-label="Handle" align="start" data-dashboard-shape="square" className="w-60">
-                {handleItems.map((h) => <DropdownMenuItem key={h.label} onClick={h.run}>{h.label}</DropdownMenuItem>)}
+                {handleItems.map((h) => (
+                  <DropdownMenuItem key={h.label} onClick={h.run} className="justify-between">
+                    {h.label}{h.key && <Keycap>{h.key}</Keycap>}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           ))}
