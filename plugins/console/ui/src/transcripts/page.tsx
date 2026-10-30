@@ -8,6 +8,7 @@ import { Activity, BarChart3, Boxes, FileText, RefreshCw } from "lucide-react"
 import { Segmented } from "../components/segmented"
 import { TranscriptReader } from "./detail"
 import { SessionFilters, SessionList, WindowPicker } from "./sessions"
+import { ContentSearch, useSearchStatus } from "./search"
 import {
   read,
   filterSessions,
@@ -71,6 +72,9 @@ export function TranscriptDashboard() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filters>(defaults)
   const [selected, setSelected] = useState<Session>()
+  const status = useSearchStatus()
+  const canSearch = status?.capabilities?.search === true
+  const [searchMode, setSearchMode] = useState<"meta" | "content">("meta")
   const [activeId, setActiveId] = useState("")
   const [tab, setTab] = useState<Tab>("sessions")
   const [filteredTo, setFilteredTo] = useState("")
@@ -391,6 +395,27 @@ export function TranscriptDashboard() {
             ref={listPane}
             className={`${selected ? "max-md:hidden" : ""} flex min-h-0 w-full flex-col overflow-auto md:w-[26rem] md:shrink-0 md:border-r md:border-border`}
           >
+            {canSearch && (
+              <Segmented<"meta" | "content">
+                label="Search in"
+                value={searchMode}
+                onChange={setSearchMode}
+                items={[
+                  { value: "meta", label: "Titles and metadata" },
+                  { value: "content", label: "Content" },
+                ]}
+              />
+            )}
+            {canSearch && searchMode === "content" ? (
+              <ContentSearch
+                filter={filter}
+                modes={status?.modes ?? ["text"]}
+                activeId={activeId}
+                onActive={setActiveId}
+                onOpen={open}
+              />
+            ) : (
+              <>
             <div className="px-4 py-3">
               <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} />
             </div>
@@ -424,6 +449,8 @@ export function TranscriptDashboard() {
                   </>
                 )}
               </div>
+            )}
+              </>
             )}
           </div>
           {selected && (
