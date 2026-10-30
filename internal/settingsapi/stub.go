@@ -240,10 +240,6 @@ func (s *Stub) operatorKey(group string, keys []string) string {
 	return ""
 }
 
-func methods(available bool) []Method {
-	return []Method{{MethodOperatorToken, true}, {MethodPassword, available}, {MethodPasskey, available}}
-}
-
 // access builds the extended /access body for the current state or the X-Stub-Scenario override.
 func (s *Stub) access(r *http.Request) Access {
 	now := s.now()
