@@ -195,6 +195,18 @@ export function DecisionDetail({
     })
   }
   const request = item?.request_snapshot
+  // A and D act only while focus is on a button in the decision bar, never in a field. A high-risk
+  // approval still goes through the typed phrase.
+  function onBarKey(e: React.KeyboardEvent) {
+    if (e.metaKey || e.ctrlKey || e.altKey || !(e.target instanceof HTMLButtonElement)) return
+    const k = e.key.toLowerCase()
+    if (k !== "a" && k !== "d") return
+    if (!request || !(request.kind === "approval" || request.kind === "card.approval") || !canDecide || choice) return
+    e.preventDefault()
+    if (k === "d") decideOrHold("denied")
+    else if (request.class === "high") setChoice("approved")
+    else decideOrHold("approved")
+  }
   // High-risk requests are approvable here, gated by a typed phrase (the server still enforces).
   const needsPhrase = request?.class === "high"
   const card = !!request && isCard(request)
@@ -310,7 +322,7 @@ export function DecisionDetail({
         )}
       </div>
       {/* Decision bar: fixed at the bottom of the detail. */}
-      <div role="toolbar" aria-label="Decision" className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-border bg-bg p-4">
+      <div role="toolbar" aria-label="Decision" onKeyDown={onBarKey} className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-border bg-bg p-4">
         {request && (<>
             {resolution ? (
               <section className="rounded border border-border bg-surface/40 p-4">
@@ -449,23 +461,30 @@ export function DecisionDetail({
                     )}
                   </div>
                 )}
-                {item && isPending(item) && !isExpired(item) && (
-                  item.deferred_until ? (
-                    <p className="flex items-center gap-2 dash-control text-fg-muted">
+                {item && isPending(item) && !isExpired(item) && (() => {
+                  const expiry = request.expires_at ? Date.parse(request.expires_at) : undefined
+                  // A snoozed item must not expire unnoticed: offer only presets that end first.
+                  const presets = DEFER_PRESETS.filter((p) => expiry === undefined || Date.now() + p.seconds * 1000 < expiry)
+                  const dueBefore = expiry !== undefined && item.deferred_until && expiry < Date.parse(item.deferred_until)
+                  return item.deferred_until ? (
+                    <p className="flex flex-wrap items-center gap-2 dash-control text-fg-muted">
                       Snoozed until {new Date(item.deferred_until).toLocaleString()}.
+                      {dueBefore && <span>Expires before this ends.</span>}
                       <Button variant="outline" size="sm" disabled={busy} onClick={() => void bringBack()}>Bring back now</Button>
                     </p>
-                  ) : (
+                  ) : presets.length ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" disabled={busy || !ready} aria-label="Decide later" />}>Decide later</DropdownMenuTrigger>
                       <DropdownMenuContent aria-label="Decide later" align="start" data-dashboard-shape="square" className="w-40">
-                        {DEFER_PRESETS.map((p) => (
+                        {presets.map((p) => (
                           <DropdownMenuItem key={p.label} onClick={() => void defer(p.seconds)}>{p.label}</DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
+                  ) : (
+                    <p className="dash-control text-fg-muted">Expires soon, so it cannot be snoozed.</p>
                   )
-                )}
+                })()}
                 <p className="dash-support text-fg-faint">
                   Records your decision for the requesting application.
                   Execution and credential permissions are checked by that
