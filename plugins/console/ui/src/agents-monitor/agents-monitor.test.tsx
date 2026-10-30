@@ -71,11 +71,12 @@ describe('filters', () => {
 })
 
 describe('session body', () => {
-  it('omits what is unknown instead of printing placeholders', () => {
+  it('shows n/a, never a zero, for what is unknown', () => {
     const { rerender } = render(<SessionCards sessions={[session({ id: 'a' })]} now={0} onSelect={() => undefined} />)
-    for (const t of ['no activity yet', 'context unknown']) expect(screen.queryByText(t)).toBeNull()
-    expect(screen.queryByText(/^up /)).toBeNull()
+    expect(screen.getAllByText('n/a').length).toBeGreaterThan(0)
+    expect(screen.queryByText('0%')).toBeNull()
+    expect(screen.queryByText(/^up 0/)).toBeNull()
     rerender(<SessionCards sessions={[session({ id: 'a', runtime_ms: 120000, context: { used: 1, window: 2, pct: 50, source: 'stream', breakdown: null } })]} now={0} onSelect={() => undefined} />)
-    expect(screen.getByRole('progressbar')).toBeTruthy()
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('50')
   })
 })
