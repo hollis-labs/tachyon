@@ -92,6 +92,34 @@ export const TEXT = {
   doneSummarySkip: 'Skip',
   mentionLabel: 'Mention a theme',
   keysHint: '/ palette · N new · L link · B board · M timeline · P pin · F finish · G then T/S/R/I/D/K/X lens',
+  lensEmpty: (lens: string) => `Nothing in ${lens} yet. Press / to add one`,
+  noMatch: 'Nothing matches',
+  streamTasks: 'Open tasks',
+  streamNoTasks: 'No open tasks',
+  streamNote: 'Tasks come from Torque',
+  horizon: 'Horizon',
+  horizonLabel: 'Roadmap horizon',
+  notes: 'Notes',
+  notesSaved: 'Saved',
+  promoteTo: 'Promote to',
+  promoteSoon: 'Promoting an idea needs a backend step that does not exist yet',
+  optionsGroup: 'Options',
+  chooseButton: 'Choose',
+  chooseOption: (label: string) => `Choose ${label}`,
+  recommended: 'Recommended',
+  chosen: 'Chosen',
+  pros: 'Pros',
+  cons: 'Cons',
+  noOptions: 'No options yet',
+  severity: 'Severity',
+  mitigatedBy: 'Related',
+  triageCount: (n: number) => `${n} to triage`,
+  allTriaged: 'All triaged',
+  triageInto: 'Triage into',
+  dismiss: 'Dismiss',
+  nextUp: (t: string) => `Next: ${t}`,
+  changed: 'This changed; reloaded',
+  promoted: (id: string) => `Promoted to ${id}`,
 } as const
 
 export const LINK_KINDS = [
@@ -110,4 +138,12 @@ export const FACETS = [
   { id: 'blockers', label: 'Blockers' },
   { id: 'comments', label: 'Comments' },
   { id: 'workstreams', label: 'Workstreams' },
+] as const
+
+/** Where an inbox card can go, with its one-key shortcut. */
+export const TRIAGE_ROUTES = [
+  { id: 'themes', label: 'Theme', key: 't' },
+  { id: 'ideas', label: 'Idea', key: 'i' },
+  { id: 'decisions', label: 'Decision', key: 'd' },
+  { id: 'risks', label: 'Risk', key: 'k' },
 ] as const
