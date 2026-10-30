@@ -199,7 +199,7 @@ func (f Facts) subject(state string, expired, deferred, operator bool) approvals
 }
 
 // Projection is the set of fields added to each item. Fields whose slice has not
-// landed (destructive/confirm/alternatives, evidence, run_state, defer) are absent,
+// landed (defer) are absent,
 // not faked.
 type Projection struct {
 	Kind          string
@@ -222,6 +222,9 @@ type Projection struct {
 	Gate          Gate
 	// Destructive-request members, as stored (and digested) by the card validator.
 	AffectedItems, Destructive, Alternatives json.RawMessage
+	// Evidence is the stored (digest-covered) ref list. RunState is joined at read time: none|waiting|approved|starting|running|succeeded|failed|refused|expired.
+	Evidence json.RawMessage
+	RunState string
 }
 
 // Project builds the projection of a record at now. batchable and batch_blockers
@@ -251,7 +254,7 @@ func Project(rec hitl.Record, now time.Time, deferredUntil *time.Time) Projectio
 		SessionRef: f.SessionRef, AskedAt: rec.CreatedAt, Risk: f.Risk, RiskReasons: reasons, Group: f.Group,
 		Batchable: len(blockers) == 0, BatchBlockers: blockers, EffectClasses: classes, ExpiresAt: rec.ExpiresAt,
 		ServerNowMs: now.UnixMilli(), Recommend: f.Recommend, ReasonReq: f.ReasonReq, DeferredUntil: deferredUntil, Gate: CanResolve(rec, now),
-		AffectedItems: stored.Extra["affected_items"], Destructive: stored.Extra["destructive"], Alternatives: stored.Extra["alternatives"]}
+		AffectedItems: stored.Extra["affected_items"], Destructive: stored.Extra["destructive"], Alternatives: stored.Extra["alternatives"], Evidence: stored.Extra["evidence"], RunState: "none"}
 }
 
 func (p Projection) fields() map[string]any {
@@ -276,6 +279,8 @@ func (p Projection) fields() map[string]any {
 	m["affected_total"] = affectedCount(p.AffectedItems)
 	m["destructive"] = rawOr(p.Destructive, "null")
 	m["alternatives"] = rawOr(p.Alternatives, "[]")
+	m["evidence"] = rawOr(p.Evidence, "[]")
+	m["run_state"] = p.RunState
 	m["approvable"] = p.Gate.Approvable
 	if !p.Gate.Approvable {
 		m["approvable_reason"] = p.Gate.Reason

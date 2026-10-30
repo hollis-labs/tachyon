@@ -258,6 +258,9 @@ func (r *Registry) Prepare(req *hitl.EnqueueRequest, verifiedApp string) error {
 	if err := normalizeDestructive(req); err != nil {
 		return err
 	}
+	if err := normalizeEvidence(req); err != nil {
+		return err
+	}
 	if req.Extra["destructive"] != nil {
 		// A destructive request is never low risk.
 		class = maxClass(class, "medium")
