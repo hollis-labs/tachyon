@@ -85,3 +85,16 @@ open, one pattern each, and win over the stub's subtree. Reads need an operator 
   resolves somewhere invalid is dropped. `owner_only` is true for world-writable roots: V2 serves only files
   owned by the service user from them. `path_display` is `~`-relative under the service user's home.
 - `fileview.BuiltinDeny` lists the always-denied basename globs for V2; `deny_extra` only adds to it.
+
+## Path guard (V2)
+
+`fileview.Guard` is the only code that reads the host disk for the viewer. `Resolve(ctx, path)` returns the resolved path, its root and relative path, or a `Denial`; `Open` / `OpenResolved` open a regular file read-only. Order of checks:
+
+1. Shape: no NUL, at most 4096 bytes, absolute after `~` expansion (service user's home) and lexical clean. Otherwise `invalid_path`.
+2. `EvalSymlinks` of the full path; every later check uses the resolved path. Missing, dangling or looping is `not_found_or_hidden`.
+3. The resolved path must be inside an effective root (separator-aware). A path that starts inside a root and ends outside is `symlink_escape`; one that was never inside is `not_found_or_hidden`, so the host cannot be probed.
+4. Secret patterns on the resolved and the requested path: basenames from `BuiltinDeny` plus the user's `deny_extra` (case-insensitive; `id_*.pub` is allowed), any secret directory segment (`.ssh`, `.gnupg`, `.aws`, `.kube`, `.config/gcloud`) and `.git/config`. `secret_pattern`.
+5. Under an owner-only root (world-writable, such as `/tmp`) the file must be owned by the service uid, else `not_found_or_hidden`.
+6. `OpenResolved` opens with `O_NOFOLLOW`, then checks the descriptor is a regular file (`not_a_file` otherwise) and the same file the lstat saw, so a swap or a planted link between check and open is refused.
+
+Denial text is the reason code only; the path is never echoed. Directories resolve (for `stat`) but cannot be opened. The tests in `guard_test.go` are the corpus: traversal, absolute paths, links in and out of a root, links to secrets, dangling and looping links, every built-in pattern, case, FIFO, directory, swap-after-check, other-user files under `/tmp`, user deny additions, vanished roots. Size caps, content types and Range belong to V3.
