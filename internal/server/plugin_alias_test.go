@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/fileviewapi"
 )
 
 func TestReviewerPreviewReadRouteGuard(t *testing.T) {
