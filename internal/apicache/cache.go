@@ -46,6 +46,11 @@ func Digest(value string) string {
 // Scope is an allowlist of non-destructive resource reads. Unknown/new APIs
 // default to bypass until their semantics are known; streams never enter here.
 func Scope(path string) string {
+	// Content search and in-session find are never cached: queries are private and results change with the index.
+	if path == "/api/plugins/console/v1/transcripts/search" ||
+		(strings.HasPrefix(path, "/api/plugins/console/v1/transcripts/sessions/") && (strings.HasSuffix(path, "/find") || strings.HasSuffix(path, "/errors"))) {
+		return ""
+	}
 	if strings.HasPrefix(path, "/api/plugins/console/v1/transcripts/") {
 		return "transcripts"
 	}
@@ -244,6 +249,15 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 			return
 		}
 		code := classify(out)
+		if code == "" && out.status == 200 && out.header.Get("X-Tachyon-Uncacheable") != "" {
+			// A saved copy served while the source is unreadable is shown, never stored as live.
+			out.header.Del("X-Tachyon-Uncacheable")
+			out.header.Set("X-Tachyon-Source", scope)
+			out.header.Set("X-Tachyon-Cache", "bypass")
+			out.header.Set("Cache-Control", "no-store")
+			out.send(w)
+			return
+		}
 		if code == "" && out.status == 200 && json.Valid(out.body.Bytes()) && strings.Contains(out.header.Get("Content-Type"), "application/json") {
 			fresh := entry{body: bytes.Clone(out.body.Bytes()), contentType: out.header.Get("Content-Type"), updated: c.now().UnixMilli()}
 			storageError := ""
