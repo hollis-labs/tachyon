@@ -60,13 +60,13 @@
     },
     "status": {
       "enum": [
-        "idea",
+        "draft",
         "planned",
-        "in-progress",
-        "landed",
-        "adopting",
-        "done",
-        "dropped"
+        "active",
+        "completed",
+        "deferred",
+        "cancelled",
+        "archived"
       ]
     },
     "mvp": {

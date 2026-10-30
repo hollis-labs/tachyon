@@ -13,7 +13,7 @@ import { usePlannerKeys } from '@planner/shell/use-planner-keys'
 import { LENSES, LINK_KINDS, type LinkKind } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
 import { Focus } from '@planner/shell/focus'
-import { Spine, rowsOf } from '@planner/shell/spine'
+import { Spine, needsYou, rowsOf } from '@planner/shell/spine'
 import { TEXT } from '@planner/lib/vocabulary'
 import type { LinksView, PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
@@ -78,6 +78,16 @@ export default function PlannerShell() {
   }, [load, lastEvent])
 
   const row = useMemo(() => rowsOf(board).find((r) => r.id === openId), [board, openId])
+
+  // On a wide screen the focus pane is never left empty: with nothing open, open the first theme.
+  // (Narrow screens keep the list, since opening a theme replaces it.)
+  useEffect(() => {
+    if (openId || !board || typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 1024px)').matches) return
+    // The first theme that needs the operator, else the first in the list.
+    const rows = rowsOf(board)
+    const first = rows.find((r) => (needYouIds ? needYouIds.has(r.id) : needsYou(r))) ?? rows[0]
+    if (first) navigate(`/planner/themes/${encodeURIComponent(first.id)}${view === 'timeline' ? '?view=timeline' : ''}`, { replace: true })
+  }, [openId, board, needYouIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!row) return setComments([])

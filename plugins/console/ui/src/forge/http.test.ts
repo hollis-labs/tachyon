@@ -45,6 +45,11 @@ describe('HttpForgeClient reads', () => {
     expect([0, 1, 2, 3, 4].map((i) => call(fetch, i).url)).toEqual([base, `${base}/diff`, `${base}/commits`, `${base}/comments`, '/api/v1/forge/pulls/pending'])
   })
 
+  it('does not report an empty degraded pending list as an empty inbox', async () => {
+    const { client } = mk({ data: { items: [], degraded: true, cached: true } })
+    await expect(client.listPendingPrs()).rejects.toMatchObject({ code: 'unavailable' })
+  })
+
   it('does not send identity headers on reads', async () => {
     const confirmToken = vi.fn(() => 'tok')
     const { fetch, client } = mk({ data: {} }, {}, { confirmToken })
