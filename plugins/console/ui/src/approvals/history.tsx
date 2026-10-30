@@ -73,7 +73,7 @@ export function HistoryTimeline({ client, search, onOpen }: { client: ApprovalCl
       <ol aria-label="Decision history" className="space-y-5">
         {days.map((d) => (
           <li key={d.label}>
-            <h3 className="mb-2"><span className="rounded-full border border-border px-2 py-0.5 font-mono dash-caption text-fg-muted">{d.label}</span></h3>
+            <h3 className="mb-2 normal-case tracking-normal"><span className="rounded-full border border-border px-2 py-0.5 font-sans dash-caption normal-case tracking-normal text-fg-muted">{d.label}</span></h3>
             <ul className="space-y-3 border-l border-border pl-4">
               {d.items.map((e) => (
                 <li key={e.event_id} className="relative">
