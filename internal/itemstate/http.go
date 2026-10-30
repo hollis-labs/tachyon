@@ -38,12 +38,13 @@ func fail(w http.ResponseWriter, status int, code, msg string, extra ...any) {
 }
 
 func wire(st State) map[string]any {
-	m := map[string]any{"key": st.Key, "status": st.Status, "by": st.By, "updatedAt": st.UpdatedAt.Format(time.RFC3339), "version": st.Version}
+	// Epoch milliseconds, like the client's ItemState.
+	m := map[string]any{"key": st.Key, "status": st.Status, "by": st.By, "updatedAt": st.UpdatedAt.UnixMilli(), "version": st.Version}
 	if st.SnoozeUtil != nil {
-		m["snoozeUntil"] = st.SnoozeUtil.Format(time.RFC3339)
+		m["snoozeUntil"] = st.SnoozeUtil.UnixMilli()
 	}
 	if st.WakeAt != nil {
-		m["wokeAt"] = st.WakeAt.Format(time.RFC3339)
+		m["wokeAt"] = st.WakeAt.UnixMilli()
 	}
 	if st.Note != "" {
 		m["note"] = st.Note
@@ -81,16 +82,29 @@ func (s *Store) list(w http.ResponseWriter, r *http.Request) {
 }
 
 type opBody struct {
-	Type            string `json:"type"`
-	Note            string `json:"note"`
-	Until           string `json:"until"`
-	Preset          string `json:"preset"`
-	Resolution      string `json:"resolution"`
-	ExpectedVersion *int   `json:"expected_version"`
+	Type            string          `json:"type"`
+	Note            string          `json:"note"`
+	Until           json.RawMessage `json:"until"`
+	Preset          string          `json:"preset"`
+	Resolution      string          `json:"resolution"`
+	ExpectedVersion *int            `json:"expected_version"`
 }
 
+// op converts the body. until is epoch ms (what the client sends) or an RFC 3339 string.
 func (b opBody) op() Op {
-	return Op{Type: b.Type, Note: b.Note, Until: b.Until, Preset: b.Preset, Resolution: b.Resolution, ExpectedVersion: b.ExpectedVersion}
+	o := Op{Type: b.Type, Note: b.Note, Preset: b.Preset, Resolution: b.Resolution, ExpectedVersion: b.ExpectedVersion}
+	if len(b.Until) > 0 {
+		var n int64
+		var str string
+		if json.Unmarshal(b.Until, &n) == nil {
+			o.UntilMS = n
+		} else if json.Unmarshal(b.Until, &str) == nil {
+			if t, err := time.Parse(time.RFC3339, str); err == nil {
+				o.UntilMS = t.UnixMilli()
+			}
+		}
+	}
+	return o
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any, max int64) bool {

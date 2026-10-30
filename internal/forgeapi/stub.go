@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -783,12 +784,12 @@ func stateList(w http.ResponseWriter, r *http.Request) {
 }
 
 type stateBody struct {
-	Type            string `json:"type"`
-	Note            string `json:"note"`
-	Until           string `json:"until"`
-	Preset          string `json:"preset"`
-	Resolution      string `json:"resolution"`
-	ExpectedVersion *int   `json:"expected_version"`
+	Type            string          `json:"type"`
+	Note            string          `json:"note"`
+	Until           json.RawMessage `json:"until"`
+	Preset          string          `json:"preset"`
+	Resolution      string          `json:"resolution"`
+	ExpectedVersion *int            `json:"expected_version"`
 }
 
 func applyOp(key string, b stateBody, now time.Time) (map[string]any, string) {
@@ -798,7 +799,7 @@ func applyOp(key string, b stateBody, now time.Time) (map[string]any, string) {
 	if !strings.HasPrefix(key, "pr-inbox:") && !strings.HasPrefix(key, "pr-assign:") || len(key) > 200 {
 		return nil, "key must start with pr-inbox: or pr-assign:."
 	}
-	s := map[string]any{"key": key, "by": "chrispian", "updatedAt": now.UTC().Format(time.RFC3339), "version": 2}
+	s := map[string]any{"key": key, "by": "chrispian", "updatedAt": now.UnixMilli(), "version": 2}
 	switch b.Type {
 	case "read":
 		s["status"] = "read"
@@ -821,7 +822,7 @@ func applyOp(key string, b stateBody, now time.Time) (map[string]any, string) {
 		case "tomorrow":
 			until = now.Add(24 * time.Hour)
 		case "":
-			t, err := time.Parse(time.RFC3339, b.Until)
+			t, err := parseUntil(b.Until)
 			if err != nil || !t.After(now) || t.After(now.Add(90*24*time.Hour)) {
 				return nil, "snooze needs a preset (1h, 4h, tomorrow) or a future until within 90 days."
 			}
@@ -830,7 +831,7 @@ func applyOp(key string, b stateBody, now time.Time) (map[string]any, string) {
 			return nil, "unknown snooze preset."
 		}
 		s["status"] = "snoozed"
-		s["snoozeUntil"] = until.UTC().Format(time.RFC3339)
+		s["snoozeUntil"] = until.UnixMilli()
 	}
 	if b.Note != "" {
 		s["note"] = b.Note
@@ -947,4 +948,17 @@ func stream(w http.ResponseWriter, r *http.Request) {
 			fl.Flush()
 		}
 	}
+}
+
+// parseUntil reads a snooze deadline: epoch milliseconds (what the client sends) or an RFC 3339 string.
+func parseUntil(raw json.RawMessage) (time.Time, error) {
+	var n int64
+	if json.Unmarshal(raw, &n) == nil {
+		return time.UnixMilli(n), nil
+	}
+	var str string
+	if json.Unmarshal(raw, &str) == nil {
+		return time.Parse(time.RFC3339, str)
+	}
+	return time.Time{}, errors.New("until must be epoch ms or RFC 3339")
 }

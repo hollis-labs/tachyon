@@ -66,13 +66,14 @@ type State struct {
 type Op struct {
 	Type            string
 	Note            string
-	Until           string // RFC3339
+	UntilMS         int64  // epoch ms; 0 when absent
 	Preset          string // 1h | 4h | tomorrow
 	Resolution      string
 	ExpectedVersion *int
 }
 
-// Store is the SQLite-backed store. Prefixes is the allow-list of key prefixes (each ends in ':').
+// Store is the SQLite-backed store. Prefixes, when set, is an allow-list of key prefixes; the console
+// client's own keys (alert event ids) are arbitrary, so the default is any key.
 type Store struct {
 	DB       *localstore.Store
 	Prefixes []string
@@ -97,6 +98,9 @@ func (s *Store) CheckKey(key string) error {
 		if r < 0x20 || r == 0x7f {
 			return &InvalidError{"key has control characters."}
 		}
+	}
+	if len(s.Prefixes) == 0 {
+		return nil
 	}
 	for _, p := range s.Prefixes {
 		if strings.HasPrefix(key, p) && len(key) > len(p) {
@@ -154,6 +158,9 @@ func (s *Store) List(ctx context.Context, prefix string) ([]State, error) {
 }
 
 func (s *Store) allowed(key string) bool {
+	if len(s.Prefixes) == 0 {
+		return true
+	}
 	return slices.ContainsFunc(s.Prefixes, func(p string) bool { return strings.HasPrefix(key, p) })
 }
 
@@ -175,11 +182,11 @@ func (s *Store) resolveSnooze(o Op, now time.Time) (time.Time, error) {
 	case "tomorrow":
 		return now.Add(24 * time.Hour), nil
 	case "":
-		t, err := time.Parse(time.RFC3339, o.Until)
-		if err != nil || !t.After(now) || t.After(now.Add(MaxSnooze)) {
+		t := time.UnixMilli(o.UntilMS).UTC()
+		if o.UntilMS <= 0 || !t.After(now) || t.After(now.Add(MaxSnooze)) {
 			return time.Time{}, &InvalidError{"snooze needs a preset (1h, 4h, tomorrow) or a future until within 90 days."}
 		}
-		return t.UTC(), nil
+		return t, nil
 	}
 	return time.Time{}, &InvalidError{"unknown snooze preset."}
 }

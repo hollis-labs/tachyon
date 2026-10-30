@@ -19,9 +19,9 @@ func init() {
 }
 
 // startItemState opens the shared console item-state store behind /console/state (PR2) and runs its
-// snooze wake loop. Key prefixes are an allow-list; Alerts compat (AL1) adds its own here.
+// snooze wake loop. Any key is accepted: the console client keys rows by event id, PR triage by pr-inbox:/pr-assign:.
 func startItemState(ctx context.Context, s *Server, store *localstore.Store) {
-	st := &itemstate.Store{DB: store, Prefixes: []string{"pr-inbox:", "pr-assign:"}}
+	st := &itemstate.Store{DB: store}
 	s.ext.Store(itemStateKey, st)
 	go st.Maintain(ctx, itemstate.WakeInterval, slog.Default().Warn)
 }

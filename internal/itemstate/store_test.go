@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -47,7 +48,7 @@ func TestOpsVersionsAndTheUIShape(t *testing.T) {
 	if code != 200 || d["status"] != "snoozed" || d["version"].(float64) != 1 || d["note"] != "later" || d["key"] != "pr-inbox:github:hollis-labs/tachyon#201" || d["by"] != "operator" {
 		t.Fatalf("snooze: %d %v", code, m)
 	}
-	if d["snoozeUntil"] != "2027-01-15T12:00:00Z" {
+	if d["snoozeUntil"].(float64) != float64(time.Unix(1_800_000_000, 0).Add(4*time.Hour).UnixMilli()) || d["updatedAt"].(float64) != 1_800_000_000_000 {
 		t.Errorf("snoozeUntil: %v", d["snoozeUntil"])
 	}
 	_, m = call(s, "PUT", prefix+"/"+k, `{"type":"settle","resolution":"merged"}`)
@@ -94,12 +95,16 @@ func TestOptimisticVersioning(t *testing.T) {
 
 func TestValidation(t *testing.T) {
 	s, _ := newStore(t)
+	st := s
+	if c, _ := call(s, "PUT", prefix+"/other:thing", `{"type":"read"}`); c != 400 {
+		t.Error("prefix allow-list when set")
+	}
 	for name, tc := range map[string][2]string{
 		"type":     {"pr-inbox:a", `{"type":"nuke"}`},
-		"prefix":   {"other:thing", `{"type":"read"}`},
 		"emptykey": {"pr-inbox:", `{"type":"read"}`},
-		"past":     {"pr-inbox:a", `{"type":"snooze","until":"2020-01-01T00:00:00Z"}`},
-		"far":      {"pr-inbox:a", `{"type":"snooze","until":"2030-01-01T00:00:00Z"}`},
+		"past":     {"pr-inbox:a", `{"type":"snooze","until":1577836800000}`},
+		"far":      {"pr-inbox:a", `{"type":"snooze","until":1900000000000}`},
+		"badtime":  {"pr-inbox:a", `{"type":"snooze","until":"soon"}`},
 		"preset":   {"pr-inbox:a", `{"type":"snooze","preset":"9y"}`},
 		"unknown":  {"pr-inbox:a", `{"type":"read","x":1}`},
 		"note":     {"pr-inbox:a", `{"type":"read","note":"` + strings.Repeat("x", 501) + `"}`},
@@ -110,10 +115,18 @@ func TestValidation(t *testing.T) {
 			t.Errorf("%s: %d", name, c)
 		}
 	}
-	until := time.Unix(1_800_000_000, 0).Add(2 * time.Hour).UTC().Format(time.RFC3339)
-	if c, _ := call(s, "PUT", prefix+"/pr-inbox:a", `{"type":"snooze","until":"`+until+`"}`); c != 200 {
-		t.Error("explicit until")
+	until := time.Unix(1_800_000_000, 0).Add(2 * time.Hour)
+	if c, _ := call(s, "PUT", prefix+"/pr-inbox:a", `{"type":"snooze","until":`+strconv.FormatInt(until.UnixMilli(), 10)+`}`); c != 200 {
+		t.Error("epoch ms until")
 	}
+	if c, _ := call(s, "PUT", prefix+"/pr-inbox:a", `{"type":"snooze","until":"`+until.UTC().Format(time.RFC3339)+`"}`); c != 200 {
+		t.Error("rfc3339 until")
+	}
+	st.Prefixes = nil
+	if c, _ := call(s, "PUT", prefix+"/some-event-id-42", `{"type":"read"}`); c != 200 {
+		t.Error("with no allow-list any key is accepted (the console client keys by event id)")
+	}
+	s.Prefixes = []string{"pr-inbox:"}
 	if c, _ := call(s, "PUT", prefix+"/pr-inbox:a", `{"type":"read"}`, "Authorization", "Bearer x"); c != 403 {
 		t.Error("agents are refused")
 	}

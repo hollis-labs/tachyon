@@ -6,8 +6,10 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 const O = "/repos/github/hollis-labs/tachyon/pulls/"
@@ -469,6 +471,14 @@ func TestTriageStateOpsAndBulk(t *testing.T) {
 	data(t, do(t, "PUT", StatePrefix+"/pr-inbox:github:hollis-labs%2Ftachyon%23201", `{"type":"snooze","preset":"4h","note":"later"}`), &s)
 	if s["status"] != "snoozed" || s["snoozeUntil"] == nil || s["note"] != "later" {
 		t.Errorf("snooze: %v", s)
+	}
+	future := time.Now().Add(2 * time.Hour).UnixMilli()
+	data(t, do(t, "PUT", StatePrefix+"/pr-inbox:github:hollis-labs%2Ftachyon%23201", `{"type":"snooze","until":`+strconv.FormatInt(future, 10)+`}`), &s)
+	if s["snoozeUntil"] != float64(future) {
+		t.Errorf("epoch-ms until must round trip as a number: %v", s["snoozeUntil"])
+	}
+	if _, isNum := s["updatedAt"].(float64); !isNum {
+		t.Errorf("updatedAt is epoch ms like the client's ItemState: %v", s["updatedAt"])
 	}
 	for name, b := range map[string]string{"type": `{"type":"nuke"}`, "past": `{"type":"snooze","until":"2020-01-01T00:00:00Z"}`, "preset": `{"type":"snooze","preset":"9y"}`, "unknown": `{"type":"read","x":1}`} {
 		if w := do(t, "PUT", StatePrefix+"/pr-inbox:github:hollis-labs%2Ftachyon%23201", b); w.Code != 400 {
