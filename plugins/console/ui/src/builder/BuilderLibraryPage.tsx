@@ -1,19 +1,21 @@
 import { useDiscardGuard } from './DiscardGuard'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
-import { Button, Input, Textarea } from '@hollis-labs/design-components'
+import { Button, Input, SearchInput, Textarea } from '@hollis-labs/design-components'
 import Markdown from 'react-markdown'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Segmented } from '../components/segmented'
+import { Chip } from '../components/chip'
+import { DirtyBar } from './DirtyBar'
+import { Cap, Muted } from './parts'
 import { BuilderShell } from './BuilderShell'
 import { type Change, type LibraryItem, type LibraryKind, builderApi, errorMessage } from './api'
-import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, changingText, newRequestId, partRead } from './changes'
+import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, newRequestId, partRead } from './changes'
 import { useChangeMode } from './capabilities'
-import { ModeNote, PreparedLabel } from './ModeNote'
+import { ModeNote } from './ModeNote'
 import { ReviewDialog } from './ReviewDialog'
 import { useLoad } from './useLoad'
 import { LIBRARY_KINDS, NOT_REPORTED } from './vocab'
 
-const SKIP = new Set(['kind', 'id', 'name', 'summary', 'used_by_count', 'editable', 'body'])
+const SKIP = new Set(['updated_at', 'archived', 'sha', 'kind', 'id', 'name', 'summary', 'used_by_count', 'editable', 'body'])
 const label = (k: string) => k.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -51,7 +53,7 @@ function Value({ v }: { v: unknown }): ReactNode {
   return String(v)
 }
 
-const GRID = 'grid gap-1 border-b border-border-subtle py-2 md:grid-cols-[10rem_1fr] md:gap-3'
+const GRID = 'grid gap-0.5 py-[3px] sm:grid-cols-[130px_1fr] sm:gap-3'
 
 const POLICY_LEAD = new Set(['permission_mode', 'network', 'default_sandbox', 'mcp_scopes', 'scope_count', 'privileged', 'bundle', 'referencing_agents'])
 const WORD = (v: unknown) => (typeof v === 'string' && v ? v : NOT_REPORTED)
@@ -65,7 +67,7 @@ function PolicyLead({ it }: { it: LibraryItem }) {
   return (
     <>
       <section aria-label="Settings" className="space-y-1">
-        <h3 className="dash-label font-medium text-fg-muted">Settings</h3>
+        <Cap>Settings</Cap>
         <dl>
           {(
             [
@@ -76,15 +78,15 @@ function PolicyLead({ it }: { it: LibraryItem }) {
             ] as const
           ).map(([k, v]) => (
             <div key={k} className={GRID}>
-              <dt className="dash-support text-fg-muted">{k}</dt>
-              <dd className="dash-body text-fg [overflow-wrap:anywhere]">{v}</dd>
+              <dt className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-1">{k}</dt>
+              <dd className="text-control text-fg [overflow-wrap:anywhere]">{v}</dd>
             </div>
           ))}
         </dl>
         {it.privileged === true && <p className="dash-support text-fg-secondary">Includes privileged settings. Changing them needs a confirmation in the Review step.</p>}
       </section>
       <section aria-label="Applies to" className="space-y-1">
-        <h3 className="dash-label font-medium text-fg-muted">Applies to</h3>
+        <Cap>Applies to</Cap>
         {agents ? (
           agents.length ? (
             <ul className="dash-body text-fg">
@@ -121,27 +123,28 @@ function UsedBy({ kind, id }: { kind: LibraryKind; id: string }) {
       </p>
     )
   const { agents, launches, projects } = load.data
-  const groups = [
-    ['Agents', agents.map((a) => ({ key: a.id, text: a.name || a.id, to: `/builder/agents/${encodeURIComponent(a.id)}` }))],
-    ['Launches', launches.map((l) => ({ key: l.id, text: l.id, to: undefined }))],
-    ['Projects', projects.map((p) => ({ key: p.id, text: p.id, to: undefined }))],
-  ] as const
-  if (groups.every(([, rows]) => rows.length === 0)) return <p className="dash-body text-fg-faint">Nothing uses this yet.</p>
+  const chips = [
+    ...agents.map((a) => ({ key: `a:${a.id}`, text: a.name || a.id, to: `/builder/agents/${encodeURIComponent(a.id)}` })),
+    ...launches.map((l) => ({ key: `l:${l.id}`, text: l.id, to: '/builder/launches' })),
+    ...projects.map((p) => ({ key: `p:${p.id}`, text: p.id, to: `/registry/projects/${encodeURIComponent(p.id)}` })),
+  ]
+  if (chips.length === 0) return <p className="text-control text-fg-faint">Nothing uses this yet.</p>
+  const shown = chips.slice(0, 3)
   return (
-    <div className="space-y-2">
-      {groups
-        .filter(([, rows]) => rows.length > 0)
-        .map(([title, rows]) => (
-          <div key={title}>
-            <h4 className="dash-support text-fg-muted">{title}</h4>
-            <ul className="dash-body text-fg">
-              {rows.map((r) => (
-                <li key={r.key}>{r.to ? <Link className="underline" to={r.to}>{r.text}</Link> : r.text}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
-    </div>
+    <ul className="flex flex-wrap gap-1.5">
+      {shown.map((c) => (
+        <li key={c.key}>
+          <Link to={c.to} className="inline-flex h-5 items-center rounded border border-border px-1.5 font-mono text-caption text-fg-secondary hover:bg-selection hover:text-fg">
+            {c.text}
+          </Link>
+        </li>
+      ))}
+      {chips.length > shown.length && (
+        <li>
+          <Chip>+{chips.length - shown.length}</Chip>
+        </li>
+      )}
+    </ul>
   )
 }
 
@@ -211,42 +214,24 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   }
   const SKIP_NOW = partKind === 'prompts' ? SKIP : new Set([...SKIP, 'revision'])
   return (
-    <div className="space-y-3 p-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{it.name}</h2>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-subtle px-4 py-3">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h2 className="truncate font-mono text-base font-semibold normal-case tracking-normal text-fg">{it.name}</h2>
+          <span className="text-label text-fg-muted">Library · {LIBRARY_KINDS.find((k) => k.id === kind)?.label}</span>
+        </div>
         {canEdit && !editing && mode !== 'unavailable' && (
           <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
             Edit
           </Button>
         )}
-      </div>
+        <Button type="button" variant="outline" size="sm" disabled title="Duplicating a part arrives with the part editor">
+          Duplicate
+        </Button>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
       {canEdit && mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
-      {!canEdit && (kind === 'skills' || kind === 'tool_servers') && <p className="dash-support text-fg-muted">Read-only: managed in files.</p>}
-      {editing && (
-        <div role="status" className="flex flex-wrap items-center gap-3 border border-border bg-surface px-3 py-2 dash-support text-fg-secondary">
-          {prepared ? <PreparedLabel /> : <span className="mr-auto">{changingText(dirty.map((d) => fields.find((f) => f.path === d)?.label))}</span>}
-          {error && (
-            <span role="alert" className="text-danger">
-              {error}
-            </span>
-          )}
-          {!prepared && <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => guard(dirty.length, () => {
-              setEditing(false)
-              setDraft({})
-              setError('')
-            })}
-          >
-            Discard
-          </Button>}
-          <Button type="button" disabled={(dirty.length === 0 && !prepared) || busy} variant="default" size="sm" onClick={prepared ? viewPrepared : openReview}>
-            {prepared ? 'View hand-off' : busy ? (mode === 'handoff' ? 'Preparing' : 'Checking') : mode === 'handoff' ? 'Prepare change' : 'Review changes'}
-          </Button>
-        </div>
-      )}
+      {!canEdit && (kind === 'skills' || kind === 'tool_servers') && <Muted>Read-only: managed in files.</Muted>}
       {editing && partKind ? (
         <div>
           {fields.map((f) => {
@@ -254,7 +239,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
             const set = (v: unknown) => setDraft((d) => ({ ...d, [f.path]: v }))
             return (
               <div key={f.path} className={GRID}>
-                <label htmlFor={`lib-${f.path}`} className="dash-support text-fg-muted">
+                <label htmlFor={`lib-${f.path}`} className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-2">
                   {f.label}
                 </label>
                 {f.kind === 'longtext' ? (
@@ -299,19 +284,20 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
           )}
           {kind === 'policies' && <PolicyLead it={it} />}
           {kind !== 'policies' && (
-            <section aria-label="Used by" className="space-y-1">
-              <h3 className="dash-label font-medium text-fg-muted">Used by</h3>
+            <section aria-label="Used by" className="flex flex-col gap-2">
+              <Cap>Used by</Cap>
               <UsedBy kind={kind} id={id} />
+              <Muted>Changing this updates all agents that reference it. Review shows each affected agent.</Muted>
             </section>
           )}
-          {kind === 'policies' && <h3 className="dash-label font-medium text-fg-muted">Details</h3>}
+          {kind === 'policies' && <Cap>Details</Cap>}
           <dl>
             {Object.entries(it)
               .filter(([k]) => !SKIP_NOW.has(k) && !(kind === 'policies' && POLICY_LEAD.has(k)))
               .map(([k, v]) => (
                 <div key={k} className={GRID}>
-                  <dt className="dash-support text-fg-muted">{label(k)}</dt>
-                  <dd className="min-w-0 dash-body text-fg [overflow-wrap:anywhere]">
+                  <dt className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-1">{label(k)}</dt>
+                  <dd className="min-w-0 text-control text-fg [overflow-wrap:anywhere]">
                     <Value v={v} />
                   </dd>
                 </div>
@@ -319,10 +305,30 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
           </dl>
         </>
       )}
+      </div>
+      {editing && (
+        <DirtyBar
+          labels={dirty.map((d) => fields.find((f) => f.path === d)?.label)}
+          prepared={Boolean(prepared)}
+          error={error}
+          busy={busy}
+          mode={mode}
+          onDiscard={() =>
+            guard(dirty.length, () => {
+              setEditing(false)
+              setDraft({})
+              setError('')
+            })
+          }
+          onReview={openReview}
+          onViewPrepared={viewPrepared}
+        />
+      )}
       {discardDialog}
       {review && (
         <ReviewDialog
           initial={review}
+          subject={it.name}
           onClose={(c) => {
             setReview(null)
             setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
@@ -339,74 +345,89 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   )
 }
 
-/** Library of prompts, skills, tool servers and policies. Read-only for now. */
+/** Library of prompts, skills, tool servers and policies. */
 export function BuilderLibraryPage() {
   const { kind: rawKind = 'prompts', id } = useParams()
   const navigate = useNavigate()
   const kind = (LIBRARY_KINDS.find((k) => k.id === rawKind)?.id ?? 'prompts') as LibraryKind
   const [q, setQ] = useState('')
-  const [debounced, setDebounced] = useState('')
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(q), 250)
-    return () => clearTimeout(t)
-  }, [q])
-  const [load, retry] = useLoad(() => builderApi.library(kind, debounced), [kind, debounced])
+  const [summary] = useLoad(builderApi.summary, [])
+  const [load, retry] = useLoad(() => builderApi.library(kind, q), [kind, q])
   const items: LibraryItem[] = load.status === 'ready' ? load.data.items : []
+  const lib = summary.status === 'ready' ? summary.data.library : undefined
+  const kindLabel = LIBRARY_KINDS.find((k) => k.id === kind)?.label ?? 'items'
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <BuilderShell tab="library" />
-      <Segmented<LibraryKind> label="Library kinds" value={kind} onChange={(k) => navigate(`/builder/library/${k}`)} items={LIBRARY_KINDS.map((k) => ({ value: k.id, label: k.label }))} />
+      <BuilderShell tab="library" counts={summary.status === 'ready' ? summary.data : null} />
+      <nav aria-label="Library kinds" className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-border-subtle px-3 py-1.5">
+        {LIBRARY_KINDS.map((k) => {
+          const n = lib?.[k.id]
+          return (
+            <Link
+              key={k.id}
+              to={`/builder/library/${k.id}`}
+              aria-current={k.id === kind ? 'page' : undefined}
+              className={`inline-flex h-[26px] shrink-0 items-center gap-1.5 rounded-full px-3 text-xs ${k.id === kind ? 'border border-border bg-selection font-semibold text-fg' : 'text-fg-muted hover:text-fg'}`}
+            >
+              {k.label}
+              {n != null && <small className="font-mono text-caption text-fg-faint">{n}</small>}
+            </Link>
+          )
+        })}
+      </nav>
       <div className="flex min-h-0 flex-1">
-        <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
-          <div className="border-b border-border p-3">
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search library" aria-label="Search library" />
+        <div className={`${id ? 'hidden sm:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border-subtle sm:w-[340px]`}>
+          <div className="dash-search-adapter p-2 [&_div]:min-w-0">
+            <SearchInput value={q} onChange={setQ} placeholder={`Search ${kindLabel.toLowerCase()}`} ariaLabel="Search library" />
           </div>
-          <div className="min-h-0 flex-1 overflow-auto">
+          <div className="min-h-0 flex-1 overflow-auto border-t border-border-subtle">
             {load.status === 'loading' && (
               <div aria-busy="true" className="space-y-2 p-4">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-10 animate-pulse bg-surface" />
+                  <div key={i} className="h-10 animate-pulse rounded-control bg-surface" />
                 ))}
               </div>
             )}
             {load.status === 'error' && (
               <div role="alert" className="space-y-2 p-4">
-                <p className="dash-body text-fg-secondary">{load.message}</p>
+                <p className="text-control text-fg-secondary">{load.message}</p>
                 <Button type="button" onClick={retry} variant="outline" size="sm">
                   Retry
                 </Button>
               </div>
             )}
-            {load.status === 'ready' && items.length === 0 && <p className="p-4 dash-body text-fg-faint">
-                {debounced ? 'No matches.' : `No ${(LIBRARY_KINDS.find((k) => k.id === kind)?.label ?? 'items').toLowerCase()} in the catalog yet.`}
-              </p>}
-            <ul aria-label="Library items" className="divide-y divide-border-subtle">
+            {load.status === 'ready' && items.length === 0 && (
+              <p className="p-4 text-control text-fg-faint">{q ? 'No matches.' : `No ${kindLabel.toLowerCase()} in the catalog yet.`}</p>
+            )}
+            <ul aria-label="Library items">
               {items.map((it) => (
-                <li key={it.id}>
+                <li key={it.id} className="border-t border-border-subtle first:border-t-0">
                   <button
                     type="button"
                     aria-current={it.id === id ? 'true' : undefined}
                     onClick={() => navigate(`/builder/library/${kind}/${encodeURIComponent(it.id)}`)}
-                    className={`block w-full px-4 py-2 text-left hover:bg-surface-hover ${it.id === id ? 'bg-surface' : ''}`}
+                    className={`flex w-full flex-col px-3.5 py-2.5 text-left hover:bg-selection ${it.id === id ? 'bg-selection' : ''}`}
                   >
-                    <span className="block truncate dash-body text-fg">{it.name}</span>
-                    <span className="block truncate dash-support text-fg-muted">{it.summary || (it.used_by_count != null ? `Used by ${it.used_by_count}` : '')}</span>
+                    <b className="truncate font-mono text-control font-semibold text-fg">{it.name}</b>
+                    <span className="truncate text-label text-fg-muted">
+                      {[it.summary, it.used_by_count != null ? `used by ${it.used_by_count} ${it.used_by_count === 1 ? 'agent' : 'agents'}` : ''].filter(Boolean).join(' · ')}
+                    </span>
                   </button>
                 </li>
               ))}
             </ul>
           </div>
         </div>
-        <div className={`${id ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col overflow-auto`}>
+        <div className={`${id ? 'flex' : 'hidden sm:flex'} min-w-0 flex-1 flex-col`}>
           {id ? (
             <>
-              <Link to={`/builder/library/${kind}`} className="px-5 pt-3 dash-control text-fg-muted hover:text-fg md:hidden">
-                ← {LIBRARY_KINDS.find((k) => k.id === kind)?.label}
+              <Link to={`/builder/library/${kind}`} className="px-4 pt-3 text-control text-fg-muted hover:text-fg sm:hidden">
+                ‹ {kindLabel}
               </Link>
               <Detail kind={kind} id={decodeURIComponent(id)} />
             </>
           ) : (
-            <p className="p-5 dash-body text-fg-faint">Select an item to read it.</p>
+            <p className="p-5 text-control text-fg-faint">Select an item to read it.</p>
           )}
         </div>
       </div>
