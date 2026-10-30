@@ -14,7 +14,6 @@ export interface ThreadContext {
   state: 'loading' | 'ready' | 'unavailable'
 }
 
-interface ListedThread { thread_ref: string; agent?: { agent_id?: string } }
 interface ActivityRow { seq: number; type: string; actor: string; at: number; payload?: { title?: string; summary?: string } }
 interface FileRow { id: string; name: string; type: string; size_bytes?: number | null }
 interface WorkRow { id: string; kind: string; title: string; status?: string; needs_user?: boolean }
@@ -33,8 +32,8 @@ async function listOr<T>(path: string, pick: (v: never) => T[]): Promise<T[]> {
 
 /**
  * Real context for the open conversation from the chat API: its activity, shared files and linked work.
- * The conversation here is keyed by launch id; the chat API by thread ref, so the newest thread of the
- * same agent is used.
+ * The conversation here is keyed by agent; the chat API by session thread, so the agent's newest session is used
+ * (`thread.sessions`, set from the chat API list).
  */
 export function useThreadContext(thread: ChatThread | null): ThreadContext {
   const [ctx, setCtx] = useState<ThreadContext>(none)
@@ -45,9 +44,7 @@ export function useThreadContext(thread: ChatThread | null): ThreadContext {
     setCtx(none)
     ;(async () => {
       try {
-        const list = await consoleJson<{ threads?: ListedThread[] }>('/chat/threads?limit=100')
-        const ids = new Set([thread.agent.agentId, thread.agent.chatLaunchId, thread.agent.address.split('/').pop()].filter(Boolean))
-        const ref = (list.threads ?? []).find((t) => t.agent?.agent_id && ids.has(t.agent.agent_id))?.thread_ref ?? null
+        const ref = thread.sessions?.[0]?.ref ?? null
         if (!ref) return live && setCtx({ ...none, state: 'ready' })
         const enc = encodeURIComponent(ref)
         const [activity, files, work] = await Promise.all([
