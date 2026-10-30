@@ -139,3 +139,12 @@ it('sends pin with a comment only when asked', async () => {
   expect(JSON.parse(fetcher.mock.calls[0][1].body)).not.toHaveProperty('pin')
   expect(JSON.parse(fetcher.mock.calls[1][1].body)).toMatchObject({ text: 'pinned', pin: true, expected_revision: 2 })
 })
+
+it('pins as item state with the revision, no comment', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => json({ id: 'theme-a', rev: 5, pinned: true }))
+  installFetch(fetcher)
+  await new TachyonPlannerClient().plannerPin('themes', 'theme-a', true, 4)
+  expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/theme-a/pin`)
+  expect(fetcher.mock.calls[0][1].method).toBe('PUT')
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ pinned: true, expected_revision: 4 })
+})

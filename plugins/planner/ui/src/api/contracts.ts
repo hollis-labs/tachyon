@@ -29,6 +29,8 @@ export interface PlannerClient {
   plannerDefer(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerReopen(id: string, rev: number): Promise<PlannerItem>
   plannerInboxPromote(id: string, to: PlannerDb, rev: number, targetId: string, fields?: Record<string, unknown>): Promise<{ inbox: PlannerItem; item: PlannerItem }>
+  /** Pin is item state: no comment needed. A stale revision is 409 with the current item. */
+  plannerPin(db: PlannerDb, id: string, pinned: boolean, rev: number): Promise<PlannerItem>
   plannerInboxDismiss(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerTaskTitles(ids: string[], signal?: AbortSignal): Promise<Record<string, PlannerTaskBrief | null>>
   plannerWorkstreamTasks(id: string, signal?: AbortSignal): Promise<PlannerWorkstreamTasks>
