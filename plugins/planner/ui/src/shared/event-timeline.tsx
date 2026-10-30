@@ -16,6 +16,8 @@ export interface TimelineEvent {
   body: ReactNode
   /** Progress delta caused, e.g. "+1 done". */
   delta?: string
+  /** Spoken form of the delta, e.g. "Doing down 1, review up 1". */
+  deltaLabel?: string
   /** Momentum arrow glyph with its text equivalent. */
   momentum?: { glyph: string; label: string }
   /** Notable events carry a small flat card under the row. */
@@ -79,7 +81,7 @@ export function EventTimeline({ events, facets, allFacet, facetsLabel, streamLab
                     <div className={cn('flex min-w-0 items-baseline gap-2 dash-support', e.tone === 'blocked' ? 'text-danger' : 'text-fg')}>
                       <time className="shrink-0 font-mono dash-caption tabular-nums text-fg-faint">{e.time}</time>
                       <span className="min-w-0 flex-1">{e.body}</span>
-                      {e.delta && <span className="shrink-0 font-mono dash-caption text-fg-muted">{e.delta}</span>}
+                      {e.delta && <span aria-label={e.deltaLabel} className="shrink-0 font-mono dash-caption text-fg-muted">{e.delta}</span>}
                       {e.momentum && <span className="shrink-0 dash-caption text-fg-muted" title={e.momentum.label}><span aria-hidden>{e.momentum.glyph}</span><span className="sr-only">{e.momentum.label}</span></span>}
                     </div>
                     {e.card && <div className="ml-12 border-l border-border-subtle pl-3 dash-caption text-fg-muted">{e.card}</div>}
