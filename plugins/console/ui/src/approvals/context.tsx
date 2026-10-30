@@ -31,6 +31,8 @@ interface ApprovalContextValue {
   held: HeldDecision[]
   hold(item: ApprovalItem, response: ApprovalResponse): void
   undo(itemId: string): void
+  /** Set when a held decision was undone: the page re-selects it with its note. */
+  restored?: { itemId: string; note: string }
 }
 export interface HeldDecision {
   itemId: string
@@ -100,6 +102,7 @@ export function ApprovalProvider({
   const heldRef = useRef<HeldDecision[]>([])
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const [notice, setNotice] = useState("")
+  const [restored, setRestored] = useState<{ itemId: string; note: string }>()
   const drop = useCallback((id: string) => {
     clearTimeout(timers.current.get(id))
     timers.current.delete(id)
@@ -141,7 +144,9 @@ export function ApprovalProvider({
   )
   const undo = useCallback(
     (id: string) => {
+      const h = heldRef.current.find((x) => x.itemId === id)
       drop(id)
+      if (h) setRestored({ itemId: id, note: h.response.note ?? "" })
       setNotice("Undone")
     },
     [drop],
@@ -161,7 +166,7 @@ export function ApprovalProvider({
   }, [commit])
   const open = (id?: string) => setSelected(id ?? inbox?.pending[0]?.item_id)
   return (
-    <Context.Provider value={{ inbox, error, loading, refresh, page, cursors: cursors.current, open, client, held, hold, undo }}>
+    <Context.Provider value={{ inbox, error, loading, refresh, page, cursors: cursors.current, open, client, held, hold, undo, restored }}>
       {children}
       <HeldToasts held={held} onUndo={undo} notice={notice} />
       {selected && (

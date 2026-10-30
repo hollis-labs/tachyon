@@ -70,19 +70,21 @@ export function DecisionDetail({
   client,
   onChanged,
   footer,
+  initialNote = "",
 }: {
   id: string
   initial?: ApprovalItem
   client: ApprovalClient
   onChanged(): void
   footer?: ReactNode
+  initialNote?: string
 }) {
   const [item, setItem] = useState(initial)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [note, setNote] = useState("")
-  const [showNote, setShowNote] = useState(false)
+  const [note, setNote] = useState(initialNote)
+  const [showNote, setShowNote] = useState(!!initialNote)
   const [typed, setTyped] = useState("")
   const [reply, setReply] = useState("")
   const [choice, setChoice] = useState<ApprovalResponse["decision"]>()
@@ -137,7 +139,8 @@ export function DecisionDetail({
   // no-provider case decide at once.
   function decideOrHold(decision: "approved" | "denied") {
     if (!item || !ready || busy) return
-    if (!queue || item.request_snapshot.class === "high")
+    // Only an approval of a low/medium item is held; a denial is safe and immediate.
+    if (!queue || item.request_snapshot.class === "high" || decision === "denied")
       return void decide(undefined, decision)
     queue.hold(item, {
       kind: item.request_snapshot.kind,

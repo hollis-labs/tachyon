@@ -269,8 +269,11 @@ describe("held decisions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve" }))
     expect(screen.getByRole("list", { name: "Pending decisions" }).textContent).toMatch(/Approving in \d+s/)
     expect(decide).not.toHaveBeenCalled()
+    // The held row is dimmed and selection has nowhere else to go (last item).
     fireEvent.click(screen.getByRole("button", { name: /Undo/ }))
     expect(screen.queryByRole("list", { name: "Pending decisions" })).toBeNull()
+    // Undo re-selects the item with its note intact.
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
     expect(decide).not.toHaveBeenCalled()
   })
 })
