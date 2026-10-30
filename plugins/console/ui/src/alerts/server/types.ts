@@ -92,3 +92,21 @@ export interface ServerFrame {
   counts?: ServerCounts
   prefs?: ServerPrefs
 }
+
+export interface ServerApproval {
+  item_id: string
+  expires_at_ms: number
+  class: 'low' | 'medium' | 'high'
+  risk_display: string
+  provider_handoff: boolean
+}
+
+export interface ServerAlertDetail {
+  alert: ServerAlert
+  timeline: { at_ms: number; label: string; ref?: ServerSubject | null }[]
+  linked: ServerSubject[]
+  technical: { fields: { label: string; value: string }[] }
+  actions: { id: string; label: string; kind: 'link' | 'approval' }[]
+  approval: ServerApproval | null
+  server_now_ms: number
+}

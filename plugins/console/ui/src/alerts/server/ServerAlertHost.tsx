@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type R
 import { AlertsContext, type AlertsController } from '../context'
 import { AlertToastStack } from '../AlertToastStack'
 import { AlertTray } from '../AlertTray'
-import { AlertDetailModal } from '../detail/AlertDetailModal'
-import { createHttpDecisionClient, registerAlertDecisionActions, type AlertActionResolver, type AlertDecisionClient } from '../detail/actions'
+import { ServerAlertDetailModal } from './ServerAlertDetail'
 import { ToastQueue } from '../toast-queue'
 import { severityAtLeast } from '../policy'
 import { summarize, useNow } from '../use-alerts'
-import { useConsoleSeams } from '../../events/hooks'
 import { toAlert, toEntry } from './adapt'
 import { createAlertsClient, type AlertsClient } from './client'
 import { ServerPrefsStore } from './prefs-store'
@@ -17,8 +15,6 @@ import type { ServerAlert } from './types'
 export interface ServerAlertHostProps {
   children?: ReactNode
   client?: AlertsClient
-  decisionClient?: AlertDecisionClient
-  actions?: AlertActionResolver
 }
 
 const PRESET_MS = { '15m': 15 * 60_000, '1h': 3_600_000, '4h': 4 * 3_600_000 } as const
@@ -28,17 +24,13 @@ const PRESET_MS = { '15m': 15 * 60_000, '1h': 3_600_000, '4h': 4 * 3_600_000 } a
  * ops with expected_version, prefs on the server. Provides the same controller as <AlertHost>, so the
  * tray, toasts and badge are unchanged. Toasting is the server's call (the frame's `toast` flag).
  */
-export function ServerAlertHost({ children, client: clientProp, decisionClient, actions }: ServerAlertHostProps) {
+export function ServerAlertHost({ children, client: clientProp }: ServerAlertHostProps) {
   const [client] = useState(() => clientProp ?? createAlertsClient())
   const [store] = useState(() => new ServerAlertsStore(client))
   const [prefsStore] = useState(() => new ServerPrefsStore(client))
   const [queue] = useState(() => new ToastQueue())
   const [open, setOpen] = useState(false)
   const [expandedId, expand] = useState<string | null>(null)
-  const { actionBus } = useConsoleSeams()
-  const [httpDecisions] = useState(() => createHttpDecisionClient())
-  const decisions = decisionClient ?? httpDecisions
-  useEffect(() => registerAlertDecisionActions(actionBus, decisions), [actionBus, decisions])
 
   const snap = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const prefs = useSyncExternalStore(prefsStore.subscribe, prefsStore.get, prefsStore.get)
@@ -84,6 +76,7 @@ export function ServerAlertHost({ children, client: clientProp, decisionClient, 
         const preset = (Object.keys(PRESET_MS) as (keyof typeof PRESET_MS)[]).find((k) => PRESET_MS[k] === ms)
         op(id, preset ? { op: 'snooze', preset } : { op: 'snooze', until_ms: until }, (a) => ({ ...a, status: 'snoozed', snooze_until_ms: until }))
       },
+      settle: (id, resolution) => op(id, { op: 'settle', ...(resolution ? { resolution } : {}) }, (a) => ({ ...a, status: 'settled', resolution: resolution ?? 'Handled' })),
       restore: (id) => op(id, { op: 'reopen' }, (a) => ({ ...a, status: 'active', snooze_until_ms: null, wake_at_ms: null, resolution: '' })),
       expandedId,
       expand,
@@ -96,7 +89,7 @@ export function ServerAlertHost({ children, client: clientProp, decisionClient, 
       {children}
       <AlertToastStack />
       <AlertTray />
-      <AlertDetailModal actions={actions} />
+      <ServerAlertDetailModal client={client} />
     </AlertsContext.Provider>
   )
 }
