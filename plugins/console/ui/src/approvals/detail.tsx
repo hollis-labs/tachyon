@@ -136,7 +136,7 @@ export function DecisionDetail({
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         <header>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="min-w-0 font-sans dash-body font-semibold text-fg">{request?.title ?? "Review request"}</h2>
+            <h2 className="min-w-0 font-sans normal-case tracking-normal dash-body font-semibold text-fg">{request?.title ?? "Review request"}</h2>
             {request && <RiskChip risk={request.class} />}
           </div>
           <p className="mt-1 font-mono dash-support text-fg-muted">
