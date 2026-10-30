@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { Button, EmptyState, OverlaySidebar, type OverflowAction } from '@hollis-labs/design-components'
-import { PanelLeft, PanelLeftClose, PanelRight, PanelRightClose } from 'lucide-react'
+import { Button, EmptyState, Sheet, SheetContent, SheetTitle, type OverflowAction } from '@hollis-labs/design-components'
+import { ChevronLeft, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose } from 'lucide-react'
 import { ChatFreshness } from '../ChatFreshness'
 import type { ChatThread } from '../types'
 import { ThreadDetails } from './ThreadDetails'
@@ -19,7 +19,7 @@ export interface ChatViewProps {
    * drawer, showing the thread list or the open conversation with a back button.
    */
   variant?: 'page' | 'compact'
-  /** Compact only: return from the conversation to the thread list. */
+  /** Compact, and the page below 1024px: return from the conversation to the thread list. */
   onBack?: () => void
   /** The conversation for `activeThread`. Rendered in the centre column. */
   children?: ReactNode
@@ -27,15 +27,15 @@ export interface ChatViewProps {
 
 /**
  * Three columns: threads, conversation, details. The host owns the data, the
- * selected thread and the conversation (children). Below 1024px the side
- * columns open as overlays; the details column starts open from 1280px up.
+ * selected thread and the conversation (children). Below 1024px the list is
+ * the home screen (a conversation opens full width with a back control) and the details open as a bottom
+ * sheet; the details column starts open from 1280px up.
  */
 export function ChatView({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, newChatActions, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
   const [threadsOpen, setThreadsOpen] = useState(true)
   // Open from 1280px up so the column is seen; below that it stays collapsed (overlay under 1024px).
   const [detailsOpen, setDetailsOpen] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches)
-  const [threadsOverlay, setThreadsOverlay] = useState(false)
   const [detailsOverlay, setDetailsOverlay] = useState(false)
 
   const list = (afterSelect?: () => void) => (
@@ -67,36 +67,44 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
 
   const iconBtn = 'shrink-0 text-fg-muted'
   const threadsToggle = narrow ? (
-    <OverlaySidebar
-      open={threadsOverlay}
-      onOpenChange={setThreadsOverlay}
-      side="left"
-      title="Conversations"
-      trigger={<Button type="button" variant="ghost" size="sm" aria-label="Show conversations" className={iconBtn}><PanelLeft className="size-4" aria-hidden="true" /></Button>}
-    >
-      {list(() => setThreadsOverlay(false))}
-    </OverlaySidebar>
+    onBack && (
+      <Button type="button" variant="ghost" size="sm" aria-label="Back to conversations" onClick={onBack} className={iconBtn}>
+        <ChevronLeft className="size-4" aria-hidden="true" />
+      </Button>
+    )
   ) : (
     <Button type="button" variant="ghost" size="sm" aria-label={threadsOpen ? 'Hide conversations' : 'Show conversations'} aria-expanded={threadsOpen} onClick={() => setThreadsOpen((o) => !o)} className={iconBtn}>
       {threadsOpen ? <PanelLeftClose className="size-4" aria-hidden="true" /> : <PanelLeft className="size-4" aria-hidden="true" />}
     </Button>
   )
   const detailsToggle = narrow ? (
-    <OverlaySidebar
-      open={detailsOverlay}
-      onOpenChange={setDetailsOverlay}
-      side="right"
-      title="Thread details"
-      trigger={<Button type="button" variant="ghost" size="sm" aria-label="Show thread details" className={iconBtn}><PanelRight className="size-4" aria-hidden="true" /></Button>}
-    >
-      <ThreadDetails thread={activeThread} />
-    </OverlaySidebar>
+    <>
+      <Button type="button" variant="ghost" size="sm" aria-label="Show thread details" onClick={() => setDetailsOverlay(true)} className={iconBtn}>
+        <PanelRight className="size-4" aria-hidden="true" />
+      </Button>
+      <Sheet open={detailsOverlay} onOpenChange={setDetailsOverlay}>
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
+          <SheetTitle className="px-4 pt-4">Thread details</SheetTitle>
+          <ThreadDetails thread={activeThread} />
+        </SheetContent>
+      </Sheet>
+    </>
   ) : (
     <Button type="button" variant="ghost" size="sm" aria-label={detailsOpen ? 'Hide thread details' : 'Show thread details'} aria-expanded={detailsOpen} onClick={() => setDetailsOpen((o) => !o)} className={`${iconBtn} gap-1.5`}>
       {detailsOpen ? <PanelRightClose className="size-4" aria-hidden="true" /> : <PanelRight className="size-4" aria-hidden="true" />}
       <span className="text-caption">Details</span>
     </Button>
   )
+
+  // Below 1024px the conversation list is the home screen: no empty pane, no hidden toggle to find.
+  if (narrow && !activeThread) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-bg">
+        <ChatFreshness />
+        {list()}
+      </div>
+    )
+  }
 
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-bg">
@@ -109,7 +117,7 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
         <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
           {threadsToggle}
           <h1 className="min-w-0 flex-1 truncate text-control font-normal normal-case tracking-normal text-fg">{activeThread?.title ?? 'Chat'}</h1>
-          {detailsToggle}
+          {activeThread && detailsToggle}
         </header>
         <ChatFreshness />
         {activeThread ? children : (
