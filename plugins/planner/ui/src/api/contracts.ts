@@ -1,4 +1,4 @@
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
+import type { IdeaPromoteResult, IdeaPromoteTarget, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export interface PlannerEvent { type: string }
@@ -28,6 +28,8 @@ export interface PlannerClient {
   plannerDefer(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerReopen(id: string, rev: number): Promise<PlannerItem>
   plannerInboxPromote(id: string, to: PlannerDb, rev: number, targetId: string, fields?: Record<string, unknown>): Promise<{ inbox: PlannerItem; item: PlannerItem }>
+  /** Atomic: the same target id on a retry never creates twice. */
+  plannerIdeaPromote(id: string, to: IdeaPromoteTarget, rev: number, targetId: string): Promise<IdeaPromoteResult>
   plannerInboxDismiss(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerTaskTitles(ids: string[], signal?: AbortSignal): Promise<Record<string, PlannerTaskBrief | null>>
   plannerWorkstreamTasks(id: string, signal?: AbortSignal): Promise<PlannerWorkstreamTasks>

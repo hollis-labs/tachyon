@@ -84,6 +84,22 @@ describe('Ideas lens', () => {
   })
 })
 
+describe('Ideas promote', () => {
+  it('promotes with the displayed revision and keeps the target id across a failed try', async () => {
+    const promote = vi.fn(async (_id: string, to: string, _rev: number, target: string) => ({ receipt: {}, idea: { id: 'ID-1', status: 'promoted' }, created: { id: `${to}-${target.slice(0, 4)}`, db: to } }))
+    promote.mockRejectedValueOnce(new Error('network'))
+    const api = client('ideas', [item({ id: 'ID-1', title: 'Idea', status: 'new' })], {}, { plannerIdeaPromote: promote })
+    page(api, 'ideas', 'ID-1')
+    const button = await screen.findByRole('button', { name: 'Theme' })
+    fireEvent.click(button)
+    await waitFor(() => expect(promote).toHaveBeenCalledTimes(1))
+    fireEvent.click(await screen.findByRole('button', { name: 'Theme' }))
+    await waitFor(() => expect(promote).toHaveBeenCalledTimes(2))
+    expect(promote.mock.calls[0].slice(0, 3)).toEqual(['ID-1', 'themes', 4])
+    expect(promote.mock.calls[1][3]).toBe(promote.mock.calls[0][3])
+  })
+})
+
 describe('Inbox lens', () => {
   const card = item({ id: 'IN-1', title: 'Look at this', status: 'new' })
 

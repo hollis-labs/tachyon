@@ -120,7 +120,6 @@ export const TEXT = {
   notes: 'Notes',
   notesSaved: 'Saved',
   promoteTo: 'Promote to',
-  promoteSoon: 'Promoting an idea needs a backend step that does not exist yet',
   optionsGroup: 'Options',
   chooseButton: 'Choose',
   chooseOption: (label: string) => `Choose ${label}`,
