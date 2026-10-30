@@ -1,5 +1,5 @@
-import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Popover, PopoverContent, PopoverTrigger, Skeleton } from '@hollis-labs/design-components'
-import { Check, Copy, Download, ExternalLink, Maximize2, MoreHorizontal, RefreshCw } from 'lucide-react'
+import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Input, Popover, PopoverContent, PopoverTrigger, Skeleton } from '@hollis-labs/design-components'
+import { Check, ChevronDown, ChevronUp, Copy, Download, ExternalLink, Maximize2, Minus, MoreHorizontal, Plus, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import type { RefDetailProps } from '../autolink/extensions'
@@ -23,6 +23,7 @@ export function FileViewerPane({ refId }: RefDetailProps) {
   const reload = useCallback(() => setTick((n) => n + 1), [])
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [changed, setChanged] = useState(false)
   const copyPath = () => {
     void navigator.clipboard?.writeText(path)
     setCopied(true)
@@ -35,6 +36,7 @@ export function FileViewerPane({ refId }: RefDetailProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick re-runs the stat on Reload
   useEffect(() => {
     let live = true
+    setChanged(false)
     setLoad({ status: 'loading' })
     fileApi.stat(path).then(
       (stat) => live && setLoad({ status: 'ready', stat }),
@@ -44,6 +46,22 @@ export function FileViewerPane({ refId }: RefDetailProps) {
       live = false
     }
   }, [path, tick])
+
+  // Every 30s while visible, ask again; a different etag, size or mtime means the file moved on.
+  const seen = stat ? `${stat.etag ?? ''}|${stat.size ?? ''}|${stat.mtime ?? ''}` : null
+  useEffect(() => {
+    if (!seen || !canOpen) return
+    const t = setInterval(() => {
+      if (document.hidden) return
+      fileApi.stat(path).then(
+        (s) => {
+          if (`${s.etag ?? ''}|${s.size ?? ''}|${s.mtime ?? ''}` !== seen) setChanged(true)
+        },
+        () => undefined,
+      )
+    }, 30000)
+    return () => clearInterval(t)
+  }, [seen, canOpen, path])
 
   return (
     <section aria-label={`File ${path.split('/').pop()}`} className="space-y-3">
@@ -99,6 +117,14 @@ export function FileViewerPane({ refId }: RefDetailProps) {
           </PopoverContent>
         </Popover>
       </div>
+      {changed && (
+        <p role="status" className="text-caption text-fg-muted">
+          Changed on disk.{' '}
+          <Button type="button" variant="link" size="xs" onClick={reload}>
+            Reload
+          </Button>
+        </p>
+      )}
       {load.status === 'loading' && <Skeleton className="h-40 w-full" />}
       {load.status === 'error' && (
         <p role="alert" className="text-control text-fg-secondary">
@@ -142,8 +168,10 @@ export function Body({ stat, path, line, tick, expanded = false }: { stat: FileS
   )
 }
 
+const ZOOMS = [1, 1.5, 2, 3] as const
+
 function Picture({ path }: { path: string }) {
-  const [full, setFull] = useState(false)
+  const [zoom, setZoom] = useState(0)
   const [broken, setBroken] = useState(false)
   if (broken)
     return (
@@ -151,16 +179,23 @@ function Picture({ path }: { path: string }) {
         The image could not be loaded.
       </p>
     )
+  const scale = ZOOMS[zoom]
   // SVG is only ever shown through <img>, as the contract requires.
   return (
-    <button
-      type="button"
-      className={`block w-full overflow-auto border border-border bg-surface ${full ? '' : 'cursor-zoom-in'}`}
-      aria-label={full ? 'Fit image to width' : 'Show image at full size'}
-      onClick={() => setFull((f) => !f)}
-    >
-      <img src={contentUrl(path)} alt={path.split('/').pop() ?? 'image'} onError={() => setBroken(true)} className={full ? 'max-w-none' : 'h-auto w-full'} />
-    </button>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-caption text-fg-muted">
+        <Button type="button" variant="outline" size="sm" aria-label="Zoom out" disabled={zoom === 0} onClick={() => setZoom((z) => Math.max(0, z - 1))}>
+          <Minus className="h-3 w-3" aria-hidden />
+        </Button>
+        <span aria-live="polite">{zoom === 0 ? 'Fit' : `${Math.round(scale * 100)}%`}</span>
+        <Button type="button" variant="outline" size="sm" aria-label="Zoom in" disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))}>
+          <Plus className="h-3 w-3" aria-hidden />
+        </Button>
+      </div>
+      <div className="max-h-[70vh] overflow-auto border border-border bg-surface">
+        <img src={contentUrl(path)} alt={path.split('/').pop() ?? 'image'} onError={() => setBroken(true)} className="h-auto max-w-none" style={{ width: `${scale * 100}%` }} />
+      </div>
+    </div>
   )
 }
 
@@ -218,6 +253,9 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
   const [raw, setRaw] = useState(!markdown)
   const [wrap, setWrap] = useState(false)
   const target = useRef<HTMLSpanElement>(null)
+  const [find, setFind] = useState('')
+  const [at, setAt] = useState(0)
+  const rows = useRef(new Map<number, HTMLSpanElement>())
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick re-reads on Reload
   useEffect(() => {
     let live = true
@@ -242,6 +280,16 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
       </p>
     )
   const lines = state.text.split('\n')
+  const needle = find.trim().toLowerCase()
+  const hits = needle ? lines.flatMap((l, i) => (l.toLowerCase().includes(needle) ? [i] : [])) : []
+  const hitSet = new Set(hits)
+  const current = hits.length ? hits[at % hits.length] : -1
+  const step = (d: number) => {
+    if (!hits.length) return
+    const n = (at + d + hits.length) % hits.length
+    setAt(n)
+    rows.current.get(hits[n])?.scrollIntoView?.({ block: 'center' })
+  }
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
@@ -258,6 +306,33 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
           />
         )}
         {raw && (
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <Input
+              type="search"
+              aria-label="Find in file"
+              placeholder="Find in file"
+              value={find}
+              onChange={(e) => {
+                setFind(e.target.value)
+                setAt(0)
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && step(e.shiftKey ? -1 : 1)}
+              className="h-8 min-w-0 flex-1"
+            />
+            {needle && (
+              <span className="shrink-0 text-caption text-fg-muted" aria-live="polite">
+                {hits.length ? `${(at % hits.length) + 1} of ${hits.length}` : 'No matches'}
+              </span>
+            )}
+            <Button type="button" variant="outline" size="sm" aria-label="Previous match" disabled={!hits.length} onClick={() => step(-1)}>
+              <ChevronUp className="h-3 w-3" aria-hidden />
+            </Button>
+            <Button type="button" variant="outline" size="sm" aria-label="Next match" disabled={!hits.length} onClick={() => step(1)}>
+              <ChevronDown className="h-3 w-3" aria-hidden />
+            </Button>
+          </div>
+        )}
+        {raw && (
           <Button type="button" variant="outline" size="sm" aria-pressed={wrap} onClick={() => setWrap((w) => !w)}>
             Wrap
           </Button>
@@ -272,7 +347,15 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
           className={`${expanded ? 'max-h-[75vh]' : 'max-h-[60vh]'} overflow-auto border border-border bg-surface p-2 font-mono text-caption leading-relaxed text-fg ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : ''}`}
         >
           {lines.map((l, i) => (
-            <span key={i} ref={line === i + 1 ? target : undefined} className={`flex ${line === i + 1 ? 'bg-surface-hover' : ''}`}>
+            <span
+              key={i}
+              ref={(el) => {
+                if (el) rows.current.set(i, el)
+                else rows.current.delete(i)
+                if (line === i + 1) target.current = el
+              }}
+              className={`flex ${i === current ? 'bg-selection' : hitSet.has(i) ? 'bg-surface-hover' : line === i + 1 ? 'bg-surface-hover' : ''}`}
+            >
               <span aria-hidden className="w-10 shrink-0 select-none pr-2 text-right text-fg-faint">
                 {i + 1}
               </span>
