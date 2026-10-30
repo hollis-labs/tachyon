@@ -91,3 +91,21 @@ Added to `internal/builderread`, same mount and guard as B2a: `GET /library/{kin
   Callers must refuse on any non-nil error: unknown is not free. Launches are matched through their agent; boot
   profiles and teams-policy are not indexed, so Tether's own validation stays the backstop.
 - Skill create, edit and delete are B3's; this slice adds none.
+
+## Read model: registry projects (B6)
+
+`GET /registry/projects[?q=&limit=&cursor=]` and `GET /registry/projects/{id}` (read only; the PATCH belongs to the
+existing allowlisted proxy and B3). Mounted by the same `builderread.Reader.Mount` and guard as B2.
+
+- **Registry source:** Tether `GET /registry/projects?status=*&include=external_ids` with the read token (the wire
+  `internal/objectsync` already scans), cached 10 s. If the registry is not configured or unreachable the routes answer
+  503 `registry_unavailable`, never an empty list. Projects with `merged_into` or status `merged` are folded away.
+- **Ids (UNVERIFIED):** the registry has no documented short id, so the Builder id is `props.id`, then `props.slug`,
+  then the last URN segment, then the slugged display name (first that is a valid id; duplicates are dropped).
+- **Link to the catalog (UNVERIFIED):** `props.catalog_id`, then a catalog-substrate external id; if neither is set the
+  registry id, then the slugged display name. Exactly one catalog project must match to read `linked`; none or several
+  read `unlinked` with a `reason`, and then `catalog` and `consumed_by.agents|launches` are null.
+- **Composed fields:** identity and guidance from the registry; `catalog` (`repo_root`, `workspace.mode`, `mcp_servers`
+  null = inherit, `sha`) from the masked project file; `consumed_by.agents|launches` from the launches in that project;
+  `tether_sessions.live` from running sessions on those launches (`total` is null: Tether has no per-project total here).
+- **Not available:** `planner_items` is null (no planner count is wired); `machines`, `services`, `repos` stay `soon`.

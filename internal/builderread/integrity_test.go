@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+type fakeProjects struct {
+	list []RegProject
+	err  error
+}
+
+func (f fakeProjects) Projects(context.Context) ([]RegProject, error) { return f.list, f.err }
+
 type fakeTools struct {
 	m   map[string]ToolHealth
 	err error
