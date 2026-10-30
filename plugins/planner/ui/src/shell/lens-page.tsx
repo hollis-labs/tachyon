@@ -9,7 +9,7 @@ import { PlannerCreateDialog } from '@planner/components/planner/planner-create-
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
 import { boardAge } from '@planner/lib/planner'
 import { LENSES, TEXT } from '@planner/lib/vocabulary'
-import { CAPTION, Chip, CommandPalette, InlineEdit, Pips, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
+import { CAPTION, Chip, CommandPalette, InlineEdit, PaletteHint, Pips, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
 import { Context, type ContextLink } from '@planner/shell/context'
 import { PlannerFrame } from '@planner/shell/frame'
 import { usePlannerKeys } from '@planner/shell/use-planner-keys'
@@ -112,6 +112,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   const [details, setDetails] = useState(false)
   const [palette, setPalette] = useState(false)
   const [creating, setCreating] = useState<'themes' | 'ideas' | null>(null)
+  const [createTitle, setCreateTitle] = useState('')
   const [links, setLinks] = useState<ContextLink[]>([])
   const lens = LENSES.find((l) => l.db === db)!
   const openId = id ? decodeURIComponent(id) : undefined
@@ -192,13 +193,13 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   }, true)
 
   const togglePin = (i: PlannerItem) => write(() => api.plannerPin(db, i.id, !i.pinned, i.rev))
-  const commands = useMemo<PaletteCommand[]>(
-    () => [
-      { id: 'create:themes', mode: 'create', text: TEXT.createTheme, label: TEXT.createTheme, group: TEXT.modeCreate },
-      { id: 'create:ideas', mode: 'create', text: TEXT.createIdea, label: TEXT.createIdea, group: TEXT.modeCreate },
-      ...(items ?? []).map((r) => ({ id: `open:${r.id}`, mode: 'open', text: r.title, label: <span>{r.title}</span> })),
+  const commands = useCallback(
+    (q: string): PaletteCommand[] => [
+      { id: 'create:themes', mode: 'create', text: TEXT.createTheme, label: q ? TEXT.createThemeIn(q) : TEXT.createTheme, group: TEXT.paletteKindTheme, hint: '↵', always: true },
+      { id: 'create:ideas', mode: 'create', text: TEXT.createIdea, label: q ? TEXT.createIdeaNamed(q) : TEXT.createIdea, group: TEXT.paletteKindIdea, hint: 'I', always: true },
+      ...(items ?? []).map((r) => ({ id: `open:${r.id}`, mode: 'open', group: KIND[db], text: r.title, label: r.title })),
     ],
-    [items],
+    [items, db],
   )
 
   const context = item && (
@@ -210,7 +211,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
       comments={item.comments ?? []}
       links={links}
       onCommented={() => void load()}
-      mentionable={items ?? []}
+      mentionable={(items ?? []).map((i) => ({ id: i.id, title: i.title, ref: typeof i.legacy_id === 'string' ? i.legacy_id : undefined }))}
       statusOptions={(schema?.enums.status ?? []).map((s) => ({ value: s, label: s }))}
       onStatus={async (status) => { await api.plannerUpdate(db, item.id, { status }, item.rev + 1) }}
     />
@@ -267,12 +268,13 @@ export default function LensPage({ db }: { db: PlannerDb }) {
         modes={[{ id: 'create', label: TEXT.modeCreate }, { id: 'open', label: TEXT.modeOpen }]}
         commands={commands}
         emptyLabel={TEXT.paletteEmpty}
-        onRun={(cmd) => {
+        hints={<><PaletteHint k="↵">{TEXT.hintEnter}</PaletteHint><PaletteHint k="@">{TEXT.hintAt}</PaletteHint><PaletteHint k="esc">{TEXT.hintEsc}</PaletteHint></>}
+        onRun={(cmd, q) => {
           if (cmd.startsWith('open:')) open(cmd.slice(5))
-          else if (cmd === 'create:themes' || cmd === 'create:ideas') setCreating(cmd === 'create:ideas' ? 'ideas' : 'themes')
+          else if (cmd === 'create:themes' || cmd === 'create:ideas') (setCreateTitle(q), setCreating(cmd === 'create:ideas' ? 'ideas' : 'themes'))
         }}
       />
-      <PlannerCreateDialog db={creating ?? 'themes'} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={1} onCreated={(it) => { void load(); navigate(`/planner/${creating ?? 'themes'}/${encodeURIComponent(it.id)}`) }} />
+      <PlannerCreateDialog db={creating ?? 'themes'} initialTitle={createTitle} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={1} onCreated={(it) => { void load(); navigate(`/planner/${creating ?? 'themes'}/${encodeURIComponent(it.id)}`) }} />
     </>
   )
 }

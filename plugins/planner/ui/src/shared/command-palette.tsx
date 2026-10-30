@@ -1,23 +1,29 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { SearchPalette } from '@hollis-labs/design-components'
+import { SearchPalette, type SearchPaletteOption } from '@hollis-labs/design-components'
+import { CAPTION, Kbd } from './primitives'
 
 export interface PaletteCommand {
   id: string
   label: ReactNode
   /** Text matched against the query. */
   text: string
+  /** The command's section: it must be one of the palette's `modes`. */
   mode: string
-  /** Leading group label shown in the row; groups follow the order of `commands`. */
+  /** Leading kind label of the row (Theme, Task, Idea…). */
   group?: string
+  /** Trailing hint of the row: a key, or "→ link". */
+  hint?: ReactNode
+  /** Shown whatever the query is (a create row echoing what was typed). */
+  always?: boolean
 }
 
 export interface CommandPaletteProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  /** Modes are the palette's filters, e.g. Create and Open. */
+  /** Sections, in order: each is a heading over its commands. */
   modes: readonly { id: string; label: string }[]
-  commands: readonly PaletteCommand[]
+  commands: readonly PaletteCommand[] | ((query: string) => readonly PaletteCommand[])
   /** Enter. */
   onRun: (id: string, query: string) => void
   /** Tab: run and link the result to the focused item. Omit to disable. */
@@ -27,16 +33,31 @@ export interface CommandPaletteProps {
   hints?: ReactNode
 }
 
-/** Composition over SearchPalette: modes as filters, Tab-to-link, local matching. Opening is the host's (the "/" key). */
+/** Composition over SearchPalette: one list in sections, Tab-to-link, local matching. Opening is the host's (the "/" key). */
 export function CommandPalette({ open, onOpenChange, title, modes, commands, onRun, onRunAndLink, emptyLabel, hints }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
-  const [mode, setMode] = useState(modes[0]?.id ?? '')
-  const options = useMemo(() => {
+  const all = typeof commands === 'function' ? commands(query.trim()) : commands
+  const options = useMemo<SearchPaletteOption[]>(() => {
     const q = query.trim().toLowerCase()
-    return commands
-      .filter((c) => c.mode === mode && (!q || c.text.toLowerCase().includes(q)))
-      .map((c) => ({ id: c.id, label: c.group ? <span className="flex gap-2"><span className="text-fg-faint">{c.group}</span>{c.label}</span> : c.label }))
-  }, [commands, mode, query])
+    return modes.flatMap((m) => {
+      const rows = all.filter((c) => c.mode === m.id && (c.always || !q || c.text.toLowerCase().includes(q)))
+      if (rows.length === 0) return []
+      return [
+        { id: `heading:${m.id}`, disabled: true, label: <span className={CAPTION}>{m.label}</span> },
+        ...rows.map((c) => ({
+          id: c.id,
+          label: (
+            <span className="flex w-full items-center gap-3">
+              {c.group && <span className="w-14 shrink-0 font-mono text-caption text-fg-faint">{c.group}</span>}
+              <span className="min-w-0 flex-1 truncate">{c.label}</span>
+              {c.hint && <span className="shrink-0 font-mono text-caption text-fg-muted">{c.hint}</span>}
+            </span>
+          ),
+        })),
+      ]
+    })
+  }, [all, modes, query])
+  const runnable = options.filter((o) => !o.disabled)
 
   const close = (v: boolean) => {
     if (!v) setQuery('')
@@ -44,10 +65,10 @@ export function CommandPalette({ open, onOpenChange, title, modes, commands, onR
   }
   // Tab bubbles up from the portalled dialog through React, so one handler here sees it.
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Tab' || !onRunAndLink || options.length === 0) return
+    if (e.key !== 'Tab' || !onRunAndLink || runnable.length === 0) return
     // The input names the highlighted option by index in aria-activedescendant.
     const at = Number((e.target as HTMLElement).getAttribute('aria-activedescendant')?.split('-option-').pop())
-    const id = (Number.isInteger(at) && options[at] ? options[at] : options[0]).id
+    const id = (Number.isInteger(at) && options[at] && !options[at].disabled ? options[at] : runnable[0]).id
     e.preventDefault()
     onRunAndLink(id, query)
     close(false)
@@ -62,16 +83,27 @@ export function CommandPalette({ open, onOpenChange, title, modes, commands, onR
         onQueryChange={setQuery}
         options={options}
         onSelect={(id) => {
-          onRun(id, query)
+          onRun(id, query.trim())
           close(false)
         }}
-        filters={modes}
-        filterId={mode}
-        onFilterChange={setMode}
-        sourceGeneration={`${mode}:${commands.length}`}
+        sourceGeneration={`${all.length}:${modes.length}`}
         emptyLabel={emptyLabel}
       />
-      {open && hints && <div className="sr-only">{hints}</div>}
+      {open && hints && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] mx-auto flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center gap-x-4 gap-y-1 rounded-panel border border-border bg-bg-elevated px-3 py-1.5 text-label text-fg-muted max-sm:hidden">
+          {hints}
+        </div>
+      )}
     </div>
+  )
+}
+
+/** A key hint for the palette footer: `<Hint k="↵">create or open</Hint>`. */
+export function PaletteHint({ k, children }: { k: string; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Kbd>{k}</Kbd>
+      {children}
+    </span>
   )
 }

@@ -31,7 +31,8 @@ export interface ContextProps {
   links: readonly ContextLink[]
   decisions?: readonly ContextDecision[]
   onCommented: () => void
-  mentionable: readonly { id: string; title: string }[]
+  /** `ref` is the short handle shown beside the title ("#4"); the id is the fallback. */
+  mentionable: readonly { id: string; title: string; ref?: string }[]
   /** Status changes offered from the composer; a chosen one is applied when the comment is sent. */
   statusOptions?: readonly StatusMenuOption[]
   onStatus?: (value: string) => Promise<void>
@@ -145,7 +146,7 @@ export function Context({ db, id, rev, pinned: pinnedNow, comments, links, decis
               {matches.map((m, i) => (
                 <li key={m.id} role="option" aria-selected={i === at} onMouseDown={(e) => { e.preventDefault(); mention(m) }} className="flex h-7 cursor-pointer items-center gap-2 rounded-sm px-2 text-control text-fg-secondary aria-selected:bg-selection aria-selected:text-fg">
                   <StateDot state="doing" />
-                  <span className="truncate"><span className="mr-1.5 font-mono text-caption text-fg-muted">{m.id.length > 12 ? m.id.slice(0, 8) : m.id}</span>{m.title}</span>
+                  <span className="truncate"><span className="mr-1.5 font-mono text-caption text-fg-muted">{m.ref ?? (m.id.length > 12 ? m.id.slice(0, 8) : m.id)}</span>{m.title}</span>
                 </li>
               ))}
             </ul>
