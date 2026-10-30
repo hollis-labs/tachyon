@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input } from "@hollis-labs/design-components"
+import { Button } from "@hollis-labs/design-components"
 import { Check, CircleDot, Clock, X } from "lucide-react"
 import type { ApprovalClient, HistoryEvent } from "./client"
 import { ago } from "./parts"
@@ -33,15 +33,11 @@ function dayLabel(at: string, now = new Date()) {
 }
 
 // History: what was decided, by whom and why, newest first, grouped under day pills.
-const STATUSES = [["", "All decisions"], ["approved", "Approved"], ["denied", "Denied"], ["answered", "Answered"], ["expired", "Expired"], ["withdrawn", "Withdrawn"]] as const
-
-export function HistoryTimeline({ client, search, onOpen }: { client: ApprovalClient; search: string; onOpen(itemId: string): void }) {
+export function HistoryTimeline({ client, search, status, requester, onOpen }: { client: ApprovalClient; search: string; status: string; requester: string; onOpen(itemId: string): void }) {
   const [events, setEvents] = useState<HistoryEvent[] | null>(null)
   const [next, setNext] = useState<string>()
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState("")
-  const [requester, setRequester] = useState("")
   const filtered = !!(status || requester.trim() || search.trim())
   const load = useCallback(async (cursor?: string) => {
     setLoading(true)
@@ -65,18 +61,6 @@ export function HistoryTimeline({ client, search, onOpen }: { client: ApprovalCl
   }
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by decision" />}>
-            {STATUSES.find(([v]) => v === status)?.[1]}
-          </DropdownMenuTrigger>
-          <DropdownMenuContent aria-label="Filter by decision" align="start" data-dashboard-shape="square" className="w-40">
-            {STATUSES.map(([v, l]) => <DropdownMenuItem key={v} onClick={() => setStatus(v)}>{l}</DropdownMenuItem>)}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Input aria-label="Filter by requester" placeholder="Requested by…" value={requester} onChange={(e) => setRequester(e.target.value)} className="h-8 w-48 max-w-full" />
-        {(status || requester) && <Button type="button" variant="ghost" size="sm" onClick={() => { setStatus(""); setRequester("") }}>Clear filters</Button>}
-      </div>
       {error && (
         <div role="alert" className="mb-3 flex items-center justify-between gap-2 rounded border border-danger/30 p-3 dash-control text-danger">
           <span>Could not load history: {error}</span>
@@ -84,7 +68,7 @@ export function HistoryTimeline({ client, search, onOpen }: { client: ApprovalCl
         </div>
       )}
       {events && !events.length && !error && (
-        <p className="py-10 text-center dash-body text-fg-faint">{filtered ? "No decisions match." : "No decisions yet."}</p>
+        <p className="py-10 text-center dash-body text-fg-faint">{filtered ? "Nothing matches these filters." : "No decisions yet."}</p>
       )}
       {!events && !error && <p className="py-10 text-center dash-body text-fg-faint">Loading history…</p>}
       <ol aria-label="Decision history" className="space-y-5">

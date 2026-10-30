@@ -317,12 +317,15 @@ describe("history", () => {
     expect(list.textContent).toContain("Expired · Rotate token")
     expect(history).toHaveBeenCalledWith({ q: "", status: "", requester: "", cursor: undefined })
     // Filters go to the server: a decision menu and a requester field.
-    fireEvent.change(screen.getByRole("textbox", { name: "Filter by requester" }), { target: { value: "agent-one" } })
+    fireEvent.click(screen.getByRole("button", { name: "Filter by requester" }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("menuitem", { name: "agent-one" }))
     await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "", requester: "agent-one", cursor: undefined }))
     fireEvent.click(screen.getByRole("button", { name: "Filter by decision" }))
     await act(async () => {})
     fireEvent.click(screen.getByRole("menuitem", { name: "Denied" }))
     await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "denied", requester: "agent-one", cursor: undefined }))
+    expect(screen.getByRole("button", { name: "Filter by decision" }).textContent).toBe("Decision: Denied")
   })
 })
 
@@ -614,8 +617,8 @@ describe("audit trail", () => {
     details.open = true
     fireEvent(details, new Event("toggle"))
     const list = await screen.findByRole("list", { name: "Audit trail" })
-    expect(list.textContent).toContain("Presented")
-    expect(list.textContent).toContain("Approved")
+    expect(list.textContent).toContain("Presented by you")
+    expect(list.textContent).toContain("Approved by you")
     expect(list.textContent).toContain("Looks right")
     expect(audit).toHaveBeenCalledWith("req-1")
     expect(container).toBeTruthy()

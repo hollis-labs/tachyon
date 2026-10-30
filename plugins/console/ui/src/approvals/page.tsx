@@ -1,4 +1,4 @@
-import { Button, SearchInput } from "@hollis-labs/design-components"
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SearchInput } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { Segmented } from "../components/segmented"
 import { useEffect, useState } from "react"
@@ -9,6 +9,8 @@ import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
 import { HistoryTimeline } from "./history"
+
+const STATUSES = [["", "All"], ["approved", "Approved"], ["denied", "Denied"], ["answered", "Answered"], ["expired", "Expired"], ["withdrawn", "Withdrawn"]] as const
 
 export function ApprovalsPage() {
   const queue = useApprovals()
@@ -28,6 +30,8 @@ export function ApprovalsPage() {
   }, [linked, setParams])
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
+  const [status, setStatus] = useState("")
+  const [requester, setRequester] = useState("")
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [confirming, setConfirming] = useState<"approved" | "denied">()
   const [batchBusy, setBatchBusy] = useState(false)
@@ -46,6 +50,8 @@ export function ApprovalsPage() {
         <p className="p-4 dash-support text-fg-muted">Enable Console to view approvals.</p>
       </div>
     )
+  // Requesters we know of: agents on items in the inbox. The server filters by substring, so any of these narrows history.
+  const requesters = [...new Set((queue.inbox ? [...queue.inbox.pending, ...queue.inbox.history] : []).map((i) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id))].sort()
   const pendingCount = queue.inbox?.pending.length ?? 0
   const rows = (queue.inbox?.[view] ?? []).filter((item) =>
     `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
@@ -116,6 +122,28 @@ export function ApprovalsPage() {
         <div className="dash-search-adapter w-72 max-w-full">
           <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} slashToFocus={false} />
         </div>
+        {view === "history" && (
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by decision" />}>
+                Decision: {STATUSES.find(([v]) => v === status)?.[1]}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent aria-label="Filter by decision" align="start" data-dashboard-shape="square" className="w-40">
+                {STATUSES.map(([v, l]) => <DropdownMenuItem key={v} onClick={() => setStatus(v)}>{l}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by requester" />}>
+                Requested by: {requester || "anyone"}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent aria-label="Filter by requester" align="start" data-dashboard-shape="square" className="w-48">
+                <DropdownMenuItem onClick={() => setRequester("")}>Anyone</DropdownMenuItem>
+                {requesters.map((r) => <DropdownMenuItem key={r} onClick={() => setRequester(r)}>{r}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {(status || requester) && <Button type="button" variant="ghost" size="sm" onClick={() => { setStatus(""); setRequester("") }}>Clear filters</Button>}
+          </>
+        )}
       </div>
       {queue.error && (
         <p role="alert" className="mx-4 mt-2 rounded border border-danger/30 p-3 dash-control text-danger">
@@ -123,7 +151,7 @@ export function ApprovalsPage() {
         </p>
       )}
       {view === "history" ? (
-        <HistoryTimeline client={queue.client} search={search} onOpen={queue.open} />
+        <HistoryTimeline client={queue.client} search={search} status={status} requester={requester} onOpen={queue.open} />
       ) : (
       <div className="flex min-h-0 flex-1">
         <section
