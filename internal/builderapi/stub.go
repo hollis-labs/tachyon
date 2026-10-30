@@ -707,16 +707,18 @@ func changeRearm(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, n)
 }
 
-// handoffCommands is what the server builds so the UI never hard-codes CLI flags: plan, approve, apply.
-// The plan id is a placeholder until mark_planned gives it.
-func handoffCommands(name, planID string) []map[string]any {
+// handoffCommands is what the server builds so the UI never hard-codes CLI flags. Tether's CLI has show and
+// approve only; planning and applying are MCP tools of a session that holds catalog.write (kind action, no
+// shell command). The plan id is a placeholder until mark_planned gives it.
+func handoffCommands(planID string) []map[string]any {
 	if planID == "" {
 		planID = "<plan_id>"
 	}
 	return []map[string]any{
-		{"step": "plan", "label": "Plan the bundle", "command": fmt.Sprintf("tether catalog plan --name %q --file bundle.json", name)},
-		{"step": "approve", "label": "Approve the plan", "command": "tether catalog approve " + planID},
-		{"step": "apply", "label": "Apply the plan", "command": "tether catalog apply " + planID},
+		{"step": "plan", "label": "Ask a session with catalog.write to plan this bundle", "kind": "action", "tool": "tether_catalog_plan"},
+		{"step": "show", "label": "Review the plan", "kind": "shell", "command": "tether catalog show " + planID},
+		{"step": "approve", "label": "Approve the plan", "kind": "shell", "command": "tether catalog approve " + planID},
+		{"step": "apply", "label": "Ask the same session to apply the approved plan", "kind": "action", "tool": "tether_catalog_apply"},
 	}
 }
 
@@ -751,7 +753,7 @@ func changeBundle(w http.ResponseWriter, r *http.Request) {
 	var v map[string]any
 	load("change_bundle", &v)
 	v["name"] = "builder " + r.PathValue("id")
-	v["commands"] = handoffCommands(v["name"].(string), "")
+	v["commands"] = handoffCommands("")
 	write(w, 200, v)
 }
 
@@ -788,7 +790,7 @@ func changeMarkPlanned(w http.ResponseWriter, r *http.Request) {
 			for k, v := range h {
 				hh[k] = v
 			}
-			hh["commands"] = handoffCommands(fmt.Sprint(hh["name"]), in.PlanID)
+			hh["commands"] = handoffCommands(in.PlanID)
 			n["handoff"] = hh
 		}
 	}

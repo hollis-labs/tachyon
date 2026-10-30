@@ -68,7 +68,7 @@ replace that feature's real routes with fixtures. **For the deploy none of them 
 
 ## 3. What is inert until configured
 
-- Builder changes: without `TACHYON_TETHER_CONTROL_TOKEN_FILE` they run in **handoff mode** on the read token. A change stops at `awaiting_handoff` with a bundle (`GET builder/changes/{id}/bundle`) the operator plans in Tether (`tether catalog plan`, `approve`, `apply`; CLI flags unverified); Tachyon detects the apply from file shas. `GET builder/capabilities` reports `direct`, `handoff` or `unavailable` (no read token). Reads always work from the catalog index.
+- Builder changes: without `TACHYON_TETHER_CONTROL_TOKEN_FILE` they run in **handoff mode** on the read token. A change stops at `awaiting_handoff` with a bundle (`GET builder/changes/{id}/bundle`) a session with `catalog.write` plans in Tether (MCP `tether_catalog_plan`; the CLI has no plan/apply), the operator runs `tether catalog show/approve <plan_id>` on the host, and the session applies (`tether_catalog_apply`); Tachyon detects the apply from file shas. `GET builder/capabilities` reports `direct`, `handoff` or `unavailable` (no read token). Reads always work from the catalog index.
 - Builder reads and the Agents collector: off without `TETHER_ADDR`/`TETHER_TOKEN_FILE` (a token is refused over plain http to a non-loopback host).
 - File viewer `caster://`: 501 without the caster token file. Local files work without it.
 - Secret submit: 503 without `TACHYON_SECRET_KEY_FILE`.

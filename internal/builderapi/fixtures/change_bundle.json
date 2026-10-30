@@ -11,18 +11,27 @@
   "commands": [
     {
       "step": "plan",
-      "label": "Plan the bundle",
-      "command": "tether catalog plan --name \"builder chg_awaiting_handoff\" --file bundle.json"
+      "label": "Ask a session with catalog.write to plan this bundle",
+      "kind": "action",
+      "tool": "tether_catalog_plan"
+    },
+    {
+      "step": "show",
+      "label": "Review the plan",
+      "kind": "shell",
+      "command": "tether catalog show <plan_id>"
     },
     {
       "step": "approve",
       "label": "Approve the plan",
+      "kind": "shell",
       "command": "tether catalog approve <plan_id>"
     },
     {
       "step": "apply",
-      "label": "Apply the plan",
-      "command": "tether catalog apply <plan_id>"
+      "label": "Ask the same session to apply the approved plan",
+      "kind": "action",
+      "tool": "tether_catalog_apply"
     }
   ]
 }

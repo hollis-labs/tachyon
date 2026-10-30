@@ -11,8 +11,8 @@ import (
 )
 
 // Handoff mode (BH1): Tachyon holds no catalog.write credential. A change still gets typed edits, a diff,
-// checks and stale detection, but ends at a bundle the operator plans in Tether (`tether catalog plan`,
-// approve, apply). Applied is DETECTED: every target file's sha equals its NewSHA. No plan id or credential is
+// checks and stale detection, but ends at a bundle a session with catalog.write plans in Tether
+// (tether_catalog_plan), the operator approves (`tether catalog approve`) and the session applies. Applied is DETECTED: every target file's sha equals its NewSHA. No plan id or credential is
 // needed. Design: Tesseract design_tachyon_builder_change_handoff_20261030.
 
 var planIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,80}$`)
@@ -27,16 +27,19 @@ type Bundle struct {
 	Commands []Command `json:"commands"`
 }
 
-// commandsFor builds the three Tether commands for a bundle name. The CLI spellings are UNVERIFIED; they live
-// here so the UI can show whatever this says and a correction is one edit.
-func commandsFor(name, planID string) []Command {
+// commandsFor builds the operator's steps for a bundle. Tether's CLI has `catalog show` and `catalog approve`
+// only: planning and applying are MCP tools (tether_catalog_plan, tether_catalog_apply) of a session that holds
+// catalog.write, so those steps are actions with no shell command. The spellings live here so a correction is
+// one edit; `<plan_id>` stands in until mark_planned supplies it.
+func commandsFor(planID string) []Command {
 	if planID == "" {
 		planID = "<plan_id>"
 	}
 	return []Command{
-		{Step: "plan", Label: "Plan the bundle", Command: "tether catalog plan --name " + strconv.Quote(name) + " --file bundle.json"},
-		{Step: "approve", Label: "Approve the plan", Command: "tether catalog approve " + planID},
-		{Step: "apply", Label: "Apply the plan", Command: "tether catalog apply " + planID},
+		{Step: "plan", Label: "Ask a session with catalog.write to plan this bundle", Kind: "action", Tool: "tether_catalog_plan"},
+		{Step: "show", Label: "Review the plan", Kind: "shell", Command: "tether catalog show " + planID},
+		{Step: "approve", Label: "Approve the plan", Kind: "shell", Command: "tether catalog approve " + planID},
+		{Step: "apply", Label: "Ask the same session to apply the approved plan", Kind: "action", Tool: "tether_catalog_apply"},
 	}
 }
 
@@ -53,7 +56,7 @@ func bundleSHA(name, note string, files []File) string {
 func (s *Service) handoffFor(c *Change, files []File) *Handoff {
 	name := "builder " + c.ChangeID
 	return &Handoff{Mode: builderapi.HandoffCopy, Name: name, BundleSHA256: bundleSHA(name, c.Note, files), Files: len(files),
-		SessionAvailable: false, Reason: "not_configured", Commands: commandsFor(name, "")}
+		SessionAvailable: false, Reason: "not_configured", Commands: commandsFor("")}
 }
 
 func newSHA(c *Change, path string) string {
@@ -104,7 +107,7 @@ func (s *Service) Bundle(ctx context.Context, id string) (Bundle, *APIError) {
 	if c.Plan != nil {
 		planID = c.Plan.PlanID
 	}
-	return Bundle{Name: name, Note: c.Note, Files: b.files, SHA256: bundleSHA(name, c.Note, b.files), Commands: commandsFor(name, planID)}, nil
+	return Bundle{Name: name, Note: c.Note, Files: b.files, SHA256: bundleSHA(name, c.Note, b.files), Commands: commandsFor(planID)}, nil
 }
 
 // MarkPlanned records the plan id the operator got from Tether, only so the UI can say "plan X awaiting
@@ -126,7 +129,7 @@ func (s *Service) MarkPlanned(ctx context.Context, id, planID string) (Change, *
 	if planID != "" {
 		c.Plan = &PlanInfo{PlanID: planID, State: "planned", ApproveCommand: "tether catalog approve " + planID}
 	}
-	c.Handoff.Commands = commandsFor(c.Handoff.Name, planID)
+	c.Handoff.Commands = commandsFor(planID)
 	c.State = builderapi.ChangeAwaitingApproval
 	return s.save(ctx, c)
 }

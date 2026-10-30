@@ -743,26 +743,38 @@ func TestHandoffModeCapabilitiesBundleAndDetection(t *testing.T) {
 }
 
 func TestHandoffCommandsAreServerBuilt(t *testing.T) {
-	type cmd struct{ Step, Label, Command string }
+	type cmd struct{ Step, Label, Kind, Command, Tool string }
 	var c struct{ Handoff struct{ Commands []cmd } }
 	decode(t, do(t, "GET", "/changes/chg_awaiting_handoff", ""), &c)
 	steps := []string{}
 	for _, k := range c.Handoff.Commands {
 		steps = append(steps, k.Step)
-		if k.Label == "" || !strings.HasPrefix(k.Command, "tether catalog ") {
-			t.Errorf("command: %+v", k)
+		switch k.Kind {
+		case "shell": // the CLI only has show and approve
+			if !strings.HasPrefix(k.Command, "tether catalog show ") && !strings.HasPrefix(k.Command, "tether catalog approve ") || k.Tool != "" {
+				t.Errorf("shell step: %+v", k)
+			}
+		case "action": // plan and apply are MCP tools, never a shell command
+			if k.Command != "" || !strings.HasPrefix(k.Tool, "tether_catalog_") {
+				t.Errorf("action step: %+v", k)
+			}
+		default:
+			t.Errorf("kind: %+v", k)
+		}
+		if k.Label == "" || strings.Contains(k.Command, "catalog plan") || strings.Contains(k.Command, "catalog apply") {
+			t.Errorf("step: %+v", k)
 		}
 	}
-	if strings.Join(steps, ",") != "plan,approve,apply" || !strings.Contains(c.Handoff.Commands[1].Command, "<plan_id>") {
+	if strings.Join(steps, ",") != "plan,show,approve,apply" || !strings.Contains(c.Handoff.Commands[2].Command, "<plan_id>") {
 		t.Errorf("commands before a plan id: %+v", c.Handoff.Commands)
 	}
 	var b struct{ Commands []cmd }
 	decode(t, do(t, "GET", "/changes/chg_awaiting_handoff/bundle", ""), &b)
-	if len(b.Commands) != 3 {
+	if len(b.Commands) != 4 {
 		t.Errorf("bundle commands: %+v", b.Commands)
 	}
 	decode(t, do(t, "POST", "/changes/chg_awaiting_handoff/mark_planned", `{"plan_id":"plan_ABC"}`), &c)
-	if c.Handoff.Commands[2].Command != "tether catalog apply plan_ABC" {
+	if c.Handoff.Commands[1].Command != "tether catalog show plan_ABC" || c.Handoff.Commands[2].Command != "tether catalog approve plan_ABC" {
 		t.Errorf("commands after mark_planned: %+v", c.Handoff.Commands)
 	}
 }

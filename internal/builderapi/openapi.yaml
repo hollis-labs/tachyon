@@ -487,11 +487,17 @@ components:
             snapshot_seq: {type: integer, description: "restore_version only. Never restores env values."}
     HandoffCommand:
       type: object
-      required: [step, label, command]
+      required: [step, label, kind]
+      description: |
+        One step of the hand-off. Tether's CLI has `catalog show` and `catalog approve` only; planning and applying
+        are MCP tools of a session that holds catalog.write. kind shell: show command in a copy box. kind action:
+        show label (and the bundle download/copy for plan); tool names the MCP tool, there is no CLI.
       properties:
-        step: {type: string, enum: [plan, approve, apply]}
+        step: {type: string, enum: [plan, show, approve, apply]}
         label: {type: string}
-        command: {type: string}
+        kind: {type: string, enum: [shell, action]}
+        command: {type: string, description: "kind shell only. Carries <plan_id> until mark_planned supplies it."}
+        tool: {type: string, description: "kind action only: tether_catalog_plan | tether_catalog_apply."}
     ChangeRequest:
       type: object
       required: [request_id, ops]

@@ -93,12 +93,14 @@ plan/apply step with a hand-off. Design: Tesseract `design_tachyon_builder_chang
 - Handoff states: `draft -> awaiting_handoff -> [awaiting_approval] -> applied`, or `stale`, `cancelled`,
   `failed`. `POST /changes` answers `awaiting_handoff` when nothing needs an ack (a privileged change stays a `draft`
   until `submit` with `ack_privileged`, which also lands at `awaiting_handoff`). `awaiting_handoff` has no expiry.
-  `change.handoff = {mode, name, bundle_sha256, files, session_available, reason?, commands:[{step:"plan"|"approve"|"apply", label, command}]}` (commands are built server-side so the UI never hard-codes CLI flags; `<plan_id>` placeholder until `mark_planned`; the bundle response carries the same `commands`); each target gains `new_sha`.
+  `change.handoff = {mode, name, bundle_sha256, files, session_available, reason?, commands:[{step:"plan"|"show"|"approve"|"apply", label, kind:"shell"|"action", command?, tool?}]}` (commands are built server-side so the UI never hard-codes CLI flags; `<plan_id>` placeholder until `mark_planned`; the bundle response carries the same `commands`); each target gains `new_sha`.
 - `GET /changes/{id}/bundle` -> `{name, note, files:[{path,content}], sha256}`: exactly the `POST /catalog/plans` body.
   Browser session only, `Cache-Control: no-store`. It carries full file content (may include env values): download or
-  copy only, never Tesseract, mail, a prompt or a log. The UI shows `tether catalog plan --name "<name>" --file
-  bundle.json`, then `tether catalog approve <plan_id>`, then `tether catalog apply <plan_id>`; the CLI flag
-  spellings are UNVERIFIED, the HTTP/MCP shape is verified.
+  copy only, never Tesseract, mail, a prompt or a log. The UI shows `commands`: Tether's CLI has `tether catalog show <plan_id>` and `tether catalog approve <plan_id>` only
+  (kind `shell`, run on the host). Planning and applying are MCP tools of a session that holds `catalog.write`
+  (kind `action`, `tool` = `tether_catalog_plan` / `tether_catalog_apply`, no CLI): the UI says "Ask a session with
+  catalog.write to plan this bundle" beside the bundle download/copy, and later "ask the same session to apply".
+  A plan/apply CLI would be a Tether feature request. Verified against the hub CLI (`tether catalog --help`).
 - `POST /changes/{id}/mark_planned {plan_id?}`: optional hint, `awaiting_handoff -> awaiting_approval` with
   `plan = {plan_id, state:"planned", expires_at:null, approve_command}`. Not trusted for the applied state.
 - `POST /changes/{id}/check`: "Check now", re-reads the files immediately and answers the change.
