@@ -246,7 +246,7 @@ export function DecisionDetail({
         )}
       </div>
       {/* Decision bar: fixed at the bottom of the detail. */}
-      <div role="toolbar" aria-label="Decision" className="space-y-3 border-t border-border bg-bg p-4">
+      <div role="toolbar" aria-label="Decision" className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-border bg-bg p-4">
         {request && (<>
             {resolution ? (
               <section className="rounded border border-border bg-surface/40 p-4">
