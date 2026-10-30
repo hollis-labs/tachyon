@@ -347,7 +347,7 @@ export function DecisionDetail({
                 {request.kind === "card.info" ? (
                   <p className="dash-control text-fg-muted">This card is for information; there is nothing to answer.</p>
                 ) : request.kind === "card.question" || request.kind === "card.form" ? (
-                  <CardForm request={request} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
+                  <CardForm request={request} itemId={item.item_id} client={client} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
                 ) : choice ? (
                   <section className="rounded border border-border bg-surface/40 p-3">
                     <p className="dash-control text-fg-muted">
