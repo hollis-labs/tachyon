@@ -10,5 +10,7 @@ Answerable cards in a chat thread. The queue item (Approvals) stays the only rec
 - Answers still go through the Approvals resolve route. When a bound card is resolved, the thread gets a `card` event and, in an app thread,
   an operator message to the agent ("Card answered: ... Decision: ... Answers: ..."). Expiry publishes the event only.
 - The thread list's `blocked_on_user` counts bound cards still open (`Aggregator.CardBlocks`).
-- Not here yet: `card.plan` / `card.dispatch` kinds, the cardfx `create` op, "Always in this chat" rules, and runtime `approval_request`
-  translation (waits on the Nanite chatstream contract).
+- Kinds `card.plan` (approved | changes_requested) and `card.dispatch` (approved | denied). Both are low class unless they carry effects.
+- cardfx `create`: effect `{target:"torque:task/new", op:"create", value:<title or JSON {title, description, project_id}>}` opens a Torque task
+  when the card is approved. Same switch as status changes: off unless `TACHYON_CARD_EFFECTS_TORQUE` is set. The receipt detail carries the new id.
+- Not here yet: "Always in this chat" rules (T5c), and runtime `approval_request` translation (waits on the Nanite chatstream contract).
