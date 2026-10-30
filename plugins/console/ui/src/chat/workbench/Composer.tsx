@@ -24,15 +24,20 @@ export interface ComposerProps {
   /** Attachments shared from the Workspace (strip above the input). */
   strip?: { id: string; label: string }[]
   onRemoveStrip?: (id: string) => void
+  /** Open drawer mode, shown pressed on its icon. */
+  drawerMode?: 'scratch' | 'terminal' | 'workspace' | null
+  /** Scratchpad lives in the aside: its icon opens that panel instead of the drawer. */
+  scratchInAside?: boolean
 }
 
+const ACTIVE = 'bg-selection text-fg'
 const ICON_BTN = 'inline-grid size-7 place-items-center rounded-control border border-border text-fg-secondary hover:bg-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring disabled:opacity-40'
 
 /**
  * chat.composer: a raised input with an attachment strip, a + menu, mode and shell chips, three drawer icons
  * and an enter-glyph Send, plus the footer disclaimer. Enter sends, Shift+Enter is a newline.
  */
-export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled, note, sendError, textareaRef, onOpenPalette, onDrawer, extra, strip = [], onRemoveStrip }: ComposerProps) {
+export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled, note, sendError, textareaRef, onOpenPalette, onDrawer, extra, strip = [], onRemoveStrip, drawerMode, scratchInAside }: ComposerProps) {
   const [menu, setMenu] = useState(false)
   const own = useRef<HTMLTextAreaElement>(null)
   const area = (textareaRef as React.RefObject<HTMLTextAreaElement>) ?? own
@@ -58,7 +63,7 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
   }
   const item = 'flex h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-control text-fg-secondary hover:bg-selection hover:text-fg focus-visible:bg-selection focus-visible:outline-none'
   return (
-    <div className="shrink-0 px-6 max-sm:px-2">
+    <div className="relative z-10 shrink-0 px-6 max-sm:px-2">
       <div ref={wrap} className="relative mx-auto w-full max-w-[760px] rounded-panel border border-surface-hover bg-bg-elevated shadow-[0_10px_28px_rgba(0,0,0,.45)]">
         {strip.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-2">
@@ -68,6 +73,7 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
                 <button type="button" aria-label={`Remove ${s.label}`} onClick={() => onRemoveStrip?.(s.id)} className="ml-1 text-fg-muted hover:text-fg">✕</button>
               </Chip>
             ))}
+            {strip.length > 0 && <Chip className="bg-selection">{strip.length} shared from Workspace</Chip>}
           </div>
         )}
         <textarea
@@ -92,9 +98,9 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
           {note && <span className="min-w-0 truncate text-label text-fg-muted max-sm:hidden">{note}</span>}
           <span className="flex-1" />
           {/* The drawer opens from these in slice C-C; until then they stay visible and inert. */}
-          <button type="button" aria-label="Scratchpad" title="Scratchpad ⌘J" disabled={!onDrawer} onClick={() => onDrawer?.('scratch')} className={ICON_BTN}><PenLine aria-hidden className="size-3.5" /></button>
-          <button type="button" aria-label="Terminal" title="Terminal ⌃T" disabled={!onDrawer} onClick={() => onDrawer?.('terminal')} className={ICON_BTN}><SquareTerminal aria-hidden className="size-3.5" /></button>
-          <button type="button" aria-label="Workspace" title="Workspace ⌘⇧W" disabled={!onDrawer} onClick={() => onDrawer?.('workspace')} className={ICON_BTN}><Inbox aria-hidden className="size-3.5" /></button>
+          <button type="button" aria-label="Scratchpad" aria-pressed={drawerMode === 'scratch'} title="Scratchpad ⌘J" disabled={!onDrawer} onClick={() => onDrawer?.('scratch')} className={cn(ICON_BTN, drawerMode === 'scratch' && ACTIVE)}><PenLine aria-hidden className="size-3.5" /></button>
+          <button type="button" aria-label="Terminal" aria-pressed={drawerMode === 'terminal'} title="Terminal ⌃T" disabled={!onDrawer} onClick={() => onDrawer?.('terminal')} className={cn(ICON_BTN, drawerMode === 'terminal' && ACTIVE)}><SquareTerminal aria-hidden className="size-3.5" /></button>
+          <button type="button" aria-label="Workspace" aria-pressed={drawerMode === 'workspace'} title="Workspace ⌘⇧W" disabled={!onDrawer} onClick={() => onDrawer?.('workspace')} className={cn(ICON_BTN, drawerMode === 'workspace' && ACTIVE)}><Inbox aria-hidden className="size-3.5" /></button>
           <button type="button" onClick={send} disabled={!value.trim() || busy || disabled} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-primary px-3 text-label font-semibold text-primary-fg hover:opacity-90 disabled:opacity-60 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
             {busy ? 'Sending' : 'Send'} <Kbd className="border-primary-fg/30 text-primary-fg"><CornerDownLeft aria-hidden className="inline size-2.5" /></Kbd>
           </button>

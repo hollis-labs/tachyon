@@ -41,7 +41,7 @@ export function cardToBlock(c: ApiCard): StreamBlock | null {
  * read is empty, not an error). `?demo=cards` swaps in the golden r2 fixtures so the design is reviewable on the real route.
  */
 // Read once at load: the chat route redirects to /chat/<thread> and drops the query string.
-const DEMO = typeof location !== 'undefined' && new URLSearchParams(location.search).get('demo') === 'cards'
+export const DEMO = typeof location !== 'undefined' && new URLSearchParams(location.search).get('demo') === 'cards'
 
 export function useBlocks(ref: string | undefined) {
   const demo = DEMO
