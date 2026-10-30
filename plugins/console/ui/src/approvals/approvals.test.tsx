@@ -138,6 +138,7 @@ describe("approval review dialog", () => {
         client={mockClient(decide)}
         onClose={vi.fn()}
         onChanged={changed}
+        holdSeconds={0}
       />,
     )
     await waitFor(() =>
@@ -180,6 +181,16 @@ describe("approval review dialog", () => {
     expect(screen.getByText("approved")).toBeTruthy()
     expect(changed).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
+  })
+  it("holds an approval so it can be undone, and sends nothing when undone", async () => {
+    const decide = vi.fn().mockResolvedValue({ item_id: item.item_id, state: "resolved" })
+    render(<ApprovalDialog id={item.item_id} initial={item} client={mockClient(decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
+    expect(screen.getByText(/Approving in \d s/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy()
+    expect(decide).not.toHaveBeenCalled()
   })
   it("keeps a failed decision unresolved and requires a fresh review", async () => {
     const decide = vi.fn().mockRejectedValue(new Error("Request changed"))
@@ -289,7 +300,7 @@ describe("card review dialog", () => {
   const clientFor = (current: ApprovalItem, decide = vi.fn().mockResolvedValue({ item_id: current.item_id, state: "resolved" })) =>
     ({ present: vi.fn().mockResolvedValue(current), decide, evidence: vi.fn() }) as unknown as ApprovalClient
   const open = (current: ApprovalItem, decide: ReturnType<typeof vi.fn>) =>
-    render(<ApprovalDialog id={current.item_id} initial={current} client={clientFor(current, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    render(<ApprovalDialog id={current.item_id} initial={current} client={clientFor(current, decide)} onClose={vi.fn()} onChanged={vi.fn()} holdSeconds={0} />)
 
   it("shows a card's effects and approves with the card kind", async () => {
     const current = card("card.approval", { changes: 2 }, { effects: [{ target: "torque:task/CW-1", op: "status", value: "done" }] })
