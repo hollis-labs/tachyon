@@ -6,15 +6,24 @@ export interface SegmentedItem<T extends string> {
   count?: number
 }
 
-export function Segmented<T extends string>({ label, value, onChange, items, className = '' }: {
+export function Segmented<T extends string>({
+  label,
+  value,
+  onChange,
+  items,
+  className = '',
+  bare = false,
+}: {
   label: string
   value: T
   onChange: (v: T) => void
   items: SegmentedItem<T>[]
   className?: string
+  /** No bottom rule or outer padding, for use inside a pane's toolbar. */
+  bare?: boolean
 }) {
   return (
-    <div role="tablist" aria-label={label} className={`flex shrink-0 overflow-x-auto border-b border-border px-4 py-2 ${className}`}>
+    <div role="tablist" aria-label={label} className={`flex shrink-0 overflow-x-auto ${bare ? '' : 'border-b border-border px-4 py-2'} ${className}`}>
       <div className="inline-flex shrink-0 border border-border">
         {items.map((it, i) => {
           const on = it.value === value

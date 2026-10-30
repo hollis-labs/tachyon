@@ -1,13 +1,15 @@
-import { Dialog, DialogContent, DialogDescription, DialogTitle, Skeleton } from '@hollis-labs/design-components'
-import { Check, Copy, Download, ExternalLink, Maximize2, RefreshCw } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogTitle, Popover, PopoverContent, PopoverTrigger, Skeleton } from '@hollis-labs/design-components'
+import { Check, Copy, Download, ExternalLink, Maximize2, MoreHorizontal, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import type { RefDetailProps } from '../autolink/extensions'
+import { Segmented } from '../components/segmented'
 import { relativeTime } from '../builder/changes'
 import { contentUrl, denyMessage, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame } from './api'
 
 const BTN =
   'inline-flex items-center gap-1.5 border border-border px-2 py-1 text-control text-fg-secondary transition-colors hover:border-fg-faint hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50'
+const ITEM = 'flex min-h-10 w-full items-center gap-2 px-2 text-left text-control text-fg-secondary hover:bg-surface-hover'
 const TEXT_KINDS: readonly FileKind[] = ['text', 'json', 'yaml', 'toml', 'csv', 'code']
 
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; stat: FileStat }
@@ -49,24 +51,53 @@ export function FileViewerPane({ refId }: RefDetailProps) {
         <button type="button" className={BTN} onClick={reload}>
           <RefreshCw className="h-3 w-3" aria-hidden /> Reload
         </button>
-        <button type="button" className={BTN} onClick={copyPath}>
-          {copied ? <Check className="h-3 w-3" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />} {copied ? 'Copied' : 'Copy path'}
-        </button>
-        {canOpen && (
-          <>
-            <button type="button" className={BTN} onClick={() => setExpanded(true)}>
-              <Maximize2 className="h-3 w-3" aria-hidden /> Expand
-            </button>
-            {kindOf !== 'html' && (
-              <a className={BTN} href={contentUrl(path)} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-3 w-3" aria-hidden /> Open in tab
+        <div className="hidden items-center gap-2 sm:flex">
+          <button type="button" className={BTN} onClick={copyPath}>
+            {copied ? <Check className="h-3 w-3" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />} {copied ? 'Copied' : 'Copy path'}
+          </button>
+          {canOpen && (
+            <>
+              <button type="button" className={BTN} onClick={() => setExpanded(true)}>
+                <Maximize2 className="h-3 w-3" aria-hidden /> Expand
+              </button>
+              {kindOf !== 'html' && (
+                <a className={BTN} href={contentUrl(path)} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-3 w-3" aria-hidden /> Open in tab
+                </a>
+              )}
+              <a className={BTN} href={contentUrl(path)} download={path.split('/').pop()}>
+                <Download className="h-3 w-3" aria-hidden /> Download
               </a>
-            )}
-            <a className={BTN} href={contentUrl(path)} download={path.split('/').pop()}>
-              <Download className="h-3 w-3" aria-hidden /> Download
-            </a>
-          </>
-        )}
+            </>
+          )}
+        </div>
+        <Popover>
+          <PopoverTrigger aria-label="More actions" className={`${BTN} min-h-10 sm:hidden`}>
+            <MoreHorizontal className="h-4 w-4" aria-hidden /> More
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-56 p-1">
+            <div role="menu" aria-label="File actions">
+              <button type="button" role="menuitem" className={ITEM} onClick={copyPath}>
+                {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />} {copied ? 'Copied' : 'Copy path'}
+              </button>
+              {canOpen && (
+                <>
+                  <button type="button" role="menuitem" className={ITEM} onClick={() => setExpanded(true)}>
+                    <Maximize2 className="h-4 w-4" aria-hidden /> Expand
+                  </button>
+                  {kindOf !== 'html' && (
+                    <a role="menuitem" className={ITEM} href={contentUrl(path)} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4" aria-hidden /> Open in tab
+                    </a>
+                  )}
+                  <a role="menuitem" className={ITEM} href={contentUrl(path)} download={path.split('/').pop()}>
+                    <Download className="h-4 w-4" aria-hidden /> Download
+                  </a>
+                </>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
       {load.status === 'loading' && <Skeleton className="h-40 w-full" />}
       {load.status === 'error' && (
@@ -152,19 +183,16 @@ function Page({ path, tick, expanded = false }: { path: string; tick: number; ex
   }, [path, view, tick])
   return (
     <div className="space-y-2">
-      <div role="group" aria-label="HTML view" className="inline-flex border border-border">
-        {(['rendered', 'source'] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            aria-pressed={view === v}
-            onClick={() => setView(v)}
-            className={`px-2 py-1 font-mono text-caption uppercase tracking-label ${view === v ? 'bg-surface-hover text-fg' : 'text-fg-faint'}`}
-          >
-            {v === 'rendered' ? 'Rendered' : 'Source'}
-          </button>
-        ))}
-      </div>
+      <Segmented<'rendered' | 'source'>
+        bare
+        label="HTML view"
+        value={view}
+        onChange={setView}
+        items={[
+          { value: 'rendered', label: 'Rendered' },
+          { value: 'source', label: 'Source' },
+        ]}
+      />
       {view === 'source' && <TextBody path={path} tick={tick} expanded={expanded} />}
       {view === 'rendered' && frame === null && <Skeleton className="h-64 w-full" />}
       {view === 'rendered' && frame && 'error' in frame && (
@@ -218,9 +246,16 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
     <div className="space-y-2">
       <div className="flex gap-2">
         {markdown && (
-          <button type="button" className={BTN} aria-pressed={raw} onClick={() => setRaw((r) => !r)}>
-            {raw ? 'Rendered' : 'Raw'}
-          </button>
+          <Segmented<'rendered' | 'raw'>
+            bare
+            label="Markdown view"
+            value={raw ? 'raw' : 'rendered'}
+            onChange={(v) => setRaw(v === 'raw')}
+            items={[
+              { value: 'rendered', label: 'Rendered' },
+              { value: 'raw', label: 'Raw' },
+            ]}
+          />
         )}
         {raw && (
           <button type="button" className={BTN} aria-pressed={wrap} onClick={() => setWrap((w) => !w)}>
