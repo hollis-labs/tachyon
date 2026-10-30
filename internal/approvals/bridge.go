@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
@@ -25,6 +26,19 @@ var evidencePath = regexp.MustCompile(`^/items/[a-zA-Z0-9_-]+/evidence/[0-9]+/(r
 type Bridge struct {
 	URL    string
 	Client *http.Client
+
+	mu         sync.Mutex
+	lockedTill time.Time
+}
+
+// lockoutEstimate is how long Tachyon assumes Tangent's sign-in rate limit holds after a 429. Tangent counts 5
+// failures per minute per session and sends no Retry-After, so this is an estimate (Tangent request R1).
+const lockoutEstimate = time.Minute
+
+func (b *Bridge) lockedUntil() time.Time {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.lockedTill
 }
 
 func New(addr string) *Bridge {
@@ -113,6 +127,11 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer res.Body.Close()
+	if path == "/elevate" && res.StatusCode == http.StatusTooManyRequests {
+		b.mu.Lock()
+		b.lockedTill = time.Now().Add(lockoutEstimate)
+		b.mu.Unlock()
+	}
 	// Elevation rotates the upstream session. Forward the replacement too,
 	// not just the cookie originally minted during bootstrap.
 	connected := false

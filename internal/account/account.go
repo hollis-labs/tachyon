@@ -102,7 +102,7 @@ func (s *Service) respond(w http.ResponseWriter, r *http.Request, st assurance.S
 		return
 	}
 	now := s.now()
-	out := settingsapi.Account{Access: settingsapi.AccessFor(st, now), CanSetProfile: true,
+	out := settingsapi.Account{Access: settingsapi.AccessFor(st, now, assurance.StepUpSupported(s.Provider)), CanSetProfile: true,
 		Identity: settingsapi.Identity{State: "unknown", Source: "session", Assurance: "local"}}
 	if p != nil {
 		out.Identity = settingsapi.Identity{State: "identified", DisplayName: p.DisplayName, Email: p.Email, Source: "local-profile", Assurance: "local"}

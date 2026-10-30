@@ -101,3 +101,23 @@ It is never an authorization input.
   `lockout` and `step_up.supported` stay empty/false until ST4 supplies them. `session.state: expired` needs the
   provider to report a past elevation expiry, which `TangentProvider.Status` does not yet.
 - No audit row: a profile change is not a security event; add one if Chrispian wants it.
+
+## ST4: assurance contract extension (real)
+
+Additive only; no new guard, level or enforcement. Existing clients keep reading the same fields.
+
+- `GET /approval-inbox/access` now returns `settingsapi.Access`: the unchanged `assurance.Access` fields plus
+  `methods`, `session`, `lockout`, `step_up`. `methods` lists the operator token only. `step_up.supported` is false.
+  `session.state` is `expired` when Tangent's `/api/session` still reports a past `elevation_expires_at` for a session
+  that is no longer elevated (UNVERIFIED whether Tangent keeps reporting it); otherwise `active`.
+- `lockout`: Tachyon marks a one-minute lockout when the elevate proxy sees a 429 from Tangent
+  (`approvals.lockoutEstimate`). It is an estimate: Tangent sends no `Retry-After` and no attempts left (request R1), so
+  `attempts_left` is omitted. It is in-process and resets on restart.
+- Refusals from the requirements table (`assurance.RequireOn`) keep `{code: operator_access_required, message}` and add
+  `step_up{action, risk, summary?, ref?}` and `methods`. The text lives in `assurance.Refusal`; the account routes and
+  anything else that calls `Provider.Require` pick it up. Other places that write their own 403 are unchanged.
+- `assurance.Stepper` is an optional interface (`Supported`, `Challenge`, `Verify`) beside `Provider`, so existing
+  Provider implementations keep compiling. `TangentProvider` implements it as unsupported. `POST /access/challenge`
+  and `POST /access/verify` exist on the approval inbox (same-origin and session checked like the other writes) and
+  answer 501 `unsupported` until a Provider runs the exchange.
+- `Status` gained `LockedUntil` and `ExpiredAt`; `Error` gained `Action`.
