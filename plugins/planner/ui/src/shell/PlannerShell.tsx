@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { EmptyState, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-labs/design-components'
@@ -45,6 +45,7 @@ export default function PlannerShell() {
   const [pins, setPins] = useState(loadPins)
   const [needYouOnly, setNeedYouOnly] = useState(params.get('facet') === 'need-you')
   const [needYouIds, setNeedYouIds] = useState<ReadonlySet<string> | undefined>(undefined)
+  const warnedNeedYou = useRef(false)
   const [needsAccess, setNeedsAccess] = useState(false)
   const [goodAt, setGoodAt] = useState<number | null>(null)
   const [comments, setComments] = useState<PlannerComment[]>([])
@@ -71,7 +72,7 @@ export default function PlannerShell() {
   useEffect(() => {
     void load()
     // The server's answer decides who needs you; if it cannot answer, the spine keeps its local reading.
-    api.plannerNeedYou().then((n) => setNeedYouIds(new Set(n.items.filter((i) => i.db === 'themes').map((i) => i.id))), () => setNeedYouIds(undefined))
+    api.plannerNeedYou().then((n) => setNeedYouIds(new Set(n.items.filter((i) => i.db === 'themes').map((i) => i.id))), () => { setNeedYouIds(undefined); if (!warnedNeedYou.current) { warnedNeedYou.current = true; console.info('planner: /need-you unavailable, using the local reading') } })
     const t = setInterval(() => void load(), REFRESH_MS)
     return () => clearInterval(t)
   }, [load, lastEvent])

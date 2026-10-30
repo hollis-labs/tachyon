@@ -10,6 +10,8 @@ import { TaskBoard } from '@planner/shell/task-board'
 import { themeSegments } from '@planner/shell/spine'
 import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
+const ACCESS_NOTE = 'planner-access-note'
+
 interface FocusProps {
   /** Writes are disabled while the connection is down. */
   paused?: boolean
@@ -56,6 +58,7 @@ export function Focus({ paused, needsAccess, onRetryAccess, onNeedsAccess, row, 
               if (a) void onAction(row, a.action, a.position === undefined ? undefined : { position: a.position })
             }}
             disabled={actions.length === 0 || paused || needsAccess}
+            disabledReasonId={needsAccess ? ACCESS_NOTE : undefined}
           />
         </div>
         {owners && <p className="dash-support text-fg-muted">{owners}</p>}
@@ -71,12 +74,12 @@ export function Focus({ paused, needsAccess, onRetryAccess, onNeedsAccess, row, 
         <DashboardViewTabs variant="segments" label={TEXT.viewLabel} value={view} onChange={(v) => onView(v === 'timeline' ? 'timeline' : 'board')} items={[{ value: 'board', label: TEXT.board }, { value: 'timeline', label: TEXT.timeline }]} />
       </header>
       {needsAccess && (
-        <p role="status" className="border-b border-border px-4 py-2 dash-caption text-fg-muted">
+        <p id={ACCESS_NOTE} role="status" className="border-b border-border px-4 py-2 dash-caption text-fg-muted">
           {TEXT.needsAccess}. {TEXT.needsAccessHint} <button type="button" className="underline" onClick={onRetryAccess}>{TEXT.retry}</button>
         </p>
       )}
       <div className="min-w-0 flex-1 p-4">
-        {view === 'board' ? <TaskBoard themeId={row.id} paused={paused || needsAccess} onNeedsAccess={onNeedsAccess} /> : <ThemeTimelineView state={timeline} />}
+        {view === 'board' ? <TaskBoard themeId={row.id} paused={paused || needsAccess} onNeedsAccess={onNeedsAccess} accessNoteId={needsAccess ? ACCESS_NOTE : undefined} /> : <ThemeTimelineView state={timeline} />}
       </div>
     </section>
   )

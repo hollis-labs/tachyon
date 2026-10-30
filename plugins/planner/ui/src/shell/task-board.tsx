@@ -32,7 +32,7 @@ const prHref = (c: PrCite) => `https://${c.host}/${c.owner}/${c.repo}/pull/${c.n
  * has now. Blocked asks for a reason first; Done saves at once and the "What shipped?" line is attached
  * afterwards, the move never waits for it.
  */
-export function TaskBoard({ themeId, paused, onNeedsAccess }: { themeId: string; paused?: boolean; onNeedsAccess?: () => void }) {
+export function TaskBoard({ themeId, paused, onNeedsAccess, accessNoteId }: { themeId: string; paused?: boolean; onNeedsAccess?: () => void; accessNoteId?: string }) {
   const api = usePlannerApi()
   const [data, setData] = useState<ThemeTasks | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -146,6 +146,7 @@ export function TaskBoard({ themeId, paused, onNeedsAccess }: { themeId: string;
             options={LANES.map((l) => ({ value: l.id, label: l.title }))}
             onSelect={(to) => move(t.id, t.status, to)}
             disabled={paused || pending.has(t.id)}
+            disabledReasonId={accessNoteId}
           />
         </span>
         {(t.pr_cites.length > 0 || t.assignees.length > 0) && (
