@@ -18,6 +18,7 @@ export function SecretDialog({ client, itemId, field, label, onStored, onClose }
 }) {
   const [value, setValue] = useState("")
   const [file, setFile] = useState<File | null>(null)
+  const [reveal, setReveal] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [needsAccess, setNeedsAccess] = useState(false)
@@ -71,10 +72,11 @@ export function SecretDialog({ client, itemId, field, label, onStored, onClose }
           }}
         >
           {!file && (
+            <div>
             <label className="block dash-control text-fg-muted">
               Secret value
               <input
-                type="password"
+                type={reveal ? "text" : "password"}
                 autoComplete="off"
                 spellCheck={false}
                 autoCapitalize="off"
@@ -86,6 +88,20 @@ export function SecretDialog({ client, itemId, field, label, onStored, onClose }
                 onChange={(e) => setValue(e.target.value)}
               />
             </label>
+            {/* Shown only while held; released, blurred or leaving hides it again. */}
+            <button
+              type="button"
+              className="mt-1 dash-support text-fg-muted underline underline-offset-2 hover:text-fg"
+              onPointerDown={() => setReveal(true)}
+              onPointerUp={() => setReveal(false)}
+              onPointerLeave={() => setReveal(false)}
+              onBlur={() => setReveal(false)}
+              onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") setReveal(true) }}
+              onKeyUp={() => setReveal(false)}
+            >
+              Hold to reveal
+            </button>
+            </div>
           )}
           <div className="flex flex-wrap items-center gap-2 dash-support text-fg-muted">
             {file ? (
