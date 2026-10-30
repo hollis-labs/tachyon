@@ -1,5 +1,5 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@hollis-labs/design-components"
-import { Check, Monitor, Moon, Sun } from "lucide-react"
+import { Check, Monitor, Moon, Settings, Sun, User } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { MODES, type Mode, useMode } from "../mode"
@@ -49,6 +49,7 @@ export function AvatarMenu() {
             </div>
           </div>
           <button type="button" role="menuitem" className={ITEM} onClick={() => go("/user")}>
+            <User aria-hidden="true" className="h-3.5 w-3.5 text-text-subtle" />
             You
           </button>
           <button
@@ -57,6 +58,7 @@ export function AvatarMenu() {
             className={ITEM}
             onClick={() => go("/settings/appearance")}
           >
+            <Settings aria-hidden="true" className="h-3.5 w-3.5 text-text-subtle" />
             Settings
           </button>
           <fieldset
