@@ -113,39 +113,40 @@ export function HandoffPanel({ change, onChange, onReload }: { change: Change; o
             <div className="space-y-2">
               <ol className="space-y-2">
                 {commands.map((c, i) => {
-                  // An action is a tool a Tether session runs (no CLI); a shell step is a line to run on the host.
+                  // shell: a line to run on the host. session: the text to give a Tether session that holds
+                  // catalog.write. action: the older tool-name-only form, kept readable.
+                  const session = c.kind === 'session'
                   const action = c.kind === 'action'
-                  const shell = !action && (c.kind === undefined || c.kind === 'shell')
-                  const envBlocked = action && change.handoff?.session_available === false && change.handoff.reason === 'contains_env_values'
-                  const tag = action ? 'Run in a Tether session' : shell ? 'Run in a terminal' : ''
+                  const shell = !session && !action && (c.kind === undefined || c.kind === 'shell')
+                  const envBlocked = (session || action) && change.handoff?.session_available === false && change.handoff.reason === 'contains_env_values'
+                  const tag = session || action ? 'Run in a Tether session' : shell ? 'Run in a terminal' : ''
                   return (
                     <li key={c.step} className="space-y-1">
                       <p className="dash-support font-medium text-fg">
                         {i + 1}. {c.label}
                         {tag && <span className="ml-2 font-normal text-fg-muted">{tag}</span>}
                       </p>
-                      {action &&
-                        (envBlocked ? (
-                          <p className="dash-support text-fg-muted">This change includes environment values, so do not paste the bundle into a session. Apply it from a terminal instead.</p>
-                        ) : (
-                          <>
-                            {c.tool && (
-                              <p className="dash-support text-fg-secondary">
-                                Tool: <span className="font-mono">{c.tool}</span>
-                              </p>
-                            )}
-                            {c.step === 'plan' && <p className="dash-support text-fg-muted">Give the session the bundle (Copy bundle above).</p>}
-                          </>
-                        ))}
-                      {!action && c.command && (
-                        <div className="flex items-start gap-2">
-                          <code aria-label={`${c.step[0].toUpperCase()}${c.step.slice(1)} command`} className="block min-w-0 flex-1 whitespace-pre-wrap break-all bg-surface p-2 font-mono dash-support text-fg">
-                            {c.command}
-                          </code>
-                          <Button type="button" variant="outline" size="sm" className="shrink-0 max-sm:min-h-10" onClick={() => copy(c.step, c.command ?? '')}>
-                            {copied === c.step ? 'Copied' : 'Copy'}
-                          </Button>
-                        </div>
+                      {envBlocked ? (
+                        <p className="dash-support text-fg-muted">This change includes environment values. Do not paste the bundle into a session or chat. Use a local Tether session that reads the downloaded file.</p>
+                      ) : (
+                        <>
+                          {action && c.tool && (
+                            <p className="dash-support text-fg-secondary">
+                              Tool: <span className="font-mono">{c.tool}</span>
+                            </p>
+                          )}
+                          {(session || action) && c.step === 'plan' && <p className="dash-support text-fg-muted">Give the session the bundle (Copy bundle above).</p>}
+                          {c.command && (
+                            <div className="flex items-start gap-2">
+                              <code aria-label={`${c.step[0].toUpperCase()}${c.step.slice(1)} ${session ? 'instruction' : 'command'}`} className="block min-w-0 flex-1 whitespace-pre-wrap break-all bg-surface p-2 font-mono dash-support text-fg">
+                                {c.command}
+                              </code>
+                              <Button type="button" variant="outline" size="sm" className="shrink-0 max-sm:min-h-10" onClick={() => copy(c.step, c.command ?? '')}>
+                                {copied === c.step ? 'Copied' : 'Copy'}
+                              </Button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </li>
                   )
