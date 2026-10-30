@@ -1,19 +1,14 @@
-import { DataTable } from "@hollis-labs/kit-dashboard/data"
-import { DashboardToolbar, DashboardField } from "@hollis-labs/kit-dashboard/layout"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
-import { useEffect, useMemo, useState } from "react"
-import { Button, SearchInput } from "@hollis-labs/design-components"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Button, SearchInput, Skeleton } from "@hollis-labs/design-components"
 import { BarMeter, Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
 import { TimeSeriesChart } from "@hollis-labs/kit-dashboard/charts"
 import { dataRefreshRegistry } from "@tachyon/host-sdk"
-import {
-  Activity,
-  BarChart3,
-  Boxes,
-  FileText,
-  Sparkles,
-} from "lucide-react"
-import { TranscriptDialog } from "./detail"
+import { Activity, BarChart3, Boxes, FileText, RefreshCw } from "lucide-react"
+import { Segmented } from "../components/segmented"
+import { TranscriptReader } from "./detail"
+import { SessionFilters, SessionList, WindowPicker } from "./sessions"
+import { ContentSearch, useSearchStatus } from "./search"
 import {
   read,
   filterSessions,
@@ -27,6 +22,24 @@ import {
   type Session,
   type Filters,
 } from "./data"
+
+type Tab = "sessions" | "insights"
+
+function sinceLabel(at: number, now: number) {
+  const m = Math.max(0, Math.floor((now - at) / 60000))
+  return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`
+}
+
+// Deep link: /dashboards/transcripts?session=<id>
+const linkedSession = () =>
+  new URLSearchParams(window.location.search).get("session") ?? ""
+
+function writeSessionParam(id: string) {
+  const url = new URL(window.location.href)
+  if (id) url.searchParams.set("session", id)
+  else url.searchParams.delete("session")
+  window.history.replaceState(window.history.state, "", url)
+}
 
 const defaults: Filters = {
   days: 30,
@@ -48,7 +61,7 @@ function Distribution({
 }) {
   const groups = rank(rows, field).slice(0, 7)
   return <div className="p-4">
-    <BarMeter rows={groups.map(g => ({ key: g.label, label: field === "project" ? projectName(g.label) : g.label, value: g.value, color: "var(--color-info)" }))} onSelect={row => onSelect(row.key === "Unspecified" ? "" : row.key)} formatValue={number} showTotal={false} />
+    <BarMeter rows={groups.map(g => ({ key: g.label, label: field === "project" ? projectName(g.label) : g.label, value: g.value, color: "var(--color-fg-muted)" }))} onSelect={row => onSelect(row.key === "Unspecified" ? "" : row.key)} formatValue={number} showTotal={false} />
     {!groups.length && <p className="py-8 text-center dash-control text-fg-faint">No sessions in this view.</p>}
   </div>
 }
@@ -58,8 +71,18 @@ export function TranscriptDashboard() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filters>(defaults)
-  const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Session>()
+  const status = useSearchStatus()
+  const canSearch = status?.capabilities?.search === true
+  const [searchMode, setSearchMode] = useState<"meta" | "content">("meta")
+  const [activeId, setActiveId] = useState("")
+  const [tab, setTab] = useState<Tab>("sessions")
+  const [filteredTo, setFilteredTo] = useState("")
+  const [linkedId, setLinkedId] = useState(linkedSession)
+  const [loadedAt, setLoadedAt] = useState(0)
+  const [now, setNow] = useState(() => new Date().getTime())
+  const listPane = useRef<HTMLDivElement>(null)
+  const reload = useRef<() => void>(() => {})
   useEffect(() => {
     let active = true,
       sequence = 0
@@ -69,6 +92,7 @@ export function TranscriptDashboard() {
         const data = await read<Snapshot>("/snapshot")
         if (active && sequence === n) {
           setSnapshot(data)
+          setLoadedAt(new Date().getTime())
           setError("")
         }
       } catch (e) {
@@ -89,6 +113,7 @@ export function TranscriptDashboard() {
         if (active && sequence === n) setLoading(false)
       }
     }
+    reload.current = () => void load()
     void load()
     const off = dataRefreshRegistry("transcripts").subscribe(() => {
       void load()
@@ -96,11 +121,37 @@ export function TranscriptDashboard() {
     const timer = setInterval(() => {
       if (document.visibilityState !== "hidden") void load()
     }, 60000)
+    const tick = setInterval(() => setNow(new Date().getTime()), 30000)
     return () => {
+      clearInterval(tick)
       active = false
       off()
       clearInterval(timer)
     }
+  }, [])
+  // A deep-linked session opens once the snapshot knows it.
+  useEffect(() => {
+    if (!linkedId || !snapshot) return
+    const hit = snapshot.sessions.find((s) => s.id === linkedId)
+    // An id outside the snapshot still opens; the reader fills the header from the page.
+    if (hit) setSelected(hit)
+    else if (/^[a-f0-9]{64}$/.test(linkedId))
+      setSelected({ id: linkedId, title: "", tool: "", kind: "", turns: 0, tokens: 0, tool_calls: 0, errors: 0 })
+  }, [linkedId, snapshot])
+  const open = (s?: Session) => {
+    setSelected(s)
+    setLinkedId(s?.id ?? "")
+    writeSessionParam(s?.id ?? "")
+    if (s) setActiveId(s.id)
+  }
+  // Closing keeps the list mounted, so scroll and selection are where you left them.
+  const close = useCallback(() => {
+    open(undefined)
+    setTimeout(() => {
+      listPane.current
+        ?.querySelector<HTMLElement>("[aria-current=true]")
+        ?.focus({ preventScroll: true })
+    }, 0)
   }, [])
   const rows = useMemo(
     () => filterSessions(snapshot?.sessions ?? [], filter),
@@ -110,56 +161,77 @@ export function TranscriptDashboard() {
   const tools = useMemo(() => rank(rows, "tool"), [rows])
   const set = (patch: Partial<Filters>) => {
     setFilter((f) => ({ ...f, ...patch }))
-    setPage(0)
   }
-  const maxPage = Math.max(0, Math.ceil(rows.length / 20) - 1)
-  const visiblePage = Math.min(page, maxPage)
+  const reset = () => {
+    setFilter(defaults)
+    setFilteredTo("")
+  }
+  // A bar click filters the sessions list and takes you there.
+  const drill = (patch: Partial<Filters>, label: string) => {
+    set(patch)
+    setFilteredTo(label)
+    setTab("sessions")
+  }
   const facets = snapshot?.facets
   const chartDays = filter.days || 90
   const colors = [
-    "var(--color-dash-series-1)",
-    "var(--color-dash-series-2)",
-    "var(--color-dash-series-3)",
+    "var(--color-fg-secondary)",
+    "var(--color-fg-muted)",
+    "var(--color-fg-faint)",
   ]
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <PageHeader title="Transcript insights" />
+      <PageHeader title="Transcripts" />
       <div className="border-b border-border px-4 py-2 dash-support text-fg-muted">
         <p className="font-mono dash-caption text-fg-faint">Dashboards / Fragments Engine</p>
-        <p>Explore recorded conversations, usage, and the work behind them.</p>
+        <p>Explore recorded conversations, usage, and the work behind them. Read-only; Fragments Engine owns the records.</p>
       </div>
-      <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
-        {snapshot && (
-          <div className="rounded border border-border px-3 py-2 text-right">
-            <div className="flex items-center gap-2 font-mono dash-caption uppercase text-info">
-              <Sparkles className="h-3 w-3" />
-              {snapshot.status.semantic
-                ? "Semantic index available"
-                : "Text index available"}
-            </div>
-            <p className="mt-1 dash-support text-fg-faint">
-              Read-only · Fragments Engine owns the records
-            </p>
+      <div className={`min-h-0 flex-1 p-4 ${tab === "sessions" ? "flex flex-col gap-5 overflow-hidden" : "space-y-5 overflow-auto"}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Segmented<Tab>
+            bare
+            label="Transcript views"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: "sessions", label: "Sessions" },
+              { value: "insights", label: "Insights" },
+            ]}
+          />
+          <div className="flex items-center gap-2 dash-control text-fg-faint">
+            <span role="status">
+              {snapshot
+                ? `Updated ${sinceLabel(loadedAt, now)} · ${number(snapshot.sessions.length)} sessions loaded${snapshot.complete ? "" : ` · partial snapshot, latest ${number(snapshot.limit)} maximum`}`
+                : "Waiting for metadata"}
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => reload.current()}>
+              <RefreshCw className="h-3 w-3" /> Refresh
+            </Button>
           </div>
-        )}
+        </div>
       {error && (
-        <div
+        <p
           role="alert"
-          className="rounded border border-danger/30 bg-danger-muted/10 p-3 dash-control text-danger"
+          className={`dash-control ${snapshot ? "text-fg-muted" : "text-danger"}`}
         >
           Transcript source unavailable: {error}
-        </div>
-      )}
-      {loading && (
-        <p
-          role="status"
-          className="rounded border border-border p-6 dash-body text-fg-muted"
-        >
-          Building the first metadata snapshot… Subsequent visits use the saved
-          snapshot.
+          {snapshot && " Showing the last snapshot."}{" "}
+          <button className="underline" onClick={() => reload.current()}>
+            Retry
+          </button>
         </p>
       )}
-      <section
+      {loading && !snapshot && (
+        <div role="status" className="space-y-2">
+          <p className="dash-control text-fg-muted">
+            Building the first metadata snapshot… Later visits use the saved one.
+          </p>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      )}
+      {tab === "insights" && <section
         aria-label="Database overview"
         className="overflow-hidden rounded border border-border bg-surface/20"
       >
@@ -198,92 +270,26 @@ export function TranscriptDashboard() {
             sub="Recorded labels, including aliases"
           />
         </KpiGrid>
-      </section>
-      <section className="space-y-4" aria-label="Filtered transcript insights">
-        <DashboardToolbar className="items-end">
-          <DashboardField orientation="stacked" label="Time window">
-            <select
-              aria-label="Time window"
-              className="max-w-64"
-              value={filter.days}
-              onChange={(e) => set({ days: Number(e.target.value) })}
-            >
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-              <option value={0}>All recorded time</option>
-            </select>
-          </DashboardField>
-          <DashboardField orientation="stacked" label="Tool">
-            <select
-              aria-label="Tool"
-              className="max-w-64"
-              value={filter.tool}
-              onChange={(e) => set({ tool: e.target.value })}
-            >
-              <option value="">All tools</option>
-              {facets?.tools.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </DashboardField>
-          <DashboardField orientation="stacked" label="Model">
-            <select
-              aria-label="Model"
-              className="max-w-56"
-              value={filter.model}
-              onChange={(e) => set({ model: e.target.value })}
-            >
-              <option value="">All models</option>
-              {facets?.models.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </DashboardField>
-          <DashboardField orientation="stacked" label="Session kind">
-            <select
-              aria-label="Session kind"
-              className="max-w-64"
-              value={filter.kind}
-              onChange={(e) => set({ kind: e.target.value })}
-            >
-              <option value="">All kinds</option>
-              <option value="main">Main sessions</option>
-              <option value="subagent">Subagents</option>
-            </select>
-          </DashboardField>
-          <label className="flex h-8 items-center gap-2 px-2 dash-control text-fg-muted">
-            <input
-              type="checkbox"
-              checked={filter.errors}
-              onChange={(e) => set({ errors: e.target.checked })}
-            />
-            With tool errors
-          </label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setFilter(defaults)
-              setPage(0)
-            }}
-          >
-            Reset
-          </Button>
-        </DashboardToolbar>
+      </section>}
+      <section className={`shrink-0 space-y-4 ${tab === "sessions" && selected ? "max-md:hidden" : ""}`} aria-label="Filtered transcript insights">
+        {tab === "sessions" ? (
+          <SessionFilters filter={filter} facets={facets} set={set} reset={reset} />
+        ) : (
+          <WindowPicker filter={filter} set={set} />
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3 dash-control">
           <span className="text-fg-muted">
-            {number(rows.length)} sessions in view{" "}
-            <span className="text-fg-faint">· filtered metadata</span>
-          </span>
-          <span
-            className={snapshot?.complete ? "text-fg-faint" : "text-warning"}
-          >
-            {snapshot
-              ? `${number(snapshot.sessions.length)} sessions loaded · ${snapshot.complete ? "source pagination complete" : `partial snapshot, latest ${number(snapshot.limit)} maximum`}`
-              : "Waiting for metadata"}
+            {number(rows.length)} sessions in view
           </span>
         </div>
+        {filteredTo && (
+          <p className="flex items-center gap-2 dash-control text-fg-muted">
+            Filtered to {filteredTo}
+            <Button variant="ghost" size="sm" onClick={reset}>
+              Reset filters
+            </Button>
+          </p>
+        )}
         {snapshot &&
           snapshot.complete &&
           snapshot.sessions.length !== facets?.total && (
@@ -293,6 +299,8 @@ export function TranscriptDashboard() {
               sessions.
             </p>
           )}
+        {tab === "insights" && (
+          <>
         <div className="overflow-hidden rounded border border-border bg-surface/20">
           <KpiGrid cols="grid-cols-2 lg:grid-cols-4">
             <Kpi
@@ -352,7 +360,7 @@ export function TranscriptDashboard() {
             <Distribution
               rows={rows}
               field="tool"
-              onSelect={(tool) => set({ tool })}
+              onSelect={(tool) => drill({ tool }, tool || "Unspecified tool")}
             />
           </Panel>
           <Panel
@@ -363,7 +371,7 @@ export function TranscriptDashboard() {
             <Distribution
               rows={rows}
               field="model"
-              onSelect={(model) => set({ model })}
+              onSelect={(model) => drill({ model }, model || "Unspecified model")}
             />
           </Panel>
           <Panel
@@ -374,80 +382,86 @@ export function TranscriptDashboard() {
             <Distribution
               rows={rows}
               field="project"
-              onSelect={(query) => set({ query })}
+              onSelect={(query) => drill({ query }, projectName(query) || "Unspecified project")}
             />
           </Panel>
         </div>
-      </section>
-      <section
-        className="overflow-hidden rounded border border-border"
-        aria-label="Transcript sessions"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
-          <h2 className="font-mono dash-control uppercase tracking-wide text-fg-muted">
-            Explore sessions
-          </h2>
-          <div className="dash-search-adapter w-64 max-w-full">
-            <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} slashToFocus={false} />
-          </div>
-        </div>
-        <DataTable
-          ariaLabel="Transcript sessions"
-          className="min-w-3xl"
-          density="comfortable"
-          items={rows.slice(visiblePage * 20, (visiblePage + 1) * 20)}
-          getRowId={s => s.id}
-          columns={[
-            { key: "session", header: "Session / project", width: "fill", cell: s => <div className="min-w-0">
-              <button onClick={() => setSelected(s)} className="block w-full truncate text-left dash-body text-fg hover:text-info" title={s.title}>{s.title || "Untitled session"}</button>
-              <div className="mt-1 truncate dash-caption text-fg-faint" title={s.project}>{projectName(s.project)} · {s.kind}</div>
-            </div> },
-            { key: "tool", header: "Tool / model", cell: s => <><span className="dash-control text-info">{s.tool}</span><div className="mt-1 max-w-52 truncate font-mono dash-caption text-fg-faint">{s.model || "Unspecified"}</div></> },
-            { key: "started", header: "Started", cell: s => <span className="dash-control text-fg-muted">{s.started_at ? new Date(s.started_at).toLocaleDateString() : "Unknown"}</span> },
-            { key: "turns", header: "Turns", cell: s => <span className="dash-control text-fg-muted">{number(s.turns)}</span> },
-            { key: "tokens", header: "Tokens", cell: s => <span className="dash-control text-fg-muted" title={number(s.tokens)}>{compact(s.tokens)}</span> },
-            { key: "errors", header: "Errors", cell: s => <span className={`dash-control ${s.errors ? "text-warning" : "text-fg-faint"}`}>{number(s.errors)}</span> },
-          ]}
-        />
-        {!rows.length && !loading && (
-          <p className="p-10 text-center dash-body text-fg-faint">
-            {snapshot
-              ? "No sessions match these filters."
-              : "Connect the transcript source to explore sessions."}
-          </p>
+          </>
         )}
-        <div className="flex items-center justify-between border-t border-border px-4 py-3 dash-control text-fg-faint">
-          <span>
-            {rows.length
-              ? `${visiblePage * 20 + 1}–${Math.min(rows.length, (visiblePage + 1) * 20)} of ${number(rows.length)}`
-              : "0 sessions"}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!visiblePage}
-              onClick={() => setPage(visiblePage - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={visiblePage >= maxPage}
-              onClick={() => setPage(visiblePage + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
       </section>
-      {selected && (
-        <TranscriptDialog
-          key={selected.id}
-          session={selected}
-          onClose={() => setSelected(undefined)}
-        />
+      {tab === "sessions" && (
+        <section aria-label="Transcript sessions" className="-mx-4 -mb-4 flex min-h-0 flex-1 border-t border-border">
+          <div
+            ref={listPane}
+            className={`${selected ? "max-md:hidden" : ""} flex min-h-0 w-full flex-col overflow-auto md:w-[26rem] md:shrink-0 md:border-r md:border-border`}
+          >
+            {canSearch && (
+              <Segmented<"meta" | "content">
+                label="Search in"
+                value={searchMode}
+                onChange={setSearchMode}
+                items={[
+                  { value: "meta", label: "Titles and metadata" },
+                  { value: "content", label: "Content" },
+                ]}
+              />
+            )}
+            {canSearch && searchMode === "content" ? (
+              <ContentSearch
+                filter={filter}
+                modes={status?.modes ?? ["text"]}
+                activeId={activeId}
+                onActive={setActiveId}
+                onOpen={open}
+              />
+            ) : (
+              <>
+            <div className="px-4 py-3">
+              <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} />
+            </div>
+            {!!rows.length && (
+              <SessionList
+                key={JSON.stringify(filter)}
+                rows={rows}
+                activeId={activeId}
+                onActive={setActiveId}
+                onOpen={open}
+                keys
+              />
+            )}
+            {!rows.length && !loading && (
+              <div className="space-y-3 p-10 text-center dash-body text-fg-faint">
+                {!snapshot ? (
+                  <>
+                    <p>Connect the transcript source to explore sessions.</p>
+                    <Button variant="outline" size="sm" onClick={() => reload.current()}>
+                      Try again
+                    </Button>
+                  </>
+                ) : !snapshot.sessions.length ? (
+                  <p>No transcripts have been recorded yet.</p>
+                ) : (
+                  <>
+                    <p>No sessions match these filters.</p>
+                    <Button variant="outline" size="sm" onClick={reset}>
+                      Reset filters
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+              </>
+            )}
+          </div>
+          {selected && (
+            <TranscriptReader key={selected.id} session={selected} onClose={close} />
+          )}
+          {!selected && (
+            <p className="hidden flex-1 items-center justify-center dash-body text-fg-faint md:flex">
+              Select a session to read it.
+            </p>
+          )}
+        </section>
       )}
       </div>
     </div>

@@ -27,3 +27,14 @@ func TestPlannerStubServesOnlyNewRoutesWhenEnabled(t *testing.T) {
 		t.Error("stub served with the flag off")
 	}
 }
+
+func TestPlannerStubOwnsAssignmentsWithoutADuplicatePattern(t *testing.T) {
+	p := "https://tachyon.test/api/plugins/console/v1/planner/assignments"
+	t.Setenv("TACHYON_PLANNER_STUBS", "1")
+	on := New(Config{PluginBinDir: t.TempDir()}).Routes() // would panic on a duplicate pattern
+	w := httptest.NewRecorder()
+	on.ServeHTTP(w, httptest.NewRequest("GET", p, nil))
+	if w.Header().Get("X-Tachyon-Planner-Stub") != "1" {
+		t.Error("stub did not own assignments")
+	}
+}

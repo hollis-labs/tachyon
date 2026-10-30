@@ -262,3 +262,29 @@ func TestApprovedAlternativeRunsInsteadOfTheMainEffects(t *testing.T) {
 		t.Fatalf("%v", ft.applied)
 	}
 }
+
+func TestTorqueCreateOpensATask(t *testing.T) {
+	var gotPath, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.Method + " " + r.URL.Path
+		b := make([]byte, 400)
+		n, _ := r.Body.Read(b)
+		gotBody = string(b[:n])
+		_, _ = w.Write([]byte(`{"id":"CW-20261030-0500"}`))
+	}))
+	defer srv.Close()
+	tq := NewTorque(srv.URL, "tok")
+	for _, bad := range []Effect{
+		{Target: "torque:task/new", Op: "status", Value: "x"},
+		{Target: "torque:task/new", Op: "create", Value: "  "},
+		{Target: "torque:task/new", Op: "create", Value: `{"title":""}`},
+	} {
+		if tq.Validate(bad) == nil {
+			t.Fatalf("must refuse %+v", bad)
+		}
+	}
+	detail, err := tq.Apply(context.Background(), Effect{Target: "torque:task/new", Op: "create", Value: `{"title":"Build it","project_id":"PRJ-1"}`})
+	if err != nil || detail != "created CW-20261030-0500" || gotPath != "POST /api/v1/tasks" || !strings.Contains(gotBody, `"title":"Build it"`) || !strings.Contains(gotBody, `"project_id":"PRJ-1"`) {
+		t.Fatalf("%q %v %s %s", detail, err, gotPath, gotBody)
+	}
+}

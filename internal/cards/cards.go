@@ -58,6 +58,13 @@ var builtin = []Type{
 	{Kind: "card.approval", MinClass: "low", Decisions: []string{"approved", "denied"}},
 	{Kind: "card.question", MinClass: "low", Decisions: []string{"submitted"}, Answers: true},
 	{Kind: "card.form", MinClass: "low", Decisions: []string{"submitted"}, Answers: true, Form: true},
+	// card.plan asks the operator to approve a plan or ask for changes (the note says which).
+	{Kind: "card.plan", MinClass: "low", Decisions: []string{"approved", "changes_requested"}},
+	// card.dispatch asks to hand work to an agent; its effect is a cardfx create (torque:task/new).
+	{Kind: "card.dispatch", MinClass: "low", Decisions: []string{"approved", "denied"}},
+	// card.tool_approval is a runtime tool call waiting for the operator. "always" allows that tool for the chat
+	// (the server only honours it for low class).
+	{Kind: "card.tool_approval", MinClass: "low", Decisions: []string{"approved", "always", "denied"}},
 	{Kind: "card.notice", MinClass: "low", Decisions: []string{"acknowledged"}},
 	// card.info is display-only: the asker uses completion=notify.
 	{Kind: "card.info", MinClass: "low"},

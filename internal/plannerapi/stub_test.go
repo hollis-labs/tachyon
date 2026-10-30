@@ -320,3 +320,41 @@ func TestStreamReplayAndResync(t *testing.T) {
 		t.Error("stream headers")
 	}
 }
+
+func TestPinToggleAndRevName(t *testing.T) {
+	w := do("PUT", "/themes/theme-forge-gui/pin", `{"pinned":true,"expected_revision":9}`)
+	var v struct{ Item map[string]any }
+	_ = json.Unmarshal(w.Body.Bytes(), &v)
+	if w.Code != 200 || v.Item["pinned"] != true || v.Item["pinned_at"] == nil || v.Item["rev"] == nil || v.Item["revision"] != nil || v.Item["id"] != "theme-forge-gui" {
+		t.Fatalf("pin: %d %s", w.Code, w.Body)
+	}
+	_ = json.Unmarshal(do("PUT", "/themes/theme-forge-gui/pin", `{"pinned":false,"expected_revision":9}`).Body.Bytes(), &v)
+	if v.Item["pinned"] != false || v.Item["pinned_at"] != nil {
+		t.Errorf("unpin: %v", v.Item)
+	}
+	for _, bad := range []string{`{"pinned":"yes","expected_revision":1}`, `{"expected_revision":1}`, `{"pinned":true}`, `{"pinned":true,"expected_revision":1,"text":"x"}`} {
+		if c := do("PUT", "/themes/x/pin", bad).Code; c != 400 {
+			t.Errorf("%s: %d", bad, c)
+		}
+	}
+	if c := do("PUT", "/nope/x/pin", `{"pinned":true,"expected_revision":1}`).Code; c != 404 {
+		t.Errorf("bad db: %d", c)
+	}
+	if c := do("PUT", "/themes/theme-unknown/pin", `{"pinned":true,"expected_revision":1}`).Code; c != 404 {
+		t.Errorf("unknown: %d", c)
+	}
+	c := do("PUT", "/themes/theme-agents-console/pin", `{"pinned":false,"expected_revision":3}`, "X-Stub-Scenario", "conflict")
+	var e struct {
+		Code    string
+		Details struct{ Current map[string]any }
+	}
+	_ = json.Unmarshal(c.Body.Bytes(), &e)
+	if c.Code != 409 || e.Code != "revision_conflict" || e.Details.Current["rev"] == nil || e.Details.Current["pinned"] != true {
+		t.Errorf("conflict: %d %s", c.Code, c.Body)
+	}
+	for _, name := range []string{"themes", "relation_ok", "comment_status", "promote"} {
+		if strings.Contains(string(raw(name)), `"revision"`) {
+			t.Errorf("%s still names revision", name)
+		}
+	}
+}

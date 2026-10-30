@@ -207,7 +207,7 @@ paths:
     get:
       tags: [threads]
       parameters: [{name: agent, in: query, schema: {type: string}}]
-      description: Stub-sourced until the Planner assignee decision lands (assignee_resolved=false).
+      description: Real read model (T7) over Planner assignments (PL2, needs ?agent=) and the thread plan's task_ref links, enriched from Torque. Stub fixtures (assignee_resolved=false) only with TACHYON_PLANNER_STUBS=1.
       responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Work"}}}}}
   /chat/threads/{ref}/approval-rules:
     parameters: [{$ref: "#/components/parameters/ref"}]
@@ -441,7 +441,7 @@ components:
         result: {type: object, nullable: true}
         message_ref: {type: string, nullable: true}
     ApprovalRule: {type: object, properties: {id: {type: string}, thread_ref: {type: string}, agent_id: {type: string}, tool: {type: string}, match: {type: object}, effect: {type: string, enum: [allow]}, expires_at: {type: integer, format: int64, nullable: true}, created_at: {type: integer, format: int64}, revoked_at: {type: integer, format: int64, nullable: true}}}
-    Work: {type: object, properties: {items: {type: array, items: {type: object, properties: {id: {type: string}, kind: {type: string, enum: [theme, task, decision]}, title: {type: string}, status: {type: string}, progress: {type: number, nullable: true}, links: {type: array, items: {$ref: "#/components/schemas/Cite"}}, needs_user: {type: boolean}, updated_at: {type: integer, format: int64}}}}, source: {type: string}, assignee_resolved: {type: boolean}}}
+    Work: {type: object, properties: {items: {type: array, items: {type: object, properties: {id: {type: string}, kind: {type: string, enum: [theme, task, decision]}, title: {type: string}, status: {type: string}, progress: {type: number, nullable: true}, links: {type: array, items: {$ref: "#/components/schemas/Cite"}}, needs_user: {type: boolean}, updated_at: {type: integer, format: int64}, why: {type: string, enum: [assigned, plan], description: "absent in stub fixtures"}}}}, source: {type: string}, assignee_resolved: {type: boolean}}}
     Settings: {type: object, properties: {scratchpad_placement: {type: string, enum: [drawer, aside]}}}
     Machine: {type: object, properties: {machine_id: {type: string}, label: {type: string}, source: {type: string, enum: [objects, ssh_config]}, ssh_user: {type: string}, reachable: {type: boolean, nullable: true}}}
     TerminalSession: {type: object, properties: {id: {type: string}, thread_ref: {type: string, nullable: true}, machine_id: {type: string}, ssh_user: {type: string}, state: {type: string, enum: [open, stale, closed]}, opened_by: {type: string}, opened_at: {type: integer, format: int64}, ended_at: {type: integer, format: int64, nullable: true}, ws_path: {type: string}}}

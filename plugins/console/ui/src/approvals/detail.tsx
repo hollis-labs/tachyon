@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
-import { Button, Textarea } from "@hollis-labs/design-components"
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Textarea } from "@hollis-labs/design-components"
 import { ChevronRight } from "lucide-react"
 import { MessageBody } from "../chat/MessageBody"
 import {
@@ -17,6 +17,7 @@ import {
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { ActionRunPanel } from "./terminal"
 import { Countdown, RiskChip, ago, timeLeft } from "./parts"
+import { AuditTrail } from "./audit"
 import { useApprovals } from "./context"
 
 const label = "font-mono dash-caption uppercase tracking-wide text-fg-faint"
@@ -53,6 +54,12 @@ function RunCard({ request }: { request: ApprovalItem["request_snapshot"] }) {
 }
 
 const PHRASE = "approve"
+const DEFER_PRESETS = [
+  { label: "1 hour", seconds: 3600 },
+  { label: "4 hours", seconds: 4 * 3600 },
+  { label: "Tomorrow", seconds: 24 * 3600 },
+  { label: "Next week", seconds: 7 * 24 * 3600 },
+]
 
 function EvidenceView({ evidence }: { evidence: Evidence }) {
   const url = safeHTTPS(typeof evidence.external_url === "string" ? evidence.external_url : undefined)
@@ -106,6 +113,34 @@ export function DecisionDetail({
   useEffect(() => {
     void refresh()
   }, [refresh])
+  async function defer(seconds: number) {
+    if (!item || busy) return
+    setBusy(true)
+    setError("")
+    try {
+      const r = await client.defer(item, seconds)
+      setItem({ ...item, deferred_until: r.deferred_until, revision: r.revision })
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not snooze. Refresh and try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+  async function bringBack() {
+    if (!item || busy) return
+    setBusy(true)
+    setError("")
+    try {
+      const r = await client.undefer(item.item_id)
+      setItem({ ...item, deferred_until: null, revision: r.revision })
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not bring this back. Refresh and try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
   async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"]) {
     const decision = submitted ? "submitted" : (direct ?? choice)
     if (!item || !decision || busy || !ready) return
@@ -161,6 +196,18 @@ export function DecisionDetail({
     })
   }
   const request = item?.request_snapshot
+  // A and D act only while focus is on a button in the decision bar, never in a field. A high-risk
+  // approval still goes through the typed phrase.
+  function onBarKey(e: React.KeyboardEvent) {
+    if (e.metaKey || e.ctrlKey || e.altKey || !(e.target instanceof HTMLButtonElement)) return
+    const k = e.key.toLowerCase()
+    if (k !== "a" && k !== "d") return
+    if (!request || !(request.kind === "approval" || request.kind === "card.approval") || !canDecide || choice) return
+    e.preventDefault()
+    if (k === "d") decideOrHold("denied")
+    else if (request.class === "high") setChoice("approved")
+    else decideOrHold("approved")
+  }
   // High-risk requests are approvable here, gated by a typed phrase (the server still enforces).
   const needsPhrase = request?.class === "high"
   const card = !!request && isCard(request)
@@ -271,12 +318,13 @@ export function DecisionDetail({
                 ))}
               </section>
             )}
+            {item && !isPending(item) && <AuditTrail id={item.item_id} client={client} />}
             {item?.card_receipt && <CardReceiptView receipt={item.card_receipt} />}
           </>
         )}
       </div>
       {/* Decision bar: fixed at the bottom of the detail. */}
-      <div role="toolbar" aria-label="Decision" className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-border bg-bg p-4">
+      <div role="toolbar" aria-label="Decision" onKeyDown={onBarKey} className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-border bg-bg p-4">
         {request && (<>
             {resolution ? (
               <section className="rounded border border-border bg-surface/40 p-4">
@@ -347,7 +395,7 @@ export function DecisionDetail({
                 {request.kind === "card.info" ? (
                   <p className="dash-control text-fg-muted">This card is for information; there is nothing to answer.</p>
                 ) : request.kind === "card.question" || request.kind === "card.form" ? (
-                  <CardForm request={request} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
+                  <CardForm request={request} itemId={item.item_id} client={client} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
                 ) : choice ? (
                   <section className="rounded border border-border bg-surface/40 p-3">
                     <p className="dash-control text-fg-muted">
@@ -415,6 +463,30 @@ export function DecisionDetail({
                     )}
                   </div>
                 )}
+                {item && isPending(item) && !isExpired(item) && (() => {
+                  const expiry = request.expires_at ? Date.parse(request.expires_at) : undefined
+                  // A snoozed item must not expire unnoticed: offer only presets that end first.
+                  const presets = DEFER_PRESETS.filter((p) => expiry === undefined || Date.now() + p.seconds * 1000 < expiry)
+                  const dueBefore = expiry !== undefined && item.deferred_until && expiry < Date.parse(item.deferred_until)
+                  return item.deferred_until ? (
+                    <p className="flex flex-wrap items-center gap-2 dash-control text-fg-muted">
+                      Snoozed until {new Date(item.deferred_until).toLocaleString()}.
+                      {dueBefore && <span>Expires before this ends.</span>}
+                      <Button variant="outline" size="sm" disabled={busy} onClick={() => void bringBack()}>Bring back now</Button>
+                    </p>
+                  ) : presets.length ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" disabled={busy || !ready} aria-label="Decide later" />}>Decide later</DropdownMenuTrigger>
+                      <DropdownMenuContent aria-label="Decide later" align="start" data-dashboard-shape="square" className="w-40">
+                        {presets.map((p) => (
+                          <DropdownMenuItem key={p.label} onClick={() => void defer(p.seconds)}>{p.label}</DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <p className="dash-control text-fg-muted">Expires soon, so it cannot be snoozed.</p>
+                  )
+                })()}
                 <p className="dash-support text-fg-faint">
                   Records your decision for the requesting application.
                   Execution and credential permissions are checked by that

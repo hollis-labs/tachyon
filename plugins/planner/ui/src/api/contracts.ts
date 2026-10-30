@@ -1,4 +1,4 @@
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, ThemeAction, ThemeBoard } from './types'
+import type { NeedYou, IdeaPromoteResult, IdeaPromoteTarget, LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export interface PlannerEvent { type: string }
@@ -20,7 +20,8 @@ export interface PlannerClient {
   plannerSearch(q: string, db?: PlannerDb, signal?: AbortSignal): Promise<PlannerSearchHit[]>
   plannerCreate(db: PlannerDb, item: Record<string, unknown>, id: string): Promise<PlannerItem>
   plannerUpdate(db: PlannerDb, id: string, patch: Record<string, unknown>, rev: number): Promise<PlannerItem>
-  plannerComment(db: PlannerDb, id: string, text: string, rev: number, kind?: 'comment' | 'decision'): Promise<PlannerItem>
+  /** `opts.pin` sets or clears the pin in the same revision write as the comment. */
+  plannerComment(db: PlannerDb, id: string, text: string, rev: number, kind?: 'comment' | 'decision', opts?: { pin?: boolean }): Promise<PlannerItem>
   plannerLinkAdd(db: PlannerDb, id: string, link: PlannerLink, rev: number): Promise<PlannerItem>
   plannerLinkRemove(db: PlannerDb, id: string, kind: string, ref: string, rev: number): Promise<PlannerItem>
   plannerReorder(db: PlannerDb, items: PlannerRevision[]): Promise<PlannerOrdered[]>
@@ -28,9 +29,28 @@ export interface PlannerClient {
   plannerDefer(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerReopen(id: string, rev: number): Promise<PlannerItem>
   plannerInboxPromote(id: string, to: PlannerDb, rev: number, targetId: string, fields?: Record<string, unknown>): Promise<{ inbox: PlannerItem; item: PlannerItem }>
+  /** Pin is item state: no comment needed. A stale revision is 409 with the current item. */
+  plannerPin(db: PlannerDb, id: string, pinned: boolean, rev: number): Promise<{ item: { id: string; db: string; rev: number; pinned: boolean; pinned_at?: string } }>
+  /** Atomic: the same target id on a retry never creates twice. */
+  plannerIdeaPromote(id: string, to: IdeaPromoteTarget, rev: number, targetId: string): Promise<IdeaPromoteResult>
   plannerInboxDismiss(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerTaskTitles(ids: string[], signal?: AbortSignal): Promise<Record<string, PlannerTaskBrief | null>>
   plannerWorkstreamTasks(id: string, signal?: AbortSignal): Promise<PlannerWorkstreamTasks>
+  /** The theme's Torque tasks grouped by lane. */
+  plannerThemeTasks(themeId: string, signal?: AbortSignal): Promise<ThemeTasks>
+  /** Milestones, momentum and events for a theme, newest first; `before_seq` pages backwards. */
+  plannerThemeTimeline(themeId: string, opts?: { before_seq?: number; limit?: number }, signal?: AbortSignal): Promise<ThemeTimeline>
+  /** A real Torque status transition. A differing current status is a 409 with details.current. Undo is the inverse call. */
+  plannerTaskTransition(task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }): Promise<TaskTransitionResult>
+  /** Attach "what shipped" and PR cites after a move; never blocks the move. */
+  plannerTaskMeta(task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }): Promise<TaskMeta>
+  plannerNeedYou(signal?: AbortSignal): Promise<NeedYou>
+  /** Outbound, inbound and external links of an item, relations and legacy arrays merged. */
+  plannerLinks(db: PlannerDb, id: string, signal?: AbortSignal): Promise<LinksView>
+  /** Add a typed relation; a needs cycle is 422 code cycle, a stale revision 409. */
+  plannerRelationAdd(db: PlannerDb, id: string, kind: RelationKind, to: PlannerRef, rev: number): Promise<RelationResult>
+  /** Remove a typed relation (the Undo of an add). */
+  plannerRelationRemove(db: PlannerDb, id: string, kind: RelationKind, to: PlannerRef, rev: number): Promise<RelationResult>
   getTask(id: string, signal?: AbortSignal): Promise<Task>
   listTaskComments(id: string, query?: { limit?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }, signal?: AbortSignal): Promise<ListPage<Comment>>
   resolveReference(db: PlannerDb | null, id: string): Promise<PlannerReference>

@@ -194,12 +194,14 @@ describe('<PendingPrInbox>', () => {
     expect(link.getAttribute('href')).toMatch(/^\/pr\/github\//)
     const rows = () => screen.getAllByTestId(/^pr-row-/)
     const before = rows().length
-    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Dismiss' }))
+    fireEvent.click(within(rows()[0]).getByRole('button', { name: /More actions/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Dismiss' }))
     await waitFor(() => expect(rows().length).toBe(before - 1))
     expect((await stateStore.load())[0].status).toBe('dismissed')
     fireEvent.click(screen.getByRole('tab', { name: /Dismissed/ }))
     await waitFor(() => expect(rows()).toHaveLength(1))
-    fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Reopen' }))
+    fireEvent.click(within(rows()[0]).getByRole('button', { name: /More actions/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reopen' }))
     await waitFor(() => expect(screen.getByText('No pull requests match this view.')).toBeTruthy())
   })
 

@@ -160,6 +160,14 @@ type EventFilter struct {
 type TimelineRow struct {
 	Event
 	Title, Group, Risk string
+	ReqID, ReqLabel    string // the item's requester, from the index ("" when the item is not indexed)
+	ReqKind            string
+}
+
+// Facet is one row of a History facet menu.
+type Facet struct {
+	ID, Label, Status string
+	Count             int
 }
 
 // Timeline returns events newest first with the item's title, group and risk.
@@ -168,32 +176,11 @@ func (s *Store) Timeline(ctx context.Context, f EventFilter) ([]TimelineRow, int
 	if limit <= 0 || limit > 100 {
 		limit = 25
 	}
-	where, args := []string{"1=1"}, []any{}
-	if len(f.Kinds) > 0 {
-		where = append(where, "l.kind IN ("+strings.TrimSuffix(strings.Repeat("?,", len(f.Kinds)), ",")+")")
-		for _, k := range f.Kinds {
-			args = append(args, k)
-		}
-	}
-	if f.Status != "" {
-		where, args = append(where, "l.status=?"), append(args, f.Status)
-	}
-	if f.Requester != "" {
-		where, args = append(where, "x.requester_id=?"), append(args, f.Requester)
-	}
-	if q := strings.ToLower(strings.TrimSpace(f.Q)); q != "" {
-		where, args = append(where, "(instr(x.search,?)>0 OR instr(lower(l.note),?)>0)"), append(args, q, q)
-	}
-	if !f.From.IsZero() {
-		where, args = append(where, "l.ts_ns>=?"), append(args, f.From.UnixNano())
-	}
-	if !f.To.IsZero() {
-		where, args = append(where, "l.ts_ns<=?"), append(args, f.To.UnixNano())
-	}
+	where, args := timelineWhere(f, "")
 	if f.After > 0 {
 		where, args = append(where, "l.seq<?"), append(args, f.After)
 	}
-	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT l.seq,l.event_id,l.ts_ns,l.item_id,l.kind,l.status,l.actor_ref,l.assurance,l.decision,l.note,l.reason_code,l.batch_id,l.revision,l.extra,COALESCE(x.title,''),COALESCE(x.grp,''),COALESCE(x.risk,'')
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT l.seq,l.event_id,l.ts_ns,l.item_id,l.kind,l.status,l.actor_ref,l.assurance,l.decision,l.note,l.reason_code,l.batch_id,l.revision,l.extra,COALESCE(x.title,''),COALESCE(x.grp,''),COALESCE(x.risk,''),COALESCE(x.requester_id,''),COALESCE(x.requester_label,''),COALESCE(x.requester_kind,'')
 FROM approval_decision_log l LEFT JOIN approval_item_index x ON x.item_id=l.item_id WHERE `+strings.Join(where, " AND ")+` ORDER BY l.seq DESC LIMIT ?`, append(args, limit+1)...)
 	if err != nil {
 		return nil, 0, err
@@ -211,9 +198,37 @@ FROM approval_decision_log l LEFT JOIN approval_item_index x ON x.item_id=l.item
 	return out, next, nil
 }
 
+// timelineWhere builds the filter shared by the page and its facets. skip names a filter to leave out
+// ("status" or "requester"), which is how a facet menu counts over the other filters only.
+func timelineWhere(f EventFilter, skip string) ([]string, []any) {
+	where, args := []string{"1=1"}, []any{}
+	if len(f.Kinds) > 0 {
+		where = append(where, "l.kind IN ("+strings.TrimSuffix(strings.Repeat("?,", len(f.Kinds)), ",")+")")
+		for _, k := range f.Kinds {
+			args = append(args, k)
+		}
+	}
+	if f.Status != "" && skip != "status" {
+		where, args = append(where, "l.status=?"), append(args, f.Status)
+	}
+	if f.Requester != "" && skip != "requester" {
+		where, args = append(where, "x.requester_id=?"), append(args, f.Requester)
+	}
+	if q := strings.ToLower(strings.TrimSpace(f.Q)); q != "" {
+		where, args = append(where, "(instr(x.search,?)>0 OR instr(lower(l.note),?)>0)"), append(args, q, q)
+	}
+	if !f.From.IsZero() {
+		where, args = append(where, "l.ts_ns>=?"), append(args, f.From.UnixNano())
+	}
+	if !f.To.IsZero() {
+		where, args = append(where, "l.ts_ns<=?"), append(args, f.To.UnixNano())
+	}
+	return where, args
+}
+
 // ItemEvents returns one item's events oldest first.
 func (s *Store) ItemEvents(ctx context.Context, id string) ([]TimelineRow, error) {
-	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT l.seq,l.event_id,l.ts_ns,l.item_id,l.kind,l.status,l.actor_ref,l.assurance,l.decision,l.note,l.reason_code,l.batch_id,l.revision,l.extra,'','',''
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT l.seq,l.event_id,l.ts_ns,l.item_id,l.kind,l.status,l.actor_ref,l.assurance,l.decision,l.note,l.reason_code,l.batch_id,l.revision,l.extra,'','','','','',''
 FROM approval_decision_log l WHERE l.item_id=? ORDER BY l.seq`, id)
 	if err != nil {
 		return nil, err
@@ -228,7 +243,7 @@ func scanEvents(rows *sql.Rows) ([]TimelineRow, error) {
 		var r TimelineRow
 		var ts int64
 		var extra string
-		if err := rows.Scan(&r.Seq, &r.EventID, &ts, &r.ItemID, &r.Kind, &r.Status, &r.ActorRef, &r.Assurance, &r.Decision, &r.Note, &r.ReasonCode, &r.BatchID, &r.Revision, &extra, &r.Title, &r.Group, &r.Risk); err != nil {
+		if err := rows.Scan(&r.Seq, &r.EventID, &ts, &r.ItemID, &r.Kind, &r.Status, &r.ActorRef, &r.Assurance, &r.Decision, &r.Note, &r.ReasonCode, &r.BatchID, &r.Revision, &extra, &r.Title, &r.Group, &r.Risk, &r.ReqID, &r.ReqLabel, &r.ReqKind); err != nil {
 			return nil, err
 		}
 		r.TS = time.Unix(0, ts).UTC()
@@ -309,4 +324,41 @@ func (s *Store) DeferredUntil(ctx context.Context, id string, now time.Time) *ti
 	}
 	t := time.Unix(0, ns.Int64).UTC()
 	return &t
+}
+
+// TimelineFacets counts the requesters and statuses of the events the filter selects, each over every
+// filter but its own, so choosing one value does not hide the others. The cursor does not apply.
+func (s *Store) TimelineFacets(ctx context.Context, f EventFilter) (requesters, statuses []Facet, err error) {
+	count := func(skip, cols, group string, scan func(*sql.Rows) (Facet, error), extra string) ([]Facet, error) {
+		where, args := timelineWhere(f, skip)
+		if extra != "" {
+			where = append(where, extra)
+		}
+		rows, err := s.DB.Reader.QueryContext(ctx, `SELECT `+cols+`, COUNT(*) FROM approval_decision_log l LEFT JOIN approval_item_index x ON x.item_id=l.item_id WHERE `+strings.Join(where, " AND ")+` GROUP BY `+group+` ORDER BY COUNT(*) DESC, 1`, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		out := []Facet{}
+		for rows.Next() {
+			fc, err := scan(rows)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, fc)
+		}
+		return out, rows.Err()
+	}
+	requesters, err = count("requester", "x.requester_id, x.requester_label", "x.requester_id, x.requester_label", func(r *sql.Rows) (Facet, error) {
+		var fc Facet
+		return fc, r.Scan(&fc.ID, &fc.Label, &fc.Count)
+	}, "x.requester_id IS NOT NULL")
+	if err != nil {
+		return nil, nil, err
+	}
+	statuses, err = count("status", "l.status", "l.status", func(r *sql.Rows) (Facet, error) {
+		var fc Facet
+		return fc, r.Scan(&fc.Status, &fc.Count)
+	}, "")
+	return requesters, statuses, err
 }

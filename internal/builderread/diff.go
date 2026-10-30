@@ -112,3 +112,6 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+// UnifiedDiff is the exported form for the change service, which diffs masked file content.
+func UnifiedDiff(name, a, b string) string { return unifiedDiff(name, a, b) }

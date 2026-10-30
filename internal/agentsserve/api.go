@@ -24,8 +24,15 @@ type Server struct {
 	DB        *localstore.Store
 	Collector *agentscollector.Collector
 	Now       func() time.Time
+	// Assigner supplies Session.assignment (A5); nil leaves it null.
+	Assigner Assigner
 
 	hub hub
+}
+
+// Assigner joins a session's task to its Planner theme.
+type Assigner interface {
+	Assignment(ctx context.Context, sessionID, taskRef string) any
 }
 
 func (s *Server) now() time.Time {
@@ -116,7 +123,7 @@ func (s *Server) one(w http.ResponseWriter, r *http.Request) (Session, row, bool
 		internal(w)
 		return Session{}, row{}, false
 	}
-	return build(rs[0], ex[id], now, s.staleAfter(r.Context())), rs[0], true
+	return s.withAssignment(r.Context(), build(rs[0], ex[id], now, s.staleAfter(r.Context())), rs[0]), rs[0], true
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {

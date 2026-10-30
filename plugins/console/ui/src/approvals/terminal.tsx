@@ -114,7 +114,7 @@ export function LiveTerminal({ run, onExit }: { run: ActionRun; onExit(): void }
         ref={host}
         role="group"
         aria-label={`Terminal for ${run.command}`}
-        className="h-72 w-full overflow-hidden rounded border border-border bg-black p-1"
+        className="h-72 w-full overflow-hidden rounded border border-border bg-bg p-1"
       />
       <div className="mt-2 flex items-center justify-between dash-support text-fg-faint">
         <span role="status">Terminal: {status}. Typed input is sent to the process and is not recorded.</span>

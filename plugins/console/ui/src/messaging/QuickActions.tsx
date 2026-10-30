@@ -3,7 +3,7 @@ import { MessageComposer, type MessageComposerProps } from './MessageComposer'
 import type { MessageIntent, Recipient } from './types'
 
 const LABEL: Record<MessageIntent, string> = { message: 'Message', nudge: 'Nudge', update_request: 'Request update' }
-const trigger = 'border border-zinc-700 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40'
+const trigger = 'border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-fg-secondary transition-colors hover:border-border hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warning disabled:cursor-not-allowed disabled:opacity-40'
 
 function useDismiss(open: boolean, close: () => void, ref: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
@@ -29,7 +29,7 @@ function Popover({ label, disabled, title, children }: { label: string; disabled
     <span ref={ref} className="relative inline-block">
       <button type="button" disabled={disabled} title={title} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={trigger}>{label}</button>
       {open && (
-        <div role="dialog" aria-label={label} className="absolute left-0 top-full z-40 mt-1 w-[22rem] max-w-[90vw] border border-zinc-700 bg-zinc-950 p-3 shadow-xl">
+        <div role="dialog" aria-label={label} className="absolute left-0 top-full z-40 mt-1 w-[22rem] max-w-[90vw] border border-border bg-bg p-3 shadow-xl">
           {children(close)}
         </div>
       )}
@@ -52,8 +52,8 @@ function Dialog({ label, disabled, title, children }: { label: string; disabled?
     <>
       <button type="button" disabled={disabled} title={title} aria-haspopup="dialog" onClick={() => setOpen(true)} className={trigger}>{label}</button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-[10vh]" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-          <div ref={ref} role="dialog" aria-modal="true" aria-label={label} className="max-h-[80vh] w-full max-w-lg overflow-y-auto border border-zinc-700 bg-zinc-950 p-4 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-bg/60 p-4 pt-[10vh]" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+          <div ref={ref} role="dialog" aria-modal="true" aria-label={label} className="max-h-[80vh] w-full max-w-lg overflow-y-auto border border-border bg-bg p-4 shadow-xl">
             {children(close)}
           </div>
         </div>

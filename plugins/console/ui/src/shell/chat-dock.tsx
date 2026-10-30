@@ -50,10 +50,10 @@ function ChatTrigger({ dock }: { dock: ChatDockApi }) {
       aria-haspopup="dialog"
       aria-expanded={dock.open}
       onClick={() => (dock.open ? dock.closeChat() : dock.openChat())}
-      className={`relative flex h-9 w-9 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 ${dock.open ? 'bg-accent text-foreground' : ''}`}
+      className={`relative flex h-9 w-9 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warning ${dock.open ? 'bg-accent text-foreground' : ''}`}
     >
       <MessageSquare aria-hidden="true" className="h-4 w-4" />
-      {unread > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-[14px] border border-amber-400/60 bg-zinc-950 px-1 text-center font-mono text-[9px] leading-[12px] text-amber-300">{unread}</span>}
+      {unread > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-[14px] border border-warning/50 bg-bg px-1 text-center font-mono text-[9px] leading-[12px] text-warning">{unread}</span>}
     </button>
   )
 }

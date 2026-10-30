@@ -39,6 +39,24 @@ async function emitUntilToast(source: FixtureSource, max = 8) {
   for (let i = 0; i < max && screen.queryAllByTestId('alert-toast').length === 0; i++) await act(async () => source.tick())
 }
 
+describe('AlertTray keyboard', () => {
+  it('moves between rows with the arrows, dismisses with D, marks all read with Shift+R, and ignores keys in fields', async () => {
+    await setup()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
+    const tray = screen.getByRole('dialog', { name: 'Alerts' })
+    const opens = () => within(tray).getAllByRole('button', { name: /^Open details/ })
+    const first = opens()[0]
+    first.focus()
+    await act(async () => fireEvent.keyDown(first, { key: 'ArrowDown' }))
+    expect(document.activeElement).toBe(opens()[1])
+    const before = within(tray).getAllByTestId('alert-item').length
+    await act(async () => fireEvent.keyDown(document.activeElement!, { key: 'd' }))
+    expect(within(tray).getAllByTestId('alert-item').length).toBe(before - 1)
+    await act(async () => fireEvent.keyDown(document.activeElement ?? tray, { key: 'R', shiftKey: true }))
+    expect(screen.queryByTestId('alert-badge')).toBeNull()
+  })
+})
+
 describe('AlertHost', () => {
   it('opens no stream of its own, skips the backlog, then toasts new alerts', async () => {
     const { source, sub } = await setup()
@@ -61,8 +79,7 @@ describe('AlertHost', () => {
     expect(screen.getAllByTestId('alert-toast').some(e => e.dataset.severity !== 'critical')).toBe(true)
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
     const tray = screen.getByRole('dialog', { name: 'Alerts' })
-    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Prefs' })))
-    await act(async () => fireEvent.change(within(tray).getByRole('combobox', { name: 'Toast threshold' }), { target: { value: 'critical' } }))
+    await act(async () => prefs.set({ toastMinSeverity: 'critical' }))
     expect(prefs.get().toastMinSeverity).toBe('critical')
     expect(screen.queryByTestId('alert-toast')).toBeNull()
     for (const severity of ['notice', 'warning', 'error', 'critical'] as const) {
@@ -71,7 +88,7 @@ describe('AlertHost', () => {
       await act(async () => source.emit(event))
     }
     expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['critical'])
-    await act(async () => fireEvent.click(within(tray).getByRole('checkbox', { name: 'Quiet' })))
+    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Quiet' })))
     expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['critical'])
   })
 
@@ -79,13 +96,11 @@ describe('AlertHost', () => {
     const { source, prefs } = await setup()
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
     const tray = screen.getByRole('dialog', { name: 'Alerts' })
-    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Prefs' })))
-    const bell = within(tray).getByRole('combobox', { name: 'Bell / list threshold' })
-    const toast = within(tray).getByRole('combobox', { name: 'Toast threshold' })
-    await act(async () => fireEvent.change(bell, { target: { value: 'critical' } }))
+    const setBell = (v: 'debug' | 'critical') => act(async () => prefs.set({ bellMinSeverity: v }))
+    await setBell('critical')
     expect(screen.queryByTestId('alert-badge')).toBeNull()
     expect(within(tray).queryByRole('list', { name: 'Active alerts' })).toBeNull()
-    expect((toast as HTMLSelectElement).value).toBe('notice')
+    expect(prefs.get().toastMinSeverity).toBe('notice')
     for (const severity of ['warning', 'critical'] as const) {
       await act(async () => source.emit({ id: `independent-${severity}`, ts: Date.now(), kind: `threshold.${severity}`, severity,
         source: { id: 'threshold-check' }, subjects: [], actions: [], payload: {}, extra: {} }))
@@ -98,16 +113,15 @@ describe('AlertHost', () => {
     expect(screen.getAllByTestId('alert-toast').map(e => e.dataset.severity)).toEqual(['warning', 'critical'])
     await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Mark all read' })))
     expect(screen.queryByTestId('alert-badge')).toBeNull()
-    await act(async () => fireEvent.change(bell, { target: { value: 'debug' } }))
+    await setBell('debug')
     const warning = within(tray).getByRole('button', { name: 'Open details: threshold.warning' }).closest('[data-testid="alert-item"]')!
     expect(warning.getAttribute('data-status')).toBe('unread')
     await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Dismiss: threshold.warning' })))
     await act(async () => fireEvent.click(within(tray).getByRole('tab', { name: /history/i })))
     expect(within(tray).getByRole('button', { name: 'Open details: threshold.warning' })).toBeTruthy()
-    await act(async () => fireEvent.change(bell, { target: { value: 'critical' } }))
+    await setBell('critical')
     expect(within(tray).queryByText('threshold.warning')).toBeNull()
-    await act(async () => fireEvent.click(within(tray).getByRole('checkbox', { name: 'Quiet' })))
-    expect((bell as HTMLSelectElement).disabled).toBe(false)
+    await act(async () => fireEvent.click(within(tray).getByRole('button', { name: 'Quiet' })))
     expect(prefs.get()).toMatchObject({ quiet: true, toastMinSeverity: 'notice', bellMinSeverity: 'critical' })
   })
 

@@ -397,3 +397,15 @@ data: {"v":"1","seq":2,"verb":"run.finish","reason":"stop","usage":{"scope":"fin
 const sseOldFinish = `data: {"v":"1","seq":10,"verb":"run.finish","reason":"stop","usage":{"scope":"final","total":7137}}
 
 `
+
+func TestApprovalOfReadsTheFrame(t *testing.T) {
+	var f frame
+	raw := `{"verb":"approval.request","approval_id":"ap1","call_id":"c1","reason":"writes a file","descriptor":{"tool":"write_file","input":{"path":"/a"},"class":"low"},"expires_at":"2026-10-30T09:00:00Z"}`
+	if err := json.Unmarshal([]byte(raw), &f); err != nil {
+		t.Fatal(err)
+	}
+	a := approvalOf(f)
+	if a.ID != "ap1" || a.CallID != "c1" || a.Tool != "write_file" || a.Class != "low" || string(a.Input) != `{"path":"/a"}` || a.ExpiresAt.IsZero() {
+		t.Fatalf("%+v", a)
+	}
+}

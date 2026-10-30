@@ -85,3 +85,49 @@ open, one pattern each, and win over the stub's subtree. Reads need an operator 
   resolves somewhere invalid is dropped. `owner_only` is true for world-writable roots: V2 serves only files
   owned by the service user from them. `path_display` is `~`-relative under the service user's home.
 - `fileview.BuiltinDeny` lists the always-denied basename globs for V2; `deny_extra` only adds to it.
+
+## Path guard (V2)
+
+`fileview.Guard` is the only code that reads the host disk for the viewer. `Resolve(ctx, path)` returns the resolved path, its root and relative path, or a `Denial`; `Open` / `OpenResolved` open a regular file read-only. Order of checks:
+
+1. Shape: no NUL, at most 4096 bytes, absolute after `~` expansion (service user's home) and lexical clean. Otherwise `invalid_path`.
+2. `EvalSymlinks` of the full path; every later check uses the resolved path. Missing, dangling or looping is `not_found_or_hidden`.
+3. The resolved path must be inside an effective root (separator-aware). A path that starts inside a root and ends outside is `symlink_escape`; one that was never inside is `not_found_or_hidden`, so the host cannot be probed.
+4. Secret patterns on the resolved and the requested path: basenames from `BuiltinDeny` plus the user's `deny_extra` (case-insensitive; `id_*.pub` is allowed), any secret directory segment (`.ssh`, `.gnupg`, `.aws`, `.kube`, `.config/gcloud`) and `.git/config`. `secret_pattern`.
+5. Under an owner-only root (world-writable, such as `/tmp`) the file must be owned by the service uid, else `not_found_or_hidden`.
+6. `OpenResolved` opens with `O_NOFOLLOW`, then checks the descriptor is a regular file (`not_a_file` otherwise) and the same file the lstat saw, so a swap or a planted link between check and open is refused.
+
+Denial text is the reason code only; the path is never echoed. Directories resolve (for `stat`) but cannot be opened. The tests in `guard_test.go` are the corpus: traversal, absolute paths, links in and out of a root, links to secrets, dangling and looping links, every built-in pattern, case, FIFO, directory, swap-after-check, other-user files under `/tmp`, user deny additions, vanished roots. Size caps, content types and Range belong to V3.
+
+## Stat and content (V3)
+
+`fileview.Files`, mounted by `register_fileview.go` (one pattern each for `POST /stat` and `GET /content`, behind `RequireOperatorReads`; they win over the stub's subtree). Both go through `Guard`.
+
+- `POST /stat {paths:[1..100]}`: items as in the contract. A bad path shape is 400 for the whole batch. A denied item has `allowed:false` and `deny_reason`; a path never inside a root, a missing path and a dangling link are all `not_found_or_hidden` (`exists:false`). `secret_pattern` and `symlink_escape` report `exists:true`. Directories report `type:"dir"`, no kind. Files over the cap for an image or binary report `too_large`; large text stays allowed (Range).
+- `etag` is a strong hash of size, mtime and inode; there is no watcher, clients poll it.
+- Kind and mime come from the name and the first 512 bytes. HTML is decided by content, not extension; an image by content (SVG only when the bytes contain an `<svg` element); NUL or invalid UTF-8 is binary. `language` is set for code, json, yaml, toml.
+- `GET /content?path=`: `http.ServeContent`, so `Range`, `If-Range` and `If-None-Match` (206, 304, 416) work. Text, markdown, code and HTML are always `text/plain; charset=utf-8`; images keep their type (SVG adds the sandbox CSP); binary is `application/octet-stream` as an attachment. `nosniff` and `Cache-Control: private, no-cache` on everything. Text and HTML over `fileview.caps.text_bytes` need a `Range` header (else 413); images and binaries over `image_bytes` are 413 even with Range. Errors: 400 invalid (also directories and FIFOs), 403 `denied`, 404 `not_found_or_hidden`, 501 `caster_unavailable` for `caster_ref` until V5. Error bodies never contain the path.
+- Audit (V6 writer): one async `stat` row per batch, a synchronous `open` row with bytes served and etag, and every denial synchronously. The principal is a hash of the session cookie.
+
+## Frames (V4)
+
+`fileview.Frames`, mounted by `register_fileview.go`: `POST /frame` behind `RequireOperator`, `GET /frames/{id}` with no guard (a sandboxed iframe has an opaque origin and sends no cookie; the id is the capability, so isolation comes from the sandbox CSP and not from a second origin, F-V2).
+
+- `POST /frame {path, scripts?}` returns 201 `{frame_url, expires_at, etag, scripts}`. The file must pass the path guard and be HTML by content (else 400 `not_html`), at most `fileview.caps.html_bytes` (else 413, show the source instead). `scripts:true` is 403 `scripts_not_allowed` unless `fileview.run_scripts_allowed` is on (F-V3: off by default, per-file opt-in). `caster_ref` is 501 until V5. At most 128 live frames (429 `too_many_frames`).
+- The id is 256 random bits. A frame lives five minutes, is served once, and is bound to the file's etag at mint: the file is opened through the guard again when the frame is served, and a changed file answers 410. A used or expired id answers 410 for one more minute, then 404.
+- The document is served as `text/html; charset=utf-8` with `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox; frame-ancestors 'self'` (with scripts: `script-src 'unsafe-inline'` and `sandbox allow-scripts`), `nosniff`, `no-store`, `Referrer-Policy: no-referrer`. Neither policy has `allow-same-origin`, so the document stays opaque-origin. Relative assets of the page are not loaded.
+- Audit: a synchronous `frame` row at mint (with etag) and every denial.
+
+## Caster adapter (V5)
+
+`fileview.Caster` reads `caster://ns/name[@rev]` artifacts from the caster daemon. It is on when `TACHYON_CASTER_TOKEN_FILE` names the read-scoped device token (made once on the home node with `caster pair -scope read -label tachyon -token-file PATH`); `CASTER_URL` overrides the daemon address (default `http://127.0.0.1:8991`). With the variable unset, `caster_ref` on `/content` and `/frame` stays 501 `caster_unavailable` and `/resolve` falls through to the stub (if on).
+
+- `GET /resolve?ref=` (`RequireOperatorReads`): `{ref, namespace, name, kind, mime, size, rev, latest_rev, floating, sha256, title, tags, revisions[]}`. A ref without `@rev` is floating and reports the rev it resolved to. `revisions` (newest first) carry `rev`, `sha256`, `title`, `at`; per-revision `size` is not known to caster and is omitted. `tags` is always `[]` (head does not return them). Unknown parameters are 400.
+- `GET /content?caster_ref=`: same headers and caps as host files (text, markdown, code and HTML are `text/plain`; images keep their type; SVG gets the sandbox CSP; `nosniff`). The `ETag` is the content hash, so `If-None-Match` gives 304; Range works on text. The pinned rev is read, and the bytes must hash to what `/v1/head` said, else 409 `changed` (retry).
+- `POST /frame {caster_ref}`: the rev is pinned at mint, the hash is the etag, the artifact must be HTML by content and within the HTML cap. Serving re-reads the bytes and re-checks the hash and the namespace; any mismatch is 410.
+- Shapes: only `caster://ns/name` or `caster://ns/name@N` (N >= 1, no leading zero); no query, fragment, userinfo or extra segments (400 `invalid`).
+- Only namespaces in `fileview.caster_namespaces` (default designer, scratch) open; others are 403 `namespace_not_allowed` before any call to the daemon, and are audited as a denial. Caster itself has no per-namespace permission, so this list is the only narrowing.
+- Failures: unknown ref 404 `not_found`; a missing or empty token file, a refused token or scope, an unreachable daemon, a redirect (never followed) or an unreadable answer are all 503 `caster_unavailable`. No body carries the token, the daemon address or the daemon's own error text.
+- The adapter calls only `/v1/head`, `/v1/get?raw=1` and `/v1/log`; never `caster.resolve` and never the operator key. The token file is read on each request, so a renewed token needs no restart. Fetched bytes are capped (the per-kind cap, 32 MiB at most) and are never interpreted.
+- Audit (V6): `caster` rows with source `caster` for `/content` opens (sync) and `/resolve` (async), `frame` rows with source `caster` at mint, and denials (`namespace_not_allowed`, `not_found_or_hidden`, `too_large`) synchronously. Refs are stored without query or fragment.
+- Live use needs Chrispian's one-time `caster pair`; the tests run against a fake daemon.

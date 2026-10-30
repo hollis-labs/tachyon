@@ -129,3 +129,43 @@ it('preserves backend error details from the native error envelope', async () =>
   installFetch(fetcher)
   await expect(new TachyonPlannerClient().plannerUpdate('ideas', id, {}, 7)).rejects.toMatchObject({ message: 'Invalid typed reference', code: 'invalid' })
 })
+
+it('sends pin with a comment only when asked', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => json({ id, rev: 3 }))
+  installFetch(fetcher)
+  const api = new TachyonPlannerClient()
+  await api.plannerComment('themes', id, 'plain', 2)
+  await api.plannerComment('themes', id, 'pinned', 2, undefined, { pin: true })
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).not.toHaveProperty('pin')
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toMatchObject({ text: 'pinned', pin: true, expected_revision: 2 })
+})
+
+it('pins as item state with the revision, no comment', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => json({ id: 'theme-a', rev: 5, pinned: true }))
+  installFetch(fetcher)
+  await new TachyonPlannerClient().plannerPin('themes', 'theme-a', true, 4)
+  expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/theme-a/pin`)
+  expect(fetcher.mock.calls[0][1].method).toBe('PUT')
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ pinned: true, expected_revision: 4 })
+})
+
+it('writes a typed relation on the source item and removes it with the same body', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => json({ item: { id, db: 'themes', revision: 9 }, links_view: { outbound: [], inbound: [], external: [] } }))
+  installFetch(fetcher)
+  const api = new TachyonPlannerClient()
+  await api.plannerRelationAdd('themes', 'theme-a', 'needs', { db: 'themes', id: 'theme-b' }, 8)
+  await api.plannerRelationRemove('themes', 'theme-a', 'needs', { db: 'themes', id: 'theme-b' }, 9)
+  expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/theme-a/relations`)
+  expect(fetcher.mock.calls[0][1].method).toBe('POST')
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ kind: 'needs', to: { db: 'themes', id: 'theme-b' }, expected_revision: 8 })
+  expect(fetcher.mock.calls[1][1].method).toBe('DELETE')
+})
+
+it('reads the links view and surfaces a cycle as its own code', async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(json({ outbound: [], inbound: [], external: [] })).mockResolvedValueOnce(json({ error: 'That link would make a cycle.', code: 'cycle' }, 422))
+  installFetch(fetcher)
+  const api = new TachyonPlannerClient()
+  await api.plannerLinks('themes', 'theme-a')
+  expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/theme-a/links`)
+  await expect(api.plannerRelationAdd('themes', 'theme-a', 'needs', { db: 'themes', id: 'theme-b' }, 2)).rejects.toMatchObject({ status: 422, code: 'cycle' })
+})

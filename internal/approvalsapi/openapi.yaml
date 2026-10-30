@@ -56,7 +56,7 @@ paths:
         (409 stale_revision with the actual revision), operator
         access for medium/high/destructive (403 operator_access_required), typed confirmation for an approved
         item that has confirm (every high-class item and every destructive one) (422 confirmation_required, case-sensitive, trimmed), alternative_id, reason for deny
-        when reason_required (422 reason_required), secret answers must be secret_refs (422 invalid_secret_ref).
+        when reason_required (422 reason_required), secret answers must be {secret_ref} objects from /secrets (422 secret_ref_invalid).
       parameters: [{$ref: '#/components/parameters/id'}]
       requestBody:
         required: true
@@ -100,7 +100,7 @@ paths:
       summary: Decision timeline with reasons
       parameters:
         - {name: status, in: query, schema: {type: string, enum: [approved, denied, answered, expired, withdrawn]}}
-        - {name: requester, in: query, schema: {type: string}}
+        - {name: requester, in: query, description: requester id (a facets.requesters id), schema: {type: string}}
         - {name: q, in: query, schema: {type: string}}
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: to, in: query, schema: {type: string, format: date-time}}
@@ -129,14 +129,33 @@ paths:
     post:
       summary: Submit a secret value; returns a reference, never the value
       description: |
-        Operator-token required. value at most 16 KiB (file upload at most 64 KiB in the real route). The value
-        is never returned, logged, stored in the record, digest, events or audit. 503 secrets_unavailable when
-        no key is configured. Redemption is server-side only (Tachyon-run effects).
+        Operator-token required (403 assurance_insufficient with step_up when not elevated). JSON value at most
+        16 KiB, or multipart/form-data (item_id, field, file) with a file of at most 64 KiB (413 payload_too_large).
+        The value is never returned, logged, stored in the record, digest, events or audit. The item must be
+        pending (409 item_not_pending) and have a secret field with that id (409 secret_field_unknown). 503
+        secrets_unavailable when no key is configured; 429 rate_limited after 10 a minute. Idempotency-Key (at most
+        128 characters): the same key and body replays the first 201 (Idempotent-Replay: true); the same key with
+        another body is 409 idempotency_key_reuse. Redemption is server-side only (Tachyon-run effects).
+        Resolve takes the result as answers[field] = {secret_ref}; anything else is 422 secret_ref_invalid.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: false, schema: {type: string, maxLength: 128}}
       requestBody:
         required: true
-        content: {application/json: {schema: {$ref: '#/components/schemas/SecretRequest'}}}
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/SecretRequest'}}
+          multipart/form-data:
+            schema:
+              type: object
+              required: [item_id, field, file]
+              properties: {item_id: {type: string}, field: {type: string}, file: {type: string, format: binary, description: "at most 64 KiB"}}
       responses:
         "201": {description: stored, content: {application/json: {schema: {$ref: '#/components/schemas/SecretRef'}}}}
+        "400": {$ref: '#/components/responses/Error'}
+        "403": {description: assurance_insufficient, content: {application/json: {schema: {$ref: '#/components/schemas/StepUpError'}}}}
+        "404": {$ref: '#/components/responses/Error'}
+        "409": {$ref: '#/components/responses/Error'}
+        "413": {$ref: '#/components/responses/Error'}
+        "429": {$ref: '#/components/responses/Error'}
         "503": {$ref: '#/components/responses/Error'}
   /openapi.yaml:
     get:
@@ -160,10 +179,20 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: {type: string, enum: [stale_revision, already_resolved, batch_id_reuse, confirmation_required, reason_required, invalid_secret_ref, operator_access_required, requester_cannot_approve, session_required, secrets_unavailable, rate_limited, invalid, not_found, internal]}
+        code: {type: string, enum: [stale_revision, already_resolved, batch_id_reuse, confirmation_required, reason_required, secret_ref_invalid, assurance_insufficient, item_not_pending, secret_field_unknown, idempotency_key_reuse, payload_too_large, operator_access_required, requester_cannot_approve, session_required, secrets_unavailable, rate_limited, invalid, not_found, internal]}
         message: {type: string}
         revision: {type: integer, description: actual revision on stale_revision / already_resolved}
         terminal_outcome: {type: object, description: existing outcome on already_resolved}
+    StepUpError:
+      type: object
+      required: [code, message, step_up]
+      properties:
+        code: {type: string, enum: [assurance_insufficient]}
+        message: {type: string}
+        step_up:
+          type: object
+          required: [required]
+          properties: {required: {type: string, enum: [operator-token]}, can_elevate: {type: boolean}, elevate_path: {type: string}}
     Effect:
       type: object
       required: [target]
@@ -369,11 +398,34 @@ components:
               note: {type: string, nullable: true}
               reason: {type: string, nullable: true}
               batch_id: {type: string, nullable: true}
+              requester:
+                type: object
+                nullable: true
+                description: who asked; null when the item is no longer indexed
+                required: [id, label, kind]
+                properties: {id: {type: string}, label: {type: string}, kind: {type: string}}
               mini:
                 type: object
                 properties: {title: {type: string}, risk: {$ref: '#/components/schemas/Risk'}, group: {$ref: '#/components/schemas/Group'}}
         next_cursor: {type: string, nullable: true}
         total: {type: integer}
+        facets:
+          type: object
+          description: counts over the current filter without the facet's own part; the cursor does not apply
+          required: [requesters, statuses]
+          properties:
+            requesters:
+              type: array
+              items:
+                type: object
+                required: [id, label, count]
+                properties: {id: {type: string}, label: {type: string}, count: {type: integer}}
+            statuses:
+              type: array
+              items:
+                type: object
+                required: [status, count]
+                properties: {status: {type: string}, count: {type: integer}}
     Access:
       type: object
       required: [state, can_elevate, required_for]

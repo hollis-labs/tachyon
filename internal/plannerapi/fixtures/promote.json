@@ -1,1 +1,1 @@
-{"receipt":{"from":{"db":"ideas","id":"idea-12"},"to":{"db":"themes","id":"theme-from-idea-12"},"at":"2026-10-30T05:41:00Z"},"idea":{"id":"idea-12","db":"ideas","status":"promoted","revision":4},"created":{"id":"theme-from-idea-12","db":"themes","revision":1,"title":"Offline mode"}}
+{"receipt":{"from":{"db":"ideas","id":"idea-12"},"to":{"db":"themes","id":"theme-from-idea-12"},"at":"2026-10-30T05:41:00Z"},"idea":{"id":"idea-12","db":"ideas","status":"promoted","rev":4},"created":{"id":"theme-from-idea-12","db":"themes","rev":1,"title":"Offline mode"}}

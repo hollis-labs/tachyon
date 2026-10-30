@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Textarea } from '@hollis-labs/design-components'
+import { Button, Checkbox, Textarea } from '@hollis-labs/design-components'
 import { TEXT } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
 import { notifyError } from '@planner/api/notifications'
@@ -16,6 +16,9 @@ export function Context({ row, comments, onCommented, mentionable, links }: { ro
   const [sending, setSending] = useState(false)
   const [at, setAt] = useState(0)
   const [menuOff, setMenuOff] = useState(false)
+  // Set only when the person changes it, so a plain comment never touches the pin.
+  const [pinChange, setPinChange] = useState<boolean | undefined>(undefined)
+  const pinned = pinChange ?? row.pinned ?? false
   // An "@" word at the end of the text opens the mention menu.
   const query = /(?:^|\s)@([\w-]*)$/.exec(text)?.[1]
   const matches = query === undefined || menuOff ? [] : mentionable.filter((m) => `${m.id} ${m.title}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
@@ -25,8 +28,9 @@ export function Context({ row, comments, onCommented, mentionable, links }: { ro
     if (!body || sending) return
     setSending(true)
     try {
-      await api.plannerComment('themes', row.id, body, row.rev)
+      await api.plannerComment('themes', row.id, body, row.rev, undefined, pinChange === undefined ? undefined : { pin: pinChange })
       setText('')
+      setPinChange(undefined)
       onCommented()
     } catch (err) {
       notifyError(err, TEXT.writeFailed) // the text stays in the field
@@ -85,6 +89,10 @@ export function Context({ row, comments, onCommented, mentionable, links }: { ro
             ))}
           </ul>
         )}
+        <label className="flex items-center gap-2 dash-support text-fg-muted">
+          <Checkbox checked={pinned} onCheckedChange={(v) => setPinChange(v === (row.pinned ?? false) ? undefined : v)} aria-label={TEXT.pinWithComment} />
+          {TEXT.pinWithComment}
+        </label>
         <Button type="submit" size="sm" disabled={sending || !text.trim()}>{TEXT.commentSend}</Button>
       </form>
     </aside>

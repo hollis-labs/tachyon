@@ -224,6 +224,8 @@ export interface ThemeRow {
   id: string
   /** The record revision, sent back with an action so a stale view cannot overwrite a newer one. */
   rev: number
+  /** Pinned on the server (pin is item state). */
+  pinned?: boolean
   title: string
   status: string
   stored_status?: string
@@ -267,3 +269,66 @@ export interface ThemeBoard {
 }
 
 export type ThemeAction = 'ready' | 'approve' | 'park' | 'unpark' | 'finish' | 'archive' | 'resequence'
+
+export type TaskLane = 'todo' | 'doing' | 'review' | 'blocked' | 'done'
+export interface PrCite { host: string; owner: string; repo: string; number: number; source?: 'manual' | 'detected' }
+export interface TaskAssignee { assignment_id: string; agent_id?: string; team_id?: string; label?: string; state: string }
+/** A Torque task as the planner shows it on a theme board. */
+export interface ThemeTask {
+  id: string
+  title: string
+  status: TaskLane
+  priority?: string
+  updated_at: string
+  assignees: TaskAssignee[]
+  pr_cites: PrCite[]
+  done_summary?: string
+  blocked_reason?: string
+}
+export interface ThemeTasks {
+  theme_id: string
+  counts: Record<TaskLane | 'total', number>
+  lanes: Record<TaskLane, ThemeTask[]>
+}
+export interface TaskTransitionResult {
+  task: { id: string; status: TaskLane; previous: TaskLane }
+  event?: { seq: number; kind: string }
+  undo: { to: TaskLane; expected_status: TaskLane; window_seconds: number }
+}
+export interface TaskMeta {
+  task: string
+  done_summary?: string
+  pr_cites?: PrCite[]
+}
+
+export type MomentumLabel = 'rising' | 'steady' | 'cooling' | 'stalled'
+export interface TimelineEntry {
+  seq: number
+  at: string
+  kind: 'task' | 'pr' | 'decision' | 'blocker' | 'comment' | 'workstream' | 'lifecycle' | 'link'
+  text: string
+  refs: { kind: string; ref: string }[]
+  delta?: { done: number; doing: number; review: number; blocked: number }
+  arrow?: 'up' | 'flat' | 'down'
+}
+export interface ThemeTimeline {
+  milestones: { key: 'approved' | 'first_done' | 'half_done'; state: 'reached' | 'next' | 'pending'; at?: string }[]
+  momentum: { label: MomentumLabel; score: number; text: string }
+  events: TimelineEntry[]
+  next_before_seq: number | null
+}
+
+export type NeedYouReason = 'review' | 'decide' | 'blocked' | 'stale'
+/** Items that need the operator, by reason and lens. */
+export interface NeedYou { total: number; by_reason: Partial<Record<NeedYouReason, number>>; by_lens: Record<string, number>; items: { db: string; id: string; reasons: NeedYouReason[] }[]; stale_days: number }
+/** Promoting an idea marks it promoted and creates the target, linked back. */
+export type IdeaPromoteTarget = 'themes' | 'roadmap' | 'decisions'
+export interface IdeaPromoteResult { receipt: { from: { db: string; id: string }; to: { db: string; id: string }; at: string }; idea: { id: string; status: string }; created: { id: string; db: string; title?: string } }
+/** A typed relation, stored on the source item. */
+export type RelationKind = 'needs' | 'delivers' | 'mitigates' | 'relates'
+export interface PlannerRef { db: PlannerDb; id: string }
+export interface RelationOut { kind: RelationKind; to: PlannerRef; title: string; status?: string }
+export interface RelationIn { kind: RelationKind; from: PlannerRef; title: string; status?: string }
+export interface ExternalLink { kind: string; ref: string; label: string }
+export interface LinksView { outbound: RelationOut[]; inbound: RelationIn[]; external: ExternalLink[] }
+export interface RelationResult { item: { id: string; db: PlannerDb; rev?: number; revision?: number }; links_view: LinksView }

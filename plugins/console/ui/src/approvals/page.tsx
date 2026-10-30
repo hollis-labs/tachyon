@@ -1,13 +1,16 @@
-import { Button, SearchInput } from "@hollis-labs/design-components"
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SearchInput } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
-import { DashboardViewTabs } from "@hollis-labs/kit-dashboard/layout"
+import { Segmented } from "../components/segmented"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
-import { kindLabel } from "./client"
+import { ApprovalError, kindLabel, type ApprovalItem, type HistoryFacets } from "./client"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
+import { HistoryTimeline } from "./history"
+
+const STATUSES = [["", "All"], ["approved", "Approved"], ["denied", "Denied"], ["answered", "Answered"], ["expired", "Expired"], ["withdrawn", "Withdrawn"]] as const
 
 export function ApprovalsPage() {
   const queue = useApprovals()
@@ -27,6 +30,13 @@ export function ApprovalsPage() {
   }, [linked, setParams])
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
+  const [status, setStatus] = useState("")
+  const [requester, setRequester] = useState("")
+  const [facets, setFacets] = useState<HistoryFacets>()
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [confirming, setConfirming] = useState<"approved" | "denied">()
+  const [batchBusy, setBatchBusy] = useState(false)
+  const [batchNote, setBatchNote] = useState("")
   const restoredItem = queue?.restored
   useEffect(() => {
     if (restoredItem) {
@@ -41,8 +51,10 @@ export function ApprovalsPage() {
         <p className="p-4 dash-support text-fg-muted">Enable Console to view approvals.</p>
       </div>
     )
+  // Requesters we know of: agents on items in the inbox. The server filters by substring, so any of these narrows history.
+  const seen = [...new Set((queue.inbox ? [...queue.inbox.pending, ...queue.inbox.history] : []).map((i) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id))].sort()
+  const requesters = facets?.requesters.length ? facets.requesters.map((r) => r.label) : seen
   const pendingCount = queue.inbox?.pending.length ?? 0
-  const historyCount = queue.inbox?.history.length ?? 0
   const rows = (queue.inbox?.[view] ?? []).filter((item) =>
     `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
       .toLowerCase()
@@ -54,6 +66,40 @@ export function ApprovalsPage() {
   const live = rows.filter((r) => !heldIds.has(r.item_id))
   const current = live.find((r) => r.item_id === selectedId) ?? live[0]
   const restored = queue.restored
+  const picked = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => checked.has(i.item_id) && i.batchable)
+  const batchable = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => i.batchable && !heldIds.has(i.item_id))
+  const check = (id: string, on: boolean) => {
+    setConfirming(undefined)
+    setBatchNote("")
+    setChecked((c) => {
+      const n = new Set(c)
+      if (on) n.add(id)
+      else n.delete(id)
+      return n
+    })
+  }
+  async function runBatch(decision: "approved" | "denied") {
+    setBatchBusy(true)
+    try {
+      const r = await queue!.client.batchResolve(picked, decision)
+      const c = r.counts
+      const rest = (c.stale ?? 0) + (c.ineligible ?? 0) + (c.conflict ?? 0) + (c.expired ?? 0) + (c.error ?? 0)
+      setBatchNote(
+        `${c.resolved ?? 0} ${decision === "approved" ? "approved" : "denied"}${rest ? `, ${rest} left in the queue to review one by one` : ""}.`,
+      )
+    } catch (e) {
+      setBatchNote(
+        e instanceof ApprovalError && (e.code === "operator_access_required" || e.code === "assurance_insufficient")
+          ? "Batch decisions need elevated operator access."
+          : e instanceof Error ? e.message : "The batch did not complete. Nothing was assumed; check the queue.",
+      )
+    } finally {
+      setBatchBusy(false)
+      setConfirming(undefined)
+      setChecked(new Set())
+      void queue!.refresh(true)
+    }
+  }
   const select = (id: string) => {
     setSelectedId(id)
     setShowDetail(true)
@@ -65,37 +111,93 @@ export function ApprovalsPage() {
           <RefreshCw className="h-3 w-3" />
         </Button>
       </PageHeader>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
-        {historyCount > 0 && <DashboardViewTabs
-          variant="segments"
+      <Segmented
           label="Approvals view"
           value={view}
-          onChange={(v) => setView(v as "pending" | "history")}
+          onChange={setView}
           items={[
-            { value: "pending", label: "Pending", count: pendingCount },
-            // Hidden until there is history to show (the history API lands with #196).
-            ...(historyCount > 0 ? [{ value: "history", label: "History", count: historyCount }] : []),
+            { value: "pending" as const, label: "Pending", count: pendingCount },
+            { value: "history" as const, label: "History" },
           ]}
-        />}
+        />
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
         <div className="dash-search-adapter w-72 max-w-full">
           <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} slashToFocus={false} />
         </div>
+        {view === "history" && (
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by decision" />}>
+                Decision: {STATUSES.find(([v]) => v === status)?.[1]}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent aria-label="Filter by decision" align="start" data-dashboard-shape="square" className="w-40">
+                {STATUSES.map(([v, l]) => <DropdownMenuItem key={v} onClick={() => setStatus(v)}>{l}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by requester" />}>
+                Requested by: {requester || "anyone"}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent aria-label="Filter by requester" align="start" data-dashboard-shape="square" className="w-48">
+                <DropdownMenuItem onClick={() => setRequester("")}>Anyone</DropdownMenuItem>
+                {requesters.map((r) => <DropdownMenuItem key={r} onClick={() => setRequester(r)}>{r}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {(status || requester) && <Button type="button" variant="ghost" size="sm" onClick={() => { setStatus(""); setRequester("") }}>Clear filters</Button>}
+          </>
+        )}
       </div>
       {queue.error && (
         <p role="alert" className="mx-4 mt-2 rounded border border-danger/30 p-3 dash-control text-danger">
           Approval queue unavailable: {queue.error}
         </p>
       )}
+      {view === "history" ? (
+        <HistoryTimeline client={queue.client} search={search} status={status} requester={requester} onOpen={queue.open} onFacets={setFacets} />
+      ) : (
       <div className="flex min-h-0 flex-1">
         <section
           aria-label={view === "pending" ? "Pending approvals" : "Approval history"}
           className={`min-h-0 w-full shrink-0 overflow-auto border-r border-border md:block md:w-96 ${showDetail && current ? "hidden" : "block"}`}
         >
+          {view === "pending" && (picked.length > 0 || batchNote) && (
+            <div role="region" aria-label="Batch decision" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 dash-control text-fg-muted">
+              {picked.length > 0 ? (
+                confirming ? (
+                  <>
+                    <span>
+                      {confirming === "approved" ? "Approve" : "Deny"} {picked.length} {picked.length === 1 ? "request" : "requests"}? This cannot be undone.{" "}
+                      <span className="text-fg-faint">{[...new Set(picked.map((i) => i.request_snapshot.class ?? "medium"))].join(", ")} risk</span>
+                    </span>
+                    <Button size="sm" disabled={batchBusy} onClick={() => void runBatch(confirming)}>{batchBusy ? "Working…" : "Confirm"}</Button>
+                    <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => setConfirming(undefined)}>Back</Button>
+                  </>
+                ) : (
+                  <>
+                    <span>{picked.length} selected</span>
+                    <Button size="sm" onClick={() => { setBatchNote(""); setConfirming("approved") }}>Approve selected</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setBatchNote(""); setConfirming("denied") }}>Deny selected</Button>
+                    {batchable.length > picked.length && (
+                      <Button size="sm" variant="ghost" onClick={() => setChecked(new Set(batchable.map((i: ApprovalItem) => i.item_id)))}>Select all {batchable.length}</Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => setChecked(new Set())}>Clear</Button>
+                  </>
+                )
+              ) : (
+                <>
+                  <span role="status">{batchNote}</span>
+                  <Button size="sm" variant="ghost" onClick={() => setBatchNote("")}>Dismiss</Button>
+                </>
+              )}
+            </div>
+          )}
           <ApprovalQueue
+            checked={checked}
+            onCheck={check}
             items={rows}
             selectedId={current?.item_id}
             onSelect={select}
-            history={view === "history"}
+            history={false}
             held={heldIds}
             empty={
               queue.loading
@@ -125,6 +227,7 @@ export function ApprovalsPage() {
           )}
         </section>
       </div>
+      )}
     </div>
   )
 }

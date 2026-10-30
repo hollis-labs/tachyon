@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { SEVERITY_ORDER } from '../events/types'
-import { SEVERITY_STYLE } from '../alerts/severity-style'
+import { Switch } from '@hollis-labs/design-components'
+import { Segmented } from '../components/segmented'
+import { levelOf, levelPatch, NOTIFY_LEVELS, previewLine } from './levels'
 import { PREF_FIELD_KEYS, consolePrefsSettingsGroup } from './manifest'
 import type { ConsolePrefs } from './types'
 
-const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-zinc-400'
+const LABEL = 'text-sm font-medium text-fg'
 const INPUT =
-  'border border-zinc-700 bg-zinc-950 px-1.5 py-1 font-mono text-xs text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:opacity-50'
+  'border border-border bg-bg px-1.5 py-1 text-sm text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50'
+const HELP = 'mt-1 text-xs leading-snug text-fg-muted'
 
 export interface ConsolePrefsPanelProps {
   prefs: ConsolePrefs
@@ -27,45 +29,39 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
   const muted = mutedDraft ?? prefs.mutedSources.join(', ')
 
   return (
-    <form aria-label="Alert preferences" className="max-h-72 space-y-3 overflow-y-auto border-b border-zinc-800 px-4 py-3" onSubmit={(e) => e.preventDefault()}>
+    <form aria-label="Alert preferences" className="space-y-5" onSubmit={(e) => e.preventDefault()}>
       <div>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={prefs.quiet} onChange={(e) => onChange({ quiet: e.target.checked })} className="h-3 w-3 accent-amber-300" />
-          <span className={LABEL}>Quiet mode</span>
-        </label>
-        <p className="mt-1 text-[11px] leading-snug text-zinc-500">{help('quiet')}</p>
+        <div className="flex items-center gap-3">
+          <Switch aria-label="Quiet mode" checked={prefs.quiet} onCheckedChange={(v) => onChange({ quiet: v })} />
+          <span className={LABEL} aria-hidden="true">Quiet mode</span>
+        </div>
+        <p className="mt-1 text-xs leading-snug text-fg-muted">{help('quiet')}</p>
       </div>
 
       <div>
-        <label className="flex items-center gap-2">
-          <span className={LABEL}>Toast threshold</span>
-          <select
-            aria-label="Toast threshold"
-            value={prefs.toastMinSeverity}
-            onChange={(e) => onChange({ toastMinSeverity: e.target.value as ConsolePrefs['toastMinSeverity'] })}
-            className={INPUT}
-          >
-            {SEVERITY_ORDER.slice(1).map((s) => (
-              <option key={s} value={s}>
-                {SEVERITY_STYLE[s].label.toLowerCase()}+
-              </option>
-            ))}
-          </select>
-        </label>
+        <p className={LABEL} id="notify-level">Notify me about</p>
+        <Segmented
+          label="Notify me about"
+          value={levelOf(prefs)}
+          onChange={(id) => onChange(levelPatch(id))}
+          className="!border-b-0 !px-0"
+          items={NOTIFY_LEVELS.map((l) => ({ value: l.id, label: l.label }))}
+        />
+        <p className={HELP} aria-live="polite">{previewLine(levelOf(prefs), prefs.quiet)}</p>
       </div>
 
       <fieldset className="space-y-1.5">
         <legend className="sr-only">Quiet hours</legend>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={prefs.quietHoursEnabled} onChange={(e) => onChange({ quietHoursEnabled: e.target.checked })} className="h-3 w-3 accent-amber-300" />
-          <span className={LABEL}>Quiet hours</span>
-        </label>
+        <div className="flex items-center gap-3">
+          <Switch aria-label="Quiet hours" checked={prefs.quietHoursEnabled} onCheckedChange={(v) => onChange({ quietHoursEnabled: v })} />
+          <span className={LABEL} aria-hidden="true">Quiet hours</span>
+        </div>
         <div className="flex items-center gap-2">
           <input type="time" aria-label="Quiet hours start" value={prefs.quietHoursStart} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursStart: e.target.value })} className={INPUT} />
           <span className={LABEL}>to</span>
           <input type="time" aria-label="Quiet hours end" value={prefs.quietHoursEnd} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursEnd: e.target.value })} className={INPUT} />
         </div>
-        <p className="text-[11px] leading-snug text-zinc-500">{help('quiet_hours_enabled')}</p>
+        <p className="text-xs leading-snug text-fg-muted">{help('quiet_hours_enabled')}</p>
       </fieldset>
 
       <div>
@@ -83,7 +79,7 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
             className={`${INPUT} mt-1 w-full`}
           />
         </label>
-        <p className="mt-1 text-[11px] leading-snug text-zinc-500">{help('muted_sources')}</p>
+        <p className="mt-1 text-xs leading-snug text-fg-muted">{help('muted_sources')}</p>
       </div>
 
       <div>
@@ -98,7 +94,7 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
             className={`${INPUT} w-20`}
           />
         </label>
-        <p className="mt-1 text-[11px] leading-snug text-zinc-500">{help('coalesce_window_sec')}</p>
+        <p className="mt-1 text-xs leading-snug text-fg-muted">{help('coalesce_window_sec')}</p>
       </div>
     </form>
   )

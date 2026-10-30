@@ -266,6 +266,7 @@ func (r *Reader) agent(w http.ResponseWriter, req *http.Request) {
 	if len(snaps) > 0 {
 		seq = snaps[0].Seq
 	}
+	allParts, promptParts := r.agentParts(req.Context(), f)
 	write(w, 200, map[string]any{
 		"id": f.ID, "state": f.State, "editable": true, "owned_draft": false,
 		"identity": map[string]any{"id": f.ID, "name": orDefault(f.Name, f.ID), "description": str(d["description"]),
@@ -273,14 +274,14 @@ func (r *Reader) agent(w http.ResponseWriter, req *http.Request) {
 		"runtime": map[string]any{"provider": orNull(f.Provider), "model": orNull(f.Model), "extends": firstOrNull(extends),
 			"abstract": f.Fields["abstract"] == true, "enabled": f.State == builderapi.AgentActive},
 		"prompt": map[string]any{"system_prompt": str(prompt["system_prompt"]), "agent_prompt": str(prompt["agent_prompt"]),
-			"body": firstStr(str(prompt["body"]), str(d["prompt"])), "parts": []any{}, "prompts": []any{}, "boot_fragments": strs(d["boot_fragments"])},
+			"body": firstStr(str(prompt["body"]), str(d["prompt"])), "parts": promptParts, "prompts": promptParts, "boot_fragments": strs(d["boot_fragments"])},
 		"tools_skills": map[string]any{"mcp_servers": strs(f.Fields["mcp_servers"]), "skills": strs(f.Fields["skills"])},
 		"policy": map[string]any{"permission_mode": str(perm["permission_mode"]), "network": str(perm["network"]),
 			"default_sandbox": str(perm["default_sandbox"]), "mcp_scopes": strs(perm["mcp_scopes"]),
 			"lifecycle": sub(d, "lifecycle"), "recovery": sub(d, "recovery")},
 		"launches": launches,
 		"revision": map[string]any{"sha": f.SHA, "snapshot_seq": seq, "layer": f.Layer, "path": f.Path, "observed_at": f.ObservedAt.UnixMilli()},
-		"parts":    []any{},
+		"parts":    allParts,
 	})
 }
 

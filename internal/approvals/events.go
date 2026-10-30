@@ -116,6 +116,9 @@ func (b *Broker) Since(id int64, fresh bool) (missed []Change, ch chan Change, g
 	return missed, ch, false
 }
 
+// Unsubscribe ends a subscription taken with Since (for in-process consumers such as Alerts).
+func (b *Broker) Unsubscribe(ch chan Change) { b.unsubscribe(ch) }
+
 func (b *Broker) unsubscribe(ch chan Change) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

@@ -1,8 +1,10 @@
 package approvalsapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/fs"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -247,10 +249,10 @@ func TestResolveStaleAndConflict(t *testing.T) {
 	if do(t, "POST", "/items/ap_nope/resolve", `{"expected_revision":1,"response":{"decision":"approved"}}`).Code != 404 {
 		t.Error("unknown item")
 	}
-	if w := do(t, "POST", "/items/ap_secret/resolve", `{"expected_revision":1,"response":{"decision":"approved","answers":{"deploy_token":"typed-by-hand"}}}`, "X-Stub-Scenario", ""); w.Code != 422 || !strings.Contains(w.Body.String(), "invalid_secret_ref") {
+	if w := do(t, "POST", "/items/ap_secret/resolve", `{"expected_revision":1,"response":{"decision":"approved","answers":{"deploy_token":"typed-by-hand"}}}`, "X-Stub-Scenario", ""); w.Code != 422 || !strings.Contains(w.Body.String(), "secret_ref_invalid") {
 		t.Errorf("free-typed secret: %d %s", w.Code, w.Body)
 	}
-	if w := do(t, "POST", "/items/ap_secret/resolve", `{"expected_revision":1,"response":{"decision":"approved","answers":{"deploy_token":"secret://tachyon/sec_01hqexample"}}}`); w.Code != 200 {
+	if w := do(t, "POST", "/items/ap_secret/resolve", `{"expected_revision":1,"response":{"decision":"approved","answers":{"deploy_token":{"secret_ref":"secret://tachyon/sec_01hqexample"}}}}`); w.Code != 200 {
 		t.Errorf("secret ref: %d %s", w.Code, w.Body)
 	}
 }
@@ -362,6 +364,17 @@ func TestHistoryAuditAccessAndSecrets(t *testing.T) {
 	if len(h.Events) != 1 || h.Events[0]["reason"] != "wrong_target" {
 		t.Errorf("denied filter: %v", h.Events)
 	}
+	var hf struct {
+		Events []item `json:"events"`
+		Facets struct {
+			Requesters []item `json:"requesters"`
+			Statuses   []item `json:"statuses"`
+		} `json:"facets"`
+	}
+	decode(t, do(t, "GET", "/history?requester=cerberus-supervisor", ""), &hf)
+	if len(hf.Events) != 2 || len(hf.Facets.Requesters) != 2 || len(hf.Facets.Statuses) != 2 || hf.Events[0]["requester"] == nil {
+		t.Errorf("requester filter and facets: %v %v", hf.Events, hf.Facets)
+	}
 	if do(t, "GET", "/history?status=bogus", "").Code != 400 || do(t, "GET", "/history?cursor=zz", "").Code != 400 {
 		t.Error("bad history params accepted")
 	}
@@ -386,8 +399,8 @@ func TestHistoryAuditAccessAndSecrets(t *testing.T) {
 	if w.Code != 201 || strings.Contains(w.Body.String(), "hunter2") || !strings.Contains(w.Body.String(), "secret://tachyon/") {
 		t.Errorf("secret: %d %s", w.Code, w.Body)
 	}
-	if do(t, "POST", "/secrets", `{"item_id":"ap_secret","field":"nope","value":"x"}`).Code != 400 {
-		t.Error("unknown secret field")
+	if w := do(t, "POST", "/secrets", `{"item_id":"ap_secret","field":"nope","value":"x"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "secret_field_unknown") {
+		t.Errorf("unknown secret field: %d %s", w.Code, w.Body)
 	}
 	if do(t, "POST", "/secrets", `{"item_id":"ap_secret","field":"deploy_token","value":"x"}`, "X-Stub-Scenario", "secrets_unavailable").Code != 503 {
 		t.Error("secrets_unavailable scenario")
@@ -447,4 +460,95 @@ func mustAtoi(s string) (n int) {
 		n = n*10 + int(c-'0')
 	}
 	return
+}
+
+func secretReq(t *testing.T, body, ctype string, hdr ...string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest("POST", "http://x"+Prefix+"/secrets", strings.NewReader(body))
+	r.Header.Set("Content-Type", ctype)
+	for i := 0; i+1 < len(hdr); i += 2 {
+		r.Header.Set(hdr[i], hdr[i+1])
+	}
+	w := httptest.NewRecorder()
+	Stub{}.Handler().ServeHTTP(w, r)
+	return w
+}
+
+func multipartBody(t *testing.T, size int) (string, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("item_id", "ap_secret")
+	_ = mw.WriteField("field", "deploy_token")
+	fw, _ := mw.CreateFormFile("file", "token.txt")
+	_, _ = fw.Write(bytes.Repeat([]byte("x"), size))
+	_ = mw.Close()
+	return buf.String(), mw.FormDataContentType()
+}
+
+func TestSecretSubmissionContract(t *testing.T) {
+	const j = "application/json"
+	body := `{"item_id":"ap_secret","field":"deploy_token","value":"not-a-real-secret-value"}`
+	var ref struct {
+		Ref  string `json:"secret_ref"`
+		Size int    `json:"size"`
+	}
+	w := secretReq(t, body, j)
+	decode(t, w, &ref)
+	if w.Code != 201 || ref.Size != len("not-a-real-secret-value") || strings.Contains(w.Body.String(), "not-a-real") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	// A minted ref is accepted for its own item and field only.
+	ans := func(r string) string {
+		return `{"expected_revision":1,"response":{"decision":"approved","answers":{"deploy_token":{"secret_ref":"` + r + `"}}}}`
+	}
+	if w := do(t, "POST", "/items/ap_secret/resolve", ans(ref.Ref)); w.Code != 200 {
+		t.Errorf("minted ref: %d %s", w.Code, w.Body)
+	}
+	if w := do(t, "POST", "/items/ap_secret/resolve", ans("secret://tachyon/sec_nope")); w.Code != 422 || !strings.Contains(w.Body.String(), "secret_ref_invalid") {
+		t.Errorf("unknown ref: %d %s", w.Code, w.Body)
+	}
+	if w := do(t, "POST", "/items/ap_secret/resolve", `{"expected_revision":1,"response":{"decision":"approved","answers":{"deploy_token":"secret://tachyon/sec_01hqexample"}}}`); w.Code != 422 {
+		t.Errorf("bare string ref: %d", w.Code)
+	}
+	// Idempotency-Key: replay returns the same ref, a different body is a conflict.
+	a := secretReq(t, body, j, "Idempotency-Key", "k1")
+	b := secretReq(t, body, j, "Idempotency-Key", "k1")
+	if a.Code != 201 || b.Code != 201 || a.Body.String() != b.Body.String() || b.Header().Get("Idempotent-Replay") != "true" {
+		t.Errorf("replay: %d %d %s %s", a.Code, b.Code, a.Body, b.Body)
+	}
+	if w := secretReq(t, strings.Replace(body, "not-a-real", "other-not-real", 1), j, "Idempotency-Key", "k1"); w.Code != 409 || !strings.Contains(w.Body.String(), "idempotency_key_reuse") {
+		t.Errorf("key reuse: %d %s", w.Code, w.Body)
+	}
+	// Multipart file up to 64 KiB.
+	mb, ct := multipartBody(t, 40<<10)
+	if w := secretReq(t, mb, ct); w.Code != 201 {
+		t.Errorf("multipart: %d %s", w.Code, w.Body)
+	}
+	mb, ct = multipartBody(t, MaxSecretFileSize+1)
+	if w := secretReq(t, mb, ct); w.Code != 413 {
+		t.Errorf("big file: %d", w.Code)
+	}
+	// Errors.
+	big := `{"item_id":"ap_secret","field":"deploy_token","value":"` + strings.Repeat("x", MaxSecretBytes+1) + `"}`
+	cases := []struct {
+		name, body string
+		hdr        []string
+		code       int
+		want       string
+	}{
+		{"too large", big, nil, 413, "payload_too_large"},
+		{"empty", `{"item_id":"ap_secret","field":"deploy_token","value":""}`, nil, 400, "invalid"},
+		{"unknown item", `{"item_id":"ap_nope","field":"deploy_token","value":"x"}`, nil, 404, "not_found"},
+		{"unknown field", `{"item_id":"ap_secret","field":"nope","value":"x"}`, nil, 409, "secret_field_unknown"},
+		{"not pending", body, []string{"X-Stub-Scenario", "item_not_pending"}, 409, "item_not_pending"},
+		{"step up", body, []string{"X-Stub-Scenario", "not_elevated"}, 403, "step_up"},
+		{"unavailable", body, []string{"X-Stub-Scenario", "secrets_unavailable"}, 503, "secrets_unavailable"},
+		{"rate", body, []string{"X-Stub-Scenario", "rate_limited"}, 429, "rate_limited"},
+	}
+	for _, c := range cases {
+		if w := secretReq(t, c.body, j, c.hdr...); w.Code != c.code || !strings.Contains(w.Body.String(), c.want) {
+			t.Errorf("%s: %d %s", c.name, w.Code, w.Body)
+		}
+	}
 }

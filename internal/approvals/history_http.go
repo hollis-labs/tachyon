@@ -48,7 +48,9 @@ func eventView(r TimelineRow, session string) map[string]any {
 
 // history serves GET /history: the decision timeline with reasons, newest first.
 // Query: status, requester, q, from, to (RFC 3339), kind (decided kinds by default),
-// limit (1..100), cursor (opaque, from next_cursor).
+// limit (1..100), cursor (opaque, from next_cursor). Every event carries requester{id,label,kind} (null when the
+// item is not indexed) and the page carries facets{requesters, statuses} counted over the filter without the
+// facet's own part.
 func (i *Inbox) history(w http.ResponseWriter, r *http.Request, session string) {
 	q := r.URL.Query()
 	f := EventFilter{Status: q.Get("status"), Requester: q.Get("requester"), Q: q.Get("q"), Limit: 25, Kinds: decidedKinds}
@@ -98,9 +100,25 @@ func (i *Inbox) history(w http.ResponseWriter, r *http.Request, session string) 
 	for _, row := range rows {
 		m := eventView(row, session)
 		m["mini"] = map[string]any{"title": row.Title, "risk": row.Risk, "group": row.Group}
+		m["requester"] = nil
+		if row.ReqID != "" {
+			m["requester"] = map[string]any{"id": row.ReqID, "label": row.ReqLabel, "kind": row.ReqKind}
+		}
 		events = append(events, m)
 	}
-	out := map[string]any{"events": events}
+	reqs, stats, err := i.Store.TimelineFacets(r.Context(), f)
+	if err != nil {
+		writeHITLError(w, err)
+		return
+	}
+	facets := map[string]any{"requesters": make([]map[string]any, 0, len(reqs)), "statuses": make([]map[string]any, 0, len(stats))}
+	for _, fc := range reqs {
+		facets["requesters"] = append(facets["requesters"].([]map[string]any), map[string]any{"id": fc.ID, "label": fc.Label, "count": fc.Count})
+	}
+	for _, fc := range stats {
+		facets["statuses"] = append(facets["statuses"].([]map[string]any), map[string]any{"status": fc.Status, "count": fc.Count})
+	}
+	out := map[string]any{"events": events, "facets": facets}
 	if next > 0 {
 		out["next_cursor"] = strconv.FormatInt(next, 10)
 	}

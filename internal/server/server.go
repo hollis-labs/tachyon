@@ -23,6 +23,7 @@ import (
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/capability"
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
+	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
@@ -42,6 +43,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chatactivity"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/chatcards"
 	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/chatthreads"
 	"github.com/hollis-labs/tachyon/internal/chattopics"
@@ -142,6 +144,7 @@ type Server struct {
 	chatWorkspace    *chatworkspace.Handler
 	chatTopics       *chattopics.Handler
 	chatPlan         *chatplan.Service
+	chatCards        *chatcards.Binder
 	chatActivity     *chatactivity.Handler
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
@@ -371,6 +374,47 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		return out
 	}
+	cardRefs := &chatcards.Store{DB: store}
+	s.chatCards = &chatcards.Binder{
+		Refs:   cardRefs,
+		Get:    (&approvals.Store{DB: store}).Get,
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+		},
+		Note: func(ctx context.Context, thread, itemID, caption string, _ chatcards.Card) {
+			if t, err := chatapi.ParseRef(thread); err == nil && t.Source == chatapi.SourceApp && s.appAgent != nil {
+				_, _ = s.appAgent.AppendNote(ctx, t.ID, "card", caption, map[string]any{"item_id": itemID})
+			}
+		},
+		Answer: func(ctx context.Context, thread, text string) {
+			if t, err := chatapi.ParseRef(thread); err == nil && t.Source == chatapi.SourceApp && s.appAgent != nil {
+				_, _, _ = s.appAgent.Send(ctx, t.ID, text)
+			}
+		},
+		Changes: approvals.Changes(store),
+	}
+	s.chatThreads.Agg.CardBlocks = s.chatCards.OpenCounts
+	if s.appAgent != nil {
+		// Runtime tool approvals (approval.request) become cards; the answer goes back to the runtime, once scope.
+		rt := &chatcards.Runtime{B: s.chatCards, Registry: approvals.CardRegistry, Source: "tachyon-chat",
+			Enqueue: func(ctx context.Context, req hitl.EnqueueRequest) (string, error) {
+				h, err := s.approvalInbox.Service.Enqueue(ctx, req)
+				return h.ItemID, err
+			},
+			Respond: func(ctx context.Context, thread, approvalID string, allow bool) error {
+				t, err := chatapi.ParseRef(thread)
+				if err != nil || t.Source != chatapi.SourceApp {
+					return errors.New("not an app thread")
+				}
+				return s.appAgent.RespondApproval(ctx, t.ID, approvalID, allow)
+			}}
+		s.chatCards.Tools = rt
+		s.appAgent.OnApproval = func(threadID string, a appagent.Approval) {
+			rt.OnApproval(chatapi.ThreadRef{Source: chatapi.SourceApp, ID: threadID}.String(), a)
+		}
+	}
+	go s.chatCards.Follow(approvalContext)
 	if s.appAgent != nil && s.cfg.ChatClientContext {
 		s.appAgent.ClientContext = func(ctx context.Context, id string) any {
 			cc, err := ws.ClientContextFor(ctx, chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
@@ -528,6 +572,9 @@ func (s *Server) Routes() http.Handler {
 			var cardTools *dataverbs.Cards
 			if s.approvalInbox != nil {
 				cardTools = &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry, Receipt: s.cardReceiptView}
+				if s.chatCards != nil {
+					cardTools.Bind = s.chatCards.Bind
+				}
 			}
 			// Read-only Tesseract search and read for agents; nil (feature off) when no address is set.
 			tesseractReader, err := tesseractread.New(s.cfg.Upstreams.TesseractURL, s.cfg.Upstreams.TesseractTokenFile)
@@ -728,8 +775,9 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle("GET "+agentscollector.Path, operator.RequireOperator(s.agentsCollector.Handler()))
 		mux.Handle("GET "+agentscollector.BusPath, operator.RequireOperator(s.agentsCollector.BusHandler()))
 		// Sessions, timeline, series, tokens, history, stream and settings. Controls (nudge, restart) are not here.
-		(&agentsserve.Server{DB: s.store, Collector: s.agentsCollector}).Mount(mux, operator.RequireOperator)
+		(&agentsserve.Server{DB: s.store, Collector: s.agentsCollector, Assigner: s.agentsAssigner()}).Mount(mux, operator.RequireOperator)
 	}
+	s.mountAccount(mux, operator)
 	if s.cfg.AgentsStubs {
 		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
 	}

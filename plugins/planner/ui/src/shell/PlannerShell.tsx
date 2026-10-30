@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { EmptyState, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-labs/design-components'
 import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
 import { PlannerApiError as ApiError } from '@planner/api/errors'
-import { notifyError } from '@planner/api/notifications'
+import { notifyError, notifyWriteError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { CommandPalette, LinkLayer, type PaletteCommand } from '@planner/shared'
 import { Context } from '@planner/shell/context'
@@ -15,7 +15,7 @@ import { useContributions } from '@planner/lib/regions'
 import { Focus } from '@planner/shell/focus'
 import { Spine, rowsOf } from '@planner/shell/spine'
 import { TEXT } from '@planner/lib/vocabulary'
-import type { PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
+import type { LinksView, PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
 const REFRESH_MS = 30_000
 const PIN_KEY = 'planner.pins'
@@ -44,13 +44,15 @@ export default function PlannerShell() {
   const [off, setOff] = useState(false)
   const [pins, setPins] = useState(loadPins)
   const [needYouOnly, setNeedYouOnly] = useState(params.get('facet') === 'need-you')
+  const [needYouIds, setNeedYouIds] = useState<ReadonlySet<string> | undefined>(undefined)
+  const warnedNeedYou = useRef(false)
+  const [needsAccess, setNeedsAccess] = useState(false)
   const [goodAt, setGoodAt] = useState<number | null>(null)
   const [comments, setComments] = useState<PlannerComment[]>([])
   const [details, setDetails] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState<'main' | 'link' | null>(null)
   const [creating, setCreating] = useState<'themes' | 'ideas' | null>(null)
-  // Sample until the backend has a link write with a kind (build pack section 7).
-  const [links, setLinks] = useState<{ from: string; to: string; kind: LinkKind }[]>([])
+  const [linksView, setLinksView] = useState<LinksView | null>(null)
   const [pendingLink, setPendingLink] = useState<{ from: string; to: string } | null>(null)
   const extraCommands = useContributions('planner.palette.command')
   const openId = id ? decodeURIComponent(id) : undefined
@@ -69,6 +71,8 @@ export default function PlannerShell() {
 
   useEffect(() => {
     void load()
+    // The server's answer decides who needs you; if it cannot answer, the spine keeps its local reading.
+    api.plannerNeedYou().then((n) => setNeedYouIds(new Set(n.items.filter((i) => i.db === 'themes').map((i) => i.id))), () => { setNeedYouIds(undefined); if (!warnedNeedYou.current) { warnedNeedYou.current = true; console.info('planner: /need-you unavailable, using the local reading') } })
     const t = setInterval(() => void load(), REFRESH_MS)
     return () => clearInterval(t)
   }, [load, lastEvent])
@@ -82,34 +86,90 @@ export default function PlannerShell() {
     return () => { live = false }
   }, [api, row?.id, row?.rev]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!row) return setLinksView(null)
+    let live = true
+    api.plannerLinks('themes', row.id).then((v) => live && setLinksView(v), () => live && setLinksView(null))
+    return () => { live = false }
+  }, [api, row?.id, row?.rev]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const open = (next: string) => navigate(`/planner/themes/${encodeURIComponent(next)}${view === 'timeline' ? '?view=timeline' : ''}`)
-  const togglePin = (pid: string) =>
-    setPins((p) => {
-      const n = new Set(p)
-      if (!n.delete(pid)) n.add(pid)
-      localStorage.setItem(PIN_KEY, JSON.stringify([...n]))
-      return n
-    })
+  // The server owns pins once the board reports them; until then they stay in this browser.
+  const serverPins = useMemo(() => rowsOf(board).some((r) => r.pinned !== undefined), [board])
+  const shownPins = useMemo(() => (serverPins ? new Set(rowsOf(board).filter((r) => r.pinned).map((r) => r.id)) : pins), [board, pins, serverPins])
+  const togglePin = async (pid: string) => {
+    const r = rowsOf(board).find((x) => x.id === pid)
+    if (!serverPins || !r) {
+      setPins((p) => {
+        const n = new Set(p)
+        if (!n.delete(pid)) n.add(pid)
+        localStorage.setItem(PIN_KEY, JSON.stringify([...n]))
+        return n
+      })
+      return
+    }
+    try {
+      await api.plannerPin('themes', pid, !r.pinned, r.rev)
+    } catch (err) {
+      notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true))
+    }
+    await load()
+  }
+  // Pins made in this browser before the server kept them are sent once, then forgotten.
+  useEffect(() => {
+    if (!serverPins || pins.size === 0) return
+    const todo = rowsOf(board).filter((r) => pins.has(r.id) && !r.pinned)
+    localStorage.removeItem(PIN_KEY)
+    setPins(new Set())
+    if (todo.length === 0) return
+    toast(TEXT.pinsSynced)
+    void Promise.allSettled(todo.map((r) => api.plannerPin('themes', r.id, true, r.rev))).then(() => load())
+  }, [serverPins]) // eslint-disable-line react-hooks/exhaustive-deps
   const act = async (r: ThemeRow, action: ThemeAction, args?: { position?: number }) => {
     try {
       await api.plannerThemeAction(r.id, action, r.rev, args)
       await load()
     } catch (err) {
       await load()
-      notifyError(err, TEXT.writeFailed)
+      notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true))
     }
   }
 
   const all = useMemo(() => rowsOf(board), [board])
   const titleOf = (rid: string) => all.find((r) => r.id === rid)?.title ?? rid
-  const spineLinks = useMemo(() => new Map(links.map((l) => [l.from, { kind: l.kind, other: titleOf(l.to) }])), [links, all]) // eslint-disable-line react-hooks/exhaustive-deps
-  const rowLinks = links.filter((l) => l.from === openId || l.to === openId).map((l) => ({ kind: l.kind, label: titleOf(l.from === openId ? l.to : l.from) }))
-  const addLink = (kind: LinkKind) => {
+  const kindLabel = (k: string) => LINK_KINDS.find((x) => x.id === k)?.label ?? k
+  // The spine tags the open theme with its first outgoing link; the context lists every link.
+  const spineLinks = useMemo(() => {
+    const first = linksView?.outbound[0]
+    return new Map(openId && first ? [[openId, { kind: first.kind, other: first.title }]] : [])
+  }, [linksView, openId])
+  const rowLinks = [
+    ...(linksView?.outbound ?? []).map((l) => ({ kind: kindLabel(l.kind), label: l.title })),
+    ...(linksView?.inbound ?? []).map((l) => ({ kind: TEXT.linkedFrom(kindLabel(l.kind)), label: l.title })),
+    ...(linksView?.external ?? []).map((l) => ({ kind: l.kind, label: l.label })),
+  ]
+  const addLink = async (kind: LinkKind) => {
     if (!pendingLink) return
-    const link = { ...pendingLink, kind }
-    setLinks((ls) => [...ls, link])
+    const { from, to } = pendingLink
+    const source = all.find((r) => r.id === from)
     setPendingLink(null)
-    toast(TEXT.linkAdded(titleOf(link.from), LINK_KINDS.find((k) => k.id === kind)?.label ?? kind, titleOf(link.to)), { duration: 8000, action: { label: TEXT.undo, onClick: () => setLinks((ls) => ls.filter((l) => l !== link)) } })
+    if (!source) return
+    try {
+      const done = await api.plannerRelationAdd('themes', from, kind, { db: 'themes', id: to }, source.rev)
+      setLinksView(done.links_view)
+      toast(TEXT.linkAdded(titleOf(from), kindLabel(kind), titleOf(to)), {
+        duration: 8000,
+        action: {
+          label: TEXT.undo,
+          onClick: () => api.plannerRelationRemove('themes', from, kind, { db: 'themes', id: to }, (done.item.rev ?? done.item.revision ?? source.rev)).then((r) => setLinksView(r.links_view), (err) => notifyError(err, TEXT.writeFailed)),
+        },
+      })
+      await load()
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'cycle') toast(TEXT.linkCycle)
+      else notifyError(err, TEXT.writeFailed)
+      await load()
+    }
   }
   const step = (delta: 1 | -1) => {
     const rows = [...document.querySelectorAll<HTMLElement>('[role="listbox"] [role="option"]')]
@@ -129,7 +189,7 @@ export default function PlannerShell() {
         if (lens && lens.db !== 'themes') navigate(`/planner/${lens.db}`)
       },
       view: (v) => row && setParams(v === 'timeline' ? { view: 'timeline' } : {}),
-      pin: () => row && togglePin(row.id),
+      pin: () => row && void togglePin(row.id),
       finish: () => row && void act(row, 'finish'),
       step,
       clearFilter: () => (needYouOnly ? (setNeedYouOnly(false), true) : false),
@@ -154,7 +214,7 @@ export default function PlannerShell() {
       <nav aria-label={TEXT.appName} className={`${selected ? 'hidden lg:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-r border-border lg:w-72`}>
         {board ? (
           <LinkLayer titleOf={titleOf} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} onLink={(from, to) => setPendingLink({ from, to })}>
-          <Spine stale={Boolean(error)} links={spineLinks} board={board} selectedId={openId} onSelect={open} onLens={(db: PlannerDb) => navigate(`/planner/${db}`)} pins={pins} onTogglePin={togglePin} needYouOnly={needYouOnly} onNeedYou={setNeedYouOnly} />
+          <Spine stale={Boolean(error)} links={spineLinks} board={board} selectedId={openId} onSelect={open} onLens={(db: PlannerDb) => navigate(`/planner/${db}`)} pins={shownPins} onTogglePin={(pid) => void togglePin(pid)} needYouOnly={needYouOnly} onNeedYou={setNeedYouOnly} needYouIds={needYouIds} />
           </LinkLayer>
         ) : (
           <div className="flex flex-col gap-2 p-3" aria-busy>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
@@ -173,7 +233,7 @@ export default function PlannerShell() {
       <main className={`${selected ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-1`}>
         {board && row ? (
           <>
-            <Focus paused={Boolean(error)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
+            <Focus paused={Boolean(error)} needsAccess={needsAccess} onRetryAccess={() => setNeedsAccess(false)} onNeedsAccess={() => setNeedsAccess(true)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
             <div className="hidden w-80 shrink-0 border-l border-border xl:flex xl:flex-col 2xl:w-96">
               <Context row={row} comments={comments} onCommented={() => void load()} mentionable={all} links={rowLinks} />
             </div>
@@ -203,7 +263,7 @@ export default function PlannerShell() {
         onRunAndLink={row ? (cmd) => cmd.startsWith('open:') && setPendingLink({ from: row.id, to: cmd.slice(5) }) : undefined}
       />
       <CommandPalette key="link" open={paletteOpen === 'link'} onOpenChange={(o) => !o && setPaletteOpen(null)} title={TEXT.linkTo} modes={[{ id: 'link', label: TEXT.linkTo }]} commands={linkCommands} emptyLabel={TEXT.paletteEmpty} onRun={(to) => row && setPendingLink({ from: row.id, to })} />
-      <LinkKindPicker open={pendingLink !== null} from={pendingLink ? titleOf(pendingLink.from) : ''} to={pendingLink ? titleOf(pendingLink.to) : ''} onPick={addLink} onCancel={() => setPendingLink(null)} />
+      <LinkKindPicker open={pendingLink !== null} from={pendingLink ? titleOf(pendingLink.from) : ''} to={pendingLink ? titleOf(pendingLink.to) : ''} onPick={(k) => void addLink(k)} onCancel={() => setPendingLink(null)} />
       <PlannerCreateDialog db={creating ?? 'themes'} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={(board?.totals.in_flight ?? 0) + (board?.totals.cleared ?? 0) + 1} onCreated={(it) => { void load(); if (creating === 'themes') open(it.id) }} />
     </div>
   )

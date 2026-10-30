@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -299,6 +300,37 @@ describe("held decisions", () => {
   })
 })
 
+describe("history", () => {
+  it("shows decisions under day pills with who and why, and opens an item", async () => {
+    const now = new Date().toISOString()
+    const history = vi.fn().mockResolvedValue({ facets: { requesters: [{ id: "agent-one", label: "agent-one", count: 3 }, { id: "agent-two", label: "agent-two", count: 1 }], statuses: [] }, events: [
+      { event_id: "e1", item_id: "req-1", kind: "resolved", status: "approved", at: now, actor: { ref: "s", label: "You" }, mini: { title: "Create a session" }, note: "Looks right" },
+      { event_id: "e2", item_id: "req-2", kind: "expired", status: "expired", at: now, actor: { ref: "", label: "System" }, mini: { title: "Rotate token" } },
+    ] })
+    const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present: vi.fn().mockResolvedValue(item), history } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    fireEvent.click(await screen.findByRole("tab", { name: /History/ }))
+    const list = await screen.findByRole("list", { name: "Decision history" })
+    expect(list.textContent).toContain("Today")
+    expect(list.textContent).toContain("Approved · Create a session")
+    expect(list.textContent).toContain("Looks right")
+    expect(list.textContent).toContain("Expired · Rotate token")
+    expect(history).toHaveBeenCalledWith({ q: "", status: "", requester: "", cursor: undefined })
+    // Filters go to the server: a decision menu and a requester field.
+    fireEvent.click(screen.getByRole("button", { name: "Filter by requester" }))
+    await act(async () => {})
+    // Requesters come from the server's facets when present.
+    expect(screen.getByRole("menuitem", { name: "agent-two" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("menuitem", { name: "agent-one" }))
+    await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "", requester: "agent-one", cursor: undefined }))
+    fireEvent.click(screen.getByRole("button", { name: "Filter by decision" }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("menuitem", { name: "Denied" }))
+    await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "denied", requester: "agent-one", cursor: undefined }))
+    expect(screen.getByRole("button", { name: "Filter by decision" }).textContent).toBe("Decision: Denied")
+  })
+})
+
 describe("approval deep link", () => {
   it("selects the request for /approvals?item=<id> and clears the parameter", async () => {
     const present = vi.fn().mockResolvedValue(item)
@@ -326,7 +358,8 @@ describe("card review dialog", () => {
     },
   })
   const clientFor = (current: ApprovalItem, decide = vi.fn().mockResolvedValue({ item_id: current.item_id, state: "resolved" })) =>
-    ({ present: vi.fn().mockResolvedValue(current), decide, evidence: vi.fn() }) as unknown as ApprovalClient
+    ({ present: vi.fn().mockResolvedValue(current), decide, evidence: vi.fn(), storeSecret }) as unknown as ApprovalClient
+  const storeSecret = vi.fn()
   const open = (current: ApprovalItem, decide: ReturnType<typeof vi.fn>) =>
     render(<ApprovalDialog id={current.item_id} initial={current} client={clientFor(current, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
 
@@ -370,7 +403,18 @@ describe("card review dialog", () => {
     expect((submit as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "x" } })
     fireEvent.change(screen.getByLabelText("Count"), { target: { value: "3" } })
-    fireEvent.change(screen.getByLabelText("Token ref"), { target: { value: "vault/key" } })
+    expect(screen.queryByRole("textbox", { name: "Token ref" })).toBeNull()
+    storeSecret.mockResolvedValue({ secret_ref: "secret://tachyon/abc", expires_at: 1, fingerprint: "sha256:1a2b3c4d" })
+    fireEvent.click(screen.getByRole("button", { name: "Provide secret…" }))
+    const dlg = await screen.findByRole("dialog")
+    const field = within(dlg).getByLabelText("Secret value") as HTMLInputElement
+    expect(field.type).toBe("password")
+    fireEvent.change(field, { target: { value: "hunter2" } })
+    fireEvent.click(within(dlg).getByRole("button", { name: "Store secret" }))
+    await screen.findByText("1a2b3c4d")
+    expect(storeSecret).toHaveBeenCalledWith(expect.objectContaining({ itemId: "item_card", field: "token", value: "hunter2" }))
+    expect(screen.queryByText("hunter2")).toBeNull()
+    expect(screen.getByText("1a2b3c4d")).toBeTruthy()
     await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(submit)
     expect(decide.mock.calls[0][1]).toEqual({
@@ -379,9 +423,29 @@ describe("card review dialog", () => {
       answers: [
         { questionId: "name", value: "x" },
         { questionId: "count", value: 3 },
-        { questionId: "token", value: { secret_ref: "vault/key" } },
+        { questionId: "token", value: { secret_ref: "secret://tachyon/abc" } },
       ],
     })
+  })
+  it("keeps the entered secret and retries with the same key when operator access is needed, and drops it on cancel", async () => {
+    const current = card("card.form", { fields: [{ id: "token", type: "secret", label: "Token", required: true }] })
+    open(current, vi.fn())
+    storeSecret.mockReset()
+    storeSecret
+      .mockRejectedValueOnce(new ApprovalError(403, "assurance_insufficient", "step up", { action: "secret_submit" }))
+      .mockResolvedValueOnce({ secret_ref: "secret://tachyon/z", expires_at: 1, fingerprint: "sha256:ffffffff" })
+    fireEvent.click(await screen.findByRole("button", { name: "Provide secret…" }))
+    const dlg = await screen.findByRole("dialog")
+    fireEvent.change(within(dlg).getByLabelText("Secret value"), { target: { value: "s3cret" } })
+    fireEvent.click(within(dlg).getByRole("button", { name: "Store secret" }))
+    await within(dlg).findByText(/Operator access is needed/)
+    expect((within(dlg).getByLabelText("Secret value") as HTMLInputElement).value).toBe("s3cret")
+    fireEvent.click(within(dlg).getByRole("button", { name: "Try again" }))
+    await screen.findByText("ffffffff")
+    expect(storeSecret.mock.calls[1][0].idempotencyKey).toBe(storeSecret.mock.calls[0][0].idempotencyKey)
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }))
+    const again = await screen.findByRole("dialog")
+    expect((within(again).getByLabelText("Secret value") as HTMLInputElement).value).toBe("")
   })
   it("answers a question card under the id answer and leaves info cards unanswerable", async () => {
     const q = card("card.question", { question: "Which branch?", options: ["main", "dev"] })
@@ -419,5 +483,146 @@ describe("approvals list", () => {
     fireEvent.change(screen.getByLabelText("Search approvals"), { target: { value: "form" } })
     await waitFor(() => expect(screen.queryByRole("option", { name: /Create a session/ })).toBeNull())
     expect(screen.getByRole("option", { name: /Fill me in/ })).toBeTruthy()
+  })
+})
+
+describe("approval defer", () => {
+  it("snoozes with the reviewed revision and brings the item back with DELETE", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(json({ item_id: "req-1", deferred_until: "2026-10-17T21:00:00Z", revision: 4 }))
+      .mockResolvedValueOnce(json({ item_id: "req-1", deferred_until: null, revision: 4 }))
+    const client = createApprovalClient(fetcher)
+    await client.defer(item, 3600)
+    expect(fetcher.mock.calls[0][0]).toMatch(/\/items\/req-1\/defer$/)
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ expected_revision: 4, duration_s: 3600 })
+    await client.undefer("req-1")
+    expect(fetcher.mock.calls[1][1].method).toBe("DELETE")
+  })
+  it("offers Decide later and shows the snoozed state with Bring back now", async () => {
+    const defer = vi.fn().mockResolvedValue({ item_id: "req-1", deferred_until: "2099-01-01T00:00:00Z", revision: 5 })
+    const undefer = vi.fn().mockResolvedValue({ item_id: "req-1", deferred_until: null, revision: 5 })
+    const changed = vi.fn()
+    const client = { present: vi.fn().mockResolvedValue(item), decide: vi.fn(), defer, undefer } as unknown as ApprovalClient
+    render(<ApprovalDialog id={item.item_id} initial={item} client={client} onClose={vi.fn()} onChanged={changed} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Decide later" }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("menuitem", { name: "4 hours" }))
+    await screen.findByText(/Snoozed until/)
+    expect(defer).toHaveBeenCalledWith(expect.objectContaining({ item_id: "req-1" }), 4 * 3600)
+    expect(changed).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Bring back now" }))
+    await screen.findByRole("button", { name: "Decide later" })
+    expect(undefer).toHaveBeenCalledWith("req-1")
+  })
+})
+
+describe("defer near expiry and decision keys", () => {
+  const soon = (ms: number): ApprovalItem => ({
+    ...item,
+    request_snapshot: { ...item.request_snapshot, expires_at: new Date(Date.now() + ms).toISOString() },
+  })
+  const clientFor = (it: ApprovalItem, decide = vi.fn()) =>
+    ({ present: vi.fn().mockResolvedValue(it), decide, defer: vi.fn(), undefer: vi.fn() }) as unknown as ApprovalClient
+  it("offers only presets that end before the request expires", async () => {
+    const it = soon(5 * 3600 * 1000)
+    render(<ApprovalDialog id={it.item_id} initial={it} client={clientFor(it)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Decide later" }))
+    await act(async () => {})
+    expect(screen.getByRole("menuitem", { name: "4 hours" })).toBeTruthy()
+    expect(screen.queryByRole("menuitem", { name: "Tomorrow" })).toBeNull()
+  })
+  it("says so when nothing fits before expiry", async () => {
+    const it = soon(10 * 60 * 1000)
+    render(<ApprovalDialog id={it.item_id} initial={it} client={clientFor(it)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await screen.findByText(/cannot be snoozed/)
+    expect(screen.queryByRole("button", { name: "Decide later" })).toBeNull()
+  })
+  it("D on the focused decision bar denies; A on a high-risk request only opens the phrase step", async () => {
+    const decide = vi.fn().mockResolvedValue({ item_id: "req-1", state: "resolved" })
+    const high: ApprovalItem = { ...item, request_snapshot: { ...item.request_snapshot, class: "high" } }
+    render(<ApprovalDialog id={high.item_id} initial={high} client={clientFor(high, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.keyDown(screen.getByRole("button", { name: "Approve" }), { key: "a" })
+    await screen.findByLabelText("Confirmation phrase")
+    expect(decide).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    fireEvent.keyDown(screen.getByRole("button", { name: "Deny" }), { key: "d" })
+    await waitFor(() => expect(decide).toHaveBeenCalled())
+  })
+})
+
+
+// Base UI checkboxes toggle through their hidden input.
+const tick = (name: string) =>
+  act(() => {
+    screen.getByRole("checkbox", { name }).parentElement?.querySelector<HTMLInputElement>("input[type=checkbox]")?.click()
+  })
+
+describe("batch approve", () => {
+  const low = (id: string, batchable: boolean): ApprovalItem => ({
+    ...item,
+    item_id: id,
+    batchable,
+    request_snapshot: { ...item.request_snapshot, title: `Request ${id}`, class: "low" },
+  })
+  it("sends one batch with each reviewed revision and a batch_id", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json({ batch_id: "b1", results: [], counts: {} }))
+    await createApprovalClient(fetcher).batchResolve([item], "approved", "b1")
+    expect(fetcher.mock.calls[0][0]).toMatch(/\/batch\/resolve$/)
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+      batch_id: "b1",
+      decision: "approved",
+      items: [{ item_id: "req-1", expected_revision: 4, presented_projection_revision: 3 }],
+    })
+  })
+  it("offers checkboxes only on batchable rows, confirms, and reports what stayed", async () => {
+    const a = low("a", true)
+    const b = low("b", true)
+    const c = low("c", false)
+    const batchResolve = vi.fn().mockResolvedValue({ batch_id: "x", results: [], counts: { resolved: 1, stale: 1 } })
+    const client = {
+      inbox: vi.fn().mockResolvedValue({ pending: [a, b, c], history: [] }),
+      present: vi.fn().mockResolvedValue(a),
+      batchResolve,
+    } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await screen.findByRole("option", { name: /Request a/ })
+    expect(screen.queryByRole("checkbox", { name: "Select Request c" })).toBeNull()
+    tick("Select Request a")
+    tick("Select Request b")
+    fireEvent.click(screen.getByRole("button", { name: "Approve selected" }))
+    expect(batchResolve).not.toHaveBeenCalled()
+    expect(screen.getByText(/Approve 2 requests\? This cannot be undone/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
+    await screen.findByText("1 approved, 1 left in the queue to review one by one.")
+    expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
+    expect(screen.queryByText(/left in the queue/)).toBeNull()
+  })
+})
+
+describe("audit trail", () => {
+  it("loads a decided item's events only when opened", async () => {
+    const decided: ApprovalItem = { ...item, state: "resolved", terminal_outcome: { item_id: "req-1", state: "resolved", resolution: { response: { kind: "approval", decision: "approved" }, resolved_at: "2026-10-30T10:00:00Z", participant: { principal_ref: "operator", authority: "queue", assurance: "participant" } } } as never }
+    const audit = vi.fn().mockResolvedValue({ item_id: "req-1", events: [
+      { event_id: "a1", ts: "2026-10-30T09:00:00Z", kind: "presented", actor: { ref: "s", label: "You" } },
+      { event_id: "a2", ts: "2026-10-30T10:00:00Z", kind: "resolved", decision: "approved", note: "Looks right", actor: { ref: "s", label: "You" } },
+    ] })
+    const client = { present: vi.fn().mockResolvedValue(decided), decide: vi.fn(), audit } as unknown as ApprovalClient
+    const { container } = render(<ApprovalDialog id="req-1" initial={decided} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    const summary = await screen.findByText("Audit trail")
+    expect(audit).not.toHaveBeenCalled()
+    const details = summary.closest("details") as HTMLDetailsElement
+    details.open = true
+    fireEvent(details, new Event("toggle"))
+    const list = await screen.findByRole("list", { name: "Audit trail" })
+    expect(list.textContent).toContain("Presented by you")
+    expect(list.textContent).toContain("Approved by you")
+    expect(list.textContent).toContain("Looks right")
+    expect(audit).toHaveBeenCalledWith("req-1")
+    expect(container).toBeTruthy()
   })
 })

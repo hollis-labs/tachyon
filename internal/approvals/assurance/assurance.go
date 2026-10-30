@@ -6,7 +6,9 @@
 package assurance
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -55,6 +57,7 @@ const (
 	ActionBatch         Action = "batch_resolve" // the whole batch, even for low items
 	ActionSecretSubmit  Action = "secret_submit"
 	ActionActionRunRead Action = "action_run_read" // command and output of a registered action run
+	ActionAccountWrite  Action = "account.write"   // the operator's local profile
 )
 
 // Requirements is the table of the least Level each action needs. Unknown
@@ -71,6 +74,7 @@ var Requirements = map[Action]Level{
 	ActionBatch:         LevelOperatorToken,
 	ActionSecretSubmit:  LevelOperatorToken,
 	ActionActionRunRead: LevelOperatorToken,
+	ActionAccountWrite:  LevelBrowserSession,
 }
 
 // Required returns the Level an action needs.
@@ -95,6 +99,11 @@ type Status struct {
 	CanElevate bool
 	// Ref is a stable opaque reference to the session (never the cookie value).
 	Ref string
+	// LockedUntil is when the sign-in rate limit is estimated to lift; zero when not locked. Tangent sends no
+	// Retry-After, so this is Tachyon's own estimate from the last refusal it saw (Tangent request R1).
+	LockedUntil time.Time
+	// ExpiredAt is when an elevation that has since ended expired; zero when unknown or never elevated.
+	ExpiredAt time.Time
 }
 
 // Elevated reports whether the level is operator-token.
@@ -107,6 +116,8 @@ type Error struct {
 	Message string
 	// Body, when set, is an upstream error body to pass through unchanged.
 	Body string
+	// Action is the action that was refused, when the refusal came from the requirements table.
+	Action Action
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -129,7 +140,7 @@ func RequireOn(p Provider, r *http.Request, a Action) (Status, *Error) {
 		return st, err
 	}
 	if !Satisfies(st.Level, a) {
-		return st, &Error{Status: http.StatusForbidden, Code: "operator_access_required", Message: "Operator access is needed for this action."}
+		return st, Refusal(a)
 	}
 	return st, nil
 }
@@ -164,4 +175,94 @@ func View(st Status, now time.Time) Access {
 	need := func(x Action) bool { return Required(x) >= LevelOperatorToken }
 	a.Required = RequiredFor{Batch: need(ActionBatch), Medium: need(ActionResolveMedium), High: need(ActionResolveHigh), Destructive: need(ActionDestructive), Secrets: need(ActionSecretSubmit)}
 	return a
+}
+
+// Sign-in methods the dialog may offer. Only the operator token exists today.
+const (
+	MethodOperatorToken = "operator_token"
+	MethodPassword      = "password"
+	MethodPasskey       = "passkey"
+)
+
+// Method says whether a sign-in method can be used now.
+type Method struct {
+	ID        string `json:"id"`
+	Available bool   `json:"available"`
+}
+
+// Methods lists the sign-in methods. Password and passkey arrive with a hardening Provider.
+func Methods() []Method {
+	return []Method{{MethodOperatorToken, true}, {MethodPassword, false}, {MethodPasskey, false}}
+}
+
+// StepUp says what a refused action was, so a dialog can open from any refused write.
+type StepUp struct {
+	Action  string `json:"action"`
+	Risk    string `json:"risk"` // low | medium | high | destructive
+	Summary string `json:"summary,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+}
+
+// Risk is how a dialog should describe an action: from the requirements table for the queue actions, medium for
+// settings writes, low otherwise.
+func Risk(a Action) string {
+	switch a {
+	case ActionResolveHigh:
+		return "high"
+	case ActionDestructive:
+		return "destructive"
+	case ActionResolveMedium, ActionBatch, ActionSecretSubmit, ActionActionRunRead:
+		return "medium"
+	}
+	if strings.HasPrefix(string(a), "settings.") {
+		return "medium"
+	}
+	return "low"
+}
+
+// Refusal is the 403 operator_access_required Error with the step-up hint in Body. {code,message} stay where
+// existing clients read them; step_up and methods are additive.
+func Refusal(a Action) *Error {
+	e := &Error{Status: http.StatusForbidden, Code: "operator_access_required", Message: "Operator access is needed for this action.", Action: a}
+	b, _ := json.Marshal(struct {
+		Code    string   `json:"code"`
+		Message string   `json:"message"`
+		StepUp  StepUp   `json:"step_up"`
+		Methods []Method `json:"methods"`
+	}{e.Code, e.Message, StepUp{Action: string(a), Risk: Risk(a)}, Methods()})
+	e.Body = string(b)
+	return e
+}
+
+// ChallengeRequest and VerifyRequest are the step-up exchange (design section 4). No Provider implements it yet.
+type ChallengeRequest struct {
+	Action Action `json:"action"`
+	Ref    string `json:"ref,omitempty"`
+	Digest string `json:"digest,omitempty"`
+}
+
+type VerifyRequest struct {
+	ChallengeID string `json:"challenge_id"`
+	Method      string `json:"method"`
+	Credential  string `json:"credential"`
+}
+
+// Stepper is the optional step-up extension of a Provider. It is separate from Provider so existing
+// implementations keep compiling; a login-validated Provider implements it, TangentProvider answers unsupported.
+// Results are the settingsapi Challenge and Verified bodies.
+type Stepper interface {
+	Supported() bool
+	Challenge(r *http.Request, c ChallengeRequest) (any, *Error)
+	Verify(r *http.Request, v VerifyRequest) (any, *Error)
+}
+
+// StepUpSupported reports whether the Provider can run a step-up exchange.
+func StepUpSupported(p Provider) bool {
+	s, ok := p.(Stepper)
+	return ok && s.Supported()
+}
+
+// Unsupported is the Error for an exchange the Provider cannot run.
+func Unsupported() *Error {
+	return &Error{Status: http.StatusNotImplemented, Code: "unsupported", Message: "Step-up confirmation is not available with this sign-in."}
 }

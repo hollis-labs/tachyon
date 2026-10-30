@@ -1,3 +1,4 @@
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@hollis-labs/design-components'
 import { useState } from 'react'
 import { Btn } from '../../agents/ui'
 import type { ReviewVerdict } from '../types'
@@ -36,8 +37,10 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
   }
 
   return (
-    <section className="border-b border-fg bg-surface px-4 py-3" aria-label="Submit review" data-testid="forge-review-panel">
-      <h2 className={`${LABEL} mb-2 text-fg-muted`}>Finish your review</h2>
+    <Sheet open onOpenChange={(open) => { if (!open && !busy) onClose() }}>
+    <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-4 sm:max-w-md" aria-label="Submit review" data-testid="forge-review-panel">
+      <SheetTitle className="mb-1 font-sans text-base font-semibold normal-case tracking-normal text-fg">Finish your review</SheetTitle>
+      <SheetDescription className="mb-3 dash-support text-fg-muted">Inline comments you queued are kept if you close this and come back.</SheetDescription>
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
@@ -45,7 +48,7 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
         placeholder="Leave a review summary…"
         aria-label="Review summary"
         disabled={busy}
-        className="mb-3 w-full max-w-3xl resize-y border border-border bg-bg px-2 py-1.5 text-[13px] text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none"
+        className="mb-3 w-full resize-y border border-border bg-bg px-2 py-1.5 text-[13px] text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none"
       />
       <fieldset className="mb-3 space-y-1.5" disabled={busy}>
         <legend className="sr-only">Review verdict</legend>
@@ -60,7 +63,7 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
         ))}
       </fieldset>
       {pending.length > 0 && (
-        <div className="mb-3 max-w-3xl">
+        <div className="mb-3">
           <p className={`${LABEL} mb-1`}>{pending.length} pending inline comment{pending.length === 1 ? '' : 's'}</p>
           <ul className="divide-y divide-border border-y border-border">
             {pending.map((p) => (
@@ -80,6 +83,7 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
         <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
         <Btn tone="primary" onClick={() => void submit()} disabled={busy || blocked}>{busy ? 'Submitting…' : 'Submit review'}</Btn>
       </div>
-    </section>
+    </SheetContent>
+    </Sheet>
   )
 }

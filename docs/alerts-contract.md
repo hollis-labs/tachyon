@@ -56,6 +56,29 @@ State is in memory and resets on restart; times are shifted so timers look live.
 script (`fixtures/stream.json`); it does not react to ops. Kinds with no emitter yet (host reboot,
 health-check failure, workstream created) are not in the fixtures.
 
+## Prefs semantics (AL6)
+
+`internal/alertsprefs` (pure functions): `MinSeverity` (blockers = error, warnings = warning, everything =
+debug), `InQuietHours` (read in the saved IANA zone, wraps midnight, start == end is empty, an unknown zone
+fails open), `Muted` (case-insensitive substring), `Validate` (adds a real zone lookup to `ValidPrefs`),
+`Normalize`, `MigrateOnce`, `BellCounts` and `ToastFor`. `ToastFor` rules: critical always toasts (passes the
+master switch, Quiet, quiet hours, muting and the notify level); otherwise the master switch must be on,
+Quiet and quiet hours off, the source not muted and the severity at or above the level; a coalesced repeat
+and state changes (read, dismiss, settle) never toast; created, raised, woke and escalated do. Everything is
+stored; the flag only drives the toast, and the bell counts what the level lets through.
+
+## Stream (AL4)
+
+`internal/alertsstream`: `Hub` (in-process fan-out plus a replay ring of the last N frames), `Stream` (the
+`GET /alerts/stream` handler) and `Sources` (`GET /alerts/sources`). Frames carry `id:` = alert seq; frames
+that share a seq replay together in publish order. Resume uses `Last-Event-ID` or `?after=`. A cursor older
+than the ring, or ahead of the server (it restarted), gets one `resync` frame with the current top id; the
+client refetches `GET /alerts` and carries on with live frames. A fresh connection (no cursor) gets no replay,
+only a `counts` frame without an id. A subscriber that cannot keep up (buffer 64) is closed and reconnects
+with its cursor; publishers never block. Heartbeat comment every 20 s. The handler does no auth: mount it
+behind the same guards as the other reads. Whether a frame toasts is decided by the caller (AL6 semantics)
+and passed to `AlertFrame`.
+
 ## Ingest and evaluator (AL2)
 
 - `internal/alertsrules`: `ParsePack` (invalid rules skipped and reported; `needsYou` on a rule without

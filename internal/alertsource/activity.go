@@ -101,7 +101,7 @@ func cleanPayload(p map[string]any) map[string]any {
 }
 
 // Frame is one decoded SSE message.
-type Frame struct{ ID, Data string }
+type Frame struct{ ID, Event, Data string }
 
 // ReadSSE decodes an event stream, calling fn per message that has data. Comment lines are skipped.
 // A line over 1 MiB ends the stream with an error.
@@ -130,6 +130,8 @@ func ReadSSE(r io.Reader, fn func(Frame) error) error {
 		case strings.HasPrefix(line, ":"):
 		case strings.HasPrefix(line, "id:"):
 			f.ID = strings.TrimSpace(line[3:])
+		case strings.HasPrefix(line, "event:"):
+			f.Event = strings.TrimSpace(line[6:])
 		case strings.HasPrefix(line, "data:"):
 			data = append(data, strings.TrimPrefix(line[5:], " "))
 		}

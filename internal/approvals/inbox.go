@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -38,6 +39,9 @@ type Inbox struct {
 	// Assurance is the one place session strength is asked. NewInbox wires the
 	// Tangent bridge; tests and later providers replace it.
 	Assurance assurance.Provider
+	// Secrets stores values submitted from the secure dialog; resolve accepts only its references.
+	// NewInbox builds it from TACHYON_SECRET_KEY_FILE; without a key the endpoint answers 503.
+	Secrets *Secrets
 }
 
 func NewInbox(store *Store, sessions *Bridge) *Inbox {
@@ -50,7 +54,7 @@ func NewInbox(store *Store, sessions *Bridge) *Inbox {
 		}
 		return fmt.Errorf("%w: decision does not match the request kind", hitl.ErrInvalidRequest)
 	}})
-	in := &Inbox{Store: store, Service: service, Sessions: sessions}
+	in := &Inbox{Store: store, Service: service, Sessions: sessions, Secrets: NewSecrets(store.DB, os.Getenv(SecretKeyFileEnv))}
 	if sessions != nil {
 		in.Assurance = &TangentProvider{Bridge: sessions}
 	}
@@ -221,6 +225,18 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		i.access(w, r)
 		return
 	}
+	if r.Method == http.MethodPost && path == "/batch/resolve" {
+		i.batchResolve(w, r, participant, session)
+		return
+	}
+	if r.Method == http.MethodPost && path == "/secrets" {
+		i.submitSecret(w, r, participant, session)
+		return
+	}
+	if r.Method == http.MethodPost && (path == "/access/challenge" || path == "/access/verify") && i.Assurance != nil {
+		i.stepUp(w, r, path)
+		return
+	}
 	if r.Method == http.MethodGet && path == "/events" {
 		i.events(w, r)
 		return
@@ -374,11 +390,17 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	refs, err := i.checkSecretRefs(r.Context(), item.ItemID, request, response)
+	if err != nil {
+		writeSecretError(w, err)
+		return
+	}
 	outcome, err := i.Service.Respond(r.Context(), hitl.RespondCommand{ItemID: item.ItemID, ExpectedRevision: &cmd.ExpectedRevision, Response: response, Participant: participant})
 	if err != nil {
 		writeHITLError(w, err)
 		return
 	}
+	_ = i.Secrets.Consume(r.Context(), item.ItemID, refs)
 	writeValue(w, outcome)
 }
 
