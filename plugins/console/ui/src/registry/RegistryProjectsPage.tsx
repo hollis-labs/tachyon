@@ -81,7 +81,15 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const c = p.consumed_by
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-auto"
+      onKeyDown={(e) => {
+        if (editing && dirty > 0 && !busy && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+          e.preventDefault()
+          void save()
+        }
+      }}
+    >
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
         <button type="button" onClick={onBack} className="dash-control text-fg-muted hover:text-fg md:hidden">
           ← Projects
@@ -98,7 +106,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
       </header>
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
-          <span className="mr-auto">{dirty === 0 ? 'No unsaved changes' : `Changing ${dirty} field${dirty === 1 ? '' : 's'}: ${fieldList(Object.keys(patch))}`}</span>
+          <span className="mr-auto">{dirty === 0 ? 'No unsaved changes' : `Unsaved changes: ${fieldList(Object.keys(patch))}`}</span>
           {error && (
             <span role="alert" className="text-danger">
               {error}
@@ -117,7 +125,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
             Discard
           </Button>
           <Button type="button" variant="default" size="sm" disabled={dirty === 0 || busy} onClick={save}>
-            {busy ? 'Saving' : 'Save profile'}
+            {busy ? 'Saving' : error ? 'Retry' : 'Save'}
           </Button>
         </div>
       )}
