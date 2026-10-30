@@ -35,7 +35,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => void; dirtyRef: { current: number } }) {
   const [load, retry] = useLoad(() => registryApi.get(id), [id])
   const [editing, setEditing] = useState(false)
-  const { guard, dialog: discardDialog } = useDiscardGuard()
+  const { guard, dialog: discardDialog } = useDiscardGuard(UNSAVED)
   const [draft, setDraft] = useState<ProjectPatch>({})
   const [saved, setSaved] = useState<Project | null>(null)
   const [savedFields, setSavedFields] = useState('')
@@ -247,11 +247,13 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
 type LinkFilter = 'all' | 'linked' | 'unlinked'
 
 /** Registry projects: list and profile. Profile edits write directly (operator session); catalog tool servers go through Builder changes. */
+const UNSAVED = 'Your edits have not been saved and will be lost.'
+
 export function RegistryProjectsPage() {
   const { id } = useParams()
   const rawNavigate = useNavigate()
   const dirtyRef = useRef(0)
-  const { guard, dialog: leaveDialog } = useDiscardGuard()
+  const { guard, dialog: leaveDialog } = useDiscardGuard(UNSAVED)
   // Moving away from a profile with unsaved edits asks first; the auto-select replace does not.
   const navigate = (to: string, opts?: { replace?: boolean }) =>
     opts?.replace
