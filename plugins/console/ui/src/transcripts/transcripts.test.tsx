@@ -237,8 +237,16 @@ describe("transcript dashboard", () => {
     first.unmount()
     read.mockRejectedValue(new TranscriptError(403, "authentication", "Access denied"))
     render(<TranscriptDashboard />)
-    expect(await screen.findByText("Connect the transcript source to explore sessions.")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy()
+    expect((await screen.findAllByText("Access denied")).length).toBeGreaterThan(0)
+    expect(screen.queryByText("Connect the transcript source to explore sessions.")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull()
+  })
+  it("asks for operator access when the session is required and shows nothing else", async () => {
+    read.mockRejectedValue(new TranscriptError(401, "session_required", "Connect the approval queue first."))
+    render(<TranscriptDashboard />)
+    expect(await screen.findByText("Operator access needed")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy()
+    expect(screen.queryByText("Waiting for metadata")).toBeNull()
   })
   it("focuses transcript find on Ctrl+F only inside the reader", async () => {
     read.mockImplementation((path: string) =>
