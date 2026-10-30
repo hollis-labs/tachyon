@@ -80,3 +80,37 @@ delete; Registry Machines/Services/Repos (`soon`); registry to catalog project l
 Stub limits: nothing is stored; change state comes from fixtures (a submit/cancel/rearm answers with the
 fixture of the resulting state, relabelled with the requested id); filters are minimal (`q`, `provider`,
 `state`, `project`, `worker`, `live`).
+
+## Change service (B3, real)
+
+`internal/builderchange`, mounted by `internal/server/register_builderchange.go` when the catalog index is on and
+`TACHYON_TETHER_CONTROL_TOKEN_FILE` names a Tether token with `catalog.write` (never the approval passphrase; Tachyon
+never approves). Without the file the routes answer 503 `changes_unavailable`. With `TACHYON_BUILDER_STUBS=1` the
+stub owns the whole prefix and this service is not mounted. Routes (one pattern each, all behind `RequireOperator`):
+`GET /changes[?state=]`, `GET /changes/{id}`, `POST /changes`, `POST /changes/{id}/submit|cancel|rearm`.
+Migration `037_catalog_changes.sql` (take the next free number at merge).
+
+- **Create** reads each live file from Tether, checks `expected_sha` (409 `stale_base`; required for existing files),
+  applies the ops to the YAML node tree (comments, key order and unknown keys survive), diffs the *masked* old and new
+  text, runs `POST /catalog/validate` with the files, then `POST /catalog/plans`. A failing validation keeps the draft
+  with `fail` checks and no plan (submit then refuses with 409 `validation_failed`). Idempotent by `request_id` (a
+  replay answers 200 with `X-Tachyon-Replay: 1`); one open change per path (409 `change_open`); 10 creations per
+  minute per operator (429).
+- **Ops** use editor-model paths only (the mapping lives in `patch.go`); `set`, `append`, `remove`, `create`,
+  `restore_version`. `restore_version` takes the masked snapshot, keeps the live env values and refuses a masked value
+  the live file cannot supply (400 `restore_masked`). Text containing a `tachyon:prompt` marker is 400
+  `marker_forbidden`; a file over 256 KiB or text over 64 KiB is 413. Targets: agent, launch, project, skill.
+  **Environment values are not writable from the Builder yet** (400 `env_write_unsupported`).
+- **Submit** needs `ack_privileged` when the edit touches a privileged field or Tether's plan lists privileged files
+  (400 `ack_required`). The change moves to `awaiting_approval`; `plan.approve_command` is what the operator runs on
+  the host. `rearm` rebuilds the bundle on the live files and plans again (same bundle, same `plan_id`).
+- **Watcher** (every 5 s): a moved base sha makes the change `stale` with `mine_diff` and `theirs_diff` and it is never
+  applied; an expired plan makes it `expired`; a plan Tether reports `approved` is applied (`applying`, then `applied`
+  with `result`, `rolled_back`, or `failed` with the step). An `applying` change with no answer after five minutes is
+  `failed` (`interrupted`). On apply a masked snapshot (source `builder`) is stored and a `catalog` event published;
+  every state change publishes a replayable `change` event on `GET /builder/stream`.
+- **Not stored:** file content and environment values. The row holds the request (ops), the masked diff, checks, plan id
+  and result; a re-arm recomputes the bundle from the ops.
+- **Not in this slice:** the launch action (`POST /launches/{id}/launch`), Library `part` targets and `archive` (B5),
+  env writes, and any new guard, audit table or step-up (posture). The approval step stays behind the host command; the
+  place to swap it is `Service.Poll` reading the plan state.

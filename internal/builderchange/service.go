@@ -1,0 +1,829 @@
+package builderchange
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/hollis-labs/tachyon/internal/builderapi"
+	"github.com/hollis-labs/tachyon/internal/builderread"
+	"github.com/hollis-labs/tachyon/internal/catalogindex"
+	"github.com/hollis-labs/tachyon/internal/localstore"
+)
+
+// Tick is how often awaiting plans are checked for approval; applyStuck is how long an applying change may sit
+// before it is called failed (the process died between apply and the answer).
+const (
+	Tick       = 5 * time.Second
+	applyStuck = 5 * time.Minute
+)
+
+// APIError is a refusal with its HTTP status.
+type APIError struct {
+	Status        int
+	Code, Message string
+}
+
+func (e *APIError) Error() string { return e.Code }
+
+func refuse(status int, code, msg string) *APIError { return &APIError{status, code, msg} }
+
+type Target struct {
+	Kind    string `json:"kind"`
+	ID      string `json:"id"`
+	Path    string `json:"path"`
+	BaseSHA string `json:"base_sha"`
+}
+type Session struct {
+	SessionID string `json:"session_id"`
+}
+type Effect struct {
+	RunningSessions []Session `json:"running_sessions"`
+	Activation      string    `json:"activation"`
+	RestartRequired []string  `json:"restart_required"`
+}
+type PlanInfo struct {
+	PlanID         string `json:"plan_id"`
+	State          string `json:"state"`
+	Digest         string `json:"digest"`
+	ExpiresAt      int64  `json:"expires_at"`
+	ApproveCommand string `json:"approve_command"`
+}
+type Result struct {
+	BackupID        string   `json:"backup_id"`
+	Activation      string   `json:"activation"`
+	RestartRequired []string `json:"restart_required"`
+	Reloaded        bool     `json:"reloaded"`
+	ReloadError     *string  `json:"reload_error"`
+	AppliedAt       *int64   `json:"applied_at"`
+}
+type Failure struct {
+	Step    string `json:"step"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+type Stale struct {
+	ChangedPaths []string `json:"changed_paths"`
+	TheirsSHA    string   `json:"theirs_sha"`
+	MineDiff     string   `json:"mine_diff"`
+	TheirsDiff   string   `json:"theirs_diff"`
+}
+
+// Change is the API shape (builderapi.Change).
+type Change struct {
+	ChangeID      string            `json:"change_id"`
+	RequestID     string            `json:"request_id"`
+	State         string            `json:"state"`
+	Note          string            `json:"note"`
+	Operator      string            `json:"operator"`
+	CreatedAt     int64             `json:"created_at"`
+	UpdatedAt     int64             `json:"updated_at"`
+	Targets       []Target          `json:"targets"`
+	Base          map[string]string `json:"base"`
+	Diff          string            `json:"diff"`
+	Checks        []Check           `json:"checks"`
+	Privileged    []Priv            `json:"privileged"`
+	AckPrivileged bool              `json:"ack_privileged"`
+	Effect        Effect            `json:"effect"`
+	Plan          *PlanInfo         `json:"plan"`
+	Result        *Result           `json:"result"`
+	Failure       *Failure          `json:"failure"`
+	Stale         *Stale            `json:"stale"`
+}
+
+// Request is POST /changes.
+type Request struct {
+	RequestID string `json:"request_id"`
+	Note      string `json:"note"`
+	Ops       []OpIn `json:"ops"`
+}
+type OpIn struct {
+	Target struct {
+		Kind     string `json:"kind"`
+		ID       string `json:"id"`
+		PartKind string `json:"part_kind"`
+	} `json:"target"`
+	ExpectedSHA string `json:"expected_sha"`
+	Op          struct {
+		Type        string          `json:"type"`
+		Path        string          `json:"path"`
+		Value       json.RawMessage `json:"value"`
+		SnapshotSeq int             `json:"snapshot_seq"`
+	} `json:"op"`
+}
+
+// Service runs changes. Approval is the host's `tether catalog approve`; the service only watches for it.
+type Service struct {
+	DB     *localstore.Store
+	Tether Tether
+	Index  *catalogindex.Store // masked snapshots; may be nil
+	Bus    *catalogindex.Broker
+	Now    func() time.Time
+
+	mu sync.Mutex
+}
+
+func (s *Service) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
+}
+
+func shaOf(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+
+var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
+
+func pathFor(kind, id string) string {
+	switch kind {
+	case builderapi.TargetAgent:
+		return "agents/" + id + ".yaml"
+	case builderapi.TargetLaunch:
+		return "launches/" + id + ".yaml"
+	case builderapi.TargetProject:
+		return "projects/" + id + ".yaml"
+	case builderapi.TargetSkill:
+		return "skills/" + id + ".md"
+	}
+	return ""
+}
+
+func maskFor(path, content string) string {
+	if strings.HasSuffix(path, ".md") {
+		return catalogindex.MaskText(content)
+	}
+	m, _, err := catalogindex.MaskYAML(content)
+	if err != nil {
+		return ""
+	}
+	return m
+}
+
+type group struct {
+	kind, id, path, expected string
+	edits                    []Edit
+}
+
+func (s *Service) groups(req Request) ([]group, *APIError) {
+	if !requestIDPattern.MatchString(req.RequestID) || len(req.Note) > builderapi.MaxNoteChars || len(req.Ops) < 1 || len(req.Ops) > builderapi.MaxOps {
+		return nil, refuse(400, "invalid", "Send request_id, an optional note up to 500 characters and 1 to 20 ops.")
+	}
+	var out []group
+	idx := map[string]int{}
+	for _, o := range req.Ops {
+		k, id := o.Target.Kind, o.Target.ID
+		if k == builderapi.TargetPart {
+			return nil, refuse(400, "invalid", "Library parts are not changed here yet.")
+		}
+		if pathFor(k, id) == "" || !builderapi.IDPattern.MatchString(id) {
+			return nil, refuse(400, "invalid", "target needs a kind (agent, launch, project, skill) and a slug id.")
+		}
+		key := k + "/" + id
+		i, ok := idx[key]
+		if !ok {
+			i = len(out)
+			idx[key] = i
+			out = append(out, group{kind: k, id: id, path: pathFor(k, id)})
+		}
+		if o.ExpectedSHA != "" {
+			if out[i].expected != "" && out[i].expected != o.ExpectedSHA {
+				return nil, refuse(400, "invalid", "A target has two different expected_sha values.")
+			}
+			out[i].expected = o.ExpectedSHA
+		}
+		out[i].edits = append(out[i].edits, Edit{Type: o.Op.Type, Path: o.Op.Path, Value: o.Op.Value, SnapshotSeq: o.Op.SnapshotSeq})
+	}
+	return out, nil
+}
+
+type built struct {
+	files      []File
+	base       map[string]string
+	targets    []Target
+	diff       string
+	privileged []Priv
+}
+
+// build reads the live files, applies the edits and diffs the masked result. Nothing is written.
+func (s *Service) build(ctx context.Context, gs []group) (built, *APIError) {
+	b := built{base: map[string]string{}}
+	var diffs []string
+	for _, g := range gs {
+		live, exists, err := s.Tether.ReadFile(ctx, g.path)
+		if err != nil {
+			return b, tetherErr(err)
+		}
+		creating := len(g.edits) > 0 && g.edits[0].Type == builderapi.OpCreate
+		sha := ""
+		if exists {
+			sha = shaOf(live)
+		}
+		switch {
+		case creating && exists:
+			return b, refuse(409, "exists", "That id already exists.")
+		case !creating && !exists:
+			return b, refuse(404, "not_found", "No such file.")
+		case !creating && g.expected == "":
+			return b, refuse(400, "invalid", "expected_sha is required to change an existing file.")
+		case !creating && g.expected != sha:
+			return b, refuse(409, "stale_base", "The file changed since you opened it. Reload it.")
+		}
+		snapshot := func(seq int) (string, bool) { return s.snapshot(ctx, g.path, seq) }
+		next, privs, oerr := Apply(g.kind, g.id, g.path, live, exists, g.edits, snapshot)
+		if oerr != nil {
+			return b, refuse(oerr.Status, oerr.Code, oerr.Msg)
+		}
+		if next == live {
+			return b, refuse(400, "no_change", "That edit changes nothing.")
+		}
+		b.files = append(b.files, File{Path: g.path, Content: next})
+		b.targets = append(b.targets, Target{Kind: g.kind, ID: g.id, Path: g.path, BaseSHA: sha})
+		if exists {
+			b.base[g.path] = sha
+		}
+		b.privileged = append(b.privileged, privs...)
+		diffs = append(diffs, builderread.UnifiedDiff(g.path, maskFor(g.path, live), maskFor(g.path, next)))
+	}
+	b.diff = strings.Join(diffs, "")
+	return b, nil
+}
+
+// snapshot returns the masked content of the path's seq-th snapshot (1 = oldest kept), as the read model counts.
+func (s *Service) snapshot(ctx context.Context, path string, seq int) (string, bool) {
+	if s.Index == nil || seq < 1 {
+		return "", false
+	}
+	list, err := s.Index.Snapshots(ctx, path, catalogindex.SnapshotsPerPath)
+	if err != nil || seq > len(list) {
+		return "", false
+	}
+	return list[len(list)-seq].Content, true
+}
+
+func tetherErr(err error) *APIError {
+	var te *TetherError
+	if errors.As(err, &te) {
+		return refuse(502, "tether_refused", "Tether refused: "+catalogindex.MaskText(te.Message))
+	}
+	return refuse(503, "tether_unavailable", "Tether is not reachable.")
+}
+
+func newID() string {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return "chg_" + hex.EncodeToString(b[:])
+}
+
+// Create is POST /changes: compute, validate, plan. Idempotent by request_id.
+func (s *Service) Create(ctx context.Context, operator string, req Request) (Change, bool, *APIError) {
+	gs, perr := s.groups(req)
+	if perr != nil {
+		return Change{}, false, perr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prev, err := s.byRequest(ctx, req.RequestID); err != nil {
+		return Change{}, false, refuse(500, "internal", "The change could not be checked.")
+	} else if prev != nil {
+		return *prev, false, nil
+	}
+	var recent int
+	_ = s.DB.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_changes WHERE operator=? AND created_ns>?`, operator, s.now().Add(-time.Minute).UnixNano()).Scan(&recent)
+	if recent >= builderapi.ChangesPerMinute {
+		return Change{}, false, refuse(429, "rate_limited", "Too many changes in a minute. Try again shortly.")
+	}
+	for _, g := range gs {
+		var other string
+		if s.DB.Reader.QueryRowContext(ctx, `SELECT change_id FROM catalog_change_paths WHERE path=?`, g.path).Scan(&other) == nil {
+			return Change{}, false, refuse(409, "change_open", "Another change is open on "+g.path+".")
+		}
+	}
+	b, perr := s.build(ctx, gs)
+	if perr != nil {
+		return Change{}, false, perr
+	}
+	c := Change{ChangeID: newID(), RequestID: req.RequestID, State: builderapi.ChangeDraft, Note: req.Note, Operator: operator,
+		Targets: b.targets, Base: b.base, Diff: b.diff, Privileged: nonNilPriv(b.privileged), Checks: []Check{},
+		Effect: Effect{RunningSessions: []Session{}, RestartRequired: []string{}}}
+	c.CreatedAt = s.now().UnixMilli()
+	if perr = s.validateAndPlan(ctx, &c, b.files); perr != nil {
+		return Change{}, false, perr
+	}
+	raw, _ := json.Marshal(req)
+	if err := s.insert(ctx, c, string(raw)); err != nil {
+		return Change{}, false, refuse(500, "internal", "The change could not be saved.")
+	}
+	s.publish(c)
+	return c, true, nil
+}
+
+func nonNilPriv(p []Priv) []Priv {
+	if p == nil {
+		return []Priv{}
+	}
+	return p
+}
+
+// validateAndPlan fills checks and the plan. A failing validation keeps the draft (so the dialog can show why)
+// but builds no plan; submit then refuses it.
+func (s *Service) validateAndPlan(ctx context.Context, c *Change, files []File) *APIError {
+	rep, err := s.Tether.Validate(ctx, files)
+	if err != nil {
+		return tetherErr(err)
+	}
+	c.Checks = append([]Check{}, rep.Results...)
+	if !rep.OK {
+		c.Plan = nil
+		return nil
+	}
+	plan, err := s.Tether.Plan(ctx, "builder "+c.ChangeID, files)
+	if err != nil {
+		return tetherErr(err)
+	}
+	if plan.State == "invalid" || !plan.ValidationOK && plan.ValidationError != "" {
+		c.Checks = append(c.Checks, Check{Name: "tether_plan", Status: "fail", Message: clip(catalogindex.MaskText(plan.ValidationError), 300), Entity: ""})
+		c.Plan = nil
+		return nil
+	}
+	c.Plan = &PlanInfo{PlanID: plan.ID, State: plan.State, Digest: plan.Digest, ExpiresAt: plan.ExpiresAt.UnixMilli(), ApproveCommand: "tether catalog approve " + plan.ID}
+	c.Effect.Activation = plan.Activation
+	c.Effect.RunningSessions = []Session{}
+	for _, id := range plan.RunningSessions {
+		c.Effect.RunningSessions = append(c.Effect.RunningSessions, Session{SessionID: id})
+	}
+	for _, p := range plan.Privileged {
+		if !hasPriv(c.Privileged, p) {
+			c.Privileged = append(c.Privileged, Priv{Path: p, Field: ""})
+		}
+	}
+	return nil
+}
+
+func hasPriv(l []Priv, path string) bool {
+	for _, p := range l {
+		if p.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+// Submit moves a draft to awaiting_approval. The operator approves on the host.
+func (s *Service) Submit(ctx context.Context, id string, ack bool) (Change, *APIError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, perr := s.load(ctx, id)
+	if perr != nil {
+		return Change{}, perr
+	}
+	if c.State != builderapi.ChangeDraft {
+		return *c, refuse(409, "bad_state", "Only a draft can be submitted.")
+	}
+	for _, ck := range c.Checks {
+		if ck.Status == builderapi.CheckFail {
+			return *c, refuse(409, "validation_failed", "Fix the failing checks first.")
+		}
+	}
+	if c.Plan == nil {
+		return *c, refuse(409, "validation_failed", "This change has no plan.")
+	}
+	if len(c.Privileged) > 0 && !ack {
+		return *c, refuse(400, "ack_required", "This change touches privileged fields; send ack_privileged true.")
+	}
+	if perr = s.replan(ctx, c); perr != nil {
+		return *c, perr
+	}
+	c.AckPrivileged = ack
+	c.State = builderapi.ChangeAwaitingApproval
+	return s.save(ctx, c)
+}
+
+// replan rebuilds the bundle from the stored request on the live files and plans it again, which re-arms the
+// same Tether plan when nothing moved. A moved base makes the change stale.
+func (s *Service) replan(ctx context.Context, c *Change) *APIError {
+	req, perr := s.request(ctx, c.ChangeID)
+	if perr != nil {
+		return perr
+	}
+	gs, perr := s.groups(req)
+	if perr != nil {
+		return perr
+	}
+	for i := range gs {
+		gs[i].expected = c.Base[gs[i].path]
+	}
+	b, perr := s.build(ctx, gs)
+	if perr != nil {
+		if perr.Code == "stale_base" {
+			s.markStale(ctx, c)
+		}
+		return perr
+	}
+	c.Diff, c.Privileged = b.diff, nonNilPriv(b.privileged)
+	if perr = s.validateAndPlan(ctx, c, b.files); perr != nil {
+		return perr
+	}
+	if c.Plan == nil {
+		return refuse(409, "validation_failed", "Fix the failing checks first.")
+	}
+	return nil
+}
+
+// Rearm re-plans an awaiting or expired change.
+func (s *Service) Rearm(ctx context.Context, id string) (Change, *APIError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, perr := s.load(ctx, id)
+	if perr != nil {
+		return Change{}, perr
+	}
+	if c.State != builderapi.ChangeAwaitingApproval && c.State != builderapi.ChangeExpired {
+		return *c, refuse(409, "bad_state", "Only an awaiting or expired change can be re-armed.")
+	}
+	if perr = s.replan(ctx, c); perr != nil {
+		if perr.Code == "stale_base" {
+			return s.mustLoad(ctx, id), perr
+		}
+		return *c, perr
+	}
+	c.State = builderapi.ChangeAwaitingApproval
+	c.Failure = nil
+	return s.save(ctx, c)
+}
+
+func (s *Service) Cancel(ctx context.Context, id string) (Change, *APIError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, perr := s.load(ctx, id)
+	if perr != nil {
+		return Change{}, perr
+	}
+	switch c.State {
+	case builderapi.ChangeDraft, builderapi.ChangeAwaitingApproval, builderapi.ChangeStale, builderapi.ChangeExpired:
+	default:
+		return *c, refuse(409, "bad_state", "This change can no longer be cancelled.")
+	}
+	c.State = builderapi.ChangeCancelled
+	return s.save(ctx, c)
+}
+
+func (s *Service) markStale(ctx context.Context, c *Change) {
+	st := &Stale{ChangedPaths: []string{}, MineDiff: c.Diff}
+	var theirs []string
+	for p, base := range c.Base {
+		live, exists, err := s.Tether.ReadFile(ctx, p)
+		if err != nil || (exists && shaOf(live) == base) {
+			continue
+		}
+		st.ChangedPaths = append(st.ChangedPaths, p)
+		if exists {
+			st.TheirsSHA = shaOf(live)
+			if old, ok := s.snapshotBySHA(ctx, p, base); ok {
+				theirs = append(theirs, builderread.UnifiedDiff(p, old, maskFor(p, live)))
+			}
+		}
+	}
+	sort.Strings(st.ChangedPaths)
+	st.TheirsDiff = strings.Join(theirs, "")
+	c.Stale, c.State = st, builderapi.ChangeStale
+	_, _ = s.save(ctx, c)
+}
+
+func (s *Service) snapshotBySHA(ctx context.Context, path, sha string) (string, bool) {
+	if s.Index == nil {
+		return "", false
+	}
+	list, err := s.Index.Snapshots(ctx, path, catalogindex.SnapshotsPerPath)
+	if err != nil {
+		return "", false
+	}
+	for _, sn := range list {
+		if sn.SHA == sha {
+			return sn.Content, true
+		}
+	}
+	return "", false
+}
+
+// Run is the watcher: while changes await approval it polls their plans and applies approved ones.
+func (s *Service) Run(ctx context.Context) {
+	t := time.NewTicker(Tick)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := s.Poll(ctx); err != nil && ctx.Err() == nil {
+				slog.Warn("builder change poll failed", "err", err)
+			}
+		}
+	}
+}
+
+// Poll makes one pass over the open changes that are waiting on Tether.
+func (s *Service) Poll(ctx context.Context) error {
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT change_id FROM catalog_changes WHERE state IN ('awaiting_approval','approved','applying')`)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	for _, id := range ids {
+		s.step(ctx, id)
+	}
+	return nil
+}
+
+func (s *Service) step(ctx context.Context, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, perr := s.load(ctx, id)
+	if perr != nil {
+		return
+	}
+	switch c.State {
+	case builderapi.ChangeApplying:
+		if s.now().UnixMilli()-c.UpdatedAt > applyStuck.Milliseconds() {
+			c.State, c.Failure = builderapi.ChangeFailed, &Failure{Step: builderapi.StepApply, Code: "interrupted", Message: "The apply did not report back. Check the catalog before retrying."}
+			_, _ = s.save(ctx, c)
+		}
+		return
+	case builderapi.ChangeAwaitingApproval, builderapi.ChangeApproved:
+	default:
+		return
+	}
+	if c.Plan == nil {
+		return
+	}
+	// A base that moved under an unapplied change is surfaced, never retried silently.
+	for p, base := range c.Base {
+		if live, exists, err := s.Tether.ReadFile(ctx, p); err == nil && (!exists || shaOf(live) != base) {
+			s.markStale(ctx, c)
+			return
+		}
+	}
+	plan, err := s.Tether.GetPlan(ctx, c.Plan.PlanID)
+	if err != nil {
+		var te *TetherError
+		if errors.As(err, &te) && te.Status == 404 {
+			c.State = builderapi.ChangeExpired
+			_, _ = s.save(ctx, c)
+		}
+		return
+	}
+	c.Plan.State, c.Plan.ExpiresAt = plan.State, plan.ExpiresAt.UnixMilli()
+	switch {
+	case plan.State == "approved":
+	case plan.State == "applied":
+		// Applied elsewhere (the CLI): record it rather than applying twice.
+		s.finish(ctx, c, ApplyResult{Applied: true})
+		return
+	case plan.State == "planned" && !plan.ExpiresAt.IsZero() && s.now().After(plan.ExpiresAt):
+		c.State = builderapi.ChangeExpired
+		_, _ = s.save(ctx, c)
+		return
+	default:
+		_, _ = s.save(ctx, c)
+		return
+	}
+	c.State = builderapi.ChangeApproved
+	s.save(ctx, c)
+	c.State = builderapi.ChangeApplying
+	s.save(ctx, c)
+	res, err := s.Tether.Apply(ctx, c.Plan.PlanID)
+	if err != nil {
+		step, code, msg := builderapi.StepApply, "apply_failed", "The apply failed."
+		var te *TetherError
+		if errors.As(err, &te) {
+			code, msg = te.Code, catalogindex.MaskText(te.Message)
+			if strings.Contains(strings.ToLower(te.Message), "reload") {
+				step = builderapi.StepReload
+			}
+			if strings.Contains(strings.ToLower(te.Message), "changed") || strings.Contains(strings.ToLower(te.Message), "stale") {
+				s.markStale(ctx, c)
+				return
+			}
+		} else {
+			msg = "Tether did not answer the apply. Check the plan before retrying."
+		}
+		c.State, c.Failure = builderapi.ChangeFailed, &Failure{Step: step, Code: code, Message: clip(msg, 300)}
+		_, _ = s.save(ctx, c)
+		return
+	}
+	s.finish(ctx, c, res)
+}
+
+func (s *Service) finish(ctx context.Context, c *Change, res ApplyResult) {
+	at := s.now().UnixMilli()
+	r := &Result{BackupID: res.BackupID, Activation: res.Activation, RestartRequired: nonNil(res.RestartRequired), Reloaded: res.Reloaded, AppliedAt: &at}
+	if res.ReloadError != "" {
+		r.ReloadError = pointer(clip(catalogindex.MaskText(res.ReloadError), 300))
+	}
+	c.Result = r
+	if res.Activation != "" {
+		c.Effect.Activation = res.Activation
+	}
+	if res.RolledBack {
+		c.State = builderapi.ChangeRolledBack
+	} else {
+		c.State = builderapi.ChangeApplied
+		s.recordSnapshots(ctx, c)
+	}
+	_, _ = s.save(ctx, c)
+	if c.State == builderapi.ChangeApplied && s.Bus != nil {
+		paths := make([]string, 0, len(c.Targets))
+		for _, t := range c.Targets {
+			paths = append(paths, t.Path)
+		}
+		s.Bus.Publish("catalog", map[string]any{"observed_at": at, "changed_paths": paths, "source": "builder"})
+	}
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// recordSnapshots stores a masked snapshot of each applied file (source builder) for history and restore.
+func (s *Service) recordSnapshots(ctx context.Context, c *Change) {
+	if s.Index == nil {
+		return
+	}
+	var snaps []catalogindex.Snapshot
+	for _, t := range c.Targets {
+		live, exists, err := s.Tether.ReadFile(ctx, t.Path)
+		if err != nil || !exists {
+			continue
+		}
+		m := maskFor(t.Path, live)
+		if m == "" {
+			continue
+		}
+		snaps = append(snaps, catalogindex.Snapshot{Path: t.Path, SHA: shaOf(live), Content: m, At: s.now(), Source: "builder", PlanID: c.Plan.PlanID, Actor: c.Operator})
+	}
+	if len(snaps) > 0 {
+		_ = s.Index.Apply(ctx, nil, nil, snaps)
+	}
+}
+
+// ---- persistence
+
+var open = map[string]bool{builderapi.ChangeDraft: true, builderapi.ChangeAwaitingApproval: true, builderapi.ChangeApproved: true,
+	builderapi.ChangeApplying: true, builderapi.ChangeStale: true}
+
+func (s *Service) insert(ctx context.Context, c Change, request string) error {
+	return s.DB.Writer.Submit(ctx, "catalog_change_insert", func(ctx context.Context, tx *sql.Tx) error {
+		c.UpdatedAt = c.CreatedAt
+		body, _ := json.Marshal(c)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_changes(change_id,request_id,operator,state,request,body,created_ns,updated_ns) VALUES(?,?,?,?,?,?,?,?)`,
+			c.ChangeID, c.RequestID, c.Operator, c.State, request, string(body), c.CreatedAt*1e6, c.UpdatedAt*1e6); err != nil {
+			return err
+		}
+		for _, t := range c.Targets {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_change_paths(path,change_id) VALUES(?,?)`, t.Path, c.ChangeID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// save writes the change and frees its paths when it ends, then announces the state.
+func (s *Service) save(ctx context.Context, c *Change) (Change, *APIError) {
+	c.UpdatedAt = s.now().UnixMilli()
+	body, _ := json.Marshal(c)
+	err := s.DB.Writer.Submit(ctx, "catalog_change_save", func(ctx context.Context, tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE catalog_changes SET state=?,body=?,updated_ns=? WHERE change_id=?`, c.State, string(body), c.UpdatedAt*1e6, c.ChangeID); err != nil {
+			return err
+		}
+		if !open[c.State] {
+			_, err := tx.ExecContext(ctx, `DELETE FROM catalog_change_paths WHERE change_id=?`, c.ChangeID)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return *c, refuse(500, "internal", "The change could not be saved.")
+	}
+	s.publish(*c)
+	return *c, nil
+}
+
+func (s *Service) publish(c Change) {
+	if s.Bus != nil {
+		s.Bus.Publish("change", map[string]any{"change_id": c.ChangeID, "state": c.State})
+	}
+}
+
+func (s *Service) load(ctx context.Context, id string) (*Change, *APIError) {
+	var body string
+	err := s.DB.Reader.QueryRowContext(ctx, `SELECT body FROM catalog_changes WHERE change_id=?`, id).Scan(&body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, refuse(404, "not_found", "No such change.")
+	}
+	var c Change
+	if err != nil || json.Unmarshal([]byte(body), &c) != nil {
+		return nil, refuse(500, "internal", "The change could not be read.")
+	}
+	return &c, nil
+}
+
+func (s *Service) mustLoad(ctx context.Context, id string) Change {
+	c, _ := s.load(ctx, id)
+	if c == nil {
+		return Change{}
+	}
+	return *c
+}
+
+func (s *Service) byRequest(ctx context.Context, rid string) (*Change, error) {
+	var body string
+	err := s.DB.Reader.QueryRowContext(ctx, `SELECT body FROM catalog_changes WHERE request_id=?`, rid).Scan(&body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var c Change
+	return &c, json.Unmarshal([]byte(body), &c)
+}
+
+func (s *Service) request(ctx context.Context, id string) (Request, *APIError) {
+	var raw string
+	var req Request
+	if s.DB.Reader.QueryRowContext(ctx, `SELECT request FROM catalog_changes WHERE change_id=?`, id).Scan(&raw) != nil || json.Unmarshal([]byte(raw), &req) != nil {
+		return req, refuse(500, "internal", "The change could not be read.")
+	}
+	return req, nil
+}
+
+// Get returns one change.
+func (s *Service) Get(ctx context.Context, id string) (Change, *APIError) {
+	c, perr := s.load(ctx, id)
+	if perr != nil {
+		return Change{}, perr
+	}
+	return *c, nil
+}
+
+// List returns changes newest first. state is "", "all", "open" or one state.
+func (s *Service) List(ctx context.Context, state string) ([]Change, *APIError) {
+	q := `SELECT body FROM catalog_changes`
+	var args []any
+	switch {
+	case state == "" || state == "all":
+	case state == "open":
+		q += ` WHERE state IN ('draft','awaiting_approval','approved','applying','stale')`
+	case slicesContains(builderapi.ChangeStates, state):
+		q += ` WHERE state=?`
+		args = append(args, state)
+	default:
+		return nil, refuse(400, "invalid", "Unknown state.")
+	}
+	rows, err := s.DB.Reader.QueryContext(ctx, q+` ORDER BY created_ns DESC LIMIT 100`, args...)
+	if err != nil {
+		return nil, refuse(500, "internal", "Changes could not be listed.")
+	}
+	defer rows.Close()
+	out := []Change{}
+	for rows.Next() {
+		var body string
+		var c Change
+		if rows.Scan(&body) == nil && json.Unmarshal([]byte(body), &c) == nil {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func slicesContains(l []string, s string) bool {
+	for _, v := range l {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+var _ = fmt.Sprintf
