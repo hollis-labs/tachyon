@@ -46,6 +46,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/internal/fileview"
 	"github.com/hollis-labs/tachyon/internal/fileviewapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
@@ -130,6 +131,7 @@ type Server struct {
 	states           []pluginState
 	instance         string
 	store            *localstore.Store
+	fileviewAudit    *fileview.Auditor
 	objects          *objects.Service
 	objectJobs       *objectsync.Jobs
 	cache            *apicache.Cache
@@ -215,6 +217,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("cache policy: %w", err)
 	}
 	s.store = store
+	s.fileviewAudit = &fileview.Auditor{DB: store}
 	s.objects = objects.New(store)
 	s.cache = apicache.New(store, settings, s.cacheIdentity)
 	started := false
@@ -686,6 +689,10 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle("GET "+fileviewapi.FramesPrefix, fileviewapi.Stub{}.FrameHandler())
 		mux.Handle(fileviewapi.Prefix+"/", operator.RequireOperatorReads(fileviewapi.Stub{}.Handler()))
 	}
+	// File viewer audit log (real, V6): reading it is an operator act. One pattern, so it wins over the stub.
+	if s.fileviewAudit != nil {
+		s.fileviewAudit.MountAudit(mux, operator.RequireOperator)
+	}
 	// Builder + Registry contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below
 	// is unguarded. GETs are open; every write (changes, launch action, registry project patch) needs an operator session.
 	if s.cfg.BuilderStubs {
@@ -857,6 +864,7 @@ func (s *Server) startActions(ctx context.Context, store *localstore.Store) {
 	}
 	s.actions = &actionrun.Service{Store: runs, Manager: manager, Approval: s.approvalInbox.Service}
 	go s.actions.Watch(ctx, 0)
+	go s.fileviewAudit.RunRetention(ctx, 24*time.Hour)
 }
 
 // startCardEffects runs the effects of approved cards. The Torque target is off
