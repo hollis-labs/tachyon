@@ -1,26 +1,63 @@
 import { MetaList } from '@hollis-labs/design-components'
 import { CapabilityBadge } from '../CapabilityBadge'
 import type { ChatThread } from '../types'
+import { type ThreadContext, useThreadContext } from './thread-context'
 
 const when = (at: number) => (at > 0 ? new Date(at).toLocaleString() : 'Not yet')
+const ago = (at: number, now = Date.now()) => {
+  const s = Math.max(0, Math.round((now - at) / 1000))
+  return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86_400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86_400)}d ago`
+}
+const size = (b?: number | null) => (b == null ? '' : b < 1024 ? `${b} B` : b < 1_048_576 ? `${Math.round(b / 1024)} KB` : `${(b / 1_048_576).toFixed(1)} MB`)
 
-const AVAILABLE = ['Send and read messages', 'Replies filter (all, or only from the agent)', 'Forward, copy and download a message', 'Message info', 'Tool chips on agent replies', 'Drafts kept per conversation', 'Unread counts', 'Reachability and freshness']
-const WAITING = ['Live streaming of replies', 'Stop or interrupt a reply in progress', 'Unread and the thread list kept on the server', 'Markdown in messages']
-
-function Features({ title, items }: { title: string; items: string[] }) {
+function Section({ title, empty, children }: { title: string; empty: string; children: React.ReactNode[] }) {
   return (
-    <section aria-label={title} className="space-y-1">
+    <section aria-label={title} className="space-y-1.5">
       <h3 className="font-mono dash-caption uppercase tracking-label text-fg-faint">{title}</h3>
-      <ul className="space-y-0.5 text-caption text-fg-muted">{items.map((i) => <li key={i}>{i}</li>)}</ul>
+      {children.length === 0 ? <p className="text-caption text-fg-muted">{empty}</p> : <ul className="space-y-1.5 text-caption text-fg">{children}</ul>}
     </section>
   )
 }
 
-/** The right column: what we know about the open thread, and which chat features exist. Tabs and tools come later. */
+function Context({ ctx }: { ctx: ThreadContext }) {
+  if (ctx.state === 'loading') return <p role="status" className="text-caption text-fg-muted">Loading context…</p>
+  if (ctx.state === 'unavailable') return <p role="status" className="text-caption text-fg-muted">Context is not available right now.</p>
+  return (
+    <>
+      <Section title="Activity" empty="No activity in this thread yet.">
+        {ctx.activity.map((a) => (
+          <li key={a.seq} className="flex flex-col">
+            <span>{a.title ?? a.type}</span>
+            <span className="text-fg-muted">{[a.summary, ago(a.at)].filter(Boolean).join(' · ')}</span>
+          </li>
+        ))}
+      </Section>
+      <Section title="Files" empty="No files shared in this thread.">
+        {ctx.files.map((f) => (
+          <li key={f.id} className="flex justify-between gap-2">
+            <span className="min-w-0 truncate">{f.name}</span>
+            <span className="shrink-0 text-fg-muted">{size(f.sizeBytes)}</span>
+          </li>
+        ))}
+      </Section>
+      <Section title="Linked work" empty="No tasks or plan items linked to this thread.">
+        {ctx.work.map((w) => (
+          <li key={w.id} className="flex flex-col">
+            <span>{w.title}</span>
+            <span className="text-fg-muted">{[w.kind, w.status, w.needsUser ? 'needs you' : ''].filter(Boolean).join(' · ')}</span>
+          </li>
+        ))}
+      </Section>
+    </>
+  )
+}
+
+/** The right column: the thread, then its real context (activity, files, linked work) from the chat API. */
 export function ThreadDetails({ thread }: { thread: ChatThread | null }) {
+  const ctx = useThreadContext(thread)
   if (!thread) return <p className="px-4 py-4 text-caption text-fg-faint">Open a conversation to see its details.</p>
   return (
-    <div className="space-y-4 px-4 py-4">
+    <div className="space-y-5 px-4 py-4">
       <MetaList
         columns={1}
         items={[
@@ -31,8 +68,7 @@ export function ThreadDetails({ thread }: { thread: ChatThread | null }) {
           { label: 'Thread', value: <span className="break-all font-mono dash-caption">{thread.id}</span> },
         ]}
       />
-      <Features title="Chat can" items={AVAILABLE} />
-      <Features title="Waiting on the backend" items={WAITING} />
+      <Context ctx={ctx} />
     </div>
   )
 }
