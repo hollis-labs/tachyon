@@ -96,12 +96,19 @@ func (s *Store) Create(ctx context.Context, rec hitl.Record) (hitl.Record, bool,
 		}
 		return err
 	})
+	if err == nil && created {
+		s.publish(out, true)
+	}
 	return out, created, err
 }
 func (s *Store) Swap(ctx context.Context, id string, expected int64, next hitl.Record) error {
-	return s.DB.Writer.Submit(ctx, "approval_transition", func(ctx context.Context, tx *sql.Tx) error {
+	err := s.DB.Writer.Submit(ctx, "approval_transition", func(ctx context.Context, tx *sql.Tx) error {
 		return swapRecord(ctx, tx, id, expected, next)
 	})
+	if err == nil {
+		s.publish(next, false)
+	}
+	return err
 }
 
 func swapRecord(ctx context.Context, tx *sql.Tx, id string, expected int64, next hitl.Record) error {
