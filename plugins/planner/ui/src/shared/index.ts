@@ -5,3 +5,5 @@ export { EventTimeline, type EventTimelineProps, type TimelineEvent, type Timeli
 export { LaneBoard, type Lane, type LaneBoardLabels, type LaneBoardProps, type LaneCard } from './lane-board'
 export { CommandPalette, type CommandPaletteProps, type PaletteCommand } from './command-palette'
 export { LinkLayer, LinkPort, LinkTag, type LinkAnchorLabels } from './link-anchor'
+export { OptionCompare, type CompareOption, type OptionCompareLabels } from './option-compare'
+export { TriageStack, type TriageRoute, type TriageStackLabels } from './triage-stack'

@@ -4,6 +4,9 @@ import { TachyonPlannerClient } from "@planner/api/client"
 import { Compass } from "lucide-react"
 import PlannerPage from "@planner/pages/PlannerPage"
 import PlannerShell from "@planner/shell/PlannerShell"
+import LensPage from "@planner/shell/lens-page"
+import { useParams } from "react-router-dom"
+import { isPlannerDb } from "@planner/lib/planner"
 
 /** Planner records and revisions are owned by the Tachyon host. */
 const plannerClient = new TachyonPlannerClient()
@@ -17,9 +20,11 @@ function ShellRoute() {
 }
 
 function PlannerRoute() {
+  const { db } = useParams<{ db?: string }>()
+  // The six other lenses open on the shell; /planner, /planner/flight, board and activity keep the earlier page until their routes are retired.
   return (
     <PlannerApiProvider client={plannerClient}>
-      <PlannerPage />
+      {isPlannerDb(db) && db !== "themes" ? <LensPage key={db} db={db} /> : <PlannerPage />}
     </PlannerApiProvider>
   )
 }

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { EventTimeline, SegmentedProgress, SpineList } from '@planner/shared'
+import { EventTimeline, OptionCompare, SegmentedProgress, SpineList, TriageStack } from '@planner/shared'
 
 afterEach(cleanup)
 
@@ -37,5 +37,26 @@ describe('EventTimeline', () => {
     fireEvent.click(screen.getByRole('button', { name: /Tasks/ }))
     expect(screen.queryByText('Blocked')).toBeNull()
     expect(screen.getByText('Task done')).toBeTruthy()
+  })
+})
+
+describe('TriageStack', () => {
+  it('routes with its key and says so when everything is triaged', () => {
+    const onRoute = vi.fn()
+    const labels = { count: (n: number) => `${n} left`, allTriaged: 'All triaged', routeHeading: 'Into', dismiss: 'Dismiss', next: (t: string) => t }
+    const { container, rerender } = render(<TriageStack card={<b>Card</b>} remaining={1} routes={[{ id: 'a', label: 'A', key: 'a' }]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
+    fireEvent.keyDown(container.firstElementChild!, { key: 'a' })
+    expect(onRoute).toHaveBeenCalledWith('a')
+    rerender(<TriageStack card={null} remaining={0} routes={[]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
+    expect(screen.getByText('All triaged')).toBeTruthy()
+  })
+})
+
+describe('OptionCompare', () => {
+  it('dims the others once chosen and hides Choose', () => {
+    const labels = { choose: (l: string) => `Choose ${l}`, chooseButton: 'Choose', recommended: 'Rec', chosen: 'Chosen', pros: 'Pros', cons: 'Cons', groupLabel: 'Options' }
+    render(<OptionCompare options={[{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }]} chosenId="a" onChoose={vi.fn()} labels={labels} />)
+    expect(screen.queryByRole('button', { name: /Choose/ })).toBeNull()
+    expect(screen.getByText('Chosen')).toBeTruthy()
   })
 })
