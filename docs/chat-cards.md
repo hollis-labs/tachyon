@@ -10,5 +10,11 @@ Answerable cards in a chat thread. The queue item (Approvals) stays the only rec
 - Answers still go through the Approvals resolve route. When a bound card is resolved, the thread gets a `card` event and, in an app thread,
   an operator message to the agent ("Card answered: ... Decision: ... Answers: ..."). Expiry publishes the event only.
 - The thread list's `blocked_on_user` counts bound cards still open (`Aggregator.CardBlocks`).
-- Not here yet: `card.plan` / `card.dispatch` kinds, the cardfx `create` op, "Always in this chat" rules, and runtime `approval_request`
-  translation (waits on the Nanite chatstream contract).
+- Kinds `card.plan` (approved | changes_requested) and `card.dispatch` (approved | denied). Both are low class unless they carry effects.
+- cardfx `create`: effect `{target:"torque:task/new", op:"create", value:<title or JSON {title, description, project_id}>}` opens a Torque task
+  when the card is approved. Same switch as status changes: off unless `TACHYON_CARD_EFFECTS_TORQUE` is set. The receipt detail carries the new id. Body and response checked against Torque's `TaskCreateRequest` and `taskJSON` (201, top-level `id`).
+- Approval rules (T5c): `chat_approval_rules` (migration 040). `GET chat/threads/{ref}/approval-rules` lists rules in force,
+  `DELETE .../{id}` revokes one. `Store.AddRule` takes the class of the approval just answered and refuses anything but low;
+  `Store.Allows(thread, agent, tool, class, args)` is the matcher (tool and agent equal, every `match` key equal to the call's argument,
+  never for medium or high). Rules only allow. Nothing calls them yet: the runtime `approval_request` translation that creates and
+  consults them waits on the Nanite chatstream/v1 contract, which is not verified.
