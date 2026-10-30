@@ -45,7 +45,7 @@ The real behaviour (PL1-PL5), the frontend wiring (PL6), and the curl matrix (PL
 
 ## Real behaviour: PL1, PL3, PL4, PL5 (PL7 docs and curl matrix)
 
-Everything below is served by `internal/planner` under `/api/plugins/console/v1/planner`, behind the existing planner write path (`operator.RequireOperator`). Nothing here needs a stub flag; leave `TACHYON_PLANNER_STUBS` unset on live (when set, the stub wins on the routes it lists). Migrations: `041_planner_relation_index`, `042_planner_task_meta`, `043_planner_events` (numbers are taken at merge).
+Everything below is served by `internal/planner` under `/api/plugins/console/v1/planner`, behind the existing planner write path (`operator.RequireOperator`). Nothing here needs a stub flag; leave `TACHYON_PLANNER_STUBS` unset on live (when set, the stub wins on the routes it lists). Migrations: `041_planner_relation_index`, `042_planner_task_meta`, `044_planner_events` (numbers are taken at merge).
 
 | Slice | Routes | Notes |
 |---|---|---|
