@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/forgeassign"
 	"github.com/hollis-labs/tachyon/internal/forgeindex"
 	"github.com/hollis-labs/tachyon/internal/forgemerge"
 	"github.com/hollis-labs/tachyon/internal/itemstate"
@@ -34,7 +35,7 @@ func mountForgeMerge(s *Server, mux *http.ServeMux, operator *approvals.Bridge) 
 }
 
 // afterMerge refreshes the PR index (which publishes pr.merged), settles the PR's triage entry and reports
-// whether that worked. Agent links are not stored yet (PR7), so none are closed here.
+// whether that worked. Open agent links of the PR are closed (status done).
 func afterMerge(s *Server, ctx context.Context, prKey, _ string) forgemerge.Settled {
 	if v, ok := s.ext.Load(forgeIndexKey); ok {
 		x := v.(*forgeindex.Index)
@@ -46,13 +47,17 @@ func afterMerge(s *Server, ctx context.Context, prKey, _ string) forgemerge.Sett
 			}
 		}()
 	}
+	links := 0
+	if a, ok := s.ext.Load(forgeAssignKey); ok {
+		links = a.(*forgeassign.Handler).MarkDone(ctx, prKey)
+	}
 	v, ok := s.ext.Load(itemStateKey)
 	if !ok {
-		return forgemerge.Settled{}
+		return forgemerge.Settled{LinksDone: links}
 	}
 	if _, err := v.(*itemstate.Store).Apply(ctx, "pr-inbox:"+prKey, "operator", itemstate.Op{Type: "settle", Resolution: "merged"}); err != nil {
 		slog.Warn("forge merge: cannot settle the triage entry", "err", err)
-		return forgemerge.Settled{}
+		return forgemerge.Settled{LinksDone: links}
 	}
-	return forgemerge.Settled{Settled: true}
+	return forgemerge.Settled{Settled: true, LinksDone: links}
 }

@@ -315,7 +315,7 @@ components:
         label: {type: string}
         urn: {type: string}
         task: {type: string, enum: [review, fix_checks, address_comments, resolve_conflicts]}
-        link_status: {type: string, enum: [pending, assigned, sent, failed, cancelled]}
+        link_status: {type: string, enum: [pending, assigned, sent, done, failed, cancelled]}
     PendingRow:
       type: object
       required: [pr_key, ref, title, author, assignees, state, reasons, checks, mergeable, head_sha, triage, cached, fetched_ms]
@@ -459,7 +459,7 @@ components:
         dedupe_key: {type: string}
         forge_assigned: {type: boolean}
         message_id: {type: string}
-        status: {type: string, enum: [pending, assigned, sent, failed, cancelled]}
+        status: {type: string, enum: [pending, assigned, sent, done, failed, cancelled]}
         reminders: {type: integer}
         note: {type: string}
         assigned_by: {type: string}
