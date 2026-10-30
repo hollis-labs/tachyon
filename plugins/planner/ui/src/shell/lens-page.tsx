@@ -75,7 +75,7 @@ export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: 
     case 'risks': {
       const row = (i: PlannerItem) => entry(i, {
         leading: <StateDot state={SEVERITY_DOT[str(i.severity)] ?? 'todo'} className="self-center" />,
-        meta: <Pips level={['low', 'medium', 'high', 'critical'].indexOf(str(i.severity)) + 1} of={4} label={str(i.severity)} className="ml-5" />,
+        meta: <Pips tone="danger" level={['low', 'medium', 'high', 'critical'].indexOf(str(i.severity)) + 1} of={4} label={str(i.severity)} className="ml-5" />,
       })
       return drop([
         { id: 'open', title: TEXT.groupOpen, items: pick((i) => i.status === 'open').map(row) },
@@ -220,12 +220,12 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   const body = db === 'inbox'
     ? <InboxFocus items={(items ?? []).filter((i) => i.status === 'new')} loading={items === null} onChanged={load} />
     : item
-      ? <LensFocus db={db} item={item} statuses={schema?.enums.status ?? []} write={write} onPin={() => void togglePin(item)}>
+      ? <LensFocus db={db} item={item} statuses={schema?.enums.status ?? []} severities={schema?.enums.severity ?? []} write={write} onPin={() => void togglePin(item)}>
           {db === 'workstreams' && <StreamBody item={item} />}
           {db === 'roadmap' && <RoadmapBody item={item} horizons={schema?.enums.horizon ?? []} siblings={items ?? []} write={write} />}
           {db === 'ideas' && <IdeaBody item={item} write={write} />}
           {db === 'decisions' && <DecisionBody item={item} write={write} busy={busy} />}
-          {db === 'risks' && <RiskBody item={item} levels={schema?.enums.severity ?? []} />}
+          {db === 'risks' && <RiskBody item={item} statuses={schema?.enums.status ?? []} write={write} />}
         </LensFocus>
       : <p className="m-auto text-xs text-fg-muted">{items === null ? '' : TEXT.selectItemFor(lens.label)}</p>
 
@@ -280,7 +280,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
 }
 
 /** The common head of a lens focus pane: id chip, kind, pin, title, status, description, then the lens body. */
-function LensFocus({ db, item, statuses, write, onPin, children }: { db: PlannerDb; item: PlannerItem; statuses: string[]; write: (fn: () => Promise<unknown>) => Promise<void>; onPin: () => void; children: ReactNode }) {
+function LensFocus({ db, item, statuses, severities, write, onPin, children }: { db: PlannerDb; item: PlannerItem; statuses: string[]; severities: string[]; write: (fn: () => Promise<unknown>) => Promise<void>; onPin: () => void; children: ReactNode }) {
   const api = usePlannerApi()
   const short = item.legacy_id && typeof item.legacy_id === 'string' ? item.legacy_id : item.id.slice(0, 8)
   const edit = (patch: Record<string, unknown>) => void write(() => api.plannerUpdate(db, item.id, patch, item.rev))
@@ -298,7 +298,11 @@ function LensFocus({ db, item, statuses, write, onPin, children }: { db: Planner
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <InlineEdit as="h1" id="lens-title" label={TEXT.titleLabel} value={item.title} onCommit={(title) => edit({ title })} className="min-w-0 font-sans text-xl font-semibold normal-case leading-tight tracking-normal text-fg" />
-          <StatusPick status={item.status ?? ''} statuses={statuses} onPick={(status) => edit({ status })} />
+          {db === 'risks' ? (
+            typeof item.severity === 'string' && <span className="flex items-center gap-2 text-control text-fg-muted">{TEXT.severity}<Pips tone="danger" level={Math.max(0, (severities.indexOf(item.severity)) + 1)} of={Math.max(severities.length, 1)} label={item.severity} /></span>
+          ) : (
+            <StatusPick status={item.status ?? ''} statuses={statuses} onPick={(status) => edit({ status })} />
+          )}
           {item.mvp === true && <Chip square>{TEXT.mvp}</Chip>}
           {typeof item.discuss_in === 'string' && item.discuss_in && <span className="flex items-center gap-1.5 text-control text-fg-muted">{TEXT.discussIn}<Chip square>{item.discuss_in}</Chip></span>}
           {db === 'decisions' && !DECIDED.has(item.status ?? '') && item.created && <span className="text-control text-fg-muted">{TEXT.waitingDays(Math.max(0, Math.floor((Date.now() - Date.parse(String(item.created))) / 86_400_000)))}</span>}
