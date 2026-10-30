@@ -1,5 +1,6 @@
 import { AgentPresence } from '../../observations/AgentPresence'
 import { CapabilityBadge } from '../CapabilityBadge'
+import { sessionThreadId } from '../chatapi'
 import { useChatThread } from '../hooks'
 import { applyReplyFilter, hiddenReplies, useReplyFilter, type ReplyFilter } from '../replyFilter'
 import { ReplyFilterToggle } from '../ReplyFilterToggle'
@@ -30,14 +31,17 @@ function FilteredEmpty({ messages, filter, hasMore, onShowAll, onLoadOlder }: { 
  * Used by the /chat page and the dock. Key it on the thread id so state starts fresh.
  */
 export function ThreadConversation({ thread }: { thread: ChatThread }) {
-  const { messages, capability, loading, hasMore, loadOlder, send, sendError, error } = useChatThread(thread.id)
+  // The agent's newest chat API session (or the one picked in the details) is the conversation when there is one.
+  const ref = thread.sessionRef ?? thread.sessions?.[0]?.ref
+  const convId = ref ? sessionThreadId(ref) : thread.id
+  const { messages, capability, loading, hasMore, loadOlder, send, sendError, error } = useChatThread(convId)
   const cap = capability ?? thread.capability
   const [replyFilter, setReplyFilter] = useReplyFilter()
   const shown = applyReplyFilter(messages, replyFilter)
   const note = cap.mode === 'offline' ? 'Agent is offline. This will queue.' : cap.mode === 'mail-only' ? 'Mail only. Reply may take a while.' : null
   return (
     <ConversationView
-      threadId={thread.id}
+      threadId={convId}
       messages={shown}
       agentLabel={thread.title}
       loading={loading}
