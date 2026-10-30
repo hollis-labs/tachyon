@@ -95,6 +95,12 @@ export function AlertTray() {
       {feed.ready && feed.status !== 'live' && (
         <p role="status" className="border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">
           {feed.status === 'error' ? 'Alerts are not updating.' : 'Reconnecting…'} What you see may be out of date.
+          {feed.status === 'error' && c.feed?.retry && <button type="button" className="ml-2 underline" onClick={c.feed.retry}>Retry</button>}
+        </p>
+      )}
+      {!!c.feed?.sourcesDown?.length && (
+        <p role="status" className="border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">
+          Alerts from {c.feed.sourcesDown.join(', ')} are not updating. Other alerts are current.
         </p>
       )}
       {c.error && <p role="status" className="border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">{c.error}</p>}

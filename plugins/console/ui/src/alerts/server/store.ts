@@ -15,6 +15,8 @@ export interface ServerAlertsSnapshot {
   skewMs: number
   /** Last failed write, plain text; cleared by the next successful one. */
   error: string | null
+  /** Sources the server reports as down, by name ("torque"). */
+  sourcesDown: string[]
 }
 
 type StreamFactory = (url: string) => EventSource
@@ -22,7 +24,7 @@ type StreamFactory = (url: string) => EventSource
 const byRecent = (a: ServerAlert, b: ServerAlert) => b.last_at_ms - a.last_at_ms || (a.alert_id < b.alert_id ? 1 : -1)
 
 export class ServerAlertsStore {
-  private snap: ServerAlertsSnapshot = { alerts: [], counts: null, ready: false, connection: 'connecting', skewMs: 0, error: null }
+  private snap: ServerAlertsSnapshot = { alerts: [], counts: null, ready: false, connection: 'connecting', skewMs: 0, error: null, sourcesDown: [] }
   private byId = new Map<string, ServerAlert>()
   private seq = 0
   private es: EventSource | null = null
@@ -78,14 +80,38 @@ export class ServerAlertsStore {
     return this.loading
   }
 
+  /** Ingest health: which sources have stopped delivering. A failed check leaves the last answer. */
+  async refreshSources() {
+    try {
+      const r = await this.client.sources()
+      const down = r.sources.filter((x) => x.state === 'down').map((x) => x.source)
+      if (down.join() !== this.snap.sourcesDown.join()) this.publish({ sourcesDown: down })
+    } catch {
+      /* keep the last answer */
+    }
+  }
+
   start(): () => void {
     this.closed = false
     void this.load().then(() => this.open())
+    void this.refreshSources()
+    const poll = setInterval(() => void this.refreshSources(), 60_000)
     return () => {
+      clearInterval(poll)
       this.closed = true
       this.es?.close()
       this.es = null
     }
+  }
+
+  /** Reconnect by hand after the stream gave up: refetch, then open a fresh stream from the new cursor. */
+  async retry() {
+    this.es?.close()
+    this.es = null
+    this.publish({ connection: 'connecting' })
+    await this.load()
+    void this.refreshSources()
+    if (this.snap.connection !== 'down') this.open()
   }
 
   private open() {

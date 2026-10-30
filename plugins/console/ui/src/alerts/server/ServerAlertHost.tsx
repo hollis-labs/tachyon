@@ -63,7 +63,7 @@ export function ServerAlertHost({ children, client: clientProp }: ServerAlertHos
       prefs,
       setPrefs: (p) => prefsStore.set(p),
       queue,
-      feed: { ready: snap.ready, status: snap.connection === 'down' ? 'error' : snap.connection },
+      feed: { ready: snap.ready, status: snap.connection === 'down' ? 'error' : snap.connection, sourcesDown: snap.sourcesDown, store, retry: () => void store.retry() },
       error: snap.error ?? prefsStore.error,
       markRead: (id) => op(id, { op: 'read' }, (a) => ({ ...a, read: true })),
       markAllRead: () => {
@@ -81,7 +81,7 @@ export function ServerAlertHost({ children, client: clientProp }: ServerAlertHos
       expandedId,
       expand,
     }),
-    [summary, entries, now, open, prefs, prefsStore, queue, snap.ready, snap.connection, snap.error, snap.skewMs, op, store, expandedId],
+    [summary, entries, now, open, prefs, prefsStore, queue, snap.ready, snap.connection, snap.sourcesDown, snap.error, snap.skewMs, op, store, expandedId],
   )
 
   return (
