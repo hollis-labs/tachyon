@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Button } from "@hollis-labs/design-components"
 import { Chip } from "../components/chip"
 import { InitialsAvatar } from "../components/initials-avatar"
@@ -22,6 +23,18 @@ export function BatchPanel({ items, confirming, busy, accessNeeded, onConfirm, o
   onRun(d: "approved" | "denied"): void
   onOpen(id: string): void
 }) {
+  // Cmd or Ctrl+Enter runs the confirmed decision, as the keycap on the button says.
+  useEffect(() => {
+    if (!confirming || busy || accessNeeded) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        onRun(confirming)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [confirming, busy, accessNeeded, onRun])
   const n = items.length
   const noun = n === 1 ? "request" : "requests"
   const risks = [...new Set(items.map((i) => i.request_snapshot.class ?? "medium"))]

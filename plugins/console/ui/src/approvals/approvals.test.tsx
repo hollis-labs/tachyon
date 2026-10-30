@@ -610,7 +610,7 @@ describe("batch approve", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Approve 2" }))
     expect(batchResolve).not.toHaveBeenCalled()
     expect(screen.getByText(/Approve 2 requests\? This cannot be undone/)).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: /Approve all 2/ }))
+    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true })
     await screen.findByText("1 approved, 1 left in the queue to review one by one.")
     expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
