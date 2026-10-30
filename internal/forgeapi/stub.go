@@ -319,7 +319,7 @@ func write(op string, f func(http.ResponseWriter, *http.Request, string)) func(h
 			fail(w, 400, "idempotency_key_required", "Send an Idempotency-Key header (1 to 128 characters).")
 			return
 		}
-		if WriteLevels[op] == "operator-token" && r.Header.Get("X-Stub-Scenario") == "not_elevated" {
+		if RequiredLevel(op) == "operator-token" && r.Header.Get("X-Stub-Scenario") == "not_elevated" {
 			fail(w, 403, "operator_access_required", "Operator access is needed for this action.")
 			return
 		}

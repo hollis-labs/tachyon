@@ -23,8 +23,7 @@ GUI can build against them.
 - Merge and review pin the head SHA (`head_sha`, 40 hex). A moved head is 409 `head_moved`
   carrying the current head. Inline comments need `commit_id` equal to the head.
 - Agent callers (`Authorization` header) get 403 `requester_cannot_approve` on every write.
-- Proposed write levels (`contract.go` `WriteLevels`): merge needs operator-token, the rest
-  browser-session. Open question P1 for Chrispian.
+- Write levels (P1 decided, design addendum1): every write incl. merge is browser-session; only the operator merges from the UI; agents get no forge writes. `StepUpLevels` reserves merge -> operator-token; flip `StepUpEnabled` to swap it in.
 
 ## Stub controls
 
@@ -35,7 +34,7 @@ GUI can build against them.
 | `X-Stub-Scenario: credential_missing` | 401 |
 | `X-Stub-Scenario: degraded` | cached, degraded pending and status |
 | `X-Stub-Scenario: mergeable_pending` | preflight state `unknown` -> `pending` |
-| `X-Stub-Scenario: not_elevated` | merge refused, `operator_access_required` |
+| `X-Stub-Scenario: not_elevated` | merge refused with `operator_access_required`, only while `StepUpEnabled` |
 | `X-Stub-Scenario: assign_failed` or `assign_no_login` | assign-agent resume-after-failure and no forge login |
 | `X-Stub-Scenario: gap` | stream emits `resync` |
 

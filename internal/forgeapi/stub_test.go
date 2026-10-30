@@ -110,8 +110,8 @@ func TestContractHelpers(t *testing.T) {
 			t.Errorf("WriteLevels has unknown op %s", op)
 		}
 	}
-	if WriteLevels["merge"] != "operator-token" {
-		t.Error("merge needs operator-token (proposed)")
+	if RequiredLevel("merge") != "browser-session" || StepUpLevels["merge"] != "operator-token" {
+		t.Error("merge is browser-session with a reserved operator-token step-up (P1)")
 	}
 }
 
@@ -323,9 +323,15 @@ func TestMergeGuardedIdempotentAndOperatorOnly(t *testing.T) {
 	if w := wr(t, "PUT", O+"202/merge", body, "k2", "Authorization", "Bearer x"); w.Code != 403 || errCodeOf(t, w) != "requester_cannot_approve" {
 		t.Errorf("agents get no forge writes: %d", w.Code)
 	}
-	if w := wr(t, "PUT", O+"202/merge", body, "k3", "X-Stub-Scenario", "not_elevated"); w.Code != 403 || errCodeOf(t, w) != "operator_access_required" {
-		t.Errorf("merge needs operator-token: %d", w.Code)
+	if w := wr(t, "PUT", O+"202/merge", body, "k3", "X-Stub-Scenario", "not_elevated"); w.Code != 200 {
+		t.Errorf("merge is browser-session; step-up is off: %d", w.Code)
 	}
+	StepUpEnabled = true
+	defer func() { StepUpEnabled = false }()
+	if w := wr(t, "PUT", O+"202/merge", body, "k3b", "X-Stub-Scenario", "not_elevated"); w.Code != 403 || errCodeOf(t, w) != "operator_access_required" {
+		t.Errorf("swapped-in step-up must refuse: %d", w.Code)
+	}
+	StepUpEnabled = false
 	if w := wr(t, "PUT", O+"202/merge", `{"method":"merge","head_sha":"`+strings.Repeat("0", 40)+`"}`, "k4"); w.Code != 409 || errCodeOf(t, w) != "head_moved" || !strings.Contains(w.Body.String(), h) {
 		t.Errorf("head moved carries the current head: %d %s", w.Code, w.Body)
 	}

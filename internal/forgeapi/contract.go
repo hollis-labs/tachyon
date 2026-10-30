@@ -86,17 +86,34 @@ const (
 	RateFloorDefault   = 200
 )
 
-// WriteLevels is the proposed assurance table for forge writes, keyed by audit op,
-// using the assurance package's level names. P1 (Chrispian) decides whether review
-// verdicts and merge need operator-token; merge does here because it is irreversible.
-// Agents never get forge writes: an Authorization header on a write is refused.
+// WriteLevels is the assurance table for forge writes, keyed by audit op, using the
+// assurance package's level names. P1 is decided (addendum1): forge.merge is
+// browser-session, only the operator merges from the UI, and agents get no forge
+// writes (an Authorization header on a write is refused).
 var WriteLevels = map[string]string{
 	"comment":      "browser-session",
 	"review":       "browser-session",
-	"merge":        "operator-token",
+	"merge":        "browser-session",
 	"assign":       "browser-session",
 	"assign_agent": "browser-session",
 	"triage":       "browser-session",
+}
+
+// StepUpLevels is the reserved mapping that makes a step-up swap a one-line change:
+// set StepUpEnabled and RequiredLevel returns these instead of WriteLevels. Off.
+var StepUpLevels = map[string]string{"merge": "operator-token"}
+
+// StepUpEnabled switches RequiredLevel to StepUpLevels for the ops it names.
+var StepUpEnabled = false
+
+// RequiredLevel is the assurance level an op needs right now.
+func RequiredLevel(op string) string {
+	if StepUpEnabled {
+		if l, ok := StepUpLevels[op]; ok {
+			return l
+		}
+	}
+	return WriteLevels[op]
 }
 
 var (

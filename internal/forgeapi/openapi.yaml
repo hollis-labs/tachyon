@@ -7,7 +7,7 @@ info:
     are snake_case with unix-ms times. Every success body is {"data": ...}; every error is
     {"error": {"code", "message", ...extras}} (the forge envelope today). Writes need an operator session,
     same origin, an Idempotency-Key header (1-128 chars), and refuse an Authorization header (agents get no
-    forge writes). Assurance per op is proposed in WriteLevels (merge: operator-token); decision P1 is open.
+    forge writes). Assurance per op is in WriteLevels (all browser-session, merge included; P1 decided); StepUpLevels reserves merge operator-token.
     GitHub text (titles, bodies, diffs, comments, check summaries) is untrusted: render as text.
     Design: tesseract key design_tachyon_pull_requests_backend_20261030. Stub: TACHYON_FORGE_STUBS=1.
 servers:
@@ -153,7 +153,7 @@ paths:
         "409": {$ref: '#/components/responses/Error'}
   /repos/{host}/{owner}/{name}/pulls/{num}/merge:
     put:
-      summary: Guarded merge. Re-runs preflight; 409 merge_blocked (blockers) or head_moved. Needs operator-token (proposed). Irreversible
+      summary: Guarded merge. Re-runs preflight; 409 merge_blocked (blockers) or head_moved. Browser-session; operator-token step-up reserved. Irreversible
       parameters: *pr
       requestBody:
         required: true
