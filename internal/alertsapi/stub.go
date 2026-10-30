@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,6 +46,7 @@ type Stub struct {
 	seq      int64
 	prefs    Prefs
 	migrated bool
+	extra    map[string]ItemState // legacy state for keys that are not alerts
 }
 
 func NewStub() *Stub {
@@ -597,31 +599,105 @@ func (s *Stub) stateList(w http.ResponseWriter, r *http.Request) {
 			items = append(items, ToItemState(a))
 		}
 	}
+	keys := make([]string, 0, len(s.extra))
+	for k := range s.extra {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		items = append(items, s.extra[k])
+	}
 	write(w, 200, map[string]any{"items": items})
 }
 
+// statePut is the legacy StateStore write: {type, until?, note?, resolution?} for any key. A key that is an alert
+// id changes that alert; any other key (the console also tracks approval and bus event ids here) is kept as its own
+// item state, like the real PR2 store. until is epoch ms (a number) or an RFC 3339 string.
 func (s *Stub) statePut(w http.ResponseWriter, r *http.Request) {
 	var b struct {
-		Type       string `json:"type"`
-		Until      *int64 `json:"until"`
-		Note       string `json:"note"`
-		Resolution string `json:"resolution"`
+		Type       string          `json:"type"`
+		Until      json.RawMessage `json:"until"`
+		Note       string          `json:"note"`
+		Resolution string          `json:"resolution"`
 	}
 	if !decode(w, r, &b) {
 		return
 	}
+	until, err := parseUntil(b.Until)
+	if err != nil {
+		fail(w, 400, CodeInvalid, "until must be epoch milliseconds or an RFC 3339 time.")
+		return
+	}
+	key := r.PathValue("key")
+	if key == "" || len(key) > 200 {
+		fail(w, 400, CodeInvalid, "key must be 1 to 200 characters.")
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	a := s.find(r.PathValue("key"))
-	if a == nil {
-		fail(w, 404, CodeNotFound, "No alert "+strconv.Quote(r.PathValue("key"))+".")
+	if a := s.find(key); a != nil {
+		if msg := s.apply(a, opBody{Op: b.Type, UntilMS: until, Note: b.Note, Resolution: b.Resolution}); msg != "" {
+			fail(w, 400, CodeInvalid, msg)
+			return
+		}
+		write(w, 200, ToItemState(*a))
 		return
 	}
-	if msg := s.apply(a, opBody{Op: b.Type, UntilMS: b.Until, Note: b.Note, Resolution: b.Resolution}); msg != "" {
-		fail(w, 400, CodeInvalid, msg)
+	if len(b.Note) > NoteMax {
+		fail(w, 400, CodeInvalid, "note is too long.")
 		return
 	}
-	write(w, 200, ToItemState(*a))
+	prev, had := s.extra[key]
+	next := ItemState{Key: key, Status: "read", UpdatedAt: s.now()}
+	switch b.Type {
+	case "read":
+		if had && prev.Status != "unread" && prev.Status != "snoozed" {
+			next = prev
+		}
+	case "dismiss":
+		next.Status, next.Note = "dismissed", b.Note
+	case "snooze":
+		if until == nil {
+			fail(w, 400, CodeInvalid, "snooze needs until.")
+			return
+		}
+		next.Status, next.SnoozeUntil, next.Note = "snoozed", until, b.Note
+	case "settle":
+		next.Status, next.Resolution, next.Note = "settled", strings.TrimSpace(b.Resolution), b.Note
+	case "reopen":
+		next.Status = "unread"
+	default:
+		fail(w, 400, CodeInvalid, "type must be read, dismiss, snooze, settle or reopen.")
+		return
+	}
+	if s.extra == nil {
+		s.extra = map[string]ItemState{}
+	}
+	s.extra[key] = next
+	write(w, 200, next)
+}
+
+// parseUntil reads epoch ms (number) or an RFC 3339 string; absent or null is nil.
+func parseUntil(raw json.RawMessage) (*int64, error) {
+	t := strings.TrimSpace(string(raw))
+	if t == "" || t == "null" {
+		return nil, nil
+	}
+	if n, err := strconv.ParseInt(t, 10, 64); err == nil {
+		return &n, nil
+	}
+	var str string
+	if json.Unmarshal(raw, &str) != nil {
+		return nil, errors.New("bad until")
+	}
+	tm, err := time.Parse(time.RFC3339, str)
+	if err != nil {
+		return nil, err
+	}
+	ms := tm.UnixMilli()
+	return &ms, nil
 }
 
 // stream replays stream.json after Last-Event-ID (or ?after=), then idles with a heartbeat.

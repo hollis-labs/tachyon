@@ -105,7 +105,8 @@ describe('owned Planner detail behavior', () => {
     await screen.findByLabelText(/^Title/)
     fireEvent.change(screen.getByLabelText(/^Title/), { target: { value: 'New idea' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create idea' }))
-    await screen.findByRole('alert')
+    // findBy's default 1s was too tight on loaded CI runners (file took ~3s).
+    await screen.findByRole('alert', {}, { timeout: 5000 })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create idea' })) })
     expect(create).toHaveBeenCalledTimes(2)
     expect(create.mock.calls[0]).toEqual(create.mock.calls[1])

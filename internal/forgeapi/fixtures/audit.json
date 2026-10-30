@@ -1,0 +1,38 @@
+{
+  "entries": [
+    {
+      "id": 3,
+      "ts_ms": 1793329140000,
+      "op": "merge",
+      "pr_key": "github:hollis-labs/tachyon#190",
+      "actor_ref": "browser-session:ab12",
+      "assurance": "operator-token",
+      "outcome": "ok",
+      "github_ref": "8f1322a3ac5a66c1d14a266efb6b4c3ac546e1e7",
+      "head_sha": "3e3157efd0ea75b95db668c142d8b2edb6f983cf",
+      "audit_class": "lifecycle"
+    },
+    {
+      "id": 2,
+      "ts_ms": 1793328600000,
+      "op": "review",
+      "pr_key": "github:hollis-labs/tachyon#201",
+      "actor_ref": "browser-session:ab12",
+      "assurance": "browser-session",
+      "outcome": "ok",
+      "github_ref": "r9001",
+      "head_sha": "0da8631e75cfa86e2506e6b076cceaa4a56f4aa3"
+    },
+    {
+      "id": 1,
+      "ts_ms": 1793328300000,
+      "op": "merge",
+      "pr_key": "github:hollis-labs/tachyon#201",
+      "actor_ref": "browser-session:ab12",
+      "assurance": "browser-session",
+      "outcome": "refused",
+      "error_code": "merge_blocked",
+      "head_sha": "0da8631e75cfa86e2506e6b076cceaa4a56f4aa3"
+    }
+  ]
+}

@@ -4,6 +4,7 @@
 @import "@hollis-labs/kit-cards/source.css";
 @import "streamdown/styles.css";
 @import "@hollis-labs/kit-dashboard/theme.css";
+@import "@hollis-labs/design-tokens/themes.css";
 @import "@hollis-labs/kit-admin/source.css";
 @import "@hollis-labs/design-app-runtime/shell-reset.css";
 

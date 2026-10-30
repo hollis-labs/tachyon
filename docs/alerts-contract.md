@@ -55,3 +55,11 @@ and `.id` to `ref`. `needs_you` comes from the rule only, and the catch-all neve
 State is in memory and resets on restart; times are shifted so timers look live. The stream replays a fixed
 script (`fixtures/stream.json`); it does not react to ops. Kinds with no emitter yet (host reboot,
 health-check failure, workstream created) are not in the fixtures.
+
+## Console state compatibility (`/console/state`)
+
+The stub's `PUT /console/state/{key}` matches the console client's `HttpStateStore`: body `{type, until?, note?, resolution?}`
+for any key (the client also stores approval and bus event ids here), response `ItemState` with epoch-ms numbers
+(`snoozeUntil`, `updatedAt`). `until` is epoch ms or an RFC 3339 string. A key that is an alert id changes that alert;
+any other key is kept as its own state and listed by `GET /console/state[?prefix=]`. The real route is the PR2 store
+(#202); this is only the stub's mirror of it.

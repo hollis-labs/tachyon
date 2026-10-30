@@ -1,0 +1,10 @@
+#!/bin/sh
+# Replays the scripted forge stream from a running Tachyon started with
+# TACHYON_FORGE_STUBS=1. Usage: scripts/forge-sse-replay [base-url] [last-event-id]
+# Prints the 7 scripted events and exits (?once=1). With a last-event-id it resumes
+# after that id; an id past the ring yields a resync event.
+base="${1:-http://127.0.0.1:18093}"
+last="${2:-}"
+set -- -sN "$base/api/plugins/console/v1/forge/stream?once=1"
+[ -n "$last" ] && set -- -H "Last-Event-ID: $last" "$@"
+exec curl "$@"

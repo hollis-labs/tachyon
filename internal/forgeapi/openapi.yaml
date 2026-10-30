@@ -1,0 +1,504 @@
+openapi: 3.0.3
+info:
+  title: Tachyon Pull requests backend
+  version: "1"
+  description: |
+    Existing routes keep their paths and camelCase shapes (plugins/console/forge.go); new routes and fields
+    are snake_case with unix-ms times. Every success body is {"data": ...}; every error is
+    {"error": {"code", "message", ...extras}} (the forge envelope today). Writes need an operator session,
+    same origin, an Idempotency-Key header (1-128 chars), and refuse an Authorization header (agents get no
+    forge writes). Assurance per op is in WriteLevels (all browser-session, merge included; P1 decided); StepUpLevels reserves merge operator-token.
+    GitHub text (titles, bodies, diffs, comments, check summaries) is untrusted: render as text.
+    Design: tesseract key design_tachyon_pull_requests_backend_20261030. Stub: TACHYON_FORGE_STUBS=1.
+servers:
+  - url: /api/plugins/console/v1/forge
+paths:
+  /pulls/pending:
+    get:
+      summary: Pending inbox, from the PR index joined with triage state and agent links
+      parameters:
+        - {name: reason, in: query, schema: {type: string, enum: [checks_failed, changes_requested, conflicting, review_requested, mentioned, unassigned, stale]}}
+        - {name: repo, in: query, description: owner/name, schema: {type: string}}
+        - {name: state, in: query, description: triage state, default active, schema: {type: string, enum: [active, snoozed, dismissed, resolved]}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/PendingEnvelope'}}}}
+        "429": {$ref: '#/components/responses/Error'}
+  /pulls:
+    get:
+      summary: Org-wide PR list (existing)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/PullListEnvelope'}}}}
+  /status:
+    get:
+      summary: Token owner, scopes, rate limit and cache state (source of the "Cached" label)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/StatusEnvelope'}}}}
+  /viewer:
+    get:
+      summary: The token owner
+      responses:
+        "200": {description: ok}
+  /stream:
+    get:
+      summary: SSE. Events pr.updated, pr.merged, triage.changed, status, resync; ids are a replayable sequence (Last-Event-ID or ?after=); a gap yields resync
+      parameters:
+        - {name: after, in: query, schema: {type: integer}}
+        - {name: once, in: query, description: stub only; end after the replay, schema: {type: string, enum: ["1"]}}
+      responses:
+        "200": {description: text/event-stream, content: {text/event-stream: {schema: {type: string}}}}
+  /audit:
+    get:
+      summary: Write audit (who merged what); no bodies
+      parameters: [{name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}]
+      responses:
+        "200": {description: ok}
+  /repos/{host}/{owner}/{name}:
+    get:
+      summary: Repository (existing). Only host github; others 501 unavailable. Repos outside the watched set are 403 repo_not_allowed
+      parameters: [{$ref: '#/components/parameters/host'}, {$ref: '#/components/parameters/owner'}, {$ref: '#/components/parameters/name'}]
+      responses:
+        "200": {description: ok}
+        "403": {$ref: '#/components/responses/Error'}
+  /repos/{host}/{owner}/{name}/pulls:
+    get:
+      summary: Repo PR list (existing)
+      parameters: [{$ref: '#/components/parameters/host'}, {$ref: '#/components/parameters/owner'}, {$ref: '#/components/parameters/name'}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/PullListEnvelope'}}}}
+  /repos/{host}/{owner}/{name}/commits/{sha}:
+    get:
+      summary: Resolve a commit ref
+      parameters: [{$ref: '#/components/parameters/host'}, {$ref: '#/components/parameters/owner'}, {$ref: '#/components/parameters/name'}, {name: sha, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok}
+        "404": {$ref: '#/components/responses/Error'}
+  /repos/{host}/{owner}/{name}/pulls/{num}:
+    get:
+      summary: Pull request (existing shape, additive fields only)
+      parameters: &pr [{$ref: '#/components/parameters/host'}, {$ref: '#/components/parameters/owner'}, {$ref: '#/components/parameters/name'}, {$ref: '#/components/parameters/num'}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/PullEnvelope'}}}}
+        "404": {$ref: '#/components/responses/Error'}
+  /repos/{host}/{owner}/{name}/pulls/{num}/files:
+    get:
+      summary: Changed files (metadata, paginated)
+      parameters: *pr
+      responses:
+        "200": {description: ok}
+  /repos/{host}/{owner}/{name}/pulls/{num}/diff:
+    get:
+      summary: Diff. ?path= returns one file lazily. Patches over 200 KiB are truncated (truncated:true); binary files have no hunks
+      parameters:
+        - {$ref: '#/components/parameters/host'}
+        - {$ref: '#/components/parameters/owner'}
+        - {$ref: '#/components/parameters/name'}
+        - {$ref: '#/components/parameters/num'}
+        - {name: path, in: query, schema: {type: string}}
+      responses:
+        "200": {description: ok}
+  /repos/{host}/{owner}/{name}/pulls/{num}/commits:
+    get:
+      summary: Commits (existing)
+      parameters: *pr
+      responses:
+        "200": {description: ok}
+  /repos/{host}/{owner}/{name}/pulls/{num}/comments:
+    get:
+      summary: Conversation (existing)
+      parameters: *pr
+      responses:
+        "200": {description: ok}
+    post:
+      summary: Comment (issue or inline). Inline needs path, line, side and commit_id equal to the current head, else 409 head_moved
+      parameters: *pr
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/CommentRequest'}}}
+      responses:
+        "201": {description: created}
+        "409": {$ref: '#/components/responses/Error'}
+  /repos/{host}/{owner}/{name}/pulls/{num}/checks:
+    get:
+      summary: Check runs and statuses at the head sha, failures first
+      parameters: *pr
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/ChecksEnvelope'}}}}
+  /repos/{host}/{owner}/{name}/pulls/{num}/merge-preflight:
+    get:
+      summary: Can this merge, and how. state pending means GitHub is still computing mergeability ("Checking...")
+      parameters: *pr
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/PreflightEnvelope'}}}}
+  /repos/{host}/{owner}/{name}/pulls/{num}/reviews/validate:
+    post:
+      summary: Check queued inline comments against the current diff before submitting
+      parameters: *pr
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ReviewValidateRequest'}}}
+      responses:
+        "200": {description: ok}
+  /repos/{host}/{owner}/{name}/pulls/{num}/reviews:
+    post:
+      summary: One review. 409 head_moved when head_sha differs. A retry with the same Idempotency-Key does not duplicate
+      parameters: *pr
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ReviewRequest'}}}
+      responses:
+        "201": {description: created}
+        "409": {$ref: '#/components/responses/Error'}
+  /repos/{host}/{owner}/{name}/pulls/{num}/merge:
+    put:
+      summary: Guarded merge. Re-runs preflight; 409 merge_blocked (blockers) or head_moved. Browser-session; operator-token step-up reserved. Irreversible
+      parameters: *pr
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/MergeRequest'}}}
+      responses:
+        "200": {description: merged}
+        "403": {$ref: '#/components/responses/Error'}
+        "409": {$ref: '#/components/responses/Error'}
+  /repos/{host}/{owner}/{name}/pulls/{num}/assignees:
+    put:
+      summary: Add GitHub assignees (adds only)
+      parameters: *pr
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [assignees], properties: {assignees: {type: array, items: {type: string}, minItems: 1, maxItems: 10}}}}}
+      responses:
+        "200": {description: ok}
+  /repos/{host}/{owner}/{name}/pulls/{num}/assign-agent:
+    post:
+      summary: One idempotent server-side operation - set the GitHub assignee when the agent has a login, then mail the agent
+      description: |
+        Steps are recorded on the link row, so a retry does only the missing step. The same dedupe_key returns
+        the existing link with replayed:true; force:true sends a reminder (reminders+1). Agents never merge:
+        that is guidance in the payload, not a technical block on an agent's own GitHub credentials.
+      parameters: *pr
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/AssignAgentRequest'}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/AssignAgentEnvelope'}}}}
+        "404": {$ref: '#/components/responses/Error'}
+        "409": {$ref: '#/components/responses/Error'}
+        "422": {$ref: '#/components/responses/Error'}
+  /repos/{host}/{owner}/{name}/pulls/{num}/review-draft:
+    get:
+      summary: Saved review draft (optional)
+      parameters: *pr
+      responses:
+        "200": {description: ok}
+        "404": {$ref: '#/components/responses/Error'}
+    put:
+      summary: Save a review draft
+      parameters: *pr
+      responses:
+        "200": {description: ok}
+    delete:
+      summary: Delete the draft
+      parameters: *pr
+      responses:
+        "200": {description: ok}
+  /api/plugins/console/v1/console/state:
+    servers: [{url: /}]
+    get:
+      summary: Shared item state (the console StateStore); ?prefix= filters (pr-inbox:, pr-assign:)
+      parameters: [{name: prefix, in: query, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/StateListEnvelope'}}}}
+  /api/plugins/console/v1/console/state/{key}:
+    servers: [{url: /}]
+    put:
+      summary: Apply an op to one entry
+      parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/StateOp'}}}
+      responses:
+        "200": {description: ok}
+        "409": {$ref: '#/components/responses/Error'}
+  /api/plugins/console/v1/console/state/bulk:
+    servers: [{url: /}]
+    post:
+      summary: Up to 100 ops with per-key results (select-many assign/snooze/resolve/dismiss)
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [ops], properties: {ops: {type: array, maxItems: 100, items: {allOf: [{$ref: '#/components/schemas/StateOp'}, {type: object, required: [key], properties: {key: {type: string}}}]}}}}}}
+      responses:
+        "200": {description: per-key results}
+components:
+  parameters:
+    host: {name: host, in: path, required: true, schema: {type: string, enum: [github]}}
+    owner: {name: owner, in: path, required: true, schema: {type: string, pattern: '^[A-Za-z0-9_.-]+$'}}
+    name: {name: name, in: path, required: true, schema: {type: string, pattern: '^[A-Za-z0-9_.-]+$'}}
+    num: {name: num, in: path, required: true, schema: {type: integer, minimum: 1}}
+  responses:
+    Error:
+      description: error
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string, enum: [head_moved, merge_blocked, idempotency_conflict, idempotency_key_required, conflict, rate_limited, repo_not_allowed, operator_access_required, requester_cannot_approve, origin_denied, session_required, credential_missing, agent_not_found, agent_not_addressable, pr_not_open, invalid_args, not_found, unavailable]}
+            message: {type: string}
+            retry_after_s: {type: integer, description: on rate_limited}
+            blockers: {type: array, items: {$ref: '#/components/schemas/Blocker'}, description: on merge_blocked}
+            head_sha: {type: string, description: the current head on head_moved}
+    User:
+      type: object
+      required: [login]
+      properties: {login: {type: string}, avatarUrl: {type: string}, isAgent: {type: boolean}}
+    Ref:
+      type: object
+      properties:
+        repo: {type: object, properties: {host: {type: string}, owner: {type: string}, name: {type: string}}}
+        number: {type: integer}
+    Pull:
+      type: object
+      description: existing pullRequestDTO
+      required: [ref, title, state, author, headSha, mergeable]
+      properties:
+        ref: {$ref: '#/components/schemas/Ref'}
+        title: {type: string}
+        body: {type: string}
+        state: {type: string, enum: [open, closed, merged]}
+        draft: {type: boolean}
+        author: {$ref: '#/components/schemas/User'}
+        assignees: {type: array, items: {$ref: '#/components/schemas/User'}}
+        headSha: {type: string}
+        baseBranch: {type: string}
+        headBranch: {type: string}
+        mergeable: {type: string, enum: [mergeable, conflicting, unknown]}
+        checks: {type: array, items: {type: object}}
+        reviews: {type: array, items: {type: object}}
+        additions: {type: integer}
+        deletions: {type: integer}
+        changedFiles: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        url: {type: string}
+    PullEnvelope: {type: object, properties: {data: {$ref: '#/components/schemas/Pull'}}}
+    PullListEnvelope:
+      type: object
+      properties: {data: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Pull'}}, nextCursor: {nullable: true}}}}
+    ChecksSummary:
+      type: object
+      properties:
+        passed: {type: integer}
+        failed: {type: integer}
+        pending: {type: integer}
+        total: {type: integer}
+        failing: {type: array, items: {type: object, properties: {name: {type: string}, url: {type: string}}}}
+    Triage:
+      type: object
+      properties:
+        status: {type: string, enum: [active, snoozed, dismissed, resolved]}
+        snooze_until: {type: integer, description: unix ms}
+        by: {type: string}
+    PendingAssignee:
+      type: object
+      required: [kind, id, label]
+      properties:
+        kind: {type: string, enum: [agent, user]}
+        id: {type: string}
+        label: {type: string}
+        urn: {type: string}
+        task: {type: string, enum: [review, fix_checks, address_comments, resolve_conflicts]}
+        link_status: {type: string, enum: [pending, assigned, sent, failed, cancelled]}
+    PendingRow:
+      type: object
+      required: [pr_key, ref, title, author, assignees, state, reasons, checks, mergeable, head_sha, triage, cached, fetched_ms]
+      properties:
+        pr_key: {type: string, example: "github:hollis-labs/tachyon#201"}
+        ref: {$ref: '#/components/schemas/Ref'}
+        title: {type: string}
+        author: {$ref: '#/components/schemas/User'}
+        assignees: {type: array, items: {$ref: '#/components/schemas/PendingAssignee'}}
+        state: {type: string}
+        draft: {type: boolean}
+        reasons: {type: array, items: {type: string, enum: [checks_failed, changes_requested, conflicting, review_requested, mentioned, unassigned, stale]}}
+        checks: {$ref: '#/components/schemas/ChecksSummary'}
+        mergeable: {type: string}
+        head_sha: {type: string}
+        updatedAt: {type: string, format: date-time}
+        additions: {type: integer}
+        deletions: {type: integer}
+        url: {type: string}
+        age_s: {type: integer}
+        triage: {$ref: '#/components/schemas/Triage'}
+        cached: {type: boolean}
+        fetched_ms: {type: integer}
+    PendingEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            items: {type: array, items: {$ref: '#/components/schemas/PendingRow'}}
+            next_cursor: {type: string, nullable: true}
+            total: {type: integer}
+            cached: {type: boolean}
+            fetched_ms: {type: integer}
+            degraded: {type: boolean}
+    StatusEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          required: [token_owner, rate, watched, degraded]
+          properties:
+            token_owner: {type: string}
+            scopes: {type: array, items: {type: string}}
+            scope_warning: {type: string}
+            rate: {type: object, properties: {remaining: {type: integer}, reset_ms: {type: integer}}}
+            watched: {type: array, items: {type: string}}
+            last_refresh_ms: {type: integer}
+            degraded: {type: boolean}
+            note: {type: string}
+    ChecksEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            head_sha: {type: string}
+            checks: {type: array, items: {type: object, properties: {name: {type: string}, status: {type: string}, conclusion: {type: string, nullable: true}, started_ms: {type: integer}, completed_ms: {type: integer, nullable: true}, url: {type: string}, summary: {type: string}, annotations_count: {type: integer}}}}
+            statuses: {type: array, items: {type: object}}
+    Blocker:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string, enum: [draft, closed, conflicts, checks_failing, checks_pending, changes_requested, review_required, behind_base, branch_protection, head_moved, unknown_mergeable]}
+        message: {type: string}
+    PreflightEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          required: [head_sha, state, blockers, methods_allowed, default_method]
+          properties:
+            head_sha: {type: string}
+            base_ref: {type: string}
+            state: {type: string, enum: [ready, blocked, pending, unknown]}
+            blockers: {type: array, items: {$ref: '#/components/schemas/Blocker'}}
+            methods_allowed: {type: array, items: {type: string, enum: [merge, squash, rebase]}}
+            default_method: {type: string}
+            commit_title: {type: string}
+            commit_message: {type: string}
+            behind_by: {type: integer}
+            required_checks: {type: object, properties: {passed: {type: integer}, failed: {type: integer}, pending: {type: integer}}}
+            delete_branch_default: {type: boolean}
+            will_run: {type: array, items: {type: string}}
+    CommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body: {type: string, maxLength: 65536}
+        path: {type: string}
+        line: {type: integer, minimum: 1}
+        side: {type: string, enum: [LEFT, RIGHT]}
+        inReplyTo: {type: string}
+        commit_id: {type: string, description: required for inline; must equal the current head}
+    InlineComment:
+      type: object
+      required: [path, line, side, body]
+      properties: {path: {type: string}, line: {type: integer}, side: {type: string, enum: [LEFT, RIGHT]}, body: {type: string}}
+    ReviewValidateRequest:
+      type: object
+      required: [head_sha, comments]
+      properties:
+        head_sha: {type: string}
+        comments: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/InlineComment'}}
+    ReviewRequest:
+      type: object
+      required: [verdict, head_sha]
+      properties:
+        verdict: {type: string, enum: [approve, request_changes, comment]}
+        body: {type: string, maxLength: 262144}
+        comments: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/InlineComment'}}
+        head_sha: {type: string}
+    MergeRequest:
+      type: object
+      required: [method, head_sha]
+      properties:
+        method: {type: string, enum: [merge, squash, rebase]}
+        head_sha: {type: string, description: full 40-hex head pinned from the preflight}
+        commit_title: {type: string, maxLength: 256}
+        commit_message: {type: string}
+        delete_branch: {type: boolean, default: false}
+    AssignAgentRequest:
+      type: object
+      required: [agent_id, task]
+      properties:
+        agent_id: {type: string}
+        task: {type: string, enum: [review, fix_checks, address_comments, resolve_conflicts]}
+        note: {type: string, maxLength: 500}
+        checks: {type: array, items: {type: string}, description: failing check names for fix_checks}
+        force: {type: boolean, description: send a reminder}
+    AgentLink:
+      type: object
+      required: [link_id, pr_key, agent_id, task, dedupe_key, status]
+      properties:
+        link_id: {type: string}
+        pr_key: {type: string}
+        agent_id: {type: string}
+        agent_urn: {type: string}
+        task: {type: string}
+        forge_login: {type: string}
+        dedupe_key: {type: string}
+        forge_assigned: {type: boolean}
+        message_id: {type: string}
+        status: {type: string, enum: [pending, assigned, sent, failed, cancelled]}
+        reminders: {type: integer}
+        note: {type: string}
+        assigned_by: {type: string}
+        created_ms: {type: integer}
+        updated_ms: {type: integer}
+        error: {type: string}
+    AssignAgentEnvelope:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            link: {$ref: '#/components/schemas/AgentLink'}
+            replayed: {type: boolean}
+            reminded: {type: boolean}
+    StateOp:
+      type: object
+      required: [type]
+      properties:
+        type: {type: string, enum: [read, dismiss, snooze, settle, reopen]}
+        note: {type: string}
+        until: {description: 'snooze: epoch ms (what the client sends) or an RFC 3339 string, within 90 days', oneOf: [{type: integer}, {type: string, format: date-time}]}
+        preset: {type: string, enum: [1h, 4h, tomorrow]}
+        resolution: {type: string}
+        expected_version: {type: integer}
+    StateListEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required: [key, status, by, updatedAt]
+            properties:
+              key: {type: string}
+              status: {type: string, enum: [unread, read, dismissed, snoozed, settled]}
+              snoozeUntil: {type: integer, description: epoch ms}
+              resolution: {type: string}
+              note: {type: string}
+              by: {type: string}
+              updatedAt: {type: integer, description: epoch ms}
+              version: {type: integer}

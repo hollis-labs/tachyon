@@ -1,0 +1,9 @@
+{
+ "mode": "text",
+ "items": [],
+ "next_cursor": null,
+ "notice": {
+  "code": "semantic_unavailable",
+  "message": "Semantic search is unavailable; showing text results."
+ }
+}

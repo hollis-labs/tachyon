@@ -1,0 +1,161 @@
+{
+ "session": {
+  "id": "e11020b390a5d4d8a7992e8c29a213dfe2639b4d72afdce16ee74d1c86a4f039",
+  "kind": "codex",
+  "title": "Fix flaky approvals test",
+  "project": "tachyon",
+  "model": "gpt-5-codex",
+  "started_at": 1761713600000,
+  "ended_at": 1761714320000,
+  "turn_count": 12,
+  "tool_call_count": 9,
+  "error_count": 1,
+  "tools": [
+   "apply_patch",
+   "shell"
+  ],
+  "tags": [
+   "tests"
+  ],
+  "has_enrichment": true
+ },
+ "turns": [
+  {
+   "seq": 0,
+   "role": "user",
+   "text": "Codex turn 0.",
+   "text_truncated": false,
+   "started_at": 1761713600000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 1,
+   "role": "assistant",
+   "text": "Codex turn 1.",
+   "text_truncated": false,
+   "started_at": 1761713660000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 2,
+   "role": "user",
+   "text": "Codex turn 2.",
+   "text_truncated": false,
+   "started_at": 1761713720000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 3,
+   "role": "assistant",
+   "text": "Codex turn 3.",
+   "text_truncated": false,
+   "started_at": 1761713780000,
+   "thinking_bytes": 0,
+   "tool_calls": [
+    {
+     "name": "shell",
+     "status": "error",
+     "result_bytes": 300,
+     "started_at": 1761713780000,
+     "ended_at": 1761713781000,
+     "error_heuristic": true
+    }
+   ]
+  },
+  {
+   "seq": 4,
+   "role": "user",
+   "text": "Codex turn 4.",
+   "text_truncated": false,
+   "started_at": 1761713840000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 5,
+   "role": "assistant",
+   "text": "Codex turn 5.",
+   "text_truncated": false,
+   "started_at": 1761713900000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 6,
+   "role": "user",
+   "text": "Codex turn 6.",
+   "text_truncated": false,
+   "started_at": 1761713960000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 7,
+   "role": "assistant",
+   "text": "Codex turn 7.",
+   "text_truncated": false,
+   "started_at": 1761714020000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 8,
+   "role": "user",
+   "text": "Codex turn 8.",
+   "text_truncated": false,
+   "started_at": 1761714080000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 9,
+   "role": "assistant",
+   "text": "Codex turn 9.",
+   "text_truncated": false,
+   "started_at": 1761714140000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 10,
+   "role": "user",
+   "text": "Codex turn 10.",
+   "text_truncated": false,
+   "started_at": 1761714200000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 11,
+   "role": "assistant",
+   "text": "Codex turn 11.",
+   "text_truncated": false,
+   "started_at": 1761714260000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  }
+ ],
+ "turn_total": 12,
+ "next_turn": null,
+ "usage": {
+  "input_tokens": 182000,
+  "output_tokens": 24100,
+  "cache_read_tokens": 910000,
+  "cache_write_tokens": 61000
+ },
+ "subagents": [],
+ "enrichment": {
+  "title": "Fix flaky approvals test",
+  "summary": "Stubbed enrichment summary.",
+  "topics": [
+   "stubs"
+  ],
+  "entities": [],
+  "decisions": [],
+  "follow_ups": []
+ },
+ "codex_errors_are_heuristic": true
+}
