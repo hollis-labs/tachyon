@@ -11,7 +11,7 @@ const session = (over: Partial<Session> & { id: string }): Session => ({
   agent: { urn: null, name: 'builder', logical_agent_id: null }, kind: 'chat', provider: 'claude', model: null, workroot: '/w/tachyon', state: 'working', stale_reason: null, stale_since: null,
   needs_you: { reason: null, since: null }, started_at: 0, last_activity_at: null, runtime_ms: 0, one_liner: null,
   context: { used: null, window: null, pct: null, source: 'unknown', breakdown: null }, tokens: { metered: false, input: null, output: null, cache_read: null, cache_write: null },
-  tool_call_count: null, pending: { approval: false, question: false, known: false }, assignment: null, spark: [], capabilities: { nudge: true, interrupt: { available: true, reason: null }, restart: true }, ...over,
+  tool_call_count: null, last_clear_at: null, pending: { approval: false, question: false, known: false }, assignment: null, spark: [], capabilities: { nudge: true, interrupt: { available: true, reason: null }, restart: true }, ...over,
 })
 const data = (sessions: Session[]): SessionsResponse => ({ sessions, summary: { working: sessions.length }, collector: { collecting: true, sessions: sessions.length, last_event_at: null, strategy: 'snapshot' } })
 
