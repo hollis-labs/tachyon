@@ -177,7 +177,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
       <header className="shrink-0 border-b border-border px-4 pb-0 pt-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <GitPullRequest className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />
-          <h1 className="min-w-0 text-[15px] font-medium text-fg [overflow-wrap:anywhere]">
+          <h1 className="min-w-0 font-sans text-[15px] font-semibold normal-case tracking-normal text-fg [overflow-wrap:anywhere]">
             {pr.title} <span className="font-mono text-fg-faint">#{pr.ref.number}</span>
           </h1>
           <Pill tone={stateTone(pr)}>{pr.draft && pr.state === 'open' ? 'draft' : pr.state}</Pill>
