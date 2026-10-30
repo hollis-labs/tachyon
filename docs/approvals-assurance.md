@@ -15,10 +15,25 @@ Levels: `none` < `browser-session` < `operator-token` (the bridge's existing spe
 | resolve_medium, resolve_high, resolve_destructive, batch_resolve, secret_submit, action_run_read | operator-token |
 | anything not in the table | operator-token (fails closed) |
 
-`resolve_high` is listed for the typed-phrase resolve (addendum 2) that a later slice enables; today the
-inbox still refuses class high with `provider_handoff_required`. This slice changes no existing response:
-the medium check now reads the table (same result), and `/elevate` and `/de-elevate` pass through the
-provider to the same bridge routes.
+`resolve_high` gates stored-high and cerberus-source items (A3a, below). Response changes: the medium check
+reads the table (same result), and `/elevate` and `/de-elevate` pass through the provider to the same bridge routes.
+
+## Deciding high and cerberus items in the browser (A3a)
+
+Temporary by design: the operator confirmed this lower posture (CW-20261030-0129); the hardening revisit is
+CW-20261030-0082. Before this, such items returned `403 provider_handoff_required`.
+
+- One gate, `approvals.CanResolve(record, now)`, feeds both the projection and the resolve handler. The projection
+  carries `approvable` and, when false, `approvable_reason` (`already_resolved`, `expired`, `unsupported_class`).
+  `deferred` and `decision_pending` are in the contract but not produced: a deferred item can still be decided and
+  decisions are not held on the server.
+- A high or cerberus item that is approvable carries `confirm: {phrase}`. The phrase is `APPROVE ` plus 8 hex
+  digits derived from the item id and its `op_digest` (a hash of the stored request when it has none), so the asker
+  cannot choose it and a registered action run's phrase covers the same operation that Start re-verifies.
+- Approving needs `operator-token` assurance (`resolve_high`, 403 `assurance_insufficient`) and
+  `response.confirmation` equal to the phrase (trimmed, case-sensitive; 422 `confirmation_required`, audited as
+  `confirmation_failed`). Denying needs neither the phrase nor more than the usual check.
+- Stale revisions (409 `stale_revision`) and a second submit (409) behave as for any item.
 
 ## GET /access
 
