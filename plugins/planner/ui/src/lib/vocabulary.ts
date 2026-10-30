@@ -100,6 +100,8 @@ export const TEXT = {
   blockedReasonCancel: 'Cancel',
   blockedReasonHint: 'A reason is required. Enter blocks, Esc cancels',
   changedElsewhere: (task: string, lane: string) => `${task} changed elsewhere and is in ${lane}`,
+  cardMoveLabel: (title: string, lane: string) => `Move ${title}. Now in ${lane}`,
+  laneSwitcher: 'Task lanes',
   prChip: (n: number) => `PR ${n}`,
   mentionLabel: 'Mention a theme',
   keysHint: '/ palette · N new · L link · B board · M timeline · P pin · F finish · G then T/S/R/I/D/K/X lens',

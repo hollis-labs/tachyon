@@ -5,8 +5,23 @@ import { usePlannerApi } from '@planner/api/context'
 import { PlannerApiError } from '@planner/api/errors'
 import { notifyError } from '@planner/api/notifications'
 import { LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
-import { LaneBoard, type Lane } from '@planner/shared'
+import { LaneBoard, StatusMenu, type Lane } from '@planner/shared'
+import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import type { PrCite, TaskLane, ThemeTask, ThemeTasks } from '@planner/api/types'
+
+/** True below the sm breakpoint, where lanes become a switcher. */
+function useNarrow() {
+  const q = '(max-width: 639px)'
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(q).matches)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const m = window.matchMedia(q)
+    const on = () => setNarrow(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return narrow
+}
 
 const laneTitle = (id: string) => LANES.find((l) => l.id === id)?.title ?? id
 const prHref = (c: PrCite) => `https://${c.host}/${c.owner}/${c.repo}/pull/${c.number}`
@@ -26,6 +41,8 @@ export function TaskBoard({ themeId, paused }: { themeId: string; paused?: boole
   const [summary, setSummary] = useState('')
   const [blocking, setBlocking] = useState<{ id: string; from: TaskLane } | null>(null)
   const [reason, setReason] = useState('')
+  const [activeLane, setActiveLane] = useState<LaneId>('doing')
+  const narrow = useNarrow()
   const live = useRef(true)
   useEffect(() => () => { live.current = false }, [])
 
@@ -118,7 +135,19 @@ export function TaskBoard({ themeId, paused }: { themeId: string; paused?: boole
     pending: pending.has(t.id),
     content: (
       <span className="flex flex-col gap-0.5">
-        <span className="dash-support text-fg">{t.title}</span>
+        <span className="flex items-start gap-2">
+          <span className="min-w-0 flex-1 dash-support text-fg">{t.title}</span>
+          {/* Drag is never the only way: every card has a Move to menu. */}
+          <StatusMenu
+            trigger={<span className="dash-caption text-fg-muted hover:text-fg max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-2">{TEXT.moveTo}</span>}
+            triggerLabel={TEXT.cardMoveLabel(t.title, laneTitle(t.status))}
+            heading={TEXT.moveTo}
+            current={t.status}
+            options={LANES.map((l) => ({ value: l.id, label: l.title }))}
+            onSelect={(to) => move(t.id, t.status, to)}
+            disabled={paused || pending.has(t.id)}
+          />
+        </span>
         {(t.pr_cites.length > 0 || t.assignees.length > 0) && (
           <span className="flex flex-wrap items-center gap-x-2 font-mono dash-caption text-fg-muted">
             {t.pr_cites.map((c) => (
@@ -132,9 +161,13 @@ export function TaskBoard({ themeId, paused }: { themeId: string; paused?: boole
       </span>
     ),
   })
-  const lanes: Lane[] = LANES.map((l) => ({ id: l.id, title: l.title, collapsed: l.id === 'done', cards: (data.lanes[l.id as LaneId] ?? []).map(card) }))
+  const all: Lane[] = LANES.map((l) => ({ id: l.id, title: l.title, collapsed: l.id === 'done', cards: (data.lanes[l.id as LaneId] ?? []).map(card) }))
+  const lanes = narrow ? all.filter((l) => l.id === activeLane) : all
   return (
     <>
+      {narrow && (
+        <DashboardViewTabs variant="segments" label={TEXT.laneSwitcher} value={activeLane} onChange={(v) => setActiveLane(v as LaneId)} items={LANES.map((l) => ({ value: l.id, label: `${l.title} ${data.lanes[l.id]?.length ?? 0}` }))} />
+      )}
       {blocking && (
         <form onSubmit={submitBlock} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setBlocking(null) } }} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
           <label htmlFor="block-reason" className="dash-caption text-fg-muted">{TEXT.blockedReasonLabel}</label>

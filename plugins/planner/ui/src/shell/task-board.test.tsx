@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PlannerApiProvider } from '@planner/api/context'
 import { PlannerApiError } from '@planner/api/errors'
@@ -106,5 +106,26 @@ describe('TaskBoard', () => {
   it('says the lanes are not available when the backend has no such route yet', async () => {
     setup({ plannerThemeTasks: vi.fn().mockRejectedValue(new PlannerApiError(404, 'not found', 'not_found')) })
     expect(await screen.findByText(/not available on this backend yet/)).toBeTruthy()
+  })
+  it('has a Move to menu on every card, so drag is never the only way', async () => {
+    const api = setup()
+    await screen.findByText('Task A')
+    fireEvent.click(screen.getByRole('button', { name: 'Move Task A. Now in Doing' }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('menuitem', { name: /Review/ }))
+    await waitFor(() => expect(api.plannerTaskTransition).toHaveBeenCalledWith('A', 'review', 'doing', undefined))
+  })
+  it('shows one lane with a switcher on a narrow screen', async () => {
+    const mm = vi.fn().mockReturnValue({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })
+    vi.stubGlobal('matchMedia', mm)
+    window.matchMedia = mm as never
+    setup()
+    await screen.findByText('Task A')
+    expect(screen.queryByRole('list', { name: 'review' })).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: /Review 1/ }))
+    expect(screen.getByRole('list', { name: 'review' })).toBeTruthy()
+    vi.unstubAllGlobals()
+    // @ts-expect-error restore jsdom default
+    delete window.matchMedia
   })
 })
