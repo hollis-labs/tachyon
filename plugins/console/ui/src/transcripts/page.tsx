@@ -1,5 +1,3 @@
-import { DataTable } from "@hollis-labs/kit-dashboard/data"
-import { DashboardToolbar, DashboardField } from "@hollis-labs/kit-dashboard/layout"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, SearchInput } from "@hollis-labs/design-components"
@@ -9,6 +7,7 @@ import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import { Activity, BarChart3, Boxes, FileText, RefreshCw } from "lucide-react"
 import { Segmented } from "../components/segmented"
 import { TranscriptDialog } from "./detail"
+import { SessionFilters, SessionList, WindowPicker } from "./sessions"
 import {
   read,
   filterSessions,
@@ -71,8 +70,8 @@ export function TranscriptDashboard() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filters>(defaults)
-  const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Session>()
+  const [activeId, setActiveId] = useState("")
   const [tab, setTab] = useState<Tab>("sessions")
   const [filteredTo, setFilteredTo] = useState("")
   const [linkedId, setLinkedId] = useState(linkedSession)
@@ -144,12 +143,10 @@ export function TranscriptDashboard() {
   const tools = useMemo(() => rank(rows, "tool"), [rows])
   const set = (patch: Partial<Filters>) => {
     setFilter((f) => ({ ...f, ...patch }))
-    setPage(0)
   }
   const reset = () => {
     setFilter(defaults)
     setFilteredTo("")
-    setPage(0)
   }
   // A bar click filters the sessions list and takes you there.
   const drill = (patch: Partial<Filters>, label: string) => {
@@ -157,8 +154,6 @@ export function TranscriptDashboard() {
     setFilteredTo(label)
     setTab("sessions")
   }
-  const maxPage = Math.max(0, Math.ceil(rows.length / 20) - 1)
-  const visiblePage = Math.min(page, maxPage)
   const facets = snapshot?.facets
   const chartDays = filter.days || 90
   const colors = [
@@ -197,16 +192,16 @@ export function TranscriptDashboard() {
           </div>
         </div>
       {error && (
-        <div
+        <p
           role="alert"
-          className="rounded border border-danger/30 bg-danger-muted/10 p-3 dash-control text-danger"
+          className={`dash-control ${snapshot ? "text-fg-muted" : "text-danger"}`}
         >
           Transcript source unavailable: {error}
           {snapshot && " Showing the last snapshot."}{" "}
           <button className="underline" onClick={() => reload.current()}>
             Retry
           </button>
-        </div>
+        </p>
       )}
       {loading && (
         <p
@@ -258,74 +253,11 @@ export function TranscriptDashboard() {
         </KpiGrid>
       </section>}
       <section className="space-y-4" aria-label="Filtered transcript insights">
-        <DashboardToolbar className="items-end">
-          <DashboardField orientation="stacked" label="Time window">
-            <select
-              aria-label="Time window"
-              className="max-w-64"
-              value={filter.days}
-              onChange={(e) => set({ days: Number(e.target.value) })}
-            >
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-              <option value={0}>All recorded time</option>
-            </select>
-          </DashboardField>
-          <DashboardField orientation="stacked" label="Tool">
-            <select
-              aria-label="Tool"
-              className="max-w-64"
-              value={filter.tool}
-              onChange={(e) => set({ tool: e.target.value })}
-            >
-              <option value="">All tools</option>
-              {facets?.tools.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </DashboardField>
-          <DashboardField orientation="stacked" label="Model">
-            <select
-              aria-label="Model"
-              className="max-w-56"
-              value={filter.model}
-              onChange={(e) => set({ model: e.target.value })}
-            >
-              <option value="">All models</option>
-              {facets?.models.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </DashboardField>
-          <DashboardField orientation="stacked" label="Session kind">
-            <select
-              aria-label="Session kind"
-              className="max-w-64"
-              value={filter.kind}
-              onChange={(e) => set({ kind: e.target.value })}
-            >
-              <option value="">All kinds</option>
-              <option value="main">Main sessions</option>
-              <option value="subagent">Subagents</option>
-            </select>
-          </DashboardField>
-          <label className="flex h-8 items-center gap-2 px-2 dash-control text-fg-muted">
-            <input
-              type="checkbox"
-              checked={filter.errors}
-              onChange={(e) => set({ errors: e.target.checked })}
-            />
-            With tool errors
-          </label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={reset}
-          >
-            Reset
-          </Button>
-        </DashboardToolbar>
+        {tab === "sessions" ? (
+          <SessionFilters filter={filter} facets={facets} set={set} reset={reset} />
+        ) : (
+          <WindowPicker filter={filter} set={set} />
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3 dash-control">
           <span className="text-fg-muted">
             {number(rows.length)} sessions in view
@@ -438,69 +370,30 @@ export function TranscriptDashboard() {
           </>
         )}
       </section>
-      {tab === "sessions" && <section
-        className="overflow-hidden rounded border border-border"
-        aria-label="Transcript sessions"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
-          <h2 className="font-mono dash-control uppercase tracking-wide text-fg-muted">
-            Explore sessions
-          </h2>
-          <div className="dash-search-adapter w-64 max-w-full">
-            <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} slashToFocus={false} />
+      {tab === "sessions" && (
+        <section aria-label="Transcript sessions" className="-mx-4">
+          <div className="px-4 pb-3">
+            <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} />
           </div>
-        </div>
-        <DataTable
-          ariaLabel="Transcript sessions"
-          className="min-w-3xl"
-          density="comfortable"
-          items={rows.slice(visiblePage * 20, (visiblePage + 1) * 20)}
-          getRowId={s => s.id}
-          columns={[
-            { key: "session", header: "Session / project", width: "fill", cell: s => <div className="min-w-0">
-              <button onClick={() => open(s)} className="block w-full truncate text-left dash-body text-fg hover:text-info" title={s.title}>{s.title || "Untitled session"}</button>
-              <div className="mt-1 truncate dash-caption text-fg-faint" title={s.project}>{projectName(s.project)} · {s.kind}</div>
-            </div> },
-            { key: "tool", header: "Tool / model", cell: s => <><span className="dash-control text-info">{s.tool}</span><div className="mt-1 max-w-52 truncate font-mono dash-caption text-fg-faint">{s.model || "Unspecified"}</div></> },
-            { key: "started", header: "Started", cell: s => <span className="dash-control text-fg-muted">{s.started_at ? new Date(s.started_at).toLocaleDateString() : "Unknown"}</span> },
-            { key: "turns", header: "Turns", cell: s => <span className="dash-control text-fg-muted">{number(s.turns)}</span> },
-            { key: "tokens", header: "Tokens", cell: s => <span className="dash-control text-fg-muted" title={number(s.tokens)}>{compact(s.tokens)}</span> },
-            { key: "errors", header: "Errors", cell: s => <span className={`dash-control ${s.errors ? "text-warning" : "text-fg-faint"}`}>{number(s.errors)}</span> },
-          ]}
-        />
-        {!rows.length && !loading && (
-          <p className="p-10 text-center dash-body text-fg-faint">
-            {snapshot
-              ? "No sessions match these filters."
-              : "Connect the transcript source to explore sessions."}
-          </p>
-        )}
-        <div className="flex items-center justify-between border-t border-border px-4 py-3 dash-control text-fg-faint">
-          <span>
-            {rows.length
-              ? `${visiblePage * 20 + 1}–${Math.min(rows.length, (visiblePage + 1) * 20)} of ${number(rows.length)}`
-              : "0 sessions"}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!visiblePage}
-              onClick={() => setPage(visiblePage - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={visiblePage >= maxPage}
-              onClick={() => setPage(visiblePage + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      </section>}
+          {!!rows.length && (
+            <SessionList
+              key={JSON.stringify(filter)}
+              rows={rows}
+              activeId={activeId}
+              onActive={setActiveId}
+              onOpen={open}
+              keys={!selected}
+            />
+          )}
+          {!rows.length && !loading && (
+            <p className="p-10 text-center dash-body text-fg-faint">
+              {snapshot
+                ? "No sessions match these filters."
+                : "Connect the transcript source to explore sessions."}
+            </p>
+          )}
+        </section>
+      )}
       {selected && (
         <TranscriptDialog
           key={selected.id}

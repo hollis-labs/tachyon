@@ -15,6 +15,7 @@ import {
   TranscriptError,
 } from "./data"
 import { TranscriptDashboard } from "./page"
+import { dayLabel, groupByDay } from "./sessions"
 
 const { read, refresh } = vi.hoisted(() => ({
   read: vi.fn(),
@@ -109,6 +110,37 @@ describe("transcript calculations", () => {
     })
   })
 })
+describe("session list", () => {
+  const noon = new Date(2026, 9, 30, 12).getTime()
+  const at = (d: number, h = 9) => new Date(2026, 9, d, h).toISOString()
+  it("groups newest first by local day with Today, Yesterday and dated headers", () => {
+    expect(dayLabel(at(30), noon)).toBe("Today")
+    expect(dayLabel(at(29), noon)).toBe("Yesterday")
+    const groups = groupByDay(
+      [
+        { ...base, id: "old", started_at: at(28) },
+        { ...base, id: "undated", started_at: undefined },
+        { ...base, id: "new", started_at: at(30, 8) },
+        { ...base, id: "newer", started_at: at(30, 11) },
+      ],
+      noon,
+    )
+    expect(groups.map((g) => [g.label, g.rows.map((r) => r.id)])).toEqual([
+      ["Today", ["newer", "new"]],
+      [dayLabel(at(28), noon), ["old"]],
+      ["Undated", ["undated"]],
+    ])
+  })
+  it("treats a one-day window as the last 24 hours", () => {
+    const now = Date.parse("2026-10-30T12:00:00Z")
+    const f = { days: 1, tool: "", model: "", kind: "", query: "", errors: false }
+    const rows = [
+      { ...base, id: "in", started_at: "2026-10-29T13:00:00Z" },
+      { ...base, id: "out", started_at: "2026-10-29T11:00:00Z" },
+    ]
+    expect(filterSessions(rows, f, now).map((r) => r.id)).toEqual(["in"])
+  })
+})
 describe("transcript dashboard", () => {
   it("separates database coverage from partial calculations and filters locally", async () => {
     read.mockResolvedValue(snapshot)
@@ -121,11 +153,14 @@ describe("transcript dashboard", () => {
       ).getByText("100"),
     ).toBeTruthy()
     fireEvent.click(screen.getByRole("tab", { name: "Sessions" }))
-    fireEvent.change(screen.getByLabelText("Tool"), {
-      target: { value: "codex" },
+    expect(screen.getByRole("button", { name: /Design review/ })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("Search session metadata"), {
+      target: { value: "routing" },
     })
-    expect(screen.getByRole("button", { name: "Fix routing" })).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "Design review" })).toBeNull()
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Design review/ })).toBeNull(),
+    )
+    expect(screen.getByRole("button", { name: /Fix routing/ })).toBeTruthy()
     fireEvent.change(screen.getByLabelText("Search session metadata"), {
       target: { value: "no-match" },
     })
@@ -146,7 +181,7 @@ describe("transcript dashboard", () => {
       ),
     )
     render(<TranscriptDashboard />)
-    fireEvent.click(await screen.findByRole("button", { name: "Fix routing" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Fix routing/ }))
     expect((await screen.findByText("formatted")).tagName).toBe("STRONG")
     expect(read).toHaveBeenCalledWith(
       `/sessions/${base.id}?turn_offset=0`,
@@ -161,13 +196,13 @@ describe("transcript dashboard", () => {
   it("removes prior private data when source authorization is revoked", async () => {
     read.mockResolvedValue(snapshot)
     render(<TranscriptDashboard />)
-    await screen.findByRole("button", { name: "Fix routing" })
+    await screen.findByRole("button", { name: /Fix routing/ })
     read.mockRejectedValue(
       new TranscriptError(403, "authentication", "Access denied"),
     )
     refresh.fn()
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "Fix routing" })).toBeNull(),
+      expect(screen.queryByRole("button", { name: /Fix routing/ })).toBeNull(),
     )
     expect(screen.getByRole("alert").textContent).toContain("Access denied")
   })
@@ -195,7 +230,7 @@ describe("transcript dashboard", () => {
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Showing the last snapshot",
     )
-    expect(screen.getByRole("button", { name: "Fix routing" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: /Fix routing/ })).toBeTruthy()
   })
   it("turns an Insights bar click into a visible, resettable filter on Sessions", async () => {
     read.mockResolvedValue(snapshot)
@@ -208,8 +243,8 @@ describe("transcript dashboard", () => {
     )!
     fireEvent.click(bar)
     expect(screen.getByText(/Filtered to claude/)).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "Fix routing" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /Fix routing/ })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Reset filters" }))
-    expect(screen.getByRole("button", { name: "Fix routing" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: /Fix routing/ })).toBeTruthy()
   })
 })
