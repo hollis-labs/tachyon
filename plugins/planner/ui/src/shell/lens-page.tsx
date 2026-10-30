@@ -301,6 +301,8 @@ function LensFocus({ db, item, statuses, write, onPin, children }: { db: Planner
           <StatusPick status={item.status ?? ''} statuses={statuses} onPick={(status) => edit({ status })} />
           {item.mvp === true && <Chip square>{TEXT.mvp}</Chip>}
           {typeof item.discuss_in === 'string' && item.discuss_in && <span className="flex items-center gap-1.5 text-control text-fg-muted">{TEXT.discussIn}<Chip square>{item.discuss_in}</Chip></span>}
+          {db === 'decisions' && !DECIDED.has(item.status ?? '') && item.created && <span className="text-control text-fg-muted">{TEXT.waitingDays(Math.max(0, Math.floor((Date.now() - Date.parse(String(item.created))) / 86_400_000)))}</span>}
+          {db === 'decisions' && typeof item.owner === 'string' && item.owner && <span className="flex items-center gap-1.5 text-control text-fg-muted">{TEXT.owner}<Chip square>@{item.owner}</Chip></span>}
         </div>
         {item.tldr && <InlineEdit as="p" multiline label={TEXT.descriptionLabel} value={item.tldr} onCommit={(tldr) => edit({ tldr })} className="max-w-prose text-control text-fg-muted" />}
       </header>
