@@ -42,6 +42,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chatactivity"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/chatcards"
 	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/chatthreads"
 	"github.com/hollis-labs/tachyon/internal/chattopics"
@@ -142,6 +143,7 @@ type Server struct {
 	chatWorkspace    *chatworkspace.Handler
 	chatTopics       *chattopics.Handler
 	chatPlan         *chatplan.Service
+	chatCards        *chatcards.Binder
 	chatActivity     *chatactivity.Handler
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
@@ -371,6 +373,28 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		return out
 	}
+	cardRefs := &chatcards.Store{DB: store}
+	s.chatCards = &chatcards.Binder{
+		Refs:   cardRefs,
+		Get:    (&approvals.Store{DB: store}).Get,
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+		},
+		Note: func(ctx context.Context, thread, itemID, caption string, _ chatcards.Card) {
+			if t, err := chatapi.ParseRef(thread); err == nil && t.Source == chatapi.SourceApp && s.appAgent != nil {
+				_, _ = s.appAgent.AppendNote(ctx, t.ID, "card", caption, map[string]any{"item_id": itemID})
+			}
+		},
+		Answer: func(ctx context.Context, thread, text string) {
+			if t, err := chatapi.ParseRef(thread); err == nil && t.Source == chatapi.SourceApp && s.appAgent != nil {
+				_, _, _ = s.appAgent.Send(ctx, t.ID, text)
+			}
+		},
+		Changes: approvals.Changes(store),
+	}
+	s.chatThreads.Agg.CardBlocks = s.chatCards.OpenCounts
+	go s.chatCards.Follow(approvalContext)
 	if s.appAgent != nil && s.cfg.ChatClientContext {
 		s.appAgent.ClientContext = func(ctx context.Context, id string) any {
 			cc, err := ws.ClientContextFor(ctx, chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
@@ -528,6 +552,9 @@ func (s *Server) Routes() http.Handler {
 			var cardTools *dataverbs.Cards
 			if s.approvalInbox != nil {
 				cardTools = &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry, Receipt: s.cardReceiptView}
+				if s.chatCards != nil {
+					cardTools.Bind = s.chatCards.Bind
+				}
 			}
 			// Read-only Tesseract search and read for agents; nil (feature off) when no address is set.
 			tesseractReader, err := tesseractread.New(s.cfg.Upstreams.TesseractURL, s.cfg.Upstreams.TesseractTokenFile)
