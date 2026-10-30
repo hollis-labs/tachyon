@@ -12,6 +12,7 @@ import { getForgeClient } from '../refs/client'
 import { repoKey } from '../types'
 import { registerInboxActions, type InboxActionDeps } from './actions'
 import { AssignDialog } from './AssignDialog'
+import { PrPreviewDrawer } from './PrPreviewDrawer'
 import { useItemStates, useNow, usePendingPrs } from './hooks'
 import { prWorkspaceHref } from './href'
 import {
@@ -75,6 +76,7 @@ function Checks({ item }: { item: InboxItem }) {
 interface RowProps {
   selected: boolean
   onToggle: (i: InboxItem) => void
+  onPreview: (i: InboxItem) => void
   item: InboxItem
   now: number
   agentName: (id: string) => string
@@ -82,7 +84,7 @@ interface RowProps {
   onTriage: (i: InboxItem, op: 'dismiss' | 'settle' | 'reopen' | { snooze: number }) => Promise<void>
 }
 
-function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle }: RowProps) {
+function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle, onPreview }: RowProps) {
   const { pr } = item
   const [menu, setMenu] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -113,7 +115,7 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle }: R
             {item.categories.map((c) => <Pill key={c} category={c} />)}
             {item.status === 'snoozed' && item.triage?.snoozeUntil && <span className="font-mono dash-caption text-fg-muted">snoozed until {new Date(item.triage.snoozeUntil).toLocaleString()}</span>}
           </div>
-          <p className="mt-0.5 truncate dash-body text-fg-muted">{pr.title}</p>
+          <button type="button" onClick={() => onPreview(item)} aria-label={`Preview ${label}: ${pr.title}`} className="mt-0.5 block max-w-full truncate text-left dash-body text-fg-muted hover:text-fg hover:underline">{pr.title}</button>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono dash-support text-fg-muted">
             <span>by {pr.author.login}</span>
             <span>updated {ago(Date.parse(pr.updatedAt), now)}</span>
@@ -189,6 +191,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkAssigning, setBulkAssigning] = useState(false)
+  const [previewKey, setPreviewKey] = useState<string | null>(null)
   const [names, setNames] = useState<Record<string, string>>({})
 
   useEffect(() => registerInboxActions(actionBus, { forge, messaging, stateStore, forgeLogin }), [actionBus, forge, messaging, stateStore, forgeLogin])
@@ -251,7 +254,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const filtered = filter.categories.length > 0 || !!filter.repo || !!filter.search || filter.unassignedOnly
 
   return (
-    <section data-dashboard-shape="square" data-dashboard-accent="yellow" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg" onKeyDown={(e) => { if (e.key === 'Escape' && selected.size > 0 && !assigning && !bulkAssigning && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) setSelected(new Set()) }}>
+    <section data-dashboard-shape="square" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg" onKeyDown={(e) => { if (e.key === 'Escape' && selected.size > 0 && !assigning && !bulkAssigning && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) setSelected(new Set()) }}>
       <PageHeader title="Pull requests">
         <Button variant="outline" size="sm" className="dash-header-action" onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Button>
       </PageHeader>
@@ -326,7 +329,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
             )}
             <ul>
               {g.items.map((i) => (
-                <Row key={`${repoKey(i.pr.ref.repo)}#${i.pr.ref.number}`} item={i} now={now} agentName={(id) => names[id] ?? id} onAssign={setAssigning} onTriage={triage} selected={selected.has(i.key)} onToggle={toggle} />
+                <Row key={`${repoKey(i.pr.ref.repo)}#${i.pr.ref.number}`} item={i} now={now} agentName={(id) => names[id] ?? id} onAssign={setAssigning} onTriage={triage} selected={selected.has(i.key)} onToggle={toggle} onPreview={(x) => setPreviewKey(x.key)} />
               ))}
             </ul>
           </div>
@@ -335,6 +338,9 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
       )}
 
       </div>
+      {previewKey && all.find((i) => i.key === previewKey) && (
+        <PrPreviewDrawer item={all.find((i) => i.key === previewKey)!} forge={forge} onClose={() => setPreviewKey(null)} onAssign={(i) => { setPreviewKey(null); setAssigning(i) }} />
+      )}
       {bulkAssigning && picked.length > 0 && (
         <AssignDialog pr={picked[0].pr} existing={picked[0].assignments} also={picked.slice(1).map((i) => ({ pr: i.pr, existing: i.assignments }))} onClose={() => setBulkAssigning(false)} onDone={(m) => { setToast(m); setSelected(new Set()); void refresh() }} />
       )}
