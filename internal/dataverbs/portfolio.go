@@ -4,7 +4,22 @@ import (
 	"context"
 
 	"github.com/hollis-labs/tachyon/internal/planner"
+	"github.com/hollis-labs/tachyon/internal/plannerassign"
 )
+
+// portfolioAssign addresses a portfolio item by {db,id} and one assignee. Torque task targets are
+// assigned through the Planner HTTP routes, which know the configured Torque instance.
+type portfolioAssign struct {
+	DB      string `json:"db"`
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id,omitempty"`
+	TeamID  string `json:"team_id,omitempty"`
+	Note    string `json:"note,omitempty"`
+}
+
+func (q portfolioAssign) create() plannerassign.Create {
+	return plannerassign.Create{Target: plannerassign.Target{DB: q.DB, ID: q.ID}, AgentID: q.AgentID, TeamID: q.TeamID, Note: q.Note}
+}
 
 type portfolioList struct {
 	DB      string            `json:"db"`
@@ -50,6 +65,13 @@ func registerPortfolio(p *Local) {
 	register(p, "planner.portfolio.resolve", false, "Resolve a local UUID or unambiguous imported ID to its portfolio database and item.", []string{"id"}, func(ctx context.Context, q IDRequest, _ string) (any, error) { return s.ResolveReference(ctx, q.ID) })
 	register(p, "planner.portfolio.relate", true, "Add/remove a validated local portfolio reference with a source revision check.", []string{"from", "to", "expected_revision", "add"}, func(ctx context.Context, q planner.RelationRequest, actor string) (any, error) {
 		return s.Relate(ctx, q, actor)
+	})
+	assign := plannerassign.New(p.service, "")
+	register(p, "planner.portfolio.assign", true, "Assign an agent or team to a portfolio item (repeat-safe: an active assignment is returned as is).", []string{"db", "id", "agent_id"}, func(ctx context.Context, q portfolioAssign, actor string) (any, error) {
+		return assign.Assign(ctx, q.create(), actor)
+	})
+	register(p, "planner.portfolio.unassign", true, "Cancel an agent's or team's active assignments on a portfolio item.", []string{"db", "id", "agent_id"}, func(ctx context.Context, q portfolioAssign, actor string) (any, error) {
+		return assign.Unassign(ctx, q.create(), actor)
 	})
 	register(p, "planner.portfolio.list", false, "List the owned portfolio database, including imported details and local revisions.", []string{"db"}, func(ctx context.Context, q portfolioList, _ string) (any, error) {
 		return s.List(ctx, q.DB, q.Filters, q.Sort)

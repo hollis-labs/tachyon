@@ -355,13 +355,37 @@ func (s *Owned) Get(ctx context.Context, db, id string) (Item, error) {
 	}
 	return s.decorate(ctx, r), nil
 }
+
+// AssignedTo resolves the objects an agent or team is actively assigned to. plannerassign sets it (it
+// imports this package), so a binary that links plannerassign gets the assigned_to list filter.
+var AssignedTo func(ctx context.Context, o *objects.Service, assignee string) (map[string]bool, error)
+
 func (s *Owned) List(ctx context.Context, db string, filters map[string]string, sortBy string) ([]Item, error) {
 	rows, err := s.records(ctx, db)
 	if err != nil {
 		return nil, err
 	}
+	var assigned map[string]bool
+	if who := filters["assigned_to"]; who != "" {
+		if AssignedTo == nil {
+			return nil, fmt.Errorf("%w: assigned_to is not available", objects.ErrInvalid)
+		}
+		if assigned, err = AssignedTo(ctx, s.Objects, who); err != nil {
+			return nil, err
+		}
+		rest := make(map[string]string, len(filters))
+		for k, v := range filters {
+			if k != "assigned_to" {
+				rest[k] = v
+			}
+		}
+		filters = rest
+	}
 	out := []Item{}
 	for _, r := range rows {
+		if assigned != nil && !assigned[r.ID] {
+			continue
+		}
 		v := s.decorate(ctx, r)
 		match := true
 		for k, want := range filters {
