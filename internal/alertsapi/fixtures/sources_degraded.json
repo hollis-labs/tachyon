@@ -1,0 +1,29 @@
+{
+  "sources": [
+    {
+      "source": "activity",
+      "state": "down",
+      "last_event_ms": 1793330100000,
+      "note": "Upstream activity stream unreachable; retrying."
+    },
+    {
+      "source": "torque",
+      "state": "degraded",
+      "last_event_ms": 1793332710000,
+      "note": "Torque has no stable event ids yet; repeats may notify twice."
+    },
+    {
+      "source": "approvals",
+      "state": "ok",
+      "last_event_ms": 1793332620000,
+      "note": ""
+    },
+    {
+      "source": "agents",
+      "state": "ok",
+      "last_event_ms": 1793332760000,
+      "note": ""
+    }
+  ],
+  "server_now_ms": 1793332800000
+}

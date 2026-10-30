@@ -1,0 +1,12 @@
+{
+  "quiet": true,
+  "toastMinSeverity": "error",
+  "bellMinSeverity": "info",
+  "quietHoursEnabled": true,
+  "quietHoursStart": "23:00",
+  "quietHoursEnd": "06:30",
+  "mutedSources": [
+    "torque"
+  ],
+  "coalesceWindowSec": 300
+}

@@ -29,6 +29,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentscollector"
 	"github.com/hollis-labs/tachyon/internal/agentsderive"
 	"github.com/hollis-labs/tachyon/internal/agentsserve"
+	"github.com/hollis-labs/tachyon/internal/alertsapi"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -66,6 +67,8 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// AlertsStubs mounts the fixture-backed Alerts backend contract (TACHYON_ALERTS_STUBS=1) for GUI development.
+	AlertsStubs bool
 	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
 	AgentsStubs bool
 	// AgentsCollector runs the always-on Agents collector (TACHYON_AGENTS_COLLECTOR=0 turns it off for debugging).
@@ -674,6 +677,15 @@ func (s *Server) Routes() http.Handler {
 	}
 	if s.cfg.AgentsStubs {
 		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
+	}
+	// Alerts contract stubs (dev only), mounted route by route. Reads are open; writes need a same-origin
+	// browser request (checked in the stub, no operator elevation: alert ops are low impact).
+	if s.cfg.AlertsStubs {
+		stub := alertsapi.NewStub().Handler()
+		for _, route := range alertsapi.Routes {
+			method, path, _ := strings.Cut(route.Pattern, " ")
+			mux.Handle(method+" "+route.Base+path, stub)
+		}
 	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)

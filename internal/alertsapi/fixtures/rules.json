@@ -1,0 +1,237 @@
+{
+  "pack_id": "console.default",
+  "version": 1,
+  "label": "Console default rules",
+  "rules": [
+    {
+      "id": "drop-metrics",
+      "description": "Metric ticks are never alerts.",
+      "kinds": [
+        "metric.tick"
+      ],
+      "action": "drop",
+      "severity": null,
+      "needs_you": false
+    },
+    {
+      "id": "drop-alert-cleared",
+      "description": "A cleared alert settles its alert (AL3); it is not a new one.",
+      "kinds": [
+        "alert.cleared"
+      ],
+      "action": "drop",
+      "severity": null,
+      "needs_you": false
+    },
+    {
+      "id": "agent-waiting",
+      "description": "An agent is blocked waiting on a permission or an answer.",
+      "kinds": [
+        "agent.state"
+      ],
+      "action": "alert",
+      "severity": "warning",
+      "needs_you": true
+    },
+    {
+      "id": "agent-not-waiting",
+      "description": "",
+      "kinds": [
+        "agent.state"
+      ],
+      "action": "drop",
+      "severity": null,
+      "needs_you": false
+    },
+    {
+      "id": "approval-requested",
+      "description": "A decision is needed (go-hitl approval).",
+      "kinds": [
+        "approval.requested"
+      ],
+      "action": "alert",
+      "severity": "warning",
+      "needs_you": true
+    },
+    {
+      "id": "approval-resolved",
+      "description": "",
+      "kinds": [
+        "approval.resolved"
+      ],
+      "action": "alert",
+      "severity": "info",
+      "needs_you": false
+    },
+    {
+      "id": "task-failed",
+      "description": "",
+      "kinds": [
+        "task.state_changed"
+      ],
+      "action": "alert",
+      "severity": "error",
+      "needs_you": true
+    },
+    {
+      "id": "task-needs-review",
+      "description": "",
+      "kinds": [
+        "task.state_changed"
+      ],
+      "action": "alert",
+      "severity": "notice",
+      "needs_you": false
+    },
+    {
+      "id": "task-state",
+      "description": "Other task transitions are tray-only.",
+      "kinds": [
+        "task.state_changed"
+      ],
+      "action": "alert",
+      "severity": "info",
+      "needs_you": false
+    },
+    {
+      "id": "message-received",
+      "description": "A new tether message; bursts from one sender fold.",
+      "kinds": [
+        "message.received"
+      ],
+      "action": "alert",
+      "severity": "notice",
+      "needs_you": false
+    },
+    {
+      "id": "message-lifecycle",
+      "description": "Delivery bookkeeping is not an alert unless it failed.",
+      "kinds": [
+        "message.failed",
+        "message.dead_lettered"
+      ],
+      "action": "alert",
+      "severity": "warning",
+      "needs_you": false
+    },
+    {
+      "id": "message-lifecycle-drop",
+      "description": "",
+      "kinds": [
+        "message.*"
+      ],
+      "action": "drop",
+      "severity": null,
+      "needs_you": false
+    },
+    {
+      "id": "pr-review-requested",
+      "description": "",
+      "kinds": [
+        "pr.review_requested"
+      ],
+      "action": "alert",
+      "severity": "notice",
+      "needs_you": false
+    },
+    {
+      "id": "pr-checks-failed",
+      "description": "",
+      "kinds": [
+        "pr.checks_failed"
+      ],
+      "action": "alert",
+      "severity": "error",
+      "needs_you": false
+    },
+    {
+      "id": "pr-other",
+      "description": "",
+      "kinds": [
+        "pr.*"
+      ],
+      "action": "alert",
+      "severity": "info",
+      "needs_you": false
+    },
+    {
+      "id": "budget-exceeded",
+      "description": "payload.percent is the share of budget used.",
+      "kinds": [
+        "budget.threshold",
+        "budget.exceeded"
+      ],
+      "action": "alert",
+      "severity": "critical",
+      "needs_you": false
+    },
+    {
+      "id": "budget-threshold",
+      "description": "",
+      "kinds": [
+        "budget.threshold"
+      ],
+      "action": "alert",
+      "severity": "warning",
+      "needs_you": false
+    },
+    {
+      "id": "checkpoint-pending",
+      "description": "A checkpoint awaiting a response.",
+      "kinds": [
+        "checkpoint.pending",
+        "checkpoint.requested"
+      ],
+      "action": "alert",
+      "severity": "warning",
+      "needs_you": true
+    },
+    {
+      "id": "checkpoint-state",
+      "description": "",
+      "kinds": [
+        "checkpoint.state_changed"
+      ],
+      "action": "alert",
+      "severity": "warning",
+      "needs_you": true
+    },
+    {
+      "id": "fleet-node-down",
+      "description": "No emitter yet; the rule is inert until one exists.",
+      "kinds": [
+        "fleet.node.down",
+        "fleet.node.degraded"
+      ],
+      "action": "alert",
+      "severity": "error",
+      "needs_you": false
+    },
+    {
+      "id": "alert-raised",
+      "description": "Producer-classified alert: trust its severity.",
+      "kinds": [
+        "alert.raised"
+      ],
+      "action": "alert",
+      "severity": "inherit",
+      "needs_you": false
+    },
+    {
+      "id": "classified-alert",
+      "description": "Envelope v1.1: anything the producer classed as an alert.",
+      "kinds": [],
+      "action": "alert",
+      "severity": "inherit",
+      "needs_you": false
+    },
+    {
+      "id": "catch-all",
+      "description": "Unknown kinds degrade to a generic alert at notice and above. Never needs_you.",
+      "kinds": [],
+      "action": "alert",
+      "severity": "inherit",
+      "needs_you": false
+    }
+  ]
+}

@@ -1,0 +1,905 @@
+{
+  "about": "Events (console envelope, as the TS evaluator takes them) to expected alert fields. Both evaluators run every case unless engines is set. A null alert means no alert; rule_id is the first matching enabled rule (null when none matches). The Go adapter maps subjects[].type to kind and .id to ref.",
+  "cases": [
+    {
+      "name": "metric tick is dropped",
+      "event": {
+        "id": "e1",
+        "ts": 1793332800000,
+        "kind": "metric.tick",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "debug",
+        "payload": {},
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "drop-metrics",
+        "alert": null
+      }
+    },
+    {
+      "name": "alert.cleared is dropped",
+      "event": {
+        "id": "e2",
+        "ts": 1793332800000,
+        "kind": "alert.cleared",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {},
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "drop-alert-cleared",
+        "alert": null
+      }
+    },
+    {
+      "name": "agent waiting",
+      "event": {
+        "id": "e3",
+        "ts": 1793332800000,
+        "kind": "agent.state",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "agent",
+            "id": "agent-b2",
+            "label": "Builder 2"
+          }
+        ],
+        "severity": "notice",
+        "payload": {
+          "state": "waiting",
+          "waitingFor": "Permission to run tests"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "agent-waiting",
+        "alert": {
+          "severity": "warning",
+          "icon": "agent",
+          "title": "Builder 2 is waiting",
+          "summary": "Permission to run tests",
+          "coalesce_key": "waiting:Builder 2",
+          "needs_you": true,
+          "escalate": {
+            "after_sec": 600,
+            "to": "error"
+          }
+        }
+      }
+    },
+    {
+      "name": "agent waiting without waitingFor",
+      "event": {
+        "id": "e3b",
+        "ts": 1793332800000,
+        "kind": "agent.state",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "agent",
+            "id": "agent-b2",
+            "label": "Builder 2"
+          }
+        ],
+        "severity": "notice",
+        "payload": {
+          "state": "waiting"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "agent-waiting",
+        "alert": {
+          "severity": "warning",
+          "icon": "agent",
+          "title": "Builder 2 is waiting",
+          "summary": "Waiting on you",
+          "coalesce_key": "waiting:Builder 2",
+          "needs_you": true,
+          "escalate": {
+            "after_sec": 600,
+            "to": "error"
+          }
+        }
+      }
+    },
+    {
+      "name": "agent idle is dropped",
+      "event": {
+        "id": "e4",
+        "ts": 1793332800000,
+        "kind": "agent.state",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "agent",
+            "id": "agent-b2",
+            "label": "Builder 2"
+          }
+        ],
+        "severity": "info",
+        "payload": {
+          "state": "idle"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "agent-not-waiting",
+        "alert": null
+      }
+    },
+    {
+      "name": "approval requested",
+      "event": {
+        "id": "e5",
+        "ts": 1793332800000,
+        "kind": "approval.requested",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "notice",
+        "payload": {
+          "title": "Restart station",
+          "summary": "Station restart on hub"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "approval-requested",
+        "alert": {
+          "severity": "warning",
+          "icon": "approval",
+          "title": "Restart station",
+          "summary": "Station restart on hub",
+          "needs_you": true,
+          "escalate": {
+            "after_sec": 900,
+            "to": "error"
+          },
+          "coalesce_key": ""
+        }
+      }
+    },
+    {
+      "name": "approval requested without title",
+      "event": {
+        "id": "e6",
+        "ts": 1793332800000,
+        "kind": "approval.requested",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "notice",
+        "payload": {},
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "approval-requested",
+        "alert": {
+          "severity": "warning",
+          "icon": "approval",
+          "title": "Approval requested",
+          "summary": "",
+          "needs_you": true,
+          "escalate": {
+            "after_sec": 900,
+            "to": "error"
+          },
+          "coalesce_key": ""
+        }
+      }
+    },
+    {
+      "name": "approval resolved",
+      "event": {
+        "id": "e7",
+        "ts": 1793332800000,
+        "kind": "approval.resolved",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "title": "Restart station",
+          "summary": "Approved"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "approval-resolved",
+        "alert": {
+          "severity": "info",
+          "icon": "approval",
+          "title": "Restart station",
+          "summary": "Approved",
+          "escalate": null,
+          "coalesce_key": "",
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "task failed",
+      "event": {
+        "id": "e8",
+        "ts": 1793332800000,
+        "kind": "task.state_changed",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "task",
+            "id": "CW-1",
+            "label": "Fix build"
+          }
+        ],
+        "severity": "notice",
+        "payload": {
+          "to": "failed",
+          "title": "Fix build"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "task-failed",
+        "alert": {
+          "severity": "error",
+          "icon": "task",
+          "title": "Fix build failed",
+          "summary": "Fix build",
+          "coalesce_key": "task:CW-1",
+          "needs_you": true,
+          "escalate": null
+        }
+      }
+    },
+    {
+      "name": "task to review",
+      "event": {
+        "id": "e9",
+        "ts": 1793332800000,
+        "kind": "task.state_changed",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "task",
+            "id": "CW-1",
+            "label": "Fix build"
+          }
+        ],
+        "severity": "info",
+        "payload": {
+          "to": "review",
+          "title": "Fix build"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "task-needs-review",
+        "alert": {
+          "severity": "notice",
+          "icon": "task",
+          "title": "Fix build → review",
+          "summary": "Fix build",
+          "coalesce_key": "task:CW-1",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "task to done",
+      "event": {
+        "id": "e10",
+        "ts": 1793332800000,
+        "kind": "task.state_changed",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "task",
+            "id": "CW-1",
+            "label": "Fix build"
+          }
+        ],
+        "severity": "info",
+        "payload": {
+          "to": "done",
+          "title": "Fix build"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "task-state",
+        "alert": {
+          "severity": "info",
+          "icon": "task",
+          "title": "Fix build → done",
+          "summary": "Fix build",
+          "coalesce_key": "task:CW-1",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "message received",
+      "event": {
+        "id": "e11",
+        "ts": 1793332800000,
+        "kind": "message.received",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "subject": "Deploy ok?",
+          "from": "agent-a",
+          "preview": "Can I ship?"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "message-received",
+        "alert": {
+          "severity": "notice",
+          "icon": "message",
+          "title": "Deploy ok?",
+          "summary": "agent-a: Can I ship?",
+          "coalesce_key": "msg:agent-a",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "message failed",
+      "event": {
+        "id": "e12",
+        "ts": 1793332800000,
+        "kind": "message.failed",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "subject": "Deploy ok?",
+          "from": "agent-a"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "message-lifecycle",
+        "alert": {
+          "severity": "warning",
+          "icon": "message",
+          "title": "Message message.failed",
+          "summary": "Deploy ok?",
+          "coalesce_key": "msgfail:agent-a",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "message sent is dropped",
+      "event": {
+        "id": "e13",
+        "ts": 1793332800000,
+        "kind": "message.sent",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {},
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "message-lifecycle-drop",
+        "alert": null
+      }
+    },
+    {
+      "name": "pr review requested",
+      "event": {
+        "id": "e14",
+        "ts": 1793332800000,
+        "kind": "pr.review_requested",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "repo": "hollis-labs/tachyon",
+          "number": 12,
+          "title": "Add alerts"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "pr-review-requested",
+        "alert": {
+          "severity": "notice",
+          "icon": "pr",
+          "title": "hollis-labs/tachyon#12 needs review",
+          "summary": "Add alerts",
+          "coalesce_key": "pr:hollis-labs/tachyon#12",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "pr checks failed",
+      "event": {
+        "id": "e15",
+        "ts": 1793332800000,
+        "kind": "pr.checks_failed",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "repo": "hollis-labs/tachyon",
+          "number": 12,
+          "title": "Add alerts"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "pr-checks-failed",
+        "alert": {
+          "severity": "error",
+          "icon": "pr",
+          "title": "hollis-labs/tachyon#12 checks failed",
+          "summary": "Add alerts",
+          "coalesce_key": "pr:hollis-labs/tachyon#12",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "pr merged falls to pr-other",
+      "event": {
+        "id": "e16",
+        "ts": 1793332800000,
+        "kind": "pr.merged",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "repo": "hollis-labs/tachyon",
+          "number": 12,
+          "title": "Add alerts"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "pr-other",
+        "alert": {
+          "severity": "info",
+          "icon": "pr",
+          "title": "hollis-labs/tachyon#12 pr.merged",
+          "summary": "Add alerts",
+          "coalesce_key": "pr:hollis-labs/tachyon#12",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "budget exceeded",
+      "event": {
+        "id": "e17",
+        "ts": 1793332800000,
+        "kind": "budget.threshold",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "percent": 100,
+          "scope": "llm-gateway"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "budget-exceeded",
+        "alert": {
+          "severity": "critical",
+          "icon": "error",
+          "title": "Budget exceeded: llm-gateway",
+          "summary": "100% used",
+          "coalesce_key": "budget:llm-gateway",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "budget threshold",
+      "event": {
+        "id": "e18",
+        "ts": 1793332800000,
+        "kind": "budget.threshold",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "percent": 85,
+          "scope": "llm-gateway"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "budget-threshold",
+        "alert": {
+          "severity": "warning",
+          "icon": "warning",
+          "title": "Budget at 85%: llm-gateway",
+          "summary": "",
+          "coalesce_key": "budget:llm-gateway",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "budget below threshold is not an alert",
+      "event": {
+        "id": "e19",
+        "ts": 1793332800000,
+        "kind": "budget.threshold",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {
+          "percent": 50,
+          "scope": "llm-gateway"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": null,
+        "alert": null
+      }
+    },
+    {
+      "name": "checkpoint pending",
+      "event": {
+        "id": "e20",
+        "ts": 1793332800000,
+        "kind": "checkpoint.pending",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "task",
+            "id": "CW-9",
+            "label": "Migrate DB"
+          }
+        ],
+        "severity": "notice",
+        "payload": {
+          "question": "Proceed with migration?"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "checkpoint-pending",
+        "alert": {
+          "severity": "warning",
+          "icon": "approval",
+          "title": "Checkpoint pending: Migrate DB",
+          "summary": "Proceed with migration?",
+          "needs_you": true,
+          "escalate": {
+            "after_sec": 900,
+            "to": "error"
+          },
+          "coalesce_key": ""
+        }
+      }
+    },
+    {
+      "name": "checkpoint state changed to pending",
+      "event": {
+        "id": "e21",
+        "ts": 1793332800000,
+        "kind": "checkpoint.state_changed",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "plan",
+            "id": "PLAN-1",
+            "label": "Plan A"
+          }
+        ],
+        "severity": "notice",
+        "payload": {
+          "to": "pending",
+          "title": "Review plan"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "checkpoint-state",
+        "alert": {
+          "severity": "warning",
+          "icon": "approval",
+          "title": "Checkpoint pending: Plan A",
+          "summary": "Review plan",
+          "needs_you": true,
+          "escalate": {
+            "after_sec": 900,
+            "to": "error"
+          },
+          "coalesce_key": ""
+        }
+      }
+    },
+    {
+      "name": "fleet node down",
+      "event": {
+        "id": "e22",
+        "ts": 1793332800000,
+        "kind": "fleet.node.down",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "node",
+            "id": "hub",
+            "label": "hub"
+          }
+        ],
+        "severity": "info",
+        "payload": {
+          "reason": "unreachable"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "fleet-node-down",
+        "alert": {
+          "severity": "error",
+          "icon": "error",
+          "title": "hub fleet.node.down",
+          "summary": "unreachable",
+          "coalesce_key": "fleet:hub",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "producer-raised alert keeps its severity",
+      "event": {
+        "id": "e23",
+        "ts": 1793332800000,
+        "kind": "alert.raised",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "host",
+            "id": "h1",
+            "label": "h1"
+          }
+        ],
+        "severity": "critical",
+        "payload": {
+          "title": "Disk full",
+          "detail": "/var 99%"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "alert-raised",
+        "alert": {
+          "severity": "critical",
+          "icon": "error",
+          "title": "Disk full",
+          "summary": "/var 99%",
+          "coalesce_key": "raised:h1",
+          "escalate": null,
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "classified alert",
+      "event": {
+        "id": "e24",
+        "ts": 1793332800000,
+        "kind": "custom.thing",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [
+          {
+            "type": "thing",
+            "id": "t1",
+            "label": "x"
+          }
+        ],
+        "severity": "warning",
+        "payload": {},
+        "actions": [],
+        "class": {
+          "category": "alert"
+        }
+      },
+      "expect": {
+        "rule_id": "classified-alert",
+        "alert": {
+          "severity": "warning",
+          "icon": "warning",
+          "title": "custom.thing",
+          "summary": "x",
+          "escalate": null,
+          "coalesce_key": "",
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "unknown kind at notice degrades to generic",
+      "event": {
+        "id": "e25",
+        "ts": 1793332800000,
+        "kind": "custom.thing",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "notice",
+        "payload": {},
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "catch-all",
+        "alert": {
+          "severity": "notice",
+          "icon": "info",
+          "title": "custom.thing",
+          "summary": "",
+          "escalate": null,
+          "coalesce_key": "",
+          "needs_you": false
+        }
+      }
+    },
+    {
+      "name": "unknown kind at info is not an alert",
+      "event": {
+        "id": "e26",
+        "ts": 1793332800000,
+        "kind": "custom.thing",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "info",
+        "payload": {},
+        "actions": []
+      },
+      "expect": {
+        "rule_id": null,
+        "alert": null
+      }
+    },
+    {
+      "name": "title is capped at 120 characters (server only; the TS evaluator caps at 140 and is deleted at AL8)",
+      "engines": [
+        "go"
+      ],
+      "event": {
+        "id": "e27",
+        "ts": 1793332800000,
+        "kind": "approval.requested",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "notice",
+        "payload": {
+          "title": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "summary": "S"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "approval-requested",
+        "alert": {
+          "severity": "warning",
+          "icon": "approval",
+          "title": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA…",
+          "summary": "S",
+          "needs_you": true,
+          "escalate": {
+            "after_sec": 900,
+            "to": "error"
+          },
+          "coalesce_key": ""
+        }
+      }
+    },
+    {
+      "name": "control characters are stripped from titles (server only)",
+      "engines": [
+        "go"
+      ],
+      "event": {
+        "id": "e28",
+        "ts": 1793332800000,
+        "kind": "approval.requested",
+        "source": {
+          "id": "fixture"
+        },
+        "subjects": [],
+        "severity": "notice",
+        "payload": {
+          "title": "Restart\u0007 station\u001b[31m",
+          "summary": "ok"
+        },
+        "actions": []
+      },
+      "expect": {
+        "rule_id": "approval-requested",
+        "alert": {
+          "severity": "warning",
+          "icon": "approval",
+          "title": "Restart station[31m",
+          "summary": "ok",
+          "needs_you": true,
+          "escalate": {
+            "after_sec": 900,
+            "to": "error"
+          },
+          "coalesce_key": ""
+        }
+      }
+    }
+  ]
+}

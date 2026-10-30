@@ -70,6 +70,7 @@ func main() {
 		CacheDir:                    env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		ActionDetachGrace:           durationEnv("TACHYON_ACTION_DETACH_GRACE"),
 		AgentsCollector:             os.Getenv("TACHYON_AGENTS_COLLECTOR") != "0",
+		AlertsStubs:                 os.Getenv("TACHYON_ALERTS_STUBS") == "1",
 		AgentsStubs:                 os.Getenv("TACHYON_AGENTS_STUBS") == "1",
 		ChatClientContext:           os.Getenv("TACHYON_CHAT_CLIENT_CONTEXT") == "1",
 		ChatStubs:                   os.Getenv("TACHYON_CHAT_STUBS") == "1",
