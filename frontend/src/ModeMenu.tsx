@@ -26,12 +26,12 @@ export function ModeMenu() {
         <Icon className="h-4 w-4" />
       </PopoverTrigger>
       <PopoverContent side="right" align="end" className="w-44 p-1">
-        <div role="radiogroup" aria-label="Colour mode">
+        <div role="menu" aria-label="Colour mode">
           {OPTIONS.map((o) => (
             <button
               key={o.value}
               type="button"
-              role="radio"
+              role="menuitemradio"
               aria-checked={mode === o.value}
               onClick={() => {
                 setMode(o.value)
