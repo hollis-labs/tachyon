@@ -32,7 +32,7 @@ const prHref = (c: PrCite) => `https://${c.host}/${c.owner}/${c.repo}/pull/${c.n
  * has now. Blocked asks for a reason first; Done saves at once and the "What shipped?" line is attached
  * afterwards, the move never waits for it.
  */
-export function TaskBoard({ themeId, paused, onNeedsAccess, accessNoteId }: { themeId: string; paused?: boolean; onNeedsAccess?: () => void; accessNoteId?: string }) {
+export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNoteId }: { themeId: string; tick?: number; paused?: boolean; onNeedsAccess?: () => void; accessNoteId?: string }) {
   const api = usePlannerApi()
   const [data, setData] = useState<ThemeTasks | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +55,11 @@ export function TaskBoard({ themeId, paused, onNeedsAccess, accessNoteId }: { th
     }
   }, [api, themeId])
   useEffect(() => { setData(null); void load() }, [load])
+  // A stream signal refetches in place, but never over a card that is mid-move.
+  const settled = useRef(true)
+  settled.current = pending.size === 0
+  const firstTick = useRef(true)
+  useEffect(() => { if (firstTick.current) { firstTick.current = false; return } if (settled.current) void load() }, [tick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tasks = useMemo(() => (data ? LANES.flatMap((l) => data.lanes[l.id] ?? []) : []), [data])
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])

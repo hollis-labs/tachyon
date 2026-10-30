@@ -63,7 +63,7 @@ export interface TimelineState {
 }
 
 /** The theme's timeline: first page on mount, earlier pages on demand. */
-export function useThemeTimeline(themeId: string): TimelineState {
+export function useThemeTimeline(themeId: string, tick = 0): TimelineState {
   const api = usePlannerApi()
   const [data, setData] = useState<ThemeTimeline | null>(null)
   const [events, setEvents] = useState<TimelineEntry[]>([])
@@ -83,6 +83,9 @@ export function useThemeTimeline(themeId: string): TimelineState {
     }
   }, [api, themeId])
   useEffect(() => { setData(null); setEvents([]); void load() }, [load])
+  // A stream signal refreshes in place: the entries stay on screen until the new ones arrive.
+  const first = useRef(true)
+  useEffect(() => { if (first.current) { first.current = false; return } void load() }, [tick]) // eslint-disable-line react-hooks/exhaustive-deps
   const more = useCallback(() => {
     const before = data?.next_before_seq
     if (before == null || loadingMore) return

@@ -39,6 +39,9 @@ export default function PlannerShell() {
   const { id } = useParams<{ id?: string }>()
   const [params, setParams] = useSearchParams()
   const { lastEvent } = usePlannerEvents()
+  // Counts the stream's signals so the open theme's board and timeline refetch with the spine.
+  const [tick, setTick] = useState(0)
+  useEffect(() => { if (lastEvent) setTick((n) => n + 1) }, [lastEvent])
   const [board, setBoard] = useState<ThemeBoard | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [off, setOff] = useState(false)
@@ -243,7 +246,7 @@ export default function PlannerShell() {
       <main className={`${selected ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-1`}>
         {board && row ? (
           <>
-            <Focus paused={Boolean(error)} needsAccess={needsAccess} onRetryAccess={() => setNeedsAccess(false)} onNeedsAccess={() => setNeedsAccess(true)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
+            <Focus tick={tick} paused={Boolean(error)} needsAccess={needsAccess} onRetryAccess={() => setNeedsAccess(false)} onNeedsAccess={() => setNeedsAccess(true)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
             <div className="hidden w-80 shrink-0 border-l border-border xl:flex xl:flex-col 2xl:w-96">
               <Context row={row} comments={comments} onCommented={() => void load()} mentionable={all} links={rowLinks} />
             </div>
