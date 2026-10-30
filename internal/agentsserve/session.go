@@ -381,6 +381,7 @@ func (s *Server) withAssignment(ctx context.Context, sess Session, r row) Sessio
 	if s.Assigner != nil && r.taskRef != "" {
 		sess.Assignment = s.Assigner.Assignment(ctx, r.id, r.taskRef)
 	}
+	sess.Capabilities = s.capabilities(sess)
 	return sess
 }
 
