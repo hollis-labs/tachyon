@@ -4,7 +4,7 @@ export type AgentState = 'active' | 'disabled' | 'retired'
 export type PolicyTag = 'ask' | 'edits' | 'bypass' | 'plan'
 
 export const BUILDER_TITLE = 'Builder'
-export const DEFINITIONS_NOTE = 'Definitions only. Running agents are on'
+export const DEFINITIONS_NOTE = 'Definitions only · running agents are on'
 export const NOT_REPORTED = 'not reported'
 export const INHERITS = 'inherits'
 
@@ -14,13 +14,11 @@ export const POLICY_LABEL: Record<PolicyTag, string> = { ask: 'Ask', edits: 'Edi
 
 export const SECTIONS = [
   { id: 'identity', label: 'Identity' },
-  { id: 'runtime', label: 'Runtime and launch' },
+  { id: 'runtime', label: 'Runtime & launch' },
   { id: 'prompt', label: 'Prompt' },
-  { id: 'tools', label: 'Tools and skills' },
+  { id: 'tools', label: 'Tools & skills' },
   { id: 'policy', label: 'Policy' },
-  { id: 'resolved', label: 'Resolved' },
   { id: 'used_by', label: 'Used by' },
-  { id: 'checks', label: 'Checks' },
   { id: 'history', label: 'History' },
 ] as const
 export type SectionId = (typeof SECTIONS)[number]['id']

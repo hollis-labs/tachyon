@@ -1,31 +1,35 @@
 import { type ReactNode, useState } from 'react'
 import { Button } from '@hollis-labs/design-components'
-import { type Check, type HistoryEntry, builderApi, errorMessage } from './api'
+import { Link } from 'react-router-dom'
+import { Chip } from '../components/chip'
+import { type HistoryEntry, type UsedBy, builderApi, errorMessage } from './api'
 import { relativeTime } from './changes'
 import { Diff } from './ReviewDialog'
 import { type Load, useLoad } from './useLoad'
+import { Cap, Muted, RailCard, RailRow } from './parts'
 import { NOT_REPORTED, SECTIONS } from './vocab'
 
 const CHECK_WORD = { ok: 'Passed', warn: 'Warning', fail: 'Failed' } as const
 
+const none = <span className="text-fg-faint">none</span>
+const absolute = (at: number) => new Date(at > 1e12 ? at : at * 1000).toLocaleString()
+
 function Block({ id, children }: { id: string; children: ReactNode }) {
   const label = SECTIONS.find((s) => s.id === id)?.label ?? id
   return (
-    <section id={`section-${id}`} aria-labelledby={`h-${id}`} className="scroll-mt-4 px-5 py-4">
-      <h3 id={`h-${id}`} className="mb-2 dash-label font-medium text-fg-muted">
-        {label}
-      </h3>
+    <section id={`section-${id}`} aria-labelledby={`h-${id}`} className="flex scroll-mt-4 flex-col gap-2">
+      <Cap id={`h-${id}`}>{label}</Cap>
       {children}
     </section>
   )
 }
 
 function Body<T>({ load, retry, children }: { load: Load<T>; retry: () => void; children: (d: T) => ReactNode }) {
-  if (load.status === 'loading') return <div aria-busy="true" className="h-12 animate-pulse bg-surface" />
+  if (load.status === 'loading') return <div aria-busy="true" className="h-12 animate-pulse rounded-control bg-surface" />
   if (load.status === 'error')
     return (
       <div role="alert" className="flex items-center gap-3">
-        <span className="dash-body text-fg-secondary">{load.message}</span>
+        <span className="text-control text-fg-secondary">{load.message}</span>
         <Button type="button" onClick={retry} variant="outline" size="sm">
           Retry
         </Button>
@@ -34,87 +38,130 @@ function Body<T>({ load, retry, children }: { load: Load<T>; retry: () => void; 
   return <>{children(load.data)}</>
 }
 
-function Item({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-1 border-b border-border-subtle py-2 md:grid-cols-[10rem_1fr] md:gap-3">
-      <dt className="dash-support text-fg-muted">{label}</dt>
-      <dd className="min-w-0 dash-body text-fg [overflow-wrap:anywhere]">{children}</dd>
-    </div>
-  )
-}
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
-const none = <span className="text-fg-faint">none</span>
-const absolute = (at: number) => new Date(at > 1e12 ? at : at * 1000).toLocaleString()
-
-export function ResolvedSection({ id }: { id: string }) {
+/** Resolved card: what this agent will get. Tachyon's own estimate is labelled so, and unknown counts are left out. */
+export function ResolvedCard({ id }: { id: string }) {
   const [load, retry] = useLoad(() => builderApi.resolved(id), [id])
   return (
-    <Block id="resolved">
+    <RailCard
+      title="Resolved · what it will get"
+      aside={
+        load.status === 'ready' && load.data.resolved_by !== 'tether' ? (
+          <Chip tone="faint">
+            <span title="Tether did not compute this. Tachyon approximated it from the files.">Estimated</span>
+          </Chip>
+        ) : undefined
+      }
+    >
       <Body load={load} retry={retry}>
-        {(r) => (
-          <dl>
-            <p className="dash-support text-fg-muted">{r.resolved_by === 'tether' ? 'Computed by Tether.' : 'Approximated by Tachyon; Tether did not compute this.'}</p>
-            <Item label="Tool servers">{r.tool_servers?.length ? r.tool_servers.map((t) => `${t.id} (${t.status}${t.tool_count != null ? `, ${t.tool_count} tools` : ''})`).join(', ') : none}</Item>
-            <Item label="Skills">{r.skills?.length ? r.skills.map((x) => x.name || x.id).join(', ') : none}</Item>
-            <Item label="Scopes">{r.scopes?.length ? r.scopes.join(', ') : none}</Item>
-            <Item label="Extends">{r.extends_chain?.length ? r.extends_chain.join(' → ') : none}</Item>
-            <Item label="Prompt">{r.prompt_tokens_est != null ? `${r.prompt_tokens_estimated ? '~' : ''}${r.prompt_tokens_est} tokens` : NOT_REPORTED}</Item>
-            {(r.notes ?? []).map((n) => (
-              <p key={n} className="dash-support text-fg-muted">
-                {n}
-              </p>
-            ))}
-          </dl>
-        )}
+        {(r) => {
+          const servers = r.tool_servers ?? []
+          const known = servers.length > 0 && servers.every((t) => t.tool_count != null)
+          const tools = known ? servers.reduce((n, t) => n + (t.tool_count ?? 0), 0) : null
+          const pol = r.policy?.permission_mode
+          return (
+            <>
+              <RailRow label="Tools">
+                {plural(servers.length, 'server')}
+                {tools != null ? ` · ${tools} tools` : ''}
+              </RailRow>
+              <RailRow label="Skills">{r.skills?.length ?? 0}</RailRow>
+              <RailRow label="Policy">{pol ?? NOT_REPORTED}</RailRow>
+              <RailRow label="Scopes">{r.scopes?.length ? r.scopes.join(', ') : none}</RailRow>
+              <RailRow label="Prompt">
+                {r.prompt_parts?.length ? plural(r.prompt_parts.length, 'part') : NOT_REPORTED}
+                {r.prompt_tokens_est != null ? ` · ${r.prompt_tokens_estimated ? '~' : ''}${r.prompt_tokens_est} tokens` : ''}
+              </RailRow>
+              {r.extends_chain && r.extends_chain.length > 1 && <RailRow label="Extends">{r.extends_chain.slice(1).join(' → ')}</RailRow>}
+              {(r.notes ?? []).map((n) => (
+                <Muted key={n}>{n}</Muted>
+              ))}
+            </>
+          )
+        }}
       </Body>
-    </Block>
+    </RailCard>
   )
 }
 
-export function UsedBySection({ id }: { id: string }) {
-  const [load, retry] = useLoad(() => builderApi.usedBy(id), [id])
+/** Used by card; assigned items stay hidden until the backend reports them. */
+export function UsedByCard({ load, retry }: { load: Load<UsedBy>; retry: () => void }) {
+  return (
+    <RailCard title="Used by">
+      <Body load={load} retry={retry}>
+        {(u) => (
+          <>
+            <RailRow label="Live sessions">
+              {u.live_sessions?.length ?? 0}
+              {(u.live_sessions?.length ?? 0) > 0 && (
+                <>
+                  {' · '}
+                  <Link className="text-fg-secondary hover:text-fg" to="/agents">
+                    Open on Agents ▸
+                  </Link>
+                </>
+              )}
+            </RailRow>
+            <RailRow label="Launches">{u.launches?.length ?? 0}</RailRow>
+            <RailRow label="Teams">{u.teams?.length ?? 0}</RailRow>
+          </>
+        )}
+      </Body>
+    </RailCard>
+  )
+}
+
+const MARK = { ok: '✓', warn: '⚠', fail: '✕' } as const
+
+/** Checks card: text first. Only a failed check is danger. */
+export function ChecksCard({ id }: { id: string }) {
+  const [load, retry] = useLoad(() => builderApi.checks(id), [id])
+  return (
+    <RailCard title="Checks">
+      <Body load={load} retry={retry}>
+        {(c) =>
+          c.checks.length ? (
+            c.checks.map((x) => (
+              <RailRow key={x.name + (x.entity ?? '')} tone={x.status === 'fail' ? 'danger' : undefined}>
+                <>
+                  {MARK[x.status]} {x.status === 'fail' ? 'Failed: ' : ''}
+                  {x.message}
+                </>
+              </RailRow>
+            ))
+          ) : (
+            <Muted>No checks reported.</Muted>
+          )
+        }
+      </Body>
+    </RailCard>
+  )
+}
+
+/** The Used by section of the form: the same counts as chips. */
+export function UsedBySection({ load, retry }: { load: Load<UsedBy>; retry: () => void }) {
   return (
     <Block id="used_by">
       <Body load={load} retry={retry}>
         {(u) => (
-          <dl>
-            <Item label="Live sessions">{u.live_sessions?.length ?? 0}</Item>
-            <Item label="Launches">{u.launches?.length ? u.launches.map((l) => `${l.project}${l.enabled ? '' : ' (disabled)'}`).join(', ') : none}</Item>
-            <Item label="Teams">{u.teams?.length ? u.teams.map((t) => t.name).join(', ') : none}</Item>
-            <Item label="Extended by">{u.extended_by?.length ? u.extended_by.join(', ') : none}</Item>
-            <Item label="Assigned items">{NOT_REPORTED}</Item>
-          </dl>
+          <ul className="flex flex-wrap gap-1.5">
+            <li>
+              <Chip>{plural(u.live_sessions?.length ?? 0, 'live session')}</Chip>
+            </li>
+            <li>
+              <Chip>{plural(u.launches?.length ?? 0, 'launch', 'launches')}</Chip>
+            </li>
+            <li>
+              <Chip>{plural(u.teams?.length ?? 0, 'team')}</Chip>
+            </li>
+            {(u.extended_by?.length ?? 0) > 0 && (
+              <li>
+                <Chip>extended by {u.extended_by?.length}</Chip>
+              </li>
+            )}
+          </ul>
         )}
-      </Body>
-    </Block>
-  )
-}
-
-function CheckRow({ c }: { c: Check }) {
-  return (
-    <li className="dash-body text-fg-secondary">
-      <span className={c.status === 'fail' ? 'text-danger' : ''}>{CHECK_WORD[c.status]}</span> {c.message}
-      {c.remedy ? ` ${c.remedy}` : ''}
-    </li>
-  )
-}
-
-export function ChecksSection({ id }: { id: string }) {
-  const [load, retry] = useLoad(() => builderApi.checks(id), [id])
-  return (
-    <Block id="checks">
-      <Body load={load} retry={retry}>
-        {(c) =>
-          c.checks.length ? (
-            <ul className="space-y-1">
-              {c.checks.map((x) => (
-                <CheckRow key={x.name + (x.entity ?? '')} c={x} />
-              ))}
-            </ul>
-          ) : (
-            <span className="dash-body text-fg-faint">No checks reported.</span>
-          )
-        }
       </Body>
     </Block>
   )
@@ -147,20 +194,20 @@ export function HistorySection({ id }: { id: string }) {
         {(h) => {
           const entries = [...h.entries, ...more]
           const next = cursor === undefined ? h.next_cursor : cursor
-          if (!entries.length) return <span className="dash-body text-fg-faint">No applied changes yet.</span>
+          if (!entries.length) return <span className="text-control text-fg-faint">No applied changes yet.</span>
           return (
             <div className="space-y-2">
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {entries.map((e) => (
-                  <li key={e.plan_id} className="border border-border-subtle p-2 dash-body text-fg">
-                    <p>
-                      {e.name || e.plan_id}{' '}
-                      <span className="dash-support text-fg-muted">
-                        <span title={absolute(e.at)}>{relativeTime(e.at)}</span> · {e.actor || NOT_REPORTED}
+                  <li key={e.plan_id} className="text-xs">
+                    <p className="flex flex-wrap items-baseline gap-x-2">
+                      <b className="text-fg">{e.name || e.plan_id}</b>
+                      <span className="text-fg-muted">
+                        {e.actor || NOT_REPORTED} · <span title={absolute(e.at)}>{relativeTime(e.at)}</span>
+                        {e.activation ? ` · ${e.activation}` : ''}
                       </span>
                     </p>
-                    {e.activation && <p className="dash-support text-fg-secondary">{e.activation}</p>}
-                    {e.diff ? <FoldedDiff text={e.diff} /> : <p className="dash-support text-fg-faint">No diff held for this change.</p>}
+                    {e.diff ? <FoldedDiff text={e.diff} /> : <p className="text-fg-faint">no diff recorded</p>}
                   </li>
                 ))}
               </ul>
@@ -188,7 +235,7 @@ export function HistorySection({ id }: { id: string }) {
                 </Button>
               )}
               {moreError && (
-                <p role="alert" className="dash-support text-fg-secondary">
+                <p role="alert" className="text-xs text-fg-secondary">
                   Could not load more. {moreError}
                 </p>
               )}
