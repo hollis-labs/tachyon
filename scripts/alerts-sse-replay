@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Replay the Alerts event stream, with resume. Works against the stub (TACHYON_ALERTS_STUBS=1)
+# and, later, the real route.
+#   scripts/alerts-sse-replay [-b BASE] [-l LAST_EVENT_ID] [-1] [-g]
+#     -b base URL       (default http://127.0.0.1:8080)
+#     -l Last-Event-ID  resume after this alert seq
+#     -1                stop after the replay (stub: ?once=1)
+#     -g                ask the stub for a gap (it answers a single resync frame)
+set -euo pipefail
+base=http://127.0.0.1:8080 last="" once="" gap=""
+while getopts b:l:1g o; do case $o in b) base=$OPTARG;; l) last=$OPTARG;; 1) once="?once=1";; g) gap=1;; *) exit 2;; esac; done
+args=(-sS -N -H 'Accept: text/event-stream')
+[ -n "$last" ] && args+=(-H "Last-Event-ID: $last")
+[ -n "$gap" ] && args+=(-H "X-Stub-Scenario: gap")
+[ -n "${TACHYON_COOKIE:-}" ] && args+=(-H "Cookie: $TACHYON_COOKIE")
+exec curl "${args[@]}" "$base/api/plugins/console/v1/alerts/stream$once"

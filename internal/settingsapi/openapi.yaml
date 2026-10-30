@@ -1,0 +1,95 @@
+openapi: 3.0.3
+info:
+  title: Tachyon Settings, Account and Assurance (contract)
+  version: "1"
+  description: >
+    Settings reuse the libs admin contract v1 (ui-go envelopes/admin, adminhttp), so the manifest, group read,
+    validate, update and reset shapes are the library's; this file lists the routes and the Tachyon-owned shapes.
+    The stub (TACHYON_SETTINGS_STUBS=1) serves all of it from memory.
+paths:
+  /api/plugins/console/v1/admin/manifest:
+    get:
+      summary: Admin manifest (settings groups with schema, field flags, resolution and endpoints)
+      responses: {"200": {description: "admin.Manifest, Cache-Control private no-store"}}
+  /api/plugins/console/v1/admin/settings/{group}:
+    get:
+      summary: Group snapshot. Response carries a strong ETag.
+      parameters: [{name: group, in: path, required: true, schema: {type: string}}]
+      responses: {"200": {description: "admin.Snapshot {group_id, revision, values, validation}"}, "404": {description: unknown group}}
+  /api/plugins/console/v1/admin/settings/{group}/validate:
+    post:
+      summary: Validate intent without saving
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Command"}}}}
+      responses: {"200": {description: "admin.Validation {valid, errors[{path,code,message}]}"}, "409": {description: manifest_changed}}
+  /api/plugins/console/v1/admin/settings/{group}/update:
+    post:
+      summary: Save intent. Needs If-Match with the read ETag.
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Command"}}}}
+      responses:
+        "200": {description: "admin.UpdateResponse {snapshot, changed_keys, restart_required, apply_targets}; new ETag"}
+        "403": {description: "forbidden, or operator_access_required with step_up and methods when a field needs operator access"}
+        "409": {description: manifest_changed}
+        "412": {description: value_conflict}
+        "422": {description: validation_failed with errors[]}
+        "428": {description: precondition_required}
+  /api/plugins/console/v1/admin/settings/{group}/reset:
+    post:
+      summary: Remove the saved override for keys. Needs If-Match.
+      responses: {"200": {description: admin.UpdateResponse}, "412": {description: value_conflict}}
+  /api/plugins/console/v1/account:
+    get:
+      summary: Whoami. Identity is a local, unverified profile; assurance verified only while the operator token is in use.
+      responses: {"200": {description: Account, content: {application/json: {schema: {$ref: "#/components/schemas/Account"}}}}}
+  /api/plugins/console/v1/account/profile:
+    put:
+      summary: Save the single operator profile. Same-origin session write.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Profile"}}}}
+      responses: {"200": {description: Account}, "422": {description: "validation_failed, errors[{path,code,message}]"}}
+  /api/plugins/console/v1/settings-stub/access:
+    get:
+      summary: STUB path of the extended access body. The real route is /approval-inbox/access (ST4).
+      responses: {"200": {description: Access, content: {application/json: {schema: {$ref: "#/components/schemas/Access"}}}}}
+  /api/plugins/console/v1/settings-stub/access/challenge:
+    post:
+      summary: Start a sign-in or step-up confirmation (action "elevate" for plain sign-in).
+      responses: {"200": {description: Challenge}, "501": {description: unsupported (no_step_up)}}
+  /api/plugins/console/v1/settings-stub/access/verify:
+    post:
+      summary: Answer a challenge. Stub credential stub-operator-token succeeds.
+      responses:
+        "200": {description: "Verified {ok, assurance, grant}"}
+        "400": {description: method_unavailable}
+        "403": {description: invalid_credentials (no attempts_left until Tangent reports it)}
+        "410": {description: challenge_expired}
+        "429": {description: "locked with retry_after_s"}
+components:
+  schemas:
+    Command:
+      type: object
+      required: [revision, set, unset]
+      properties:
+        revision: {type: string, description: the manifest revision}
+        set: {type: object, additionalProperties: true}
+        unset: {type: array, items: {type: string}}
+    Profile:
+      type: object
+      required: [display_name]
+      properties:
+        display_name: {type: string, minLength: 1, maxLength: 80}
+        email: {type: string, maxLength: 254}
+    Access:
+      type: object
+      description: assurance.Access (state, expires_in_s, can_elevate, ttl_policy, required_for) plus the fields below.
+      properties:
+        methods: {type: array, items: {type: object, properties: {id: {type: string, enum: [operator_token, password, passkey]}, available: {type: boolean}}}}
+        session: {type: object, properties: {state: {type: string, enum: [active, expired, none]}, expires_at: {type: string}}}
+        lockout: {type: object, properties: {locked: {type: boolean}, retry_after_s: {type: integer}, attempts_left: {type: integer}}}
+        step_up: {type: object, properties: {supported: {type: boolean}}}
+    Account:
+      type: object
+      properties:
+        identity: {type: object}
+        access: {$ref: "#/components/schemas/Access"}
+        profile_updated_at: {type: string}
+        can_set_profile: {type: boolean}

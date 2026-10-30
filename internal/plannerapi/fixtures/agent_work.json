@@ -1,0 +1,4 @@
+{"agent_id":"tachyon_pm","items":[
+{"kind":"theme","id":"theme-agents-console","title":"Agents console","status":"in_progress","progress":{"done":6,"total":11},"links":[{"kind":"torque","ref":"CW-20261030-0202"}],"needs_user":true,"updated_at":"2026-10-30T04:00:00Z","why":"assigned"},
+{"kind":"task","id":"CW-20261030-0202","title":"Launch history pager","status":"doing","links":[],"needs_user":false,"updated_at":"2026-10-30T03:00:00Z","why":"session"},
+{"kind":"decision","id":"dec-0042","title":"Where does the work panel live","status":"open","links":[],"needs_user":true,"updated_at":"2026-10-29T20:00:00Z","why":"referenced"}]}

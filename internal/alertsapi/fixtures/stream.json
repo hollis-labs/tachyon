@@ -1,0 +1,283 @@
+{
+  "events": [
+    {
+      "id": 117,
+      "type": "alert.created",
+      "alert": {
+        "alert_id": "al_new_01",
+        "seq": 117,
+        "kind": "approval.requested",
+        "rule_id": "approval-requested",
+        "severity": "warning",
+        "severity_base": "warning",
+        "needs_you": true,
+        "title": "Deploy alerts contract to dev",
+        "summary": "Needs a decision.",
+        "source": "Builder 2",
+        "icon": "approval",
+        "status": "active",
+        "read": false,
+        "count": 1,
+        "coalesce_key": "",
+        "first_at_ms": 1793332801000,
+        "last_at_ms": 1793332801000,
+        "snooze_until_ms": null,
+        "wake_at_ms": null,
+        "defer": null,
+        "note": "",
+        "resolution": "",
+        "resolved_by": "",
+        "primary": {
+          "label": "Review",
+          "href": "/approvals/items/apr_deploy_dev"
+        },
+        "subjects": [
+          {
+            "kind": "approval",
+            "ref": "apr_deploy_dev",
+            "label": "Deploy alerts contract to dev"
+          }
+        ],
+        "escalate_at_ms": null,
+        "escalated_at_ms": null,
+        "version": 1,
+        "created_ms": 1793332801000,
+        "updated_ms": 1793332801000
+      },
+      "toast": true
+    },
+    {
+      "id": 118,
+      "type": "alert.updated",
+      "alert": {
+        "alert_id": "al_task_failed_01",
+        "seq": 118,
+        "kind": "task.state_changed",
+        "rule_id": "task-failed",
+        "severity": "error",
+        "severity_base": "error",
+        "needs_you": true,
+        "title": "Fix flaky build failed",
+        "summary": "Fix flaky build",
+        "source": "Builder 1",
+        "icon": "task",
+        "status": "active",
+        "read": false,
+        "count": 5,
+        "coalesce_key": "task:CW-20261030-0031",
+        "first_at_ms": 1793329800000,
+        "last_at_ms": 1793332802000,
+        "snooze_until_ms": null,
+        "wake_at_ms": null,
+        "defer": null,
+        "note": "",
+        "resolution": "",
+        "resolved_by": "",
+        "primary": {
+          "label": "Open task",
+          "href": "/tasks/CW-20261030-0031"
+        },
+        "subjects": [
+          {
+            "kind": "task",
+            "ref": "CW-20261030-0031",
+            "label": "Fix flaky build"
+          },
+          {
+            "kind": "agent",
+            "ref": "agent-builder-1",
+            "label": "Builder 1"
+          }
+        ],
+        "escalate_at_ms": null,
+        "escalated_at_ms": null,
+        "version": 6,
+        "created_ms": 1793329800000,
+        "updated_ms": 1793332802000
+      },
+      "toast": false,
+      "reason": "coalesced"
+    },
+    {
+      "id": 119,
+      "type": "alert.woke",
+      "alert": {
+        "alert_id": "al_snoozed_01",
+        "seq": 119,
+        "kind": "pr.review_requested",
+        "rule_id": "pr-review-requested",
+        "severity": "notice",
+        "severity_base": "notice",
+        "needs_you": false,
+        "title": "hollis-labs/tachyon#197 needs review",
+        "summary": "feat(forge): PR0 pull request backend contracts + stubs",
+        "source": "github",
+        "icon": "pr",
+        "status": "active",
+        "read": false,
+        "count": 1,
+        "coalesce_key": "pr:hollis-labs/tachyon#197",
+        "first_at_ms": 1793329200000,
+        "last_at_ms": 1793329200000,
+        "snooze_until_ms": null,
+        "wake_at_ms": null,
+        "defer": null,
+        "note": "After lunch",
+        "resolution": "",
+        "resolved_by": "",
+        "primary": {
+          "label": "Open",
+          "href": "https://github.com/hollis-labs/tachyon/pull/197"
+        },
+        "subjects": [
+          {
+            "kind": "pr",
+            "ref": "hollis-labs/tachyon#197",
+            "label": "PR 197",
+            "url": "https://github.com/hollis-labs/tachyon/pull/197"
+          }
+        ],
+        "escalate_at_ms": null,
+        "escalated_at_ms": null,
+        "version": 3,
+        "created_ms": 1793329200000,
+        "updated_ms": 1793332803000
+      },
+      "toast": true
+    },
+    {
+      "id": 120,
+      "type": "alert.escalated",
+      "alert": {
+        "alert_id": "al_checkpoint_01",
+        "seq": 120,
+        "kind": "checkpoint.pending",
+        "rule_id": "checkpoint-pending",
+        "severity": "error",
+        "severity_base": "warning",
+        "needs_you": true,
+        "title": "Checkpoint pending: Migrate DB",
+        "summary": "Proceed with migration?",
+        "source": "Planner agent",
+        "icon": "approval",
+        "status": "active",
+        "read": false,
+        "count": 1,
+        "coalesce_key": "",
+        "first_at_ms": 1793332080000,
+        "last_at_ms": 1793332080000,
+        "snooze_until_ms": null,
+        "wake_at_ms": null,
+        "defer": null,
+        "note": "",
+        "resolution": "",
+        "resolved_by": "",
+        "primary": {
+          "label": "Open task",
+          "href": "/tasks/CW-20261030-0044"
+        },
+        "subjects": [
+          {
+            "kind": "task",
+            "ref": "CW-20261030-0044",
+            "label": "Migrate DB"
+          }
+        ],
+        "escalate_at_ms": 1793332980000,
+        "escalated_at_ms": 1793332804000,
+        "version": 2,
+        "created_ms": 1793332080000,
+        "updated_ms": 1793332804000
+      },
+      "toast": true
+    },
+    {
+      "id": 121,
+      "type": "alert.state",
+      "alert": {
+        "alert_id": "al_approval_01",
+        "seq": 121,
+        "kind": "approval.requested",
+        "rule_id": "approval-requested",
+        "severity": "warning",
+        "severity_base": "warning",
+        "needs_you": true,
+        "title": "Restart station on hub",
+        "summary": "Station restart needs a decision (expires in 14 minutes).",
+        "source": "Builder 2",
+        "icon": "approval",
+        "status": "settled",
+        "read": true,
+        "count": 1,
+        "coalesce_key": "",
+        "first_at_ms": 1793332620000,
+        "last_at_ms": 1793332620000,
+        "snooze_until_ms": null,
+        "wake_at_ms": null,
+        "defer": null,
+        "note": "",
+        "resolution": "Approved by operator session",
+        "resolved_by": "approvals",
+        "primary": {
+          "label": "Review",
+          "href": "/approvals/items/apr_station_restart"
+        },
+        "subjects": [
+          {
+            "kind": "approval",
+            "ref": "apr_station_restart",
+            "label": "Restart station",
+            "url": "/approvals/items/apr_station_restart"
+          },
+          {
+            "kind": "agent",
+            "ref": "agent-builder-2",
+            "label": "Builder 2"
+          }
+        ],
+        "escalate_at_ms": 1793333520000,
+        "escalated_at_ms": null,
+        "version": 2,
+        "created_ms": 1793332620000,
+        "updated_ms": 1793332805000
+      },
+      "toast": false,
+      "reason": "approval.resolved"
+    },
+    {
+      "id": 121,
+      "type": "counts",
+      "counts": {
+        "unread": 9,
+        "active": 11,
+        "needs_you": 5,
+        "by_severity": {
+          "debug": 0,
+          "info": 1,
+          "notice": 2,
+          "warning": 4,
+          "error": 3,
+          "critical": 1
+        },
+        "seq": 121
+      }
+    },
+    {
+      "id": 121,
+      "type": "prefs",
+      "prefs": {
+        "notify_level": "warnings",
+        "toasts": true,
+        "quiet": false,
+        "quiet_hours": {
+          "enabled": false,
+          "start": "22:00",
+          "end": "07:00",
+          "tz": "Europe/Berlin"
+        },
+        "muted_sources": [],
+        "coalesce_window_sec": 120
+      }
+    }
+  ]
+}
