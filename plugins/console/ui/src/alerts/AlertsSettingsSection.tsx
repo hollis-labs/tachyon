@@ -1,8 +1,14 @@
+import type { ComponentType, ReactNode } from 'react'
 import { ConsolePrefsPanel } from '../prefs/ConsolePrefsPanel'
 import { useOptionalAlertsController } from './context'
 
 /** Settings > Alerts. Mounted by the shell's Settings page; edits apply immediately, like the tray. */
-export function AlertsSettingsSection() {
+export function AlertsSettingsSection({
+  card: Card,
+}: {
+  /** The shell's Settings card, so the section matches its siblings. */
+  card?: ComponentType<{ title: string; description?: string; children: ReactNode }>
+}) {
   const c = useOptionalAlertsController()
   return (
     <section aria-labelledby="settings-alerts-h" className="max-w-xl space-y-4">
@@ -10,9 +16,15 @@ export function AlertsSettingsSection() {
         Alerts
       </h2>
       {c ? (
-        <div className="rounded-md border border-border bg-panel px-4 py-4">
-          <ConsolePrefsPanel prefs={c.prefs} onChange={c.setPrefs} />
-        </div>
+        Card ? (
+          <Card title="Alerts" description="What reaches the bell and toasts. Changes apply immediately.">
+            <ConsolePrefsPanel prefs={c.prefs} onChange={c.setPrefs} />
+          </Card>
+        ) : (
+          <div className="rounded-md border border-border bg-panel px-4 py-4">
+            <ConsolePrefsPanel prefs={c.prefs} onChange={c.setPrefs} />
+          </div>
+        )
       ) : (
         <p className="text-sm text-text-subtle">Alerts are not enabled.</p>
       )}
