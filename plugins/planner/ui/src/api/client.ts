@@ -1,7 +1,7 @@
 import { ApiError, createApiClient, type ApiClient } from '@hollis-labs/design-app-runtime'
 import type { PlannerClient, PlannerReference, PlannerRevision } from './contracts'
 import { PlannerApiError } from './errors'
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
+import type { LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export const PLANNER_BASE = '/api/plugins/console/v1/planner'
@@ -99,6 +99,9 @@ export class TachyonPlannerClient implements PlannerClient {
   plannerThemeTimeline = (themeId: string, opts?: { before_seq?: number; limit?: number }, signal?: AbortSignal) => this.request<ThemeTimeline>(`/themes/${encodeURIComponent(themeId)}/timeline`, undefined, { before_seq: opts?.before_seq, limit: opts?.limit }, signal)
   plannerTaskTransition = (task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }) => this.send<TaskTransitionResult>(`/tasks/${encodeURIComponent(task)}/transition`, { to, expected_status: expectedStatus, ...(args?.reason ? { reason: args.reason } : {}) })
   plannerTaskMeta = (task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }) => this.send<TaskMeta>(`/tasks/${encodeURIComponent(task)}/meta`, meta, 'PUT')
+  plannerLinks = (db: PlannerDb, id: string, signal?: AbortSignal) => this.request<LinksView>(`${dbPath(db)}/${encodeURIComponent(id)}/links`, undefined, undefined, signal)
+  plannerRelationAdd = (db: PlannerDb, id: string, kind: RelationKind, to: PlannerRef, rev: number) => this.send<RelationResult>(`${dbPath(db)}/${encodeURIComponent(id)}/relations`, { kind, to, expected_revision: revision(rev) })
+  plannerRelationRemove = (db: PlannerDb, id: string, kind: RelationKind, to: PlannerRef, rev: number) => this.send<RelationResult>(`${dbPath(db)}/${encodeURIComponent(id)}/relations`, { kind, to, expected_revision: revision(rev) }, 'DELETE')
   getTask = (id: string, signal?: AbortSignal) => this.request<Task>(`/tasks/${encodeURIComponent(id)}`, undefined, undefined, signal)
   listTaskComments: PlannerClient['listTaskComments'] = (id, query, signal) => this.request<ListPage<Comment>>(`/tasks/${encodeURIComponent(id)}/comments`, undefined, query, signal)
   async resolveReference(db: PlannerDb | null, id: string): Promise<PlannerReference> {

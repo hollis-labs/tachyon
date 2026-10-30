@@ -1,6 +1,6 @@
 import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Button, SearchInput } from "@hollis-labs/design-components"
+import { Button, SearchInput, Skeleton } from "@hollis-labs/design-components"
 import { BarMeter, Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
 import { TimeSeriesChart } from "@hollis-labs/kit-dashboard/charts"
 import { dataRefreshRegistry } from "@tachyon/host-sdk"
@@ -214,14 +214,15 @@ export function TranscriptDashboard() {
           </button>
         </p>
       )}
-      {loading && (
-        <p
-          role="status"
-          className="rounded border border-border p-6 dash-body text-fg-muted"
-        >
-          Building the first metadata snapshot… Subsequent visits use the saved
-          snapshot.
-        </p>
+      {loading && !snapshot && (
+        <div role="status" className="space-y-2">
+          <p className="dash-control text-fg-muted">
+            Building the first metadata snapshot… Later visits use the saved one.
+          </p>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
       )}
       {tab === "insights" && <section
         aria-label="Database overview"
@@ -401,11 +402,25 @@ export function TranscriptDashboard() {
               />
             )}
             {!rows.length && !loading && (
-              <p className="p-10 text-center dash-body text-fg-faint">
-                {snapshot
-                  ? "No sessions match these filters."
-                  : "Connect the transcript source to explore sessions."}
-              </p>
+              <div className="space-y-3 p-10 text-center dash-body text-fg-faint">
+                {!snapshot ? (
+                  <>
+                    <p>Connect the transcript source to explore sessions.</p>
+                    <Button variant="outline" size="sm" onClick={() => reload.current()}>
+                      Try again
+                    </Button>
+                  </>
+                ) : !snapshot.sessions.length ? (
+                  <p>No transcripts have been recorded yet.</p>
+                ) : (
+                  <>
+                    <p>No sessions match these filters.</p>
+                    <Button variant="outline" size="sm" onClick={reset}>
+                      Reset filters
+                    </Button>
+                  </>
+                )}
+              </div>
             )}
           </div>
           {selected && (
