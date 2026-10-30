@@ -50,6 +50,8 @@ export interface LaneBoardProps {
   cardTitle: (id: string) => string
   /** Resolves when the write is accepted; rejection snaps the card back (host's job). */
   onMove: (cardId: string, fromLane: string, toLane: string) => void | Promise<void>
+  /** Lanes that only show: cards cannot be dragged. */
+  readOnly?: boolean
   className?: string
 }
 
@@ -73,7 +75,7 @@ const laneCoordinates: KeyboardCoordinateGetter = (event, { context: { active, d
 }
 
 /** Lanes of cards with pointer and keyboard drag between lanes. Optimism, Undo and errors belong to the host. */
-export function LaneBoard({ lanes, labels, cardTitle, onMove, className }: LaneBoardProps) {
+export function LaneBoard({ lanes, labels, cardTitle, onMove, readOnly, className }: LaneBoardProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: laneCoordinates }))
   const [active, setActive] = useState<string | null>(null)
   const laneOf = (cardId: string) => lanes.find((l) => l.cards.some((c) => c.id === cardId))
@@ -97,7 +99,7 @@ export function LaneBoard({ lanes, labels, cardTitle, onMove, className }: LaneB
     <DndContext sensors={sensors} accessibility={{ announcements }} onDragStart={(e) => setActive(String(e.active.id))} onDragEnd={onDragEnd} onDragCancel={() => setActive(null)}>
       <div className={cn('flex min-w-0 snap-x gap-3 overflow-x-auto', className)}>
         {lanes.map((l) => (
-          <LaneColumn key={l.id} lane={l} labels={labels} dragging={active !== null} />
+          <LaneColumn key={l.id} lane={l} labels={labels} dragging={active !== null} readOnly={readOnly} />
         ))}
       </div>
       <DragOverlay>{activeCard && <div className="rounded-md border border-border bg-panel p-2 shadow-lg">{activeCard.content}</div>}</DragOverlay>
@@ -105,7 +107,7 @@ export function LaneBoard({ lanes, labels, cardTitle, onMove, className }: LaneB
   )
 }
 
-function LaneColumn({ lane, labels, dragging }: { lane: Lane; labels: LaneBoardLabels; dragging: boolean }) {
+function LaneColumn({ lane, labels, dragging, readOnly }: { lane: Lane; labels: LaneBoardLabels; dragging: boolean; readOnly?: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: lane.id })
   const collapsed = lane.collapsed && !dragging
   return (
@@ -118,7 +120,7 @@ function LaneColumn({ lane, labels, dragging }: { lane: Lane; labels: LaneBoardL
         <ul aria-label={labels.lane(lane.title, lane.cards.length)} className="flex min-h-12 flex-col gap-2">
           {lane.cards.length === 0 && <li className="rounded-md border border-dashed border-border-subtle p-3 dash-caption text-fg-faint">{labels.empty(lane.title)}</li>}
           {lane.cards.map((c) => (
-            <CardItem key={c.id} card={c} labels={labels} />
+            <CardItem key={c.id} card={c} labels={labels} readOnly={readOnly} />
           ))}
         </ul>
       )}
@@ -126,10 +128,10 @@ function LaneColumn({ lane, labels, dragging }: { lane: Lane; labels: LaneBoardL
   )
 }
 
-function CardItem({ card, labels }: { card: LaneCard; labels: LaneBoardLabels }) {
-  const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: card.id, disabled: card.pending })
+function CardItem({ card, labels, readOnly }: { card: LaneCard; labels: LaneBoardLabels; readOnly?: boolean }) {
+  const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: card.id, disabled: card.pending || readOnly })
   return (
-    <li ref={setNodeRef} {...attributes} {...listeners} aria-label={undefined} aria-roledescription={labels.dragHint} aria-busy={card.pending || undefined} className={cn('rounded-md border border-border bg-panel p-2 outline-none focus-visible:outline-2', isDragging && 'opacity-40', card.pending && 'opacity-70')}>
+    <li ref={setNodeRef} {...(readOnly ? {} : { ...attributes, ...listeners })} aria-label={undefined} aria-roledescription={readOnly ? undefined : labels.dragHint} aria-busy={card.pending || undefined} className={cn('rounded-md border border-border bg-panel p-2 outline-none focus-visible:outline-2', isDragging && 'opacity-40', card.pending && 'opacity-70')}>
       {card.content}
       {card.pending && <span className="mt-1 block dash-caption text-fg-faint">{labels.pending}</span>}
     </li>
