@@ -52,6 +52,18 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
   wakes when an ingested event carries that subject.
 - `OnChange(id, seq, change)` now also reports `updated`, `woke` and `escalated`; the stream (AL4) turns those into toasts.
 
+## Detail and approval linkage (AL5)
+
+- An alert about a queue item carries a subject `{kind:"approval", ref:<item id>}`. Detail then returns `approval:{item_id, state}` and an
+  `approval` action; the drawer decides through the Approvals endpoints, never through alerts.
+- `Store.FollowApprovals` subscribes to the in-process Approvals broker (`approvals.Changes`) and settles those alerts on
+  `item.resolved` / `item.expired` (resolution Approved, Denied, Expired; `resolved_by` approvals). A reader the broker drops is
+  re-subscribed after 1 s; changes in the gap are not replayed.
+- `alert.cleared` settles the open alerts with the event's `coalesce_key`, else `raised:<first subject ref>` ("Cleared by source").
+- `technical.fields` come from the latest event's payload: top-level scalars only, at most 12, values cut at 200 characters,
+  secret-looking keys left out and token-looking values replaced. Nothing nested is shown.
+- Not done: task-done settling of task-failed alerts, and an adapter that emits approval alerts (the subject shape above is the contract for it).
+
 ## Wiring (CW-20261030-0131, register_alertsfeed.go)
 
 - `Store.OnChange` publishes to an in-process `alertsstream.Hub`: an `alert.<change>` frame with the server-computed `toast`
@@ -65,7 +77,7 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
   leaves all of this to the stub.
 - Not started because they do not exist yet: the Torque and Tether-poll adapters. `GET /alerts/rules` is not served.
 
+
 ## Not here
 
-Coalescing, escalation and wake-ups (AL3) and humanised detail with approval linkage (AL5) arrive in their own PRs; prefs semantics are
-AL6. Torque and Tether-poll adapters, and `GET /alerts/rules`, do not exist yet.
+Torque and Tether-poll adapters, and `GET /alerts/rules`, do not exist yet.

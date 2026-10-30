@@ -35,6 +35,8 @@ type Store struct {
 	Now  func() time.Time
 	// Window is the coalesce window (the coalesce_window_sec pref); nil means DefaultCoalesceWindow, zero or less turns coalescing off.
 	Window func(ctx context.Context) time.Duration
+	// ApprovalState, if set, reports an approval item's current state for the detail's approval block.
+	ApprovalState func(ctx context.Context, itemID string) string
 	// OnChange, if set, is told after each committed change (the stream hook for AL4): the alert id, its
 	// new sequence and what happened ("created", "updated", "state", "woke", "escalated", "removed"). updated, woke and
 	// escalated are the changes that toast.
@@ -115,6 +117,10 @@ func (s *Store) Ingest(e alertsource.Event) error {
 	if s.Pack == nil {
 		return nil
 	}
+	if e.Kind == "alert.cleared" {
+		_, err := s.SettleCleared(context.Background(), clearedKey(e))
+		return err
+	}
 	res := s.Pack().Evaluate(e.RuleEvent())
 	if res.Alert == nil {
 		return nil
@@ -158,8 +164,8 @@ func (s *Store) Ingest(e alertsource.Event) error {
 		if folded {
 			target = foldID
 		}
-		r, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO alert_events(alert_id, dedupe_key, at_ms, kind, label, ref_json, correlation_id) VALUES (?,?,?,?,?,?,?)`,
-			target, dedupe, e.AtMS, e.Kind, alertsource.Clean(e.Kind, 80), ref, alertsource.Clean(e.CorrelationID, 120))
+		r, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO alert_events(alert_id, dedupe_key, at_ms, kind, label, ref_json, correlation_id, technical_json) VALUES (?,?,?,?,?,?,?,?)`,
+			target, dedupe, e.AtMS, e.Kind, alertsource.Clean(e.Kind, 80), ref, alertsource.Clean(e.CorrelationID, 120), techJSON(e.Payload))
 		if err != nil {
 			return err
 		}
