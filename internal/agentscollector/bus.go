@@ -203,9 +203,21 @@ func insertBus(ctx context.Context, tx *sql.Tx, b BusEvent, now int64) error {
 		cj, _ := json.Marshal(b.Card)
 		card = string(cj)
 	}
-	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO bus_events(tether_seq,tether_event_id,at_ns,type,subject,actor,app,severity,refs_json,card_json) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+	res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO bus_events(tether_seq,tether_event_id,at_ns,type,subject,actor,app,severity,refs_json,card_json) VALUES(?,?,?,?,?,?,?,?,?,?)`,
 		b.Seq, b.EventID, at, b.Type, b.Subject, b.Actor, b.App, b.Severity, string(refs), card)
-	return err
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil // a replayed event is not announced twice
+	}
+	id, _ := res.LastInsertId()
+	ev := map[string]any{"id": "bus_" + strconv.FormatInt(id, 10), "seq": b.Seq, "at": at / int64(time.Millisecond), "type": b.Type, "subject": b.Subject,
+		"actor": b.Actor, "app": b.App, "severity": b.Severity, "refs": json.RawMessage(refs), "card": nil}
+	if card != nil {
+		ev["card"] = json.RawMessage(card.(string))
+	}
+	return addStream(ctx, tx, "bus", at, map[string]any{"event": ev})
 }
 
 // BusQuery is the feed filter. Type accepts the UI names (deploys, restarts, tasks, failures) or the types.

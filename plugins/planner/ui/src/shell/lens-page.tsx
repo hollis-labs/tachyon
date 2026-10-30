@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Skeleton, Textarea } from '@hollis-labs/design-components'
 import { StatusBadge } from '@hollis-labs/kit-dashboard'
@@ -51,13 +51,20 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   const selected = Boolean(item)
 
   // A write that lost to a newer revision reloads and says so; anything else is reported as it came.
+  const [busy, setBusy] = useState(false)
+  const inFlight = useRef(false) // the ref closes the gap before the state renders
   const write = async (fn: () => Promise<unknown>) => {
+    if (inFlight.current) return // a write is in flight: never submit twice
+    inFlight.current = true
+    setBusy(true)
     try {
       await fn()
     } catch (err) {
       notifyError(err, TEXT.writeFailed)
     } finally {
       await load()
+      inFlight.current = false
+      setBusy(false)
     }
   }
 
@@ -95,7 +102,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
             {db === 'workstreams' && <StreamBody item={item} />}
             {db === 'roadmap' && <RoadmapBody item={item} horizons={schema?.enums.horizon ?? []} write={write} />}
             {db === 'ideas' && <IdeaBody item={item} write={write} />}
-            {db === 'decisions' && <DecisionBody item={item} write={write} />}
+            {db === 'decisions' && <DecisionBody item={item} write={write} busy={busy} />}
             {db === 'risks' && <RiskBody item={item} levels={schema?.enums.severity ?? []} />}
           </section>
         ) : (
@@ -178,12 +185,12 @@ function IdeaBody({ item, write }: { item: PlannerItem; write: (fn: () => Promis
   )
 }
 
-function DecisionBody({ item, write }: { item: PlannerItem; write: (fn: () => Promise<unknown>) => Promise<void> }) {
+function DecisionBody({ item, write, busy }: { item: PlannerItem; write: (fn: () => Promise<unknown>) => Promise<void>; busy: boolean }) {
   const api = usePlannerApi()
   const options = item.options ?? []
   const chosen = typeof item.chosen === 'string' ? item.chosen : typeof item.decision === 'string' ? item.decision : item.status === 'decided' ? '' : undefined
   if (options.length === 0) return <p className="dash-support text-fg-muted">{TEXT.noOptions}</p>
-  return <OptionCompare options={options} chosenId={chosen || undefined} onChoose={(opt) => void write(() => api.plannerDecide(item.id, opt, item.rev))} labels={{ choose: TEXT.chooseOption, chooseButton: TEXT.chooseButton, recommended: TEXT.recommended, chosen: TEXT.chosen, pros: TEXT.pros, cons: TEXT.cons, groupLabel: TEXT.optionsGroup }} />
+  return <OptionCompare options={options} chosenId={chosen || undefined} onChoose={(opt) => void write(() => api.plannerDecide(item.id, opt, item.rev))} busy={busy} labels={{ choose: TEXT.chooseOption, chooseButton: TEXT.chooseButton, recommended: TEXT.recommended, chosen: TEXT.chosen, pros: TEXT.pros, cons: TEXT.cons, groupLabel: TEXT.optionsGroup }} />
 }
 
 function RiskBody({ item, levels }: { item: PlannerItem; levels: string[] }) {
