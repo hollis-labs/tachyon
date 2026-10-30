@@ -31,9 +31,9 @@ type Owned struct {
 	// Changed is called after a Tether turn is stored ("message") or its reply delivery moves ("delivery").
 	// It must not block; it may be nil.
 	Changed func(ctx context.Context, kind string, t Turn)
-	mu                sync.Mutex
-	cancel            context.CancelFunc
-	done              chan struct{}
+	mu      sync.Mutex
+	cancel  context.CancelFunc
+	done    chan struct{}
 }
 type Resolution struct {
 	ID   string `json:"resolution_id"`
