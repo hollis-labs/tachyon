@@ -1,0 +1,8 @@
+{
+  "agents": [
+    {"id": "legacy-scribe", "name": "Legacy Scribe", "urn": "urn:tether:agent:legacy-scribe", "provider": "claude", "model": "claude-haiku-5-5", "enabled": false, "state": "retired", "policy_tag": "plan", "launch_count": 0, "layer": "system", "sha": "5b4ea33ae0522fda10cdb9f31d008af60e210495ad42a0c691d3b7f82e524a10", "owned_draft": false},
+    {"id": "tachyon-9f3c2a1e", "name": "Triage helper (draft)", "urn": null, "provider": "claude", "model": "claude-sonnet-5-5", "enabled": true, "state": "active", "policy_tag": null, "launch_count": 0, "layer": null, "sha": null, "owned_draft": true}
+  ],
+  "total": 6,
+  "next_cursor": null
+}

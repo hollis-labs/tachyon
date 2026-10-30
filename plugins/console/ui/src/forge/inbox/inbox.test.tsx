@@ -203,6 +203,21 @@ describe('<PendingPrInbox>', () => {
     await waitFor(() => expect(screen.getByText('No pull requests match this view.')).toBeTruthy())
   })
 
+  it('selects rows and dismisses them together from the bulk bar', async () => {
+    const forge = createMockForgeClient()
+    vi.spyOn(forge, 'listPendingPrs').mockResolvedValue([mk(1), mk(2), mk(3)])
+    const { stateStore } = mount(forge)
+    await screen.findByText('PR 1')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select o/r#1' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select o/r#2' }))
+    const bar = screen.getByRole('toolbar', { name: 'Bulk actions' })
+    expect(within(bar).getByText('2 selected')).toBeTruthy()
+    fireEvent.click(within(bar).getByRole('button', { name: 'Dismiss' }))
+    await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Bulk actions' })).toBeNull())
+    expect((await stateStore.load()).filter((s) => s.status === 'dismissed')).toHaveLength(2)
+    expect(screen.getAllByTestId(/^pr-row-/)).toHaveLength(1)
+  })
+
   it('keeps saved rows and filters while refreshing, then reconciles changed, added and removed PRs', async () => {
     const forge = createMockForgeClient()
     let finish!: (prs: PendingPrSummary[]) => void

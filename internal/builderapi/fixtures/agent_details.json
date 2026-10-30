@@ -1,0 +1,91 @@
+{
+  "builder-reviewer": {
+    "id": "builder-reviewer", "state": "active", "editable": true, "owned_draft": false,
+    "identity": {"id": "builder-reviewer", "name": "Builder Reviewer", "description": "Reviews Builder pull requests against the design.", "urn": "urn:tether:agent:builder-reviewer", "roles": ["reviewer"]},
+    "runtime": {"provider": "claude", "model": "claude-sonnet-5-5", "extends": "base-worker", "abstract": false, "enabled": true},
+    "prompt": {
+      "system_prompt": "You review code changes for correctness and scope.",
+      "agent_prompt": "",
+      "body": "Review the diff first, then the tests.\n\n<!-- tachyon:prompt review-etiquette@3 -->\nBe specific. Quote the line. Say what to change.\n<!-- /tachyon:prompt -->\n",
+      "parts": [{"kind": "prompt", "id": "review-etiquette", "rev": 3, "label": "Review etiquette", "bytes": 49, "tokens_est": 13}],
+      "prompts": [],
+      "boot_fragments": ["boot/repo-rules"]
+    },
+    "tools_skills": {"mcp_servers": ["tether", "github"], "skills": ["commit-hygiene"]},
+    "policy": {
+      "permission_mode": "default", "network": "restricted", "default_sandbox": "workspace-write",
+      "mcp_scopes": ["tether:read", "github:pr"],
+      "lifecycle": {"max_turns": 80, "idle_timeout_s": 1800},
+      "recovery": {"on_crash": "resume"}
+    },
+    "launches": [
+      {"id": "builder-reviewer-tachyon", "project": "tachyon", "worker": "hub", "enabled": true, "live_count": 1},
+      {"id": "builder-reviewer-agent-os", "project": "agent-os", "worker": "hub", "enabled": true, "live_count": 1}
+    ],
+    "revision": {"sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0", "snapshot_seq": 7, "layer": "system", "path": "agents/builder-reviewer.yaml", "observed_at": 1793320800000},
+    "parts": [
+      {"kind": "prompt", "id": "review-etiquette", "rev": 3, "drifted": false, "compiled_hash": "0cc97b76b4070404ff21b284446da5f75ac2475c53a538d9c5719c2a7ad39a5e"},
+      {"kind": "policy", "id": "standard-ask", "rev": 2, "drifted": true, "compiled_hash": "15e69b730f90ada15978ac546ca81f7b0700e482ec31d9ee72219682f11622bf"}
+    ]
+  },
+  "release-captain": {
+    "id": "release-captain", "state": "active", "editable": true, "owned_draft": false,
+    "identity": {"id": "release-captain", "name": "Release Captain", "description": "Cuts releases once the checks are green.", "urn": "urn:tether:agent:release-captain", "roles": ["releaser"]},
+    "runtime": {"provider": "claude", "model": "claude-opus-5-5", "extends": null, "abstract": false, "enabled": true},
+    "prompt": {"system_prompt": "You prepare and cut releases.", "agent_prompt": "", "body": "Never tag without a green main.\n", "parts": [], "prompts": [], "boot_fragments": []},
+    "tools_skills": {"mcp_servers": null, "skills": ["commit-hygiene", "release-notes"]},
+    "policy": {
+      "permission_mode": "bypassPermissions", "network": "open", "default_sandbox": "none",
+      "mcp_scopes": ["tether:read", "tether:write", "github:release"],
+      "lifecycle": {"max_turns": 40, "idle_timeout_s": 900},
+      "recovery": {"on_crash": "stop"}
+    },
+    "launches": [{"id": "release-captain-tachyon", "project": "tachyon", "worker": "hub", "enabled": true, "live_count": 0}],
+    "revision": {"sha": "edfec147057580e1f6e1b800106cd1b27b22dc5fa94bc2efc3d689bf24c00ac7", "snapshot_seq": 3, "layer": "system", "path": "agents/release-captain.yaml", "observed_at": 1793320800000},
+    "parts": []
+  },
+  "base-worker": {
+    "id": "base-worker", "state": "active", "editable": true, "owned_draft": false,
+    "identity": {"id": "base-worker", "name": "Base Worker", "description": "Abstract parent for worker agents.", "urn": "urn:tether:agent:base-worker", "roles": []},
+    "runtime": {"provider": "claude", "model": null, "extends": null, "abstract": true, "enabled": true},
+    "prompt": {"system_prompt": "", "agent_prompt": "", "body": "Work in the assigned workroot. Report briefly.\n", "parts": [], "prompts": [], "boot_fragments": []},
+    "tools_skills": {"mcp_servers": ["tether"], "skills": []},
+    "policy": {"permission_mode": "acceptEdits", "network": "restricted", "default_sandbox": "workspace-write", "mcp_scopes": ["tether:read"], "lifecycle": {}, "recovery": {}},
+    "launches": [],
+    "revision": {"sha": "6d15324619e642ff7751a0b2079aaa25745eb1717754c7e3a2fbd33187f6bd63", "snapshot_seq": 2, "layer": "system", "path": "agents/base-worker.yaml", "observed_at": 1793320800000},
+    "parts": []
+  },
+  "nightly-triage": {
+    "id": "nightly-triage", "state": "disabled", "editable": true, "owned_draft": false,
+    "identity": {"id": "nightly-triage", "name": "Nightly Triage", "description": "Sorts the overnight inbox.", "urn": "urn:tether:agent:nightly-triage", "roles": ["triage"]},
+    "runtime": {"provider": "codex", "model": "gpt-5-codex", "extends": "base-worker", "abstract": false, "enabled": false},
+    "prompt": {"system_prompt": "", "agent_prompt": "Sort by urgency.", "body": "", "parts": [], "prompts": [], "boot_fragments": []},
+    "tools_skills": {"mcp_servers": [], "skills": []},
+    "policy": {"permission_mode": "plan", "network": "none", "default_sandbox": "read-only", "mcp_scopes": [], "lifecycle": {}, "recovery": {}},
+    "launches": [{"id": "nightly-triage-agent-os", "project": "agent-os", "worker": "hub", "enabled": false, "live_count": 0}],
+    "revision": {"sha": "cf39bdf984d8649582e105b45f8d956086550488daaf212e28f2210727febc16", "snapshot_seq": 5, "layer": "system", "path": "agents/nightly-triage.yaml", "observed_at": 1793320800000},
+    "parts": []
+  },
+  "legacy-scribe": {
+    "id": "legacy-scribe", "state": "retired", "editable": true, "owned_draft": false,
+    "identity": {"id": "legacy-scribe", "name": "Legacy Scribe", "description": "Retired. Kept for history.", "urn": "urn:tether:agent:legacy-scribe", "roles": []},
+    "runtime": {"provider": "claude", "model": "claude-haiku-5-5", "extends": null, "abstract": false, "enabled": false},
+    "prompt": {"system_prompt": "Take notes.", "agent_prompt": "", "body": "", "parts": [], "prompts": [], "boot_fragments": []},
+    "tools_skills": {"mcp_servers": [], "skills": []},
+    "policy": {"permission_mode": "plan", "network": "none", "default_sandbox": "read-only", "mcp_scopes": [], "lifecycle": {}, "recovery": {}},
+    "launches": [],
+    "revision": {"sha": "5b4ea33ae0522fda10cdb9f31d008af60e210495ad42a0c691d3b7f82e524a10", "snapshot_seq": 4, "layer": "system", "path": "agents/legacy-scribe.yaml", "observed_at": 1793320800000},
+    "parts": []
+  },
+  "tachyon-9f3c2a1e": {
+    "id": "tachyon-9f3c2a1e", "state": "active", "editable": false, "owned_draft": true,
+    "identity": {"id": "tachyon-9f3c2a1e", "name": "Triage helper (draft)", "description": "A Tachyon-owned agent used for team formation. Edited in Teams, not here.", "urn": null, "roles": []},
+    "runtime": {"provider": "claude", "model": "claude-sonnet-5-5", "extends": null, "abstract": false, "enabled": true},
+    "prompt": {"system_prompt": "", "agent_prompt": "", "body": "", "parts": [], "prompts": [], "boot_fragments": []},
+    "tools_skills": {"mcp_servers": null, "skills": []},
+    "policy": {"permission_mode": null, "network": null, "default_sandbox": null, "mcp_scopes": [], "lifecycle": {}, "recovery": {}},
+    "launches": [],
+    "revision": {"sha": null, "snapshot_seq": null, "layer": null, "path": null, "observed_at": null},
+    "parts": []
+  }
+}

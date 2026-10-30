@@ -306,3 +306,45 @@ func TestStoredAlertsAreSecretFree(t *testing.T) {
 		t.Fatalf("unsafe content stored: %s", w.Body)
 	}
 }
+
+func TestStateCompat(t *testing.T) {
+	f := newFixture(t)
+	f.s.Ingest(ev("need", "e1", 1000))
+	id := AlertID(alertsource.DedupeKey(ev("need", "e1", 1000)))
+	api := &API{Store: f.s, Prefs: SettingsPrefs{DB: f.s.DB}}
+	h := api.StateCompat(alertsapi.StatePrefix, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			w.Write([]byte(`{"data":[{"key":"pr-inbox:a","status":"read"}]}`))
+			return
+		}
+		w.Write([]byte(`{"data":"passed"}`))
+	}))
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Origin", "http://"+r.Host)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := do("PUT", alertsapi.StatePrefix+"/pr-inbox:a", `{"type":"read"}`); !strings.Contains(w.Body.String(), "passed") {
+		t.Fatalf("other keys pass through: %s", w.Body)
+	}
+	w := do("PUT", alertsapi.StatePrefix+"/"+id, `{"type":"snooze","until":`+itoa(int(f.now.Add(2*time.Hour).UnixMilli()))+`}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"snoozed"`) || !strings.Contains(w.Body.String(), `"snoozeUntil":`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w = do("PUT", alertsapi.StatePrefix+"/"+id, `{"type":"read"}`); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w = do("PUT", alertsapi.StatePrefix+"/"+id, `{"type":"explode"}`); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
+	}
+	w = do("GET", alertsapi.StatePrefix+"?prefix=", "")
+	if !strings.Contains(w.Body.String(), "pr-inbox:a") || !strings.Contains(w.Body.String(), id) {
+		t.Fatalf("list merges both: %s", w.Body)
+	}
+	w = do("GET", alertsapi.StatePrefix+"?prefix=pr-inbox:", "")
+	if strings.Contains(w.Body.String(), id) {
+		t.Fatalf("prefix filter: %s", w.Body)
+	}
+}

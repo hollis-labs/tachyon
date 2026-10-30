@@ -21,6 +21,9 @@ function Shell({ p, s, children }: { p: CardRenderProps; s: HitlCardState; child
         <span aria-hidden className="h-1.5 w-1.5 bg-warning" />
         {LABEL[s.req.type]}: {p.card.title}
         <Countdown remaining={s.req.status === 'pending' ? s.remaining : undefined} />
+        {s.req.status === 'answered' && <span className="text-success">{s.req.outcome?.label ?? 'Answered'}</span>}
+        {s.req.status === 'withdrawn' && <span className="text-fg-muted">Withdrawn</span>}
+        {(s.req.status === 'expired' || s.expiredLocally) && <span className="text-danger">Expired</span>}
       </span>
     )
   }

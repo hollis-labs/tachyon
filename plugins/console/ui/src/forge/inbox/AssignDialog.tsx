@@ -99,7 +99,7 @@ export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProp
             <legend className="mb-1.5 font-mono dash-caption uppercase tracking-widest text-fg-faint">Task</legend>
             <div className="flex flex-wrap gap-1.5">
               {ASSIGN_TASKS.map((t) => (
-                <Button variant="outline" size="sm" key={t.id} type="button" aria-pressed={task === t.id} onClick={() => setTask(t.id)} className={`font-mono dash-label uppercase tracking-widest ${task === t.id ? 'border-warning text-warning' : 'border-border text-fg-muted hover:bg-surface'}`}>
+                <Button variant="outline" size="sm" key={t.id} type="button" aria-pressed={task === t.id} onClick={() => setTask(t.id)} className={`dash-label ${task === t.id ? 'border-fg text-fg' : 'border-border text-fg-muted hover:bg-surface'}`}>
                   {t.label}
                 </Button>
               ))}
@@ -133,7 +133,7 @@ export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProp
                 )
               })}
             </div>
-            {agent && !agent.identity.urn && <p className="mt-1.5 font-mono dash-support text-warning">No registered address for this agent; the message goes to a fallback address and may not be delivered.</p>}
+            {agent && !agent.identity.urn && <p className="mt-1.5 font-mono dash-support text-fg-muted">No registered address for this agent; the message goes to a fallback address and may not be delivered.</p>}
           </div>
 
           <label className="block">
@@ -155,15 +155,15 @@ export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProp
             </div>
           )}
 
-          {dup && <p role="status" className="border border-warning/50 bg-warning/5 px-3 py-2 font-mono dash-control text-warning">Already assigned to {agent?.identity.name} for this task. Sending again repeats the message.</p>}
+          {dup && <p role="status" className="border border-border bg-surface px-3 py-2 font-mono dash-control text-fg">Already assigned to {agent?.identity.name} for this task. Sending again repeats the message.</p>}
           {error && <p role="alert" className="border border-danger/50 bg-danger/5 px-3 py-2 font-mono dash-control text-danger">{error}</p>}
         </div>
 
         <footer className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
           <span className="font-mono dash-caption text-fg-faint">Needs identity confirmation: {setForge ? 'forge assign + message' : 'message'}</span>
           <span className="flex gap-2">
-            <Button variant="outline" size="sm" type="button" onClick={onClose} disabled={busy} className={`font-mono dash-label uppercase tracking-widest border-border text-fg-muted hover:bg-surface`}>Cancel</Button>
-            <Button variant="outline" size="sm" type="button" onClick={submit} disabled={!agent || busy} className={`font-mono dash-label uppercase tracking-widest border-warning text-warning hover:bg-warning/10`}>
+            <Button variant="outline" size="sm" type="button" onClick={onClose} disabled={busy} className={`dash-label border-border text-fg-muted hover:bg-surface`}>Cancel</Button>
+            <Button variant="outline" size="sm" type="button" onClick={submit} disabled={!agent || busy} className={`dash-label`}>
               {busy ? 'Assigning…' : dup ? 'Assign again' : 'Assign'}
             </Button>
           </span>

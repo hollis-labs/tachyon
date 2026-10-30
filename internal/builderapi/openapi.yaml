@@ -1,0 +1,555 @@
+openapi: 3.0.3
+info:
+  title: Tachyon Builder + Registry backend
+  version: "1.0"
+  description: |
+    Final shapes for the Builder (Agents, Launches, Library) and Registry (Projects) backend.
+    Design: tesseract 01M657C3BRSA4JJFKPKDFDS4F1 (project/tachyon/workspace/design). The Tether catalog is the
+    system of record; Tachyon is a typed editor and read model over it. Flat JSON, snake_case, unix-ms
+    timestamps, errors are {code,message}. null means "not known / not reported", never zero.
+    GETs are open (the design recommends moving prompt bodies and policies behind operator reads; clients
+    must tolerate 401/403 on those). Every write needs an operator session; builder verbs are not agent verbs.
+    The stub (TACHYON_BUILDER_STUBS=1) answers from fixtures and stores nothing. Env values are write-only and
+    appear in no response, diff or snapshot.
+servers:
+  - url: /api/plugins/console/v1
+paths:
+  /builder/summary:
+    get:
+      summary: Tab badges and catalog health in one cheap call.
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Summary"}}}}
+  /builder/agents:
+    get:
+      summary: Catalog agents, paged by cursor (25).
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: provider, in: query, schema: {type: string}}
+        - {name: state, in: query, schema: {type: string, enum: [active, disabled, retired]}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/AgentList"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /builder/agents/{id}:
+    get:
+      summary: The editable model of one agent, including compiled Library parts and their drift.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/AgentDetail"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/agents/{id}/resolved:
+    get:
+      summary: The Resolved card. resolved_by says whether Tether or Tachyon's approximation computed it.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Resolved"}}}}
+        "404": {description: "not_found, or not_catalog_agent for a Tachyon-owned draft", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /builder/agents/{id}/used_by:
+    get:
+      summary: Live sessions, launches and teams that use the agent. assigned_items is always null.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/AgentUsedBy"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/agents/{id}/checks:
+    get:
+      summary: Tether validation plus Tachyon checks (references, part drift, model plausibility, scope review age).
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Checks"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/agents/{id}/history:
+    get:
+      summary: Applied plans that touched the agent's file. diff is present only when Tachyon holds both snapshots.
+      parameters:
+        - {$ref: "#/components/parameters/id"}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/History"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/launches:
+    get:
+      summary: Catalog launches. Environment is key names and a secret-like count only; values never appear.
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: provider, in: query, schema: {type: string}}
+        - {name: project, in: query, schema: {type: string}}
+        - {name: worker, in: query, schema: {type: string}}
+        - {name: live, in: query, schema: {type: string, enum: ["1"]}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {launches: {type: array, items: {$ref: "#/components/schemas/Launch"}}, next_cursor: {type: string, nullable: true}}}}}}
+  /builder/launches/{id}:
+    get:
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Launch"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/launches/{id}/launch:
+    post:
+      summary: Start a session from a catalog launch. Not a catalog change. Accepts request_id only; no env or override fields.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [request_id], additionalProperties: false, properties: {request_id: {type: string}}}}}}
+      responses:
+        "201": {description: started, content: {application/json: {schema: {type: object, properties: {session_id: {type: string}, agents_url: {type: string}}}}}}
+        "409": {description: "Tether's refusal passed through: agent_disabled, worker_unavailable, worker_not_configured, idempotency_conflict.", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /builder/library/{kind}:
+    get:
+      summary: Library list for prompts, skills, tool_servers or policies. Rows carry kind-specific fields.
+      parameters:
+        - {$ref: "#/components/parameters/kind"}
+        - {name: q, in: query, schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: "#/components/schemas/LibraryItem"}}}}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /builder/library/{kind}/{id}:
+    get:
+      summary: Library editor model (prompt body, skill preview, tool server health, policy bundle).
+      parameters: [{$ref: "#/components/parameters/kind"}, {$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/LibraryItem"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/library/{kind}/{id}/used_by:
+    get:
+      parameters: [{$ref: "#/components/parameters/kind"}, {$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/LibraryUsedBy"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/library/{kind}/{id}/history:
+    get:
+      summary: Revisions (prompts, policies) or snapshots (skills). Tool servers have none.
+      parameters: [{$ref: "#/components/parameters/kind"}, {$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {entries: {type: array, items: {$ref: "#/components/schemas/LibraryRevision"}}, next_cursor: {type: string, nullable: true}}}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/changes:
+    get:
+      summary: Changes. state is open (draft, awaiting_approval, approved, applying, stale), all, or one state.
+      parameters: [{name: state, in: query, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {changes: {type: array, items: {$ref: "#/components/schemas/Change"}}}}}}}
+        "400": {$ref: "#/components/responses/Error"}
+    post:
+      summary: Compute an edit, validate it against Tether and build the Tether plan. This is the Review dialog payload.
+      description: |
+        Operator only. Idempotent by request_id. Paths address the editor model (policy.permission_mode), never a
+        file. One open change per target path. At most 10 creations per minute per operator.
+        Errors: 400 invalid, marker_forbidden; 409 stale_base, change_open, exists, part_in_use; 413 too_large;
+        429 rate_limited.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ChangeRequest"}}}}
+      responses:
+        "201": {description: draft, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+  /builder/changes/{id}:
+    get:
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /builder/changes/{id}/submit:
+    post:
+      summary: Draft to awaiting_approval. A privileged change needs ack_privileged true (400 ack_required otherwise).
+      parameters: [{$ref: "#/components/parameters/id"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {ack_privileged: {type: boolean}}}}}}
+      responses:
+        "200": {description: awaiting_approval, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /builder/changes/{id}/cancel:
+    post:
+      summary: Cancel a draft, an awaiting_approval or a stale change.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: cancelled, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "409": {$ref: "#/components/responses/Error"}
+  /builder/changes/{id}/rearm:
+    post:
+      summary: Re-arm the same Tether plan (same bundle, same plan_id) after its 15 minute expiry.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: awaiting_approval with a new expires_at, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "409": {$ref: "#/components/responses/Error"}
+  /builder/stream:
+    get:
+      summary: SSE. change and catalog events carry id and replay after Last-Event-ID; summary is a live snapshot.
+      parameters: [{name: Last-Event-ID, in: header, schema: {type: integer}}]
+      responses:
+        "200": {description: text/event-stream, content: {text/event-stream: {schema: {$ref: "#/components/schemas/StreamEvent"}}}}
+  /registry/projects:
+    get:
+      parameters: [{name: q, in: query, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {projects: {type: array, items: {$ref: "#/components/schemas/RegistryProjectRow"}}, next_cursor: {type: string, nullable: true}}}}}}
+  /registry/projects/{id}:
+    get:
+      summary: Registry profile composed with the catalog project and its consumers. link.state is linked or unlinked.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/RegistryProject"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    patch:
+      summary: Write the allowlisted registry fields. Unknown and null fields are rejected. Catalog mcp_servers goes through POST /builder/changes.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                display_name: {type: string, maxLength: 120}
+                description: {type: string, maxLength: 2000}
+                tags: {type: array, maxItems: 20, items: {type: string, maxLength: 40}}
+                guidelines: {type: string, maxLength: 8000}
+                entry_points: {type: array, maxItems: 20, items: {type: string, maxLength: 200}}
+                status: {type: string, enum: [active, paused, archived]}
+      responses:
+        "200": {description: updated, content: {application/json: {schema: {$ref: "#/components/schemas/RegistryProject"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+components:
+  parameters:
+    id: {name: id, in: path, required: true, schema: {type: string, pattern: "^[a-z0-9][a-z0-9._-]{0,63}$"}}
+    kind: {name: kind, in: path, required: true, schema: {type: string, enum: [prompts, skills, tool_servers, policies]}}
+  responses:
+    Error: {description: error, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties: {code: {type: string}, message: {type: string}}
+    Counts:
+      type: object
+      properties:
+        agents: {type: object, properties: {total: {type: integer}, active: {type: integer}, disabled: {type: integer}, retired: {type: integer, nullable: true}}}
+        launches: {type: object, properties: {total: {type: integer}, live: {type: integer, nullable: true}}}
+        library: {type: object, properties: {prompts: {type: integer}, skills: {type: integer}, tool_servers: {type: integer, nullable: true}, policies: {type: integer}}}
+        projects: {type: object, properties: {total: {type: integer}}}
+        open_changes: {type: integer}
+    Summary:
+      allOf:
+        - $ref: "#/components/schemas/Counts"
+        - type: object
+          properties:
+            catalog:
+              type: object
+              properties:
+                observed_at: {type: integer, format: int64}
+                source_status: {type: string, enum: [ok, stale, unreachable]}
+                last_plan_id: {type: string, nullable: true}
+            capabilities:
+              type: object
+              description: What the UI may offer today. Each flips to true when the matching Tether request lands.
+              properties:
+                retired: {type: boolean, description: "False until Tether tolerates a status marker (design F4); show Active/Disabled only."}
+                one_step_save: {type: boolean, description: "False: apply waits for approval on the host."}
+                delegated_approval: {type: boolean}
+                tool_server_edit: {type: boolean}
+                resolved_by: {type: string, enum: [tether, tachyon_approx]}
+                read_prompt_bodies_requires_operator: {type: boolean}
+    AgentRow:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        urn: {type: string, nullable: true}
+        provider: {type: string}
+        model: {type: string, nullable: true}
+        enabled: {type: boolean}
+        state: {type: string, enum: [active, disabled, retired]}
+        policy_tag: {type: string, nullable: true, enum: [ask, edits, bypass, plan]}
+        launch_count: {type: integer}
+        layer: {type: string, nullable: true}
+        sha: {type: string, nullable: true, description: "sha256 of the file; null for an owned draft."}
+        owned_draft: {type: boolean, description: "A Tachyon-owned agent used for team formation; not a catalog file."}
+    AgentList:
+      type: object
+      properties:
+        agents: {type: array, items: {$ref: "#/components/schemas/AgentRow"}}
+        total: {type: integer}
+        next_cursor: {type: string, nullable: true}
+    PartRef:
+      type: object
+      properties:
+        kind: {type: string, enum: [prompt, policy]}
+        id: {type: string}
+        rev: {type: integer}
+        drifted: {type: boolean, description: "The compiled fields were edited outside the Builder."}
+        compiled_hash: {type: string}
+    AgentDetail:
+      type: object
+      properties:
+        id: {type: string}
+        state: {type: string, enum: [active, disabled, retired]}
+        editable: {type: boolean}
+        owned_draft: {type: boolean}
+        identity: {type: object, properties: {id: {type: string}, name: {type: string}, description: {type: string}, urn: {type: string, nullable: true}, roles: {type: array, items: {type: string}}}}
+        runtime: {type: object, properties: {provider: {type: string}, model: {type: string, nullable: true}, extends: {type: string, nullable: true}, abstract: {type: boolean}, enabled: {type: boolean}}}
+        prompt:
+          type: object
+          properties:
+            system_prompt: {type: string}
+            agent_prompt: {type: string}
+            body: {type: string, description: "Contains <!-- tachyon:prompt id@rev --> blocks for compiled parts."}
+            parts: {type: array, items: {type: object, properties: {kind: {type: string}, id: {type: string}, rev: {type: integer}, label: {type: string}, bytes: {type: integer}, tokens_est: {type: integer}}}}
+            prompts: {type: array, items: {type: string}}
+            boot_fragments: {type: array, items: {type: string}}
+        tools_skills:
+          type: object
+          properties:
+            mcp_servers: {type: array, nullable: true, items: {type: string}, description: "null inherits; [] grants none."}
+            skills: {type: array, items: {type: string}}
+        policy:
+          type: object
+          properties:
+            permission_mode: {type: string, nullable: true}
+            network: {type: string, nullable: true}
+            default_sandbox: {type: string, nullable: true}
+            mcp_scopes: {type: array, items: {type: string}}
+            lifecycle: {type: object, additionalProperties: true}
+            recovery: {type: object, additionalProperties: true}
+        launches: {type: array, items: {type: object, properties: {id: {type: string}, project: {type: string}, worker: {type: string}, enabled: {type: boolean}, live_count: {type: integer}}}}
+        revision:
+          type: object
+          description: sha is Tachyon's sha256 of the file; Tether exposes no etag. Send it as expected_sha.
+          properties: {sha: {type: string, nullable: true}, snapshot_seq: {type: integer, nullable: true}, layer: {type: string, nullable: true}, path: {type: string, nullable: true}, observed_at: {type: integer, format: int64, nullable: true}}
+        parts: {type: array, items: {$ref: "#/components/schemas/PartRef"}}
+    Resolved:
+      type: object
+      properties:
+        agent_id: {type: string}
+        launch_id: {type: string, nullable: true}
+        resolved_by: {type: string, enum: [tether, tachyon_approx]}
+        tool_servers: {type: array, items: {type: object, properties: {id: {type: string}, status: {type: string}, tool_count: {type: integer, nullable: true}}}}
+        skills: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}}}}
+        policy: {type: object, properties: {permission_mode: {type: string, nullable: true}, network: {type: string, nullable: true}, default_sandbox: {type: string, nullable: true}}}
+        scopes: {type: array, items: {type: string}}
+        prompt_parts: {type: array, items: {type: object, properties: {label: {type: string}, bytes: {type: integer}, tokens_est: {type: integer}}}}
+        prompt_tokens_est: {type: integer, description: "bytes/4. An estimate."}
+        prompt_tokens_estimated: {type: boolean}
+        extends_chain: {type: array, items: {type: string}}
+        notes: {type: array, items: {type: string}}
+    AgentUsedBy:
+      type: object
+      properties:
+        live_sessions: {type: array, items: {type: object, properties: {session_id: {type: string}, launch_id: {type: string}, state: {type: string}}}}
+        launches: {type: array, items: {type: object, properties: {id: {type: string}, project: {type: string}, enabled: {type: boolean}}}}
+        teams: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}, launch_id: {type: string, nullable: true}}}}
+        assigned_items: {type: object, nullable: true, description: "Always null: no reliable agent to planner join."}
+        extended_by: {type: array, items: {type: string}}
+        counts: {type: object, properties: {live_sessions: {type: integer}, launches: {type: integer}, teams: {type: integer}}}
+    Check:
+      type: object
+      properties:
+        name: {type: string}
+        status: {type: string, enum: [ok, warn, fail]}
+        message: {type: string}
+        remedy: {type: string, nullable: true}
+        entity: {type: string}
+    Checks:
+      type: object
+      properties:
+        checks: {type: array, items: {$ref: "#/components/schemas/Check"}}
+        summary: {type: object, properties: {ok: {type: integer}, warn: {type: integer}, fail: {type: integer}}}
+    History:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              at: {type: integer, format: int64}
+              plan_id: {type: string}
+              name: {type: string}
+              actor: {type: string, description: "Tether's planned_by."}
+              files: {type: array, items: {type: string}}
+              privileged: {type: array, items: {type: string}}
+              activation: {type: string, description: "Verbatim from the plan."}
+              backup_id: {type: string}
+              snapshot_seq: {type: integer, nullable: true}
+              diff: {type: string, nullable: true, description: "Unified diff, env values masked. null for changes Tachyon did not snapshot."}
+        next_cursor: {type: string, nullable: true}
+    Launch:
+      type: object
+      properties:
+        id: {type: string}
+        agent: {type: string}
+        provider: {type: string}
+        model: {type: string, nullable: true, description: "From the agent."}
+        project: {type: string}
+        worker: {type: string}
+        workspace: {type: object, additionalProperties: true}
+        env:
+          type: object
+          description: Key names and a heuristic count only. Values are never returned.
+          properties: {keys: {type: array, items: {type: string}}, secret_like_count: {type: integer}}
+        route: {type: string, nullable: true}
+        chat: {type: boolean}
+        enabled: {type: boolean}
+        live_count: {type: integer}
+        sha: {type: string}
+    LibraryItem:
+      type: object
+      description: |
+        kind selects the extra fields. prompts: revision, bytes, tokens_est, archived, body, referencing_agents.
+        skills: layer, source, path, sha, read_only, snapshot_seq, body_preview. tool_servers: transport, tags, status,
+        health, tool_count, restarts, scopes (null: not reported), read_only. policies: revision, permission_mode,
+        network, default_sandbox, scope_count, privileged, bundle, referencing_agents.
+      properties:
+        kind: {type: string, enum: [prompts, skills, tool_servers, policies]}
+        id: {type: string}
+        name: {type: string}
+        summary: {type: string}
+        used_by_count: {type: integer}
+        editable: {type: boolean}
+      additionalProperties: true
+    LibraryUsedBy:
+      type: object
+      properties:
+        agents: {type: array, items: {type: object, properties: {id: {type: string}, name: {type: string}}}}
+        launches: {type: array, items: {type: object, properties: {id: {type: string}}}}
+        projects: {type: array, items: {type: object, properties: {id: {type: string}}}}
+        counts: {type: object, properties: {agents: {type: integer}, launches: {type: integer}, projects: {type: integer}}}
+    LibraryRevision:
+      type: object
+      properties:
+        revision: {type: integer, nullable: true}
+        snapshot_seq: {type: integer, nullable: true}
+        at: {type: integer, format: int64}
+        actor: {type: string, nullable: true}
+        plan_id: {type: string, nullable: true}
+        sha: {type: string, nullable: true}
+        summary: {type: string}
+    ChangeOp:
+      type: object
+      required: [target, op]
+      additionalProperties: false
+      properties:
+        target:
+          type: object
+          required: [kind, id]
+          additionalProperties: false
+          properties:
+            kind: {type: string, enum: [agent, launch, project, skill, part]}
+            id: {type: string, pattern: "^[a-z0-9][a-z0-9._-]{0,63}$"}
+            part_kind: {type: string, enum: [prompt, policy], description: "Required when kind is part."}
+        expected_sha: {type: string, description: "The sha from the read model. Empty when creating."}
+        op:
+          type: object
+          required: [type]
+          additionalProperties: false
+          properties:
+            type: {type: string, enum: [set, append, remove, create, restore_version, archive]}
+            path: {type: string, description: "Editor-model field path, for example policy.permission_mode."}
+            value: {description: "Any JSON. Text must not contain a tachyon:prompt marker. Env values are write-only."}
+            snapshot_seq: {type: integer, description: "restore_version only. Never restores env values."}
+    ChangeRequest:
+      type: object
+      required: [request_id, ops]
+      additionalProperties: false
+      properties:
+        request_id: {type: string}
+        note: {type: string, maxLength: 500}
+        ops: {type: array, minItems: 1, maxItems: 20, items: {$ref: "#/components/schemas/ChangeOp"}}
+    Change:
+      type: object
+      properties:
+        change_id: {type: string}
+        request_id: {type: string}
+        state: {type: string, enum: [draft, awaiting_approval, approved, applying, applied, failed, rolled_back, stale, expired, cancelled]}
+        note: {type: string}
+        operator: {type: string}
+        created_at: {type: integer, format: int64}
+        updated_at: {type: integer, format: int64}
+        targets: {type: array, items: {type: object, properties: {kind: {type: string}, id: {type: string}, path: {type: string}, base_sha: {type: string}}}}
+        base: {type: object, additionalProperties: {type: string}, description: "path to sha at planning time."}
+        diff: {type: string, description: "The real textual diff. Env and secret-looking values are masked as <value changed>."}
+        checks: {type: array, items: {$ref: "#/components/schemas/Check"}}
+        privileged: {type: array, items: {type: object, properties: {path: {type: string}, field: {type: string}}}}
+        ack_privileged: {type: boolean}
+        effect:
+          type: object
+          description: "activation is Tether's own string, shown verbatim. Never claim immediate unless it says so."
+          properties:
+            running_sessions: {type: array, items: {type: object, properties: {session_id: {type: string}, agent_id: {type: string}, launch_id: {type: string}}}}
+            activation: {type: string}
+            restart_required: {type: array, items: {type: string}}
+        plan:
+          type: object
+          nullable: true
+          properties:
+            plan_id: {type: string}
+            state: {type: string}
+            digest: {type: string}
+            expires_at: {type: integer, format: int64}
+            approve_command: {type: string, description: "Run on the host. Tachyon never holds the approval passphrase."}
+        result:
+          type: object
+          nullable: true
+          properties:
+            backup_id: {type: string}
+            activation: {type: string}
+            restart_required: {type: array, items: {type: string}}
+            reloaded: {type: boolean}
+            reload_error: {type: string, nullable: true}
+            applied_at: {type: integer, format: int64, nullable: true}
+        failure:
+          type: object
+          nullable: true
+          properties:
+            step: {type: string, enum: [validate, plan, apply, reload]}
+            code: {type: string}
+            message: {type: string}
+        stale:
+          type: object
+          nullable: true
+          description: Present when state is stale. Offer Reload (show theirs_diff) or Keep mine (POST /changes again with expected_sha = theirs_sha).
+          properties:
+            changed_paths: {type: array, items: {type: string}}
+            theirs_sha: {type: string}
+            mine_diff: {type: string}
+            theirs_diff: {type: string}
+    RegistryProjectRow:
+      type: object
+      properties:
+        id: {type: string}
+        display_name: {type: string}
+        description: {type: string}
+        tags: {type: array, items: {type: string}}
+        status: {type: string}
+        link: {$ref: "#/components/schemas/ProjectLink"}
+        counts: {type: object, properties: {agents: {type: integer, nullable: true}, launches: {type: integer, nullable: true}, planner_items: {type: integer, nullable: true}, tether_sessions: {type: integer, nullable: true}}}
+    ProjectLink:
+      type: object
+      properties:
+        state: {type: string, enum: [linked, unlinked]}
+        catalog_id: {type: string, nullable: true}
+        reason: {type: string, nullable: true}
+    RegistryProject:
+      type: object
+      properties:
+        id: {type: string}
+        identity: {type: object, properties: {display_name: {type: string}, description: {type: string}, tags: {type: array, items: {type: string}}, status: {type: string}}}
+        guidance: {type: object, properties: {entry_points: {type: array, items: {type: string}}, guidelines: {type: string}}}
+        link: {$ref: "#/components/schemas/ProjectLink"}
+        catalog: {type: object, nullable: true, description: "null when unlinked.", properties: {repo_root: {type: string, nullable: true}, workspace: {type: object, additionalProperties: true}, mcp_servers: {type: array, nullable: true, items: {type: string}}, sha: {type: string}}}
+        consumed_by:
+          type: object
+          properties:
+            agents: {type: array, nullable: true, items: {type: object, properties: {id: {type: string}, name: {type: string}}}}
+            launches: {type: array, nullable: true, items: {type: object, properties: {id: {type: string}}}}
+            planner_items: {type: object, nullable: true, properties: {open: {type: integer}, total: {type: integer}}}
+            tether_sessions: {type: object, nullable: true, properties: {live: {type: integer}, total: {type: integer}}}
+        soon: {type: array, items: {type: string}, description: "Sections that are not built yet: machines, services, repos."}
+    StreamEvent:
+      type: object
+      description: Flat JSON {type, at, ...}. change {change_id,state}; catalog {observed_at,changed_paths[],source builder|observed}; summary carries the Counts.
+      required: [type, at]
+      properties:
+        type: {type: string, enum: [change, catalog, summary]}
+        at: {type: integer, format: int64}
+      additionalProperties: true

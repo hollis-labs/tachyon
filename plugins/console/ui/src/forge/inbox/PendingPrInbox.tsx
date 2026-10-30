@@ -37,9 +37,9 @@ import { useAgentsClient } from '../../agents/context'
 
 const CATEGORY_TONE: Record<InboxCategory, string> = {
   failing_checks: 'border-danger/60 text-danger',
-  changes_requested: 'border-warning/60 text-warning',
-  conflicts: 'border-warning/60 text-warning',
-  needs_review: 'border-info/60 text-info',
+  changes_requested: 'border-border text-fg',
+  conflicts: 'border-border text-fg',
+  needs_review: 'border-border text-fg',
   stale: 'border-border text-fg-muted',
   unassigned: 'border-border text-fg-muted',
 }
@@ -52,7 +52,7 @@ const VIEWS: { id: Exclude<TriageView, 'all'>; label: string }[] = [
 ]
 
 function Pill({ category }: { category: InboxCategory }) {
-  return <RecordTag className={`font-mono uppercase tracking-widest ${CATEGORY_TONE[category]}`}>{CATEGORY_LABEL[category]}</RecordTag>
+  return <RecordTag className={`font-mono ${CATEGORY_TONE[category]}`}>{CATEGORY_LABEL[category]}</RecordTag>
 }
 
 function Checks({ item }: { item: InboxItem }) {
@@ -63,7 +63,7 @@ function Checks({ item }: { item: InboxItem }) {
     <span className="font-mono dash-support text-fg-muted">
       {c && (
         <span title="checks">
-          <span className="text-success">{c.passed}✓</span> <span className={c.failed ? 'text-danger' : ''}>{c.failed}✗</span> <span>{c.pending}…</span>
+          <span>{c.passed}✓</span> <span className={c.failed ? 'text-danger' : ''}>{c.failed}✗</span> <span>{c.pending}…</span>
         </span>
       )}
       {c && r && ' · '}
@@ -73,6 +73,8 @@ function Checks({ item }: { item: InboxItem }) {
 }
 
 interface RowProps {
+  selected: boolean
+  onToggle: (i: InboxItem) => void
   item: InboxItem
   now: number
   agentName: (id: string) => string
@@ -80,7 +82,7 @@ interface RowProps {
   onTriage: (i: InboxItem, op: 'dismiss' | 'settle' | 'reopen' | { snooze: number }) => Promise<void>
 }
 
-function Row({ item, now, agentName, onAssign, onTriage }: RowProps) {
+function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle }: RowProps) {
   const { pr } = item
   const [menu, setMenu] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -102,9 +104,10 @@ function Row({ item, now, agentName, onAssign, onTriage }: RowProps) {
   return (
     <li className={`border-b border-border/80 px-4 py-3 ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        <input type="checkbox" aria-label={`Select ${label}`} checked={selected} onChange={() => onToggle(item)} className="mt-1 accent-primary" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link to={prWorkspaceHref(pr.ref)} className="font-mono dash-body text-fg underline-offset-2 hover:text-warning hover:underline">
+            <Link to={prWorkspaceHref(pr.ref)} className="font-mono dash-body text-fg underline-offset-2 hover:text-fg hover:underline">
               {label}
             </Link>
             {item.categories.map((c) => <Pill key={c} category={c} />)}
@@ -114,14 +117,14 @@ function Row({ item, now, agentName, onAssign, onTriage }: RowProps) {
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono dash-support text-fg-muted">
             <span>by {pr.author.login}</span>
             <span>updated {ago(Date.parse(pr.updatedAt), now)}</span>
-            {pr.additions !== undefined && <span><span className="text-success">+{pr.additions}</span> <span className="text-danger">-{pr.deletions ?? 0}</span></span>}
+            {pr.additions !== undefined && <span><span>+{pr.additions}</span> <span className="text-danger">-{pr.deletions ?? 0}</span></span>}
             <Checks item={item} />
           </p>
           {(pr.assignees.length > 0 || item.assignments.length > 0) && (
             <p className="mt-1 flex flex-wrap items-center gap-1.5 font-mono dash-support text-fg-muted">
               {pr.assignees.map((a) => <span key={a.login} className="border border-border px-1">{a.login}</span>)}
               {item.assignments.map((a) => (
-                <span key={a.key} className="border border-success/50 px-1 text-success" title={`message ${a.messageId ?? 'sent'} · ${ago(a.at, now)}`}>
+                <span key={a.key} className="border border-border px-1 text-fg-muted" title={`message ${a.messageId ?? 'sent'} · ${ago(a.at, now)}`}>
                   {agentName(a.agentId)}: {ASSIGN_TASKS.find((t) => t.id === a.task)?.label.toLowerCase() ?? a.task} · sent
                 </span>
               ))}
@@ -130,22 +133,22 @@ function Row({ item, now, agentName, onAssign, onTriage }: RowProps) {
         </div>
 
         <div className="relative flex flex-wrap items-center justify-end gap-1.5">
-          <Button variant="outline" size="sm" type="button" className="font-mono dash-label uppercase tracking-widest border-warning/70 text-warning hover:bg-warning/10" onClick={() => onAssign(item)} disabled={busy}>
+          <Button variant="outline" size="sm" type="button" className="dash-label" onClick={() => onAssign(item)} disabled={busy}>
             {item.assignments.length ? 'Assign again' : 'Assign'}
           </Button>
           {active ? (
             <>
               <DropdownMenu open={menu} onOpenChange={setMenu}>
-                <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="font-mono dash-label uppercase tracking-widest" disabled={busy} />}>Snooze</DropdownMenuTrigger>
+                <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="dash-label" disabled={busy} />}>Snooze</DropdownMenuTrigger>
                 <DropdownMenuContent aria-label="Snooze for" align="end" data-dashboard-shape="square" className="w-36">
                   {SNOOZE_PRESETS.map(p => <DropdownMenuItem key={p.id} disabled={busy} onClick={() => void run({ snooze: now + p.ms })}>{p.label}</DropdownMenuItem>)}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button variant="outline" size="sm" type="button" className="font-mono dash-label uppercase tracking-widest" onClick={() => run('settle')} disabled={busy}>Resolve</Button>
-              <Button variant="outline" size="sm" type="button" className="font-mono dash-label uppercase tracking-widest" onClick={() => run('dismiss')} disabled={busy}>Dismiss</Button>
+              <Button variant="outline" size="sm" type="button" className="dash-label" onClick={() => run('settle')} disabled={busy}>Resolve</Button>
+              <Button variant="outline" size="sm" type="button" className="dash-label" onClick={() => run('dismiss')} disabled={busy}>Dismiss</Button>
             </>
           ) : (
-            <Button variant="outline" size="sm" type="button" className="font-mono dash-label uppercase tracking-widest" onClick={() => run('reopen')} disabled={busy}>Reopen</Button>
+            <Button variant="outline" size="sm" type="button" className="dash-label" onClick={() => run('reopen')} disabled={busy}>Reopen</Button>
           )}
 
         </div>
@@ -183,6 +186,8 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const [groupBy, setGroupBy] = useState<GroupBy>(initialGroupBy)
   const [assigning, setAssigning] = useState<InboxItem | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [names, setNames] = useState<Record<string, string>>({})
 
   useEffect(() => registerInboxActions(actionBus, { forge, messaging, stateStore, forgeLogin }), [actionBus, forge, messaging, stateStore, forgeLogin])
@@ -214,13 +219,32 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
     else if (op === 'reopen') await stateStore.apply({ type: 'reopen', key: i.triageKey })
     else await stateStore.apply({ type: 'snooze', key: i.triageKey, until: op.snooze })
   }
+  const toggle = (i: InboxItem) => setSelected((cur) => {
+    const next = new Set(cur)
+    if (!next.delete(i.key)) next.add(i.key)
+    return next
+  })
+  // Bulk triage runs the same per-item ops; selection that no longer matches the view drops out.
+  const picked = items.filter((i) => selected.has(i.key))
+  async function bulk(op: 'dismiss' | 'settle' | { snooze: number }) {
+    setBulkBusy(true)
+    try {
+      for (const i of picked) await triage(i, op)
+      setToast(`${picked.length} pull request${picked.length === 1 ? '' : 's'} updated`)
+      setSelected(new Set())
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Could not save')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
   const set = (p: Partial<InboxFilter>) => setFilter((f) => ({ ...f, ...p }))
   const toggleCat = (c: InboxCategory) => set({ categories: filter.categories.includes(c) ? filter.categories.filter((x) => x !== c) : [...filter.categories, c] })
   const filtered = filter.categories.length > 0 || !!filter.repo || !!filter.search || filter.unassignedOnly
 
   return (
     <section data-dashboard-shape="square" data-dashboard-accent="yellow" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg">
-      <PageHeader title="Pending PRs">
+      <PageHeader title="Pull requests">
         <Button variant="outline" size="sm" className="dash-header-action" onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Button>
       </PageHeader>
       <p className="border-b border-border px-4 py-2 font-mono dash-support text-fg-muted">
@@ -230,7 +254,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
       <DashboardViewTabs variant="segments" label="Triage state" value={filter.view} onChange={view => set({ view: view as TriageView })} items={VIEWS.map(v => ({ value: v.id, label: v.label, count: views[v.id] }))} />
 
       <DashboardToolbar className="border-b border-border px-4 py-2">
-        <FilterChipGroup variant="outline" ariaLabel="Reasons" chips={CATEGORY_ORDER.map(c => ({ value: c, label: <>{CATEGORY_LABEL[c]} {cats[c]}</>, activeClassName: 'border-warning bg-warning/10 text-warning' }))} selected={filter.categories} onToggle={value => toggleCat(value as InboxCategory)} />
+        <FilterChipGroup variant="outline" ariaLabel="Reasons" chips={CATEGORY_ORDER.map(c => ({ value: c, label: <>{CATEGORY_LABEL[c]} {cats[c]}</>, activeClassName: 'border-fg bg-surface text-fg' }))} selected={filter.categories} onToggle={value => toggleCat(value as InboxCategory)} />
         <span className="mx-1 hidden h-4 w-px bg-surface-hover sm:block" />
         <select aria-label="Repository" value={filter.repo} onChange={e => set({ repo: e.target.value })}>
           <option value="">All repos</option>
@@ -248,9 +272,18 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
           <input type="checkbox" checked={filter.unassignedOnly} onChange={e => set({ unassignedOnly: e.target.checked })} className="accent-primary" />
           Unassigned only
         </label>
-        {filtered && <Button variant="outline" size="sm" className="font-mono dash-label uppercase tracking-widest" onClick={() => setFilter(f => ({ ...DEFAULT_FILTER, view: f.view }))}>Clear</Button>}
+        {filtered && <Button variant="outline" size="sm" className="dash-label" onClick={() => setFilter(f => ({ ...DEFAULT_FILTER, view: f.view }))}>Clear</Button>}
       </DashboardToolbar>
 
+      {picked.length > 0 && (
+        <div role="toolbar" aria-label="Bulk actions" className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2">
+          <span className="dash-control text-fg">{picked.length} selected</span>
+          {SNOOZE_PRESETS.slice(0, 1).map(p => <Button key={p.id} variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk({ snooze: now + p.ms })}>Snooze {p.label.toLowerCase()}</Button>)}
+          <Button variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk('settle')}>Resolve</Button>
+          <Button variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk('dismiss')}>Dismiss</Button>
+          <Button variant="ghost" size="sm" disabled={bulkBusy} onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
       {error && (
         <p role="alert" className="border-b border-danger/40 bg-danger/5 px-4 py-2 font-mono dash-control text-danger">
           Could not load pending PRs: {error}
@@ -274,7 +307,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
             )}
             <ul>
               {g.items.map((i) => (
-                <Row key={`${repoKey(i.pr.ref.repo)}#${i.pr.ref.number}`} item={i} now={now} agentName={(id) => names[id] ?? id} onAssign={setAssigning} onTriage={triage} />
+                <Row key={`${repoKey(i.pr.ref.repo)}#${i.pr.ref.number}`} item={i} now={now} agentName={(id) => names[id] ?? id} onAssign={setAssigning} onTriage={triage} selected={selected.has(i.key)} onToggle={toggle} />
               ))}
             </ul>
           </div>
