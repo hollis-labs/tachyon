@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Switch } from '@hollis-labs/design-components'
 import { Segmented } from '../components/segmented'
 import { levelOf, levelPatch, NOTIFY_LEVELS, previewLine } from './levels'
 import { PREF_FIELD_KEYS, consolePrefsSettingsGroup } from './manifest'
@@ -30,10 +31,10 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
   return (
     <form aria-label="Alert preferences" className="space-y-5" onSubmit={(e) => e.preventDefault()}>
       <div>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={prefs.quiet} onChange={(e) => onChange({ quiet: e.target.checked })} className="h-3 w-3 accent-primary" />
-          <span className={LABEL}>Quiet mode</span>
-        </label>
+        <div className="flex items-center gap-3">
+          <Switch aria-label="Quiet mode" checked={prefs.quiet} onCheckedChange={(v) => onChange({ quiet: v })} />
+          <span className={LABEL} aria-hidden="true">Quiet mode</span>
+        </div>
         <p className="mt-1 text-xs leading-snug text-fg-muted">{help('quiet')}</p>
       </div>
 
@@ -51,10 +52,10 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
 
       <fieldset className="space-y-1.5">
         <legend className="sr-only">Quiet hours</legend>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={prefs.quietHoursEnabled} onChange={(e) => onChange({ quietHoursEnabled: e.target.checked })} className="h-3 w-3 accent-primary" />
-          <span className={LABEL}>Quiet hours</span>
-        </label>
+        <div className="flex items-center gap-3">
+          <Switch aria-label="Quiet hours" checked={prefs.quietHoursEnabled} onCheckedChange={(v) => onChange({ quietHoursEnabled: v })} />
+          <span className={LABEL} aria-hidden="true">Quiet hours</span>
+        </div>
         <div className="flex items-center gap-2">
           <input type="time" aria-label="Quiet hours start" value={prefs.quietHoursStart} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursStart: e.target.value })} className={INPUT} />
           <span className={LABEL}>to</span>
