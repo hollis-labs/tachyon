@@ -497,6 +497,9 @@ func (s *Server) Routes() http.Handler {
 	}
 	mux.Handle(transcripts.Prefix+"/", transcriptHandler)
 	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	for _, mount := range featureMounts {
+		mount(mux, operator)
+	}
 	if s.objects != nil {
 		// Local data is live and host-owned, independent of subprocess admission.
 		providers := []dataverbs.Provider{dataverbs.NewLocal(s.objects)}
