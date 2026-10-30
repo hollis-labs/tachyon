@@ -6,7 +6,7 @@ import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
 import { ApprovalError, kindLabel, type ApprovalItem, type BatchResult, type HistoryFacets } from "./client"
 import { Chip } from "../components/chip"
-import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility } from "./batch"
+import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility, orderPending } from "./batch"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
@@ -62,7 +62,8 @@ export function ApprovalsPage() {
   const pendingCount = queue.inbox?.pending.length ?? 0
   const historyCount = facets?.statuses.length ? facets.statuses.reduce((n, x) => n + x.count, 0) : undefined
   const facetCount = (v: string) => (v ? facets?.statuses.find((x) => x.status === v)?.count : historyCount)
-  const rows = (queue.inbox?.[view] ?? []).filter((item) =>
+  const ordered = view === "pending" ? orderPending(queue.inbox?.pending ?? []) : (queue.inbox?.[view] ?? [])
+  const rows = ordered.filter((item) =>
     `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
       .toLowerCase()
       .includes(search.toLowerCase()),

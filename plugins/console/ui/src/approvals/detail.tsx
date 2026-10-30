@@ -65,11 +65,11 @@ function RunCard({ request, run }: { request: ApprovalItem["request_snapshot"]; 
 }
 
 const PHRASE = "approve"
+// Presets per G5: 1 hour is the first and default choice.
 const DEFER_PRESETS = [
   { label: "1 hour", seconds: 3600 },
   { label: "4 hours", seconds: 4 * 3600 },
   { label: "Tomorrow", seconds: 24 * 3600 },
-  { label: "Next week", seconds: 7 * 24 * 3600 },
 ]
 
 const EVIDENCE_ICON = { markdown: FileText, diff: GitCompare } as const

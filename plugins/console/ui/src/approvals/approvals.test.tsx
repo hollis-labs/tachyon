@@ -16,7 +16,7 @@ import {
   type ApprovalItem,
   type ApprovalClient,
 } from "./client"
-import { MAX_BATCH, batchEligibility } from "./batch"
+import { MAX_BATCH, batchEligibility, orderPending } from "./batch"
 import { ApprovalDialog } from "./dialog"
 import { ApprovalProvider } from "./context"
 import { ApprovalsPage } from "./page"
@@ -615,6 +615,19 @@ describe("batch approve", () => {
     expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
     expect(screen.queryByText(/left in the queue/)).toBeNull()
+  })
+  it("orders the queue: snoozed last, then expiry, risk, age", () => {
+    const mk = (id: string, o: { exp?: string; cls?: "low" | "high"; at?: string; def?: string }) =>
+      ({ item_id: id, enqueued_at: o.at ?? "2026-10-30T00:00:00Z", deferred_until: o.def ?? null, request_snapshot: { class: o.cls ?? "medium", expires_at: o.exp } }) as unknown as ApprovalItem
+    const now = Date.parse("2026-10-30T12:00:00Z")
+    const out = orderPending([
+      mk("snoozed", { def: "2026-10-30T18:00:00Z", exp: "2026-10-30T13:00:00Z" }),
+      mk("noexp", {}),
+      mk("late", { exp: "2026-10-30T15:00:00Z" }),
+      mk("soon-low", { exp: "2026-10-30T14:00:00Z", cls: "low" }),
+      mk("soon-high", { exp: "2026-10-30T14:00:00Z", cls: "high" }),
+    ], now)
+    expect(out.map((i) => i.item_id)).toEqual(["soon-high", "soon-low", "late", "noexp", "snoozed"])
   })
   it("turns the decision off and says why when operator access is missing", async () => {
     const a = low("a", true)

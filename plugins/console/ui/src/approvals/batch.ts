@@ -39,3 +39,19 @@ export const BATCH_STATUS_COPY: Record<BatchStatus, string> = {
   conflict: "Decided elsewhere",
   error: "Failed",
 }
+
+const RISK_RANK = { high: 0, medium: 1, low: 2 } as const
+const ms = (iso?: string | null, none = Number.POSITIVE_INFINITY) => {
+  const t = iso ? Date.parse(iso) : NaN
+  return Number.isNaN(t) ? none : t
+}
+
+/** Queue order: snoozed last, then soonest expiry, then highest risk, then oldest. */
+export function orderPending<T extends Pick<ApprovalItem, "deferred_until" | "enqueued_at" | "request_snapshot">>(items: T[], now = Date.now()): T[] {
+  const snoozed = (i: T) => ms(i.deferred_until, 0) > now
+  return [...items].sort((a, b) =>
+    Number(snoozed(a)) - Number(snoozed(b))
+    || ms(a.request_snapshot.expires_at) - ms(b.request_snapshot.expires_at)
+    || RISK_RANK[a.request_snapshot.class ?? "medium"] - RISK_RANK[b.request_snapshot.class ?? "medium"]
+    || ms(a.enqueued_at) - ms(b.enqueued_at))
+}
