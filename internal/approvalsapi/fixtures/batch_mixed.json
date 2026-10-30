@@ -1,0 +1,57 @@
+{
+  "batch_id": "11111111-2222-4333-8444-555555555555",
+  "results": [
+    {
+      "item_id": "ap_change_a",
+      "status": "resolved",
+      "decision": "approved",
+      "revision": 2,
+      "resolution_id": "res_b1",
+      "run_state": "none"
+    },
+    {
+      "item_id": "ap_change_b",
+      "status": "stale",
+      "revision": 4,
+      "error": {
+        "code": "stale_revision",
+        "message": "The item changed. Review it again."
+      }
+    },
+    {
+      "item_id": "ap_cmd_deploy",
+      "status": "ineligible",
+      "blockers": [
+        "command_exec",
+        "risk_not_low"
+      ]
+    },
+    {
+      "item_id": "ap_h_expired",
+      "status": "expired"
+    },
+    {
+      "item_id": "ap_h_approved",
+      "status": "conflict",
+      "decision": "approved",
+      "revision": 3
+    },
+    {
+      "item_id": "ap_change_c",
+      "status": "error",
+      "error": {
+        "code": "internal",
+        "message": "The resolve failed. It stays in the queue."
+      }
+    }
+  ],
+  "counts": {
+    "resolved": 1,
+    "stale": 1,
+    "ineligible": 1,
+    "expired": 1,
+    "conflict": 1,
+    "error": 1
+  },
+  "completed_at": "2026-10-30T03:00:00Z"
+}

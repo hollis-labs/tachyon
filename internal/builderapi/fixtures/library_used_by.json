@@ -1,0 +1,150 @@
+{
+  "prompts/review-etiquette": {
+    "agents": [
+      {
+        "id": "builder-reviewer",
+        "name": "Builder Reviewer"
+      }
+    ],
+    "launches": [],
+    "projects": [],
+    "counts": {
+      "agents": 1,
+      "launches": 0,
+      "projects": 0
+    }
+  },
+  "prompts/handoff-style": {
+    "agents": [],
+    "launches": [],
+    "projects": [],
+    "counts": {
+      "agents": 0,
+      "launches": 0,
+      "projects": 0
+    }
+  },
+  "skills/commit-hygiene": {
+    "agents": [
+      {
+        "id": "builder-reviewer",
+        "name": "Builder Reviewer"
+      },
+      {
+        "id": "release-captain",
+        "name": "Release Captain"
+      }
+    ],
+    "launches": [],
+    "projects": [],
+    "counts": {
+      "agents": 2,
+      "launches": 0,
+      "projects": 0
+    }
+  },
+  "skills/personal-style": {
+    "agents": [],
+    "launches": [],
+    "projects": [],
+    "counts": {
+      "agents": 0,
+      "launches": 0,
+      "projects": 0
+    }
+  },
+  "tool_servers/tether": {
+    "agents": [
+      {
+        "id": "builder-reviewer",
+        "name": "Builder Reviewer"
+      },
+      {
+        "id": "base-worker",
+        "name": "Base Worker"
+      }
+    ],
+    "launches": [
+      {
+        "id": "builder-reviewer-tachyon"
+      }
+    ],
+    "projects": [
+      {
+        "id": "tachyon"
+      },
+      {
+        "id": "agent-os"
+      }
+    ],
+    "counts": {
+      "agents": 2,
+      "launches": 1,
+      "projects": 2
+    }
+  },
+  "tool_servers/github": {
+    "agents": [
+      {
+        "id": "builder-reviewer",
+        "name": "Builder Reviewer"
+      }
+    ],
+    "launches": [],
+    "projects": [
+      {
+        "id": "tachyon"
+      }
+    ],
+    "counts": {
+      "agents": 1,
+      "launches": 0,
+      "projects": 1
+    }
+  },
+  "tool_servers/browser": {
+    "agents": [],
+    "launches": [],
+    "projects": [],
+    "counts": {
+      "agents": 0,
+      "launches": 0,
+      "projects": 0
+    }
+  },
+  "policies/standard-ask": {
+    "agents": [
+      {
+        "id": "builder-reviewer",
+        "name": "Builder Reviewer"
+      }
+    ],
+    "launches": [],
+    "projects": [],
+    "counts": {
+      "agents": 1,
+      "launches": 0,
+      "projects": 0
+    }
+  },
+  "policies/autonomous-sandboxed": {
+    "agents": [],
+    "launches": [],
+    "projects": [],
+    "counts": {
+      "agents": 0,
+      "launches": 0,
+      "projects": 0
+    }
+  },
+  "skills/triage-notes": {
+    "agents": [],
+    "launches": [],
+    "projects": [],
+    "counts": {
+      "agents": 0,
+      "launches": 0,
+      "projects": 0
+    }
+  }
+}

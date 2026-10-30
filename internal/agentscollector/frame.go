@@ -30,10 +30,12 @@ type Frame struct {
 	Provider, Model string
 	Workroot        string
 	TaskRef         string
-	PendingApproval *bool
-	PendingQuestion *bool
-	Tool            string // sanitized tool name only
-	Reason          string // gap or end reason
+	// Identity and lineage, when the payload says (unverified wire names: agent_urn, logical_agent_id, agent_name).
+	AgentURN, LogicalAgentID, AgentName, ParentSession, ReplacedBy string
+	PendingApproval                                                *bool
+	PendingQuestion                                                *bool
+	Tool                                                           string // sanitized tool name only
+	Reason                                                         string // gap or end reason
 
 	Gap          bool // a gap frame: events were missed
 	Synchronized bool // the catch-up is over, live frames follow
@@ -154,6 +156,11 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			Title           string `json:"title"`
 			Actor           string `json:"actor"`
 			Task            string `json:"task"`
+			AgentURN        string `json:"agent_urn"`
+			LogicalAgent    string `json:"logical_agent_id"`
+			AgentName       string `json:"agent_name"`
+			ParentSession   string `json:"parent_session_id"`
+			ReplacedBy      string `json:"replaced_by"`
 		}
 		if json.Unmarshal(body, &p) == nil {
 			f.WorkState = clean(firstNonEmpty(p.To, p.WorkState), 40)
@@ -168,6 +175,8 @@ func ParseFrame(raw []byte) (Frame, bool) {
 				f.Version, f.PR = clean(p.Version, 40), clean(firstNonEmpty(p.PR, p.PullRequest), 140)
 				f.Title, f.BusActor = clean(p.Title, 200), clean(p.Actor, 80)
 			}
+			f.AgentURN, f.LogicalAgentID, f.AgentName = clean(p.AgentURN, 200), clean(p.LogicalAgent, 120), clean(p.AgentName, 120)
+			f.ParentSession, f.ReplacedBy = clean(p.ParentSession, 128), clean(p.ReplacedBy, 128)
 			f.PendingApproval, f.PendingQuestion = p.PendingApproval, p.PendingQuestion
 			f.Tool = clean(p.Tool, 80)
 			if f.Kind == "session.usage" && (p.In != nil || p.Out != nil) {

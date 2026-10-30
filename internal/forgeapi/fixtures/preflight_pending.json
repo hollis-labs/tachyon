@@ -1,0 +1,27 @@
+{
+  "head_sha": "b9bde5dfabfb122d47d9d8b15ed443be34836f3a",
+  "base_ref": "main",
+  "state": "pending",
+  "blockers": [],
+  "methods_allowed": [
+    "merge",
+    "squash",
+    "rebase"
+  ],
+  "default_method": "squash",
+  "commit_title": "fileview: V1 file reads (#202)",
+  "commit_message": "",
+  "behind_by": 0,
+  "required_checks": {
+    "passed": 2,
+    "failed": 0,
+    "pending": 0
+  },
+  "delete_branch_default": false,
+  "will_run": [
+    "Merge into main with the chosen method",
+    "Refresh the pull request list",
+    "Settle the triage entry",
+    "Mark agent assignments done"
+  ]
+}
