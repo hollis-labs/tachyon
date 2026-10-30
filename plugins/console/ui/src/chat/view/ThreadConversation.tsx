@@ -43,6 +43,7 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
   return (
     <ConversationView
       threadId={convId}
+      threadRef={ref}
       messages={shown}
       agentLabel={thread.title}
       loading={loading}
