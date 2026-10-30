@@ -323,4 +323,4 @@ export interface RelationOut { kind: RelationKind; to: PlannerRef; title: string
 export interface RelationIn { kind: RelationKind; from: PlannerRef; title: string; status?: string }
 export interface ExternalLink { kind: string; ref: string; label: string }
 export interface LinksView { outbound: RelationOut[]; inbound: RelationIn[]; external: ExternalLink[] }
-export interface RelationResult { item: { id: string; db: PlannerDb; revision: number }; links_view: LinksView }
+export interface RelationResult { item: { id: string; db: PlannerDb; rev?: number; revision?: number }; links_view: LinksView }

@@ -132,7 +132,7 @@ export default function PlannerShell() {
         duration: 8000,
         action: {
           label: TEXT.undo,
-          onClick: () => api.plannerRelationRemove('themes', from, kind, { db: 'themes', id: to }, done.item.revision).then((r) => setLinksView(r.links_view), (err) => notifyError(err, TEXT.writeFailed)),
+          onClick: () => api.plannerRelationRemove('themes', from, kind, { db: 'themes', id: to }, (done.item.rev ?? done.item.revision ?? source.rev)).then((r) => setLinksView(r.links_view), (err) => notifyError(err, TEXT.writeFailed)),
         },
       })
       await load()
