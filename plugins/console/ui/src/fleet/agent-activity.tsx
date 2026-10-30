@@ -32,7 +32,7 @@ export function PixelRobot({ id, size = 48, state = 'idle' }: { id: string; size
   const dim = state === 'offline'
   const body = `hsl(${sprite.hue} ${dim ? 10 : 65}% ${dim ? 38 : 58}%)`
   const shade = `hsl(${sprite.hue} ${dim ? 10 : 65}% ${dim ? 26 : 38}%)`
-  const eye = state === 'blocked' ? '#fbbf24' : state === 'offline' ? '#52525b' : '#a7f3d0'
+  const eye = state === 'blocked' ? 'var(--color-warning)' : state === 'offline' ? 'var(--color-fg-faint)' : 'var(--color-success)'
   const isEye = (r: number, c: number) => sprite.eyes.some(([er, ec]) => er === r && ec === c)
   return (
     <svg viewBox="0 0 8 8" width={size} height={size} shapeRendering="crispEdges" role="img" aria-label="Robot avatar" className={state === 'working' ? 'agent-bob' : ''}>
@@ -53,7 +53,7 @@ export function ActivityBars({ series, state, width = 120, height = 32, fluid = 
   const max = scaleMax ?? Math.max(1, ...series)
   const gap = 1
   const bw = (width - gap * (series.length - 1)) / series.length
-  const color = state === 'blocked' ? '#fbbf24' : state === 'offline' ? '#52525b' : '#34d399'
+  const color = state === 'blocked' ? 'var(--color-warning)' : state === 'offline' ? 'var(--color-fg-faint)' : 'var(--color-success)'
   return (
     <svg
       width={fluid ? '100%' : width}

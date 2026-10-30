@@ -28,7 +28,7 @@ export function OperatorPrompt() {
       <DialogContent className="z-[100] sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <KeyRound className="h-6 w-6 text-amber-300" />
+            <KeyRound className="h-6 w-6 text-warning" />
             <DialogTitle className="font-mono text-sm uppercase tracking-wide">
               Operator access
             </DialogTitle>
@@ -47,7 +47,7 @@ export function OperatorPrompt() {
             void operatorElevation.submit(value)
           }}
         >
-          <label className="block text-xs text-zinc-400">
+          <label className="block text-xs text-fg-secondary">
             Operator key
             <input
               type="password"
@@ -56,11 +56,11 @@ export function OperatorPrompt() {
               value={key}
               onChange={(e) => setKey(e.target.value)}
               disabled={state.submitting}
-              className="mt-2 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-200"
+              className="mt-2 w-full rounded border border-border bg-bg px-3 py-2 font-mono text-sm text-fg"
             />
           </label>
           {state.error && (
-            <p role="alert" className="text-xs text-red-300">
+            <p role="alert" className="text-xs text-danger">
               {state.error}
             </p>
           )}
@@ -69,14 +69,14 @@ export function OperatorPrompt() {
               type="button"
               disabled={state.submitting}
               onClick={() => operatorElevation.cancel()}
-              className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 disabled:opacity-40"
+              className="rounded border border-border px-3 py-1.5 text-xs text-fg-secondary disabled:opacity-40"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!key || state.submitting}
-              className="rounded border border-amber-400/40 bg-amber-950/20 px-3 py-1.5 text-xs text-amber-300 disabled:opacity-40"
+              className="rounded border border-warning/50 bg-warning/10 px-3 py-1.5 text-xs text-warning disabled:opacity-40"
             >
               {state.submitting ? "Verifying…" : "Unlock"}
             </button>

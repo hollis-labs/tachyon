@@ -25,22 +25,22 @@ export function RecentThread({ query, refreshKey = 0, operator }: { query: Threa
 
   return (
     <section aria-label="Recent thread">
-      <h3 className="mb-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">Recent thread</h3>
+      <h3 className="mb-2 font-mono text-[10px] uppercase tracking-widest text-fg-muted">Recent thread</h3>
       {items === null ? (
-        <p className="font-mono text-xs text-zinc-500">Loading</p>
+        <p className="font-mono text-xs text-fg-muted">Loading</p>
       ) : items.length === 0 ? (
-        <p className="font-mono text-xs text-zinc-500">No messages yet.</p>
+        <p className="font-mono text-xs text-fg-muted">No messages yet.</p>
       ) : (
-        <ul className="divide-y divide-zinc-800/80 border-y border-zinc-800/80">
+        <ul className="divide-y divide-border-subtle border-y border-border-subtle">
           {items.map((m) => {
             const mine = !operator || m.from === operator || m.from.startsWith('msg://user/')
             return (
               <li key={m.id} className="px-3 py-2">
-                <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                <div className="flex items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-fg-muted">
                   <span>{mine ? 'you' : 'them'}{m.intent !== 'message' ? ` · ${m.intent.replace('_', ' ')}` : ''} · {ago(m.at, now)}</span>
                   {mine && <ObservedDeliveryBadge messageId={m.id} state={m.state} />}
                 </div>
-                <p className="mt-1 whitespace-pre-wrap font-mono text-xs text-zinc-200"><LinkText surface="messaging" text={m.body} /></p>
+                <p className="mt-1 whitespace-pre-wrap font-mono text-xs text-fg"><LinkText surface="messaging" text={m.body} /></p>
               </li>
             )
           })}
