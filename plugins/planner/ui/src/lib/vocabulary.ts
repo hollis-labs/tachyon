@@ -148,7 +148,7 @@ export const TEXT = {
   milestones: 'Milestones',
   lane: (title: string, n: number) => `${title}, ${n} tasks`,
   laneMore: (n: number) => `+${n} more`,
-  laneCollapsed: (title: string, n: number) => `${title} ${n} · collapsed, click to expand`,
+  laneCollapsed: (title: string, n: number) => `${title} ${n} · collapsed — click to expand`,
   wasHere: 'was here',
   addTask: '+ Add task',
   addTaskKey: 'A',
