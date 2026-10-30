@@ -1,3 +1,4 @@
+import { useDiscardGuard } from './DiscardGuard'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { Button, Input, Textarea } from '@hollis-labs/design-components'
 import Markdown from 'react-markdown'
@@ -5,7 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Segmented } from '../components/segmented'
 import { BuilderShell } from './BuilderShell'
 import { type Change, type LibraryItem, type LibraryKind, builderApi, errorMessage } from './api'
-import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, changingText, confirmDiscard, newRequestId, partRead } from './changes'
+import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, changingText, newRequestId, partRead } from './changes'
 import { ReviewDialog } from './ReviewDialog'
 import { useLoad } from './useLoad'
 import { LIBRARY_KINDS, NOT_REPORTED } from './vocab'
@@ -106,6 +107,7 @@ function PolicyLead({ it }: { it: LibraryItem }) {
 
 function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   const [load, retry] = useLoad(() => builderApi.libraryItem(kind, id), [kind, id])
+  const { guard, dialog: discardDialog } = useDiscardGuard()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Draft>({})
   const [review, setReview] = useState<Change | null>(null)
@@ -176,12 +178,11 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (!confirmDiscard(dirty.length)) return
+            onClick={() => guard(dirty.length, () => {
               setEditing(false)
               setDraft({})
               setError('')
-            }}
+            })}
           >
             Discard
           </Button>
@@ -262,6 +263,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
           </dl>
         </>
       )}
+      {discardDialog}
       {review && (
         <ReviewDialog
           initial={review}

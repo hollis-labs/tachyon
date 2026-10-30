@@ -3,7 +3,7 @@ import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, Select
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLoad } from '../builder/useLoad'
 import { BuilderError } from '../builder/api'
-import { confirmDiscard } from '../builder/changes'
+import { useDiscardGuard } from '../builder/DiscardGuard'
 import { NOT_REPORTED } from '../builder/vocab'
 import { type Project, type ProjectPatch, type ProjectRow, type ProjectStatus, errorMessage, profilePatch, registryApi } from './api'
 
@@ -35,6 +35,7 @@ const count = (v: number | null | undefined) => (v == null ? NOT_REPORTED : Stri
 function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [load, retry] = useLoad(() => registryApi.get(id), [id])
   const [editing, setEditing] = useState(false)
+  const { guard, dialog: discardDialog } = useDiscardGuard()
   const [draft, setDraft] = useState<ProjectPatch>({})
   const [saved, setSaved] = useState<Project | null>(null)
   const [savedFields, setSavedFields] = useState('')
@@ -107,12 +108,11 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (!confirmDiscard(dirty)) return
+            onClick={() => guard(dirty, () => {
               setEditing(false)
               setDraft({})
               setError('')
-            }}
+            })}
           >
             Discard
           </Button>
@@ -121,6 +121,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
           </Button>
         </div>
       )}
+      {discardDialog}
       {saved && !editing && (
         <p role="status" className="px-5 pt-3 dash-support text-fg-muted">
           Saved {savedFields}. Registry profile changes apply immediately.

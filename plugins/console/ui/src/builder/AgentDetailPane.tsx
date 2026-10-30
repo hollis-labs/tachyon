@@ -1,7 +1,8 @@
+import { useDiscardGuard } from './DiscardGuard'
 import { type ReactNode, useCallback, useRef, useState } from 'react'
 import { Button, Checkbox, Input, Textarea } from '@hollis-labs/design-components'
 import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
-import { buildOps, changedPaths, changingText, confirmDiscard, type Draft, fieldByPath, newRequestId } from './changes'
+import { buildOps, changedPaths, changingText, type Draft, fieldByPath, newRequestId } from './changes'
 import { OutlineNav } from './OutlineNav'
 import { ChecksSection, HistorySection, ResolvedSection, UsedBySection } from './InsightSections'
 import { ReviewDialog } from './ReviewDialog'
@@ -99,6 +100,7 @@ function Section({ id, children }: { id: string; children: ReactNode }) {
 export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void }) {
   const [load, retry] = useLoad(() => builderApi.agent(id), [id])
   const [elsewhere, setElsewhere] = useState(false)
+  const { guard, dialog: discardDialog } = useDiscardGuard()
   const filePath = load.status === 'ready' ? load.data.revision?.path : null
   useBuilderStream((e) => {
     if (e.type === 'catalog' && e.source === 'observed' && filePath && e.changed_paths?.some((p) => filePath.endsWith(p) || p.endsWith(filePath))) setElsewhere(true)
@@ -178,13 +180,12 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (!confirmDiscard(dirty.length)) return
+            onClick={() => guard(dirty.length, () => {
               setEditing(false)
               setDraft({})
               setElsewhere(false)
               retry()
-            }}
+            })}
           >
             Reload
           </Button>
@@ -202,12 +203,11 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => {
-              if (!confirmDiscard(dirty.length)) return
+            onClick={() => guard(dirty.length, () => {
               setEditing(false)
               setDraft({})
               setError('')
-            }}
+            })}
           >
             Discard
           </Button>
@@ -216,6 +216,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
           </Button>
         </div>
       )}
+      {discardDialog}
       {review && (
         <ReviewDialog
           initial={review}
