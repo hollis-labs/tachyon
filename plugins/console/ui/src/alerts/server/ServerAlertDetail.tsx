@@ -134,29 +134,36 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
               <p className="rounded border border-border bg-surface/40 p-3 text-xs text-fg-muted">Approved through the provider. Nothing to decide here.</p>
             </section>
           ) : (
-            <section aria-label="Decision" className="h-[28rem] max-h-[60vh] border-b border-border-subtle">
+            <section aria-label="Decision" className="border-b border-border-subtle">
               <DecisionDetail id={approval.item_id} client={approvals} onChanged={() => { void queue?.refresh(true); load() }} />
             </section>
           ))}
 
-        <div role="toolbar" aria-label="Alert actions" className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
-          {closed || status === 'snoozed' ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => c.restore(id)}>{closed ? 'Restore' : 'Bring back now'}</Button>
-          ) : (
-            <>
-              {c.settle && !approval && <Button type="button" size="sm" onClick={() => c.settle?.(id)}>Mark handled</Button>}
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Snooze" />}>Snooze</DropdownMenuTrigger>
-                <DropdownMenuContent aria-label="Snooze" align="start" data-dashboard-shape="square" className="w-40">
-                  {SNOOZES.map((s) => <DropdownMenuItem key={s.label} onClick={() => c.snooze(id, s.ms)}>{s.label}</DropdownMenuItem>)}
-                  <DropdownMenuItem onClick={() => c.snooze(id, untilTomorrow(c.now))}>Tomorrow</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button type="button" variant="outline" size="sm" onClick={() => { c.dismiss(id); onClose() }}>Dismiss</Button>
-            </>
-          )}
-          {c.error && <span role="status" className="text-xs text-fg-muted">{c.error}</span>}
-        </div>
+        {approval && !closed ? (
+          c.error && <p role="status" className="border-b border-border-subtle px-4 py-3 text-xs text-fg-muted">{c.error}</p>
+        ) : (
+          <div role="toolbar" aria-label="Alert actions" className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
+            {closed || status === 'snoozed' ? (
+              <>
+                <Button type="button" variant="outline" size="sm" onClick={() => c.restore(id)}>{closed ? 'Restore' : 'Bring back now'}</Button>
+                {approval && status === 'settled' && <span className="text-xs text-fg-muted">Settled by approval</span>}
+              </>
+            ) : (
+              <>
+                {c.settle && <Button type="button" size="sm" onClick={() => c.settle?.(id)}>Mark handled</Button>}
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Snooze" />}>Snooze</DropdownMenuTrigger>
+                  <DropdownMenuContent aria-label="Snooze" align="start" data-dashboard-shape="square" className="w-40">
+                    {SNOOZES.map((s) => <DropdownMenuItem key={s.label} onClick={() => c.snooze(id, s.ms)}>{s.label}</DropdownMenuItem>)}
+                    <DropdownMenuItem onClick={() => c.snooze(id, untilTomorrow(c.now))}>Tomorrow</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button type="button" variant="outline" size="sm" onClick={() => { c.dismiss(id); onClose() }}>Dismiss</Button>
+              </>
+            )}
+            {c.error && <span role="status" className="text-xs text-fg-muted">{c.error}</span>}
+          </div>
+        )}
 
         {failed && !detail && <p role="status" className="border-b border-border-subtle px-4 py-3 text-xs text-fg-muted">Could not load the details. <button type="button" className="underline" onClick={load}>Try again</button></p>}
 
