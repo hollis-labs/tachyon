@@ -233,7 +233,9 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <dl>
           <Row label="Agents">{c?.agents == null ? NOT_REPORTED : c.agents.length ? c.agents.map((a) => a.name || a.id).join(', ') : 'none'}</Row>
           <Row label="Launches">{c?.launches == null ? NOT_REPORTED : c.launches.length ? c.launches.map((l) => l.id).join(', ') : 'none'}</Row>
-          <Row label="Planner items">{c?.planner_items == null ? NOT_REPORTED : c.planner_items.total == null ? `${c.planner_items.open} open` : `${c.planner_items.open} open of ${c.planner_items.total}`}</Row>
+          {c?.planner_items != null && (
+            <Row label="Planner items">{c.planner_items.total == null ? `${c.planner_items.open} open` : `${c.planner_items.open} open of ${c.planner_items.total}`}</Row>
+          )}
           <Row label="Sessions">{c?.tether_sessions == null ? NOT_REPORTED : c.tether_sessions.total == null ? `${c.tether_sessions.live} live` : `${c.tether_sessions.live} live of ${c.tether_sessions.total}`}</Row>
         </dl>
       </section>
