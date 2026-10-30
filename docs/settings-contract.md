@@ -84,3 +84,20 @@ It is never an authorization input.
 - Unverified against a live Tangent: lockout `retry_after_s` is an estimate (Tangent sends no `Retry-After`, request R1).
 - Not in this slice: the real registry and `app_settings` backend (ST1, review-gated), group registration (ST2),
   the account store (ST3), the real `/access` fields and `Provider.Challenge/Verify` (ST4).
+
+## ST3: account and profile (real)
+
+`internal/account` serves `GET /account` and `PUT /account/profile` at the paths above, mounted by
+`internal/server/register_account.go` (one added line in `server.go`) when the local store is open. With
+`TACHYON_SETTINGS_STUBS=1` the stub owns those routes and the real mount stands down.
+
+- Profile: one JSON row, `app_settings` key `account.profile` `{display_name, email?, updated_at}`. A damaged row reads as
+  no profile and the next save replaces it.
+- Reads need a browser session through the assurance Provider (401 `session_required` otherwise). The PUT also needs a
+  same-origin browser request and the new action `account.write` (`assurance.ActionAccountWrite`, browser-session level;
+  it does not change `/access` `required_for`).
+- `identity.assurance` is `verified` (with `verified_by: operator_token`) only while the session is elevated.
+- `access` is built by `settingsapi.AccessFor`: methods list only the operator token; `session` is `active` or `none`;
+  `lockout` and `step_up.supported` stay empty/false until ST4 supplies them. `session.state: expired` needs the
+  provider to report a past elevation expiry, which `TangentProvider.Status` does not yet.
+- No audit row: a profile change is not a security event; add one if Chrispian wants it.

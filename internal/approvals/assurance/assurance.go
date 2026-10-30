@@ -55,6 +55,7 @@ const (
 	ActionBatch         Action = "batch_resolve" // the whole batch, even for low items
 	ActionSecretSubmit  Action = "secret_submit"
 	ActionActionRunRead Action = "action_run_read" // command and output of a registered action run
+	ActionAccountWrite  Action = "account.write"   // the operator's local profile
 )
 
 // Requirements is the table of the least Level each action needs. Unknown
@@ -71,6 +72,7 @@ var Requirements = map[Action]Level{
 	ActionBatch:         LevelOperatorToken,
 	ActionSecretSubmit:  LevelOperatorToken,
 	ActionActionRunRead: LevelOperatorToken,
+	ActionAccountWrite:  LevelBrowserSession,
 }
 
 // Required returns the Level an action needs.
