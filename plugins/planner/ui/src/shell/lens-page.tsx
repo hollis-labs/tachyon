@@ -8,7 +8,7 @@ import { notifyError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
 import { boardAge } from '@planner/lib/planner'
-import { LENSES, TEXT } from '@planner/lib/vocabulary'
+import { LENSES, lensPath, TEXT } from '@planner/lib/vocabulary'
 import { CAPTION, Chip, CommandPalette, InlineEdit, PaletteHint, Pips, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
 import { Context, type ContextLink } from '@planner/shell/context'
 import { PlannerFrame } from '@planner/shell/frame'
@@ -107,6 +107,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
   const [goodAt, setGoodAt] = useState<number | null>(null)
   const [counts, setCounts] = useState<Partial<Record<PlannerDb, number>>>({})
   const [need, setNeed] = useState<NeedYou | null>(null)
+  const [portfolio, setPortfolio] = useState<{ done: number; total: number } | undefined>()
   const [needOnly, setNeedOnly] = useState(false)
   const [ctxCollapsed, setCtxCollapsed] = useState(false)
   const [details, setDetails] = useState(false)
@@ -131,6 +132,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     void load()
     api.plannerDatabases().then((d) => setCounts(Object.fromEntries(d.map((x) => [x.name, x.count]))), () => undefined)
     api.plannerNeedYou().then(setNeed, () => setNeed(null))
+    api.plannerThemeBoard().then((b) => setPortfolio(b.progress), () => undefined)
     const t = setInterval(() => void load(), REFRESH_MS)
     return () => clearInterval(t)
   }, [load, lastEvent, api])
@@ -150,7 +152,15 @@ export default function LensPage({ db }: { db: PlannerDb }) {
 
   const shown = useMemo(() => (items ?? []).filter((i) => !needOnly || needIds.has(i.id)), [items, needOnly, needIds])
   const groups = useMemo(() => lensGroups(db, shown, (i) => needIds.has(i.id), Date.now()), [db, shown, needIds])
-  const open = (next: string) => navigate(`/planner/${db}/${encodeURIComponent(next)}`)
+  const open = (next: string) => navigate(lensPath(db, next))
+
+  // On a wide screen the focus pane is never left empty: with nothing open, open the first item of the spine.
+  // (Narrow screens keep the list, since opening an item replaces it.)
+  const first = groups.find((g) => !g.collapsed && g.items.length > 0)?.items[0] ?? groups.find((g) => g.items.length > 0)?.items[0]
+  useEffect(() => {
+    if (openId || !first || typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 640px)').matches) return
+    navigate(lensPath(db, first.id), { replace: true })
+  }, [openId, first?.id, db])
 
   // A write that lost to a newer revision reloads and says so; anything else is reported as it came.
   const [busy, setBusy] = useState(false)
@@ -177,7 +187,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     lens: (k) => {
       if (k === 'n') return setNeedOnly(true)
       const l = LENSES.find((x) => x.key === k)
-      if (l) navigate(`/planner/${l.db}`)
+      if (l) navigate(lensPath(l.db))
     },
     view: () => undefined,
     pin: () => item && void togglePin(item),
@@ -233,8 +243,9 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     <>
       <PlannerFrame
         active={db}
-        onLens={(next) => navigate(`/planner/${next}`)}
+        onLens={(next) => navigate(lensPath(next))}
         counts={counts}
+        portfolio={portfolio}
         needYou={{ count: need?.total ?? 0, active: needOnly, onToggle: () => setNeedOnly((v) => !v) }}
         freshAt={goodAt}
         stale={Boolean(error)}
@@ -244,7 +255,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
         contextCollapsed={ctxCollapsed}
         onToggleContext={() => setCtxCollapsed((v) => !v)}
         focused={selected && (Boolean(item) || db === 'inbox')}
-        onBack={() => navigate(`/planner/${db}`)}
+        onBack={() => navigate(lensPath(db))}
         spine={items ? <SpineList label={TEXT.spineLabel} groups={groups} selectedId={openId} onSelect={open} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needOnly ? TEXT.needYouEmpty : TEXT.lensEmpty(lens.label)} /> : error ? null : <div className="flex flex-col gap-2 p-1" aria-busy>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>}
         spineNotice={error ? (
           <p role="alert" className="border-t border-border-subtle px-3 py-2 text-caption text-danger">
@@ -274,7 +285,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
           else if (cmd === 'create:themes' || cmd === 'create:ideas') (setCreateTitle(q), setCreating(cmd === 'create:ideas' ? 'ideas' : 'themes'))
         }}
       />
-      <PlannerCreateDialog db={creating ?? 'themes'} initialTitle={createTitle} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={1} onCreated={(it) => { void load(); navigate(`/planner/${creating ?? 'themes'}/${encodeURIComponent(it.id)}`) }} />
+      <PlannerCreateDialog db={creating ?? 'themes'} initialTitle={createTitle} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={1} onCreated={(it) => { void load(); navigate(lensPath(creating ?? 'themes', it.id)) }} />
     </>
   )
 }
@@ -294,7 +305,7 @@ function LensFocus({ db, item, statuses, severities, write, onPin, children }: {
           <button type="button" aria-pressed={Boolean(item.pinned)} onClick={onPin} className="rounded-full">
             <Chip selected={Boolean(item.pinned)} className="h-6 cursor-pointer hover:bg-selection"><Pin className="size-3" />{TEXT.pin}</Chip>
           </button>
-          <OverflowMenu ariaLabel={TEXT.moreActions} actions={[{ label: TEXT.copyLink, onSelect: () => void navigator.clipboard?.writeText(`${location.origin}/planner/${db}/${encodeURIComponent(item.id)}`) }]} />
+          <OverflowMenu ariaLabel={TEXT.moreActions} actions={[{ label: TEXT.copyLink, onSelect: () => void navigator.clipboard?.writeText(`${location.origin}${lensPath(db, item.id)}`) }]} />
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <InlineEdit as="h1" id="lens-title" label={TEXT.titleLabel} value={item.title} onCommit={(title) => edit({ title })} className="min-w-0 font-sans text-xl font-semibold normal-case leading-tight tracking-normal text-fg" />

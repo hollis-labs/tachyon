@@ -5,7 +5,7 @@ import { Compass } from "lucide-react"
 import PlannerShell from "@planner/shell/PlannerShell"
 import LensPage from "@planner/shell/lens-page"
 import { Navigate, useParams } from "react-router-dom"
-import { isPlannerDb } from "@planner/lib/planner"
+import { lensOfSlug, lensPath } from "@planner/lib/vocabulary"
 
 /** Planner records and revisions are owned by the Tachyon host. */
 const plannerClient = new TachyonPlannerClient()
@@ -19,11 +19,14 @@ function ShellRoute() {
 }
 
 function PlannerRoute() {
-  const { db } = useParams<{ db?: string }>()
+  const { db: slug, id } = useParams<{ db?: string; id?: string }>()
   // The old pages' routes land on the lens or facet that replaced them.
-  if (db === undefined || db === "board" || db === "flight" || db === "priorities") return <Navigate to="/planner/themes" replace />
-  if (db === "activity") return <Navigate to="/planner/themes?facet=need-you" replace />
-  if (!isPlannerDb(db)) return <Navigate to="/planner/themes" replace />
+  if (slug === undefined || slug === "board" || slug === "flight" || slug === "priorities") return <Navigate to="/planner/themes" replace />
+  if (slug === "activity") return <Navigate to="/planner/themes?facet=need-you" replace />
+  const db = lensOfSlug(slug)
+  if (!db) return <Navigate to="/planner/themes" replace />
+  // The database's own name (workstreams) is an alias of the lens slug (streams).
+  if (slug !== lensPath(db).slice("/planner/".length)) return <Navigate to={lensPath(db, id === undefined ? undefined : decodeURIComponent(id))} replace />
   return (
     <PlannerApiProvider client={plannerClient}>
       {db === "themes" ? <PlannerShell /> : <LensPage key={db} db={db} />}

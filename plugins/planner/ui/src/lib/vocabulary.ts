@@ -5,15 +5,25 @@
  */
 import type { PlannerDb } from '@planner/api/types'
 
-export const LENSES: ReadonlyArray<{ db: PlannerDb; label: string; key: string }> = [
-  { db: 'themes', label: 'Themes', key: 't' },
-  { db: 'workstreams', label: 'Streams', key: 's' },
-  { db: 'roadmap', label: 'Roadmap', key: 'r' },
-  { db: 'ideas', label: 'Ideas', key: 'i' },
-  { db: 'decisions', label: 'Decisions', key: 'd' },
-  { db: 'risks', label: 'Risks', key: 'k' },
-  { db: 'inbox', label: 'Inbox', key: 'x' },
+export const LENSES: ReadonlyArray<{ db: PlannerDb; slug: string; label: string; key: string }> = [
+  { db: 'themes', slug: 'themes', label: 'Themes', key: 't' },
+  { db: 'workstreams', slug: 'streams', label: 'Streams', key: 's' },
+  { db: 'roadmap', slug: 'roadmap', label: 'Roadmap', key: 'r' },
+  { db: 'ideas', slug: 'ideas', label: 'Ideas', key: 'i' },
+  { db: 'decisions', slug: 'decisions', label: 'Decisions', key: 'd' },
+  { db: 'risks', slug: 'risks', label: 'Risks', key: 'k' },
+  { db: 'inbox', slug: 'inbox', label: 'Inbox', key: 'x' },
 ]
+
+/** The URL of a lens (and of one of its items): /planner/<slug>[/<id>]. The slug is the lens name, not the database's. */
+export function lensPath(db: PlannerDb, id?: string): string {
+  const slug = LENSES.find((l) => l.db === db)?.slug ?? db
+  return id === undefined ? `/planner/${slug}` : `/planner/${slug}/${encodeURIComponent(id)}`
+}
+/** The database a URL's lens slug names; the database's own name is accepted too. */
+export function lensOfSlug(slug: string | undefined): PlannerDb | undefined {
+  return LENSES.find((l) => l.slug === slug || l.db === slug)?.db
+}
 
 export const LANES = [
   { id: 'todo', title: 'To do' },
@@ -49,7 +59,7 @@ export const TEXT = {
   optionCount: (n: number) => `${n} options`,
   noStatus: 'No status',
   selectItemFor: (lens: string) => `Select an item in ${lens}`,
-  groupLive: 'In flight',
+  groupLive: 'Live',
   groupCleared: 'Cleared',
   groupSettled: 'Ready · Parked · Landed',
   groupProposed: 'Proposed',

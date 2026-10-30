@@ -18,6 +18,7 @@ function client(db: PlannerDb, items: PlannerItem[], enums: Record<string, strin
     plannerSchema: vi.fn(async () => ({ db, id: 'x', description: '', required: [], fields: {}, enums, link_kinds: [] })),
     plannerList: vi.fn(async () => items),
     plannerDatabases: vi.fn(async () => []),
+    plannerThemeBoard: vi.fn(async () => ({ progress: { done: 0, total: 0 } })),
     plannerNeedYou: vi.fn(async () => ({ total: 0, items: [] })),
     plannerLinks: vi.fn(async () => ({ outbound: [], inbound: [], external: [] })),
     plannerPin: vi.fn(async () => items[0]),
