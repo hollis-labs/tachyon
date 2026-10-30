@@ -38,7 +38,7 @@ var TriageOps = []string{"read", "dismiss", "snooze", "settle", "reopen"}
 
 // Agent link tasks and statuses (the assign-agent state machine).
 var Tasks = []string{"review", "fix_checks", "address_comments", "resolve_conflicts"}
-var LinkStatuses = []string{"pending", "assigned", "sent", "failed", "cancelled"}
+var LinkStatuses = []string{"pending", "assigned", "sent", "done", "failed", "cancelled"}
 
 // Audit ops and outcomes (forge_write_log). Bodies are never logged.
 var AuditOps = []string{"comment", "review", "merge", "assign", "assign_agent", "triage"}

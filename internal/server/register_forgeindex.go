@@ -13,6 +13,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/alertstore"
 	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/forgeapi"
+	"github.com/hollis-labs/tachyon/internal/forgeassign"
 	"github.com/hollis-labs/tachyon/internal/forgeindex"
 	"github.com/hollis-labs/tachyon/internal/itemstate"
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -109,6 +110,23 @@ func mountForgeIndex(s *Server, mux *http.ServeMux, _ *approvals.Bridge) {
 		}
 		return out, nil
 	}}
+	api.Agents = func(ctx context.Context) (map[string][]forgeindex.Assignee, error) {
+		av, ok := s.ext.Load(forgeAssignKey)
+		if !ok {
+			return nil, nil
+		}
+		links, err := av.(*forgeassign.Handler).Assignees(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := map[string][]forgeindex.Assignee{}
+		for k, ls := range links {
+			for _, l := range ls {
+				out[k] = append(out[k], forgeindex.Assignee{Kind: "agent", ID: l.AgentID, Label: l.AgentID, URN: l.AgentURN, Task: l.Task, Status: l.Status})
+			}
+		}
+		return out, nil
+	}
 	h := api.Handler()
 	for _, pat := range forgeindex.Routes() {
 		mux.Handle(pat, h)

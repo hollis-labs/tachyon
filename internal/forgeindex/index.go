@@ -53,6 +53,10 @@ type Assignee struct {
 	Kind  string `json:"kind"`
 	ID    string `json:"id"`
 	Label string `json:"label"`
+	// Agent assignees (kind "agent") also carry the link they came from.
+	URN    string `json:"urn,omitempty"`
+	Task   string `json:"task,omitempty"`
+	Status string `json:"link_status,omitempty"`
 }
 
 type Failing struct {

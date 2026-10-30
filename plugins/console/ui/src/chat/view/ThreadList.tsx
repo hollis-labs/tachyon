@@ -81,7 +81,13 @@ export function ThreadList({ threads, activeId, onSelect, newChatActions = [], e
                       {live ? <MessageSquare aria-label="Chat" className="h-3.5 w-3.5 shrink-0 text-success" /> : <Mail aria-label="Email" className="h-3.5 w-3.5 shrink-0 text-info" />}
                       <span className="truncate">{t.title}</span>
                     </span>
-                    {t.unread > 0 && <span role="img" aria-label={`${t.unread} unread`} className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg" />}
+                    {t.needsYou && <span className="shrink-0 border border-fg px-1 dash-caption text-fg">Needs you</span>}
+                    {t.unread > 0 && (
+                      <span role="img" aria-label={`${t.unread} unread`} className="flex shrink-0 items-center gap-1 dash-caption text-fg-muted">
+                        <span className="h-1.5 w-1.5 rounded-full bg-fg" />
+                        {t.unread > 99 ? '99+' : t.unread}
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1 flex items-center justify-between gap-3">
                     {/* The ordinary session chat needs no marker on every row; LIVE, mail-only and offline do. */}
