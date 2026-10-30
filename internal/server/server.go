@@ -31,6 +31,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -55,6 +56,8 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// ChatStubs mounts the fixture-backed chat contract (TACHYON_CHAT_STUBS=1) for GUI development.
+	ChatStubs bool
 	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
 	AppAgentConfigFile          string
 	ApprovalQueueURL            string
@@ -457,6 +460,15 @@ func (s *Server) Routes() http.Handler {
 	// read); sends need operator assurance. Without a config file the routes answer
 	// 503 and say why. Tightening reads is a one-word change to RequireOperatorReads.
 	mux.Handle(appagent.Prefix+"/", operator.RequireOperator(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
+	// Chat contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. Writes need an operator session; workspace content and the terminal family
+	// need it on reads too. Real slices replace these mounts route by route.
+	if s.cfg.ChatStubs {
+		stub := chatapi.Stub{}
+		mux.Handle("GET "+chatapi.WorkspaceContentPath, operator.RequireOperatorReads(stub.WorkspaceContent()))
+		mux.Handle(chatapi.Prefix+"/", operator.RequireOperator(stub.Chat()))
+		mux.Handle(chatapi.TerminalPrefix+"/", operator.RequireOperatorReads(stub.Terminal()))
+	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
