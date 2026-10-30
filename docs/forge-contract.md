@@ -32,12 +32,12 @@ GUI can build against them.
 |---|---|
 | `X-Stub-Status: N` | force that status with an error envelope |
 | `X-Stub-Scenario: rate_limited` | 429, `Retry-After: 42` |
-| `credential_missing` | 401 |
-| `degraded` | cached/degraded pending and status |
-| `mergeable_pending` | preflight state `unknown` -> `pending` |
-| `not_elevated` | merge refused, `operator_access_required` |
-| `assign_failed`, `assign_no_login` | assign-agent resume-after-failure and no forge login |
-| `gap` | stream emits `resync` |
+| `X-Stub-Scenario: credential_missing` | 401 |
+| `X-Stub-Scenario: degraded` | cached, degraded pending and status |
+| `X-Stub-Scenario: mergeable_pending` | preflight state `unknown` -> `pending` |
+| `X-Stub-Scenario: not_elevated` | merge refused, `operator_access_required` |
+| `X-Stub-Scenario: assign_failed` or `assign_no_login` | assign-agent resume-after-failure and no forge login |
+| `X-Stub-Scenario: gap` | stream emits `resync` |
 
 Fixture PRs: tachyon #201 (checks failed, conflicts, changes requested), #202 (ready),
 #203 (already assigned; replay/reminder), #204, #205; cerberus #55 (draft); tachyon #150
@@ -56,4 +56,4 @@ limited to 90 days.
 
 `GET /forge/stream` is SSE with `Last-Event-ID` / `?after=` resume; `?once=1` ends after
 the script. An id outside the ring gives a `resync` event: refetch lists. Events:
-`pr.updated`, `checks.changed`, `assign.updated`, `state.changed`, `rate_limited`, `resync`.
+`pr.updated`, `pr.merged`, `triage.changed`, `status`, `resync`.
