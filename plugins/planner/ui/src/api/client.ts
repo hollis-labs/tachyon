@@ -1,7 +1,7 @@
 import { ApiError, createApiClient, type ApiClient } from '@hollis-labs/design-app-runtime'
 import type { PlannerClient, PlannerReference, PlannerRevision } from './contracts'
 import { PlannerApiError } from './errors'
-import type { LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
+import type { IdeaPromoteResult, IdeaPromoteTarget, LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export const PLANNER_BASE = '/api/plugins/console/v1/planner'
@@ -84,6 +84,7 @@ export class TachyonPlannerClient implements PlannerClient {
   plannerDefer = (id: string, rev: number, note?: string) => this.send<PlannerItem>(`/decisions/${uuid(id)}/defer`, { note, expected_revision: revision(rev) })
   plannerReopen = (id: string, rev: number) => this.send<PlannerItem>(`/decisions/${uuid(id)}/reopen`, { expected_revision: revision(rev) })
   plannerInboxPromote = (id: string, to_db: PlannerDb, rev: number, targetId: string, fields?: Record<string, unknown>) => this.send<{ inbox: PlannerItem; item: PlannerItem }>(`/inbox/${uuid(id)}/promote`, { to_db, target_id: uuid(targetId), fields, expected_revision: revision(rev) })
+  plannerIdeaPromote = (id: string, to: IdeaPromoteTarget, rev: number, targetId: string) => this.send<IdeaPromoteResult>(`/ideas/${encodeURIComponent(id)}/promote`, { to_db: to, target_id: targetId, expected_revision: revision(rev) })
   plannerInboxDismiss = (id: string, rev: number, note?: string) => this.send<PlannerItem>(`/inbox/${uuid(id)}/dismiss`, { note, expected_revision: revision(rev) })
   async plannerTaskTitles(ids: string[], signal?: AbortSignal): Promise<Record<string, PlannerTaskBrief | null>> {
     const unique = [...new Set(ids)]
