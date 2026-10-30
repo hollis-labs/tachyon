@@ -26,7 +26,7 @@ export interface Session {
   tool_call_count: number | null
   last_clear_at: { at: number; inferred?: boolean } | null
   pending: { approval: boolean; question: boolean; known: boolean }
-  assignment: { theme_ref?: string; task_ref?: string; index?: number; count?: number } | null
+  assignment: { theme_ref?: string; task_ref?: string; index?: number; count?: number; stats?: { done: number; events: number; time_on_task_ms: number } } | null
   spark: number[]
   capabilities: { nudge: boolean; interrupt: { available: boolean; reason: string | null }; restart: boolean }
 }

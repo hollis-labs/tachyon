@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NudgeControl } from './controls'
-import { toTimeline } from './modal-tabs'
+import { toTimeline } from './session-events'
 import type { Session } from './types'
 
 afterEach(() => {

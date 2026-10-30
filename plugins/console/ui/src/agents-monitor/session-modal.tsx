@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@hollis-labs/design-components'
-import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
+import { Avatar, SessionDot } from './session-rows'
 import { NudgeControl, RestartControl } from './controls'
 import { ContextTab, HistoryTab, NowTab, TimelineTab } from './modal-tabs'
 import { stateText } from './session-parts'
@@ -30,26 +30,40 @@ export function SessionModal({ session, paused, now, onClose, onRestarted }: { s
     return () => window.removeEventListener('keydown', onKey)
   }, [tab])
   const M = AGENTS.modal
+  const action = session.one_liner ? ` · ${session.one_liner.verb} ${session.one_liner.target}` : ''
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent widthClassName="max-w-4xl" className="max-h-[90vh] overflow-auto">
-        <header className="flex flex-wrap items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <DialogTitle>{session.agent.name}</DialogTitle>
-            <DialogDescription>
-              {session.kind} · {session.provider}{session.model ? ` · ${session.model}` : ''} · <span className="font-mono">{session.id}</span> · {stateText(session, now)}
+      <DialogContent showCloseButton={false} widthClassName="max-w-[980px]" className="flex h-[min(660px,calc(100dvh-5rem))] flex-col gap-0 overflow-hidden p-0 max-sm:h-dvh max-sm:max-w-none max-sm:rounded-none">
+        <header className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-border-subtle px-4 py-3">
+          <Avatar name={session.agent.name} />
+          <div className="flex min-w-0 flex-col">
+            <DialogTitle className="font-sans text-[15px] font-semibold normal-case leading-tight tracking-normal text-fg">{session.agent.name}</DialogTitle>
+            <DialogDescription className="text-label text-fg-muted">
+              {session.kind} · {session.provider}{session.model ? ` · ${session.model}` : ''} · {M.sessionWord} {session.id.slice(0, 8)}
             </DialogDescription>
           </div>
+          <span className="flex min-w-0 items-center gap-2 text-xs text-fg">
+            <SessionDot s={session} />
+            <span className="truncate">{stateText(session, now)}{action}</span>
+          </span>
+          <span className="flex-1" />
           <NudgeControl session={session} paused={paused} onSent={() => setNudgeSeq((n) => n + 1)} />
           <RestartControl session={session} paused={paused} onDone={onRestarted} />
+          <DialogClose aria-label={M.close} className="grid size-7 place-items-center rounded-control border border-border text-fg-secondary hover:bg-surface-hover">✕</DialogClose>
         </header>
-        <DashboardViewTabs label={M.tabsLabel} value={tab} onChange={(v) => setTab(v as Tab)} items={TABS.map((t) => ({ value: t, label: M.tabs[t] }))} />
-        <div className="min-h-64">
-          {tab === 'now' && <NowTab s={session} now={now} />}
-          {tab === 'timeline' && <TimelineTab key={nudgeSeq} s={session} now={now} />}
-          {tab === 'context' && <ContextTab s={session} />}
-          {tab === 'history' && <HistoryTab s={session} />}
-        </div>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1 gap-0">
+          <TabsList aria-label={M.tabsLabel} className="h-auto w-full justify-start gap-0.5 rounded-none border-b border-border-subtle bg-transparent px-3 py-1.5">
+            {TABS.map((t) => (
+              <TabsTrigger key={t} value={t} className="h-[26px] flex-none rounded-full border border-transparent px-3 text-xs font-normal text-fg-muted data-[active]:border-border data-[active]:bg-selection data-[active]:font-semibold data-[active]:text-fg">{M.tabs[t]}</TabsTrigger>
+            ))}
+          </TabsList>
+          <div className="min-h-0 flex-1 overflow-auto p-4">
+            {tab === 'now' && <NowTab s={session} now={now} />}
+            {tab === 'timeline' && <TimelineTab key={nudgeSeq} s={session} now={now} />}
+            {tab === 'context' && <ContextTab s={session} />}
+            {tab === 'history' && <HistoryTab s={session} />}
+          </div>
+        </Tabs>
       </DialogContent>
     </Dialog>
   )
