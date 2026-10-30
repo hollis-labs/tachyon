@@ -152,8 +152,8 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, anySelected, 
         {err && <p role="alert" className="mt-2 dash-control text-danger">{err}</p>}
       </div>
       <ChecksMeter item={item} />
-      <div className={`flex shrink-0 items-center gap-1.5 transition-opacity max-md:hidden group-focus-within:opacity-100 group-hover:opacity-100 ${selected || anySelected ? 'opacity-100' : 'opacity-0'}`} onClick={(e) => e.stopPropagation()}>
-        <Button size="sm" type="button" onClick={() => onAssign(item)} disabled={busy}>{item.assignments.length ? 'Assign again' : 'Assign agent'}</Button>
+      <div className={`flex shrink-0 items-center gap-1.5 transition-opacity max-md:hidden group-focus-within:opacity-100 group-hover:opacity-100 ${selected ? 'opacity-100' : 'opacity-0'}`} onClick={(e) => e.stopPropagation()}>
+        <Button size="sm" variant="outline" type="button" onClick={() => onAssign(item)} disabled={busy}>{item.assignments.length ? 'Assign again' : 'Assign agent'}</Button>
         <OverflowMenu ariaLabel={`More actions for ${label}`} actions={actions} />
       </div>
     </li>
@@ -257,6 +257,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
 
   return (
     <section data-dashboard-shape="square" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg" onKeyDown={(e) => { if (e.key === 'Escape' && selected.size > 0 && !assigning && !bulkAssigning && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) setSelected(new Set()) }}>
+      {/* KIT-GAP: PageHeader has no slot beside the title; the golden puts the "N need attention" chip next to it. */}
       <PageHeader title="Pull requests">
         <Chip>{views.active} need attention</Chip>
         {refreshedAt && <span className="dash-label text-fg-muted max-md:hidden">Updated {ago(refreshedAt, now)}</span>}

@@ -10,6 +10,7 @@ import { hostFetch } from "@tachyon/host-sdk"
 import type { ForgeClient } from './client'
 import {
   ForgeError,
+  type ForgeUser,
   type MergeInput,
   type MergeResult,
   type AddCommentInput,
@@ -107,8 +108,16 @@ function normalizePr(v: unknown): PullRequest {
 }
 
 function normalizePending(v: unknown): PendingPrSummary {
-  const p = (isObj(v) ? v : {}) as unknown as PendingPrSummary
-  return { ...p, assignees: p.assignees ?? [], reasons: p.reasons ?? [], mergeable: p.mergeable ?? 'unknown' }
+  const p = (isObj(v) ? v : {}) as unknown as PendingPrSummary & { checks?: { passed?: number; failed?: number; pending?: number } }
+  // Wire rows carry `checks` as a rollup and assignees as {kind,id,label}; the inbox reads
+  // `checksSummary` and a `login` on every assignee.
+  const assignees = (p.assignees ?? []).map((a) => {
+    const w = a as ForgeUser & { id?: string; label?: string }
+    return { ...w, login: w.login ?? w.label ?? w.id ?? '' }
+  })
+  const c = p.checks
+  const checksSummary = p.checksSummary ?? (c ? { passed: c.passed ?? 0, failed: c.failed ?? 0, pending: c.pending ?? 0 } : undefined)
+  return { ...p, assignees, checksSummary, reasons: p.reasons ?? [], mergeable: p.mergeable ?? 'unknown' }
 }
 
 function normalizeFile(v: unknown): FileDiff {
