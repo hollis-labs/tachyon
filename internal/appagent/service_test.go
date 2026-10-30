@@ -426,3 +426,39 @@ func TestInputRequiredBecomesBlockedNotFailed(t *testing.T) {
 		t.Fatal("still blocked after the operator answered")
 	}
 }
+
+func TestToolEndAndContextReachTheirHooks(t *testing.T) {
+	rt := &fakeRuntime{events: []TurnEvent{
+		{Kind: EventToolStart, Tool: Tool{ID: "c1", Name: "tesseract_get", Status: "running"}},
+		{Kind: EventContext, Used: 48210, Window: 200000, Model: "m"},
+		{Kind: EventToolEnd, Tool: Tool{ID: "c1", Name: "tesseract_get", Status: "ok"}},
+		{Kind: EventText, Text: "ok"}, {Kind: EventFinish, Reason: "stop"},
+	}}
+	s, _ := newService(t, rt)
+	if _, err := s.Threads(context.Background()); err != nil { // creates the default thread
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var tools []Tool
+	var ctxs [][3]any
+	s.OnTool = func(id string, tl Tool) { mu.Lock(); tools = append(tools, tl); mu.Unlock() }
+	s.OnContext = func(id string, used, window int64, model string) {
+		mu.Lock()
+		ctxs = append(ctxs, [3]any{used, window, model})
+		mu.Unlock()
+	}
+	ch, cancel := s.Subscribe(DefaultThread)
+	defer cancel()
+	if _, _, err := s.Send(context.Background(), DefaultThread, "go"); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, ch, isEnd)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(tools) != 1 || tools[0].Name != "tesseract_get" || tools[0].Status != "ok" {
+		t.Fatalf("OnTool must fire once, at the end of the call: %+v", tools)
+	}
+	if len(ctxs) != 1 || ctxs[0] != [3]any{int64(48210), int64(200000), "m"} {
+		t.Fatalf("OnContext: %v", ctxs)
+	}
+}

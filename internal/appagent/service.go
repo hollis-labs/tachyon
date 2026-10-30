@@ -71,6 +71,10 @@ type Service struct {
 	// OnChange, if set, is called after a thread's summary-visible state changed
 	// (a reply finished or became blocked). It must not block.
 	OnChange func(threadID string)
+	// OnTool, if set, is called when a tool call finishes (status ok or error). It must not block.
+	OnTool func(threadID string, t Tool)
+	// OnContext, if set, receives the runtime's context meter for a thread. It must not block.
+	OnContext func(threadID string, used, window int64, model string)
 	// ClientContext, if set, supplies the per-turn client_context payload for a thread
 	// (nil = none). It is handed to the runtime adapter through the turn's context.
 	ClientContext func(ctx context.Context, threadID string) any
@@ -395,6 +399,13 @@ func (s *Service) apply(l *live, e TurnEvent) {
 		t := e.Tool
 		s.publish(l.agent.ThreadID, Event{Type: "tool", MessageID: l.agent.ID, Tool: &t})
 		s.mu.Unlock()
+		if e.Kind == EventToolEnd && s.OnTool != nil {
+			s.OnTool(l.agent.ThreadID, t)
+		}
+	case EventContext:
+		if s.OnContext != nil {
+			s.OnContext(l.agent.ThreadID, e.Used, e.Window, e.Model)
+		}
 	case EventFinish:
 		if e.Reason == "" || e.Reason == "stop" || e.Reason == "end_turn" || e.Reason == "complete" {
 			s.finish(l, StateComplete, "")

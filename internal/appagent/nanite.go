@@ -274,6 +274,12 @@ type frame struct {
 		Detail  string `json:"detail"`
 		IsError bool   `json:"is_error"`
 	} `json:"meta"`
+	// Context is the runtime's meter, when it reports one (requested of Nanite; absent today).
+	Context struct {
+		Used   int64  `json:"used"`
+		Window int64  `json:"window"`
+		Model  string `json:"model"`
+	} `json:"context"`
 	Error json.RawMessage `json:"error"`
 	Final struct {
 		Summary string `json:"summary"`
@@ -340,6 +346,9 @@ func (n *Nanite) Observe(ctx context.Context, session, turn string, emit func(Tu
 		var f frame
 		if json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &f) != nil {
 			continue
+		}
+		if f.Context.Used > 0 || f.Context.Window > 0 {
+			emit(TurnEvent{Kind: EventContext, Used: f.Context.Used, Window: f.Context.Window, Model: f.Context.Model})
 		}
 		switch {
 		case f.Verb == "part.delta" && f.Text != "":

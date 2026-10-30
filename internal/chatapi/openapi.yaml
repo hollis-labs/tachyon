@@ -416,7 +416,7 @@ components:
       properties:
         seq: {type: integer}
         thread_ref: {type: string}
-        type: {type: string, enum: [tool.call, card.sent, card.answered, approval.decided, file.shared, plan.changed, task.closed, panel.opened, terminal.run, topic.added, bookmark.added, comment]}
+        type: {type: string, enum: [tool.call, card.sent, card.answered, approval.decided, file.shared, plan.changed, task.closed, panel.opened, terminal.run, topic.added, bookmark.added, comment, note]}
         actor: {type: string, description: "user | agent:<id> | rule:<id> | system; a plugin cannot spoof user"}
         cite: {type: array, items: {$ref: "#/components/schemas/Cite"}}
         payload: {type: object, nullable: true, description: "mini-card {title, cite, summary<=200, review_ref}; comment {body}"}

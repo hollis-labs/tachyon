@@ -65,3 +65,19 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   unparked (`todo`), else 409 `linked_step`. `SyncTaskStatuses` is the one-way Torque sync (not scheduled yet). Agent writes
   (`chat.plan.get|write|step`, preset `chat-plan`) can propose and cancel but never approve, post a `kind: "plan"` message
   (`meta.plan_id`) to the thread and send a `panel` signal. Events: `plan {plan_id, revision, progress}`.
+- T6 (activity, panel events, context meter): `GET .../activity?before_seq&limit<=100&type&q&actor` (newest first, `has_more`),
+  `POST .../activity/comments {body<=2000}` (always `actor: "user"`; any other field is a 400), `GET .../context`. `chat_activity`
+  is append-only and keeps the newest 5000 rows per thread; its `seq` is the feed cursor (the SSE `id:` of an `activity` event comes
+  from the T1 event log, so the two differ; the event carries the feed `seq` as a field). Payloads are mini-cards `{title<=120,
+  summary<=200, review_ref}` (comments: `{body}`), redacted and bounded; `cite` is at most 8 of `{kind: task|pr|file, ref, label}`.
+  Written by Tachyon at these seams: `tool.call` (runtime tool end), `plan.changed`, `topic.added`, `bookmark.added`, `file.shared`,
+  `panel.opened`. NOT written yet: `card.sent`, `card.answered`, `approval.decided` (T5), `terminal.run` (T8), `task.closed`
+  from Torque (phase 2; agents can write `task.closed` and `note` through the verb). Actors: `user`, `agent` (Tachyon saw the
+  agent act but not which one), `agent:<credential id>` (verb writes). A feed write that fails never fails the change behind it.
+  Agent verbs: `chat.activity.append {thread_ref, type: task.closed|note, title, summary, cite, review_ref}` (preset
+  `chat-activity-append`; actor and source are forced to the credential, 30 per minute per thread) and `chat.panel.open {thread_ref,
+  panel, ref, reason}` (preset `chat-panel-open`; panels plan, topics, bookmarks, work, activity, approvals, files, doc; 6 per
+  minute per thread, 409 over that). A panel event is a hint only: `{panel, ref?, reason, source: agent|system}`.
+  Context meter: `{used, window, model, source: runtime|unknown, breakdown: [], at}`. The numbers stay `null` and `source`
+  `unknown` until Nanite reports `context {used, window, model}` on a stream frame (requested, not confirmed); Tachyon already reads
+  that field when it appears, stores the latest report per thread and sends a `context` event. Tether threads are always `unknown`.
