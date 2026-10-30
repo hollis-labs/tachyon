@@ -68,6 +68,12 @@ func TestHandoffCreateBundleAndAppliedIsDetected(t *testing.T) {
 	if shaOf(b.Files[0].Content) != c.Targets[0].NewSHA {
 		t.Fatal("bundle content must hash to the target's new_sha")
 	}
+	// the CLI has show and approve only; plan and apply are MCP-tool actions with no shell command
+	if cm := c.Handoff.Commands; len(cm) != 4 || cm[0].Step != "plan" || cm[0].Kind != "action" || cm[0].Tool != "tether_catalog_plan" || cm[0].Command != "" ||
+		cm[1].Command != "tether catalog show <plan_id>" || cm[2].Command != "tether catalog approve <plan_id>" ||
+		cm[3].Step != "apply" || cm[3].Kind != "action" || cm[3].Tool != "tether_catalog_apply" || cm[3].Command != "" || len(b.Commands) != 4 {
+		t.Fatalf("commands: %+v / %+v", c.Handoff.Commands, b.Commands)
+	}
 	// nothing planned yet: the poller leaves it alone
 	if err := e.svc.Poll(context.Background()); err != nil || e.get(t, c.ChangeID).State != builderapi.ChangeAwaitingHandoff {
 		t.Fatalf("poll before apply: %v", err)
@@ -153,6 +159,9 @@ func TestHandoffMarkPlannedIsOnlyAHint(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
 	if w.Code != 200 || got.State != builderapi.ChangeAwaitingApproval || got.Plan == nil || got.Plan.ApproveCommand != "tether catalog approve plan_7Q3K9" || got.Plan.ExpiresAt != nil {
 		t.Fatalf("mark_planned: %d %s", w.Code, w.Body)
+	}
+	if got.Handoff.Commands[1].Command != "tether catalog show plan_7Q3K9" || got.Handoff.Commands[2].Command != "tether catalog approve plan_7Q3K9" {
+		t.Fatalf("commands carry the plan id once known: %+v", got.Handoff.Commands)
 	}
 	if !strings.Contains(w.Body.String(), `"expires_at":null`) {
 		t.Fatalf("the hint has no expiry: %s", w.Body)

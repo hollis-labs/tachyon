@@ -707,6 +707,21 @@ func changeRearm(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, n)
 }
 
+// handoffCommands is what the server builds so the UI never hard-codes CLI flags. Tether's CLI has show and
+// approve only; planning and applying are MCP tools of a session that holds catalog.write (kind action, no
+// shell command). The plan id is a placeholder until mark_planned gives it.
+func handoffCommands(planID string) []map[string]any {
+	if planID == "" {
+		planID = "<plan_id>"
+	}
+	return []map[string]any{
+		{"step": "plan", "label": "Ask a session with catalog.write to plan this bundle", "kind": "action", "tool": "tether_catalog_plan"},
+		{"step": "show", "label": "Review the plan", "kind": "shell", "command": "tether catalog show " + planID},
+		{"step": "approve", "label": "Approve the plan", "kind": "shell", "command": "tether catalog approve " + planID},
+		{"step": "apply", "label": "Ask the same session to apply the approved plan", "kind": "action", "tool": "tether_catalog_apply"},
+	}
+}
+
 // stubMode is the change mode the stub plays: handoff (the real default, no control token) unless
 // X-Stub-Scenario is direct or unavailable.
 func stubMode(r *http.Request) string {
@@ -738,6 +753,7 @@ func changeBundle(w http.ResponseWriter, r *http.Request) {
 	var v map[string]any
 	load("change_bundle", &v)
 	v["name"] = "builder " + r.PathValue("id")
+	v["commands"] = handoffCommands("")
 	write(w, 200, v)
 }
 
@@ -769,6 +785,14 @@ func changeMarkPlanned(w http.ResponseWriter, r *http.Request) {
 		}
 		plan["plan_id"], plan["approve_command"] = in.PlanID, "tether catalog approve "+in.PlanID
 		n["plan"] = plan
+		if h, ok := n["handoff"].(map[string]any); ok {
+			hh := map[string]any{}
+			for k, v := range h {
+				hh[k] = v
+			}
+			hh["commands"] = handoffCommands(in.PlanID)
+			n["handoff"] = hh
+		}
 	}
 	write(w, 200, n)
 }

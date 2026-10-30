@@ -84,6 +84,18 @@ type Handoff struct {
 	Files            int    `json:"files"`
 	SessionAvailable bool   `json:"session_available"`
 	Reason           string `json:"reason,omitempty"`
+	// Commands are built here so the UI never hard-codes CLI flags; show and approve carry <plan_id> until known.
+	Commands []Command `json:"commands"`
+}
+
+// Command is one step of the hand-off. kind shell: run Command in a terminal on the host. kind action: ask a
+// session that holds catalog.write to call the MCP tool named by Tool (there is no CLI for it).
+type Command struct {
+	Step    string `json:"step"` // plan | show | approve | apply
+	Label   string `json:"label"`
+	Kind    string `json:"kind"` // shell | action
+	Command string `json:"command,omitempty"`
+	Tool    string `json:"tool,omitempty"`
 }
 type Failure struct {
 	Step    string `json:"step"`

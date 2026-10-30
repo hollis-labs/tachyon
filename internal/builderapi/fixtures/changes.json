@@ -1019,7 +1019,33 @@
       "bundle_sha256": "b5e1c2d3a4f5069788a9b0c1d2e3f4051627384950a1b2c3d4e5f60718293a4b",
       "files": 1,
       "session_available": false,
-      "reason": "not_configured"
+      "reason": "not_configured",
+      "commands": [
+        {
+          "step": "plan",
+          "label": "Ask a session with catalog.write to plan this bundle",
+          "kind": "action",
+          "tool": "tether_catalog_plan"
+        },
+        {
+          "step": "show",
+          "label": "Review the plan",
+          "kind": "shell",
+          "command": "tether catalog show <plan_id>"
+        },
+        {
+          "step": "approve",
+          "label": "Approve the plan",
+          "kind": "shell",
+          "command": "tether catalog approve <plan_id>"
+        },
+        {
+          "step": "apply",
+          "label": "Ask the same session to apply the approved plan",
+          "kind": "action",
+          "tool": "tether_catalog_apply"
+        }
+      ]
     }
   },
   "chg_handoff_planned": {
@@ -1088,7 +1114,33 @@
       "bundle_sha256": "b5e1c2d3a4f5069788a9b0c1d2e3f4051627384950a1b2c3d4e5f60718293a4b",
       "files": 1,
       "session_available": false,
-      "reason": "not_configured"
+      "reason": "not_configured",
+      "commands": [
+        {
+          "step": "plan",
+          "label": "Ask a session with catalog.write to plan this bundle",
+          "kind": "action",
+          "tool": "tether_catalog_plan"
+        },
+        {
+          "step": "show",
+          "label": "Review the plan",
+          "kind": "shell",
+          "command": "tether catalog show plan_7Q3K9"
+        },
+        {
+          "step": "approve",
+          "label": "Approve the plan",
+          "kind": "shell",
+          "command": "tether catalog approve plan_7Q3K9"
+        },
+        {
+          "step": "apply",
+          "label": "Ask the same session to apply the approved plan",
+          "kind": "action",
+          "tool": "tether_catalog_apply"
+        }
+      ]
     }
   },
   "chg_applied_detected": {
@@ -1166,7 +1218,33 @@
       "bundle_sha256": "b5e1c2d3a4f5069788a9b0c1d2e3f4051627384950a1b2c3d4e5f60718293a4b",
       "files": 1,
       "session_available": false,
-      "reason": "not_configured"
+      "reason": "not_configured",
+      "commands": [
+        {
+          "step": "plan",
+          "label": "Ask a session with catalog.write to plan this bundle",
+          "kind": "action",
+          "tool": "tether_catalog_plan"
+        },
+        {
+          "step": "show",
+          "label": "Review the plan",
+          "kind": "shell",
+          "command": "tether catalog show <plan_id>"
+        },
+        {
+          "step": "approve",
+          "label": "Approve the plan",
+          "kind": "shell",
+          "command": "tether catalog approve <plan_id>"
+        },
+        {
+          "step": "apply",
+          "label": "Ask the same session to apply the approved plan",
+          "kind": "action",
+          "tool": "tether_catalog_apply"
+        }
+      ]
     }
   }
 }
