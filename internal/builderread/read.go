@@ -29,13 +29,18 @@ func (r *Reader) Mount(mux *http.ServeMux, wrap func(http.Handler) http.Handler)
 	}
 	p := builderapi.Prefix
 	for pat, h := range map[string]http.HandlerFunc{
-		"GET " + p + "/agents":              r.agents,
-		"GET " + p + "/agents/{id}":         r.agent,
-		"GET " + p + "/agents/{id}/used_by": r.usedBy,
-		"GET " + p + "/agents/{id}/checks":  r.checks,
-		"GET " + p + "/agents/{id}/history": r.history,
-		"GET " + p + "/launches":            r.launches,
-		"GET " + p + "/launches/{id}":       r.launch,
+		"GET " + p + "/agents":                      r.agents,
+		"GET " + p + "/agents/{id}":                 r.agent,
+		"GET " + p + "/agents/{id}/used_by":         r.usedBy,
+		"GET " + p + "/agents/{id}/checks":          r.checks,
+		"GET " + p + "/agents/{id}/history":         r.history,
+		"GET " + p + "/launches":                    r.launches,
+		"GET " + p + "/launches/{id}":               r.launch,
+		"GET " + p + "/agents/{id}/resolved":        r.resolved,
+		"GET " + p + "/library/{kind}":              r.libraryList,
+		"GET " + p + "/library/{kind}/{id}":         r.libraryItem,
+		"GET " + p + "/library/{kind}/{id}/used_by": r.libraryUsedBy,
+		"GET " + p + "/library/{kind}/{id}/history": r.libraryHistory,
 	} {
 		mux.Handle(pat, wrap(h))
 	}
