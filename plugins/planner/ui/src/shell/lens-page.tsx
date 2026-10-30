@@ -44,7 +44,7 @@ export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: 
       ])
     }
     case 'roadmap': {
-      const row = (i: PlannerItem) => entry(i, { flags: i.mvp === true ? chip('MVP') : undefined, meta: str(i.area) ? <span className={CAPTION}>{str(i.area)}</span> : undefined })
+      const row = (i: PlannerItem) => entry(i, { flags: i.mvp === true ? chip(TEXT.mvp) : undefined, meta: str(i.area) ? <span className={CAPTION}>{str(i.area)}</span> : undefined })
       const live = (i: PlannerItem) => i.status !== 'completed' && i.status !== 'cancelled'
       return drop([
         { id: 'now', title: TEXT.horizonNow, items: pick((i) => live(i) && i.horizon === 'now').map(row) },
@@ -222,7 +222,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     : item
       ? <LensFocus db={db} item={item} statuses={schema?.enums.status ?? []} write={write} onPin={() => void togglePin(item)}>
           {db === 'workstreams' && <StreamBody item={item} />}
-          {db === 'roadmap' && <RoadmapBody item={item} horizons={schema?.enums.horizon ?? []} write={write} />}
+          {db === 'roadmap' && <RoadmapBody item={item} horizons={schema?.enums.horizon ?? []} siblings={items ?? []} write={write} />}
           {db === 'ideas' && <IdeaBody item={item} write={write} />}
           {db === 'decisions' && <DecisionBody item={item} write={write} busy={busy} />}
           {db === 'risks' && <RiskBody item={item} levels={schema?.enums.severity ?? []} />}
@@ -299,6 +299,7 @@ function LensFocus({ db, item, statuses, write, onPin, children }: { db: Planner
         <div className="flex flex-wrap items-center gap-2.5">
           <InlineEdit as="h1" id="lens-title" label={TEXT.titleLabel} value={item.title} onCommit={(title) => edit({ title })} className="min-w-0 font-sans text-xl font-semibold normal-case leading-tight tracking-normal text-fg" />
           <StatusPick status={item.status ?? ''} statuses={statuses} onPick={(status) => edit({ status })} />
+          {item.mvp === true && <Chip square>{TEXT.mvp}</Chip>}
         </div>
         {item.tldr && <InlineEdit as="p" multiline label={TEXT.descriptionLabel} value={item.tldr} onCommit={(tldr) => edit({ tldr })} className="max-w-prose text-control text-fg-muted" />}
       </header>
