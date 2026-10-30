@@ -43,6 +43,8 @@ export interface Alert {
   ruleId?: string
   /** Server alerts: the rule pack's needs-you flag. When set it replaces the client heuristic. */
   needsYou?: boolean
+  /** Server alerts: display name of the source; `source` stays the id that mutes match on. */
+  sourceLabel?: string
 }
 
 export type AlertMapper = (event: import('../events/types').ConsoleEvent) => Alert | null

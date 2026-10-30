@@ -77,7 +77,7 @@ export function AlertToast({ alert, now, durationMs, onClose, onRead, onExpand }
         {alert.detail && <p className="truncate text-xs text-fg-muted"><LinkText surface="alerts" text={alert.detail} /></p>}
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-fg-faint">
           {sev.named && <span className={sev.text}>{sev.label}</span>}
-          <span>{alert.source}</span>
+          <span>{alert.sourceLabel ?? alert.source}</span>
           <span>{ago(alert.ts, now)}</span>
           {total === null && <span>stays until dismissed</span>}
         </p>
