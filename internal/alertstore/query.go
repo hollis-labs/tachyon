@@ -53,6 +53,7 @@ func scanAlert(r scanner) (alertsapi.Alert, error) {
 	if json.Unmarshal([]byte(subj), &a.Subjects) != nil || a.Subjects == nil {
 		a.Subjects = []alertsapi.Subject{}
 	}
+	alertsapi.Decorate(&a)
 	return a, nil
 }
 

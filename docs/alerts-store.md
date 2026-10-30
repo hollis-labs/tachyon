@@ -84,3 +84,12 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
 ## Not here
 
 Task-done settling of task-failed alerts; outbound sinks (AL7).
+
+## Display fields (CW-20261030-0071)
+
+Alert rows and detail carry optional `display_title`, `subject{kind,id,label}`, `links[{kind,ref,label,href?}]` and `source_label`,
+derived on read (`alertsapi.Decorate`, nothing stored). They are omitted when they would say no more than the existing `title`,
+`source` and `subjects`. `source_label` is a known name (Approvals, Torque, Tether, Agents, Activity, Pull requests) or the source
+humanised. `subject` is the first non-approval subject, else the first. `links` come from task, theme, session, pr and approval
+subjects; `href` only when the subject URL is an in-app path. `display_title` exists only for approval alerts ("Needs your decision: ...");
+a sentence like "Agent X wants to run a command in repo Y" needs the requester on the alert, which the approval event does not carry yet.
