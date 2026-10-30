@@ -296,3 +296,16 @@ func TestRegisterRules(t *testing.T) {
 		t.Fatal("registered kind not found")
 	}
 }
+
+func TestPlanAndDispatchKinds(t *testing.T) {
+	reg := NewRegistry()
+	for _, k := range []string{"card.plan", "card.dispatch"} {
+		r := req(k, map[string]any{"title": "t", "data": map[string]any{}})
+		if err := reg.Prepare(&r, "a"); err != nil {
+			t.Fatalf("%s: %v", k, err)
+		}
+	}
+	if ty, _ := reg.Lookup("card.plan"); len(ty.Decisions) != 2 || ty.Decisions[1] != "changes_requested" {
+		t.Fatalf("plan decisions: %v", ty.Decisions)
+	}
+}
