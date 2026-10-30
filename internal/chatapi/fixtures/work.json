@@ -1,0 +1,4 @@
+{"items":[
+{"id":"CW-20261030-0002","kind":"task","title":"[Chat backend T1] Threads","status":"doing","progress":0.4,"links":[{"kind":"task","ref":"CW-20261030-0002","label":"T1"}],"needs_user":false,"updated_at":1793310000000},
+{"id":"DEC-1","kind":"decision","title":"Terminal credentials (D3)","status":"proposed","progress":null,"links":[],"needs_user":true,"updated_at":1793300000000}
+],"source":"stub","assignee_resolved":false}

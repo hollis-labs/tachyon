@@ -1,0 +1,1 @@
+{"proposals":[{"id":"tpr_1","thread_ref":"app:t_01","session_id":null,"machine_id":"agent-os","command":"git status --short","command_digest":"sha256:c0ffee","reason":"Check for stray files before commit","requested_by":"agent:tachyon","state":"pending","item_id":"apv_03","created_at":1793318000000,"expires_at":1793318900000}]}
