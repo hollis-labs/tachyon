@@ -1,4 +1,4 @@
-import type { IdeaPromoteResult, IdeaPromoteTarget, LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
+import type { NeedYou, IdeaPromoteResult, IdeaPromoteTarget, LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export interface PlannerEvent { type: string }
@@ -29,6 +29,8 @@ export interface PlannerClient {
   plannerDefer(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerReopen(id: string, rev: number): Promise<PlannerItem>
   plannerInboxPromote(id: string, to: PlannerDb, rev: number, targetId: string, fields?: Record<string, unknown>): Promise<{ inbox: PlannerItem; item: PlannerItem }>
+  /** Pin is item state: no comment needed. A stale revision is 409 with the current item. */
+  plannerPin(db: PlannerDb, id: string, pinned: boolean, rev: number): Promise<{ item: { id: string; db: string; rev: number; pinned: boolean; pinned_at?: string } }>
   /** Atomic: the same target id on a retry never creates twice. */
   plannerIdeaPromote(id: string, to: IdeaPromoteTarget, rev: number, targetId: string): Promise<IdeaPromoteResult>
   plannerInboxDismiss(id: string, rev: number, note?: string): Promise<PlannerItem>
@@ -42,6 +44,7 @@ export interface PlannerClient {
   plannerTaskTransition(task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }): Promise<TaskTransitionResult>
   /** Attach "what shipped" and PR cites after a move; never blocks the move. */
   plannerTaskMeta(task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }): Promise<TaskMeta>
+  plannerNeedYou(signal?: AbortSignal): Promise<NeedYou>
   /** Outbound, inbound and external links of an item, relations and legacy arrays merged. */
   plannerLinks(db: PlannerDb, id: string, signal?: AbortSignal): Promise<LinksView>
   /** Add a typed relation; a needs cycle is 422 code cycle, a stale revision 409. */

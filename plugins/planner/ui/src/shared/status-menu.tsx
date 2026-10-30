@@ -30,6 +30,8 @@ export interface StatusMenuProps {
   options: readonly StatusMenuOption[]
   onSelect: (value: string) => void
   disabled?: boolean
+  /** When disabled, keep the trigger focusable (aria-disabled) and point it at the element that says why. */
+  disabledReasonId?: string
   className?: string
 }
 
@@ -46,8 +48,10 @@ export function StatusMenu({
   options,
   onSelect,
   disabled,
+  disabledReasonId,
   className,
 }: StatusMenuProps) {
+  const soft = Boolean(disabled && disabledReasonId)
   const [open, setOpen] = useState(false)
   useEffect(() => {
     if (disabled) setOpen(false)
@@ -66,12 +70,14 @@ export function StatusMenu({
     }
   }
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu open={open} onOpenChange={(o) => !soft && setOpen(o)}>
       <DropdownMenuTrigger
-        disabled={disabled}
+        disabled={disabled && !soft}
+        aria-disabled={soft || undefined}
+        aria-describedby={soft ? disabledReasonId : undefined}
         aria-label={triggerLabel}
         className={cn(
-          "inline-flex items-center rounded-md focus-visible:outline-2 disabled:opacity-60",
+          "inline-flex items-center rounded-md focus-visible:outline-2 disabled:opacity-60 aria-disabled:opacity-60",
           className,
         )}
       >

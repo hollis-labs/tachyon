@@ -1,7 +1,7 @@
 import { ApiError, createApiClient, type ApiClient } from '@hollis-labs/design-app-runtime'
 import type { PlannerClient, PlannerReference, PlannerRevision } from './contracts'
 import { PlannerApiError } from './errors'
-import type { IdeaPromoteResult, IdeaPromoteTarget, LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
+import type { NeedYou, IdeaPromoteResult, IdeaPromoteTarget, LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export const PLANNER_BASE = '/api/plugins/console/v1/planner'
@@ -84,6 +84,7 @@ export class TachyonPlannerClient implements PlannerClient {
   plannerDefer = (id: string, rev: number, note?: string) => this.send<PlannerItem>(`/decisions/${uuid(id)}/defer`, { note, expected_revision: revision(rev) })
   plannerReopen = (id: string, rev: number) => this.send<PlannerItem>(`/decisions/${uuid(id)}/reopen`, { expected_revision: revision(rev) })
   plannerInboxPromote = (id: string, to_db: PlannerDb, rev: number, targetId: string, fields?: Record<string, unknown>) => this.send<{ inbox: PlannerItem; item: PlannerItem }>(`/inbox/${uuid(id)}/promote`, { to_db, target_id: uuid(targetId), fields, expected_revision: revision(rev) })
+  plannerPin = (db: PlannerDb, id: string, pinned: boolean, rev: number) => this.send<{ item: { id: string; db: string; rev: number; pinned: boolean; pinned_at?: string } }>(`${dbPath(db)}/${encodeURIComponent(id)}/pin`, { pinned, expected_revision: revision(rev) }, 'PUT')
   plannerIdeaPromote = (id: string, to: IdeaPromoteTarget, rev: number, targetId: string) => this.send<IdeaPromoteResult>(`/ideas/${encodeURIComponent(id)}/promote`, { to_db: to, target_id: targetId, expected_revision: revision(rev) })
   plannerInboxDismiss = (id: string, rev: number, note?: string) => this.send<PlannerItem>(`/inbox/${uuid(id)}/dismiss`, { note, expected_revision: revision(rev) })
   async plannerTaskTitles(ids: string[], signal?: AbortSignal): Promise<Record<string, PlannerTaskBrief | null>> {
@@ -99,6 +100,7 @@ export class TachyonPlannerClient implements PlannerClient {
   plannerThemeTimeline = (themeId: string, opts?: { before_seq?: number; limit?: number }, signal?: AbortSignal) => this.request<ThemeTimeline>(`/themes/${encodeURIComponent(themeId)}/timeline`, undefined, { before_seq: opts?.before_seq, limit: opts?.limit }, signal)
   plannerTaskTransition = (task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }) => this.send<TaskTransitionResult>(`/tasks/${encodeURIComponent(task)}/transition`, { to, expected_status: expectedStatus, ...(args?.reason ? { reason: args.reason } : {}) })
   plannerTaskMeta = (task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }) => this.send<TaskMeta>(`/tasks/${encodeURIComponent(task)}/meta`, meta, 'PUT')
+  plannerNeedYou = (signal?: AbortSignal) => this.request<NeedYou>('/need-you', undefined, undefined, signal)
   plannerLinks = (db: PlannerDb, id: string, signal?: AbortSignal) => this.request<LinksView>(`${dbPath(db)}/${encodeURIComponent(id)}/links`, undefined, undefined, signal)
   plannerRelationAdd = (db: PlannerDb, id: string, kind: RelationKind, to: PlannerRef, rev: number) => this.send<RelationResult>(`${dbPath(db)}/${encodeURIComponent(id)}/relations`, { kind, to, expected_revision: revision(rev) })
   plannerRelationRemove = (db: PlannerDb, id: string, kind: RelationKind, to: PlannerRef, rev: number) => this.send<RelationResult>(`${dbPath(db)}/${encodeURIComponent(id)}/relations`, { kind, to, expected_revision: revision(rev) }, 'DELETE')

@@ -10,9 +10,15 @@ import { TaskBoard } from '@planner/shell/task-board'
 import { themeSegments } from '@planner/shell/spine'
 import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
+const ACCESS_NOTE = 'planner-access-note'
+
 interface FocusProps {
   /** Writes are disabled while the connection is down. */
   paused?: boolean
+  /** The server refused a write for lack of operator access: controls are off and say why. */
+  needsAccess?: boolean
+  onRetryAccess?: () => void
+  onNeedsAccess?: () => void
   row: ThemeRow
   board: ThemeBoard
   view: 'board' | 'timeline'
@@ -22,7 +28,7 @@ interface FocusProps {
   onDetails: () => void
 }
 
-export function Focus({ paused, row, board, view, onView, onAction, onBack, onDetails }: FocusProps) {
+export function Focus({ paused, needsAccess, onRetryAccess, onNeedsAccess, row, board, view, onView, onAction, onBack, onDetails }: FocusProps) {
   const seg = themeSegments(row)
   const panels = useContributions('planner.focus.panel')
   const approved = (board.totals.in_flight ?? 0) + (board.totals.cleared ?? 0)
@@ -51,7 +57,8 @@ export function Focus({ paused, row, board, view, onView, onAction, onBack, onDe
               const a = actions.find((x) => x.label === label)
               if (a) void onAction(row, a.action, a.position === undefined ? undefined : { position: a.position })
             }}
-            disabled={actions.length === 0 || paused}
+            disabled={actions.length === 0 || paused || needsAccess}
+            disabledReasonId={needsAccess ? ACCESS_NOTE : undefined}
           />
         </div>
         {owners && <p className="dash-support text-fg-muted">{owners}</p>}
@@ -66,8 +73,13 @@ export function Focus({ paused, row, board, view, onView, onAction, onBack, onDe
         {panels.map((p) => <div key={p.id}>{p.render?.({ id: row.id })}</div>)}
         <DashboardViewTabs variant="segments" label={TEXT.viewLabel} value={view} onChange={(v) => onView(v === 'timeline' ? 'timeline' : 'board')} items={[{ value: 'board', label: TEXT.board }, { value: 'timeline', label: TEXT.timeline }]} />
       </header>
+      {needsAccess && (
+        <p id={ACCESS_NOTE} role="status" className="border-b border-border px-4 py-2 dash-caption text-fg-muted">
+          {TEXT.needsAccess}. {TEXT.needsAccessHint} <button type="button" className="underline" onClick={onRetryAccess}>{TEXT.retry}</button>
+        </p>
+      )}
       <div className="min-w-0 flex-1 p-4">
-        {view === 'board' ? <TaskBoard themeId={row.id} paused={paused} /> : <ThemeTimelineView state={timeline} />}
+        {view === 'board' ? <TaskBoard themeId={row.id} paused={paused || needsAccess} onNeedsAccess={onNeedsAccess} accessNoteId={needsAccess ? ACCESS_NOTE : undefined} /> : <ThemeTimelineView state={timeline} />}
       </div>
     </section>
   )
