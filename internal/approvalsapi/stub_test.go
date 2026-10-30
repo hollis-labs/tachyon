@@ -364,6 +364,17 @@ func TestHistoryAuditAccessAndSecrets(t *testing.T) {
 	if len(h.Events) != 1 || h.Events[0]["reason"] != "wrong_target" {
 		t.Errorf("denied filter: %v", h.Events)
 	}
+	var hf struct {
+		Events []item `json:"events"`
+		Facets struct {
+			Requesters []item `json:"requesters"`
+			Statuses   []item `json:"statuses"`
+		} `json:"facets"`
+	}
+	decode(t, do(t, "GET", "/history?requester=cerberus-supervisor", ""), &hf)
+	if len(hf.Events) != 2 || len(hf.Facets.Requesters) != 2 || len(hf.Facets.Statuses) != 2 || hf.Events[0]["requester"] == nil {
+		t.Errorf("requester filter and facets: %v %v", hf.Events, hf.Facets)
+	}
 	if do(t, "GET", "/history?status=bogus", "").Code != 400 || do(t, "GET", "/history?cursor=zz", "").Code != 400 {
 		t.Error("bad history params accepted")
 	}

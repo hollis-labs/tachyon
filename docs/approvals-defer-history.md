@@ -33,9 +33,12 @@ items have no decision to show and are not logged.
 
 - `GET /history?status=approved|denied|answered|expired|withdrawn&requester=&q=&from=&to=&kind=&limit=&cursor=`:
   newest first, decided kinds by default (`kind=` selects another, e.g. `deferred`). Row:
-  `{event_id, item_id, kind, decision, status, actor{ref,label,assurance}, at, note, reason, batch_id?, revision, mini{title,risk,group}}`.
-  `next_cursor` is opaque. `q` matches the item's title/summary/requester/id and the note.
+  `{event_id, item_id, kind, decision, status, actor{ref,label,assurance}, at, note, reason, batch_id?, revision, requester{id,label,kind}|null, mini{title,risk,group}}`.
+  `next_cursor` is opaque. `requester=` is an exact requester id. `q` matches the item's title/summary/requester/id and the note.
+  `facets{requesters:[{id,label,count}], statuses:[{status,count}]}` counts over the current filter without the
+  facet's own part (so the menu keeps its other values); the cursor and `limit` do not apply to it.
 - `GET /items/{id}/audit`: that item's events, oldest first.
 - Actor label: `You` for the current session, `Operator session` for another, `System` when there is no
   actor (expiry). There is no person model; the ref is a hash of the session cookie.
-- `mini` comes from the queue index and is empty for an item the index does not know.
+- `mini` and `requester` come from the queue index: `mini` is empty and `requester` null for an item the index does not know,
+  and such events are not counted in `facets.requesters`.

@@ -100,7 +100,7 @@ paths:
       summary: Decision timeline with reasons
       parameters:
         - {name: status, in: query, schema: {type: string, enum: [approved, denied, answered, expired, withdrawn]}}
-        - {name: requester, in: query, schema: {type: string}}
+        - {name: requester, in: query, description: requester id (a facets.requesters id), schema: {type: string}}
         - {name: q, in: query, schema: {type: string}}
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: to, in: query, schema: {type: string, format: date-time}}
@@ -398,11 +398,34 @@ components:
               note: {type: string, nullable: true}
               reason: {type: string, nullable: true}
               batch_id: {type: string, nullable: true}
+              requester:
+                type: object
+                nullable: true
+                description: who asked; null when the item is no longer indexed
+                required: [id, label, kind]
+                properties: {id: {type: string}, label: {type: string}, kind: {type: string}}
               mini:
                 type: object
                 properties: {title: {type: string}, risk: {$ref: '#/components/schemas/Risk'}, group: {$ref: '#/components/schemas/Group'}}
         next_cursor: {type: string, nullable: true}
         total: {type: integer}
+        facets:
+          type: object
+          description: counts over the current filter without the facet's own part; the cursor does not apply
+          required: [requesters, statuses]
+          properties:
+            requesters:
+              type: array
+              items:
+                type: object
+                required: [id, label, count]
+                properties: {id: {type: string}, label: {type: string}, count: {type: integer}}
+            statuses:
+              type: array
+              items:
+                type: object
+                required: [status, count]
+                properties: {status: {type: string}, count: {type: integer}}
     Access:
       type: object
       required: [state, can_elevate, required_for]

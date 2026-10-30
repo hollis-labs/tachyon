@@ -540,21 +540,56 @@ func history(w http.ResponseWriter, r *http.Request) {
 		Events     []item  `json:"events"`
 		NextCursor *string `json:"next_cursor"`
 		Total      int     `json:"total"`
+		Facets     item    `json:"facets"`
 	}
 	load(page, &d)
+	// skip leaves one facet's own filter out ("status" or "requester"), as the real handler does.
 	text := strings.ToLower(q.Get("q"))
+	keep := func(e item, skip string) bool {
+		mini, _ := e["mini"].(map[string]any)
+		req, _ := e["requester"].(map[string]any)
+		at := str(e, "at")
+		return !(skip != "status" && q.Get("status") != "" && e["status"] != q.Get("status") ||
+			skip != "requester" && q.Get("requester") != "" && req["id"] != q.Get("requester") ||
+			text != "" && !strings.Contains(strings.ToLower(fmt.Sprint(mini["title"], " ", e["item_id"], " ", e["note"])), text) ||
+			q.Get("from") != "" && at < q.Get("from") || q.Get("to") != "" && at > q.Get("to"))
+	}
+	var all struct {
+		Events []item `json:"events"`
+	}
+	load("history", &all)
+	reqCount, reqOrder, statCount, statOrder := map[string]int{}, []string{}, map[string]int{}, []string{}
+	reqLabel := map[string]string{}
+	for _, e := range all.Events {
+		if req, ok := e["requester"].(map[string]any); ok && keep(e, "requester") {
+			id := fmt.Sprint(req["id"])
+			if reqCount[id] == 0 {
+				reqOrder, reqLabel[id] = append(reqOrder, id), fmt.Sprint(req["label"])
+			}
+			reqCount[id]++
+		}
+		if keep(e, "status") {
+			st := fmt.Sprint(e["status"])
+			if statCount[st] == 0 {
+				statOrder = append(statOrder, st)
+			}
+			statCount[st]++
+		}
+	}
+	reqs, stats := []item{}, []item{}
+	for _, id := range reqOrder {
+		reqs = append(reqs, item{"id": id, "label": reqLabel[id], "count": reqCount[id]})
+	}
+	for _, st := range statOrder {
+		stats = append(stats, item{"status": st, "count": statCount[st]})
+	}
 	out := d.Events[:0:0]
 	for _, e := range d.Events {
-		mini, _ := e["mini"].(map[string]any)
-		at := str(e, "at")
-		if v := q.Get("status"); v != "" && e["status"] != v || q.Get("requester") != "" && !strings.Contains(strings.ToLower(fmt.Sprint(e["requester"])), strings.ToLower(q.Get("requester"))) ||
-			text != "" && !strings.Contains(strings.ToLower(fmt.Sprint(mini["title"], " ", e["item_id"], " ", e["note"])), text) ||
-			q.Get("from") != "" && at < q.Get("from") || q.Get("to") != "" && at > q.Get("to") {
-			continue
+		if keep(e, "") {
+			out = append(out, e)
 		}
-		out = append(out, e)
 	}
-	d.Events = out
+	d.Events, d.Facets = out, item{"requesters": reqs, "statuses": stats}
 	write(w, 200, d)
 }
 
