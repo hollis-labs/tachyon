@@ -21,8 +21,12 @@ paths:
         - {name: batchable, in: query, schema: {type: string, enum: ["1"]}}
         - {name: q, in: query, description: Matches title, summary, requester and id only (not body text), schema: {type: string}}
         - {name: order, in: query, description: "urgency (default): deferred last, expires_at ascending, risk descending, oldest first", schema: {type: string, enum: [urgency, created]}}
-        - {name: cursor, in: query, schema: {type: string}}
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+        - {name: requester, in: query, schema: {type: string}}
+        - {name: history_status, in: query, description: filters the history side, schema: {type: string, enum: [approved, denied, answered, expired, withdrawn, failed, superseded]}}
+        - {name: pending_before, in: query, description: item-id cursor from next_pending, schema: {type: string}}
+        - {name: history_before, in: query, description: item-id cursor from next_history, schema: {type: string}}
+        - {name: cursor, in: query, description: alias for pending_before (or history_before with status=history), schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: '#/components/schemas/Inbox'}}}}
   /items/{id}:
