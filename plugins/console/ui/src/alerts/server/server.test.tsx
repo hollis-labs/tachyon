@@ -201,6 +201,16 @@ describe('ServerAlertDetail', () => {
 })
 
 describe('derived display fields', () => {
+  it('turns raw kinds and session ids into sentences', async () => {
+    const { toAlert } = await import('./adapt')
+    const base = { alert_id: 'a1', source: 'tether', count: 1, severity: 'warning', icon: 'bell', rule_id: 'r', needs_you: false, summary: '', coalesce_key: '', last_at_ms: 1, primary: null } as never
+    const mk = (o: object) => toAlert({ ...(base as object), ...o } as never)
+    expect(mk({ kind: 'message.failed', title: 'Message message.failed' }).title).toBe('Message failed')
+    expect(mk({ kind: 'tool.call.finished', title: 'tool.call.finished', summary: '7709c5dd-1234-4abc-8def-0123456789ab' })).toMatchObject({ title: 'Tool call finished', detail: 'in session 7709c5dd' })
+    expect(mk({ kind: 'alert.suppressed', title: '1 events dropped from activity' }).title).toBe('Activity events were dropped')
+    expect(mk({ kind: 'task.state_changed', title: 'CW-1 → review' }).title).toBe('CW-1 → review')
+    expect(mk({ kind: 'foo.bar_baz', title: 'foo.bar_baz' }).title).toBe('Foo bar baz')
+  })
   it('prefers the server display title and source label without changing the source id', async () => {
     const { toAlert } = await import('./adapt')
     const base = { alert_id: 'a1', title: 'approval.requested', source: 'approvals', count: 1, severity: 'warning', kind: 'approval', icon: 'bell', rule_id: 'r', needs_you: true, summary: '', coalesce_key: '', last_at_ms: 1, primary: null } as never
