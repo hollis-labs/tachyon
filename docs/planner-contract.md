@@ -17,7 +17,7 @@ Fixture ids: `theme-agents-console` (rising, pinned, assigned, need-you review+d
 ## Rules the real writers enforce (the stub checks the shape of these)
 
 - Relations: no self link, no duplicate (kind, to), `needs` within one database and acyclic (422 `cycle`), `delivers` theme to roadmap only, `mitigates` theme to risk only, 200 per item.
-- Pin: `PUT /{db}/{id}/pin {pinned, expected_revision}` toggles `pinned`/`pinned_at` and needs no comment; a stale revision is 409 `revision_conflict` with `details.current` the current item. Item payloads name the revision `rev`; request bodies keep `expected_revision`. The real write is PL1 (held); the stub only answers the shape.
+- Pin: `PUT /{db}/{id}/pin {pinned, expected_revision}` toggles `pinned`/`pinned_at` and needs no comment; a stale revision is 409 `revision_conflict` with `details.current` the current item. Item payloads name the revision `rev`; request bodies keep `expected_revision`. The real write is live as of PL1; the stub only answers the shape (area is the roadmap enum: hub, llm-gateway, mesh, gui, plugin-platform, fabric, nanite, harness, policy, tooling, process).
 - Comment with status: text up to 16 KiB, `kind` comment or decision, `status` and `pin` applied in one revision write.
 - Transition: `blocked` needs `reason`; same status is a no-op 200; a differing Torque status is 409 with the current status. Undo is the inverse transition; the client holds the 8 second window.
 - Task meta: `done_summary` up to 600 characters, up to 20 PR cites.

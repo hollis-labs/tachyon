@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -39,10 +40,17 @@ func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, db, id string, err e
 	switch {
 	case errors.Is(err, ErrOperatorRequired):
 		status, code, message = 403, "operator_required", err.Error()
+	case errors.Is(err, ErrCycle):
+		status, code, message = 422, "cycle", "That link would make a cycle."
+	case errors.Is(err, ErrRule):
+		status, code, message = 422, "invalid", err.Error()
 	case errors.Is(err, objects.ErrInvalid):
 		status, code, message = 400, "invalid", err.Error()
 	case errors.Is(err, objects.ErrConflict):
 		status, code, message = 409, "conflict", "Record changed; read and reconcile before retrying."
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/pin") {
+			code = "revision_conflict"
+		}
 	case errors.Is(err, objects.ErrNotFound):
 		status, code, message = 404, "not_found", "Planner item or route not found."
 	case errors.Is(err, ErrTaskSource):
@@ -55,6 +63,18 @@ func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, db, id string, err e
 		}
 	}
 	send(w, status, body)
+}
+
+var actorSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// requestActor names who made a browser write. The browser may send X-Planner-Actor (its
+// operator profile slug); anything else, or no header, is the shared "operator:browser". The
+// prefix is fixed, so a header cannot turn an actor into anything but an operator label.
+func requestActor(r *http.Request) string {
+	if v := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Planner-Actor"))); actorSlug.MatchString(v) {
+		return "operator:" + v
+	}
+	return "operator:browser"
 }
 func readBody(w http.ResponseWriter, r *http.Request, allowed ...string) (Item, error) {
 	r.Body = http.MaxBytesReader(w, r.Body, 3<<20)
@@ -198,6 +218,8 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case len(parts) == 2 && db == "schema":
 				out, err = Schema(id)
+			case len(parts) == 3 && parts[2] == "links" && db != "schema":
+				out, err = h.Owned.Links(ctx, db, id)
 			case len(parts) == 3 && db == "workstreams" && parts[2] == "tasks":
 				var row Item
 				row, err = h.Owned.Get(ctx, db, id)
@@ -219,7 +241,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		actor := "operator:browser"
+		actor := requestActor(r)
 		switch {
 		case (r.Method == http.MethodPost || r.Method == http.MethodDelete) && path == "relate":
 			var b Item
@@ -230,6 +252,44 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if err == nil {
 					from, to := object(b["from"]), object(b["to"])
 					out, err = h.Owned.Relate(ctx, RelationRequest{From: PortfolioRef{textField(from, "db"), textField(from, "id")}, To: PortfolioRef{textField(to, "db"), textField(to, "id")}, ExpectedRevision: rev, Field: textField(b, "field"), Add: r.Method == http.MethodPost}, actor)
+				}
+			}
+		case r.Method == http.MethodPut && len(parts) == 3 && parts[2] == "pin":
+			var b Item
+			b, err = readBody(w, r, "pinned", "expected_revision")
+			if err == nil {
+				pinned, isBool := b["pinned"].(bool)
+				var rev int64
+				if rev, err = expected(b); err == nil && !isBool {
+					err = fmt.Errorf("%w: pinned (boolean) is required", objects.ErrInvalid)
+				}
+				if err == nil {
+					var row Item
+					if row, err = h.Owned.Pin(ctx, db, id, rev, pinned, actor); err == nil {
+						out = Item{"item": Item{"id": row["id"], "db": PublicDB(db), "rev": row["rev"], "pinned": row["pinned"] == true, "pinned_at": row["pinned_at"]}}
+					}
+				}
+			}
+		case (r.Method == http.MethodPost || r.Method == http.MethodDelete) && len(parts) == 3 && parts[2] == "relations":
+			var b Item
+			b, err = readBody(w, r, "kind", "to", "expected_revision")
+			if err == nil {
+				var rev int64
+				if rev, err = expected(b); err == nil {
+					to := object(b["to"])
+					from, target := PortfolioRef{DB: db, ID: id}, PortfolioRef{DB: textField(to, "db"), ID: textField(to, "id")}
+					var row Item
+					if r.Method == http.MethodPost {
+						row, err = h.Owned.AddRelation(ctx, from, textField(b, "kind"), target, rev, actor)
+					} else {
+						row, err = h.Owned.RemoveRelation(ctx, from, textField(b, "kind"), target, rev, actor)
+					}
+					if err == nil {
+						var view Item
+						if view, err = h.Owned.Links(ctx, db, id); err == nil {
+							out = Item{"item": Item{"id": row["id"], "db": PublicDB(db), "rev": row["rev"], "relations_count": row["relations_count"]}, "links_view": view}
+						}
+					}
 				}
 			}
 		case r.Method == http.MethodPost && len(parts) == 1:
@@ -307,10 +367,13 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					rev, err = expected(b)
 					if err == nil {
 						if action == "promote" {
-							if db != "inbox" {
-								err = objects.ErrInvalid
-							} else {
+							switch db {
+							case "inbox":
 								out, err = h.Owned.Promote(ctx, id, rev, textField(b, "to_db"), textField(b, "target_id"), object(b["fields"]), actor)
+							case "ideas":
+								out, err = h.Owned.PromoteIdea(ctx, id, rev, textField(b, "to_db"), textField(b, "target_id"), object(b["fields"]), actor)
+							default:
+								err = objects.ErrInvalid
 							}
 						} else {
 							out, err = h.Owned.Action(ctx, db, id, rev, action, b, actor)
@@ -319,7 +382,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		default:
-			w.Header().Set("Allow", "GET, POST, PATCH, DELETE")
+			w.Header().Set("Allow", "GET, POST, PUT, PATCH, DELETE")
 			send(w, 405, Item{"code": "method_not_allowed", "error": "Unsupported Planner method/route."})
 			return
 		}

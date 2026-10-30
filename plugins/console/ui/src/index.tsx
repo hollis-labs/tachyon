@@ -1,5 +1,6 @@
 import type { TachyonPlugin } from "@tachyon/host-sdk"
 import { Bot, Hammer, Library } from "lucide-react"
+import { Navigate } from "react-router-dom"
 import { BuilderPage } from "./agents"
 import { ApiProvider } from "@tachyon/torque-client"
 import { consoleClient } from "@console/client"
@@ -25,7 +26,9 @@ export const consolePlugin: TachyonPlugin = {
   routes: [
     { path: "/agents", element: <ApiProvider client={consoleClient}><AgentsPage /></ApiProvider> },
     { path: "/agents/:session", element: <ApiProvider client={consoleClient}><AgentsPage /></ApiProvider> },
-    { path: "/builder", element: <BuilderPage /> },
+    // /builder is the new Builder; the older tabbed page stays reachable for Teams, Assignments, Projects and Workstreams.
+    { path: "/builder", element: <Navigate to="/builder/agents" replace /> },
+    { path: "/builder/classic", element: <BuilderPage /> },
     { path: "/builder/agents", element: <BuilderAgentsPage /> },
     { path: "/builder/agents/:id", element: <BuilderAgentsPage /> },
     { path: "/builder/launches", element: <BuilderLaunchesPage /> },

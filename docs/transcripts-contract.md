@@ -61,7 +61,7 @@ Served by `internal/transcripts` on today's Fragments Engine. Not stubbed; no st
 - **Guard.** `assurance.ActionTranscriptsRead` (`transcripts.read`) needs a browser session (`Requirements` table, same Provider as
   the rest). An `Authorization` header is refused 403, no session is 401. The guard sits outside the API cache, so a refusal is
   never cached and never served from it. No read-audit table.
-- **`GET /snapshot`.** One build is shared by concurrent requests. A good build is saved (`transcript_snapshot`, migration 041, one row).
+- **`GET /snapshot`.** One build is shared by concurrent requests. A good build is saved (`transcript_snapshot`, migration 043, one row).
   When Fragments Engine is unreadable (denied, unconfigured, unreachable, remote error) the saved snapshot is returned 200 with
   `snapshot_meta.source_state = "unavailable"` and `snapshot_meta.error`; `X-Tachyon-Uncacheable` keeps the API cache from storing it.
   With nothing saved the error is shown as before.

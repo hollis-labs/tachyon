@@ -109,9 +109,8 @@ Sign in the usual way (operator token; the cookie is `tachyon_approvals`). Then:
   `awaiting_approval` and shows `tether catalog approve <plan_id>`; run that on the host, then watch it reach `applied`. Show the plan's
   activation text as given. Try a stale base (edit the file under it) and expect `stale`. Cancel a draft. Confirm one real
   validate plus plan call early; Tether's activation semantics are not fully verified.
-- **Alerts server mode.** The page uses local state by default; switch with `localStorage['tachyon.alerts.source']='server'`, reload, and
-  check the bell, tray, snooze, defer, settle, bulk read, and that a new approval item raises an alert and settles when decided.
-  `GET /alerts/sources` shows each adapter `ok`, `degraded` or `down`. Try with real adapters before making server mode the default.
+- **Alerts server mode.** The shell always uses the server source. Check the bell, tray, snooze, defer, settle, bulk read, and that a new approval item raises an alert and settles when decided.
+  `GET /alerts/sources` shows each adapter `ok`, `degraded` or `down`.
 - **Chat cards.** In an app thread have the agent call `card.ask` with `thread_ref` set: the card appears in the thread and in
   `GET /chat/threads/{ref}/cards`; answer it in Approvals and check the agent receives "Card answered: ...". With
   `TACHYON_CARD_EFFECTS_TORQUE=1`, approve a `card.dispatch` whose effect is `{target:"torque:task/new", op:"create", value:"<title>"}`
