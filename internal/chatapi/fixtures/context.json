@@ -1,0 +1,1 @@
+{"used":48210,"window":200000,"model":"claude-sonnet-5-5","source":"runtime","breakdown":[{"label":"messages","tokens":31000},{"label":"tools","tokens":17210}],"at":1793318400000}
