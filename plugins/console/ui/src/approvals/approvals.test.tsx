@@ -505,3 +505,40 @@ describe("approval defer", () => {
     expect(undefer).toHaveBeenCalledWith("req-1")
   })
 })
+
+describe("defer near expiry and decision keys", () => {
+  const soon = (ms: number): ApprovalItem => ({
+    ...item,
+    request_snapshot: { ...item.request_snapshot, expires_at: new Date(Date.now() + ms).toISOString() },
+  })
+  const clientFor = (it: ApprovalItem, decide = vi.fn()) =>
+    ({ present: vi.fn().mockResolvedValue(it), decide, defer: vi.fn(), undefer: vi.fn() }) as unknown as ApprovalClient
+  it("offers only presets that end before the request expires", async () => {
+    const it = soon(5 * 3600 * 1000)
+    render(<ApprovalDialog id={it.item_id} initial={it} client={clientFor(it)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Decide later" }))
+    await act(async () => {})
+    expect(screen.getByRole("menuitem", { name: "4 hours" })).toBeTruthy()
+    expect(screen.queryByRole("menuitem", { name: "Tomorrow" })).toBeNull()
+  })
+  it("says so when nothing fits before expiry", async () => {
+    const it = soon(10 * 60 * 1000)
+    render(<ApprovalDialog id={it.item_id} initial={it} client={clientFor(it)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await screen.findByText(/cannot be snoozed/)
+    expect(screen.queryByRole("button", { name: "Decide later" })).toBeNull()
+  })
+  it("D on the focused decision bar denies; A on a high-risk request only opens the phrase step", async () => {
+    const decide = vi.fn().mockResolvedValue({ item_id: "req-1", state: "resolved" })
+    const high: ApprovalItem = { ...item, request_snapshot: { ...item.request_snapshot, class: "high" } }
+    render(<ApprovalDialog id={high.item_id} initial={high} client={clientFor(high, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.keyDown(screen.getByRole("button", { name: "Approve" }), { key: "a" })
+    await screen.findByLabelText("Confirmation phrase")
+    expect(decide).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    fireEvent.keyDown(screen.getByRole("button", { name: "Deny" }), { key: "d" })
+    await waitFor(() => expect(decide).toHaveBeenCalled())
+  })
+})
+
