@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func question(t *testing.T, st *approvals.Store, ctx context.Context, id string)
 	exp := now.Add(time.Hour)
 	rec := hitl.Record{ItemID: id, CallerScope: "t", IdempotencyKey: "k" + id, Digest: "d" + id, Kind: "card.question",
 		Request: []byte(`{"kind":"card.question","title":"Which project?","class":"low","data":{"options":[{"value":"a","label":"A"}]}}`),
-		State: hitl.StatePresented, Revision: 1, CreatedAt: now, UpdatedAt: now, ExpiresAt: &exp}
+		State:   hitl.StatePresented, Revision: 1, CreatedAt: now, UpdatedAt: now, ExpiresAt: &exp}
 	if _, _, err := st.Create(ctx, rec); err != nil {
 		t.Skipf("cannot build a queue record: %v", err)
 	}
@@ -82,5 +83,47 @@ func TestAnswerText(t *testing.T) {
 	want := `Card answered: "Which project?" (i1). Decision: submitted. Answers: id=answer, value=a.`
 	if got != want {
 		t.Fatalf("%q", got)
+	}
+}
+
+func TestApprovalRules(t *testing.T) {
+	b, _, ctx := setup(t)
+	s := b.Refs
+	if _, err := s.AddRule(ctx, "app:t1", "", "bash", "medium", nil, nil); err != ErrNotLow {
+		t.Fatalf("a medium approval must not become a rule: %v", err)
+	}
+	r, err := s.AddRule(ctx, "app:t1", "a1", "read_file", "low", map[string]any{"path": "/x"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Allows(ctx, "app:t1", "a1", "read_file", "low", map[string]any{"path": "/x", "extra": 1}) {
+		t.Fatal("matching call should be allowed")
+	}
+	for name, ok := range map[string]bool{
+		"other path":  s.Allows(ctx, "app:t1", "a1", "read_file", "low", map[string]any{"path": "/y"}),
+		"other agent": s.Allows(ctx, "app:t1", "a2", "read_file", "low", map[string]any{"path": "/x"}),
+		"other chat":  s.Allows(ctx, "app:t2", "a1", "read_file", "low", map[string]any{"path": "/x"}),
+		"medium":      s.Allows(ctx, "app:t1", "a1", "read_file", "medium", map[string]any{"path": "/x"}),
+	} {
+		if ok {
+			t.Errorf("%s must not be allowed", name)
+		}
+	}
+	h := Handler(&Service{Refs: s, Get: b.Get}, nil)
+	base := "/api/plugins/console/v1/chat/threads/app:t1/approval-rules"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", base, nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), r.ID) {
+		t.Fatalf("list: %d %s", w.Code, w.Body)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", base+"/"+r.ID, nil))
+	if w.Code != 200 || s.Allows(ctx, "app:t1", "a1", "read_file", "low", map[string]any{"path": "/x"}) {
+		t.Fatalf("revoke: %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", base+"/"+r.ID, nil))
+	if w.Code != 404 {
+		t.Fatalf("second revoke: %d", w.Code)
 	}
 }

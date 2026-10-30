@@ -13,4 +13,8 @@ Answerable cards in a chat thread. The queue item (Approvals) stays the only rec
 - Kinds `card.plan` (approved | changes_requested) and `card.dispatch` (approved | denied). Both are low class unless they carry effects.
 - cardfx `create`: effect `{target:"torque:task/new", op:"create", value:<title or JSON {title, description, project_id}>}` opens a Torque task
   when the card is approved. Same switch as status changes: off unless `TACHYON_CARD_EFFECTS_TORQUE` is set. The receipt detail carries the new id.
-- Not here yet: "Always in this chat" rules (T5c), and runtime `approval_request` translation (waits on the Nanite chatstream contract).
+- Approval rules (T5c): `chat_approval_rules` (same migration). `GET chat/threads/{ref}/approval-rules` lists rules in force,
+  `DELETE .../{id}` revokes one. `Store.AddRule` takes the class of the approval just answered and refuses anything but low;
+  `Store.Allows(thread, agent, tool, class, args)` is the matcher (tool and agent equal, every `match` key equal to the call's argument,
+  never for medium or high). Rules only allow. Nothing calls them yet: the runtime `approval_request` translation that creates and
+  consults them waits on the Nanite chatstream/v1 contract, which is not verified.
