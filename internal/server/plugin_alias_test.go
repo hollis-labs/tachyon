@@ -10,6 +10,7 @@ import (
 
 	"github.com/hollis-labs/tachyon/internal/agentscollector"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/fileviewapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
