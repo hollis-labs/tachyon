@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { PrWorkspace } from './PrWorkspace'
+import { PR_INBOX_PATH } from '../inbox/href'
 import { prRefFromParams } from './route'
 
 /** Route element for PR_WORKSPACE_ROUTE. `?file=` deep-links a file; `?readonly=1` hides writes. */
@@ -19,13 +20,17 @@ export default function PrWorkspacePage() {
     )
   }
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-border px-4 py-1.5">
-        <Link to="/planner" onClick={canGoBack ? (e) => { e.preventDefault(); navigate(-1) } : undefined} className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-          <ChevronLeft className="h-3 w-3" /> Back
+    <PrWorkspace
+      key={`${prRef.repo.host}/${prRef.repo.owner}/${prRef.repo.name}/${prRef.number}`}
+      className="h-full"
+      prRef={prRef}
+      initialFile={search.get('file') ?? undefined}
+      readOnly={search.get('readonly') === '1'}
+      leading={
+        <Link to={PR_INBOX_PATH} onClick={canGoBack ? (e) => { e.preventDefault(); navigate(-1) } : undefined} className="inline-flex items-center gap-1 text-fg-muted hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          <ChevronLeft className="size-3" /> Pull requests
         </Link>
-      </div>
-      <PrWorkspace key={`${prRef.repo.host}/${prRef.repo.owner}/${prRef.repo.name}/${prRef.number}`} className="min-h-0 flex-1" prRef={prRef} initialFile={search.get('file') ?? undefined} readOnly={search.get('readonly') === '1'} />
-    </div>
+      }
+    />
   )
 }

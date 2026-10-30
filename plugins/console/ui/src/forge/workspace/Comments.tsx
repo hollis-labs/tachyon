@@ -1,41 +1,43 @@
 import { useState, type ReactNode } from 'react'
 import { ago } from '@console/lib/agent-activity'
 import { Linkified } from '../../autolink/Linkified'
-import { Btn } from '../../agents/ui'
+import { Button } from '@hollis-labs/design-components'
+import { Chip } from '../../components/chip'
+import { InitialsAvatar } from '../../components/initials-avatar'
 import type { ForgeComment, ForgeUser, ReviewComment } from '../types'
 import type { Thread } from './diff-utils'
 
-export const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-fg-faint'
+export const LABEL = 'font-mono text-caption uppercase tracking-label text-fg-muted'
 
-export function Badge({ children, tone = 'border-border text-fg-muted' }: { children: ReactNode; tone?: string }) {
-  return <span className={`inline-flex shrink-0 items-center border px-1.5 py-px font-mono text-[10px] uppercase tracking-wider ${tone}`}>{children}</span>
+export function Badge({ children, danger }: { children: ReactNode; danger?: boolean }) {
+  return <Chip tone={danger ? 'danger' : 'neutral'}>{children}</Chip>
 }
 
 export function Author({ user }: { user: ForgeUser }) {
   return (
-    <span className="font-mono text-[12px] text-fg">
-      @{user.login}
-      {user.isAgent && <span className="ml-1 text-fg-faint">· agent</span>}
+    <span className="text-control font-medium text-fg">
+      {user.name ?? user.login}
+      {user.isAgent && <span className="ml-1 font-normal text-fg-faint">· agent</span>}
     </span>
   )
 }
 
-export function CommentItem({ c, posting, onReply }: { c: ForgeComment; posting?: boolean; onReply?: () => void }) {
+export function CommentItem({ c, posting, onReply, where }: { c: ForgeComment; posting?: boolean; onReply?: () => void; where?: string }) {
   const [now] = useState(() => Date.now())
   return (
-    <article className={`px-3 py-2 ${posting ? 'opacity-60' : ''}`} data-testid="forge-comment" aria-busy={posting || undefined}>
-      <header className="flex flex-wrap items-center gap-2">
-        <Author user={c.author} />
-        <span className="font-mono text-[10px] text-fg-faint">{posting ? 'posting…' : ago(Date.parse(c.createdAt), now)}</span>
-        {onReply && !posting && (
-          <button type="button" onClick={onReply} className="ml-auto font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-            Reply
-          </button>
-        )}
-      </header>
-      {/* Body is untrusted forge text: rendered as text only, with ref chips. */}
-      <div className="mt-1 text-[13px] leading-relaxed text-fg [overflow-wrap:anywhere]">
-        <Linkified text={c.body} preserveWhitespace />
+    <article className={`flex gap-3 px-3 py-2.5 ${posting ? 'opacity-60' : ''}`} data-testid="forge-comment" aria-busy={posting || undefined}>
+      <InitialsAvatar name={c.author.name ?? c.author.login} className="mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <header className="flex flex-wrap items-center gap-x-2">
+          <Author user={c.author} />
+          {where && <span className="text-xs text-fg-muted">{where}</span>}
+          <span className="text-xs text-fg-muted">{where ? '· ' : ''}{posting ? 'posting…' : ago(Date.parse(c.createdAt), now)}</span>
+          {onReply && !posting && <Button variant="outline" size="xs" className="ml-auto" onClick={onReply}>Reply</Button>}
+        </header>
+        {/* Body is untrusted forge text: rendered as text only, with ref chips. */}
+        <div className="mt-1 text-control leading-relaxed text-fg [overflow-wrap:anywhere]">
+          <Linkified text={c.body} preserveWhitespace />
+        </div>
       </div>
     </article>
   )
@@ -81,14 +83,14 @@ export function Composer({ placeholder, submitLabel, secondary, onSubmit, onCanc
         placeholder={placeholder}
         aria-label={placeholder}
         disabled={busy || disabled}
-        className="w-full resize-y border border-border bg-bg px-2 py-1.5 font-sans text-[13px] text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none disabled:opacity-60"
+        className="w-full resize-y rounded border border-border bg-bg px-3 py-2 font-sans text-control text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none disabled:opacity-60"
       />
-      {error && <p className="text-[12px] text-danger" role="alert">{error}. Your draft is kept; try again.</p>}
+      {error && <p className="text-xs text-danger" role="alert">{error}. Your draft is kept; try again.</p>}
       <div className="flex items-center gap-2">
-        <span className="mr-auto font-mono text-[10px] text-fg-faint">Ctrl+Enter to post</span>
-        {onCancel && <Btn onClick={onCancel} disabled={busy}>Cancel</Btn>}
-        {secondary && <Btn onClick={() => { if (!empty) { secondary.run(body); setBody('') } }} disabled={empty || busy || disabled}>{secondary.label}</Btn>}
-        <Btn tone="primary" onClick={() => void submit()} disabled={empty || busy || disabled}>{busy ? 'Posting…' : submitLabel}</Btn>
+        <span className="mr-auto text-caption text-fg-faint">Ctrl+Enter to post</span>
+        {onCancel && <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>Cancel</Button>}
+        {secondary && <Button variant="outline" size="sm" onClick={() => { if (!empty) { secondary.run(body); setBody('') } }} disabled={empty || busy || disabled}>{secondary.label}</Button>}
+        <Button size="sm" onClick={() => void submit()} disabled={empty || busy || disabled}>{busy ? 'Posting…' : submitLabel}</Button>
       </div>
     </div>
   )
@@ -108,16 +110,16 @@ export function ThreadView({ thread, posting, readOnly, onReply, showPath }: Thr
   const mine = posting.filter((p): p is ReviewComment => p.kind === 'review' && p.inReplyTo === thread.id)
   const loc = thread.root.line != null ? `${showPath ? `${thread.path}:` : 'line '}${thread.root.line}${thread.root.side === 'left' ? ' (old)' : ''}` : thread.path
   return (
-    <section className="border-y border-border bg-surface" data-testid="forge-thread" aria-label={`Comment thread on ${loc}`}>
+    <section className="mx-3 my-2 rounded border border-border bg-surface font-sans" data-testid="forge-thread" aria-label={`Comment thread on ${loc}`}>
       <header className="flex flex-wrap items-center gap-2 px-3 py-1.5">
-        <span className="font-mono text-[10px] text-fg-faint">{loc}</span>
-        {thread.outdated && <Badge tone="border-border text-fg-muted">Outdated</Badge>}
-        {thread.resolved && <Badge tone="border-border text-success">Resolved</Badge>}
+        <span className="font-mono text-caption text-fg-muted">{loc}</span>
+        {thread.outdated && <Badge>Outdated</Badge>}
+        {thread.resolved && <Badge>Resolved</Badge>}
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="ml-auto font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="ml-auto text-xs text-fg-muted hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {open ? 'Collapse' : `Show ${thread.replies.length + 1}`}
         </button>
@@ -144,9 +146,7 @@ export function ThreadView({ thread, posting, readOnly, onReply, showPath }: Thr
                   }}
                 />
               ) : (
-                <button type="button" onClick={() => setReplying(true)} className="font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                  Reply
-                </button>
+                <Button variant="outline" size="xs" onClick={() => setReplying(true)}>Reply</Button>
               )}
             </div>
           )}

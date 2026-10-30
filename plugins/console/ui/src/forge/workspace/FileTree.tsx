@@ -38,7 +38,7 @@ export function FileTree({ files, active, threads, onSelect }: FileTreeProps) {
             onClick={() => toggle(n.path)}
             aria-expanded={!closed.has(n.path)}
             style={{ paddingLeft: 8 + depth * 12 }}
-            className="flex w-full items-center gap-1 py-1 pr-2 text-left font-mono text-[11px] text-fg-faint hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+            className="flex w-full items-center gap-1 py-1 pr-2 text-left font-mono text-label text-fg-faint hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
           >
             {closed.has(n.path) ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
             <span className="min-w-0 truncate">{n.name}</span>
@@ -53,7 +53,7 @@ export function FileTree({ files, active, threads, onSelect }: FileTreeProps) {
             aria-current={active === n.path || undefined}
             title={n.path}
             style={{ paddingLeft: 8 + depth * 12 }}
-            className={`flex w-full items-center gap-1.5 py-1 pr-2 text-left font-mono text-[11px] hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${active === n.path ? 'bg-surface text-fg' : 'text-fg'}`}
+            className={`flex w-full items-center gap-1.5 py-1 pr-2 text-left font-mono text-label hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${active === n.path ? 'bg-surface text-fg' : 'text-fg'}`}
           >
             <span className={`w-3 shrink-0 text-center ${GLYPH[n.file!.status] ?? 'text-fg-muted'}`}>{statusGlyph(n.file!)}</span>
             <span className="min-w-0 flex-1 truncate">{n.name}</span>
@@ -71,10 +71,10 @@ export function FileTree({ files, active, threads, onSelect }: FileTreeProps) {
           onChange={(e) => setFilter(e.target.value)}
           placeholder={`Filter ${files.length} files…`}
           aria-label="Filter files"
-          className="h-7 w-full border border-border bg-bg px-2 font-mono text-[11px] text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none"
+          className="h-7 w-full border border-border bg-bg px-2 font-mono text-label text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none"
         />
       </div>
-      <ul className="min-h-0 flex-1 overflow-auto py-1">{tree.length ? render(tree, 0) : <li className="px-3 py-2 text-[12px] text-fg-faint">No matching files.</li>}</ul>
+      <ul className="min-h-0 flex-1 overflow-auto py-1">{tree.length ? render(tree, 0) : <li className="px-3 py-2 text-xs text-fg-faint">No matching files.</li>}</ul>
     </nav>
   )
 }

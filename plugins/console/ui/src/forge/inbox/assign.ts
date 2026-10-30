@@ -10,10 +10,10 @@ import { prWorkspaceHref } from './href'
 export type AssignTask = 'review' | 'fix_checks' | 'address_comments' | 'resolve_conflicts'
 
 export const ASSIGN_TASKS: { id: AssignTask; label: string; instructions: string[] }[] = [
-  { id: 'review', label: 'Review', instructions: ['Review the diff and submit a review (approve, comment or request changes).', 'Do not merge.'] },
-  { id: 'fix_checks', label: 'Fix failing checks', instructions: ['Find why the failing checks fail and fix it on the PR branch.', 'Push to the existing branch; do not open a new PR.', 'Report back when checks are green.'] },
-  { id: 'address_comments', label: 'Address review comments', instructions: ['Work through the requested changes and open review threads.', 'Push fixes to the PR branch and reply on each thread.'] },
+  { id: 'fix_checks', label: 'Fix checks', instructions: ['Find why the failing checks fail and fix it on the PR branch.', 'Push to the existing branch; do not open a new PR.', 'Report back when checks are green.'] },
   { id: 'resolve_conflicts', label: 'Resolve conflicts', instructions: ['Rebase or merge the base branch into the PR branch and resolve conflicts.', 'Re-run checks after the push.'] },
+  { id: 'review', label: 'Review', instructions: ['Review the diff and submit a review (approve, comment or request changes).', 'Do not merge.'] },
+  { id: 'address_comments', label: 'Address comments', instructions: ['Work through the requested changes and open review threads.', 'Push fixes to the PR branch and reply on each thread.'] },
 ]
 
 export const ASSIGN_SCHEMA = 'console.pr_assignment/v1'

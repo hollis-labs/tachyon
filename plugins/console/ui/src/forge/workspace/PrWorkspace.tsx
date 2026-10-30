@@ -1,21 +1,29 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ExternalLink, GitPullRequest, RefreshCw } from 'lucide-react'
+import { ArrowUpRight, ExternalLink, RefreshCw } from 'lucide-react'
+import { Button, buttonVariants, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@hollis-labs/design-components'
 import { ago } from '@console/lib/agent-activity'
 import { SeamsContext } from '../../events/context'
-import { Btn } from '../../agents/ui'
+import { Chip } from '../../components/chip'
+import { InitialsAvatar } from '../../components/initials-avatar'
+import { PillTabs } from '../../components/pill-tabs'
+import { Segmented } from '../../components/segmented'
+import { SegmentMeter } from '../../components/segment-meter'
+import { AssignDialog } from '../inbox/AssignDialog'
+import { ASSIGN_TASKS, type AssignTask } from '../inbox/assign'
+import { useNow } from '../inbox/hooks'
+import { toSummary } from './to-summary'
 import { StepUpHost } from '../../agents/StepUpDialog'
 import { Linkified } from '../../autolink/Linkified'
-import { TONE } from '../../autolink/tone'
 import type { StatusTone } from '../../refs'
 import { createActionBus, MockIdentityConfirm, type ActionBus, type IdentityConfirm } from '../../seams'
 import type { ForgeClient } from '../client'
 import { checksText, checksTone, reviewText, sizeText, summarizeChecks } from '../refs/entity'
 import { getForgeClient } from '../refs/client'
 import { hostLabel, prUrl } from '../refs/parse'
-import type { CheckRun, ForgeUser, PrRef, PullRequest, Review } from '../types'
+import type { CheckRun, ForgeComment, ForgeUser, PrRef, PullRequest, Review } from '../types'
 import { registerWorkspaceActions } from './actions'
 import { Author, Badge, CommentItem, Composer, LABEL, ThreadView } from './Comments'
-import { buildThreadIndex } from './diff-utils'
+import { buildThreadIndex, type Thread } from './diff-utils'
 import { FileDiffView, type DiffMode } from './DiffView'
 import { FileTree } from './FileTree'
 import { MergePanel } from './MergePanel'
@@ -35,23 +43,13 @@ export interface PrWorkspaceProps {
   initialFile?: string
   initialMode?: DiffMode
   className?: string
+  /** Left end of the top bar (the page's back link). */
+  leading?: ReactNode
 }
 
 type Tab = 'files' | 'conversation' | 'checks'
 
 const ACTOR: ForgeUser = { login: 'you' }
-
-// Monochrome: only danger carries colour; every other tone reads as muted text in a quiet box.
-function Pill({ tone, children }: { tone: StatusTone; children: ReactNode }) {
-  const cls = tone === 'danger' ? TONE.danger : 'border-border text-fg-muted'
-  return <span className={`inline-flex shrink-0 items-center border px-1.5 py-px text-[11px] ${cls}`}>{children}</span>
-}
-
-function stateTone(pr: PullRequest): StatusTone {
-  if (pr.state === 'merged') return 'info'
-  if (pr.state === 'closed') return 'danger'
-  return pr.draft ? 'neutral' : 'success'
-}
 
 function checkTone(c: CheckRun): StatusTone {
   if (c.status !== 'completed') return 'warning'
@@ -92,7 +90,7 @@ function useSeams(bus?: ActionBus, identity?: IdentityConfirm): { bus: ActionBus
  * submission. Reads and writes go through the ForgeClient; writes dispatch on
  * the ActionBus (reviews behind IdentityConfirm).
  */
-export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity: identityProp, readOnly: readOnlyProp, initialFile, initialMode = 'unified', className }: PrWorkspaceProps) {
+export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity: identityProp, readOnly: readOnlyProp, initialFile, initialMode = 'unified', className, leading }: PrWorkspaceProps) {
   const client = useMemo(() => clientProp ?? getForgeClient(), [clientProp])
   const { bus, identity } = useSeams(busProp, identityProp)
   useEffect(() => registerWorkspaceActions(bus, client), [bus, client])
@@ -101,6 +99,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
   const [tab, setTab] = useState<Tab>('files')
   const [mode, setMode] = useState<DiffMode>(initialMode)
   const [reviewing, setReviewing] = useState(false)
+  const [asking, setAsking] = useState<AssignTask | null>(null)
   const [mergeBusy, setMergeBusy] = useState(false)
   const [merging, setMerging] = useState(false)
   const [mergeSuccess, setMergeSuccess] = useState('')
@@ -108,7 +107,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
   const [closedFiles, setClosedFiles] = useState<Set<string> | null>(null)
   const [openedLarge, setOpenedLarge] = useState<Set<string>>(new Set())
   const [active, setActive] = useState<string | undefined>(initialFile)
-  const [now] = useState(() => Date.now())
+  const now = useNow()
 
   const ready = ws.load.status === 'ready' ? ws.load.data : null
   const index = useMemo(() => (ready ? buildThreadIndex(ready.comments, ready.files, ready.pr.headSha) : null), [ready])
@@ -158,85 +157,96 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
     const err = ws.load.status === 'error' ? ws.load : { message: 'Unknown error', code: undefined }
     return (
       <div className={`p-6 ${className ?? ''}`} role="alert" data-testid="pr-workspace-error">
-        <h1 className="font-mono text-sm uppercase tracking-widest text-danger">{err.code === 'not_found' ? 'Pull request not found' : 'Could not load pull request'}</h1>
-        <p className="mt-2 text-[13px] text-fg-muted">{err.message}</p>
-        <Btn className="mt-4" onClick={ws.reload}>Retry</Btn>
+        <h1 className="font-mono text-xs uppercase tracking-label text-danger">{err.code === 'not_found' ? 'Pull request not found' : 'Could not load pull request'}</h1>
+        <p className="mt-2 text-control text-fg-muted">{err.message}</p>
+        <Button variant="outline" size="sm" className="mt-4" onClick={ws.reload}>Retry</Button>
       </div>
     )
   }
 
-  const { pr, files, commits } = ready
+  const { pr, files } = ready
   const readOnly = !!readOnlyProp || pr.state === 'merged' || pr.state === 'closed'
   const checks = summarizeChecks(pr.checks)
   const merge = mergeNote(pr)
   const href = pr.url ?? prUrl(prRef)
-  const convo = timeline(ready.comments.filter((c) => c.kind === 'issue'), pr.reviews)
+  const convo = timeline(ready.comments.filter((c) => c.kind === 'issue'), pr.reviews, index.all.filter((t) => !index.orphaned.includes(t)))
   const postingIssue = ws.posting.filter((p) => p.kind === 'issue')
   const allOpen = files.every((f) => isOpen(f.path) || isLarge(f.path))
+  const failing = pr.checks.filter((c) => checkTone(c) === 'danger')
+  const running = pr.checks.filter((c) => checkTone(c) !== 'danger' && c.status !== 'completed')
+  const passing = pr.checks.filter((c) => checkTone(c) !== 'danger' && c.status === 'completed')
+  const totalAdds = files.reduce((n, f) => n + f.additions, 0)
+  const totalDels = files.reduce((n, f) => n + f.deletions, 0)
 
   return (
-    <div className={`flex h-full min-h-[480px] flex-col bg-bg ${className ?? ''}`} data-testid="pr-workspace">
-      <header className="shrink-0 border-b border-border px-4 pb-0 pt-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <GitPullRequest className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />
-          <h1 className="min-w-0 font-sans text-[15px] font-semibold normal-case tracking-normal text-fg [overflow-wrap:anywhere]">
-            {pr.title} <span className="font-mono text-fg-faint">#{pr.ref.number}</span>
+    <div className={`flex h-full min-h-120 flex-col bg-bg ${className ?? ''}`} data-testid="pr-workspace">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2">
+        <span className="min-w-0 text-xs text-fg-muted">{leading}</span>
+        <span className="flex items-center gap-2 text-xs text-fg-muted">
+          <span className="max-md:hidden">Updated {ago(ws.loadedAt, now)}</span>
+          <Button variant="outline" size="icon-sm" onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="size-3.5" /></Button>
+        </span>
+      </div>
+      <header className="shrink-0 border-b border-border px-4 pb-0 pt-4">
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+          <h1 className="min-w-0 flex-1 basis-80 font-sans text-xl font-semibold normal-case leading-snug tracking-normal text-fg [overflow-wrap:anywhere]">
+            {pr.title} <span className="font-mono font-normal text-fg-faint">#{pr.ref.number}</span>
           </h1>
-          <Pill tone={stateTone(pr)}>{pr.draft && pr.state === 'open' ? 'draft' : pr.state}</Pill>
-          <span className="ml-auto flex items-center gap-2">
-            <Btn onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
-            {href && (
-              <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 border border-border px-3 text-[12px] text-fg hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                {hostLabel(prRef.repo.host)} <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
+          <span className="flex flex-wrap items-center gap-2">
             {!readOnly && (
-              <Btn tone="primary" disabled={mergeBusy} onClick={() => { setMerging(false); setReviewing((r) => !r) }} aria-expanded={reviewing}>
-                Review{ws.pending.length ? ` (${ws.pending.length})` : ''}
-              </Btn>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>Ask an agent ▾</DropdownMenuTrigger>
+                <DropdownMenuContent align="end" aria-label="Ask an agent" className="w-48">
+                  {ASSIGN_TASKS.map((t) => <DropdownMenuItem key={t.id} onClick={() => setAsking(t.id)}>{t.label}</DropdownMenuItem>)}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-            {!readOnly && <Btn disabled={mergeBusy} onClick={() => { setReviewing(false); setMerging(m => !m) }} aria-expanded={merging}>Merge PR</Btn>}
+            {href && <a href={href} target="_blank" rel="noreferrer" data-slot="button" className={buttonVariants({ variant: 'outline', size: 'sm' })}>{hostLabel(prRef.repo.host)} <ExternalLink className="size-3" /></a>}
+            {!readOnly && (
+              <Button variant="outline" size="sm" disabled={mergeBusy} onClick={() => { setMerging(false); setReviewing((r) => !r) }} aria-expanded={reviewing}>
+                Review{ws.pending.length > 0 && <>{' '}<span className="text-caption text-fg-muted">{ws.pending.length} queued</span></>} ▾
+              </Button>
+            )}
+            {!readOnly && <Button size="sm" disabled={mergeBusy} onClick={() => { setReviewing(false); setMerging((m) => !m) }} aria-expanded={merging}>Merge</Button>}
           </span>
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-fg-muted">
-          <span className="font-mono text-fg-faint">{prRef.repo.owner}/{prRef.repo.name}</span>
+        <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-muted">
+          <span className="font-mono">{prRef.repo.owner}/{prRef.repo.name}</span>
           <Author user={pr.author} />
-          <span className="font-mono text-fg [overflow-wrap:anywhere]">{pr.headBranch} {'→'} {pr.baseBranch}</span>
+          <span className="font-mono [overflow-wrap:anywhere]">{pr.headBranch} {'→'} {pr.baseBranch}</span>
           {sizeText(pr) && <span className="font-mono">{sizeText(pr)}</span>}
-          <Pill tone={merge.tone}>{merge.text}</Pill>
-          <Pill tone={checksTone(checks)}>{checksText(checks)}</Pill>
-          <span className="text-fg-muted">{reviewText(pr.reviews)}</span>
-        </div>
-        <nav className="mt-2 flex gap-0 overflow-x-auto whitespace-nowrap text-[13px]" aria-label="Workspace sections" role="tablist">
-          {([
-            ['files', 'Files changed', files.length],
-            ['conversation', 'Conversation', ready.comments.length],
-            ['checks', 'Checks', pr.checks.length],
-          ] as [Tab, string, number][]).map(([id, label, n]) => (
-            <button
-              key={id}
-              role="tab"
-              type="button"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={`-mb-px border-b-2 px-3 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${tab === id ? 'border-fg text-fg' : 'border-transparent text-fg-faint hover:text-fg'}`}
-            >
-              {label} <span className="text-fg-faint">{n}</span>
-            </button>
-          ))}
-        </nav>
+        </p>
+        <p className="mt-2 flex flex-wrap items-center gap-1.5">
+          {pr.draft && pr.state === 'open' && <Chip>Draft</Chip>}
+          {pr.state !== 'open' && <Chip>{pr.state}</Chip>}
+          <Chip tone={merge.tone === 'danger' ? 'danger' : 'neutral'}>{merge.text}</Chip>
+          <Chip tone={checksTone(checks) === 'danger' ? 'danger' : 'neutral'}>{checksText(checks)}</Chip>
+          <Chip>{reviewText(pr.reviews)}</Chip>
+        </p>
+        <PillTabs
+          label="Workspace sections"
+          className="mt-3 pb-2"
+          value={tab}
+          onChange={(v) => setTab(v as Tab)}
+          items={[
+            { value: 'files', label: 'Files changed', count: files.length },
+            { value: 'conversation', label: 'Conversation', count: ready.comments.length },
+            { value: 'checks', label: 'Checks', count: pr.checks.length },
+          ]}
+        />
       </header>
 
-      {mergeSuccess && <p role="status" className="border-b border-border px-4 py-3 text-[13px] text-success">{mergeSuccess}</p>}
-      {merging && !readOnly && <MergePanel pr={pr} onBusyChange={setMergeBusy} onClose={() => setMerging(false)} onSubmit={async input => {
+      {mergeSuccess && <p role="status" className="border-b border-border px-4 py-3 text-control text-fg">{mergeSuccess}</p>}
+      {merging && !readOnly && <MergePanel pr={pr} fileCount={files.length} onBusyChange={setMergeBusy} onClose={() => setMerging(false)} onSubmit={async (input) => {
         const result = await ws.mergePr(input)
         if (result.ok) setMergeSuccess(`Pull request #${pr.ref.number} merged into ${pr.baseBranch}.`)
         return result
       }} />}
 
       {reviewing && !readOnly && (
-        <ReviewPanel pending={ws.pending} onUnqueue={ws.unqueueComment} onClose={() => setReviewing(false)} onSubmit={({ verdict, body }) => ws.submitReview({ verdict, body })} />
+        <ReviewPanel prLabel={`${prRef.repo.name}#${prRef.number}`} pending={ws.pending} onUnqueue={ws.unqueueComment} onClose={() => setReviewing(false)} onSubmit={({ verdict, body }) => ws.submitReview({ verdict, body })} />
       )}
+      {asking && <AssignDialog pr={toSummary(pr)} existing={[]} initialTask={asking} onClose={() => setAsking(null)} />}
 
       {tab === 'files' && (
         <div className="flex min-h-0 flex-1">
@@ -245,29 +255,17 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
           </aside>
           <div className="min-w-0 flex-1 overflow-auto" data-testid="forge-diff-scroll">
             <div className="flex flex-wrap items-center gap-3 border-b border-border px-3 py-2">
-              <div className="flex" role="group" aria-label="Diff layout">
-                {(['unified', 'split'] as DiffMode[]).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    aria-pressed={mode === m}
-                    onClick={() => setMode(m)}
-                    className={`h-7 border px-3 text-[12px] capitalize focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${mode === m ? 'border-fg bg-surface text-fg-muted' : 'border-border text-fg-muted hover:text-fg'}`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-              <Btn className="!h-7" onClick={() => (allOpen ? setClosedFiles(new Set(files.map((f) => f.path))) : setClosedFiles(new Set()))}>
+              <Segmented bare label="Diff layout" value={mode} onChange={(m) => setMode(m)} items={[{ value: 'unified', label: 'Unified' }, { value: 'split', label: 'Split' }]} />
+              <Button variant="outline" size="sm" onClick={() => (allOpen ? setClosedFiles(new Set(files.map((f) => f.path))) : setClosedFiles(new Set()))}>
                 {allOpen ? 'Collapse all' : 'Expand all'}
-              </Btn>
-              <span className="font-mono text-[11px] text-fg-faint">
-                {files.length} file{files.length === 1 ? '' : 's'} · <span className="text-success">+{files.reduce((n, f) => n + f.additions, 0)}</span>{' '}
-                <span className="text-danger">{'−'}{files.reduce((n, f) => n + f.deletions, 0)}</span>
+              </Button>
+              <span className="ml-auto text-label text-fg-muted">
+                {files.length} file{files.length === 1 ? '' : 's'} · <span className="font-mono">+{totalAdds} {'−'}{totalDels}</span>
+                {ws.pending.length > 0 && <> · <span className="font-medium text-fg">{ws.pending.length} queued comment{ws.pending.length === 1 ? '' : 's'}</span></>}
               </span>
               {readOnly && <Badge>read only</Badge>}
             </div>
-            {files.length === 0 && <p className="px-4 py-6 text-[13px] text-fg-faint">No file changes in this pull request.</p>}
+            {files.length === 0 && <p className="px-4 py-6 text-control text-fg-faint">No file changes in this pull request.</p>}
             {files.map((f) => (
               <FileDiffView
                 key={f.path}
@@ -290,75 +288,79 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
       )}
 
       {tab === 'conversation' && (
-        <div className="min-h-0 flex-1 overflow-auto" data-testid="forge-conversation">
-          <div className="max-w-4xl">
-            <Section title="Description">
-              <div className="px-4 py-3 text-[13px] leading-relaxed text-fg [overflow-wrap:anywhere]">
-                {pr.body?.trim() ? <Linkified text={pr.body} preserveWhitespace /> : <span className="text-fg-faint">No description provided.</span>}
-              </div>
-              {commits.length > 0 && <p className="border-t border-border px-4 py-2 font-mono text-[11px] text-fg-faint">{commits.length} commit{commits.length === 1 ? '' : 's'}, latest {ago(Date.parse(commits[commits.length - 1].authoredAt), now)}</p>}
-            </Section>
-            <Section title={`Timeline ${convo.length + postingIssue.length}`}>
-              <div className="divide-y divide-border">
-                {convo.length + postingIssue.length === 0 && <p className="px-4 py-3 text-[12px] text-fg-faint">No comments yet.</p>}
-                {convo.map((e) =>
-                  e.type === 'comment' ? (
-                    <CommentItem key={e.comment.id} c={e.comment} />
-                  ) : (
-                    <div key={e.review.id} className="px-3 py-2" data-testid="forge-review-entry">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Author user={e.review.author} />
-                        <Pill tone={reviewTone(e.review)}>{e.review.state.replace('_', ' ')}</Pill>
-                      </div>
-                      {e.review.body && <div className="mt-1 text-[13px] text-fg [overflow-wrap:anywhere]"><Linkified text={e.review.body} preserveWhitespace /></div>}
-                    </div>
-                  ),
-                )}
-                {postingIssue.map((c) => <CommentItem key={c.id} c={c} posting />)}
-              </div>
-            </Section>
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-6" data-testid="forge-conversation">
+          <div className="mx-auto max-w-3xl">
+            <ol className="relative space-y-5 border-l border-border pl-6">
+              <li className="relative">
+                <span className="absolute -left-9 top-0"><InitialsAvatar name={pr.author.name ?? pr.author.login} className="size-6 bg-bg" /></span>
+                <p className="text-control text-fg-muted"><Author user={pr.author} /> opened this · {ago(Date.parse(pr.createdAt), now)}</p>
+                <div className="mt-1 text-control leading-relaxed text-fg [overflow-wrap:anywhere]">
+                  {pr.body?.trim() ? <Linkified text={pr.body} preserveWhitespace /> : <span className="text-fg-faint">No description provided.</span>}
+                </div>
+              </li>
+              {convo.map((e) => (
+                <li key={e.key} className="relative">
+                  <span className="absolute -left-9 top-0"><InitialsAvatar name={e.author.name ?? e.author.login} className="size-6 bg-bg" /></span>
+                  <p className="text-control text-fg-muted">
+                    <Author user={e.author} /> · {ago(Date.parse(e.at), now)}{e.where ? ` · ${e.where}` : ''}
+                    {e.type === 'review' && <span className="ml-2 inline-flex align-middle"><Chip tone={e.review.state === 'changes_requested' ? 'danger' : 'neutral'}>{e.review.state.replace('_', ' ')}</Chip></span>}
+                    {e.type === 'thread' && e.resolved && <span className="ml-2 inline-flex align-middle"><Chip>Resolved</Chip></span>}
+                  </p>
+                  {e.body && <div className="mt-1 text-control leading-relaxed text-fg [overflow-wrap:anywhere]"><Linkified text={e.body} preserveWhitespace /></div>}
+                  {e.type === 'thread' && !e.resolved && !readOnly && (
+                    <div className="mt-2"><Button variant="outline" size="xs" onClick={() => select(e.path)}>Open in files</Button></div>
+                  )}
+                </li>
+              ))}
+              {postingIssue.map((c) => <li key={c.id} className="relative"><CommentItem c={c} posting /></li>)}
+              {convo.length + postingIssue.length === 0 && <li className="text-xs text-fg-faint">No comments yet.</li>}
+            </ol>
             {index.orphaned.length > 0 && (
-              <Section title={`Comments on files no longer in the diff ${index.orphaned.length}`}>
+              <div className="mt-6">
+                <h2 className={`${LABEL} mb-2`}>Comments on files no longer in the diff · {index.orphaned.length}</h2>
                 {index.orphaned.map((t) => (
                   <ThreadView key={t.id} thread={t} posting={ws.posting} readOnly={readOnly} showPath onReply={(id, body) => ws.postComment({ body, path: t.path, line: t.root.line, side: t.root.side, inReplyTo: id })} />
                 ))}
-              </Section>
+              </div>
             )}
             {!readOnly && (
-              <Section title="Leave a comment">
-                <div className="px-4 py-3">
-                  <Composer placeholder="Add a comment…" submitLabel="Comment" onSubmit={(body) => ws.postComment({ body })} />
-                </div>
-              </Section>
+              <div className="mt-6">
+                <Composer placeholder="Add a comment…" submitLabel="Comment" onSubmit={(body) => ws.postComment({ body })} />
+              </div>
             )}
           </div>
         </div>
       )}
 
       {tab === 'checks' && (
-        <div className="min-h-0 flex-1 overflow-auto" data-testid="forge-checks">
-          <div className="max-w-4xl">
-            <Section title={`Checks ${pr.checks.length}`}>
-              {pr.checks.length === 0 ? (
-                <p className="px-4 py-3 text-[12px] text-fg-faint">No checks reported for this pull request.</p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {pr.checks.map((c) => (
-                    <li key={c.id} className="flex items-center gap-3 px-4 py-2 text-[13px]">
-                      <span className="min-w-0 flex-1 truncate text-fg">{c.name}</span>
-                      <Pill tone={checkTone(c)}>{c.status !== 'completed' ? c.status.replace('_', ' ') : (c.conclusion ?? 'done').replace('_', ' ')}</Pill>
-                      {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-fg-faint hover:text-fg" aria-label={`Open ${c.name} on the forge`}><ExternalLink className="h-3.5 w-3.5" /></a>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Section>
-            <Section title="Merge state">
-              <div className="space-y-1 px-4 py-3 text-[13px] text-fg">
-                <Pill tone={merge.tone}>{merge.text}</Pill>
-                {!readOnly && <p className="text-[12px] text-fg-faint">Use Merge PR above to choose a merge method and confirm. GitHub enforces repository rules.</p>}
-              </div>
-            </Section>
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-6" data-testid="forge-checks">
+          <div className="mx-auto max-w-3xl">
+            {pr.checks.length === 0 ? (
+              <p className="text-control text-fg-faint">No checks reported for this pull request.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <SegmentMeter label="Checks" className="flex-1" segments={[{ count: checks.passed, tone: 'ok', label: 'passed' }, { count: checks.failed, tone: 'bad', label: 'failed' }, { count: checks.pending, tone: 'pending', label: 'pending' }]} />
+                  <span className="font-mono text-caption text-fg-muted">{checks.passed} passed · {checks.failed} failed · {checks.pending} pending</span>
+                </div>
+                {[['Failing', failing], ['Pending', running], ['Passed', passing]].map(([title, list]) => (list as CheckRun[]).length > 0 && (
+                  <section key={title as string} className="mt-5">
+                    <h2 className={`${LABEL} mb-2`}>{title as string}</h2>
+                    <ul className="divide-y divide-border rounded border border-border">
+                      {(list as CheckRun[]).map((c) => (
+                        <li key={c.id} className="flex items-center gap-3 px-3 py-2 text-control">
+                          <span aria-hidden className={`w-3 text-center ${checkTone(c) === 'danger' ? 'text-danger' : 'text-fg-muted'}`}>{checkTone(c) === 'danger' ? '✗' : c.status === 'completed' ? '✓' : '·'}</span>
+                          <span className="min-w-0 truncate font-medium text-fg">{c.name}</span>
+                          <span className="shrink-0 text-xs text-fg-muted">{[checkTone(c) === 'danger' ? (c.conclusion ?? 'failed').replace('failure', 'failed').replace('_', ' ') : c.status !== 'completed' ? c.status.replace('_', ' ') : '', checkDuration(c)].filter(Boolean).join(' · ')}</span>
+                          {c.url && <a href={c.url} target="_blank" rel="noreferrer" aria-label={`Open ${c.name} on the forge`} className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-xs text-fg-muted hover:text-fg">Logs <ArrowUpRight className="size-3" aria-hidden /></a>}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+                {failing.length > 0 && !readOnly && <Button size="sm" className="mt-4" onClick={() => setAsking('fix_checks')}>Ask an agent to fix checks ▸</Button>}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -373,24 +375,29 @@ function toggled<T>(s: Set<T>, v: T): Set<T> {
   return n
 }
 
-function reviewTone(r: Review): StatusTone {
-  return r.state === 'approved' ? 'success' : r.state === 'changes_requested' ? 'danger' : 'neutral'
+function checkDuration(c: CheckRun) {
+  if (!c.startedAt || !c.completedAt) return ''
+  const sec = Math.max(0, Math.round((Date.parse(c.completedAt) - Date.parse(c.startedAt)) / 1000))
+  return sec >= 60 ? `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s` : `${sec}s`
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="border-b border-border">
-      <h2 className={`${LABEL} border-b border-border px-4 py-2`}>{title}</h2>
-      {children}
-    </section>
-  )
+interface TimelineEntry {
+  key: string
+  type: 'comment' | 'review' | 'thread'
+  at: string
+  author: ForgeUser
+  body?: string
+  where?: string
+  path: string
+  resolved?: boolean
+  review: Review
 }
 
-type TimelineEntry = { type: 'comment'; at: string; comment: import('../types').ForgeComment } | { type: 'review'; at: string; review: Review }
-
-function timeline(issue: import('../types').ForgeComment[], reviews: Review[]): TimelineEntry[] {
+function timeline(issue: ForgeComment[], reviews: Review[], threads: Thread[]): TimelineEntry[] {
+  const none = {} as Review
   return [
-    ...issue.map((comment): TimelineEntry => ({ type: 'comment', at: comment.createdAt, comment })),
-    ...reviews.filter((r) => r.state !== 'pending').map((review): TimelineEntry => ({ type: 'review', at: review.submittedAt ?? '', review })),
+    ...issue.map((c): TimelineEntry => ({ key: c.id, type: 'comment', at: c.createdAt, author: c.author, body: c.body, path: '', review: none })),
+    ...reviews.filter((r) => r.state !== 'pending').map((r): TimelineEntry => ({ key: r.id, type: 'review', at: r.submittedAt ?? '', author: r.author, body: r.body, path: '', review: r })),
+    ...threads.map((t): TimelineEntry => ({ key: t.id, type: 'thread', at: t.root.createdAt, author: t.root.author, body: t.root.body, path: t.path, where: t.root.line != null ? `on line ${t.root.line}` : `on ${t.path}`, resolved: t.resolved, review: none })),
   ].sort((a, b) => a.at.localeCompare(b.at))
 }

@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, MessageSquarePlus } from 'lucide-react'
-import { Btn } from '../../agents/ui'
+import { Button } from '@hollis-labs/design-components'
 import type { CommentSide, DiffLine, FileDiff, ForgeComment } from '../types'
 import { Badge, Composer, ThreadView } from './Comments'
 import {
@@ -91,9 +91,9 @@ export function FileDiffView(props: FileDiffViewProps) {
       for (const q of pending.filter((p) => p.path === file.path && p.line != null && anchorKey(p.path!, p.side ?? 'right', p.line) === a)) {
         nodes.push(
           <div key={q.id} className="flex items-start gap-2 border-y border-dashed border-border bg-surface px-3 py-2" data-testid="forge-pending-comment">
-            <Badge tone="border-border text-fg-muted">Pending review</Badge>
-            <p className="min-w-0 flex-1 whitespace-pre-wrap text-[13px] text-fg [overflow-wrap:anywhere]">{q.body}</p>
-            <button type="button" onClick={() => props.unqueueComment(q.id)} className="font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <Badge>Pending review</Badge>
+            <p className="min-w-0 flex-1 whitespace-pre-wrap text-control text-fg [overflow-wrap:anywhere]">{q.body}</p>
+            <button type="button" onClick={() => props.unqueueComment(q.id)} className="font-mono text-caption uppercase tracking-label text-fg-faint hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
               Discard
             </button>
           </div>,
@@ -170,7 +170,7 @@ export function FileDiffView(props: FileDiffViewProps) {
     if (large && !open) return null
     let shown = 0
     return (
-      <div className="font-mono text-[12px] leading-5" role="table" aria-label={`Diff of ${file.path}`}>
+      <div className="font-mono text-xs leading-5" role="table" aria-label={`Diff of ${file.path}`}>
         {mode === 'unified'
           ? unified.map((row) => {
               if (row.type === 'hunk') return <HunkHeader key={row.key} text={row.header} />
@@ -208,9 +208,9 @@ export function FileDiffView(props: FileDiffViewProps) {
             })}
         {windowed && (
           <div className="flex items-center gap-3 border-t border-border bg-surface px-3 py-2">
-            <span className="font-mono text-[10px] text-fg-faint">Showing {Math.min(limit, rowsTotal)} of {rowsTotal} rows</span>
-            <Btn onClick={() => setLimit((l) => l + ROW_CHUNK)}>Show {Math.min(ROW_CHUNK, rowsTotal - limit)} more</Btn>
-            <Btn onClick={() => setLimit(rowsTotal)}>Show all</Btn>
+            <span className="font-mono text-caption text-fg-faint">Showing {Math.min(limit, rowsTotal)} of {rowsTotal} rows</span>
+            <Button variant="outline" size="sm" onClick={() => setLimit((l) => l + ROW_CHUNK)}>Show {Math.min(ROW_CHUNK, rowsTotal - limit)} more</Button>
+            <Button variant="outline" size="sm" onClick={() => setLimit(rowsTotal)}>Show all</Button>
           </div>
         )}
       </div>
@@ -228,26 +228,26 @@ export function FileDiffView(props: FileDiffViewProps) {
           className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-fg-faint" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-fg-faint" />}
-          <span className={`w-4 shrink-0 text-center font-mono text-[11px] ${GLYPH_COLOR[file.status] ?? 'text-fg-muted'}`} title={file.status}>{statusGlyph(file)}</span>
-          <span className="min-w-0 truncate font-mono text-[12px] text-fg" title={file.path}>
+          <span className={`w-4 shrink-0 text-center font-mono text-label ${GLYPH_COLOR[file.status] ?? 'text-fg-muted'}`} title={file.status}>{statusGlyph(file)}</span>
+          <span className="min-w-0 truncate font-mono text-xs text-fg" title={file.path}>
             {file.status === 'renamed' && file.oldPath ? <><span className="text-fg-faint">{file.oldPath}</span> {'→'} </> : null}
             {file.path}
           </span>
         </button>
         {file.binary && <Badge>binary</Badge>}
-        {file.truncated && <Badge tone="border-border text-fg-muted">truncated</Badge>}
-        {threadCount > 0 && <Badge tone="border-border text-fg-muted">{threadCount} thread{threadCount === 1 ? '' : 's'}</Badge>}
-        <span className="shrink-0 font-mono text-[11px] text-success">+{file.additions}</span>
-        <span className="shrink-0 font-mono text-[11px] text-danger">{'−'}{file.deletions}</span>
+        {file.truncated && <Badge>truncated</Badge>}
+        {threadCount > 0 && <Badge>{threadCount} thread{threadCount === 1 ? '' : 's'}</Badge>}
+        <span className="shrink-0 font-mono text-label text-success">+{file.additions}</span>
+        <span className="shrink-0 font-mono text-label text-danger">{'−'}{file.deletions}</span>
       </header>
       {open && detached.length > 0 && (
         <div className="border-b border-border" data-testid="forge-detached-threads">
-          <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fg-faint">Comments not on a visible line</p>
+          <p className="px-3 py-1.5 font-mono text-caption uppercase tracking-label text-fg-faint">Comments not on a visible line</p>
           {detached.map((t: Thread) => <ThreadView key={t.id} thread={t} posting={posting} readOnly={readOnly} onReply={replyTo} />)}
         </div>
       )}
       {open ? body : large ? (
-        <div className="px-3 py-2 text-[12px] text-fg-faint">Large diff ({total} lines) is collapsed.</div>
+        <div className="px-3 py-2 text-xs text-fg-faint">Large diff ({total} lines) is collapsed.</div>
       ) : null}
     </section>
   )
@@ -256,11 +256,11 @@ export function FileDiffView(props: FileDiffViewProps) {
 const GLYPH_COLOR: Record<string, string> = { added: 'text-success', removed: 'text-danger', renamed: 'text-fg-muted', modified: 'text-fg-muted' }
 
 function Note({ children }: { children: ReactNode }) {
-  return <p className="px-4 py-3 text-[12px] text-fg-faint">{children}</p>
+  return <p className="px-4 py-3 text-xs text-fg-faint">{children}</p>
 }
 
 function HunkHeader({ text }: { text: string }) {
-  return <div className="truncate border-y border-border bg-surface px-3 font-mono text-[11px] text-fg-muted">{text}</div>
+  return <div className="truncate border-y border-border bg-surface px-3 font-mono text-label text-fg-muted">{text}</div>
 }
 
 function SplitCell({ line, side, lang, gutter }: { line?: DiffLine; side: 'old' | 'new'; lang: ReturnType<typeof langOf>; gutter: ReactNode }) {
@@ -279,9 +279,9 @@ function SplitCell({ line, side, lang, gutter }: { line?: DiffLine; side: 'old' 
 function ThreadPostingNote({ c }: { c: ForgeComment }) {
   return (
     <div className="px-3 py-2 opacity-60" aria-busy>
-      <span className="font-mono text-[12px] text-fg">@{c.author.login}</span>
-      <span className="ml-2 font-mono text-[10px] text-fg-faint">posting…</span>
-      <p className="mt-1 whitespace-pre-wrap text-[13px] text-fg">{c.body}</p>
+      <span className="font-mono text-xs text-fg">@{c.author.login}</span>
+      <span className="ml-2 font-mono text-caption text-fg-faint">posting…</span>
+      <p className="mt-1 whitespace-pre-wrap text-control text-fg">{c.body}</p>
     </div>
   )
 }
