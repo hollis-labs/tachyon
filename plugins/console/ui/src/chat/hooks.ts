@@ -41,6 +41,7 @@ export function useChatThread(threadId: string | null) {
   const [hasMore, setHasMore] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const oldest = useRef<number | undefined>(undefined)
+  const markedAt = useRef(0)
 
   useEffect(() => {
     // State starts fresh per thread: callers key the component on threadId.
@@ -53,6 +54,7 @@ export function useChatThread(threadId: string | null) {
         setHasMore(p.hasMore)
         oldest.current = p.messages[0]?.at
         setLoading(false)
+        markedAt.current = Math.max(markedAt.current, ...p.messages.map((m) => m.at))
         void client.markRead(threadId)
       },
       (e) => { if (live) { setLoading(false); dispatch({type:'event', e:{type:'error',message:e instanceof Error ? e.message : 'Could not load conversation'}}) } },
@@ -60,7 +62,11 @@ export function useChatThread(threadId: string | null) {
     const off = client.subscribe(threadId, (e) => {
       if (!live) return
       dispatch({ type: 'event', e })
-      if (e.type === 'message' && e.message.from === 'agent') void client.markRead(threadId)
+      // Every sync re-emits the newest page; mark read once per newest agent message, not once per frame.
+      if (e.type === 'message' && e.message.from === 'agent' && e.message.at > markedAt.current) {
+        markedAt.current = e.message.at
+        void client.markRead(threadId)
+      }
     })
     return () => {
       live = false

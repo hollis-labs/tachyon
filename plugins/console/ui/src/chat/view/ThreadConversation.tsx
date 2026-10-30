@@ -1,10 +1,9 @@
-import { AgentPresence } from '../../observations/AgentPresence'
-import { CapabilityBadge } from '../CapabilityBadge'
 import { sessionThreadId } from '../chatapi'
 import { useChatThread } from '../hooks'
 import { applyReplyFilter, hiddenReplies, useReplyFilter, type ReplyFilter } from '../replyFilter'
 import { ReplyFilterToggle } from '../ReplyFilterToggle'
 import type { ChatMessage, ChatThread } from '../types'
+import type { PaletteActions } from '../workbench/Palette'
 import { ConversationView } from './ConversationView'
 
 /** Shown when the reply filter hides everything that has loaded so far. */
@@ -30,7 +29,7 @@ function FilteredEmpty({ messages, filter, hasMore, onShowAll, onLoadOlder }: { 
  * One thread's live conversation: history, streaming, send, reply filter, reachability.
  * Used by the /chat page and the dock. Key it on the thread id so state starts fresh.
  */
-export function ThreadConversation({ thread }: { thread: ChatThread }) {
+export function ThreadConversation({ thread, palette }: { thread: ChatThread; palette?: PaletteActions }) {
   // The agent's newest chat API session (or the one picked in the details) is the conversation when there is one.
   const ref = thread.sessionRef ?? thread.sessions?.[0]?.ref
   const convId = ref ? sessionThreadId(ref) : thread.id
@@ -52,12 +51,7 @@ export function ThreadConversation({ thread }: { thread: ChatThread }) {
       error={error}
       sendError={sendError}
       note={note}
-      status={
-        <div className="space-y-1 border-b border-border px-3 py-2">
-          <CapabilityBadge capability={cap} withHint />
-          <AgentPresence sessionId={cap.sessionId} address={thread.agent.address} />
-        </div>
-      }
+      palette={palette}
       toolbarStart={<ReplyFilterToggle value={replyFilter} onChange={setReplyFilter} />}
       empty={messages.length > 0 ? <FilteredEmpty messages={messages} filter={replyFilter} hasMore={hasMore} onShowAll={() => setReplyFilter('all')} onLoadOlder={() => void loadOlder()} /> : undefined}
     />

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChatInput } from '@hollis-labs/kit-chat'
+import { Composer } from '../workbench/Composer'
+import { ChatPalette, type PaletteActions } from '../workbench/Palette'
 import { getDraft, setDraft } from '../drafts'
 import { ThreadView } from '../ThreadView'
 import type { ChatMessage } from '../types'
@@ -25,10 +26,14 @@ export interface ConversationViewProps {
   toolbarStart?: ReactNode
   /** Short caption beside the send button, e.g. 'Mail only'. */
   note?: string | null
+  /** Palette sources; the palette is the '/' command surface of the composer. */
+  palette?: PaletteActions
+  onDrawer?: (mode: 'scratch' | 'terminal' | 'workspace') => void
 }
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
-export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note }: ConversationViewProps) {
+export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, onDrawer }: ConversationViewProps) {
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [value, setValueState] = useState(() => getDraft(threadId))
   const setValue = (v: string) => { setValueState(v); setDraft(threadId, v) }
   const [busy, setBusy] = useState(false)
@@ -52,21 +57,21 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
       {status}
       {error && <p role="alert" className="border-b border-danger/30 px-4 py-2 text-xs text-danger">{error}</p>}
       <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty} />
-      <div className="shrink-0 space-y-1 px-3 pb-3 pt-2">
-        {sendError && <p role="alert" className="text-xs text-danger">{sendError}</p>}
-        <ChatInput
-          value={value}
-          onValueChange={setValue}
-          onSubmit={(v) => void submit(v)}
-          busy={busy}
-          disabled={!canSend || !!error}
-          textareaRef={area}
-          aria-label="Message"
-          toolbarStart={toolbarStart}
-          toolbarEnd={note ? <span className="truncate dash-caption text-fg-faint">{note}</span> : undefined}
-          placeholder={canSend ? 'Message. Enter to send, Shift+Enter for a new line' : 'This agent cannot receive messages right now'}
-        />
-      </div>
+      <Composer
+        value={value}
+        onChange={setValue}
+        onSubmit={(v) => void submit(v)}
+        agentLabel={agentLabel}
+        busy={busy}
+        disabled={!canSend || !!error}
+        note={note}
+        sendError={sendError}
+        textareaRef={area}
+        onOpenPalette={() => setPaletteOpen(true)}
+        onDrawer={onDrawer}
+        extra={toolbarStart}
+      />
+      {palette && <ChatPalette open={paletteOpen} onOpenChange={setPaletteOpen} a={palette} />}
     </div>
   )
 }

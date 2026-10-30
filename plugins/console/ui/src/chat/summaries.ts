@@ -10,6 +10,9 @@ interface ApiThread {
   last_preview?: string
   blocked_on_user?: number
   archived?: boolean
+  pinned?: boolean
+  plan_progress?: { done: number; total: number } | null
+  context?: { used?: number | null; window?: number | null; model?: string | null }
 }
 
 const launchOf = (t: ChatThread) => t.agent.chatLaunchId ?? t.agent.agentId
@@ -35,6 +38,10 @@ export function withChatApiSummaries(base: ChatClient, load: () => Promise<ApiTh
           ...t,
           unread: sessions.reduce((n, s) => n + s.unread, 0),
           needsYou: list.some((a) => (a.blocked_on_user ?? 0) > 0),
+          blocked: list.reduce((n, a) => n + (a.blocked_on_user ?? 0), 0),
+          pinned: list.some((a) => a.pinned),
+          plan: list.find((a) => a.plan_progress && a.plan_progress.total > 0)?.plan_progress ?? undefined,
+          context: newest.context ? { used: newest.context.used ?? null, window: newest.context.window ?? null, model: newest.context.model ?? null } : undefined,
           lastAt: Math.max(t.lastAt, newest.last_at ?? 0),
           lastPreview: newest.last_preview?.slice(0, 100) || t.lastPreview,
           sessions,
