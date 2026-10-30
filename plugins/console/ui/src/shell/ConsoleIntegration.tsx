@@ -2,9 +2,7 @@ import { OperatorPrompt } from '../operator/OperatorPrompt'
 import { useState, type ReactNode } from 'react'
 import { ApprovalProvider } from '../approvals/context'
 import { useApi } from '@tachyon/torque-client'
-import { AlertHost } from '../alerts/AlertHost'
 import { ServerAlertHost } from '../alerts/server/ServerAlertHost'
-import { serverAlertsEnabled } from '../alerts/server/source'
 import { CardRuntimeProvider } from '../cards/surfaces'
 import { createDefaultCardRegistry } from '../cards/kinds'
 import { createAppAgentChatClient } from '../chat/appagent'
@@ -20,7 +18,6 @@ import { createMailMessagingClient } from '../messaging/adapter'
 import { MessagingProvider } from '../messaging/context'
 import { OPERATOR_ADDRESS } from '../messaging/operator'
 import { AgentUnreadProvider } from '../messaging/unread'
-import { DEFAULT_RULE_PACK } from '../rules/default-pack'
 import { HttpWorkflowClient } from '../workflow/client'
 import { registerWorkflowKinds } from '../workflow/kinds'
 import { WorkflowProvider } from '../workflow/provider'
@@ -36,7 +33,6 @@ import { ChatDockProvider } from './chat-dock'
  */
 export function ConsoleIntegration({ children }: { children: ReactNode }) {
   const api = useApi()
-  const [serverAlerts] = useState(serverAlertsEnabled)
   const [{ messaging, chat, registry, hitl, workflow }] = useState(() => {
     const messaging = createMailMessagingClient(api, { from: OPERATOR_ADDRESS })
     // Tether chat plus Tachyon's own app agent, as ordinary threads in one list.
@@ -51,20 +47,15 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
     registerWorkflowKinds(registry)
     return { messaging, chat, registry, hitl: new HttpHitlClient(), workflow: new HttpWorkflowClient() }
   })
-  const bodyNoApprovals = <><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></>
-  const body = <ApprovalProvider>{bodyNoApprovals}</ApprovalProvider>
+  const body = <><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></>
   return (
     <MessagingProvider client={messaging} operator={OPERATOR_ADDRESS}>
       <AgentUnreadProvider>
         <ChatProvider client={chat} operator={OPERATOR_ADDRESS}>
           <CardRuntimeProvider registry={registry} mountSurfaces={false}>
             <HitlProvider client={hitl} present={false}>
-              <WorkflowProvider client={workflow}>
-                {serverAlerts ? (
-                  <ApprovalProvider><ServerAlertHost>{bodyNoApprovals}</ServerAlertHost></ApprovalProvider>
-                ) : (
-                  <AlertHost rules={DEFAULT_RULE_PACK}>{body}</AlertHost>
-                )}
+              <WorkflowProvider client={workflow} present={false}>
+                <ApprovalProvider><ServerAlertHost>{body}</ServerAlertHost></ApprovalProvider>
               </WorkflowProvider>
             </HitlProvider>
           </CardRuntimeProvider>
