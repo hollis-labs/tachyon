@@ -16,15 +16,23 @@ function LaunchRow({ l }: { l: Launch }) {
           {l.project} on {l.worker}
         </span>
         {!l.enabled && <span className={CHIP}>Disabled</span>}
-        {l.live_count > 0 && <span className={CHIP}>{l.live_count} live</span>}
+        {l.live_count > 0 && (
+          <span className="inline-flex items-center gap-1 dash-support text-fg-muted">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-success" />
+            {l.live_count} live
+          </span>
+        )}
       </div>
       <p className="dash-support text-fg-muted">
         {l.provider}
-        {l.model ? ` · ${l.model}` : ''} · Route: {l.route || NOT_REPORTED} · Chat: {l.chat === undefined ? NOT_REPORTED : l.chat ? 'on' : 'off'}
+        {l.model ? ` · ${l.model}` : ''}
+      </p>
+      <p className="dash-support text-fg-muted">
+        Route: {l.route || NOT_REPORTED} · Chat: {l.chat === undefined ? NOT_REPORTED : l.chat ? 'on' : 'off'}
       </p>
       <p className="dash-support text-fg-muted">
         Environment: {l.env?.keys.length ? l.env.keys.join(', ') : 'no keys'}
-        {secrets > 0 ? ` (${secrets} look secret; values are never shown)` : ''}
+        {secrets > 0 ? `. ${secrets} ${secrets === 1 ? 'value looks' : 'values look'} like ${secrets === 1 ? 'a secret' : 'secrets'} and ${secrets === 1 ? 'is' : 'are'} never shown.` : ''}
       </p>
     </li>
   )

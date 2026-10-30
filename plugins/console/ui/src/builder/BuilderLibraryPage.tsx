@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Segmented } from '../components/segmented'
 import { BuilderShell } from './BuilderShell'
 import { type LibraryItem, type LibraryKind, builderApi } from './api'
 import { useLoad } from './useLoad'
@@ -7,20 +8,41 @@ import { LIBRARY_KINDS, NOT_REPORTED } from './vocab'
 
 const SKIP = new Set(['kind', 'id', 'name', 'summary', 'used_by_count', 'editable', 'body'])
 const label = (k: string) => k.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
-const show = (v: unknown): string =>
-  v === null || v === undefined
-    ? NOT_REPORTED
-    : Array.isArray(v)
-      ? v.length
-        ? v.map(String).join(', ')
-        : 'none'
-      : typeof v === 'object'
-        ? JSON.stringify(v)
-        : typeof v === 'boolean'
-          ? v
-            ? 'Yes'
-            : 'No'
-          : String(v)
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** Nested values as groups and lists, never raw braces. */
+function Value({ v }: { v: unknown }): ReactNode {
+  if (v === null || v === undefined) return NOT_REPORTED
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  if (Array.isArray(v)) {
+    if (v.length === 0) return 'none'
+    if (v.every((x) => typeof x !== 'object' || x === null)) return v.map(String).join(', ')
+    return (
+      <ul className="space-y-1">
+        {v.map((x, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: static read-only list
+          <li key={i}>
+            <Value v={x} />
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  if (isObj(v))
+    return (
+      <dl className="space-y-0.5 border-l border-border-subtle pl-3">
+        {Object.entries(v).map(([k, x]) => (
+          <div key={k} className="flex flex-wrap gap-x-2">
+            <dt className="dash-support text-fg-muted">{label(k)}</dt>
+            <dd className="min-w-0">
+              <Value v={x} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    )
+  return String(v)
+}
 
 function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   const [load, retry] = useLoad(() => builderApi.libraryItem(kind, id), [kind, id])
@@ -50,7 +72,9 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
           .map(([k, v]) => (
             <div key={k} className="grid gap-1 border-b border-border-subtle py-2 md:grid-cols-[10rem_1fr] md:gap-3">
               <dt className="dash-support text-fg-muted">{label(k)}</dt>
-              <dd className="min-w-0 dash-body text-fg [overflow-wrap:anywhere]">{show(v)}</dd>
+              <dd className="min-w-0 dash-body text-fg [overflow-wrap:anywhere]">
+                <Value v={v} />
+              </dd>
             </div>
           ))}
       </dl>
@@ -75,18 +99,7 @@ export function BuilderLibraryPage() {
   return (
     <div className="flex h-full min-w-0 flex-col">
       <BuilderShell tab="library" />
-      <nav aria-label="Library kinds" className="flex gap-1 border-b border-border px-3 py-2">
-        {LIBRARY_KINDS.map((k) => (
-          <Link
-            key={k.id}
-            to={`/builder/library/${k.id}`}
-            aria-current={k.id === kind ? 'page' : undefined}
-            className={`px-2 py-0.5 dash-control ${k.id === kind ? 'bg-surface font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}
-          >
-            {k.label}
-          </Link>
-        ))}
-      </nav>
+      <Segmented<LibraryKind> label="Library kinds" value={kind} onChange={(k) => navigate(`/builder/library/${k}`)} items={LIBRARY_KINDS.map((k) => ({ value: k.id, label: k.label }))} />
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
           <div className="border-b border-border p-3">
