@@ -9,6 +9,8 @@ import {
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  ApprovalError,
+  handoffItems,
   createApprovalClient,
   type ApprovalItem,
   type ApprovalClient,
@@ -247,6 +249,25 @@ describe("owned inbox tiers and pages", () => {
     render(<ApprovalDialog id={blocked.item_id} initial={blocked} client={{ present: vi.fn().mockResolvedValue(blocked), decide } as unknown as ApprovalClient} onClose={vi.fn()} onChanged={vi.fn()} />)
     await screen.findByText(/cannot be approved here/)
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
+  })
+  it("switches to the provider handoff state on provider_handoff_required, without the raw error, and remembers it", async () => {
+    const high: ApprovalItem = { ...item, request_snapshot: { ...item.request_snapshot, class: "high", handoff_url: "https://cerberus.example/approve/one" } }
+    const decide = vi.fn().mockRejectedValue(new ApprovalError(403, "provider_handoff_required", "provider handoff required"))
+    const client = { present: vi.fn().mockResolvedValue(high), get: vi.fn().mockResolvedValue(high), decide } as unknown as ApprovalClient
+    const { unmount } = render(<ApprovalDialog id={high.item_id} initial={high} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
+    fireEvent.change(screen.getByLabelText("Confirmation phrase"), { target: { value: "approve" } })
+    fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
+    await screen.findByText(/cannot be approved here/)
+    expect(screen.queryByText(/provider handoff required/)).toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByRole("link", { name: /Open in/ })).toBeTruthy()
+    unmount()
+    render(<ApprovalDialog id={high.item_id} initial={high} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await screen.findByText(/cannot be approved here/)
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
+    handoffItems.delete(high.item_id)
   })
   it("loads bounded next pages and can return to the newest page", async () => {
     const second = { ...item, item_id: "older", request_snapshot: { ...item.request_snapshot, title: "Older request" } }
