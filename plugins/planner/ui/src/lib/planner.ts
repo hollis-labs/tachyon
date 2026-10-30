@@ -8,6 +8,7 @@ import type {
   PlannerSchemaInfo,
   ThemeProgress,
   ThemeRow,
+  ThemeAction,
   ThemeSectionKey,
 } from '@planner/api/types'
 
@@ -532,4 +533,30 @@ export function themeCountsText(p: ThemeProgress): string {
   }
   if (p.missing) parts.push(`${p.missing} linked task${p.missing === 1 ? '' : 's'} not found`)
   return parts.join(' · ')
+}
+
+interface RowAction { label: string; action: ThemeAction; position?: number; title: string }
+
+/** What the operator can do to a row from where it sits on the board. */
+export function themeRowActions(section: ThemeSectionKey, rank: number | undefined, approved: number): RowAction[] {
+  switch (section) {
+    case 'in_flight':
+    case 'cleared':
+      return [
+        // Moves are offered only when the server told us the place in the whole
+        // sequence, so a position is never worked out from a partial list.
+        ...(rank !== undefined && rank > 1 ? [{ label: 'Up', action: 'resequence' as const, position: rank - 1, title: 'Move earlier in the sequence' }] : []),
+        ...(rank !== undefined && rank < approved ? [{ label: 'Down', action: 'resequence' as const, position: rank + 1, title: 'Move later in the sequence' }] : []),
+        { label: 'Park', action: 'park', title: 'Pause this theme; its tasks are untouched' },
+        { label: 'Done', action: 'finish', title: 'Mark this theme finished' },
+      ]
+    case 'queued':
+      return [{ label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }, { label: 'Park', action: 'park', title: 'Pause this theme' }, { label: 'Decline', action: 'archive', title: 'Archive this theme without approving it' }]
+    case 'proposed':
+      return [{ label: 'Ready', action: 'ready', title: 'Mark ready to be considered' }, { label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }, { label: 'Decline', action: 'archive', title: 'Archive this theme without approving it' }]
+    case 'parked':
+      return [{ label: 'Unpark', action: 'unpark', title: 'Return to ready' }, { label: 'Approve', action: 'approve', title: 'Approve and add to the end of the sequence' }, { label: 'Decline', action: 'archive', title: 'Archive this theme without approving it' }]
+    default:
+      return []
+  }
 }
