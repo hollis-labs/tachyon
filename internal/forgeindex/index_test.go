@@ -35,7 +35,10 @@ type fakeGH struct {
 	mu        sync.Mutex
 	PRs       map[int]*fakePR
 	Remaining int
-	Calls     map[string]int
+	// SearchRemaining, when set, is what /search/issues reports for its own bucket (GitHub's search limit is
+	// 30 a minute), apart from the core Remaining.
+	SearchRemaining int
+	Calls           map[string]int
 }
 
 func newFakeGH() *fakeGH {
@@ -45,7 +48,13 @@ func newFakeGH() *fakeGH {
 func (f *fakeGH) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	w.Header().Set("X-RateLimit-Remaining", fmt.Sprint(f.Remaining))
+	if r.URL.Path == "/search/issues" && f.SearchRemaining > 0 {
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprint(f.SearchRemaining))
+		w.Header().Set("X-RateLimit-Resource", "search")
+	} else {
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprint(f.Remaining))
+		w.Header().Set("X-RateLimit-Resource", "core")
+	}
 	w.Header().Set("X-RateLimit-Reset", "1793331000")
 	w.Header().Set("X-OAuth-Scopes", "repo")
 	p := r.URL.Path
@@ -261,6 +270,29 @@ func TestLowRateBudgetDegradesAndKeepsCachedRows(t *testing.T) {
 	}
 	if _, ok := r[k+"4"]; ok {
 		t.Error("a new PR is not hydrated under the rate floor")
+	}
+}
+
+// The live bug: the status showed "remaining 28, degraded" because the last response was a search (30 a
+// minute), so every new PR was held back by the 200 rate floor and the inbox stayed empty.
+func TestSearchBucketDoesNotTripTheCoreRateFloor(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	e.gh.SearchRemaining = 28
+	ctx := context.Background()
+	for i := 0; i < 2; i++ { // the second pass is the one that used to see the search count
+		if err := e.idx.Refresh(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(e.rows(t)) == 0 {
+		t.Fatal("PRs must be indexed while only the search bucket is low")
+	}
+	if st := e.idx.Status(ctx); st.Degraded {
+		t.Errorf("a low search bucket is not a degraded index: %+v", st)
+	}
+	if rem, _, ok := e.idx.GH.Rate(); !ok || rem != 4000 {
+		t.Errorf("status rate is the core bucket: %d %v", rem, ok)
 	}
 }
 
