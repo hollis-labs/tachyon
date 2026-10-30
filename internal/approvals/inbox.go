@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
+	"github.com/hollis-labs/tachyon/internal/approvals/assurance"
 	"github.com/hollis-labs/tachyon/internal/cards"
 )
 
@@ -31,6 +32,9 @@ type Inbox struct {
 	// (nil result means none yet). It holds ids and outcomes, no free text from
 	// the asker, so any browser session that can read the item may see it.
 	CardReceipt func(ctx context.Context, itemID string) any
+	// Assurance is the one place session strength is asked. NewInbox wires the
+	// Tangent bridge; tests and later providers replace it.
+	Assurance assurance.Provider
 }
 
 func NewInbox(store *Store, sessions *Bridge) *Inbox {
@@ -43,7 +47,11 @@ func NewInbox(store *Store, sessions *Bridge) *Inbox {
 		}
 		return fmt.Errorf("%w: decision does not match the request kind", hitl.ErrInvalidRequest)
 	}})
-	return &Inbox{Store: store, Service: service, Sessions: sessions}
+	in := &Inbox{Store: store, Service: service, Sessions: sessions}
+	if sessions != nil {
+		in.Assurance = &TangentProvider{Bridge: sessions}
+	}
+	return in
 }
 
 type sessionStatus struct {
@@ -58,11 +66,32 @@ func sameOrigin(r *http.Request) bool {
 	origin, err := url.Parse(r.Header.Get("Origin"))
 	return err == nil && origin.Host == r.Host && (origin.Scheme == "https" || origin.Scheme == "http") && origin.User == nil && origin.Path == "" && origin.RawQuery == "" && origin.Fragment == "" && r.Header.Get("Sec-Fetch-Site") != "cross-site"
 }
+
+// participant resolves the caller's session and writes the refusal itself.
 func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Participant, sessionStatus, bool) {
+	p, status, err := b.lookup(r)
+	if err != nil {
+		writeAssuranceError(w, err)
+		return hitl.Participant{}, sessionStatus{}, false
+	}
+	return p, status, true
+}
+
+func writeAssuranceError(w http.ResponseWriter, err *assurance.Error) {
+	if err.Body != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(err.Status)
+		_, _ = w.Write([]byte(err.Body))
+		return
+	}
+	fail(w, err.Status, err.Code, err.Message)
+}
+
+// lookup is participant without the response writing, so the assurance provider can reuse it.
+func (b *Bridge) lookup(r *http.Request) (hitl.Participant, sessionStatus, *assurance.Error) {
 	// Bearer requesters cannot acquire response authority by adding a cookie.
 	if r.Header.Get("Authorization") != "" {
-		fail(w, 403, "requester_cannot_approve", "Use the operator browser session for inbox access.")
-		return hitl.Participant{}, sessionStatus{}, false
+		return hitl.Participant{}, sessionStatus{}, &assurance.Error{Status: 403, Code: "requester_cannot_approve", Message: "Use the operator browser session for inbox access."}
 	}
 	check := r.Clone(r.Context())
 	u := *r.URL
@@ -75,24 +104,20 @@ func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Parti
 	captured := &statusCapture{header: make(http.Header), status: 200}
 	b.ServeHTTP(captured, check)
 	if captured.status != 200 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(captured.status)
-		_, _ = w.Write([]byte(captured.body.String()))
-		return hitl.Participant{}, sessionStatus{}, false
+		return hitl.Participant{}, sessionStatus{}, &assurance.Error{Status: captured.status, Body: captured.body.String()}
 	}
 	var status sessionStatus
 	cookie, err := r.Cookie(CookieName)
 	if err != nil || cookie.Value == "" || json.Unmarshal([]byte(captured.body.String()), &status) != nil || status.Assurance == "" {
-		fail(w, 401, "session_required", "Connect an operator browser session.")
-		return hitl.Participant{}, sessionStatus{}, false
+		return hitl.Participant{}, sessionStatus{}, &assurance.Error{Status: 401, Code: "session_required", Message: "Connect an operator browser session."}
 	}
 	hash := sha256.Sum256([]byte(cookie.Value))
 	ref := "browser-session:" + hex.EncodeToString(hash[:])
-	assurance := "browser-session"
+	level := "browser-session"
 	if status.Elevated && status.Assurance == "operator-token" {
-		assurance = "operator-token"
+		level = "operator-token"
 	}
-	return hitl.Participant{PrincipalRef: ref, Authority: "tachyon-inbox/tangent-session", Assurance: assurance, Responder: &hitl.Responder{Kind: "human-session", Ref: ref}}, status, true
+	return hitl.Participant{PrincipalRef: ref, Authority: "tachyon-inbox/tangent-session", Assurance: level, Responder: &hitl.Responder{Kind: "human-session", Ref: ref}}, status, nil
 }
 
 type browserItem struct {
@@ -146,6 +171,14 @@ func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, er
 func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	path := strings.TrimPrefix(r.URL.Path, Prefix)
+	if i.Assurance != nil && r.Method == http.MethodPost && (path == "/elevate" || path == "/de-elevate") {
+		if path == "/elevate" {
+			i.Assurance.Elevate(w, r)
+		} else {
+			i.Assurance.DeElevate(w, r)
+		}
+		return
+	}
 	if path == "/session" || path == "/status" || path == "/elevate" || path == "/de-elevate" {
 		i.Sessions.ServeHTTP(w, r)
 		return
@@ -164,6 +197,14 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/inbox" && r.Method == http.MethodGet {
 		i.list(w, r, participant.Assurance == "operator-token")
+		return
+	}
+	if r.Method == http.MethodGet && path == "/access" && i.Assurance != nil {
+		i.access(w, r)
+		return
+	}
+	if r.Method == http.MethodGet && path == "/events" {
+		i.events(w, r)
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -228,7 +269,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "unsupported_class", "This request cannot be decided here.")
 		return
 	}
-	if class == "medium" && participant.Assurance != "operator-token" {
+	if class == "medium" && !assurance.Satisfies(assurance.ParseLevel(participant.Assurance), assurance.ActionResolveMedium) {
 		fail(w, 403, "assurance_insufficient", "Enter your operator key to decide this request. "+ElevationCopy(session.ElevationTTL, session.ElevationExpiresAt))
 		return
 	}
