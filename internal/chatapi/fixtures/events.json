@@ -5,6 +5,6 @@
 {"id":null,"type":"panel","data":{"panel":"plan","ref":"pl_1","reason":"plan written","source":"agent"}},
 {"id":null,"type":"context","data":{"used":48210,"window":200000,"model":"claude-sonnet-5-5"}},
 {"id":null,"type":"thread","data":{"blocked":1,"unread":2,"plan_progress":{"done":2,"total":5},"pinned":true}},
-{"id":4,"type":"terminal.run","data":{"run_id":"run_1","state":"running","chunk_seq":0,"chunk":"M internal/chatapi/contract.go\n"}},
-{"id":5,"type":"terminal.run","data":{"run_id":"run_1","state":"exited","chunk_seq":1,"exit_code":0,"duration_ms":1000}}
+{"id":4,"type":"terminal.run","data":{"run_id":"run_1","state":"running","seq":1,"chunk":"M internal/chatapi/contract.go\n"}},
+{"id":5,"type":"terminal.run","data":{"run_id":"run_1","state":"finished","seq":1,"exit_code":0,"duration_ms":1000}}
 ]

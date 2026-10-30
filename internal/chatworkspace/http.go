@@ -426,16 +426,32 @@ func (h *Handler) getSettings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
-	var in Settings
+	var in struct {
+		ScratchpadPlacement     *string `json:"scratchpad_placement"`
+		TerminalCloseOnComplete *bool   `json:"terminal_close_on_complete"`
+	}
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&in); err != nil || (in.ScratchpadPlacement != "drawer" && in.ScratchpadPlacement != "aside") {
-		fail(w, 400, "invalid", "scratchpad_placement must be drawer or aside.")
+	if err := dec.Decode(&in); err != nil || (in.ScratchpadPlacement == nil && in.TerminalCloseOnComplete == nil) ||
+		(in.ScratchpadPlacement != nil && *in.ScratchpadPlacement != "drawer" && *in.ScratchpadPlacement != "aside") {
+		fail(w, 400, "invalid", "Send scratchpad_placement (drawer or aside) and/or terminal_close_on_complete (true or false).")
 		return
 	}
-	if err := h.Store.SaveSettings(r.Context(), in); err != nil {
+	// A field left out keeps its saved value.
+	cur, err := h.Store.Settings(r.Context())
+	if err != nil {
 		h.problem(w, err)
 		return
 	}
-	reply(w, 200, in)
+	if in.ScratchpadPlacement != nil {
+		cur.ScratchpadPlacement = *in.ScratchpadPlacement
+	}
+	if in.TerminalCloseOnComplete != nil {
+		cur.TerminalCloseOnComplete = *in.TerminalCloseOnComplete
+	}
+	if err := h.Store.SaveSettings(r.Context(), cur); err != nil {
+		h.problem(w, err)
+		return
+	}
+	reply(w, 200, cur)
 }

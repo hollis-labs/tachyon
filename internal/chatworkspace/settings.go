@@ -13,6 +13,8 @@ const settingsKey = "chat.settings"
 // appears in thread data.
 type Settings struct {
 	ScratchpadPlacement string `json:"scratchpad_placement"`
+	// TerminalCloseOnComplete is the default for new terminal run cards' "Close when done" box.
+	TerminalCloseOnComplete bool `json:"terminal_close_on_complete"`
 }
 
 func (s *Store) Settings(ctx context.Context) (Settings, error) {

@@ -1,0 +1,1 @@
+{"run_id": "run_4", "state": "running", "chunks": [{"seq": 1, "chunk": "line 1\n"}, {"seq": 2, "chunk": "line 2\n"}], "last_seq": 2, "tail": null, "truncated": false}

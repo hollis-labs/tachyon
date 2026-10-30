@@ -73,6 +73,7 @@ func main() {
 		CatalogIndex:                os.Getenv("TACHYON_CATALOG_INDEX") != "0",
 		AgentsStubs:                 os.Getenv("TACHYON_AGENTS_STUBS") == "1",
 		ChatClientContext:           os.Getenv("TACHYON_CHAT_CLIENT_CONTEXT") == "1",
+		TerminalPolicyFile:          os.Getenv("TACHYON_TERMINAL_POLICY"),
 		ChatStubs:                   os.Getenv("TACHYON_CHAT_STUBS") == "1",
 		FileviewStubs:               os.Getenv("TACHYON_FILEVIEW_STUBS") == "1",
 		BuilderStubs:                os.Getenv("TACHYON_BUILDER_STUBS") == "1",

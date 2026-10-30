@@ -46,6 +46,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/chatcards"
 	"github.com/hollis-labs/tachyon/internal/chatplan"
+	"github.com/hollis-labs/tachyon/internal/chatterminal"
 	"github.com/hollis-labs/tachyon/internal/chatthreads"
 	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
@@ -86,6 +87,9 @@ type Config struct {
 	// CatalogIndex runs the Builder's catalog index (TACHYON_CATALOG_INDEX=0 turns it off). It needs a Tether
 	// address; the read-scope token is the usual TETHER_TOKEN_FILE.
 	CatalogIndex bool
+	// TerminalPolicyFile is the operator-edited JSON of terminal machines and command rules. Empty uses
+	// terminal-policy.json in the data dir; a missing file means no extra machines and every command asks.
+	TerminalPolicyFile string
 	// ChatStubs mounts the fixture-backed chat contract (TACHYON_CHAT_STUBS=1) for GUI development.
 	ChatStubs bool
 	// ChatClientContext sends shared workspace items to the app agent as client_context on each
@@ -147,6 +151,7 @@ type Server struct {
 	chatPlan         *chatplan.Service
 	chatCards        *chatcards.Binder
 	chatActivity     *chatactivity.Handler
+	chatTerminal     *chatterminal.Service
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
@@ -322,6 +327,44 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 		},
 	}
+	// Quick terminal: ssh through the host user's own ssh-agent and config. Machines come from the policy
+	// file and ~/.ssh/config aliases; the client only ever names a machine id.
+	policyFile := s.cfg.TerminalPolicyFile
+	if policyFile == "" {
+		policyFile = filepath.Join(s.cfg.DataDir, "terminal-policy.json")
+	}
+	termStore := &chatterminal.Store{DB: store}
+	if err := termStore.CloseStaleSessions(ctx); err != nil {
+		return fmt.Errorf("terminal startup sweep: %w", err)
+	}
+	termPublish := func(ctx context.Context, thread, typ string, fields map[string]any) {
+		_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+	}
+	termCfg := &chatterminal.Config{PolicyFile: policyFile, SSHConfig: chatterminal.DefaultSSHConfig()}
+	termMgr := &chatterminal.Manager{Store: termStore, Config: termCfg, Base: ctx, Publish: termPublish,
+		Ended: func(ctx context.Context, r chatterminal.Run) {
+			title := "Ran " + r.Command
+			summary := r.State
+			if r.ExitCode != nil {
+				summary = fmt.Sprintf("%s, exit %d", r.State, *r.ExitCode)
+			}
+			rec.Quiet(ctx, r.ThreadRef, "terminal.run", r.RequestedBy, "tachyon", nil, chatactivity.Card(title, summary, nil))
+		}}
+	s.chatTerminal = &chatterminal.Service{Store: termStore, Mgr: termMgr, Config: termCfg, Publish: termPublish,
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		CloseOnComplete: func(ctx context.Context) bool {
+			st, err := ws.Settings(ctx)
+			return err == nil && st.TerminalCloseOnComplete
+		},
+		Message: func(ctx context.Context, thread, runID string) (string, error) {
+			t, err := chatapi.ParseRef(thread)
+			if err != nil || t.Source != chatapi.SourceApp || s.appAgent == nil {
+				return "", nil
+			}
+			m, err := s.appAgent.AppendNote(ctx, t.ID, "run", "", map[string]any{"run_id": runID})
+			return m.ID, err
+		}}
+	go s.chatTerminal.Sweep(ctx)
 	s.chatTopics = &chattopics.Handler{
 		Store:      &chattopics.Store{DB: store},
 		Exists:     func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
@@ -607,8 +650,12 @@ func (s *Server) Routes() http.Handler {
 			if s.chatPlan != nil {
 				planTools = &dataverbs.ChatPlan{Service: s.chatPlan}
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools))
+			var termTools *dataverbs.ChatTerminal
+			if s.chatTerminal != nil {
+				termTools = &dataverbs.ChatTerminal{Service: s.chatTerminal}
+			}
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools, termTools))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools, termTools))
 		}
 	}
 	if s.store != nil {
@@ -734,6 +781,13 @@ func (s *Server) Routes() http.Handler {
 		}
 		// File bytes need operator assurance on reads too.
 		mux.Handle(chatworkspace.ContentRoute, operator.RequireOperatorReads(s.chatWorkspace.Content()))
+	}
+	if s.chatTerminal != nil {
+		real := (&chatterminal.Handler{Svc: s.chatTerminal}).Mux()
+		for _, route := range chatterminal.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.TerminalPrefix+path, operator.RequireOperatorReads(real))
+		}
 	}
 	// Chat contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
 	// unguarded. Writes need an operator session; workspace content and the terminal family
