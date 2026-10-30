@@ -8,6 +8,20 @@ import { MessageBody } from './MessageBody'
 import { DeliveryBadge, ObservedDeliveryBadge } from '../messaging/DeliveryStatus'
 import { ToolChips } from './ToolChips'
 import type { ChatMessage } from './types'
+import { ApprovalCard, DecisionCard, DispatchCard, PlanCard, ToolCallsRow, type Commit } from './cards/Cards'
+import { RunCard } from './cards/RunCard'
+import type { StreamBlock } from './cards/types'
+
+function BlockView({ b, commit, onOpenPanel }: { b: StreamBlock; commit?: Commit; onOpenPanel?: () => void }) {
+  switch (b.kind) {
+    case 'decision': return <DecisionCard block={b} commit={commit} />
+    case 'plan': return <PlanCard block={b} onOpenPanel={onOpenPanel} />
+    case 'approval': return <ApprovalCard block={b} commit={commit} />
+    case 'dispatch': return <DispatchCard block={b} commit={commit} />
+    case 'tools': return <ToolCallsRow block={b} />
+    case 'run': return <RunCard run={b.run} />
+  }
+}
 
 function Bubble({ m, agentLabel }: { m: ChatMessage; agentLabel: string }) {
   const mine = m.from === 'operator'
@@ -88,16 +102,19 @@ function Bubble({ m, agentLabel }: { m: ChatMessage; agentLabel: string }) {
 
 const renderMessage = (item: ChatItem) => item.kind === 'message' ? item.content : null
 
-export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder, empty }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void; empty?: React.ReactNode }) {
+export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder, empty, blocks = [], commit, onOpenPanel }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void; empty?: React.ReactNode; blocks?: StreamBlock[]; commit?: Commit; onOpenPanel?: () => void }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000)
     return () => clearInterval(timer)
   }, [])
-  const items = useMemo<ChatItem[]>(() => messages.map(m => ({
-    kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant',
-    content: <Bubble m={m} agentLabel={agentLabel} />,
-  })), [messages, now, agentLabel])
+  const items = useMemo<ChatItem[]>(() => {
+    const all = [
+      ...messages.map((m) => ({ at: m.at, item: { kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant', content: <Bubble m={m} agentLabel={agentLabel} /> } as ChatItem })),
+      ...blocks.map((b) => ({ at: b.at, item: { kind: 'message', id: `block-${b.id}`, role: 'assistant', content: <BlockView b={b} commit={commit} onOpenPanel={onOpenPanel} /> } as ChatItem })),
+    ]
+    return all.sort((a, b) => a.at - b.at).map((x) => x.item)
+  }, [messages, blocks, commit, onOpenPanel, now, agentLabel])
   return <ChatStream items={items} renderItem={renderMessage} loading={loading && !messages.length}
     history={{ hasOlder: hasMore, loading: loading && !!messages.length, onLoadOlder }}
     viewportClassName="flex flex-col gap-4 px-6 pb-3 pt-5 max-sm:px-3" empty={empty ?? <p className="text-control text-fg-muted">No messages yet. Say something.</p>} />

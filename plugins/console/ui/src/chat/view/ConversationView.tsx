@@ -4,6 +4,8 @@ import { ChatPalette, type PaletteActions } from '../workbench/Palette'
 import { getDraft, setDraft } from '../drafts'
 import { ThreadView } from '../ThreadView'
 import type { ChatMessage } from '../types'
+import type { Commit } from '../cards/Cards'
+import type { StreamBlock } from '../cards/types'
 
 export interface ConversationViewProps {
   /** Changing this focuses the composer (a thread switch). */
@@ -28,11 +30,14 @@ export interface ConversationViewProps {
   note?: string | null
   /** Palette sources; the palette is the '/' command surface of the composer. */
   palette?: PaletteActions
+  /** Cards, tool-call rows and run cards between the messages. */
+  blocks?: StreamBlock[]
+  commit?: Commit
   onDrawer?: (mode: 'scratch' | 'terminal' | 'workspace') => void
 }
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
-export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, onDrawer }: ConversationViewProps) {
+export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, onDrawer, blocks, commit }: ConversationViewProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [value, setValueState] = useState(() => getDraft(threadId))
   const setValue = (v: string) => { setValueState(v); setDraft(threadId, v) }
@@ -56,7 +61,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
     <div className="flex min-h-0 flex-1 flex-col">
       {status}
       {error && <p role="alert" className="border-b border-danger/30 px-4 py-2 text-xs text-danger">{error}</p>}
-      <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty} />
+      <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty} blocks={blocks} commit={commit} />
       <Composer
         value={value}
         onChange={setValue}
