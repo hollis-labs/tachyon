@@ -1,18 +1,13 @@
 import { DataTable } from "@hollis-labs/kit-dashboard/data"
 import { DashboardToolbar, DashboardField } from "@hollis-labs/kit-dashboard/layout"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button, SearchInput } from "@hollis-labs/design-components"
 import { BarMeter, Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
 import { TimeSeriesChart } from "@hollis-labs/kit-dashboard/charts"
 import { dataRefreshRegistry } from "@tachyon/host-sdk"
-import {
-  Activity,
-  BarChart3,
-  Boxes,
-  FileText,
-  Sparkles,
-} from "lucide-react"
+import { Activity, BarChart3, Boxes, FileText, RefreshCw } from "lucide-react"
+import { Segmented } from "../components/segmented"
 import { TranscriptDialog } from "./detail"
 import {
   read,
@@ -27,6 +22,24 @@ import {
   type Session,
   type Filters,
 } from "./data"
+
+type Tab = "sessions" | "insights"
+
+function sinceLabel(at: number, now: number) {
+  const m = Math.max(0, Math.floor((now - at) / 60000))
+  return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`
+}
+
+// Deep link: /dashboards/transcripts?session=<id>
+const linkedSession = () =>
+  new URLSearchParams(window.location.search).get("session") ?? ""
+
+function writeSessionParam(id: string) {
+  const url = new URL(window.location.href)
+  if (id) url.searchParams.set("session", id)
+  else url.searchParams.delete("session")
+  window.history.replaceState(window.history.state, "", url)
+}
 
 const defaults: Filters = {
   days: 30,
@@ -48,7 +61,7 @@ function Distribution({
 }) {
   const groups = rank(rows, field).slice(0, 7)
   return <div className="p-4">
-    <BarMeter rows={groups.map(g => ({ key: g.label, label: field === "project" ? projectName(g.label) : g.label, value: g.value, color: "var(--color-info)" }))} onSelect={row => onSelect(row.key === "Unspecified" ? "" : row.key)} formatValue={number} showTotal={false} />
+    <BarMeter rows={groups.map(g => ({ key: g.label, label: field === "project" ? projectName(g.label) : g.label, value: g.value, color: "var(--color-fg-muted)" }))} onSelect={row => onSelect(row.key === "Unspecified" ? "" : row.key)} formatValue={number} showTotal={false} />
     {!groups.length && <p className="py-8 text-center dash-control text-fg-faint">No sessions in this view.</p>}
   </div>
 }
@@ -60,6 +73,12 @@ export function TranscriptDashboard() {
   const [filter, setFilter] = useState<Filters>(defaults)
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Session>()
+  const [tab, setTab] = useState<Tab>("sessions")
+  const [filteredTo, setFilteredTo] = useState("")
+  const [linkedId, setLinkedId] = useState(linkedSession)
+  const [loadedAt, setLoadedAt] = useState(0)
+  const [now, setNow] = useState(() => new Date().getTime())
+  const reload = useRef<() => void>(() => {})
   useEffect(() => {
     let active = true,
       sequence = 0
@@ -69,6 +88,7 @@ export function TranscriptDashboard() {
         const data = await read<Snapshot>("/snapshot")
         if (active && sequence === n) {
           setSnapshot(data)
+          setLoadedAt(new Date().getTime())
           setError("")
         }
       } catch (e) {
@@ -89,6 +109,7 @@ export function TranscriptDashboard() {
         if (active && sequence === n) setLoading(false)
       }
     }
+    reload.current = () => void load()
     void load()
     const off = dataRefreshRegistry("transcripts").subscribe(() => {
       void load()
@@ -96,12 +117,25 @@ export function TranscriptDashboard() {
     const timer = setInterval(() => {
       if (document.visibilityState !== "hidden") void load()
     }, 60000)
+    const tick = setInterval(() => setNow(new Date().getTime()), 30000)
     return () => {
+      clearInterval(tick)
       active = false
       off()
       clearInterval(timer)
     }
   }, [])
+  // A deep-linked session opens once the snapshot knows it.
+  useEffect(() => {
+    if (!linkedId || !snapshot) return
+    const hit = snapshot.sessions.find((s) => s.id === linkedId)
+    if (hit) setSelected(hit)
+  }, [linkedId, snapshot])
+  const open = (s?: Session) => {
+    setSelected(s)
+    setLinkedId(s?.id ?? "")
+    writeSessionParam(s?.id ?? "")
+  }
   const rows = useMemo(
     () => filterSessions(snapshot?.sessions ?? [], filter),
     [snapshot, filter],
@@ -112,42 +146,66 @@ export function TranscriptDashboard() {
     setFilter((f) => ({ ...f, ...patch }))
     setPage(0)
   }
+  const reset = () => {
+    setFilter(defaults)
+    setFilteredTo("")
+    setPage(0)
+  }
+  // A bar click filters the sessions list and takes you there.
+  const drill = (patch: Partial<Filters>, label: string) => {
+    set(patch)
+    setFilteredTo(label)
+    setTab("sessions")
+  }
   const maxPage = Math.max(0, Math.ceil(rows.length / 20) - 1)
   const visiblePage = Math.min(page, maxPage)
   const facets = snapshot?.facets
   const chartDays = filter.days || 90
   const colors = [
-    "var(--color-dash-series-1)",
-    "var(--color-dash-series-2)",
-    "var(--color-dash-series-3)",
+    "var(--color-fg-secondary)",
+    "var(--color-fg-muted)",
+    "var(--color-fg-faint)",
   ]
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <PageHeader title="Transcript insights" />
+      <PageHeader title="Transcripts" />
       <div className="border-b border-border px-4 py-2 dash-support text-fg-muted">
         <p className="font-mono dash-caption text-fg-faint">Dashboards / Fragments Engine</p>
-        <p>Explore recorded conversations, usage, and the work behind them.</p>
+        <p>Explore recorded conversations, usage, and the work behind them. Read-only; Fragments Engine owns the records.</p>
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
-        {snapshot && (
-          <div className="rounded border border-border px-3 py-2 text-right">
-            <div className="flex items-center gap-2 font-mono dash-caption uppercase text-info">
-              <Sparkles className="h-3 w-3" />
-              {snapshot.status.semantic
-                ? "Semantic index available"
-                : "Text index available"}
-            </div>
-            <p className="mt-1 dash-support text-fg-faint">
-              Read-only · Fragments Engine owns the records
-            </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Segmented<Tab>
+            bare
+            label="Transcript views"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: "sessions", label: "Sessions" },
+              { value: "insights", label: "Insights" },
+            ]}
+          />
+          <div className="flex items-center gap-2 dash-control text-fg-faint">
+            <span role="status">
+              {snapshot
+                ? `Updated ${sinceLabel(loadedAt, now)} · ${number(snapshot.sessions.length)} sessions loaded${snapshot.complete ? "" : ` · partial snapshot, latest ${number(snapshot.limit)} maximum`}`
+                : "Waiting for metadata"}
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => reload.current()}>
+              <RefreshCw className="h-3 w-3" /> Refresh
+            </Button>
           </div>
-        )}
+        </div>
       {error && (
         <div
           role="alert"
           className="rounded border border-danger/30 bg-danger-muted/10 p-3 dash-control text-danger"
         >
           Transcript source unavailable: {error}
+          {snapshot && " Showing the last snapshot."}{" "}
+          <button className="underline" onClick={() => reload.current()}>
+            Retry
+          </button>
         </div>
       )}
       {loading && (
@@ -159,7 +217,7 @@ export function TranscriptDashboard() {
           snapshot.
         </p>
       )}
-      <section
+      {tab === "insights" && <section
         aria-label="Database overview"
         className="overflow-hidden rounded border border-border bg-surface/20"
       >
@@ -198,7 +256,7 @@ export function TranscriptDashboard() {
             sub="Recorded labels, including aliases"
           />
         </KpiGrid>
-      </section>
+      </section>}
       <section className="space-y-4" aria-label="Filtered transcript insights">
         <DashboardToolbar className="items-end">
           <DashboardField orientation="stacked" label="Time window">
@@ -263,27 +321,24 @@ export function TranscriptDashboard() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              setFilter(defaults)
-              setPage(0)
-            }}
+            onClick={reset}
           >
             Reset
           </Button>
         </DashboardToolbar>
         <div className="flex flex-wrap items-center justify-between gap-3 dash-control">
           <span className="text-fg-muted">
-            {number(rows.length)} sessions in view{" "}
-            <span className="text-fg-faint">· filtered metadata</span>
-          </span>
-          <span
-            className={snapshot?.complete ? "text-fg-faint" : "text-warning"}
-          >
-            {snapshot
-              ? `${number(snapshot.sessions.length)} sessions loaded · ${snapshot.complete ? "source pagination complete" : `partial snapshot, latest ${number(snapshot.limit)} maximum`}`
-              : "Waiting for metadata"}
+            {number(rows.length)} sessions in view
           </span>
         </div>
+        {filteredTo && (
+          <p className="flex items-center gap-2 dash-control text-fg-muted">
+            Filtered to {filteredTo}
+            <Button variant="ghost" size="sm" onClick={reset}>
+              Reset filters
+            </Button>
+          </p>
+        )}
         {snapshot &&
           snapshot.complete &&
           snapshot.sessions.length !== facets?.total && (
@@ -293,6 +348,8 @@ export function TranscriptDashboard() {
               sessions.
             </p>
           )}
+        {tab === "insights" && (
+          <>
         <div className="overflow-hidden rounded border border-border bg-surface/20">
           <KpiGrid cols="grid-cols-2 lg:grid-cols-4">
             <Kpi
@@ -352,7 +409,7 @@ export function TranscriptDashboard() {
             <Distribution
               rows={rows}
               field="tool"
-              onSelect={(tool) => set({ tool })}
+              onSelect={(tool) => drill({ tool }, tool || "Unspecified tool")}
             />
           </Panel>
           <Panel
@@ -363,7 +420,7 @@ export function TranscriptDashboard() {
             <Distribution
               rows={rows}
               field="model"
-              onSelect={(model) => set({ model })}
+              onSelect={(model) => drill({ model }, model || "Unspecified model")}
             />
           </Panel>
           <Panel
@@ -374,12 +431,14 @@ export function TranscriptDashboard() {
             <Distribution
               rows={rows}
               field="project"
-              onSelect={(query) => set({ query })}
+              onSelect={(query) => drill({ query }, projectName(query) || "Unspecified project")}
             />
           </Panel>
         </div>
+          </>
+        )}
       </section>
-      <section
+      {tab === "sessions" && <section
         className="overflow-hidden rounded border border-border"
         aria-label="Transcript sessions"
       >
@@ -399,7 +458,7 @@ export function TranscriptDashboard() {
           getRowId={s => s.id}
           columns={[
             { key: "session", header: "Session / project", width: "fill", cell: s => <div className="min-w-0">
-              <button onClick={() => setSelected(s)} className="block w-full truncate text-left dash-body text-fg hover:text-info" title={s.title}>{s.title || "Untitled session"}</button>
+              <button onClick={() => open(s)} className="block w-full truncate text-left dash-body text-fg hover:text-info" title={s.title}>{s.title || "Untitled session"}</button>
               <div className="mt-1 truncate dash-caption text-fg-faint" title={s.project}>{projectName(s.project)} · {s.kind}</div>
             </div> },
             { key: "tool", header: "Tool / model", cell: s => <><span className="dash-control text-info">{s.tool}</span><div className="mt-1 max-w-52 truncate font-mono dash-caption text-fg-faint">{s.model || "Unspecified"}</div></> },
@@ -441,12 +500,12 @@ export function TranscriptDashboard() {
             </Button>
           </div>
         </div>
-      </section>
+      </section>}
       {selected && (
         <TranscriptDialog
           key={selected.id}
           session={selected}
-          onClose={() => setSelected(undefined)}
+          onClose={() => open(undefined)}
         />
       )}
       </div>

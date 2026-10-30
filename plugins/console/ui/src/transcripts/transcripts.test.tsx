@@ -113,11 +113,13 @@ describe("transcript dashboard", () => {
     read.mockResolvedValue(snapshot)
     render(<TranscriptDashboard />)
     await screen.findByText(/partial snapshot/)
+    fireEvent.click(screen.getByRole("tab", { name: "Insights" }))
     expect(
       within(
         screen.getByRole("region", { name: "Database overview" }),
       ).getByText("100"),
     ).toBeTruthy()
+    fireEvent.click(screen.getByRole("tab", { name: "Sessions" }))
     fireEvent.change(screen.getByLabelText("Tool"), {
       target: { value: "codex" },
     })
@@ -167,5 +169,42 @@ describe("transcript dashboard", () => {
       expect(screen.queryByRole("button", { name: "Fix routing" })).toBeNull(),
     )
     expect(screen.getByRole("alert").textContent).toContain("Access denied")
+  })
+  it("opens a deep-linked session and keeps the last snapshot when the source goes down", async () => {
+    window.history.replaceState(null, "", `/?session=${base.id}`)
+    read.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/snapshot"
+          ? snapshot
+          : { session: base, turns: [], turn_total: 0 },
+      ),
+    )
+    render(<TranscriptDashboard />)
+    await waitFor(() =>
+      expect(read).toHaveBeenCalledWith(
+        `/sessions/${base.id}?turn_offset=0`,
+        false,
+        expect.any(AbortSignal),
+      ),
+    )
+    fireEvent.keyDown(document.body, { key: "Escape" })
+    window.history.replaceState(null, "", "/")
+    read.mockRejectedValue(new Error("offline"))
+    refresh.fn()
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Showing the last snapshot",
+    )
+    expect(screen.getByRole("button", { name: "Fix routing" })).toBeTruthy()
+  })
+  it("turns an Insights bar click into a visible, resettable filter on Sessions", async () => {
+    read.mockResolvedValue(snapshot)
+    render(<TranscriptDashboard />)
+    await screen.findByText(/partial snapshot/)
+    fireEvent.click(screen.getByRole("tab", { name: "Insights" }))
+    fireEvent.click(await screen.findByText("claude"))
+    expect(screen.getByText(/Filtered to claude/)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Fix routing" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Reset filters" }))
+    expect(screen.getByRole("button", { name: "Fix routing" })).toBeTruthy()
   })
 })
