@@ -100,11 +100,13 @@ export function filterSessions(
   const cutoff =
     Date.parse(new Date(now).toISOString().slice(0, 10)) -
     (filter.days - 1) * 86400000
+  // A one-day window is the last 24 hours, not "since UTC midnight".
+  const from = filter.days === 1 ? now - 86400000 : cutoff
   return rows.filter(
     (s) =>
       (!filter.days ||
         (!!s.started_at &&
-          Date.parse(s.started_at) >= cutoff &&
+          Date.parse(s.started_at) >= from &&
           Date.parse(s.started_at) <= now)) &&
       (!filter.tool || s.tool === filter.tool) &&
       (!filter.model || s.model === filter.model) &&

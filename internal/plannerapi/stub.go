@@ -16,7 +16,7 @@ var assets embed.FS
 
 // Stub serves the fixtures. It keeps no state: writes are checked for shape and answer a fixture.
 //
-// Controls (X-Stub-Scenario): conflict (409 on any write), cycle (422 on POST relations),
+// Controls (X-Stub-Scenario): conflict (409 on any write; PUT pin answers revision_conflict with the current item), cycle (422 on POST relations),
 // degraded (/momentum), empty (a timeline or the agent work list). X-Stub-Status forces a status
 // with an error body.
 type Stub struct{}
@@ -56,6 +56,10 @@ func wrap(h http.HandlerFunc) http.HandlerFunc {
 		}
 		if r.Method != http.MethodGet && r.Header.Get("X-Stub-Scenario") == "conflict" {
 			w.WriteHeader(409)
+			if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/pin") {
+				_, _ = w.Write(fixture("pin_conflict"))
+				return
+			}
 			_, _ = w.Write(fixture("errors_conflict"))
 			return
 		}
@@ -156,6 +160,8 @@ func handlerFor(route string) http.HandlerFunc {
 	switch route {
 	case "POST /{db}/{id}/comments":
 		return comment
+	case "PUT /{db}/{id}/pin":
+		return pin
 	case "POST /{db}/{id}/relations":
 		return relation
 	case "DELETE /{db}/{id}/relations":
@@ -256,6 +262,36 @@ func comment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serve(w, "comment_status")
+}
+
+// pin answers the item with the requested pin state. The stub keeps no state; id "...-unknown" is 404.
+func pin(w http.ResponseWriter, r *http.Request) {
+	if _, ok := db(w, r); !ok {
+		return
+	}
+	m, ok := body(w, r, "pinned", "expected_revision")
+	if !ok || !needRevision(w, m) {
+		return
+	}
+	pinned, isBool := m["pinned"].(bool)
+	if !isBool {
+		errBody(w, 400, "invalid", "pinned (boolean) is required.")
+		return
+	}
+	if strings.Contains(r.PathValue("id"), "unknown") {
+		errBody(w, 404, "not_found", "Planner item or route not found.")
+		return
+	}
+	var v struct {
+		Item map[string]any `json:"item"`
+	}
+	_ = json.Unmarshal(fixture("pin_ok"), &v)
+	v.Item["id"], v.Item["db"] = r.PathValue("id"), r.PathValue("db")
+	v.Item["pinned"] = pinned
+	if !pinned {
+		v.Item["pinned_at"] = nil
+	}
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func relation(w http.ResponseWriter, r *http.Request) {
