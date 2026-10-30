@@ -121,3 +121,32 @@ Additive only; no new guard, level or enforcement. Existing clients keep reading
   and `POST /access/verify` exist on the approval inbox (same-origin and session checked like the other writes) and
   answer 501 `unsupported` until a Provider runs the exchange.
 - `Status` gained `LockedUntil` and `ExpiredAt`; `Error` gained `Action`.
+
+## ST1: settings registry (real)
+
+`internal/settingsreg` serves the admin manifest and group routes from a registry of groups, through the same libs
+`adminhttp` handler the stub uses. Mounted by `internal/server/register_settingsreg.go` (explicit `GET manifest`,
+`GET settings/{id}`, `POST settings/{id}/validate|update|reset`); under `TACHYON_SETTINGS_STUBS=1` the stub owns them.
+With no group registered the manifest is empty; ST2 registers the real groups.
+
+- **Registering.** A feature calls `settingsRegistry(s).Register(settingsreg.Group{...})` from its start hook instead of adding
+  a private route (file viewer roots, forge `agent_logins`, approvals batch settings, alerts, transcripts all follow this).
+  `Group` is the library fields plus: `Precedence` (default override, env, file, default), `Operator` (keys that need an
+  operator-token session), `Layers` (current env and file values with their labels), `Storage`, `Validate` (cross-field) and
+  `Applied` (called after a committed change). A bad id, key or declaration fails at registration.
+- **Layers and provenance.** Resolution follows the group's precedence; every value reports its `source`, `has_override`,
+  `editable` and `apply_state`. Only the override layer is written. The default `Storage` is one JSON row
+  `settings.<group>` in `app_settings`; a group may supply a `Storage` that maps a legacy row onto the same fields (ST2).
+  Env and file layers are read, never written back.
+- **Versions.** The manifest `revision` is a hash of all declarations; a group's ETag is a hash of the resolved values,
+  sources, permissions and apply state, so an env or file edit also invalidates it. Update and reset need `If-Match`
+  (428 without, 412 stale) and the current `revision` (409 `manifest_changed`).
+- **Writes** run in the serialized writer: the current row is read inside the transaction, the library's validation runs
+  on the staged candidate, and the row is saved only if it passes. A restart-required field whose value changes is
+  `pending_restart` (with its `apply_targets`) until the owner clears it.
+- **Guards.** Every request needs a browser session (401), refuses an `Authorization` header (403), and writes also need a
+  same-origin request. Writes use the new requirements-table action `settings.write` (browser-session). A field in a
+  group's `Operator` set reads as not editable below an operator session, and a write to it is refused with 403
+  `operator_access_required` plus the `step_up` hint (action `settings.write_operator`, operator-token). Those two rows
+  in `assurance.Requirements` are the only assurance change: no new guard, audit row or rate limit (CW-20261030-0082).
+- **Not here.** Secret fields, server-side drafts, an audit endpoint, and the groups themselves (ST2).
