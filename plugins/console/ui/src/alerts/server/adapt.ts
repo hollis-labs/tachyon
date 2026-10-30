@@ -36,9 +36,28 @@ export function kindLabel(kind: string): string {
   return words ? words[0].toUpperCase() + words.slice(1) : kind
 }
 
+const PR_REF = /([^/#\s]+)#(\d+)$/
+const PR_GOOD = new Set(['pr.opened', 'pr.merged', 'pr.closed'])
+
+/** "tachyon #326 merged": the repo and number from the PR subject, the event from the kind. */
+function prTitle(a: ServerAlert): string | undefined {
+  if (!a.kind?.startsWith('pr.')) return undefined
+  const ref = a.subjects?.find((x) => x.kind === 'pr')
+  const m = PR_REF.exec(ref?.ref ?? ref?.label ?? '')
+  if (!m) return undefined
+  return `${m[1]} #${m[2]} ${a.kind.slice(3).replace(/[._]+/g, ' ')}`
+}
+
+/** A merged or opened PR is news, not a failure. */
+export function severityOf(a: ServerAlert): ServerAlert['severity'] {
+  return PR_GOOD.has(a.kind) ? 'info' : a.severity
+}
+
 /** Titles the sources built from a raw kind ("Message message.failed") become sentences. */
 export function titleOf(a: ServerAlert): string {
   const title = a.display_title || a.title
+  const pr = prTitle(a)
+  if (pr && (!a.display_title)) return pr
   if (a.kind === 'alert.suppressed') return KIND_TITLE['alert.suppressed']
   if (!a.kind || !title.includes(a.kind)) return title
   const label = kindLabel(a.kind)
@@ -57,7 +76,7 @@ export function detailOf(a: ServerAlert): string | undefined {
 export function toAlert(a: ServerAlert): Alert {
   return {
     id: a.alert_id,
-    severity: a.severity,
+    severity: severityOf(a),
     icon: a.icon,
     title: titleOf(a),
     detail: detailOf(a),

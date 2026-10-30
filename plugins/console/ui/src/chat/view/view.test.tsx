@@ -106,6 +106,24 @@ describe('ChatView', () => {
     }
   })
 
+  it('on a narrow screen shows the list as home, then the thread with a back control', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width: 1023'), addEventListener() {}, removeEventListener() {} }))
+    const onBack = vi.fn()
+    try {
+      const { rerender } = render(<ChatView threads={T} activeThread={null} onSelectThread={() => undefined} onBack={onBack} />)
+      expect(screen.getByRole('list', { name: 'Threads' })).toBeTruthy()
+      expect(screen.queryByText('Select a conversation')).toBeNull()
+      rerender(<ChatView threads={T} activeThread={T[0]} onSelectThread={() => undefined} onBack={onBack}><p>conversation body</p></ChatView>)
+      fireEvent.click(screen.getByLabelText('Back to conversations'))
+      expect(onBack).toHaveBeenCalledTimes(1)
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+      expect(onBack).toHaveBeenCalledTimes(2)
+      expect(screen.getByText('conversation body')).toBeTruthy()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('starts with the details column collapsed and toggles it', () => {
     render(view())
     expect(screen.queryByRole('complementary', { name: 'Thread details' })).toBeNull()
@@ -242,6 +260,18 @@ describe('ChatPage', () => {
     expect(screen.getByTestId('where').textContent).toMatch(/^\/chat\/.+/)
     expect(screen.getByLabelText('Message')).toBeTruthy()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(MOCK_CHAT_AGENTS[1].agent.label)
+  })
+
+  it('opens the most recent conversation on a wide screen', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('1024'), addEventListener() {}, removeEventListener() {} }))
+    try {
+      setup()
+      await flush()
+      expect(screen.getByTestId('where').textContent).toMatch(/^\/chat\/.+/)
+      expect(screen.getByLabelText('Message')).toBeTruthy()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('sends through the client from the composer', async () => {

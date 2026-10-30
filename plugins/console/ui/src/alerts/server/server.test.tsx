@@ -209,6 +209,9 @@ describe('derived display fields', () => {
     expect(mk({ kind: 'tool.call.finished', title: 'tool.call.finished', summary: '7709c5dd-1234-4abc-8def-0123456789ab' })).toMatchObject({ title: 'Tool call finished', detail: 'in session 7709c5dd' })
     expect(mk({ kind: 'alert.suppressed', title: '1 events dropped from activity' }).title).toBe('Activity events were dropped')
     expect(mk({ kind: 'task.state_changed', title: 'CW-1 → review' }).title).toBe('CW-1 → review')
+    const pr = mk({ kind: 'pr.merged', title: 'hollis-labs/tachyon# pr.merged', severity: 'error', subjects: [{ kind: 'pr', ref: 'github:hollis-labs/tachyon#326', label: 'hollis-labs/tachyon#326' }] })
+    expect(pr).toMatchObject({ title: 'tachyon #326 merged', severity: 'info' })
+    expect(mk({ kind: 'pr.checks_failed', severity: 'error', title: 'x', subjects: [{ kind: 'pr', ref: 'github:o/r#9', label: 'o/r#9' }] })).toMatchObject({ title: 'r #9 checks failed', severity: 'error' })
     expect(mk({ kind: 'foo.bar_baz', title: 'foo.bar_baz' }).title).toBe('Foo bar baz')
   })
   it('prefers the server display title and source label without changing the source id', async () => {

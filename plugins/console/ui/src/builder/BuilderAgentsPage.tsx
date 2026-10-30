@@ -77,7 +77,7 @@ export function BuilderAgentsPage() {
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search agents" aria-label="Search agents" />
             <Select value={provider === '' ? ALL : provider} onValueChange={(v) => setProvider(v === null || v === ALL ? '' : String(v))}>
               <SelectTrigger className="h-8 w-44 dash-body" aria-label="Filter by provider">
-                <SelectValue />
+                <SelectValue>{(v: unknown) => (v === ALL || v == null ? 'All providers' : String(v))}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All providers</SelectItem>

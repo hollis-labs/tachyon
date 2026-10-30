@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Segmented } from '../components/segmented'
 import { useLoad } from '../builder/useLoad'
 import { BuilderError } from '../builder/api'
 import { useDiscardGuard } from '../builder/DiscardGuard'
@@ -30,7 +31,6 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-const count = (v: number | null | undefined) => (v == null ? NOT_REPORTED : String(v))
 
 function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [load, retry] = useLoad(() => registryApi.get(id), [id])
@@ -81,7 +81,15 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const c = p.consumed_by
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-auto"
+      onKeyDown={(e) => {
+        if (editing && dirty > 0 && !busy && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+          e.preventDefault()
+          void save()
+        }
+      }}
+    >
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
         <button type="button" onClick={onBack} className="dash-control text-fg-muted hover:text-fg md:hidden">
           ← Projects
@@ -98,7 +106,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
       </header>
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
-          <span className="mr-auto">{dirty === 0 ? 'No unsaved changes' : `Changing ${dirty} field${dirty === 1 ? '' : 's'}: ${fieldList(Object.keys(patch))}`}</span>
+          <span className="mr-auto">{dirty === 0 ? 'No unsaved changes' : `Unsaved changes: ${fieldList(Object.keys(patch))}`}</span>
           {error && (
             <span role="alert" className="text-danger">
               {error}
@@ -117,7 +125,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
             Discard
           </Button>
           <Button type="button" variant="default" size="sm" disabled={dirty === 0 || busy} onClick={save}>
-            {busy ? 'Saving' : 'Save profile'}
+            {busy ? 'Saving' : error ? 'Retry' : 'Save'}
           </Button>
         </div>
       )}
@@ -225,14 +233,17 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <dl>
           <Row label="Agents">{c?.agents == null ? NOT_REPORTED : c.agents.length ? c.agents.map((a) => a.name || a.id).join(', ') : 'none'}</Row>
           <Row label="Launches">{c?.launches == null ? NOT_REPORTED : c.launches.length ? c.launches.map((l) => l.id).join(', ') : 'none'}</Row>
-          <Row label="Planner items">{c?.planner_items == null ? NOT_REPORTED : `${c.planner_items.open} open of ${c.planner_items.total}`}</Row>
-          <Row label="Sessions">{c?.tether_sessions == null ? NOT_REPORTED : `${c.tether_sessions.live} live of ${c.tether_sessions.total}`}</Row>
+          {c?.planner_items != null && (
+            <Row label="Planner items">{c.planner_items.total == null ? `${c.planner_items.open} open` : `${c.planner_items.open} open of ${c.planner_items.total}`}</Row>
+          )}
+          <Row label="Sessions">{c?.tether_sessions == null ? NOT_REPORTED : c.tether_sessions.total == null ? `${c.tether_sessions.live} live` : `${c.tether_sessions.live} live of ${c.tether_sessions.total}`}</Row>
         </dl>
       </section>
-      {(p.soon ?? []).length > 0 && <p className="border-t border-border-subtle px-5 py-4 dash-support text-fg-faint">Not built yet: {p.soon?.join(', ')}.</p>}
     </div>
   )
 }
+
+type LinkFilter = 'all' | 'linked' | 'unlinked'
 
 /** Registry projects: list and profile. Profile edits write directly (operator session); catalog tool servers go through Builder changes. */
 export function RegistryProjectsPage() {
@@ -245,7 +256,9 @@ export function RegistryProjectsPage() {
     return () => clearTimeout(t)
   }, [q])
   const [load, retry] = useLoad(() => registryApi.list(debounced), [debounced])
-  const rows: ProjectRow[] = load.status === 'ready' ? load.data.projects : []
+  const [link, setLink] = useState<LinkFilter>('all')
+  const all: ProjectRow[] = load.status === 'ready' ? load.data.projects : []
+  const rows = all.filter((r) => link === 'all' || (link === 'linked') === (r.link.state === 'linked'))
   useEffect(() => {
     if (!id && rows.length > 0 && window.matchMedia?.('(min-width: 768px)').matches) navigate(`/registry/projects/${encodeURIComponent(rows[0].id)}`, { replace: true })
   }, [id, rows, navigate])
@@ -253,13 +266,23 @@ export function RegistryProjectsPage() {
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex flex-wrap items-baseline gap-x-4 border-b border-border px-4 py-3">
         <h1 className="text-lg font-semibold text-fg">Registry</h1>
-        <p className="dash-support text-fg-muted">Projects and the profile agents read. Machines, services and repos are not built yet.</p>
+        <p className="dash-support text-fg-muted">Projects and the profile agents read.</p>
       </header>
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
           <div className="border-b border-border p-3">
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search projects" aria-label="Search projects" />
           </div>
+          <Segmented<LinkFilter>
+            label="Catalog link"
+            value={link}
+            onChange={setLink}
+            items={[
+              { value: 'all', label: 'All' },
+              { value: 'linked', label: 'Linked' },
+              { value: 'unlinked', label: 'Not linked' },
+            ]}
+          />
           <div className="min-h-0 flex-1 overflow-auto">
             {load.status === 'loading' && (
               <div aria-busy="true" className="space-y-2 p-4">
@@ -276,7 +299,11 @@ export function RegistryProjectsPage() {
                 </Button>
               </div>
             )}
-            {load.status === 'ready' && rows.length === 0 && <p className="p-4 dash-body text-fg-faint">No projects match.</p>}
+            {load.status === 'ready' && rows.length === 0 && (
+              <p className="p-4 dash-body text-fg-faint">
+                {all.length === 0 && !debounced ? 'No projects in the registry yet.' : 'No projects match.'}
+              </p>
+            )}
             <ul aria-label="Projects" className="divide-y divide-border-subtle">
               {rows.map((r) => (
                 <li key={r.id}>
@@ -288,7 +315,7 @@ export function RegistryProjectsPage() {
                   >
                     <span className="block truncate dash-body text-fg">{r.display_name || r.id}</span>
                     <span className="block truncate dash-support text-fg-muted">
-                      {STATUS[r.status] ?? r.status} · {r.link.state === 'linked' ? 'Linked' : 'Not linked'} · {count(r.counts?.agents)} agents
+                      {[STATUS[r.status] ?? r.status, r.link.state === 'linked' ? null : 'Not linked', r.counts?.agents == null ? null : `${r.counts.agents} agents`].filter(Boolean).join(' · ')}
                     </span>
                   </button>
                 </li>
