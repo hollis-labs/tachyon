@@ -117,6 +117,8 @@ func errCode(s int) string {
 		return "not_found"
 	case 409:
 		return "stale_revision"
+	case 413:
+		return "payload_too_large"
 	case 422:
 		return "confirmation_required"
 	case 429:
@@ -330,14 +332,28 @@ func resolve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, "reason_required", "Denying this item needs a reason.")
 			return
 		}
-		if str(it, "group") == "secret" {
-			var a map[string]any
+		if str(it, "group") == "secret" || r.Header.Get("X-Stub-Scenario") == "secret_ref_invalid" {
+			var a map[string]json.RawMessage
 			_ = json.Unmarshal(b.Response.Answers, &a)
-			for _, v := range a {
-				if s, _ := v.(string); !strings.HasPrefix(s, "secret://tachyon/") {
-					fail(w, 422, "invalid_secret_ref", "Secret answers must be secret references from /secrets.")
-					return
+			snap, _ := it["request_snapshot"].(map[string]any)
+			fields, _ := snap["fields"].([]any)
+			bad := r.Header.Get("X-Stub-Scenario") == "secret_ref_invalid"
+			for _, f := range fields {
+				fm, _ := f.(map[string]any)
+				if fm["kind"] != "secret" {
+					continue
 				}
+				id, _ := fm["id"].(string)
+				var ans struct {
+					Ref string `json:"secret_ref"`
+				}
+				if json.Unmarshal(a[id], &ans) != nil || !secretRefOK(ans.Ref, str(it, "item_id"), id) {
+					bad = true
+				}
+			}
+			if bad {
+				fail(w, 422, "secret_ref_invalid", "Secret answers must be {\"secret_ref\": ...} from /secrets for this item and field.")
+				return
 			}
 		}
 		var ok item
@@ -552,18 +568,92 @@ func access(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, v)
 }
 
+// secretMemo is the stub's only secret memory: minted refs (never values) and Idempotency-Key replays.
+type secretMemo struct {
+	digest string
+	status int
+	body   []byte
+}
+
+var (
+	secretMu   sync.Mutex
+	secretSeq  int
+	secretRefs = map[string][2]string{"secret://tachyon/sec_01hqexample": {"ap_secret", "deploy_token"}}
+	secretIdem = map[string]secretMemo{}
+)
+
+func secretRefOK(ref, itemID, field string) bool {
+	secretMu.Lock()
+	defer secretMu.Unlock()
+	b, ok := secretRefs[ref]
+	return ok && b == [2]string{itemID, field}
+}
+
 type secretBody struct {
 	ItemID string `json:"item_id"`
 	Field  string `json:"field"`
 	Value  string `json:"value"`
 }
 
-// secrets stores nothing and never echoes the value.
-func secrets(w http.ResponseWriter, r *http.Request) {
-	var b secretBody
-	if _, ok := readBody(w, r, &b, MaxSecretBytes+4<<10); !ok {
-		return
+// readSecret takes JSON {item_id, field, value<=16 KiB} or multipart (item_id, field, file<=64 KiB).
+// It returns the size and a digest of the request for Idempotency-Key checks; the value itself is dropped.
+func readSecret(w http.ResponseWriter, r *http.Request) (b secretBody, size int, digest string, ok bool) {
+	h := sha256.New()
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		r.Body = http.MaxBytesReader(w, r.Body, MaxSecretFileSize+8<<10)
+		if err := r.ParseMultipartForm(MaxSecretFileSize + 8<<10); err != nil {
+			if strings.Contains(err.Error(), "too large") {
+				fail(w, 413, "payload_too_large", "A secret file is at most 64 KiB.")
+			} else {
+				fail(w, 400, "invalid", "Send multipart fields item_id, field and a file.")
+			}
+			return
+		}
+		b.ItemID, b.Field = r.FormValue("item_id"), r.FormValue("field")
+		f, _, err := r.FormFile("file")
+		if err != nil {
+			fail(w, 400, "invalid", "Send the secret as the file part.")
+			return
+		}
+		defer f.Close()
+		data, err := io.ReadAll(io.LimitReader(f, MaxSecretFileSize+1))
+		if err != nil || len(data) == 0 {
+			fail(w, 400, "invalid", "The file is empty.")
+			return
+		}
+		if len(data) > MaxSecretFileSize {
+			fail(w, 413, "payload_too_large", "A secret file is at most 64 KiB.")
+			return
+		}
+		h.Write(data)
+		size = len(data)
+	} else {
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxSecretBytes+8<<10))
+		if err != nil {
+			fail(w, 413, "payload_too_large", "A secret value is at most 16 KiB.")
+			return
+		}
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		if dec.Decode(&b) != nil || len(b.Value) == 0 {
+			fail(w, 400, "invalid", "Send item_id, field and a non-empty value.")
+			return
+		}
+		if len(b.Value) > MaxSecretBytes {
+			fail(w, 413, "payload_too_large", "A secret value is at most 16 KiB.")
+			return
+		}
+		h.Write([]byte(b.Value))
+		size = len(b.Value)
 	}
+	h.Write([]byte("|" + b.ItemID + "|" + b.Field))
+	return b, size, hex.EncodeToString(h.Sum(nil)), true
+}
+
+// secrets mints a fake reference and stores nothing; the value is never echoed or kept. Scenarios
+// (X-Stub-Scenario): secrets_unavailable 503, not_elevated 403 assurance_insufficient with step_up,
+// item_not_pending 409, secret_field_unknown 409, rate_limited 429.
+func secrets(w http.ResponseWriter, r *http.Request) {
 	switch r.Header.Get("X-Stub-Scenario") {
 	case "secrets_unavailable":
 		var v item
@@ -571,32 +661,73 @@ func secrets(w http.ResponseWriter, r *http.Request) {
 		write(w, 503, v)
 		return
 	case "not_elevated":
-		fail(w, 403, "operator_access_required", "Operator access is needed to submit a secret.")
+		write(w, 403, item{"code": "assurance_insufficient", "message": "Enter your operator key to submit a secret.",
+			"step_up": item{"required": "operator-token", "can_elevate": true, "elevate_path": Prefix + "/elevate"}})
+		return
+	case "rate_limited":
+		fail(w, 429, "rate_limited", "At most 10 secrets a minute.")
+		return
+	case "item_not_pending":
+		fail(w, 409, "item_not_pending", "That request was already decided or has expired.")
+		return
+	case "secret_field_unknown":
+		fail(w, 409, "secret_field_unknown", "That request has no secret field with that id.")
 		return
 	}
-	if len(b.Value) == 0 || len(b.Value) > MaxSecretBytes {
-		fail(w, 400, "invalid", "value must be 1 byte to 16 KiB.")
-		return
-	}
-	it, ok := items()[b.ItemID]
+	b, size, digest, ok := readSecret(w, r)
 	if !ok {
+		return
+	}
+	it, found := items()[b.ItemID]
+	if !found {
 		fail(w, 404, "not_found", "No such item.")
+		return
+	}
+	if !pending(it) {
+		fail(w, 409, "item_not_pending", "That request was already decided or has expired.")
 		return
 	}
 	snap, _ := it["request_snapshot"].(map[string]any)
 	fields, _ := snap["fields"].([]any)
 	has := false
 	for _, f := range fields {
-		fm := f.(map[string]any)
+		fm, _ := f.(map[string]any)
 		has = has || fm["id"] == b.Field && fm["kind"] == "secret"
 	}
 	if !has {
-		fail(w, 400, "invalid", "That item has no secret field with that id.")
+		fail(w, 409, "secret_field_unknown", "That request has no secret field with that id.")
 		return
 	}
+	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if len(key) > 128 {
+		fail(w, 400, "invalid", "Idempotency-Key is at most 128 characters.")
+		return
+	}
+	secretMu.Lock()
+	defer secretMu.Unlock()
+	if key != "" {
+		if memo, seen := secretIdem[key]; seen {
+			if memo.digest != digest {
+				fail(w, 409, "idempotency_key_reuse", "That Idempotency-Key was used for a different secret.")
+				return
+			}
+			w.Header().Set("Idempotent-Replay", "true")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(memo.status)
+			_, _ = w.Write(memo.body)
+			return
+		}
+	}
+	secretSeq++
 	var v item
 	load("secret_ref", &v)
-	v["size"] = len(b.Value)
+	ref := fmt.Sprintf("secret://tachyon/sec_stub%04d", secretSeq)
+	v["secret_ref"], v["size"] = ref, size
+	secretRefs[ref] = [2]string{b.ItemID, b.Field}
+	body, _ := json.Marshal(v)
+	if key != "" {
+		secretIdem[key] = secretMemo{digest: digest, status: 201, body: append(body, '\n')}
+	}
 	write(w, 201, v)
 }
 
