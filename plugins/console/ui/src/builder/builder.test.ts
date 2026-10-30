@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { parseEvent } from './stream'
 import { type AgentDetail, BuilderError, errorMessage } from './api'
 import { buildOps, buildPartOps, changedPartPaths, changingText, changedPaths, isOpen, minutesAndSeconds, relativeTime } from './changes'
 import { SECTIONS, STATE_LABEL } from './vocab'
@@ -57,11 +58,18 @@ describe('part ops', () => {
   })
 })
 
-
 describe('changingText', () => {
   it('lists what changed', () => {
     expect(changingText([])).toBe('No unsaved changes')
     expect(changingText(['Body'])).toBe('Changing 1 field: Body')
     expect(changingText(['Body', 'Summary'])).toBe('Changing 2 fields: Body, Summary')
+  })
+})
+
+describe('parseEvent', () => {
+  it('accepts known flat events and drops the rest', () => {
+    expect(parseEvent('{"type":"change","at":1,"change_id":"c","state":"approved"}')).toMatchObject({ type: 'change', change_id: 'c' })
+    expect(parseEvent('{"type":"nope","at":1}')).toBeNull()
+    expect(parseEvent('not json')).toBeNull()
   })
 })
