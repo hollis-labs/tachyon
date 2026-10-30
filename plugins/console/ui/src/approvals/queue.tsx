@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react"
 import { Chip } from "../components/chip"
 import { kindLabel, type ApprovalItem } from "./client"
 import { InitialsAvatar } from "../components/initials-avatar"
+import { batchEligibility } from "./batch"
 import { Countdown, RiskChip } from "./parts"
 
 const who = (i: ApprovalItem) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id
@@ -43,20 +44,26 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history, hel
             className={`group cursor-pointer px-4 py-3 ${held?.has(i.item_id) ? "opacity-50" : ""} ${selected ? "bg-surface/60" : "hover:bg-surface/30"}`}
           >
             <div className="flex items-start gap-3">
-              {onCheck && !history && (
-                // A 40px target on touch. Only batchable items can be picked; the others keep the space.
-                <span
-                  onClick={(e) => e.stopPropagation()}
-                  className={`-m-2.5 flex shrink-0 items-center justify-center p-2.5 md:-m-1 md:p-1 ${i.batchable ? "" : "invisible"}`}
-                >
-                  <Checkbox
-                    aria-label={`Select ${r.title}`}
-                    disabled={!i.batchable}
-                    checked={checked?.has(i.item_id) ?? false}
-                    onCheckedChange={(v) => onCheck(i.item_id, v)}
-                  />
-                </span>
-              )}
+              {onCheck && !history && (() => {
+                const el = batchEligibility(i)
+                const why = el.reasons.join(" ")
+                // A 40px target on touch. A request that cannot be batched keeps a dashed box that says why.
+                return (
+                  <span
+                    onClick={(e) => e.stopPropagation()}
+                    title={el.ok ? undefined : `Review on its own. ${why}`}
+                    className="-m-2.5 flex shrink-0 items-center justify-center p-2.5 md:-m-1 md:p-1"
+                  >
+                    <Checkbox
+                      aria-label={el.ok ? `Select ${r.title}` : `${r.title} cannot be batched. ${why}`}
+                      disabled={!el.ok}
+                      checked={checked?.has(i.item_id) ?? false}
+                      onCheckedChange={(v) => onCheck(i.item_id, v)}
+                      className={el.ok ? undefined : "border-dashed opacity-60"}
+                    />
+                  </span>
+                )
+              })()}
               <InitialsAvatar name={who(i)} className="mt-0.5 size-8" />
               <div className="min-w-0 flex-1">
                 <div className={`truncate dash-body text-fg ${selected ? "font-medium" : ""}`}>{r.title}</div>

@@ -16,6 +16,7 @@ import {
   type ApprovalItem,
   type ApprovalClient,
 } from "./client"
+import { MAX_BATCH, batchEligibility } from "./batch"
 import { ApprovalDialog } from "./dialog"
 import { ApprovalProvider } from "./context"
 import { ApprovalsPage } from "./page"
@@ -598,21 +599,45 @@ describe("batch approve", () => {
       inbox: vi.fn().mockResolvedValue({ pending: [a, b, c], history: [] }),
       ...noAudit,
       present: vi.fn().mockResolvedValue(a),
+      access: vi.fn().mockResolvedValue({ batch_allowed: true }),
       batchResolve,
     } as unknown as ApprovalClient
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     await screen.findByRole("option", { name: /Request a/ })
-    expect((screen.getByRole("checkbox", { name: "Select Request c" }) as HTMLElement).getAttribute("data-disabled")).not.toBeNull()
+    expect((screen.getByRole("checkbox", { name: /Request c cannot be batched/ }) as HTMLElement).getAttribute("data-disabled")).not.toBeNull()
     tick("Select Request a")
     tick("Select Request b")
     fireEvent.click(await screen.findByRole("button", { name: "Approve 2" }))
     expect(batchResolve).not.toHaveBeenCalled()
     expect(screen.getByText(/Approve 2 requests\? This cannot be undone/)).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
+    fireEvent.click(screen.getByRole("button", { name: /Approve all 2/ }))
     await screen.findByText("1 approved, 1 left in the queue to review one by one.")
     expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
     expect(screen.queryByText(/left in the queue/)).toBeNull()
+  })
+  it("turns the decision off and says why when operator access is missing", async () => {
+    const a = low("a", true)
+    const client = {
+      inbox: vi.fn().mockResolvedValue({ pending: [a], history: [] }),
+      ...noAudit,
+      present: vi.fn().mockResolvedValue(a),
+      access: vi.fn().mockResolvedValue({ batch_allowed: false }),
+    } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await screen.findByRole("option", { name: /Request a/ })
+    tick("Select Request a")
+    await screen.findByText(/Operator access needed/)
+    expect((screen.getByRole("button", { name: "Approve 1" }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe("batch eligibility", () => {
+  it("explains a refusal from the server's blockers and caps a batch at 25", () => {
+    expect(batchEligibility({ batchable: true })).toEqual({ ok: true, reasons: [] })
+    expect(batchEligibility({ batchable: false, batch_blockers: ["high_risk", "needs_review"] }).reasons).toEqual(["High risk: review it on its own.", "Needs review."])
+    expect(batchEligibility({ batchable: false }).reasons).toEqual(["Review it on its own."])
+    expect(MAX_BATCH).toBe(25)
   })
 })
 

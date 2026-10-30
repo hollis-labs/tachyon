@@ -4,7 +4,9 @@ import { PillTabs } from "../components/pill-tabs"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
-import { ApprovalError, kindLabel, type ApprovalItem, type HistoryFacets } from "./client"
+import { ApprovalError, kindLabel, type ApprovalItem, type BatchResult, type HistoryFacets } from "./client"
+import { Chip } from "../components/chip"
+import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility } from "./batch"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
@@ -38,6 +40,8 @@ export function ApprovalsPage() {
   const [confirming, setConfirming] = useState<"approved" | "denied">()
   const [batchBusy, setBatchBusy] = useState(false)
   const [batchNote, setBatchNote] = useState("")
+  const [batchResults, setBatchResults] = useState<BatchResult["results"]>()
+  const [accessNeeded, setAccessNeeded] = useState(false)
   const restoredItem = queue?.restored
   useEffect(() => {
     if (restoredItem) {
@@ -69,10 +73,12 @@ export function ApprovalsPage() {
   const live = rows.filter((r) => !heldIds.has(r.item_id))
   const current = live.find((r) => r.item_id === selectedId) ?? live[0]
   const restored = queue.restored
-  const picked = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => checked.has(i.item_id) && i.batchable)
-  const lowRisk = (queue.inbox?.pending ?? []).filter((i) => i.batchable && i.request_snapshot.class === "low" && !heldIds.has(i.item_id))
+  const picked = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => checked.has(i.item_id) && batchEligibility(i).ok).slice(0, MAX_BATCH)
+  const lowRisk = (queue.inbox?.pending ?? []).filter((i) => batchEligibility(i).ok && i.request_snapshot.class === "low" && !heldIds.has(i.item_id)).slice(0, MAX_BATCH)
   const batchable = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => i.batchable && !heldIds.has(i.item_id))
   const check = (id: string, on: boolean) => {
+    if (on && checked.size >= MAX_BATCH) return
+    setBatchResults(undefined)
     setConfirming(undefined)
     setBatchNote("")
     setChecked((c) => {
@@ -86,6 +92,7 @@ export function ApprovalsPage() {
     setBatchBusy(true)
     try {
       const r = await queue!.client.batchResolve(picked, decision)
+      setBatchResults(r.results.filter((x) => x.status !== "resolved"))
       const c = r.counts
       const rest = (c.stale ?? 0) + (c.ineligible ?? 0) + (c.conflict ?? 0) + (c.expired ?? 0) + (c.error ?? 0)
       setBatchNote(
@@ -104,6 +111,14 @@ export function ApprovalsPage() {
       void queue!.refresh(true)
     }
   }
+  // Ask once when a batch opens; a failed lookup leaves the buttons on, the server still refuses.
+  const hasBatch = picked.length > 0
+  useEffect(() => {
+    if (!hasBatch || !queue) return
+    let live = true
+    queue.client.access().then((a) => live && setAccessNeeded(!a.batch_allowed), () => {})
+    return () => { live = false }
+  }, [hasBatch, queue])
   const select = (id: string) => {
     setSelectedId(id)
     setShowDetail(true)
@@ -183,8 +198,18 @@ export function ApprovalsPage() {
           {view === "pending" && picked.length === 0 && batchNote && (
             <div role="region" aria-label="Batch decision" className="flex items-center gap-2 border-y border-border px-4 py-2 dash-control text-fg-muted">
               <span role="status">{batchNote}</span>
-              <Button size="sm" variant="ghost" onClick={() => setBatchNote("")}>Dismiss</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setBatchNote(""); setBatchResults(undefined) }}>Dismiss</Button>
             </div>
+          )}
+          {view === "pending" && picked.length === 0 && batchNote && batchResults && batchResults.length > 0 && (
+            <ul aria-label="Batch results" className="divide-y divide-border border-b border-border">
+              {batchResults.map((r) => (
+                <li key={r.item_id} className="flex items-center gap-3 px-4 py-2">
+                  <span className="min-w-0 flex-1 truncate dash-control text-fg">{queue.inbox?.pending.find((i) => i.item_id === r.item_id)?.request_snapshot.title ?? r.item_id}</span>
+                  <Chip tone="danger">{BATCH_STATUS_COPY[r.status]}</Chip>
+                </li>
+              ))}
+            </ul>
           )}
           <ApprovalQueue
             checked={checked}
@@ -215,6 +240,7 @@ export function ApprovalsPage() {
               items={picked}
               confirming={confirming}
               busy={batchBusy}
+              accessNeeded={accessNeeded}
               onConfirm={(d) => { setBatchNote(""); setConfirming(d) }}
               onCancel={() => setConfirming(undefined)}
               onBack={() => { setConfirming(undefined); setChecked(new Set()) }}

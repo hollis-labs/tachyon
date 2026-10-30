@@ -299,6 +299,10 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
         }),
       })
     },
+    // Whether this operator may decide in bulk. The route needs the inbox grant, like the rest.
+    access() {
+      return request<{ batch_allowed: boolean; reason?: string }>("/access")
+    },
     undefer(id: string) {
       return request<DeferResult>(`/items/${encodeURIComponent(id)}/defer`, { method: "DELETE" })
     },
