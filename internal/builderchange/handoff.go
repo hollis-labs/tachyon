@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/hollis-labs/tachyon/internal/builderapi"
 )
 
@@ -28,19 +30,34 @@ type Bundle struct {
 }
 
 // commandsFor builds the operator's steps for a bundle. Tether's CLI has `catalog show` and `catalog approve`
-// only: planning and applying are MCP tools (tether_catalog_plan, tether_catalog_apply) of a session that holds
-// catalog.write, so those steps are actions with no shell command. The spellings live here so a correction is
-// one edit; `<plan_id>` stands in until mark_planned supplies it.
+// only (kind shell). Planning and applying are MCP tools (tether_catalog_plan, tether_catalog_apply) of a
+// session that holds catalog.write, so those steps are kind session: command is the text to give that session.
+// The spellings live here so a correction is one edit; `<plan_id>` stands in until mark_planned supplies it.
 func commandsFor(planID string) []Command {
 	if planID == "" {
 		planID = "<plan_id>"
 	}
 	return []Command{
-		{Step: "plan", Label: "Ask a session with catalog.write to plan this bundle", Kind: "action", Tool: "tether_catalog_plan"},
+		{Step: "plan", Label: "Ask a session with catalog.write to plan this bundle", Kind: "session", Command: "Call tether_catalog_plan with the downloaded bundle (name, note, files) exactly as it is."},
 		{Step: "show", Label: "Review the plan", Kind: "shell", Command: "tether catalog show " + planID},
 		{Step: "approve", Label: "Approve the plan", Kind: "shell", Command: "tether catalog approve " + planID},
-		{Step: "apply", Label: "Ask the same session to apply the approved plan", Kind: "action", Tool: "tether_catalog_apply"},
+		{Step: "apply", Label: "Ask the same session to apply the approved plan", Kind: "session", Command: "Call tether_catalog_apply with plan_id " + planID + "."},
 	}
+}
+
+// hasEnvValues reports whether a file carries environment values (a non-empty env or overrides.env map). Such a
+// bundle is for the operator's browser only: it is never handed to a session, a prompt, mail or Tesseract.
+func hasEnvValues(f File) bool {
+	if strings.HasSuffix(f.Path, ".md") {
+		return false
+	}
+	var d struct {
+		Env       map[string]any `yaml:"env"`
+		Overrides struct {
+			Env map[string]any `yaml:"env"`
+		} `yaml:"overrides"`
+	}
+	return yaml.Unmarshal([]byte(f.Content), &d) == nil && (len(d.Env) > 0 || len(d.Overrides.Env) > 0)
 }
 
 func bundleSHA(name, note string, files []File) string {
@@ -55,8 +72,14 @@ func bundleSHA(name, note string, files []File) string {
 // handoffFor describes the copy-mode bundle for a validated change. Session mode (BH2) is not offered yet.
 func (s *Service) handoffFor(c *Change, files []File) *Handoff {
 	name := "builder " + c.ChangeID
+	reason := "not_configured"
+	for _, f := range files {
+		if hasEnvValues(f) {
+			reason = "contains_env_values" // never handed to a session, even once session mode exists
+		}
+	}
 	return &Handoff{Mode: builderapi.HandoffCopy, Name: name, BundleSHA256: bundleSHA(name, c.Note, files), Files: len(files),
-		SessionAvailable: false, Reason: "not_configured", Commands: commandsFor("")}
+		SessionAvailable: false, Reason: reason, Commands: commandsFor("")}
 }
 
 func newSHA(c *Change, path string) string {

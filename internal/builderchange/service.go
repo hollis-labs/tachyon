@@ -88,14 +88,14 @@ type Handoff struct {
 	Commands []Command `json:"commands"`
 }
 
-// Command is one step of the hand-off. kind shell: run Command in a terminal on the host. kind action: ask a
-// session that holds catalog.write to call the MCP tool named by Tool (there is no CLI for it).
+// Command is one step of the hand-off. kind shell: run Command in a terminal on the host. kind session: Command
+// is the text to give a Tether session that holds catalog.write (plan and apply are MCP tools; there is no CLI).
+// An omitted kind reads as shell.
 type Command struct {
 	Step    string `json:"step"` // plan | show | approve | apply
 	Label   string `json:"label"`
-	Kind    string `json:"kind"` // shell | action
-	Command string `json:"command,omitempty"`
-	Tool    string `json:"tool,omitempty"`
+	Kind    string `json:"kind"` // shell | session
+	Command string `json:"command"`
 }
 type Failure struct {
 	Step    string `json:"step"`

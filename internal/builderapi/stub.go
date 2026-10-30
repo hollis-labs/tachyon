@@ -708,17 +708,18 @@ func changeRearm(w http.ResponseWriter, r *http.Request) {
 }
 
 // handoffCommands is what the server builds so the UI never hard-codes CLI flags. Tether's CLI has show and
-// approve only; planning and applying are MCP tools of a session that holds catalog.write (kind action, no
-// shell command). The plan id is a placeholder until mark_planned gives it.
+// approve only (kind shell); planning and applying are MCP tools of a session that holds catalog.write, so
+// those steps are kind session: command is the text to give that session. The plan id is a placeholder until
+// mark_planned gives it.
 func handoffCommands(planID string) []map[string]any {
 	if planID == "" {
 		planID = "<plan_id>"
 	}
 	return []map[string]any{
-		{"step": "plan", "label": "Ask a session with catalog.write to plan this bundle", "kind": "action", "tool": "tether_catalog_plan"},
+		{"step": "plan", "label": "Ask a session with catalog.write to plan this bundle", "kind": "session", "command": "Call tether_catalog_plan with the downloaded bundle (name, note, files) exactly as it is."},
 		{"step": "show", "label": "Review the plan", "kind": "shell", "command": "tether catalog show " + planID},
 		{"step": "approve", "label": "Approve the plan", "kind": "shell", "command": "tether catalog approve " + planID},
-		{"step": "apply", "label": "Ask the same session to apply the approved plan", "kind": "action", "tool": "tether_catalog_apply"},
+		{"step": "apply", "label": "Ask the same session to apply the approved plan", "kind": "session", "command": "Call tether_catalog_apply with plan_id " + planID + "."},
 	}
 }
 

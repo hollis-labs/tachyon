@@ -68,11 +68,14 @@ func TestHandoffCreateBundleAndAppliedIsDetected(t *testing.T) {
 	if shaOf(b.Files[0].Content) != c.Targets[0].NewSHA {
 		t.Fatal("bundle content must hash to the target's new_sha")
 	}
-	// the CLI has show and approve only; plan and apply are MCP-tool actions with no shell command
-	if cm := c.Handoff.Commands; len(cm) != 4 || cm[0].Step != "plan" || cm[0].Kind != "action" || cm[0].Tool != "tether_catalog_plan" || cm[0].Command != "" ||
-		cm[1].Command != "tether catalog show <plan_id>" || cm[2].Command != "tether catalog approve <plan_id>" ||
-		cm[3].Step != "apply" || cm[3].Kind != "action" || cm[3].Tool != "tether_catalog_apply" || cm[3].Command != "" || len(b.Commands) != 4 {
+	// the CLI has show and approve only; plan and apply are text for a session that holds catalog.write
+	if cm := c.Handoff.Commands; len(cm) != 4 || cm[0].Step != "plan" || cm[0].Kind != "session" || !strings.Contains(cm[0].Command, "tether_catalog_plan") ||
+		cm[1].Command != "tether catalog show <plan_id>" || cm[1].Kind != "shell" || cm[2].Command != "tether catalog approve <plan_id>" ||
+		cm[3].Step != "apply" || cm[3].Kind != "session" || !strings.Contains(cm[3].Command, "tether_catalog_apply") || len(b.Commands) != 4 {
 		t.Fatalf("commands: %+v / %+v", c.Handoff.Commands, b.Commands)
+	}
+	if c.Handoff.Reason != "contains_env_values" || c.Handoff.SessionAvailable {
+		t.Fatalf("a bundle with env values is never for a session: %+v", c.Handoff)
 	}
 	// nothing planned yet: the poller leaves it alone
 	if err := e.svc.Poll(context.Background()); err != nil || e.get(t, c.ChangeID).State != builderapi.ChangeAwaitingHandoff {
@@ -181,6 +184,9 @@ func TestHandoffMarkPlannedIsOnlyAHint(t *testing.T) {
 	}
 	// without a hint the change still moves to awaiting_approval
 	c2 := e.create(t, "m2", setOp("agent", "other", sha("id: other\nname: Other\n"), "identity.name", `"Other 2"`))
+	if c2.Handoff.Reason != "not_configured" {
+		t.Fatalf("a bundle without env values has only the not-configured reason: %+v", c2.Handoff)
+	}
 	if w := e.do("POST", "/changes/"+c2.ChangeID+"/mark_planned", `{}`); w.Code != 200 || e.get(t, c2.ChangeID).State != builderapi.ChangeAwaitingApproval {
 		t.Fatalf("no hint: %d %s", w.Code, w.Body)
 	}

@@ -12,8 +12,8 @@
     {
       "step": "plan",
       "label": "Ask a session with catalog.write to plan this bundle",
-      "kind": "action",
-      "tool": "tether_catalog_plan"
+      "kind": "session",
+      "command": "Call tether_catalog_plan with the downloaded bundle (name, note, files) exactly as it is."
     },
     {
       "step": "show",
@@ -30,8 +30,8 @@
     {
       "step": "apply",
       "label": "Ask the same session to apply the approved plan",
-      "kind": "action",
-      "tool": "tether_catalog_apply"
+      "kind": "session",
+      "command": "Call tether_catalog_apply with plan_id <plan_id>."
     }
   ]
 }
