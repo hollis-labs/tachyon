@@ -56,3 +56,12 @@ limited to 90 days.
 `GET /forge/stream` is SSE with `Last-Event-ID` / `?after=` resume; `?once=1` ends after
 the script. An id outside the ring gives a `resync` event: refetch lists. Events:
 `pr.updated`, `pr.merged`, `triage.changed`, `status`, `resync`.
+
+## Reads served for real (PR4)
+
+`internal/forgereads` serves, with the shared GitHub token: `GET /viewer`, `GET /repos/github/{o}/{n}/commits/{ref}` (adds `files`),
+`.../pulls/{num}/files` (metadata, `cursor` = next GitHub page, 100 per page), `.../diff` (all files, or one with `?path=`; the file list
+is kept 30 s so opening several files costs one fetch; patches over 200 KiB and patches GitHub withholds come back `truncated`, binary
+files have no hunks; at most 3000 files) and `.../pulls/{num}/checks` (head sha, check runs failures first, then in-flight, then
+passing, plus commit statuses). A rate limit is `429 rate_limited` with `retry_after_s`. Other hosts are `501 unavailable`.
+Mergeable retry belongs to merge preflight (PR5). The stub (`TACHYON_FORGE_STUBS=1`) still owns these patterns when on.
