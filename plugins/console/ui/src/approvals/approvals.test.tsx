@@ -542,3 +542,44 @@ describe("defer near expiry and decision keys", () => {
   })
 })
 
+
+describe("batch approve", () => {
+  const low = (id: string, batchable: boolean): ApprovalItem => ({
+    ...item,
+    item_id: id,
+    batchable,
+    request_snapshot: { ...item.request_snapshot, title: `Request ${id}`, class: "low" },
+  })
+  it("sends one batch with each reviewed revision and a batch_id", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json({ batch_id: "b1", results: [], counts: {} }))
+    await createApprovalClient(fetcher).batchResolve([item], "approved", "b1")
+    expect(fetcher.mock.calls[0][0]).toMatch(/\/batch\/resolve$/)
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+      batch_id: "b1",
+      decision: "approved",
+      items: [{ item_id: "req-1", expected_revision: 4, presented_projection_revision: 3 }],
+    })
+  })
+  it("offers checkboxes only on batchable rows, confirms, and reports what stayed", async () => {
+    const a = low("a", true)
+    const b = low("b", true)
+    const c = low("c", false)
+    const batchResolve = vi.fn().mockResolvedValue({ batch_id: "x", results: [], counts: { resolved: 1, stale: 1 } })
+    const client = {
+      inbox: vi.fn().mockResolvedValue({ pending: [a, b, c], history: [] }),
+      present: vi.fn().mockResolvedValue(a),
+      batchResolve,
+    } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await screen.findByRole("option", { name: /Request a/ })
+    expect(screen.queryByRole("checkbox", { name: "Select Request c" })).toBeNull()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Request a" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Request b" }))
+    fireEvent.click(screen.getByRole("button", { name: "Approve selected" }))
+    expect(batchResolve).not.toHaveBeenCalled()
+    expect(screen.getByText(/Approve 2 low-risk requests\?/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
+    await screen.findByText("1 approved, 1 left in the queue to review one by one.")
+    expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
+  })
+})

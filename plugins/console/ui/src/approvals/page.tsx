@@ -4,7 +4,7 @@ import { Segmented } from "../components/segmented"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
-import { kindLabel } from "./client"
+import { ApprovalError, kindLabel, type ApprovalItem } from "./client"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
@@ -28,6 +28,10 @@ export function ApprovalsPage() {
   }, [linked, setParams])
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [confirming, setConfirming] = useState<"approved" | "denied">()
+  const [batchBusy, setBatchBusy] = useState(false)
+  const [batchNote, setBatchNote] = useState("")
   const restoredItem = queue?.restored
   useEffect(() => {
     if (restoredItem) {
@@ -54,6 +58,38 @@ export function ApprovalsPage() {
   const live = rows.filter((r) => !heldIds.has(r.item_id))
   const current = live.find((r) => r.item_id === selectedId) ?? live[0]
   const restored = queue.restored
+  const picked = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => checked.has(i.item_id) && i.batchable)
+  const check = (id: string, on: boolean) => {
+    setConfirming(undefined)
+    setChecked((c) => {
+      const n = new Set(c)
+      if (on) n.add(id)
+      else n.delete(id)
+      return n
+    })
+  }
+  async function runBatch(decision: "approved" | "denied") {
+    setBatchBusy(true)
+    try {
+      const r = await queue!.client.batchResolve(picked, decision)
+      const c = r.counts
+      const rest = (c.stale ?? 0) + (c.ineligible ?? 0) + (c.conflict ?? 0) + (c.expired ?? 0) + (c.error ?? 0)
+      setBatchNote(
+        `${c.resolved ?? 0} ${decision === "approved" ? "approved" : "denied"}${rest ? `, ${rest} left in the queue to review one by one` : ""}.`,
+      )
+    } catch (e) {
+      setBatchNote(
+        e instanceof ApprovalError && e.code === "operator_access_required"
+          ? "Batch decisions need elevated operator access."
+          : e instanceof Error ? e.message : "The batch did not complete. Nothing was assumed; check the queue.",
+      )
+    } finally {
+      setBatchBusy(false)
+      setConfirming(undefined)
+      setChecked(new Set())
+      void queue!.refresh(true)
+    }
+  }
   const select = (id: string) => {
     setSelectedId(id)
     setShowDetail(true)
@@ -92,7 +128,31 @@ export function ApprovalsPage() {
           aria-label={view === "pending" ? "Pending approvals" : "Approval history"}
           className={`min-h-0 w-full shrink-0 overflow-auto border-r border-border md:block md:w-96 ${showDetail && current ? "hidden" : "block"}`}
         >
+          {view === "pending" && (picked.length > 0 || batchNote) && (
+            <div role="region" aria-label="Batch decision" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 dash-control text-fg-muted">
+              {picked.length > 0 ? (
+                confirming ? (
+                  <>
+                    <span>{confirming === "approved" ? "Approve" : "Deny"} {picked.length} low-risk {picked.length === 1 ? "request" : "requests"}?</span>
+                    <Button size="sm" disabled={batchBusy} onClick={() => void runBatch(confirming)}>{batchBusy ? "Working…" : "Confirm"}</Button>
+                    <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => setConfirming(undefined)}>Back</Button>
+                  </>
+                ) : (
+                  <>
+                    <span>{picked.length} selected</span>
+                    <Button size="sm" onClick={() => { setBatchNote(""); setConfirming("approved") }}>Approve selected</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setBatchNote(""); setConfirming("denied") }}>Deny selected</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setChecked(new Set())}>Clear</Button>
+                  </>
+                )
+              ) : (
+                <span role="status">{batchNote}</span>
+              )}
+            </div>
+          )}
           <ApprovalQueue
+            checked={checked}
+            onCheck={check}
             items={rows}
             selectedId={current?.item_id}
             onSelect={select}
