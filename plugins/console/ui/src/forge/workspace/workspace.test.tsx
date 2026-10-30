@@ -253,17 +253,31 @@ describe('PR merging', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Merge PR' }))
     fireEvent.change(screen.getByLabelText('Merge method'), { target: { value: 'squash' } })
     expect(merge).not.toHaveBeenCalled()
-    expect(screen.getByText(`Commit ${head!.slice(0, 12)}`)).toBeTruthy()
+    expect(screen.getByRole('dialog').textContent).toContain(head!.slice(0, 12))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
     await waitFor(() => expect(merge).toHaveBeenCalledExactlyOnceWith(PR1, { method: 'squash', headSha: head }))
     expect((screen.getByRole('button', { name: 'Merging…' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: 'Merge PR' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Merge PR', hidden: true }) as HTMLButtonElement).disabled).toBe(true)
     expect((await client.getPr(PR1)).state).toBe('open')
     await act(async () => release())
     expect(await screen.findByText(`Pull request #271 merged into ${baseBranch}.`)).toBeTruthy()
     expect(review).not.toHaveBeenCalled()
     expect(identity.pending()).toHaveLength(0)
     expect(screen.queryByRole('button', { name: 'Merge PR' })).toBeNull()
+  })
+
+  it('lists why a merge is blocked and disables Confirm', async () => {
+    const client = createMockForgeClient()
+    const real = client.getPr.bind(client)
+    vi.spyOn(client, 'getPr').mockImplementation(async (ref) => ({ ...(await real(ref)), draft: true, mergeable: 'conflicting' }))
+    setup(client)
+    await screen.findByText(/alert tray/)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge PR' }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('Cannot merge yet')
+    expect(dialog.textContent).toContain('still a draft')
+    expect(dialog.textContent).toContain('merge conflicts')
+    expect((screen.getByRole('button', { name: 'Confirm merge' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('cancels the confirmation panel without a write', async () => {
@@ -275,7 +289,7 @@ describe('PR merging', () => {
     fireEvent.change(screen.getByLabelText('Merge method'), { target: { value: 'rebase' } })
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(merge).not.toHaveBeenCalled()
-    expect(screen.queryByRole('region', { name: 'Merge pull request' })).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect((await client.getPr(PR1)).state).toBe('open')
   })
 
@@ -288,7 +302,7 @@ describe('PR merging', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm merge' }))
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Head commit changed'))
     expect((await client.getPr(PR1)).state).toBe('open')
-    expect(screen.getByRole('button', { name: 'Merge PR' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Merge PR', hidden: true })).toBeTruthy()
   })
 
   it('prevents merging a draft with conflicts', async () => {
