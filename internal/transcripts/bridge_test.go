@@ -218,8 +218,10 @@ func TestSearchValidatesAndForwardsOnlyKnownParameters(t *testing.T) {
 	if got != "" {
 		t.Fatal("rejected search reached upstream")
 	}
-	if apicache.Scope(Prefix+"/search") != "" {
-		t.Fatal("search must not be cached")
+	for _, p := range []string{"/search", "/sessions/" + strings.Repeat("a", 64) + "/find", "/sessions/" + strings.Repeat("a", 64) + "/errors"} {
+		if apicache.Scope(Prefix+p) != "" {
+			t.Fatal("must not be cached:", p)
+		}
 	}
 }
 
@@ -301,5 +303,63 @@ func TestSnapshotSharesOneBuildAndServesTheSavedOneWhenUnavailable(t *testing.T)
 	}
 	if w = get(New(upstream.URL, token(t), 200), "/snapshot"); w.Code != 403 {
 		t.Fatal("without a saved snapshot the refusal shows", w.Code)
+	}
+}
+
+func TestFindErrorsStatsProxyAndUnsupportedBuilds(t *testing.T) {
+	features := `["find","errors","stats"]`
+	var got []string
+	id := strings.Repeat("b", 64)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/transcripts/status" {
+			_, _ = w.Write([]byte(`{"available":true,"enabled":true,"features":` + features + `,"ingest":{"state":"ok","last_ingest_at":"2026-10-30T10:00:00Z"}}`))
+			return
+		}
+		got = append(got, r.URL.Path+"?"+r.URL.Query().Encode())
+		if features == "[]" || strings.Contains(r.URL.Path, strings.Repeat("0", 64)) {
+			w.WriteHeader(404)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer upstream.Close()
+	b := New(upstream.URL, token(t), 200)
+	for _, p := range []string{"/sessions/" + id + "/find?q=boom&after_offset=3&limit=10", "/sessions/" + id + "/errors", "/stats?tool=codex&has_error=true&since=2026-10-01T00:00:00Z"} {
+		if w := get(b, p); w.Code != 200 || !strings.Contains(w.Body.String(), `"ok":true`) {
+			t.Fatal(p, w.Code, w.Body.String())
+		}
+	}
+	if len(got) != 3 || got[0] != "/v1/transcripts/sessions/"+id+"/find?after_offset=3&limit=10&q=boom" || got[2] != "/v1/transcripts/stats?has_error=true&since=2026-10-01T00%3A00%3A00Z&tool=codex" {
+		t.Fatal("forwarded", got)
+	}
+	got = nil
+	for _, bad := range []string{"/sessions/" + id + "/find", "/sessions/" + id + "/find?q=a&limit=101", "/sessions/" + id + "/find?q=a&x=1", "/sessions/" + id + "/errors?x=1", "/stats?tool=a&sort=x", "/stats?kind=z", "/stats?since=nope", "/sessions/" + id + "?turn_from_seq=2&turn_offset=1", "/sessions/short/find?q=a"} {
+		if w := get(b, bad); w.Code != 400 && w.Code != 404 {
+			t.Fatal("bad read allowed", bad, w.Code)
+		}
+	}
+	if len(got) != 0 {
+		t.Fatal("rejected read reached upstream", got)
+	}
+	if w := get(b, "/sessions/"+strings.Repeat("0", 64)+"/errors"); w.Code != 404 {
+		t.Fatal("unknown session on a capable build is not_found", w.Code)
+	}
+	var st struct {
+		Capabilities map[string]bool `json:"capabilities"`
+		Ingest       struct {
+			State string `json:"state"`
+		} `json:"ingest"`
+	}
+	_ = json.Unmarshal(get(b, "/status").Body.Bytes(), &st)
+	if !st.Capabilities["find"] || !st.Capabilities["errors"] || !st.Capabilities["stats"] || st.Ingest.State != "ok" {
+		t.Fatal("status", st)
+	}
+	features = "[]"
+	if w := get(b, "/stats"); w.Code != 501 || !strings.Contains(w.Body.String(), "unsupported") {
+		t.Fatal("older build", w.Code, w.Body.String())
+	}
+	_ = json.Unmarshal(get(b, "/status").Body.Bytes(), &st)
+	if st.Capabilities["find"] || st.Capabilities["stats"] || !st.Capabilities["search"] {
+		t.Fatal("capabilities on an older build", st)
 	}
 }

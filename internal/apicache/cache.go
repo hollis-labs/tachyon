@@ -46,8 +46,9 @@ func Digest(value string) string {
 // Scope is an allowlist of non-destructive resource reads. Unknown/new APIs
 // default to bypass until their semantics are known; streams never enter here.
 func Scope(path string) string {
-	// Content search is never cached: queries are private and results change with the index.
-	if path == "/api/plugins/console/v1/transcripts/search" {
+	// Content search and in-session find are never cached: queries are private and results change with the index.
+	if path == "/api/plugins/console/v1/transcripts/search" ||
+		(strings.HasPrefix(path, "/api/plugins/console/v1/transcripts/sessions/") && (strings.HasSuffix(path, "/find") || strings.HasSuffix(path, "/errors"))) {
 		return ""
 	}
 	if strings.HasPrefix(path, "/api/plugins/console/v1/transcripts/") {

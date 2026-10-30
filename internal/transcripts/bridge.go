@@ -24,7 +24,12 @@ import (
 
 const Prefix = "/api/plugins/console/v1/transcripts"
 
-var sessionPath = regexp.MustCompile(`^/sessions/[a-f0-9]{64}$`)
+var sessionPath = regexp.MustCompile(`^/sessions/[a-f0-9]{64}(/find|/errors)?$`)
+
+const (
+	findSuffix   = "/find"
+	errorsSuffix = "/errors"
+)
 
 type Bridge struct {
 	URL, TokenFile string
@@ -123,7 +128,9 @@ const Uncacheable = "X-Tachyon-Uncacheable"
 
 var (
 	searchModes   = []string{"text", "summary", "semantic", "hybrid"}
-	detailParams  = []string{"turn_offset", "turn_limit"}
+	detailParams  = []string{"turn_offset", "turn_limit", "turn_from_seq"}
+	findParams    = []string{"q", "after_offset", "limit"}
+	statsParams   = []string{"since", "until", "tool", "model", "kind", "project", "has_error", "tag"}
 	searchParams  = []string{"q", "mode", "limit", "cursor", "since", "until", "tool", "model", "kind", "project", "has_error", "tag"}
 	filterText    = regexp.MustCompile(`^[^\x00-\x1f]{1,200}$`)
 	maxQuery      = 256
@@ -151,7 +158,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, Prefix)
-	if path != "/snapshot" && path != "/search" && path != "/status" && !sessionPath.MatchString(path) {
+	if path != "/snapshot" && path != "/search" && path != "/status" && path != "/stats" && !sessionPath.MatchString(path) {
 		respondError(w, &failure{404, "not_found", "Unknown transcript read."})
 		return
 	}
@@ -173,6 +180,17 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/status":
 		b.status(w, r)
 		return
+	case "/stats":
+		b.stats(w, r)
+		return
+	}
+	if strings.HasSuffix(path, findSuffix) {
+		b.find(w, r, path)
+		return
+	}
+	if strings.HasSuffix(path, errorsSuffix) {
+		b.sessionErrors(w, r, path)
+		return
 	}
 	q := r.URL.Query()
 	if k := unknown(q, detailParams); k != "" {
@@ -182,6 +200,17 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	offset, limit := 0, 50
 	var err error
 	if v := q.Get("turn_offset"); v != "" {
+		if offset, err = strconv.Atoi(v); err != nil || offset < 0 || offset > 1000000 {
+			respondError(w, invalid("Invalid transcript page."))
+			return
+		}
+	}
+	if v := q.Get("turn_from_seq"); v != "" {
+		// seq is contiguous from 0, so the window that starts at a found turn starts at that offset.
+		if q.Get("turn_offset") != "" {
+			respondError(w, invalid("Send turn_offset or turn_from_seq, not both."))
+			return
+		}
 		if offset, err = strconv.Atoi(v); err != nil || offset < 0 || offset > 1000000 {
 			respondError(w, invalid("Invalid transcript page."))
 			return
@@ -209,7 +238,11 @@ func (b *Bridge) status(w http.ResponseWriter, r *http.Request) {
 		respondError(w, err)
 		return
 	}
-	st["capabilities"], _ = json.Marshal(map[string]bool{"search": true, "find": false, "errors": false, "stats": false})
+	// Capabilities follow what this Fragments Engine build says it serves, so nothing is promised that it cannot answer.
+	var features []string
+	_ = json.Unmarshal(st["features"], &features)
+	st["capabilities"], _ = json.Marshal(map[string]bool{"search": true, "find": slices.Contains(features, "find"),
+		"errors": slices.Contains(features, "errors"), "stats": slices.Contains(features, "stats")})
 	_ = json.NewEncoder(w).Encode(st)
 }
 
@@ -467,4 +500,117 @@ func (b *Bridge) walk(ctx context.Context) ([]byte, error) {
 	meta := snapshotMeta{SourceState: "live", ObservedAt: now, FetchedAt: now, Complete: cursor == "", Limit: b.MaxSessions,
 		TotalAvailable: facets.Total, OmittedCount: max(0, facets.Total-len(rows))}
 	return json.Marshal(map[string]any{"status": status, "facets": facets, "sessions": rows, "complete": cursor == "", "limit": b.MaxSessions, "observed_at": until, "snapshot_meta": meta})
+}
+
+// optional reads a Fragments Engine route that only newer builds have. Without the feature the answer is 501
+// "unsupported" instead of a misleading not_found.
+func (b *Bridge) optional(w http.ResponseWriter, r *http.Request, feature, path string) {
+	var out json.RawMessage
+	if err := b.read(r.Context(), path, &out); err != nil {
+		var f *failure
+		if errors.As(err, &f) && f.status == 404 {
+			// A 404 is an unknown session when the build offers the feature, and a missing route when it does not.
+			var st struct {
+				Features []string `json:"features"`
+			}
+			if b.read(r.Context(), "/status", &st) == nil && !slices.Contains(st.Features, feature) {
+				respondError(w, &failure{501, "unsupported", "This Fragments Engine does not provide that read yet."})
+				return
+			}
+		}
+		respondError(w, err)
+		return
+	}
+	_, _ = w.Write(out)
+}
+
+// find lists the turns of one session that contain the text (Fragments Engine per-turn search).
+func (b *Bridge) find(w http.ResponseWriter, r *http.Request, path string) {
+	q := r.URL.Query()
+	if k := unknown(q, findParams); k != "" {
+		respondError(w, invalid("Unknown parameter "+k+"."))
+		return
+	}
+	text := strings.TrimSpace(q.Get("q"))
+	if text == "" || len(text) > maxQuery {
+		respondError(w, invalid("q is required and at most 256 characters."))
+		return
+	}
+	out := url.Values{"q": {text}}
+	if v := q.Get("after_offset"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < -1 || n > 1000000 {
+			respondError(w, invalid("Invalid after_offset."))
+			return
+		}
+		out.Set("after_offset", v)
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 100 {
+			respondError(w, invalid("limit must be 1 to 100."))
+			return
+		}
+		out.Set("limit", v)
+	}
+	b.optional(w, r, "find", path+"?"+out.Encode())
+}
+
+// sessionErrors lists the failed tool calls of one session.
+func (b *Bridge) sessionErrors(w http.ResponseWriter, r *http.Request, path string) {
+	if len(r.URL.Query()) > 0 {
+		respondError(w, invalid("Unknown parameter "+firstKey(r.URL.Query())+"."))
+		return
+	}
+	b.optional(w, r, "errors", path)
+}
+
+func firstKey(q url.Values) string {
+	for k := range q {
+		return k
+	}
+	return ""
+}
+
+// stats is the whole-database aggregate, with the same filters as the session list.
+func (b *Bridge) stats(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if k := unknown(q, statsParams); k != "" {
+		respondError(w, invalid("Unknown parameter "+k+"."))
+		return
+	}
+	out := url.Values{}
+	for _, k := range []string{"since", "until"} {
+		if v := q.Get(k); v != "" {
+			if _, err := time.Parse(time.RFC3339, v); err != nil {
+				respondError(w, invalid(k+" must be RFC 3339."))
+				return
+			}
+			out.Set(k, v)
+		}
+	}
+	for _, k := range []string{"tool", "model", "project", "tag"} {
+		if v := q.Get(k); v != "" {
+			if !filterText.MatchString(v) {
+				respondError(w, invalid(k+" is not a valid filter."))
+				return
+			}
+			out.Set(k, v)
+		}
+	}
+	if v := q.Get("kind"); v != "" {
+		if v != "main" && v != "subagent" {
+			respondError(w, invalid("kind must be main or subagent."))
+			return
+		}
+		out.Set("kind", v)
+	}
+	if v := q.Get("has_error"); v != "" {
+		if v != "true" && v != "false" {
+			respondError(w, invalid("has_error must be true or false."))
+			return
+		}
+		out.Set("has_error", v)
+	}
+	b.optional(w, r, "stats", "/stats?"+out.Encode())
 }
