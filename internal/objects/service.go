@@ -259,6 +259,9 @@ func persist(ctx context.Context, tx *sql.Tx, r *Record, operation, actor string
 	if err := projectPromotionLinks(ctx, tx, r.ID); err != nil {
 		return err
 	}
+	if err := projectRelations(ctx, tx, *r); err != nil {
+		return err
+	}
 	body, err := json.Marshal(r)
 	if err != nil {
 		return err

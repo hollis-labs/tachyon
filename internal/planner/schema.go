@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/hollis-labs/tachyon/internal/objects"
+	"github.com/hollis-labs/tachyon/internal/plannerapi"
 )
 
 // Field descriptions originated in the owned portfolio schemas. They are
@@ -38,6 +39,14 @@ func Schema(db string) (Item, error) {
 	if db == "risks" {
 		fields["impact"] = Item{"type": "integer", "minimum": 0, "maximum": 5}
 		fields["likelihood"] = Item{"type": "integer", "minimum": 0, "maximum": 5}
+	}
+	fields["pinned"] = Item{"type": "boolean", "description": "Pinned items sort first, by pinned_at; set with PUT pin or PATCH"}
+	fields["pinned_at"] = Item{"type": "string", "description": "Read-only; stamped when pinned"}
+	fields["relations"] = Item{"type": "array", "description": "Typed relations stored on the source item; write with POST/DELETE relations. Kinds needs, delivers (theme to roadmap), mitigates (theme to risk), relates"}
+	if db == "priorities" {
+		fields["area"] = Item{"type": "string", "enum": plannerapi.Areas}
+		fields["horizon"] = Item{"type": "string", "enum": plannerapi.Horizons}
+		fields["done_summary"] = Item{"type": "string", "maxLength": plannerapi.MaxSummaryChars}
 	}
 	for _, key := range typedFields(db) {
 		if _, ok := fields[key]; !ok {
