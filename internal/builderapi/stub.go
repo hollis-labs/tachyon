@@ -716,10 +716,10 @@ func handoffCommands(planID string) []map[string]any {
 		planID = "<plan_id>"
 	}
 	return []map[string]any{
-		{"step": "plan", "label": "Ask a session with catalog.write to plan this bundle", "kind": "session", "command": "Call tether_catalog_plan with the downloaded bundle (name, note, files) exactly as it is."},
+		{"step": "plan", "label": "Ask a session with catalog.write to plan this bundle", "kind": "session", "command": "Plan this bundle with tether_catalog_plan and report the plan id."},
 		{"step": "show", "label": "Review the plan", "kind": "shell", "command": "tether catalog show " + planID},
 		{"step": "approve", "label": "Approve the plan", "kind": "shell", "command": "tether catalog approve " + planID},
-		{"step": "apply", "label": "Ask the same session to apply the approved plan", "kind": "session", "command": "Call tether_catalog_apply with plan_id " + planID + "."},
+		{"step": "apply", "label": "Ask the same session to apply the approved plan", "kind": "session", "command": "Apply plan " + planID + " with tether_catalog_apply and report the result."},
 	}
 }
 
