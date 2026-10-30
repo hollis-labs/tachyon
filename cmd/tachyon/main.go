@@ -69,6 +69,7 @@ func main() {
 		DataDir:                     env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
 		CacheDir:                    env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		ActionDetachGrace:           durationEnv("TACHYON_ACTION_DETACH_GRACE"),
+		BuilderStubs:                os.Getenv("TACHYON_BUILDER_STUBS") == "1",
 		CardEffectsTorque:           os.Getenv("TACHYON_CARD_EFFECTS_TORQUE") == "1",
 		CardDeliveryFile:            os.Getenv("TACHYON_CARD_DELIVERY_FILE"),
 		ActionHub: actionrun.SSH{

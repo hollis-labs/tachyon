@@ -27,6 +27,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/builderapi"
 	"github.com/hollis-labs/tachyon/internal/carddelivery"
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
@@ -55,6 +56,8 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// BuilderStubs mounts the fixture-backed Builder and Registry contract (TACHYON_BUILDER_STUBS=1) for GUI development.
+	BuilderStubs bool
 	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
 	AppAgentConfigFile          string
 	ApprovalQueueURL            string
@@ -457,6 +460,14 @@ func (s *Server) Routes() http.Handler {
 	// read); sends need operator assurance. Without a config file the routes answer
 	// 503 and say why. Tightening reads is a one-word change to RequireOperatorReads.
 	mux.Handle(appagent.Prefix+"/", operator.RequireOperator(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
+	// Builder + Registry contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below
+	// is unguarded. GETs are open; every write (changes, launch action, registry project patch) needs an operator session.
+	if s.cfg.BuilderStubs {
+		stub := operator.RequireOperator(builderapi.Stub{}.Handler())
+		mux.Handle(builderapi.Prefix+"/", stub)
+		mux.Handle(builderapi.RegistryPrefix+"/projects", stub)
+		mux.Handle(builderapi.RegistryPrefix+"/projects/", stub)
+	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
