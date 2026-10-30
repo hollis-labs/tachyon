@@ -7,10 +7,18 @@ import (
 	"time"
 )
 
+// Pin is the lens-wide pin: pinned items sort first, by pinned_at. It is a typed field on all
+// seven portfolio records so a pin is one revision-checked write.
+type Pin struct {
+	Pinned   bool       `json:"pinned,omitempty"`
+	PinnedAt *time.Time `json:"pinned_at,omitempty"`
+}
+
 // CaptureFields are shared by inbox items and ideas. Origin is descriptive
 // provenance, not a provider identity or an instruction to fetch anything.
 type CaptureFields struct {
 	Common
+	Pin
 	Status       string `json:"status"`
 	Priority     int    `json:"priority"`
 	ProjectID    string `json:"project_id,omitempty"`
@@ -40,6 +48,7 @@ type PlanningContext struct {
 }
 type Decision struct {
 	Common
+	Pin
 	PlanningContext
 	Status    string     `json:"status"`
 	Context   string     `json:"context,omitempty"`
@@ -54,6 +63,7 @@ func (Decision) ObjectKind() Kind { return DecisionKind }
 
 type Risk struct {
 	Common
+	Pin
 	PlanningContext
 	Status      string     `json:"status"`
 	Priority    int        `json:"priority"`
@@ -69,6 +79,7 @@ func (Risk) ObjectKind() Kind { return RiskKind }
 
 type RoadmapItem struct {
 	Common
+	Pin
 	PlanningContext
 	Status              string     `json:"status"`
 	Priority            int        `json:"priority"`
@@ -85,7 +96,11 @@ func (RoadmapItem) ObjectKind() Kind { return RoadmapItemKind }
 // StrategicPriority is an objective, distinct from the numeric priority rank.
 type StrategicPriority struct {
 	Common
+	Pin
 	PlanningContext
+	Area            string     `json:"area,omitempty"`
+	Horizon         string     `json:"horizon,omitempty"`
+	DoneSummary     string     `json:"done_summary,omitempty"`
 	Status          string     `json:"status"`
 	Priority        int        `json:"priority"`
 	Outcome         string     `json:"outcome,omitempty"`
@@ -102,7 +117,7 @@ func capturePlanningStatus(kind Kind, status string) bool {
 	case InboxItemKind:
 		allowed = "new triaged archived"
 	case IdeaKind:
-		allowed = "draft exploring accepted rejected archived"
+		allowed = "draft exploring accepted rejected promoted archived"
 	case DecisionKind:
 		allowed = "proposed accepted rejected superseded archived"
 	case RiskKind:

@@ -41,6 +41,7 @@ type Collector struct {
 	outputs  atomic.Int64
 	dropped  atomic.Int64
 	streamed atomic.Bool
+	resync   atomic.Bool // a gap frame arrived: the next pass re-seeds from the snapshot instead of resuming the old cursor
 	done     chan struct{}
 }
 
@@ -155,7 +156,7 @@ func (c *Collector) pass(ctx context.Context) (err error) {
 		return err
 	}
 	cursor := st.LastSeq
-	if cursor == 0 {
+	if cursor == 0 || c.resync.Swap(false) {
 		if cursor, err = c.bootstrap(ctx); err != nil {
 			return err
 		}
@@ -180,7 +181,7 @@ func (c *Collector) bootstrap(ctx context.Context) (int64, error) {
 		if err := c.Store.Apply(ctx, snap.Sessions); err != nil {
 			return 0, err
 		}
-		return snap.HighWater, c.Store.Seed(ctx, snap.Env, snap.HighWater)
+		return snap.HighWater, c.Store.Reseed(ctx, snap.Env, snap.HighWater)
 	}
 	slog.Info("agents collector: snapshot unavailable, using the session list", "err", errText(err))
 	sessions, serr := c.Source.Sessions(ctx)
@@ -197,7 +198,7 @@ func (c *Collector) bootstrap(ctx context.Context) (int64, error) {
 	if err := c.Store.Apply(ctx, sessions); err != nil {
 		return 0, err
 	}
-	return head, c.Store.Seed(ctx, "", head)
+	return head, c.Store.Reseed(ctx, "", head)
 }
 
 // fill records the gap, then pages history newest first down to the gap's start (bounded). A gap
@@ -311,6 +312,7 @@ func (c *Collector) follow(ctx context.Context, after int64) error {
 			if _, err := c.Store.AddGap(ctx, Gap{Start: now, End: now, Reason: gapReason(f.Reason), FromSeq: after}); err != nil {
 				return err
 			}
+			c.resync.Store(true)
 			return errors.New("stream reported a gap; resyncing")
 		case f.Synchronized:
 			return nil

@@ -268,21 +268,25 @@ func (s *httpSource) Stream(ctx context.Context, after int64, on func(Frame) err
 	sc := bufio.NewScanner(res.Body)
 	sc.Buffer(make([]byte, 64<<10), 4<<20) // a long session.output frame is read, never kept
 	var data strings.Builder
+	var event string // the SSE event name: Tether sends a gap as "event: gap" with no kind in the data
 	for sc.Scan() {
 		line := sc.Text()
 		switch {
 		case line == "":
 			if data.Len() > 0 {
-				if f, ok := ParseFrame([]byte(data.String())); ok {
+				if f, ok := ParseFrame(withKind([]byte(data.String()), event)); ok {
 					if err := on(f); err != nil {
 						return err
 					}
 				}
 				data.Reset()
 			}
+			event = ""
 			alive()
 		case strings.HasPrefix(line, ":"):
 			alive()
+		case strings.HasPrefix(line, "event:"):
+			event = strings.TrimSpace(line[6:])
 		case strings.HasPrefix(line, "data:"):
 			if data.Len() < 8<<20 {
 				data.WriteString(strings.TrimSpace(line[5:]))
@@ -296,4 +300,25 @@ func (s *httpSource) Stream(ctx context.Context, after int64, on func(Frame) err
 		return errors.New("event stream closed by Tether")
 	}
 	return nil
+}
+
+// withKind adds the SSE event name as the frame kind when the data carries none (a gap frame). Data that
+// already has a kind, or an event name that is empty or the SSE default, is returned unchanged.
+func withKind(data []byte, event string) []byte {
+	if event == "" || event == "message" {
+		return data
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(data, &m) != nil {
+		return data
+	}
+	if k, ok := m["kind"]; ok && string(k) != `""` {
+		return data
+	}
+	m["kind"], _ = json.Marshal(event)
+	out, err := json.Marshal(m)
+	if err != nil {
+		return data
+	}
+	return out
 }

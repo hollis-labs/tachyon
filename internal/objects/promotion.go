@@ -54,10 +54,10 @@ func (s *Service) GetPromotion(ctx context.Context, sourceID string) (PromotionR
 
 // Promote atomically creates a distinct owned record, preserves source content,
 // and records immutable provenance. Inbox -> portfolio kinds/plan/task;
-// idea -> plan/task. TriageSource atomically marks an inbox triaged when requested.
+// idea -> plan/task/theme/roadmap item/decision. TriageSource atomically marks an inbox triaged (an idea promoted) when requested.
 // Each source has one canonical promotion. Same request replays without writes,
 // even after subsequent edits/deletion; another request for that source conflicts.
-// This does not dispatch work, copy a provider identity or change source status.
+// This does not dispatch work, copy a provider identity or change source status unless TriageSource is set.
 func (s *Service) Promote(ctx context.Context, req PromotionRequest, actor string) (PromotionResult, error) {
 	var out PromotionResult
 	id, err := uuid.Parse(req.TargetID)
@@ -102,7 +102,7 @@ func (s *Service) Promote(ctx context.Context, req PromotionRequest, actor strin
 		if source.Revision != req.ExpectedRevision {
 			return ErrConflict
 		}
-		if source.Ownership != "tachyon" || source.Deleted() || (source.Kind != InboxItemKind && source.Kind != IdeaKind) || (source.Kind == IdeaKind && (req.TargetKind != PlanKind && req.TargetKind != TaskKind || req.TriageSource)) {
+		if source.Ownership != "tachyon" || source.Deleted() || (source.Kind != InboxItemKind && source.Kind != IdeaKind) || (source.Kind == IdeaKind && req.TargetKind != PlanKind && req.TargetKind != TaskKind && req.TargetKind != StrategicPriorityKind && req.TargetKind != RoadmapItemKind && req.TargetKind != DecisionKind) {
 			return fmt.Errorf("%w: promotion requires an active owned inbox item or idea and an allowed destination", ErrInvalid)
 		}
 		if _, err := get(ctx, tx, req.TargetID); err == nil {
@@ -158,7 +158,11 @@ func (s *Service) Promote(ctx context.Context, req PromotionRequest, actor strin
 			return err
 		}
 		if req.TriageSource {
-			source.Local, err = merge(source.Local, json.RawMessage(`{"status":"triaged"}`), true)
+			done := `{"status":"triaged"}`
+			if source.Kind == IdeaKind {
+				done = `{"status":"promoted"}`
+			}
+			source.Local, err = merge(source.Local, json.RawMessage(done), true)
 			if err != nil {
 				return err
 			}

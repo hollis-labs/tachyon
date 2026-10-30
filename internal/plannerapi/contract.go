@@ -52,7 +52,7 @@ var Lanes = []string{"todo", "doing", "review", "blocked", "done"}
 // Horizons and the theme area enum (areas match the roadmap enum).
 var (
 	Horizons = []string{"now", "next", "later", "someday"}
-	Areas    = []string{"platform", "agents", "planner", "chat", "forge", "settings", "other"}
+	Areas    = []string{"hub", "llm-gateway", "mesh", "gui", "plugin-platform", "fabric", "nanite", "harness", "policy", "tooling", "process"}
 )
 
 // Momentum labels and need-you reasons.
