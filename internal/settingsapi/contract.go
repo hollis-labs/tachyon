@@ -83,16 +83,16 @@ const (
 
 // Auth methods the dialog may offer. Only operator_token exists today; the rest arrive with the hardening Provider.
 const (
-	MethodOperatorToken = "operator_token"
-	MethodPassword      = "password"
-	MethodPasskey       = "passkey"
+	MethodOperatorToken = assurance.MethodOperatorToken
+	MethodPassword      = assurance.MethodPassword
+	MethodPasskey       = assurance.MethodPasskey
 )
 
-// Method says whether a sign-in method can be used now.
-type Method struct {
-	ID        string `json:"id"`
-	Available bool   `json:"available"`
-}
+// Method and StepUp are the assurance package's, so the real 403 body and the stub cannot drift.
+type (
+	Method = assurance.Method
+	StepUp = assurance.StepUp
+)
 
 // Session is the browser session's state, derived from the elevation expiry.
 type Session struct {
@@ -120,14 +120,6 @@ type Access struct {
 	Session Session       `json:"session"`
 	Lockout Lockout       `json:"lockout"`
 	StepUp  StepUpSupport `json:"step_up"`
-}
-
-// StepUp is the hint added to a 403 operator_access_required body so the dialog opens from any refused write.
-type StepUp struct {
-	Action  string `json:"action"`
-	Risk    string `json:"risk"` // low | medium | high | destructive
-	Summary string `json:"summary,omitempty"`
-	Ref     string `json:"ref,omitempty"`
 }
 
 // Refusal is the extended 403 body. {code,message} stay where the existing clients read them.

@@ -8,20 +8,22 @@ import (
 
 // AccessFor builds the extended access body from what the provider knows. The existing assurance.Access part is
 // unchanged; the added fields describe the dialog: which methods exist, the session state, the lockout and
-// whether step-up is supported. Only the operator token is a method today, and no lockout or step-up is known
-// without a Provider that reports them (ST4 supplies those inputs).
-func AccessFor(st assurance.Status, now time.Time) Access {
-	a := Access{Access: assurance.View(st, now), Methods: methods(false), Session: Session{State: "none"}}
-	if st.Level >= assurance.LevelBrowserSession {
+// whether step-up is supported. stepUp comes from assurance.StepUpSupported (false for TangentProvider).
+func AccessFor(st assurance.Status, now time.Time, stepUp bool) Access {
+	a := Access{Access: assurance.View(st, now), Methods: assurance.Methods(), Session: Session{State: "none"}, StepUp: StepUpSupport{Supported: stepUp}}
+	switch {
+	case st.Level >= assurance.LevelBrowserSession:
 		a.Session.State = "active"
+		if !st.ExpiredAt.IsZero() && !st.Elevated() && st.ExpiredAt.Before(now) {
+			a.Session = Session{State: "expired", ExpiresAt: st.ExpiredAt.UTC().Format(time.RFC3339)}
+		}
+	}
+	if st.LockedUntil.After(now) {
+		a.Lockout = Lockout{Locked: true, RetryAfterS: int(st.LockedUntil.Sub(now).Seconds()) + 1}
 	}
 	return a
 }
 
-// methods lists the sign-in methods; password and passkey share one availability flag until they differ.
 func methods(hardened bool) []Method {
-	return []Method{{MethodOperatorToken, true}, {MethodPassword, hardened}, {MethodPasskey, hardened}}
+	return []Method{{ID: MethodOperatorToken, Available: true}, {ID: MethodPassword, Available: hardened}, {ID: MethodPasskey, Available: hardened}}
 }
-
-// Methods is the exported list for callers outside the package.
-func Methods() []Method { return methods(false) }
