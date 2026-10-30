@@ -29,14 +29,14 @@ export function OutlineNav({ root }: { root: React.RefObject<HTMLElement | null>
     setCurrent(id)
   }
   return (
-    <nav aria-label="Agent sections" className="hidden w-40 shrink-0 flex-col gap-0.5 border-r border-border p-2 lg:flex">
+    <nav aria-label="Agent sections" className="hidden w-[150px] shrink-0 flex-col gap-0.5 border-r border-border-subtle py-3.5 pl-4 pr-2 lg:flex">
       {SECTIONS.map((s) => (
         <button
           key={s.id}
           type="button"
           aria-current={current === s.id ? 'true' : undefined}
           onClick={() => go(s.id)}
-          className={`px-2 py-1 text-left dash-control ${current === s.id ? 'bg-surface font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}
+          className={`rounded-control px-2 py-[5px] text-left text-xs ${current === s.id ? 'bg-selection font-semibold text-fg' : 'text-fg-muted hover:text-fg'}`}
         >
           {s.label}
         </button>

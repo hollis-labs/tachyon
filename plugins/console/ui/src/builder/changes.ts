@@ -14,7 +14,7 @@ const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
 export const FIELDS: readonly FieldDef[] = [
   {
     path: 'identity.description',
-    label: 'Description',
+    label: 'Summary',
     kind: 'longtext',
     read: (a) => a.identity.description ?? '',
   },

@@ -1,10 +1,14 @@
 import { useDiscardGuard } from './DiscardGuard'
 import { type ReactNode, useCallback, useRef, useState } from 'react'
-import { Button, Checkbox, Input, Textarea } from '@hollis-labs/design-components'
+import { Link } from 'react-router-dom'
+import { Button, Checkbox, Input, OverflowMenu, Switch, Textarea } from '@hollis-labs/design-components'
+import { Chip } from '../components/chip'
+import { ChipListField } from './ChipListField'
 import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
 import { buildOps, changedPaths, changingText, type Draft, fieldByPath, newRequestId } from './changes'
 import { OutlineNav } from './OutlineNav'
-import { ChecksSection, HistorySection, ResolvedSection, UsedBySection } from './InsightSections'
+import { ChecksCard, HistorySection, ResolvedCard, UsedByCard, UsedBySection } from './InsightSections'
+import { Cap, Cite, Field as Row, Tile } from './parts'
 import { useChangeMode } from './capabilities'
 import { ModeNote, PreparedLabel } from './ModeNote'
 import { ReviewDialog } from './ReviewDialog'
@@ -12,73 +16,43 @@ import { useBuilderStream } from './stream'
 import { useLoad } from './useLoad'
 import { INHERITS, NOT_REPORTED, SECTIONS, STATE_LABEL } from './vocab'
 
-const CHIP = 'inline-flex items-center border border-border px-1.5 py-px font-mono text-caption text-fg-secondary'
-
 const text = (v: string | null | undefined) => (v ? v : NOT_REPORTED)
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid grid-cols-[10rem_1fr] gap-3 border-b border-border-subtle py-2">
-      <dt className="dash-support text-fg-muted">{label}</dt>
-      <dd className="min-w-0 dash-body text-fg [overflow-wrap:anywhere]">{children}</dd>
-    </div>
-  )
-}
-
-function Chips({ items, empty = 'none' }: { items?: string[] | null; empty?: string }) {
-  if (!items || items.length === 0) return <span className="text-fg-faint">{empty}</span>
-  return (
-    <ul className="flex flex-wrap gap-1.5">
-      {items.map((i) => (
-        <li key={i} className={CHIP}>
-          {i}
-        </li>
-      ))}
-    </ul>
-  )
-}
+const chipsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
 interface EditCtx {
   agent: AgentDetail
   editing: boolean
+  canEdit: boolean
   draft: Draft
   set: (path: string, value: unknown) => void
 }
 
-/** A row that shows the value, or an editor for it while editing. */
-function Field({ path, ctx, children }: { path: string; ctx: EditCtx; children: ReactNode }) {
+/** A row that shows the value, or an editor for it while editing. Chip lists edit in place. */
+function Field({ path, ctx, children }: { path: string; ctx: EditCtx; children?: ReactNode }) {
   const def = fieldByPath(path)
-  if (!def || !ctx.editing) return <Row label={def?.label ?? path}>{children}</Row>
+  if (!def) return <Row label={path}>{children}</Row>
   const value = path in ctx.draft ? ctx.draft[path] : def.read(ctx.agent)
+  if (def.kind === 'chips') {
+    return (
+      <Row label={def.label}>
+        <ChipListField label={def.label} value={chipsOf(value)} editable={ctx.canEdit} onChange={(next) => ctx.set(path, next)} />
+      </Row>
+    )
+  }
+  if (!ctx.editing) return <Row label={def.label}>{children}</Row>
   const id = `f-${path}`
   let editor: ReactNode
   if (def.kind === 'bool') {
     editor = <Checkbox id={id} checked={value === true} onCheckedChange={(v) => ctx.set(path, v === true)} />
-  } else if (def.kind === 'chips') {
-    editor = (
-      <Input
-        id={id}
-        value={(value as string[]).join(', ')}
-        placeholder="comma separated"
-        onChange={(e) =>
-          ctx.set(
-            path,
-            e.target.value
-              .split(',')
-              .map((x) => x.trim())
-              .filter(Boolean),
-          )
-        }
-      />
-    )
   } else if (def.kind === 'longtext') {
     editor = <Textarea id={id} rows={3} value={String(value)} onChange={(e) => ctx.set(path, e.target.value)} />
   } else {
     editor = <Input id={id} value={String(value)} onChange={(e) => ctx.set(path, e.target.value)} />
   }
   return (
-    <div className="grid grid-cols-[10rem_1fr] gap-3 border-b border-border-subtle py-2">
-      <label htmlFor={id} className="dash-support text-fg-muted">
+    <div className="grid gap-0.5 py-[3px] sm:grid-cols-[130px_1fr] sm:gap-3">
+      <label htmlFor={id} className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-[7px]">
         {def.label}
       </label>
       <div className="min-w-0">{editor}</div>
@@ -89,18 +63,44 @@ function Field({ path, ctx, children }: { path: string; ctx: EditCtx; children: 
 function Section({ id, children }: { id: string; children: ReactNode }) {
   const label = SECTIONS.find((s) => s.id === id)?.label ?? id
   return (
-    <section id={`section-${id}`} aria-labelledby={`h-${id}`} className="scroll-mt-4 px-5 py-4">
-      <h3 id={`h-${id}`} className="mb-2 font-mono dash-label uppercase tracking-widest text-fg-faint">
-        {label}
-      </h3>
-      <dl>{children}</dl>
+    <section id={`section-${id}`} aria-labelledby={`h-${id}`} className="flex scroll-mt-4 flex-col gap-2">
+      <Cap id={`h-${id}`}>{label}</Cap>
+      <dl className="flex flex-col gap-2">{children}</dl>
     </section>
+  )
+}
+
+/** Launch profiles of this agent. New launch arrives with the Launches slice. */
+function LaunchProfiles({ launches }: { launches: NonNullable<AgentDetail['launches']> }) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-panel border border-border px-3 py-2 sm:ml-[142px]">
+      <div className="flex items-center justify-between gap-2">
+        <Cap>Launch profiles</Cap>
+        <button type="button" disabled title="Creating a launch arrives with the Launches slice" className="inline-flex h-5 items-center rounded-full border border-dashed border-border px-2 text-label text-fg-muted disabled:opacity-60">
+          + New launch
+        </button>
+      </div>
+      {launches.length === 0 && <p className="text-xs text-fg-faint">No launch profiles.</p>}
+      {launches.map((l) => (
+        <div key={l.id} className="flex flex-wrap items-center gap-2.5 text-xs">
+          <i aria-hidden className={`size-[7px] shrink-0 rounded-full ${l.enabled ? 'bg-fg opacity-90' : 'bg-fg-faint opacity-60'}`} />
+          <b className="whitespace-nowrap font-mono">{l.id}</b>
+          <span className="text-fg-muted">{l.project} · {l.worker}</span>
+          <span className="flex-1" />
+          {l.live_count > 0 && <Chip>{l.live_count} live</Chip>}
+          <Link to="/builder/launches" className="whitespace-nowrap text-label text-fg-secondary hover:text-fg">
+            Launches ▸
+          </Link>
+        </div>
+      ))}
+    </div>
   )
 }
 
 /** Editor model of one agent: read-only until Edit; saving goes through Review and host approval. */
 export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void }) {
   const [load, retry] = useLoad(() => builderApi.agent(id), [id])
+  const [usedBy, retryUsedBy] = useLoad(() => builderApi.usedBy(id), [id])
   const [elsewhere, setElsewhere] = useState(false)
   const { guard, dialog: discardDialog } = useDiscardGuard()
   const [mode, recheckMode] = useChangeMode()
@@ -140,12 +140,19 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
     )
   const a: AgentDetail = load.data
   const dirty = changedPaths(a, draft)
+  const canEdit = a.editable && mode !== 'unavailable'
   const ctx: EditCtx = {
     agent: a,
     editing,
+    canEdit,
     draft,
-    set: (path, value) => setDraft((d) => ({ ...d, [path]: value })),
+    set: (path, value) => {
+      if (canEdit) setEditing(true)
+      setDraft((d) => ({ ...d, [path]: value }))
+    },
   }
+  const enabled = 'runtime.enabled' in draft ? draft['runtime.enabled'] === true : a.runtime.enabled !== false
+  const projects = [...new Set((a.launches ?? []).map((l) => l.project).filter(Boolean))]
   const viewPrepared = async () => {
     if (!prepared) return
     setBusy(true)
@@ -171,24 +178,36 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
-        <button type="button" onClick={onBack} className="dash-control text-fg-muted hover:text-fg md:hidden">
-          ← Agents
-        </button>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold text-fg">{a.identity.name}</h2>
-          <p className="truncate font-mono dash-support text-fg-muted">
+      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-subtle px-4 py-3">
+        <Button type="button" variant="outline" size="sm" onClick={onBack} className="sm:hidden">
+          ‹ Agents
+        </Button>
+        <Tile name={a.identity.name} large />
+        <div className="flex min-w-0 basis-full flex-col sm:flex-1 sm:basis-0">
+          <h2 className="truncate font-sans text-base font-semibold normal-case tracking-normal text-fg">{a.identity.name}</h2>
+          <p className="truncate font-mono text-label text-fg-muted">
             {a.identity.id}
             {a.identity.urn ? ` · ${a.identity.urn}` : ''}
           </p>
         </div>
-        <span className={CHIP}>{STATE_LABEL[a.state]}</span>
-        {!a.editable && <span className={CHIP}>Read-only</span>}
-        {a.editable && !editing && mode !== 'unavailable' && (
+        {!a.editable && <Chip>read-only</Chip>}
+        {a.state === 'retired' && <Chip>retired</Chip>}
+        <label className="inline-flex items-center gap-2 text-xs text-fg-secondary">
+          <Switch size="sm" checked={enabled} disabled={!canEdit} onCheckedChange={(v) => ctx.set('runtime.enabled', v === true)} aria-label="Enabled" />
+          Enabled
+        </label>
+        {canEdit && !editing && (
           <Button type="button" onClick={() => setEditing(true)} variant="outline" size="sm">
             Edit
           </Button>
         )}
+        <OverflowMenu
+          ariaLabel="More actions"
+          actions={[
+            { label: 'Copy slug', onSelect: () => void navigator.clipboard?.writeText(a.identity.id) },
+            ...(a.identity.urn ? [{ label: 'Copy URN', onSelect: () => void navigator.clipboard?.writeText(a.identity.urn ?? '') }] : []),
+          ]}
+        />
       </header>
       {mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
       {elsewhere && (
@@ -252,14 +271,15 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
       )}
       <div className="flex min-h-0 flex-1">
         <OutlineNav root={scroller} />
-        <div ref={scroller} className="min-w-0 flex-1 divide-y divide-border-subtle overflow-auto">
+        <div ref={scroller} className="flex min-w-0 flex-1 flex-col gap-[22px] overflow-auto px-5 py-4 [&>*]:flex-none">
           <Section id="identity">
             <Row label="Name">{a.identity.name}</Row>
+            <Row label="Slug">
+              <span className="font-mono">{a.identity.id}</span>
+            </Row>
+            <Field path="identity.roles" ctx={ctx} />
             <Field path="identity.description" ctx={ctx}>
               {text(a.identity.description)}
-            </Field>
-            <Field path="identity.roles" ctx={ctx}>
-              <Chips items={a.identity.roles} />
             </Field>
           </Section>
           <Section id="runtime">
@@ -267,62 +287,55 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             <Field path="runtime.model" ctx={ctx}>
               {text(a.runtime.model)}
             </Field>
-            <Row label="Extends">{a.runtime.extends ?? 'none'}</Row>
-            <Field path="runtime.enabled" ctx={ctx}>
-              {a.runtime.enabled === false ? 'No' : 'Yes'}
-            </Field>
-          </Section>
-          <Section id="prompt">
-            <Row label="Prompts">
-              <Chips items={a.prompt?.prompts} />
-            </Row>
-            <Row label="Boot fragments">
-              <Chips items={a.prompt?.boot_fragments} />
-            </Row>
-            <Row label="Compiled parts">
-              {a.prompt?.parts?.length ? (
-                <ul className="space-y-1">
-                  {a.prompt.parts.map((p) => (
-                    <li key={`${p.kind}:${p.id}`}>
-                      {p.label}{' '}
-                      <span className="font-mono dash-support text-fg-muted">
-                        rev {p.rev} · ~{p.tokens_est} tokens
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+            {a.runtime.extends && <Row label="Extends">{a.runtime.extends}</Row>}
+            <Row label="Project">
+              {projects.length ? (
+                projects.map((p) => (
+                  <Cite key={p} to={`/registry/projects/${encodeURIComponent(p)}`}>
+                    {p}
+                  </Cite>
+                ))
               ) : (
                 <span className="text-fg-faint">none</span>
               )}
             </Row>
           </Section>
+          <LaunchProfiles launches={a.launches ?? []} />
+          <Section id="prompt">
+            <Row label="Boot profile">
+              {a.prompt?.boot_fragments?.length ? a.prompt.boot_fragments.map((b) => <Cite key={b} to={`/builder/library/prompts/${encodeURIComponent(b)}`}>{b}</Cite>) : <span className="text-fg-faint">none</span>}
+            </Row>
+            <Row label="System prompt">
+              {a.prompt?.prompts?.length ? a.prompt.prompts.map((p) => <Cite key={p} to={`/builder/library/prompts/${encodeURIComponent(p)}`}>{p}</Cite>) : <span className="text-fg-faint">none</span>}
+              {a.prompt?.parts?.length ? <span className="text-xs text-fg-muted">{a.prompt.parts.map((p) => p.label).join(', ')}</span> : null}
+            </Row>
+          </Section>
           <Section id="tools">
             <Row label="Tool servers">
-              {a.tools_skills?.mcp_servers == null ? <span className="text-fg-faint">{INHERITS}</span> : <Chips items={a.tools_skills.mcp_servers} empty="none granted" />}
+              {a.tools_skills?.mcp_servers == null ? <span className="text-fg-faint">{INHERITS}</span> : <ChipListField label="Tool servers" value={a.tools_skills.mcp_servers} empty="none granted" />}
             </Row>
-            <Field path="tools_skills.skills" ctx={ctx}>
-              <Chips items={a.tools_skills?.skills} />
-            </Field>
+            <Field path="tools_skills.skills" ctx={ctx} />
           </Section>
           <Section id="policy">
             <Field path="policy.permission_mode" ctx={ctx}>
               {text(a.policy?.permission_mode)}
             </Field>
-            <Field path="policy.network" ctx={ctx}>
-              {text(a.policy?.network)}
-            </Field>
             <Field path="policy.default_sandbox" ctx={ctx}>
               {text(a.policy?.default_sandbox)}
             </Field>
-            <Field path="policy.mcp_scopes" ctx={ctx}>
-              <Chips items={a.policy?.mcp_scopes} />
+            <Field path="policy.network" ctx={ctx}>
+              {text(a.policy?.network)}
             </Field>
+            <Field path="policy.mcp_scopes" ctx={ctx} />
           </Section>
-          <ResolvedSection id={a.id} />
-          <UsedBySection id={a.id} />
-          <ChecksSection id={a.id} />
+          <UsedBySection load={usedBy} retry={retryUsedBy} />
           <HistorySection id={a.id} />
         </div>
+        <aside aria-label="Resolved, used by and checks" className="hidden w-[300px] shrink-0 flex-col gap-3.5 overflow-auto border-l border-border-subtle p-3.5 lg:flex">
+          <ResolvedCard id={a.id} />
+          <UsedByCard load={usedBy} retry={retryUsedBy} />
+          <ChecksCard id={a.id} />
+        </aside>
       </div>
     </div>
   )
