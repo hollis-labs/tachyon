@@ -1,22 +1,21 @@
-import { Button } from "@hollis-labs/design-components"
+import { Button, Input } from "@hollis-labs/design-components"
 import { useId, useRef, useState } from "react"
-import { Card } from "../settings/Card"
+import { Chip, SetCard } from "../settings/parts"
 import { initials, type Profile, saveProfile, useProfile } from "./profile"
-
-const CHIP = "rounded-full border border-border px-2 py-0.5 text-xs"
 
 /**
  * Profile, built locally (the kit has no account component pinned). One thin
  * component so a kit one can replace it. Stored on this device until
- * PUT /account/profile exists.
+ * PUT /account/profile exists. `elevated` only changes the assurance chip.
  */
-export function ProfileCard() {
+export function ProfileCard({ elevated = false }: { elevated?: boolean }) {
   const saved = useProfile()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Profile>(saved)
   const edit = useRef<HTMLButtonElement>(null)
   const id = useId()
   const dirty = draft.name !== saved.name || draft.email !== saved.email
+  const identified = saved.name.trim() !== ""
 
   const close = () => {
     setEditing(false)
@@ -24,85 +23,106 @@ export function ProfileCard() {
     requestAnimationFrame(() => edit.current?.focus())
   }
 
+  const chips = (
+    <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="Identity">
+      <li>
+        <Chip>
+          {identified && <i className="inline-block size-1.5 rounded-full bg-success" />}
+          {identified ? "Identified" : "Unknown"}
+        </Chip>
+      </li>
+      <li>
+        <Chip>Assurance: {elevated ? "Operator verified" : "local"}</Chip>
+      </li>
+      <li>
+        <Chip>Source: this app</Chip>
+      </li>
+    </ul>
+  )
+
   return (
-    <Card title="Profile">
-      <div className="flex items-start gap-3">
-        <div
-          aria-hidden="true"
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border text-lg font-medium text-foreground"
-        >
-          {initials(saved.name)}
-        </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          {editing ? (
-            <form
-              className="space-y-3"
-              onKeyDown={(e) => {
-                if (e.key === "Escape") close()
-              }}
-              onSubmit={(e) => {
-                e.preventDefault()
-                saveProfile(draft)
-                close()
+    <SetCard>
+      <form
+        className="flex flex-col"
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && editing) close()
+        }}
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!dirty) return
+          saveProfile(draft)
+          close()
+        }}
+      >
+        <div className="flex flex-wrap items-start gap-4 px-4 py-[18px]">
+          <span
+            aria-hidden="true"
+            className="flex size-14 shrink-0 items-center justify-center rounded-full bg-surface font-mono text-lg font-semibold text-fg-secondary"
+          >
+            {initials(saved.name)}
+          </span>
+          <div className="flex min-w-[200px] flex-1 flex-col gap-2">
+            {editing ? (
+              <div className="flex flex-col gap-2.5">
+                {(
+                  [
+                    ["name", "Display name", "text"],
+                    ["email", "Email", "email"],
+                  ] as const
+                ).map(([k, label, type]) => (
+                  <div key={k} className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor={`${id}-${k}`}
+                      className="font-mono text-caption uppercase leading-none tracking-label text-fg-muted"
+                    >
+                      {label}
+                    </label>
+                    <Input
+                      id={`${id}-${k}`}
+                      type={type}
+                      value={draft[k]}
+                      onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                <b className="text-lg text-fg">{saved.name || "Not set"}</b>
+                <span className="text-fg-muted">{saved.email || "No email"}</span>
+              </div>
+            )}
+            {chips}
+          </div>
+          {!editing && (
+            <Button
+              ref={edit}
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDraft(saved)
+                setEditing(true)
               }}
             >
-              {(
-                [
-                  ["name", "Display name", "text"],
-                  ["email", "Email", "email"],
-                ] as const
-              ).map(([k, label, type]) => (
-                <label key={k} htmlFor={`${id}-${k}`} className="block space-y-1">
-                  <span className="text-xs text-text-subtle">{label}</span>
-                  <input
-                    id={`${id}-${k}`}
-                    type={type}
-                    value={draft[k]}
-                    onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
-                    className="w-full rounded-md border border-border bg-bg px-2 py-1.5 text-sm text-foreground"
-                  />
-                </label>
-              ))}
-              <div className="flex items-center justify-between gap-2 border-t border-border-subtle pt-3">
-                <p className="text-xs text-text-subtle">Shown on approvals and comments.</p>
-                <div className="flex shrink-0 gap-2">
-                  <Button type="button" variant="ghost" onClick={close}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={!dirty}>
-                    Save profile
-                  </Button>
-                </div>
-              </div>
-            </form>
-          ) : (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <p className="truncate text-lg font-semibold text-foreground">
-                  {saved.name || "Not set"}
-                </p>
-                <p className="truncate text-sm text-text-subtle">{saved.email || "No email"}</p>
-              </div>
-              <Button
-                ref={edit}
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setDraft(saved)
-                  setEditing(true)
-                }}
-              >
-                Edit profile
-              </Button>
-            </div>
+              Edit profile
+            </Button>
           )}
-          <ul className="flex flex-wrap gap-2" aria-label="Identity">
-            <li className={CHIP}>Identity: Unknown</li>
-            <li className={CHIP}>Assurance: local</li>
-            <li className={CHIP}>Source: this app</li>
-          </ul>
         </div>
-      </div>
-    </Card>
+        {editing && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle px-4 py-3.5">
+            <span className="flex-1 text-label text-fg-muted">
+              Shown on approvals and comments.
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={close}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={!dirty}>
+              Save profile
+            </Button>
+          </div>
+        )}
+      </form>
+    </SetCard>
   )
 }

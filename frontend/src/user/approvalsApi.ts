@@ -28,7 +28,43 @@ export interface InboxSummary {
   counts: { pending: number }
 }
 
+// Dev only: `?user-stub=relaxed|elevated|empty` shows the states while the approvals routes are not live.
+function stub<T>(path: string): T | undefined {
+  if (!import.meta.env.DEV) return undefined
+  const mode = new URLSearchParams(window.location.search).get("user-stub")
+  if (!mode) return undefined
+  const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString()
+  const ev = (id: string, status: string, title: string, group: string, s: number) => ({
+    event_id: id,
+    item_id: id,
+    kind: "approval",
+    status,
+    at: ago(s),
+    mini: { title, group },
+  })
+  if (path === "/access")
+    return (
+      mode === "elevated"
+        ? { state: "elevated", expires_in_s: 720, can_elevate: true }
+        : { state: "none", can_elevate: true }
+    ) as T
+  if (path === "/inbox") return { counts: { pending: 3 } } as T
+  return {
+    events:
+      mode === "empty"
+        ? []
+        : [
+            ev("1", "approved", "Run migration 029 on staging", "Release bot", 720),
+            ev("2", "denied", "Delete 14 stale branches", "Release bot", 7200),
+            ev("3", "approved", "Restart the planner service", "Release bot", 100000),
+            ev("4", "approved", "Merge pull request 507 into main", "Pull requests", 110000),
+          ],
+  } as T
+}
+
 async function get<T>(path: string): Promise<T> {
+  const fake = stub<T>(path.split("?")[0])
+  if (fake) return fake
   const res = await hostFetch(BASE + path, {
     headers: { Accept: "application/json", "Cache-Control": "no-store" },
   })
