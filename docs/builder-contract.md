@@ -44,9 +44,9 @@ with `type` one of `set | append | remove | create | restore_version | archive`.
 - Errors on create: 400 `invalid` | `marker_forbidden` (text containing a `tachyon:prompt` marker is refused so a
   prompt cannot forge a block); 409 `stale_base` | `change_open` (one open change per path) | `exists` |
   `part_in_use`; 413 `too_large` (prompt 64 KiB, file 256 KiB); 429 `rate_limited` (10 per minute per operator).
-- State machine: `draft -> awaiting_approval -> approved -> applying -> applied`, or `failed` (with
+- State machine (direct mode, a control token is set): `draft -> awaiting_approval -> approved -> applying -> applied`, or `failed` (with
   `failure.step` validate | plan | apply | reload), `rolled_back`, `stale`, `expired`, `cancelled`. Open states
-  (hold their paths): draft, awaiting_approval, approved, applying, stale. A privileged change needs
+  (hold their paths): draft, awaiting_handoff, awaiting_approval, approved, applying, stale. A privileged change needs
   `ack_privileged: true` on submit (400 `ack_required`).
 - **Approval gap (F3).** Tether approval needs the operator passphrase on the host, so Save is create + submit
   and then waits at `awaiting_approval`. `plan.approve_command` is the exact command to show (copy button),
@@ -80,6 +80,36 @@ delete; Registry Machines/Services/Repos (`soon`); registry to catalog project l
 Stub limits: nothing is stored; change state comes from fixtures (a submit/cancel/rearm answers with the
 fixture of the resulting state, relabelled with the requested id); filters are minimal (`q`, `provider`,
 `state`, `project`, `worker`, `live`).
+
+## Change handoff (BH1; contract and stub here, real service in the BH1 backend PR)
+
+Without a standing `catalog.write` credential (the default; `TACHYON_TETHER_CONTROL_TOKEN_FILE` unset) Tachyon cannot
+plan or apply. The change service keeps its typed edits, diff, checks and stale detection and replaces only the
+plan/apply step with a hand-off. Design: Tesseract `design_tachyon_builder_change_handoff_20261030`.
+
+- `GET /capabilities` -> `{changes:{mode:"direct"|"handoff"|"unavailable", handoff:["copy"], applier_agent?}}`. The UI reads
+  it instead of waiting for a 503. `unavailable` (503 `changes_unavailable` on the change routes) only when the read
+  token is missing too.
+- Handoff states: `draft -> awaiting_handoff -> [awaiting_approval] -> applied`, or `stale`, `cancelled`,
+  `failed`. `POST /changes` answers `awaiting_handoff` when nothing needs an ack (a privileged change stays a `draft`
+  until `submit` with `ack_privileged`, which also lands at `awaiting_handoff`). `awaiting_handoff` has no expiry.
+  `change.handoff = {mode, name, bundle_sha256, files, session_available, reason?}`; each target gains `new_sha`.
+- `GET /changes/{id}/bundle` -> `{name, note, files:[{path,content}], sha256}`: exactly the `POST /catalog/plans` body.
+  Browser session only, `Cache-Control: no-store`. It carries full file content (may include env values): download or
+  copy only, never Tesseract, mail, a prompt or a log. The UI shows `tether catalog plan --name "<name>" --file
+  bundle.json`, then `tether catalog approve <plan_id>`, then `tether catalog apply <plan_id>`; the CLI flag
+  spellings are UNVERIFIED, the HTTP/MCP shape is verified.
+- `POST /changes/{id}/mark_planned {plan_id?}`: optional hint, `awaiting_handoff -> awaiting_approval` with
+  `plan = {plan_id, state:"planned", expires_at:null, approve_command}`. Not trusted for the applied state.
+- `POST /changes/{id}/check`: "Check now", re-reads the files immediately and answers the change.
+- **Applied is detected, not reported.** The service compares each file's current sha with `new_sha`: all match ->
+  `applied` (`result.detected: true`, `activation` and `backup_id` empty; say "Applied; check the next launch").
+  A base that moved to something else -> `stale` with the usual `mine_diff`/`theirs_diff`. A partial match (some
+  files applied, others still at base) stays `awaiting_*`. Detection lags the poll interval.
+- Stub: handoff is the default mode; `X-Stub-Scenario: direct | unavailable` change `/capabilities` and the
+  create/submit flow; on `/changes/{id}/check`, `detected` answers applied and `stale` answers stale.
+  Fixtures: `chg_awaiting_handoff`, `chg_handoff_planned`, `chg_applied_detected`, `change_bundle`, `capabilities`.
+- Session mode (BH2, optional) is not part of this contract yet.
 
 ## Change service (B3, real)
 

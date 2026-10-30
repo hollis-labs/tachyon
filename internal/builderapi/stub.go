@@ -78,6 +78,10 @@ func (Stub) Handler() http.Handler {
 	b("POST /changes/{id}/submit", changeSubmit)
 	b("POST /changes/{id}/cancel", changeCancel)
 	b("POST /changes/{id}/rearm", changeRearm)
+	b("GET /capabilities", capabilities)
+	b("GET /changes/{id}/bundle", changeBundle)
+	b("POST /changes/{id}/mark_planned", changeMarkPlanned)
+	b("POST /changes/{id}/check", changeCheck)
 	m.HandleFunc("GET "+Prefix+"/stream", serveStream)
 	m.HandleFunc("GET "+Prefix+"/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
@@ -490,7 +494,8 @@ type changeOp struct {
 
 // changeCreate validates a change request the way the real route will. It
 // stores nothing: the answer is chg_draft, or chg_draft_privileged when an op
-// touches agent authority. X-Stub-Scenario: stale_base | change_open | rate_limited.
+// touches agent authority. X-Stub-Scenario: stale_base | change_open | rate_limited. In handoff mode
+// (the default) an unprivileged change is awaiting_handoff at once; X-Stub-Scenario direct plays the original flow.
 func changeCreate(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		RequestID string     `json:"request_id"`
@@ -542,8 +547,11 @@ func changeCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := "chg_draft"
-	if privileged {
+	switch {
+	case privileged:
 		id = "chg_draft_privileged"
+	case stubMode(r) == ModeHandoff: // no ack needed, so the bundle is ready at once
+		id = "chg_awaiting_handoff"
 	}
 	c := changeMap()[id]
 	c["request_id"], c["note"] = in.RequestID, in.Note
@@ -656,8 +664,11 @@ func changeSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := "chg_awaiting"
-	if len(priv) > 0 {
+	switch {
+	case len(priv) > 0:
 		next = "chg_awaiting_privileged"
+	case stubMode(r) == ModeHandoff:
+		next = "chg_awaiting_handoff"
 	}
 	write(w, 200, as(changeMap()[next], r.PathValue("id")))
 }
@@ -668,10 +679,10 @@ func changeCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch c["state"] {
-	case ChangeDraft, ChangeAwaitingApproval, ChangeStale:
+	case ChangeDraft, ChangeAwaitingHandoff, ChangeAwaitingApproval, ChangeStale:
 		write(w, 200, as(changeMap()["chg_cancelled"], r.PathValue("id")))
 	default:
-		fail(w, 409, "bad_state", "Only a draft, an awaiting-approval or a stale change can be cancelled.")
+		fail(w, 409, "bad_state", "Only a draft, an awaiting-handoff, an awaiting-approval or a stale change can be cancelled.")
 	}
 }
 
@@ -694,6 +705,92 @@ func changeRearm(w http.ResponseWriter, r *http.Request) {
 	plan["expires_at"] = time.Now().UnixMilli() + PlanTTLSeconds*1000
 	n["plan"] = plan
 	write(w, 200, n)
+}
+
+// stubMode is the change mode the stub plays: handoff (the real default, no control token) unless
+// X-Stub-Scenario is direct or unavailable.
+func stubMode(r *http.Request) string {
+	switch m := r.Header.Get("X-Stub-Scenario"); m {
+	case ModeDirect, ModeUnavailable:
+		return m
+	}
+	return ModeHandoff
+}
+
+func capabilities(w http.ResponseWriter, r *http.Request) {
+	var all map[string]any
+	load("capabilities", &all)
+	write(w, 200, all[stubMode(r)])
+}
+
+// changeBundle serves the POST /catalog/plans body for an open handoff change. Real bundles carry full file
+// content, so the route is browser-session only and never cached.
+func changeBundle(w http.ResponseWriter, r *http.Request) {
+	c, ok := findChange(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if c["state"] != ChangeAwaitingHandoff && c["state"] != ChangeAwaitingApproval || c["handoff"] == nil {
+		fail(w, 409, "bad_state", "Only a change waiting on a Tether hand-off has a bundle.")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	var v map[string]any
+	load("change_bundle", &v)
+	v["name"] = "builder " + r.PathValue("id")
+	write(w, 200, v)
+}
+
+// changeMarkPlanned records the plan id the operator got from Tether, only as a hint for the UI.
+func changeMarkPlanned(w http.ResponseWriter, r *http.Request) {
+	c, ok := findChange(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	var in struct {
+		PlanID string `json:"plan_id"`
+	}
+	if !readBody(w, r, &in) {
+		return
+	}
+	if len(in.PlanID) > 80 || strings.ContainsAny(in.PlanID, " \t\n/") {
+		fail(w, 400, "invalid", "plan_id is a Tether plan id of at most 80 characters.")
+		return
+	}
+	if c["state"] != ChangeAwaitingHandoff && c["state"] != ChangeAwaitingApproval || c["handoff"] == nil {
+		fail(w, 409, "bad_state", "Only a change waiting on a Tether hand-off can be marked planned.")
+		return
+	}
+	n := as(changeMap()["chg_handoff_planned"], r.PathValue("id"))
+	if in.PlanID != "" {
+		plan := map[string]any{}
+		for k, v := range n["plan"].(map[string]any) {
+			plan[k] = v
+		}
+		plan["plan_id"], plan["approve_command"] = in.PlanID, "tether catalog approve "+in.PlanID
+		n["plan"] = plan
+	}
+	write(w, 200, n)
+}
+
+// changeCheck is "Check now": the server re-reads the files and answers the change. X-Stub-Scenario detected
+// answers applied, stale answers stale, anything else the change as it is.
+func changeCheck(w http.ResponseWriter, r *http.Request) {
+	c, ok := findChange(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if c["state"] != ChangeAwaitingHandoff && c["state"] != ChangeAwaitingApproval || c["handoff"] == nil {
+		write(w, 200, c)
+		return
+	}
+	switch r.Header.Get("X-Stub-Scenario") {
+	case "detected":
+		c = as(changeMap()["chg_applied_detected"], r.PathValue("id"))
+	case "stale":
+		c = as(changeMap()["chg_stale"], r.PathValue("id"))
+	}
+	write(w, 200, c)
 }
 
 type fixtureEvent struct {

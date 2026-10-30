@@ -443,6 +443,7 @@ func TestEveryChangeStateHasAFixtureAndTheStateMachineHolds(t *testing.T) {
 			Failure map[string]any
 			Stale   map[string]any
 			Diff    string
+			Handoff map[string]any
 		}
 	}
 	decode(t, do(t, "GET", "/changes", ""), &all)
@@ -451,7 +452,8 @@ func TestEveryChangeStateHasAFixtureAndTheStateMachineHolds(t *testing.T) {
 		have[c.State] = true
 		switch c.State {
 		case ChangeAwaitingApproval, ChangeApproved, ChangeApplying, ChangeApplied:
-			if c.Plan == nil || c.Plan["plan_id"] == nil || c.Plan["expires_at"] == nil {
+			// a handoff change only hints the plan id, so it has no expiry
+			if c.Plan == nil || c.Plan["plan_id"] == nil || c.Plan["expires_at"] == nil && c.Handoff == nil {
 				t.Errorf("%s: %s needs a plan with an expiry", c.ID, c.State)
 			}
 			if c.State == ChangeAwaitingApproval && !strings.HasPrefix(c.Plan["approve_command"].(string), "tether catalog approve plan_") {
@@ -526,7 +528,7 @@ func TestChangeCreateValidates(t *testing.T) {
 		Privileged []any
 		RequestID  string `json:"request_id"`
 	}
-	w := do(t, "POST", "/changes", good)
+	w := do(t, "POST", "/changes", good, "X-Stub-Scenario", "direct")
 	decode(t, w, &c)
 	if w.Code != 201 || c.State != ChangeDraft || len(c.Privileged) != 0 || c.RequestID != "r1" {
 		t.Errorf("create: %d %s", w.Code, w.Body)
@@ -584,7 +586,7 @@ func TestChangeCreateValidates(t *testing.T) {
 }
 
 func TestSubmitCancelRearmFollowTheStateMachine(t *testing.T) {
-	if w := do(t, "POST", "/changes/chg_draft/submit", `{}`); w.Code != 200 || !strings.Contains(w.Body.String(), `"awaiting_approval"`) || !strings.Contains(w.Body.String(), `"chg_draft"`) {
+	if w := do(t, "POST", "/changes/chg_draft/submit", `{}`, "X-Stub-Scenario", "direct"); w.Code != 200 || !strings.Contains(w.Body.String(), `"awaiting_approval"`) || !strings.Contains(w.Body.String(), `"chg_draft"`) {
 		t.Errorf("submit: %d %s", w.Code, w.Body)
 	}
 	if w := do(t, "POST", "/changes/chg_draft_privileged/submit", `{}`); w.Code != 400 || !strings.Contains(w.Body.String(), "ack_required") {
@@ -658,5 +660,84 @@ func TestOpenAPIDocumentsEveryRoute(t *testing.T) {
 		if !strings.Contains(doc, "\n  "+p) {
 			t.Errorf("openapi.yaml does not document %s", p)
 		}
+	}
+}
+
+func TestHandoffModeCapabilitiesBundleAndDetection(t *testing.T) {
+	var caps struct {
+		Changes struct {
+			Mode    string
+			Handoff []string
+		}
+	}
+	for scenario, want := range map[string]string{"": ModeHandoff, "direct": ModeDirect, "unavailable": ModeUnavailable} {
+		decode(t, do(t, "GET", "/capabilities", "", "X-Stub-Scenario", scenario), &caps)
+		if caps.Changes.Mode != want {
+			t.Errorf("capabilities %q: %v", scenario, caps)
+		}
+	}
+	decode(t, do(t, "GET", "/capabilities", ""), &caps)
+	if len(caps.Changes.Handoff) != 1 || caps.Changes.Handoff[0] != HandoffCopy {
+		t.Errorf("handoff modes: %v", caps.Changes.Handoff)
+	}
+	// An unprivileged change is awaiting_handoff at once; a privileged one waits for the ack.
+	var c struct {
+		State   string
+		Plan    any
+		Handoff map[string]any
+		Targets []map[string]any
+	}
+	w := do(t, "POST", "/changes", create(op("agent", "builder-reviewer", "abc", OpSet, "runtime.model", `"claude-opus-5-5"`)))
+	decode(t, w, &c)
+	if w.Code != 201 || c.State != ChangeAwaitingHandoff || c.Plan != nil || c.Handoff["mode"] != HandoffCopy || c.Targets[0]["new_sha"] == nil {
+		t.Errorf("handoff create: %d %s", w.Code, w.Body)
+	}
+	if w := do(t, "POST", "/changes", create(op("agent", "release-captain", "abc", OpSet, "policy.permission_mode", `"acceptEdits"`))); !strings.Contains(w.Body.String(), `"state":"draft"`) {
+		t.Errorf("privileged handoff change stays a draft: %s", w.Body)
+	}
+	if w := do(t, "POST", "/changes/chg_draft/submit", `{}`); w.Code != 200 || !strings.Contains(w.Body.String(), `"awaiting_handoff"`) {
+		t.Errorf("handoff submit: %d %s", w.Code, w.Body)
+	}
+	var b struct {
+		Name  string
+		Sha   string `json:"sha256"`
+		Files []struct{ Path, Content string }
+	}
+	w = do(t, "GET", "/changes/chg_awaiting_handoff/bundle", "")
+	decode(t, w, &b)
+	if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" || len(b.Files) != 1 || b.Files[0].Content == "" || b.Sha == "" {
+		t.Errorf("bundle: %d %s", w.Code, w.Body)
+	}
+	for _, id := range []string{"chg_draft", "chg_applied", "chg_stale"} {
+		if w := do(t, "GET", "/changes/"+id+"/bundle", ""); w.Code != 409 {
+			t.Errorf("bundle of %s: %d", id, w.Code)
+		}
+	}
+	if do(t, "GET", "/changes/nope/bundle", "").Code != 404 {
+		t.Error("bundle of an unknown change must be 404")
+	}
+	w = do(t, "POST", "/changes/chg_awaiting_handoff/mark_planned", `{"plan_id":"plan_ABC123"}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"approve_command":"tether catalog approve plan_ABC123"`) || !strings.Contains(w.Body.String(), `"awaiting_approval"`) {
+		t.Errorf("mark_planned: %d %s", w.Code, w.Body)
+	}
+	if do(t, "POST", "/changes/chg_awaiting_handoff/mark_planned", `{"plan_id":"a b"}`).Code != 400 || do(t, "POST", "/changes/chg_applied/mark_planned", `{}`).Code != 409 {
+		t.Error("mark_planned must refuse a bad id and a finished change")
+	}
+	for scenario, want := range map[string]string{"": ChangeAwaitingHandoff, "detected": ChangeApplied, "stale": ChangeStale} {
+		var got struct{ State string }
+		decode(t, do(t, "POST", "/changes/chg_awaiting_handoff/check", `{}`, "X-Stub-Scenario", scenario), &got)
+		if got.State != want {
+			t.Errorf("check %q: %s want %s", scenario, got.State, want)
+		}
+	}
+	var det struct {
+		Result map[string]any
+	}
+	decode(t, do(t, "POST", "/changes/chg_awaiting_handoff/check", `{}`, "X-Stub-Scenario", "detected"), &det)
+	if det.Result["detected"] != true || det.Result["activation"] != "" {
+		t.Errorf("a detected apply carries no activation text: %v", det.Result)
+	}
+	if w := do(t, "POST", "/changes/chg_awaiting_handoff/cancel", `{}`); w.Code != 200 {
+		t.Errorf("cancel awaiting_handoff: %d", w.Code)
 	}
 }
