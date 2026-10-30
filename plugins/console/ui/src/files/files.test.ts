@@ -18,3 +18,20 @@ describe('file viewer helpers', () => {
     expect(errorMessage(new FileError(500, 'x', 'boom'))).toBe('boom')
   })
 })
+
+import { casterStat, contentUrl, parseCasterRef, pinCasterRef } from './api'
+
+describe('caster refs', () => {
+  it('parses only the two allowed shapes', () => {
+    expect(parseCasterRef('caster://designer/page@3')).toEqual({ ns: 'designer', name: 'page', rev: 3 })
+    expect(parseCasterRef('caster://designer/page')).toEqual({ ns: 'designer', name: 'page', rev: null })
+    expect(parseCasterRef('caster://designer/page@0')).toBeNull()
+    expect(parseCasterRef('caster://designer/a/b')).toBeNull()
+  })
+  it('pins a revision and builds the caster content url', () => {
+    expect(pinCasterRef('caster://designer/page@2', 5)).toBe('caster://designer/page@5')
+    expect(contentUrl('caster://designer/page@5')).toContain('caster_ref=caster%3A%2F%2Fdesigner%2Fpage%405')
+    expect(contentUrl('/tmp/a.txt')).toContain('path=')
+    expect(casterStat({ ref: 'caster://d/p', namespace: 'd', name: 'p', rev: 1, latest_rev: 1, floating: false, revisions: [] }, 'caster://d/p@1').kind).toBe('binary')
+  })
+})

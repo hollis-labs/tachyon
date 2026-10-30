@@ -33,7 +33,11 @@ export interface Frame {
 
 /** A failed call, reduced to what the viewer can show. */
 export class FileError extends Error {
-  constructor(public status: number, public code: string, message: string) {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+  ) {
     super(message)
   }
 }
@@ -51,7 +55,47 @@ async function fail(res: Response): Promise<never> {
   throw new FileError(res.status, code, message)
 }
 
-export const contentUrl = (path: string) => `${FILES_BASE}/content?path=${encodeURIComponent(path)}`
+// ---- caster artifacts: caster://ns/name or caster://ns/name@N (N >= 1)
+const CASTER = /^caster:\/\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)(?:@([1-9]\d{0,5}))?$/
+
+export const isCasterRef = (ref: string) => ref.startsWith('caster://')
+
+export function parseCasterRef(ref: string): { ns: string; name: string; rev: number | null } | null {
+  const m = CASTER.exec(ref)
+  return m ? { ns: m[1], name: m[2], rev: m[3] ? Number(m[3]) : null } : null
+}
+
+/** The same artifact pinned to one revision. */
+export const pinCasterRef = (ref: string, rev: number) => `${ref.replace(/@\d+$/, '')}@${rev}`
+
+export interface CasterInfo {
+  ref: string
+  namespace: string
+  name: string
+  kind?: FileKind | null
+  mime?: string | null
+  size?: number | null
+  rev: number
+  latest_rev: number
+  floating: boolean
+  sha256?: string
+  title?: string | null
+  revisions: { rev: number; sha256?: string; title?: string | null; at?: number | null }[]
+}
+
+/** What the shared viewer body needs, from a resolved artifact. */
+export const casterStat = (c: CasterInfo, pinned: string): FileStat => ({
+  path: pinned,
+  exists: true,
+  allowed: true,
+  type: 'file',
+  kind: c.kind ?? 'binary',
+  mime: c.mime,
+  size: c.size,
+  mtime: null,
+})
+
+export const contentUrl = (path: string) => (isCasterRef(path) ? `${FILES_BASE}/content?caster_ref=${encodeURIComponent(path)}` : `${FILES_BASE}/content?path=${encodeURIComponent(path)}`)
 
 export const fileApi = {
   async stat(path: string): Promise<FileStat> {
@@ -66,6 +110,11 @@ export const fileApi = {
     if (!item) throw new FileError(502, 'invalid_response', 'The file service returned no result.')
     return item
   },
+  async resolve(ref: string): Promise<CasterInfo> {
+    const res = await hostFetch(`${FILES_BASE}/resolve?ref=${encodeURIComponent(ref)}`, { headers: { Accept: 'application/json' } })
+    if (!res.ok) return fail(res)
+    return (await res.json()) as CasterInfo
+  },
   async text(path: string): Promise<{ text: string; etag: string | null }> {
     const res = await hostFetch(contentUrl(path), { headers: { 'Cache-Control': 'no-store' } })
     if (!res.ok) return fail(res)
@@ -75,7 +124,7 @@ export const fileApi = {
     const res = await hostFetch(`${FILES_BASE}/frame`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(isCasterRef(path) ? { caster_ref: path } : { path }),
     })
     if (!res.ok) return fail(res)
     return (await res.json()) as Frame
@@ -111,6 +160,9 @@ export function denyMessage(reason: DenyReason | null | undefined, exists = true
 export function errorMessage(e: unknown): string {
   if (e instanceof FileError) {
     if (e.status === 401 || e.status === 403) return 'Operator access is needed to view files.'
+    if (e.code === 'caster_unavailable') return 'Caster is not connected on this host.'
+    if (e.code === 'namespace_not_allowed') return 'This caster namespace is not available to view.'
+    if (e.code === 'changed') return 'The artifact changed while loading. Reload to try again.'
     if (e.status === 413) return 'This file is too large to preview.'
     if (e.status === 404) return 'Not found, or not in a folder Tachyon can show.'
     return e.message
