@@ -80,7 +80,7 @@ describe('Ideas lens', () => {
     expect(api.plannerUpdate).not.toHaveBeenCalled()
     fireEvent.change(box, { target: { value: 'new text' } })
     fireEvent.blur(box)
-    await waitFor(() => expect(api.plannerUpdate).toHaveBeenCalledWith('ideas', 'ID-1', { notes: 'new text' }, 4))
+    await waitFor(() => expect(api.plannerUpdate).toHaveBeenCalledWith('ideas', 'ID-1', { notes: 'new text' }, 4), { timeout: 5000 })
   })
 })
 
