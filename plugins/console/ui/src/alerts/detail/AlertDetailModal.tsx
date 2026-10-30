@@ -157,7 +157,7 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
               <Linkified text={alert.detail} />
             </p>
           )}
-          <p className="mt-1 text-xs text-fg-muted">{alert.source}</p>
+          <p className="mt-1 text-xs text-fg-muted">{alert.sourceLabel ?? alert.source}</p>
         </section>
 
         <details className="border-b border-border-subtle px-4 py-3">

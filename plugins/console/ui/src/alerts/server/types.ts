@@ -36,6 +36,9 @@ export interface ServerAlert {
   resolution: string
   resolved_by: string
   primary: { label: string; href: string } | null
+  /** Optional, omitted when unknown (AL5 derived fields). */
+  source_label?: string
+  display_title?: string
   subjects: ServerSubject[]
   escalate_at_ms: number | null
   escalated_at_ms: number | null
