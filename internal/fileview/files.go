@@ -23,6 +23,8 @@ type Files struct {
 	Audit *Auditor
 	// Principal names the caller for the audit log (a hash of the browser session, never the cookie).
 	Principal func(*http.Request) string
+	// Caster, when set, serves caster_ref (V5); without it caster_ref is 501.
+	Caster *Caster
 }
 
 // Mount registers POST /stat and GET /content under fileviewapi.Prefix, one pattern each. guard wraps both
@@ -260,7 +262,16 @@ func (f *Files) content(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ref != "" {
-		jsonErr(w, 501, "caster_unavailable", "caster:// refs are not available yet.")
+		if f.Caster == nil {
+			jsonErr(w, 501, "caster_unavailable", "caster:// refs are not available.")
+			return
+		}
+		set, err := f.Guard.Svc.Load(r.Context())
+		if err != nil {
+			jsonErr(w, 500, "internal", "Settings are unavailable.")
+			return
+		}
+		f.Caster.serveContent(w, r, set)
 		return
 	}
 	file, res, den := f.Guard.Open(r.Context(), p)
@@ -297,6 +308,18 @@ func (f *Files) content(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Cache-Control", "private, no-cache")
 	h.Set("ETag", etagFor(fi))
+	setContentHeaders(h, ki)
+	cw := &countWriter{ResponseWriter: w}
+	http.ServeContent(cw, r, "", fi.ModTime(), file)
+	if f.Audit != nil {
+		root, etag := res.Root.Label, etagFor(fi)
+		_ = f.Audit.Record(r.Context(), AuditEntry{Principal: f.principal(r), Kind: "open", Source: "host", PathOrRef: p, ResolvedRoot: &root, Outcome: "ok", BytesServed: &cw.n, ETag: &etag, Count: 1})
+	}
+}
+
+// setContentHeaders sets the type and disposition for a kind: the UI renders text, markdown, code and HTML source
+// itself, so they are always text/plain; images keep their type (SVG gets the sandbox CSP); binary is a download.
+func setContentHeaders(h http.Header, ki kindInfo) {
 	switch ki.kind {
 	case fileviewapi.KindImage:
 		h.Set("Content-Type", ki.mime)
@@ -310,11 +333,5 @@ func (f *Files) content(w http.ResponseWriter, r *http.Request) {
 	default: // the UI renders markdown, code and html source itself
 		h.Set("Content-Type", "text/plain; charset=utf-8")
 		h.Set("Content-Disposition", "inline")
-	}
-	cw := &countWriter{ResponseWriter: w}
-	http.ServeContent(cw, r, "", fi.ModTime(), file)
-	if f.Audit != nil {
-		root, etag := res.Root.Label, etagFor(fi)
-		_ = f.Audit.Record(r.Context(), AuditEntry{Principal: f.principal(r), Kind: "open", Source: "host", PathOrRef: p, ResolvedRoot: &root, Outcome: "ok", BytesServed: &cw.n, ETag: &etag, Count: 1})
 	}
 }

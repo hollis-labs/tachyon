@@ -49,6 +49,34 @@ export class ToastQueue {
     }
   }
 
+  /**
+   * Server-decided toast (the stream's `toast` flag already applied Quiet, level and muting).
+   * A repeat of the same coalesce key replaces the visible one.
+   */
+  push(a: Alert): void {
+    this.primed = true
+    this.seen.add(a.id)
+    const next = this.stack.filter((x) => x.id !== a.id)
+    const i = a.coalesceKey ? next.findIndex((x) => x.coalesceKey === a.coalesceKey) : -1
+    if (i === -1) next.push(a)
+    else next[i] = a
+    while (next.length > MAX_VISIBLE_TOASTS) {
+      const j = next.findIndex((x) => x.severity !== 'critical')
+      next.splice(j === -1 ? 0 : j, 1)
+    }
+    this.stack = next
+    this.emit()
+  }
+
+  /** Drop toasts whose alert is no longer unread (handled on this or another device). */
+  retain(unread: ReadonlySet<string>): void {
+    const next = this.stack.filter((a) => unread.has(a.id))
+    if (next.length !== this.stack.length) {
+      this.stack = next
+      this.emit()
+    }
+  }
+
   close(id: string): void {
     const next = this.stack.filter((a) => a.id !== id)
     if (next.length !== this.stack.length) {

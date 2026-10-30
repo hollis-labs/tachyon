@@ -26,6 +26,9 @@ type Cards struct {
 	// Receipt, when set, returns the effects receipt of an approved card (nil
 	// when there is none). It is called with the card's item id.
 	Receipt func(ctx context.Context, itemID string) any
+	// Bind, when set, ties a freshly asked card to the chat thread named by
+	// thread_ref (and message_ref) so it shows in that thread. An error fails the ask.
+	Bind func(ctx context.Context, itemID, kind, threadRef, messageRef string) error
 }
 
 type cardAsk struct {
@@ -39,6 +42,8 @@ type cardAsk struct {
 	TTLSeconds int              `json:"ttl_seconds,omitempty"`
 	Key        string           `json:"key,omitempty"`
 	Context    string           `json:"context,omitempty"`
+	ThreadRef  string           `json:"thread_ref,omitempty"`
+	MessageRef string           `json:"message_ref,omitempty"`
 	Audience   []string         `json:"audience,omitempty"`
 }
 type cardRef struct {
@@ -220,6 +225,11 @@ func invokeCard(ctx context.Context, c *Cards, name string, raw json.RawMessage,
 		}
 		if err != nil {
 			return nil, cardError(err)
+		}
+		if q.ThreadRef != "" && c.Bind != nil {
+			if err := c.Bind(ctx, h.ItemID, q.Kind, q.ThreadRef, q.MessageRef); err != nil {
+				return nil, invalid("thread_ref: " + err.Error())
+			}
 		}
 		res, err := c.Service.Get(ctx, hitl.GetCommand{ContractVersion: hitl.ContractVersion, ItemID: h.ItemID, Caller: caller})
 		if err != nil {

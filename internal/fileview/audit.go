@@ -21,7 +21,7 @@ var (
 	auditKinds   = []string{"stat", "open", "frame", "caster"}
 	auditSources = []string{"host", "caster"}
 	auditOutcome = []string{"ok", "denied", "error"}
-	denyReasons  = []string{"outside_roots", "secret_pattern", "symlink_escape", "too_large", "not_found_or_hidden"}
+	denyReasons  = []string{"outside_roots", "secret_pattern", "symlink_escape", "too_large", "not_found_or_hidden", "namespace_not_allowed"}
 )
 
 // AuditEntry is one row. Times are unix ms. Nothing here is file content.

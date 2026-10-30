@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Exercise the real file viewer routes (V1-V4, V6) against a running Tachyon and print one PASS/FAIL line per
+# case. It builds a scratch tree INSIDE a root that the server serves, so run it on the Tachyon host.
+#   scripts/fileview-curl-matrix [-b BASE] [-r ROOT_DIR]
+#     -b base URL   (default http://127.0.0.1:8080)
+#     -r root dir   a directory under an effective root (default ~/Downloads); a scratch dir is created in it
+# Needs an operator session cookie in TACHYON_COOKIE ("tachyon_approvals=..."), elevated for PUT /settings.
+# Cases that need the stub or caster (V5) are not covered. Exit status is the number of failures.
+set -uo pipefail
+base=http://127.0.0.1:8080 root="$HOME/Downloads"
+while getopts b:r: o; do case $o in b) base=$OPTARG;; r) root=$OPTARG;; *) exit 2;; esac; done
+[ -n "${TACHYON_COOKIE:-}" ] || { echo "set TACHYON_COOKIE to the operator session cookie" >&2; exit 2; }
+api="$base/api/plugins/console/v1/files"
+dir=$(mktemp -d "$root/fileview-matrix.XXXXXX") || exit 2
+trap 'rm -rf "$dir"' EXIT
+fail=0
+
+mkdir -p "$dir/sub"
+printf '# hello\n' >"$dir/readme.md"
+printf '<!DOCTYPE html><html><body><p>frame me</p></body></html>' >"$dir/page.html"
+printf '<!DOCTYPE html><html><body>disguised</body></html>' >"$dir/page.txt"
+printf 'package main\n' >"$dir/main.go"
+printf '\x89PNG\r\n\x1a\n\0\0\0\0' >"$dir/pic.png"
+printf '<svg xmlns="http://www.w3.org/2000/svg"></svg>' >"$dir/logo.svg"
+printf 'TOKEN=x\n' >"$dir/.env"
+printf 'x\n' >"$dir/id_rsa"
+printf 'x\n' >"$dir/id_rsa.pub"
+printf 'x\n' >"$dir/my-secret.txt"
+ln -s "$dir/readme.md" "$dir/link-inside"
+ln -s "$dir/.env" "$dir/link-to-env"
+ln -s /etc/hostname "$dir/link-out"
+ln -s "$dir/nowhere" "$dir/dangling"
+
+req() { # method path [curl args...] -> prints "status|headers+body file"
+  local m=$1 u=$2; shift 2
+  curl -sS -o "$dir/.body" -D "$dir/.hdr" -w '%{http_code}' -X "$m" -H "Cookie: $TACHYON_COOKIE" -H "Origin: $base" "$@" "$u"
+}
+check() { # name want got [needle-in-body-or-headers]
+  if [ "$2" = "$3" ] && { [ -z "${4:-}" ] || grep -qiF -- "$4" "$dir/.body" "$dir/.hdr"; }; then echo "PASS $1 ($3)"; else echo "FAIL $1: want $2${4:+ with '$4'}, got $3"; fail=$((fail+1)); fi
+}
+stat_one() { req POST "$api/stat" -H 'Content-Type: application/json' -d "{\"paths\":[\"$1\"]}"; }
+content() { req GET "$api/content?path=$1" "${@:2}"; }
+mint() { req POST "$api/frame" -H 'Content-Type: application/json' -d "$1"; }
+
+# stat: kinds and denials
+check "stat markdown"            200 "$(stat_one "$dir/readme.md")" '"kind":"markdown"'
+check "stat html by content"     200 "$(stat_one "$dir/page.txt")" '"kind":"html"'
+check "stat go"                  200 "$(stat_one "$dir/main.go")" '"language":"go"'
+check "stat png"                 200 "$(stat_one "$dir/pic.png")" '"mime":"image/png"'
+check "stat svg"                 200 "$(stat_one "$dir/logo.svg")" '"mime":"image/svg+xml"'
+check "stat dir"                 200 "$(stat_one "$dir/sub")" '"type":"dir"'
+check "stat .env denied"         200 "$(stat_one "$dir/.env")" '"deny_reason":"secret_pattern"'
+check "stat link to env denied"  200 "$(stat_one "$dir/link-to-env")" '"deny_reason":"secret_pattern"'
+check "stat link out denied"     200 "$(stat_one "$dir/link-out")" '"deny_reason":"symlink_escape"'
+check "stat /etc/passwd hidden"  200 "$(stat_one /etc/passwd)" '"deny_reason":"not_found_or_hidden"'
+check "stat dangling hidden"     200 "$(stat_one "$dir/dangling")" '"deny_reason":"not_found_or_hidden"'
+check "stat public key allowed"  200 "$(stat_one "$dir/id_rsa.pub")" '"allowed":true'
+check "stat relative path"       400 "$(stat_one dev/x)"
+check "stat empty list"          400 "$(req POST "$api/stat" -H 'Content-Type: application/json' -d '{"paths":[]}')"
+
+# content
+check "content text"             200 "$(content "$dir/main.go")" 'nosniff'
+check "content html as text"    200 "$(content "$dir/page.html")" 'text/plain; charset=utf-8'
+check "content svg csp"          200 "$(content "$dir/logo.svg")" 'sandbox; default-src'
+check "content range"            206 "$(content "$dir/main.go" -H 'Range: bytes=0-6')" 'Content-Range'
+etag=$(content "$dir/main.go" >/dev/null; awk 'tolower($1)=="etag:"{print $2}' "$dir/.hdr" | tr -d '\r')
+check "content 304"              304 "$(content "$dir/main.go" -H "If-None-Match: $etag")"
+check "content .env"             403 "$(content "$dir/.env")"
+check "content id_rsa"           403 "$(content "$dir/id_rsa")"
+check "content secret name"      403 "$(content "$dir/my-secret.txt")"
+check "content link to env"      403 "$(content "$dir/link-to-env")"
+check "content link out"         403 "$(content "$dir/link-out")"
+check "content traversal"        404 "$(content "$dir/../../../../etc/passwd")"
+check "content /etc/passwd"      404 "$(content /etc/passwd)"
+check "content directory"        400 "$(content "$dir/sub")"
+check "content caster not yet"   501 "$(req GET "$api/content?caster_ref=caster://designer/x")"
+check "content no auth"          401 "$(curl -sS -o /dev/null -w '%{http_code}' "$api/content?path=$dir/main.go")"
+
+# frames
+check "frame not html"           400 "$(mint "{\"path\":\"$dir/main.go\"}")" not_html
+check "frame secret"             403 "$(mint "{\"path\":\"$dir/.env\"}")"
+check "frame scripts off"        403 "$(mint "{\"path\":\"$dir/page.html\",\"scripts\":true}")" scripts_not_allowed
+check "frame mint"               201 "$(mint "{\"path\":\"$dir/page.html\"}")" frame_url
+url=$(sed -n 's/.*"frame_url":"\([^"]*\)".*/\1/p' "$dir/.body")
+frame_get() { curl -sS -o "$dir/.body" -D "$dir/.hdr" -w '%{http_code}' "$base$url"; } # no cookie: the id is the capability
+check "frame serve (no cookie)"  200 "$(frame_get)" "sandbox; frame-ancestors 'self'"
+check "frame second use"         410 "$(frame_get)"
+check "frame unknown id"         404 "$(curl -sS -o /dev/null -w '%{http_code}' "$api/frames/$(printf '0%.0s' $(seq 64))")"
+
+# audit and roots
+check "roots"                    200 "$(req GET "$api/roots")" '"roots"'
+check "audit has the denials"    200 "$(req GET "$api/audit?limit=50")" secret_pattern
+
+echo "$fail failure(s)"
+exit "$fail"
