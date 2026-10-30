@@ -6,7 +6,7 @@ import type { FileDiff, PullRequest } from '../types'
 import { prWorkspaceHref } from './href'
 import type { InboxItem } from './model'
 
-const LABEL = 'font-mono dash-caption uppercase tracking-wide text-fg-faint'
+const LABEL = 'font-mono dash-caption uppercase tracking-wide text-fg-muted'
 
 function conclusion(c: PullRequest['checks'][number]) {
   if (c.status !== 'completed') return c.status === 'queued' ? 'queued' : 'running'
@@ -40,8 +40,8 @@ export function PrPreviewDrawer({ item, forge, onClose, onAssign }: {
   const failing = checks.filter((c) => c.status === 'completed' && c.conclusion !== 'success' && c.conclusion !== 'skipped' && c.conclusion !== 'neutral')
   return (
     <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
-        <header className="border-b border-border px-4 py-3">
+      <SheetContent side="right" className="flex !w-full max-w-none flex-col gap-0 p-0 sm:!w-auto sm:max-w-lg">
+        <header className="border-b border-border py-3 pl-4 pr-12">
           <SheetTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">{summary.title}</SheetTitle>
           <SheetDescription className="mt-1 font-mono dash-support text-fg-muted">
             {label} · by {summary.author.login}{pr ? ` · ${pr.headBranch} → ${pr.baseBranch}` : ''}
@@ -86,7 +86,7 @@ export function PrPreviewDrawer({ item, forge, onClose, onAssign }: {
               <ul className="mt-1 max-h-64 divide-y divide-border overflow-y-auto">
                 {(files ?? []).map((f) => (
                   <li key={f.path} className="flex justify-between gap-2 py-1 font-mono dash-support">
-                    <span className="truncate text-fg">{f.path}</span>
+                    <span className="min-w-0 break-all text-fg">{f.path}</span>
                     <span className="shrink-0 text-fg-muted">+{f.additions} −{f.deletions}</span>
                   </li>
                 ))}
