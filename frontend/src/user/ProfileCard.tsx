@@ -29,7 +29,7 @@ export function ProfileCard() {
       <div className="flex items-start gap-3">
         <div
           aria-hidden="true"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground"
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border text-lg font-medium text-foreground"
         >
           {initials(saved.name)}
         </div>
@@ -64,9 +64,7 @@ export function ProfileCard() {
                 </label>
               ))}
               <div className="flex items-center justify-between gap-2 border-t border-border-subtle pt-3">
-                <p className="text-xs text-text-subtle">
-                  Shown on approvals, comments and the audit trail.
-                </p>
+                <p className="text-xs text-text-subtle">Shown on approvals and comments.</p>
                 <div className="flex shrink-0 gap-2">
                   <Button type="button" variant="ghost" onClick={close}>
                     Cancel
@@ -78,15 +76,17 @@ export function ProfileCard() {
               </div>
             </form>
           ) : (
-            <>
-              <div>
-                <p className="text-sm font-medium text-foreground">{saved.name || "Not set"}</p>
-                <p className="text-xs text-text-subtle">{saved.email || "No email"}</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate text-lg font-semibold text-foreground">
+                  {saved.name || "Not set"}
+                </p>
+                <p className="truncate text-sm text-text-subtle">{saved.email || "No email"}</p>
               </div>
               <Button
                 ref={edit}
                 type="button"
-                variant="ghost"
+                variant="outline"
                 onClick={() => {
                   setDraft(saved)
                   setEditing(true)
@@ -94,7 +94,7 @@ export function ProfileCard() {
               >
                 Edit profile
               </Button>
-            </>
+            </div>
           )}
           <ul className="flex flex-wrap gap-2" aria-label="Identity">
             <li className={CHIP}>Identity: Unknown</li>

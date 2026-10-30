@@ -32,11 +32,21 @@ export function AvatarMenu() {
       </PopoverTrigger>
       <PopoverContent side="right" align="end" className="w-56 p-1">
         <div role="menu" aria-label="Account">
-          <div className="px-2 py-1.5">
-            <p className="truncate text-sm font-medium text-foreground">
-              {profile.name || "Operator"}
-            </p>
-            {profile.email && <p className="truncate text-xs text-text-subtle">{profile.email}</p>}
+          <div className="flex items-center gap-2 px-2 py-1.5">
+            <span
+              aria-hidden="true"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-xs font-medium text-foreground"
+            >
+              {initials(profile.name)}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-foreground">
+                {profile.name || "Operator"}
+              </p>
+              {profile.email && (
+                <p className="truncate text-xs text-text-subtle">{profile.email}</p>
+              )}
+            </div>
           </div>
           <button type="button" role="menuitem" className={ITEM} onClick={() => go("/user")}>
             You
