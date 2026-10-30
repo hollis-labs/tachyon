@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/hollis-labs/tachyon/internal/approvals"
-	"github.com/hollis-labs/tachyon/internal/fileviewapi"
 )
 
 func TestReviewerPreviewReadRouteGuard(t *testing.T) {
@@ -133,6 +132,44 @@ func TestTorquePreviewReadsNeedOperatorAssuranceInEverySpelling(t *testing.T) {
 		if w.Code == 401 || w.Code == 403 {
 			t.Errorf("elevated GET %s refused by the guard: %d", path, w.Code)
 		}
+	}
+}
+
+func TestChatStubRoutesRequireOperator(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"elevated":false}`))
+	}))
+	defer upstream.Close()
+	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, ChatStubs: true}).Routes()
+	off := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL}).Routes()
+	cases := []struct{ method, path string }{
+		{"POST", "/api/plugins/console/v1/chat/threads"},
+		{"PUT", "/api/plugins/console/v1/chat/threads/app:t_01/scratchpad"},
+		{"DELETE", "/api/plugins/console/v1/chat/threads/app:t_01/topics/x"},
+		{"GET", "/api/plugins/console/v1/chat/threads/app:t_01/workspace/x/content"},
+		{"GET", "/api/plugins/console/v1/terminal/machines"},
+		{"POST", "/api/plugins/console/v1/terminal/proposals/x/run"},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, nil)
+		r.Header.Set("Origin", "https://tachyon.test")
+		w := httptest.NewRecorder()
+		on.ServeHTTP(w, r)
+		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Chat-Stub") != "" {
+			t.Errorf("%s %s with stubs on and no operator session: %d", c.method, c.path, w.Code)
+		}
+		w = httptest.NewRecorder()
+		off.ServeHTTP(w, httptest.NewRequest(c.method, "https://tachyon.test"+c.path, nil))
+		if w.Header().Get("X-Tachyon-Chat-Stub") != "" {
+			t.Errorf("%s %s served a stub with the flag off", c.method, c.path)
+		}
+	}
+	// An open GET is served by the stub without a session.
+	w := httptest.NewRecorder()
+	on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test/api/plugins/console/v1/chat/threads", nil))
+	if w.Code != 200 || w.Header().Get("X-Tachyon-Chat-Stub") != "1" {
+		t.Errorf("stub list: %d", w.Code)
 	}
 }
 

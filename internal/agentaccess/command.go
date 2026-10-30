@@ -31,7 +31,7 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		f.StringVar(&identity, "identity", "", "existing identity UUID; omitted creates a new identity")
 		f.StringVar(&path, "token-file", "", "new private token file (never overwritten)")
 		f.DurationVar(&ttl, "ttl", 30*24*time.Hour, "token lifetime, maximum 2160h")
-		f.StringVar(&preset, "preset", "planner-read", "planner-read, planner-torque-read, torque-read, tesseract-read, app-agent-read, portfolio-read, portfolio-write, actions-request or card-ask")
+		f.StringVar(&preset, "preset", "planner-read", "planner-read, planner-torque-read, torque-read, tesseract-read, app-agent-read, chat-workspace-read, chat-topic-add, chat-plan, chat-activity-append, chat-panel-open, portfolio-read, portfolio-write, actions-request or card-ask")
 		f.StringVar(&kinds, "kinds", "", "explicit Planner kinds; overrides the preset")
 		f.StringVar(&verbs, "verbs", "", "explicit supported verbs; overrides the preset")
 	case "revoke", "disable":
@@ -55,6 +55,16 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 			grants = TorqueRead()
 		case "tesseract-read":
 			grants = TesseractRead()
+		case "chat-workspace-read":
+			grants = ChatWorkspaceRead()
+		case "chat-topic-add":
+			grants = ChatTopicAdd()
+		case "chat-plan":
+			grants = ChatPlan()
+		case "chat-activity-append":
+			grants = ChatActivityAppend()
+		case "chat-panel-open":
+			grants = ChatPanelOpen()
 		case "app-agent-read":
 			grants = AppAgentRead()
 		case "planner-torque-read":

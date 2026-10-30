@@ -1,0 +1,211 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { EmptyState, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-labs/design-components'
+import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
+import { PlannerApiError as ApiError } from '@planner/api/errors'
+import { notifyError } from '@planner/api/notifications'
+import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
+import { CommandPalette, LinkLayer, type PaletteCommand } from '@planner/shared'
+import { Context } from '@planner/shell/context'
+import { LinkKindPicker } from '@planner/shell/link-picker'
+import { usePlannerKeys } from '@planner/shell/use-planner-keys'
+import { LENSES, LINK_KINDS, type LinkKind } from '@planner/lib/vocabulary'
+import { useContributions } from '@planner/lib/regions'
+import { Focus } from '@planner/shell/focus'
+import { Spine, rowsOf } from '@planner/shell/spine'
+import { TEXT } from '@planner/lib/vocabulary'
+import type { PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
+
+const REFRESH_MS = 30_000
+const PIN_KEY = 'planner.pins'
+
+/** Pins are kept in this browser until the backend has a pin write (build pack section 7). */
+function loadPins(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(PIN_KEY) ?? '[]') as string[])
+  } catch {
+    return new Set()
+  }
+}
+
+/**
+ * The Planner workbench: spine, focus, context. Themes lens first; the other
+ * lenses still open their existing pages until their slice lands.
+ */
+export default function PlannerShell() {
+  const api = usePlannerApi()
+  const navigate = useNavigate()
+  const { id } = useParams<{ id?: string }>()
+  const [params, setParams] = useSearchParams()
+  const { lastEvent } = usePlannerEvents()
+  const [board, setBoard] = useState<ThemeBoard | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [off, setOff] = useState(false)
+  const [pins, setPins] = useState(loadPins)
+  const [needYouOnly, setNeedYouOnly] = useState(params.get('facet') === 'need-you')
+  const [goodAt, setGoodAt] = useState<number | null>(null)
+  const [comments, setComments] = useState<PlannerComment[]>([])
+  const [details, setDetails] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState<'main' | 'link' | null>(null)
+  const [creating, setCreating] = useState<'themes' | 'ideas' | null>(null)
+  // Sample until the backend has a link write with a kind (build pack section 7).
+  const [links, setLinks] = useState<{ from: string; to: string; kind: LinkKind }[]>([])
+  const [pendingLink, setPendingLink] = useState<{ from: string; to: string } | null>(null)
+  const extraCommands = useContributions('planner.palette.command')
+  const openId = id ? decodeURIComponent(id) : undefined
+  const view = params.get('view') === 'timeline' ? 'timeline' : 'board'
+
+  const load = useCallback(async () => {
+    try {
+      setBoard(await api.plannerThemeBoard({ include_proposed: true }))
+      setGoodAt(Date.now())
+      setError(null)
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'feature_disabled') setOff(true)
+      else setError(err instanceof Error ? err.message : TEXT.loadFailed)
+    }
+  }, [api])
+
+  useEffect(() => {
+    void load()
+    const t = setInterval(() => void load(), REFRESH_MS)
+    return () => clearInterval(t)
+  }, [load, lastEvent])
+
+  const row = useMemo(() => rowsOf(board).find((r) => r.id === openId), [board, openId])
+
+  useEffect(() => {
+    if (!row) return setComments([])
+    let live = true
+    api.plannerGet('themes', row.id).then((item) => live && setComments(item.comments ?? []), () => live && setComments([]))
+    return () => { live = false }
+  }, [api, row?.id, row?.rev]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const open = (next: string) => navigate(`/planner/themes/${encodeURIComponent(next)}${view === 'timeline' ? '?view=timeline' : ''}`)
+  const togglePin = (pid: string) =>
+    setPins((p) => {
+      const n = new Set(p)
+      if (!n.delete(pid)) n.add(pid)
+      localStorage.setItem(PIN_KEY, JSON.stringify([...n]))
+      return n
+    })
+  const act = async (r: ThemeRow, action: ThemeAction, args?: { position?: number }) => {
+    try {
+      await api.plannerThemeAction(r.id, action, r.rev, args)
+      await load()
+    } catch (err) {
+      await load()
+      notifyError(err, TEXT.writeFailed)
+    }
+  }
+
+  const all = useMemo(() => rowsOf(board), [board])
+  const titleOf = (rid: string) => all.find((r) => r.id === rid)?.title ?? rid
+  const spineLinks = useMemo(() => new Map(links.map((l) => [l.from, { kind: l.kind, other: titleOf(l.to) }])), [links, all]) // eslint-disable-line react-hooks/exhaustive-deps
+  const rowLinks = links.filter((l) => l.from === openId || l.to === openId).map((l) => ({ kind: l.kind, label: titleOf(l.from === openId ? l.to : l.from) }))
+  const addLink = (kind: LinkKind) => {
+    if (!pendingLink) return
+    const link = { ...pendingLink, kind }
+    setLinks((ls) => [...ls, link])
+    setPendingLink(null)
+    toast(TEXT.linkAdded(titleOf(link.from), LINK_KINDS.find((k) => k.id === kind)?.label ?? kind, titleOf(link.to)), { duration: 8000, action: { label: TEXT.undo, onClick: () => setLinks((ls) => ls.filter((l) => l !== link)) } })
+  }
+  const step = (delta: 1 | -1) => {
+    const rows = [...document.querySelectorAll<HTMLElement>('[role="listbox"] [role="option"]')]
+    const at = rows.findIndex((r) => r.getAttribute('aria-selected') === 'true')
+    const next = rows[Math.max(0, Math.min(rows.length - 1, at + delta))]
+    next?.click()
+    next?.focus()
+  }
+  usePlannerKeys(
+    {
+      palette: () => setPaletteOpen('main'),
+      create: () => setCreating('themes'),
+      link: () => row && setPaletteOpen('link'),
+      lens: (k) => {
+        if (k === 'n') return setNeedYouOnly(true)
+        const lens = LENSES.find((l) => l.key === k)
+        if (lens && lens.db !== 'themes') navigate(`/planner/${lens.db}`)
+      },
+      view: (v) => row && setParams(v === 'timeline' ? { view: 'timeline' } : {}),
+      pin: () => row && togglePin(row.id),
+      finish: () => row && void act(row, 'finish'),
+      step,
+      clearFilter: () => (needYouOnly ? (setNeedYouOnly(false), true) : false),
+    },
+    !off,
+  )
+  const commands = useMemo<PaletteCommand[]>(
+    () => [
+      { id: 'create:themes', mode: 'create', text: TEXT.createTheme, label: TEXT.createTheme, group: TEXT.modeCreate },
+      { id: 'create:ideas', mode: 'create', text: TEXT.createIdea, label: TEXT.createIdea, group: TEXT.modeCreate },
+      ...extraCommands.map((c) => ({ id: `ext:${c.id}`, mode: String((c.data as { mode?: string } | undefined)?.mode ?? 'create'), text: c.label ?? c.id, label: c.label ?? c.id })),
+      ...all.map((r) => ({ id: `open:${r.id}`, mode: 'open', text: `${r.id} ${r.title}`, label: <span><span className="mr-2 font-mono dash-caption text-fg-faint">{r.id}</span>{r.title}</span> })),
+    ],
+    [all, extraCommands],
+  )
+  const linkCommands = useMemo<PaletteCommand[]>(() => all.filter((r) => r.id !== openId).map((r) => ({ id: r.id, mode: 'link', text: `${r.id} ${r.title}`, label: <span><span className="mr-2 font-mono dash-caption text-fg-faint">{r.id}</span>{r.title}</span> })), [all, openId])
+
+  if (off) return <EmptyState variant="empty" title={TEXT.turnedOff} description={TEXT.turnedOffHint} />
+  const selected = Boolean(row)
+  return (
+    <div className="flex h-full min-h-0 w-full bg-bg">
+      <nav aria-label={TEXT.appName} className={`${selected ? 'hidden lg:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-r border-border lg:w-72`}>
+        {board ? (
+          <LinkLayer titleOf={titleOf} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} onLink={(from, to) => setPendingLink({ from, to })}>
+          <Spine stale={Boolean(error)} links={spineLinks} board={board} selectedId={openId} onSelect={open} onLens={(db: PlannerDb) => navigate(`/planner/${db}`)} pins={pins} onTogglePin={togglePin} needYouOnly={needYouOnly} onNeedYou={setNeedYouOnly} />
+          </LinkLayer>
+        ) : (
+          <div className="flex flex-col gap-2 p-3" aria-busy>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+        )}
+        {error && board && (
+          <p role="status" className="border-t border-border px-3 py-2 dash-caption text-fg-muted">
+            {TEXT.reconnecting(new Date(goodAt ?? Date.now()).toLocaleTimeString())}. {TEXT.writesPaused} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
+          </p>
+        )}
+        {error && !board && (
+          <p role="alert" className="border-t border-border px-3 py-2 dash-caption text-danger">
+            {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
+          </p>
+        )}
+      </nav>
+      <main className={`${selected ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-1`}>
+        {board && row ? (
+          <>
+            <Focus paused={Boolean(error)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
+            <div className="hidden w-80 shrink-0 border-l border-border xl:flex xl:flex-col 2xl:w-96">
+              <Context row={row} comments={comments} onCommented={() => void load()} mentionable={all} links={rowLinks} />
+            </div>
+            <Sheet open={details} onOpenChange={setDetails}>
+              <SheetContent className="xl:hidden">
+                <SheetTitle className="sr-only">{TEXT.detailsLabel}</SheetTitle>
+                <Context row={row} comments={comments} onCommented={() => void load()} mentionable={all} links={rowLinks} />
+              </SheetContent>
+            </Sheet>
+          </>
+        ) : (
+          <p className="m-auto dash-support text-fg-muted">{TEXT.selectItem}</p>
+        )}
+      </main>
+      <CommandPalette
+        key="main"
+        open={paletteOpen === 'main'}
+        onOpenChange={(o) => !o && setPaletteOpen(null)}
+        title={TEXT.paletteTitle}
+        modes={[{ id: 'create', label: TEXT.modeCreate }, { id: 'open', label: TEXT.modeOpen }]}
+        commands={commands}
+        emptyLabel={TEXT.paletteEmpty}
+        onRun={(cmd) => {
+          if (cmd.startsWith('open:')) open(cmd.slice(5))
+          else if (cmd === 'create:themes' || cmd === 'create:ideas') setCreating(cmd === 'create:ideas' ? 'ideas' : 'themes')
+        }}
+        onRunAndLink={row ? (cmd) => cmd.startsWith('open:') && setPendingLink({ from: row.id, to: cmd.slice(5) }) : undefined}
+      />
+      <CommandPalette key="link" open={paletteOpen === 'link'} onOpenChange={(o) => !o && setPaletteOpen(null)} title={TEXT.linkTo} modes={[{ id: 'link', label: TEXT.linkTo }]} commands={linkCommands} emptyLabel={TEXT.paletteEmpty} onRun={(to) => row && setPendingLink({ from: row.id, to })} />
+      <LinkKindPicker open={pendingLink !== null} from={pendingLink ? titleOf(pendingLink.from) : ''} to={pendingLink ? titleOf(pendingLink.to) : ''} onPick={addLink} onCancel={() => setPendingLink(null)} />
+      <PlannerCreateDialog db={creating ?? 'themes'} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={(board?.totals.in_flight ?? 0) + (board?.totals.cleared ?? 0) + 1} onCreated={(it) => { void load(); if (creating === 'themes') open(it.id) }} />
+    </div>
+  )
+}
+
