@@ -1,0 +1,17 @@
+{
+  "builder-reviewer": {
+    "entries": [
+      {"at": 1793233200000, "plan_id": "plan_7Q3K9", "name": "builder-reviewer: set model", "actor": "chrispian", "files": ["agents/builder-reviewer.yaml"], "privileged": [], "activation": "restart_required", "backup_id": "bkp_20261029_2140", "snapshot_seq": 7, "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-4-5\n+model: claude-sonnet-5-5\n extends: base-worker\n"},
+      {"at": 1792628400000, "plan_id": "plan_2M8T1", "name": "builder-reviewer: widen scopes", "actor": "chrispian", "files": ["agents/builder-reviewer.yaml"], "privileged": ["mcp_scopes"], "activation": "restart_required", "backup_id": "bkp_20261022_2140", "snapshot_seq": 6, "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -14,2 +14,3 @@\n   - tether:read\n+  - github:pr\n"},
+      {"at": 1790000000000, "plan_id": "plan_0A1B2", "name": "initial import", "actor": "tether", "files": ["agents/builder-reviewer.yaml"], "privileged": ["permission_mode", "mcp_scopes"], "activation": "immediate", "backup_id": "bkp_20260921_1000", "snapshot_seq": null, "diff": null}
+    ],
+    "next_cursor": null
+  },
+  "release-captain": {
+    "entries": [{"at": 1785000000000, "plan_id": "plan_9X4Z7", "name": "release-captain: permissions", "actor": "chrispian", "files": ["agents/release-captain.yaml"], "privileged": ["permission_mode", "network", "default_sandbox"], "activation": "restart_required", "backup_id": "bkp_20260725_0900", "snapshot_seq": 3, "diff": null}],
+    "next_cursor": null
+  },
+  "base-worker": {"entries": [], "next_cursor": null},
+  "nightly-triage": {"entries": [{"at": 1791000000000, "plan_id": "plan_5C6D7", "name": "nightly-triage: disable", "actor": "chrispian", "files": ["agents/nightly-triage.yaml"], "privileged": [], "activation": "immediate", "backup_id": "bkp_20261003_0800", "snapshot_seq": 5, "diff": "--- a/agents/nightly-triage.yaml\n+++ b/agents/nightly-triage.yaml\n@@ -3,1 +3,1 @@\n-enabled: true\n+enabled: false\n"}], "next_cursor": null},
+  "legacy-scribe": {"entries": [], "next_cursor": null}
+}
