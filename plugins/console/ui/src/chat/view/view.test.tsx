@@ -115,7 +115,9 @@ describe('ChatView', () => {
       expect(screen.queryByText('Select a conversation')).toBeNull()
       rerender(<ChatView threads={T} activeThread={T[0]} onSelectThread={() => undefined} onBack={onBack}><p>conversation body</p></ChatView>)
       fireEvent.click(screen.getByLabelText('Back to conversations'))
-      expect(onBack).toHaveBeenCalled()
+      expect(onBack).toHaveBeenCalledTimes(1)
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+      expect(onBack).toHaveBeenCalledTimes(2)
       expect(screen.getByText('conversation body')).toBeTruthy()
     } finally {
       vi.unstubAllGlobals()

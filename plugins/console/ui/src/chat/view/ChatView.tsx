@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Button, EmptyState, Sheet, SheetContent, SheetTitle, type OverflowAction } from '@hollis-labs/design-components'
 import { ChevronLeft, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose } from 'lucide-react'
 import { ChatFreshness } from '../ChatFreshness'
@@ -37,6 +37,19 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
   // Open from 1280px up so the column is seen; below that it stays collapsed (overlay under 1024px).
   const [detailsOpen, setDetailsOpen] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches)
   const [detailsOverlay, setDetailsOverlay] = useState(false)
+
+  // Esc returns to the list on a narrow screen, unless it is meant for a field or an open sheet.
+  const inThread = narrow && !!activeThread && !!onBack
+  useEffect(() => {
+    if (!inThread) return
+    const on = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key !== 'Escape' || e.defaultPrevented || detailsOverlay || t?.closest('input, textarea, [contenteditable], [role=dialog]')) return
+      onBack?.()
+    }
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [inThread, onBack, detailsOverlay])
 
   const list = (afterSelect?: () => void) => (
     <ThreadList
