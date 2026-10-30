@@ -1,12 +1,16 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tachyon/internal/agentscollector"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
 func TestReviewerPreviewReadRouteGuard(t *testing.T) {
@@ -167,5 +171,51 @@ func TestAgentsStubRoutesRequireOperator(t *testing.T) {
 	on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test/api/plugins/console/v1/agents/sessions", nil))
 	if w.Code != 200 || w.Header().Get("X-Tachyon-Agents-Stub") != "1" {
 		t.Errorf("stub list: %d", w.Code)
+	}
+}
+
+func TestAgentsSessionRoutesAreRealAndWritesRequireOperator(t *testing.T) {
+	store, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"elevated":false}`))
+	}))
+	defer upstream.Close()
+	// Stubs on as well: the real route must win over the stub prefix mount.
+	s := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, AgentsStubs: true})
+	s.store = store
+	s.agentsCollector = &agentscollector.Collector{Store: &agentscollector.Store{DB: store}}
+	h := s.Routes()
+	const a = "/api/plugins/console/v1/agents"
+	for _, p := range []string{a + "/sessions", a + "/settings", a + "/collector", a + "/bus/events"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+p, nil))
+		if w.Code != 200 || w.Header().Get("X-Tachyon-Agents-Stub") != "" {
+			t.Errorf("GET %s: %d stub=%q", p, w.Code, w.Header().Get("X-Tachyon-Agents-Stub"))
+		}
+	}
+	req := httptest.NewRequest("PUT", "https://tachyon.test"+a+"/settings", strings.NewReader(`{"stale_after_s":900,"handoff_prompt":"p","handoff_timeout_s":120,"nudge_presets":[]}`))
+	req.Header.Set("Origin", "https://tachyon.test")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 401 && w.Code != 403 {
+		t.Errorf("PUT settings without an operator session: %d", w.Code)
+	}
+	var n int
+	_ = store.Reader.QueryRow(`SELECT COUNT(*) FROM app_settings WHERE key='agents.settings'`).Scan(&n)
+	if n != 0 {
+		t.Error("a refused PUT stored settings")
+	}
+	// Controls are still the stub's: they answer from fixtures and refuse without a session.
+	req = httptest.NewRequest("POST", "https://tachyon.test"+a+"/sessions/sess_work/nudge", strings.NewReader(`{}`))
+	req.Header.Set("Origin", "https://tachyon.test")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 401 && w.Code != 403 {
+		t.Errorf("nudge without an operator session: %d", w.Code)
 	}
 }

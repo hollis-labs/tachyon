@@ -28,6 +28,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentsapi"
 	"github.com/hollis-labs/tachyon/internal/agentscollector"
 	"github.com/hollis-labs/tachyon/internal/agentsderive"
+	"github.com/hollis-labs/tachyon/internal/agentsserve"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -476,6 +477,8 @@ func (s *Server) Routes() http.Handler {
 	if s.agentsCollector != nil {
 		mux.Handle("GET "+agentscollector.Path, operator.RequireOperator(s.agentsCollector.Handler()))
 		mux.Handle("GET "+agentscollector.BusPath, operator.RequireOperator(s.agentsCollector.BusHandler()))
+		// Sessions, timeline, series, tokens, history, stream and settings. Controls (nudge, restart) are not here.
+		(&agentsserve.Server{DB: s.store, Collector: s.agentsCollector}).Mount(mux, operator.RequireOperator)
 	}
 	if s.cfg.AgentsStubs {
 		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))

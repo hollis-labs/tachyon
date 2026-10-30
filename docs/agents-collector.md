@@ -67,3 +67,34 @@ and served at `GET agents/bus/events?before_seq&limit<=100&type=deploys|restarts
   `off` (none seen; an export may be disabled: Cerberus export, `TORQUE_EVENTS_HUB`), `no_emitter` for host and
   workstream until something emits them. The feed degrades visibly instead of looking empty and healthy.
 - Retention 7 days. The `bus` SSE event and replay arrive with A3.
+
+## Sessions API and stream (A3)
+
+`internal/agentsserve` serves the read side from the collector's model (it needs the collector, so it is
+mounted only when the collector runs). Real routes win over the stub when both are on:
+
+- `GET agents/sessions` (`state`, `q`, `group=workroot|agent|none` as a sort key, `include_ended`), `sessions/{id}`,
+  `sessions/{id}/events` (`filter`, `q`, `before_seq`, `limit`, `group_runs`), `context-series`, `tokens`,
+  `history`, `GET/PUT agents/settings`, `GET agents/stream`. Controls (nudge, restart, skip) are not here (A6).
+- State is derived **at read time** (`agentsderive.Derive`), so a change to `stale_after_s` applies on the next
+  request and a quiet session turns stale without any new event.
+- Honest nulls: no metered usage means `tokens.metered=false` with null counts, `context` null with
+  `source: "unknown"`, `one_liner` null. `capabilities` are all false until A6. `assignment` is null until A5.
+  `kind` is always `process` (the chat roster join does not exist yet). `needs_you.since` is the last event
+  (Tether does not say when the wait began). `breakdown` is always null.
+- Agent identity (`agent.urn`, `logical_agent_id`, name) and lineage (`parent_session_id`, `replaced_by`)
+  come from payload fields `agent_urn`, `logical_agent_id`, `agent_name`, `parent_session_id`, `replaced_by`
+  **when Tether sends them** (names unverified against live traffic). Without them the name is "session <id>"
+  and `history` is empty.
+- Timeline: the first half of a tool pair (`tool.call.started`) is hidden; `tool.call.finished` is "Used <tool>".
+  `group_runs=1` folds tool calls within 30 s into a `tool_run` (a run that crosses a page edge is split).
+- Tokens: `hour` is the sum of the last 60 minute buckets; `share` is this session's input+output over every
+  session's for that hour; `trend` compares the last 30 minutes with the 30 before (20% dead band).
+- Context series reads minute buckets (48 h) and hour buckets before that, thinned to 600 points. `step=turn`
+  is the same as `min`: a sample is taken whenever usage is seen.
+- Stream: `agents_stream` (migration 027) holds `bus`, `gap` (and later `control`) events in one id sequence,
+  written in the same transaction as the fact. `session`, `summary` and `collector` are live snapshots found by
+  polling the model once a second while a client is connected (it also announces time-driven stale
+  transitions). A `session` event carries the full Session. A slow client is dropped and reconnects; a
+  `Last-Event-ID` older than the oldest retained row gets a `gap` (`purged`) so it refetches. `?once=1` ends
+  after the replay or snapshots (for scripts).
