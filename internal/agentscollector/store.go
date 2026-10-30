@@ -72,6 +72,14 @@ func (s *Store) Seed(ctx context.Context, env string, seq int64) error {
 	})
 }
 
+// Reseed sets the cursor exactly, also backwards: after a purged or ahead gap the old position means nothing.
+func (s *Store) Reseed(ctx context.Context, env string, seq int64) error {
+	return s.DB.Writer.Submit(ctx, "agents_reseed", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE agents_collector_state SET env_id=?, last_seq=? WHERE id=1`, env, seq)
+		return err
+	})
+}
+
 func b2i(p *bool) any {
 	if p == nil {
 		return nil

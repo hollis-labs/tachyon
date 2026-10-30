@@ -36,19 +36,22 @@ function Chips({ s }: { s: Session }) {
   )
 }
 
-/** One session's body, shared by Rows and Cards: state in words, one-liner, context, activity, uptime. */
+/** One session's body, shared by Rows and Cards: state in words, then only the facts that are known. */
 function Body({ s, now, wide }: { s: Session; now: number; wide?: boolean }) {
+  const meta = s.context.pct !== null || s.runtime_ms > 0
   return (
     <span className="flex min-w-0 flex-col gap-1">
       <span className="flex min-w-0 items-center gap-2">
         <span className={cn('dash-caption', needsYou(s) ? 'text-fg' : 'text-fg-muted')}>{stateText(s, now)}</span>
       </span>
-      <OneLiner line={s.one_liner} now={now} fallback={AGENTS.noActivity} />
-      <span className="flex items-center gap-3">
-        <ContextMeter pct={s.context.pct} />
-        {wide && <Sparkline points={s.spark} className="hidden md:block" />}
-        <span className="font-mono dash-caption text-fg-faint">{AGENTS.uptime} {ageText(s.runtime_ms)}</span>
-      </span>
+      {s.one_liner && <OneLiner line={s.one_liner} now={now} fallback={AGENTS.noActivity} />}
+      {meta && (
+        <span className="flex items-center gap-3">
+          {s.context.pct !== null && <ContextMeter pct={s.context.pct} />}
+          {wide && <Sparkline points={s.spark} className="hidden md:block" />}
+          {s.runtime_ms > 0 && <span className="font-mono dash-caption text-fg-faint">{AGENTS.uptime} {ageText(s.runtime_ms)}</span>}
+        </span>
+      )}
     </span>
   )
 }

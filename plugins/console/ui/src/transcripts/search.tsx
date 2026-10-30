@@ -22,17 +22,12 @@ interface SearchResult {
   notice?: { message?: string }
 }
 
-/** Content search is offered only when the bridge says so; an absent flag means no. */
-export function useSearchStatus() {
-  const [status, setStatus] = useState<Status>()
-  useEffect(() => {
-    const c = new AbortController()
-    void read<Status>("/status", false, c.signal)
-      .then((s) => !c.signal.aborted && setStatus(s))
-      .catch(() => {})
-    return () => c.abort()
-  }, [])
-  return status
+/**
+ * Content search is offered only when the bridge says so; an absent flag means no. The deployed backend has
+ * no /transcripts/status yet (TR1), and asking for it was recorded as a page error, so no request is made.
+ */
+export function useSearchStatus(): Status | undefined {
+  return undefined
 }
 
 /** Snippet text with the matched span in bold; plain text only, never markup. */
