@@ -40,25 +40,143 @@ export interface AgentDetail {
   state: AgentState
   editable: boolean
   owned_draft: boolean
-  identity: { id: string; name: string; description?: string; urn?: string | null; roles?: string[] }
-  runtime: { provider: string; model?: string | null; extends?: string | null; abstract?: boolean; enabled?: boolean }
+  identity: {
+    id: string
+    name: string
+    description?: string
+    urn?: string | null
+    roles?: string[]
+  }
+  runtime: {
+    provider: string
+    model?: string | null
+    extends?: string | null
+    abstract?: boolean
+    enabled?: boolean
+  }
   prompt?: {
-    parts?: { kind: string; id: string; rev: number; label: string; bytes: number; tokens_est: number }[]
+    parts?: {
+      kind: string
+      id: string
+      rev: number
+      label: string
+      bytes: number
+      tokens_est: number
+    }[]
     prompts?: string[]
     boot_fragments?: string[]
   }
   tools_skills?: { mcp_servers?: string[] | null; skills?: string[] }
-  policy?: { permission_mode?: string | null; network?: string | null; default_sandbox?: string | null; mcp_scopes?: string[] }
+  policy?: {
+    permission_mode?: string | null
+    network?: string | null
+    default_sandbox?: string | null
+    mcp_scopes?: string[]
+  }
+  launches?: { id: string; project: string; worker: string; enabled: boolean; live_count: number }[]
+  revision?: {
+    sha?: string | null
+    snapshot_seq?: number | null
+    layer?: string | null
+    path?: string | null
+    observed_at?: number | null
+  }
+}
+
+export type ChangeState = 'draft' | 'awaiting_approval' | 'approved' | 'applying' | 'applied' | 'failed' | 'rolled_back' | 'stale' | 'expired' | 'cancelled'
+
+export interface ChangeOp {
+  target: {
+    kind: 'agent' | 'launch' | 'project' | 'skill' | 'part'
+    id: string
+    part_kind?: 'prompt' | 'policy'
+  }
+  expected_sha?: string
+  op: {
+    type: 'set' | 'append' | 'remove' | 'create' | 'restore_version' | 'archive'
+    path?: string
+    value?: unknown
+  }
+}
+
+export interface Check {
+  name: string
+  status: 'ok' | 'warn' | 'fail'
+  message: string
+  remedy?: string | null
+  entity?: string
+}
+
+export interface Change {
+  change_id: string
+  request_id: string
+  state: ChangeState
+  note?: string
+  diff?: string
+  checks?: Check[]
+  privileged?: { path: string; field: string }[]
+  ack_privileged?: boolean
+  effect?: {
+    running_sessions?: { session_id: string; agent_id: string; launch_id: string }[]
+    activation?: string
+    restart_required?: string[]
+  }
+  plan?: {
+    plan_id: string
+    state: string
+    digest: string
+    expires_at: number
+    approve_command: string
+  } | null
+  result?: {
+    activation?: string
+    restart_required?: string[]
+    reloaded?: boolean
+    reload_error?: string | null
+    applied_at?: number | null
+  } | null
+  failure?: { step: string; code: string; message: string } | null
+  stale?: {
+    changed_paths: string[]
+    theirs_sha: string
+    mine_diff: string
+    theirs_diff: string
+  } | null
 }
 
 export class BuilderError extends Error {
-  constructor(public status: number, public code: string, message: string) {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+  ) {
     super(message)
   }
 }
 
 async function get<T>(path: string): Promise<T> {
   const res = await hostFetch(BUILDER_BASE + path, { headers: { Accept: 'application/json' } })
+  if (!res.ok) {
+    let code = 'error'
+    let message = `Request failed (${res.status})`
+    try {
+      const b = (await res.json()) as { code?: string; message?: string }
+      code = b.code ?? code
+      message = b.message ?? message
+    } catch {
+      // keep the status text
+    }
+    throw new BuilderError(res.status, code, message)
+  }
+  return (await res.json()) as T
+}
+
+async function send<T>(path: string, body: unknown): Promise<T> {
+  const res = await hostFetch(BUILDER_BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+  })
   if (!res.ok) {
     let code = 'error'
     let message = `Request failed (${res.status})`
@@ -90,9 +208,17 @@ export const builderApi = {
     return get<AgentList>(`/agents${qs ? `?${qs}` : ''}`)
   },
   agent: (id: string) => get<AgentDetail>(`/agents/${encodeURIComponent(id)}`),
+  change: (id: string) => get<Change>(`/changes/${encodeURIComponent(id)}`),
+  createChange: (request: { request_id: string; note?: string; ops: ChangeOp[] }) => send<Change>('/changes', request),
+  submit: (id: string, ackPrivileged: boolean) => send<Change>(`/changes/${encodeURIComponent(id)}/submit`, { ack_privileged: ackPrivileged }),
+  cancel: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/cancel`, {}),
+  rearm: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/rearm`, {}),
 }
 
 export function errorMessage(e: unknown): string {
   if (e instanceof BuilderError && (e.status === 401 || e.status === 403)) return 'Operator access is needed to view this.'
+  if (e instanceof BuilderError && e.code === 'change_open') return 'Another change to this agent is already open. Finish or cancel it first.'
+  if (e instanceof BuilderError && e.code === 'rate_limited') return 'Too many changes in a minute. Wait a moment and try again.'
+  if (e instanceof BuilderError && e.code === 'ack_required') return 'Confirm the privileged fields before submitting.'
   return e instanceof Error ? e.message : 'Could not load.'
 }

@@ -1,6 +1,8 @@
-import { type ReactNode, useRef } from 'react'
-import { type AgentDetail, builderApi } from './api'
+import { type ReactNode, useCallback, useRef, useState } from 'react'
+import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
+import { buildOps, changedPaths, type Draft, fieldByPath, newRequestId } from './changes'
 import { OutlineNav } from './OutlineNav'
+import { ReviewDialog } from './ReviewDialog'
 import { useLoad } from './useLoad'
 import { INHERITS, NOT_REPORTED, SECTIONS, STATE_LABEL } from './vocab'
 
@@ -30,6 +32,57 @@ function Chips({ items, empty = 'none' }: { items?: string[] | null; empty?: str
   )
 }
 
+const INPUT = 'w-full border border-border bg-bg px-2 py-1 dash-body text-fg'
+
+interface EditCtx {
+  agent: AgentDetail
+  editing: boolean
+  draft: Draft
+  set: (path: string, value: unknown) => void
+}
+
+/** A row that shows the value, or an editor for it while editing. */
+function Field({ path, ctx, children }: { path: string; ctx: EditCtx; children: ReactNode }) {
+  const def = fieldByPath(path)
+  if (!def || !ctx.editing) return <Row label={def?.label ?? path}>{children}</Row>
+  const value = path in ctx.draft ? ctx.draft[path] : def.read(ctx.agent)
+  const id = `f-${path}`
+  let editor: ReactNode
+  if (def.kind === 'bool') {
+    editor = <input id={id} type="checkbox" checked={value === true} onChange={(e) => ctx.set(path, e.target.checked)} />
+  } else if (def.kind === 'chips') {
+    editor = (
+      <input
+        id={id}
+        className={INPUT}
+        value={(value as string[]).join(', ')}
+        placeholder="comma separated"
+        onChange={(e) =>
+          ctx.set(
+            path,
+            e.target.value
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean),
+          )
+        }
+      />
+    )
+  } else if (def.kind === 'longtext') {
+    editor = <textarea id={id} className={INPUT} rows={3} value={String(value)} onChange={(e) => ctx.set(path, e.target.value)} />
+  } else {
+    editor = <input id={id} className={INPUT} value={String(value)} onChange={(e) => ctx.set(path, e.target.value)} />
+  }
+  return (
+    <div className="grid grid-cols-[10rem_1fr] gap-3 border-b border-border-subtle py-2">
+      <label htmlFor={id} className="dash-support text-fg-muted">
+        {def.label}
+      </label>
+      <div className="min-w-0">{editor}</div>
+    </div>
+  )
+}
+
 function Section({ id, children }: { id: string; children: ReactNode }) {
   const label = SECTIONS.find((s) => s.id === id)?.label ?? id
   return (
@@ -42,67 +95,187 @@ function Section({ id, children }: { id: string; children: ReactNode }) {
   )
 }
 
-/** Read-only editor model of one agent. Editing and Review arrive with the changes flow. */
+/** Editor model of one agent: read-only until Edit; saving goes through Review and host approval. */
 export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void }) {
   const [load, retry] = useLoad(() => builderApi.agent(id), [id])
   const scroller = useRef<HTMLDivElement>(null)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<Draft>({})
+  const [review, setReview] = useState<Change | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const applied = useCallback(() => {
+    setEditing(false)
+    setDraft({})
+    retry()
+  }, [retry])
 
-  if (load.status === 'loading') return <div aria-busy="true" className="space-y-3 p-5"><div className="h-8 w-1/2 animate-pulse bg-surface" /><div className="h-40 animate-pulse bg-surface" /></div>
+  if (load.status === 'loading')
+    return (
+      <div aria-busy="true" className="space-y-3 p-5">
+        <div className="h-8 w-1/2 animate-pulse bg-surface" />
+        <div className="h-40 animate-pulse bg-surface" />
+      </div>
+    )
   if (load.status === 'error')
     return (
       <div role="alert" className="space-y-2 p-5">
         <p className="dash-body text-fg-secondary">{load.message}</p>
-        <button type="button" onClick={retry} className="border border-border px-2 py-1 dash-control text-fg-secondary hover:bg-surface-hover">Retry</button>
+        <button type="button" onClick={retry} className="border border-border px-2 py-1 dash-control text-fg-secondary hover:bg-surface-hover">
+          Retry
+        </button>
       </div>
     )
   const a: AgentDetail = load.data
+  const dirty = changedPaths(a, draft)
+  const ctx: EditCtx = {
+    agent: a,
+    editing,
+    draft,
+    set: (path, value) => setDraft((d) => ({ ...d, [path]: value })),
+  }
+  const openReview = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      setReview(await builderApi.createChange({ request_id: newRequestId(), ops: buildOps(a, draft) }))
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
-        <button type="button" onClick={onBack} className="dash-control text-fg-muted hover:text-fg md:hidden">← Agents</button>
+        <button type="button" onClick={onBack} className="dash-control text-fg-muted hover:text-fg md:hidden">
+          ← Agents
+        </button>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold text-fg">{a.identity.name}</h2>
-          <p className="truncate font-mono dash-support text-fg-muted">{a.identity.id}{a.identity.urn ? ` · ${a.identity.urn}` : ''}</p>
+          <p className="truncate font-mono dash-support text-fg-muted">
+            {a.identity.id}
+            {a.identity.urn ? ` · ${a.identity.urn}` : ''}
+          </p>
         </div>
         <span className={CHIP}>{STATE_LABEL[a.state]}</span>
         {!a.editable && <span className={CHIP}>Read-only</span>}
+        {a.editable && !editing && (
+          <button type="button" onClick={() => setEditing(true)} className="border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover">
+            Edit
+          </button>
+        )}
       </header>
+      {editing && (
+        <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
+          <span className="mr-auto">
+            {dirty.length === 0 ? 'No unsaved changes' : `${dirty.length} unsaved change${dirty.length === 1 ? '' : 's'} — ${dirty.map((p) => fieldByPath(p)?.label).join(', ')}`}
+          </span>
+          {error && (
+            <span role="alert" className="text-danger">
+              {error}
+            </span>
+          )}
+          <button
+            type="button"
+            className="border border-border px-3 py-1 dash-control hover:bg-surface-hover"
+            onClick={() => {
+              setEditing(false)
+              setDraft({})
+              setError('')
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            disabled={dirty.length === 0 || busy}
+            className="border border-fg px-3 py-1 dash-control font-medium text-fg hover:bg-surface-hover disabled:opacity-50"
+            onClick={openReview}
+          >
+            {busy ? 'Checking' : 'Review changes'}
+          </button>
+        </div>
+      )}
+      {review && (
+        <ReviewDialog
+          initial={review}
+          onClose={() => setReview(null)}
+          onApplied={applied}
+          onReload={() => {
+            setReview(null)
+            setDraft({})
+            retry()
+          }}
+        />
+      )}
       <div className="flex min-h-0 flex-1">
         <OutlineNav root={scroller} />
         <div ref={scroller} className="min-w-0 flex-1 divide-y divide-border-subtle overflow-auto">
           <Section id="identity">
             <Row label="Name">{a.identity.name}</Row>
-            <Row label="Description">{text(a.identity.description)}</Row>
-            <Row label="Roles"><Chips items={a.identity.roles} /></Row>
+            <Field path="identity.description" ctx={ctx}>
+              {text(a.identity.description)}
+            </Field>
+            <Field path="identity.roles" ctx={ctx}>
+              <Chips items={a.identity.roles} />
+            </Field>
           </Section>
           <Section id="runtime">
             <Row label="Provider">{text(a.runtime.provider)}</Row>
-            <Row label="Model">{text(a.runtime.model)}</Row>
+            <Field path="runtime.model" ctx={ctx}>
+              {text(a.runtime.model)}
+            </Field>
             <Row label="Extends">{a.runtime.extends ?? 'none'}</Row>
-            <Row label="Enabled">{a.runtime.enabled === false ? 'No' : 'Yes'}</Row>
+            <Field path="runtime.enabled" ctx={ctx}>
+              {a.runtime.enabled === false ? 'No' : 'Yes'}
+            </Field>
           </Section>
           <Section id="prompt">
-            <Row label="Prompts"><Chips items={a.prompt?.prompts} /></Row>
-            <Row label="Boot fragments"><Chips items={a.prompt?.boot_fragments} /></Row>
+            <Row label="Prompts">
+              <Chips items={a.prompt?.prompts} />
+            </Row>
+            <Row label="Boot fragments">
+              <Chips items={a.prompt?.boot_fragments} />
+            </Row>
             <Row label="Compiled parts">
               {a.prompt?.parts?.length ? (
                 <ul className="space-y-1">
                   {a.prompt.parts.map((p) => (
-                    <li key={`${p.kind}:${p.id}`}>{p.label} <span className="font-mono dash-support text-fg-muted">rev {p.rev} · ~{p.tokens_est} tokens</span></li>
+                    <li key={`${p.kind}:${p.id}`}>
+                      {p.label}{' '}
+                      <span className="font-mono dash-support text-fg-muted">
+                        rev {p.rev} · ~{p.tokens_est} tokens
+                      </span>
+                    </li>
                   ))}
                 </ul>
-              ) : <span className="text-fg-faint">none</span>}
+              ) : (
+                <span className="text-fg-faint">none</span>
+              )}
             </Row>
           </Section>
           <Section id="tools">
-            <Row label="Tool servers">{a.tools_skills?.mcp_servers == null ? <span className="text-fg-faint">{INHERITS}</span> : <Chips items={a.tools_skills.mcp_servers} empty="none granted" />}</Row>
-            <Row label="Skills"><Chips items={a.tools_skills?.skills} /></Row>
+            <Row label="Tool servers">
+              {a.tools_skills?.mcp_servers == null ? <span className="text-fg-faint">{INHERITS}</span> : <Chips items={a.tools_skills.mcp_servers} empty="none granted" />}
+            </Row>
+            <Field path="tools_skills.skills" ctx={ctx}>
+              <Chips items={a.tools_skills?.skills} />
+            </Field>
           </Section>
           <Section id="policy">
-            <Row label="Permission mode">{text(a.policy?.permission_mode)}</Row>
-            <Row label="Network">{text(a.policy?.network)}</Row>
-            <Row label="Sandbox">{text(a.policy?.default_sandbox)}</Row>
-            <Row label="Scopes"><Chips items={a.policy?.mcp_scopes} /></Row>
+            <Field path="policy.permission_mode" ctx={ctx}>
+              {text(a.policy?.permission_mode)}
+            </Field>
+            <Field path="policy.network" ctx={ctx}>
+              {text(a.policy?.network)}
+            </Field>
+            <Field path="policy.default_sandbox" ctx={ctx}>
+              {text(a.policy?.default_sandbox)}
+            </Field>
+            <Field path="policy.mcp_scopes" ctx={ctx}>
+              <Chips items={a.policy?.mcp_scopes} />
+            </Field>
           </Section>
         </div>
       </div>
