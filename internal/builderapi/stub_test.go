@@ -741,3 +741,28 @@ func TestHandoffModeCapabilitiesBundleAndDetection(t *testing.T) {
 		t.Errorf("cancel awaiting_handoff: %d", w.Code)
 	}
 }
+
+func TestHandoffCommandsAreServerBuilt(t *testing.T) {
+	type cmd struct{ Step, Label, Command string }
+	var c struct{ Handoff struct{ Commands []cmd } }
+	decode(t, do(t, "GET", "/changes/chg_awaiting_handoff", ""), &c)
+	steps := []string{}
+	for _, k := range c.Handoff.Commands {
+		steps = append(steps, k.Step)
+		if k.Label == "" || !strings.HasPrefix(k.Command, "tether catalog ") {
+			t.Errorf("command: %+v", k)
+		}
+	}
+	if strings.Join(steps, ",") != "plan,approve,apply" || !strings.Contains(c.Handoff.Commands[1].Command, "<plan_id>") {
+		t.Errorf("commands before a plan id: %+v", c.Handoff.Commands)
+	}
+	var b struct{ Commands []cmd }
+	decode(t, do(t, "GET", "/changes/chg_awaiting_handoff/bundle", ""), &b)
+	if len(b.Commands) != 3 {
+		t.Errorf("bundle commands: %+v", b.Commands)
+	}
+	decode(t, do(t, "POST", "/changes/chg_awaiting_handoff/mark_planned", `{"plan_id":"plan_ABC"}`), &c)
+	if c.Handoff.Commands[2].Command != "tether catalog apply plan_ABC" {
+		t.Errorf("commands after mark_planned: %+v", c.Handoff.Commands)
+	}
+}
