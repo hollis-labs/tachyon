@@ -42,12 +42,12 @@ describe('withChatApiMessages', () => {
     expect(sent).toMatchObject({ id: 'm_9', from: 'operator', delivery: 'queued' })
   })
   it('refetches on frames and after a reconnect without duplicating messages', async () => {
+    vi.stubGlobal('EventSource', FakeES)
     const es = new FakeES()
     let rows = [m(1)]
     const fetchPage = vi.fn(async () => ({ messages: rows }))
     const events: ChatEvent[] = []
     const off = withChatApiMessages(base(), { fetchPage, stream: () => es as unknown as EventSource }).subscribe(id, (e) => events.push(e))
-    vi.stubGlobal('EventSource', FakeES)
     await vi.waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(1))
     rows = [m(1), m(2)]
     es.onmessage?.({ data: JSON.stringify({ type: 'message', thread_ref: 'tether:s1' }) })
