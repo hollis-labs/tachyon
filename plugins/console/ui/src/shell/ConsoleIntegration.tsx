@@ -54,7 +54,7 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
         <ChatProvider client={chat} operator={OPERATOR_ADDRESS}>
           <CardRuntimeProvider registry={registry} mountSurfaces={false}>
             <HitlProvider client={hitl} present={false}>
-              <WorkflowProvider client={workflow}>
+              <WorkflowProvider client={workflow} present={false}>
                 <ApprovalProvider><ServerAlertHost>{body}</ServerAlertHost></ApprovalProvider>
               </WorkflowProvider>
             </HitlProvider>
