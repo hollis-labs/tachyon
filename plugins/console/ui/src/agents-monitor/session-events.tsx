@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { AlertOctagon, ChevronDown, ChevronUp, Mail, Power, RotateCcw, ShieldCheck, ShieldX, SquareCheck, Terminal, Wrench, type LucideIcon } from 'lucide-react'
+import { AlertOctagon, ChevronDown, ChevronUp, Mail, Plus, Power, RefreshCw, RotateCcw, ShieldCheck, ShieldX, SquareCheck, Terminal, Wrench, type LucideIcon } from 'lucide-react'
 import { cn } from '@hollis-labs/design-components'
 import { CAPTION, Chip } from '@planner/shared'
 import { ageText } from './session-parts'
@@ -23,6 +23,10 @@ export interface Entry {
   calls?: number
   children?: ApiEvent[]
   card?: ApiEvent['card']
+  /** Replaces the summary text when the source already has parts (bus events). */
+  body?: ReactNode
+  /** Chips drawn at the right edge of the mini card: PR and issue refs. */
+  cites?: string[]
   gap?: string
 }
 
@@ -31,11 +35,11 @@ export function Cite({ children }: { children: ReactNode }) {
   return <code className="rounded-sm bg-surface px-1.5 py-px font-mono text-caption text-fg">{children}</code>
 }
 
-const dayLabel = (at: number, now: number) => {
+export const dayLabel = (at: number, now: number) => {
   const days = Math.floor(now / 86_400_000) - Math.floor(at / 86_400_000)
   return days === 0 ? M.today : days === 1 ? M.yesterday : new Date(at).toLocaleDateString()
 }
-const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+export const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 const FACET_OF: Record<string, string> = { tool: 'tools', message: 'messages', approval: 'approvals', error: 'errors', lifecycle: 'lifecycle', compaction: 'lifecycle', clear: 'lifecycle', task: 'lifecycle', control: 'lifecycle' }
 
@@ -62,14 +66,14 @@ export function toTimeline(d: EventsResponse, now: number): Entry[] {
   return [...rows, ...gaps].sort((a, b) => b.at - a.at)
 }
 
-const ICON: Record<string, LucideIcon> = { tool: Wrench, tool_run: Terminal, message: Mail, approval: ShieldCheck, error: AlertOctagon, lifecycle: Power, compaction: RotateCcw, clear: RotateCcw, task: SquareCheck, control: Power }
+const ICON: Record<string, LucideIcon> = { deploy: RefreshCw, restart: RefreshCw, failure: AlertOctagon, host: Power, workstream: Plus, tool: Wrench, tool_run: Terminal, message: Mail, approval: ShieldCheck, error: AlertOctagon, lifecycle: Power, compaction: RotateCcw, clear: RotateCcw, task: SquareCheck, control: Power }
 
 function Glyph({ e }: { e: Entry }) {
   const Icon = e.type === 'approval' && /den/i.test(e.summary) ? ShieldX : ICON[e.type] ?? Power
   return <span aria-hidden className={cn('relative z-10 grid size-6 shrink-0 place-items-center rounded-full border border-border bg-bg-elevated', e.tone === 'blocked' ? 'text-danger' : 'text-fg-secondary')}><Icon className="size-3" /></span>
 }
 
-function Row({ e, now }: { e: Entry; now: number }) {
+function Row({ e, now, time }: { e: Entry; now: number; time: 'age' | 'clock' }) {
   const [open, setOpen] = useState(false)
   if (e.gap) return <li className="ml-9 rounded-control border border-dashed border-border px-3 py-1.5 text-xs italic text-fg-muted">{e.summary}</li>
   return (
@@ -77,7 +81,7 @@ function Row({ e, now }: { e: Entry; now: number }) {
       <div className="flex items-start gap-3 py-1.5">
         <Glyph e={e} />
         <div className={cn('min-w-0 flex-1 pt-0.5 text-control', e.tone === 'blocked' ? 'text-danger' : 'text-fg')}>
-          <span>{e.summary}</span> <span className="text-fg-muted">· {ageText(now - e.at)}</span>
+          <span>{e.body ?? e.summary}</span> <span className="text-fg-muted">· {time === 'clock' ? e.time : ageText(now - e.at)}</span>
           {e.children && e.children.length > 0 && (
             <button type="button" aria-expanded={open} aria-label={open ? M.hideCalls : M.showCalls} onClick={() => setOpen(!open)} className="ml-1 inline-flex align-middle text-fg-muted hover:text-fg">
               {open ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
@@ -85,7 +89,7 @@ function Row({ e, now }: { e: Entry; now: number }) {
           )}
           {e.card && (
             <div className="mt-2 max-w-sm rounded-panel border border-border bg-bg px-3 py-2 text-xs">
-              <b className="text-control font-semibold text-fg">{e.card.title}</b>
+              <div className="flex items-center gap-2"><b className="text-control font-semibold text-fg">{e.card.title}</b><span className="flex-1" />{e.cites?.map((c) => <Cite key={c}>{c} ↗</Cite>)}</div>
               <div className="text-fg-muted">{e.card.summary}</div>
             </div>
           )}
@@ -101,7 +105,7 @@ function Row({ e, now }: { e: Entry; now: number }) {
 }
 
 /** The event rail: day pills, a glyph per event on a vertical line, age in muted text. `limit` folds the rest behind "Show N more events". */
-export function EventFeed({ entries, now, limit, label }: { entries: readonly Entry[]; now: number; limit?: number; label: string }) {
+export function EventFeed({ entries, now, limit, label, time = 'age', onMore }: { entries: readonly Entry[]; now: number; limit?: number; label: string; time?: 'age' | 'clock'; /** When set, the foot button asks the caller for older events instead of unfolding. */ onMore?: { label: string; run: () => void } }) {
   const [more, setMore] = useState(false)
   const shown = limit && !more ? entries.slice(0, limit) : entries
   const days = shown.reduce<{ day: string; rows: Entry[] }[]>((acc, e) => {
@@ -116,9 +120,15 @@ export function EventFeed({ entries, now, limit, label }: { entries: readonly En
       {days.map((d) => (
         <section key={d.day} className="flex flex-col">
           <h4 className="relative z-10 flex items-center gap-3 py-1.5"><span aria-hidden className="size-6 shrink-0" /><Chip className={cn('h-5 bg-bg-elevated', CAPTION, 'normal-case tracking-normal')}>{d.day}</Chip></h4>
-          <ul className="flex flex-col">{d.rows.map((e) => <Row key={e.id} e={e} now={now} />)}</ul>
+          <ul className="flex flex-col">{d.rows.map((e) => <Row key={e.id} e={e} now={now} time={time} />)}</ul>
         </section>
       ))}
+      {onMore && (
+        <button type="button" onClick={onMore.run} className="flex items-center gap-3 py-1.5 text-left text-xs text-fg-secondary hover:text-fg">
+          <span aria-hidden className="relative z-10 grid size-6 shrink-0 place-items-center rounded-full border border-border bg-bg-elevated"><ChevronDown className="size-3" /></span>
+          {onMore.label}
+        </button>
+      )}
       {limit && !more && entries.length > limit && (
         <button type="button" onClick={() => setMore(true)} className="flex items-center gap-3 py-1.5 text-left text-xs text-fg-secondary hover:text-fg">
           <span aria-hidden className="relative z-10 grid size-6 shrink-0 place-items-center rounded-full border border-border bg-bg-elevated"><ChevronDown className="size-3" /></span>
