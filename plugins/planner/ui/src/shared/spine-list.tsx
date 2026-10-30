@@ -11,6 +11,8 @@ export interface SpineEntry {
   progress?: ReactNode
   /** Small flags after the title (text, never colour alone). */
   flags?: ReactNode
+  /** Right-edge slot for a link port; the row is positioned for it. */
+  port?: ReactNode
   /** Row-level menu slot (plugin contributions land here). */
   menu?: ReactNode
   /** "Saving" while an optimistic write is in flight. */
@@ -92,6 +94,7 @@ export function SpineList({ groups, selectedId, onSelect, onTogglePin, label, pe
                   {it.menu}
                 </div>
                 {it.progress}
+                {it.port}
               </div>
             )
           })}

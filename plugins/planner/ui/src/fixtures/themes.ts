@@ -12,6 +12,8 @@ export interface FixtureTask {
   lane: LaneId
   owner?: string
   pr?: number
+  /** What shipped, from the Done prompt (kept locally until the backend stores it). */
+  summary?: string
 }
 
 export const fixtureTasks = (themeId: string): FixtureTask[] => [

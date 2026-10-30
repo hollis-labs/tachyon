@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Button, Textarea } from '@hollis-labs/design-components'
-import { fixtureLinks } from '@planner/fixtures/themes'
 import { TEXT } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
 import { notifyError } from '@planner/api/notifications'
@@ -10,11 +9,17 @@ import type { PlannerComment, ThemeRow } from '@planner/api/types'
 const heading = 'font-mono dash-caption uppercase tracking-label text-fg-faint'
 
 /** Links, Decisions, Activity and the composer for the open theme. Plugin tabs append sections. */
-export function Context({ row, comments, onCommented }: { row: ThemeRow; comments: readonly PlannerComment[]; onCommented: () => void }) {
+export function Context({ row, comments, onCommented, mentionable, links }: { row: ThemeRow; comments: readonly PlannerComment[]; onCommented: () => void; mentionable: readonly { id: string; title: string }[]; links: readonly { kind: string; label: string }[] }) {
   const api = usePlannerApi()
   const extra = useContributions('planner.context.tab')
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const [at, setAt] = useState(0)
+  const [menuOff, setMenuOff] = useState(false)
+  // An "@" word at the end of the text opens the mention menu.
+  const query = /(?:^|\s)@([\w-]*)$/.exec(text)?.[1]
+  const matches = query === undefined || menuOff ? [] : mentionable.filter((m) => `${m.id} ${m.title}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
+  const mention = (m: { id: string }) => { setText((t) => t.replace(/@[\w-]*$/, `@${m.id} `)); setAt(0) }
   const send = async () => {
     const body = text.trim()
     if (!body || sending) return
@@ -33,9 +38,9 @@ export function Context({ row, comments, onCommented }: { row: ThemeRow; comment
     <aside aria-label={TEXT.detailsLabel} className="flex min-h-0 flex-col gap-5 overflow-y-auto p-4">
       <section aria-labelledby="ctx-links" className="flex flex-col gap-1.5">
         <h2 id="ctx-links" className={heading}>{TEXT.links}</h2>
-        {fixtureLinks.length === 0 ? <p className="dash-support text-fg-muted">{TEXT.linksEmpty}</p> : (
+        {links.length === 0 ? <p className="dash-support text-fg-muted">{TEXT.linksEmpty}</p> : (
           <ul className="flex flex-col gap-1">
-            {fixtureLinks.map((l) => <li key={l.label} className="dash-support text-fg"><span className="mr-2 dash-caption text-fg-faint">{l.kind}</span>{l.label}</li>)}
+            {links.map((l) => <li key={l.label} className="dash-support text-fg"><span className="mr-2 dash-caption text-fg-faint">{l.kind}</span>{l.label}</li>)}
           </ul>
         )}
       </section>
@@ -57,7 +62,29 @@ export function Context({ row, comments, onCommented }: { row: ThemeRow; comment
         )}
       </section>
       <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); void send() }}>
-        <Textarea aria-label={TEXT.commentPlaceholder} placeholder={TEXT.commentPlaceholder} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send() } }} />
+        <Textarea
+          aria-label={TEXT.commentPlaceholder}
+          placeholder={TEXT.commentPlaceholder}
+          value={text}
+          onChange={(e) => { setText(e.target.value); setMenuOff(false) }}
+          onKeyDown={(e) => {
+            if (matches.length > 0) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => (i + (e.key === 'ArrowDown' ? 1 : matches.length - 1)) % matches.length); return }
+              if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); mention(matches[at] ?? matches[0]); return }
+              if (e.key === 'Escape') { e.stopPropagation(); setMenuOff(true); return }
+            }
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send() }
+          }}
+        />
+        {matches.length > 0 && (
+          <ul role="listbox" aria-label={TEXT.mentionLabel} className="flex flex-col rounded-md border border-border bg-panel">
+            {matches.map((m, i) => (
+              <li key={m.id} role="option" aria-selected={i === at} onMouseDown={(e) => { e.preventDefault(); mention(m) }} className="cursor-pointer px-2 py-1 dash-support text-fg aria-selected:bg-panel-hover">
+                <span className="mr-2 font-mono dash-caption text-fg-faint">{m.id}</span>{m.title}
+              </li>
+            ))}
+          </ul>
+        )}
         <Button type="submit" size="sm" disabled={sending || !text.trim()}>{TEXT.commentSend}</Button>
       </form>
     </aside>

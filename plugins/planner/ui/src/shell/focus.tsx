@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { Button, Input } from '@hollis-labs/design-components'
 import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { StatusBadge } from '@hollis-labs/kit-dashboard'
 import { themeRowActions } from '@planner/components/planner/theme-board'
@@ -73,6 +74,8 @@ export function Focus({ row, board, view, onView, onAction, onBack, onDetails }:
 
 function TaskBoard({ themeId }: { themeId: string }) {
   const [tasks, setTasks] = useState(() => fixtureTasks(themeId))
+  const [shipped, setShipped] = useState<string | null>(null)
+  const [summary, setSummary] = useState('')
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
   const lanes: Lane[] = LANES.map((l) => ({
     id: l.id,
@@ -86,13 +89,29 @@ function TaskBoard({ themeId }: { themeId: string }) {
     const t = byId.get(id)
     if (!t) return
     setTasks((all) => all.map((x) => (x.id === id ? { ...x, lane: to as LaneId } : x)))
+    // Dropping on Done saves at once; the summary is optional and attached after.
+    if (to === 'done') { setShipped(id); setSummary('') }
     toast(TEXT.moved(t.title, LANES.find((l) => l.id === to)?.title ?? to), {
       duration: 8000,
       action: { label: TEXT.undo, onClick: () => setTasks((all) => all.map((x) => (x.id === id ? { ...x, lane: from as LaneId } : x))) },
     })
   }
+  const endPrompt = (add: boolean) => {
+    if (add && shipped && summary.trim()) setTasks((all) => all.map((x) => (x.id === shipped ? { ...x, summary: summary.trim() } : x)))
+    setShipped(null)
+  }
+  const onSubmit = (e: FormEvent) => { e.preventDefault(); endPrompt(true) }
   return (
     <>
+      {shipped && (
+        <form onSubmit={onSubmit} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); endPrompt(false) } }} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
+          <label htmlFor="shipped" className="dash-caption text-fg-muted">{TEXT.doneSummaryLabel}</label>
+          <Input id="shipped" autoFocus value={summary} onChange={(e) => setSummary(e.target.value)} className="min-w-0 flex-1" />
+          <Button type="submit" size="sm">{TEXT.doneSummaryAdd}</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => endPrompt(false)}>{TEXT.doneSummarySkip}</Button>
+          <span className="w-full dash-caption text-fg-faint">{TEXT.doneSummaryHint}</span>
+        </form>
+      )}
       <LaneBoard
         lanes={lanes}
         cardTitle={(id) => byId.get(id)?.title ?? id}
