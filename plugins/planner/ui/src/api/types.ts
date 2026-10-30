@@ -267,3 +267,34 @@ export interface ThemeBoard {
 }
 
 export type ThemeAction = 'ready' | 'approve' | 'park' | 'unpark' | 'finish' | 'archive' | 'resequence'
+
+export type TaskLane = 'todo' | 'doing' | 'review' | 'blocked' | 'done'
+export interface PrCite { host: string; owner: string; repo: string; number: number; source?: 'manual' | 'detected' }
+export interface TaskAssignee { assignment_id: string; agent_id?: string; team_id?: string; label?: string; state: string }
+/** A Torque task as the planner shows it on a theme board. */
+export interface ThemeTask {
+  id: string
+  title: string
+  status: TaskLane
+  priority?: string
+  updated_at: string
+  assignees: TaskAssignee[]
+  pr_cites: PrCite[]
+  done_summary?: string
+  blocked_reason?: string
+}
+export interface ThemeTasks {
+  theme_id: string
+  counts: Record<TaskLane | 'total', number>
+  lanes: Record<TaskLane, ThemeTask[]>
+}
+export interface TaskTransitionResult {
+  task: { id: string; status: TaskLane; previous: TaskLane }
+  event?: { seq: number; kind: string }
+  undo: { to: TaskLane; expected_status: TaskLane; window_seconds: number }
+}
+export interface TaskMeta {
+  task: string
+  done_summary?: string
+  pr_cites?: PrCite[]
+}

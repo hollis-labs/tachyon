@@ -1,4 +1,4 @@
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, ThemeAction, ThemeBoard } from './types'
+import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export interface PlannerEvent { type: string }
@@ -31,6 +31,12 @@ export interface PlannerClient {
   plannerInboxDismiss(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerTaskTitles(ids: string[], signal?: AbortSignal): Promise<Record<string, PlannerTaskBrief | null>>
   plannerWorkstreamTasks(id: string, signal?: AbortSignal): Promise<PlannerWorkstreamTasks>
+  /** The theme's Torque tasks grouped by lane. */
+  plannerThemeTasks(themeId: string, signal?: AbortSignal): Promise<ThemeTasks>
+  /** A real Torque status transition. A differing current status is a 409 with details.current. Undo is the inverse call. */
+  plannerTaskTransition(task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }): Promise<TaskTransitionResult>
+  /** Attach "what shipped" and PR cites after a move; never blocks the move. */
+  plannerTaskMeta(task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }): Promise<TaskMeta>
   getTask(id: string, signal?: AbortSignal): Promise<Task>
   listTaskComments(id: string, query?: { limit?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }, signal?: AbortSignal): Promise<ListPage<Comment>>
   resolveReference(db: PlannerDb | null, id: string): Promise<PlannerReference>
