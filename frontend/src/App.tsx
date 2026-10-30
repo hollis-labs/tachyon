@@ -7,14 +7,15 @@ import {
   type TachyonPlugin,
   useHostPlugins,
 } from "@tachyon/host-sdk"
-import { Atom, Settings } from "lucide-react"
+import { Atom } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 import { useApi } from "./api/context"
 import { DataStatus } from "./DataStatus"
-import { ModeMenu } from "./ModeMenu"
 import { plugins } from "./plugins"
 import { SettingsPage } from "./settings/SettingsPage"
+import { AvatarMenu } from "./user/AvatarMenu"
+import { UserPage } from "./user/UserPage"
 
 const DEFAULT_ROUTE = "/planner"
 
@@ -43,24 +44,14 @@ function Shell() {
     .flatMap((p) => (p.nav ?? []).map((n) => ({ ...n, plugin: p.id })))
     .sort((a, b) => a.priority - b.priority)
 
-  const items: NavRailItem[] = [
-    ...nav.map((n) => ({
-      key: `${n.plugin}:${n.key}`,
-      label: n.label,
-      icon: n.icon,
-      footer: n.footer,
-      active: location.pathname.startsWith(n.match ?? n.to),
-      onSelect: () => navigate(n.to),
-    })),
-    {
-      key: "host:settings",
-      label: "Settings",
-      icon: <Settings className="h-4 w-4" />,
-      footer: true,
-      active: location.pathname.startsWith("/settings"),
-      onSelect: () => navigate("/settings/account"),
-    },
-  ]
+  const items: NavRailItem[] = nav.map((n) => ({
+    key: `${n.plugin}:${n.key}`,
+    label: n.label,
+    icon: n.icon,
+    footer: n.footer,
+    active: location.pathname.startsWith(n.match ?? n.to),
+    onSelect: () => navigate(n.to),
+  }))
 
   const extras = plugins.flatMap((p) => (p.NavExtras ? [<p.NavExtras key={p.id} />] : []))
 
@@ -73,7 +64,7 @@ function Shell() {
         footerExtra={
           <>
             {extras}
-            <ModeMenu />
+            <AvatarMenu />
           </>
         }
       />
@@ -91,7 +82,9 @@ function Shell() {
                 />
               )),
             )}
-            <Route path="/settings" element={<Navigate to="/settings/account" replace />} />
+            <Route path="/settings" element={<Navigate to="/settings/appearance" replace />} />
+            <Route path="/settings/account" element={<Navigate to="/user" replace />} />
+            <Route path="/user" element={<UserPage />} />
             <Route path="/settings/:section" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to={DEFAULT_ROUTE} replace />} />
           </Routes>

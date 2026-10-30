@@ -5,8 +5,9 @@ describe("resolveSection", () => {
   it("accepts reachable sections", () => {
     expect(resolveSection("appearance")).toBe("appearance")
   })
-  it("falls back to Account for unknown or soon sections", () => {
+  it("falls back to Appearance for unknown or soon sections", () => {
     expect(resolveSection(undefined)).toBe(DEFAULT_SECTION)
+    expect(resolveSection("account")).toBe(DEFAULT_SECTION)
     expect(resolveSection("nope")).toBe(DEFAULT_SECTION)
     expect(resolveSection("agents")).toBe(DEFAULT_SECTION)
   })
