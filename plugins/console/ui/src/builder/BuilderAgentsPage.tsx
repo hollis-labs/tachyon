@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
 import { AgentDetailPane } from './AgentDetailPane'
 import { type AgentRow, builderApi } from './api'
@@ -8,17 +9,27 @@ import { type AgentState, POLICY_LABEL, STATE_LABEL } from './vocab'
 
 const CHIP = 'inline-flex items-center border border-border px-1.5 py-px font-mono text-caption text-fg-secondary'
 
+const ALL = '__all'
+
 function Rows({ rows, selected, onSelect }: { rows: AgentRow[]; selected?: string; onSelect: (id: string) => void }) {
   return (
     <ul aria-label="Agents" className="divide-y divide-border-subtle">
       {rows.map((r) => (
         <li key={r.id}>
-          <button type="button" aria-current={r.id === selected ? 'true' : undefined} onClick={() => onSelect(r.id)}
-            className={`flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-surface-hover ${r.id === selected ? 'bg-surface' : ''}`}>
-            <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center border border-border font-mono dash-support text-fg-muted">{r.name.slice(0, 2).toUpperCase()}</span>
+          <button
+            type="button"
+            aria-current={r.id === selected ? 'true' : undefined}
+            onClick={() => onSelect(r.id)}
+            className={`flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-surface-hover ${r.id === selected ? 'bg-surface' : ''}`}
+          >
+            <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center border border-border font-mono dash-support text-fg-muted">
+              {r.name.slice(0, 2).toUpperCase()}
+            </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate dash-body text-fg">{r.name}</span>
-              <span className="block truncate font-mono dash-support text-fg-muted">{r.launch_count} {r.launch_count === 1 ? 'launch' : 'launches'}</span>
+              <span className="block truncate font-mono dash-support text-fg-muted">
+                {r.launch_count} {r.launch_count === 1 ? 'launch' : 'launches'}
+              </span>
             </span>
             {r.policy_tag && <span className={CHIP}>{POLICY_LABEL[r.policy_tag]}</span>}
             {r.state !== 'active' && <span className={CHIP}>{STATE_LABEL[r.state]}</span>}
@@ -63,23 +74,48 @@ export function BuilderAgentsPage() {
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
           <div className="flex flex-wrap gap-2 border-b border-border p-3">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search agents" aria-label="Search agents" className="min-w-0 flex-1 border border-border bg-bg px-2 py-1 dash-body text-fg" />
-            <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Filter by provider" className="border border-border bg-bg px-2 py-1 dash-body text-fg">
-              <option value="">All providers</option>
-              {providers.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search agents" aria-label="Search agents" />
+            <Select value={provider === '' ? ALL : provider} onValueChange={(v) => setProvider(v === null || v === ALL ? '' : String(v))}>
+              <SelectTrigger className="h-8 w-44 dash-body" aria-label="Filter by provider">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All providers</SelectItem>
+                {providers.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div role="group" aria-label="State" className="flex gap-1">
               {states.map((s) => (
-                <button key={s || 'all'} type="button" aria-pressed={state === s} onClick={() => setState(s)} className={`px-2 py-0.5 dash-control ${state === s ? 'bg-surface font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>{s ? STATE_LABEL[s] : 'All'}</button>
+                <button
+                  key={s || 'all'}
+                  type="button"
+                  aria-pressed={state === s}
+                  onClick={() => setState(s)}
+                  className={`px-2 py-0.5 dash-control ${state === s ? 'bg-surface font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}
+                >
+                  {s ? STATE_LABEL[s] : 'All'}
+                </button>
               ))}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
-            {list.status === 'loading' && <div aria-busy="true" className="space-y-2 p-4">{[0, 1, 2, 3].map((i) => <div key={i} className="h-10 animate-pulse bg-surface" />)}</div>}
+            {list.status === 'loading' && (
+              <div aria-busy="true" className="space-y-2 p-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="h-10 animate-pulse bg-surface" />
+                ))}
+              </div>
+            )}
             {list.status === 'error' && (
               <div role="alert" className="space-y-2 p-4">
                 <p className="dash-body text-fg-secondary">{list.message}</p>
-                <button type="button" onClick={retry} className="border border-border px-2 py-1 dash-control text-fg-secondary hover:bg-surface-hover">Retry</button>
+                <Button type="button" onClick={retry} variant="outline" size="sm">
+                  Retry
+                </Button>
               </div>
             )}
             {list.status === 'ready' && rows.length === 0 && (

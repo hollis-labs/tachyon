@@ -1,11 +1,8 @@
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@hollis-labs/design-components'
+import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogTitle } from '@hollis-labs/design-components'
 import { useEffect, useState } from 'react'
 import { builderApi, type Change, errorMessage } from './api'
 import { isOpen, isWaiting, minutesAndSeconds } from './changes'
 import { useBuilderStream } from './stream'
-
-const BTN = 'border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover disabled:opacity-50'
-const PRIMARY = 'border border-fg px-3 py-1 dash-control font-medium text-fg hover:bg-surface-hover disabled:opacity-50'
 
 const CHECK_WORD = { ok: 'Passed', warn: 'Warning', fail: 'Failed' } as const
 
@@ -111,9 +108,10 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
             <p className="dash-support text-fg-muted">Nothing changes until it is approved on the host.</p>
             <code className="block break-all bg-surface p-2 font-mono dash-support text-fg">{change.plan.approve_command}</code>
             <div className="flex items-center gap-3 dash-support text-fg-muted">
-              <button
+              <Button
                 type="button"
-                className={BTN}
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   void navigator.clipboard?.writeText(change.plan?.approve_command ?? '')
                   setCopied(true)
@@ -121,12 +119,12 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
                 }}
               >
                 {copied ? 'Copied' : 'Copy command'}
-              </button>
+              </Button>
               <Countdown expiresAt={change.plan.expires_at} />
               {change.plan.expires_at <= Date.now() && (
-                <button type="button" className={BTN} disabled={busy} onClick={() => run(() => builderApi.rearm(change.change_id))}>
+                <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => run(() => builderApi.rearm(change.change_id))}>
                   Re-arm
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -166,9 +164,9 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
           <div role="alert" className="space-y-2 border border-border p-3">
             <p className="dash-body text-fg">Changed elsewhere: {change.stale?.changed_paths.join(', ')}.</p>
             {change.stale?.theirs_diff && <Diff text={change.stale.theirs_diff} />}
-            <button type="button" className={BTN} onClick={onReload}>
+            <Button type="button" variant="outline" size="sm" onClick={onReload}>
               Reload theirs
-            </button>
+            </Button>
           </div>
         )}
         {error && (
@@ -180,23 +178,23 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
         <div className="flex flex-wrap items-center justify-end gap-2">
           {change.state === 'draft' && privileged && (
             <label className="mr-auto flex items-center gap-2 dash-support text-fg-secondary">
-              <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} /> I understand these fields are privileged
+              <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} /> I understand these fields are privileged
             </label>
           )}
           {(change.state === 'draft' || change.state === 'awaiting_approval' || change.state === 'stale') && (
-            <button type="button" className={BTN} disabled={busy} onClick={() => (change.state === 'draft' ? onClose() : run(() => builderApi.cancel(change.change_id)))}>
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => (change.state === 'draft' ? onClose() : run(() => builderApi.cancel(change.change_id)))}>
               {change.state === 'draft' ? 'Keep editing' : 'Cancel change'}
-            </button>
+            </Button>
           )}
           {change.state === 'draft' && (
-            <button type="button" className={PRIMARY} disabled={busy || failChecks.length > 0 || (privileged && !ack)} onClick={() => run(() => builderApi.submit(change.change_id, ack))}>
+            <Button type="button" variant="default" size="sm" disabled={busy || failChecks.length > 0 || (privileged && !ack)} onClick={() => run(() => builderApi.submit(change.change_id, ack))}>
               {busy ? 'Submitting' : 'Submit for approval'}
-            </button>
+            </Button>
           )}
           {done && (
-            <button type="button" className={BTN} onClick={onClose}>
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
               Close
-            </button>
+            </Button>
           )}
         </div>
       </DialogContent>

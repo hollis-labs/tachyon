@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useRef, useState } from 'react'
+import { Button, Checkbox, Input, Textarea } from '@hollis-labs/design-components'
 import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
 import { buildOps, changedPaths, changingText, confirmDiscard, type Draft, fieldByPath, newRequestId } from './changes'
 import { OutlineNav } from './OutlineNav'
@@ -34,8 +35,6 @@ function Chips({ items, empty = 'none' }: { items?: string[] | null; empty?: str
   )
 }
 
-const INPUT = 'w-full border border-border bg-bg px-2 py-1 dash-body text-fg'
-
 interface EditCtx {
   agent: AgentDetail
   editing: boolean
@@ -51,12 +50,11 @@ function Field({ path, ctx, children }: { path: string; ctx: EditCtx; children: 
   const id = `f-${path}`
   let editor: ReactNode
   if (def.kind === 'bool') {
-    editor = <input id={id} type="checkbox" checked={value === true} onChange={(e) => ctx.set(path, e.target.checked)} />
+    editor = <Checkbox id={id} checked={value === true} onCheckedChange={(v) => ctx.set(path, v === true)} />
   } else if (def.kind === 'chips') {
     editor = (
-      <input
+      <Input
         id={id}
-        className={INPUT}
         value={(value as string[]).join(', ')}
         placeholder="comma separated"
         onChange={(e) =>
@@ -71,9 +69,9 @@ function Field({ path, ctx, children }: { path: string; ctx: EditCtx; children: 
       />
     )
   } else if (def.kind === 'longtext') {
-    editor = <textarea id={id} className={INPUT} rows={3} value={String(value)} onChange={(e) => ctx.set(path, e.target.value)} />
+    editor = <Textarea id={id} rows={3} value={String(value)} onChange={(e) => ctx.set(path, e.target.value)} />
   } else {
-    editor = <input id={id} className={INPUT} value={String(value)} onChange={(e) => ctx.set(path, e.target.value)} />
+    editor = <Input id={id} value={String(value)} onChange={(e) => ctx.set(path, e.target.value)} />
   }
   return (
     <div className="grid grid-cols-[10rem_1fr] gap-3 border-b border-border-subtle py-2">
@@ -128,9 +126,9 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
     return (
       <div role="alert" className="space-y-2 p-5">
         <p className="dash-body text-fg-secondary">{load.message}</p>
-        <button type="button" onClick={retry} className="border border-border px-2 py-1 dash-control text-fg-secondary hover:bg-surface-hover">
+        <Button type="button" onClick={retry} variant="outline" size="sm">
           Retry
-        </button>
+        </Button>
       </div>
     )
   const a: AgentDetail = load.data
@@ -168,17 +166,18 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
         <span className={CHIP}>{STATE_LABEL[a.state]}</span>
         {!a.editable && <span className={CHIP}>Read-only</span>}
         {a.editable && !editing && (
-          <button type="button" onClick={() => setEditing(true)} className="border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover">
+          <Button type="button" onClick={() => setEditing(true)} variant="outline" size="sm">
             Edit
-          </button>
+          </Button>
         )}
       </header>
       {elsewhere && (
-        <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
+        <div role="status" className="flex flex-wrap items-center gap-3 px-5 py-2 dash-support text-fg-muted">
           <span className="mr-auto">This agent changed elsewhere.{dirty.length > 0 ? ' Reloading drops your unsaved changes.' : ''}</span>
-          <button
+          <Button
             type="button"
-            className="border border-border px-3 py-1 dash-control hover:bg-surface-hover"
+            variant="outline"
+            size="sm"
             onClick={() => {
               if (!confirmDiscard(dirty.length)) return
               setEditing(false)
@@ -188,7 +187,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             }}
           >
             Reload
-          </button>
+          </Button>
         </div>
       )}
       {editing && (
@@ -199,9 +198,10 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
               {error}
             </span>
           )}
-          <button
+          <Button
             type="button"
-            className="border border-border px-3 py-1 dash-control hover:bg-surface-hover"
+            variant="outline"
+            size="sm"
             onClick={() => {
               if (!confirmDiscard(dirty.length)) return
               setEditing(false)
@@ -210,15 +210,10 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             }}
           >
             Discard
-          </button>
-          <button
-            type="button"
-            disabled={dirty.length === 0 || busy}
-            className="border border-fg px-3 py-1 dash-control font-medium text-fg hover:bg-surface-hover disabled:opacity-50"
-            onClick={openReview}
-          >
+          </Button>
+          <Button type="button" disabled={dirty.length === 0 || busy} variant="default" size="sm" onClick={openReview}>
             {busy ? 'Checking' : 'Review changes'}
-          </button>
+          </Button>
         </div>
       )}
       {review && (
