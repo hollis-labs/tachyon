@@ -16,6 +16,7 @@ const (
 	StateIdle    = "idle"
 	StateStale   = "stale"
 	StateUnknown = "unknown"
+	StateEnded   = "ended" // only for a session that has ended; never counted in the summary
 )
 
 // Stale reasons.

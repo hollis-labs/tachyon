@@ -1,0 +1,207 @@
+{
+  "prompts/review-etiquette": {
+    "kind": "prompts",
+    "id": "review-etiquette",
+    "name": "Review etiquette",
+    "summary": "How to word review comments.",
+    "used_by_count": 1,
+    "revision": 3,
+    "bytes": 49,
+    "tokens_est": 13,
+    "archived": false,
+    "updated_at": 1793147000000,
+    "editable": true,
+    "body": "Be specific. Quote the line. Say what to change.",
+    "referencing_agents": [
+      {
+        "id": "builder-reviewer",
+        "rev": 3,
+        "drifted": false
+      }
+    ]
+  },
+  "prompts/handoff-style": {
+    "kind": "prompts",
+    "id": "handoff-style",
+    "name": "Handoff style",
+    "summary": "How to write a handoff.",
+    "used_by_count": 0,
+    "revision": 1,
+    "bytes": 212,
+    "tokens_est": 53,
+    "archived": false,
+    "updated_at": 1792000000000,
+    "editable": true,
+    "body": "Lead with what the next session does first. Name the thing that is always current instead of copying state.",
+    "referencing_agents": []
+  },
+  "skills/commit-hygiene": {
+    "kind": "skills",
+    "id": "commit-hygiene",
+    "name": "Commit hygiene",
+    "summary": "Small commits, imperative subjects.",
+    "used_by_count": 2,
+    "layer": "system",
+    "source": "catalog",
+    "path": "skills/commit-hygiene.md",
+    "sha": "50fa96cc2a14af1ae5b242a6720630ebd96e5a4fe440570b36ba0890d814e3b0",
+    "read_only": false,
+    "editable": true,
+    "snapshot_seq": 4,
+    "body_preview": "# Commit hygiene\n\nKeep commits small. Write the subject in the imperative.",
+    "body_truncated": false
+  },
+  "skills/personal-style": {
+    "kind": "skills",
+    "id": "personal-style",
+    "name": "Personal style",
+    "summary": "A user-layer skill.",
+    "used_by_count": 0,
+    "layer": "user",
+    "source": "user",
+    "path": null,
+    "sha": null,
+    "read_only": true,
+    "editable": false,
+    "snapshot_seq": null,
+    "body_preview": "",
+    "body_truncated": false
+  },
+  "tool_servers/tether": {
+    "kind": "tool_servers",
+    "id": "tether",
+    "name": "Tether",
+    "summary": "Messaging, tasks and memory.",
+    "used_by_count": 2,
+    "transport": "http",
+    "tags": [
+      "core"
+    ],
+    "status": "ok",
+    "health": "healthy",
+    "tool_count": 48,
+    "restarts": 0,
+    "scopes": null,
+    "read_only": true,
+    "editable": false,
+    "read_only_reason": "Scopes, command and url are not readable from Tether yet."
+  },
+  "tool_servers/github": {
+    "kind": "tool_servers",
+    "id": "github",
+    "name": "GitHub",
+    "summary": "Pull requests and releases.",
+    "used_by_count": 1,
+    "transport": "stdio",
+    "tags": [
+      "vcs"
+    ],
+    "status": "degraded",
+    "health": "slow responses",
+    "tool_count": 12,
+    "restarts": 3,
+    "scopes": null,
+    "read_only": true,
+    "editable": false,
+    "read_only_reason": "Scopes, command and url are not readable from Tether yet."
+  },
+  "tool_servers/browser": {
+    "kind": "tool_servers",
+    "id": "browser",
+    "name": "Browser",
+    "summary": "Headless browser control.",
+    "used_by_count": 0,
+    "transport": "http",
+    "tags": [],
+    "status": "down",
+    "health": "unreachable",
+    "tool_count": null,
+    "restarts": null,
+    "scopes": null,
+    "read_only": true,
+    "editable": false,
+    "read_only_reason": "Scopes, command and url are not readable from Tether yet."
+  },
+  "policies/standard-ask": {
+    "kind": "policies",
+    "id": "standard-ask",
+    "name": "Standard (ask)",
+    "summary": "Ask before risky actions.",
+    "used_by_count": 1,
+    "revision": 2,
+    "permission_mode": "default",
+    "network": "restricted",
+    "default_sandbox": "workspace-write",
+    "scope_count": 2,
+    "privileged": false,
+    "archived": false,
+    "updated_at": 1793000000000,
+    "editable": true,
+    "bundle": {
+      "permission_mode": "default",
+      "network": "restricted",
+      "default_sandbox": "workspace-write",
+      "mcp_scopes": [
+        "tether:read",
+        "github:pr"
+      ],
+      "lifecycle": {
+        "max_turns": 80,
+        "idle_timeout_s": 1800
+      },
+      "recovery": {
+        "on_crash": "resume"
+      }
+    },
+    "referencing_agents": [
+      {
+        "id": "builder-reviewer",
+        "rev": 2,
+        "drifted": true
+      }
+    ]
+  },
+  "policies/autonomous-sandboxed": {
+    "kind": "policies",
+    "id": "autonomous-sandboxed",
+    "name": "Autonomous (sandboxed)",
+    "summary": "No prompts; sandbox is the guard.",
+    "used_by_count": 0,
+    "revision": 1,
+    "permission_mode": "bypassPermissions",
+    "network": "restricted",
+    "default_sandbox": "workspace-write",
+    "scope_count": 1,
+    "privileged": true,
+    "archived": false,
+    "updated_at": 1792500000000,
+    "editable": true,
+    "bundle": {
+      "permission_mode": "bypassPermissions",
+      "network": "restricted",
+      "default_sandbox": "workspace-write",
+      "mcp_scopes": [
+        "tether:read"
+      ],
+      "lifecycle": {},
+      "recovery": {}
+    },
+    "referencing_agents": []
+  },
+  "skills/triage-notes": {
+    "kind": "skills",
+    "id": "triage-notes",
+    "name": "Triage notes",
+    "summary": "How to sort an inbox.",
+    "used_by_count": 0,
+    "layer": "system",
+    "source": "catalog",
+    "path": "skills/triage-notes.md",
+    "sha": "536226ea1494170bcf7d4a9bb9bf450b97b66f94dff35e25e59e7fcd6db40157",
+    "read_only": false,
+    "editable": true,
+    "snapshot_seq": 1,
+    "body_preview": "# Triage notes\n\nSort by urgency, then age.",
+    "body_truncated": false
+  }
+}

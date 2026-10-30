@@ -1,0 +1,25 @@
+{
+ "app": {
+  "roots": [
+   "/home/operator/notes"
+  ],
+  "deny_extra": [
+   "*.sqlite"
+  ],
+  "caps": {
+   "text_bytes": 2097152,
+   "image_bytes": 26214400,
+   "html_bytes": 2097152
+  },
+  "caster_namespaces": [
+   "designer",
+   "scratch"
+  ],
+  "run_scripts_allowed": false,
+  "allow_user_roots": false,
+  "audit_retention_days": 30
+ },
+ "user": {
+  "roots": []
+ }
+}

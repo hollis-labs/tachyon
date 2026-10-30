@@ -1,5 +1,5 @@
 import { EmptyState, Toaster, TooltipProvider } from "@hollis-labs/design-components"
-import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/kit-dashboard"
+import { NavRail, type NavRailItem } from "@hollis-labs/kit-dashboard"
 import {
   type HostPluginInfo,
   HostPluginsProvider,
@@ -7,12 +7,14 @@ import {
   type TachyonPlugin,
   useHostPlugins,
 } from "@tachyon/host-sdk"
-import { Atom } from "lucide-react"
+import { Atom, Settings } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 import { useApi } from "./api/context"
 import { DataStatus } from "./DataStatus"
+import { ModeMenu } from "./ModeMenu"
 import { plugins } from "./plugins"
+import { SettingsPage } from "./settings/SettingsPage"
 
 const DEFAULT_ROUTE = "/planner"
 
@@ -41,14 +43,24 @@ function Shell() {
     .flatMap((p) => (p.nav ?? []).map((n) => ({ ...n, plugin: p.id })))
     .sort((a, b) => a.priority - b.priority)
 
-  const items: NavRailItem[] = nav.map((n) => ({
-    key: `${n.plugin}:${n.key}`,
-    label: n.label,
-    icon: n.icon,
-    footer: n.footer,
-    active: location.pathname.startsWith(n.match ?? n.to),
-    onSelect: () => navigate(n.to),
-  }))
+  const items: NavRailItem[] = [
+    ...nav.map((n) => ({
+      key: `${n.plugin}:${n.key}`,
+      label: n.label,
+      icon: n.icon,
+      footer: n.footer,
+      active: location.pathname.startsWith(n.match ?? n.to),
+      onSelect: () => navigate(n.to),
+    })),
+    {
+      key: "host:settings",
+      label: "Settings",
+      icon: <Settings className="h-4 w-4" />,
+      footer: true,
+      active: location.pathname.startsWith("/settings"),
+      onSelect: () => navigate("/settings/account"),
+    },
+  ]
 
   const extras = plugins.flatMap((p) => (p.NavExtras ? [<p.NavExtras key={p.id} />] : []))
 
@@ -61,7 +73,7 @@ function Shell() {
         footerExtra={
           <>
             {extras}
-            <ThemeSwitcher />
+            <ModeMenu />
           </>
         }
       />
@@ -79,6 +91,8 @@ function Shell() {
                 />
               )),
             )}
+            <Route path="/settings" element={<Navigate to="/settings/account" replace />} />
+            <Route path="/settings/:section" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to={DEFAULT_ROUTE} replace />} />
           </Routes>
         </div>

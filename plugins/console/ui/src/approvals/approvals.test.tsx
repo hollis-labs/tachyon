@@ -213,7 +213,7 @@ describe("approval review dialog", () => {
 
 
 describe("approval list interaction", () => {
-  it("filters the shared rows and opens a request from the keyboard without deciding it", async () => {
+  it("lists requests in a queue, shows the selected detail beside it and filters without deciding", async () => {
     const client = {
       inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }),
       present: vi.fn().mockResolvedValue(item),
@@ -222,16 +222,12 @@ describe("approval list interaction", () => {
       get: vi.fn(),
     } as unknown as ApprovalClient
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
-    const row = await screen.findByRole("button", { name: "Create a session" })
-    row.focus()
-    fireEvent.keyDown(row, { key: "Enter" })
-    await screen.findByRole("dialog")
-    expect(client.present).toHaveBeenCalledWith(item.item_id)
-    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0])
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const row = await screen.findByRole("option", { name: /Create a session/ })
+    expect(row.getAttribute("aria-selected")).toBe("true")
+    await waitFor(() => expect(client.present).toHaveBeenCalledWith(item.item_id))
     fireEvent.change(screen.getByRole("searchbox", { name: "Search approvals" }), { target: { value: "unmatched" } })
     await screen.findByText("No matching requests.")
-    expect(screen.queryByRole("button", { name: "Create a session" })).toBeNull()
+    expect(screen.queryByRole("option", { name: /Create a session/ })).toBeNull()
     expect(client.decide).not.toHaveBeenCalled()
   })
 })
@@ -251,15 +247,15 @@ describe("owned inbox tiers and pages", () => {
     const inbox = vi.fn().mockImplementation(async (_fresh, cursors) => ({ pending: cursors?.pending_before ? [second] : [item], history: [], next_pending: cursors?.pending_before ? undefined : "req-1", synced_at: new Date().toISOString(), revision: "1" }))
     render(<MemoryRouter><ApprovalProvider client={{ inbox } as unknown as ApprovalClient}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     fireEvent.click(await screen.findByRole("button", { name: "Next page" }))
-    await screen.findByText("Older request")
+    await screen.findByRole("option", { name: /Older request/ })
     expect(inbox).toHaveBeenLastCalledWith(true, { pending_before: "req-1" })
     fireEvent.click(screen.getByRole("button", { name: "First page" }))
-    await screen.findByText("Create a session")
+    await screen.findByRole("option", { name: /Create a session/ })
   })
 })
 
 describe("approval deep link", () => {
-  it("opens the review dialog for /approvals?item=<id> and clears the parameter", async () => {
+  it("selects the request for /approvals?item=<id> and clears the parameter", async () => {
     const present = vi.fn().mockResolvedValue(item)
     const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present } as unknown as ApprovalClient
     render(
@@ -377,7 +373,7 @@ describe("approvals list", () => {
     expect(await screen.findByText(/^Form ·/)).toBeTruthy()
     expect(screen.getByText(/^Approval ·/)).toBeTruthy()
     fireEvent.change(screen.getByLabelText("Search approvals"), { target: { value: "form" } })
-    await waitFor(() => expect(screen.queryByText("Create a session")).toBeNull())
-    expect(screen.getByText("Fill me in")).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole("option", { name: /Create a session/ })).toBeNull())
+    expect(screen.getByRole("option", { name: /Fill me in/ })).toBeTruthy()
   })
 })
