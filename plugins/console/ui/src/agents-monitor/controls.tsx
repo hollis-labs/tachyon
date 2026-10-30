@@ -61,7 +61,7 @@ function ControlPanel({ open, onOpenChange, label, trigger, children }: { open: 
           onKeyDown={(e) => {
             if (e.key === 'Escape') (e.stopPropagation(), e.preventDefault(), onOpenChange(false))
           }}
-          className="absolute right-0 top-full z-20 mt-1 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3 rounded-panel border border-surface-hover bg-bg-elevated p-3 shadow-lg"
+          className="absolute right-0 top-full z-20 mt-1 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3 rounded-panel border border-surface-hover bg-bg-elevated p-3 shadow-lg max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:mt-0 max-sm:w-auto max-sm:rounded-b-none"
         >
           {children}
         </div>
@@ -109,7 +109,7 @@ export function NudgeControl({ session, paused, onSent, live = CONTROLS_LIVE }: 
       open={open}
       onOpenChange={(o) => !busy && setOpen(o)}
       label={V.title}
-      trigger={({ onClick, ref }) => <Button ref={ref} size="sm" variant="outline" disabled={why !== null} title={why ?? undefined} aria-expanded={open} onClick={onClick}>{AGENTS.modal.nudge} ▾</Button>}
+      trigger={({ onClick, ref }) => <Button ref={ref} data-nudge-trigger size="sm" variant="outline" disabled={why !== null} title={why ?? undefined} aria-expanded={open} onClick={onClick}>{AGENTS.modal.nudge} ▾</Button>}
     >
       <>
         <label htmlFor="nudge-text" className="font-mono text-caption uppercase tracking-label text-fg-muted">{V.label}</label>

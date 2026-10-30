@@ -58,7 +58,7 @@ export function AgentsPage() {
 
   const all = data?.sessions ?? []
   const filterCount = { all: null, working: all.filter((x) => matchesFilter(x, 'working')).length, needs_you: all.filter((x) => matchesFilter(x, 'needs_you')).length, stale: all.filter((x) => matchesFilter(x, 'stale')).length }
-  const filterLabel = (f: FilterId) => (filterCount[f] === null ? AGENTS.filters[f] : `${AGENTS.filters[f]} ${filterCount[f]}`)
+  const filterLabel = (f: FilterId) => (filterCount[f] === null || !data ? AGENTS.filters[f] : `${AGENTS.filters[f]} ${filterCount[f]}`)
   const visible = useMemo(() => (data?.sessions ?? []).filter((s) => matchesFilter(s, filter) && matchesQuery(s, query)), [data, filter, query])
   const counts = useMemo(() => {
     const c = { working: 0, waiting: 0, idle: 0, stale: 0, unknown: 0, ...data?.summary } as Record<SessionState, number>

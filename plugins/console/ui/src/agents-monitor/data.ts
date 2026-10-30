@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Collector, Session, SessionsResponse, StreamStatus } from './types'
 
 export const AGENTS_BASE = '/api/plugins/console/v1/agents'
@@ -12,12 +12,15 @@ export interface StreamEvent {
   collector?: Partial<Collector>
 }
 
+const isFull = (p: Partial<Session> & { id: string }): p is Session => !!p.agent && !!p.needs_you && !!p.context
+
 /** Applies one live snapshot to the held data. bus, control and gap do not change the sessions list. */
 export function applyStreamEvent(data: SessionsResponse, ev: StreamEvent): SessionsResponse {
   if (ev.type === 'session' && ev.session) {
     const part = ev.session
     const known = data.sessions.some((s) => s.id === part.id)
-    return { ...data, sessions: known ? data.sessions.map((s) => (s.id === part.id ? { ...s, ...part } : s)) : [...data.sessions, part as Session] }
+    if (!known) return isFull(part) ? { ...data, sessions: [...data.sessions, part] } : data // a partial snapshot of an unknown session is not shown; the hook reads the list again
+    return { ...data, sessions: data.sessions.map((s) => (s.id === part.id ? { ...s, ...part } : s)) }
   }
   if (ev.type === 'summary' && ev.summary) return { ...data, summary: ev.summary }
   if (ev.type === 'collector' && ev.collector) return { ...data, collector: { ...data.collector, ...ev.collector } }
@@ -33,6 +36,7 @@ export function useAgentsMonitor() {
   const [data, setData] = useState<SessionsResponse | null>(null)
   const [status, setStatus] = useState<StreamStatus>('loading')
   const [error, setError] = useState<string | null>(null)
+  const held = useRef<SessionsResponse | null>(null)
   const [busTick, setBusTick] = useState(0) // bumps on every bus event so the Activity tab reads its head again
 
   const refetch = useCallback(async () => {
@@ -60,7 +64,10 @@ export function useAgentsMonitor() {
       }
       if (ev.type === 'gap') void refetch()
       else if (ev.type === 'bus') setBusTick((n) => n + 1)
-      else setData((d) => (d ? applyStreamEvent(d, ev) : d))
+      else {
+        if (ev.type === 'session' && ev.session && held.current && !held.current.sessions.some((x) => x.id === ev.session?.id) && !isFull(ev.session)) void refetch()
+        setData((d) => (d ? applyStreamEvent(d, ev) : d))
+      }
     }
     es.onopen = () => {
       setStatus('live')
@@ -76,6 +83,7 @@ export function useAgentsMonitor() {
     return () => es.close()
   }, [refetch])
 
+  held.current = data
   // First data decides between loading and error; a later failure keeps the last data.
   const shown: StreamStatus = data === null ? (error ? 'error' : 'loading') : status === 'reconnecting' || error ? 'reconnecting' : 'live'
   return { data, status: shown, error, refetch, busTick }
