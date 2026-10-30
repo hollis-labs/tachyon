@@ -123,7 +123,7 @@ paths:
         "404": {$ref: "#/components/responses/Error"}
   /builder/changes:
     get:
-      summary: Changes. state is open (draft, awaiting_approval, approved, applying, stale), all, or one state.
+      summary: Changes. state is open (draft, awaiting_handoff, awaiting_approval, approved, applying, stale), all, or one state.
       parameters: [{name: state, in: query, schema: {type: string}}]
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: object, properties: {changes: {type: array, items: {$ref: "#/components/schemas/Change"}}}}}}}
@@ -137,7 +137,7 @@ paths:
         429 rate_limited.
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ChangeRequest"}}}}
       responses:
-        "201": {description: draft, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "201": {description: "draft, or awaiting_handoff in handoff mode when nothing needs an ack", content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
         "400": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
         "413": {$ref: "#/components/responses/Error"}
@@ -154,16 +154,54 @@ paths:
       parameters: [{$ref: "#/components/parameters/id"}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {ack_privileged: {type: boolean}}}}}}
       responses:
-        "200": {description: awaiting_approval, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "200": {description: "awaiting_approval (direct mode) or awaiting_handoff (handoff mode)", content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
         "400": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
   /builder/changes/{id}/cancel:
     post:
-      summary: Cancel a draft, an awaiting_approval or a stale change.
+      summary: Cancel a draft, an awaiting_handoff, an awaiting_approval or a stale change.
       parameters: [{$ref: "#/components/parameters/id"}]
       responses:
         "200": {description: cancelled, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
         "409": {$ref: "#/components/responses/Error"}
+  /builder/capabilities:
+    get:
+      summary: What the change routes can do on this host, so the UI does not wait for a 503.
+      description: |
+        mode direct: Tachyon holds a control token and plans/applies itself. handoff (the default without a token):
+        a change becomes awaiting_handoff with a bundle the operator plans in Tether; applied is detected from file
+        shas. unavailable: changes are off (503 changes_unavailable on the change routes).
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {changes: {type: object, required: [mode, handoff], properties: {mode: {type: string, enum: [direct, handoff, unavailable]}, handoff: {type: array, items: {type: string, enum: [copy, session]}}, applier_agent: {type: string}}}}}}}}
+  /builder/changes/{id}/bundle:
+    get:
+      summary: The exact POST /catalog/plans body for a change waiting on a hand-off, plus its sha256.
+      description: |
+        Operator only, never cached. The files carry full content (it may contain env values): browser download or
+        copy only; never put it in Tesseract, mail, a prompt or a log. 409 bad_state unless awaiting_handoff or
+        awaiting_approval in handoff mode; 409 stale_base (and the change becomes stale) when a base moved.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, required: [name, files, sha256], properties: {name: {type: string}, note: {type: string}, files: {type: array, items: {type: object, required: [path, content], properties: {path: {type: string}, content: {type: string}}}}, sha256: {type: string}}}}}}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /builder/changes/{id}/mark_planned:
+    post:
+      summary: Hint that the operator planned the bundle in Tether (optional plan_id), so the UI can say "plan X awaiting approval".
+      description: Not trusted for the applied state, which is detected from file shas. awaiting_handoff to awaiting_approval.
+      parameters: [{$ref: "#/components/parameters/id"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {plan_id: {type: string, maxLength: 80}}}}}}
+      responses:
+        "200": {description: awaiting_approval, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /builder/changes/{id}/check:
+    post:
+      summary: Check now. Re-reads the files and answers the change (applied, stale, or unchanged).
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200": {description: the change, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
+        "404": {$ref: "#/components/responses/Error"}
   /builder/changes/{id}/rearm:
     post:
       summary: Re-arm the same Tether plan (same bundle, same plan_id) after its 15 minute expiry.
@@ -460,12 +498,12 @@ components:
       properties:
         change_id: {type: string}
         request_id: {type: string}
-        state: {type: string, enum: [draft, awaiting_approval, approved, applying, applied, failed, rolled_back, stale, expired, cancelled]}
+        state: {type: string, enum: [draft, awaiting_handoff, awaiting_approval, approved, applying, applied, failed, rolled_back, stale, expired, cancelled]}
         note: {type: string}
         operator: {type: string}
         created_at: {type: integer, format: int64}
         updated_at: {type: integer, format: int64}
-        targets: {type: array, items: {type: object, properties: {kind: {type: string}, id: {type: string}, path: {type: string}, base_sha: {type: string}}}}
+        targets: {type: array, items: {type: object, properties: {kind: {type: string}, id: {type: string}, path: {type: string}, base_sha: {type: string}, new_sha: {type: string, description: "Handoff mode: the sha the file has once the change is applied. Applied is detected when every file has it."}}}}
         base: {type: object, additionalProperties: {type: string}, description: "path to sha at planning time."}
         diff: {type: string, description: "The real textual diff. Env and secret-looking values are masked as <value changed>."}
         checks: {type: array, items: {$ref: "#/components/schemas/Check"}}
@@ -485,7 +523,7 @@ components:
             plan_id: {type: string}
             state: {type: string}
             digest: {type: string}
-            expires_at: {type: integer, format: int64}
+            expires_at: {type: integer, format: int64, nullable: true, description: "null when the plan id is only a hint from mark_planned (handoff mode); the state is then not Tether's."}
             approve_command: {type: string, description: "Run on the host. Tachyon never holds the approval passphrase."}
         result:
           type: object
@@ -497,6 +535,19 @@ components:
             reloaded: {type: boolean}
             reload_error: {type: string, nullable: true}
             applied_at: {type: integer, format: int64, nullable: true}
+            detected: {type: boolean, description: "Handoff mode: the apply was detected from file shas, so activation and backup_id are empty. Show 'Applied; check the next launch'."}
+            files_changed: {type: integer}
+        handoff:
+          type: object
+          nullable: true
+          description: Handoff mode only (no control token). The bundle is GET /builder/changes/{id}/bundle.
+          properties:
+            mode: {type: string, enum: [copy, session]}
+            name: {type: string, description: "The plan name to use in Tether."}
+            bundle_sha256: {type: string}
+            files: {type: integer}
+            session_available: {type: boolean}
+            reason: {type: string, description: "Why session_available is false: not_configured | contains_env_values | too_large."}
         failure:
           type: object
           nullable: true

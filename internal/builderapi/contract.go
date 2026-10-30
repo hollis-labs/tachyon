@@ -41,11 +41,25 @@ const (
 	AgentRetired  = "retired"
 )
 
+// Change modes (GET Prefix/capabilities changes.mode). direct: Tachyon holds a control token, plans and applies
+// itself (the original B3 flow). handoff: no standing catalog.write; Tachyon prepares a bundle the operator (or
+// a session) plans in Tether, and DETECTS the apply by file shas. unavailable: changes are off (503
+// changes_unavailable). HandoffCopy is the always-available handoff; HandoffSession launches an applier session.
+const (
+	ModeDirect      = "direct"
+	ModeHandoff     = "handoff"
+	ModeUnavailable = "unavailable"
+	HandoffCopy     = "copy"
+	HandoffSession  = "session"
+)
+
 // Change states. A change is one edit to the catalog; it moves
-// draft -> awaiting_approval -> approved -> applying -> applied, or ends in
+// draft -> awaiting_approval -> approved -> applying -> applied (direct mode), or
+// draft -> awaiting_handoff -> [awaiting_approval] -> applied (handoff mode), or ends in
 // failed, rolled_back, stale, expired or cancelled.
 const (
 	ChangeDraft            = "draft"
+	ChangeAwaitingHandoff  = "awaiting_handoff" // handoff mode: the bundle is ready and nobody has planned it in Tether yet
 	ChangeAwaitingApproval = "awaiting_approval"
 	ChangeApproved         = "approved"
 	ChangeApplying         = "applying"
@@ -58,14 +72,14 @@ const (
 )
 
 // ChangeStates lists every state a change fixture must cover.
-var ChangeStates = []string{ChangeDraft, ChangeAwaitingApproval, ChangeApproved, ChangeApplying, ChangeApplied,
+var ChangeStates = []string{ChangeDraft, ChangeAwaitingHandoff, ChangeAwaitingApproval, ChangeApproved, ChangeApplying, ChangeApplied,
 	ChangeFailed, ChangeRolledBack, ChangeStale, ChangeExpired, ChangeCancelled}
 
 // Open reports whether a change still holds its target paths: only one open
 // change may exist per path (409 change_open otherwise).
 func Open(state string) bool {
 	switch state {
-	case ChangeDraft, ChangeAwaitingApproval, ChangeApproved, ChangeApplying, ChangeStale:
+	case ChangeDraft, ChangeAwaitingHandoff, ChangeAwaitingApproval, ChangeApproved, ChangeApplying, ChangeStale:
 		return true
 	}
 	return false
