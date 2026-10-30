@@ -47,36 +47,40 @@ func ParseLevel(s string) Level {
 type Action string
 
 const (
-	ActionRead            Action = "read"           // inbox, items, history, audit, events, access
-	ActionPresent         Action = "present"        // mark an item presented
-	ActionDefer           Action = "defer"          // snooze or un-snooze; decides nothing
-	ActionResolveLow      Action = "resolve_low"    // class low
-	ActionResolveMedium   Action = "resolve_medium" // class medium
-	ActionResolveHigh     Action = "resolve_high"   // class high or cerberus source (typed phrase on top)
-	ActionDestructive     Action = "resolve_destructive"
-	ActionBatch           Action = "batch_resolve" // the whole batch, even for low items
-	ActionSecretSubmit    Action = "secret_submit"
-	ActionActionRunRead   Action = "action_run_read"  // command and output of a registered action run
-	ActionAccountWrite    Action = "account.write"    // the operator's local profile
-	ActionTranscriptsRead Action = "transcripts.read" // transcript dashboards, search and detail
+	ActionRead             Action = "read"           // inbox, items, history, audit, events, access
+	ActionPresent          Action = "present"        // mark an item presented
+	ActionDefer            Action = "defer"          // snooze or un-snooze; decides nothing
+	ActionResolveLow       Action = "resolve_low"    // class low
+	ActionResolveMedium    Action = "resolve_medium" // class medium
+	ActionResolveHigh      Action = "resolve_high"   // class high or cerberus source (typed phrase on top)
+	ActionDestructive      Action = "resolve_destructive"
+	ActionBatch            Action = "batch_resolve" // the whole batch, even for low items
+	ActionSecretSubmit     Action = "secret_submit"
+	ActionActionRunRead    Action = "action_run_read"         // command and output of a registered action run
+	ActionAccountWrite     Action = "account.write"           // the operator's local profile
+	ActionTranscriptsRead  Action = "transcripts.read"        // transcript dashboards, search and detail
+	ActionSettingsWrite    Action = "settings.write"          // change a registered setting
+	ActionSettingsOperator Action = "settings.write_operator" // change a setting a group marks operator-only
 )
 
 // Requirements is the table of the least Level each action needs. Unknown
 // actions need the strongest level (fail closed). Changing a row here changes
 // behaviour everywhere; the contract's /access required_for is derived from it.
 var Requirements = map[Action]Level{
-	ActionRead:            LevelBrowserSession,
-	ActionPresent:         LevelBrowserSession,
-	ActionDefer:           LevelBrowserSession,
-	ActionResolveLow:      LevelBrowserSession,
-	ActionResolveMedium:   LevelOperatorToken,
-	ActionResolveHigh:     LevelOperatorToken,
-	ActionDestructive:     LevelOperatorToken,
-	ActionBatch:           LevelOperatorToken,
-	ActionSecretSubmit:    LevelOperatorToken,
-	ActionActionRunRead:   LevelOperatorToken,
-	ActionAccountWrite:    LevelBrowserSession,
-	ActionTranscriptsRead: LevelBrowserSession,
+	ActionRead:             LevelBrowserSession,
+	ActionPresent:          LevelBrowserSession,
+	ActionDefer:            LevelBrowserSession,
+	ActionResolveLow:       LevelBrowserSession,
+	ActionResolveMedium:    LevelOperatorToken,
+	ActionResolveHigh:      LevelOperatorToken,
+	ActionDestructive:      LevelOperatorToken,
+	ActionBatch:            LevelOperatorToken,
+	ActionSecretSubmit:     LevelOperatorToken,
+	ActionActionRunRead:    LevelOperatorToken,
+	ActionAccountWrite:     LevelBrowserSession,
+	ActionTranscriptsRead:  LevelBrowserSession,
+	ActionSettingsWrite:    LevelBrowserSession,
+	ActionSettingsOperator: LevelOperatorToken,
 }
 
 // Required returns the Level an action needs.
