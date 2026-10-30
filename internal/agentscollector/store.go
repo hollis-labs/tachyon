@@ -3,6 +3,7 @@ package agentscollector
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -191,8 +192,8 @@ func upsertSession(ctx context.Context, tx *sql.Tx, f Frame, at, now int64) erro
 			reason = f.Reason
 		}
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO agents_sessions(session_id,session_state,work_state,work_known,pending_approval,pending_question,provider,model,workroot,task_ref,started_ns,last_activity_ns,ended_ns,end_reason,tool_calls,updated_ns)
- VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err := tx.ExecContext(ctx, `INSERT INTO agents_sessions(session_id,session_state,work_state,work_known,pending_approval,pending_question,provider,model,workroot,task_ref,started_ns,last_activity_ns,ended_ns,end_reason,tool_calls,updated_ns,agent_urn,logical_agent_id,agent_name,parent_session_id,replaced_by)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(session_id) DO UPDATE SET
   session_state=CASE WHEN excluded.session_state<>'' THEN excluded.session_state ELSE session_state END,
   work_state=CASE WHEN excluded.work_state<>'' THEN excluded.work_state ELSE work_state END,
@@ -208,9 +209,14 @@ func upsertSession(ctx context.Context, tx *sql.Tx, f Frame, at, now int64) erro
   ended_ns=CASE WHEN excluded.ended_ns>0 THEN excluded.ended_ns ELSE ended_ns END,
   end_reason=CASE WHEN excluded.ended_ns>0 THEN excluded.end_reason ELSE end_reason END,
   tool_calls=tool_calls+excluded.tool_calls,
+  agent_urn=CASE WHEN excluded.agent_urn<>'' THEN excluded.agent_urn ELSE agent_urn END,
+  logical_agent_id=CASE WHEN excluded.logical_agent_id<>'' THEN excluded.logical_agent_id ELSE logical_agent_id END,
+  agent_name=CASE WHEN excluded.agent_name<>'' THEN excluded.agent_name ELSE agent_name END,
+  parent_session_id=CASE WHEN excluded.parent_session_id<>'' THEN excluded.parent_session_id ELSE parent_session_id END,
+  replaced_by=CASE WHEN excluded.replaced_by<>'' THEN excluded.replaced_by ELSE replaced_by END,
   updated_ns=excluded.updated_ns`,
 		f.SessionID, f.SessionState, work, work != "", b2i(f.PendingApproval), b2i(f.PendingQuestion), f.Provider, f.Model, f.Workroot, f.TaskRef,
-		at, at, ended, reason, tool, now)
+		at, at, ended, reason, tool, now, f.AgentURN, f.LogicalAgentID, f.AgentName, f.ParentSession, f.ReplacedBy)
 	return err
 }
 
@@ -256,8 +262,11 @@ func (s *Store) AddGap(ctx context.Context, g Gap) (int64, error) {
 		if err != nil {
 			return err
 		}
-		id, err = res.LastInsertId()
-		return err
+		if id, err = res.LastInsertId(); err != nil {
+			return err
+		}
+		return addStream(ctx, tx, "gap", g.Start.UnixNano(), map[string]any{"start": g.Start.UnixMilli(), "end": g.End.UnixMilli(), "reason": g.Reason,
+			"from_seq": g.FromSeq, "to_seq": g.ToSeq, "backfilled": g.Backfilled})
 	})
 	return id, err
 }
@@ -290,6 +299,7 @@ func (s *Store) Prune(ctx context.Context) (int64, error) {
 		cut time.Time
 	}{
 		{`DELETE FROM agents_events WHERE id IN (SELECT id FROM agents_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
+		{`DELETE FROM agents_stream WHERE id IN (SELECT id FROM agents_stream WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
 		{`DELETE FROM bus_events WHERE id IN (SELECT id FROM bus_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
 		{`DELETE FROM agents_gaps WHERE id IN (SELECT id FROM agents_gaps WHERE end_ns<? LIMIT ?)`, now.Add(-GapRetention)},
 		{`DELETE FROM agents_samples WHERE rowid IN (SELECT rowid FROM agents_samples WHERE bucket_kind='min' AND bucket_ns<? LIMIT ?)`, now.Add(-MinuteSampleRetention)},
@@ -320,4 +330,14 @@ func (s *Store) Prune(ctx context.Context) (int64, error) {
 		return err
 	})
 	return total, err
+}
+
+// addStream appends one replayable stream event (bus, control or gap) in the caller's transaction.
+func addStream(ctx context.Context, tx *sql.Tx, typ string, atNS int64, data map[string]any) error {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO agents_stream(type,at_ns,data_json) VALUES(?,?,?)`, typ, atNS, string(b))
+	return err
 }

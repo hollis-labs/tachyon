@@ -1,7 +1,9 @@
 import type { TachyonPlugin } from "@tachyon/host-sdk"
 import { Bot, Hammer } from "lucide-react"
 import { BuilderPage } from "./agents"
-import { FleetAgentsPage } from "./fleet"
+import { ApiProvider } from "@tachyon/torque-client"
+import { consoleClient } from "@console/client"
+import { AgentsPage } from "./agents-monitor/page"
 import { overlayNav, overlayRoutes } from "./routes"
 import { ConsoleLayer, ConsoleNavExtras } from "./shell"
 
@@ -14,7 +16,8 @@ export const consolePlugin: TachyonPlugin = {
     ...overlayNav,
   ],
   routes: [
-    { path: "/agents", element: <FleetAgentsPage /> },
+    { path: "/agents", element: <ApiProvider client={consoleClient}><AgentsPage /></ApiProvider> },
+    { path: "/agents/:session", element: <ApiProvider client={consoleClient}><AgentsPage /></ApiProvider> },
     { path: "/builder", element: <BuilderPage /> },
     ...overlayRoutes,
   ],

@@ -149,7 +149,7 @@ components:
       type: object
       required: [code, message]
       properties: {code: {type: string, enum: [invalid, not_found, conflict, rate_limited, not_configured, internal, nudge_unsupported, interrupt_unsupported, restart_unsupported, stale_session]}, message: {type: string}}
-    State: {type: string, enum: [working, waiting, idle, stale, unknown]}
+    State: {type: string, enum: [working, waiting, idle, stale, unknown, ended], description: "ended is returned only for a session that has ended (detail, or include_ended=1); it is never counted in the summary"}
     Ref:
       type: object
       required: [kind, ref, label]
@@ -329,7 +329,7 @@ components:
           type: array
           items:
             type: object
-            properties: {session_id: {type: string}, started_at: {type: integer}, ran_ms: {type: integer}, tokens: {type: object}, tool_calls: {type: integer}, ended_at: {type: integer}, end_reason: {type: string}, replaced_by: {type: string, nullable: true}}
+            properties: {session_id: {type: string}, started_at: {type: integer}, ran_ms: {type: integer}, tokens: {type: object, nullable: true}, tool_calls: {type: integer}, ended_at: {type: integer}, end_reason: {type: string}, replaced_by: {type: string, nullable: true}}
     BusEvent:
       type: object
       required: [id, seq, at, type, subject, actor, app, severity, refs, card]

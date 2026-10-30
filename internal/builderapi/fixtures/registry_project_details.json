@@ -1,0 +1,39 @@
+{
+  "tachyon": {
+    "id": "tachyon",
+    "identity": {"display_name": "Tachyon", "description": "The operator console.", "tags": ["app", "go"], "status": "active"},
+    "guidance": {"entry_points": ["cmd/tachyon/main.go", "internal/server/server.go"], "guidelines": "Stubs first, one PR per slice. Verify in CI."},
+    "link": {"state": "linked", "catalog_id": "tachyon", "reason": null},
+    "catalog": {"repo_root": "/work/tachyon", "workspace": {"mode": "worktree"}, "mcp_servers": ["tether", "github"], "sha": "ead212ab4a2229f6ec97007f84004e6b98694f4c2a34bf45d2713fb09bc98fa5"},
+    "consumed_by": {
+      "agents": [{"id": "builder-reviewer", "name": "Builder Reviewer"}, {"id": "release-captain", "name": "Release Captain"}],
+      "launches": [{"id": "builder-reviewer-tachyon"}, {"id": "release-captain-tachyon"}],
+      "planner_items": {"open": 12, "total": 41},
+      "tether_sessions": {"live": 2, "total": 188}
+    },
+    "soon": ["machines", "services", "repos"]
+  },
+  "agent-os": {
+    "id": "agent-os",
+    "identity": {"display_name": "Agent OS", "description": "Agent runtime and workspaces.", "tags": ["runtime"], "status": "active"},
+    "guidance": {"entry_points": [], "guidelines": ""},
+    "link": {"state": "linked", "catalog_id": "agent-os", "reason": null},
+    "catalog": {"repo_root": "/work/agent-os", "workspace": {"mode": "shared"}, "mcp_servers": null, "sha": "896dd97ffa31a8aa4b02ade0530a06211ed9fe8f4390b1500296e6f5c6468c3a"},
+    "consumed_by": {
+      "agents": [{"id": "builder-reviewer", "name": "Builder Reviewer"}, {"id": "nightly-triage", "name": "Nightly Triage"}],
+      "launches": [{"id": "builder-reviewer-agent-os"}, {"id": "nightly-triage-agent-os"}],
+      "planner_items": {"open": 5, "total": 17},
+      "tether_sessions": {"live": 1, "total": 64}
+    },
+    "soon": ["machines", "services", "repos"]
+  },
+  "scratch-notes": {
+    "id": "scratch-notes",
+    "identity": {"display_name": "Scratch notes", "description": "", "tags": [], "status": "paused"},
+    "guidance": {"entry_points": [], "guidelines": ""},
+    "link": {"state": "unlinked", "catalog_id": null, "reason": "No catalog project matches this registry id."},
+    "catalog": null,
+    "consumed_by": {"agents": null, "launches": null, "planner_items": {"open": 1, "total": 3}, "tether_sessions": null},
+    "soon": ["machines", "services", "repos"]
+  }
+}

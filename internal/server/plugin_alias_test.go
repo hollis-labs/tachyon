@@ -1,12 +1,17 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/hollis-labs/tachyon/internal/agentscollector"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/fileviewapi"
+	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
 func TestReviewerPreviewReadRouteGuard(t *testing.T) {
@@ -208,45 +213,133 @@ func TestAgentsStubRoutesRequireOperator(t *testing.T) {
 	}
 }
 
-func TestApprovalsStubRoutesRequireOperatorAndKeepTheRealSession(t *testing.T) {
+func TestAgentsSessionRoutesAreRealAndWritesRequireOperator(t *testing.T) {
+	store, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(403)
 		w.Write([]byte(`{"elevated":false}`))
 	}))
 	defer upstream.Close()
-	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, ApprovalsStubs: true}).Routes()
+	// Stubs on as well: the real route must win over the stub prefix mount.
+	s := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, AgentsStubs: true})
+	s.store = store
+	s.agentsCollector = &agentscollector.Collector{Store: &agentscollector.Store{DB: store}}
+	h := s.Routes()
+	const a = "/api/plugins/console/v1/agents"
+	for _, p := range []string{a + "/sessions", a + "/settings", a + "/collector", a + "/bus/events"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+p, nil))
+		if w.Code != 200 || w.Header().Get("X-Tachyon-Agents-Stub") != "" {
+			t.Errorf("GET %s: %d stub=%q", p, w.Code, w.Header().Get("X-Tachyon-Agents-Stub"))
+		}
+	}
+	req := httptest.NewRequest("PUT", "https://tachyon.test"+a+"/settings", strings.NewReader(`{"stale_after_s":900,"handoff_prompt":"p","handoff_timeout_s":120,"nudge_presets":[]}`))
+	req.Header.Set("Origin", "https://tachyon.test")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 401 && w.Code != 403 {
+		t.Errorf("PUT settings without an operator session: %d", w.Code)
+	}
+	var n int
+	_ = store.Reader.QueryRow(`SELECT COUNT(*) FROM app_settings WHERE key='agents.settings'`).Scan(&n)
+	if n != 0 {
+		t.Error("a refused PUT stored settings")
+	}
+	// Controls are still the stub's: they answer from fixtures and refuse without a session.
+	req = httptest.NewRequest("POST", "https://tachyon.test"+a+"/sessions/sess_work/nudge", strings.NewReader(`{}`))
+	req.Header.Set("Origin", "https://tachyon.test")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 401 && w.Code != 403 {
+		t.Errorf("nudge without an operator session: %d", w.Code)
+	}
+}
+
+func TestBuilderStubRoutesRequireOperator(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"elevated":false}`))
+	}))
+	defer upstream.Close()
+	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, BuilderStubs: true}).Routes()
 	off := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL}).Routes()
-	const p = "/api/plugins/console/v1/approval-inbox"
+	const b, r0 = "/api/plugins/console/v1/builder", "/api/plugins/console/v1/registry"
 	cases := []struct{ method, path string }{
-		{"POST", p + "/items/ap_change_a/resolve"},
-		{"POST", p + "/items/ap_change_a/defer"},
-		{"DELETE", p + "/items/ap_deferred/defer"},
-		{"POST", p + "/batch/resolve"},
-		{"POST", p + "/secrets"},
+		{"POST", b + "/changes"},
+		{"POST", b + "/changes/chg_draft/submit"},
+		{"POST", b + "/changes/chg_draft/cancel"},
+		{"POST", b + "/changes/chg_expired/rearm"},
+		{"POST", b + "/launches/builder-reviewer-tachyon/launch"},
+		{"PATCH", r0 + "/projects/tachyon"},
+		{"PUT", r0 + "/projects/tachyon"},
+		{"DELETE", r0 + "/projects/tachyon"},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`))
 		req.Header.Set("Origin", "https://tachyon.test")
 		w := httptest.NewRecorder()
 		on.ServeHTTP(w, req)
-		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Approvals-Stub") != "" {
+		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Builder-Stub") != "" {
 			t.Errorf("%s %s with stubs on and no operator session: %d", c.method, c.path, w.Code)
 		}
 		w = httptest.NewRecorder()
 		off.ServeHTTP(w, httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`)))
-		if w.Header().Get("X-Tachyon-Approvals-Stub") != "" {
+		if w.Header().Get("X-Tachyon-Builder-Stub") != "" {
 			t.Errorf("%s %s served a stub with the flag off", c.method, c.path)
 		}
 	}
-	w := httptest.NewRecorder()
-	on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+p+"/inbox", nil))
-	if w.Code != 200 || w.Header().Get("X-Tachyon-Approvals-Stub") != "1" {
-		t.Errorf("stub inbox: %d", w.Code)
+	for _, p := range []string{b + "/summary", b + "/agents", r0 + "/projects", r0 + "/projects/tachyon"} {
+		w := httptest.NewRecorder()
+		on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+p, nil))
+		if w.Code != 200 || w.Header().Get("X-Tachyon-Builder-Stub") != "1" {
+			t.Errorf("GET %s: %d", p, w.Code)
+		}
 	}
-	// The real bridge still owns the session routes.
+}
+
+func TestFileviewStubRoutesRequireOperatorExceptFrames(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"elevated":false}`))
+	}))
+	defer upstream.Close()
+	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, FileviewStubs: true}).Routes()
+	off := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL}).Routes()
+	const f = "/api/plugins/console/v1/files"
+	// Reads are guarded too: file contents and the audit log are sensitive.
+	cases := []struct{ method, path string }{
+		{"POST", f + "/stat"}, {"GET", f + "/content?path=/home/operator/dev/README.md"}, {"POST", f + "/frame"},
+		{"GET", f + "/resolve?ref=caster://designer/x"}, {"GET", f + "/roots"}, {"GET", f + "/settings"},
+		{"PUT", f + "/settings"}, {"GET", f + "/audit"}, {"DELETE", f + "/content"},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`))
+		req.Header.Set("Origin", "https://tachyon.test")
+		w := httptest.NewRecorder()
+		on.ServeHTTP(w, req)
+		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Fileview-Stub") != "" {
+			t.Errorf("%s %s with stubs on and no operator session: %d", c.method, c.path, w.Code)
+		}
+		w = httptest.NewRecorder()
+		off.ServeHTTP(w, httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`)))
+		if w.Header().Get("X-Tachyon-Fileview-Stub") != "" {
+			t.Errorf("%s %s served a stub with the flag off", c.method, c.path)
+		}
+	}
+	// A frame needs no cookie: the id is the capability.
+	frame := f + "/frames/" + fileviewapi.StubFrameID
+	w := httptest.NewRecorder()
+	on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+frame, nil))
+	if w.Code != 200 || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("frame: %d %v", w.Code, w.Header())
+	}
 	w = httptest.NewRecorder()
-	on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+p+"/status", nil))
-	if w.Header().Get("X-Tachyon-Approvals-Stub") != "" {
-		t.Error("status must stay with the real bridge")
+	off.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+frame, nil))
+	if w.Header().Get("X-Tachyon-Fileview-Stub") != "" {
+		t.Error("a frame was served with the flag off")
 	}
 }

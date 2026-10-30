@@ -1,0 +1,10 @@
+{
+  "agents": [
+    {"id": "builder-reviewer", "name": "Builder Reviewer", "urn": "urn:tether:agent:builder-reviewer", "provider": "claude", "model": "claude-sonnet-5-5", "enabled": true, "state": "active", "policy_tag": "ask", "launch_count": 2, "layer": "system", "sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0", "owned_draft": false},
+    {"id": "release-captain", "name": "Release Captain", "urn": "urn:tether:agent:release-captain", "provider": "claude", "model": "claude-opus-5-5", "enabled": true, "state": "active", "policy_tag": "bypass", "launch_count": 1, "layer": "system", "sha": "edfec147057580e1f6e1b800106cd1b27b22dc5fa94bc2efc3d689bf24c00ac7", "owned_draft": false},
+    {"id": "base-worker", "name": "Base Worker", "urn": "urn:tether:agent:base-worker", "provider": "claude", "model": null, "enabled": true, "state": "active", "policy_tag": "edits", "launch_count": 0, "layer": "system", "sha": "6d15324619e642ff7751a0b2079aaa25745eb1717754c7e3a2fbd33187f6bd63", "owned_draft": false},
+    {"id": "nightly-triage", "name": "Nightly Triage", "urn": "urn:tether:agent:nightly-triage", "provider": "codex", "model": "gpt-5-codex", "enabled": false, "state": "disabled", "policy_tag": "plan", "launch_count": 1, "layer": "system", "sha": "cf39bdf984d8649582e105b45f8d956086550488daaf212e28f2210727febc16", "owned_draft": false}
+  ],
+  "total": 6,
+  "next_cursor": "c2"
+}
