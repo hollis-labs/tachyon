@@ -169,3 +169,13 @@ it('reads the links view and surfaces a cycle as its own code', async () => {
   expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/theme-a/links`)
   await expect(api.plannerRelationAdd('themes', 'theme-a', 'needs', { db: 'themes', id: 'theme-b' }, 2)).rejects.toMatchObject({ status: 422, code: 'cycle' })
 })
+
+it('reads the item after the real comment receipt', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(json({ comment: { id: 'c1', text: 'hi' }, item: { id, db: 'themes', rev: 3, status: 'active' }, applied: {} }))
+    .mockResolvedValueOnce(json({ id, rev: 3, title: 'Theme', comments: [{ id: 'c1' }] }))
+  installFetch(fetcher)
+  const item = await new TachyonPlannerClient().plannerComment('themes', id, 'hi', 2)
+  expect(fetcher).toHaveBeenCalledTimes(2)
+  expect(item).toMatchObject({ id, rev: 3, title: 'Theme' })
+})
