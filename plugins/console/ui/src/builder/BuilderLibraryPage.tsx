@@ -7,6 +7,8 @@ import { Segmented } from '../components/segmented'
 import { BuilderShell } from './BuilderShell'
 import { type Change, type LibraryItem, type LibraryKind, builderApi, errorMessage } from './api'
 import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, changingText, newRequestId, partRead } from './changes'
+import { useChangeMode } from './capabilities'
+import { ModeNote, PreparedLabel } from './ModeNote'
 import { ReviewDialog } from './ReviewDialog'
 import { useLoad } from './useLoad'
 import { LIBRARY_KINDS, NOT_REPORTED } from './vocab'
@@ -108,6 +110,8 @@ function PolicyLead({ it }: { it: LibraryItem }) {
 function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   const [load, retry] = useLoad(() => builderApi.libraryItem(kind, id), [kind, id])
   const { guard, dialog: discardDialog } = useDiscardGuard()
+  const [mode, recheckMode] = useChangeMode()
+  const [prepared, setPrepared] = useState<string>()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Draft>({})
   const [review, setReview] = useState<Change | null>(null)
@@ -124,6 +128,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   const applied = useCallback(() => {
     setEditing(false)
     setDraft({})
+    setPrepared(undefined)
     retry()
   }, [retry])
   if (load.status === 'loading') return <div aria-busy="true" className="m-4 h-40 animate-pulse bg-surface" />
@@ -142,6 +147,18 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   const fields = partKind ? PART_FIELDS[partKind] : []
   const dirty = partKind ? changedPartPaths(partKind, it, draft) : []
   const body = typeof it.body === 'string' ? it.body : null
+  const viewPrepared = async () => {
+    if (!prepared) return
+    setBusy(true)
+    setError('')
+    try {
+      setReview(await builderApi.change(prepared))
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   const openReview = async () => {
     if (!partKind) return
     setBusy(true)
@@ -159,22 +176,23 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
     <div className="space-y-3 p-5">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{it.name}</h2>
-        {canEdit && !editing && (
+        {canEdit && !editing && mode !== 'unavailable' && (
           <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
             Edit
           </Button>
         )}
       </div>
+      {canEdit && mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
       {!canEdit && (kind === 'skills' || kind === 'tool_servers') && <p className="dash-support text-fg-muted">Read-only: managed in files.</p>}
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border border-border bg-surface px-3 py-2 dash-support text-fg-secondary">
-          <span className="mr-auto">{changingText(dirty.map((d) => fields.find((f) => f.path === d)?.label))}</span>
+          {prepared ? <PreparedLabel /> : <span className="mr-auto">{changingText(dirty.map((d) => fields.find((f) => f.path === d)?.label))}</span>}
           {error && (
             <span role="alert" className="text-danger">
               {error}
             </span>
           )}
-          <Button
+          {!prepared && <Button
             type="button"
             variant="outline"
             size="sm"
@@ -185,9 +203,9 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
             })}
           >
             Discard
-          </Button>
-          <Button type="button" disabled={dirty.length === 0 || busy} variant="default" size="sm" onClick={openReview}>
-            {busy ? 'Checking' : 'Review changes'}
+          </Button>}
+          <Button type="button" disabled={(dirty.length === 0 && !prepared) || busy} variant="default" size="sm" onClick={prepared ? viewPrepared : openReview}>
+            {prepared ? 'View hand-off' : busy ? (mode === 'handoff' ? 'Preparing' : 'Checking') : mode === 'handoff' ? 'Prepare change' : 'Review changes'}
           </Button>
         </div>
       )}
@@ -267,7 +285,10 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
       {review && (
         <ReviewDialog
           initial={review}
-          onClose={() => setReview(null)}
+          onClose={(c) => {
+            setReview(null)
+            setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
+          }}
           onApplied={applied}
           onReload={() => {
             setReview(null)

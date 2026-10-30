@@ -2,6 +2,8 @@ import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogTitle
 import { useEffect, useState } from 'react'
 import { builderApi, type Change, errorMessage } from './api'
 import { isOpen, isWaiting, minutesAndSeconds } from './changes'
+import { useChangeMode } from './capabilities'
+import { HandoffPanel } from './HandoffPanel'
 import { useBuilderStream } from './stream'
 
 const CHECK_WORD = { ok: 'Passed', warn: 'Warning', fail: 'Failed' } as const
@@ -51,8 +53,12 @@ function Countdown({ expiresAt }: { expiresAt: number }) {
 }
 
 /** Review a computed change, submit it, and follow it until it is applied or ends. */
-export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initial: Change; onClose: () => void; onApplied: () => void; onReload: () => void }) {
+export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initial: Change; onClose: (c: Change) => void; onApplied: () => void; onReload: () => void }) {
   const [change, setChange] = useChange(initial)
+  const [mode] = useChangeMode()
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  // Hand-off mode: Tachyon holds no catalog.write, so a change ends in commands the operator runs in Tether.
+  const inHandoff = change.handoff != null || change.state === 'awaiting_handoff' || mode === 'handoff'
   const [ack, setAck] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -78,12 +84,13 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
   const done = !isOpen(change.state)
 
   return (
-    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+    <>
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose(change)}>
       <DialogContent
         widthClassName="max-w-xl"
         className="max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[88vh] max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-auto max-sm:rounded-b-none max-sm:rounded-t-lg"
       >
-        <DialogTitle>{change.state === 'draft' ? 'Review changes' : 'Change status'}</DialogTitle>
+        <DialogTitle>{change.state === 'draft' ? 'Review changes' : inHandoff ? 'Hand off to Tether' : 'Change status'}</DialogTitle>
         <DialogDescription className="sr-only">Review the computed change and submit it for approval on the host.</DialogDescription>
         {change.diff && <Diff text={change.diff} />}
         {(change.checks ?? []).length > 0 && (
@@ -97,6 +104,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
           </ul>
         )}
         {privileged && <p className="dash-support text-fg-secondary">Privileged: {change.privileged?.map((p) => p.field || p.path).join(', ')}</p>}
+        {!inHandoff && (
         <div className="border border-border p-3 dash-support text-fg-secondary">
           <p className="font-medium text-fg">Effect</p>
           <p>{change.effect?.activation || 'Activation is reported after approval.'}</p>
@@ -104,6 +112,11 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
           {(change.effect?.restart_required ?? []).length > 0 && <p>Restart required: {change.effect?.restart_required?.join(', ')}</p>}
           <p>Needs approval on the host.</p>
         </div>
+        )}
+        {inHandoff && change.state !== 'draft' && (
+          <HandoffPanel change={change} onChange={setChange} onReload={onReload} />
+        )}
+        {!inHandoff && (<>
 
         {change.state === 'awaiting_approval' && change.plan && (
           <div className="space-y-2 border border-border p-3" role="status">
@@ -173,6 +186,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
             </Button>
           </div>
         )}
+        </>)}
         {error && (
           <p role="alert" className="dash-support text-danger">
             {error}
@@ -185,14 +199,24 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
               <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} /> I understand these fields are privileged
             </label>
           )}
-          {(change.state === 'draft' || change.state === 'awaiting_approval' || change.state === 'stale') && (
+          {inHandoff && change.state === 'failed' && (
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={() => onClose(change)}>
+              Try again
+            </Button>
+          )}
+          {inHandoff && change.state !== 'draft' && (change.state === 'awaiting_handoff' || change.state === 'awaiting_approval' || change.state === 'stale') && (
+            <Button type="button" variant="ghost" size="sm" className="max-sm:min-h-10" disabled={busy} onClick={() => setConfirmCancel(true)}>
+              Cancel change
+            </Button>
+          )}
+          {!inHandoff && (change.state === 'draft' || change.state === 'awaiting_approval' || change.state === 'stale') && (
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="max-sm:min-h-10"
               disabled={busy}
-              onClick={() => (change.state === 'draft' ? onClose() : run(() => builderApi.cancel(change.change_id)))}
+              onClick={() => (change.state === 'draft' ? onClose(change) : run(() => builderApi.cancel(change.change_id)))}
             >
               {change.state === 'draft' ? 'Keep editing' : 'Cancel change'}
             </Button>
@@ -206,16 +230,46 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
               disabled={busy || failChecks.length > 0 || (privileged && !ack)}
               onClick={() => run(() => builderApi.submit(change.change_id, ack))}
             >
-              {busy ? 'Submitting' : 'Submit for approval'}
+              {busy ? (inHandoff ? 'Preparing' : 'Submitting') : inHandoff ? 'Prepare change' : 'Submit for approval'}
             </Button>
           )}
-          {done && (
-            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={onClose}>
+          {change.state === 'draft' && inHandoff && (
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={() => onClose(change)}>
+              Keep editing
+            </Button>
+          )}
+          {(done || inHandoff) && change.state !== 'draft' && (
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={() => onClose(change)}>
               Close
             </Button>
           )}
         </div>
       </DialogContent>
     </Dialog>
+    {confirmCancel && (
+      <Dialog open onOpenChange={(o) => !o && setConfirmCancel(false)}>
+        <DialogContent widthClassName="max-w-sm">
+          <DialogTitle>Cancel this prepared change?</DialogTitle>
+          <DialogDescription>Your edits stay in the editor. Nothing was applied.</DialogDescription>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setConfirmCancel(false)}>
+              Keep it
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setConfirmCancel(false)
+                void run(() => builderApi.cancel(change.change_id))
+              }}
+            >
+              Cancel change
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   )
 }

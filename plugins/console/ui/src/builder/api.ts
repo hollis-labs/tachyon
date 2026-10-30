@@ -150,7 +150,7 @@ export interface LibraryItem {
   [extra: string]: unknown
 }
 
-export type ChangeState = 'draft' | 'awaiting_approval' | 'approved' | 'applying' | 'applied' | 'failed' | 'rolled_back' | 'stale' | 'expired' | 'cancelled'
+export type ChangeState = 'draft' | 'awaiting_handoff' | 'awaiting_approval' | 'approved' | 'applying' | 'applied' | 'failed' | 'rolled_back' | 'stale' | 'expired' | 'cancelled'
 
 export interface ChangeOp {
   target: {
@@ -201,14 +201,35 @@ export interface Change {
     reloaded?: boolean
     reload_error?: string | null
     applied_at?: number | null
+    detected?: boolean
   } | null
   failure?: { step: string; code: string; message: string } | null
+  /** Handoff mode: the bundle is ready and the operator plans it in Tether. Commands come from the backend, verbatim. */
+  handoff?: {
+    mode: string
+    name: string
+    bundle_sha256: string
+    files: number
+    session_available: boolean
+    reason?: string
+    commands?: { step: 'plan' | 'approve' | 'apply'; label: string; command: string }[]
+  } | null
   stale?: {
     changed_paths: string[]
     theirs_sha: string
     mine_diff: string
     theirs_diff: string
   } | null
+}
+
+export interface Capabilities {
+  changes: { mode: 'direct' | 'handoff' | 'unavailable'; handoff: string[]; applier_agent?: string }
+}
+export interface Bundle {
+  name: string
+  note?: string
+  files: { path: string; content: string }[]
+  sha256: string
 }
 
 export class BuilderError extends Error {
@@ -293,6 +314,10 @@ export const builderApi = {
   submit: (id: string, ackPrivileged: boolean) => send<Change>(`/changes/${encodeURIComponent(id)}/submit`, { ack_privileged: ackPrivileged }),
   cancel: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/cancel`, {}),
   rearm: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/rearm`, {}),
+  capabilities: () => get<Capabilities>('/capabilities'),
+  /** The bundle holds full file content: fetch it on demand for copy or download, never keep or log it. */
+  bundle: (id: string) => get<Bundle>(`/changes/${encodeURIComponent(id)}/bundle`),
+  check: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/check`, {}),
 }
 
 export function errorMessage(e: unknown): string {

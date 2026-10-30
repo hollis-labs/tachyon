@@ -5,6 +5,8 @@ import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
 import { buildOps, changedPaths, changingText, type Draft, fieldByPath, newRequestId } from './changes'
 import { OutlineNav } from './OutlineNav'
 import { ChecksSection, HistorySection, ResolvedSection, UsedBySection } from './InsightSections'
+import { useChangeMode } from './capabilities'
+import { ModeNote, PreparedLabel } from './ModeNote'
 import { ReviewDialog } from './ReviewDialog'
 import { useBuilderStream } from './stream'
 import { useLoad } from './useLoad'
@@ -101,6 +103,8 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
   const [load, retry] = useLoad(() => builderApi.agent(id), [id])
   const [elsewhere, setElsewhere] = useState(false)
   const { guard, dialog: discardDialog } = useDiscardGuard()
+  const [mode, recheckMode] = useChangeMode()
+  const [prepared, setPrepared] = useState<string>()
   const filePath = load.status === 'ready' ? load.data.revision?.path : null
   useBuilderStream((e) => {
     if (e.type === 'catalog' && e.source === 'observed' && filePath && e.changed_paths?.some((p) => filePath.endsWith(p) || p.endsWith(filePath))) setElsewhere(true)
@@ -114,6 +118,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
   const applied = useCallback(() => {
     setEditing(false)
     setDraft({})
+    setPrepared(undefined)
     retry()
   }, [retry])
 
@@ -141,6 +146,18 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
     draft,
     set: (path, value) => setDraft((d) => ({ ...d, [path]: value })),
   }
+  const viewPrepared = async () => {
+    if (!prepared) return
+    setBusy(true)
+    setError('')
+    try {
+      setReview(await builderApi.change(prepared))
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   const openReview = async () => {
     setBusy(true)
     setError('')
@@ -167,12 +184,13 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
         </div>
         <span className={CHIP}>{STATE_LABEL[a.state]}</span>
         {!a.editable && <span className={CHIP}>Read-only</span>}
-        {a.editable && !editing && (
+        {a.editable && !editing && mode !== 'unavailable' && (
           <Button type="button" onClick={() => setEditing(true)} variant="outline" size="sm">
             Edit
           </Button>
         )}
       </header>
+      {mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
       {elsewhere && (
         <div role="status" className="flex flex-wrap items-center gap-3 px-5 py-2 dash-support text-fg-muted">
           <span className="mr-auto">This agent changed elsewhere.{dirty.length > 0 ? ' Reloading drops your unsaved changes.' : ''}</span>
@@ -193,13 +211,13 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
       )}
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
-          <span className="mr-auto">{changingText(dirty.map((p) => fieldByPath(p)?.label))}</span>
+          {prepared ? <PreparedLabel /> : <span className="mr-auto">{changingText(dirty.map((p) => fieldByPath(p)?.label))}</span>}
           {error && (
             <span role="alert" className="text-danger">
               {error}
             </span>
           )}
-          <Button
+          {!prepared && <Button
             type="button"
             variant="outline"
             size="sm"
@@ -210,9 +228,9 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             })}
           >
             Discard
-          </Button>
-          <Button type="button" disabled={dirty.length === 0 || busy} variant="default" size="sm" onClick={openReview}>
-            {busy ? 'Checking' : 'Review changes'}
+          </Button>}
+          <Button type="button" disabled={(dirty.length === 0 && !prepared) || busy} variant="default" size="sm" onClick={prepared ? viewPrepared : openReview}>
+            {prepared ? 'View hand-off' : busy ? (mode === 'handoff' ? 'Preparing' : 'Checking') : mode === 'handoff' ? 'Prepare change' : 'Review changes'}
           </Button>
         </div>
       )}
@@ -220,7 +238,10 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
       {review && (
         <ReviewDialog
           initial={review}
-          onClose={() => setReview(null)}
+          onClose={(c) => {
+            setReview(null)
+            setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
+          }}
           onApplied={applied}
           onReload={() => {
             setReview(null)
