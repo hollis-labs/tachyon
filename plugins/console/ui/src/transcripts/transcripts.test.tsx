@@ -293,6 +293,34 @@ describe("transcript dashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to sessions" }))
     await waitFor(() => expect(screen.queryByLabelText("Transcript reader")).toBeNull())
   })
+  it("offers content search only when the bridge says it exists and shows snippets as text", async () => {
+    read.mockImplementation((path: string) => {
+      if (path === "/snapshot") return Promise.resolve(snapshot)
+      if (path === "/status")
+        return Promise.resolve({ modes: ["text"], capabilities: { search: true } })
+      if (path.startsWith("/search?"))
+        return Promise.resolve({
+          items: [{ ...base, snippet_unused: 1, match: { snippet: "go test for the [forge] <i>x</i>", highlight: { format: "brackets" } } }],
+          next_cursor: null,
+          notice: { message: "Semantic search is unavailable; showing text results." },
+        })
+      return Promise.reject(new Error("unexpected " + path))
+    })
+    render(<TranscriptDashboard />)
+    fireEvent.click(await screen.findByRole("tab", { name: "Content" }))
+    fireEvent.change(screen.getByLabelText("Search transcript content"), { target: { value: "forge" } })
+    fireEvent.click(screen.getByRole("button", { name: "Search" }))
+    expect((await screen.findByText("forge")).tagName).toBe("STRONG")
+    expect(screen.getByText(/<i>x<\/i>/)).toBeTruthy()
+    expect(screen.getByText(/Semantic search is unavailable/)).toBeTruthy()
+    expect(window.location.search).not.toContain("forge")
+  })
+  it("hides content search when the bridge does not advertise it", async () => {
+    read.mockResolvedValue(snapshot)
+    render(<TranscriptDashboard />)
+    await screen.findByText(/partial snapshot/)
+    expect(screen.queryByRole("tab", { name: "Content" })).toBeNull()
+  })
   it("removes prior private data when source authorization is revoked", async () => {
     read.mockResolvedValue(snapshot)
     render(<TranscriptDashboard />)
