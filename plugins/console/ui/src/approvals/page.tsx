@@ -89,7 +89,7 @@ export function ApprovalsPage() {
       )
     } catch (e) {
       setBatchNote(
-        e instanceof ApprovalError && e.code === "operator_access_required"
+        e instanceof ApprovalError && (e.code === "operator_access_required" || e.code === "assurance_insufficient")
           ? "Batch decisions need elevated operator access."
           : e instanceof Error ? e.message : "The batch did not complete. Nothing was assumed; check the queue.",
       )
