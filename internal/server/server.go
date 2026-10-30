@@ -43,6 +43,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/internal/forgeapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
@@ -67,6 +68,8 @@ type Config struct {
 	ChatSyncInterval time.Duration
 	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
 	AgentsStubs bool
+	// ForgeStubs mounts the fixture-backed Pull requests contract (TACHYON_FORGE_STUBS=1) for GUI development.
+	ForgeStubs bool
 	// AgentsCollector runs the always-on Agents collector (TACHYON_AGENTS_COLLECTOR=0 turns it off for debugging).
 	// It needs a Tether address; the read-scope token is the usual TETHER_TOKEN_FILE.
 	AgentsCollector bool
@@ -671,6 +674,14 @@ func (s *Server) Routes() http.Handler {
 	}
 	if s.cfg.AgentsStubs {
 		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
+	}
+	// Forge (pull request) contract stubs (dev only), mounted explicitly under the forge and
+	// console-state prefixes. GETs are open; every write needs an operator session.
+	if s.cfg.ForgeStubs {
+		h := operator.RequireOperator(forgeapi.Stub{}.Handler())
+		mux.Handle(forgeapi.Prefix+"/", h)
+		mux.Handle(forgeapi.StatePrefix, h)
+		mux.Handle(forgeapi.StatePrefix+"/", h)
 	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
