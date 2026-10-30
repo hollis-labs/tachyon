@@ -26,6 +26,17 @@ export interface ChatThread {
   unread: number
   lastAt: number
   lastPreview?: string
+  /** Any of this agent's sessions is blocked on the operator (chat API `blocked_on_user`). */
+  needsYou?: boolean
+  /** The agent's sessions, newest first (chat API threads). Absent when the chat API has none. */
+  sessions?: ThreadSession[]
+}
+
+export interface ThreadSession {
+  ref: string
+  title: string
+  lastAt: number
+  unread: number
 }
 
 export type ToolChipStatus = 'running' | 'ok' | 'error'

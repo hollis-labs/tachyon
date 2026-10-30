@@ -82,6 +82,9 @@ function Shell() {
                 />
               )),
             )}
+            {/* Tasks are a Planner lens, not a destination (Interaction Designer, CW-20261030-0170). */}
+            <Route path="/tasks" element={<Navigate to={DEFAULT_ROUTE} replace />} />
+            <Route path="/tasks/:id" element={<Navigate to={DEFAULT_ROUTE} replace />} />
             <Route path="/settings" element={<Navigate to="/settings/appearance" replace />} />
             <Route path="/settings/account" element={<Navigate to="/user" replace />} />
             <Route path="/user" element={<UserPage />} />

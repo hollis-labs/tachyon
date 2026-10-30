@@ -49,7 +49,7 @@ export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRe
           )}
           {unread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg" role="img" aria-label="unread" />}
         </div>
-        {alert.detail && <p className="truncate text-xs text-fg-muted"><LinkText surface="alerts" text={alert.detail} /></p>}
+        {alert.detail && <p className="line-clamp-2 text-xs text-fg-muted"><LinkText surface="alerts" text={alert.detail} /></p>}
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-fg-faint">
           {sev.named && <span className={sev.text}>{sev.label}</span>}
           <span>{alert.sourceLabel ?? alert.source}</span>

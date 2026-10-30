@@ -179,7 +179,8 @@ func TestOwnedPlannerHTTPWorkflow(t *testing.T) {
 	if current["title"] != "After" || current["rev"] != updated["rev"] {
 		t.Fatal("conflict does not expose the committed record", conflict)
 	}
-	commented := call("POST", ideaPath+"/comments", map[string]any{"expected_revision": updated["rev"], "text": "Isolated HTTP evidence"}, true, 200)
+	commentedResult := call("POST", ideaPath+"/comments", map[string]any{"expected_revision": updated["rev"], "text": "Isolated HTTP evidence"}, true, 200)
+	commented := commentedResult["item"].(map[string]any)
 	read = call("GET", ideaPath, nil, false, 200)
 	comments := read["comments"].([]any)
 	if read["rev"] != commented["rev"] || comments[0].(map[string]any)["text"] != "Isolated HTTP evidence" {
