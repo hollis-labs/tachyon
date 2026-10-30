@@ -1,0 +1,102 @@
+{
+ "status": {
+  "available": true,
+  "enabled": true,
+  "semantic": true,
+  "modes": [
+   "text",
+   "summary",
+   "semantic",
+   "hybrid"
+  ]
+ },
+ "facets": {
+  "total": 4,
+  "enriched": 2,
+  "project_count": 2,
+  "tools": [
+   "Bash",
+   "Edit",
+   "Read",
+   "apply_patch",
+   "shell"
+  ],
+  "models": [
+   "claude-opus-5-5",
+   "claude-sonnet-5-5",
+   "gpt-5",
+   "gpt-5-codex"
+  ]
+ },
+ "sessions": [
+  {
+   "id": "d3cf2597d1b39167aa6e3a423879aa980691c155eacd3a50c3882646b3234fb7",
+   "kind": "claude",
+   "title": "Wire the forge stubs",
+   "project": "tachyon",
+   "model": "claude-sonnet-5-5",
+   "started_at": 1761800000000,
+   "ended_at": 1761803600000,
+   "turn_count": 60,
+   "tool_call_count": 34,
+   "error_count": 2,
+   "tools": [
+    "Bash",
+    "Edit",
+    "Read"
+   ],
+   "tags": [
+    "go",
+    "stubs"
+   ],
+   "has_enrichment": true
+  },
+  {
+   "id": "e11020b390a5d4d8a7992e8c29a213dfe2639b4d72afdce16ee74d1c86a4f039",
+   "kind": "codex",
+   "title": "Fix flaky approvals test",
+   "project": "tachyon",
+   "model": "gpt-5-codex",
+   "started_at": 1761713600000,
+   "ended_at": 1761714320000,
+   "turn_count": 12,
+   "tool_call_count": 9,
+   "error_count": 1,
+   "tools": [
+    "apply_patch",
+    "shell"
+   ],
+   "tags": [
+    "tests"
+   ],
+   "has_enrichment": true
+  },
+  {
+   "id": "fa6b92ee82e23741c5f415097de72ca70a1f2e5b4e60457990fe8b8b07c61c32",
+   "kind": "chatgpt",
+   "title": "Notes on snapshot caching",
+   "project": "",
+   "model": "gpt-5",
+   "started_at": 1761627200000,
+   "ended_at": 1761627560000,
+   "turn_count": 6,
+   "tool_call_count": 0,
+   "error_count": 0,
+   "tools": [],
+   "tags": [],
+   "has_enrichment": false
+  }
+ ],
+ "complete": true,
+ "limit": 5000,
+ "observed_at": "2026-10-30T03:00:00Z",
+ "snapshot_meta": {
+  "source_state": "stale",
+  "observed_at": 1761792800000,
+  "fetched_at": 1761792801000,
+  "complete": true,
+  "limit": 5000,
+  "total_available": 3,
+  "omitted_count": 0
+ }
+}
