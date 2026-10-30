@@ -24,6 +24,7 @@ import (
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/agentsapi"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -55,6 +56,8 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
+	AgentsStubs bool
 	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
 	AppAgentConfigFile          string
 	ApprovalQueueURL            string
@@ -457,6 +460,11 @@ func (s *Server) Routes() http.Handler {
 	// read); sends need operator assurance. Without a config file the routes answer
 	// 503 and say why. Tightening reads is a one-word change to RequireOperatorReads.
 	mux.Handle(appagent.Prefix+"/", operator.RequireOperator(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
+	// Agents contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. GETs are open; every write (nudge, restart, skip, settings) needs an operator session.
+	if s.cfg.AgentsStubs {
+		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
+	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
