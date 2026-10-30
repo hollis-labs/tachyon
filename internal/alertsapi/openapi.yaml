@@ -1,0 +1,351 @@
+openapi: 3.0.3
+info:
+  title: Tachyon Alerts backend
+  version: "0.1.0-al0"
+  description: |
+    Server-side alerts: stable ids, shared operator state, a server-owned rule pack, prefs and one SSE stream.
+    JSON is snake_case and times are unix milliseconds, except the legacy /console/state routes (camelCase,
+    the existing StateStore client). Errors are {code,message}. Design: design_tachyon_alerts_backend_20261030.
+    Reads are open to a browser session. Writes need a same-origin browser request (Origin header); no operator
+    elevation. An Authorization header is refused (403 forbidden). Alert text is untrusted plain text.
+servers:
+  - url: /api/plugins/console/v1
+paths:
+  /alerts:
+    get:
+      summary: List alerts (active tray or history)
+      parameters:
+        - {name: view, in: query, schema: {type: string, enum: [active, history], default: active}}
+        - {name: needs_you, in: query, schema: {type: string, enum: ["0", "1"]}}
+        - {name: min_severity, in: query, schema: {$ref: "#/components/schemas/Severity"}}
+        - {name: source, in: query, schema: {type: string}}
+        - {name: q, in: query, description: Substring over title, summary and source., schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+        - {name: cursor, in: query, description: Opaque; from next., schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/AlertList"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /alerts/counts:
+    get:
+      summary: Bell badge counts
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Counts"}}}}
+  /alerts/{id}:
+    get:
+      summary: Alert detail (timeline, linked subjects, technical fields, actions, approval block)
+      parameters: [{$ref: "#/components/parameters/AlertId"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/AlertDetail"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /alerts/{id}/ops:
+    post:
+      summary: Apply one op to one alert
+      description: |
+        expected_version is required; a mismatch answers 409 version_conflict with the current alert.
+        Approve and Deny never go through here: an approval alert links to the approval item and
+        auto-settles from the approvals event.
+      parameters: [{$ref: "#/components/parameters/AlertId"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/OpRequest"}}}
+      responses:
+        "200": {description: updated alert, content: {application/json: {schema: {$ref: "#/components/schemas/Alert"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {description: version_conflict, content: {application/json: {schema: {$ref: "#/components/schemas/VersionConflict"}}}}
+  /alerts/ops/bulk:
+    post:
+      summary: Mark all read / dismiss several
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/BulkRequest"}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/BulkResult"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "409": {description: seq_conflict, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /alerts/prefs:
+    get:
+      summary: Alert preferences
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Prefs"}}}}
+    put:
+      summary: Replace alert preferences
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/Prefs"}}}
+      responses:
+        "200": {description: saved, content: {application/json: {schema: {$ref: "#/components/schemas/Prefs"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /alerts/prefs/migrate:
+    post:
+      summary: One-time import of the old localStorage prefs (idempotent)
+      description: |
+        Applied only when no server prefs exist yet. toastMinSeverity decides notify_level (error and above is
+        blockers, warning is warnings, lower is everything); bellMinSeverity is dropped.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/LegacyPrefs"}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/MigrateResult"}}}}
+  /alerts/stream:
+    get:
+      summary: Server-sent events for every open device
+      description: |
+        `id:` is the alert seq. Resume with Last-Event-ID (or ?after=). A cursor older than the ring answers a
+        single `resync` frame: refetch GET /alerts. Heartbeat comment every 20 s. Each alert.* frame carries
+        toast (server-computed from Quiet and Notify rules; critical always toasts, escalation and wake re-toast).
+        Frames: {type, at_ms, alert?, toast?, reason?, counts?, prefs?}.
+      parameters:
+        - {name: after, in: query, schema: {type: integer}}
+      responses:
+        "200": {description: event stream, content: {text/event-stream: {schema: {type: string}}}}
+  /alerts/rules:
+    get:
+      summary: Read-only rule pack summary for the Settings preview
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Rules"}}}}
+  /alerts/sources:
+    get:
+      summary: Ingest health (drives "Alerts are not updating")
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Sources"}}}}
+  /alerts/openapi.yaml:
+    get: {summary: This document, responses: {"200": {description: ok}}}
+  /console/state:
+    get:
+      summary: "Compatibility: StateStore load (removed after AL8)"
+      parameters: [{name: prefix, in: query, schema: {type: string}}]
+      responses:
+        "200": {description: "{items: ItemState[]}", content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: "#/components/schemas/ItemState"}}}}}}}
+  /console/state/{key}:
+    put:
+      summary: "Compatibility: StateStore apply; key is an alert_id (removed after AL8)"
+      parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/StateOp"}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/ItemState"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+components:
+  parameters:
+    AlertId: {name: id, in: path, required: true, schema: {type: string, pattern: "^al_"}}
+  responses:
+    Error: {description: error, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string, enum: [invalid, not_found, version_conflict, seq_conflict, forbidden, rate_limited, unavailable]}
+        message: {type: string}
+    VersionConflict:
+      allOf:
+        - {$ref: "#/components/schemas/Error"}
+        - {type: object, required: [current], properties: {current: {$ref: "#/components/schemas/Alert"}}}
+    Severity: {type: string, enum: [debug, info, notice, warning, error, critical]}
+    Status: {type: string, enum: [active, dismissed, snoozed, deferred, settled]}
+    Icon: {type: string, enum: [info, task, agent, message, approval, pr, warning, error]}
+    Subject:
+      type: object
+      required: [kind, ref]
+      properties: {kind: {type: string}, ref: {type: string}, label: {type: string}, url: {type: string}}
+    Primary:
+      type: object
+      required: [label, href]
+      description: href is a same-origin path or http(s) URL, validated server-side.
+      properties: {label: {type: string}, href: {type: string}}
+    Defer:
+      type: object
+      description: Time, or wake when a normalized event arrives for the subject. Both may be set (the time caps the wait).
+      properties:
+        until_ms: {type: integer, format: int64}
+        until_ref_change: {type: object, required: [kind, ref], properties: {kind: {type: string}, ref: {type: string}}}
+    Alert:
+      type: object
+      required: [alert_id, seq, kind, rule_id, severity, severity_base, needs_you, title, summary, source, icon, status, read, count, coalesce_key, first_at_ms, last_at_ms, snooze_until_ms, wake_at_ms, defer, note, resolution, resolved_by, primary, subjects, escalate_at_ms, escalated_at_ms, version, created_ms, updated_ms]
+      properties:
+        alert_id: {type: string, description: "al_ + base32 of the first event; stable across reconnects."}
+        seq: {type: integer, format: int64, description: Bumped on every change; the SSE cursor.}
+        kind: {type: string}
+        rule_id: {type: string}
+        severity: {$ref: "#/components/schemas/Severity"}
+        severity_base: {$ref: "#/components/schemas/Severity"}
+        needs_you: {type: boolean, description: Set by the rule pack only; escalated alerts are needs_you.}
+        title: {type: string, maxLength: 120}
+        summary: {type: string, maxLength: 300}
+        source: {type: string}
+        icon: {$ref: "#/components/schemas/Icon"}
+        status: {$ref: "#/components/schemas/Status"}
+        read: {type: boolean}
+        count: {type: integer, minimum: 1, description: "Events folded into this alert; the tray shows x{count}."}
+        coalesce_key: {type: string}
+        first_at_ms: {type: integer, format: int64}
+        last_at_ms: {type: integer, format: int64}
+        snooze_until_ms: {type: integer, format: int64, nullable: true}
+        wake_at_ms: {type: integer, format: int64, nullable: true}
+        defer: {allOf: [{$ref: "#/components/schemas/Defer"}], nullable: true}
+        note: {type: string, maxLength: 500}
+        resolution: {type: string}
+        resolved_by: {type: string}
+        primary: {allOf: [{$ref: "#/components/schemas/Primary"}], nullable: true}
+        subjects: {type: array, items: {$ref: "#/components/schemas/Subject"}}
+        escalate_at_ms: {type: integer, format: int64, nullable: true}
+        escalated_at_ms: {type: integer, format: int64, nullable: true}
+        version: {type: integer, format: int64, description: Send as expected_version on ops.}
+        created_ms: {type: integer, format: int64}
+        updated_ms: {type: integer, format: int64}
+    Counts:
+      type: object
+      required: [unread, active, needs_you, by_severity, seq]
+      properties:
+        unread: {type: integer}
+        active: {type: integer}
+        needs_you: {type: integer, description: Unread active needs_you alerts.}
+        by_severity: {type: object, additionalProperties: {type: integer}}
+        seq: {type: integer, format: int64}
+    AlertList:
+      type: object
+      required: [alerts, next, counts, seq, server_now_ms]
+      properties:
+        alerts: {type: array, items: {$ref: "#/components/schemas/Alert"}}
+        next: {type: string, nullable: true}
+        counts: {$ref: "#/components/schemas/Counts"}
+        seq: {type: integer, format: int64}
+        server_now_ms: {type: integer, format: int64, description: Use for countdowns; do not trust the device clock.}
+    TimelineEntry:
+      type: object
+      required: [at_ms, label]
+      properties: {at_ms: {type: integer, format: int64}, label: {type: string}, ref: {allOf: [{$ref: "#/components/schemas/Subject"}], nullable: true}}
+    Approval:
+      type: object
+      description: Present for approval alerts. The drawer embeds the Approvals decision component by item_id; there is no decision endpoint here.
+      required: [item_id, expires_at_ms, class, risk_display, provider_handoff]
+      properties:
+        item_id: {type: string}
+        expires_at_ms: {type: integer, format: int64}
+        class: {type: string, enum: [low, medium, high]}
+        risk_display: {type: string}
+        provider_handoff: {type: boolean, description: "True: show the neutral read-only card 'Approved through the provider'."}
+    AlertDetail:
+      type: object
+      required: [alert, timeline, linked, technical, actions, approval, server_now_ms]
+      properties:
+        alert: {$ref: "#/components/schemas/Alert"}
+        timeline: {type: array, maxItems: 50, items: {$ref: "#/components/schemas/TimelineEntry"}, description: "Last 7 days with a shared subject or correlation id; otherwise one entry 'This alert'."}
+        linked: {type: array, items: {$ref: "#/components/schemas/Subject"}}
+        technical:
+          type: object
+          required: [fields]
+          description: Allow-listed, secret-redacted payload fields.
+          properties: {fields: {type: array, items: {type: object, required: [label, value], properties: {label: {type: string}, value: {type: string}}}}}
+        actions:
+          type: array
+          items: {type: object, required: [id, label, kind], properties: {id: {type: string}, label: {type: string}, kind: {type: string, enum: [link, approval]}}}
+        approval: {allOf: [{$ref: "#/components/schemas/Approval"}], nullable: true}
+        server_now_ms: {type: integer, format: int64}
+    OpRequest:
+      type: object
+      required: [op, expected_version]
+      properties:
+        op: {type: string, enum: [read, unread, dismiss, snooze, defer, settle, reopen]}
+        preset: {type: string, enum: ["15m", "1h", "4h", tomorrow], description: snooze only; or until_ms.}
+        until_ms: {type: integer, format: int64, description: "snooze or defer; must be in the future, snooze within 30 days."}
+        until_ref_change: {type: object, required: [kind, ref], properties: {kind: {type: string}, ref: {type: string}}, description: defer only.}
+        note: {type: string, maxLength: 500}
+        resolution: {type: string, description: "settle only; default 'Handled'."}
+        expected_version: {type: integer, format: int64}
+      additionalProperties: false
+    BulkRequest:
+      type: object
+      required: [op]
+      description: Give ids (up to 200) or scope all_active.
+      properties:
+        op: {type: string, enum: [read, dismiss]}
+        ids: {type: array, maxItems: 200, items: {type: string}}
+        scope: {type: string, enum: [all_active]}
+        expected_seq: {type: integer, format: int64, description: 409 seq_conflict when alerts changed since.}
+      additionalProperties: false
+    BulkResult:
+      type: object
+      required: [updated, skipped, counts, seq]
+      properties:
+        updated: {type: array, items: {type: string}}
+        skipped: {type: array, items: {type: string}}
+        counts: {$ref: "#/components/schemas/Counts"}
+        seq: {type: integer, format: int64}
+    Prefs:
+      type: object
+      required: [notify_level, toasts, quiet, quiet_hours, muted_sources, coalesce_window_sec]
+      properties:
+        notify_level: {type: string, enum: [blockers, warnings, everything], description: "blockers = error and above, warnings = warning and above, everything = debug and above."}
+        toasts: {type: boolean}
+        quiet: {type: boolean, description: No toasts except critical.}
+        quiet_hours:
+          type: object
+          required: [enabled, start, end, tz]
+          properties: {enabled: {type: boolean}, start: {type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$'}, end: {type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$'}, tz: {type: string, description: IANA name; one zone for the operator.}}
+        muted_sources: {type: array, maxItems: 50, items: {type: string, minLength: 1, maxLength: 64}}
+        coalesce_window_sec: {type: integer, minimum: 0, maximum: 3600, description: 0 turns coalescing off.}
+      additionalProperties: false
+    LegacyPrefs:
+      type: object
+      properties:
+        quiet: {type: boolean}
+        toastMinSeverity: {$ref: "#/components/schemas/Severity"}
+        bellMinSeverity: {$ref: "#/components/schemas/Severity"}
+        quietHoursEnabled: {type: boolean}
+        quietHoursStart: {type: string}
+        quietHoursEnd: {type: string}
+        mutedSources: {type: array, items: {type: string}}
+        coalesceWindowSec: {type: integer}
+      additionalProperties: false
+    MigrateResult:
+      type: object
+      required: [prefs, applied]
+      properties: {prefs: {$ref: "#/components/schemas/Prefs"}, applied: {type: boolean}}
+    Rules:
+      type: object
+      required: [pack_id, version, label, rules]
+      properties:
+        pack_id: {type: string}
+        version: {type: integer}
+        label: {type: string}
+        rules:
+          type: array
+          items:
+            type: object
+            required: [id, description, kinds, action, needs_you]
+            properties: {id: {type: string}, description: {type: string}, kinds: {type: array, items: {type: string}}, action: {type: string, enum: [alert, drop]}, severity: {type: string, nullable: true}, needs_you: {type: boolean}}
+    Sources:
+      type: object
+      required: [sources, server_now_ms]
+      properties:
+        sources:
+          type: array
+          items:
+            type: object
+            required: [source, state, last_event_ms, note]
+            properties: {source: {type: string}, state: {type: string, enum: [ok, degraded, down]}, last_event_ms: {type: integer, format: int64}, note: {type: string}}
+        server_now_ms: {type: integer, format: int64}
+    StateOp:
+      type: object
+      required: [type]
+      description: The client StateStore op minus its key. read, dismiss, snooze (until), settle (resolution), reopen. No expected_version; last writer wins.
+      properties:
+        type: {type: string, enum: [read, dismiss, snooze, settle, reopen]}
+        until: {type: integer, format: int64}
+        note: {type: string}
+        resolution: {type: string}
+      additionalProperties: false
+    ItemState:
+      type: object
+      required: [key, status, updatedAt]
+      properties:
+        key: {type: string}
+        status: {type: string, enum: [unread, read, dismissed, snoozed, settled]}
+        snoozeUntil: {type: integer, format: int64}
+        resolution: {type: string}
+        note: {type: string}
+        by: {type: string}
+        updatedAt: {type: integer, format: int64}

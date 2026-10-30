@@ -47,6 +47,23 @@ PUT validates and echoes the merged settings, and the fixture user is `/home/ope
 agents 024 to 026. V6 must take the next free number (027 at the time of writing; check `ls
 internal/localstore/migrations`). V0 adds no migration.
 
+## V6: audit (real)
+
+Migration `033_fileview_audit.sql` (the design said 019; 028-029 are approvals, 030 the catalog index, 031 console item state, 032 alerts in #227: take the next free number at merge). `fileview.Auditor` writes `fileview_audit` through
+the serialized writer: no file content, caster refs without query or fragment, paths and ids truncated at
+1024 bytes, control characters removed.
+
+- `Record` waits for the row; use it for open, frame, caster and every denial. `RecordAsync` is the best-effort
+  path for stat batches (one row per batch, `count` = paths); it never blocks, a failure bumps `Dropped()`,
+  and a denial passed to it is still written synchronously. A denial needs a `deny_reason`.
+- `GET /audit?limit=&since=` (operator session required): newest first by id, `ts_ms > since`, limit 1..1000
+  (default 200), unknown parameters are 400. `next_since` is the newest `ts_ms` returned, to pass as `since`
+  on the next poll; null when nothing came back. If more than `limit` rows are newer than `since`, the oldest
+  are omitted. `count` is an additive field on `AuditEntry` (1 except stat batches).
+- Retention: a pass at start and then daily deletes rows older than `fileview.audit_retention_days` (1..365,
+  default 30; an invalid stored value means 30). A failed or panicking pass is skipped.
+- The recorders are called by V3-V5 (stat, content, frame, caster); V6 only provides them.
+
 ## V1: settings and roots (real)
 
 `internal/fileview` serves `GET /settings`, `PUT /settings` and `GET /roots` from `app_settings` rows

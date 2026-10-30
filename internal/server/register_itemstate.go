@@ -34,6 +34,9 @@ func mountItemState(s *Server, mux *http.ServeMux, operator *approvals.Bridge) {
 		return
 	}
 	h := operator.RequireOperator(v.(*itemstate.Store).Handler(forgeapi.StatePrefix))
+	if wrap, ok := s.ext.Load(stateWrapKey); ok {
+		h = wrap.(func(http.Handler) http.Handler)(h) // alert keys are served by the alert store
+	}
 	mux.Handle(forgeapi.StatePrefix, h)
 	mux.Handle(forgeapi.StatePrefix+"/", h)
 }

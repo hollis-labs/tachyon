@@ -1,0 +1,13 @@
+{
+  "notify_level": "warnings",
+  "toasts": true,
+  "quiet": false,
+  "quiet_hours": {
+    "enabled": false,
+    "start": "22:00",
+    "end": "07:00",
+    "tz": "Europe/Berlin"
+  },
+  "muted_sources": [],
+  "coalesce_window_sec": 120
+}
