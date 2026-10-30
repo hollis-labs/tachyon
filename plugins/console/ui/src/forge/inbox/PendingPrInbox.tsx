@@ -1,9 +1,10 @@
-import { DashboardViewTabs, DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
+import { DashboardToolbar } from '@hollis-labs/kit-dashboard/layout'
 import { RecordTag } from '@hollis-labs/kit-dashboard/data'
 import { Button, SearchInput, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@hollis-labs/design-components'
 import { PageHeader } from '@hollis-labs/kit-dashboard'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Segmented } from '../../components/segmented'
 import { ago } from '@console/lib/agent-activity'
 import { useMessaging } from '../../messaging/context'
 import { useConsoleSeams } from '../../events/hooks'
@@ -36,14 +37,7 @@ import {
 import { ASSIGN_TASKS } from './assign'
 import { useAgentsClient } from '../../agents/context'
 
-const CATEGORY_TONE: Record<InboxCategory, string> = {
-  failing_checks: 'border-danger/60 text-danger',
-  changes_requested: 'border-border text-fg',
-  conflicts: 'border-border text-fg',
-  needs_review: 'border-border text-fg',
-  stale: 'border-border text-fg-muted',
-  unassigned: 'border-border text-fg-muted',
-}
+const DANGER_CATEGORIES: InboxCategory[] = ['failing_checks', 'conflicts', 'changes_requested']
 
 const VIEWS: { id: Exclude<TriageView, 'all'>; label: string }[] = [
   { id: 'active', label: 'Active' },
@@ -53,7 +47,9 @@ const VIEWS: { id: Exclude<TriageView, 'all'>; label: string }[] = [
 ]
 
 function Pill({ category }: { category: InboxCategory }) {
-  return <RecordTag className={`!font-sans !normal-case !tracking-normal ${CATEGORY_TONE[category]}`}>{CATEGORY_LABEL[category]}</RecordTag>
+  return DANGER_CATEGORIES.includes(category)
+    ? <RecordTag className="!font-sans !normal-case !tracking-normal border-danger/60 text-danger">{CATEGORY_LABEL[category]}</RecordTag>
+    : <span className="dash-support text-fg-muted">{CATEGORY_LABEL[category]}</span>
 }
 
 function Checks({ item }: { item: InboxItem }) {
@@ -114,7 +110,8 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle, onP
             <Link to={prWorkspaceHref(pr.ref)} className="font-mono dash-body text-fg underline-offset-2 hover:underline">
               {label}
             </Link>
-            {item.categories.map((c) => <Pill key={c} category={c} />)}
+            {[item.primary, ...item.categories.filter((c) => c !== item.primary)].slice(0, 2).map((c) => c !== 'other' && <Pill key={c} category={c as InboxCategory} />)}
+            {item.categories.length > 2 && <span className="dash-support text-fg-faint" title={item.categories.map((c) => CATEGORY_LABEL[c]).join(', ')}>+{item.categories.length - 2}</span>}
             {item.status === 'snoozed' && item.triage?.snoozeUntil && <span className="font-mono dash-caption text-fg-muted">snoozed until {new Date(item.triage.snoozeUntil).toLocaleString()}</span>}
           </div>
           <button type="button" onClick={() => onPreview(item)} aria-label={`Preview ${label}: ${pr.title}`} className="mt-0.5 block max-w-full truncate text-left dash-body text-fg-muted hover:text-fg hover:underline">{pr.title}</button>
@@ -141,7 +138,7 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle, onP
             {item.assignments.length ? 'Assign again' : 'Assign'}
           </Button>
           <DropdownMenu open={menu} onOpenChange={setMenu}>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={`More actions for ${label}`} disabled={busy} />}>⋯</DropdownMenuTrigger>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="min-h-10 min-w-10" aria-label={`More actions for ${label}`} disabled={busy} />}>⋯</DropdownMenuTrigger>
             <DropdownMenuContent aria-label="Row actions" align="end" data-dashboard-shape="square" className="w-44">
               <DropdownMenuItem className="md:hidden" onClick={() => onAssign(item)}>{item.assignments.length ? 'Assign again' : 'Assign'}</DropdownMenuItem>
               {active ? (
@@ -263,9 +260,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
         {views.active} need attention{refreshedAt ? ` · loaded ${ago(refreshedAt, now)}` : ''}
       </p>
       <div className="min-h-0 flex-1 overflow-auto">
-      <div className="[&_[role=tab]]:font-sans [&_[role=tab]]:normal-case [&_[role=tab]]:tracking-normal [&_[role=tab]_*]:font-sans [&_[role=tab]_*]:normal-case [&_[role=tab]_*]:tracking-normal">
-      <DashboardViewTabs variant="segments" label="Triage state" value={filter.view} onChange={view => set({ view: view as TriageView })} items={VIEWS.map(v => ({ value: v.id, label: v.label, count: views[v.id] }))} />
-      </div>
+      <Segmented label="Triage state" value={filter.view} onChange={view => set({ view: view as TriageView })} items={VIEWS.map(v => ({ value: v.id, label: v.label, count: views[v.id] }))} />
 
       <DashboardToolbar className="border-b border-border px-4 py-2">
         <DropdownMenu>
