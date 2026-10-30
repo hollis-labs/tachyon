@@ -17,6 +17,7 @@ export const consolePlugin: TachyonPlugin = {
   ],
   routes: [
     { path: "/agents", element: <ApiProvider client={consoleClient}><AgentsPage /></ApiProvider> },
+    { path: "/agents/:session", element: <ApiProvider client={consoleClient}><AgentsPage /></ApiProvider> },
     { path: "/builder", element: <BuilderPage /> },
     ...overlayRoutes,
   ],
