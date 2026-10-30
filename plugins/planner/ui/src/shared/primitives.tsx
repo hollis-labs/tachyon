@@ -65,11 +65,11 @@ export function GroupHeading({ children, count, id, className, onToggle, open }:
 }
 
 /** A row of filled and empty pips — a small ordinal level (severity, likelihood) without a number. */
-export function Pips({ level, of, label, className }: { level: number; of: number; label?: string; className?: string }) {
+export function Pips({ level, of, label, tone, className }: { level: number; of: number; label?: string; tone?: 'danger'; className?: string }) {
   return (
     <span role="img" aria-label={label} className={`inline-flex items-center gap-0.5 ${className ?? ''}`}>
       {Array.from({ length: of }, (_, i) => (
-        <span key={i} className={`h-1.5 w-3 rounded-full ${i < level ? 'bg-fg/62' : 'bg-border-subtle'}`} />
+        <span key={i} className={`h-1.5 w-3 rounded-full ${i < level ? (tone === 'danger' ? 'bg-danger/70' : 'bg-fg/62') : 'bg-border-subtle'}`} />
       ))}
     </span>
   )
