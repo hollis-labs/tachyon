@@ -37,8 +37,8 @@ export function AccessCard() {
               <p className="text-sm text-foreground">Current access</p>
               <p className="text-xs text-text-subtle">
                 {state.data.state === "elevated"
-                  ? "Operator access is on. Actions that need it will go through."
-                  : "This browser session can read and decide low-risk items."}
+                  ? "Operator elevated. Risky actions need no extra step until it ends."
+                  : "Full access while sign-in is off. Risky actions only ask for a typed phrase."}
               </p>
             </div>
             <div className="flex items-center gap-2">

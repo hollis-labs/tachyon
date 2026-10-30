@@ -15,8 +15,9 @@ describe("user helpers", () => {
   })
   it("formats relative time", () => {
     const now = Date.parse("2026-10-30T12:00:00Z")
-    expect(relativeTime("2026-10-30T11:58:00Z", now)).toBe("2 min ago")
-    expect(relativeTime("2026-10-28T12:00:00Z", now)).toBe("2 d ago")
+    expect(relativeTime("2026-10-30T11:58:00Z", now)).toBe("2m ago")
+    expect(relativeTime("2026-10-29T10:00:00Z", now)).toBe("Yesterday")
+    expect(relativeTime("2026-10-28T12:00:00Z", now)).toBe("2d ago")
   })
   it("takes up to two initials", () => {
     expect(initials("")).toBe("?")

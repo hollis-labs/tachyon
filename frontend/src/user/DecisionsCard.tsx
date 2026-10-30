@@ -15,9 +15,10 @@ export function relativeTime(iso: string, now = Date.now()): string {
   const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000))
   if (Number.isNaN(s)) return ""
   if (s < 60) return "just now"
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`
-  return `${Math.floor(s / 86400)} d ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  if (s < 172800) return "Yesterday"
+  return `${Math.floor(s / 86400)}d ago`
 }
 
 const source = (i: DecisionItem) =>
@@ -58,9 +59,11 @@ export function DecisionsCard({ inbox }: { inbox: Remote<InboxSummary> }) {
           ))}
         </ul>
       )}
-      <Link to="/approvals" className="mt-2 inline-block text-sm text-text-subtle underline">
-        See all in Approvals
-      </Link>
+      {rows.length > 0 && (
+        <Link to="/approvals" className="mt-2 inline-block text-sm text-text-subtle underline">
+          See all in Approvals
+        </Link>
+      )}
     </Card>
   )
 }
