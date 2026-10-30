@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cn, Skeleton } from '@hollis-labs/design-components'
 import { usePlannerApi } from '@planner/api/context'
+import { shortTaskId } from '@planner/lib/planner'
 import { LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
 import { CAPTION, LaneBoard, SegmentedProgress, type Lane } from '@planner/shared'
 import type { PlannerItem, PlannerWorkstreamTasks } from '@planner/api/types'
@@ -38,7 +39,7 @@ export function StreamBody({ item }: { item: PlannerItem }) {
       id: o.id,
       content: (
         <>
-          <span className="truncate font-mono text-caption text-fg-muted">{o.id}</span>
+          <span className="truncate font-mono text-caption text-fg-muted" title={o.id}>{shortTaskId(o.id)}</span>
           <span className="text-label text-fg">{o.title}</span>
         </>
       ),

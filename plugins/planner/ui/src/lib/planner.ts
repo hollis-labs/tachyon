@@ -533,3 +533,9 @@ export function themeCountsText(p: ThemeProgress): string {
   if (p.missing) parts.push(`${p.missing} linked task${p.missing === 1 ? '' : 's'} not found`)
   return parts.join(' · ')
 }
+
+/** A task id as the board shows it: "CW-20261024-0093" -> "CW-…0093" (the full id is the hover title). */
+export function shortTaskId(id: string): string {
+  const m = /^([A-Z]+)-\d{8}-(\d{4})$/.exec(id)
+  return m ? `${m[1]}-…${m[2]}` : id
+}
