@@ -228,6 +228,8 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			out, err = h.NeedYou(ctx)
 		case "momentum":
 			out, err = h.Momentum(ctx)
+		case "task-context":
+			out, err = h.TaskContext(ctx, r.URL.Query().Get("task"))
 		default:
 			switch {
 			case len(parts) == 2 && db == "schema":
