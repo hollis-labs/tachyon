@@ -282,8 +282,13 @@ type frame struct {
 		Window int64  `json:"window"`
 		Model  string `json:"model"`
 	} `json:"usage"`
-	Error json.RawMessage `json:"error"`
-	Final struct {
+	// approval.request (chatstream/v1): descriptor carries the tool call.
+	ApprovalID string          `json:"approval_id"`
+	CallID     string          `json:"call_id"`
+	Descriptor json.RawMessage `json:"descriptor"`
+	ExpiresAt  *time.Time      `json:"expires_at"`
+	Error      json.RawMessage `json:"error"`
+	Final      struct {
 		Summary string `json:"summary"`
 	} `json:"final"`
 }
@@ -367,6 +372,8 @@ func (n *Nanite) Observe(ctx context.Context, session, turn string, emit func(Tu
 				status = "error"
 			}
 			emit(TurnEvent{Kind: EventToolEnd, Tool: Tool{ID: id, Name: name, Status: status, Detail: f.Meta.Detail}})
+		case f.Verb == "approval.request" && f.ApprovalID != "":
+			emit(TurnEvent{Kind: EventApproval, Approval: approvalOf(f)})
 		case f.Verb == "run.finish":
 			emit(TurnEvent{Kind: EventFinish, Reason: f.Reason})
 			finished = true
@@ -485,4 +492,46 @@ func (n *Nanite) Result(ctx context.Context, session, turn string) (Result, erro
 		r.Error = "the agent run " + r.State
 	}
 	return r, nil
+}
+
+// approvalOf reads an approval.request frame. The descriptor is {tool|name, input, class}; anything missing stays empty.
+func approvalOf(f frame) *Approval {
+	a := &Approval{ID: f.ApprovalID, CallID: f.CallID, Reason: f.Reason}
+	var d struct {
+		Tool  string          `json:"tool"`
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+		Class string          `json:"class"`
+		Risk  string          `json:"risk"`
+	}
+	_ = json.Unmarshal(f.Descriptor, &d)
+	a.Tool, a.Input, a.Class = firstNonEmpty(d.Tool, d.Name), d.Input, firstNonEmpty(d.Class, d.Risk)
+	if f.ExpiresAt != nil {
+		a.ExpiresAt = *f.ExpiresAt
+	}
+	return a
+}
+
+// Respond answers a runtime approval once: allow or deny, once scope (the only scope Nanite takes).
+func (n *Nanite) Respond(ctx context.Context, session, approvalID string, allow bool) error {
+	cfg, err := n.config()
+	if err != nil {
+		return err
+	}
+	_, session = splitSession(session)
+	decision := "deny"
+	if allow {
+		decision = "allow"
+	}
+	resp, cancel, err := n.do(ctx, cfg, http.MethodPost, "/sessions/"+url.PathEscape(session)+"/approvals/"+url.PathEscape(approvalID)+"/responses",
+		map[string]string{"decision": decision, "scope": "once"}, "application/json", 15*time.Second)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return statusErr(resp)
+	}
+	return nil
 }

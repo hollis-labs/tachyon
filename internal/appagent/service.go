@@ -75,6 +75,8 @@ type Service struct {
 	OnTool func(threadID string, t Tool)
 	// OnContext, if set, receives the runtime's context meter for a thread. It must not block.
 	OnContext func(threadID string, used, window int64, model string)
+	// OnApproval, if set, receives a runtime approval request for a thread. It must not block.
+	OnApproval func(threadID string, a Approval)
 	// ClientContext, if set, supplies the per-turn client_context payload for a thread
 	// (nil = none). It is handed to the runtime adapter through the turn's context.
 	ClientContext func(ctx context.Context, threadID string) any
@@ -402,6 +404,10 @@ func (s *Service) apply(l *live, e TurnEvent) {
 		if e.Kind == EventToolEnd && s.OnTool != nil {
 			s.OnTool(l.agent.ThreadID, t)
 		}
+	case EventApproval:
+		if s.OnApproval != nil && e.Approval != nil {
+			s.OnApproval(l.agent.ThreadID, *e.Approval)
+		}
 	case EventContext:
 		if s.OnContext != nil {
 			s.OnContext(l.agent.ThreadID, e.Used, e.Window, e.Model)
@@ -526,4 +532,17 @@ func (s *Service) AppendNote(ctx context.Context, threadID, kind, body string, m
 		s.OnChange(threadID)
 	}
 	return u, nil
+}
+
+// RespondApproval answers a runtime approval for a thread. It fails when the runtime cannot take answers back.
+func (s *Service) RespondApproval(ctx context.Context, threadID, approvalID string, allow bool) error {
+	r, ok := s.Runtime.(Responder)
+	if !ok {
+		return ErrNotConfigured
+	}
+	th, err := s.Store.Thread(ctx, threadID)
+	if err != nil {
+		return err
+	}
+	return r.Respond(ctx, th.RuntimeSession, approvalID, allow)
 }

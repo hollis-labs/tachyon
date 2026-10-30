@@ -25,6 +25,10 @@ type Binder struct {
 	Publish func(ctx context.Context, thread, typ string, fields map[string]any)
 	// Answer tells the agent how the card was answered (app threads); the text is the operator message.
 	Answer func(ctx context.Context, thread, text string)
+	// Tools, when set, handles runtime tool approvals that settle.
+	Tools interface {
+		Settled(ctx context.Context, rec hitl.Record) bool
+	}
 	// Changes subscribes to the Approvals feed.
 	Changes *approvals.Broker
 }
@@ -106,6 +110,9 @@ func (b *Binder) settled(ctx context.Context, itemID string) {
 	}
 	c := Project(rec, ref, b.Refs.now())
 	b.publish(ctx, ref.ThreadRef, c)
+	if b.Tools != nil && b.Tools.Settled(ctx, rec) {
+		return
+	}
 	if c.State == "resolved" && b.Answer != nil {
 		b.Answer(ctx, ref.ThreadRef, AnswerText(c))
 	}

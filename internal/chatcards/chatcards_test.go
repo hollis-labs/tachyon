@@ -11,6 +11,7 @@ import (
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
 
+	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
@@ -125,5 +126,50 @@ func TestApprovalRules(t *testing.T) {
 	h.ServeHTTP(w, httptest.NewRequest("DELETE", base+"/"+r.ID, nil))
 	if w.Code != 404 {
 		t.Fatalf("second revoke: %d", w.Code)
+	}
+}
+
+func TestRuntimeToolApproval(t *testing.T) {
+	b, st, ctx := setup(t)
+	var queued []hitl.EnqueueRequest
+	var answers []bool
+	rt := &Runtime{B: b, Source: "tachyon-chat",
+		Enqueue: func(ctx context.Context, req hitl.EnqueueRequest) (string, error) {
+			queued = append(queued, req)
+			rec := hitl.Record{ItemID: "rt1", CallerScope: "t", IdempotencyKey: req.IdempotencyKey, Digest: "d", Kind: req.Kind,
+				State: hitl.StatePresented, Revision: 1, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+			rec.Request, _ = json.Marshal(req)
+			_, _, err := st.Create(ctx, rec)
+			return "rt1", err
+		},
+		Respond: func(_ context.Context, thread, id string, allow bool) error {
+			answers = append(answers, allow)
+			return nil
+		}}
+	b.Tools = rt
+	a := appagent.Approval{ID: "ap1", Tool: "read_file", Input: json.RawMessage(`{"path":"/x"}`), Class: "low", ExpiresAt: time.Now().Add(time.Minute)}
+	rt.handle(ctx, "app:t1", a)
+	if len(queued) != 1 || len(answers) != 0 {
+		t.Fatalf("an unruled request must become a card and wait: %d %v", len(queued), answers)
+	}
+	cs, _ := (&Service{Refs: b.Refs, Get: b.Get}).Cards(ctx, "app:t1", "", 0)
+	if len(cs) != 1 || cs[0].Kind != "card.tool_approval" || len(cs[0].Actions) != 3 {
+		t.Fatalf("card: %+v", cs)
+	}
+	// "always" on a low card: allow once and a rule is created; the next request is answered without a card.
+	rec, _ := st.Get(ctx, "rt1")
+	rec.State = hitl.StateResolved
+	rec.Outcome = hitl.Resolved{ItemID: "rt1", Resolution: hitl.ResolutionRecord{Response: hitl.Response{Kind: rec.Kind, Decision: "always"}, ResolvedAt: time.Now()}}
+	if !rt.Settled(ctx, rec) || len(answers) != 1 || !answers[0] {
+		t.Fatalf("always should allow once: %v", answers)
+	}
+	rt.handle(ctx, "app:t1", appagent.Approval{ID: "ap2", Tool: "read_file", Input: json.RawMessage(`{"path":"/x"}`), Class: "low"})
+	if len(queued) != 1 || len(answers) != 2 || !answers[1] {
+		t.Fatalf("a matching request must be allowed by the rule: %d %v", len(queued), answers)
+	}
+	// Medium class never matches a rule.
+	rt.handle(ctx, "app:t1", appagent.Approval{ID: "ap3", Tool: "read_file", Input: json.RawMessage(`{"path":"/x"}`), Class: "medium"})
+	if len(queued) != 2 {
+		t.Fatal("a medium request must still ask")
 	}
 }
