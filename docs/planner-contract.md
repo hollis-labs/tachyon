@@ -30,3 +30,14 @@ No new guards, audit, step-up or scopes (direction from Chrispian via the PM). R
 ## Not in PL0
 
 The real behaviour (PL1-PL5), the frontend wiring (PL6), and the curl matrix (PL7). Open items for the owners are listed in the design, sections 7 and 8.
+
+## PL2: assignments (real)
+
+`internal/plannerassign`, mounted by `register_plannerassign.go` (stands down when `TACHYON_PLANNER_STUBS=1`). Routes: `POST /assignments`, `GET /assignments`, `POST /assignments/{id}/complete|cancel`, `GET /agents/{agent_id}/work`, behind `RequireOperator`.
+
+- An assignment is the existing `assignment` object (`state` active|completed|cancelled) with `assignee` and `target` links. `planner.list` already filters `assigned_to` through those links; PL2's test confirms it for themes (any assignment state, per `objects.PlannerFilter`).
+- `agent_id` and `team_id` accept the catalog id (agents synced from Tether) or the object id; responses return the catalog id. An unknown assignee is 404. Planner item targets are `{db,id}` (object id or legacy id, resolved). Torque tasks are external targets (`provider torque`, collection `tasks`, instance = the configured Torque URL); nothing is written to Torque.
+- Ending an ended assignment is 409; `primary` marks the earliest active assignment per target.
+- `Service.Assignees(ctx, target)` is the derived `assignees[]` for PL1/PL3 to attach to item and task responses.
+- Work list: only `why = assigned` is produced here. Themes and decisions come from the planner item; Torque task targets are listed with the id as the title until PL3 enriches them. `session` (needs the Agents collector) and `referenced` (needs decision links) and `needs_user` (PL5) are not produced yet; other targets (workstreams, risks...) are left out.
+- Not in this PR: the `assigned_to=` query parameter on existing planner lists (it needs an edit to the existing list route), agent verbs `assign`/`unassign` and the access catalog entries, and `task-context` (needs the theme/task mapping from PL3).

@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { Button } from "@hollis-labs/design-components"
 import { MessageBody } from "../chat/MessageBody"
-import type { ApprovalItem, CardAnswer, CardReceipt } from "./client"
+import type { ApprovalClient, ApprovalItem, CardAnswer, CardReceipt } from "./client"
+import { SecretDialog } from "./secret-dialog"
 
 type Request = ApprovalItem["request_snapshot"]
 const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
@@ -94,8 +95,10 @@ export function CardData({ request }: { request: Request }) {
 }
 
 // Fields for a question or form card. onSubmit gets the typed answers.
-export function CardForm({ request, busy, disabled, onSubmit }: {
+export function CardForm({ request, itemId, client, busy, disabled, onSubmit }: {
   request: Request
+  itemId: string
+  client: ApprovalClient
   busy: boolean
   disabled: boolean
   onSubmit(answers: CardAnswer[]): void
@@ -103,8 +106,12 @@ export function CardForm({ request, busy, disabled, onSubmit }: {
   const fields = cardFields(request)
   const [values, setValues] = useState<Record<string, string | string[] | boolean>>({})
   const set = (id: string, v: string | string[] | boolean) => setValues((cur) => ({ ...cur, [id]: v }))
+  const [secretFor, setSecretFor] = useState<CardField | null>(null)
+  // What the operator sees once a secret is stored: only the short fingerprint, never the value.
+  const [stored, setStored] = useState<Record<string, string>>({})
   const answers = cardAnswers(fields, values)
   return (
+    <>
     <form
       className="space-y-3"
       onSubmit={(e) => {
@@ -112,7 +119,15 @@ export function CardForm({ request, busy, disabled, onSubmit }: {
         if (answers && !disabled) onSubmit(answers)
       }}
     >
-      {fields.map((f) => (
+      {fields.map((f) => f.type === "secret" ? (
+        <div key={f.id} className="dash-control text-fg-muted">
+          {f.label}{f.required ? " *" : ""}
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {stored[f.id] && <span className="text-fg">Stored · <span className="font-mono">{stored[f.id]}</span></span>}
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setSecretFor(f)}>{stored[f.id] ? "Replace" : "Provide secret…"}</Button>
+          </div>
+        </div>
+      ) : (
         <label key={f.id} className="block dash-control text-fg-muted">
           {f.label}{f.required ? " *" : ""}
           {f.type === "enum" ? (
@@ -139,13 +154,27 @@ export function CardForm({ request, busy, disabled, onSubmit }: {
               onChange={(e) => set(f.id, e.target.value)}
             />
           )}
-          {f.type === "secret" && <span className="block dash-support text-fg-faint">Enter a secret reference (for example a vault key), never the secret itself.</span>}
         </label>
       ))}
       <Button type="submit" variant="outline" size="sm" className="font-mono dash-label" disabled={!answers || disabled || busy}>
         {busy ? "Submitting…" : "Submit"}
       </Button>
     </form>
+      {secretFor && (
+        <SecretDialog
+          client={client}
+          itemId={itemId}
+          field={secretFor.id}
+          label={secretFor.label}
+          onClose={() => setSecretFor(null)}
+          onStored={(s) => {
+            set(secretFor.id, s.secret_ref)
+            setStored((cur) => ({ ...cur, [secretFor.id]: s.fingerprint.replace(/^sha256:/, "") }))
+            setSecretFor(null)
+          }}
+        />
+      )}
+    </>
   )
 }
 

@@ -73,7 +73,12 @@ var ErrorCodes = []string{
 	"already_resolved",         // 409, carries the existing outcome
 	"batch_id_reuse",           // 409
 	"confirmation_required",    // 422, typed phrase missing or wrong
-	"invalid_secret_ref",       // 422
+	"secret_ref_invalid",       // 422, a secret answer is not a live reference minted for this item and field
+	"assurance_insufficient",   // 403, carries step_up (secrets, high approvals)
+	"item_not_pending",         // 409, secret submitted for a decided, expired or withdrawn item
+	"secret_field_unknown",     // 409, the item has no secret field with that id
+	"idempotency_key_reuse",    // 409, same Idempotency-Key with a different body
+	"payload_too_large",        // 413, secret value over 16 KiB (file over 64 KiB)
 	"operator_access_required", // 403
 	"requester_cannot_approve", // 403
 	"session_required",         // 401

@@ -730,6 +730,7 @@ func (s *Server) Routes() http.Handler {
 		// Sessions, timeline, series, tokens, history, stream and settings. Controls (nudge, restart) are not here.
 		(&agentsserve.Server{DB: s.store, Collector: s.agentsCollector}).Mount(mux, operator.RequireOperator)
 	}
+	s.mountAccount(mux, operator)
 	if s.cfg.AgentsStubs {
 		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
 	}

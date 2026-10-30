@@ -121,12 +121,34 @@ export interface ApprovalInbox {
   synced_at: string
   revision: string
 }
+export interface SecretStored {
+  secret_ref: string
+  expires_at: number
+  fingerprint: string
+}
 export const APPROVAL_BASE = "/api/plugins/console/v1/approval-inbox"
+export interface HistoryEvent {
+  event_id: string
+  item_id: string
+  kind: string
+  at: string
+  actor: { ref: string; label: string; assurance?: string }
+  decision?: string
+  status?: string
+  note?: string
+  reason?: string
+  mini?: { title: string; risk?: string; group?: string }
+}
+export interface HistoryPage {
+  events: HistoryEvent[]
+  next_cursor?: string
+}
 export class ApprovalError extends Error {
   constructor(
     public status: number,
     public code: string,
     message: string,
+    public stepUp?: { action?: string },
   ) {
     super(message)
   }
@@ -162,7 +184,7 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       ...init,
       headers: {
         Accept: "application/json",
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(typeof init.body === "string" ? { "Content-Type": "application/json" } : {}),
         ...(fresh ? { "Cache-Control": "no-cache" } : {}),
         ...init.headers,
       },
@@ -173,6 +195,7 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
         res.status,
         body.code ?? "unavailable",
         body.message ?? "The approval queue is unavailable.",
+        body.step_up,
       )
     if (
       fresh &&
@@ -205,6 +228,10 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       return read<ApprovalInbox>(`/inbox${query.size ? `?${query}` : ""}`, fresh)
     },
     get,
+    history(opts: { q?: string; status?: string; cursor?: string; limit?: number } = {}) {
+      const query = new URLSearchParams(Object.entries(opts).filter((e): e is [string, string | number] => !!e[1]).map(([k, v]) => [k, String(v)]))
+      return read<HistoryPage>(`/history${query.size ? `?${query}` : ""}`, true)
+    },
     present(id: string) {
       const existing = presenting.get(id)
       if (existing) return existing
@@ -269,6 +296,23 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
           }),
         },
       )
+    },
+    // Stores a secret for one field of one item and returns only a reference. The value is never
+    // returned or kept; the same idempotencyKey on a retry returns the same reference.
+    storeSecret(input: { itemId: string; field: string; value?: string; file?: File; idempotencyKey: string }) {
+      const headers = { "Idempotency-Key": input.idempotencyKey }
+      if (input.file) {
+        const form = new FormData()
+        form.append("item_id", input.itemId)
+        form.append("field", input.field)
+        form.append("file", input.file)
+        return request<SecretStored>("/secrets", { method: "POST", headers, body: form })
+      }
+      return request<SecretStored>("/secrets", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ item_id: input.itemId, field: input.field, value: input.value }),
+      })
     },
     evidence: (id: string, index: number, type: string) =>
       request<Record<string, unknown>>(
