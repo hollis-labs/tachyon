@@ -4,6 +4,7 @@ import { buildOps, changedPaths, changingText, confirmDiscard, type Draft, field
 import { OutlineNav } from './OutlineNav'
 import { ChecksSection, HistorySection, ResolvedSection, UsedBySection } from './InsightSections'
 import { ReviewDialog } from './ReviewDialog'
+import { useBuilderStream } from './stream'
 import { useLoad } from './useLoad'
 import { INHERITS, NOT_REPORTED, SECTIONS, STATE_LABEL } from './vocab'
 
@@ -99,6 +100,11 @@ function Section({ id, children }: { id: string; children: ReactNode }) {
 /** Editor model of one agent: read-only until Edit; saving goes through Review and host approval. */
 export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void }) {
   const [load, retry] = useLoad(() => builderApi.agent(id), [id])
+  const [elsewhere, setElsewhere] = useState(false)
+  const filePath = load.status === 'ready' ? load.data.revision?.path : null
+  useBuilderStream((e) => {
+    if (e.type === 'catalog' && e.source === 'observed' && filePath && e.changed_paths?.some((p) => filePath.endsWith(p) || p.endsWith(filePath))) setElsewhere(true)
+  })
   const scroller = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Draft>({})
@@ -167,11 +173,27 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
           </button>
         )}
       </header>
+      {elsewhere && (
+        <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
+          <span className="mr-auto">This agent changed elsewhere.{dirty.length > 0 ? ' Reloading drops your unsaved changes.' : ''}</span>
+          <button
+            type="button"
+            className="border border-border px-3 py-1 dash-control hover:bg-surface-hover"
+            onClick={() => {
+              if (!confirmDiscard(dirty.length)) return
+              setEditing(false)
+              setDraft({})
+              setElsewhere(false)
+              retry()
+            }}
+          >
+            Reload
+          </button>
+        </div>
+      )}
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
-          <span className="mr-auto">
-            {changingText(dirty.map((p) => fieldByPath(p)?.label))}
-          </span>
+          <span className="mr-auto">{changingText(dirty.map((p) => fieldByPath(p)?.label))}</span>
           {error && (
             <span role="alert" className="text-danger">
               {error}

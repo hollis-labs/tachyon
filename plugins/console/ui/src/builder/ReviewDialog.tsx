@@ -2,23 +2,31 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@hollis-l
 import { useEffect, useState } from 'react'
 import { builderApi, type Change, errorMessage } from './api'
 import { isOpen, isWaiting, minutesAndSeconds } from './changes'
+import { useBuilderStream } from './stream'
 
 const BTN = 'border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover disabled:opacity-50'
 const PRIMARY = 'border border-fg px-3 py-1 dash-control font-medium text-fg hover:bg-surface-hover disabled:opacity-50'
 
 const CHECK_WORD = { ok: 'Passed', warn: 'Warning', fail: 'Failed' } as const
 
-/** Poll an open change; the SSE stream replaces this when it is wired. */
+/** Follow an open change: the stream says when it moves; a slow poll is the safety net (fast when the stream is down). */
 function useChange(initial: Change): [Change, (c: Change) => void] {
   const [change, setChange] = useState(initial)
+  const refetch = () => builderApi.change(change.change_id).then(setChange, () => undefined)
+  const live = useBuilderStream((e) => {
+    if (e.type === 'change' && e.change_id === change.change_id) void refetch()
+  })
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch is rebuilt each render from change_id
   useEffect(() => {
     if (!isWaiting(change.state)) return
-    const t = setInterval(() => {
-      if (document.hidden) return
-      builderApi.change(change.change_id).then(setChange, () => undefined)
-    }, 3000)
+    const t = setInterval(
+      () => {
+        if (!document.hidden) void refetch()
+      },
+      live ? 30000 : 3000,
+    )
     return () => clearInterval(t)
-  }, [change.change_id, change.state])
+  }, [change.change_id, change.state, live])
   return [change, setChange]
 }
 
