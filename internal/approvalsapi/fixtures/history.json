@@ -18,6 +18,11 @@
         "title": "Update planner label",
         "risk": "low",
         "group": "change"
+      },
+      "requester": {
+        "id": "builder-reviewer",
+        "label": "Builder Reviewer",
+        "kind": "agent"
       }
     },
     {
@@ -38,6 +43,11 @@
         "title": "Restart production gateway",
         "risk": "medium",
         "group": "change"
+      },
+      "requester": {
+        "id": "builder-reviewer",
+        "label": "Builder Reviewer",
+        "kind": "agent"
       }
     },
     {
@@ -59,6 +69,11 @@
         "title": "Create nightly report",
         "risk": "low",
         "group": "change"
+      },
+      "requester": {
+        "id": "cerberus-supervisor",
+        "label": "Cerberus Supervisor",
+        "kind": "agent"
       }
     },
     {
@@ -80,6 +95,11 @@
         "title": "Update tool timeout (old)",
         "risk": "low",
         "group": "change"
+      },
+      "requester": {
+        "id": "builder-reviewer",
+        "label": "Builder Reviewer",
+        "kind": "agent"
       }
     },
     {
@@ -101,6 +121,11 @@
         "title": "Which environment?",
         "risk": "low",
         "group": "question"
+      },
+      "requester": {
+        "id": "cerberus-supervisor",
+        "label": "Cerberus Supervisor",
+        "kind": "agent"
       }
     },
     {
@@ -121,6 +146,11 @@
         "title": "Update prompt tags",
         "risk": "low",
         "group": "change"
+      },
+      "requester": {
+        "id": "builder-reviewer",
+        "label": "Builder Reviewer",
+        "kind": "agent"
       }
     }
   ],

@@ -168,6 +168,31 @@ func TestHistoryTimelineAuditAndAppendOnlyLog(t *testing.T) {
 	if len(p2["events"].([]any)) != 1 || p2["next_cursor"] != nil {
 		t.Errorf("page 2: %v", p2)
 	}
+	if req, _ := ra["requester"].(map[string]any); req["id"] != "alice" || rb["requester"].(map[string]any)["id"] != "bob" || req["kind"] == nil {
+		t.Errorf("requester on events: %v %v", ra["requester"], rb["requester"])
+	}
+	counts := func(q, facet, key string) map[string]int {
+		out := map[string]int{}
+		f := jsonOf(t, get(in, Prefix+"/history"+q, "s1").Body.String())["facets"].(map[string]any)
+		for _, r := range f[facet].([]any) {
+			m := r.(map[string]any)
+			out[m[key].(string)] = int(m["count"].(float64))
+		}
+		return out
+	}
+	eq := func(got, want map[string]int, what string) {
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s: %v want %v", what, got, want)
+		}
+	}
+	eq(counts("", "requesters", "id"), map[string]int{"alice": 1, "bob": 2}, "requester facet")
+	eq(counts("", "statuses", "status"), map[string]int{"approved": 1, "denied": 1, "expired": 1}, "status facet")
+	// a facet ignores its own filter and obeys the other
+	eq(counts("?status=denied", "requesters", "id"), map[string]int{"bob": 1}, "requesters under status=denied")
+	eq(counts("?status=denied", "statuses", "status"), map[string]int{"approved": 1, "denied": 1, "expired": 1}, "statuses under status=denied")
+	eq(counts("?requester=bob", "requesters", "id"), map[string]int{"alice": 1, "bob": 2}, "requesters under requester=bob")
+	eq(counts("?requester=bob", "statuses", "status"), map[string]int{"denied": 1, "expired": 1}, "statuses under requester=bob")
+	eq(counts("?limit=1", "requesters", "id"), map[string]int{"alice": 1, "bob": 2}, "facets ignore the page size")
 	if n := len(jsonOf(t, get(in, Prefix+"/history?kind=deferred", "s1").Body.String())["events"].([]any)); n != 1 {
 		t.Errorf("kind=deferred: %d", n)
 	}
