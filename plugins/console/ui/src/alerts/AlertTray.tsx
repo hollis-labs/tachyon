@@ -117,14 +117,14 @@ export function AlertTray() {
       {c.prefs.quiet && (
         <div role="status" className="flex items-center gap-2 border-b border-border-subtle bg-surface/40 px-4 py-1.5 dash-support text-fg-muted">
           <BellOff aria-hidden="true" className="h-3 w-3" />
-          <span>Quiet is on. Only critical alerts pop up.</span>
+          <span>{c.prefs.quietHoursEnabled ? `Quiet until ${c.prefs.quietHoursEnd}` : 'Quiet until you turn it off'} · critical still gets through</span>
           <button type="button" className="ml-auto underline underline-offset-2 hover:text-fg" onClick={() => c.setPrefs({ quiet: false })}>Turn off</button>
         </div>
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-fg-muted">{c.prefs.bellMinSeverity !== 'debug' ? 'No alerts at this level.' : tab === 'active' ? 'Nothing needs you right now.' : 'No dismissed or snoozed alerts.'}</p>
+          <p className="px-4 py-8 text-center text-sm text-fg-muted">{c.prefs.bellMinSeverity !== 'debug' ? 'No alerts at this level.' : tab === 'active' ? 'Nothing needs you right now' : 'No dismissed or snoozed alerts.'}</p>
         ) : (
           <ul aria-label={tab === 'active' ? 'Active alerts' : 'Alert history'}>
             {(tab === 'active' ? groupActive(rows, c.now) : groupHistory(rows, c.now)).map((g) => (
