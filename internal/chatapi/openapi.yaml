@@ -285,9 +285,33 @@ paths:
       summary: Creates a NEW proposal (new digest) and cancels the old one
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [command], properties: {command: {type: string}}}}}}
       responses: {"201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Proposal"}}}}}
+  /terminal/runs:
+    get:
+      tags: [terminal]
+      summary: Run records for card restore and the Approvals view, newest first
+      parameters: [{name: thread_ref, in: query, schema: {type: string}}, {name: state, in: query, schema: {type: string}}, {name: closed, in: query, schema: {type: boolean}}]
+      responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {runs: {type: array, items: {$ref: "#/components/schemas/Run"}}}}}}}}
   /terminal/runs/{run_id}:
     parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
     get: {tags: [terminal], responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Run"}}}}}}
+    patch:
+      tags: [terminal]
+      summary: close_on_complete may change any time; closed=true only once the run is in an end state (409 otherwise). Closing never deletes the record.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {close_on_complete: {type: boolean}, closed: {type: boolean}}}}}}
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Run"}}}}}
+  /terminal/runs/{run_id}/output:
+    parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [terminal]
+      summary: Chunks held in the live ring (1 MiB per run) after after_seq; once the run ends only the stored 64 KiB tail remains
+      parameters: [{name: after_seq, in: query, schema: {type: integer}}, {name: limit, in: query, schema: {type: integer}}]
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/RunOutput"}}}}}
+  /terminal/runs/{run_id}/stop:
+    parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+    post:
+      tags: [terminal]
+      summary: Idempotent. SIGTERM to the local ssh process group, SIGKILL after 5 s; the state becomes stopped when ssh exits. 409 for a run still awaiting approval.
+      responses: {"202": {description: accepted, content: {application/json: {schema: {$ref: "#/components/schemas/Run"}}}}}
 components:
   parameters:
     ref: {name: ref, in: path, required: true, description: "thread_ref: app:<id> | tether:<session_id>", schema: {type: string, pattern: '^(app|tether):[^/\\\s]+$'}}
@@ -340,7 +364,7 @@ components:
         seq: {type: integer}
         id: {type: string}
         role: {type: string, enum: [operator, agent, system]}
-        kind: {type: string, enum: [text, card, plan, system]}
+        kind: {type: string, enum: [text, card, plan, system, run], description: "run = a terminal run block; meta {run_id}"}
         text: {type: string}
         at: {type: integer, format: int64}
         meta: {type: object, nullable: true, description: "card: {item_id}; plan: {plan_id}; operator answer: {card_answer:{item_id,decision,answers}}"}
@@ -442,11 +466,40 @@ components:
         message_ref: {type: string, nullable: true}
     ApprovalRule: {type: object, properties: {id: {type: string}, thread_ref: {type: string}, agent_id: {type: string}, tool: {type: string}, match: {type: object}, effect: {type: string, enum: [allow]}, expires_at: {type: integer, format: int64, nullable: true}, created_at: {type: integer, format: int64}, revoked_at: {type: integer, format: int64, nullable: true}}}
     Work: {type: object, properties: {items: {type: array, items: {type: object, properties: {id: {type: string}, kind: {type: string, enum: [theme, task, decision]}, title: {type: string}, status: {type: string}, progress: {type: number, nullable: true}, links: {type: array, items: {$ref: "#/components/schemas/Cite"}}, needs_user: {type: boolean}, updated_at: {type: integer, format: int64}, why: {type: string, enum: [assigned, plan], description: "absent in stub fixtures"}}}}, source: {type: string}, assignee_resolved: {type: boolean}}}
-    Settings: {type: object, properties: {scratchpad_placement: {type: string, enum: [drawer, aside]}}}
+    Settings: {type: object, properties: {scratchpad_placement: {type: string, enum: [drawer, aside]}, terminal_close_on_complete: {type: boolean, description: "default for the run card Close when done box"}}, description: "PUT merges: send either or both."}
     Machine: {type: object, properties: {machine_id: {type: string}, label: {type: string}, source: {type: string, enum: [objects, ssh_config]}, ssh_user: {type: string}, reachable: {type: boolean, nullable: true}}}
     TerminalSession: {type: object, properties: {id: {type: string}, thread_ref: {type: string, nullable: true}, machine_id: {type: string}, ssh_user: {type: string}, state: {type: string, enum: [open, stale, closed]}, opened_by: {type: string}, opened_at: {type: integer, format: int64}, ended_at: {type: integer, format: int64, nullable: true}, ws_path: {type: string}}}
-    Proposal: {type: object, properties: {id: {type: string}, thread_ref: {type: string}, session_id: {type: string, nullable: true}, machine_id: {type: string}, command: {type: string}, command_digest: {type: string}, reason: {type: string}, requested_by: {type: string}, state: {type: string, enum: [pending, approved, denied, superseded, expired]}, item_id: {type: string}, created_at: {type: integer, format: int64}, expires_at: {type: integer, format: int64}, supersedes: {type: string, nullable: true}}}
-    Run: {type: object, description: "Field names match actionrun's Run JSON so one renderer serves both.", properties: {run_id: {type: string}, machine: {type: string}, command: {type: string}, state: {type: string, enum: [running, exited, failed, timeout, cancelled]}, exit_code: {type: integer, nullable: true}, output: {type: string, description: "redacted, ANSI-stripped, tail <= 64 KiB"}, requested_by: {type: string}, reason: {type: string}, op_digest: {type: string}, started_at: {type: integer, format: int64}, ended_at: {type: integer, format: int64, nullable: true}, duration_ms: {type: integer, nullable: true}, truncated: {type: boolean}}}
+    Proposal: {type: object, properties: {id: {type: string}, run_id: {type: string}, thread_ref: {type: string}, session_id: {type: string, nullable: true}, machine_id: {type: string}, command: {type: string}, command_digest: {type: string}, reason: {type: string}, requested_by: {type: string}, state: {type: string, enum: [pending, approved, denied, superseded, expired]}, item_id: {type: string}, created_at: {type: integer, format: int64}, expires_at: {type: integer, format: int64}, supersedes: {type: string, nullable: true}}}
+    Run:
+      type: object
+      description: Field names match actionrun's Run JSON where both have one, so one renderer serves both.
+      properties:
+        run_id: {type: string}
+        thread_ref: {type: string}
+        machine_id: {type: string}
+        machine: {type: string, description: same as machine_id}
+        ssh_user: {type: string}
+        command: {type: string}
+        state: {type: string, enum: [pending_approval, running, finished, failed, stopped, denied, expired], description: "pending_approval/denied/expired show on the proposal block, not the run card. finished = exit 0; failed = nonzero exit, ssh error or timeout."}
+        requested_by: {type: string}
+        reason: {type: string}
+        op_digest: {type: string}
+        approval: {type: object, properties: {mode: {type: string, enum: [user, policy]}, item_id: {type: string, nullable: true}, rule_id: {type: string, nullable: true}, decided_by: {type: string, nullable: true}, decided_at: {type: integer, format: int64, nullable: true}}}
+        exit_code: {type: integer, nullable: true}
+        output: {type: string, description: "redacted, ANSI-stripped, merged pty stream; the live ring tail while running, the stored tail (<= 64 KiB) after"}
+        output_ref: {type: string, description: same as run_id}
+        truncated: {type: boolean}
+        close_on_complete: {type: boolean}
+        closed_at: {type: integer, format: int64, nullable: true}
+        stopped_by: {type: string, nullable: true}
+        error: {type: string}
+        message_ref: {type: string}
+        supersedes: {type: string, nullable: true}
+        started_at: {type: integer, format: int64, nullable: true}
+        ended_at: {type: integer, format: int64, nullable: true}
+        duration_ms: {type: integer, nullable: true}
+        created_at: {type: integer, format: int64}
+    RunOutput: {type: object, properties: {run_id: {type: string}, state: {type: string}, chunks: {type: array, items: {type: object, properties: {seq: {type: integer}, chunk: {type: string}}}}, last_seq: {type: integer}, tail: {type: string, nullable: true, description: "set once the run has ended: the stored tail; chunks is then empty"}, truncated: {type: boolean}}}
     Event:
       type: object
       required: [type, thread_ref, at]
@@ -466,4 +519,4 @@ components:
         topic_bookmark_workspace: {description: "{op: add|remove|share|unshare, id}"}
         context: {description: "{used, window, model}"}
         thread: {description: "{blocked, unread, plan_progress, pinned}"}
-        terminal.run: {description: "{run_id, state, chunk_seq, chunk<=4KiB ANSI-stripped, exit_code?, duration_ms?}"}
+        terminal.run: {description: "{run_id, state, seq, chunk<=4KiB ANSI-stripped and redacted (running only), exit_code?, duration_ms?, closed}. seq is per run and monotonic; state changes carry the last seq."}

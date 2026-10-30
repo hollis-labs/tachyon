@@ -71,7 +71,7 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   from the T1 event log, so the two differ; the event carries the feed `seq` as a field). Payloads are mini-cards `{title<=120,
   summary<=200, review_ref}` (comments: `{body}`), redacted and bounded; `cite` is at most 8 of `{kind: task|pr|file, ref, label}`.
   Written by Tachyon at these seams: `tool.call` (runtime tool end), `plan.changed`, `topic.added`, `bookmark.added`, `file.shared`,
-  `panel.opened`. NOT written yet: `card.sent`, `card.answered`, `approval.decided` (T5), `terminal.run` (T8), `task.closed`
+  `panel.opened`. NOT written yet: `card.sent`, `card.answered`, `approval.decided` (T5), `task.closed`
   from Torque (phase 2; agents can write `task.closed` and `note` through the verb). Actors: `user`, `agent` (Tachyon saw the
   agent act but not which one), `agent:<credential id>` (verb writes). A feed write that fails never fails the change behind it.
   Agent verbs: `chat.activity.append {thread_ref, type: task.closed|note, title, summary, cite, review_ref}` (preset
@@ -81,3 +81,30 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   Context meter: `{used, window, model, source: runtime|unknown, breakdown: [], at}`. The numbers stay `null` and `source`
   `unknown` until the thread's runtime reports a meter. Nanite (deployed 2026-10-30, CW-20261030-0010) sends `usage.{used,window,model}`
   on `run.finish` and usage events: Tachyon stores the latest report per thread and sends a `context` event. Tether threads are always `unknown`.
+
+## Quick terminal (T8, real)
+
+The terminal routes are real; with `TACHYON_CHAT_STUBS=1` the stub still answers the routes that are not mounted
+(the websocket is real and the stub's 501 never shows). Every route needs the operator session, reads included, and a
+request carrying an `Authorization` header is refused 403: an agent credential cannot approve, edit, stop or close.
+
+- **Credentials** are the Tachyon host user's own `~/.ssh/config` and ssh-agent. Tachyon never reads a key file. The picker
+  lists machines reachable from the Tachyon host; the client sends `machine_id`, never a host name.
+- **Machines and rules** live in a JSON file (`TACHYON_TERMINAL_POLICY`, default `<data dir>/terminal-policy.json`, reloaded on
+  change): `{"machines":[{"id","label","host","user"}], "rules":[{"id","machine":"*|id","exact"|"prefix":[words],"decision":
+  "allow|ask|deny"}], "ssh_auth_sock"}`. Exact `Host` aliases of `~/.ssh/config` are listed too. Default is ask; deny beats
+  allow; an allow never applies to a command with shell metacharacters. A file that does not parse means nothing is allowed.
+- **Agent flow**: verb `terminal.propose {thread_ref, machine_id, command, reason}` (preset `terminal-propose`, which also grants
+  `terminal.machines` and `terminal.run.get`). A message `kind=run` `{run_id}` is added to the stream at once. Policy `allow`
+  starts the run with `approval.mode=policy`; `deny` is refused; otherwise the operator answers with
+  `POST /terminal/proposals/{id}/run|deny|edit`. Edit makes a new proposal (new digest, always asks) and supersedes the old
+  one. `run` re-derives the digest from the stored bytes and refuses with 409 `digest_mismatch`. Proposals expire after 15 minutes.
+- **Exec** is `ssh -tt` with a fixed option template (`StrictHostKeyChecking=yes`, no forwarding, `BatchMode=yes`), so output is
+  the merged pty stream. Limits: 10 minutes, 4 live runs, 1 MiB live ring, 64 KiB stored tail. Output is ANSI-stripped and
+  redacted per line before events, storage and the agent. Stop is SIGTERM then SIGKILL after 5 s to the local ssh; it does not
+  promise the remote command died.
+- **Interactive**: `POST /terminal/sessions` then the websocket at `ws_path` (same origin). First frame should be the resize
+  text frame; ssh starts at that size. Binary frames are pty bytes. 4 sessions, 30 minute idle. Only byte counts are stored.
+- **Not built** (deferred by the owner): the `stale` read-only state on elevation lapse, an approvals-queue card per proposal
+  (`item_id` is always null; the run block is the approval surface), `kind=machine` objects in the picker, ControlMaster.
+

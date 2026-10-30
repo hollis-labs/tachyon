@@ -19,6 +19,7 @@ const AgentMCPPath = "/api/agent/v1/mcp"
 // retain a revoked credential or borrow another caller's tool set.
 func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) http.Handler {
 	svc, cardSvc, torque, tess, chat, topics, plan, activity := agentServices(services)
+	terminal := terminalServices(services)
 	guard, err := auth.New(auth.Config{Mode: auth.ModeEnforce, Verifier: verifier, OpenPath: func(string) bool { return false }})
 	if err != nil {
 		panic(err)
@@ -28,7 +29,7 @@ func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) ht
 		if !ok || !principal.Verified {
 			return nil
 		}
-		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity}
+		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal}
 		server := mcpserver.NewServer("tachyon-planner", "1.0.0")
 		for _, v := range p.Verbs() {
 			server.RegisterTool(mcpserver.Tool{

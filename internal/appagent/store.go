@@ -54,7 +54,7 @@ type Message struct {
 	Error       string `json:"error,omitempty"`
 	RuntimeTurn string `json:"runtime_turn,omitempty"`
 	Tools       []Tool `json:"tools"`
-	// Kind is text, card, plan or system; Meta is the kind's reference (a card item id, a plan id).
+	// Kind is text, card, plan, system or run; Meta is the kind's reference (a card item id, a plan id).
 	Kind      string         `json:"kind"`
 	Meta      map[string]any `json:"meta,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
@@ -337,7 +337,7 @@ func (s *Store) MessageSeq(ctx context.Context, threadID, messageID string) (int
 // AppendNote adds a finished agent-side message of a non-text kind (a plan card, say) to the
 // thread, in sequence. It is not a turn: no runtime is involved and the thread stays free.
 func (s *Store) AppendNote(ctx context.Context, threadID, kind, body string, meta map[string]any, now time.Time) (Message, error) {
-	if kind != "card" && kind != "plan" && kind != "system" {
+	if kind != "card" && kind != "plan" && kind != "system" && kind != "run" {
 		return Message{}, ErrInvalid
 	}
 	raw, err := json.Marshal(meta)

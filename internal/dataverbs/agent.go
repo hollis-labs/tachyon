@@ -22,6 +22,7 @@ const AgentPrefix = "/api/agent/v1/data"
 // and claimed actor headers cannot establish a service principal here.
 func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) http.Handler {
 	svc, cardSvc, torque, tess, chat, topics, plan, activity := agentServices(services)
+	terminal := terminalServices(services)
 	guard, err := auth.New(auth.Config{Mode: auth.ModeEnforce, Verifier: verifier, OpenPath: func(string) bool { return false }})
 	if err != nil {
 		panic(err)
@@ -34,7 +35,7 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) h
 				writeError(w, denied())
 				return
 			}
-			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity}
+			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal}
 			// Authentication has already verified this request. scopedLocal checks
 			// the verb/kinds and supplies the principal actor for every invocation.
 			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r)
@@ -53,6 +54,7 @@ type scopedLocal struct {
 	topics    *ChatTopics
 	plan      *ChatPlan
 	activity  *ChatActivity
+	terminal  *ChatTerminal
 }
 
 // agentServices picks the optional host services out of the constructor's
@@ -146,6 +148,13 @@ func (p *scopedLocal) Verbs() []Verb {
 			}
 		}
 	}
+	if p.terminal != nil {
+		for _, v := range terminalVerbs() {
+			if agentaccess.Allows(p.principal, "verb", v.Name) {
+				out = append(out, v)
+			}
+		}
+	}
 	if p.cards != nil {
 		for _, v := range cardVerbs() {
 			if agentaccess.Allows(p.principal, "verb", v.Name) {
@@ -183,6 +192,9 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 	}
 	if agentaccess.ChatPlanVerb(name) {
 		return invokeChatPlan(ctx, p.plan, name, raw, p.principal)
+	}
+	if agentaccess.TerminalVerb(name) {
+		return invokeTerminal(ctx, p.terminal, name, raw, p.principal)
 	}
 	if agentaccess.ChatTopicVerb(name) {
 		return invokeChatTopic(ctx, p.topics, name, raw, p.principal)

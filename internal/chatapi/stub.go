@@ -68,7 +68,11 @@ var terminalRoutes = []route{
 	{"POST /proposals/{id}/run", 200, "run"},
 	{"POST /proposals/{id}/deny", 200, "ok"},
 	{"POST /proposals/{id}/edit", 201, "proposal"},
+	{"GET /runs", 200, "runs"},
 	{"GET /runs/{run_id}", 200, "run"},
+	{"GET /runs/{run_id}/output", 200, "run_output"},
+	{"POST /runs/{run_id}/stop", 202, "run"},
+	{"PATCH /runs/{run_id}", 200, "run"},
 }
 
 // WorkspaceContentPath is the one chat GET that needs operator assurance on
