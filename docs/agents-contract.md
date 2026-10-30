@@ -31,3 +31,12 @@ with `scripts/agents-sse-replay [-l ID] [-1]`.
 
 Stub limits: nothing is stored; control state comes from fixtures; filters are minimal (`state`, `q`,
 bus `type`).
+
+## Assignment join (A5)
+
+`Session.assignment` is real for sessions Tether launched with a task (`agents_sessions.task_ref`). `internal/agentsassign` finds the
+Planner theme that holds the task (direct `tasks` plus its workstreams' Torque roll-up), then returns `index` (1-based, task ids sorted)
+of `count` (tasks not cancelled, abandoned or archived) and `stats.done`. `time_on_task_ms` runs from the first session that worked the
+task (to now while any is live, else the last end); `events` counts the collector's derived events for those sessions. Cached 60 s per
+session. It is `null` when the session has no task, no theme holds it, the task is cancelled or unknown to Torque, or the Planner or
+Torque cannot be read. It needs `TORQUE_URL`; reads only.

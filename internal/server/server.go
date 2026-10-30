@@ -728,7 +728,7 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle("GET "+agentscollector.Path, operator.RequireOperator(s.agentsCollector.Handler()))
 		mux.Handle("GET "+agentscollector.BusPath, operator.RequireOperator(s.agentsCollector.BusHandler()))
 		// Sessions, timeline, series, tokens, history, stream and settings. Controls (nudge, restart) are not here.
-		(&agentsserve.Server{DB: s.store, Collector: s.agentsCollector}).Mount(mux, operator.RequireOperator)
+		(&agentsserve.Server{DB: s.store, Collector: s.agentsCollector, Assigner: s.agentsAssigner()}).Mount(mux, operator.RequireOperator)
 	}
 	s.mountAccount(mux, operator)
 	if s.cfg.AgentsStubs {
