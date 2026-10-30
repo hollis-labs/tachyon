@@ -150,7 +150,3 @@ export function changingText(labels: (string | undefined)[]): string {
   return `Changing ${labels.length} field${labels.length === 1 ? '' : 's'}: ${labels.join(', ')}`
 }
 
-/** Discard asks only when something would be lost. */
-export function confirmDiscard(n: number): boolean {
-  return n === 0 || window.confirm(`Discard ${n} change${n === 1 ? '' : 's'}?`)
-}
