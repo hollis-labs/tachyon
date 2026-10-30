@@ -5,17 +5,17 @@ import { Btn } from '../../agents/ui'
 import type { ForgeComment, ForgeUser, ReviewComment } from '../types'
 import type { Thread } from './diff-utils'
 
-export const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-zinc-500'
+export const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-fg-faint'
 
-export function Badge({ children, tone = 'border-zinc-700 text-zinc-400' }: { children: ReactNode; tone?: string }) {
+export function Badge({ children, tone = 'border-border text-fg-muted' }: { children: ReactNode; tone?: string }) {
   return <span className={`inline-flex shrink-0 items-center border px-1.5 py-px font-mono text-[10px] uppercase tracking-wider ${tone}`}>{children}</span>
 }
 
 export function Author({ user }: { user: ForgeUser }) {
   return (
-    <span className="font-mono text-[12px] text-zinc-200">
+    <span className="font-mono text-[12px] text-fg">
       @{user.login}
-      {user.isAgent && <span className="ml-1 text-zinc-500">· agent</span>}
+      {user.isAgent && <span className="ml-1 text-fg-faint">· agent</span>}
     </span>
   )
 }
@@ -26,15 +26,15 @@ export function CommentItem({ c, posting, onReply }: { c: ForgeComment; posting?
     <article className={`px-3 py-2 ${posting ? 'opacity-60' : ''}`} data-testid="forge-comment" aria-busy={posting || undefined}>
       <header className="flex flex-wrap items-center gap-2">
         <Author user={c.author} />
-        <span className="font-mono text-[10px] text-zinc-500">{posting ? 'posting…' : ago(Date.parse(c.createdAt), now)}</span>
+        <span className="font-mono text-[10px] text-fg-faint">{posting ? 'posting…' : ago(Date.parse(c.createdAt), now)}</span>
         {onReply && !posting && (
-          <button type="button" onClick={onReply} className="ml-auto font-mono text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">
+          <button type="button" onClick={onReply} className="ml-auto font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
             Reply
           </button>
         )}
       </header>
       {/* Body is untrusted forge text: rendered as text only, with ref chips. */}
-      <div className="mt-1 text-[13px] leading-relaxed text-zinc-300 [overflow-wrap:anywhere]">
+      <div className="mt-1 text-[13px] leading-relaxed text-fg [overflow-wrap:anywhere]">
         <Linkified text={c.body} preserveWhitespace />
       </div>
     </article>
@@ -81,11 +81,11 @@ export function Composer({ placeholder, submitLabel, secondary, onSubmit, onCanc
         placeholder={placeholder}
         aria-label={placeholder}
         disabled={busy || disabled}
-        className="w-full resize-y border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-sans text-[13px] text-zinc-100 placeholder:text-zinc-500 focus-visible:border-amber-300 focus-visible:outline-none disabled:opacity-60"
+        className="w-full resize-y border border-border bg-bg px-2 py-1.5 font-sans text-[13px] text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none disabled:opacity-60"
       />
-      {error && <p className="text-[12px] text-red-300" role="alert">{error}. Your draft is kept; try again.</p>}
+      {error && <p className="text-[12px] text-danger" role="alert">{error}. Your draft is kept; try again.</p>}
       <div className="flex items-center gap-2">
-        <span className="mr-auto font-mono text-[10px] text-zinc-500">Ctrl+Enter to post</span>
+        <span className="mr-auto font-mono text-[10px] text-fg-faint">Ctrl+Enter to post</span>
         {onCancel && <Btn onClick={onCancel} disabled={busy}>Cancel</Btn>}
         {secondary && <Btn onClick={() => { if (!empty) { secondary.run(body); setBody('') } }} disabled={empty || busy || disabled}>{secondary.label}</Btn>}
         <Btn tone="primary" onClick={() => void submit()} disabled={empty || busy || disabled}>{busy ? 'Posting…' : submitLabel}</Btn>
@@ -108,29 +108,29 @@ export function ThreadView({ thread, posting, readOnly, onReply, showPath }: Thr
   const mine = posting.filter((p): p is ReviewComment => p.kind === 'review' && p.inReplyTo === thread.id)
   const loc = thread.root.line != null ? `${showPath ? `${thread.path}:` : 'line '}${thread.root.line}${thread.root.side === 'left' ? ' (old)' : ''}` : thread.path
   return (
-    <section className="border-y border-zinc-700/80 bg-zinc-900/70" data-testid="forge-thread" aria-label={`Comment thread on ${loc}`}>
+    <section className="border-y border-border bg-surface" data-testid="forge-thread" aria-label={`Comment thread on ${loc}`}>
       <header className="flex flex-wrap items-center gap-2 px-3 py-1.5">
-        <span className="font-mono text-[10px] text-zinc-500">{loc}</span>
-        {thread.outdated && <Badge tone="border-amber-500/50 text-amber-300">Outdated</Badge>}
-        {thread.resolved && <Badge tone="border-emerald-500/50 text-emerald-300">Resolved</Badge>}
+        <span className="font-mono text-[10px] text-fg-faint">{loc}</span>
+        {thread.outdated && <Badge tone="border-border text-fg-muted">Outdated</Badge>}
+        {thread.resolved && <Badge tone="border-border text-success">Resolved</Badge>}
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="ml-auto font-mono text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300"
+          className="ml-auto font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {open ? 'Collapse' : `Show ${thread.replies.length + 1}`}
         </button>
       </header>
       {open && (
         <>
-          <div className="divide-y divide-zinc-800/60">
+          <div className="divide-y divide-border">
             <CommentItem c={thread.root} />
             {thread.replies.map((r) => <CommentItem key={r.id} c={r} />)}
             {mine.map((p) => <CommentItem key={p.id} c={p} posting />)}
           </div>
           {!readOnly && (
-            <div className="border-t border-zinc-800/60 px-3 py-2">
+            <div className="border-t border-border px-3 py-2">
               {replying ? (
                 <Composer
                   autoFocus
@@ -144,7 +144,7 @@ export function ThreadView({ thread, posting, readOnly, onReply, showPath }: Thr
                   }}
                 />
               ) : (
-                <button type="button" onClick={() => setReplying(true)} className="font-mono text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">
+                <button type="button" onClick={() => setReplying(true)} className="font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                   Reply
                 </button>
               )}
