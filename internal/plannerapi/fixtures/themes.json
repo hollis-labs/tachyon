@@ -1,14 +1,14 @@
 {"items":[
-{"id":"theme-agents-console","db":"themes","title":"Agents console","status":"in_progress","rev":14,"area":"agents","horizon":"now","pinned":true,"pinned_at":"2026-10-29T09:00:00Z","order":1,
+{"id":"theme-agents-console","db":"themes","title":"Agents console","status":"in_progress","rev":14,"area":"harness","horizon":"now","pinned":true,"pinned_at":"2026-10-29T09:00:00Z","order":1,
  "assignees":[{"assignment_id":"asg-0001","agent_id":"tachyon_pm","team_id":null,"label":"Tachyon PM","state":"active","since":"2026-10-28T10:00:00Z","primary":true}],
  "need_you":{"reasons":["review","decide"],"since":"2026-10-30T02:10:00Z"},"relations_count":4,
  "momentum":{"label":"rising","score":0.72,"text":"Rising: 3 done and 1 PR merged in 24h, 1 blocker weighs against."},
  "progress":{"done":6,"total":11}},
-{"id":"theme-forge-gui","db":"themes","title":"Forge GUI","status":"in_progress","rev":9,"area":"forge","horizon":"now","pinned":false,"order":2,"assignees":[],
+{"id":"theme-forge-gui","db":"themes","title":"Forge GUI","status":"in_progress","rev":9,"area":"gui","horizon":"now","pinned":false,"order":2,"assignees":[],
  "need_you":{"reasons":[],"since":null},"relations_count":2,"momentum":{"label":"steady","score":0.41,"text":"Steady: 1 done and 2 comments in 24h."},"progress":{"done":4,"total":9}},
-{"id":"theme-transcripts","db":"themes","title":"Transcripts","status":"in_progress","rev":6,"area":"chat","horizon":"next","pinned":false,"order":3,"assignees":[],
+{"id":"theme-transcripts","db":"themes","title":"Transcripts","status":"in_progress","rev":6,"area":"gui","horizon":"next","pinned":false,"order":3,"assignees":[],
  "need_you":{"reasons":["stale"],"since":"2026-10-22T08:00:00Z"},"relations_count":1,"momentum":{"label":"cooling","score":0.18,"text":"Cooling: no task moved in 6 days, last activity 6d ago."},"progress":{"done":2,"total":8}},
-{"id":"theme-settings-center","db":"themes","title":"Settings center","status":"blocked","rev":5,"area":"settings","horizon":"later","pinned":false,"order":4,
+{"id":"theme-settings-center","db":"themes","title":"Settings center","status":"blocked","rev":5,"area":"gui","horizon":"later","pinned":false,"order":4,
  "assignees":[{"assignment_id":"asg-0002","agent_id":null,"team_id":"team-settings","label":"Settings team","state":"active","since":"2026-10-20T10:00:00Z","primary":true}],
  "need_you":{"reasons":["blocked"],"since":"2026-10-27T12:00:00Z"},"relations_count":3,"momentum":{"label":"stalled","score":0.02,"text":"Stalled: nothing finished in 14 days, 2 blockers."},"progress":{"done":0,"total":5}}
 ],"next_cursor":null,"filters":{"pinned":"bool","assigned_to":"agent_id","need_you":"review|decide|blocked|stale|any","area":"enum","horizon":"enum"}}

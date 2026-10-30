@@ -217,6 +217,10 @@ export class HttpForgeClient implements ForgeClient {
   }
 
   async listPendingPrs(): Promise<PendingPrSummary[]> {
-    return listOf<unknown>(await this.request('GET', '/pulls/pending')).map(normalizePending)
+    const raw = await this.request('GET', '/pulls/pending')
+    const items = listOf<unknown>(raw).map(normalizePending)
+    // The host answers 200 with an empty, degraded list when it cannot read GitHub. That is not "all clear".
+    if (items.length === 0 && isObj(raw) && raw.degraded === true) throw new ForgeError('unavailable', 'GitHub data is unavailable right now, so pending pull requests cannot be listed.')
+    return items
   }
 }
