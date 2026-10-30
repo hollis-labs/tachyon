@@ -58,7 +58,8 @@ func DigestOf(kind string, extra map[string]json.RawMessage) (string, error) {
 		AffectedItems json.RawMessage `json:"affected_items,omitempty"`
 		Destructive   json.RawMessage `json:"destructive,omitempty"`
 		Alternatives  json.RawMessage `json:"alternatives,omitempty"`
-	}{kind, extra["data"], effects, opt("affected_items"), opt("destructive"), opt("alternatives")})
+		Evidence      json.RawMessage `json:"evidence,omitempty"`
+	}{kind, extra["data"], effects, opt("affected_items"), opt("destructive"), opt("alternatives"), opt("evidence")})
 	if err != nil {
 		return "", err
 	}
@@ -168,5 +169,44 @@ func normalizeDestructive(req *hitl.EnqueueRequest) error {
 		asked.Summary = "This permanently changes or removes data."
 	}
 	req.Extra["destructive"], _ = json.Marshal(map[string]any{"irreversible": asked.Irreversible || raised, "summary": clip(asked.Summary, maxSummaryText)})
+	return nil
+}
+
+// MaxEvidence bounds the evidence refs on one request.
+const MaxEvidence = 16
+
+var evidenceKinds = map[string]bool{"path": true, "caster": true, "torque": true, "tesseract": true, "url": true, "chat": true}
+
+// normalizeEvidence validates evidence [{ref,label,kind,note?}] (0..16) and rewrites it to the cleaned form
+// that is stored and digested. The backend never fetches a ref; the GUI opens it in the ref drawer.
+func normalizeEvidence(req *hitl.EnqueueRequest) error {
+	raw := req.Extra["evidence"]
+	if len(raw) == 0 || string(raw) == "null" {
+		delete(req.Extra, "evidence")
+		return nil
+	}
+	var in []map[string]any
+	if json.Unmarshal(raw, &in) != nil || len(in) > MaxEvidence {
+		return bad("evidence must be a list of at most %d objects", MaxEvidence)
+	}
+	if len(in) == 0 {
+		delete(req.Extra, "evidence")
+		return nil
+	}
+	out := make([]map[string]string, 0, len(in))
+	for _, m := range in {
+		ref, _ := m["ref"].(string)
+		label, _ := m["label"].(string)
+		kind, _ := m["kind"].(string)
+		if strings.TrimSpace(ref) == "" || strings.TrimSpace(label) == "" || !evidenceKinds[kind] {
+			return bad("every evidence entry needs ref, label and a kind of path, caster, torque, tesseract, url or chat")
+		}
+		e := map[string]string{"ref": clip(ref, 480), "label": clip(label, maxShort), "kind": kind}
+		if note, _ := m["note"].(string); strings.TrimSpace(note) != "" {
+			e["note"] = clip(note, maxNote)
+		}
+		out = append(out, e)
+	}
+	req.Extra["evidence"], _ = json.Marshal(out)
 	return nil
 }

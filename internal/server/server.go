@@ -716,6 +716,7 @@ func (s *Server) Routes() http.Handler {
 		}
 		if inbox == s.approvalInbox {
 			inbox.CardReceipt = s.cardReceiptView
+			inbox.RunState = s.itemRunState
 		}
 		if s.actions != nil {
 			mux.Handle(actionrun.Prefix+"/", operator.RequireOperatorReads(&actionrun.Handler{Service: s.actions}))
@@ -1147,4 +1148,44 @@ func transcriptsGuard(p assurance.Provider, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// itemRunState maps an item's action run or card receipt onto the inbox run_state vocabulary. Only the state
+// leaves here, so browser sessions can see it without the command or output.
+func (s *Server) itemRunState(ctx context.Context, itemID string) string {
+	if s.actions != nil {
+		if run, err := s.actions.Store.ByItem(ctx, itemID); err == nil {
+			switch run.State {
+			case actionrun.StatePending:
+				return "waiting"
+			case actionrun.StateWaitingInput, actionrun.StateApproved:
+				return "starting"
+			case actionrun.StateRunning:
+				return "running"
+			case actionrun.StateSucceeded:
+				return "succeeded"
+			case actionrun.StateFailed:
+				return "failed"
+			case actionrun.StateRefused, actionrun.StateDenied:
+				return "refused"
+			case actionrun.StateExpired:
+				return "expired"
+			}
+		}
+	}
+	if s.cardFx != nil {
+		if r, err := s.cardFx.Get(ctx, itemID); err == nil && r != nil {
+			switch r.State {
+			case cardfx.StateRunning:
+				return "running"
+			case cardfx.StateCompleted:
+				return "succeeded"
+			case cardfx.StateFailed:
+				return "failed"
+			case cardfx.StateRefused:
+				return "refused"
+			}
+		}
+	}
+	return ""
 }

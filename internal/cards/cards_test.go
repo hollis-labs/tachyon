@@ -391,3 +391,42 @@ func TestPlanAndDispatchKinds(t *testing.T) {
 		t.Fatalf("plan decisions: %v", ty.Decisions)
 	}
 }
+
+func TestEvidenceIsValidatedAndDigested(t *testing.T) {
+	reg := NewRegistry()
+	prep := func(ev any) (hitl.EnqueueRequest, error) {
+		extra := map[string]any{"title": "Ship", "data": map[string]any{}}
+		if ev != nil {
+			extra["evidence"] = ev
+		}
+		r := req("card.approval", extra)
+		return r, reg.Prepare(&r, "service:x")
+	}
+	one := func(ref string) []map[string]any {
+		return []map[string]any{{"ref": ref, "label": "Diff", "kind": "path", "note": " n "}}
+	}
+	none, err := prep(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := prep(one("/tmp/a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := prep(one("/tmp/b"))
+	if string(a.Extra["op_digest"]) == string(none.Extra["op_digest"]) || string(a.Extra["op_digest"]) == string(b.Extra["op_digest"]) {
+		t.Error("evidence must change the digest")
+	}
+	if empty, err := prep([]map[string]any{}); err != nil || empty.Extra["evidence"] != nil || string(empty.Extra["op_digest"]) != string(none.Extra["op_digest"]) {
+		t.Errorf("empty evidence should vanish: %v", err)
+	}
+	many := make([]map[string]any, MaxEvidence+1)
+	for i := range many {
+		many[i] = map[string]any{"ref": "r", "label": "l", "kind": "url"}
+	}
+	for name, ev := range map[string]any{"too many": many, "bad kind": []map[string]any{{"ref": "r", "label": "l", "kind": "ftp"}}, "no label": []map[string]any{{"ref": "r", "kind": "url"}}, "not a list": "x"} {
+		if _, err := prep(ev); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+}

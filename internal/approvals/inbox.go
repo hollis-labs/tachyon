@@ -36,6 +36,9 @@ type Inbox struct {
 	// (nil result means none yet). It holds ids and outcomes, no free text from
 	// the asker, so any browser session that can read the item may see it.
 	CardReceipt func(ctx context.Context, itemID string) any
+	// RunState, when set, says how the approved work is going (the state only; command and output stay
+	// operator-token). Empty means none.
+	RunState func(ctx context.Context, itemID string) string
 	// Assurance is the one place session strength is asked. NewInbox wires the
 	// Tangent bridge; tests and later providers replace it.
 	Assurance assurance.Provider
@@ -177,6 +180,11 @@ func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, er
 	}
 	now := time.Now()
 	proj := Project(rec, now, i.Store.DeferredUntil(r.Context(), id, now))
+	if i.RunState != nil {
+		if rs := i.RunState(r.Context(), id); rs != "" {
+			proj.RunState = rs
+		}
+	}
 	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision, Projection: &proj}
 	if i.ActionRun != nil && operator {
 		out.ActionRun = i.ActionRun(r.Context(), id)

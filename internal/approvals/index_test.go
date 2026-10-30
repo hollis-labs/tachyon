@@ -128,8 +128,8 @@ func TestProjectionGroupsRiskAndBatchEligibility(t *testing.T) {
 	if by[ok]["destructive"] != nil || by[ok]["affected_total"] != float64(0) {
 		t.Error("an ordinary item is not destructive and affects nothing")
 	}
-	if _, has := by[ok]["evidence"]; has {
-		t.Error("fields of later slices must be absent, not faked")
+	if ev, _ := by[ok]["evidence"].([]any); ev == nil || len(ev) != 0 || by[ok]["run_state"] != "none" {
+		t.Errorf("an item without evidence lists none and has no run: %v %v", by[ok]["evidence"], by[ok]["run_state"])
 	}
 }
 
