@@ -243,6 +243,9 @@ func (s *Server) Start(ctx context.Context) error {
 		}()
 	}
 
+	// Backfill the queue index, then materialize expired items every 30 s so History fills without a reader.
+	go s.approvalInbox.Maintain(approvalContext, 30*time.Second, slog.Default().Info)
+
 	if s.cfg.AppAgentConfigFile != "" {
 		// The adapter re-reads this file on every call, so reinstalling the agent
 		// (a new definition revision gets a new host row) needs no restart.
