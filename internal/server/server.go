@@ -32,6 +32,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/builderapi"
 	"github.com/hollis-labs/tachyon/internal/carddelivery"
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
@@ -66,6 +67,8 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// BuilderStubs mounts the fixture-backed Builder and Registry contract (TACHYON_BUILDER_STUBS=1) for GUI development.
+	BuilderStubs bool
 	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
 	AgentsStubs bool
 	// AgentsCollector runs the always-on Agents collector (TACHYON_AGENTS_COLLECTOR=0 turns it off for debugging).
@@ -663,6 +666,14 @@ func (s *Server) Routes() http.Handler {
 		}
 		mux.Handle(chatapi.Prefix+"/", operator.RequireOperator(stub.Chat()))
 		mux.Handle(chatapi.TerminalPrefix+"/", operator.RequireOperatorReads(stub.Terminal()))
+	}
+	// Builder + Registry contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below
+	// is unguarded. GETs are open; every write (changes, launch action, registry project patch) needs an operator session.
+	if s.cfg.BuilderStubs {
+		stub := operator.RequireOperator(builderapi.Stub{}.Handler())
+		mux.Handle(builderapi.Prefix+"/", stub)
+		mux.Handle(builderapi.RegistryPrefix+"/projects", stub)
+		mux.Handle(builderapi.RegistryPrefix+"/projects/", stub)
 	}
 	// Agents contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
 	// unguarded. GETs are open; every write (nudge, restart, skip, settings) needs an operator session.

@@ -1,0 +1,98 @@
+[
+  {
+    "id": null,
+    "type": "summary",
+    "data": {
+      "agents": {
+        "total": 6,
+        "active": 4,
+        "disabled": 1,
+        "retired": 1
+      },
+      "launches": {
+        "total": 4,
+        "live": 2
+      },
+      "library": {
+        "prompts": 2,
+        "skills": 3,
+        "tool_servers": 3,
+        "policies": 2
+      },
+      "projects": {
+        "total": 3
+      },
+      "open_changes": 3
+    }
+  },
+  {
+    "id": 201,
+    "type": "catalog",
+    "data": {
+      "observed_at": 1793320100000,
+      "changed_paths": [
+        "agents/release-captain.yaml"
+      ],
+      "source": "observed"
+    }
+  },
+  {
+    "id": 202,
+    "type": "change",
+    "data": {
+      "change_id": "chg_awaiting",
+      "state": "awaiting_approval"
+    }
+  },
+  {
+    "id": 203,
+    "type": "change",
+    "data": {
+      "change_id": "chg_awaiting",
+      "state": "approved"
+    }
+  },
+  {
+    "id": 204,
+    "type": "change",
+    "data": {
+      "change_id": "chg_awaiting",
+      "state": "applying"
+    }
+  },
+  {
+    "id": 205,
+    "type": "change",
+    "data": {
+      "change_id": "chg_awaiting",
+      "state": "applied"
+    }
+  },
+  {
+    "id": 206,
+    "type": "catalog",
+    "data": {
+      "observed_at": 1793320200000,
+      "changed_paths": [
+        "agents/builder-reviewer.yaml"
+      ],
+      "source": "builder"
+    }
+  },
+  {
+    "id": 207,
+    "type": "change",
+    "data": {
+      "change_id": "chg_stale",
+      "state": "stale"
+    }
+  },
+  {
+    "id": 208,
+    "type": "change",
+    "data": {
+      "change_id": "chg_expired",
+      "state": "expired"
+    }
+  }
+]

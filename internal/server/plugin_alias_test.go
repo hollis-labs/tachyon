@@ -257,3 +257,45 @@ func TestAgentsSessionRoutesAreRealAndWritesRequireOperator(t *testing.T) {
 		t.Errorf("nudge without an operator session: %d", w.Code)
 	}
 }
+
+func TestBuilderStubRoutesRequireOperator(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"elevated":false}`))
+	}))
+	defer upstream.Close()
+	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, BuilderStubs: true}).Routes()
+	off := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL}).Routes()
+	const b, r0 = "/api/plugins/console/v1/builder", "/api/plugins/console/v1/registry"
+	cases := []struct{ method, path string }{
+		{"POST", b + "/changes"},
+		{"POST", b + "/changes/chg_draft/submit"},
+		{"POST", b + "/changes/chg_draft/cancel"},
+		{"POST", b + "/changes/chg_expired/rearm"},
+		{"POST", b + "/launches/builder-reviewer-tachyon/launch"},
+		{"PATCH", r0 + "/projects/tachyon"},
+		{"PUT", r0 + "/projects/tachyon"},
+		{"DELETE", r0 + "/projects/tachyon"},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`))
+		req.Header.Set("Origin", "https://tachyon.test")
+		w := httptest.NewRecorder()
+		on.ServeHTTP(w, req)
+		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Builder-Stub") != "" {
+			t.Errorf("%s %s with stubs on and no operator session: %d", c.method, c.path, w.Code)
+		}
+		w = httptest.NewRecorder()
+		off.ServeHTTP(w, httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`)))
+		if w.Header().Get("X-Tachyon-Builder-Stub") != "" {
+			t.Errorf("%s %s served a stub with the flag off", c.method, c.path)
+		}
+	}
+	for _, p := range []string{b + "/summary", b + "/agents", r0 + "/projects", r0 + "/projects/tachyon"} {
+		w := httptest.NewRecorder()
+		on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+p, nil))
+		if w.Code != 200 || w.Header().Get("X-Tachyon-Builder-Stub") != "1" {
+			t.Errorf("GET %s: %d", p, w.Code)
+		}
+	}
+}
