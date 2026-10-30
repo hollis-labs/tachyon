@@ -51,6 +51,60 @@ const INPUT = 'w-full border border-border bg-bg px-2 py-1 dash-body text-fg'
 const BTN = 'border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover disabled:opacity-50'
 const GRID = 'grid gap-1 border-b border-border-subtle py-2 md:grid-cols-[10rem_1fr] md:gap-3'
 
+const POLICY_LEAD = new Set(['permission_mode', 'network', 'default_sandbox', 'mcp_scopes', 'scope_count', 'privileged', 'bundle', 'referencing_agents'])
+const WORD = (v: unknown) => (typeof v === 'string' && v ? v : NOT_REPORTED)
+
+/** A policy is a bundle of settings an agent takes on, then the agents it applies to. */
+function PolicyLead({ it }: { it: LibraryItem }) {
+  const bundle = isObj(it.bundle) ? it.bundle : {}
+  const val = (k: string) => (k in bundle ? bundle[k] : it[k])
+  const scopes = Array.isArray(val('mcp_scopes')) ? (val('mcp_scopes') as unknown[]).map(String) : null
+  const agents = Array.isArray(it.referencing_agents) ? (it.referencing_agents as { id: string }[]) : null
+  return (
+    <>
+      <section aria-label="Settings" className="space-y-1">
+        <h3 className="dash-label font-medium text-fg-muted">Settings</h3>
+        <dl>
+          {(
+            [
+              ['Permission mode', WORD(val('permission_mode'))],
+              ['Network', WORD(val('network'))],
+              ['Sandbox', WORD(val('default_sandbox'))],
+              ['Scopes', scopes === null ? (typeof it.scope_count === 'number' ? `${it.scope_count} scopes` : NOT_REPORTED) : scopes.length ? scopes.join(', ') : 'none'],
+            ] as const
+          ).map(([k, v]) => (
+            <div key={k} className={GRID}>
+              <dt className="dash-support text-fg-muted">{k}</dt>
+              <dd className="dash-body text-fg [overflow-wrap:anywhere]">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        {it.privileged === true && <p className="dash-support text-fg-secondary">Includes privileged settings. Changing them needs a confirmation in the Review step.</p>}
+      </section>
+      <section aria-label="Applies to" className="space-y-1">
+        <h3 className="dash-label font-medium text-fg-muted">Applies to</h3>
+        {agents ? (
+          agents.length ? (
+            <ul className="dash-body text-fg">
+              {agents.map((a) => (
+                <li key={a.id}>
+                  <Link className="underline" to={`/builder/agents/${encodeURIComponent(a.id)}`}>
+                    {a.id}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="dash-body text-fg-faint">No agents use this policy.</p>
+          )
+        ) : (
+          <p className="dash-body text-fg">{it.used_by_count ?? NOT_REPORTED} agents</p>
+        )}
+      </section>
+    </>
+  )
+}
+
 function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   const [load, retry] = useLoad(() => builderApi.libraryItem(kind, id), [kind, id])
   const [editing, setEditing] = useState(false)
@@ -113,9 +167,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
       {!canEdit && (kind === 'skills' || kind === 'tool_servers') && <p className="dash-support text-fg-muted">Read-only: managed in files.</p>}
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border border-border bg-surface px-3 py-2 dash-support text-fg-secondary">
-          <span className="mr-auto">
-            {changingText(dirty.map((d) => fields.find((f) => f.path === d)?.label))}
-          </span>
+          <span className="mr-auto">{changingText(dirty.map((d) => fields.find((f) => f.path === d)?.label))}</span>
           {error && (
             <span role="alert" className="text-danger">
               {error}
@@ -194,13 +246,17 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
               )}
             </section>
           )}
+          {kind === 'policies' && <PolicyLead it={it} />}
+          {kind === 'policies' && <h3 className="dash-label font-medium text-fg-muted">Details</h3>}
           <dl>
-            <div className={GRID}>
-              <dt className="dash-support text-fg-muted">Used by</dt>
-              <dd className="dash-body text-fg">{it.used_by_count ?? NOT_REPORTED}</dd>
-            </div>
+            {kind !== 'policies' && (
+              <div className={GRID}>
+                <dt className="dash-support text-fg-muted">Used by</dt>
+                <dd className="dash-body text-fg">{it.used_by_count ?? NOT_REPORTED}</dd>
+              </div>
+            )}
             {Object.entries(it)
-              .filter(([k]) => !SKIP_NOW.has(k))
+              .filter(([k]) => !SKIP_NOW.has(k) && !(kind === 'policies' && POLICY_LEAD.has(k)))
               .map(([k, v]) => (
                 <div key={k} className={GRID}>
                   <dt className="dash-support text-fg-muted">{label(k)}</dt>
