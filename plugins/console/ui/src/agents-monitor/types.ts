@@ -24,6 +24,7 @@ export interface Session {
   context: ContextData
   tokens: TokensData
   tool_call_count: number | null
+  last_clear_at: { at: number; inferred?: boolean } | null
   pending: { approval: boolean; question: boolean; known: boolean }
   assignment: { theme_ref?: string; task_ref?: string; index?: number; count?: number } | null
   spark: number[]

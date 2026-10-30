@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Replay the Approvals event stream, with resume. Works against the stub (TACHYON_APPROVALS_STUBS=1)
+# and, later, the real route.
+#   scripts/approvals-sse-replay [-b BASE] [-l LAST_EVENT_ID] [-1]
+#     -b base URL       (default http://127.0.0.1:8080)
+#     -l Last-Event-ID  resume after this id
+#     -1                stop after the replay (stub: ?once=1)
+set -euo pipefail
+base=http://127.0.0.1:8080 last="" once=""
+while getopts b:l:1 o; do case $o in b) base=$OPTARG;; l) last=$OPTARG;; 1) once="?once=1";; *) exit 2;; esac; done
+args=(-sS -N -H 'Accept: text/event-stream')
+[ -n "$last" ] && args+=(-H "Last-Event-ID: $last")
+[ -n "${TACHYON_COOKIE:-}" ] && args+=(-H "Cookie: $TACHYON_COOKIE")
+exec curl "${args[@]}" "$base/api/plugins/console/v1/approval-inbox/events$once"

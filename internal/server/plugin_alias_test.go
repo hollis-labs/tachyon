@@ -10,6 +10,7 @@ import (
 
 	"github.com/hollis-labs/tachyon/internal/agentscollector"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/fileviewapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
@@ -258,73 +259,87 @@ func TestAgentsSessionRoutesAreRealAndWritesRequireOperator(t *testing.T) {
 	}
 }
 
-func TestForgeStubRoutesRequireOperator(t *testing.T) {
+func TestBuilderStubRoutesRequireOperator(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(403)
 		w.Write([]byte(`{"elevated":false}`))
 	}))
 	defer upstream.Close()
-	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, ForgeStubs: true}).Routes()
+	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, BuilderStubs: true}).Routes()
 	off := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL}).Routes()
-	f := "/api/plugins/console/v1/forge"
+	const b, r0 = "/api/plugins/console/v1/builder", "/api/plugins/console/v1/registry"
 	cases := []struct{ method, path string }{
-		{"PUT", f + "/repos/github/hollis-labs/tachyon/pulls/202/merge"},
-		{"POST", f + "/repos/github/hollis-labs/tachyon/pulls/202/reviews"},
-		{"POST", f + "/repos/github/hollis-labs/tachyon/pulls/202/assign-agent"},
-		{"PUT", "/api/plugins/console/v1/console/state/pr-inbox:github:hollis-labs%2Ftachyon%23201"},
-		{"POST", "/api/plugins/console/v1/console/state/bulk"},
+		{"POST", b + "/changes"},
+		{"POST", b + "/changes/chg_draft/submit"},
+		{"POST", b + "/changes/chg_draft/cancel"},
+		{"POST", b + "/changes/chg_expired/rearm"},
+		{"POST", b + "/launches/builder-reviewer-tachyon/launch"},
+		{"PATCH", r0 + "/projects/tachyon"},
+		{"PUT", r0 + "/projects/tachyon"},
+		{"DELETE", r0 + "/projects/tachyon"},
 	}
 	for _, c := range cases {
-		r := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`))
-		r.Header.Set("Origin", "https://tachyon.test")
+		req := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`))
+		req.Header.Set("Origin", "https://tachyon.test")
 		w := httptest.NewRecorder()
-		on.ServeHTTP(w, r)
-		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Forge-Stub") != "" {
+		on.ServeHTTP(w, req)
+		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Builder-Stub") != "" {
 			t.Errorf("%s %s with stubs on and no operator session: %d", c.method, c.path, w.Code)
 		}
 		w = httptest.NewRecorder()
 		off.ServeHTTP(w, httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`)))
-		if w.Header().Get("X-Tachyon-Forge-Stub") != "" {
+		if w.Header().Get("X-Tachyon-Builder-Stub") != "" {
 			t.Errorf("%s %s served a stub with the flag off", c.method, c.path)
 		}
 	}
-	w := httptest.NewRecorder()
-	on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+f+"/pulls/pending", nil))
-	if w.Code != 200 || w.Header().Get("X-Tachyon-Forge-Stub") != "1" {
-		t.Errorf("stub list: %d", w.Code)
+	for _, p := range []string{b + "/summary", b + "/agents", r0 + "/projects", r0 + "/projects/tachyon"} {
+		w := httptest.NewRecorder()
+		on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+p, nil))
+		if w.Code != 200 || w.Header().Get("X-Tachyon-Builder-Stub") != "1" {
+			t.Errorf("GET %s: %d", p, w.Code)
+		}
 	}
 }
 
-func TestConsoleStateRoutes(t *testing.T) {
+func TestFileviewStubRoutesRequireOperatorExceptFrames(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(403)
 		w.Write([]byte(`{"elevated":false}`))
 	}))
 	defer upstream.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	s := New(Config{PluginBinDir: t.TempDir(), DataDir: t.TempDir(), CacheDir: t.TempDir(), ApprovalQueueURL: upstream.URL, TranscriptMaxSessions: 5000})
-	if err := s.Start(ctx); err != nil {
-		t.Fatal(err)
+	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, FileviewStubs: true}).Routes()
+	off := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL}).Routes()
+	const f = "/api/plugins/console/v1/files"
+	// Reads are guarded too: file contents and the audit log are sensitive.
+	cases := []struct{ method, path string }{
+		{"POST", f + "/stat"}, {"GET", f + "/content?path=/home/operator/dev/README.md"}, {"POST", f + "/frame"},
+		{"GET", f + "/resolve?ref=caster://designer/x"}, {"GET", f + "/roots"}, {"GET", f + "/settings"},
+		{"PUT", f + "/settings"}, {"GET", f + "/audit"}, {"DELETE", f + "/content"},
 	}
-	defer func() { cancel(); _ = s.Stop(context.Background()) }()
-	h := s.Routes()
-	base := "https://tachyon.test/api/plugins/console/v1/console/state"
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("GET", base+"?prefix=pr-inbox:", nil))
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"data":[]`) {
-		t.Errorf("open read: %d %s", w.Code, w.Body)
-	}
-	for _, c := range []struct{ method, path string }{
-		{"PUT", base + "/pr-inbox:github:hollis-labs%2Ftachyon%23201"},
-		{"PUT", base + "/pr-inbox:a"},
-		{"POST", base + "/bulk"},
-	} {
-		r := httptest.NewRequest(c.method, c.path, strings.NewReader(`{"type":"read"}`))
-		r.Header.Set("Origin", "https://tachyon.test")
+	for _, c := range cases {
+		req := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`))
+		req.Header.Set("Origin", "https://tachyon.test")
 		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		if w.Code != 401 && w.Code != 403 {
-			t.Errorf("%s %s without an operator session: %d", c.method, c.path, w.Code)
+		on.ServeHTTP(w, req)
+		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Fileview-Stub") != "" {
+			t.Errorf("%s %s with stubs on and no operator session: %d", c.method, c.path, w.Code)
 		}
+		w = httptest.NewRecorder()
+		off.ServeHTTP(w, httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`)))
+		if w.Header().Get("X-Tachyon-Fileview-Stub") != "" {
+			t.Errorf("%s %s served a stub with the flag off", c.method, c.path)
+		}
+	}
+	// A frame needs no cookie: the id is the capability.
+	frame := f + "/frames/" + fileviewapi.StubFrameID
+	w := httptest.NewRecorder()
+	on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+frame, nil))
+	if w.Code != 200 || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("frame: %d %v", w.Code, w.Header())
+	}
+	w = httptest.NewRecorder()
+	off.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test"+frame, nil))
+	if w.Header().Get("X-Tachyon-Fileview-Stub") != "" {
+		t.Error("a frame was served with the flag off")
 	}
 }

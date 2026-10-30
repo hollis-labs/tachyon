@@ -33,6 +33,7 @@ export function useAgentsMonitor() {
   const [data, setData] = useState<SessionsResponse | null>(null)
   const [status, setStatus] = useState<StreamStatus>('loading')
   const [error, setError] = useState<string | null>(null)
+  const [busTick, setBusTick] = useState(0) // bumps on every bus event so the Activity tab reads its head again
 
   const refetch = useCallback(async () => {
     try {
@@ -58,6 +59,7 @@ export function useAgentsMonitor() {
         return
       }
       if (ev.type === 'gap') void refetch()
+      else if (ev.type === 'bus') setBusTick((n) => n + 1)
       else setData((d) => (d ? applyStreamEvent(d, ev) : d))
     }
     es.onopen = () => {
@@ -76,5 +78,5 @@ export function useAgentsMonitor() {
 
   // First data decides between loading and error; a later failure keeps the last data.
   const shown: StreamStatus = data === null ? (error ? 'error' : 'loading') : status === 'reconnecting' || error ? 'reconnecting' : 'live'
-  return { data, status: shown, error, refetch }
+  return { data, status: shown, error, refetch, busTick }
 }
