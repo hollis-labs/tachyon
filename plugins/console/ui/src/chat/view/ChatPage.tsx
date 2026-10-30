@@ -23,7 +23,11 @@ export function ChatPage() {
   // A refresh of the list that briefly lacks the open thread must not unmount its conversation.
   const lastActive = useRef<ChatThread | null>(null)
   if (found) lastActive.current = found
-  const active = found ?? (threadId && lastActive.current?.id === threadId ? lastActive.current : null)
+  const base = found ?? (threadId && lastActive.current?.id === threadId ? lastActive.current : null)
+
+  const [picked, setPicked] = useState<{ thread: string; ref: string } | null>(null)
+  const sessionRef = picked && base && picked.thread === base.id && base.sessions?.some((s) => s.ref === picked.ref) ? picked.ref : undefined
+  const active = useMemo(() => (base && sessionRef ? { ...base, sessionRef } : base), [base, sessionRef])
 
   // A thread the list does not know yet (deep link, or just created) is looked up once it loads.
   useEffect(() => { if (opened && threads?.some((t) => t.id === opened.id)) setOpened(null) }, [threads, opened])
@@ -56,10 +60,11 @@ export function ChatPage() {
       onRetryThreads={retry}
       activeThread={active}
       onSelectThread={select}
+      onSelectSession={(ref) => active && setPicked({ thread: active.id, ref })}
       onBack={() => navigate('/chat')}
       newChatActions={newChatActions}
     >
-      {active && <ThreadConversation key={active.id} thread={active} />}
+      {active && <ThreadConversation key={`${active.id}|${active.sessionRef ?? ''}`} thread={active} />}
     </ChatView>
   )
 }

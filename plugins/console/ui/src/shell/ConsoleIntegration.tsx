@@ -7,6 +7,7 @@ import { CardRuntimeProvider } from '../cards/surfaces'
 import { createDefaultCardRegistry } from '../cards/kinds'
 import { createAppAgentChatClient } from '../chat/appagent'
 import { createCompositeChatClient } from '../chat/composite'
+import { withChatApiMessages } from '../chat/chatapi'
 import { withChatApiSummaries } from '../chat/summaries'
 import { createTetherChatClient } from '../chat/tether'
 import { createMailChatClient } from '../chat/mail'
@@ -38,7 +39,7 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
     const messaging = createMailMessagingClient(api, { from: OPERATOR_ADDRESS })
     // Tether chat plus Tachyon's own app agent, as ordinary threads in one list.
     const chat = createCompositeChatClient(
-      withChatApiSummaries(createTetherChatClient(createMailChatClient(messaging, { operator: OPERATOR_ADDRESS, agents: [] }))),
+      withChatApiMessages(withChatApiSummaries(createTetherChatClient(createMailChatClient(messaging, { operator: OPERATOR_ADDRESS, agents: [] })))),
       createAppAgentChatClient(),
     )
     // Card kinds only: no toast/modal surface (AlertHost owns those).

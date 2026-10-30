@@ -30,6 +30,8 @@ export interface ChatThread {
   needsYou?: boolean
   /** The agent's sessions, newest first (chat API threads). Absent when the chat API has none. */
   sessions?: ThreadSession[]
+  /** The session shown in the conversation (a `sessions` ref). Absent: the agent's own thread. */
+  sessionRef?: string
 }
 
 export interface ThreadSession {

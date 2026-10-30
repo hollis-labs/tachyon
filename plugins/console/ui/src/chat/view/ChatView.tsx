@@ -13,6 +13,8 @@ export interface ChatViewProps {
   onRetryThreads?: () => void
   activeThread: ChatThread | null
   onSelectThread: (id: string) => void
+  /** Open one of the agent's other sessions in the conversation. */
+  onSelectSession?: (ref: string) => void
   newChatActions?: OverflowAction[]
   /**
    * 'page' (default): threads | conversation | details. 'compact': one column for a
@@ -31,7 +33,7 @@ export interface ChatViewProps {
  * the home screen (a conversation opens full width with a back control) and the details open as a bottom
  * sheet; the details column starts open from 1280px up.
  */
-export function ChatView({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, newChatActions, variant = 'page', onBack, children }: ChatViewProps) {
+export function ChatView({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
   const [threadsOpen, setThreadsOpen] = useState(true)
   // Open from 1280px up so the column is seen; below that it stays collapsed (overlay under 1024px).
@@ -98,7 +100,7 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
       <Sheet open={detailsOverlay} onOpenChange={setDetailsOverlay}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
           <SheetTitle className="px-4 pt-4">Thread details</SheetTitle>
-          <ThreadDetails thread={activeThread} />
+          <ThreadDetails thread={activeThread} onSelectSession={onSelectSession} />
         </SheetContent>
       </Sheet>
     </>
@@ -141,7 +143,7 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
       </section>
       {!narrow && detailsOpen && (
         <aside aria-label="Thread details" className="w-96 shrink-0 overflow-y-auto border-l border-border">
-          <ThreadDetails thread={activeThread} />
+          <ThreadDetails thread={activeThread} onSelectSession={onSelectSession} />
         </aside>
       )}
     </div>
