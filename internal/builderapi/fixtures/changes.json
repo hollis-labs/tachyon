@@ -1,0 +1,962 @@
+{
+  "chg_draft": {
+    "change_id": "chg_draft",
+    "request_id": "req_draft",
+    "state": "draft",
+    "note": "Try opus for reviews",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": null,
+    "result": null,
+    "failure": null,
+    "stale": null
+  },
+  "chg_draft_privileged": {
+    "change_id": "chg_draft_privileged",
+    "request_id": "req_draft_privileged",
+    "state": "draft",
+    "note": "Drop bypass",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "release-captain",
+        "path": "agents/release-captain.yaml",
+        "base_sha": "edfec147057580e1f6e1b800106cd1b27b22dc5fa94bc2efc3d689bf24c00ac7"
+      }
+    ],
+    "base": {
+      "agents/release-captain.yaml": "edfec147057580e1f6e1b800106cd1b27b22dc5fa94bc2efc3d689bf24c00ac7"
+    },
+    "diff": "--- a/agents/release-captain.yaml\n+++ b/agents/release-captain.yaml\n@@ -9,2 +9,2 @@\n permissions:\n-  permission_mode: bypassPermissions\n+  permission_mode: acceptEdits\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/release-captain.yaml"
+      }
+    ],
+    "privileged": [
+      {
+        "path": "agents/release-captain.yaml",
+        "field": "permissions.permission_mode"
+      }
+    ],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/release-captain.yaml"
+      ]
+    },
+    "plan": null,
+    "result": null,
+    "failure": null,
+    "stale": null
+  },
+  "chg_awaiting": {
+    "change_id": "chg_awaiting",
+    "request_id": "req_awaiting",
+    "state": "awaiting_approval",
+    "note": "Try opus for reviews",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "planned",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320900000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": null,
+    "failure": null,
+    "stale": null
+  },
+  "chg_awaiting_privileged": {
+    "change_id": "chg_awaiting_privileged",
+    "request_id": "req_awaiting_privileged",
+    "state": "awaiting_approval",
+    "note": "Drop bypass",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "release-captain",
+        "path": "agents/release-captain.yaml",
+        "base_sha": "edfec147057580e1f6e1b800106cd1b27b22dc5fa94bc2efc3d689bf24c00ac7"
+      }
+    ],
+    "base": {
+      "agents/release-captain.yaml": "edfec147057580e1f6e1b800106cd1b27b22dc5fa94bc2efc3d689bf24c00ac7"
+    },
+    "diff": "--- a/agents/release-captain.yaml\n+++ b/agents/release-captain.yaml\n@@ -9,2 +9,2 @@\n permissions:\n-  permission_mode: bypassPermissions\n+  permission_mode: acceptEdits\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [
+      {
+        "path": "agents/release-captain.yaml",
+        "field": "permissions.permission_mode"
+      }
+    ],
+    "ack_privileged": true,
+    "effect": {
+      "running_sessions": [],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/release-captain.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "planned",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320900000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": null,
+    "failure": null,
+    "stale": null
+  },
+  "chg_approved": {
+    "change_id": "chg_approved",
+    "request_id": "req_approved",
+    "state": "approved",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "approved",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320700000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": null,
+    "failure": null,
+    "stale": null
+  },
+  "chg_applying": {
+    "change_id": "chg_applying",
+    "request_id": "req_applying",
+    "state": "applying",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "approved",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320700000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": null,
+    "failure": null,
+    "stale": null
+  },
+  "chg_applied": {
+    "change_id": "chg_applied",
+    "request_id": "req_applied",
+    "state": "applied",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "applied",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320700000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": {
+      "backup_id": "bkp_20261030_0912",
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ],
+      "reloaded": true,
+      "reload_error": null,
+      "applied_at": 1793320060000
+    },
+    "failure": null,
+    "stale": null
+  },
+  "chg_applied_immediate": {
+    "change_id": "chg_applied_immediate",
+    "request_id": "req_applied_immediate",
+    "state": "applied",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [],
+      "activation": "immediate",
+      "restart_required": []
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "applied",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320700000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": {
+      "backup_id": "bkp_20261030_0930",
+      "activation": "immediate",
+      "restart_required": [],
+      "reloaded": true,
+      "reload_error": null,
+      "applied_at": 1793320090000
+    },
+    "failure": null,
+    "stale": null
+  },
+  "chg_applied_reload_error": {
+    "change_id": "chg_applied_reload_error",
+    "request_id": "req_applied_reload_error",
+    "state": "applied",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "applied",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320700000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": {
+      "backup_id": "bkp_20261030_0945",
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ],
+      "reloaded": false,
+      "reload_error": "daemon reload timed out",
+      "applied_at": 1793320095000
+    },
+    "failure": null,
+    "stale": null
+  },
+  "chg_failed_validate": {
+    "change_id": "chg_failed_validate",
+    "request_id": "req_failed_validate",
+    "state": "failed",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "fail",
+        "message": "agent release-notes: skill does not exist",
+        "remedy": "Create the skill or remove the reference.",
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": null,
+    "result": null,
+    "failure": {
+      "step": "validate",
+      "code": "validation_failed",
+      "message": "Tether validation failed. Nothing was planned."
+    },
+    "stale": null
+  },
+  "chg_failed_apply": {
+    "change_id": "chg_failed_apply",
+    "request_id": "req_failed_apply",
+    "state": "failed",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "approved",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320700000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": null,
+    "failure": {
+      "step": "apply",
+      "code": "running_sessions",
+      "message": "Running sessions use this definition. Stop them or apply with allow_running."
+    },
+    "stale": null
+  },
+  "chg_failed_plan": {
+    "change_id": "chg_failed_plan",
+    "request_id": "req_failed_plan",
+    "state": "failed",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": null,
+    "result": null,
+    "failure": {
+      "step": "plan",
+      "code": "upstream_unavailable",
+      "message": "Tether did not answer. Nothing was planned."
+    },
+    "stale": null
+  },
+  "chg_rolled_back": {
+    "change_id": "chg_rolled_back",
+    "request_id": "req_rolled_back",
+    "state": "rolled_back",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "applied",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793320700000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": {
+      "backup_id": "bkp_20261030_1001",
+      "activation": "restart_required",
+      "restart_required": [],
+      "reloaded": false,
+      "reload_error": "catalog reload failed validation",
+      "applied_at": null
+    },
+    "failure": {
+      "step": "reload",
+      "code": "reload_failed",
+      "message": "Tether restored the backup after the reload failed."
+    },
+    "stale": null
+  },
+  "chg_stale": {
+    "change_id": "chg_stale",
+    "request_id": "req_stale",
+    "state": "stale",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "planned",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793319999999,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": null,
+    "failure": null,
+    "stale": {
+      "changed_paths": [
+        "agents/builder-reviewer.yaml"
+      ],
+      "theirs_sha": "f85f541f3de8ffaa32e13604cd21347926f55f97d3faf5b25be60f433cc691d1",
+      "mine_diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+      "theirs_diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-haiku-5-5\n extends: base-worker\n"
+    }
+  },
+  "chg_expired": {
+    "change_id": "chg_expired",
+    "request_id": "req_expired",
+    "state": "expired",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": {
+      "plan_id": "plan_7Q3K9",
+      "state": "planned",
+      "digest": "212f18b3ea6dba147a90821ea724e1a8246b02c7f9b054ca40e3a281c2165cbc",
+      "expires_at": 1793319940000,
+      "approve_command": "tether catalog approve plan_7Q3K9"
+    },
+    "result": null,
+    "failure": null,
+    "stale": null
+  },
+  "chg_cancelled": {
+    "change_id": "chg_cancelled",
+    "request_id": "req_cancelled",
+    "state": "cancelled",
+    "note": "",
+    "operator": "chrispian",
+    "created_at": 1793320000000,
+    "updated_at": 1793320001000,
+    "targets": [
+      {
+        "kind": "agent",
+        "id": "builder-reviewer",
+        "path": "agents/builder-reviewer.yaml",
+        "base_sha": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+      }
+    ],
+    "base": {
+      "agents/builder-reviewer.yaml": "4a3db593964c3b669d6710d6c29aa2572451c83a067fa1e5fba3ddfabcb2ecf0"
+    },
+    "diff": "--- a/agents/builder-reviewer.yaml\n+++ b/agents/builder-reviewer.yaml\n@@ -6,3 +6,3 @@\n provider: claude\n-model: claude-sonnet-5-5\n+model: claude-opus-5-5\n extends: base-worker\n",
+    "checks": [
+      {
+        "name": "tether_validate",
+        "status": "ok",
+        "message": "Passed.",
+        "remedy": null,
+        "entity": "agents/builder-reviewer.yaml"
+      }
+    ],
+    "privileged": [],
+    "ack_privileged": false,
+    "effect": {
+      "running_sessions": [
+        {
+          "session_id": "sess_work",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-tachyon"
+        },
+        {
+          "session_id": "sess_wait",
+          "agent_id": "builder-reviewer",
+          "launch_id": "builder-reviewer-agent-os"
+        }
+      ],
+      "activation": "restart_required",
+      "restart_required": [
+        "agents/builder-reviewer.yaml"
+      ]
+    },
+    "plan": null,
+    "result": null,
+    "failure": null,
+    "stale": null
+  }
+}
