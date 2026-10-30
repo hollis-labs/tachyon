@@ -1,42 +1,31 @@
 import { Link } from "react-router-dom"
 import { MODES, type Mode, useMode } from "../mode"
-import { Card } from "../settings/Card"
+import { Segmented, SetCard, SetRow } from "../settings/parts"
 
-const LABEL: Record<Mode, string> = { light: "Light", dark: "Dark", system: "System" }
+const OPTIONS = MODES.map((m) => ({
+  value: m,
+  label: { light: "Light", dark: "Dark", system: "System" }[m],
+})) as readonly { value: Mode; label: string }[]
 
 /** Same `mode` key as the rail menu and Settings > Appearance. */
 export function DeviceCard() {
   const [mode, setMode] = useMode()
   return (
-    <Card title="This device">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <fieldset
-          aria-label="Colour mode"
-          className="inline-flex rounded-md border border-border p-0.5"
-        >
-          {MODES.map((m) => (
-            <label
-              key={m}
-              className={`cursor-pointer rounded-sm px-3 py-1 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${
-                mode === m ? "bg-selection text-foreground" : "text-text-subtle"
-              }`}
-            >
-              <input
-                type="radio"
-                name="device-mode"
-                value={m}
-                checked={mode === m}
-                onChange={() => setMode(m)}
-                className="sr-only"
-              />
-              {LABEL[m]}
-            </label>
-          ))}
-        </fieldset>
-        <Link to="/settings/appearance" className="text-sm text-text-subtle underline">
+    <SetCard>
+      <SetRow title="This device" help="Colour mode applies right away.">
+        <Segmented
+          name="device-mode"
+          label="Colour mode"
+          value={mode}
+          options={OPTIONS}
+          onChange={setMode}
+        />
+      </SetRow>
+      <SetRow sub help="Alerts, quiet hours and defaults live in Settings.">
+        <Link to="/settings/appearance" className="text-xs text-fg underline">
           Open Settings
         </Link>
-      </div>
-    </Card>
+      </SetRow>
+    </SetCard>
   )
 }

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { Card } from "../settings/Card"
+import { Chip, SetCard, SetRow } from "../settings/parts"
 import type { DecisionEvent, History } from "./approvalsApi"
 import type { Remote } from "./useRemote"
 
@@ -26,39 +26,42 @@ export function DecisionsCard({ history }: { history: Remote<History> }) {
   if (history.status !== "ready") return null
   const rows: DecisionEvent[] = history.data.events.filter((e) => DECIDED.has(e.status)).slice(0, 5)
   return (
-    <Card title="Your recent decisions">
+    <SetCard>
+      <SetRow title="Your recent decisions" help="Approvals you answered. Newest first.">
+        {rows.length > 0 && (
+          <Link to="/approvals" className="text-xs text-fg underline">
+            See all in Approvals
+          </Link>
+        )}
+      </SetRow>
       {rows.length === 0 ? (
-        <p className="text-sm text-text-subtle">Nothing decided yet</p>
+        <div className="flex flex-col items-center gap-0.5 border-t border-border-subtle px-4 py-[26px] text-center">
+          <b className="text-fg">Nothing decided yet</b>
+          <span className="text-xs text-fg-muted">Approvals you answer will show up here.</span>
+        </div>
       ) : (
-        <ul className="divide-y divide-border-subtle">
+        <ul>
           {rows.map((i) => (
             <li
               key={i.event_id}
-              className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:gap-3"
+              className="flex items-center gap-3 border-t border-border-subtle px-4 py-2.5"
             >
-              <span
-                className={`w-fit rounded-full border px-2 py-0.5 text-xs ${
-                  i.status === "denied"
-                    ? "border-danger text-danger"
-                    : "border-border text-foreground"
-                }`}
-              >
-                {outcomeLabel(i.status)}
+              <span className="flex w-[72px] shrink-0 justify-center [&>span]:w-full [&>span]:justify-center">
+                <Chip tone={i.status === "denied" ? "danger" : undefined}>
+                  {outcomeLabel(i.status)}
+                </Chip>
               </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-foreground">{i.mini.title}</p>
-                <p className="truncate text-xs text-text-subtle">{i.kind}</p>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <b className="truncate text-fg">{i.mini.title}</b>
+                <span className="truncate text-xs text-fg-muted">{i.mini.group ?? i.kind}</span>
               </div>
-              <span className="text-xs text-text-subtle">{relativeTime(i.at)}</span>
+              <span className="whitespace-nowrap font-mono text-label text-fg-muted">
+                {relativeTime(i.at)}
+              </span>
             </li>
           ))}
         </ul>
       )}
-      {rows.length > 0 && (
-        <Link to="/approvals" className="mt-2 inline-block text-sm text-text-subtle underline">
-          See all in Approvals
-        </Link>
-      )}
-    </Card>
+    </SetCard>
   )
 }
