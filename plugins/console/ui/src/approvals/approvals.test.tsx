@@ -315,7 +315,14 @@ describe("history", () => {
     expect(list.textContent).toContain("Approved · Create a session")
     expect(list.textContent).toContain("Looks right")
     expect(list.textContent).toContain("Expired · Rotate token")
-    expect(history).toHaveBeenCalledWith({ q: "", cursor: undefined })
+    expect(history).toHaveBeenCalledWith({ q: "", status: "", requester: "", cursor: undefined })
+    // Filters go to the server: a decision menu and a requester field.
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter by requester" }), { target: { value: "agent-one" } })
+    await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "", requester: "agent-one", cursor: undefined }))
+    fireEvent.click(screen.getByRole("button", { name: "Filter by decision" }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("menuitem", { name: "Denied" }))
+    await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "denied", requester: "agent-one", cursor: undefined }))
   })
 })
 
@@ -589,5 +596,28 @@ describe("batch approve", () => {
     expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
     expect(screen.queryByText(/left in the queue/)).toBeNull()
+  })
+})
+
+describe("audit trail", () => {
+  it("loads a decided item's events only when opened", async () => {
+    const decided: ApprovalItem = { ...item, state: "resolved", terminal_outcome: { item_id: "req-1", state: "resolved", resolution: { response: { kind: "approval", decision: "approved" }, resolved_at: "2026-10-30T10:00:00Z", participant: { principal_ref: "operator", authority: "queue", assurance: "participant" } } } as never }
+    const audit = vi.fn().mockResolvedValue({ item_id: "req-1", events: [
+      { event_id: "a1", ts: "2026-10-30T09:00:00Z", kind: "presented", actor: { ref: "s", label: "You" } },
+      { event_id: "a2", ts: "2026-10-30T10:00:00Z", kind: "resolved", decision: "approved", note: "Looks right", actor: { ref: "s", label: "You" } },
+    ] })
+    const client = { present: vi.fn().mockResolvedValue(decided), decide: vi.fn(), audit } as unknown as ApprovalClient
+    const { container } = render(<ApprovalDialog id="req-1" initial={decided} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    const summary = await screen.findByText("Audit trail")
+    expect(audit).not.toHaveBeenCalled()
+    const details = summary.closest("details") as HTMLDetailsElement
+    details.open = true
+    fireEvent(details, new Event("toggle"))
+    const list = await screen.findByRole("list", { name: "Audit trail" })
+    expect(list.textContent).toContain("Presented")
+    expect(list.textContent).toContain("Approved")
+    expect(list.textContent).toContain("Looks right")
+    expect(audit).toHaveBeenCalledWith("req-1")
+    expect(container).toBeTruthy()
   })
 })

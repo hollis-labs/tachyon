@@ -17,6 +17,7 @@ import {
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { ActionRunPanel } from "./terminal"
 import { Countdown, RiskChip, ago, timeLeft } from "./parts"
+import { AuditTrail } from "./audit"
 import { useApprovals } from "./context"
 
 const label = "font-mono dash-caption uppercase tracking-wide text-fg-faint"
@@ -317,6 +318,7 @@ export function DecisionDetail({
                 ))}
               </section>
             )}
+            {item && !isPending(item) && <AuditTrail id={item.item_id} client={client} />}
             {item?.card_receipt && <CardReceiptView receipt={item.card_receipt} />}
           </>
         )}
