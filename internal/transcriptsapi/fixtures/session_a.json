@@ -1,0 +1,639 @@
+{
+ "session": {
+  "id": "d3cf2597d1b39167aa6e3a423879aa980691c155eacd3a50c3882646b3234fb7",
+  "kind": "claude",
+  "title": "Wire the forge stubs",
+  "project": "tachyon",
+  "model": "claude-sonnet-5-5",
+  "started_at": 1761800000000,
+  "ended_at": 1761803600000,
+  "turn_count": 60,
+  "tool_call_count": 34,
+  "error_count": 2,
+  "tools": [
+   "Bash",
+   "Edit",
+   "Read"
+  ],
+  "tags": [
+   "go",
+   "stubs"
+  ],
+  "has_enrichment": true
+ },
+ "turns": [
+  {
+   "seq": 0,
+   "role": "user",
+   "text": "Please wire the stubs.",
+   "text_truncated": false,
+   "started_at": 1761800000000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 1,
+   "role": "assistant",
+   "text": "Turn 1 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800060000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 2,
+   "role": "user",
+   "text": "Turn 2 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800120000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 3,
+   "role": "assistant",
+   "text": "Turn 3 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800180000,
+   "thinking_bytes": 840,
+   "tool_calls": [
+    {
+     "name": "Read",
+     "status": "ok",
+     "result_bytes": 5120,
+     "started_at": 1761800180000,
+     "ended_at": 1761800180300,
+     "target": "internal/forgeapi/stub.go"
+    },
+    {
+     "name": "Bash",
+     "status": "error",
+     "result_bytes": 212,
+     "started_at": 1761800180400,
+     "ended_at": 1761800181300,
+     "target": "go test ./internal/forgeapi",
+     "error_excerpt": "FAIL github.com/hollis-labs/tachyon/internal/forgeapi 0.04s\n  stub_test.go:95: \"github:../x#1\" parsed"
+    }
+   ]
+  },
+  {
+   "seq": 4,
+   "role": "user",
+   "text": "Turn 4 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800240000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 5,
+   "role": "assistant",
+   "text": "Turn 5 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800300000,
+   "thinking_bytes": 840,
+   "tool_calls": [
+    {
+     "name": "Edit",
+     "status": "ok",
+     "result_bytes": 64,
+     "started_at": 1761800300000,
+     "ended_at": 1761800300120,
+     "target": "internal/forgeapi/contract.go"
+    },
+    {
+     "name": "Bash",
+     "status": "ok",
+     "result_bytes": 128,
+     "started_at": 1761800300200,
+     "ended_at": 1761800302600,
+     "target": "gofmt -l internal"
+    }
+   ]
+  },
+  {
+   "seq": 6,
+   "role": "user",
+   "text": "Turn 6 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800360000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 7,
+   "role": "assistant",
+   "text": "Turn 7 text, redacted.",
+   "text_truncated": true,
+   "started_at": 1761800420000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 8,
+   "role": "user",
+   "text": "Turn 8 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800480000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 9,
+   "role": "assistant",
+   "text": "Turn 9 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800540000,
+   "thinking_bytes": 840,
+   "tool_calls": [
+    {
+     "name": "Bash",
+     "status": "error",
+     "result_bytes": 96,
+     "started_at": 1761800540000,
+     "ended_at": 1761800541800,
+     "target": "git push origin feat/x",
+     "error_excerpt": "! [rejected] feat/x -> feat/x (non-fast-forward)"
+    }
+   ]
+  },
+  {
+   "seq": 10,
+   "role": "user",
+   "text": "Turn 10 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800600000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 11,
+   "role": "assistant",
+   "text": "Turn 11 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800660000,
+   "thinking_bytes": 840,
+   "tool_calls": [
+    {
+     "name": "Edit",
+     "status": "none",
+     "result_bytes": 0,
+     "started_at": 1761800660000,
+     "ended_at": 1761800660000,
+     "target": "docs/forge-contract.md"
+    }
+   ]
+  },
+  {
+   "seq": 12,
+   "role": "user",
+   "text": "Turn 12 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800720000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 13,
+   "role": "assistant",
+   "text": "Turn 13 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800780000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 14,
+   "role": "user",
+   "text": "Turn 14 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800840000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 15,
+   "role": "assistant",
+   "text": "Turn 15 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800900000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 16,
+   "role": "user",
+   "text": "Turn 16 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761800960000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 17,
+   "role": "assistant",
+   "text": "Turn 17 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801020000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 18,
+   "role": "user",
+   "text": "Turn 18 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801080000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 19,
+   "role": "assistant",
+   "text": "Turn 19 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801140000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 20,
+   "role": "user",
+   "text": "Turn 20 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801200000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 21,
+   "role": "assistant",
+   "text": "Turn 21 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801260000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 22,
+   "role": "user",
+   "text": "Turn 22 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801320000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 23,
+   "role": "assistant",
+   "text": "Turn 23 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801380000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 24,
+   "role": "user",
+   "text": "Turn 24 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801440000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 25,
+   "role": "assistant",
+   "text": "Turn 25 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801500000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 26,
+   "role": "user",
+   "text": "Turn 26 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801560000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 27,
+   "role": "assistant",
+   "text": "Turn 27 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801620000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 28,
+   "role": "user",
+   "text": "Turn 28 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801680000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 29,
+   "role": "assistant",
+   "text": "Turn 29 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801740000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 30,
+   "role": "user",
+   "text": "Turn 30 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801800000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 31,
+   "role": "assistant",
+   "text": "Turn 31 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801860000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 32,
+   "role": "user",
+   "text": "Turn 32 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801920000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 33,
+   "role": "assistant",
+   "text": "Turn 33 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761801980000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 34,
+   "role": "user",
+   "text": "Turn 34 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802040000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 35,
+   "role": "assistant",
+   "text": "Turn 35 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802100000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 36,
+   "role": "user",
+   "text": "Turn 36 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802160000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 37,
+   "role": "assistant",
+   "text": "Turn 37 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802220000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 38,
+   "role": "user",
+   "text": "Turn 38 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802280000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 39,
+   "role": "assistant",
+   "text": "Turn 39 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802340000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 40,
+   "role": "user",
+   "text": "Turn 40 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802400000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 41,
+   "role": "assistant",
+   "text": "Turn 41 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802460000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 42,
+   "role": "user",
+   "text": "Turn 42 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802520000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 43,
+   "role": "assistant",
+   "text": "Turn 43 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802580000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 44,
+   "role": "user",
+   "text": "Turn 44 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802640000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 45,
+   "role": "assistant",
+   "text": "Turn 45 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802700000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 46,
+   "role": "user",
+   "text": "Turn 46 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802760000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 47,
+   "role": "assistant",
+   "text": "Turn 47 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802820000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 48,
+   "role": "user",
+   "text": "Turn 48 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802880000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 49,
+   "role": "assistant",
+   "text": "Turn 49 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761802940000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 50,
+   "role": "user",
+   "text": "Turn 50 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803000000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 51,
+   "role": "assistant",
+   "text": "Turn 51 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803060000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 52,
+   "role": "user",
+   "text": "Turn 52 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803120000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 53,
+   "role": "assistant",
+   "text": "Turn 53 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803180000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 54,
+   "role": "user",
+   "text": "Turn 54 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803240000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 55,
+   "role": "assistant",
+   "text": "Turn 55 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803300000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 56,
+   "role": "user",
+   "text": "Turn 56 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803360000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 57,
+   "role": "assistant",
+   "text": "Turn 57 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803420000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  },
+  {
+   "seq": 58,
+   "role": "user",
+   "text": "Turn 58 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803480000,
+   "thinking_bytes": 0,
+   "tool_calls": []
+  },
+  {
+   "seq": 59,
+   "role": "assistant",
+   "text": "Turn 59 text, redacted.",
+   "text_truncated": false,
+   "started_at": 1761803540000,
+   "thinking_bytes": 840,
+   "tool_calls": []
+  }
+ ],
+ "turn_total": 60,
+ "next_turn": null,
+ "usage": {
+  "input_tokens": 182000,
+  "output_tokens": 24100,
+  "cache_read_tokens": 910000,
+  "cache_write_tokens": 61000
+ },
+ "subagents": [],
+ "enrichment": {
+  "title": "Wire the forge stubs",
+  "summary": "Stubbed enrichment summary.",
+  "topics": [
+   "stubs"
+  ],
+  "entities": [],
+  "decisions": [],
+  "follow_ups": []
+ }
+}

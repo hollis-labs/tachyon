@@ -36,8 +36,8 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
   }
 
   return (
-    <section className="border-b border-amber-300/40 bg-zinc-900/80 px-4 py-3" aria-label="Submit review" data-testid="forge-review-panel">
-      <h2 className={`${LABEL} mb-2 text-amber-300`}>Finish your review</h2>
+    <section className="border-b border-fg bg-surface px-4 py-3" aria-label="Submit review" data-testid="forge-review-panel">
+      <h2 className={`${LABEL} mb-2 text-fg-muted`}>Finish your review</h2>
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
@@ -45,16 +45,16 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
         placeholder="Leave a review summary…"
         aria-label="Review summary"
         disabled={busy}
-        className="mb-3 w-full max-w-3xl resize-y border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-[13px] text-zinc-100 placeholder:text-zinc-500 focus-visible:border-amber-300 focus-visible:outline-none"
+        className="mb-3 w-full max-w-3xl resize-y border border-border bg-bg px-2 py-1.5 text-[13px] text-fg placeholder:text-fg-faint focus-visible:border-fg focus-visible:outline-none"
       />
       <fieldset className="mb-3 space-y-1.5" disabled={busy}>
         <legend className="sr-only">Review verdict</legend>
         {OPTIONS.map((o) => (
           <label key={o.value} className="flex cursor-pointer items-start gap-2 text-[13px]">
-            <input type="radio" name="verdict" value={o.value} checked={verdict === o.value} onChange={() => setVerdict(o.value)} className="mt-1 accent-amber-300" />
+            <input type="radio" name="verdict" value={o.value} checked={verdict === o.value} onChange={() => setVerdict(o.value)} className="mt-1 accent-primary" />
             <span>
-              <span className="text-zinc-100">{o.label}</span>
-              <span className="ml-2 text-[12px] text-zinc-500">{o.hint}</span>
+              <span className="text-fg">{o.label}</span>
+              <span className="ml-2 text-[12px] text-fg-faint">{o.hint}</span>
             </span>
           </label>
         ))}
@@ -62,21 +62,21 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
       {pending.length > 0 && (
         <div className="mb-3 max-w-3xl">
           <p className={`${LABEL} mb-1`}>{pending.length} pending inline comment{pending.length === 1 ? '' : 's'}</p>
-          <ul className="divide-y divide-zinc-800/60 border-y border-zinc-800/60">
+          <ul className="divide-y divide-border border-y border-border">
             {pending.map((p) => (
               <li key={p.id} className="flex items-baseline gap-2 py-1.5 text-[12px]">
-                <span className="shrink-0 font-mono text-zinc-500">{p.path}:{p.line}</span>
-                <span className="min-w-0 flex-1 truncate text-zinc-300">{p.body}</span>
-                <button type="button" onClick={() => onUnqueue(p.id)} className="font-mono text-[10px] uppercase tracking-wider text-zinc-500 hover:text-red-300">Discard</button>
+                <span className="shrink-0 font-mono text-fg-faint">{p.path}:{p.line}</span>
+                <span className="min-w-0 flex-1 truncate text-fg">{p.body}</span>
+                <button type="button" onClick={() => onUnqueue(p.id)} className="font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-danger">Discard</button>
               </li>
             ))}
           </ul>
         </div>
       )}
-      {needsText && <p className="mb-2 text-[12px] text-amber-300">Requesting changes needs a summary or at least one inline comment.</p>}
-      {error && <p className="mb-2 text-[12px] text-red-300" role="alert">{error}</p>}
+      {needsText && <p className="mb-2 text-[12px] text-fg-muted">Requesting changes needs a summary or at least one inline comment.</p>}
+      {error && <p className="mb-2 text-[12px] text-danger" role="alert">{error}</p>}
       <div className="flex items-center gap-2">
-        <span className="mr-auto font-mono text-[10px] text-zinc-500">You will be asked to confirm your identity.</span>
+        <span className="mr-auto font-mono text-[10px] text-fg-faint">You will be asked to confirm your identity.</span>
         <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
         <Btn tone="primary" onClick={() => void submit()} disabled={busy || blocked}>{busy ? 'Submitting…' : 'Submit review'}</Btn>
       </div>
