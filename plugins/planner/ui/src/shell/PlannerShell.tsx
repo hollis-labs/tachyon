@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { EmptyState, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-labs/design-components'
 import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
 import { PlannerApiError as ApiError } from '@planner/api/errors'
-import { notifyError } from '@planner/api/notifications'
+import { notifyWriteError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { CommandPalette, LinkLayer, type PaletteCommand } from '@planner/shared'
 import { Context } from '@planner/shell/context'
@@ -44,6 +44,8 @@ export default function PlannerShell() {
   const [off, setOff] = useState(false)
   const [pins, setPins] = useState(loadPins)
   const [needYouOnly, setNeedYouOnly] = useState(params.get('facet') === 'need-you')
+  const [needYouIds, setNeedYouIds] = useState<ReadonlySet<string> | undefined>(undefined)
+  const [needsAccess, setNeedsAccess] = useState(false)
   const [goodAt, setGoodAt] = useState<number | null>(null)
   const [comments, setComments] = useState<PlannerComment[]>([])
   const [details, setDetails] = useState(false)
@@ -69,6 +71,8 @@ export default function PlannerShell() {
 
   useEffect(() => {
     void load()
+    // The server's answer decides who needs you; if it cannot answer, the spine keeps its local reading.
+    api.plannerNeedYou().then((n) => setNeedYouIds(new Set(n.items.filter((i) => i.db === 'themes').map((i) => i.id))), () => setNeedYouIds(undefined))
     const t = setInterval(() => void load(), REFRESH_MS)
     return () => clearInterval(t)
   }, [load, lastEvent])
@@ -100,7 +104,7 @@ export default function PlannerShell() {
     try {
       await api.plannerPin('themes', pid, !r.pinned, r.rev)
     } catch (err) {
-      notifyError(err, TEXT.writeFailed)
+      notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true))
     }
     await load()
   }
@@ -120,7 +124,7 @@ export default function PlannerShell() {
       await load()
     } catch (err) {
       await load()
-      notifyError(err, TEXT.writeFailed)
+      notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true))
     }
   }
 
@@ -178,7 +182,7 @@ export default function PlannerShell() {
       <nav aria-label={TEXT.appName} className={`${selected ? 'hidden lg:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-r border-border lg:w-72`}>
         {board ? (
           <LinkLayer titleOf={titleOf} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} onLink={(from, to) => setPendingLink({ from, to })}>
-          <Spine stale={Boolean(error)} links={spineLinks} board={board} selectedId={openId} onSelect={open} onLens={(db: PlannerDb) => navigate(`/planner/${db}`)} pins={shownPins} onTogglePin={(pid) => void togglePin(pid)} needYouOnly={needYouOnly} onNeedYou={setNeedYouOnly} />
+          <Spine stale={Boolean(error)} links={spineLinks} board={board} selectedId={openId} onSelect={open} onLens={(db: PlannerDb) => navigate(`/planner/${db}`)} pins={shownPins} onTogglePin={(pid) => void togglePin(pid)} needYouOnly={needYouOnly} onNeedYou={setNeedYouOnly} needYouIds={needYouIds} />
           </LinkLayer>
         ) : (
           <div className="flex flex-col gap-2 p-3" aria-busy>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
@@ -197,7 +201,7 @@ export default function PlannerShell() {
       <main className={`${selected ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-1`}>
         {board && row ? (
           <>
-            <Focus paused={Boolean(error)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
+            <Focus paused={Boolean(error)} needsAccess={needsAccess} onRetryAccess={() => setNeedsAccess(false)} onNeedsAccess={() => setNeedsAccess(true)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
             <div className="hidden w-80 shrink-0 border-l border-border xl:flex xl:flex-col 2xl:w-96">
               <Context row={row} comments={comments} onCommented={() => void load()} mentionable={all} links={rowLinks} />
             </div>

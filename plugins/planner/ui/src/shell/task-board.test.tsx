@@ -38,7 +38,7 @@ const tasks = (): ThemeTasks => ({
   },
 })
 
-function setup(over: Record<string, unknown> = {}) {
+function setup(over: Record<string, unknown> = {}, onNeedsAccess?: () => void) {
   const api = {
     provider: 'tachyon',
     subscribeEvents: () => () => {},
@@ -47,7 +47,7 @@ function setup(over: Record<string, unknown> = {}) {
     plannerTaskMeta: vi.fn(async () => ({})),
     ...over,
   }
-  render(<PlannerApiProvider client={api as never}><TaskBoard themeId="t1" /></PlannerApiProvider>)
+  render(<PlannerApiProvider client={api as never}><TaskBoard themeId="t1" onNeedsAccess={onNeedsAccess} /></PlannerApiProvider>)
   return api
 }
 const lane = (id: string) => screen.getByRole('list', { name: id })
@@ -68,6 +68,15 @@ describe('TaskBoard', () => {
     const undo = (toast as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].action
     undo.onClick()
     await waitFor(() => expect(api.plannerTaskTransition).toHaveBeenLastCalledWith('A', 'doing', 'review', undefined))
+  })
+  it('puts the card back and asks the shell to turn writes off when operator access is missing, without a toast per try', async () => {
+    const needs = vi.fn()
+    setup({ plannerTaskTransition: vi.fn().mockRejectedValue(new PlannerApiError(403, 'Unlock required', 'assurance_insufficient')) }, needs)
+    await screen.findByText('Task A')
+    fireEvent.click(screen.getByRole('button', { name: 'A to review' }))
+    await waitFor(() => expect(needs).toHaveBeenCalledTimes(1))
+    expect(within(lane('doing')).getByText('Task A')).toBeTruthy()
+    expect((toast as unknown as { error: ReturnType<typeof vi.fn> }).error).not.toHaveBeenCalled()
   })
   it('snaps the card to the status Torque has now on a 409', async () => {
     const api = setup({ plannerTaskTransition: vi.fn().mockRejectedValue(new PlannerApiError(409, 'changed', 'conflict', { current: { id: 'A', status: 'blocked' } })) })

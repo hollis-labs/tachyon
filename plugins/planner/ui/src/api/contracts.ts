@@ -1,4 +1,4 @@
-import type { PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
+import type { NeedYou, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export interface PlannerEvent { type: string }
@@ -42,6 +42,7 @@ export interface PlannerClient {
   plannerTaskTransition(task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }): Promise<TaskTransitionResult>
   /** Attach "what shipped" and PR cites after a move; never blocks the move. */
   plannerTaskMeta(task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }): Promise<TaskMeta>
+  plannerNeedYou(signal?: AbortSignal): Promise<NeedYou>
   getTask(id: string, signal?: AbortSignal): Promise<Task>
   listTaskComments(id: string, query?: { limit?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }, signal?: AbortSignal): Promise<ListPage<Comment>>
   resolveReference(db: PlannerDb | null, id: string): Promise<PlannerReference>

@@ -41,15 +41,18 @@ interface SpineProps {
   onNeedYou: (on: boolean) => void
   /** Links by item id: relation kind and the other item's title (sample data until the backend writes links). */
   links: ReadonlyMap<string, { kind: string; other: string }>
+  /** Theme ids the server says need the operator; absent while it has not answered, then the local heuristic applies. */
+  needYouIds?: ReadonlySet<string>
 }
 
-export function Spine({ stale, board, selectedId, onSelect, onLens, pins, onTogglePin, needYouOnly, onNeedYou, links }: SpineProps) {
+export function Spine({ stale, board, selectedId, onSelect, onLens, pins, onTogglePin, needYouOnly, onNeedYou, links, needYouIds }: SpineProps) {
   const lensExtras = useContributions('planner.lens')
   const itemMenu = useContributions('planner.spine.item.menu')
   const all = useMemo(() => rowsOf(board), [board])
-  const needCount = all.filter(needsYou).length
+  const needs = (r: ThemeRow) => (needYouIds ? needYouIds.has(r.id) : needsYou(r))
+  const needCount = all.filter(needs).length
   const groups = useMemo<SpineGroup[]>(() => {
-    const pass = (r: ThemeRow) => !needYouOnly || needsYou(r)
+    const pass = (r: ThemeRow) => !needYouOnly || needs(r)
     const entry = (r: ThemeRow) => {
       const seg = themeSegments(r)
       return {
@@ -66,7 +69,7 @@ export function Spine({ stale, board, selectedId, onSelect, onLens, pins, onTogg
     const pinned = all.filter((r) => pins.has(r.id) && pass(r)).map(entry)
     const rest = THEME_SECTIONS.map((s) => ({ id: s.key, title: s.title, items: (board?.sections[s.key] ?? []).filter((r) => pass(r) && !pins.has(r.id)).map(entry) })).filter((g) => g.items.length > 0)
     return [...(pinned.length ? [{ id: 'pinned', title: TEXT.pinned, items: pinned }] : []), ...rest]
-  }, [all, board, itemMenu, links, needYouOnly, pins])
+  }, [all, board, itemMenu, links, needYouOnly, needYouIds, pins])
 
   const items = [...LENSES.map((l) => ({ value: l.db, label: l.label })), ...lensExtras.map((c) => ({ value: c.id, label: c.label ?? c.id }))]
   return (

@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { Button, Input } from '@hollis-labs/design-components'
 import { usePlannerApi } from '@planner/api/context'
 import { PlannerApiError } from '@planner/api/errors'
-import { notifyError } from '@planner/api/notifications'
+import { notifyWriteError } from '@planner/api/notifications'
 import { LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
 import { LaneBoard, StatusMenu, type Lane } from '@planner/shared'
 import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
@@ -32,7 +32,7 @@ const prHref = (c: PrCite) => `https://${c.host}/${c.owner}/${c.repo}/pull/${c.n
  * has now. Blocked asks for a reason first; Done saves at once and the "What shipped?" line is attached
  * afterwards, the move never waits for it.
  */
-export function TaskBoard({ themeId, paused }: { themeId: string; paused?: boolean }) {
+export function TaskBoard({ themeId, paused, onNeedsAccess }: { themeId: string; paused?: boolean; onNeedsAccess?: () => void }) {
   const api = usePlannerApi()
   const [data, setData] = useState<ThemeTasks | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -88,7 +88,7 @@ export function TaskBoard({ themeId, paused }: { themeId: string; paused?: boole
         toast(TEXT.changedElsewhere(task?.title ?? id, laneTitle(current)))
       } else {
         setStatus(id, from)
-        notifyError(e, TEXT.writeFailed)
+        notifyWriteError(e, TEXT.writeFailed, onNeedsAccess)
       }
     } finally {
       setPending((p) => { const n = new Set(p); n.delete(id); return n })
@@ -115,7 +115,7 @@ export function TaskBoard({ themeId, paused }: { themeId: string; paused?: boole
       await api.plannerTaskMeta(id, { done_summary: summary.trim() })
       setData((d) => d && { ...d, lanes: { ...d.lanes, done: d.lanes.done.map((t) => (t.id === id ? { ...t, done_summary: summary.trim() } : t)) } })
     } catch (e) {
-      notifyError(e, TEXT.writeFailed)
+      notifyWriteError(e, TEXT.writeFailed, onNeedsAccess)
     }
   }
 
