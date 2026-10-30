@@ -53,6 +53,8 @@ func actionsFor(kind string) []Action {
 	switch kind {
 	case "card.approval":
 		return []Action{{"approved", "Allow once", "y"}, {"denied", "Deny", "n"}}
+	case "card.tool_approval":
+		return []Action{{"approved", "Allow once", "y"}, {"denied", "Deny", "n"}}
 	case "card.plan":
 		return []Action{{"approved", "Approve plan", "y"}, {"changes_requested", "Request changes", "n"}}
 	case "card.dispatch":
@@ -72,6 +74,9 @@ func Project(rec hitl.Record, ref Ref, now time.Time) Card {
 		Actions: actionsFor(rec.Kind), State: State(rec.State), Class: "medium", PresentedProjectionRevision: rec.Revision}
 	if p.Risk == "low" {
 		c.Class = "low"
+	}
+	if rec.Kind == "card.tool_approval" && c.Class == "low" {
+		c.Actions = []Action{{"approved", "Allow once", "y"}, {"always", "Always in this chat", "a"}, {"denied", "Deny", "n"}}
 	}
 	if c.Caption == "" {
 		c.Caption = rec.ItemID

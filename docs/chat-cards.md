@@ -15,6 +15,11 @@ Answerable cards in a chat thread. The queue item (Approvals) stays the only rec
   when the card is approved. Same switch as status changes: off unless `TACHYON_CARD_EFFECTS_TORQUE` is set. The receipt detail carries the new id. Body and response checked against Torque's `TaskCreateRequest` and `taskJSON` (201, top-level `id`).
 - Approval rules (T5c): `chat_approval_rules` (migration 040). `GET chat/threads/{ref}/approval-rules` lists rules in force,
   `DELETE .../{id}` revokes one. `Store.AddRule` takes the class of the approval just answered and refuses anything but low;
-  `Store.Allows(thread, agent, tool, class, args)` is the matcher (tool and agent equal, every `match` key equal to the call's argument,
-  never for medium or high). Rules only allow. Nothing calls them yet: the runtime `approval_request` translation that creates and
-  consults them waits on the Nanite chatstream/v1 contract, which is not verified.
+  `Store.Allows(thread, agent, tool, class, args)` is the matcher (tool equal, every `match` key equal to the call's argument,
+  never for medium or high). Rules only allow.
+- Runtime approvals: a Nanite `approval.request` frame (chatstream/v1: `approval_id`, `call_id`, `reason`, `descriptor{tool,input,class}`,
+  `expires_at`) reaches `appagent.Service.OnApproval`. If a rule allows it (low class only) the runtime is answered at once. Otherwise
+  a `card.tool_approval` card is queued and bound to the thread (class medium unless the descriptor says `low`; only a low card offers
+  "Always in this chat"). When the card settles the runtime gets allow or deny, once scope (the only scope Nanite takes);
+  `always` also creates the rule, and an expired or denied card denies. The generic "card answered" message to the agent is not sent for
+  these. Unverified against a deployed Nanite: the descriptor member names and whether `class` is sent (without it every call asks).

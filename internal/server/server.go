@@ -23,6 +23,7 @@ import (
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/capability"
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
+	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
@@ -394,6 +395,25 @@ func (s *Server) Start(ctx context.Context) error {
 		Changes: approvals.Changes(store),
 	}
 	s.chatThreads.Agg.CardBlocks = s.chatCards.OpenCounts
+	if s.appAgent != nil {
+		// Runtime tool approvals (approval.request) become cards; the answer goes back to the runtime, once scope.
+		rt := &chatcards.Runtime{B: s.chatCards, Registry: approvals.CardRegistry, Source: "tachyon-chat",
+			Enqueue: func(ctx context.Context, req hitl.EnqueueRequest) (string, error) {
+				h, err := s.approvalInbox.Service.Enqueue(ctx, req)
+				return h.ItemID, err
+			},
+			Respond: func(ctx context.Context, thread, approvalID string, allow bool) error {
+				t, err := chatapi.ParseRef(thread)
+				if err != nil || t.Source != chatapi.SourceApp {
+					return errors.New("not an app thread")
+				}
+				return s.appAgent.RespondApproval(ctx, t.ID, approvalID, allow)
+			}}
+		s.chatCards.Tools = rt
+		s.appAgent.OnApproval = func(threadID string, a appagent.Approval) {
+			rt.OnApproval(chatapi.ThreadRef{Source: chatapi.SourceApp, ID: threadID}.String(), a)
+		}
+	}
 	go s.chatCards.Follow(approvalContext)
 	if s.appAgent != nil && s.cfg.ChatClientContext {
 		s.appAgent.ClientContext = func(ctx context.Context, id string) any {
