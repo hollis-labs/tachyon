@@ -129,3 +129,13 @@ it('preserves backend error details from the native error envelope', async () =>
   installFetch(fetcher)
   await expect(new TachyonPlannerClient().plannerUpdate('ideas', id, {}, 7)).rejects.toMatchObject({ message: 'Invalid typed reference', code: 'invalid' })
 })
+
+it('sends pin with a comment only when asked', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => json({ id, rev: 3 }))
+  installFetch(fetcher)
+  const api = new TachyonPlannerClient()
+  await api.plannerComment('themes', id, 'plain', 2)
+  await api.plannerComment('themes', id, 'pinned', 2, undefined, { pin: true })
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).not.toHaveProperty('pin')
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toMatchObject({ text: 'pinned', pin: true, expected_revision: 2 })
+})

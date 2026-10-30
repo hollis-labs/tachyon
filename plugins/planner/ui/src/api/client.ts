@@ -76,7 +76,7 @@ export class TachyonPlannerClient implements PlannerClient {
   plannerSearch = (q: string, db?: PlannerDb, signal?: AbortSignal) => this.request<PlannerSearchHit[]>('/search', undefined, { q, db }, signal)
   plannerCreate = (db: PlannerDb, item: Record<string, unknown>, id: string) => this.send<PlannerItem>(dbPath(db), { id: uuid(id), fields: item })
   plannerUpdate = (db: PlannerDb, id: string, patch: Record<string, unknown>, rev: number) => this.send<PlannerItem>(`${dbPath(db)}/${uuid(id)}`, { patch, expected_revision: revision(rev) }, 'PATCH')
-  plannerComment = (db: PlannerDb, id: string, text: string, rev: number, kind?: 'comment' | 'decision') => this.send<PlannerItem>(`${dbPath(db)}/${uuid(id)}/comments`, { text, kind, expected_revision: revision(rev) })
+  plannerComment = (db: PlannerDb, id: string, text: string, rev: number, kind?: 'comment' | 'decision', opts?: { pin?: boolean }) => this.send<PlannerItem>(`${dbPath(db)}/${uuid(id)}/comments`, { text, kind, ...(opts?.pin === undefined ? {} : { pin: opts.pin }), expected_revision: revision(rev) })
   plannerLinkAdd = (db: PlannerDb, id: string, link: PlannerLink, rev: number) => this.send<PlannerItem>(`${dbPath(db)}/${uuid(id)}/links`, { link, expected_revision: revision(rev) })
   plannerLinkRemove = (db: PlannerDb, id: string, kind: string, ref: string, rev: number) => this.send<PlannerItem>(`${dbPath(db)}/${uuid(id)}/links`, { kind, ref, expected_revision: revision(rev) }, 'DELETE')
   plannerReorder = (db: PlannerDb, items: PlannerRevision[]) => this.send<PlannerOrdered[]>(`${dbPath(db)}/reorder`, { items: items.map(({ id, rev }) => ({ id: uuid(id), expected_revision: revision(rev) })) })

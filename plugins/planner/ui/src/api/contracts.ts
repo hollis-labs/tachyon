@@ -20,7 +20,8 @@ export interface PlannerClient {
   plannerSearch(q: string, db?: PlannerDb, signal?: AbortSignal): Promise<PlannerSearchHit[]>
   plannerCreate(db: PlannerDb, item: Record<string, unknown>, id: string): Promise<PlannerItem>
   plannerUpdate(db: PlannerDb, id: string, patch: Record<string, unknown>, rev: number): Promise<PlannerItem>
-  plannerComment(db: PlannerDb, id: string, text: string, rev: number, kind?: 'comment' | 'decision'): Promise<PlannerItem>
+  /** `opts.pin` sets or clears the pin in the same revision write as the comment. */
+  plannerComment(db: PlannerDb, id: string, text: string, rev: number, kind?: 'comment' | 'decision', opts?: { pin?: boolean }): Promise<PlannerItem>
   plannerLinkAdd(db: PlannerDb, id: string, link: PlannerLink, rev: number): Promise<PlannerItem>
   plannerLinkRemove(db: PlannerDb, id: string, kind: string, ref: string, rev: number): Promise<PlannerItem>
   plannerReorder(db: PlannerDb, items: PlannerRevision[]): Promise<PlannerOrdered[]>
