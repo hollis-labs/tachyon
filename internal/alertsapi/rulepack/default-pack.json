@@ -198,7 +198,7 @@
         "severity": "warning",
         "icon": "message",
         "title": "Message {{kind}}",
-        "detail": "{{payload.subject}}",
+        "detail": "{{payload.state|failed}}: {{payload.reason|no reason given}}",
         "needsYou": false
       },
       "coalesce": {

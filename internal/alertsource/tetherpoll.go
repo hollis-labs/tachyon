@@ -34,13 +34,31 @@ func FromTether(f agentscollector.Frame) (Event, bool) {
 		e.Payload["agent"] = Clean(firstNonEmpty(f.AgentName, f.SessionID), 120)
 	case strings.HasPrefix(f.Kind, "message.") && strings.Contains(f.Kind, "dead_letter"):
 		e.Kind = "message.dead_lettered"
+	case f.Kind == "message.wake_deferred":
+		return Event{}, false // a deferral, not a failure
 	case f.Kind == "message.failed":
+		// Only terminal states are alert material; retry_scheduled is Tether doing its job.
+		switch f.DeliveryState {
+		case "retry_scheduled", "wake_deferred":
+			return Event{}, false
+		}
 		e.Kind = "message.failed"
 	default:
 		return Event{}, false
 	}
 	if f.At.IsZero() {
 		return Event{}, false
+	}
+	if strings.HasPrefix(e.Kind, "message.") {
+		if f.DeliveryState != "" {
+			e.Payload["state"] = f.DeliveryState
+		}
+		if f.Reason != "" {
+			e.Payload["reason"] = f.Reason
+		}
+		if f.From != "" {
+			e.Payload["from"] = f.From
+		}
 	}
 	return e, true
 }

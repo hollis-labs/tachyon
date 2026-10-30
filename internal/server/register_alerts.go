@@ -63,6 +63,13 @@ func startAlerts(ctx context.Context, s *Server, db *localstore.Store) {
 		}
 		return ""
 	}
+	// The old message-lifecycle rule coalesced every retry_scheduled "Message failed" into one alert keyed
+	// "msgfail:" (no sender). Retries no longer alert; settle that backlog alert once on start.
+	if n, err := st.SettleCleared(ctx, "msgfail:"); err != nil {
+		slog.Warn("alerts: settle legacy message-failed alert failed", "err", err)
+	} else if n > 0 {
+		slog.Info("alerts: settled legacy message-failed alerts", "count", n)
+	}
 	go st.FollowApprovals(ctx, approvalFeed{approvals.Changes(db)}, func(err error) { slog.Warn("alerts: approval follow failed", "err", err) })
 	// AL3: snooze and defer wake-ups and escalation, on the server clock.
 	go st.Maintain(ctx, func(err error) { slog.Warn("alerts: maintenance failed", "err", err) })
