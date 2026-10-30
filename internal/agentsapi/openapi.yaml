@@ -1,0 +1,388 @@
+openapi: 3.0.3
+info:
+  title: Tachyon Agents monitor API
+  version: "1"
+  description: |
+    Final shapes for the Agents monitor backend (design tesseract:01M6547NTB3FR4P49GQRP8WC4B, Addendum 1
+    tesseract:01M65493M4ES4ZZ309AJV5JCDY). Served by fixtures behind TACHYON_AGENTS_STUBS=1 until the
+    collector slices (A1-A4) replace each route.
+    Conventions: snake_case JSON, unix-ms timestamps, errors {code,message}. GETs are open; every write
+    needs an operator session (cookie + same-origin Origin + Sec-Fetch-Site). Restart additionally needs
+    operator-token assurance in the real build. Control routes are NOT agent verbs.
+    Data rules: the API never returns raw model output or raw tool arguments, only derived one-liners and
+    summaries (<=200 chars, redacted). Absent/unknown is `null`, never 0 (unmetered sessions show null).
+servers:
+  - url: /api/plugins/console/v1/agents
+paths:
+  /sessions:
+    get:
+      summary: Sessions snapshot
+      parameters:
+        - {name: state, in: query, schema: {$ref: '#/components/schemas/State'}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: group, in: query, schema: {type: string, enum: [workroot, agent, none]}}
+        - {name: include_ended, in: query, schema: {type: integer, enum: [0, 1]}}
+      responses:
+        "200": {description: Sessions, content: {application/json: {schema: {$ref: '#/components/schemas/SessionsResponse'}}}}
+  /sessions/{id}:
+    get:
+      summary: One session
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        "200": {description: Session, content: {application/json: {schema: {$ref: '#/components/schemas/Session'}}}}
+        "404": {$ref: '#/components/responses/Error'}
+  /sessions/{id}/events:
+    get:
+      summary: Timeline (newest first), tool runs grouped when group_runs=1, gaps inside the range
+      parameters:
+        - {$ref: '#/components/parameters/id'}
+        - {name: before_seq, in: query, schema: {type: integer}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 100}}
+        - {name: filter, in: query, schema: {type: string, enum: [all, tools, messages, approvals, lifecycle, errors]}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: group_runs, in: query, schema: {type: integer, enum: [0, 1]}}
+      responses:
+        "200": {description: Events, content: {application/json: {schema: {$ref: '#/components/schemas/EventsResponse'}}}}
+  /sessions/{id}/context-series:
+    get:
+      summary: Context usage over time; empty points for unmetered sessions
+      parameters:
+        - {$ref: '#/components/parameters/id'}
+        - {name: from, in: query, schema: {type: integer}}
+        - {name: to, in: query, schema: {type: integer}}
+        - {name: step, in: query, schema: {type: string, enum: [min, turn]}}
+      responses:
+        "200": {description: Series, content: {application/json: {schema: {$ref: '#/components/schemas/ContextSeries'}}}}
+  /sessions/{id}/tokens:
+    get:
+      summary: Token rollups; metered=false means "not metered", not zero
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        "200": {description: Tokens, content: {application/json: {schema: {$ref: '#/components/schemas/TokensDetail'}}}}
+  /sessions/{id}/history:
+    get:
+      summary: Earlier sessions of the same logical agent
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        "200": {description: History, content: {application/json: {schema: {$ref: '#/components/schemas/HistoryResponse'}}}}
+  /stream:
+    get:
+      summary: Global SSE. Flat JSON {type, at, ...}; `id:` on bus, control and gap (Last-Event-ID replay); 15 s keepalive comments
+      description: |
+        session/summary/collector are live snapshots and not replayed. On a gap event or a reconnect without
+        replay coverage the client refetches GET /sessions. A slow subscriber is dropped and reconnects.
+      parameters:
+        - {name: Last-Event-ID, in: header, schema: {type: integer}}
+        - {name: once, in: query, description: stub only; end after the replay, schema: {type: integer}}
+      responses:
+        "200": {description: text/event-stream, content: {text/event-stream: {schema: {$ref: '#/components/schemas/StreamEvent'}}}}
+  /bus/events:
+    get:
+      summary: Activity feed (deploys, restarts, tasks, failures, host, lifecycle, cards)
+      parameters:
+        - {name: before_seq, in: query, schema: {type: integer}}
+        - {name: limit, in: query, schema: {type: integer}}
+        - {name: type, in: query, schema: {type: string, enum: [deploys, restarts, tasks, failures]}}
+        - {name: app, in: query, schema: {type: string}}
+        - {name: q, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Events, content: {application/json: {schema: {$ref: '#/components/schemas/BusResponse'}}}}
+  /collector:
+    get:
+      summary: Collector status for the "collecting - N sessions - last event Xs" indicator
+      responses:
+        "200": {description: Status, content: {application/json: {schema: {$ref: '#/components/schemas/Collector'}}}}
+  /sessions/{id}/nudge:
+    post:
+      summary: Send a nudge (operator). Idempotent by request_id. Never silently downgrades an interrupt
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/NudgeRequest'}}}
+      responses:
+        "202": {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/ControlRequest'}}}}
+        "400": {$ref: '#/components/responses/Error'}
+        "409": {description: nudge_unsupported or interrupt_unsupported (client offers "send without interrupt"), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /sessions/{id}/restart:
+    post:
+      summary: Start the restart state machine (operator-token assurance in the real build)
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/RestartRequest'}}}
+      responses:
+        "202": {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/ControlRequest'}}}}
+        "409": {description: stale_session (expected_session_id is not current) or restart_unsupported, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /controls/{request_id}:
+    get:
+      summary: Control request state machine position
+      parameters: [{$ref: '#/components/parameters/request_id'}]
+      responses:
+        "200": {description: Request, content: {application/json: {schema: {$ref: '#/components/schemas/ControlRequest'}}}}
+        "404": {$ref: '#/components/responses/Error'}
+  /controls/{request_id}/skip:
+    post:
+      summary: Skip the handoff wait and proceed (restart only)
+      parameters: [{$ref: '#/components/parameters/request_id'}]
+      responses:
+        "200": {description: Request, content: {application/json: {schema: {$ref: '#/components/schemas/ControlRequest'}}}}
+        "409": {$ref: '#/components/responses/Error'}
+  /settings:
+    get:
+      responses:
+        "200": {description: Settings, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}
+    put:
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}
+      responses:
+        "200": {description: Settings, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}
+        "400": {$ref: '#/components/responses/Error'}
+components:
+  parameters:
+    id: {name: id, in: path, required: true, schema: {type: string}}
+    request_id: {name: request_id, in: path, required: true, schema: {type: string}}
+  responses:
+    Error: {description: Error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties: {code: {type: string, enum: [invalid, not_found, conflict, rate_limited, not_configured, internal, nudge_unsupported, interrupt_unsupported, restart_unsupported, stale_session]}, message: {type: string}}
+    State: {type: string, enum: [working, waiting, idle, stale, unknown]}
+    Ref:
+      type: object
+      required: [kind, ref, label]
+      properties: {kind: {type: string, enum: [task, pr, session, agent, deploy]}, ref: {type: string}, label: {type: string}}
+    MiniCard:
+      type: object
+      required: [title, cite, summary, review_ref]
+      properties: {title: {type: string}, cite: {type: array, items: {$ref: '#/components/schemas/Ref'}}, summary: {type: string}, review_ref: {type: string, nullable: true}}
+    Session:
+      type: object
+      required: [id, agent, kind, provider, model, workroot, state, stale_reason, stale_since, needs_you, started_at, last_activity_at, runtime_ms, one_liner, context, tokens, tool_call_count, last_clear_at, compactions, pending, assignment, spark, parent_session_id, replaced_by, observed_by, capabilities]
+      properties:
+        id: {type: string}
+        agent:
+          type: object
+          required: [urn, name, logical_agent_id]
+          properties: {urn: {type: string, nullable: true}, name: {type: string}, logical_agent_id: {type: string, nullable: true}}
+        kind: {type: string, enum: [chat, process]}
+        provider: {type: string}
+        model: {type: string, nullable: true}
+        workroot: {type: string}
+        state: {$ref: '#/components/schemas/State'}
+        stale_reason: {type: string, nullable: true, enum: [no_events, not_alive, worker_offline], description: "set iff state=stale. A stale session that is also waiting keeps needs_you"}
+        stale_since: {type: integer, nullable: true}
+        needs_you:
+          type: object
+          required: [reason, since]
+          properties: {reason: {type: string, nullable: true, enum: [approval, question]}, since: {type: integer, nullable: true}}
+        started_at: {type: integer}
+        last_activity_at: {type: integer, nullable: true, description: "idle sessions show this (e.g. idle 5d)"}
+        runtime_ms: {type: integer}
+        one_liner:
+          nullable: true
+          type: object
+          required: [verb, target, tool, at, calls_this_turn]
+          properties: {verb: {type: string}, target: {type: string}, tool: {type: string}, at: {type: integer}, calls_this_turn: {type: integer}}
+        context: {$ref: '#/components/schemas/Context'}
+        tokens: {$ref: '#/components/schemas/Tokens'}
+        tool_call_count: {type: integer, nullable: true}
+        last_clear_at:
+          nullable: true
+          type: object
+          properties: {at: {type: integer}, inferred: {type: boolean}}
+        compactions: {type: array, items: {$ref: '#/components/schemas/Compaction'}}
+        pending:
+          type: object
+          required: [approval, question, known]
+          properties: {approval: {type: boolean}, question: {type: boolean}, known: {type: boolean, description: "false = Tether did not say; not the same as false/false"}}
+        assignment:
+          nullable: true
+          type: object
+          properties:
+            theme_ref: {type: string}
+            task_ref: {type: string}
+            index: {type: integer}
+            count: {type: integer}
+            stats: {type: object, properties: {done: {type: integer}, time_on_task_ms: {type: integer}, events: {type: integer}}}
+        spark: {type: array, minItems: 30, maxItems: 30, items: {type: integer}, description: "per-minute activity, last 30 min, oldest first"}
+        parent_session_id: {type: string, nullable: true}
+        replaced_by: {type: string, nullable: true}
+        observed_by: {type: array, items: {type: string, enum: [tether, chimera]}}
+        capabilities:
+          type: object
+          required: [nudge, interrupt, restart]
+          properties:
+            nudge: {type: boolean}
+            interrupt: {type: object, required: [available, reason], properties: {available: {type: boolean}, reason: {type: string, nullable: true}}}
+            restart: {type: boolean}
+    Context:
+      type: object
+      required: [used, window, pct, source, breakdown]
+      properties:
+        used: {type: integer, nullable: true}
+        window: {type: integer, nullable: true}
+        pct: {type: integer, nullable: true}
+        source: {type: string, enum: [stream, unknown]}
+        breakdown: {nullable: true, description: "always null: no source exists. The UI shows total only"}
+    Tokens:
+      type: object
+      required: [metered, input, output, cache_read, cache_write, hour]
+      properties:
+        metered: {type: boolean}
+        input: {type: integer, nullable: true}
+        output: {type: integer, nullable: true}
+        cache_read: {type: integer, nullable: true}
+        cache_write: {type: integer, nullable: true}
+        hour: {nullable: true, type: object, properties: {input: {type: integer}, output: {type: integer}, cache_read: {type: integer}, cache_write: {type: integer}}}
+    Compaction:
+      type: object
+      required: [at, before, after, inferred]
+      properties: {at: {type: integer}, before: {type: integer}, after: {type: integer}, inferred: {type: boolean}}
+    Collector:
+      type: object
+      required: [collecting, sessions, last_event_at, strategy, sources, dropped_output_frames, open_gaps, retention, bus_topics]
+      properties:
+        collecting: {type: boolean, description: "false = an unreachable Tether; never render an empty healthy page"}
+        sessions: {type: integer}
+        last_event_at: {type: integer, nullable: true}
+        strategy: {type: string, enum: [snapshot, fallback]}
+        sources: {type: object, additionalProperties: {type: object, properties: {state: {type: string, enum: [streaming, polling, unreachable, off]}, detail: {type: string}}}}
+        dropped_output_frames: {type: integer}
+        open_gaps: {type: integer}
+        retention: {type: object, properties: {last_run_at: {type: integer, nullable: true}, rows_pruned: {type: integer}}}
+        bus_topics: {type: object, additionalProperties: {type: string, enum: [live, off, no_emitter]}, description: "which Activity topics can ever have data today"}
+    SessionsResponse:
+      type: object
+      required: [sessions, summary, collector]
+      properties:
+        sessions: {type: array, items: {$ref: '#/components/schemas/Session'}}
+        summary: {type: object, description: "counts per state over all sessions, ignoring the filters", additionalProperties: {type: integer}}
+        collector: {$ref: '#/components/schemas/Collector'}
+    TimelineEvent:
+      type: object
+      required: [id, seq, session_id, type, at, actor, summary, cite, card, payload]
+      properties:
+        id: {type: string}
+        seq: {type: integer}
+        session_id: {type: string}
+        type: {type: string, enum: [tool, message, approval, lifecycle, compaction, clear, error, task, control]}
+        at: {type: integer}
+        actor: {type: string}
+        summary: {type: string, maxLength: 200}
+        cite: {type: array, items: {$ref: '#/components/schemas/Ref'}}
+        card: {nullable: true, allOf: [{$ref: '#/components/schemas/MiniCard'}]}
+        payload: {nullable: true, description: "always null today; raw payloads are never stored"}
+    ToolRun:
+      type: object
+      required: [type, run_id, session_id, calls, summary, started_at, ended_at, events]
+      properties:
+        type: {type: string, enum: [tool_run]}
+        run_id: {type: string}
+        session_id: {type: string}
+        calls: {type: integer}
+        summary: {type: string}
+        started_at: {type: integer}
+        ended_at: {type: integer}
+        events: {type: array, items: {$ref: '#/components/schemas/TimelineEvent'}}
+    Gap:
+      type: object
+      required: [start, end, reason, from_seq, to_seq, backfilled]
+      properties:
+        start: {type: integer}
+        end: {type: integer}
+        reason: {type: string, enum: [tachyon_offline, tether_unreachable, purged, backfill_limit, restart]}
+        from_seq: {type: integer}
+        to_seq: {type: integer}
+        backfilled: {type: boolean}
+    EventsResponse:
+      type: object
+      required: [events, gaps, next_before]
+      properties:
+        events: {type: array, items: {oneOf: [{$ref: '#/components/schemas/TimelineEvent'}, {$ref: '#/components/schemas/ToolRun'}]}}
+        gaps: {type: array, items: {$ref: '#/components/schemas/Gap'}}
+        next_before: {type: integer, nullable: true}
+    ContextSeries:
+      type: object
+      required: [points, compactions, clears, warn_pct]
+      properties:
+        points: {type: array, items: {type: object, properties: {at: {type: integer}, used: {type: integer}, window: {type: integer}, pct: {type: integer}}}}
+        compactions: {type: array, items: {$ref: '#/components/schemas/Compaction'}}
+        clears: {type: array, items: {type: object, properties: {at: {type: integer}, inferred: {type: boolean}}}}
+        warn_pct: {type: integer}
+    TokensDetail:
+      type: object
+      required: [metered, hour, session, share, trend]
+      properties:
+        metered: {type: boolean}
+        hour: {nullable: true, type: object}
+        session: {nullable: true, type: object}
+        share: {type: number, nullable: true}
+        trend: {type: string, nullable: true, enum: [up, down, flat]}
+    HistoryResponse:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items:
+            type: object
+            properties: {session_id: {type: string}, started_at: {type: integer}, ran_ms: {type: integer}, tokens: {type: object}, tool_calls: {type: integer}, ended_at: {type: integer}, end_reason: {type: string}, replaced_by: {type: string, nullable: true}}
+    BusEvent:
+      type: object
+      required: [id, seq, at, type, subject, actor, app, severity, refs, card]
+      properties:
+        id: {type: string}
+        seq: {type: integer}
+        at: {type: integer}
+        type: {type: string, enum: [deploy, restart, task, failure, host, workstream, lifecycle, card]}
+        subject: {type: string}
+        actor: {type: string}
+        app: {type: string}
+        severity: {type: string, enum: [info, warn, error]}
+        refs: {type: array, items: {$ref: '#/components/schemas/Ref'}}
+        card: {nullable: true, allOf: [{$ref: '#/components/schemas/MiniCard'}]}
+    BusResponse:
+      type: object
+      required: [events, next_before]
+      properties: {events: {type: array, items: {$ref: '#/components/schemas/BusEvent'}}, next_before: {type: integer, nullable: true}}
+    NudgeRequest:
+      type: object
+      required: [request_id, text]
+      properties: {request_id: {type: string}, text: {type: string, minLength: 1, maxLength: 4000}, interrupt: {type: boolean}}
+    RestartRequest:
+      type: object
+      required: [request_id, expected_session_id]
+      properties: {request_id: {type: string}, handoff: {type: boolean}, expected_session_id: {type: string}}
+    ControlRequest:
+      type: object
+      required: [request_id, kind, session_id, state, step, error, created_at, updated_at]
+      properties:
+        request_id: {type: string}
+        kind: {type: string, enum: [nudge, restart]}
+        session_id: {type: string}
+        state:
+          type: string
+          enum: [queued, delivered, interrupted_then_delivered, failed, requested, handoff_sent, waiting, stopping, stopped, resuming, done]
+          description: "nudge: queued|delivered|interrupted_then_delivered|failed. restart: requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done | failed(step)"
+        step: {type: string, nullable: true, description: "the step a failed restart stopped at"}
+        error: {type: string, nullable: true}
+        interrupt: {type: string, nullable: true, enum: [cancelled, no_turn_in_progress, turn_superseded, interrupt_unsupported, no_target]}
+        message_id: {type: string, nullable: true}
+        handoff: {type: boolean}
+        new_session_id: {type: string, nullable: true}
+        discarded_pending: {type: integer, nullable: true, description: "pending approvals/questions lost with the old session (they cannot be kept)"}
+        wait_ends_at: {type: integer, nullable: true}
+        created_at: {type: integer}
+        updated_at: {type: integer}
+    Settings:
+      type: object
+      required: [stale_after_s, handoff_prompt, handoff_timeout_s, nudge_presets]
+      properties: {stale_after_s: {type: integer, minimum: 60}, handoff_prompt: {type: string}, handoff_timeout_s: {type: integer, minimum: 10, maximum: 1800}, nudge_presets: {type: array, maxItems: 12, items: {type: string}}}
+    StreamEvent:
+      type: object
+      required: [type, at]
+      description: "type session {session partial}; summary {summary}; collector {collecting,sessions,last_event_at,sources}; bus {event}; control {request_id,state}; gap {start,end,reason}"
+      properties: {type: {type: string, enum: [session, summary, collector, bus, control, gap]}, at: {type: integer}}

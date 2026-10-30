@@ -172,3 +172,38 @@ func TestChatStubRoutesRequireOperator(t *testing.T) {
 		t.Errorf("stub list: %d", w.Code)
 	}
 }
+
+func TestAgentsStubRoutesRequireOperator(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"elevated":false}`))
+	}))
+	defer upstream.Close()
+	on := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL, AgentsStubs: true}).Routes()
+	off := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL}).Routes()
+	cases := []struct{ method, path string }{
+		{"POST", "/api/plugins/console/v1/agents/sessions/sess_work/nudge"},
+		{"POST", "/api/plugins/console/v1/agents/sessions/sess_work/restart"},
+		{"POST", "/api/plugins/console/v1/agents/controls/req_restart_waiting/skip"},
+		{"PUT", "/api/plugins/console/v1/agents/settings"},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`))
+		r.Header.Set("Origin", "https://tachyon.test")
+		w := httptest.NewRecorder()
+		on.ServeHTTP(w, r)
+		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Agents-Stub") != "" {
+			t.Errorf("%s %s with stubs on and no operator session: %d", c.method, c.path, w.Code)
+		}
+		w = httptest.NewRecorder()
+		off.ServeHTTP(w, httptest.NewRequest(c.method, "https://tachyon.test"+c.path, strings.NewReader(`{}`)))
+		if w.Header().Get("X-Tachyon-Agents-Stub") != "" {
+			t.Errorf("%s %s served a stub with the flag off", c.method, c.path)
+		}
+	}
+	w := httptest.NewRecorder()
+	on.ServeHTTP(w, httptest.NewRequest("GET", "https://tachyon.test/api/plugins/console/v1/agents/sessions", nil))
+	if w.Code != 200 || w.Header().Get("X-Tachyon-Agents-Stub") != "1" {
+		t.Errorf("stub list: %d", w.Code)
+	}
+}

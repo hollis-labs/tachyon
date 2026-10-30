@@ -25,6 +25,7 @@ import (
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/agentsapi"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -62,6 +63,8 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
+	AgentsStubs bool
 	// ChatStubs mounts the fixture-backed chat contract (TACHYON_CHAT_STUBS=1) for GUI development.
 	ChatStubs bool
 	// ChatClientContext sends shared workspace items to the app agent as client_context on each
@@ -649,6 +652,11 @@ func (s *Server) Routes() http.Handler {
 		}
 		mux.Handle(chatapi.Prefix+"/", operator.RequireOperator(stub.Chat()))
 		mux.Handle(chatapi.TerminalPrefix+"/", operator.RequireOperatorReads(stub.Terminal()))
+	}
+	// Agents contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. GETs are open; every write (nudge, restart, skip, settings) needs an operator session.
+	if s.cfg.AgentsStubs {
+		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
 	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
