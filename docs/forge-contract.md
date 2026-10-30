@@ -65,3 +65,26 @@ is kept 30 s so opening several files costs one fetch; patches over 200 KiB and 
 files have no hunks; at most 3000 files) and `.../pulls/{num}/checks` (head sha, check runs failures first, then in-flight, then
 passing, plus commit statuses). A rate limit is `429 rate_limited` with `retry_after_s`. Other hosts are `501 unavailable`.
 Mergeable retry belongs to merge preflight (PR5). The stub (`TACHYON_FORGE_STUBS=1`) still owns these patterns when on.
+
+## Merge preflight and merge (PR5, real)
+
+`internal/forgemerge`, mounted explicitly (stand down under `TACHYON_FORGE_STUBS=1`). Preflight is open like the other forge reads; the
+merge sits behind the operator route guard (browser session) and the API cache, so a merge invalidates the forge reads. Step-up stays
+reserved in `forgeapi.StepUpLevels`; nothing here adds a guard, audit row or rate limit.
+
+- `GET .../pulls/{n}/merge-preflight`: `state` ready|blocked|pending. Blockers from GitHub's own facts: `closed`, `draft`, `checks_failing`,
+  `checks_pending` (check runs and statuses at the head), `changes_requested` (each reviewer's latest verdict), `conflicts`, `behind_base`
+  (`behind_by` from a compare), `review_required` (only when the branch protection is readable) and the generic `branch_protection` when
+  GitHub says blocked and nothing explains it. Unknown mergeability is re-read twice (1.5 s apart), then `pending`, never a guess.
+  `methods_allowed` follows the repository settings, default squash. `required_checks` counts all checks at the head: GitHub does not say
+  which are required to a token without admin rights.
+- `PUT .../pulls/{n}/merge` `{method, head_sha, commit_title?, commit_message?, delete_branch?}`, `Idempotency-Key` required (1 to 128).
+  It re-runs preflight: a moved head is 409 `head_moved` (with the current `head_sha`), blockers are 409 `merge_blocked`. The head sha is
+  passed to GitHub as `sha`, so GitHub still enforces the repository's rules. A refusal from GitHub is 409 `conflict` with its message.
+  If the outcome is unknown (outage, odd answer, 405) the PR is read again and a merged PR is reported as merged. Success refreshes the
+  PR index (which publishes `pr.merged`), settles the `pr-inbox:` triage entry and returns `{merged, sha, message, method, audit_class,
+  settled, links_done}`. `delete_branch` is a best-effort delete after the merge, only for a branch in the same repository.
+- Idempotency: the answer for a key is stored 24 hours (`forge_idempotency`, migration 044); the same key and body returns it, the same
+  key with a different body is 409 `idempotency_conflict`. Only a merge or a `head_moved` answer is stored, so a refusal can be retried.
+- `audit_class: "lifecycle"` is the contract's label only. No audit row is written (deferred to CW-20261030-0082), and `links_done` is 0 until
+  the agent link table exists (PR7).
