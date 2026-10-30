@@ -138,6 +138,8 @@ it('sends pin with a comment only when asked', async () => {
   await api.plannerComment('themes', id, 'pinned', 2, undefined, { pin: true })
   expect(JSON.parse(fetcher.mock.calls[0][1].body)).not.toHaveProperty('pin')
   expect(JSON.parse(fetcher.mock.calls[1][1].body)).toMatchObject({ text: 'pinned', pin: true, expected_revision: 2 })
+})
+
 it('writes a typed relation on the source item and removes it with the same body', async () => {
   const fetcher = vi.fn().mockImplementation(async () => json({ item: { id, db: 'themes', revision: 9 }, links_view: { outbound: [], inbound: [], external: [] } }))
   installFetch(fetcher)
