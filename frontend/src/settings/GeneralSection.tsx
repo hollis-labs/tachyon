@@ -1,4 +1,4 @@
-import { Button, EmptyState } from "@hollis-labs/design-components"
+import { Button } from "@hollis-labs/design-components"
 import {
   type SettingsChanges,
   type SettingsDraft,
@@ -23,7 +23,7 @@ export type GeneralSettings =
 export function GeneralSection({ settings }: { settings: GeneralSettings }) {
   return (
     <section aria-labelledby="settings-general-h" className="space-y-4">
-      <h2 id="settings-general-h" tabIndex={-1} className="text-lg font-semibold text-foreground">
+      <h2 id="settings-general-h" tabIndex={-1} className="sr-only">
         General
       </h2>
       {settings.status === "loading" && (
@@ -34,11 +34,10 @@ export function GeneralSection({ settings }: { settings: GeneralSettings }) {
         </div>
       )}
       {settings.status === "unavailable" && (
-        <EmptyState
-          variant="error"
-          title="Settings are not available"
-          description={settings.reason}
-        />
+        <div className="rounded-md border border-border bg-panel px-4 py-3">
+          <p className="text-sm font-medium text-foreground">Settings are not available</p>
+          <p className="text-xs text-text-subtle">{settings.reason}</p>
+        </div>
       )}
       {settings.status === "ready" && <Ready settings={settings} />}
     </section>

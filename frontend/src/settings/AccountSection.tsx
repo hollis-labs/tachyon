@@ -14,7 +14,7 @@ export function AccountSection() {
 
   return (
     <section aria-labelledby="settings-account-h" className="space-y-4">
-      <h2 id="settings-account-h" tabIndex={-1} className="text-lg font-semibold text-foreground">
+      <h2 id="settings-account-h" tabIndex={-1} className="sr-only">
         Account
       </h2>
       <form
@@ -44,12 +44,12 @@ export function AccountSection() {
       </form>
       <dl className="flex flex-wrap gap-2 text-xs" aria-label="Identity">
         {[
-          ["identified", "no"],
-          ["assurance", "relaxed"],
-          ["source", "local"],
+          ["Identity", "Unknown"],
+          ["Assurance", "local"],
+          ["Source", "this app"],
         ].map(([k, v]) => (
           <div key={k} className="rounded-full border border-border px-2 py-0.5">
-            <dt className="inline text-text-subtle">{k} </dt>
+            <dt className="inline text-text-subtle">{k}: </dt>
             <dd className="inline text-foreground">{v}</dd>
           </div>
         ))}
