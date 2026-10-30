@@ -1,12 +1,15 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLoad } from '../builder/useLoad'
+import { BuilderError } from '../builder/api'
 import { NOT_REPORTED } from '../builder/vocab'
 import { type Project, type ProjectPatch, type ProjectRow, type ProjectStatus, errorMessage, profilePatch, registryApi } from './api'
 
 const BTN = 'border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover disabled:opacity-50'
 const INPUT = 'w-full border border-border bg-bg px-2 py-1 dash-body text-fg'
 const STATUS: Record<string, string> = { active: 'Active', paused: 'Paused', archived: 'Archived' }
+const FIELD_LABEL: Record<string, string> = { display_name: 'name', description: 'description', tags: 'tags', guidelines: 'guidelines', entry_points: 'entry points', status: 'status' }
+const fieldList = (keys: string[]) => keys.map((k) => FIELD_LABEL[k] ?? k).join(', ')
 const lines = (v: string) =>
   v
     .split('\n')
@@ -34,6 +37,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<ProjectPatch>({})
   const [saved, setSaved] = useState<Project | null>(null)
+  const [savedFields, setSavedFields] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -62,11 +66,13 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
     setBusy(true)
     setError('')
     try {
+      const fields = fieldList(Object.keys(patch))
       setSaved(await registryApi.patch(p.id, patch))
+      setSavedFields(fields)
       setDraft({})
       setEditing(false)
     } catch (e) {
-      setError(errorMessage(e))
+      setError(e instanceof BuilderError && e.code === 'assurance_insufficient' ? 'Saving needs a stronger sign-in. Step up your access, then save again.' : errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -91,7 +97,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
       </header>
       {editing && (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
-          <span className="mr-auto">{dirty === 0 ? 'No unsaved changes' : `${dirty} unsaved change${dirty === 1 ? '' : 's'} — ${Object.keys(patch).join(', ')}`}</span>
+          <span className="mr-auto">{dirty === 0 ? 'No unsaved changes' : `Changing ${dirty} field${dirty === 1 ? '' : 's'}: ${fieldList(Object.keys(patch))}`}</span>
           {error && (
             <span role="alert" className="text-danger">
               {error}
@@ -115,7 +121,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
       )}
       {saved && !editing && (
         <p role="status" className="px-5 pt-3 dash-support text-fg-muted">
-          Saved. Registry profile changes apply immediately.
+          Saved {savedFields}. Registry profile changes apply immediately.
         </p>
       )}
       <section aria-label="Profile" className="px-5 py-4">
