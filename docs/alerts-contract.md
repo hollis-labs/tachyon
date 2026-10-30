@@ -55,3 +55,14 @@ and `.id` to `ref`. `needs_you` comes from the rule only, and the catch-all neve
 State is in memory and resets on restart; times are shifted so timers look live. The stream replays a fixed
 script (`fixtures/stream.json`); it does not react to ops. Kinds with no emitter yet (host reboot,
 health-check failure, workstream created) are not in the fixtures.
+
+## Prefs semantics (AL6)
+
+`internal/alertsprefs` (pure functions): `MinSeverity` (blockers = error, warnings = warning, everything =
+debug), `InQuietHours` (read in the saved IANA zone, wraps midnight, start == end is empty, an unknown zone
+fails open), `Muted` (case-insensitive substring), `Validate` (adds a real zone lookup to `ValidPrefs`),
+`Normalize`, `MigrateOnce`, `BellCounts` and `ToastFor`. `ToastFor` rules: critical always toasts (passes the
+master switch, Quiet, quiet hours, muting and the notify level); otherwise the master switch must be on,
+Quiet and quiet hours off, the source not muted and the severity at or above the level; a coalesced repeat
+and state changes (read, dismiss, settle) never toast; created, raised, woke and escalated do. Everything is
+stored; the flag only drives the toast, and the bell counts what the level lets through.
