@@ -33,6 +33,11 @@ function deltaText(d: NonNullable<TimelineEntry['delta']>): string | undefined {
   return parts.length ? parts.join(', ') : undefined
 }
 
+function deltaSpoken(d: NonNullable<TimelineEntry['delta']>): string | undefined {
+  const parts = (['done', 'doing', 'review', 'blocked'] as const).filter((k) => d[k]).map((k) => `${k[0].toUpperCase()}${k.slice(1)} ${d[k] > 0 ? 'up' : 'down'} ${Math.abs(d[k])}`)
+  return parts.length ? parts.join(', ').replace(/, (\w)/g, (_, c: string) => `, ${c.toLowerCase()}`) : undefined
+}
+
 export function toTimelineEvent(e: TimelineEntry, now = Date.now()): TimelineEvent {
   const arrow = e.arrow ? TEXT.momentumArrow[e.arrow] : undefined
   return {
@@ -43,6 +48,7 @@ export function toTimelineEvent(e: TimelineEntry, now = Date.now()): TimelineEve
     tone: e.kind === 'blocker' && e.arrow === 'down' ? 'blocked' : undefined,
     body: e.text,
     delta: e.delta ? deltaText(e.delta) : undefined,
+    deltaLabel: e.delta ? deltaSpoken(e.delta) : undefined,
     momentum: arrow,
   }
 }

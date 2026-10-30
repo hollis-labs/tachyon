@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Button } from "@hollis-labs/design-components"
-import { ArrowLeft, Copy, X } from "lucide-react"
+import { Button, Input, Skeleton } from "@hollis-labs/design-components"
+import { ArrowLeft, ChevronDown, ChevronUp, Copy, X } from "lucide-react"
+import { Segmented } from "../components/segmented"
 import { MessageBody } from "../chat/MessageBody"
 import { read, number, type Session, type Detail } from "./data"
+import { ago } from "./sessions"
 
 type Turn = Detail["turns"][number]
 
@@ -45,6 +47,9 @@ export function TranscriptReader({
   const [error, setError] = useState("")
   const [attempt, setAttempt] = useState(0)
   const pending = useRef<number | undefined>(0)
+  const [find, setFind] = useState("")
+  const [role, setRole] = useState<"all" | "user" | "assistant" | "tool">("all")
+  const [cur, setCur] = useState(0)
 
   // Pages of turns are appended as the reader scrolls; `pending` is the offset to fetch.
   useEffect(() => {
@@ -84,6 +89,30 @@ export function TranscriptReader({
     setAttempt((n) => n)
   }, [loading, next])
 
+  // Find works on the turns loaded so far; the server has no find.
+  const shown = turns.filter((t) => role === "all" || t.role === role)
+  const q = find.trim().toLowerCase()
+  const hits = q
+    ? shown.filter((t) => (t.text ?? "").toLowerCase().includes(q)).map((t) => t.seq)
+    : []
+  const at = hits.length ? Math.min(cur, hits.length - 1) : -1
+  const current = at >= 0 ? hits[at] : undefined
+  useEffect(() => {
+    if (current === undefined) return
+    document.getElementById(`turn-${current}`)?.scrollIntoView?.({ block: "center" })
+  }, [current])
+  const step = (by: number) =>
+    hits.length && setCur((at + by + hits.length) % hits.length)
+
+  // Ctrl/Cmd+F finds in the transcript only while focus is inside the reader.
+  const box = useRef<HTMLElement>(null)
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault()
+      box.current?.querySelector<HTMLInputElement>("input[aria-label='Find in transcript']")?.focus()
+    }
+  }
+
   // Esc closes the reader (on a phone: back to the list).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -109,6 +138,8 @@ export function TranscriptReader({
 
   return (
     <article
+      ref={box}
+      onKeyDown={onKeyDown}
       aria-label="Transcript reader"
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto"
     >
@@ -135,8 +166,8 @@ export function TranscriptReader({
         </div>
         <div>
           <dt className="text-fg-faint">Started</dt>
-          <dd className="mt-1 text-fg-muted">
-            {session.started_at ? new Date(session.started_at).toLocaleString() : "Unknown"}
+          <dd className="mt-1 text-fg-muted" title={session.started_at ? new Date(session.started_at).toLocaleString() : undefined}>
+            {session.started_at ? ago(session.started_at) : "Unknown"}
           </dd>
         </div>
         <div>
@@ -158,18 +189,67 @@ export function TranscriptReader({
           </div>
         )}
       </dl>
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
+        <Input
+          type="search"
+          value={find}
+          onChange={(e) => {
+            setFind(e.target.value)
+            setCur(0)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              step(e.shiftKey ? -1 : 1)
+            }
+          }}
+          placeholder="Find in transcript"
+          aria-label="Find in transcript"
+          className="h-8 w-56 dash-body"
+        />
+        <Button variant="ghost" size="sm" aria-label="Previous match" disabled={!hits.length} onClick={() => step(-1)}>
+          <ChevronUp className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="sm" aria-label="Next match" disabled={!hits.length} onClick={() => step(1)}>
+          <ChevronDown className="h-4 w-4" />
+        </Button>
+        <span role="status" aria-live="polite" className="dash-control text-fg-faint">
+          {q
+            ? hits.length
+              ? `${at + 1} of ${hits.length}${next !== undefined ? " in loaded turns" : ""}`
+              : next !== undefined
+                ? "No matches in loaded turns"
+                : "No matches"
+            : ""}
+        </span>
+        <Segmented
+          bare
+          label="Filter by speaker"
+          value={role}
+          onChange={setRole}
+          className="ml-auto"
+          items={[
+            { value: "all", label: "All" },
+            { value: "user", label: "You" },
+            { value: "assistant", label: "Agent" },
+            { value: "tool", label: "Tool" },
+          ]}
+        />
+      </div>
       <div className="px-4 py-2 dash-control text-fg-faint">
         {turns.length
-          ? `${number(turns.length)} of ${number(total)} turns · redacted transcript`
+          ? `${role === "all" ? `${number(turns.length)} of ${number(total)} turns` : `${number(shown.length)} ${roleLabel(role).toLowerCase()} turns of ${number(turns.length)} loaded`} · redacted transcript`
           : loading || error
             ? ""
             : "No recorded turns"}
       </div>
       <div className="divide-y divide-border-subtle px-4">
-        {turns.map((turn) => (
+        {shown.map((turn) => (
           <article
             key={turn.seq}
-            className="py-4 [contain-intrinsic-size:auto_120px] [content-visibility:auto]"
+            id={`turn-${turn.seq}`}
+            aria-current={turn.seq === current ? "true" : undefined}
+            className={`py-4 [contain-intrinsic-size:auto_120px] [content-visibility:auto] ${turn.seq === current ? "bg-surface" : ""}`}
           >
             <div className="mb-2 flex items-center gap-3 dash-control">
               <span className="font-medium text-fg-secondary">{roleLabel(turn.role)}</span>
@@ -202,9 +282,12 @@ export function TranscriptReader({
         </p>
       )}
       {loading && !error && (
-        <p role="status" className="px-4 py-6 dash-body text-fg-faint">
-          Loading transcript…
-        </p>
+        <div role="status" className="space-y-3 px-4 py-4">
+          <span className="sr-only">Loading transcript…</span>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
       )}
       <div ref={end} className="px-4 py-3">
         {next !== undefined && !loading && !error && (
