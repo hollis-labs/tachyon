@@ -57,6 +57,7 @@ export const TEXT = {
   decisionsEmpty: 'No decisions waiting',
   activity: 'Activity',
   activityEmpty: 'No comments yet',
+  pinsSynced: 'Pins synced from this browser',
   pinWithComment: 'Pin this theme',
   commentPlaceholder: 'Comment or update',
   commentSend: 'Send',

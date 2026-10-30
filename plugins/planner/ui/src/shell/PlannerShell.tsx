@@ -111,6 +111,7 @@ export default function PlannerShell() {
     localStorage.removeItem(PIN_KEY)
     setPins(new Set())
     if (todo.length === 0) return
+    toast(TEXT.pinsSynced)
     void Promise.allSettled(todo.map((r) => api.plannerPin('themes', r.id, true, r.rev))).then(() => load())
   }, [serverPins]) // eslint-disable-line react-hooks/exhaustive-deps
   const act = async (r: ThemeRow, action: ThemeAction, args?: { position?: number }) => {
