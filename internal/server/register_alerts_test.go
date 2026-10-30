@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/tachyon/internal/alertsapi"
 	"github.com/hollis-labs/tachyon/internal/alertsource"
 	"github.com/hollis-labs/tachyon/internal/alertstore"
+	"github.com/hollis-labs/tachyon/internal/approvals"
 )
 
 func TestAlertsStubIsMountedOnlyWhenEnabled(t *testing.T) {
@@ -128,5 +130,40 @@ func TestAlertsFeedStreamAndSources(t *testing.T) {
 	w := get("/stream?after=0&once=1", nil)
 	if !strings.Contains(w.Body.String(), `"type":"alert.created"`) || !strings.Contains(w.Body.String(), `"toast":true`) {
 		t.Errorf("a created alert is streamed with a toast flag: %s", w.Body)
+	}
+}
+
+func TestApprovalItemRaisesAlert(t *testing.T) {
+	t.Setenv("TACHYON_ALERTS_SOURCES", "")
+	t.Setenv("TACHYON_ACTIVITY_URL", "")
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }))
+	defer upstream.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	s := New(Config{PluginBinDir: t.TempDir(), DataDir: t.TempDir(), CacheDir: t.TempDir(), ApprovalQueueURL: upstream.URL, TranscriptMaxSessions: 5000})
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cancel(); _ = s.Stop(context.Background()) }()
+	store := &approvals.Store{DB: s.store}
+	now := time.Now().UTC()
+	exp := now.Add(time.Hour)
+	rec := hitl.Record{ItemID: "item-t1", CallerScope: "test", IdempotencyKey: "k1", Digest: "d", Kind: "approval",
+		Request: []byte(`{"kind":"approval","title":"Deploy the thing","summary":"Needs a yes"}`), State: hitl.StatePresented, Revision: 1, CreatedAt: now, UpdatedAt: now, ExpiresAt: &exp}
+	if _, _, err := store.Create(ctx, rec); err != nil {
+		t.Skipf("cannot build a queue record in this test: %v", err)
+	}
+	v, _ := s.ext.Load(alertsKey)
+	api := v.(*alertstore.API)
+	find := func() []alertsapi.Alert {
+		as, _, _ := api.Store.List(ctx, alertstore.ListQuery{View: "active", Limit: 10})
+		return as
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for len(find()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	as := find()
+	if len(as) != 1 || as[0].Subjects[0].Kind != "approval" || as[0].Subjects[0].Ref != "item-t1" || !as[0].NeedsYou {
+		t.Fatalf("a new queue item raises one needs-you alert: %+v", as)
 	}
 }
