@@ -473,3 +473,35 @@ describe("approvals list", () => {
     expect(screen.getByRole("option", { name: /Fill me in/ })).toBeTruthy()
   })
 })
+
+describe("approval defer", () => {
+  it("snoozes with the reviewed revision and brings the item back with DELETE", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(json({ item_id: "req-1", deferred_until: "2026-10-17T21:00:00Z", revision: 4 }))
+      .mockResolvedValueOnce(json({ item_id: "req-1", deferred_until: null, revision: 4 }))
+    const client = createApprovalClient(fetcher)
+    await client.defer(item, 3600)
+    expect(fetcher.mock.calls[0][0]).toMatch(/\/items\/req-1\/defer$/)
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ expected_revision: 4, duration_s: 3600 })
+    await client.undefer("req-1")
+    expect(fetcher.mock.calls[1][1].method).toBe("DELETE")
+  })
+  it("offers Decide later and shows the snoozed state with Bring back now", async () => {
+    const defer = vi.fn().mockResolvedValue({ item_id: "req-1", deferred_until: "2099-01-01T00:00:00Z", revision: 5 })
+    const undefer = vi.fn().mockResolvedValue({ item_id: "req-1", deferred_until: null, revision: 5 })
+    const changed = vi.fn()
+    const client = { present: vi.fn().mockResolvedValue(item), decide: vi.fn(), defer, undefer } as unknown as ApprovalClient
+    render(<ApprovalDialog id={item.item_id} initial={item} client={client} onClose={vi.fn()} onChanged={changed} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Decide later" }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("menuitem", { name: "4 hours" }))
+    await screen.findByText(/Snoozed until/)
+    expect(defer).toHaveBeenCalledWith(expect.objectContaining({ item_id: "req-1" }), 4 * 3600)
+    expect(changed).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Bring back now" }))
+    await screen.findByRole("button", { name: "Decide later" })
+    expect(undefer).toHaveBeenCalledWith("req-1")
+  })
+})

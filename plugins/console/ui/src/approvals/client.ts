@@ -85,6 +85,8 @@ export interface ApprovalItem {
   enqueued_at: string
   updated_at: string
   terminal_outcome?: ApprovalOutcome
+  // Set while the item is snoozed; it sorts last in the queue until then.
+  deferred_until?: string | null
   request_snapshot: {
     kind: "approval" | "attention" | CardKind
     class?: "low" | "medium" | "high"
@@ -120,6 +122,12 @@ export interface ApprovalInbox {
   next_history?: string
   synced_at: string
   revision: string
+}
+export interface DeferResult {
+  item_id: string
+  deferred_until: string | null
+  expires_before_snooze_ends?: boolean
+  revision: number
 }
 export interface SecretStored {
   secret_ref: string
@@ -252,6 +260,20 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       })().finally(() => presenting.delete(id))
       presenting.set(id, pending)
       return pending
+    },
+    // Snooze: the item stays pending but drops to the end of the queue until the time passes.
+    defer(item: ApprovalItem, durationS: number, reason?: string) {
+      return request<DeferResult>(`/items/${encodeURIComponent(item.item_id)}/defer`, {
+        method: "POST",
+        body: JSON.stringify({
+          expected_revision: item.revision,
+          duration_s: durationS,
+          ...(reason ? { reason } : {}),
+        }),
+      })
+    },
+    undefer(id: string) {
+      return request<DeferResult>(`/items/${encodeURIComponent(id)}/defer`, { method: "DELETE" })
     },
     async decide(item: ApprovalItem, response: ApprovalResponse, opts: { keepalive?: boolean } = {}) {
       // A keepalive decision is sent while the page is closing: no time for the pre-check, so the

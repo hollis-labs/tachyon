@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
-import { Button, Textarea } from "@hollis-labs/design-components"
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Textarea } from "@hollis-labs/design-components"
 import { ChevronRight } from "lucide-react"
 import { MessageBody } from "../chat/MessageBody"
 import {
@@ -53,6 +53,12 @@ function RunCard({ request }: { request: ApprovalItem["request_snapshot"] }) {
 }
 
 const PHRASE = "approve"
+const DEFER_PRESETS = [
+  { label: "1 hour", seconds: 3600 },
+  { label: "4 hours", seconds: 4 * 3600 },
+  { label: "Tomorrow", seconds: 24 * 3600 },
+  { label: "Next week", seconds: 7 * 24 * 3600 },
+]
 
 function EvidenceView({ evidence }: { evidence: Evidence }) {
   const url = safeHTTPS(typeof evidence.external_url === "string" ? evidence.external_url : undefined)
@@ -106,6 +112,34 @@ export function DecisionDetail({
   useEffect(() => {
     void refresh()
   }, [refresh])
+  async function defer(seconds: number) {
+    if (!item || busy) return
+    setBusy(true)
+    setError("")
+    try {
+      const r = await client.defer(item, seconds)
+      setItem({ ...item, deferred_until: r.deferred_until, revision: r.revision })
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not snooze. Refresh and try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+  async function bringBack() {
+    if (!item || busy) return
+    setBusy(true)
+    setError("")
+    try {
+      const r = await client.undefer(item.item_id)
+      setItem({ ...item, deferred_until: null, revision: r.revision })
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not bring this back. Refresh and try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
   async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"]) {
     const decision = submitted ? "submitted" : (direct ?? choice)
     if (!item || !decision || busy || !ready) return
@@ -414,6 +448,23 @@ export function DecisionDetail({
                       </Button>
                     )}
                   </div>
+                )}
+                {item && isPending(item) && !isExpired(item) && (
+                  item.deferred_until ? (
+                    <p className="flex items-center gap-2 dash-control text-fg-muted">
+                      Snoozed until {new Date(item.deferred_until).toLocaleString()}.
+                      <Button variant="outline" size="sm" disabled={busy} onClick={() => void bringBack()}>Bring back now</Button>
+                    </p>
+                  ) : (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" disabled={busy || !ready} aria-label="Decide later" />}>Decide later</DropdownMenuTrigger>
+                      <DropdownMenuContent aria-label="Decide later" align="start" data-dashboard-shape="square" className="w-40">
+                        {DEFER_PRESETS.map((p) => (
+                          <DropdownMenuItem key={p.label} onClick={() => void defer(p.seconds)}>{p.label}</DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
                 )}
                 <p className="dash-support text-fg-faint">
                   Records your decision for the requesting application.

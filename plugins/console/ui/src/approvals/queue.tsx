@@ -44,7 +44,9 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history, hel
             </div>
             <div className="mt-1 flex items-center justify-between gap-2 font-mono dash-caption text-fg-faint">
               <span className="truncate">{kindLabel(r.kind)} · {who(i)}</span>
-              {!history && <Countdown expiresAt={r.expires_at} />}
+              {!history && (i.deferred_until && Date.parse(i.deferred_until) > Date.now()
+                ? <span>Snoozed</span>
+                : <Countdown expiresAt={r.expires_at} />)}
             </div>
           </li>
         )
