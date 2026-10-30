@@ -37,6 +37,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/catalogindex"
 	"github.com/hollis-labs/tachyon/internal/chatactivity"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
@@ -74,6 +75,9 @@ type Config struct {
 	// AgentsCollector runs the always-on Agents collector (TACHYON_AGENTS_COLLECTOR=0 turns it off for debugging).
 	// It needs a Tether address; the read-scope token is the usual TETHER_TOKEN_FILE.
 	AgentsCollector bool
+	// CatalogIndex runs the Builder's catalog index (TACHYON_CATALOG_INDEX=0 turns it off). It needs a Tether
+	// address; the read-scope token is the usual TETHER_TOKEN_FILE.
+	CatalogIndex bool
 	// ChatStubs mounts the fixture-backed chat contract (TACHYON_CHAT_STUBS=1) for GUI development.
 	ChatStubs bool
 	// ChatClientContext sends shared workspace items to the app agent as client_context on each
@@ -138,6 +142,7 @@ type Server struct {
 	approvalTrusted  *approvals.TrustedAPI
 	approvalCancel   context.CancelFunc
 	agentsCollector  *agentscollector.Collector
+	catalogIndex     *catalogindex.Index
 	actions          *actionrun.Service
 	cardFx           *cardfx.Store
 }
@@ -256,6 +261,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startCardEffects(approvalContext, store)
 	s.startCardEvents(approvalContext, store)
 	s.startAgentsCollector(approvalContext, store)
+	s.startCatalogIndex(approvalContext, store)
 	s.startCardDelivery(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
@@ -417,6 +423,9 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 	if s.agentsCollector != nil {
 		s.agentsCollector.Wait(ctx) // its last batch must land before the store closes
+	}
+	if s.catalogIndex != nil {
+		s.catalogIndex.Wait(ctx)
 	}
 	var jobErr error
 	if s.objectJobs != nil {
@@ -686,6 +695,12 @@ func (s *Server) Routes() http.Handler {
 	if s.cfg.AgentsStubs {
 		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
 	}
+	// Builder catalog index (B1): the real summary and stream. With BuilderStubs on the stub owns the
+	// whole prefix instead. GETs are open like every Builder read; there are no writes here.
+	if s.catalogIndex != nil && !s.cfg.BuilderStubs {
+		mux.Handle("GET "+builderapi.Prefix+"/summary", operator.RequireOperator(s.catalogIndex.SummaryHandler()))
+		mux.Handle("GET "+builderapi.Prefix+"/stream", operator.RequireOperator(s.catalogIndex.StreamHandler()))
+	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
@@ -869,6 +884,22 @@ func (s *Server) startAgentsCollector(ctx context.Context, store *localstore.Sto
 	}}
 	s.agentsCollector = &agentscollector.Collector{Source: src, Store: cstore, Sink: live, TurnEnded: live.EndTurn}
 	s.agentsCollector.Start(ctx)
+}
+
+// startCatalogIndex follows the Tether catalog into the Builder's read model (B1). Like the Agents
+// collector it stays off without a Tether address or when the credential would travel over plain
+// http to a remote host. It needs only the read-scope token.
+func (s *Server) startCatalogIndex(ctx context.Context, store *localstore.Store) {
+	if !s.cfg.CatalogIndex || strings.TrimSpace(s.cfg.Upstreams.TetherAddr) == "" {
+		return
+	}
+	src, err := catalogindex.NewHTTPSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
+	if err != nil {
+		slog.Warn("catalog index is enabled but not configured; staying off", "err", err)
+		return
+	}
+	s.catalogIndex = &catalogindex.Index{Source: src, Store: &catalogindex.Store{DB: store}, Bus: catalogindex.NewBroker(time.Now)}
+	s.catalogIndex.Start(ctx)
 }
 
 // startCardEvents publishes card.* events to the hub. It is off unless
