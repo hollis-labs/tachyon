@@ -167,11 +167,14 @@ export default function PlannerShell() {
   const all = useMemo(() => rowsOf(board), [board])
   const titleOf = (rid: string) => all.find((r) => r.id === rid)?.title ?? rid
   const kindLabel = (k: string) => LINK_KINDS.find((x) => x.id === k)?.label ?? k
-  // The spine tags the open theme with its first outgoing link; the context lists every link.
-  const spineLinks = useMemo(() => {
-    const first = linksView?.outbound[0]
-    return new Map(openId && first ? [[openId, { kind: first.kind, other: first.title }]] : [])
-  }, [linksView, openId])
+  // The spine tags the two themes of a link just made, for a few seconds (the golden's "Link themes" state); at rest it tags nothing.
+  const [justLinked, setJustLinked] = useState<{ from: string; to: string; kind: string } | null>(null)
+  const spineLinks = useMemo(() => new Map(justLinked ? [[justLinked.from, { kind: justLinked.kind, other: justLinked.to }], [justLinked.to, { kind: justLinked.kind, other: justLinked.from }]] : []), [justLinked])
+  useEffect(() => {
+    if (!justLinked) return
+    const t = setTimeout(() => setJustLinked(null), 6000)
+    return () => clearTimeout(t)
+  }, [justLinked])
   const rowLinks = [
     ...(linksView?.outbound ?? []).map((l) => ({ kind: l.kind, label: l.title })),
     ...(linksView?.inbound ?? []).map((l) => ({ kind: l.kind, label: l.title, note: TEXT.linkedFromNote })),
@@ -186,6 +189,7 @@ export default function PlannerShell() {
     try {
       const done = await api.plannerRelationAdd('themes', from, kind, { db: 'themes', id: to }, source.rev)
       setLinksView(done.links_view)
+      setJustLinked({ from, to, kind: kindLabel(kind) })
       toast(TEXT.linkAdded(titleOf(from), kindLabel(kind), titleOf(to)), {
         duration: 8000,
         action: {

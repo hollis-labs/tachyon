@@ -4,6 +4,7 @@ import { Button } from '@hollis-labs/design-components'
 import { usePlannerApi } from '@planner/api/context'
 import { PlannerApiError } from '@planner/api/errors'
 import { notifyWriteError } from '@planner/api/notifications'
+import { shortTaskId } from '@planner/lib/planner'
 import { LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
 import { FloatingPrompt, LaneBoard, StatusMenu, type Lane } from '@planner/shared'
 import type { PrCite, TaskLane, ThemeTask, ThemeTasks } from '@planner/api/types'
@@ -124,7 +125,7 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
     content: (
       <>
         <span className="flex items-center gap-1 font-mono text-caption text-fg-muted">
-          <span className="min-w-0 flex-1 truncate">{t.id}</span>
+          <span className="min-w-0 flex-1 truncate" title={t.id}>{shortTaskId(t.id)}</span>
           {t.pr_cites.map((c) => (
             <a key={c.number} href={prHref(c)} target="_blank" rel="noopener noreferrer" onPointerDown={(e) => e.stopPropagation()} className="rounded-sm border border-border px-1 text-fg-secondary hover:text-fg">{TEXT.prChip(c.number)}</a>
           ))}
@@ -180,5 +181,5 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
 
 function PromptSubject({ task }: { task?: ThemeTask }) {
   if (!task) return null
-  return <span className="flex items-baseline gap-2"><span className="rounded-sm border border-border px-1.5 font-mono text-caption text-fg-secondary">{task.id}</span>{task.title}</span>
+  return <span className="flex items-baseline gap-2"><span className="rounded-sm border border-border px-1.5 font-mono text-caption text-fg-secondary">{shortTaskId(task.id)}</span>{task.title}</span>
 }
