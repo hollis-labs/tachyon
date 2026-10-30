@@ -302,18 +302,15 @@ func resolve(w http.ResponseWriter, r *http.Request) {
 			write(w, 409, item{"code": "stale_revision", "message": "The item changed. Review it again.", "revision": it["revision"]})
 			return
 		}
-		if str(it, "risk") == RiskHigh {
-			fail(w, 403, "provider_handoff_required", "This item needs provider approval; it cannot be decided in Tachyon.")
-			return
-		}
 		destructive, _ := it["destructive"].(map[string]any)
-		if str(it, "risk") != RiskLow && !elevated(r) || destructive != nil && !elevated(r) {
+		confirm, _ := it["confirm"].(map[string]any)
+		if (str(it, "risk") != RiskLow || destructive != nil) && !elevated(r) {
 			fail(w, 403, "operator_access_required", "Operator access is needed for this item.")
 			return
 		}
 		approve := dec == "approved"
-		if destructive != nil && approve && b.Response.AlternativeID == "" {
-			if strings.TrimSpace(b.Response.Confirmation) != destructive["phrase"] {
+		if confirm != nil && approve && b.Response.AlternativeID == "" {
+			if strings.TrimSpace(b.Response.Confirmation) != confirm["phrase"] {
 				fail(w, 422, "confirmation_required", "Type the confirmation phrase exactly.")
 				return
 			}

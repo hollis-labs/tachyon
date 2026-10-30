@@ -49,9 +49,9 @@ paths:
       summary: Decide one item
       description: |
         Checks in order: body, already resolved (409 already_resolved with the existing outcome), revision
-        (409 stale_revision with the actual revision), class high (403 provider_handoff_required), operator
-        access for medium/destructive (403 operator_access_required), typed confirmation for an approved
-        destructive item (422 confirmation_required, case-sensitive, trimmed), alternative_id, reason for deny
+        (409 stale_revision with the actual revision), operator
+        access for medium/high/destructive (403 operator_access_required), typed confirmation for an approved
+        item that has confirm (every high-class item and every destructive one) (422 confirmation_required, case-sensitive, trimmed), alternative_id, reason for deny
         when reason_required (422 reason_required), secret answers must be secret_refs (422 invalid_secret_ref).
       parameters: [{$ref: '#/components/parameters/id'}]
       requestBody:
@@ -156,7 +156,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: {type: string, enum: [stale_revision, already_resolved, batch_id_reuse, confirmation_required, reason_required, invalid_secret_ref, operator_access_required, provider_handoff_required, requester_cannot_approve, session_required, secrets_unavailable, rate_limited, invalid, not_found, internal]}
+        code: {type: string, enum: [stale_revision, already_resolved, batch_id_reuse, confirmation_required, reason_required, invalid_secret_ref, operator_access_required, requester_cannot_approve, session_required, secrets_unavailable, rate_limited, invalid, not_found, internal]}
         message: {type: string}
         revision: {type: integer, description: actual revision on stale_revision / already_resolved}
         terminal_outcome: {type: object, description: existing outcome on already_resolved}
@@ -176,13 +176,17 @@ components:
       type: object
       required: [ref, label, kind]
       properties: {ref: {type: string}, label: {type: string}, kind: {type: string}, note: {type: string}}
+    Confirm:
+      type: object
+      required: [phrase]
+      properties:
+        phrase: {type: string, description: "server-derived; case-sensitive, trimmed"}
     Destructive:
       type: object
-      required: [irreversible, summary, phrase]
+      required: [irreversible, summary]
       properties:
         irreversible: {type: boolean}
         summary: {type: string}
-        phrase: {type: string, description: "server-derived; approve must send response.confirmation equal to it"}
     Alternative:
       type: object
       required: [id, label, effects]
@@ -210,7 +214,7 @@ components:
         session_ref: {type: string}
         asked_at: {type: string, format: date-time}
         risk: {$ref: '#/components/schemas/Risk'}
-        risk_reasons: {type: array, items: {type: string, enum: [effects_present, secret_field, interactive, destructive, command_exec, provider_handoff]}}
+        risk_reasons: {type: array, items: {type: string, enum: [effects_present, secret_field, interactive, destructive, command_exec]}}
         group: {$ref: '#/components/schemas/Group'}
         batchable: {type: boolean, description: "computed by the server; meaningful for pending items only"}
         batch_blockers: {type: array, items: {$ref: '#/components/schemas/BatchBlocker'}}
@@ -226,7 +230,7 @@ components:
         alternatives: {type: array, maxItems: 3, items: {$ref: '#/components/schemas/Alternative'}}
         recommendation: {type: string, nullable: true}
         reason_required: {type: boolean}
-        provider_handoff: {type: boolean, description: "true for class high: read-only in Tachyon (Needs provider approval)"}
+        confirm: {allOf: [{$ref: '#/components/schemas/Confirm'}], nullable: true, description: "present on every high-class item and every destructive one; approve must send response.confirmation equal to confirm.phrase unless alternative_id is set"}
     Inbox:
       type: object
       required: [pending, history, synced_at, server_now_ms, revision, counts]

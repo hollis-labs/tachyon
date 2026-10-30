@@ -77,7 +77,7 @@
       "alternatives": [],
       "recommendation": "Approve: the build passed CI and staging is the dev-labelled target.",
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -142,7 +142,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -201,7 +201,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -260,7 +260,7 @@
       "alternatives": [],
       "recommendation": "Expires in 90 seconds.",
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -311,7 +311,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -377,7 +377,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -467,8 +467,7 @@
       "affected_total": 3,
       "destructive": {
         "irreversible": true,
-        "summary": "Deletes three environments and their stored state.",
-        "phrase": "DELETE 3 ITEMS"
+        "summary": "Deletes three environments and their stored state."
       },
       "alternatives": [
         {
@@ -495,7 +494,9 @@
       ],
       "recommendation": "Archive instead unless the open session is finished.",
       "reason_required": true,
-      "provider_handoff": false
+      "confirm": {
+        "phrase": "DELETE 3 ITEMS"
+      }
     },
     {
       "contract_version": "1",
@@ -536,8 +537,7 @@
       "risk": "high",
       "risk_reasons": [
         "destructive",
-        "effects_present",
-        "provider_handoff"
+        "effects_present"
       ],
       "group": "destructive",
       "batchable": false,
@@ -565,13 +565,153 @@
       "affected_total": 1,
       "destructive": {
         "irreversible": true,
-        "summary": "Purges every transcript row older than 2025-01-01.",
-        "phrase": "PURGE TRANSCRIPT STORE"
+        "summary": "Purges every transcript row older than 2025-01-01."
       },
       "alternatives": [],
       "recommendation": null,
       "reason_required": true,
-      "provider_handoff": true
+      "confirm": {
+        "phrase": "PURGE TRANSCRIPT STORE"
+      }
+    },
+    {
+      "contract_version": "1",
+      "item_id": "ap_high_action",
+      "state": "presented",
+      "revision": 1,
+      "presented_projection_revision": 1,
+      "request_snapshot": {
+        "kind": "approval",
+        "title": "Run production deploy",
+        "summary": "Deploys build 4412 to production with the registered deploy action.",
+        "source": {
+          "app": "tachyon-agents",
+          "agent": "builder-reviewer"
+        },
+        "class": "high",
+        "expires_at": "2026-10-30T03:25:00Z",
+        "effects": [
+          {
+            "target": "action:deploy-production",
+            "op": "run",
+            "summary": "Run the registered deploy action"
+          }
+        ],
+        "action": {
+          "id": "deploy-production",
+          "machine": "worker-a"
+        }
+      },
+      "enqueued_at": "2026-10-30T02:50:00Z",
+      "updated_at": "2026-10-30T02:50:30Z",
+      "kind": "approval",
+      "title": "Run production deploy",
+      "summary": "Deploys build 4412 to production with the registered deploy action.",
+      "requester": {
+        "id": "builder-reviewer",
+        "label": "Builder Reviewer",
+        "kind": "agent"
+      },
+      "session_ref": "session-high_act",
+      "asked_at": "2026-10-30T02:50:00Z",
+      "risk": "high",
+      "risk_reasons": [
+        "command_exec",
+        "effects_present"
+      ],
+      "group": "command",
+      "batchable": false,
+      "batch_blockers": [
+        "risk_not_low",
+        "command_exec",
+        "irreversible_effect"
+      ],
+      "effect_classes": [
+        "run"
+      ],
+      "expires_at": "2026-10-30T03:25:00Z",
+      "server_now_ms": 1793329200000,
+      "deferred_until": null,
+      "run_state": "none",
+      "evidence": [
+        {
+          "ref": "torque:CW-20261030-0034",
+          "label": "Task CW-20261030-0034",
+          "kind": "torque"
+        }
+      ],
+      "affected_items": [],
+      "affected_total": 0,
+      "destructive": null,
+      "alternatives": [],
+      "recommendation": "Check the staging run first.",
+      "reason_required": false,
+      "confirm": {
+        "phrase": "RUN DEPLOY PRODUCTION"
+      }
+    },
+    {
+      "contract_version": "1",
+      "item_id": "ap_high_cerberus",
+      "state": "presented",
+      "revision": 1,
+      "presented_projection_revision": 1,
+      "request_snapshot": {
+        "kind": "approval",
+        "title": "Restart the gateway service",
+        "summary": "Cerberus asks to restart the gateway on worker-a.",
+        "source": {
+          "app": "cerberus",
+          "agent": "cerberus-supervisor"
+        },
+        "class": "high",
+        "expires_at": "2026-10-30T03:25:00Z",
+        "effects": [
+          {
+            "target": "service:gateway",
+            "op": "restart",
+            "summary": "restart"
+          }
+        ]
+      },
+      "enqueued_at": "2026-10-30T02:50:00Z",
+      "updated_at": "2026-10-30T02:50:30Z",
+      "kind": "approval",
+      "title": "Restart the gateway service",
+      "summary": "Cerberus asks to restart the gateway on worker-a.",
+      "requester": {
+        "id": "cerberus-supervisor",
+        "label": "Cerberus Supervisor",
+        "kind": "agent"
+      },
+      "session_ref": "session-high_cer",
+      "asked_at": "2026-10-30T02:50:00Z",
+      "risk": "high",
+      "risk_reasons": [
+        "effects_present"
+      ],
+      "group": "change",
+      "batchable": false,
+      "batch_blockers": [
+        "risk_not_low"
+      ],
+      "effect_classes": [
+        "restart"
+      ],
+      "expires_at": "2026-10-30T03:25:00Z",
+      "server_now_ms": 1793329200000,
+      "deferred_until": null,
+      "run_state": "none",
+      "evidence": [],
+      "affected_items": [],
+      "affected_total": 0,
+      "destructive": null,
+      "alternatives": [],
+      "recommendation": null,
+      "reason_required": false,
+      "confirm": {
+        "phrase": "RESTART GATEWAY"
+      }
     },
     {
       "contract_version": "1",
@@ -635,7 +775,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -702,7 +842,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -767,7 +907,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -819,7 +959,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     },
     {
       "contract_version": "1",
@@ -880,7 +1020,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false
+      "confirm": null
     }
   ],
   "history": [
@@ -941,7 +1081,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false,
+      "confirm": null,
       "terminal_outcome": {
         "type": "resolved",
         "decision": "approved",
@@ -1011,7 +1151,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false,
+      "confirm": null,
       "terminal_outcome": {
         "type": "resolved",
         "decision": "denied",
@@ -1082,7 +1222,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false,
+      "confirm": null,
       "terminal_outcome": {
         "type": "expired",
         "expired_at": "2026-10-30T02:26:40Z",
@@ -1146,7 +1286,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false,
+      "confirm": null,
       "terminal_outcome": {
         "type": "canceled",
         "canceled_at": "2026-10-30T02:10:00Z",
@@ -1203,7 +1343,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false,
+      "confirm": null,
       "terminal_outcome": {
         "type": "resolved",
         "decision": "answered",
@@ -1269,7 +1409,7 @@
       "alternatives": [],
       "recommendation": null,
       "reason_required": false,
-      "provider_handoff": false,
+      "confirm": null,
       "terminal_outcome": {
         "type": "resolved",
         "decision": "approved",
@@ -1289,10 +1429,10 @@
   "server_now_ms": 1793329200000,
   "revision": "inbox-r42",
   "counts": {
-    "pending": 13,
+    "pending": 15,
     "by_group": {
-      "command": 1,
-      "change": 6,
+      "command": 2,
+      "change": 7,
       "destructive": 2,
       "question": 1,
       "form": 1,
@@ -1302,7 +1442,7 @@
     "by_risk": {
       "medium": 3,
       "low": 9,
-      "high": 1
+      "high": 3
     },
     "batchable": 3,
     "deferred": 1

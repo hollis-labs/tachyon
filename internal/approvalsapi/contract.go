@@ -23,7 +23,7 @@ const (
 var Groups = []string{"command", "change", "destructive", "question", "form", "secret", "notice", "info"}
 
 // RiskReasons explain why an item is not plain low risk.
-var RiskReasons = []string{"effects_present", "secret_field", "interactive", "destructive", "command_exec", "provider_handoff"}
+var RiskReasons = []string{"effects_present", "secret_field", "interactive", "destructive", "command_exec"}
 
 // EffectClasses normalize effects[].op for display and filtering.
 var EffectClasses = []string{"create", "update", "restart", "delete", "archive", "run", "other"}
@@ -69,20 +69,19 @@ var StreamEvents = []string{"inbox.changed", "item.created", "item.updated", "it
 
 // Error codes a client can branch on (HTTP status in brackets).
 var ErrorCodes = []string{
-	"stale_revision",            // 409
-	"already_resolved",          // 409, carries the existing outcome
-	"batch_id_reuse",            // 409
-	"confirmation_required",     // 422, typed phrase missing or wrong
-	"invalid_secret_ref",        // 422
-	"operator_access_required",  // 403
-	"provider_handoff_required", // 403, class high
-	"requester_cannot_approve",  // 403
-	"session_required",          // 401
-	"secrets_unavailable",       // 503
-	"reason_required",           // 422, deny needs a note when the item says so
-	"rate_limited",              // 429
-	"invalid",                   // 400
-	"not_found",                 // 404
+	"stale_revision",           // 409
+	"already_resolved",         // 409, carries the existing outcome
+	"batch_id_reuse",           // 409
+	"confirmation_required",    // 422, typed phrase missing or wrong
+	"invalid_secret_ref",       // 422
+	"operator_access_required", // 403
+	"requester_cannot_approve", // 403
+	"session_required",         // 401
+	"secrets_unavailable",      // 503
+	"reason_required",          // 422, deny needs a note when the item says so
+	"rate_limited",             // 429
+	"invalid",                  // 400
+	"not_found",                // 404
 }
 
 // Limits.

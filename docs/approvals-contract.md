@@ -41,11 +41,12 @@ Stub controls (request headers; the stub only):
 
 ## Decisions the fixtures carry (addendum 1)
 
-- **G1 destructive** is a flag on a medium-risk item, not class high. It needs elevated access and, to
-  approve, `response.confirmation` equal to `destructive.phrase` (case-sensitive, trimmed) else 422
+- **G1 destructive** is a flag on an item (medium or high), not a class of its own. It needs elevated access.
+- **Typed phrase (addendum 2):** every high-class item and every destructive one carries `confirm.phrase`.
+  Approving needs `response.confirmation` equal to it (case-sensitive, trimmed) else 422
   `confirmation_required`. `alternatives[]` ("Archive instead") resolve as approved with `alternative_id`
-  and need no phrase. A true **high** item (`ap_destructive_high`, also carries a phrase) is
-  `provider_handoff: true` and read-only here: resolve answers 403 `provider_handoff_required`.
+  and need no phrase. High-class items, including cerberus-source ones and high action runs, resolve in the
+  browser with the phrase and a High chip. There is no provider-handoff state or error code.
 - **G2** a batch needs elevated access even for low items. **G3** whitelist `create update restart`,
   no declared effects means not batchable, max 25.
 - **SSE is primary**; polling `/inbox` every 10 s stays as the fallback. Event types: `inbox.changed`,
@@ -65,14 +66,14 @@ table, and the Go test fails if the table and the function drift. Blockers, in o
 Pending: command (`ap_cmd_deploy`), batchable changes (`ap_change_a|b|c`; `b` is at revision 4 for stale,
 `c` expires in 90 s), no effects (`ap_change_noeffects`), irreversible archive (`ap_change_archive`),
 destructive medium with 3 affected items and an Archive alternative (`ap_destructive_med`, phrase
-`DELETE 3 ITEMS`), destructive high (`ap_destructive_high`), question, form, secret field, notice, deferred.
+`DELETE 3 ITEMS`), destructive high (`ap_destructive_high`), high action run (`ap_high_action`, phrase `RUN DEPLOY PRODUCTION`), high cerberus-source (`ap_high_cerberus`, phrase `RESTART GATEWAY`), question, form, secret field, notice, deferred.
 History: approved, denied with reason, expired, withdrawn, answered, batch-resolved.
 
 ## Error codes
 
 `stale_revision` 409 (carries `revision`), `already_resolved` 409 (carries `terminal_outcome`), `batch_id_reuse` 409,
 `confirmation_required` 422, `reason_required` 422, `invalid_secret_ref` 422, `operator_access_required` 403,
-`provider_handoff_required` 403, `requester_cannot_approve` 403, `session_required` 401,
+`requester_cannot_approve` 403, `session_required` 401,
 `secrets_unavailable` 503, `rate_limited` 429, `invalid` 400, `not_found` 404.
 
 ## Known limits

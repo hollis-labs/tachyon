@@ -172,14 +172,14 @@ func TestInboxProjectionOrderingAndFilters(t *testing.T) {
 	}
 }
 
-func TestG1DestructiveIsOrthogonalToMediumAndHighStaysReadOnly(t *testing.T) {
+func TestDestructiveAndHighClassNeedTheTypedPhrase(t *testing.T) {
 	var med, high item
 	decode(t, do(t, "GET", "/items/ap_destructive_med", ""), &med)
 	decode(t, do(t, "GET", "/items/ap_destructive_high", ""), &high)
 	if med["risk"] != "medium" || med["destructive"] == nil || len(med["alternatives"].([]any)) != 1 || med["affected_total"].(float64) != 3 {
 		t.Errorf("medium destructive fixture: %v", med)
 	}
-	if high["risk"] != "high" || high["destructive"] == nil || high["provider_handoff"] != true {
+	if high["risk"] != "high" || high["destructive"] == nil || high["confirm"] == nil || high["provider_handoff"] != nil {
 		t.Errorf("high destructive fixture: %v", high)
 	}
 	body := func(rev int, resp string) string {
@@ -204,8 +204,35 @@ func TestG1DestructiveIsOrthogonalToMediumAndHighStaysReadOnly(t *testing.T) {
 	if w := do(t, "POST", "/items/ap_destructive_med/resolve", body(1, `{"decision":"approved","confirmation":"DELETE 3 ITEMS"}`), "X-Stub-Scenario", "not_elevated"); w.Code != 403 {
 		t.Errorf("destructive needs operator access: %d", w.Code)
 	}
-	if w := do(t, "POST", "/items/ap_destructive_high/resolve", body(1, `{"decision":"approved","confirmation":"PURGE TRANSCRIPT STORE"}`)); w.Code != 403 || !strings.Contains(w.Body.String(), "provider_handoff_required") {
-		t.Errorf("high is provider handoff: %d %s", w.Code, w.Body)
+	// Addendum 2: class high resolves in the browser with the typed phrase.
+	for _, c := range []struct{ id, phrase string }{{"ap_destructive_high", "PURGE TRANSCRIPT STORE"}, {"ap_high_action", "RUN DEPLOY PRODUCTION"}, {"ap_high_cerberus", "RESTART GATEWAY"}} {
+		if w := do(t, "POST", "/items/"+c.id+"/resolve", body(1, `{"decision":"approved"}`)); w.Code != 422 || !strings.Contains(w.Body.String(), "confirmation_required") {
+			t.Errorf("%s without phrase: %d %s", c.id, w.Code, w.Body)
+		}
+		if w := do(t, "POST", "/items/"+c.id+"/resolve", body(1, `{"decision":"approved","confirmation":"`+strings.ToLower(c.phrase)+`"}`)); w.Code != 422 {
+			t.Errorf("%s wrong case: %d", c.id, w.Code)
+		}
+		if w := do(t, "POST", "/items/"+c.id+"/resolve", body(1, `{"decision":"approved","confirmation":"`+c.phrase+`"}`)); w.Code != 200 {
+			t.Errorf("%s with phrase: %d %s", c.id, w.Code, w.Body)
+		}
+		if w := do(t, "POST", "/items/"+c.id+"/resolve", body(1, `{"decision":"approved","confirmation":"`+c.phrase+`"}`), "X-Stub-Scenario", "not_elevated"); w.Code != 403 {
+			t.Errorf("%s needs operator access: %d", c.id, w.Code)
+		}
+	}
+	if w := do(t, "POST", "/items/ap_high_cerberus/resolve", body(1, `{"decision":"denied"}`)); w.Code != 200 {
+		t.Errorf("deny needs no phrase: %d %s", w.Code, w.Body)
+	}
+	var cer item
+	decode(t, do(t, "GET", "/items/ap_high_cerberus", ""), &cer)
+	if src := cer["request_snapshot"].(map[string]any)["source"].(map[string]any)["app"]; src != "cerberus" {
+		t.Errorf("cerberus fixture source: %v", src)
+	}
+	for _, it := range []string{"ap_cmd_deploy"} {
+		var m item
+		decode(t, do(t, "GET", "/items/"+it, ""), &m)
+		if m["confirm"] != nil {
+			t.Errorf("%s: medium non-destructive items need no phrase", it)
+		}
 	}
 }
 
