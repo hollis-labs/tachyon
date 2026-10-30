@@ -743,7 +743,7 @@ func TestHandoffModeCapabilitiesBundleAndDetection(t *testing.T) {
 }
 
 func TestHandoffCommandsAreServerBuilt(t *testing.T) {
-	type cmd struct{ Step, Label, Kind, Command, Tool string }
+	type cmd struct{ Step, Label, Kind, Command string }
 	var c struct{ Handoff struct{ Commands []cmd } }
 	decode(t, do(t, "GET", "/changes/chg_awaiting_handoff", ""), &c)
 	steps := []string{}
@@ -751,17 +751,17 @@ func TestHandoffCommandsAreServerBuilt(t *testing.T) {
 		steps = append(steps, k.Step)
 		switch k.Kind {
 		case "shell": // the CLI only has show and approve
-			if !strings.HasPrefix(k.Command, "tether catalog show ") && !strings.HasPrefix(k.Command, "tether catalog approve ") || k.Tool != "" {
+			if !strings.HasPrefix(k.Command, "tether catalog show ") && !strings.HasPrefix(k.Command, "tether catalog approve ") {
 				t.Errorf("shell step: %+v", k)
 			}
-		case "action": // plan and apply are MCP tools, never a shell command
-			if k.Command != "" || !strings.HasPrefix(k.Tool, "tether_catalog_") {
+		case "session": // plan and apply are MCP tools: the command is text for a session, never a shell line
+			if !strings.Contains(k.Command, "tether_catalog_") || strings.HasPrefix(k.Command, "tether ") {
 				t.Errorf("action step: %+v", k)
 			}
 		default:
 			t.Errorf("kind: %+v", k)
 		}
-		if k.Label == "" || strings.Contains(k.Command, "catalog plan") || strings.Contains(k.Command, "catalog apply") {
+		if k.Label == "" || strings.Contains(k.Command, "tether catalog plan") || strings.Contains(k.Command, "tether catalog apply") {
 			t.Errorf("step: %+v", k)
 		}
 	}
