@@ -38,6 +38,7 @@ vi.mock("@hollis-labs/kit-dashboard/charts", () => ({
 }))
 afterEach(() => {
   cleanup()
+  window.history.replaceState(null, "", "/")
   vi.clearAllMocks()
 })
 const base: Session = {
