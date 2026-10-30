@@ -130,3 +130,36 @@ Migration `038_catalog_changes.sql` (take the next free number at merge).
 3. Tachyon never needs the catalog approval passphrase. The operator approves a submitted change on the host with the
    command shown in the change (`tether catalog approve <plan_id>`); Tachyon then applies it.
 4. Without the variable the change and launch routes answer 503 `changes_unavailable` and everything else works.
+
+## Library parts (B5, real)
+
+Library **prompts** and **policies** are Tachyon-managed parts. Tether has no object for either yet (design request B4), so a part lives in Tachyon's store (`library_parts`, `library_part_revisions`) and is *compiled into* the agent files that carry it; the agent file stays the system of record.
+
+**Changing a part** is a normal change: `POST /changes` with target `{kind:"part", part_kind:"prompt"|"policy", id}`.
+- `create` with value `{name, summary, body}` (prompt) or `{name, summary, bundle}` (policy); then `set` on `name`, `summary`, `body` (prompts) or on a policy field (`permission_mode`, `network`, `default_sandbox`, `mcp_scopes`, `lifecycle`, `recovery`; `remove` unsets one); `archive`.
+- `expected_sha` for a part is its revision as a string (`"3"`). A moved part is `409 stale_base`, or `stale` once the change is open.
+- `archive` is `409 part_in_use` while any agent carries the part.
+- Editing a part that agents carry builds **one** Tether plan with every referencing agent file recompiled, so the fleet moves together. The part row, its new revision and the references change only when that plan applies. A part nobody carries has no plan: submit applies it at once.
+- Policy edits and attaches are privileged (`ack_privileged` on submit); the existing assurance interface is untouched.
+
+**Attaching** is an op on the *agent* target:
+- `append`/`remove` on `prompt.parts`, value `{"kind":"prompt","id":"<id>"}`.
+- `set` (value `"<id>"`) / `remove` on `policy.part`. One policy per agent; `remove` only drops the reference and leaves the compiled fields in the file.
+
+**Compile.** A prompt becomes a block in the agent `body`:
+
+```
+<!-- tachyon:prompt <id>@<rev> -->
+<text>
+<!-- /tachyon:prompt -->
+```
+
+Client text may not contain either marker (`marker_forbidden`), so text cannot forge a block; text outside blocks is never touched. A policy writes its bundle into the agent's inline fields.
+
+**Drift.** `part_refs.compiled_hash` is the sha256 of the prompt text as it sits in the block, or of the canonical JSON of the policy fields it set. An agent is `drifted` when its file no longer hashes to that (hand edit, block removed). Drift is shown, never auto-fixed: editing the part (or re-attaching) recompiles it. Hashes are computed over the masked snapshot, so a prompt that contains a secret-looking string reads as drifted; keep secrets out of prompts.
+
+**Read side.** `GET library/prompts|policies` (list, detail with `body`/`bundle` and `referencing_agents[{id,rev,drifted}]`, `used_by`, `history` by revision), `agents/{id}` `parts[]` and `prompt.parts`, and `summary.library.prompts|policies` / `open_changes` are real.
+
+Migration `039_library_parts.sql` (take the next free number at merge).
+
+**Not done:** multi-agent *rollback* of a partly applied fleet is Tether's (one plan, atomic); a policy edit does not unset a field a newer bundle dropped; bodies are not read from Tether, only from the masked index.

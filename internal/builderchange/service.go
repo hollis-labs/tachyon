@@ -12,11 +12,13 @@ import (
 	"log/slog"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/builderapi"
+	"github.com/hollis-labs/tachyon/internal/builderparts"
 	"github.com/hollis-labs/tachyon/internal/builderread"
 	"github.com/hollis-labs/tachyon/internal/catalogindex"
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -100,6 +102,8 @@ type Change struct {
 	Result        *Result           `json:"result"`
 	Failure       *Failure          `json:"failure"`
 	Stale         *Stale            `json:"stale"`
+	// PartEffects is what applying does to the Library parts tables (B5); omitted when the change touches no part.
+	PartEffects *builderparts.Effects `json:"part_effects,omitempty"`
 }
 
 // Request is POST /changes.
@@ -172,7 +176,10 @@ func maskFor(path, content string) string {
 
 type group struct {
 	kind, id, path, expected string
+	partKind                 string // set when kind is part
 	edits                    []Edit
+	attach                   []attachOp
+	implied                  bool // an agent recompiled because a part it carries changed
 }
 
 func (s *Service) groups(req Request) ([]group, *APIError) {
@@ -183,24 +190,38 @@ func (s *Service) groups(req Request) ([]group, *APIError) {
 	idx := map[string]int{}
 	for _, o := range req.Ops {
 		k, id := o.Target.Kind, o.Target.ID
+		pk := ""
+		path := pathFor(k, id)
 		if k == builderapi.TargetPart {
-			return nil, refuse(400, "invalid", "Library parts are not changed here yet.")
+			pk = o.Target.PartKind
+			if pk != builderparts.KindPrompt && pk != builderparts.KindPolicy {
+				return nil, refuse(400, "invalid", "A part target needs part_kind prompt or policy.")
+			}
+			path = partPath(pk, id)
 		}
-		if pathFor(k, id) == "" || !builderapi.IDPattern.MatchString(id) {
-			return nil, refuse(400, "invalid", "target needs a kind (agent, launch, project, skill) and a slug id.")
+		if path == "" || !builderapi.IDPattern.MatchString(id) {
+			return nil, refuse(400, "invalid", "target needs a kind (agent, launch, project, skill, part) and a slug id.")
 		}
-		key := k + "/" + id
+		key := k + "/" + pk + "/" + id
 		i, ok := idx[key]
 		if !ok {
 			i = len(out)
 			idx[key] = i
-			out = append(out, group{kind: k, id: id, path: pathFor(k, id)})
+			out = append(out, group{kind: k, id: id, path: path, partKind: pk})
 		}
 		if o.ExpectedSHA != "" {
 			if out[i].expected != "" && out[i].expected != o.ExpectedSHA {
 				return nil, refuse(400, "invalid", "A target has two different expected_sha values.")
 			}
 			out[i].expected = o.ExpectedSHA
+		}
+		if k == builderapi.TargetAgent && isAttachPath(o.Op.Path) {
+			a, aerr := parseAttach(o)
+			if aerr != nil {
+				return nil, aerr
+			}
+			out[i].attach = append(out[i].attach, a)
+			continue
 		}
 		out[i].edits = append(out[i].edits, Edit{Type: o.Op.Type, Path: o.Op.Path, Value: o.Op.Value, SnapshotSeq: o.Op.SnapshotSeq})
 	}
@@ -213,13 +234,51 @@ type built struct {
 	targets    []Target
 	diff       string
 	privileged []Priv
+	effects    *builderparts.Effects
 }
 
 // build reads the live files, applies the edits and diffs the masked result. Nothing is written.
 func (s *Service) build(ctx context.Context, gs []group) (built, *APIError) {
 	b := built{base: map[string]string{}}
 	var diffs []string
+	pp := newPass(s)
+	// Parts first: an agent in the same change may attach the part's new revision.
 	for _, g := range gs {
+		if g.kind != builderapi.TargetPart {
+			continue
+		}
+		d, privs, base, perr := pp.edit(ctx, g)
+		if perr != nil {
+			return b, perr
+		}
+		b.targets = append(b.targets, Target{Kind: g.kind, ID: g.id, Path: g.path, BaseSHA: base})
+		if base != "" {
+			b.base[g.path] = base
+		}
+		b.privileged = append(b.privileged, privs...)
+		diffs = append(diffs, d)
+	}
+	agents, perr := pp.affected(ctx)
+	if perr != nil {
+		return b, perr
+	}
+	have := map[string]bool{}
+	var files []group
+	for _, g := range gs {
+		if g.kind == builderapi.TargetPart {
+			continue
+		}
+		if g.kind == builderapi.TargetAgent {
+			have[g.id] = true
+		}
+		files = append(files, g)
+	}
+	for _, a := range agents {
+		if !have[a] {
+			files = append(files, group{kind: builderapi.TargetAgent, id: a, path: pathFor(builderapi.TargetAgent, a), implied: true})
+		}
+	}
+	for _, g := range files {
 		live, exists, err := s.Tether.ReadFile(ctx, g.path)
 		if err != nil {
 			return b, tetherErr(err)
@@ -234,17 +293,30 @@ func (s *Service) build(ctx context.Context, gs []group) (built, *APIError) {
 			return b, refuse(409, "exists", "That id already exists.")
 		case !creating && !exists:
 			return b, refuse(404, "not_found", "No such file.")
-		case !creating && g.expected == "":
+		case !creating && !g.implied && g.expected == "":
 			return b, refuse(400, "invalid", "expected_sha is required to change an existing file.")
-		case !creating && g.expected != sha:
+		case !creating && !g.implied && g.expected != sha:
 			return b, refuse(409, "stale_base", "The file changed since you opened it. Reload it.")
 		}
 		snapshot := func(seq int) (string, bool) { return s.snapshot(ctx, g.path, seq) }
-		next, privs, oerr := Apply(g.kind, g.id, g.path, live, exists, g.edits, snapshot)
-		if oerr != nil {
-			return b, refuse(oerr.Status, oerr.Code, oerr.Msg)
+		next, privs, oerr := live, []Priv(nil), (*OpError)(nil)
+		if len(g.edits) > 0 {
+			next, privs, oerr = Apply(g.kind, g.id, g.path, live, exists, g.edits, snapshot)
+			if oerr != nil {
+				return b, refuse(oerr.Status, oerr.Code, oerr.Msg)
+			}
+		}
+		if g.kind == builderapi.TargetAgent && (len(g.attach) > 0 || g.implied || len(pp.changed) > 0) {
+			c, pprivs, perr := pp.compile(ctx, g, g.path, next)
+			if perr != nil {
+				return b, perr
+			}
+			next, privs = c, append(privs, pprivs...)
 		}
 		if next == live {
+			if g.implied {
+				continue // the recompile left this file as it was
+			}
 			return b, refuse(400, "no_change", "That edit changes nothing.")
 		}
 		b.files = append(b.files, File{Path: g.path, Content: next})
@@ -254,6 +326,9 @@ func (s *Service) build(ctx context.Context, gs []group) (built, *APIError) {
 		}
 		b.privileged = append(b.privileged, privs...)
 		diffs = append(diffs, builderread.UnifiedDiff(g.path, maskFor(g.path, live), maskFor(g.path, next)))
+	}
+	if !pp.eff.Empty() {
+		b.effects = pp.eff
 	}
 	b.diff = strings.Join(diffs, "")
 	return b, nil
@@ -317,8 +392,11 @@ func (s *Service) Create(ctx context.Context, operator string, req Request) (Cha
 		Targets: b.targets, Base: b.base, Diff: b.diff, Privileged: nonNilPriv(b.privileged), Checks: []Check{},
 		Effect: Effect{RunningSessions: []Session{}, RestartRequired: []string{}}}
 	c.CreatedAt = s.now().UnixMilli()
-	if perr = s.validateAndPlan(ctx, &c, b.files); perr != nil {
-		return Change{}, false, perr
+	c.PartEffects = b.effects
+	if len(b.files) > 0 {
+		if perr = s.validateAndPlan(ctx, &c, b.files); perr != nil {
+			return Change{}, false, perr
+		}
 	}
 	raw, _ := json.Marshal(req)
 	if err := s.insert(ctx, c, string(raw)); err != nil {
@@ -395,11 +473,18 @@ func (s *Service) Submit(ctx context.Context, id string, ack bool) (Change, *API
 			return *c, refuse(409, "validation_failed", "Fix the failing checks first.")
 		}
 	}
-	if c.Plan == nil {
+	partsOnly := c.Plan == nil && c.PartEffects != nil && !hasFileTarget(*c)
+	if c.Plan == nil && !partsOnly {
 		return *c, refuse(409, "validation_failed", "This change has no plan.")
 	}
 	if len(c.Privileged) > 0 && !ack {
 		return *c, refuse(400, "ack_required", "This change touches privileged fields; send ack_privileged true.")
+	}
+	if partsOnly {
+		// No agent carries the part, so there is no Tether plan: the Library row is the whole change.
+		c.AckPrivileged = ack
+		s.finish(ctx, c, ApplyResult{Applied: true})
+		return s.mustLoad(ctx, id), nil
 	}
 	if perr = s.replan(ctx, c); perr != nil {
 		return *c, perr
@@ -430,7 +515,7 @@ func (s *Service) replan(ctx context.Context, c *Change) *APIError {
 		}
 		return perr
 	}
-	c.Diff, c.Privileged = b.diff, nonNilPriv(b.privileged)
+	c.Diff, c.Privileged, c.PartEffects = b.diff, nonNilPriv(b.privileged), b.effects
 	if perr = s.validateAndPlan(ctx, c, b.files); perr != nil {
 		return perr
 	}
@@ -574,7 +659,22 @@ func (s *Service) step(ctx context.Context, id string) {
 		return
 	}
 	// A base that moved under an unapplied change is surfaced, never retried silently.
+	if c.PartEffects != nil {
+		for _, r := range c.PartEffects.Attach { // compiled from a revision that must still be current
+			if s.partMoved(ctx, partPath(r.Kind, r.PartID), strconv.Itoa(r.Rev)) && !s.editsPart(c, r) {
+				s.markStale(ctx, c)
+				return
+			}
+		}
+	}
 	for p, base := range c.Base {
+		if strings.HasPrefix(p, partPathPrefix) {
+			if s.partMoved(ctx, p, base) {
+				s.markStale(ctx, c)
+				return
+			}
+			continue
+		}
 		if live, exists, err := s.Tether.ReadFile(ctx, p); err == nil && (!exists || shaOf(live) != base) {
 			s.markStale(ctx, c)
 			return
@@ -638,6 +738,20 @@ func (s *Service) finish(ctx context.Context, c *Change, res ApplyResult) {
 		r.ReloadError = pointer(clip(catalogindex.MaskText(res.ReloadError), 300))
 	}
 	c.Result = r
+	if !res.RolledBack && !c.PartEffects.Empty() {
+		err := s.DB.Writer.Submit(ctx, "builder_parts_commit", func(ctx context.Context, tx *sql.Tx) error {
+			planID := ""
+			if c.Plan != nil {
+				planID = c.Plan.PlanID
+			}
+			return builderparts.Commit(ctx, tx, c.PartEffects, c.Operator, planID, s.now().UnixNano())
+		})
+		if err != nil {
+			c.State, c.Failure = builderapi.ChangeFailed, &Failure{Step: builderapi.StepApply, Code: "parts_commit", Message: "The files were applied but the Library rows could not be saved."}
+			_, _ = s.save(ctx, c)
+			return
+		}
+	}
 	if res.Activation != "" {
 		c.Effect.Activation = res.Activation
 	}
@@ -651,7 +765,9 @@ func (s *Service) finish(ctx context.Context, c *Change, res ApplyResult) {
 	if c.State == builderapi.ChangeApplied && s.Bus != nil {
 		paths := make([]string, 0, len(c.Targets))
 		for _, t := range c.Targets {
-			paths = append(paths, t.Path)
+			if !strings.HasPrefix(t.Path, partPathPrefix) {
+				paths = append(paths, t.Path)
+			}
 		}
 		s.Bus.Publish("catalog", map[string]any{"observed_at": at, "changed_paths": paths, "source": "builder"})
 	}
@@ -671,6 +787,9 @@ func (s *Service) recordSnapshots(ctx context.Context, c *Change) {
 	}
 	var snaps []catalogindex.Snapshot
 	for _, t := range c.Targets {
+		if c.Plan == nil || strings.HasPrefix(t.Path, partPathPrefix) {
+			continue
+		}
 		live, exists, err := s.Tether.ReadFile(ctx, t.Path)
 		if err != nil || !exists {
 			continue
@@ -862,4 +981,36 @@ func (s *Service) Launch(ctx context.Context, launchID, requestID string) (Launc
 		return LaunchResult{}, tetherErr(err)
 	}
 	return LaunchResult{SessionID: id, AgentsURL: "/agents/" + id}, nil
+}
+
+func hasFileTarget(c Change) bool {
+	for _, t := range c.Targets {
+		if !strings.HasPrefix(t.Path, partPathPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// partMoved reports whether a part is no longer at the revision a change was built on.
+func (s *Service) partMoved(ctx context.Context, path, base string) bool {
+	kind, id := splitKey(strings.TrimPrefix(path, partPathPrefix))
+	p, ok, err := builderparts.Get(ctx, s.DB.Reader, kind, id)
+	if err != nil {
+		return false
+	}
+	if base == "" { // a create: stale once the id exists
+		return ok
+	}
+	return !ok || strconv.Itoa(p.Revision) != base
+}
+
+// editsPart reports whether the change itself moves the part the reference points at (its revision is the new one).
+func (s *Service) editsPart(c *Change, r builderparts.Ref) bool {
+	for _, p := range c.PartEffects.Parts {
+		if p.Kind == r.Kind && p.ID == r.PartID {
+			return true
+		}
+	}
+	return false
 }

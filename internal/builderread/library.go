@@ -13,8 +13,8 @@ import (
 
 const previewBytes = 2000
 
-// libKinds maps a Library kind to its catalog kind. Prompts and policies are Tachyon-owned parts (B3, held) and
-// have no backing store yet, so they read as empty lists and unknown items.
+// libKinds maps a Library kind to its catalog kind. Prompts and policies are Tachyon-owned parts (B5) kept in the
+// local store; see parts.go.
 func libKind(kind string) (string, bool) {
 	switch kind {
 	case builderapi.LibSkills:
@@ -128,6 +128,10 @@ func (r *Reader) libraryList(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
+	if _, isPart := partKindOf(kind); isPart {
+		r.partList(w, req, kind)
+		return
+	}
 	ck, backed := libKind(kind)
 	items := []map[string]any{}
 	if backed {
@@ -176,6 +180,10 @@ func (r *Reader) libFile(w http.ResponseWriter, req *http.Request) (string, file
 }
 
 func (r *Reader) libraryItem(w http.ResponseWriter, req *http.Request) {
+	if k := req.PathValue("kind"); isPartKind(k) {
+		r.partItem(w, req, k)
+		return
+	}
 	kind, f, ok := r.libFile(w, req)
 	if !ok {
 		return
@@ -200,6 +208,10 @@ func (r *Reader) libraryItem(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Reader) libraryUsedBy(w http.ResponseWriter, req *http.Request) {
+	if k := req.PathValue("kind"); isPartKind(k) {
+		r.partUsedBy(w, req, k)
+		return
+	}
 	kind, f, ok := r.libFile(w, req)
 	if !ok {
 		return
@@ -224,6 +236,10 @@ func (r *Reader) libraryUsedBy(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Reader) libraryHistory(w http.ResponseWriter, req *http.Request) {
+	if k := req.PathValue("kind"); isPartKind(k) {
+		r.partHistory(w, req, k)
+		return
+	}
 	kind, f, ok := r.libFile(w, req)
 	if !ok {
 		return
@@ -401,3 +417,5 @@ func chainIDs(c []file) []string {
 	}
 	return out
 }
+
+func isPartKind(k string) bool { _, ok := partKindOf(k); return ok }
