@@ -6,12 +6,15 @@ import { isOpen, isWaiting, minutesAndSeconds } from './changes'
 const BTN = 'border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover disabled:opacity-50'
 const PRIMARY = 'border border-fg px-3 py-1 dash-control font-medium text-fg hover:bg-surface-hover disabled:opacity-50'
 
+const CHECK_WORD = { ok: 'Passed', warn: 'Warning', fail: 'Failed' } as const
+
 /** Poll an open change; the SSE stream replaces this when it is wired. */
 function useChange(initial: Change): [Change, (c: Change) => void] {
   const [change, setChange] = useState(initial)
   useEffect(() => {
     if (!isWaiting(change.state)) return
     const t = setInterval(() => {
+      if (document.hidden) return
       builderApi.change(change.change_id).then(setChange, () => undefined)
     }, 3000)
     return () => clearInterval(t)
@@ -23,7 +26,7 @@ function Diff({ text }: { text: string }) {
   return (
     <pre aria-label="Changes" className="max-h-56 overflow-auto border border-border bg-surface p-2 font-mono dash-support text-fg">
       {text.split('\n').map((l, i) => (
-        <span key={i} className={`block ${l.startsWith('+') ? 'text-fg' : l.startsWith('-') ? 'text-fg-muted line-through' : 'text-fg-faint'}`}>
+        <span key={i} className={`block ${l.startsWith('+') ? 'bg-success/10 text-fg' : l.startsWith('-') ? 'bg-danger/10 text-fg' : 'text-fg-faint'}`}>
           {l.startsWith('+') ? '+ ' : l.startsWith('-') ? '− ' : '  '}
           {l.slice(1) || ' '}
         </span>
@@ -79,7 +82,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
           <ul aria-label="Checks" className="space-y-1">
             {change.checks?.map((c) => (
               <li key={c.name + (c.entity ?? '')} className="dash-support text-fg-secondary">
-                <span className="font-mono">{c.status}</span> {c.message}
+                <span className={c.status === 'fail' ? 'text-danger' : ''}>{CHECK_WORD[c.status]}</span> {c.message}
                 {c.remedy ? ` ${c.remedy}` : ''}
               </li>
             ))}
@@ -97,6 +100,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
         {change.state === 'awaiting_approval' && change.plan && (
           <div className="space-y-2 border border-border p-3" role="status">
             <p className="dash-body text-fg">Awaiting approval. Run this on the host:</p>
+            <p className="dash-support text-fg-muted">Nothing changes until it is approved on the host.</p>
             <code className="block break-all bg-surface p-2 font-mono dash-support text-fg">{change.plan.approve_command}</code>
             <div className="flex items-center gap-3 dash-support text-fg-muted">
               <button
@@ -131,17 +135,17 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
           </p>
         )}
         {change.state === 'failed' && (
-          <p role="alert" className="dash-body text-fg">
+          <p role="alert" className="dash-body text-danger">
             Failed at {change.failure?.step}: {change.failure?.message}. Your draft is kept.
           </p>
         )}
         {change.state === 'expired' && (
-          <p role="alert" className="dash-body text-fg">
+          <p role="alert" className="dash-body text-danger">
             The approval window ended. Your draft is kept.
           </p>
         )}
         {change.state === 'rolled_back' && (
-          <p role="alert" className="dash-body text-fg">
+          <p role="alert" className="dash-body text-danger">
             The change was rolled back.
           </p>
         )}
