@@ -104,8 +104,16 @@ func (s *Store) Apply(ctx context.Context, frames []Frame) error {
 			if at > lastAt && f.Kind != "session.snapshot" {
 				lastAt = at
 			}
-			if f.SessionID == "" || f.App != "" || f.Gap || f.Synchronized {
-				continue // bus events are A4's; gap and sync frames carry no session
+			if f.Gap || f.Synchronized {
+				continue
+			}
+			if b, ok := NormalizeBus(f); ok {
+				if err := insertBus(ctx, tx, b, now); err != nil {
+					return err
+				}
+			}
+			if f.SessionID == "" || f.App != "" {
+				continue // an app-published event belongs to the feed, not to a session
 			}
 			if typ := Type(f.Kind); typ != "" && f.EventID != "" {
 				res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO agents_events(session_id,tether_seq,tether_event_id,type,at_ns,actor,summary) VALUES(?,?,?,?,?,?,?)`,
@@ -282,6 +290,7 @@ func (s *Store) Prune(ctx context.Context) (int64, error) {
 		cut time.Time
 	}{
 		{`DELETE FROM agents_events WHERE id IN (SELECT id FROM agents_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
+		{`DELETE FROM bus_events WHERE id IN (SELECT id FROM bus_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
 		{`DELETE FROM agents_gaps WHERE id IN (SELECT id FROM agents_gaps WHERE end_ns<? LIMIT ?)`, now.Add(-GapRetention)},
 		{`DELETE FROM agents_samples WHERE rowid IN (SELECT rowid FROM agents_samples WHERE bucket_kind='min' AND bucket_ns<? LIMIT ?)`, now.Add(-MinuteSampleRetention)},
 		{`DELETE FROM agents_samples WHERE rowid IN (SELECT rowid FROM agents_samples WHERE bucket_kind='hour' AND bucket_ns<? LIMIT ?)`, now.Add(-HourSampleRetention)},

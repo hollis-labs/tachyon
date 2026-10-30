@@ -50,3 +50,20 @@ a session is read, so changing `stale_after_s` takes effect on the next read wit
 - Not done here: `alive`/`worker_online` producers, tool-run grouping and the sparkline are helpers
   (`GroupRuns`, `Spark`) that A3 calls when serving the API. The sink saves at most once a second per
   session, so the last figures of a turn can lag until the next output.
+
+## Bus feed (A4)
+
+App-published events on the same stream (the `app` field) are normalised into `bus_events` (migration 026)
+and served at `GET agents/bus/events?before_seq&limit<=100&type=deploys|restarts|tasks|failures&app&q`.
+
+- Mapping: `deploy.state_changed` -> deploy (failed = error, rolled_back = warn); `resource.state_changed`
+  with reason `restart` -> restart; `fleet.node.*` -> host; `alert.raised|cleared` -> failure;
+  `task.state_changed` -> task (a closed task with a PR in its payload gets a `review_ref`);
+  `workstream.created` -> workstream; `card.*` -> card; Tether's own `session.started|ended|resumed|restarted`
+  -> lifecycle. These kind names come from the catalog and are not verified against live traffic.
+- The subject is a sentence assembled from the kind and validated names (`[A-Za-z0-9._:/@? -]`, task ids,
+  `owner/repo#N` PR refs). Titles are redacted and cut. No other payload text is copied.
+- `GET agents/collector` reports `bus_topics` from the data: `live` (an event of that type in the last 7 days),
+  `off` (none seen; an export may be disabled: Cerberus export, `TORQUE_EVENTS_HUB`), `no_emitter` for host and
+  workstream until something emits them. The feed degrades visibly instead of looking empty and healthy.
+- Retention 7 days. The `bus` SSE event and replay arrive with A3.

@@ -49,7 +49,7 @@ func (c *Collector) Status(ctx context.Context) (Status, error) {
 		DroppedOutput: c.dropped.Load(), OpenGaps: gaps,
 		Retention: map[string]any{"last_run_at": nilTime(st.RetentionLast), "rows_pruned": st.Pruned},
 		// Which Activity topics can ever have data: the bus feed (A4) turns these on.
-		BusTopics: map[string]string{"deploy": "off", "restart": "off", "task": "off", "failure": "off", "host": "no_emitter", "workstream": "no_emitter", "lifecycle": "off", "card": "off"},
+		BusTopics: c.Store.BusTopics(ctx),
 	}
 	if out.Strategy == "" {
 		out.Strategy = "fallback"
