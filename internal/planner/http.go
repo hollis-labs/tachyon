@@ -1,7 +1,6 @@
 package planner
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -229,6 +228,8 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				out, err = Schema(id)
 			case len(parts) == 3 && parts[2] == "links" && db != "schema":
 				out, err = h.Owned.Links(ctx, db, id)
+			case len(parts) == 3 && (db == "priorities" || db == "workstreams") && parts[2] == "timeline":
+				out, err = h.Timeline(ctx, db, id, r.URL.Query())
 			case len(parts) == 3 && db == "priorities" && parts[2] == "tasks":
 				out, err = h.ThemeTasks(ctx, id)
 			case len(parts) == 3 && db == "workstreams" && parts[2] == "tasks":
@@ -426,28 +427,34 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	send(w, status, out)
 }
 
-// Events is a durable invalidation cursor over owned object revisions. Polling
-// observes writes made by the CLI and other transports, not just this handler.
+// ingest builds the ingest over the handler's current services.
+func (h *HTTP) ingest() *Ingest {
+	return &Ingest{Owned: h.Owned, Tasks: h.Tasks, Events: Events{DB: h.Store}, DB: h.Store}
+}
+
+// Events is the planner SSE stream. Every entry has a monotonic id from planner_stream, so a client
+// that reconnects with Last-Event-ID gets exactly what it missed; an id outside the retained ring
+// (or from before this stream existed) gets a resync event and then the live stream. Each connection
+// also tails new object revisions, so writes made by the CLI and other transports are seen even
+// when the ingest worker is not running.
 func (h *HTTP) Events(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		send(w, 405, Item{"code": "method_not_allowed"})
 		return
 	}
-	last := int64(-1)
+	ev := Events{DB: h.Store}
+	ing := h.ingest()
+	_ = ing.Tail(r.Context())
+	last, hasLast := int64(0), false
 	if v := r.Header.Get("Last-Event-ID"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || n < 0 {
 			send(w, 400, Item{"code": "invalid", "error": "Invalid event cursor"})
 			return
 		}
-		last = n
+		last, hasLast = n, true
 	}
-	current := func(ctx context.Context) (int64, error) {
-		var n int64
-		err := h.Store.Reader.QueryRowContext(ctx, `SELECT coalesce(max(r.rowid),0) FROM object_revisions r JOIN objects o ON o.id=r.object_id WHERE o.ownership='tachyon' AND o.kind IN ('strategic_priority','workstream','roadmap_item','idea','decision','risk','inbox_item')`).Scan(&n)
-		return n, err
-	}
-	n, err := current(r.Context())
+	lo, hi, err := ev.streamBounds(r.Context())
 	if err != nil {
 		h.fail(w, r, "", "", err)
 		return
@@ -456,24 +463,41 @@ func (h *HTTP) Events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
 	controller := http.NewResponseController(w)
-	emit := func(n int64) error {
+	frame := func(id int64, event, data string) error {
 		_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		_, err := fmt.Fprintf(w, "id: %d\nevent: planner.changed\ndata: {\"source\":\"tachyon\",\"refresh\":true}\n\n", n)
+		_, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", id, event, data)
 		if err == nil {
 			err = controller.Flush()
 		}
 		return err
 	}
-	if n != last {
-		if emit(n) != nil {
+	switch {
+	case !hasLast:
+		if frame(hi, "planner.changed", `{"source":"tachyon","refresh":true}`) != nil {
 			return
 		}
-		last = n
-	} else {
-		_, _ = io.WriteString(w, ": connected\n\n")
-		if controller.Flush() != nil {
+		last = hi
+	case last > hi || (lo > 0 && last < lo-1):
+		if frame(hi, "resync", `{"reason":"beyond_ring"}`) != nil {
 			return
 		}
+		last = hi
+	}
+	replay := func() bool {
+		rows, err := ev.streamAfter(r.Context(), last)
+		if err != nil {
+			return false
+		}
+		for _, row := range rows {
+			if frame(row.Seq, row.Event, row.Data) != nil {
+				return false
+			}
+			last = row.Seq
+		}
+		return true
+	}
+	if !replay() {
+		return
 	}
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -484,15 +508,9 @@ func (h *HTTP) Events(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-tick.C:
-			n, err := current(r.Context())
-			if err != nil {
+			_ = ing.Tail(r.Context())
+			if !replay() {
 				return
-			}
-			if n != last {
-				if emit(n) != nil {
-					return
-				}
-				last = n
 			}
 		case <-heartbeat.C:
 			_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))

@@ -174,3 +174,9 @@ func clean(s string, n int) string {
 	}
 	return s
 }
+
+// NewTetherClient is the authenticated Tether HTTP client the builder reads use, for callers that need other
+// Tether routes (base URL, client).
+func NewTetherClient(addr, tokenFile string) (string, *http.Client, error) {
+	return tetherClient(addr, tokenFile)
+}

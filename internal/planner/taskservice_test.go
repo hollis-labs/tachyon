@@ -40,7 +40,7 @@ func newTorqueFake(t *testing.T) (*torqueFake, *httptest.Server) {
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/transition"):
 			b, _ := io.ReadAll(r.Body)
 			f.posts = append(f.posts, r.URL.Path+" "+string(b))
-			var body struct {
+			var body struct { // like Torque's REST handler: status and force only
 				Status string `json:"status"`
 				Force  bool   `json:"force"`
 			}
@@ -126,7 +126,7 @@ func TestTransitionRulesConflictUndoAndForce(t *testing.T) {
 		t.Fatal("same status is a no-op", code, f.posts)
 	}
 	if code, out = h.do(t, "POST", "/tasks/CW-2/transition", `{"to":"doing","expected_status":"done"}`); code != 200 || f.status["CW-2"] != "doing" {
-		t.Fatal("leaving done sends force", code, out, f.posts)
+		t.Fatal("leaving done sends force; the comment goes to /comments, not the transition", code, out, f.posts)
 	}
 	if code, _ = h.do(t, "POST", "/tasks/CW-3/transition", `{"to":"archived"}`); code != 400 {
 		t.Fatal("to must be a lane", code)
@@ -178,5 +178,15 @@ func TestCommentWithStatusAndPinIsOneRevision(t *testing.T) {
 	}
 	if code, out = h.do(t, "POST", path, `{"text":"plain","expected_revision":2}`); code != 200 || len(object(out["applied"])) != 0 {
 		t.Fatal(code, out)
+	}
+}
+
+func TestTransitionCommentGoesToTheCommentsEndpoint(t *testing.T) {
+	h, f := taskHTTP(t)
+	if code, out := h.do(t, "POST", "/tasks/CW-3/transition", `{"to":"blocked","reason":"waiting on Tether"}`); code != 200 {
+		t.Fatal(code, out)
+	}
+	if len(f.posts) != 2 || strings.Contains(f.posts[0], "waiting on Tether") || !strings.HasSuffix(strings.Fields(f.posts[0])[0], "/transition") || !strings.Contains(f.posts[1], "/comments") || !strings.Contains(f.posts[1], "waiting on Tether") {
+		t.Fatal("Torque's REST transition ignores a comment, so it must be posted separately:", f.posts)
 	}
 }

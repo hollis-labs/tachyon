@@ -26,7 +26,9 @@ type Triage struct {
 type API struct {
 	Index *Index
 	// Triage returns the state by PR key ("github:o/n#1"); rows without one are active.
-	Triage   func(ctx context.Context) (map[string]Triage, error)
+	Triage func(ctx context.Context) (map[string]Triage, error)
+	// Agents returns the agent assignees (kind "agent") by PR key, added to each row's GitHub assignees.
+	Agents   func(ctx context.Context) (map[string][]Assignee, error)
 	Fallback http.Handler
 }
 
@@ -110,6 +112,13 @@ func (a *API) pending(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	agents := map[string][]Assignee{}
+	if a.Agents != nil {
+		if agents, err = a.Agents(r.Context()); err != nil {
+			fail(w, 500, "unavailable", "The agent assignments are unavailable.")
+			return
+		}
+	}
 	text := strings.ToLower(q.Get("q"))
 	now := a.Index.now()
 	items := []map[string]any{}
@@ -129,6 +138,9 @@ func (a *API) pending(w http.ResponseWriter, r *http.Request) {
 		}
 		if text != "" && !strings.Contains(strings.ToLower(row.Title+" "+row.PRKey), text) {
 			continue
+		}
+		if extra := agents[row.PRKey]; len(extra) > 0 {
+			row.Assignees = append(slices.Clone(row.Assignees), extra...)
 		}
 		raw, _ := json.Marshal(row)
 		var m map[string]any

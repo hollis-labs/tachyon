@@ -81,3 +81,48 @@ sit behind the operator route guard and the API cache; the draft read is never c
   `replayed: true`. GitHub's refusals (an inline comment off the diff, approving one's own PR) are 422 `invalid_args` with its message.
 - `GET|PUT|DELETE .../pulls/{n}/review-draft`: one draft per pull request (`forge_review_drafts`, migration 046), `{head_sha, draft}` in,
   `{pr_key, head_sha, updated_ms, draft}` out; no draft is 404. The draft is not cleared by a submit; the page deletes it.
+
+## Merge preflight and merge (PR5, real)
+
+`internal/forgemerge`, mounted explicitly (stand down under `TACHYON_FORGE_STUBS=1`). Preflight is open like the other forge reads; the
+merge sits behind the operator route guard (browser session) and the API cache, so a merge invalidates the forge reads. Step-up stays
+reserved in `forgeapi.StepUpLevels`; nothing here adds a guard, audit row or rate limit.
+
+- `GET .../pulls/{n}/merge-preflight`: `state` ready|blocked|pending. Blockers from GitHub's own facts: `closed`, `draft`, `checks_failing`,
+  `checks_pending` (check runs and statuses at the head), `changes_requested` (each reviewer's latest verdict), `conflicts`, `behind_base`
+  (`behind_by` from a compare), `review_required` (only when the branch protection is readable) and the generic `branch_protection` when
+  GitHub says blocked and nothing explains it. Unknown mergeability is re-read twice (1.5 s apart), then `pending`, never a guess.
+  `methods_allowed` follows the repository settings, default squash. `required_checks` counts all checks at the head: GitHub does not say
+  which are required to a token without admin rights.
+- `PUT .../pulls/{n}/merge` `{method, head_sha, commit_title?, commit_message?, delete_branch?}`, `Idempotency-Key` required (1 to 128).
+  It re-runs preflight: a moved head is 409 `head_moved` (with the current `head_sha`), blockers are 409 `merge_blocked`. The head sha is
+  passed to GitHub as `sha`, so GitHub still enforces the repository's rules. A refusal from GitHub is 409 `conflict` with its message.
+  If the outcome is unknown (outage, odd answer, 405) the PR is read again and a merged PR is reported as merged. Success refreshes the
+  PR index (which publishes `pr.merged`), settles the `pr-inbox:` triage entry and returns `{merged, sha, message, method, audit_class,
+  settled, links_done}`. `delete_branch` is a best-effort delete after the merge, only for a branch in the same repository.
+- Idempotency: the answer for a key is stored 24 hours (`forge_idempotency`, migration 045); the same key and body returns it, the same
+  key with a different body is 409 `idempotency_conflict`. Only a merge or a `head_moved` answer is stored, so a refusal can be retried.
+- `audit_class: "lifecycle"` is the contract's label only. No audit row is written (deferred to CW-20261030-0082), and `links_done` is 0 until
+  the agent link table exists (PR7).
+
+## Assign agent (PR7, real)
+
+`POST /forge/repos/{host}/{owner}/{name}/pulls/{num}/assign-agent` (explicit mount, behind the operator route guard,
+stands down under `TACHYON_FORGE_STUBS=1`). Body `{agent_id, task, note?, checks?, force?}`; unknown fields are refused.
+Answer `{data:{link, replayed, reminded?}}`.
+
+- The pull request must be open on GitHub (`409 pr_not_open`). The agent comes from Tether's catalog
+  (`404 agent_not_found`; `422 agent_not_addressable` when it has no URN).
+- One link row per `pr-assign:<pr_key>:<agent>:<task>` (table `pr_agent_links`). Steps are recorded on it:
+  `pending` -> `assigned` (GitHub assignee tried) -> `sent` (Tether message accepted). A failed send leaves status
+  `failed` with `error`; repeating the call does only the message. A call on a `sent` link is a `replayed` no-op;
+  `force:true` sends a reminder (`reminders` + 1, `reminded:true`).
+- GitHub login: app setting `forge.agent_logins` (`{agent_id: login}`), else the agent id if that GitHub user exists,
+  else none (`forge_assigned:false`, not an error).
+- The message is a `notice` to the agent URN, subject `[PR] <Task label>: owner/repo#n`, readable text and a fenced
+  `console-pr-assignment` block (`console.pr_assignment/v1`; `checks_failing` for `fix_checks`). It is sent with the
+  token in `TACHYON_TETHER_MESSAGE_TOKEN_FILE` (else `TETHER_TOKEN_FILE`) which needs the Tether `messages` scope.
+  The Tether envelope has no idempotency field, so repeat protection is the link row, not delivery.
+- Open links appear as `kind:"agent"` entries in a pending row's `assignees` (`urn`, `task`, `link_status`), and
+  `pr.updated{changed:["assignees"]}` is published. A merge through PR5 sets the PR's open links to `done`
+  (`links_done`). Agents are told not to merge; that is guidance, not a technical block.
