@@ -79,6 +79,14 @@ export default function PlannerShell() {
 
   const row = useMemo(() => rowsOf(board).find((r) => r.id === openId), [board, openId])
 
+  // On a wide screen the focus pane is never left empty: with nothing open, open the first theme.
+  // (Narrow screens keep the list, since opening a theme replaces it.)
+  useEffect(() => {
+    if (openId || !board || typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 1024px)').matches) return
+    const first = rowsOf(board)[0]
+    if (first) navigate(`/planner/themes/${encodeURIComponent(first.id)}${view === 'timeline' ? '?view=timeline' : ''}`, { replace: true })
+  }, [openId, board]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!row) return setComments([])
     let live = true
