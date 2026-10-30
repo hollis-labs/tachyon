@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -326,7 +327,8 @@ describe("card review dialog", () => {
     },
   })
   const clientFor = (current: ApprovalItem, decide = vi.fn().mockResolvedValue({ item_id: current.item_id, state: "resolved" })) =>
-    ({ present: vi.fn().mockResolvedValue(current), decide, evidence: vi.fn() }) as unknown as ApprovalClient
+    ({ present: vi.fn().mockResolvedValue(current), decide, evidence: vi.fn(), storeSecret }) as unknown as ApprovalClient
+  const storeSecret = vi.fn()
   const open = (current: ApprovalItem, decide: ReturnType<typeof vi.fn>) =>
     render(<ApprovalDialog id={current.item_id} initial={current} client={clientFor(current, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
 
@@ -370,7 +372,18 @@ describe("card review dialog", () => {
     expect((submit as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "x" } })
     fireEvent.change(screen.getByLabelText("Count"), { target: { value: "3" } })
-    fireEvent.change(screen.getByLabelText("Token ref"), { target: { value: "vault/key" } })
+    expect(screen.queryByRole("textbox", { name: "Token ref" })).toBeNull()
+    storeSecret.mockResolvedValue({ secret_ref: "secret://tachyon/abc", expires_at: 1, fingerprint: "sha256:1a2b3c4d" })
+    fireEvent.click(screen.getByRole("button", { name: "Provide secret…" }))
+    const dlg = await screen.findByRole("dialog")
+    const field = within(dlg).getByLabelText("Secret value") as HTMLInputElement
+    expect(field.type).toBe("password")
+    fireEvent.change(field, { target: { value: "hunter2" } })
+    fireEvent.click(within(dlg).getByRole("button", { name: "Store secret" }))
+    await screen.findByText("1a2b3c4d")
+    expect(storeSecret).toHaveBeenCalledWith(expect.objectContaining({ itemId: "item_card", field: "token", value: "hunter2" }))
+    expect(screen.queryByText("hunter2")).toBeNull()
+    expect(screen.getByText("1a2b3c4d")).toBeTruthy()
     await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(submit)
     expect(decide.mock.calls[0][1]).toEqual({
@@ -379,9 +392,29 @@ describe("card review dialog", () => {
       answers: [
         { questionId: "name", value: "x" },
         { questionId: "count", value: 3 },
-        { questionId: "token", value: { secret_ref: "vault/key" } },
+        { questionId: "token", value: { secret_ref: "secret://tachyon/abc" } },
       ],
     })
+  })
+  it("keeps the entered secret and retries with the same key when operator access is needed, and drops it on cancel", async () => {
+    const current = card("card.form", { fields: [{ id: "token", type: "secret", label: "Token", required: true }] })
+    open(current, vi.fn())
+    storeSecret.mockReset()
+    storeSecret
+      .mockRejectedValueOnce(new ApprovalError(403, "assurance_insufficient", "step up", { action: "secret_submit" }))
+      .mockResolvedValueOnce({ secret_ref: "secret://tachyon/z", expires_at: 1, fingerprint: "sha256:ffffffff" })
+    fireEvent.click(await screen.findByRole("button", { name: "Provide secret…" }))
+    const dlg = await screen.findByRole("dialog")
+    fireEvent.change(within(dlg).getByLabelText("Secret value"), { target: { value: "s3cret" } })
+    fireEvent.click(within(dlg).getByRole("button", { name: "Store secret" }))
+    await within(dlg).findByText(/Operator access is needed/)
+    expect((within(dlg).getByLabelText("Secret value") as HTMLInputElement).value).toBe("s3cret")
+    fireEvent.click(within(dlg).getByRole("button", { name: "Try again" }))
+    await screen.findByText("ffffffff")
+    expect(storeSecret.mock.calls[1][0].idempotencyKey).toBe(storeSecret.mock.calls[0][0].idempotencyKey)
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }))
+    const again = await screen.findByRole("dialog")
+    expect((within(again).getByLabelText("Secret value") as HTMLInputElement).value).toBe("")
   })
   it("answers a question card under the id answer and leaves info cards unanswerable", async () => {
     const q = card("card.question", { question: "Which branch?", options: ["main", "dev"] })
