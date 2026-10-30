@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Textarea } from "@hollis-labs/design-components"
-import { ChevronRight } from "lucide-react"
+import { FileText, GitCompare, Paperclip } from "lucide-react"
+import { Chip } from "../components/chip"
+import { Keycap } from "../components/keycap"
 import { MessageBody } from "../chat/MessageBody"
 import {
   isCard,
@@ -20,7 +22,7 @@ import { Countdown, RiskChip, ago, timeLeft } from "./parts"
 import { AuditTrail } from "./audit"
 import { useApprovals } from "./context"
 
-const label = "font-mono dash-caption uppercase tracking-wide text-fg-faint"
+const label = "font-mono dash-caption uppercase tracking-label text-fg-faint"
 function safeHTTPS(raw?: string) {
   try {
     const u = new URL(raw ?? "")
@@ -29,26 +31,35 @@ function safeHTTPS(raw?: string) {
   return undefined
 }
 // Exactly what will run: a bound command, diff and/or affected items, in a mono card.
-// Renders nothing when the payload carries none of them.
-function RunCard({ request }: { request: ApprovalItem["request_snapshot"] }) {
+// Renders nothing when the payload carries none of them. A registered action's own run card
+// (machine, state, terminal) replaces the plain command.
+const AFFECTED_SHOWN = 4
+function RunCard({ request, run }: { request: ApprovalItem["request_snapshot"]; run?: ReactNode }) {
   const data = request.data ?? {}
   const text = (v: unknown) => (typeof v === "string" && v ? v : undefined)
-  const command = text(data.command)
+  const command = run ? undefined : text(data.command)
   const diff = text(data.diff)
   const affected = Array.isArray(data.affected) ? data.affected.map(String) : []
-  if (!command && !diff && !affected.length) return null
+  if (!command && !diff && !affected.length && !run) return null
   return (
     <section aria-label="Exactly what will run">
       <h3 className={label}>Exactly what will run</h3>
-      <div className="mt-2 space-y-3 rounded border border-border bg-surface/40 p-3 font-mono dash-support text-fg">
-        {command && <pre className="whitespace-pre-wrap break-words">$ {command}</pre>}
-        {diff && <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words">{diff}</pre>}
-        {!!affected.length && (
-          <ul aria-label="Affected items" className="space-y-0.5">
-            {affected.map((a) => <li key={a}>{a}</li>)}
-          </ul>
-        )}
-      </div>
+      {run && <div className="mt-2">{run}</div>}
+      {(command || diff || !!affected.length) && (
+        <div className="mt-2 space-y-3 rounded border border-border bg-surface/40 p-3 font-mono dash-support text-fg">
+          {command && <pre className="whitespace-pre-wrap break-words">$ {command}</pre>}
+          {diff && <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words">{diff}</pre>}
+          {!!affected.length && (
+            <div>
+              <h4 className={label}>Affected items</h4>
+              <ul aria-label="Affected items" className="mt-1.5 space-y-0.5">
+                {affected.slice(0, AFFECTED_SHOWN).map((a) => <li key={a}>{a}</li>)}
+              </ul>
+              {affected.length > AFFECTED_SHOWN && <p className="mt-1 text-fg-muted">+ {affected.length - AFFECTED_SHOWN} more</p>}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   )
 }
@@ -61,13 +72,22 @@ const DEFER_PRESETS = [
   { label: "Next week", seconds: 7 * 24 * 3600 },
 ]
 
+const EVIDENCE_ICON = { markdown: FileText, diff: GitCompare } as const
 function EvidenceView({ evidence }: { evidence: Evidence }) {
   const url = safeHTTPS(typeof evidence.external_url === "string" ? evidence.external_url : undefined)
-  return <details className="border-t border-border py-3">
-    <summary className="cursor-pointer dash-control text-fg-muted">{evidence.label} · {evidence.type}</summary>
-    {evidence.type === "markdown" ? <MessageBody body={evidence.content ?? ""} /> :
-      <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono dash-support text-fg-muted">{evidence.content ?? JSON.stringify(evidence, null, 2)}</pre>}
-    {url && <a href={url} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open evidence</a>}
+  const Icon = EVIDENCE_ICON[evidence.type as keyof typeof EVIDENCE_ICON] ?? Paperclip
+  return <details className="group border-b border-border last:border-b-0">
+    <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-2 dash-control">
+      <Icon aria-hidden className="size-3.5 shrink-0 text-fg-muted" />
+      <span className="font-medium text-fg">{evidence.label}</span>
+      <span className="min-w-0 flex-1 truncate text-fg-muted">{evidence.type}</span>
+      <span className="dash-label text-fg-muted group-open:text-fg">View</span>
+    </summary>
+    <div className="border-t border-border px-3 py-2">
+      {evidence.type === "markdown" ? <MessageBody body={evidence.content ?? ""} /> :
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono dash-support text-fg-muted">{evidence.content ?? JSON.stringify(evidence, null, 2)}</pre>}
+      {url && <a href={url} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open evidence</a>}
+    </div>
   </details>
 }
 
@@ -98,10 +118,8 @@ export function DecisionDetail({
   const [handoff, setHandoff] = useState(handoffItems.has(id))
   useEffect(() => setHandoff(handoffItems.has(id)), [id])
   const [reply, setReply] = useState("")
-  const [choice, setChoice] = useState<ApprovalResponse["decision"]>()
   const refresh = useCallback(async () => {
     setReady(false)
-    setChoice(undefined)
     setError("")
     try {
       setItem(await client.present(id))
@@ -142,7 +160,7 @@ export function DecisionDetail({
     }
   }
   async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"]) {
-    const decision = submitted ? "submitted" : (direct ?? choice)
+    const decision = submitted ? "submitted" : direct
     if (!item || !decision || busy || !ready) return
     setBusy(true)
     setError("")
@@ -157,15 +175,13 @@ export function DecisionDetail({
           : {}),
       })
       setItem({ ...item, state: outcome.state, terminal_outcome: outcome })
-      setChoice(undefined)
-      onChanged()
+        onChanged()
     } catch (e) {
       if (isHandoffError(e)) {
         // Not decidable in the browser: show the handoff state, not the raw error.
         handoffItems.add(item.item_id)
         setHandoff(true)
-        setChoice(undefined)
-        setTyped("")
+            setTyped("")
         return
       }
       setError(
@@ -174,8 +190,7 @@ export function DecisionDetail({
           : "Decision not confirmed. Refresh to check the outcome.",
       )
       setReady(false)
-      setChoice(undefined)
-      onChanged()
+        onChanged()
     } finally {
       setBusy(false)
     }
@@ -196,38 +211,43 @@ export function DecisionDetail({
     })
   }
   const request = item?.request_snapshot
-  // A and D act only while focus is on a button in the decision bar, never in a field. A high-risk
-  // approval still goes through the typed phrase.
-  function onBarKey(e: React.KeyboardEvent) {
-    if (e.metaKey || e.ctrlKey || e.altKey || !(e.target instanceof HTMLButtonElement)) return
-    const k = e.key.toLowerCase()
-    if (k !== "a" && k !== "d") return
-    if (!request || !(request.kind === "approval" || request.kind === "card.approval") || !canDecide || choice) return
-    e.preventDefault()
-    if (k === "d") decideOrHold("denied")
-    else if (request.class === "high") setChoice("approved")
-    else decideOrHold("approved")
-  }
   // High-risk requests are approvable here, gated by a typed phrase (the server still enforces).
   const needsPhrase = request?.class === "high"
+  const affectedCount = Array.isArray(request?.data?.affected) ? request.data.affected.length : 0
+  const phrase = affectedCount ? `DELETE ${affectedCount}` : PHRASE
+  const phraseOk = typed.trim().toLowerCase() === phrase.toLowerCase()
   const card = !!request && isCard(request)
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
     item && isPending(item) && !isExpired(item) && ready && !busy && !isHeld && request?.approvable !== false && !handoff
+  const approve = () => (needsPhrase ? phraseOk && void decide(undefined, "approved") : decideOrHold("approved"))
+  // A and D act only while focus is on a button in the decision bar, never in a field. A high-risk
+  // approval still needs the typed phrase.
+  function onBarKey(e: React.KeyboardEvent) {
+    if (e.metaKey || e.ctrlKey || e.altKey || !(e.target instanceof HTMLButtonElement)) return
+    const k = e.key.toLowerCase()
+    if (k !== "a" && k !== "d") return
+    if (!request || !(request.kind === "approval" || request.kind === "card.approval") || !canDecide) return
+    e.preventDefault()
+    if (k === "d") decideOrHold("denied")
+    else approve()
+  }
+  const agent = request?.source.agent_label ?? request?.source.agent_id
+  const bullets = (b: string) => <MessageBody body={b} />
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-        <header>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="min-w-0 font-sans normal-case tracking-normal dash-body font-semibold text-fg">{request?.title ?? "Review request"}</h2>
-            {request && <RiskChip risk={request.class} />}
+        <header className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="font-sans normal-case tracking-normal dash-body font-semibold text-fg">{request?.title ?? "Review request"}</h2>
+            <p className="mt-1 dash-support text-fg-muted">
+              {agent} asked {item ? ago(item.enqueued_at) : ""} · session {request?.source.agent_id}
+              {item && isExpired(item) && isPending(item) ? " · expired" : ""}
+              {request?.expires_at && item && isPending(item) && <> · expires in <Countdown expiresAt={request.expires_at} bare /></>}
+              {item && !isPending(item) && <> · {item.state}</>}
+            </p>
           </div>
-          <p className="mt-1 font-mono dash-support text-fg-muted">
-            {request?.source.agent_label ?? request?.source.agent_id} ·{" "}
-            {request?.source.application_label ?? request?.source.application_id}
-            {item && <> · {item.state}{isExpired(item) && isPending(item) ? " · expired" : ""}</>}
-            {request?.expires_at && item && isPending(item) && <> · <Countdown expiresAt={request.expires_at} /></>}
-          </p>
+          {request && <RiskChip risk={request.class} />}
         </header>
         {error && (
           <p
@@ -245,58 +265,51 @@ export function DecisionDetail({
         {request && (
           <>
             <section>
-              <h3 className={label}>Request</h3>
-              {request.request && <MessageBody body={request.request} />}
-              {request.summary && request.summary !== request.request && (
-                <MessageBody body={request.summary} />
-              )}
-              {card && <CardData request={request} />}
+              <h3 className={label}>What it wants to do</h3>
+              <div className="mt-1">
+                {request.request && <MessageBody body={request.request} />}
+                {request.summary && request.summary !== request.request && (
+                  <MessageBody body={request.summary} />
+                )}
+                {card && <CardData request={request} />}
+              </div>
             </section>
-            <RunCard request={request} />
+            <RunCard
+              request={request}
+              run={item?.action_run ? <ActionRunPanel initial={item.action_run} approved={resolution?.response.decision === "approved"} /> : undefined}
+            />
             {request.details_markdown && (
               <section>
                 <h3 className={label}>Details</h3>
                 <MessageBody body={request.details_markdown} />
               </section>
             )}
+            {request.impact && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <section className="rounded border border-border p-3">
+                  <h3 className={label}>If approved</h3>
+                  <div className="mt-1">{bullets(request.impact.approve)}</div>
+                </section>
+                <section className="rounded border border-border p-3">
+                  <h3 className={label}>If denied</h3>
+                  <div className="mt-1">{bullets(request.impact.deny)}</div>
+                </section>
+              </div>
+            )}
+            {!!request.evidence?.length && (
+              <section>
+                <h3 className={label}>Evidence</h3>
+                <div className="mt-2 rounded border border-border">
+                  {request.evidence.map((e, i) => <EvidenceView key={i} evidence={e} />)}
+                </div>
+              </section>
+            )}
             {request.recommendation && (
               <section>
                 <h3 className={label}>Recommendation</h3>
-                <MessageBody body={request.recommendation} />
+                <div className="mt-1"><MessageBody body={request.recommendation} /></div>
               </section>
             )}
-            {request.impact && (
-              <div className="grid gap-4 border-y border-border py-4 sm:grid-cols-2">
-                <section>
-                  <h3 className={`${label} text-success`}>If approved</h3>
-                  <MessageBody body={request.impact.approve} />
-                </section>
-                <section>
-                  <h3 className={`${label} text-danger`}>If denied</h3>
-                  <MessageBody body={request.impact.deny} />
-                </section>
-              </div>
-            )}
-            {item?.action_run && (
-              <ActionRunPanel
-                initial={item.action_run}
-                approved={resolution?.response.decision === "approved"}
-              />
-            )}
-            <dl className="grid grid-cols-2 gap-4 dash-support text-fg-muted">
-              <div>
-                <dt className={label}>Requested</dt>
-                <dd title={new Date(item!.enqueued_at).toLocaleString()}>{ago(item!.enqueued_at)}</dd>
-              </div>
-              <div>
-                <dt className={label}>Expires</dt>
-                <dd>
-                  {request.expires_at
-                    ? <span title={new Date(request.expires_at).toLocaleString()}>{timeLeft(request.expires_at) ?? "No expiry"}</span>
-                    : "No expiry"}
-                </dd>
-              </div>
-            </dl>
             {request.correlations && (
               <details>
                 <summary className="cursor-pointer dash-control text-fg-muted">
@@ -307,18 +320,7 @@ export function DecisionDetail({
                 />
               </details>
             )}
-            {!!request.evidence?.length && (
-              <section>
-                <h3 className={label}>Evidence</h3>
-                {request.evidence.map((e, i) => (
-                  <EvidenceView
-                    key={i}
-                    evidence={e}
-                  />
-                ))}
-              </section>
-            )}
-            {item && !isPending(item) && <AuditTrail id={item.item_id} client={client} />}
+            {item && <AuditTrail id={item.item_id} client={client} />}
             {item?.card_receipt && <CardReceiptView receipt={item.card_receipt} />}
           </>
         )}
@@ -360,24 +362,16 @@ export function DecisionDetail({
               </section>
             ) : (
               <>
-                {!showNote ? (
-                  <button type="button" aria-expanded={false} className="inline-flex items-center gap-1 dash-control text-fg-muted underline underline-offset-2 hover:text-fg" onClick={() => setShowNote(true)}>
-                    <ChevronRight className="h-3 w-3" aria-hidden /> Add note
-                  </button>
-                ) : (
-                <label className="block dash-control text-fg-muted">
-                  Decision note (optional)
-                  <Textarea
-                    aria-label="Decision note"
-                    disabled={busy}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    maxLength={8000}
-                    rows={3}
-                    className="mt-2 w-full dash-control"
-                  />
-                </label>
-                )}
+                <Textarea
+                  aria-label="Decision note"
+                  disabled={busy}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={8000}
+                  rows={2}
+                  placeholder={`Optional note or reply to ${agent}…`}
+                  className="w-full dash-control"
+                />
                 {request.kind === "attention" && (
                   <label className="block dash-control text-fg-muted">
                     Reply (optional)
@@ -392,77 +386,27 @@ export function DecisionDetail({
                     />
                   </label>
                 )}
+                {needsPhrase && (request.kind === "approval" || request.kind === "card.approval") && (
+                  <div className="rounded border border-danger/40 p-3">
+                    <p className="dash-control text-danger">This cannot be undone.</p>
+                    <label className="mt-2 block dash-control text-fg-muted">
+                      Type <span className="font-mono text-fg">{phrase}</span> to confirm
+                      <input
+                        aria-label="Confirmation phrase"
+                        autoComplete="off"
+                        value={typed}
+                        onChange={(e) => setTyped(e.target.value)}
+                        className="mt-2 w-full border border-border bg-bg p-2 font-mono dash-control"
+                      />
+                    </label>
+                  </div>
+                )}
                 {request.kind === "card.info" ? (
                   <p className="dash-control text-fg-muted">This card is for information; there is nothing to answer.</p>
                 ) : request.kind === "card.question" || request.kind === "card.form" ? (
                   <CardForm request={request} itemId={item.item_id} client={client} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
-                ) : choice ? (
-                  <section className="rounded border border-border bg-surface/40 p-3">
-                    <p className="dash-control text-fg-muted">
-                      Confirm{" "}
-                      {choice === "approved"
-                        ? "approval"
-                        : choice === "denied"
-                          ? "denial"
-                          : "acknowledgement"}{" "}
-                      of this request?
-                    </p>
-                    {needsPhrase && choice === "approved" && (
-                      <label className="mt-3 block dash-control text-fg-muted">
-                        Type <span className="font-mono text-fg">{PHRASE}</span> to approve this high-risk request
-                        <input
-                          aria-label="Confirmation phrase"
-                          autoComplete="off"
-                          value={typed}
-                          onChange={(e) => setTyped(e.target.value)}
-                          className="mt-2 w-full border border-border bg-bg p-2 font-mono dash-control"
-                        />
-                      </label>
-                    )}
-                    <div className="mt-3 flex gap-2">
-                      <Button
-                        disabled={!canDecide || (needsPhrase && choice === "approved" && typed.trim().toLowerCase() !== PHRASE)}
-                        onClick={() => void decide()}
-                      >
-                        {busy ? "Submitting…" : "Confirm decision"}
-                      </Button>
-                      <Button variant="outline"
-                        disabled={busy}
-                        onClick={() => setChoice(undefined)}
-                      >
-                        Back
-                      </Button>
-                    </div>
-                  </section>
-                ) : (
-                  <div className="flex gap-2">
-                    {request.kind === "approval" || request.kind === "card.approval" ? (
-                      <>
-                        <Button
-                          className="flex-1 sm:flex-none"
-                          disabled={!canDecide}
-                          onClick={() => (needsPhrase ? setChoice("approved") : decideOrHold("approved"))}
-                        >
-                          {busy || isHeld ? "Approving…" : item?.action_run ? "Approve and run" : "Approve"}
-                        </Button>
-                        <Button variant="outline"
-                          className="flex-1 sm:flex-none"
-                          disabled={!canDecide}
-                          onClick={() => decideOrHold("denied")}
-                        >
-                          Deny
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        disabled={!canDecide}
-                        onClick={() => void decide(undefined, "acknowledged")}
-                      >
-                        Acknowledge
-                      </Button>
-                    )}
-                  </div>
-                )}
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
                 {item && isPending(item) && !isExpired(item) && (() => {
                   const expiry = request.expires_at ? Date.parse(request.expires_at) : undefined
                   // A snoozed item must not expire unnoticed: offer only presets that end first.
@@ -476,7 +420,7 @@ export function DecisionDetail({
                     </p>
                   ) : presets.length ? (
                     <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" disabled={busy || !ready} aria-label="Decide later" />}>Decide later</DropdownMenuTrigger>
+                      <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" disabled={busy || !ready} aria-label="Decide later" />}>Defer</DropdownMenuTrigger>
                       <DropdownMenuContent aria-label="Decide later" align="start" data-dashboard-shape="square" className="w-40">
                         {presets.map((p) => (
                           <DropdownMenuItem key={p.label} onClick={() => void defer(p.seconds)}>{p.label}</DropdownMenuItem>
@@ -487,6 +431,21 @@ export function DecisionDetail({
                     <p className="dash-control text-fg-muted">Expires soon, so it cannot be snoozed.</p>
                   )
                 })()}
+                {(request.kind === "approval" || request.kind === "card.approval") ? (
+                  <div className="ml-auto flex gap-2">
+                    <Button variant="outline" disabled={!canDecide} onClick={() => decideOrHold("denied")}>
+                      Deny <Keycap>D</Keycap>
+                    </Button>
+                    <Button disabled={!canDecide || (needsPhrase && !phraseOk)} onClick={approve}>
+                      {busy || isHeld ? "Approving…" : item?.action_run ? "Approve and run" : "Approve"} <Keycap>A</Keycap>
+                    </Button>
+                  </div>
+                ) : !["card.info", "card.question", "card.form"].includes(request.kind) ? (
+                  <Button className="ml-auto" disabled={!canDecide} onClick={() => void decide(undefined, "acknowledged")}>
+                    Acknowledge
+                  </Button>
+                ) : null}
+                </div>
                 <p className="dash-support text-fg-faint">
                   Records your decision for the requesting application.
                   Execution and credential permissions are checked by that

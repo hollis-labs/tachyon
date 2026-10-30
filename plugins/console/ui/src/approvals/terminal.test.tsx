@@ -78,7 +78,7 @@ describe("action run panel", () => {
   it("shows machine, exact command and digest before approval, and no terminal", () => {
     vi.stubGlobal("WebSocket", FakeSocket)
     render(<ActionRunPanel initial={base} approved={false} fetcher={vi.fn()} />)
-    expect(screen.getByText("Runs on hub")).toBeTruthy()
+    expect(screen.getByText("▸ hub")).toBeTruthy()
     expect(screen.getByText("tether catalog approve plan-1")).toBeTruthy()
     expect(screen.getByText(base.op_digest)).toBeTruthy()
     expect(screen.getByText(RUN_STATE_COPY.pending_approval)).toBeTruthy()

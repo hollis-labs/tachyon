@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@hollis-labs/design-components"
 import { Check, CircleDot, Clock, X } from "lucide-react"
 import type { ApprovalClient, HistoryEvent, HistoryFacets } from "./client"
+import { Chip } from "../components/chip"
+import { AuditTrail } from "./audit"
 import { ago } from "./parts"
 
 const VERB: Record<string, string> = {
@@ -43,6 +45,7 @@ export function HistoryTimeline({ client, search, status, requester, onOpen, onF
   const [next, setNext] = useState<string>()
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [audit, setAudit] = useState<string>()
   const filtered = !!(status || requester.trim() || search.trim())
   const load = useCallback(async (cursor?: string) => {
     setLoading(true)
@@ -88,12 +91,16 @@ export function HistoryTimeline({ client, search, status, requester, onOpen, onF
                 <li key={e.event_id} className="relative">
                   <Marker e={e} />
                   <button type="button" onClick={() => onOpen(e.item_id)} className="block w-full text-left">
-                    <span className="dash-body text-fg"><span className="font-medium">{verb(e)}</span> · {e.mini?.title ?? e.item_id}</span>
+                    <span className="flex flex-wrap items-center gap-2 dash-body text-fg"><span className="font-medium">{verb(e)}</span><Chip>{e.mini?.title ?? e.item_id}</Chip></span>
                     <span className="block font-mono dash-caption text-fg-faint" title={new Date(e.at).toLocaleString()}>{e.actor.label} · {ago(e.at)}</span>
                   </button>
                   {reasonText(e) && (
-                    <p className="mt-1 border-l-2 border-border pl-2 dash-support text-fg-muted">{reasonText(e)}</p>
+                    <p className="mt-2 rounded border border-border p-2 dash-support text-fg-muted">{reasonText(e)}</p>
                   )}
+                  <button type="button" aria-expanded={audit === e.event_id} onClick={() => setAudit(audit === e.event_id ? undefined : e.event_id)} className="mt-1 dash-label text-fg-muted underline underline-offset-2 hover:text-fg">
+                    {audit === e.event_id ? "Hide audit" : "Audit"}
+                  </button>
+                  {audit === e.event_id && <div className="mt-2"><AuditTrail id={e.item_id} client={client} /></div>}
                 </li>
               ))}
             </ul>

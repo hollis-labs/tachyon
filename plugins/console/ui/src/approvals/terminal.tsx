@@ -6,7 +6,6 @@ import "@xterm/xterm/css/xterm.css"
 import { ACTION_RUNS_BASE, type ActionRun } from "./client"
 import { operatorFetch } from "../operator/elevation"
 
-const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
 
 export const RUN_STATE_COPY: Record<ActionRun["state"], string> = {
   pending_approval: "Waiting for your approval",
@@ -173,28 +172,20 @@ export function ActionRunPanel({
   const onExit = useCallback(() => void reload(), [reload])
   const tone = run.state === "succeeded" ? "text-success" : run.terminal ? "text-danger" : "text-warning"
   return (
-    <section aria-label="Action run" className="rounded border border-border bg-surface/40 p-4">
-      <h3 className={label}>Runs on {run.machine}</h3>
-      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded bg-bg p-2 font-mono dash-support text-fg">{run.command}</pre>
-      <dl className="mt-3 grid grid-cols-2 gap-3 dash-support text-fg-muted">
-        <div>
-          <dt className={label}>Action</dt>
-          <dd className="font-mono">{run.action}</dd>
-        </div>
-        <div>
-          <dt className={label}>Class</dt>
-          <dd>{run.class}{run.labels ? ` · ${run.labels}` : ""}</dd>
-        </div>
-        <div className="col-span-2">
-          <dt className={label}>op_digest</dt>
-          <dd className="break-all font-mono">{run.op_digest}</dd>
-        </div>
-      </dl>
-      <p role="status" className={`mt-3 font-mono dash-caption uppercase tracking-widest ${tone}`}>
-        {RUN_STATE_COPY[run.state]}
-        {run.exit_code !== undefined ? ` · exit ${run.exit_code}` : ""}
-        {run.started_at ? ` · ${elapsed(run, now)}` : ""}
-      </p>
+    <section aria-label="Action run" className="overflow-hidden rounded border border-border bg-surface/40">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 dash-control">
+        <span className="font-mono text-fg">▸ {run.machine}</span>
+        <span role="status" className={`dash-support ${tone}`}>
+          {RUN_STATE_COPY[run.state]}
+          {run.exit_code !== undefined ? ` · exit ${run.exit_code}` : ""}
+          {run.started_at ? ` · ${elapsed(run, now)}` : ""}
+        </span>
+      </div>
+      <pre className="overflow-x-auto whitespace-pre-wrap break-all px-3 py-4 font-mono dash-support text-fg"><span className="text-fg-faint">{run.machine} $ </span>{run.command}</pre>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-bg/40 px-3 py-2 dash-support text-fg-muted">
+        <span>{run.action} · {run.class}{run.labels ? ` · ${run.labels}` : ""}</span>
+        <span className="font-mono">Bound command is exactly what runs · digest {run.op_digest.replace(/^sha256:/, "").slice(0, 8)}…<span className="sr-only">{run.op_digest}</span></span>
+      </div>
       {run.error && <p className="mt-1 dash-support text-danger">{run.error}</p>}
       {run.terminal && run.note && <p className="mt-1 dash-support text-fg-muted">{run.note}</p>}
       {error && <p role="alert" className="mt-1 dash-support text-danger">{error}</p>}

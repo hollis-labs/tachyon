@@ -5,7 +5,7 @@ import type { ApprovalClient, ApprovalItem, CardAnswer, CardReceipt } from "./cl
 import { SecretDialog } from "./secret-dialog"
 
 type Request = ApprovalItem["request_snapshot"]
-const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
+const label = "font-mono dash-caption uppercase tracking-label text-fg-faint"
 const input = "mt-2 w-full border border-border bg-bg p-2 dash-control"
 
 export interface CardField {
