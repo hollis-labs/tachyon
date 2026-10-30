@@ -238,6 +238,20 @@ describe('<PendingPrInbox>', () => {
     await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Bulk actions' })).toBeNull())
   })
 
+  it('opens a preview drawer from the title with checks and changed files, and offers the workspace', async () => {
+    const forge = createMockForgeClient()
+    mount(forge)
+    const pending = await forge.listPendingPrs()
+    const first = pending[0]
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(`Preview .*#${first.ref.number}: `) }))
+    const dialog = await screen.findByRole('dialog')
+    await within(dialog).findByRole('region', { name: 'Checks' })
+    expect(within(dialog).getByRole('region', { name: 'Changed files' })).toBeTruthy()
+    expect(within(dialog).getByRole('link', { name: 'Open workspace' }).getAttribute('href')).toMatch(/^\/pr\/github\//)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
   it('keeps saved rows and filters while refreshing, then reconciles changed, added and removed PRs', async () => {
     const forge = createMockForgeClient()
     let finish!: (prs: PendingPrSummary[]) => void
