@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/libs/app/app-host/plugins"
@@ -148,6 +149,7 @@ type Server struct {
 	approvalCancel   context.CancelFunc
 	agentsCollector  *agentscollector.Collector
 	catalogIndex     *catalogindex.Index
+	ext              sync.Map // per-feature state set by startHooks, read by serverMounts (features.go)
 	actions          *actionrun.Service
 	cardFx           *cardfx.Store
 }
@@ -255,6 +257,9 @@ func (s *Server) Start(ctx context.Context) error {
 		}()
 	}
 
+	// Backfill the queue index, then materialize expired items every 30 s so History fills without a reader.
+	go s.approvalInbox.Maintain(approvalContext, 30*time.Second, slog.Default().Info)
+
 	if s.cfg.AppAgentConfigFile != "" {
 		// The adapter re-reads this file on every call, so reinstalling the agent
 		// (a new definition revision gets a new host row) needs no restart.
@@ -268,6 +273,9 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startCardEvents(approvalContext, store)
 	s.startAgentsCollector(approvalContext, store)
 	s.startCatalogIndex(approvalContext, store)
+	for _, hook := range startHooks {
+		hook(approvalContext, s, store)
+	}
 	s.startCardDelivery(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
@@ -500,6 +508,12 @@ func (s *Server) Routes() http.Handler {
 	}
 	mux.Handle(transcripts.Prefix+"/", transcriptHandler)
 	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	for _, mount := range featureMounts {
+		mount(mux, operator)
+	}
+	for _, mount := range serverMounts {
+		mount(s, mux, operator)
+	}
 	if s.objects != nil {
 		// Local data is live and host-owned, independent of subprocess admission.
 		providers := []dataverbs.Provider{dataverbs.NewLocal(s.objects)}
@@ -688,6 +702,13 @@ func (s *Server) Routes() http.Handler {
 	if s.cfg.FileviewStubs {
 		mux.Handle("GET "+fileviewapi.FramesPrefix, fileviewapi.Stub{}.FrameHandler())
 		mux.Handle(fileviewapi.Prefix+"/", operator.RequireOperatorReads(fileviewapi.Stub{}.Handler()))
+	}
+	// File viewer settings and roots (real, V1). One pattern each, so they win over the stub's subtree when
+	// the stub is on. Reads need an operator session; the PUT needs an elevated one.
+	if s.store != nil {
+		if home, err := os.UserHomeDir(); err == nil {
+			(&fileview.Service{DB: s.store, Home: home}).Mount(mux, operator.RequireOperatorReads, operator.RequireOperator)
+		}
 	}
 	// File viewer audit log (real, V6): reading it is an operator act. One pattern, so it wins over the stub.
 	if s.fileviewAudit != nil {

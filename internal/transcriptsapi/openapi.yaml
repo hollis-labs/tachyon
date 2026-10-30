@@ -1,0 +1,173 @@
+openapi: 3.0.3
+info:
+  title: Tachyon Transcripts backend (contract + stub)
+  version: 0.1.0
+  description: |
+    GET-only routes under /api/plugins/console/v1/transcripts. Errors are {"code","message"}.
+    Same-origin browser session only; an Authorization header is refused (403 forbidden).
+    All responses are Cache-Control: no-store from the bridge's point of view; search, find and
+    errors are never cached. Transcript text, tool targets and error excerpts are untrusted plain
+    text, redacted best-effort by Fragments Engine (regex), never HTML.
+    Stage 1 works on today's Fragments Engine (snapshot_meta, search, turn_limit, tool_calls
+    name/status/size/times). Stage 2 needs FE changes: tool target and error_excerpt (F1), turn-level
+    hits, find, errors, turn_from_seq, ranges (F2), ingest freshness (F3), stats (F4).
+    Design: tesseract key design_tachyon_transcripts_backend_20261030. Stub: TACHYON_TRANSCRIPTS_STUBS=1.
+servers:
+  - url: /api/plugins/console/v1/transcripts
+paths:
+  /snapshot:
+    get:
+      summary: Session list + facets. Now carries snapshot_meta (source_state live|cached|stale|unavailable). In the unavailable state the last saved snapshot (metadata only) is returned with HTTP 200 and snapshot_meta.error.
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Snapshot"}}}}
+        "401": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /status:
+    get:
+      summary: Fragments Engine status passthrough (modes, semantic availability) plus ingest {last_ingest_at, state} (Stage 2).
+      responses:
+        "200": {description: ok}
+  /search:
+    get:
+      summary: Content search, session-level in Stage 1. Never cached; the query text is not logged or audited.
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string, maxLength: 256}}
+        - {name: mode, in: query, schema: {type: string, enum: [text, summary, semantic, hybrid], default: text}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+        - {name: cursor, in: query, schema: {type: string}, description: "Opaque FE cursor. Semantic has no cursor (max 100 results)."}
+        - {name: since, in: query, schema: {type: string}}
+        - {name: until, in: query, schema: {type: string}}
+        - {name: tool, in: query, schema: {type: string}}
+        - {name: model, in: query, schema: {type: string}}
+        - {name: kind, in: query, schema: {type: string}}
+        - {name: project, in: query, schema: {type: string}}
+        - {name: has_error, in: query, schema: {type: boolean}}
+        - {name: tag, in: query, schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Search"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /sessions/{id}:
+    get:
+      summary: One session page. Works for any valid 64-hex id even outside the snapshot (deep link); unknown id is 404 not_found.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, pattern: "^[a-f0-9]{64}$"}}
+        - {name: turn_offset, in: query, schema: {type: integer, minimum: 0, maximum: 1000000}}
+        - {name: turn_limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+        - {name: turn_from_seq, in: query, schema: {type: integer, minimum: 0}, description: Stage 2; overrides turn_offset.}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Detail"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /sessions/{id}/find:
+    get:
+      summary: Stage 2. In-session find over all turns, with turn offsets. Until it ships the UI finds in loaded turns only.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: q, in: query, required: true, schema: {type: string, maxLength: 256}}
+        - {name: after_offset, in: query, schema: {type: integer}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 50}}
+      responses:
+        "200": {description: "{total, matches[{turn_offset,seq,role,snippet,highlight}], truncated}"}
+  /sessions/{id}/errors:
+    get:
+      summary: Stage 2. Tool-call result errors across the whole session ("Next error").
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: "{total, items[{turn_offset,seq,tool,target?,error_excerpt?}]}"}
+  /stats:
+    get:
+      summary: Stage 2 (optional). Database-wide aggregates with the search filters.
+      responses:
+        "200": {description: ok}
+  /openapi.yaml:
+    get:
+      summary: This document.
+      responses:
+        "200": {description: ok}
+components:
+  responses:
+    Error:
+      description: '{"code": configuration|authentication|not_found|rate_limited|remote|unreachable|invalid_response|invalid_args|read_only|forbidden, "message"}'
+  schemas:
+    SnapshotMeta:
+      type: object
+      required: [source_state, observed_at, fetched_at, complete, limit, total_available, omitted_count]
+      properties:
+        source_state: {type: string, enum: [live, cached, stale, unavailable]}
+        observed_at: {type: integer, description: unix ms}
+        fetched_at: {type: integer}
+        complete: {type: boolean}
+        limit: {type: integer}
+        total_available: {type: integer, description: facets.total}
+        omitted_count: {type: integer, description: total_available minus sessions returned; includes undated sessions the until cutoff drops}
+        error: {type: object, description: present when unavailable, properties: {code: {type: string}, message: {type: string}}}
+    Snapshot:
+      type: object
+      properties:
+        status: {type: object}
+        facets: {type: object}
+        sessions: {type: array, items: {$ref: "#/components/schemas/SessionSummary"}}
+        complete: {type: boolean}
+        limit: {type: integer}
+        observed_at: {type: string}
+        snapshot_meta: {$ref: "#/components/schemas/SnapshotMeta"}
+    SessionSummary:
+      type: object
+      properties:
+        id: {type: string}
+        kind: {type: string, description: claude|codex|chatgpt}
+        title: {type: string}
+        project: {type: string}
+        model: {type: string}
+        started_at: {type: integer, nullable: true}
+        ended_at: {type: integer, nullable: true}
+        turn_count: {type: integer}
+        tool_call_count: {type: integer}
+        error_count: {type: integer}
+        tools: {type: array, items: {type: string}}
+        tags: {type: array, items: {type: string}}
+        has_enrichment: {type: boolean}
+    ToolCall:
+      type: object
+      properties:
+        name: {type: string}
+        status: {type: string, enum: [ok, error, none]}
+        result_bytes: {type: integer}
+        started_at: {type: integer}
+        ended_at: {type: integer}
+        target: {type: string, maxLength: 200, description: Stage 2 (F1), derived server-side from the redacted input}
+        error_excerpt: {type: string, description: Stage 2 (F1), at most 2 KiB, error results only}
+    Detail:
+      type: object
+      properties:
+        session: {$ref: "#/components/schemas/SessionSummary"}
+        turns: {type: array, items: {type: object, properties: {seq: {type: integer}, role: {type: string}, text: {type: string}, text_truncated: {type: boolean}, thinking_bytes: {type: integer}, tool_calls: {type: array, items: {$ref: "#/components/schemas/ToolCall"}}}}}
+        turn_total: {type: integer}
+        next_turn: {type: integer, nullable: true}
+        usage: {type: object}
+        subagents: {type: array, items: {type: object}}
+        enrichment: {type: object, nullable: true}
+    Search:
+      type: object
+      properties:
+        mode: {type: string}
+        items:
+          type: array
+          items:
+            allOf:
+              - {$ref: "#/components/schemas/SessionSummary"}
+              - type: object
+                properties:
+                  match:
+                    type: object
+                    properties:
+                      field: {type: string}
+                      snippet: {type: string}
+                      highlight: {type: object, properties: {format: {type: string, enum: [brackets, ranges]}, ranges: {type: array, items: {type: object, properties: {start: {type: integer}, end: {type: integer}}}}}}
+                      turn_offset: {type: integer, description: Stage 2, text mode only}
+                      turn_seq: {type: integer}
+                      score: {type: number}
+        next_cursor: {type: string, nullable: true}
+        hint: {type: string}
+        snippets_skipped: {type: integer}
+        notice: {type: object, description: "code semantic_unavailable|no_vectors|model_mismatch|dim_mismatch|summary_vectors_only; the UI must show it", properties: {code: {type: string}, message: {type: string}}}

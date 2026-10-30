@@ -1,0 +1,68 @@
+{
+ "mode": "semantic",
+ "items": [
+  {
+   "id": "e11020b390a5d4d8a7992e8c29a213dfe2639b4d72afdce16ee74d1c86a4f039",
+   "kind": "codex",
+   "title": "Fix flaky approvals test",
+   "project": "tachyon",
+   "model": "gpt-5-codex",
+   "started_at": 1761713600000,
+   "ended_at": 1761714320000,
+   "turn_count": 12,
+   "tool_call_count": 9,
+   "error_count": 1,
+   "tools": [
+    "apply_patch",
+    "shell"
+   ],
+   "tags": [
+    "tests"
+   ],
+   "has_enrichment": true,
+   "match": {
+    "field": "summary",
+    "snippet": "Summary similar to the query (score 0.81).",
+    "highlight": {
+     "format": "brackets"
+    },
+    "score": 0.81
+   }
+  },
+  {
+   "id": "d3cf2597d1b39167aa6e3a423879aa980691c155eacd3a50c3882646b3234fb7",
+   "kind": "claude",
+   "title": "Wire the forge stubs",
+   "project": "tachyon",
+   "model": "claude-sonnet-5-5",
+   "started_at": 1761800000000,
+   "ended_at": 1761803600000,
+   "turn_count": 60,
+   "tool_call_count": 34,
+   "error_count": 2,
+   "tools": [
+    "Bash",
+    "Edit",
+    "Read"
+   ],
+   "tags": [
+    "go",
+    "stubs"
+   ],
+   "has_enrichment": true,
+   "match": {
+    "field": "summary",
+    "snippet": "Summary similar to the query (score 0.74).",
+    "highlight": {
+     "format": "brackets"
+    },
+    "score": 0.74
+   }
+  }
+ ],
+ "next_cursor": null,
+ "notice": {
+  "code": "summary_vectors_only",
+  "message": "Semantic search matches session summaries, not passages. Up to 100 results; no paging."
+ }
+}

@@ -49,8 +49,7 @@ internal/localstore/migrations`). V0 adds no migration.
 
 ## V6: audit (real)
 
-Migration `032_fileview_audit.sql` (the design said 019; 028-029 are open approvals PRs, 030 catalog and 031
-console item state: take the next free number at merge). `fileview.Auditor` writes `fileview_audit` through
+Migration `033_fileview_audit.sql` (the design said 019; 028-029 are approvals, 030 the catalog index, 031 console item state, 032 alerts in #227: take the next free number at merge). `fileview.Auditor` writes `fileview_audit` through
 the serialized writer: no file content, caster refs without query or fragment, paths and ids truncated at
 1024 bytes, control characters removed.
 
@@ -64,3 +63,25 @@ the serialized writer: no file content, caster refs without query or fragment, p
 - Retention: a pass at start and then daily deletes rows older than `fileview.audit_retention_days` (1..365,
   default 30; an invalid stored value means 30). A failed or panicking pass is skipped.
 - The recorders are called by V3-V5 (stat, content, frame, caster); V6 only provides them.
+
+## V1: settings and roots (real)
+
+`internal/fileview` serves `GET /settings`, `PUT /settings` and `GET /roots` from `app_settings` rows
+`fileview.roots`, `.deny_extra`, `.caps`, `.caster_namespaces`, `.run_scripts_allowed`, `.allow_user_roots`,
+`.audit_retention_days`, `.user_roots` (one JSON value per row). They are mounted when the local store is
+open, one pattern each, and win over the stub's subtree. Reads need an operator session
+(`RequireOperatorReads`); the PUT needs an elevated one (`RequireOperator`).
+
+- PUT changes only the fields it names, in one transaction; body cap 16 KiB, unknown fields and trailing
+  data are 400. A stored row that no longer validates is ignored for that key (default), never widened.
+- A root must be an absolute, existing directory; not `/`, the home directory or any parent of it; not inside
+  a secret directory (`.ssh`, `.gnupg`, `.aws`, `.kube`, `.config/gcloud`), also after symlinks; not a parent
+  of one. Violations are 400 `invalid_root`. At most 32 roots in total.
+- User roots are additions only and need `allow_user_roots` already true in the STORED settings: a request
+  cannot unlock them for itself (403 `user_roots_not_allowed`). Turning the switch off hides them without
+  deleting them.
+- `GET /roots` lists the effective roots: Downloads, dev, /tmp and the agent-os workspaces (each only if it
+  exists; design F-V1 asks Chrispian to confirm), then app and user roots. A root that disappeared or now
+  resolves somewhere invalid is dropped. `owner_only` is true for world-writable roots: V2 serves only files
+  owned by the service user from them. `path_display` is `~`-relative under the service user's home.
+- `fileview.BuiltinDeny` lists the always-denied basename globs for V2; `deny_extra` only adds to it.

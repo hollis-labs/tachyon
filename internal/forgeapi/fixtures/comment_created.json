@@ -1,0 +1,11 @@
+{
+  "kind": "issue",
+  "id": "c9100",
+  "author": {
+    "login": "chrispian",
+    "avatarUrl": "https://avatars.example/chrispian.png"
+  },
+  "body": "Posted.",
+  "createdAt": "2026-10-30T03:00:00Z",
+  "url": "https://github.example/c/9100"
+}

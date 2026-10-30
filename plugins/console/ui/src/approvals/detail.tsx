@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Button, Textarea } from "@hollis-labs/design-components"
+import { ChevronRight } from "lucide-react"
 import { MessageBody } from "../chat/MessageBody"
 import {
   isCard,
@@ -9,13 +10,16 @@ import {
   type ApprovalItem,
   type ApprovalResponse,
   type CardAnswer,
+  handoffItems,
+  isHandoffError,
   type Evidence,
 } from "./client"
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { ActionRunPanel } from "./terminal"
-import { Countdown, RiskChip } from "./parts"
+import { Countdown, RiskChip, ago, timeLeft } from "./parts"
+import { useApprovals } from "./context"
 
-const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
+const label = "font-mono dash-caption uppercase tracking-wide text-fg-faint"
 function safeHTTPS(raw?: string) {
   try {
     const u = new URL(raw ?? "")
@@ -23,6 +27,33 @@ function safeHTTPS(raw?: string) {
   } catch { /* No unsafe links. */ }
   return undefined
 }
+// Exactly what will run: a bound command, diff and/or affected items, in a mono card.
+// Renders nothing when the payload carries none of them.
+function RunCard({ request }: { request: ApprovalItem["request_snapshot"] }) {
+  const data = request.data ?? {}
+  const text = (v: unknown) => (typeof v === "string" && v ? v : undefined)
+  const command = text(data.command)
+  const diff = text(data.diff)
+  const affected = Array.isArray(data.affected) ? data.affected.map(String) : []
+  if (!command && !diff && !affected.length) return null
+  return (
+    <section aria-label="Exactly what will run">
+      <h3 className={label}>Exactly what will run</h3>
+      <div className="mt-2 space-y-3 rounded border border-border bg-surface/40 p-3 font-mono dash-support text-fg">
+        {command && <pre className="whitespace-pre-wrap break-words">$ {command}</pre>}
+        {diff && <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words">{diff}</pre>}
+        {!!affected.length && (
+          <ul aria-label="Affected items" className="space-y-0.5">
+            {affected.map((a) => <li key={a}>{a}</li>)}
+          </ul>
+        )}
+      </div>
+    </section>
+  )
+}
+
+const PHRASE = "approve"
+
 function EvidenceView({ evidence }: { evidence: Evidence }) {
   const url = safeHTTPS(typeof evidence.external_url === "string" ? evidence.external_url : undefined)
   return <details className="border-t border-border py-3">
@@ -41,18 +72,24 @@ export function DecisionDetail({
   client,
   onChanged,
   footer,
+  initialNote = "",
 }: {
   id: string
   initial?: ApprovalItem
   client: ApprovalClient
   onChanged(): void
   footer?: ReactNode
+  initialNote?: string
 }) {
   const [item, setItem] = useState(initial)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [note, setNote] = useState("")
+  const [note, setNote] = useState(initialNote)
+  const [showNote, setShowNote] = useState(!!initialNote)
+  const [typed, setTyped] = useState("")
+  const [handoff, setHandoff] = useState(handoffItems.has(id))
+  useEffect(() => setHandoff(handoffItems.has(id)), [id])
   const [reply, setReply] = useState("")
   const [choice, setChoice] = useState<ApprovalResponse["decision"]>()
   const refresh = useCallback(async () => {
@@ -69,8 +106,8 @@ export function DecisionDetail({
   useEffect(() => {
     void refresh()
   }, [refresh])
-  async function decide(submitted?: CardAnswer[]) {
-    const decision = submitted ? "submitted" : choice
+  async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"]) {
+    const decision = submitted ? "submitted" : (direct ?? choice)
     if (!item || !decision || busy || !ready) return
     setBusy(true)
     setError("")
@@ -88,6 +125,14 @@ export function DecisionDetail({
       setChoice(undefined)
       onChanged()
     } catch (e) {
+      if (isHandoffError(e)) {
+        // Not decidable in the browser: show the handoff state, not the raw error.
+        handoffItems.add(item.item_id)
+        setHandoff(true)
+        setChoice(undefined)
+        setTyped("")
+        return
+      }
       setError(
         e instanceof Error
           ? e.message
@@ -100,17 +145,34 @@ export function DecisionDetail({
       setBusy(false)
     }
   }
+  const queue = useApprovals()
+  const isHeld = !!queue?.held.some((h) => h.itemId === id)
+  // Low/medium decisions are held for undo in the queue provider; high-risk and the
+  // no-provider case decide at once.
+  function decideOrHold(decision: "approved" | "denied") {
+    if (!item || !ready || busy) return
+    // Only an approval of a low/medium item is held; a denial is safe and immediate.
+    if (!queue || item.request_snapshot.class === "high" || decision === "denied")
+      return void decide(undefined, decision)
+    queue.hold(item, {
+      kind: item.request_snapshot.kind,
+      decision,
+      ...(note.trim() ? { note: note.trim() } : {}),
+    })
+  }
   const request = item?.request_snapshot
+  // High-risk requests are approvable here, gated by a typed phrase (the server still enforces).
+  const needsPhrase = request?.class === "high"
   const card = !!request && isCard(request)
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
-    item && isPending(item) && !isExpired(item) && ready && !busy && request?.class !== "high" && request?.source.application_id !== "cerberus"
+    item && isPending(item) && !isExpired(item) && ready && !busy && !isHeld && request?.approvable !== false && !handoff
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         <header>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="min-w-0 dash-body font-medium text-fg">{request?.title ?? "Review request"}</h2>
+            <h2 className="min-w-0 font-sans normal-case tracking-normal dash-body font-semibold text-fg">{request?.title ?? "Review request"}</h2>
             {request && <RiskChip risk={request.class} />}
           </div>
           <p className="mt-1 font-mono dash-support text-fg-muted">
@@ -143,6 +205,7 @@ export function DecisionDetail({
               )}
               {card && <CardData request={request} />}
             </section>
+            <RunCard request={request} />
             {request.details_markdown && (
               <section>
                 <h3 className={label}>Details</h3>
@@ -176,13 +239,13 @@ export function DecisionDetail({
             <dl className="grid grid-cols-2 gap-4 dash-support text-fg-muted">
               <div>
                 <dt className={label}>Requested</dt>
-                <dd>{new Date(item!.enqueued_at).toLocaleString()}</dd>
+                <dd title={new Date(item!.enqueued_at).toLocaleString()}>{ago(item!.enqueued_at)}</dd>
               </div>
               <div>
                 <dt className={label}>Expires</dt>
                 <dd>
                   {request.expires_at
-                    ? new Date(request.expires_at).toLocaleString()
+                    ? <span title={new Date(request.expires_at).toLocaleString()}>{timeLeft(request.expires_at) ?? "No expiry"}</span>
                     : "No expiry"}
                 </dd>
               </div>
@@ -213,7 +276,7 @@ export function DecisionDetail({
         )}
       </div>
       {/* Decision bar: fixed at the bottom of the detail. */}
-      <div role="toolbar" aria-label="Decision" className="space-y-3 border-t border-border bg-bg p-4">
+      <div role="toolbar" aria-label="Decision" className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-border bg-bg p-4">
         {request && (<>
             {resolution ? (
               <section className="rounded border border-border bg-surface/40 p-4">
@@ -242,13 +305,18 @@ export function DecisionDetail({
                   `Request ${item.state}`
                 }
               />
-            ) : request.class === "high" || request.source.application_id === "cerberus" ? (
-              <section className="rounded border border-warning/30 p-4">
-                <p className="dash-control text-fg-muted">Complete this decision in the provider console. This inbox cannot approve it.</p>
+            ) : request.approvable === false || handoff ? (
+              <section className="rounded border border-border p-4">
+                <p className="dash-control text-fg-muted">This request cannot be approved here. Complete the decision in the provider console.</p>
                 {ready && safeHTTPS(request.handoff_url) && <a href={safeHTTPS(request.handoff_url)} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open in {request.source.application_id === "cerberus" ? "Cerberus" : "provider console"}</a>}
               </section>
             ) : (
               <>
+                {!showNote ? (
+                  <button type="button" aria-expanded={false} className="inline-flex items-center gap-1 dash-control text-fg-muted underline underline-offset-2 hover:text-fg" onClick={() => setShowNote(true)}>
+                    <ChevronRight className="h-3 w-3" aria-hidden /> Add note
+                  </button>
+                ) : (
                 <label className="block dash-control text-fg-muted">
                   Decision note (optional)
                   <Textarea
@@ -261,6 +329,7 @@ export function DecisionDetail({
                     className="mt-2 w-full dash-control"
                   />
                 </label>
+                )}
                 {request.kind === "attention" && (
                   <label className="block dash-control text-fg-muted">
                     Reply (optional)
@@ -280,7 +349,7 @@ export function DecisionDetail({
                 ) : request.kind === "card.question" || request.kind === "card.form" ? (
                   <CardForm request={request} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
                 ) : choice ? (
-                  <section className="rounded border border-warning/30 bg-warning-muted/10 p-3">
+                  <section className="rounded border border-border bg-surface/40 p-3">
                     <p className="dash-control text-fg-muted">
                       Confirm{" "}
                       {choice === "approved"
@@ -290,16 +359,26 @@ export function DecisionDetail({
                           : "acknowledgement"}{" "}
                       of this request?
                     </p>
+                    {needsPhrase && choice === "approved" && (
+                      <label className="mt-3 block dash-control text-fg-muted">
+                        Type <span className="font-mono text-fg">{PHRASE}</span> to approve this high-risk request
+                        <input
+                          aria-label="Confirmation phrase"
+                          autoComplete="off"
+                          value={typed}
+                          onChange={(e) => setTyped(e.target.value)}
+                          className="mt-2 w-full border border-border bg-bg p-2 font-mono dash-control"
+                        />
+                      </label>
+                    )}
                     <div className="mt-3 flex gap-2">
-                      <Button variant="outline" size="sm"
-                        className="font-mono dash-label"
-                        disabled={!canDecide}
+                      <Button
+                        disabled={!canDecide || (needsPhrase && choice === "approved" && typed.trim().toLowerCase() !== PHRASE)}
                         onClick={() => void decide()}
                       >
                         {busy ? "Submitting…" : "Confirm decision"}
                       </Button>
-                      <Button variant="outline" size="sm"
-                        className="font-mono dash-label"
+                      <Button variant="outline"
                         disabled={busy}
                         onClick={() => setChoice(undefined)}
                       >
@@ -311,26 +390,25 @@ export function DecisionDetail({
                   <div className="flex gap-2">
                     {request.kind === "approval" || request.kind === "card.approval" ? (
                       <>
-                        <Button variant="outline" size="sm"
-                          className={`font-mono dash-label text-success`}
+                        <Button
+                          className="flex-1 sm:flex-none"
                           disabled={!canDecide}
-                          onClick={() => setChoice("approved")}
+                          onClick={() => (needsPhrase ? setChoice("approved") : decideOrHold("approved"))}
                         >
-                          {item?.action_run ? "Approve and run" : "Approve"}
+                          {busy || isHeld ? "Approving…" : item?.action_run ? "Approve and run" : "Approve"}
                         </Button>
-                        <Button variant="outline" size="sm"
-                          className={`font-mono dash-label text-danger`}
+                        <Button variant="outline"
+                          className="flex-1 sm:flex-none"
                           disabled={!canDecide}
-                          onClick={() => setChoice("denied")}
+                          onClick={() => decideOrHold("denied")}
                         >
                           Deny
                         </Button>
                       </>
                     ) : (
-                      <Button variant="outline" size="sm"
-                        className="font-mono dash-label"
+                      <Button
                         disabled={!canDecide}
-                        onClick={() => setChoice("acknowledged")}
+                        onClick={() => void decide(undefined, "acknowledged")}
                       >
                         Acknowledge
                       </Button>
@@ -345,12 +423,12 @@ export function DecisionDetail({
               </>
             )}
         </>)}
-        <div className="flex justify-between border-t border-border pt-3">
-          <Button variant="outline" size="sm" className="font-mono dash-label" disabled={busy} onClick={() => void refresh()}>
-            Refresh request
-          </Button>
-          {footer}
-        </div>
+        {(error || footer) && (
+          <div className="flex justify-between gap-2">
+            {error ? <Button variant="outline" disabled={busy} onClick={() => void refresh()}>Review again</Button> : <span />}
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )
