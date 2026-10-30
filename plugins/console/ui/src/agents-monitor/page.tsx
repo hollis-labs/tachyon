@@ -9,6 +9,7 @@ import { TeamOperations } from '../agents/TeamOperations'
 import { Btn } from '../agents/ui'
 import { LaunchAgentDialog } from '../fleet/LaunchAgentDialog'
 import { useAgentsMonitor } from './data'
+import { ActivityTab } from './activity-tab'
 import { SessionModal } from './session-modal'
 import { ageText } from './session-parts'
 import { SessionBoard, SessionCards, SessionRows, matchesFilter, matchesQuery, useViewState, type GroupBy, type SessionView } from './sessions-view'
@@ -29,7 +30,7 @@ export function AgentsPage() {
   const [params, setParams] = useSearchParams()
   const tab: Tab = TABS.includes(params.get('tab') as Tab) ? (params.get('tab') as Tab) : 'sessions'
   const setTab = (t: Tab) => setParams(t === 'sessions' ? {} : { tab: t })
-  const { data, status, error, refetch } = useAgentsMonitor()
+  const { data, status, error, refetch, busTick } = useAgentsMonitor()
   const [view, setView] = useViewState<SessionView>('agents.view', 'rows', ['rows', 'cards', 'board'])
   const [groupBy, setGroupBy] = useState<GroupBy>('workroot')
   const [filter, setFilter] = useState<FilterId>('all')
@@ -77,7 +78,7 @@ export function AgentsPage() {
       </div>
 
       {tab === 'teams' && <div className="flex-1 overflow-auto"><TeamOperations /></div>}
-      {tab === 'activity' && <div className="flex-1 overflow-auto p-4 dash-support text-fg-muted">{AGENTS.tabs.activity}</div>}
+      {tab === 'activity' && <ActivityTab busTick={busTick} now={now} />}
       {tab === 'sessions' && (
         <>
           <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
