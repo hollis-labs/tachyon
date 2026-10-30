@@ -148,10 +148,15 @@ export function ContentSearch({
           {error}
         </p>
       )}
-      {asked && !loading && !hits.length && !error && (
-        <p className="p-10 text-center dash-body text-fg-faint">No sessions match that search.</p>
+      {loading && (
+        <p role="status" className="px-4 pb-2 dash-control text-fg-muted">
+          Searching…
+        </p>
       )}
-      <ul>
+      {asked && !loading && !hits.length && !error && (
+        <p className="p-10 text-center dash-body text-fg-faint">No sessions match this search.</p>
+      )}
+      <ul className={loading ? "opacity-50" : ""} aria-busy={loading}>
         {hits.map(({ session: s, match }) => (
           <li key={s.id} className="border-b border-border-subtle">
             <button
