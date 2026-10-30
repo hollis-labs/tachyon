@@ -17,7 +17,8 @@ export function AlertTray() {
   const c = useAlertsController()
   const [tab, setTab] = useState<'active' | 'history'>('active')
   const ref = useRef<HTMLDivElement>(null)
-  const { status, ready } = useConsoleState()
+  const consoleState = useConsoleState()
+  const feed = c.feed ?? consoleState
   useRestoreFocus(c.open, '[data-alert-trigger]')
 
   useEffect(() => {
@@ -91,11 +92,12 @@ export function AlertTray() {
         </Button>
       </header>
 
-      {ready && status !== 'live' && (
+      {feed.ready && feed.status !== 'live' && (
         <p role="status" className="border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">
-          {status === 'error' ? 'Alerts are not updating.' : 'Reconnecting…'} What you see may be out of date.
+          {feed.status === 'error' ? 'Alerts are not updating.' : 'Reconnecting…'} What you see may be out of date.
         </p>
       )}
+      {c.error && <p role="status" className="border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">{c.error}</p>}
       {c.prefs.quiet && (
         <div role="status" className="flex items-center gap-2 border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">
           <BellOff aria-hidden="true" className="h-3 w-3" />

@@ -62,7 +62,7 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
 - `alert.cleared` settles the open alerts with the event's `coalesce_key`, else `raised:<first subject ref>` ("Cleared by source").
 - `technical.fields` come from the latest event's payload: top-level scalars only, at most 12, values cut at 200 characters,
   secret-looking keys left out and token-looking values replaced. Nothing nested is shown.
-- Not done: task-done settling of task-failed alerts, and an adapter that emits approval alerts (the subject shape above is the contract for it).
+- Not done: task-done settling of task-failed alerts,.
 
 ## Wiring (CW-20261030-0131, register_alertsfeed.go)
 
@@ -75,6 +75,7 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
   stream (`TACHYON_ACTIVITY_URL` + `/api/stream`, cursor-resumed) and the Agents bus feed (`bus_events`, polled every 5 s). A 200/min
   per-source limiter raises the "N events dropped" alert. `TACHYON_ALERTS_SOURCES=0` leaves the adapters off; `TACHYON_ALERTS_STUBS=1`
   leaves all of this to the stub.
+- A new queue item raises an `approval.requested` alert (subject `approval:<item id>`, title and summary only); `FollowApprovals` settles it. Items created while Tachyon was down are not replayed.
 - Not started because they do not exist yet: the Torque and Tether-poll adapters. `GET /alerts/rules` is not served.
 
 

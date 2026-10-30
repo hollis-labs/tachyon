@@ -88,7 +88,7 @@ fixture of the resulting state, relabelled with the requested id); filters are m
 never approves). Without the file the routes answer 503 `changes_unavailable`. With `TACHYON_BUILDER_STUBS=1` the
 stub owns the whole prefix and this service is not mounted. Routes (one pattern each, all behind `RequireOperator`):
 `GET /changes[?state=]`, `GET /changes/{id}`, `POST /changes`, `POST /changes/{id}/submit|cancel|rearm`.
-Migration `037_catalog_changes.sql` (take the next free number at merge).
+Migration `038_catalog_changes.sql` (take the next free number at merge).
 
 - **Create** reads each live file from Tether, checks `expected_sha` (409 `stale_base`; required for existing files),
   applies the ops to the YAML node tree (comments, key order and unknown keys survive), diffs the *masked* old and new

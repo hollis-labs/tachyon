@@ -21,6 +21,10 @@ export interface AlertsController {
   dismiss: (id: string) => void
   snooze: (id: string, ms: number) => void
   restore: (id: string) => void
+  /** Server alerts only: connection to the alerts stream. Absent for the console-event feed. */
+  feed?: { ready: boolean; status: 'live' | 'connecting' | 'reconnecting' | 'error' }
+  /** Server alerts only: last failed write, plain text. */
+  error?: string | null
   /** Alert open in the detail modal (A2), or null. */
   expandedId: string | null
   expand: (id: string | null) => void

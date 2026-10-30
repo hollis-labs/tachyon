@@ -3,6 +3,8 @@ import { useState, type ReactNode } from 'react'
 import { ApprovalProvider } from '../approvals/context'
 import { useApi } from '@tachyon/torque-client'
 import { AlertHost } from '../alerts/AlertHost'
+import { ServerAlertHost } from '../alerts/server/ServerAlertHost'
+import { serverAlertsEnabled } from '../alerts/server/source'
 import { CardRuntimeProvider } from '../cards/surfaces'
 import { createDefaultCardRegistry } from '../cards/kinds'
 import { createAppAgentChatClient } from '../chat/appagent'
@@ -34,6 +36,7 @@ import { ChatDockProvider } from './chat-dock'
  */
 export function ConsoleIntegration({ children }: { children: ReactNode }) {
   const api = useApi()
+  const [serverAlerts] = useState(serverAlertsEnabled)
   const [{ messaging, chat, registry, hitl, workflow }] = useState(() => {
     const messaging = createMailMessagingClient(api, { from: OPERATOR_ADDRESS })
     // Tether chat plus Tachyon's own app agent, as ordinary threads in one list.
@@ -48,6 +51,7 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
     registerWorkflowKinds(registry)
     return { messaging, chat, registry, hitl: new HttpHitlClient(), workflow: new HttpWorkflowClient() }
   })
+  const body = <ApprovalProvider><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></ApprovalProvider>
   return (
     <MessagingProvider client={messaging} operator={OPERATOR_ADDRESS}>
       <AgentUnreadProvider>
@@ -55,9 +59,11 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
           <CardRuntimeProvider registry={registry} mountSurfaces={false}>
             <HitlProvider client={hitl} present={false}>
               <WorkflowProvider client={workflow}>
-                <AlertHost rules={DEFAULT_RULE_PACK}>
-                  <ApprovalProvider><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></ApprovalProvider>
-                </AlertHost>
+                {serverAlerts ? (
+                  <ServerAlertHost>{body}</ServerAlertHost>
+                ) : (
+                  <AlertHost rules={DEFAULT_RULE_PACK}>{body}</AlertHost>
+                )}
               </WorkflowProvider>
             </HitlProvider>
           </CardRuntimeProvider>
