@@ -137,17 +137,10 @@ describe('TaskBoard', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /Review/ }))
     await waitFor(() => expect(api.plannerTaskTransition).toHaveBeenCalledWith('A', 'review', 'doing', undefined))
   })
-  it('shows one lane with a switcher on a narrow screen', async () => {
-    const mm = vi.fn().mockReturnValue({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })
-    vi.stubGlobal('matchMedia', mm)
-    window.matchMedia = mm as never
+  it('hands every lane to the board in one strip, with no lane switcher', async () => {
     setup()
     await screen.findByText('Task A')
-    expect(screen.queryByRole('list', { name: 'review' })).toBeNull()
-    fireEvent.click(screen.getByRole('tab', { name: /Review 1/ }))
-    expect(screen.getByRole('list', { name: 'review' })).toBeTruthy()
-    vi.unstubAllGlobals()
-    // @ts-expect-error restore jsdom default
-    delete window.matchMedia
+    for (const l of ['todo', 'doing', 'review', 'blocked', 'done']) expect(lane(l)).toBeTruthy()
+    expect(screen.queryByRole('tablist')).toBeNull()
   })
 })

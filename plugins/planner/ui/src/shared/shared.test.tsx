@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { EventTimeline, OptionCompare, SegmentedProgress, SpineList, TriageStack } from '@planner/shared'
+import { EventTimeline, LaneBoard, OptionCompare, SegmentedProgress, SpineList, TriageStack } from '@planner/shared'
 
 afterEach(cleanup)
 
@@ -58,5 +58,23 @@ describe('OptionCompare', () => {
     render(<OptionCompare options={[{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }]} chosenId="a" onChoose={vi.fn()} labels={labels} />)
     expect(screen.queryByRole('button', { name: /Choose/ })).toBeNull()
     expect(screen.getByText('Chosen')).toBeTruthy()
+  })
+})
+
+describe('LaneBoard', () => {
+  const labels = { lane: (t: string, n: number) => `${t}, ${n} tasks`, empty: (t: string) => `Drop here for ${t}`, pickedUp: () => '', movedOver: () => '', dropped: () => '', cancelled: () => '', pending: 'Saving', dragHint: 'drag', more: (n: number) => `+${n} more`, collapsed: (t: string, n: number) => `${t} ${n} collapsed` }
+  const card = (id: string) => ({ id, content: <span>{id}</span> })
+  const lanes = [
+    { id: 'todo', title: 'To do', cards: ['a', 'b', 'c', 'd', 'e', 'f'].map(card) },
+    { id: 'done', title: 'Done', collapsed: true, cards: [card('z')] },
+  ]
+  it('folds long lanes into "+N more" and opens a collapsed lane from its toggle line', () => {
+    render(<LaneBoard lanes={lanes} labels={labels} cardTitle={(id) => id} onMove={vi.fn()} />)
+    expect(screen.getByRole('list', { name: 'To do, 6 tasks' }).children).toHaveLength(3)
+    fireEvent.click(screen.getByRole('button', { name: '+3 more' }))
+    expect(screen.getByRole('list', { name: 'To do, 6 tasks' }).children).toHaveLength(6)
+    expect(screen.queryByRole('list', { name: 'Done, 1 tasks' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Done 1 collapsed' }))
+    expect(screen.getByRole('list', { name: 'Done, 1 tasks' })).toBeTruthy()
   })
 })

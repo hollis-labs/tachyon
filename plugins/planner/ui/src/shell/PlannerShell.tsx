@@ -2,20 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { EmptyState, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-labs/design-components'
+import { PlannerFrame } from '@planner/shell/frame'
 import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
 import { PlannerApiError as ApiError } from '@planner/api/errors'
 import { notifyError, notifyWriteError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
-import { CommandPalette, LinkLayer, type PaletteCommand } from '@planner/shared'
+import { CommandPalette, LinkLayer, SpineList, type PaletteCommand } from '@planner/shared'
 import { Context } from '@planner/shell/context'
 import { LinkKindPicker } from '@planner/shell/link-picker'
 import { usePlannerKeys } from '@planner/shell/use-planner-keys'
 import { LENSES, LINK_KINDS, type LinkKind } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
 import { Focus } from '@planner/shell/focus'
-import { Spine, needsYou, rowsOf } from '@planner/shell/spine'
+import { themeRowActions } from '@planner/components/planner/theme-board'
+import { needsYou, rowsOf, useThemeGroups } from '@planner/shell/spine'
 import { TEXT } from '@planner/lib/vocabulary'
 import type { LinksView, PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
+import { THEME_SECTIONS } from '@planner/lib/planner'
 
 const REFRESH_MS = 30_000
 const PIN_KEY = 'planner.pins'
@@ -53,6 +56,8 @@ export default function PlannerShell() {
   const [goodAt, setGoodAt] = useState<number | null>(null)
   const [comments, setComments] = useState<PlannerComment[]>([])
   const [details, setDetails] = useState(false)
+  const [ctxCollapsed, setCtxCollapsed] = useState(false)
+  const [counts, setCounts] = useState<Partial<Record<PlannerDb, number>>>({})
   const [paletteOpen, setPaletteOpen] = useState<'main' | 'link' | null>(null)
   const [creating, setCreating] = useState<'themes' | 'ideas' | null>(null)
   const [linksView, setLinksView] = useState<LinksView | null>(null)
@@ -76,6 +81,7 @@ export default function PlannerShell() {
     void load()
     // The server's answer decides who needs you; if it cannot answer, the spine keeps its local reading.
     api.plannerNeedYou().then((n) => setNeedYouIds(new Set(n.items.filter((i) => i.db === 'themes').map((i) => i.id))), () => { setNeedYouIds(undefined); if (!warnedNeedYou.current) { warnedNeedYou.current = true; console.info('planner: /need-you unavailable, using the local reading') } })
+    api.plannerDatabases().then((d) => setCounts(Object.fromEntries(d.map((x) => [x.name, x.count]))), () => undefined)
     const t = setInterval(() => void load(), REFRESH_MS)
     return () => clearInterval(t)
   }, [load, lastEvent])
@@ -90,21 +96,21 @@ export default function PlannerShell() {
     const rows = rowsOf(board)
     const first = rows.find((r) => (needYouIds ? needYouIds.has(r.id) : needsYou(r))) ?? rows[0]
     if (first) navigate(`/planner/themes/${encodeURIComponent(first.id)}${view === 'timeline' ? '?view=timeline' : ''}`, { replace: true })
-  }, [openId, board, needYouIds]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [openId, board, needYouIds])
 
   useEffect(() => {
     if (!row) return setComments([])
     let live = true
     api.plannerGet('themes', row.id).then((item) => live && setComments(item.comments ?? []), () => live && setComments([]))
     return () => { live = false }
-  }, [api, row?.id, row?.rev]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [api, row?.id, row?.rev])
 
   useEffect(() => {
     if (!row) return setLinksView(null)
     let live = true
     api.plannerLinks('themes', row.id).then((v) => live && setLinksView(v), () => live && setLinksView(null))
     return () => { live = false }
-  }, [api, row?.id, row?.rev]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [api, row?.id, row?.rev])
 
   const open = (next: string) => navigate(`/planner/themes/${encodeURIComponent(next)}${view === 'timeline' ? '?view=timeline' : ''}`)
   // The server owns pins once the board reports them; until then they stay in this browser.
@@ -137,7 +143,7 @@ export default function PlannerShell() {
     if (todo.length === 0) return
     toast(TEXT.pinsSynced)
     void Promise.allSettled(todo.map((r) => api.plannerPin('themes', r.id, true, r.rev))).then(() => load())
-  }, [serverPins]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [serverPins])
   const act = async (r: ThemeRow, action: ThemeAction, args?: { position?: number }) => {
     try {
       await api.plannerThemeAction(r.id, action, r.rev, args)
@@ -146,6 +152,15 @@ export default function PlannerShell() {
       await load()
       notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true))
     }
+  }
+
+  const edit = async (r: ThemeRow, patch: Record<string, unknown>) => {
+    try {
+      await api.plannerUpdate('themes', r.id, patch, r.rev)
+    } catch (err) {
+      notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true))
+    }
+    await load()
   }
 
   const all = useMemo(() => rowsOf(board), [board])
@@ -157,8 +172,8 @@ export default function PlannerShell() {
     return new Map(openId && first ? [[openId, { kind: first.kind, other: first.title }]] : [])
   }, [linksView, openId])
   const rowLinks = [
-    ...(linksView?.outbound ?? []).map((l) => ({ kind: kindLabel(l.kind), label: l.title })),
-    ...(linksView?.inbound ?? []).map((l) => ({ kind: TEXT.linkedFrom(kindLabel(l.kind)), label: l.title })),
+    ...(linksView?.outbound ?? []).map((l) => ({ kind: l.kind, label: l.title })),
+    ...(linksView?.inbound ?? []).map((l) => ({ kind: l.kind, label: l.title, note: TEXT.linkedFromNote })),
     ...(linksView?.external ?? []).map((l) => ({ kind: l.kind, label: l.label })),
   ]
   const addLink = async (kind: LinkKind) => {
@@ -220,47 +235,78 @@ export default function PlannerShell() {
   )
   const linkCommands = useMemo<PaletteCommand[]>(() => all.filter((r) => r.id !== openId).map((r) => ({ id: r.id, mode: 'link', text: `${r.id} ${r.title}`, label: <span><span className="mr-2 font-mono dash-caption text-fg-faint">{r.id}</span>{r.title}</span> })), [all, openId])
 
+  const needs = useCallback((r: ThemeRow) => (needYouIds ? needYouIds.has(r.id) : needsYou(r)), [needYouIds])
+  const itemMenu = useContributions('planner.spine.item.menu')
+  const lensExtras = useContributions('planner.lens')
+  const groups = useThemeGroups({ board, pins: shownPins, needYouOnly, needs, links: spineLinks, itemMenu })
+  const actions = useMemo(() => (row ? themeRowActions(row.section, row.rank, (board?.totals.in_flight ?? 0) + (board?.totals.cleared ?? 0)) : []), [row, board])
   if (off) return <EmptyState variant="empty" title={TEXT.turnedOff} description={TEXT.turnedOffHint} />
   const selected = Boolean(row)
+  const context = row && (
+    <Context
+      db="themes"
+      id={row.id}
+      rev={row.rev}
+      pinned={row.pinned ?? false}
+      comments={comments}
+      links={rowLinks}
+      decisions={row.pending_decisions}
+      onCommented={() => void load()}
+      mentionable={all}
+      statusOptions={actions.map((a) => ({ value: a.label, label: a.label }))}
+      onStatus={async (label) => { const a = actions.find((x) => x.label === label); if (a) await act(row, a.action, a.position === undefined ? undefined : { position: a.position }) }}
+    />
+  )
+  const spineBody = board ? (
+    <SpineList label={TEXT.spineLabel} groups={groups} selectedId={openId} onSelect={open} onTogglePin={(pid) => void togglePin(pid)} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needYouOnly ? TEXT.needYouEmpty : TEXT.lensEmpty('Themes')} />
+  ) : error ? null : (
+    <div className="flex flex-col gap-2 p-1" aria-busy>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+  )
+  const notice = error ? (
+    board ? (
+      <p role="status" className="border-t border-border-subtle px-3 py-2 text-caption text-fg-muted">
+        {TEXT.reconnecting(new Date(goodAt ?? Date.now()).toLocaleTimeString())}. {TEXT.writesPaused} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
+      </p>
+    ) : (
+      <p role="alert" className="border-t border-border-subtle px-3 py-2 text-caption text-danger">
+        {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
+      </p>
+    )
+  ) : null
   return (
-    <div className="flex h-full min-h-0 w-full bg-bg">
-      <nav aria-label={TEXT.appName} className={`${selected ? 'hidden lg:flex' : 'flex'} min-h-0 w-full shrink-0 flex-col border-r border-border lg:w-72`}>
-        {board ? (
-          <LinkLayer titleOf={titleOf} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} onLink={(from, to) => setPendingLink({ from, to })}>
-          <Spine stale={Boolean(error)} links={spineLinks} board={board} selectedId={openId} onSelect={open} onLens={(db: PlannerDb) => navigate(`/planner/${db}`)} pins={shownPins} onTogglePin={(pid) => void togglePin(pid)} needYouOnly={needYouOnly} onNeedYou={setNeedYouOnly} needYouIds={needYouIds} />
-          </LinkLayer>
-        ) : (
-          <div className="flex flex-col gap-2 p-3" aria-busy>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-        )}
-        {error && board && (
-          <p role="status" className="border-t border-border px-3 py-2 dash-caption text-fg-muted">
-            {TEXT.reconnecting(new Date(goodAt ?? Date.now()).toLocaleTimeString())}. {TEXT.writesPaused} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
-          </p>
-        )}
-        {error && !board && (
-          <p role="alert" className="border-t border-border px-3 py-2 dash-caption text-danger">
-            {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
-          </p>
-        )}
-      </nav>
-      <main className={`${selected ? 'flex' : 'hidden lg:flex'} min-h-0 min-w-0 flex-1`}>
+    <LinkLayer titleOf={titleOf} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} onLink={(from, to) => setPendingLink({ from, to })}>
+      <PlannerFrame
+        active="themes"
+        onLens={(db: PlannerDb) => navigate(`/planner/${db}`)}
+        counts={counts}
+        portfolio={board?.progress}
+        needYou={{ count: all.filter(needs).length, active: needYouOnly, onToggle: () => setNeedYouOnly((v) => !v) }}
+        freshAt={goodAt}
+        stale={Boolean(error)}
+        onPalette={() => setPaletteOpen('main')}
+        onNew={() => setCreating('themes')}
+        onDetails={() => setDetails(true)}
+        contextCollapsed={ctxCollapsed}
+        onToggleContext={() => setCtxCollapsed((v) => !v)}
+        focused={selected}
+        onBack={() => navigate('/planner/themes')}
+        spine={<div className={error ? 'opacity-60' : undefined}>{spineBody}</div>}
+        spineNotice={notice}
+        context={context}
+        extraLenses={lensExtras.map((c) => ({ value: c.id, label: c.label ?? c.id }))}
+      >
         {board && row ? (
-          <>
-            <Focus tick={tick} paused={Boolean(error)} needsAccess={needsAccess} onRetryAccess={() => setNeedsAccess(false)} onNeedsAccess={() => setNeedsAccess(true)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} onBack={() => navigate('/planner/themes')} onDetails={() => setDetails(true)} />
-            <div className="hidden w-80 shrink-0 border-l border-border xl:flex xl:flex-col 2xl:w-96">
-              <Context row={row} comments={comments} onCommented={() => void load()} mentionable={all} links={rowLinks} />
-            </div>
-            <Sheet open={details} onOpenChange={setDetails}>
-              <SheetContent className="xl:hidden">
-                <SheetTitle className="sr-only">{TEXT.detailsLabel}</SheetTitle>
-                <Context row={row} comments={comments} onCommented={() => void load()} mentionable={all} links={rowLinks} />
-              </SheetContent>
-            </Sheet>
-          </>
+          <Focus tick={tick} paused={Boolean(error)} needsAccess={needsAccess} onRetryAccess={() => setNeedsAccess(false)} onNeedsAccess={() => setNeedsAccess(true)} row={row} board={board} view={view} onView={(v) => setParams(v === 'timeline' ? { view: 'timeline' } : {})} onAction={act} pinned={shownPins.has(row.id)} onTogglePin={() => void togglePin(row.id)} onEdit={edit} onLink={() => setPaletteOpen('link')} />
         ) : (
-          <p className="m-auto dash-support text-fg-muted">{TEXT.selectItem}</p>
+          <p className="m-auto text-xs text-fg-muted">{TEXT.selectItem}</p>
         )}
-      </main>
+      </PlannerFrame>
+      <Sheet open={details && selected} onOpenChange={setDetails}>
+        <SheetContent className="lg:hidden">
+          <SheetTitle className="sr-only">{TEXT.detailsLabel}</SheetTitle>
+          {context}
+        </SheetContent>
+      </Sheet>
       <CommandPalette
         key="main"
         open={paletteOpen === 'main'}
@@ -278,7 +324,7 @@ export default function PlannerShell() {
       <CommandPalette key="link" open={paletteOpen === 'link'} onOpenChange={(o) => !o && setPaletteOpen(null)} title={TEXT.linkTo} modes={[{ id: 'link', label: TEXT.linkTo }]} commands={linkCommands} emptyLabel={TEXT.paletteEmpty} onRun={(to) => row && setPendingLink({ from: row.id, to })} />
       <LinkKindPicker open={pendingLink !== null} from={pendingLink ? titleOf(pendingLink.from) : ''} to={pendingLink ? titleOf(pendingLink.to) : ''} onPick={(k) => void addLink(k)} onCancel={() => setPendingLink(null)} />
       <PlannerCreateDialog db={creating ?? 'themes'} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={(board?.totals.in_flight ?? 0) + (board?.totals.cleared ?? 0) + 1} onCreated={(it) => { void load(); if (creating === 'themes') open(it.id) }} />
-    </div>
+    </LinkLayer>
   )
 }
 
