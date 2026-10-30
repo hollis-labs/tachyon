@@ -77,3 +77,17 @@ Added to `internal/builderread`, same mount and guard as B2a: `GET /library/{kin
   used; `notes` says what could not be known (health, missing parents or skills). The policy and prompt keys it reads
   from the agent YAML (`permissions.network`, `permissions.default_sandbox`, `permissions.mcp_scopes`,
   `prompt.system_prompt|agent_prompt|body`) are best effort and UNVERIFIED against real catalog files.
+
+## Tool server health and reference integrity (B4)
+
+- `builderread.ToolSource` supplies tool server health (`transport`, `tags`, `status`, `health`, `tool_count`,
+  `restarts`) to the Library tool server rows. **No HTTP implementation is wired**: the Tether route behind the design's
+  "gateway status" is unverified (the gateway status an agent sees describes MCP origins, not catalog `mcp-servers`).
+  With no source, or when the source fails, a tool server reads `status: "unknown"` with null counts, never a guessed
+  `ok`. `scopes` stay null: the file is never read (credentials).
+- `builderread.CheckUnreferenced(ctx, reader, kind, id)` is the reference-integrity check the change service (B3) calls
+  before deleting a skill or tool server. It returns `*Referenced` (agents, launches, projects; code `referenced`, to be
+  written as a 409) while anything points at the item, nil when free, and a plain error when the index cannot be read.
+  Callers must refuse on any non-nil error: unknown is not free. Launches are matched through their agent; boot
+  profiles and teams-policy are not indexed, so Tether's own validation stays the backstop.
+- Skill create, edit and delete are B3's; this slice adds none.
