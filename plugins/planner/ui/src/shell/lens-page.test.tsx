@@ -75,7 +75,7 @@ describe('Ideas lens', () => {
     page(api, 'ideas', 'ID-1')
     const box = await screen.findByLabelText('Notes')
     // The notes draft resets when the item (re)loads; edit only once it holds the stored value.
-    await waitFor(() => expect(box).toHaveValue('old'))
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe('old'))
     fireEvent.blur(box)
     expect(api.plannerUpdate).not.toHaveBeenCalled()
     fireEvent.change(box, { target: { value: 'new text' } })
