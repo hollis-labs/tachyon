@@ -27,6 +27,7 @@ jobs:
           npm ci
           npm run typecheck
           npm run lint
+          npm run lint:planner
           npm test
           npm run build
       - run: go mod tidy

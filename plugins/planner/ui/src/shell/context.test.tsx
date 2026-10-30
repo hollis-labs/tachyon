@@ -13,13 +13,12 @@ function setup(r: ThemeRow) {
   const api = { provider: 'tachyon', subscribeEvents: () => () => {}, plannerComment: vi.fn(async () => ({})) }
   render(
     <PlannerApiProvider client={api as never}>
-      <Context row={r} comments={[]} onCommented={() => {}} mentionable={[]} links={[]} />
+      <Context db="themes" id={r.id} rev={r.rev} pinned={false} comments={[]} onCommented={() => {}} mentionable={[]} links={[]} />
     </PlannerApiProvider>,
   )
   return api
 }
-// Base UI's checkbox listens to its hidden input.
-const tick = () => act(() => { (document.querySelector('input[type=checkbox]') as HTMLInputElement).click() })
+const tick = () => act(() => { fireEvent.click(screen.getByRole('button', { name: 'Pin with this comment' })) })
 
 describe('comment composer pin', () => {
   it('leaves the pin alone on a plain comment', async () => {

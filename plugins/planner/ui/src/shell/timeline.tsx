@@ -70,7 +70,7 @@ export function useThemeTimeline(themeId: string, tick = 0): TimelineState {
   const [error, setError] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const live = useRef(true)
-  useEffect(() => () => { live.current = false }, [])
+  useEffect(() => { live.current = true; return () => { live.current = false } }, [])
   const load = useCallback(async () => {
     try {
       const d = await api.plannerThemeTimeline(themeId, { limit: 30 })
@@ -85,7 +85,7 @@ export function useThemeTimeline(themeId: string, tick = 0): TimelineState {
   useEffect(() => { setData(null); setEvents([]); void load() }, [load])
   // A stream signal refreshes in place: the entries stay on screen until the new ones arrive.
   const first = useRef(true)
-  useEffect(() => { if (first.current) { first.current = false; return } void load() }, [tick]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (first.current) { first.current = false; return } void load() }, [tick])
   const more = useCallback(() => {
     const before = data?.next_before_seq
     if (before == null || loadingMore) return

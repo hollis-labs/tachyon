@@ -20,6 +20,7 @@ const api = (blockedId?: string) => ({
   plannerGet: vi.fn(async () => ({ comments: [] })),
   plannerSchema: vi.fn(async () => ({ db: 'themes', id: 'x', description: '', required: [], fields: {}, enums: {}, link_kinds: [] })),
   plannerList: vi.fn(async () => []),
+  plannerDatabases: vi.fn(async () => [{ name: 'themes', prefix: '', schema: '', updated: '', count: 2 }]),
   plannerLinks: vi.fn(async () => ({ outbound: [], inbound: [], external: [] })),
   plannerNeedYou: vi.fn(async () => { throw new Error('404') }),
   plannerThemeTasks: vi.fn(async () => { throw new Error('404') }),

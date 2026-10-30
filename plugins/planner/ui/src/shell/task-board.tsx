@@ -1,28 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Button, Input } from '@hollis-labs/design-components'
+import { Button } from '@hollis-labs/design-components'
 import { usePlannerApi } from '@planner/api/context'
 import { PlannerApiError } from '@planner/api/errors'
 import { notifyWriteError } from '@planner/api/notifications'
 import { LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
-import { LaneBoard, StatusMenu, type Lane } from '@planner/shared'
-import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
+import { FloatingPrompt, LaneBoard, StatusMenu, type Lane } from '@planner/shared'
 import type { PrCite, TaskLane, ThemeTask, ThemeTasks } from '@planner/api/types'
 
-/** True below the sm breakpoint, where lanes become a switcher. */
-function useNarrow() {
-  const q = '(max-width: 639px)'
-  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(q).matches)
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return
-    const m = window.matchMedia(q)
-    const on = () => setNarrow(m.matches)
-    m.addEventListener('change', on)
-    return () => m.removeEventListener('change', on)
-  }, [])
-  return narrow
-}
-
+const DOT_CLASS: Record<string, string> = { todo: 'bg-fg-faint', doing: 'bg-fg/62', review: 'bg-fg/40', blocked: 'bg-danger', done: 'bg-fg/88' }
 const laneTitle = (id: string) => LANES.find((l) => l.id === id)?.title ?? id
 const prHref = (c: PrCite) => `https://${c.host}/${c.owner}/${c.repo}/pull/${c.number}`
 
@@ -41,10 +27,8 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
   const [summary, setSummary] = useState('')
   const [blocking, setBlocking] = useState<{ id: string; from: TaskLane } | null>(null)
   const [reason, setReason] = useState('')
-  const [activeLane, setActiveLane] = useState<LaneId>('doing')
-  const narrow = useNarrow()
   const live = useRef(true)
-  useEffect(() => () => { live.current = false }, [])
+  useEffect(() => { live.current = true; return () => { live.current = false } }, [])
 
   const load = useCallback(async () => {
     try {
@@ -59,7 +43,7 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
   const settled = useRef(true)
   settled.current = pending.size === 0
   const firstTick = useRef(true)
-  useEffect(() => { if (firstTick.current) { firstTick.current = false; return } if (settled.current) void load() }, [tick]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (firstTick.current) { firstTick.current = false; return } if (settled.current) void load() }, [tick])
 
   const tasks = useMemo(() => (data ? LANES.flatMap((l) => data.lanes[l.id] ?? []) : []), [data])
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
@@ -105,8 +89,7 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
     if (to === 'blocked') { setBlocking({ id, from: from as TaskLane }); setReason(''); return }
     void transition(id, from as TaskLane, to as TaskLane)
   }
-  const submitBlock = (e: FormEvent) => {
-    e.preventDefault()
+  const submitBlock = () => {
     if (!blocking || !reason.trim()) return
     const b = blocking
     setBlocking(null)
@@ -126,79 +109,76 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
 
   if (error && !data) {
     return (
-      <p role="alert" className="flex items-center gap-2 dash-support text-fg-muted">
+      <p role="alert" className="flex items-center gap-2 text-xs text-fg-muted">
         {error === TEXT.tasksUnavailable ? error : TEXT.tasksFailed}
         <Button size="sm" variant="outline" onClick={() => void load()}>{TEXT.tasksRetry}</Button>
       </p>
     )
   }
-  if (!data) return <p role="status" className="dash-support text-fg-faint">{TEXT.tasksLoading}</p>
-  if (!data.counts.total) return <p className="dash-support text-fg-faint">{TEXT.tasksEmpty}</p>
+  if (!data) return <p role="status" className="text-xs text-fg-faint">{TEXT.tasksLoading}</p>
+  if (!data.counts.total) return <p className="text-xs text-fg-faint">{TEXT.tasksEmpty}</p>
 
   const card = (t: ThemeTask) => ({
     id: t.id,
     pending: pending.has(t.id),
     content: (
-      <span className="flex flex-col gap-0.5">
-        <span className="flex items-start gap-2">
-          <span className="min-w-0 flex-1 dash-support text-fg">{t.title}</span>
-          {/* Drag is never the only way: every card has a Move to menu. */}
+      <>
+        <span className="flex items-center gap-1 font-mono text-caption text-fg-muted">
+          <span className="min-w-0 flex-1 truncate">{t.id}</span>
+          {t.pr_cites.map((c) => (
+            <a key={c.number} href={prHref(c)} target="_blank" rel="noopener noreferrer" onPointerDown={(e) => e.stopPropagation()} className="rounded-sm border border-border px-1 text-fg-secondary hover:text-fg">{TEXT.prChip(c.number)}</a>
+          ))}
+          {/* Drag is never the only way: every card has a Move to menu (long press on touch). */}
           <StatusMenu
-            trigger={<span className="dash-caption text-fg-muted hover:text-fg max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-2">{TEXT.moveTo}</span>}
+            trigger={<span aria-hidden className="inline-flex px-1 text-fg-muted hover:text-fg max-sm:min-h-10 max-sm:items-center">⋯</span>}
             triggerLabel={TEXT.cardMoveLabel(t.title, laneTitle(t.status))}
             heading={TEXT.moveTo}
             current={t.status}
-            options={LANES.map((l) => ({ value: l.id, label: l.title }))}
+            options={LANES.map((l) => ({ value: l.id, label: l.title, dotClass: DOT_CLASS[l.id] }))}
             onSelect={(to) => move(t.id, t.status, to)}
             disabled={paused || pending.has(t.id)}
             disabledReasonId={accessNoteId}
+            className="opacity-0 focus-visible:opacity-100 group-hover/card:opacity-100 group-focus-within/card:opacity-100 max-sm:opacity-100"
           />
         </span>
-        {(t.pr_cites.length > 0 || t.assignees.length > 0) && (
-          <span className="flex flex-wrap items-center gap-x-2 font-mono dash-caption text-fg-muted">
-            {t.pr_cites.map((c) => (
-              <a key={c.number} href={prHref(c)} target="_blank" rel="noopener noreferrer" className="underline decoration-fg-faint hover:decoration-fg-secondary">{TEXT.prChip(c.number)}</a>
-            ))}
-            {t.assignees.map((a) => <span key={a.assignment_id}>{a.label ?? a.agent_id ?? a.team_id}</span>)}
-          </span>
-        )}
-        {t.status === 'done' && t.done_summary && <span className="dash-caption text-fg-muted">{t.done_summary}</span>}
-        {t.status === 'blocked' && t.blocked_reason && <span className="dash-caption text-fg-muted">{t.blocked_reason}</span>}
-      </span>
+        <span className="text-fg">{t.title}</span>
+        {t.assignees.length > 0 && <span className="text-fg-muted">{t.assignees.map((a) => a.label ?? a.agent_id ?? a.team_id).join(', ')}</span>}
+        {t.status === 'done' && t.done_summary && <span className="text-fg-muted">{t.done_summary}</span>}
+        {t.status === 'blocked' && t.blocked_reason && <span className="text-fg-muted">{t.blocked_reason}</span>}
+      </>
     ),
   })
-  const all: Lane[] = LANES.map((l) => ({ id: l.id, title: l.title, collapsed: l.id === 'done', cards: (data.lanes[l.id as LaneId] ?? []).map(card) }))
-  const lanes = narrow ? all.filter((l) => l.id === activeLane) : all
+  const EMPTY: Partial<Record<LaneId, string>> = { review: TEXT.laneEmptyReview, blocked: TEXT.laneEmptyBlocked }
+  const all: Lane[] = LANES.map((l) => ({
+    id: l.id,
+    title: l.title,
+    state: l.id,
+    collapsed: l.id === 'done',
+    emptyText: EMPTY[l.id],
+    add: l.id === 'todo' || l.id === 'doing' ? { label: TEXT.addTask, key: l.id === 'todo' ? TEXT.addTaskKey : undefined, disabled: true, reason: TEXT.addTaskNeedsBackend } : undefined,
+    cards: (data.lanes[l.id as LaneId] ?? []).map(card),
+  }))
+  const movedTask = shipped ? byId.get(shipped) : undefined
   return (
     <>
-      {narrow && (
-        <DashboardViewTabs variant="segments" label={TEXT.laneSwitcher} value={activeLane} onChange={(v) => setActiveLane(v as LaneId)} items={LANES.map((l) => ({ value: l.id, label: `${l.title} ${data.lanes[l.id]?.length ?? 0}` }))} />
-      )}
       {blocking && (
-        <form onSubmit={submitBlock} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setBlocking(null) } }} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
-          <label htmlFor="block-reason" className="dash-caption text-fg-muted">{TEXT.blockedReasonLabel}</label>
-          <Input id="block-reason" autoFocus value={reason} onChange={(e) => setReason(e.target.value)} className="min-w-0 flex-1" />
-          <Button type="submit" size="sm" disabled={!reason.trim()}>{TEXT.blockedReasonAdd}</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setBlocking(null)}>{TEXT.blockedReasonCancel}</Button>
-          <span className="w-full dash-caption text-fg-faint">{TEXT.blockedReasonHint}</span>
-        </form>
+        <FloatingPrompt heading={TEXT.blockedHeading} subject={<PromptSubject task={byId.get(blocking.id)} />} label={TEXT.blockedReasonLabel} value={reason} onChange={setReason} note={TEXT.blockedReasonHint} submitLabel={TEXT.blockedReasonAdd} skipLabel={TEXT.blockedReasonCancel} onSubmit={() => submitBlock()} onSkip={() => setBlocking(null)} />
       )}
       {shipped && (
-        <form onSubmit={(e) => { e.preventDefault(); void endShipped(true) }} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); void endShipped(false) } }} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
-          <label htmlFor="shipped" className="dash-caption text-fg-muted">{TEXT.doneSummaryLabel}</label>
-          <Input id="shipped" autoFocus value={summary} onChange={(e) => setSummary(e.target.value)} className="min-w-0 flex-1" />
-          <Button type="submit" size="sm">{TEXT.doneSummaryAdd}</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => void endShipped(false)}>{TEXT.doneSummarySkip}</Button>
-          <span className="w-full dash-caption text-fg-faint">{TEXT.doneSummaryHint}</span>
-        </form>
+        <FloatingPrompt heading={TEXT.movedToDone} subject={<PromptSubject task={movedTask} />} label={TEXT.doneSummaryLabel} optionalLabel={TEXT.doneSummaryOptional} value={summary} onChange={setSummary} note={TEXT.doneSummaryNote} submitLabel={TEXT.doneSummaryAdd} skipLabel={TEXT.doneSummarySkip} onSubmit={() => void endShipped(true)} onSkip={() => void endShipped(false)} />
       )}
       <LaneBoard
-        lanes={lanes}
+        lanes={all}
         cardTitle={(id) => byId.get(id)?.title ?? id}
         onMove={move}
         readOnly={paused}
-        labels={{ lane: TEXT.lane, empty: TEXT.laneEmpty, pickedUp: TEXT.pickedUp, movedOver: TEXT.movedOver, dropped: TEXT.dropped, cancelled: TEXT.cancelled, pending: TEXT.saving, dragHint: TEXT.dragHint }}
+        labels={{ lane: TEXT.lane, empty: TEXT.laneEmpty, pickedUp: TEXT.pickedUp, movedOver: TEXT.movedOver, dropped: TEXT.dropped, cancelled: TEXT.cancelled, pending: TEXT.saving, dragHint: TEXT.dragHint, more: TEXT.laneMore, collapsed: TEXT.laneCollapsed, wasHere: TEXT.wasHere }}
       />
     </>
   )
+}
+
+function PromptSubject({ task }: { task?: ThemeTask }) {
+  if (!task) return null
+  return <span className="flex items-baseline gap-2"><span className="rounded-sm border border-border px-1.5 font-mono text-caption text-fg-secondary">{task.id}</span>{task.title}</span>
 }

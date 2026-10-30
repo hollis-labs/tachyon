@@ -177,7 +177,7 @@ const PROMOTE_TARGETS: { to: IdeaPromoteTarget; label: string }[] = [
 function IdeaBody({ item, write }: { item: PlannerItem; write: (fn: () => Promise<unknown>) => Promise<void> }) {
   const api = usePlannerApi()
   const [notes, setNotes] = useState(item.notes ?? '')
-  useEffect(() => setNotes(item.notes ?? ''), [item.id, item.rev]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setNotes(item.notes ?? ''), [item.id, item.rev])
   // One target id per (idea, target), so a retry after a failure never creates twice.
   const [targets] = useState(() => new Map<string, string>())
   const promote = (to: IdeaPromoteTarget) => write(async () => {
