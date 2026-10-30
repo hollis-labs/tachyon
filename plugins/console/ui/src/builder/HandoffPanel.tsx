@@ -135,6 +135,16 @@ export function HandoffPanel({ change, onChange, onReload }: { change: Change; o
                               </p>
                             )}
                             {c.step === 'plan' && <p className="dash-support text-fg-muted">Give the session the bundle (Copy bundle above).</p>}
+                            {c.instruction && (
+                              <div className="flex items-start gap-2">
+                                <code aria-label={`${c.step[0].toUpperCase()}${c.step.slice(1)} instruction`} className="block min-w-0 flex-1 whitespace-pre-wrap break-words bg-surface p-2 font-mono dash-support text-fg">
+                                  {c.instruction}
+                                </code>
+                                <Button type="button" variant="outline" size="sm" className="shrink-0 max-sm:min-h-10" onClick={() => copy(c.step, c.instruction ?? '')}>
+                                  {copied === c.step ? 'Copied' : 'Copy'}
+                                </Button>
+                              </div>
+                            )}
                           </>
                         ))}
                       {!action && c.command && (
