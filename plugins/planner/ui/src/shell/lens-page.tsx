@@ -7,7 +7,7 @@ import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
 import { notifyError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
-import { boardAge } from '@planner/lib/planner'
+import { boardAge, sentenceCase } from '@planner/lib/planner'
 import { LENSES, lensPath, TEXT } from '@planner/lib/vocabulary'
 import { CAPTION, Chip, CommandPalette, InlineEdit, PaletteHint, Pips, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
 import { Context, type ContextLink } from '@planner/shell/context'
@@ -57,7 +57,7 @@ export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: 
       const row = (i: PlannerItem) => entry(i, { meta: <span className="flex items-center gap-2">{str(i.kind) && chip(str(i.kind))}{str(i.discuss_in) && quiet(str(i.discuss_in))}</span> })
       return drop([
         { id: 'discussing', title: TEXT.groupDiscussing, items: pick((i) => i.status === 'exploring' || i.status === 'discussing').map(row) },
-        { id: 'new', title: TEXT.groupNew, items: pick((i) => i.status === 'draft').map(row) },
+        { id: 'new', title: TEXT.groupNew, collapsed: true, items: pick((i) => i.status === 'draft').map(row) },
         { id: 'archived', title: TEXT.groupArchived, collapsed: true, items: pick((i) => i.status !== 'draft' && i.status !== 'exploring' && i.status !== 'discussing').map(row) },
       ])
     }
@@ -69,7 +69,7 @@ export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: 
       })
       return drop([
         { id: 'open', title: TEXT.groupNeedsDecision, items: pick(open).map(row) },
-        { id: 'decided', title: TEXT.groupDecided, collapsed: true, items: pick((i) => !open(i)).map(row) },
+        { id: 'decided', title: TEXT.groupDecided, items: pick((i) => !open(i)).map(row) },
       ])
     }
     case 'risks': {
@@ -92,6 +92,9 @@ export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: 
   }
   void needs
 }
+
+/** A status as the lens names it: an undecided decision "needs decision" (golden), anything else in sentence case. */
+const statusLabel = (db: PlannerDb, s: string) => (db === 'decisions' && s === 'proposed' ? TEXT.needsDecision : sentenceCase(s))
 
 const KIND: Record<string, string> = { workstreams: 'Workstream', roadmap: 'Roadmap', ideas: 'Idea', decisions: 'Decision', risks: 'Risk', inbox: 'Inbox' }
 
@@ -143,7 +146,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     if (!item) return setLinks([])
     let live = true
     api.plannerLinks(db, item.id).then((v) => live && setLinks([
-      ...v.outbound.map((l) => ({ kind: l.kind, label: l.title })),
+      ...v.outbound.map((l) => ({ kind: l.kind, label: l.title, note: l.status })),
       ...v.inbound.map((l) => ({ kind: l.kind, label: l.title, note: TEXT.linkedFromNote })),
       ...v.external.map((l) => ({ kind: l.kind, label: l.label })),
     ]), () => live && setLinks([]))
@@ -222,7 +225,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
       links={links}
       onCommented={() => void load()}
       mentionable={(items ?? []).map((i) => ({ id: i.id, title: i.title, ref: typeof i.legacy_id === 'string' ? i.legacy_id : undefined }))}
-      statusOptions={(schema?.enums.status ?? []).map((s) => ({ value: s, label: s }))}
+      statusOptions={(schema?.enums.status ?? []).map((s) => ({ value: s, label: sentenceCase(s) }))}
       onStatus={async (status) => { await api.plannerUpdate(db, item.id, { status }, item.rev + 1) }}
     />
   )
@@ -312,7 +315,7 @@ function LensFocus({ db, item, statuses, severities, write, onPin, children }: {
           {db === 'risks' ? (
             typeof item.severity === 'string' && <span className="flex items-center gap-2 text-control text-fg-muted">{TEXT.severity}<Pips tone="danger" level={Math.max(0, (severities.indexOf(item.severity)) + 1)} of={Math.max(severities.length, 1)} label={item.severity} /></span>
           ) : (
-            <StatusPick status={item.status ?? ''} statuses={statuses} onPick={(status) => edit({ status })} />
+            <StatusPick db={db} status={item.status ?? ''} statuses={statuses} onPick={(status) => edit({ status })} />
           )}
           {item.mvp === true && <Chip square>{TEXT.mvp}</Chip>}
           {typeof item.discuss_in === 'string' && item.discuss_in && <span className="flex items-center gap-1.5 text-control text-fg-muted">{TEXT.discussIn}<Chip square>{item.discuss_in}</Chip></span>}
@@ -326,16 +329,16 @@ function LensFocus({ db, item, statuses, severities, write, onPin, children }: {
   )
 }
 
-function StatusPick({ status, statuses, onPick }: { status: string; statuses: string[]; onPick: (s: string) => void }) {
+function StatusPick({ db, status, statuses, onPick }: { db: PlannerDb; status: string; statuses: string[]; onPick: (s: string) => void }) {
   const chip = (
     <Chip tone="strong" className="h-6 cursor-pointer">
       <StateDot state="doing" />
-      {status || TEXT.noStatus}
+      {status ? statusLabel(db, status) : TEXT.noStatus}
       {statuses.length > 0 && <ChevronDown className="size-3" />}
     </Chip>
   )
   if (statuses.length === 0) return chip
-  return <StatusMenu trigger={chip} triggerLabel={`${status}. ${TEXT.moveTo}`} heading={TEXT.moveTo} current={status} options={statuses.map((s) => ({ value: s, label: s }))} onSelect={onPick} />
+  return <StatusMenu trigger={chip} triggerLabel={`${status}. ${TEXT.moveTo}`} heading={TEXT.moveTo} current={status} options={statuses.map((s) => ({ value: s, label: statusLabel(db, s) }))} onSelect={onPick} />
 }
 
 export { createPlannerId }

@@ -539,3 +539,9 @@ export function shortTaskId(id: string): string {
   const m = /^([A-Z]+)-\d{8}-(\d{4})$/.exec(id)
   return m ? `${m[1]}-…${m[2]}` : id
 }
+
+/** A status or enum value as a person reads it: "needs_decision" -> "Needs decision". */
+export function sentenceCase(v: string): string {
+  const t = v.replace(/[_-]+/g, ' ').trim()
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}

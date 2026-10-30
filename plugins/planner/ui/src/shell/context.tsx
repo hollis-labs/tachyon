@@ -97,8 +97,9 @@ export function Context({ db, id, rev, pinned: pinnedNow, comments, links, decis
             {links.map((l) => (
               <li key={`${l.kind}:${l.label}`} className="-mx-1.5 flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs text-fg-secondary hover:bg-selection">
                 <span className="w-14 shrink-0 font-mono text-caption text-fg-muted">{l.kind}</span>
+                <StateDot state="todo" className="shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{l.label}</span>
-                {l.note && <span className="text-fg-muted">{l.note}</span>}
+                {l.note && <span className="shrink-0 text-label text-fg-muted">{l.note}</span>}
               </li>
             ))}
           </ul>
