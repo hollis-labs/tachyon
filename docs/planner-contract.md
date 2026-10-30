@@ -42,3 +42,49 @@ The real behaviour (PL1-PL5), the frontend wiring (PL6), and the curl matrix (PL
 - `Service.Assignees(ctx, target)` is the derived `assignees[]` for PL1/PL3 to attach to item and task responses.
 - Work list: only `why = assigned` is produced here. Themes and decisions come from the planner item; Torque task targets are listed with the id as the title until PL3 enriches them. `session` (needs the Agents collector) and `referenced` (needs decision links) and `needs_user` (PL5) are not produced yet; other targets (workstreams, risks...) are left out.
 - Not in this PR: the `assigned_to=` query parameter on existing planner lists (it needs an edit to the existing list route), agent verbs `assign`/`unassign` and the access catalog entries, and `task-context` (needs the theme/task mapping from PL3).
+
+## Real behaviour: PL1, PL3, PL4, PL5 (PL7 docs and curl matrix)
+
+Everything below is served by `internal/planner` under `/api/plugins/console/v1/planner`, behind the existing planner write path (`operator.RequireOperator`). Nothing here needs a stub flag; leave `TACHYON_PLANNER_STUBS` unset on live (when set, the stub wins on the routes it lists). Migrations: `041_planner_relation_index`, `042_planner_task_meta`, `043_planner_events` (numbers are taken at merge).
+
+| Slice | Routes | Notes |
+|---|---|---|
+| PL1 | `PUT /{db}/{id}/pin`, `POST`/`DELETE /{db}/{id}/relations`, `GET /{db}/{id}/links`, `POST /ideas/{id}/promote`; `PATCH` accepts `pinned`, theme `area`, `horizon`, `done_summary` | Items gain `pinned`, `pinned_at`, `relations_count`. Default list order is pinned first. `X-Planner-Actor: <slug>` labels the author (`operator:<slug>`), default `operator:browser`. |
+| PL3 | `GET /themes/{id}/tasks`, `GET /workstreams/{id}/tasks` (adds `lanes`), `POST /tasks/{task}/transition`, `PUT /tasks/{task}/meta`, `POST /{db}/{id}/comments` (adds `status`, `pin`) | Transitions are real Torque status changes with Tachyon's Torque token. Comments answer `{comment, item, applied}`. |
+| PL4 | `GET /themes/{id}/timeline`, `GET /workstreams/{id}/timeline`, `GET /events` (SSE) | Stream ids are `planner_stream` seqs; `Last-Event-ID` replays, an id outside the ring gets `resync`. |
+| PL5 | `GET /momentum`, `GET /need-you`; lists take `?need_you=review\|decide\|blocked\|stale\|any` | Themes and decisions gain `need_you {reasons, since}`; themes gain `momentum`. |
+
+Theme `area` is the roadmap enum: `hub, llm-gateway, mesh, gui, plugin-platform, fabric, nanite, harness, policy, tooling, process`. Idea status gains `promoted`.
+
+### Data and workers
+
+- Relations are stored on the source item (`properties.portfolio.relations[]`); `planner_relation_index` is rewritten in the same transaction as the item (see `objects.persist`), so inbound links cannot drift. Legacy id arrays are read, not migrated: `depends_on` reads as `needs`, `roadmap_ids` on a theme as `delivers`, the rest as `relates`. The cycle check follows typed `needs` only.
+- The ingest worker (`register_plannerevents.go`, `TACHYON_PLANNER_EVENTS=0` turns it off) runs every 45 s: planner revisions, Torque snapshot diff, merged PRs from the alerts store. Torque moves between two passes are not seen individually; there is no backfill before the first pass. Each stream connection also tails revisions.
+- Derivations (`derive.go`) are pure functions with spec tables in `derive_test.go`. Settings live in `app_settings`: `planner.stale_days` (default 7), `planner.timeline_retention_days` (default 180), `planner.momentum` (JSON window, weights, thresholds; placeholders).
+- Review/blocked counts and the series come from the Torque snapshots, so they read 0 until a theme has been polled once.
+
+### Curl matrix
+
+Run against a scratch instance (own `TACHYON_DATA_DIR` and port), with an operator session. `B` is the base URL including the prefix; the cookie jar holds the browser session. No token goes on the command line.
+
+```
+B=http://127.0.0.1:PORT/api/plugins/console/v1/planner
+H='-H Origin:http://127.0.0.1:PORT -H Content-Type:application/json'
+# PL1
+curl -b jar $H -X PUT  $B/themes/$T/pin        -d '{"pinned":true,"expected_revision":1}'      # 200 {item}; stale rev 409 revision_conflict
+curl -b jar $H -X POST $B/themes/$T/relations  -d '{"kind":"needs","to":{"db":"themes","id":"'$U'"},"expected_revision":2}'
+curl -b jar $H -X POST $B/themes/$U/relations  -d '{"kind":"needs","to":{"db":"themes","id":"'$T'"},"expected_revision":1}'   # 422 cycle
+curl -b jar $B/themes/$T/links                                                           # outbound, inbound, external, legacy_mapped
+curl -b jar $H -X POST $B/ideas/$I/promote     -d '{"to_db":"themes","expected_revision":1}' # receipt, idea (promoted), created
+# PL3
+curl -b jar $B/themes/$T/tasks                                                           # lanes + counts from Torque
+curl -b jar $H -X POST $B/tasks/CW-1/transition -d '{"to":"review","expected_status":"doing"}'  # 409 with current status if stale
+curl -b jar $H -X POST $B/tasks/CW-1/transition -d '{"to":"blocked"}'                    # 400 invalid, details.field=reason
+curl -b jar $H -X PUT  $B/tasks/CW-1/meta       -d '{"done_summary":"Shipped.","pr_cites":["owner/repo#9"]}'
+curl -b jar $H -X POST $B/themes/$T/comments    -d '{"text":"Ready","status":"ready","pin":true,"expected_revision":3}'
+# PL4
+curl -b jar "$B/themes/$T/timeline?facet=tasks&limit=10"                                 # events, milestones, momentum, next_before_seq
+curl -N -b jar -H 'Last-Event-ID: 0' $B/events                                           # replay; unknown id -> event: resync
+# PL5
+curl -b jar $B/need-you ; curl -b jar $B/momentum ; curl -b jar "$B/themes?need_you=blocked"
+```
