@@ -18,7 +18,7 @@ import (
 const ApplicationID = "tachyon-actions"
 
 // ApprovalTTL is how long a request waits for the owner.
-const ApprovalTTL = 30 * time.Minute
+const ApprovalTTL = 24 * time.Hour
 
 func extraString(req hitl.EnqueueRequest, key string) string {
 	var value string

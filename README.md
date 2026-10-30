@@ -1241,7 +1241,7 @@ id** and parameters. Day one: `cerberus.resource.{apply,deploy,reload,remove,sto
   admin=self` becomes a class-`medium` approval (operator elevation required);
   prod, `admin=owner`, unlabeled or unknown targets are refused at request time
   because they need the Cerberus passkey path. The labels are read again when the run
-  starts (approval can wait up to 30 minutes); a target relabelled non-dev since, or whose
+  starts (approval can wait up to 24 hours); a target relabelled non-dev since, or whose
   labels cannot be read, is `refused` (fail closed).
 - **Lifecycle.** `pending_approval` → `approved`/`waiting_input` → `running` →
   `succeeded`/`failed`; also `denied`, `expired`, `refused`. Actions that need no input start
