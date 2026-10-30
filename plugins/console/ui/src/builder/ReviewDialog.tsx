@@ -79,7 +79,10 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent
+        widthClassName="max-w-xl"
+        className="max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[88vh] max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-auto max-sm:rounded-b-none max-sm:rounded-t-lg"
+      >
         <DialogTitle>{change.state === 'draft' ? 'Review changes' : 'Change status'}</DialogTitle>
         <DialogDescription className="sr-only">Review the computed change and submit it for approval on the host.</DialogDescription>
         {change.diff && <Diff text={change.diff} />}
@@ -112,6 +115,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
                 type="button"
                 variant="outline"
                 size="sm"
+                className="max-sm:min-h-10"
                 onClick={() => {
                   void navigator.clipboard?.writeText(change.plan?.approve_command ?? '')
                   setCopied(true)
@@ -122,7 +126,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
               </Button>
               <Countdown expiresAt={change.plan.expires_at} />
               {change.plan.expires_at <= Date.now() && (
-                <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => run(() => builderApi.rearm(change.change_id))}>
+                <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" disabled={busy} onClick={() => run(() => builderApi.rearm(change.change_id))}>
                   Re-arm
                 </Button>
               )}
@@ -164,7 +168,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
           <div role="alert" className="space-y-2 border border-border p-3">
             <p className="dash-body text-fg">Changed elsewhere: {change.stale?.changed_paths.join(', ')}.</p>
             {change.stale?.theirs_diff && <Diff text={change.stale.theirs_diff} />}
-            <Button type="button" variant="outline" size="sm" onClick={onReload}>
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={onReload}>
               Reload theirs
             </Button>
           </div>
@@ -182,17 +186,31 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
             </label>
           )}
           {(change.state === 'draft' || change.state === 'awaiting_approval' || change.state === 'stale') && (
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => (change.state === 'draft' ? onClose() : run(() => builderApi.cancel(change.change_id)))}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="max-sm:min-h-10"
+              disabled={busy}
+              onClick={() => (change.state === 'draft' ? onClose() : run(() => builderApi.cancel(change.change_id)))}
+            >
               {change.state === 'draft' ? 'Keep editing' : 'Cancel change'}
             </Button>
           )}
           {change.state === 'draft' && (
-            <Button type="button" variant="default" size="sm" disabled={busy || failChecks.length > 0 || (privileged && !ack)} onClick={() => run(() => builderApi.submit(change.change_id, ack))}>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="max-sm:min-h-10"
+              disabled={busy || failChecks.length > 0 || (privileged && !ack)}
+              onClick={() => run(() => builderApi.submit(change.change_id, ack))}
+            >
               {busy ? 'Submitting' : 'Submit for approval'}
             </Button>
           )}
           {done && (
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={onClose}>
               Close
             </Button>
           )}
