@@ -49,13 +49,13 @@ export function ApprovalsPage() {
   }
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <PageHeader title="Approvals">
+      <PageHeader title={view === "pending" && pendingCount > 0 ? `Approvals · ${pendingCount} pending` : "Approvals"}>
         <Button variant="ghost" size="sm" aria-label="Refresh approvals" onClick={() => void queue.refresh(true)}>
           <RefreshCw className="h-3 w-3" />
         </Button>
       </PageHeader>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
-        <DashboardViewTabs
+        {historyCount > 0 && <DashboardViewTabs
           variant="segments"
           label="Approvals view"
           value={view}
@@ -65,7 +65,7 @@ export function ApprovalsPage() {
             // Hidden until there is history to show (the history API lands with #196).
             ...(historyCount > 0 ? [{ value: "history", label: "History", count: historyCount }] : []),
           ]}
-        />
+        />}
         <div className="dash-search-adapter w-72 max-w-full">
           <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} slashToFocus={false} />
         </div>
