@@ -84,22 +84,19 @@ describe('ThreadList', () => {
   })
 })
 
-vi.mock('./thread-context', () => ({ useThreadContext: () => ({ ref: null, activity: [], files: [], work: [], state: 'ready' }) }))
 
 describe('ChatView', () => {
   const view = (active: ChatThread | null = T[0]) => (
     <ChatView threads={T} activeThread={active} onSelectThread={() => undefined}><p>conversation body</p></ChatView>
   )
 
-  it('starts with the details column open on a wide screen and shows honest empty context', () => {
+  it('opens the aside on a wide screen with the panel strip and an honest empty plan', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('1280'), addEventListener() {}, removeEventListener() {} }))
     try {
       render(view())
       const aside = screen.getByRole('complementary', { name: 'Details' })
-      expect(within(aside).getByText('Reachability')).toBeTruthy()
-      expect(within(aside).getByText('No activity in this thread yet.')).toBeTruthy()
-      expect(within(aside).getByText('No files shared in this thread.')).toBeTruthy()
-      expect(within(aside).getByText('No tasks or plan items linked to this thread.')).toBeTruthy()
+      expect(within(aside).getByRole('tablist', { name: 'Panels' })).toBeTruthy()
+      expect(within(aside).getAllByRole('tab').map((t) => t.textContent?.replace(/[^A-Za-z]+$/, ''))).toEqual(['Plan', 'Topics', 'Bookmarks', 'Work', 'Activity', 'Approvals', 'Files', 'Doc'])
     } finally {
       vi.unstubAllGlobals()
     }

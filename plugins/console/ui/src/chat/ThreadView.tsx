@@ -11,6 +11,7 @@ import type { ChatMessage } from './types'
 import { ApprovalCard, DecisionCard, DispatchCard, PlanCard, ToolCallsRow, type Commit } from './cards/Cards'
 import { RunCard } from './cards/RunCard'
 import type { StreamBlock } from './cards/types'
+import type { Marks } from './aside/context'
 
 function BlockView({ b, commit, onOpenPanel }: { b: StreamBlock; commit?: Commit; onOpenPanel?: () => void }) {
   switch (b.kind) {
@@ -23,7 +24,7 @@ function BlockView({ b, commit, onOpenPanel }: { b: StreamBlock; commit?: Commit
   }
 }
 
-function Bubble({ m, agentLabel }: { m: ChatMessage; agentLabel: string }) {
+function Bubble({ m, agentLabel, marks }: { m: ChatMessage; agentLabel: string; marks?: Marks }) {
   const mine = m.from === 'operator'
   const [info, setInfo] = useState(false)
   const [forward, setForward] = useState(false)
@@ -42,8 +43,11 @@ function Bubble({ m, agentLabel }: { m: ChatMessage; agentLabel: string }) {
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  const [bookmarked, setBookmarked] = useState(false)
-  const [topic, setTopic] = useState(false)
+  const [localBm, setLocalBm] = useState(false)
+  const bookmarked = marks ? marks.bookmarks.some((b) => b.message_ref === m.id) : localBm
+  const setBookmarked = (f: (v: boolean) => boolean) => (marks ? marks.toggleBookmark(m.id) : setLocalBm(f))
+  const topic = !!marks?.topics.some((t) => t.message_ref === m.id)
+  const setTopic = () => { if (!topic) marks?.addTopic(m.body.replace(/\s+/g, ' ').slice(0, 60), m.id) }
   const [linked, setLinked] = useState(false)
   const link = async () => {
     try { await navigator.clipboard.writeText(`${location.origin}${location.pathname}#${m.id}`); setLinked(true); setActionError('') }
@@ -57,7 +61,7 @@ function Bubble({ m, agentLabel }: { m: ChatMessage; agentLabel: string }) {
   const toolbar = (
     <div role="toolbar" aria-label="Message actions" className="absolute -top-1.5 right-0 z-10 hidden gap-0.5 rounded-control border border-border bg-bg-elevated p-0.5 group-focus-within:flex group-hover:flex">
       <button type="button" className={tb} aria-pressed={bookmarked} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark'} title="Bookmark (B)" onClick={() => setBookmarked((v) => !v)}><Bookmark className="size-3" /></button>
-      <button type="button" className={tb} aria-pressed={topic} aria-label="Add topic" title="Add topic" onClick={() => setTopic((v) => !v)}><Hash className="size-3" /></button>
+      <button type="button" className={tb} aria-pressed={topic} aria-label="Add topic" title="Add topic" onClick={() => setTopic()}><Hash className="size-3" /></button>
       <button type="button" className={tb} aria-label={linked ? 'Link copied' : 'Copy link'} title="Copy link" onClick={() => void link()}>{linked ? <Check className="size-3" /> : <Link2 className="size-3" />}</button>
       <button type="button" className={tb} aria-label={copied ? 'Message copied' : 'Copy message'} title="Copy message" onClick={() => void copy()}>{copied ? <Check className="size-3" /> : <Copy className="size-3" />}</button>
       <OverflowMenu ariaLabel="More message actions" align="end" actions={[
@@ -102,7 +106,7 @@ function Bubble({ m, agentLabel }: { m: ChatMessage; agentLabel: string }) {
 
 const renderMessage = (item: ChatItem) => item.kind === 'message' ? item.content : null
 
-export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder, empty, blocks = [], commit, onOpenPanel }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void; empty?: React.ReactNode; blocks?: StreamBlock[]; commit?: Commit; onOpenPanel?: () => void }) {
+export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder, empty, blocks = [], commit, onOpenPanel, marks }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void; empty?: React.ReactNode; blocks?: StreamBlock[]; commit?: Commit; onOpenPanel?: () => void; marks?: Marks }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000)
@@ -110,11 +114,11 @@ export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, o
   }, [])
   const items = useMemo<ChatItem[]>(() => {
     const all = [
-      ...messages.map((m) => ({ at: m.at, item: { kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant', content: <Bubble m={m} agentLabel={agentLabel} /> } as ChatItem })),
+      ...messages.map((m) => ({ at: m.at, item: { kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant', content: <Bubble m={m} agentLabel={agentLabel} marks={marks} /> } as ChatItem })),
       ...blocks.map((b) => ({ at: b.at, item: { kind: 'message', id: `block-${b.id}`, role: 'assistant', content: <BlockView b={b} commit={commit} onOpenPanel={onOpenPanel} /> } as ChatItem })),
     ]
     return all.sort((a, b) => a.at - b.at).map((x) => x.item)
-  }, [messages, blocks, commit, onOpenPanel, now, agentLabel])
+  }, [messages, blocks, commit, onOpenPanel, now, agentLabel, marks])
   return <ChatStream items={items} renderItem={renderMessage} loading={loading && !messages.length}
     history={{ hasOlder: hasMore, loading: loading && !!messages.length, onLoadOlder }}
     viewportClassName="flex flex-col gap-4 px-6 pb-3 pt-5 max-sm:px-3" empty={empty ?? <p className="text-control text-fg-muted">No messages yet. Say something.</p>} />
