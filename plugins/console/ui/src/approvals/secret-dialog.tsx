@@ -60,9 +60,9 @@ export function SecretDialog({ client, itemId, field, label, onStored, onClose }
   }
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !busy) close() }}>
-      <DialogContent aria-label={`Provide ${label}`} className="sm:max-w-md">
+      <DialogContent aria-label={`Provide ${label}`} className="sm:max-w-md max-sm:!bottom-0 max-sm:!left-0 max-sm:!top-auto max-sm:!w-full max-sm:!max-w-full max-sm:!translate-x-0 max-sm:!translate-y-0 max-sm:rounded-t-xl">
         <DialogTitle className="font-sans normal-case tracking-normal">{label}</DialogTitle>
-        <DialogDescription>Stored securely and never shown again. The agent cannot read it.</DialogDescription>
+        <DialogDescription className="mt-2">Stored securely and never shown again. The agent cannot read it.</DialogDescription>
         <form
           className="space-y-3"
           onSubmit={(e) => {
