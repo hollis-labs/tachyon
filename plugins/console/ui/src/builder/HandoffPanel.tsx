@@ -126,7 +126,7 @@ export function HandoffPanel({ change, onChange, onReload }: { change: Change; o
                       </p>
                       {action &&
                         (envBlocked ? (
-                          <p className="dash-support text-fg-muted">This change includes environment values, so do not paste the bundle into a session. Apply it from a terminal instead.</p>
+                          <p className="dash-support text-fg-muted">This change includes environment values. Do not paste the bundle into a session or chat. Use a local Tether session that reads the downloaded file.</p>
                         ) : (
                           <>
                             {c.tool && (
