@@ -38,10 +38,10 @@ func commandsFor(planID string) []Command {
 		planID = "<plan_id>"
 	}
 	return []Command{
-		{Step: "plan", Label: "Ask a session with catalog.write to plan this bundle", Kind: "session", Command: "Call tether_catalog_plan with the downloaded bundle (name, note, files) exactly as it is."},
+		{Step: "plan", Label: "Ask a session with catalog.write to plan this bundle", Kind: "session", Command: "Plan this bundle with tether_catalog_plan and report the plan id."},
 		{Step: "show", Label: "Review the plan", Kind: "shell", Command: "tether catalog show " + planID},
 		{Step: "approve", Label: "Approve the plan", Kind: "shell", Command: "tether catalog approve " + planID},
-		{Step: "apply", Label: "Ask the same session to apply the approved plan", Kind: "session", Command: "Call tether_catalog_apply with plan_id " + planID + "."},
+		{Step: "apply", Label: "Ask the same session to apply the approved plan", Kind: "session", Command: "Apply plan " + planID + " with tether_catalog_apply and report the result."},
 	}
 }
 

@@ -98,7 +98,7 @@ plan/apply step with a hand-off. Design: Tesseract `design_tachyon_builder_chang
   Browser session only, `Cache-Control: no-store`. It carries full file content (may include env values): download or
   copy only, never Tesseract, mail, a prompt or a log. The UI shows `commands`: Tether's CLI has `tether catalog show <plan_id>` and `tether catalog approve <plan_id>` only
   (kind `shell`, a line to run on the host). Planning and applying are MCP tools of a session that holds `catalog.write`
-  (kind `session`: `command` is the text to give that session, for `tether_catalog_plan` / `tether_catalog_apply`;
+  (kind `session`: `command` is a short plain instruction to give that session, e.g. "Plan this bundle with tether_catalog_plan and report the plan id" / "Apply plan <plan_id> with tether_catalog_apply and report the result"; it never embeds bundle content or env values, for `tether_catalog_plan` / `tether_catalog_apply`;
   there is no CLI for them): the UI says "Ask a session with catalog.write to plan this bundle" beside the bundle
   download/copy, and later "ask the same session to apply". An omitted `kind` is read as `shell`. A plan/apply CLI
   would be a Tether feature request. Verified against the hub CLI (`tether catalog --help`). A bundle whose files
