@@ -6,6 +6,8 @@ import { TerminalPane } from '../drawer/TerminalPane'
 import { WorkspacePane } from '../drawer/WorkspacePane'
 import { useScratchPlacement, useWorkspace, type DrawerMode, type DrawerSize } from '../drawer/model'
 import { DEMO } from '../cards/useBlocks'
+import { NewThread } from '../workbench/NewThread'
+import { useChatKeys } from '../workbench/keys'
 import { useAsideOptional, useRegisterConversation, type Marks } from '../aside/context'
 import { useBookmarks, useTopics } from '../aside/data'
 import { ChatPalette, type PaletteActions } from '../workbench/Palette'
@@ -41,12 +43,18 @@ export interface ConversationViewProps {
   /** Cards, tool-call rows and run cards between the messages. */
   blocks?: StreamBlock[]
   commit?: Commit
+  /** Reload after a load or stream failure. */
+  onRetry?: () => void
+  /** The agent's role chip, for the new-thread summary. */
+  role?: string
+  /** Agents the @ menu offers. */
+  mentions?: string[]
   /** The chat API thread ref behind the conversation (workspace, scratchpad, terminal are keyed by it). */
   threadRef?: string
 }
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
-export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, commit, threadRef }: ConversationViewProps) {
+export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, commit, threadRef, onRetry, role, mentions }: ConversationViewProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [value, setValueState] = useState(() => getDraft(threadId))
   const setValue = (v: string) => { setValueState(v); setDraft(threadId, v) }
@@ -67,6 +75,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
   const insert = (text: string) => { setValue(value ? `${value}\n${text}` : text); setDrawer(null); area.current?.focus() }
   const area = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { area.current?.focus() }, [threadId])
+  useChatKeys({ pick: (p) => aside?.pick(p), panel: aside?.panel ?? 'plan', open: !!aside?.open, toggleBookmark: marks.toggleBookmark })
   useRegisterConversation({ ref: threadRef, agent: agentLabel, messages, blocks: blocks ?? [], commit, onInsert: insert, marks })
   useEffect(() => { setDrawer(null) }, [threadId])
   useEffect(() => {
@@ -97,8 +106,13 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {status}
-      {error && <p role="alert" className="border-b border-danger/30 px-4 py-2 text-xs text-danger">{error}</p>}
-      <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty} blocks={blocks} commit={commit} marks={marks} onOpenPanel={aside ? () => aside.pick('plan') : undefined} />
+      {error && (
+        <div role="alert" className="flex items-center gap-3 border-b border-danger/30 px-4 py-2 text-xs text-danger">
+          <span>{error} Your draft is kept.</span>
+          {onRetry && <button type="button" onClick={onRetry} className="underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">Retry</button>}
+        </div>
+      )}
+      <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty ?? (messages.length === 0 && !loading ? <NewThread agent={agentLabel} role={role} onPick={insert} /> : undefined)} blocks={blocks} commit={commit} marks={marks} onOpenPanel={aside ? () => aside.pick('plan') : undefined} />
       {drawer && (
         <Drawer mode={drawer} size={size} onSize={setSize} onClose={() => { setDrawer(null); area.current?.focus() }}>
           {drawer === 'scratch' && <ScratchPane threadRef={threadRef} onInsert={insert} />}
@@ -112,9 +126,10 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
         onSubmit={(v) => void submit(v)}
         agentLabel={agentLabel}
         busy={busy}
-        disabled={!canSend || !!error}
+        disabled={!canSend}
         note={note}
         sendError={sendError}
+        mentions={mentions}
         textareaRef={area}
         onOpenPalette={() => setPaletteOpen(true)}
         onDrawer={openDrawer}

@@ -14,7 +14,7 @@ import type { Activity, Plan, PlanStep, Rule, WorkItem } from './data'
 import type { Marks } from './context'
 
 const time = (at?: number) => (at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '')
-const jump = (ref: string) => { const el = document.getElementById(ref); el?.scrollIntoView({ block: 'center' }); el?.focus?.() }
+const jump = (ref: string) => { const el = document.getElementById(ref); el?.scrollIntoView?.({ block: 'center' }); el?.focus?.() }
 const Empty = ({ children, action }: { children: string; action?: React.ReactNode }) => (
   <div className="flex flex-col items-start gap-2 text-xs text-fg-muted"><p>{children}</p>{action}</div>
 )
@@ -61,7 +61,7 @@ export function PlanPanel({ plan, loading, error, setStatus, addStep, onAsk }: {
           <Act type="submit" primary>Add</Act>
         </form>
       ) : (
-        <button type="button" onClick={() => setAdding(true)} className={cn(ROW, 'text-fg-muted')}><Plus aria-hidden className="size-3" />Add a step<Kbd className="ml-auto">A</Kbd></button>
+        <button type="button" data-add-step onClick={() => setAdding(true)} className={cn(ROW, 'text-fg-muted')}><Plus aria-hidden className="size-3" />Add a step<Kbd className="ml-auto">A</Kbd></button>
       )}
       <Err>{error}</Err>
       {plan?.task_ref && (

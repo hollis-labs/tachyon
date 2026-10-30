@@ -42,6 +42,7 @@ export function useChatThread(threadId: string | null) {
   const [sendError, setSendError] = useState<string | null>(null)
   const oldest = useRef<number | undefined>(undefined)
   const markedAt = useRef(0)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     // State starts fresh per thread: callers key the component on threadId.
@@ -72,7 +73,7 @@ export function useChatThread(threadId: string | null) {
       live = false
       off()
     }
-  }, [client, threadId])
+  }, [client, threadId, attempt])
 
   const loadOlder = useCallback(async () => {
     if (!threadId || loading || !hasMore) return
@@ -104,5 +105,6 @@ export function useChatThread(threadId: string | null) {
     [client, threadId],
   )
 
-  return { messages: state.messages, capability: state.capability, loading, hasMore, loadOlder, send, sendError, error: state.error }
+  const retry = useCallback(() => { setLoading(true); dispatch({ type: 'event', e: { type: 'error', message: null } }); setAttempt((n) => n + 1) }, [])
+  return { messages: state.messages, capability: state.capability, loading, hasMore, loadOlder, send, sendError, error: state.error, retry }
 }

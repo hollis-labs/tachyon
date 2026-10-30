@@ -34,7 +34,7 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
   // The agent's newest chat API session (or the one picked in the details) is the conversation when there is one.
   const ref = thread.sessionRef ?? thread.sessions?.[0]?.ref
   const convId = ref ? sessionThreadId(ref) : thread.id
-  const { messages, capability, loading, hasMore, loadOlder, send, sendError, error } = useChatThread(convId)
+  const { messages, capability, loading, hasMore, loadOlder, send, sendError, error, retry } = useChatThread(convId)
   const { blocks, commit } = useBlocks(ref)
   const cap = capability ?? thread.capability
   const [replyFilter, setReplyFilter] = useReplyFilter()
@@ -52,6 +52,9 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
       onSend={send}
       canSend={cap.canSend !== false}
       error={error}
+      onRetry={retry}
+      role={thread.agent.agentId ?? thread.agent.label}
+      mentions={palette?.threads.map((t) => t.agent.agentId ?? t.agent.label)}
       sendError={sendError}
       note={note}
       palette={palette}

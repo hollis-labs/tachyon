@@ -24,6 +24,8 @@ export interface ComposerProps {
   /** Attachments shared from the Workspace (strip above the input). */
   strip?: { id: string; label: string }[]
   onRemoveStrip?: (id: string) => void
+  /** Agent names the @ menu offers. */
+  mentions?: string[]
   /** Open drawer mode, shown pressed on its icon. */
   drawerMode?: 'scratch' | 'terminal' | 'workspace' | null
   /** Scratchpad lives in the aside: its icon opens that panel instead of the drawer. */
@@ -37,7 +39,7 @@ const ICON_BTN = 'inline-grid size-7 place-items-center rounded-control border b
  * chat.composer: a raised input with an attachment strip, a + menu, mode and shell chips, three drawer icons
  * and an enter-glyph Send, plus the footer disclaimer. Enter sends, Shift+Enter is a newline.
  */
-export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled, note, sendError, textareaRef, onOpenPalette, onDrawer, extra, strip = [], onRemoveStrip, drawerMode, scratchInAside }: ComposerProps) {
+export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled, note, sendError, textareaRef, onOpenPalette, onDrawer, extra, strip = [], onRemoveStrip, drawerMode, scratchInAside, mentions = [] }: ComposerProps) {
   const [menu, setMenu] = useState(false)
   const own = useRef<HTMLTextAreaElement>(null)
   const area = (textareaRef as React.RefObject<HTMLTextAreaElement>) ?? own
@@ -55,8 +57,18 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }, [value, area])
 
+  const at = /(^|\s)@([\w-]*)$/.exec(value)
+  const options = at ? [...new Set(mentions)].filter((m) => m.toLowerCase().startsWith(at[2].toLowerCase())).slice(0, 6) : []
+  const [mi, setMi] = useState(0)
+  useEffect(() => setMi(0), [at?.[2]])
+  const pickMention = (name: string) => { onChange(value.replace(/@[\w-]*$/, `@${name} `)); area.current?.focus() }
   const send = () => { if (value.trim() && !busy && !disabled) onSubmit(value) }
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (options.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMi((i) => (i + 1) % options.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMi((i) => (i + options.length - 1) % options.length); return }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); pickMention(options[mi] ?? options[0]); return }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() }
     else if (e.key === '/' && value === '' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); onOpenPalette() }
     else if (e.key === 'Escape') setMenu(false)
@@ -74,6 +86,11 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
               </Chip>
             ))}
             {strip.length > 0 && <Chip className="bg-selection">{strip.length} shared from Workspace</Chip>}
+          </div>
+        )}
+        {options.length > 0 && (
+          <div role="listbox" aria-label="Mention an agent" className="absolute bottom-full left-2 z-20 mb-1 min-w-[200px] rounded-panel border border-surface-hover bg-bg-elevated p-1 shadow-lg">
+            {options.map((o, i) => <button key={o} type="button" role="option" aria-selected={i === mi} onMouseDown={(e) => { e.preventDefault(); pickMention(o) }} className={cn('flex h-7 w-full items-center rounded-sm px-2 text-left text-control text-fg-secondary', i === mi && 'bg-selection text-fg')}>@{o}</button>)}
           </div>
         )}
         <textarea
@@ -116,7 +133,7 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
           </div>
         )}
       </div>
-      {sendError && <p role="alert" className="mx-auto mt-1 max-w-[760px] text-xs text-danger">{sendError} <span className="text-fg-muted">Your draft is kept.</span></p>}
+      {sendError && <p role="alert" className="mx-auto mt-1 max-w-[760px] text-xs text-danger">{sendError} <span className="text-fg-muted">Your draft is kept.</span> <button type="button" onClick={send} className="underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">Retry</button></p>}
       <p className={cn(CAPTION, 'py-2 text-center text-micro text-fg-muted')}>Agents can be wrong · check anything that matters</p>
     </div>
   )

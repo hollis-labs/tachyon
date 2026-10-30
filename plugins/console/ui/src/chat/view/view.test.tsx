@@ -103,7 +103,7 @@ describe('ChatView', () => {
   })
 
   it('on a narrow screen shows the list as home, then the thread with a back control', () => {
-    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width: 1023'), addEventListener() {}, removeEventListener() {} }))
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width: 640'), addEventListener() {}, removeEventListener() {} }))
     const onBack = vi.fn()
     try {
       const { rerender } = render(<ChatView threads={T} activeThread={null} onSelectThread={() => undefined} onBack={onBack} />)
