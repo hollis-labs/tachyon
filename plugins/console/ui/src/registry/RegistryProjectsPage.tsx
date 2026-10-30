@@ -30,7 +30,6 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-const count = (v: number | null | undefined) => (v == null ? NOT_REPORTED : String(v))
 
 function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [load, retry] = useLoad(() => registryApi.get(id), [id])
@@ -225,11 +224,10 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <dl>
           <Row label="Agents">{c?.agents == null ? NOT_REPORTED : c.agents.length ? c.agents.map((a) => a.name || a.id).join(', ') : 'none'}</Row>
           <Row label="Launches">{c?.launches == null ? NOT_REPORTED : c.launches.length ? c.launches.map((l) => l.id).join(', ') : 'none'}</Row>
-          <Row label="Planner items">{c?.planner_items == null ? NOT_REPORTED : `${c.planner_items.open} open of ${c.planner_items.total}`}</Row>
-          <Row label="Sessions">{c?.tether_sessions == null ? NOT_REPORTED : `${c.tether_sessions.live} live of ${c.tether_sessions.total}`}</Row>
+          <Row label="Planner items">{c?.planner_items == null ? NOT_REPORTED : c.planner_items.total == null ? `${c.planner_items.open} open` : `${c.planner_items.open} open of ${c.planner_items.total}`}</Row>
+          <Row label="Sessions">{c?.tether_sessions == null ? NOT_REPORTED : c.tether_sessions.total == null ? `${c.tether_sessions.live} live` : `${c.tether_sessions.live} live of ${c.tether_sessions.total}`}</Row>
         </dl>
       </section>
-      {(p.soon ?? []).length > 0 && <p className="border-t border-border-subtle px-5 py-4 dash-support text-fg-faint">Not built yet: {p.soon?.join(', ')}.</p>}
     </div>
   )
 }
@@ -253,7 +251,7 @@ export function RegistryProjectsPage() {
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex flex-wrap items-baseline gap-x-4 border-b border-border px-4 py-3">
         <h1 className="text-lg font-semibold text-fg">Registry</h1>
-        <p className="dash-support text-fg-muted">Projects and the profile agents read. Machines, services and repos are not built yet.</p>
+        <p className="dash-support text-fg-muted">Projects and the profile agents read.</p>
       </header>
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
@@ -288,7 +286,7 @@ export function RegistryProjectsPage() {
                   >
                     <span className="block truncate dash-body text-fg">{r.display_name || r.id}</span>
                     <span className="block truncate dash-support text-fg-muted">
-                      {STATUS[r.status] ?? r.status} · {r.link.state === 'linked' ? 'Linked' : 'Not linked'} · {count(r.counts?.agents)} agents
+                      {[STATUS[r.status] ?? r.status, r.link.state === 'linked' ? null : 'Not linked', r.counts?.agents == null ? null : `${r.counts.agents} agents`].filter(Boolean).join(' · ')}
                     </span>
                   </button>
                 </li>
