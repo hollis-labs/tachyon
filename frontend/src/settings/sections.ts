@@ -9,7 +9,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "appearance", label: "Appearance" },
   { id: "alerts", label: "Alerts" },
   { id: "general", label: "General" },
-  { id: "agents", label: "Agents", soon: true },
 ]
 
 export const DEFAULT_SECTION = "appearance"

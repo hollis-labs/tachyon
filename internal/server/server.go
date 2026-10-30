@@ -34,6 +34,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/approvals/assurance"
 	"github.com/hollis-labs/tachyon/internal/builderapi"
 	"github.com/hollis-labs/tachyon/internal/carddelivery"
 	"github.com/hollis-labs/tachyon/internal/cardevents"
@@ -546,12 +547,14 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 // Routes returns the handler mounted by app-host at /api/.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
-	transcriptHandler := http.Handler(transcripts.New(s.cfg.FragmentsURL, s.cfg.FragmentsTokenFile, s.cfg.TranscriptMaxSessions))
+	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	bridge := transcripts.New(s.cfg.FragmentsURL, s.cfg.FragmentsTokenFile, s.cfg.TranscriptMaxSessions)
+	bridge.DB = s.store
+	transcriptHandler := http.Handler(bridge)
 	if s.cache != nil {
 		transcriptHandler = s.cache.Wrap(transcriptHandler)
 	}
-	mux.Handle(transcripts.Prefix+"/", transcriptHandler)
-	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	mux.Handle(transcripts.Prefix+"/", transcriptsGuard(&approvals.TangentProvider{Bridge: operator}, transcriptHandler))
 	for _, mount := range featureMounts {
 		mount(mux, operator)
 	}
@@ -1049,4 +1052,30 @@ func (s *Server) actionRunView(ctx context.Context, itemID string) any {
 		return nil
 	}
 	return run
+}
+
+// transcriptsGuard lets a browser session read transcripts (assurance.ActionTranscriptsRead). An agent bearer token
+// has no transcript surface, and a refusal never reaches the cache.
+func transcriptsGuard(p assurance.Provider, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(403)
+			_, _ = w.Write([]byte(`{"code":"forbidden","message":"Transcripts are for a browser session."}`))
+			return
+		}
+		if _, e := assurance.RequireOn(p, r, assurance.ActionTranscriptsRead); e != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(e.Status)
+			if e.Body != "" {
+				_, _ = w.Write([]byte(e.Body))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": e.Code, "message": e.Message})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

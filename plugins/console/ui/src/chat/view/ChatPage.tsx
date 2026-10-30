@@ -56,6 +56,7 @@ export function ChatPage() {
       onRetryThreads={retry}
       activeThread={active}
       onSelectThread={select}
+      onBack={() => navigate('/chat')}
       newChatActions={newChatActions}
     >
       {active && <ThreadConversation key={active.id} thread={active} />}
