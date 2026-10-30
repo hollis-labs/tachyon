@@ -26,6 +26,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/agentsapi"
+	"github.com/hollis-labs/tachyon/internal/agentscollector"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -65,6 +66,9 @@ type Config struct {
 	ChatSyncInterval time.Duration
 	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
 	AgentsStubs bool
+	// AgentsCollector runs the always-on Agents collector (TACHYON_AGENTS_COLLECTOR=0 turns it off for debugging).
+	// It needs a Tether address; the read-scope token is the usual TETHER_TOKEN_FILE.
+	AgentsCollector bool
 	// ChatStubs mounts the fixture-backed chat contract (TACHYON_CHAT_STUBS=1) for GUI development.
 	ChatStubs bool
 	// ChatClientContext sends shared workspace items to the app agent as client_context on each
@@ -128,6 +132,7 @@ type Server struct {
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
 	approvalCancel   context.CancelFunc
+	agentsCollector  *agentscollector.Collector
 	actions          *actionrun.Service
 	cardFx           *cardfx.Store
 }
@@ -245,6 +250,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startActions(approvalContext, store)
 	s.startCardEffects(approvalContext, store)
 	s.startCardEvents(approvalContext, store)
+	s.startAgentsCollector(approvalContext, store)
 	s.startCardDelivery(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
@@ -403,6 +409,9 @@ func (s *Server) Start(ctx context.Context) error {
 func (s *Server) Stop(ctx context.Context) error {
 	if s.approvalCancel != nil {
 		s.approvalCancel()
+	}
+	if s.agentsCollector != nil {
+		s.agentsCollector.Wait(ctx) // its last batch must land before the store closes
 	}
 	var jobErr error
 	if s.objectJobs != nil {
@@ -655,6 +664,9 @@ func (s *Server) Routes() http.Handler {
 	}
 	// Agents contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
 	// unguarded. GETs are open; every write (nudge, restart, skip, settings) needs an operator session.
+	if s.agentsCollector != nil {
+		mux.Handle("GET "+agentscollector.Path, operator.RequireOperator(s.agentsCollector.Handler()))
+	}
 	if s.cfg.AgentsStubs {
 		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
 	}
@@ -820,6 +832,21 @@ func (s *Server) startCardEffects(ctx context.Context, store *localstore.Store) 
 		slog.Warn("card effects not recovered", "err", err)
 	}
 	go ex.Watch(ctx, 0)
+}
+
+// startAgentsCollector follows Tether's environment stream into the Agents read model. It stays off
+// without a Tether address or when the credential would travel over plain http to a remote host.
+func (s *Server) startAgentsCollector(ctx context.Context, store *localstore.Store) {
+	if !s.cfg.AgentsCollector || strings.TrimSpace(s.cfg.Upstreams.TetherAddr) == "" {
+		return
+	}
+	src, err := agentscollector.NewHTTPSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
+	if err != nil {
+		slog.Warn("agents collector is enabled but not configured; staying off", "err", err)
+		return
+	}
+	s.agentsCollector = &agentscollector.Collector{Source: src, Store: &agentscollector.Store{DB: store}}
+	s.agentsCollector.Start(ctx)
 }
 
 // startCardEvents publishes card.* events to the hub. It is off unless
