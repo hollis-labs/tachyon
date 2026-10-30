@@ -1,4 +1,5 @@
 import { registerRefDetail } from '../autolink/extensions'
+import { CasterViewerPane } from './CasterViewerPane'
 import { FileViewerPane } from './FileViewerPane'
 
 let registered = false
@@ -7,4 +8,5 @@ export function registerFileRefs(): void {
   if (registered) return
   registered = true
   registerRefDetail('path', FileViewerPane)
+  registerRefDetail('caster', CasterViewerPane)
 }

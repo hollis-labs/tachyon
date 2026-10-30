@@ -122,7 +122,7 @@ export function FileViewerPane({ refId }: RefDetailProps) {
 
 const KIND_WORD: Record<string, string> = { markdown: 'Markdown', html: 'HTML', image: 'Image', json: 'JSON', yaml: 'YAML', toml: 'TOML', csv: 'CSV', code: 'Code', text: 'Text', binary: 'Binary' }
 
-function Body({ stat, path, line, tick, expanded = false }: { stat: FileStat; path: string; line?: number; tick: number; expanded?: boolean }) {
+export function Body({ stat, path, line, tick, expanded = false }: { stat: FileStat; path: string; line?: number; tick: number; expanded?: boolean }) {
   if (!stat.exists || !stat.allowed) {
     return <p className="text-control text-fg-secondary">{denyMessage(stat.deny_reason, stat.exists)}</p>
   }
