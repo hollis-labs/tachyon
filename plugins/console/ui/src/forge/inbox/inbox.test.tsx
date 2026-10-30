@@ -218,6 +218,26 @@ describe('<PendingPrInbox>', () => {
     expect(screen.getAllByTestId(/^pr-row-/)).toHaveLength(1)
   })
 
+  it('reports a partial bulk failure and keeps the failed rows selected; Escape clears; select all', async () => {
+    const forge = createMockForgeClient()
+    vi.spyOn(forge, 'listPendingPrs').mockResolvedValue([mk(1), mk(2), mk(3)])
+    const { stateStore } = mount(forge)
+    await screen.findByText('PR 1')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+    const bar = screen.getByRole('toolbar', { name: 'Bulk actions' })
+    expect(within(bar).getByText('3 selected')).toBeTruthy()
+    const apply = stateStore.apply.bind(stateStore)
+    vi.spyOn(stateStore, 'apply').mockImplementation(async (a) => {
+      if ('key' in a && a.key.endsWith('#2')) throw new Error('boom')
+      return apply(a)
+    })
+    fireEvent.click(within(bar).getByRole('button', { name: 'Dismiss' }))
+    await screen.findByText(/2 of 3 updated, 1 failed: boom/)
+    expect(screen.getByRole('toolbar', { name: 'Bulk actions' }).textContent).toContain('1 selected')
+    fireEvent.keyDown(screen.getByRole('toolbar', { name: 'Bulk actions' }), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Bulk actions' })).toBeNull())
+  })
+
   it('keeps saved rows and filters while refreshing, then reconciles changed, added and removed PRs', async () => {
     const forge = createMockForgeClient()
     let finish!: (prs: PendingPrSummary[]) => void
