@@ -98,3 +98,13 @@ open, one pattern each, and win over the stub's subtree. Reads need an operator 
 6. `OpenResolved` opens with `O_NOFOLLOW`, then checks the descriptor is a regular file (`not_a_file` otherwise) and the same file the lstat saw, so a swap or a planted link between check and open is refused.
 
 Denial text is the reason code only; the path is never echoed. Directories resolve (for `stat`) but cannot be opened. The tests in `guard_test.go` are the corpus: traversal, absolute paths, links in and out of a root, links to secrets, dangling and looping links, every built-in pattern, case, FIFO, directory, swap-after-check, other-user files under `/tmp`, user deny additions, vanished roots. Size caps, content types and Range belong to V3.
+
+## Stat and content (V3)
+
+`fileview.Files`, mounted by `register_fileview.go` (one pattern each for `POST /stat` and `GET /content`, behind `RequireOperatorReads`; they win over the stub's subtree). Both go through `Guard`.
+
+- `POST /stat {paths:[1..100]}`: items as in the contract. A bad path shape is 400 for the whole batch. A denied item has `allowed:false` and `deny_reason`; a path never inside a root, a missing path and a dangling link are all `not_found_or_hidden` (`exists:false`). `secret_pattern` and `symlink_escape` report `exists:true`. Directories report `type:"dir"`, no kind. Files over the cap for an image or binary report `too_large`; large text stays allowed (Range).
+- `etag` is a strong hash of size, mtime and inode; there is no watcher, clients poll it.
+- Kind and mime come from the name and the first 512 bytes. HTML is decided by content, not extension; an image by content (SVG only when the bytes contain an `<svg` element); NUL or invalid UTF-8 is binary. `language` is set for code, json, yaml, toml.
+- `GET /content?path=`: `http.ServeContent`, so `Range`, `If-Range` and `If-None-Match` (206, 304, 416) work. Text, markdown, code and HTML are always `text/plain; charset=utf-8`; images keep their type (SVG adds the sandbox CSP); binary is `application/octet-stream` as an attachment. `nosniff` and `Cache-Control: private, no-cache` on everything. Text and HTML over `fileview.caps.text_bytes` need a `Range` header (else 413); images and binaries over `image_bytes` are 413 even with Range. Errors: 400 invalid (also directories and FIFOs), 403 `denied`, 404 `not_found_or_hidden`, 501 `caster_unavailable` for `caster_ref` until V5. Error bodies never contain the path.
+- Audit (V6 writer): one async `stat` row per batch, a synchronous `open` row with bytes served and etag, and every denial synchronously. The principal is a hash of the session cookie.
