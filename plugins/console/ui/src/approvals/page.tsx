@@ -83,10 +83,10 @@ export function ApprovalsPage() {
     <div className="flex h-full min-w-0 flex-col">
       <PageHeader title="Approvals">
         <Button variant="outline" size="sm" className="dash-header-action" disabled={unlocking} onClick={() => void unlock()}>
-          <KeyRound className="h-3 w-3" /> Operator access
+          <KeyRound className="h-3 w-3" aria-hidden /> <span className="hidden sm:inline">Operator access</span><span className="sr-only sm:hidden">Operator access</span>
         </Button>
         <Button variant="outline" size="sm" className="dash-header-action" disabled={unlocking} onClick={() => void revoke()}>
-          Revoke elevation
+          <span className="hidden sm:inline">Revoke elevation</span><span className="sm:hidden">Revoke</span>
         </Button>
         <Button variant="ghost" size="sm" aria-label="Refresh approvals" onClick={() => void queue.refresh(true)}>
           <RefreshCw className="h-3 w-3" />
