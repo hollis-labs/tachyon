@@ -339,7 +339,9 @@ export function BuilderLibraryPage() {
                 </Button>
               </div>
             )}
-            {load.status === 'ready' && items.length === 0 && <p className="p-4 dash-body text-fg-faint">Nothing here.</p>}
+            {load.status === 'ready' && items.length === 0 && <p className="p-4 dash-body text-fg-faint">
+                {debounced ? 'No matches.' : `No ${(LIBRARY_KINDS.find((k) => k.id === kind)?.label ?? 'items').toLowerCase()} in the catalog yet.`}
+              </p>}
             <ul aria-label="Library items" className="divide-y divide-border-subtle">
               {items.map((it) => (
                 <li key={it.id}>

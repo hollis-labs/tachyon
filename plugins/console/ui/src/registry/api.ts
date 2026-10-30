@@ -31,8 +31,8 @@ export interface Project {
   consumed_by?: {
     agents?: { id: string; name: string }[] | null
     launches?: { id: string }[] | null
-    planner_items?: { open: number; total: number } | null
-    tether_sessions?: { live: number; total: number } | null
+    planner_items?: { open: number; total: number | null } | null
+    tether_sessions?: { live: number; total: number | null } | null
   }
   soon?: string[]
 }

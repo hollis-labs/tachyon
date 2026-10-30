@@ -6,6 +6,7 @@ import { ApiProvider } from "@tachyon/torque-client"
 import { consoleClient } from "@console/client"
 import { AgentsPage } from "./agents-monitor/page"
 import { BuilderAgentsPage } from "./builder/BuilderAgentsPage"
+import { BuilderTeamsPage } from "./builder/BuilderTeamsPage"
 import { BuilderLaunchesPage } from "./builder/BuilderLaunchesPage"
 import { BuilderLibraryPage } from "./builder/BuilderLibraryPage"
 import { RegistryProjectsPage } from "./registry/RegistryProjectsPage"
@@ -31,6 +32,8 @@ export const consolePlugin: TachyonPlugin = {
     { path: "/builder/classic", element: <BuilderPage /> },
     { path: "/builder/agents", element: <BuilderAgentsPage /> },
     { path: "/builder/agents/:id", element: <BuilderAgentsPage /> },
+    { path: "/builder/projects", element: <Navigate to="/registry/projects" replace /> },
+    { path: "/builder/teams", element: <BuilderTeamsPage /> },
     { path: "/builder/launches", element: <BuilderLaunchesPage /> },
     { path: "/builder/library", element: <BuilderLibraryPage /> },
     { path: "/builder/library/:kind", element: <BuilderLibraryPage /> },

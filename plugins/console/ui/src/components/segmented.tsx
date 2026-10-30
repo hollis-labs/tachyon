@@ -34,10 +34,10 @@ export function Segmented<T extends string>({
               role="tab"
               aria-selected={on}
               onClick={() => onChange(it.value)}
-              className={`whitespace-nowrap px-3 py-1 dash-control ${i > 0 ? 'border-l border-border' : ''} ${on ? 'bg-surface font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}
+              className={`whitespace-nowrap px-2 py-1 sm:px-3 dash-control ${i > 0 ? 'border-l border-border' : ''} ${on ? 'bg-surface font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}
             >
               {it.label}
-              {it.count !== undefined && <span className={`ml-1.5 ${on ? 'text-fg-muted' : 'text-fg-faint'}`}>{it.count}</span>}
+              {it.count !== undefined && <span className={`ml-1 sm:ml-1.5 ${on ? 'text-fg-muted' : 'text-fg-faint'}`}>{it.count}</span>}
             </button>
           )
         })}

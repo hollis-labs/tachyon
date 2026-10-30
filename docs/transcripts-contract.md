@@ -53,3 +53,32 @@ on `/search` `semantic_unavailable|empty|ranges`; on `/status` `degraded`.
 
 Fixture sessions (constants in `contract.go`): Claude (60 turns, targets, two error excerpts),
 Codex (heuristic error), ChatGPT export (no tools), an undated session, and a valid unknown id.
+
+## Bridge Stage 1 (CW-20261030-0098)
+
+Served by `internal/transcripts` on today's Fragments Engine. Not stubbed; no stub flag involved.
+
+- **Guard.** `assurance.ActionTranscriptsRead` (`transcripts.read`) needs a browser session (`Requirements` table, same Provider as
+  the rest). An `Authorization` header is refused 403, no session is 401. The guard sits outside the API cache, so a refusal is
+  never cached and never served from it. No read-audit table.
+- **`GET /snapshot`.** One build is shared by concurrent requests. A good build is saved (`transcript_snapshot`, migration 043, one row).
+  When Fragments Engine is unreadable (denied, unconfigured, unreachable, remote error) the saved snapshot is returned 200 with
+  `snapshot_meta.source_state = "unavailable"` and `snapshot_meta.error`; `X-Tachyon-Uncacheable` keeps the API cache from storing it.
+  With nothing saved the error is shown as before.
+- **`GET /search`.** `q` (1..256), `mode` text|summary|semantic|hybrid (refused if Fragments Engine's `/status` does not list it),
+  `limit` 1..50, `cursor`, `since`/`until` RFC 3339, `tool`, `model`, `project`, `tag`, `kind` main|subagent, `has_error`. Unknown
+  parameters are 400. Never cached; the query text is not logged.
+- **`GET /status`.** Fragments Engine's status plus `capabilities` {search:true, find:false, errors:false, stats:false}.
+- **`GET /sessions/{id}`.** `turn_limit` 1..200, `turn_offset`; unknown parameters are 400.
+
+## Bridge Stage 2 (CW-20261030-0101, -0102)
+
+Needs the Fragments Engine changes (tool targets and error excerpts, per-turn search, freshness, stats). What this build can answer is
+in `GET /status` `capabilities` {search, find, errors, stats}, taken from the engine's own `features` list; on an older engine the three
+optional reads answer 501 `unsupported`.
+
+- `GET /sessions/{id}/find?q=&after_offset=&limit=`: turns of one session that contain the text. `q` 1..256, `limit` 1..100, never cached.
+- `GET /sessions/{id}/errors`: failed tool calls of the session (turn, tool, target, error excerpt). Never cached.
+- `GET /stats?since&until&tool&model&kind&project&has_error&tag`: whole-database totals and by day, tool, model and project.
+- `GET /sessions/{id}?turn_from_seq=N`: the turn window starting at that seq (seq is contiguous from 0, so it is the offset); not with `turn_offset`.
+- `GET /status` also passes `ingest {state, last_ingest_at, sources}` through when the engine reports it.
