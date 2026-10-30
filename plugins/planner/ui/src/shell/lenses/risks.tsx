@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { usePlannerApi } from '@planner/api/context'
+import { sentenceCase } from '@planner/lib/planner'
 import { TEXT } from '@planner/lib/vocabulary'
 import { CAPTION, SegmentedSwitch } from '@planner/shared'
 import type { PlannerItem } from '@planner/api/types'
@@ -22,7 +23,7 @@ export function RiskBody({ item, statuses, write }: { item: PlannerItem; statuse
         <section aria-label={TEXT.statusLabel} className="flex flex-col gap-2">
           <h2 className={CAPTION}>{TEXT.statusLabel}</h2>
           <div>
-            <SegmentedSwitch label={TEXT.statusLabel} value={item.status ?? ''} items={statuses.map((s) => ({ value: s, label: s }))} onChange={(status) => status !== item.status && void write(() => api.plannerUpdate('risks', item.id, { status }, item.rev))} />
+            <SegmentedSwitch label={TEXT.statusLabel} value={item.status ?? ''} items={statuses.map((s) => ({ value: s, label: sentenceCase(s) }))} onChange={(status) => status !== item.status && void write(() => api.plannerUpdate('risks', item.id, { status }, item.rev))} />
           </div>
         </section>
       )}

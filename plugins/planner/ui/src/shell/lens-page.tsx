@@ -7,7 +7,7 @@ import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
 import { notifyError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
-import { boardAge } from '@planner/lib/planner'
+import { boardAge, sentenceCase } from '@planner/lib/planner'
 import { LENSES, lensPath, TEXT } from '@planner/lib/vocabulary'
 import { CAPTION, Chip, CommandPalette, InlineEdit, PaletteHint, Pips, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
 import { Context, type ContextLink } from '@planner/shell/context'
@@ -143,7 +143,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     if (!item) return setLinks([])
     let live = true
     api.plannerLinks(db, item.id).then((v) => live && setLinks([
-      ...v.outbound.map((l) => ({ kind: l.kind, label: l.title })),
+      ...v.outbound.map((l) => ({ kind: l.kind, label: l.title, note: l.status })),
       ...v.inbound.map((l) => ({ kind: l.kind, label: l.title, note: TEXT.linkedFromNote })),
       ...v.external.map((l) => ({ kind: l.kind, label: l.label })),
     ]), () => live && setLinks([]))
@@ -222,7 +222,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
       links={links}
       onCommented={() => void load()}
       mentionable={(items ?? []).map((i) => ({ id: i.id, title: i.title, ref: typeof i.legacy_id === 'string' ? i.legacy_id : undefined }))}
-      statusOptions={(schema?.enums.status ?? []).map((s) => ({ value: s, label: s }))}
+      statusOptions={(schema?.enums.status ?? []).map((s) => ({ value: s, label: sentenceCase(s) }))}
       onStatus={async (status) => { await api.plannerUpdate(db, item.id, { status }, item.rev + 1) }}
     />
   )
@@ -330,12 +330,12 @@ function StatusPick({ status, statuses, onPick }: { status: string; statuses: st
   const chip = (
     <Chip tone="strong" className="h-6 cursor-pointer">
       <StateDot state="doing" />
-      {status || TEXT.noStatus}
+      {status ? sentenceCase(status) : TEXT.noStatus}
       {statuses.length > 0 && <ChevronDown className="size-3" />}
     </Chip>
   )
   if (statuses.length === 0) return chip
-  return <StatusMenu trigger={chip} triggerLabel={`${status}. ${TEXT.moveTo}`} heading={TEXT.moveTo} current={status} options={statuses.map((s) => ({ value: s, label: s }))} onSelect={onPick} />
+  return <StatusMenu trigger={chip} triggerLabel={`${status}. ${TEXT.moveTo}`} heading={TEXT.moveTo} current={status} options={statuses.map((s) => ({ value: s, label: sentenceCase(s) }))} onSelect={onPick} />
 }
 
 export { createPlannerId }

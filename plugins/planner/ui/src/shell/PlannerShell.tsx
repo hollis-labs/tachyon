@@ -176,7 +176,7 @@ export default function PlannerShell() {
     return () => clearTimeout(t)
   }, [justLinked])
   const rowLinks = [
-    ...(linksView?.outbound ?? []).map((l) => ({ kind: l.kind, label: l.title })),
+    ...(linksView?.outbound ?? []).map((l) => ({ kind: l.kind, label: l.title, note: l.status })),
     ...(linksView?.inbound ?? []).map((l) => ({ kind: l.kind, label: l.title, note: TEXT.linkedFromNote })),
     ...(linksView?.external ?? []).map((l) => ({ kind: l.kind, label: l.label })),
   ]

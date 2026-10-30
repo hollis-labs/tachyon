@@ -132,7 +132,7 @@ export const TEXT = {
   needsAccessHint: 'Changes are off until this browser has operator access.',
   pinsSynced: 'Pins synced from this browser',
   pinWithComment: 'Pin with this comment',
-  commentPlaceholder: 'Comment or update',
+  commentPlaceholder: 'Comment, @mention a task or theme…',
   commentSend: 'Send',
   timelineEmpty: 'Nothing has happened yet. Approve the theme to start the timeline',
   timelineFilteredEmpty: 'Nothing matches',
