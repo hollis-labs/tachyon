@@ -10,8 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/hollis-labs/tachyon/internal/approvals"
 )
 
 func do(t *testing.T, method, path, body string, hdr ...string) *httptest.ResponseRecorder {
@@ -32,10 +30,8 @@ func decode(t *testing.T, w *httptest.ResponseRecorder, v any) {
 	}
 }
 
-func TestPrefixMatchesTheRealInbox(t *testing.T) {
-	if Prefix != approvals.Prefix {
-		t.Fatalf("%s != %s", Prefix, approvals.Prefix)
-	}
+func TestStubDoesNotTakeOverTheRealSessionRoutes(t *testing.T) {
+	// The prefix itself is checked against approvals.Prefix in internal/approvals (which imports this package).
 	for _, r := range Routes {
 		if strings.Contains(r, "/session") || strings.Contains(r, "/status") || strings.Contains(r, "elevate") {
 			t.Errorf("stub must not take over %s", r)
