@@ -102,8 +102,8 @@ reserved in `forgeapi.StepUpLevels`; nothing here adds a guard, audit row or rat
   settled, links_done}`. `delete_branch` is a best-effort delete after the merge, only for a branch in the same repository.
 - Idempotency: the answer for a key is stored 24 hours (`forge_idempotency`, migration 045); the same key and body returns it, the same
   key with a different body is 409 `idempotency_conflict`. Only a merge or a `head_moved` answer is stored, so a refusal can be retried.
-- `audit_class: "lifecycle"` is the contract's label only. No audit row is written (deferred to CW-20261030-0082), and `links_done` is 0 until
-  the agent link table exists (PR7).
+- `audit_class: "lifecycle"` is the contract's label only. No audit row is written (deferred to CW-20261030-0082). `links_done` counts the agent links closed by
+  the merge (PR7).
 
 ## Assign agent (PR7, real)
 
@@ -126,3 +126,30 @@ Answer `{data:{link, replayed, reminded?}}`.
 - Open links appear as `kind:"agent"` entries in a pending row's `assignees` (`urn`, `task`, `link_status`), and
   `pr.updated{changed:["assignees"]}` is published. A merge through PR5 sets the PR's open links to `done`
   (`links_done`). Agents are told not to merge; that is guidance, not a technical block.
+
+## Status and curl matrix (PR9)
+
+What is real on the live host (the stub, `TACHYON_FORGE_STUBS=1`, must stay off there). `B` = `https://<host>/api/plugins/console/v1/forge`,
+`P` = `repos/github/<owner>/<repo>/pulls/<n>`. Writes need an operator browser session (cookie plus same-origin `Origin`); a bearer token is
+refused. `HEAD` is the 40-hex head sha from a read.
+
+| Area | Route | State |
+|---|---|---|
+| Pending inbox, status, stream | `GET B/pulls/pending`, `GET B/status`, `GET B/stream` | real (PR3) |
+| Triage | `PUT /console/state/pr-inbox:<prKey>` | real |
+| Viewer, commit, files, diff, checks | `GET B/viewer`, `B/repos/github/<o>/<r>/commits/<ref>`, `B/<P>/files`, `/diff`, `/checks` | real (PR4) |
+| Merge preflight, merge | `GET B/<P>/merge-preflight`, `PUT B/<P>/merge` | real (PR5) |
+| Review validate, review, drafts | `POST B/<P>/reviews/validate`, `POST B/<P>/reviews`, `GET/PUT/DELETE B/<P>/review-draft` | real (PR6) |
+| Assign agent | `POST B/<P>/assign-agent` | real (PR7) |
+| Audit, step-up, rate limits | none | deferred (CW-20261030-0082) |
+
+```sh
+curl -s "$B/pulls/pending?state=active&limit=20"                       # inbox
+curl -s "$B/$P/merge-preflight"                                       # blockers / ready
+curl -s -b jar -H "Origin: $ORIGIN" -H "Idempotency-Key: $(uuidgen)" -X PUT \
+  -d '{"method":"squash","head_sha":"'$HEAD'"}' "$B/$P/merge"          # 409 head_moved / merge_blocked
+curl -s -b jar -H "Origin: $ORIGIN" -X POST \
+  -d '{"agent_id":"builder","task":"fix_checks"}' "$B/$P/assign-agent" # {link, replayed}
+```
+
+Refusals use the shared envelope `{error:{code,message}}`; the codes are listed in Conventions and per section above.
