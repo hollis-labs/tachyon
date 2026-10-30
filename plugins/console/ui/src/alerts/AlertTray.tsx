@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@hollis-labs/design-components'
-import { BellOff, X } from 'lucide-react'
-import { SEVERITY_ORDER } from '../events/types'
+import { BellOff, Settings, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAlertsController } from './context'
-import { ConsolePrefsPanel } from '../prefs/ConsolePrefsPanel'
 import { useRestoreFocus } from '../shell/restore-focus'
 import { Segmented } from '../components/segmented'
 import { AlertListItem } from './AlertListItem'
 import { groupActive, groupHistory } from './group'
-import { SEVERITY_STYLE } from './severity-style'
-import type { AlertSeverity } from './types'
 
 const HOUR = 3_600_000
 const BTN = ''
@@ -18,7 +15,6 @@ const BTN = ''
 export function AlertTray() {
   const c = useAlertsController()
   const [tab, setTab] = useState<'active' | 'history'>('active')
-  const [prefsOpen, setPrefsOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useRestoreFocus(c.open, '[data-alert-trigger]')
 
@@ -56,42 +52,24 @@ export function AlertTray() {
         <Button type="button" variant="ghost" size="xs" className={BTN} onClick={c.markAllRead} disabled={c.unread === 0}>
           Mark all read
         </Button>
+        <Button type="button" variant="ghost" size="icon-xs" aria-pressed={c.prefs.quiet} aria-label="Quiet" title="Quiet" onClick={() => c.setPrefs({ quiet: !c.prefs.quiet })} className="text-fg-muted">
+          <BellOff aria-hidden="true" />
+        </Button>
+        <Link to="/settings/alerts" onClick={() => c.setOpen(false)} aria-label="Alert settings" title="Alert settings" className="inline-flex h-6 w-6 items-center justify-center text-fg-muted hover:text-fg">
+          <Settings aria-hidden="true" className="h-3.5 w-3.5" />
+        </Link>
         <Button type="button" variant="ghost" size="icon-xs" onClick={() => c.setOpen(false)} aria-label="Close alerts" className="text-fg-muted">
           <X aria-hidden="true" />
         </Button>
       </header>
 
-      <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2 text-xs">
-        <label className="flex items-center gap-1.5 text-fg-secondary">
-          <input
-            type="checkbox"
-            checked={c.prefs.quiet}
-            onChange={(e) => c.setPrefs({ quiet: e.target.checked })}
-            className="h-3 w-3 accent-primary"
-          />
+      {c.prefs.quiet && (
+        <div role="status" className="flex items-center gap-2 border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">
           <BellOff aria-hidden="true" className="h-3 w-3" />
-          Quiet
-        </label>
-        <label className="ml-auto flex items-center gap-1.5 text-fg-secondary">
-          Bell / list
-          <select
-            aria-label="Bell / list threshold"
-            value={c.prefs.bellMinSeverity}
-            onChange={(e) => c.setPrefs({ bellMinSeverity: e.target.value as AlertSeverity })}
-            className="border border-border bg-bg-elevated px-1 py-0.5 text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
-          >
-            {SEVERITY_ORDER.map((s) => (
-              <option key={s} value={s}>
-                {s === 'debug' ? 'all' : `${SEVERITY_STYLE[s].label.toLowerCase()}+`}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button type="button" variant="outline" size="xs" aria-expanded={prefsOpen} onClick={() => setPrefsOpen((v) => !v)} className={BTN}>
-          Prefs
-        </Button>
-      </div>
-      {prefsOpen && <ConsolePrefsPanel prefs={c.prefs} onChange={c.setPrefs} />}
+          <span>Quiet is on. Only critical alerts pop up.</span>
+          <button type="button" className="ml-auto underline underline-offset-2 hover:text-fg" onClick={() => c.setPrefs({ quiet: false })}>Turn off</button>
+        </div>
+      )}
 
       <Segmented label="Alert views" value={tab} onChange={setTab} className="border-border-subtle" items={[
         { value: 'active' as const, label: 'Active', count: c.active.length },
