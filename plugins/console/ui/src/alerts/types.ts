@@ -41,6 +41,8 @@ export interface Alert {
   escalate?: { afterMs: number; to: AlertSeverity }
   /** Id of the rule that produced this alert (diagnostics). */
   ruleId?: string
+  /** Server alerts: the rule pack's needs-you flag. When set it replaces the client heuristic. */
+  needsYou?: boolean
 }
 
 export type AlertMapper = (event: import('../events/types').ConsoleEvent) => Alert | null
