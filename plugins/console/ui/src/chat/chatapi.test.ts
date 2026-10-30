@@ -61,4 +61,18 @@ describe('withChatApiMessages', () => {
     expect(es.close).toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
+  it('polls while open so Tether-mirrored replies show without a stream frame', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('EventSource', FakeES)
+    const fetchPage = vi.fn(async () => ({ messages: [m(1)] }))
+    const off = withChatApiMessages(base(), { fetchPage, stream: () => new FakeES() as unknown as EventSource }).subscribe(id, () => undefined)
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(fetchPage.mock.calls.length).toBeGreaterThanOrEqual(3)
+    off()
+    const n = fetchPage.mock.calls.length
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(fetchPage).toHaveBeenCalledTimes(n)
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
 })
