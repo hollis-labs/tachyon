@@ -103,6 +103,13 @@ export interface UsedBy {
   extended_by?: string[]
 }
 
+export interface LibraryUsedBy {
+  agents: { id: string; name?: string }[]
+  launches: { id: string }[]
+  projects: { id: string }[]
+  counts?: { agents: number; launches: number; projects: number }
+}
+
 export interface Checks {
   checks: Check[]
   summary?: { ok: number; warn: number; fail: number }
@@ -307,6 +314,7 @@ export const builderApi = {
     const qs = p.toString()
     return get<{ launches: Launch[]; next_cursor?: string | null }>(`/launches${qs ? `?${qs}` : ''}`)
   },
+  libraryUsedBy: (kind: LibraryKind, id: string) => get<LibraryUsedBy>(`/library/${kind}/${encodeURIComponent(id)}/used_by`),
   library: (kind: LibraryKind, q = '') => get<{ items: LibraryItem[] }>(`/library/${kind}${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   libraryItem: (kind: LibraryKind, id: string) => get<LibraryItem>(`/library/${kind}/${encodeURIComponent(id)}`),
   change: (id: string) => get<Change>(`/changes/${encodeURIComponent(id)}`),

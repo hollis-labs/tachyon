@@ -107,6 +107,44 @@ function PolicyLead({ it }: { it: LibraryItem }) {
   )
 }
 
+/** Who a part reaches: read before changing it. Agents link to their detail. */
+function UsedBy({ kind, id }: { kind: LibraryKind; id: string }) {
+  const [load, retry] = useLoad(() => builderApi.libraryUsedBy(kind, id), [kind, id])
+  if (load.status === 'loading') return <div aria-busy="true" className="h-10 animate-pulse bg-surface" />
+  if (load.status === 'error')
+    return (
+      <p role="alert" className="dash-support text-fg-secondary">
+        Used-by could not be read.{' '}
+        <button type="button" className="underline" onClick={retry}>
+          Retry
+        </button>
+      </p>
+    )
+  const { agents, launches, projects } = load.data
+  const groups = [
+    ['Agents', agents.map((a) => ({ key: a.id, text: a.name || a.id, to: `/builder/agents/${encodeURIComponent(a.id)}` }))],
+    ['Launches', launches.map((l) => ({ key: l.id, text: l.id, to: undefined }))],
+    ['Projects', projects.map((p) => ({ key: p.id, text: p.id, to: undefined }))],
+  ] as const
+  if (groups.every(([, rows]) => rows.length === 0)) return <p className="dash-body text-fg-faint">Nothing uses this yet.</p>
+  return (
+    <div className="space-y-2">
+      {groups
+        .filter(([, rows]) => rows.length > 0)
+        .map(([title, rows]) => (
+          <div key={title}>
+            <h4 className="dash-support text-fg-muted">{title}</h4>
+            <ul className="dash-body text-fg">
+              {rows.map((r) => (
+                <li key={r.key}>{r.to ? <Link className="underline" to={r.to}>{r.text}</Link> : r.text}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+    </div>
+  )
+}
+
 function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   const [load, retry] = useLoad(() => builderApi.libraryItem(kind, id), [kind, id])
   const { guard, dialog: discardDialog } = useDiscardGuard()
@@ -260,14 +298,14 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
             </section>
           )}
           {kind === 'policies' && <PolicyLead it={it} />}
+          {kind !== 'policies' && (
+            <section aria-label="Used by" className="space-y-1">
+              <h3 className="dash-label font-medium text-fg-muted">Used by</h3>
+              <UsedBy kind={kind} id={id} />
+            </section>
+          )}
           {kind === 'policies' && <h3 className="dash-label font-medium text-fg-muted">Details</h3>}
           <dl>
-            {kind !== 'policies' && (
-              <div className={GRID}>
-                <dt className="dash-support text-fg-muted">Used by</dt>
-                <dd className="dash-body text-fg">{it.used_by_count ?? NOT_REPORTED}</dd>
-              </div>
-            )}
             {Object.entries(it)
               .filter(([k]) => !SKIP_NOW.has(k) && !(kind === 'policies' && POLICY_LEAD.has(k)))
               .map(([k, v]) => (
