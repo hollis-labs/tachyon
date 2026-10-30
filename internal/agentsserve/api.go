@@ -26,6 +26,8 @@ type Server struct {
 	Now       func() time.Time
 	// Assigner supplies Session.assignment (A5); nil leaves it null.
 	Assigner Assigner
+	// Sender delivers nudges as Tether mail (A6); nil turns the nudge capability off.
+	Sender Sender
 
 	hub hub
 }
@@ -46,6 +48,7 @@ func (s *Server) now() time.Time {
 var Routes = []string{
 	"GET /sessions", "GET /sessions/{id}", "GET /sessions/{id}/events", "GET /sessions/{id}/context-series",
 	"GET /sessions/{id}/tokens", "GET /sessions/{id}/history", "GET /stream", "GET /settings", "PUT /settings",
+	"POST /sessions/{id}/nudge", "POST /sessions/{id}/restart", "GET /controls/{request_id}", "POST /controls/{request_id}/skip",
 }
 
 // Mount registers each route on the mux under agentsapi.Prefix, wrapped by guard (the server passes
@@ -56,6 +59,8 @@ func (s *Server) Mount(mux *http.ServeMux, guard func(http.Handler) http.Handler
 		"GET /sessions": s.list, "GET /sessions/{id}": s.get, "GET /sessions/{id}/events": s.events,
 		"GET /sessions/{id}/context-series": s.contextSeries, "GET /sessions/{id}/tokens": s.tokens,
 		"GET /sessions/{id}/history": s.history, "GET /stream": s.stream, "GET /settings": s.getSettings, "PUT /settings": s.putSettings,
+		"POST /sessions/{id}/nudge": s.nudge, "POST /sessions/{id}/restart": s.restart,
+		"GET /controls/{request_id}": s.getControl, "POST /controls/{request_id}/skip": s.skipControl,
 	}
 	for _, r := range Routes {
 		method, path, _ := strings.Cut(r, " ")

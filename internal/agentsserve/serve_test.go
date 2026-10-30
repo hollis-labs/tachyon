@@ -607,7 +607,7 @@ func TestMountedRoutesAreExactlyTheDocumentedOnes(t *testing.T) {
 	if hit != len(Routes) {
 		t.Errorf("guarded %d of %d routes", hit, len(Routes))
 	}
-	for _, p := range []string{"/sessions/s1/nudge", "/sessions/s1/restart", "/controls/x", "/bus/events", "/collector"} {
+	for _, p := range []string{"/bus/events", "/collector"} {
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, httptest.NewRequest("POST", "http://x"+agentsapi.Prefix+p, strings.NewReader("{}")))
 		if w.Code != 404 && w.Code != 405 {
