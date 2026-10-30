@@ -37,7 +37,23 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
   `snoozed` with `snoozeUntil`; dismissed and settled keep their status.
 - Every other key, and `POST /bulk`, goes to the item-state store with its operator guard. Bulk does not take alert keys.
 
+## Coalescing, escalation, wake (AL3)
+
+- **Coalesce.** An event whose rule gives a coalesce key folds into the open alert (active or snoozed) with the same key whose last
+  event is within the window: `count` goes up, `last_at_ms` moves, and the event joins that alert's timeline. The window is the
+  rule's `windowSec`, else the `coalesce_window_sec` pref (default 120, `0` = off). `read` is left alone unless the severity rises
+  (then the alert is unread again and the change is `updated`, which toasts). A repeat after dismiss or settle is a new alert.
+  Redelivered events are still ignored by the dedupe key.
+- **Escalate.** An active, unread alert past `escalate_at_ms` gets the rule's `to` severity, `needs_you`, `escalated_at_ms` and a timeline
+  entry; the change is `escalated` (a real re-toast). Reading or handling it first cancels this. The target is looked up in the current
+  pack by `rule_id`; if the rule is gone or the alert is already that severe it is dropped quietly.
+- **Wake.** `Store.Maintain` (started with the store) wakes snoozed and deferred alerts at `wake_at_ms` on the server clock: active, unread,
+  timeline entry, change `woke`. It sleeps until the next due time, never more than 30 s. A deferred alert with `until_ref_change` also
+  wakes when an ingested event carries that subject.
+- `OnChange(id, seq, change)` now also reports `updated`, `woke` and `escalated`; the stream (AL4) turns those into toasts.
+
 ## Not here
 
-Coalescing, escalation and wake-ups (AL3), the stream (AL4), humanised detail and approval linkage (AL5), prefs
-semantics (AL6). Detail returns an empty `technical`, `actions` and `approval` until AL5.
+The stream (AL4), humanised detail and approval linkage (AL5), prefs semantics (AL6). Detail returns an empty `technical`, `actions`
+and `approval` until AL5. Ingest adapters are not started by the server yet, so coalescing runs on whatever feeds `Store.Ingest`
+(today the forge poller).

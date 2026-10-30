@@ -33,8 +33,11 @@ type Store struct {
 	// Pack returns the current rule pack; nil means no rules (nothing becomes an alert).
 	Pack func() alertsrules.Pack
 	Now  func() time.Time
+	// Window is the coalesce window (the coalesce_window_sec pref); nil means DefaultCoalesceWindow, zero or less turns coalescing off.
+	Window func(ctx context.Context) time.Duration
 	// OnChange, if set, is told after each committed change (the stream hook for AL4): the alert id, its
-	// new sequence and what happened ("created", "updated", "state", "removed").
+	// new sequence and what happened ("created", "updated", "state", "woke", "escalated", "removed"). updated, woke and
+	// escalated are the changes that toast.
 	OnChange func(alertID string, seq int64, change string)
 }
 
@@ -138,11 +141,25 @@ func (s *Store) Ingest(e alertsource.Event) error {
 		r, _ := json.Marshal(subjects[0])
 		ref = string(r)
 	}
+	window := s.window(context.Background())
+	if a.WindowSec != nil { // a rule's own window beats the pref
+		window = time.Duration(*a.WindowSec) * time.Second
+	}
+	coalesceKey := alertsource.Clean(a.CoalesceKey, 200)
 	var seq int64
-	created := false
+	var changes []change
 	err := s.DB.Writer.Submit(context.Background(), "alert_ingest", func(ctx context.Context, tx *sql.Tx) error {
+		changes = nil
+		target := id
+		foldID, foldSev, folded, err := fold(ctx, tx, coalesceKey, e.AtMS, window)
+		if err != nil {
+			return err
+		}
+		if folded {
+			target = foldID
+		}
 		r, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO alert_events(alert_id, dedupe_key, at_ms, kind, label, ref_json, correlation_id) VALUES (?,?,?,?,?,?,?)`,
-			id, dedupe, e.AtMS, e.Kind, alertsource.Clean(e.Kind, 80), ref, alertsource.Clean(e.CorrelationID, 120))
+			target, dedupe, e.AtMS, e.Kind, alertsource.Clean(e.Kind, 80), ref, alertsource.Clean(e.CorrelationID, 120))
 		if err != nil {
 			return err
 		}
@@ -153,17 +170,35 @@ func (s *Store) Ingest(e alertsource.Event) error {
 			return err
 		}
 		now := s.nowMS()
-		_, err = tx.ExecContext(ctx, `INSERT INTO alerts(alert_id,seq,kind,rule_id,severity,severity_base,needs_you,title,summary,source,icon,status,read,count,coalesce_key,
+		if folded {
+			if _, err = foldInto(ctx, tx, target, foldSev, a.Severity, a.NeedsYou, e.AtMS, now, seq); err != nil {
+				return err
+			}
+			kind := "state"
+			if sevRank(a.Severity) > sevRank(foldSev) {
+				kind = "updated"
+			}
+			changes = append(changes, change{target, kind, seq})
+		} else {
+			_, err = tx.ExecContext(ctx, `INSERT INTO alerts(alert_id,seq,kind,rule_id,severity,severity_base,needs_you,title,summary,source,icon,status,read,count,coalesce_key,
  first_at_ms,last_at_ms,primary_json,subjects_json,escalate_at_ms,version,created_ms,updated_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,'active',0,1,?,?,?,?,?,?,1,?,?)`,
-			id, seq, e.Kind, deref(res.RuleID), a.Severity, a.Severity, boolInt(a.NeedsYou),
-			alertsource.Clean(a.Title, alertsapi.TitleMax), alertsource.Clean(a.Summary, alertsapi.SummaryMax),
-			alertsource.Clean(e.Source, 64), a.Icon, alertsource.Clean(a.CoalesceKey, 200),
-			e.AtMS, e.AtMS, primary, string(sj), escalateAt, now, now)
-		created = err == nil
+				id, seq, e.Kind, deref(res.RuleID), a.Severity, a.Severity, boolInt(a.NeedsYou),
+				alertsource.Clean(a.Title, alertsapi.TitleMax), alertsource.Clean(a.Summary, alertsapi.SummaryMax),
+				alertsource.Clean(e.Source, 64), a.Icon, coalesceKey,
+				e.AtMS, e.AtMS, primary, string(sj), escalateAt, now, now)
+			if err != nil {
+				return err
+			}
+			changes = append(changes, change{id, "created", seq})
+		}
+		woken, err := s.wakeDeferredOnRef(ctx, tx, subjects, now)
+		changes = append(changes, woken...)
 		return err
 	})
-	if err == nil && created && s.OnChange != nil {
-		s.OnChange(id, seq, "created")
+	if err == nil && s.OnChange != nil {
+		for _, c := range changes {
+			s.OnChange(c.id, c.seq, c.kind)
+		}
 	}
 	return err
 }

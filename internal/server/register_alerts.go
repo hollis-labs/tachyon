@@ -40,16 +40,24 @@ func startAlerts(ctx context.Context, s *Server, db *localstore.Store) {
 	if len(problems) > 0 {
 		slog.Warn("alerts: default rule pack problems", "problems", problems)
 	}
-	st := &alertstore.Store{DB: db, Pack: func() alertsrules.Pack { return pack }}
+	prefs := alertstore.SettingsPrefs{DB: db}
+	st := &alertstore.Store{DB: db, Pack: func() alertsrules.Pack { return pack }, Window: func(ctx context.Context) time.Duration {
+		if p, err := prefs.Get(ctx); err == nil && p != nil {
+			return time.Duration(p.CoalesceWindowS) * time.Second
+		}
+		return alertstore.DefaultCoalesceWindow
+	}}
 	tz := time.Local.String()
 	if tz == "" || tz == "Local" {
 		tz = alertsDefaultZone
 	}
-	api := &alertstore.API{Store: st, Prefs: alertstore.SettingsPrefs{DB: db}, TZ: tz}
+	api := &alertstore.API{Store: st, Prefs: prefs, TZ: tz}
 	s.ext.Store(alertsKey, api)
 	if !forgeStubsOn() {
 		s.ext.Store(stateWrapKey, func(next http.Handler) http.Handler { return api.StateCompat(alertsapi.StatePrefix, next) })
 	}
+	// AL3: snooze and defer wake-ups and escalation, on the server clock.
+	go st.Maintain(ctx, func(err error) { slog.Warn("alerts: maintenance failed", "err", err) })
 	go func() {
 		t := time.NewTicker(alertsPruneEvery)
 		defer t.Stop()
