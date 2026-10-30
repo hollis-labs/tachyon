@@ -63,9 +63,10 @@ export function PlannerFrame({ active, onLens, counts, portfolio, needYou, fresh
           <Button variant="outline" size="sm" onClick={onBack} className="sm:hidden">‹ {TEXT.back}</Button>
         )}
         <h1 className="font-mono text-caption font-semibold uppercase tracking-label max-sm:hidden">{TEXT.appName}</h1>
-        <Button variant="outline" size="sm" onClick={onPalette} className="min-w-0 justify-start font-normal text-fg-muted max-sm:flex-1 sm:w-80">
-          <span className="truncate">{TEXT.searchPlaceholder}</span>
-          <Kbd className="ml-auto">/</Kbd>
+        <Button variant="outline" size="sm" onClick={onPalette} className="min-w-0 justify-start font-normal text-fg-muted sm:w-80">
+          <span className="truncate max-sm:hidden">{TEXT.searchPlaceholder}</span>
+          <span className="sm:hidden">{TEXT.searchShort}</span>
+          <Kbd className="ml-auto max-sm:hidden">/</Kbd>
         </Button>
         <span className="flex-1" />
         <span className="text-label text-fg-muted max-sm:hidden">{fresh}</span>
