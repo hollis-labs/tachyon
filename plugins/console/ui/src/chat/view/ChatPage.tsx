@@ -28,6 +28,13 @@ export function ChatPage() {
   // A thread the list does not know yet (deep link, or just created) is looked up once it loads.
   useEffect(() => { if (opened && threads?.some((t) => t.id === opened.id)) setOpened(null) }, [threads, opened])
 
+  // On a wide screen /chat opens the most recent conversation; below that the list stays the landing view.
+  useEffect(() => {
+    if (threadId || !threads?.length) return
+    if (typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 1024px)').matches) return
+    navigate(`/chat/${encodeURIComponent(threads[0].id)}`, { replace: true })
+  }, [threadId, threads, navigate])
+
   const newChatActions = useMemo<OverflowAction[]>(
     () => (agents ?? []).map((a) => ({
       label: a.display_name,
@@ -49,6 +56,7 @@ export function ChatPage() {
       onRetryThreads={retry}
       activeThread={active}
       onSelectThread={select}
+      onBack={() => navigate('/chat')}
       newChatActions={newChatActions}
     >
       {active && <ThreadConversation key={active.id} thread={active} />}

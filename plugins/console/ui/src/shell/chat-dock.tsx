@@ -42,18 +42,19 @@ export function ChatDockTrigger() {
 
 function ChatTrigger({ dock }: { dock: ChatDockApi }) {
   const unread = useChatUnread()
+  const shown = unread > 99 ? '99+' : String(unread)
   return (
     <button
       type="button"
       data-chat-trigger=""
-      aria-label={unread > 0 ? `Chat, ${unread} unread` : 'Chat'}
+      aria-label={unread > 0 ? `Chat, ${shown} unread` : 'Chat'}
       aria-haspopup="dialog"
       aria-expanded={dock.open}
       onClick={() => (dock.open ? dock.closeChat() : dock.openChat())}
       className={`relative flex h-9 w-9 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warning ${dock.open ? 'bg-accent text-foreground' : ''}`}
     >
       <MessageSquare aria-hidden="true" className="h-4 w-4" />
-      {unread > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-[14px] border border-warning/50 bg-bg px-1 text-center font-mono text-[9px] leading-[12px] text-warning">{unread}</span>}
+      {unread > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-[14px] border border-warning/50 bg-bg px-1 text-center font-mono text-[9px] leading-[12px] text-warning">{shown}</span>}
     </button>
   )
 }

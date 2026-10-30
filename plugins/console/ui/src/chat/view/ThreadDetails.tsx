@@ -68,6 +68,19 @@ export function ThreadDetails({ thread }: { thread: ChatThread | null }) {
           { label: 'Thread', value: <span className="break-all font-mono dash-caption">{thread.id}</span> },
         ]}
       />
+      {thread.sessions && thread.sessions.length > 1 && (
+        <section aria-label="Earlier sessions" className="space-y-1.5">
+          <h3 className="font-mono dash-caption uppercase tracking-label text-fg-faint">Earlier sessions</h3>
+          <ul className="space-y-1.5 text-caption text-fg">
+            {thread.sessions.slice(1, 8).map((s) => (
+              <li key={s.ref} className="flex justify-between gap-2">
+                <span className="min-w-0 truncate">{s.title || s.ref}</span>
+                <span className="shrink-0 text-fg-muted">{[s.lastAt > 0 ? ago(s.lastAt) : '', s.unread > 0 ? `${s.unread} unread` : ''].filter(Boolean).join(' · ')}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <Context ctx={ctx} />
     </div>
   )
