@@ -84,7 +84,7 @@ export class TachyonPlannerClient implements PlannerClient {
   plannerDefer = (id: string, rev: number, note?: string) => this.send<PlannerItem>(`/decisions/${uuid(id)}/defer`, { note, expected_revision: revision(rev) })
   plannerReopen = (id: string, rev: number) => this.send<PlannerItem>(`/decisions/${uuid(id)}/reopen`, { expected_revision: revision(rev) })
   plannerInboxPromote = (id: string, to_db: PlannerDb, rev: number, targetId: string, fields?: Record<string, unknown>) => this.send<{ inbox: PlannerItem; item: PlannerItem }>(`/inbox/${uuid(id)}/promote`, { to_db, target_id: uuid(targetId), fields, expected_revision: revision(rev) })
-  plannerPin = (db: PlannerDb, id: string, pinned: boolean, rev: number) => this.send<PlannerItem>(`${dbPath(db)}/${encodeURIComponent(id)}/pin`, { pinned, expected_revision: revision(rev) }, 'PUT')
+  plannerPin = (db: PlannerDb, id: string, pinned: boolean, rev: number) => this.send<{ item: { id: string; db: string; rev: number; pinned: boolean; pinned_at?: string } }>(`${dbPath(db)}/${encodeURIComponent(id)}/pin`, { pinned, expected_revision: revision(rev) }, 'PUT')
   plannerInboxDismiss = (id: string, rev: number, note?: string) => this.send<PlannerItem>(`/inbox/${uuid(id)}/dismiss`, { note, expected_revision: revision(rev) })
   async plannerTaskTitles(ids: string[], signal?: AbortSignal): Promise<Record<string, PlannerTaskBrief | null>> {
     const unique = [...new Set(ids)]
