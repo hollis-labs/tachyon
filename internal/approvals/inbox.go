@@ -224,6 +224,10 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		i.access(w, r)
 		return
 	}
+	if r.Method == http.MethodPost && path == "/batch/resolve" {
+		i.batchResolve(w, r, participant, session)
+		return
+	}
 	if r.Method == http.MethodPost && path == "/secrets" {
 		i.submitSecret(w, r, participant, session)
 		return
