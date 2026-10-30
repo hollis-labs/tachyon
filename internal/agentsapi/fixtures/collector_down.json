@@ -1,0 +1,32 @@
+{
+ "collecting": false,
+ "sessions": 10,
+ "last_event_at": 1793321580000,
+ "strategy": "snapshot",
+ "sources": {
+  "tether": {
+   "state": "unreachable",
+   "detail": "connection refused; retrying in 30s"
+  },
+  "chimera": {
+   "state": "polling",
+   "detail": ""
+  }
+ },
+ "dropped_output_frames": 0,
+ "open_gaps": 1,
+ "retention": {
+  "last_run_at": 1793321700000,
+  "rows_pruned": 1000
+ },
+ "bus_topics": {
+  "deploy": "off",
+  "restart": "off",
+  "task": "off",
+  "failure": "off",
+  "host": "no_emitter",
+  "workstream": "no_emitter",
+  "lifecycle": "live",
+  "card": "off"
+ }
+}
