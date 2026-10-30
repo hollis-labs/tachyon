@@ -53,6 +53,7 @@ Everything is optional unless noted. Unset means the default in the last column.
 | `TETHER_ADDR`, `TETHER_TOKEN_FILE` (read scope) | Agents, Builder reads, Alerts Tether poll | collector and catalog index | those features stay off |
 | `TACHYON_AGENTS_COLLECTOR=0`, `TACHYON_CATALOG_INDEX=0` | Agents, Builder | turn the collector or catalog index off | on when Tether is set |
 | `TACHYON_TETHER_CONTROL_TOKEN_FILE` | Builder changes | a Tether token with `catalog.write` and sessions scope, never the approval passphrase | `builder/changes*` answer 503 |
+| `TACHYON_TETHER_CONTROL_ADDR` (optional) | Builder changes | where the change service reaches Tether, for example `http://127.0.0.1:8948`; used only by that client, reads keep `TETHER_ADDR` | `TETHER_ADDR` |
 | `TACHYON_CASTER_TOKEN_FILE`, `CASTER_URL` | File viewer V5 | read-scoped device token from `caster pair -scope read -label tachyon` | `caster://` refs answer 501 |
 | `TACHYON_APP_AGENT_CONFIG`, `TACHYON_CHAT_CLIENT_CONTEXT=1`, `TACHYON_CHAT_SYNC_INTERVAL` | Chat | Nanite config for the app agent; forward client context; sync period | app agent not configured; off; `5s` |
 | `TORQUE_URL`, `TORQUE_API_TOKEN` | Planner, Work, cards, Alerts | Torque base URL and token | `http://127.0.0.1:8990`, no token |

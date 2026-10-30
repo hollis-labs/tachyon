@@ -127,6 +127,9 @@ Migration `038_catalog_changes.sql` (take the next free number at merge).
    Tachyon service user can read (mode 0600), for example `~/.config/tachyon/tether-control.token`.
 2. Set `TACHYON_TETHER_CONTROL_TOKEN_FILE` to that path in the Tachyon unit's environment and restart Tachyon. The
    existing read token (`TetherTokenFile`) is unchanged and stays read-only.
+   Tether's plan-write routes (`POST /catalog/plans`) answer only on its local listener. When Tachyon reads Tether
+   over a remote `TETHER_ADDR`, set `TACHYON_TETHER_CONTROL_ADDR` (for example `http://127.0.0.1:8948`) so the control
+   client alone goes there; a token over plain http is accepted for loopback hosts only. Unset, it uses `TETHER_ADDR`.
 3. Tachyon never needs the catalog approval passphrase. The operator approves a submitted change on the host with the
    command shown in the change (`tether catalog approve <plan_id>`); Tachyon then applies it.
 4. Without the variable the change and launch routes answer 503 `changes_unavailable` and everything else works.
