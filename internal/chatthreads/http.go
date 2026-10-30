@@ -618,3 +618,23 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// MessageSeq returns the seq of a message in the thread, or an error when it is not there.
+func (h *Handler) MessageSeq(ctx context.Context, t chatapi.ThreadRef, messageRef string) (int64, error) {
+	if t.Source == chatapi.SourceApp {
+		if h.Agg.App == nil {
+			return 0, appagent.ErrNotConfigured
+		}
+		return h.Agg.App.Store.MessageSeq(ctx, t.ID, messageRef)
+	}
+	g, err := h.tetherGroup(ctx, t.String())
+	if err != nil {
+		return 0, err
+	}
+	for _, m := range tetherMessages(g) {
+		if m.ID == messageRef {
+			return m.Seq, nil
+		}
+	}
+	return 0, ErrNotFound
+}

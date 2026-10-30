@@ -52,3 +52,7 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   is published on each change. Agent verbs `chat.workspace.list` / `chat.workspace.get` read only items the operator shared,
   for app threads only (preset `chat-workspace-read`; no existing preset gained them). Shared items go to the app agent as
   `client_context` v1 on each turn only when `TACHYON_CHAT_CLIENT_CONTEXT=1` (off until Nanite confirms the field and its size limit).
+- T3 (topics, bookmarks): `GET/POST .../topics`, `DELETE .../topics/{id}`, `GET/POST .../bookmarks`, `DELETE .../bookmarks/{id}`.
+  `message_ref` must be a message of that thread (400 otherwise); a topic's `seq` is resolved server-side for click-to-jump.
+  POST bookmark is idempotent per (thread, message): 201 on create, 200 with the existing row on repeat (a repeat note updates it).
+  Caps: 200 topics, 500 bookmarks per thread (413 `limit_reached`). Agent verb `chat.topic.add` (app threads, preset `chat-topic-add`).

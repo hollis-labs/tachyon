@@ -35,6 +35,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/chatthreads"
+	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -115,6 +116,7 @@ type Server struct {
 	appAgent         *appagent.Service
 	chatThreads      *chatthreads.Handler
 	chatWorkspace    *chatworkspace.Handler
+	chatTopics       *chattopics.Handler
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
@@ -265,6 +267,14 @@ func (s *Server) Start(ctx context.Context) error {
 			_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventWorkspace, map[string]any{"op": op, "id": id})
 		},
 	}
+	s.chatTopics = &chattopics.Handler{
+		Store:      &chattopics.Store{DB: store},
+		Exists:     func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		MessageSeq: s.chatThreads.MessageSeq,
+		Published: func(ctx context.Context, thread, typ, op, id string) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, map[string]any{"op": op, "id": id})
+		},
+	}
 	if s.appAgent != nil && s.cfg.ChatClientContext {
 		s.appAgent.ClientContext = func(ctx context.Context, id string) any {
 			cc, err := ws.ClientContextFor(ctx, chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
@@ -411,8 +421,15 @@ func (s *Server) Routes() http.Handler {
 			if s.chatWorkspace != nil {
 				chatTools = &dataverbs.ChatWorkspace{Store: s.chatWorkspace.Store, Thread: s.chatWorkspace.Exists}
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools))
+			var topicTools *dataverbs.ChatTopics
+			if s.chatTopics != nil {
+				topicTools = &dataverbs.ChatTopics{Store: s.chatTopics.Store, Thread: s.chatTopics.Exists, MessageSeq: s.chatTopics.MessageSeq,
+					Published: func(ctx context.Context, thread, op, id string) {
+						_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventTopic, map[string]any{"op": op, "id": id})
+					}}
+			}
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools))
 		}
 	}
 	if s.store != nil {
@@ -505,6 +522,13 @@ func (s *Server) Routes() http.Handler {
 	if s.chatThreads != nil {
 		real := s.chatThreads.Mux()
 		for _, route := range chatthreads.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatTopics != nil {
+		real := s.chatTopics.Mux()
+		for _, route := range chattopics.Routes {
 			method, path, _ := strings.Cut(route, " ")
 			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
 		}

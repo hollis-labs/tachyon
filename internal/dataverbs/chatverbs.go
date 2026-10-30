@@ -12,6 +12,7 @@ import (
 	"github.com/hollis-labs/libs/core/util/svcerr"
 	"github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
+	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 )
 
@@ -172,4 +173,65 @@ func chatError(err error) error {
 		return svcerr.New(svcerr.CodeNotFound, "No such shared workspace item.")
 	}
 	return svcerr.New(svcerr.CodeUnavailable, "The chat workspace is unavailable.")
+}
+
+// ChatTopics is what chat.topic.add needs: the topics store, a thread check and a message resolver.
+type ChatTopics struct {
+	Store      *chattopics.Store
+	Thread     func(ctx context.Context, ref string) error
+	MessageSeq func(ctx context.Context, ref chatapi.ThreadRef, messageRef string) (int64, error)
+	Published  func(ctx context.Context, thread, op, id string)
+}
+
+type chatTopicAdd struct {
+	ThreadRef  string `json:"thread_ref"`
+	Title      string `json:"title"`
+	MessageRef string `json:"message_ref"`
+}
+
+func chatTopicVerbs() []Verb {
+	return []Verb{{Name: "chat.topic.add", Mutates: true, Description: "Add a topic to an app chat thread (thread_ref looks like app:<id>): a short title that points at one message so the operator can jump back to it. message_ref is a message id from the thread. A thread holds at most 200 topics. The operator can delete any topic.",
+		InputSchema: inputSchema(reflect.TypeFor[chatTopicAdd](), []string{"thread_ref", "title", "message_ref"})}}
+}
+
+func invokeChatTopic(ctx context.Context, c *ChatTopics, name string, raw json.RawMessage, principal auth.Principal) (json.RawMessage, error) {
+	if c == nil || c.Store == nil {
+		return nil, svcerr.New(svcerr.CodeUnavailable, "Chat topics are not enabled on this host.")
+	}
+	if name != "chat.topic.add" {
+		return nil, denied()
+	}
+	var q chatTopicAdd
+	if err := decode(raw, &q); err != nil {
+		return nil, err
+	}
+	t, err := chatapi.ParseRef(q.ThreadRef)
+	if err != nil || t.Source != chatapi.SourceApp {
+		return nil, invalid("thread_ref must be an app chat thread such as app:<id>.")
+	}
+	if c.Thread != nil && c.Thread(ctx, t.String()) != nil {
+		return nil, svcerr.New(svcerr.CodeNotFound, "No such chat thread.")
+	}
+	var seq *int64
+	if c.MessageSeq != nil {
+		n, err := c.MessageSeq(ctx, t, q.MessageRef)
+		if err != nil {
+			return nil, invalid("message_ref is not a message of that thread.")
+		}
+		seq = &n
+	}
+	topic, err := c.Store.AddTopic(ctx, t.String(), q.Title, q.MessageRef, seq, "agent")
+	switch {
+	case errors.Is(err, chattopics.ErrLimit):
+		return nil, svcerr.New(svcerr.CodeConflict, "This chat already has 200 topics.")
+	case errors.Is(err, chattopics.ErrInvalid):
+		return nil, invalid("A topic needs a title of 1 to 200 characters and a message_ref.")
+	case err != nil:
+		return nil, svcerr.New(svcerr.CodeUnavailable, "Chat topics are unavailable.")
+	}
+	if c.Published != nil {
+		c.Published(ctx, t.String(), "add", topic.ID)
+	}
+	slog.Info("chat topic added", "principal", principal.ID, "thread", t.String(), "topic", topic.ID)
+	return json.Marshal(topic)
 }
