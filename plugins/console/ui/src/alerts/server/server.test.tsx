@@ -138,7 +138,7 @@ describe('ServerAlertHost', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
     const tray = screen.getByRole('dialog', { name: 'Alerts' })
     expect(within(tray).getByText('Deploy failed')).toBeTruthy()
-    expect(within(tray).getByText(/Alerts from torque are not updating/)).toBeTruthy()
+    expect(within(tray).getByText(/Alerts from Torque are not updating/)).toBeTruthy()
     expect(within(tray).getByText('Needs you')).toBeTruthy()
     await act(async () => fireEvent.click(within(tray).getByRole('button', { name: /Mark all read/ })))
     expect(client.bulk).toHaveBeenCalledWith('read', { ids: ['al_1'] })

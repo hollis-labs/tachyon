@@ -100,7 +100,7 @@ export function AlertTray() {
       )}
       {!!c.feed?.sourcesDown?.length && (
         <p role="status" className="border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">
-          Alerts from {c.feed.sourcesDown.join(', ')} are not updating. Other alerts are current.
+          Alerts from {c.feed.sourcesDown.map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')} are not updating. Other alerts are current.
         </p>
       )}
       {c.error && <p role="status" className="border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">{c.error}</p>}
