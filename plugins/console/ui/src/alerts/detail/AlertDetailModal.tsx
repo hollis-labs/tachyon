@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Input, Pill, Textarea } from '@hollis-labs/design-components'
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Pill, Textarea } from '@hollis-labs/design-components'
 import { X } from 'lucide-react'
 import { ago } from '@console/lib/agent-activity'
 import { Linkified } from '../../autolink'
@@ -212,7 +212,7 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
             ))}
             <li className="flex gap-3 font-mono text-xs text-fg">
               <span className="w-16 shrink-0 text-fg-muted">{ago(alert.ts, now)}</span>
-              <span>{alert.kind} (this alert)</span>
+              <span>{humanKind(alert.kind)} (this alert)</span>
             </li>
           </ol>
         </section>
@@ -240,7 +240,7 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
           ) : runner.notice ? (
             <span role="status" className="text-success">{runner.notice}</span>
           ) : (
-            <span className="text-fg-muted">{specs.map((s) => `${s.shortcut.toUpperCase()} ${s.label.toLowerCase()}`).join(' · ')} · Esc close</span>
+            <span className="hidden text-fg-muted md:inline">{specs.map((s) => `${s.shortcut.toUpperCase()} ${s.label.toLowerCase()}`).join(' · ')} · Esc close</span>
           )}
           {closed && (
             <Button type="button" variant="outline" size="xs" onClick={() => void runner.restore()} className={`ml-3 ${MONO}`}>
@@ -253,6 +253,12 @@ export function AlertDetail({ alert, status, snoozeUntil, resolution, onClose, a
   )
 }
 
+/** 'approval.requested' -> 'Approval requested'. */
+const humanKind = (kind: string) => {
+  const t = kind.replace(/[._]/g, ' ').trim()
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 const specOf = (specs: AlertActionSpec[], id: AlertActionId): AlertActionSpec => specs.find((s) => s.id === id) ?? { id, label: id, intent: 'neutral', shortcut: '' }
 
 function TimelineRow({ e, mapper, now }: { e: ConsoleEvent; mapper: AlertMapper; now: number }) {
@@ -260,15 +266,20 @@ function TimelineRow({ e, mapper, now }: { e: ConsoleEvent; mapper: AlertMapper;
   return (
     <li className="flex gap-3 font-mono text-xs text-fg-secondary">
       <span className="w-16 shrink-0 text-fg-muted">{ago(e.ts, now)}</span>
-      <span className="min-w-0 break-words">{m?.title ?? e.kind}</span>
+      <span className="min-w-0 break-words">{m?.title ?? humanKind(e.kind)}</span>
     </li>
   )
 }
 
 function ActionBar({ specs, onPick, disabled, active, pending }: { specs: AlertActionSpec[]; onPick: (s: AlertActionSpec) => void; disabled: boolean; active: Panel; pending: string | null }) {
+  // Approve and Deny are the visible decision; everything else lives under More. An alert with no
+  // decision shows its first action.
+  const decision = specs.filter((s) => s.id === 'approve' || s.id === 'deny')
+  const visible = decision.length ? decision : specs.slice(0, 1)
+  const more = specs.filter((s) => !visible.includes(s))
   return (
     <div role="toolbar" aria-label="Alert actions" className="flex flex-wrap items-center gap-2 px-4 py-3">
-      {specs.map((s) => (
+      {visible.map((s) => (
         <Button
           key={s.id}
           type="button"
@@ -278,12 +289,21 @@ function ActionBar({ specs, onPick, disabled, active, pending }: { specs: AlertA
           aria-pressed={active === s.id}
           aria-keyshortcuts={s.shortcut}
           onClick={() => onPick(s)}
-          className={MONO}
         >
           {pending === s.id ? `${s.label}...` : s.label}
-          {s.confirm && <span aria-label="requires identity confirmation" className="ml-1 opacity-70">*</span>}
+          {s.confirm && <span className="sr-only"> (requires identity confirmation)</span>}
         </Button>
       ))}
+      {more.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" disabled={disabled} aria-label="More actions" />}>More</DropdownMenuTrigger>
+          <DropdownMenuContent aria-label="More actions" align="start" data-dashboard-shape="square" className="w-40">
+            {more.map((s) => (
+              <DropdownMenuItem key={s.id} onClick={() => onPick(s)}>{pending === s.id ? `${s.label}...` : s.label}</DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
