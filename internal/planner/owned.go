@@ -135,7 +135,7 @@ var nativeStatuses = map[string][]string{
 	"priorities":  {"proposed", "ready", "approved", "paused", "done", "archived", "draft", "active", "achieved"},
 	"workstreams": {"draft", "active", "paused", "closed", "archived"},
 	"roadmap":     {"draft", "planned", "active", "completed", "deferred", "cancelled", "archived"},
-	"ideas":       {"draft", "exploring", "accepted", "rejected", "archived"},
+	"ideas":       {"draft", "exploring", "accepted", "rejected", "promoted", "archived"},
 	"decisions":   {"proposed", "accepted", "rejected", "superseded", "archived"},
 	"risks":       {"open", "mitigating", "accepted", "resolved", "archived"},
 	"inbox":       {"new", "triaged", "archived"},
@@ -249,7 +249,7 @@ func View(r objects.Record) Item {
 }
 
 func typedFields(db string) []string {
-	base := []string{"project_id"}
+	base := []string{"project_id", "pinned", "pinned_at"}
 	if db != "workstreams" {
 		base = append(base, "workstream_id")
 	}
@@ -262,7 +262,7 @@ func typedFields(db string) []string {
 	case "roadmap":
 		base = append(base, "outcome", "strategic_priority_id", "plan_id", "epic_id", "starts_at", "ends_at")
 	case "priorities":
-		base = append(base, "outcome", "success_criteria", "starts_at", "ends_at")
+		base = append(base, "outcome", "success_criteria", "starts_at", "ends_at", "area", "horizon", "done_summary")
 	case "ideas":
 		base = append(base, "hypothesis", "expected_outcome")
 	case "decisions":
@@ -338,6 +338,7 @@ func (s *Owned) Resolve(ctx context.Context, db, id string) (objects.Record, err
 }
 func (s *Owned) decorate(ctx context.Context, r objects.Record) Item {
 	row := View(r)
+	row["relations_count"] = len(array(row["relations"]))
 	if r.Kind == objects.InboxItemKind {
 		if receipt, err := s.Objects.GetPromotion(ctx, r.ID); err == nil {
 			if target, err := s.Objects.Get(ctx, receipt.TargetID); err == nil {
@@ -364,7 +365,7 @@ func (s *Owned) List(ctx context.Context, db string, filters map[string]string, 
 		v := s.decorate(ctx, r)
 		match := true
 		for k, want := range filters {
-			hit := fmt.Sprint(v[k]) == want
+			hit := fmt.Sprint(v[k]) == want || (k == "pinned" && want == "false" && v[k] == nil)
 			for _, x := range array(v[k]) {
 				if fmt.Sprint(x) == want {
 					hit = true
@@ -385,6 +386,14 @@ func (s *Owned) List(ctx context.Context, db string, filters map[string]string, 
 		key = "order"
 	}
 	sort.SliceStable(out, func(i, j int) bool {
+		if sortBy == "" && (out[i]["pinned"] == true || out[j]["pinned"] == true) {
+			if (out[i]["pinned"] == true) != (out[j]["pinned"] == true) {
+				return out[i]["pinned"] == true
+			}
+			if a, b := textField(out[i], "pinned_at"), textField(out[j], "pinned_at"); a != b {
+				return a < b
+			}
+		}
 		a, b := out[i][key], out[j][key]
 		if a == nil && b != nil {
 			return false
@@ -427,6 +436,9 @@ func definition(db string, row Item, base json.RawMessage) (json.RawMessage, err
 		return nil, fmt.Errorf("%w: native status required for %s", objects.ErrInvalid, db)
 	}
 	if err := validateDetails(row); err != nil {
+		return nil, err
+	}
+	if err := validatePortfolioFields(db, row); err != nil {
 		return nil, err
 	}
 	d := Item{}
@@ -508,7 +520,7 @@ func (s *Owned) Create(ctx context.Context, db, id string, fields Item, actor st
 	if id == "" {
 		return nil, fmt.Errorf("%w: caller-retained UUID required", objects.ErrInvalid)
 	}
-	for _, k := range append([]string{"rev", "legacy_id", "created", "updated", "comments", "author"}, approvalFields(db)...) {
+	for _, k := range append([]string{"rev", "legacy_id", "created", "updated", "comments", "author", "pinned_at", "relations"}, approvalFields(db)...) {
 		if _, ok := fields[k]; ok {
 			return nil, fmt.Errorf("%w: %s is server managed", objects.ErrInvalid, k)
 		}
@@ -534,17 +546,32 @@ func (s *Owned) Create(ctx context.Context, db, id string, fields Item, actor st
 }
 func (s *Owned) Patch(ctx context.Context, db, id string, rev int64, patch Item, actor string) (Item, error) {
 	db = CanonicalDB(db)
-	for _, k := range append([]string{"id", "rev", "legacy_id", "created", "updated", "author", "comments", "promoted_to"}, approvalFields(db)...) {
+	for _, k := range append([]string{"id", "rev", "legacy_id", "created", "updated", "author", "comments", "promoted_to", "pinned_at", "relations"}, approvalFields(db)...) {
 		if _, ok := patch[k]; ok {
 			return nil, fmt.Errorf("%w: %s is server managed", objects.ErrInvalid, k)
 		}
 	}
 	return s.change(ctx, db, id, rev, actor, func(row Item) error {
+		wasPinned := row["pinned"] == true
 		for k, v := range patch {
 			if v == nil {
 				delete(row, k)
 			} else {
 				row[k] = v
+			}
+		}
+		if v, ok := patch["pinned"]; ok {
+			on, isBool := v.(bool)
+			if v != nil && !isBool {
+				return fmt.Errorf("%w: pinned must be a boolean", objects.ErrInvalid)
+			}
+			if on {
+				if !wasPinned {
+					row["pinned_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+				}
+			} else {
+				delete(row, "pinned")
+				delete(row, "pinned_at")
 			}
 		}
 		if db == "decisions" {
@@ -734,15 +761,32 @@ func (s *Owned) Reorder(ctx context.Context, db string, items []OrderChange, act
 	return out, nil
 }
 func (s *Owned) Promote(ctx context.Context, id string, rev int64, toDB, targetID string, fields Item, actor string) (Item, error) {
+	return s.promote(ctx, "inbox", id, rev, toDB, targetID, fields, actor)
+}
+
+// PromoteIdea mirrors the inbox promote for ideas: themes, roadmap items or decisions. The idea
+// becomes promoted in the same transaction as the target's creation, and the receipt links back.
+func (s *Owned) PromoteIdea(ctx context.Context, id string, rev int64, toDB, targetID string, fields Item, actor string) (Item, error) {
 	toDB = CanonicalDB(toDB)
-	if toDB == "inbox" {
+	if toDB != "priorities" && toDB != "roadmap" && toDB != "decisions" {
+		return nil, fmt.Errorf("%w: an idea promotes to themes, roadmap or decisions", objects.ErrInvalid)
+	}
+	if targetID == "" {
+		targetID = uuid.NewString() // a retry that must replay safely passes its own target_id
+	}
+	return s.promote(ctx, "ideas", id, rev, toDB, targetID, fields, actor)
+}
+
+func (s *Owned) promote(ctx context.Context, fromDB, id string, rev int64, toDB, targetID string, fields Item, actor string) (Item, error) {
+	toDB = CanonicalDB(toDB)
+	if toDB == "inbox" || toDB == "ideas" && fromDB == "ideas" {
 		return nil, objects.ErrInvalid
 	}
 	kind, ok := databaseKinds[toDB]
 	if !ok {
 		return nil, objects.ErrInvalid
 	}
-	source, err := s.Resolve(ctx, "inbox", id)
+	source, err := s.Resolve(ctx, fromDB, id)
 	if err != nil {
 		return nil, err
 	}
@@ -785,6 +829,11 @@ func (s *Owned) Promote(ctx context.Context, id string, rev int64, toDB, targetI
 	result, err := s.Objects.Promote(ctx, objects.PromotionRequest{SourceID: source.ID, ExpectedRevision: rev, TargetID: targetID, TargetKind: kind, Overrides: b, TriageSource: true}, actor)
 	if err != nil {
 		return nil, err
+	}
+	if fromDB == "ideas" {
+		idea, created := s.decorate(ctx, result.Source), View(result.Target)
+		idea["db"], created["db"] = "ideas", PublicDB(toDB)
+		return Item{"receipt": Item{"from": Item{"db": "ideas", "id": result.Source.ID}, "to": Item{"db": PublicDB(toDB), "id": result.Target.ID}, "at": result.Receipt.CreatedAt.Format(time.RFC3339)}, "idea": idea, "created": created}, nil
 	}
 	return Item{"inbox": s.decorate(ctx, result.Source), "item": View(result.Target)}, nil
 }
