@@ -88,3 +88,25 @@ reserved in `forgeapi.StepUpLevels`; nothing here adds a guard, audit row or rat
   key with a different body is 409 `idempotency_conflict`. Only a merge or a `head_moved` answer is stored, so a refusal can be retried.
 - `audit_class: "lifecycle"` is the contract's label only. No audit row is written (deferred to CW-20261030-0082), and `links_done` is 0 until
   the agent link table exists (PR7).
+
+## Assign agent (PR7, real)
+
+`POST /forge/repos/{host}/{owner}/{name}/pulls/{num}/assign-agent` (explicit mount, behind the operator route guard,
+stands down under `TACHYON_FORGE_STUBS=1`). Body `{agent_id, task, note?, checks?, force?}`; unknown fields are refused.
+Answer `{data:{link, replayed, reminded?}}`.
+
+- The pull request must be open on GitHub (`409 pr_not_open`). The agent comes from Tether's catalog
+  (`404 agent_not_found`; `422 agent_not_addressable` when it has no URN).
+- One link row per `pr-assign:<pr_key>:<agent>:<task>` (table `pr_agent_links`). Steps are recorded on it:
+  `pending` -> `assigned` (GitHub assignee tried) -> `sent` (Tether message accepted). A failed send leaves status
+  `failed` with `error`; repeating the call does only the message. A call on a `sent` link is a `replayed` no-op;
+  `force:true` sends a reminder (`reminders` + 1, `reminded:true`).
+- GitHub login: app setting `forge.agent_logins` (`{agent_id: login}`), else the agent id if that GitHub user exists,
+  else none (`forge_assigned:false`, not an error).
+- The message is a `notice` to the agent URN, subject `[PR] <Task label>: owner/repo#n`, readable text and a fenced
+  `console-pr-assignment` block (`console.pr_assignment/v1`; `checks_failing` for `fix_checks`). It is sent with the
+  token in `TACHYON_TETHER_MESSAGE_TOKEN_FILE` (else `TETHER_TOKEN_FILE`) which needs the Tether `messages` scope.
+  The Tether envelope has no idempotency field, so repeat protection is the link row, not delivery.
+- Open links appear as `kind:"agent"` entries in a pending row's `assignees` (`urn`, `task`, `link_status`), and
+  `pr.updated{changed:["assignees"]}` is published. A merge through PR5 sets the PR's open links to `done`
+  (`links_done`). Agents are told not to merge; that is guidance, not a technical block.
