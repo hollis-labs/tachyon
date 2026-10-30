@@ -84,7 +84,7 @@ reserved in `forgeapi.StepUpLevels`; nothing here adds a guard, audit row or rat
   If the outcome is unknown (outage, odd answer, 405) the PR is read again and a merged PR is reported as merged. Success refreshes the
   PR index (which publishes `pr.merged`), settles the `pr-inbox:` triage entry and returns `{merged, sha, message, method, audit_class,
   settled, links_done}`. `delete_branch` is a best-effort delete after the merge, only for a branch in the same repository.
-- Idempotency: the answer for a key is stored 24 hours (`forge_idempotency`, migration 044); the same key and body returns it, the same
+- Idempotency: the answer for a key is stored 24 hours (`forge_idempotency`, migration 045); the same key and body returns it, the same
   key with a different body is 409 `idempotency_conflict`. Only a merge or a `head_moved` answer is stored, so a refusal can be retried.
 - `audit_class: "lifecycle"` is the contract's label only. No audit row is written (deferred to CW-20261030-0082). `links_done` counts the agent links closed by
   the merge (PR7).
