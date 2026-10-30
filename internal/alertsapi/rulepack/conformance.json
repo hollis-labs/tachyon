@@ -387,7 +387,8 @@
         "subjects": [],
         "severity": "info",
         "payload": {
-          "subject": "Deploy ok?",
+          "state": "dead_letter",
+          "reason": "recipient gone",
           "from": "agent-a"
         },
         "actions": []
@@ -398,7 +399,7 @@
           "severity": "warning",
           "icon": "message",
           "title": "Message message.failed",
-          "summary": "Deploy ok?",
+          "summary": "dead_letter: recipient gone",
           "coalesce_key": "msgfail:agent-a",
           "escalate": null,
           "needs_you": false

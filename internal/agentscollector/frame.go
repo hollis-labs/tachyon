@@ -36,6 +36,7 @@ type Frame struct {
 	PendingQuestion                                                *bool
 	Tool                                                           string // sanitized tool name only
 	Reason                                                         string // gap or end reason
+	DeliveryState                                                  string // message frames: payload delivery.state (retry_scheduled, dead_letter, expired, ...)
 
 	Gap          bool // a gap frame: events were missed
 	Synchronized bool // the catch-up is over, live frames follow
@@ -161,6 +162,10 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			AgentName       string `json:"agent_name"`
 			ParentSession   string `json:"parent_session_id"`
 			ReplacedBy      string `json:"replaced_by"`
+			DeliveryState   string `json:"delivery_state"`
+			Delivery        struct {
+				State string `json:"state"`
+			} `json:"delivery"`
 		}
 		if json.Unmarshal(body, &p) == nil {
 			f.WorkState = clean(firstNonEmpty(p.To, p.WorkState), 40)
@@ -179,6 +184,7 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			f.ParentSession, f.ReplacedBy = clean(p.ParentSession, 128), clean(p.ReplacedBy, 128)
 			f.PendingApproval, f.PendingQuestion = p.PendingApproval, p.PendingQuestion
 			f.Tool = clean(p.Tool, 80)
+			f.DeliveryState = clean(firstNonEmpty(p.Delivery.State, p.DeliveryState), 40)
 			if f.Kind == "session.usage" && (p.In != nil || p.Out != nil) {
 				f.Usage = &[4]int64{val(p.In), val(p.Out), val(p.CacheRead), val(p.CacheWrite)}
 			}
