@@ -23,6 +23,8 @@ export interface AlertsController {
   restore: (id: string) => void
   /** Server alerts: close an alert as handled (an optional resolution text). */
   settle?: (id: string, resolution?: string) => void
+  /** Server alerts: hold an alert back until the thing it points at changes. */
+  deferUntilChange?: (id: string, ref: { kind: string; ref: string }) => void
   /** Server alerts only: connection to the alerts stream. Absent for the console-event feed. */
   feed?: { ready: boolean; status: 'live' | 'connecting' | 'reconnecting' | 'error'; sourcesDown?: string[]; retry?: () => void }
   /** Server alerts only: last failed write, plain text. */

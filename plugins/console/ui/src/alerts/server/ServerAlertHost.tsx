@@ -77,6 +77,7 @@ export function ServerAlertHost({ children, client: clientProp }: ServerAlertHos
         op(id, preset ? { op: 'snooze', preset } : { op: 'snooze', until_ms: until }, (a) => ({ ...a, status: 'snoozed', snooze_until_ms: until }))
       },
       settle: (id, resolution) => op(id, { op: 'settle', ...(resolution ? { resolution } : {}) }, (a) => ({ ...a, status: 'settled', resolution: resolution ?? 'Handled' })),
+      deferUntilChange: (id, ref) => op(id, { op: 'defer', until_ref_change: ref }, (a) => ({ ...a, status: 'deferred' })),
       restore: (id) => op(id, { op: 'reopen' }, (a) => ({ ...a, status: 'active', snooze_until_ms: null, wake_at_ms: null, resolution: '' })),
       expandedId,
       expand,
