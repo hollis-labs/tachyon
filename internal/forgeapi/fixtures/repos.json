@@ -1,0 +1,38 @@
+{
+  "hollis-labs/tachyon": {
+    "host": "github",
+    "owner": "hollis-labs",
+    "name": "tachyon",
+    "description": "tachyon repository",
+    "defaultBranch": "main",
+    "private": true,
+    "stars": 0,
+    "openIssues": 3,
+    "updatedAt": "2026-10-30T02:50:00Z",
+    "url": "https://github.example/hollis-labs/tachyon"
+  },
+  "hollis-labs/agent-os": {
+    "host": "github",
+    "owner": "hollis-labs",
+    "name": "agent-os",
+    "description": "agent-os repository",
+    "defaultBranch": "main",
+    "private": true,
+    "stars": 0,
+    "openIssues": 3,
+    "updatedAt": "2026-10-30T02:50:00Z",
+    "url": "https://github.example/hollis-labs/agent-os"
+  },
+  "hollis-labs/cerberus": {
+    "host": "github",
+    "owner": "hollis-labs",
+    "name": "cerberus",
+    "description": "cerberus repository",
+    "defaultBranch": "main",
+    "private": true,
+    "stars": 0,
+    "openIssues": 3,
+    "updatedAt": "2026-10-30T02:50:00Z",
+    "url": "https://github.example/hollis-labs/cerberus"
+  }
+}

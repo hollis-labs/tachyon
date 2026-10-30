@@ -68,3 +68,11 @@ health-check failure, workstream created) are not in the fixtures.
 - Not wired: the alert store (AL1) supplies `Sink` and `CursorStore`; nothing starts these loops yet. The
   Torque and Tether-poll adapters follow once AL1 lands. Bus events become kind `bus.<type>`; the default
   pack shows them through the catch-all until a rule targets them.
+
+## Console state compatibility (`/console/state`)
+
+The stub's `PUT /console/state/{key}` matches the console client's `HttpStateStore`: body `{type, until?, note?, resolution?}`
+for any key (the client also stores approval and bus event ids here), response `ItemState` with epoch-ms numbers
+(`snoozeUntil`, `updatedAt`). `until` is epoch ms or an RFC 3339 string. A key that is an alert id changes that alert;
+any other key is kept as its own state and listed by `GET /console/state[?prefix=]`. The real route is the PR2 store
+(#202); this is only the stub's mirror of it.

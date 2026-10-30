@@ -1,0 +1,380 @@
+{
+  "items": [
+    {
+      "pr_key": "github:hollis-labs/tachyon#201",
+      "ref": {
+        "repo": {
+          "host": "github",
+          "owner": "hollis-labs",
+          "name": "tachyon"
+        },
+        "number": 201
+      },
+      "title": "approvals: A1 queue index",
+      "author": {
+        "login": "octo-dev",
+        "avatarUrl": "https://avatars.example/octo-dev.png"
+      },
+      "assignees": [],
+      "state": "open",
+      "draft": false,
+      "reasons": [
+        "checks_failed",
+        "changes_requested",
+        "conflicting"
+      ],
+      "checks": {
+        "passed": 1,
+        "failed": 1,
+        "pending": 0,
+        "total": 2,
+        "failing": [
+          {
+            "name": "go",
+            "url": "https://github.example/hollis-labs/tachyon/runs/2010"
+          }
+        ]
+      },
+      "mergeable": "conflicting",
+      "head_sha": "0da8631e75cfa86e2506e6b076cceaa4a56f4aa3",
+      "updatedAt": "2026-10-30T01:00:00Z",
+      "additions": 420,
+      "deletions": 31,
+      "url": "https://github.example/hollis-labs/tachyon/pull/201",
+      "age_s": 7200,
+      "triage": {
+        "status": "active"
+      },
+      "cached": false,
+      "fetched_ms": 1793329170000
+    },
+    {
+      "pr_key": "github:hollis-labs/tachyon#202",
+      "ref": {
+        "repo": {
+          "host": "github",
+          "owner": "hollis-labs",
+          "name": "tachyon"
+        },
+        "number": 202
+      },
+      "title": "fileview: V1 file reads",
+      "author": {
+        "login": "builder-reviewer",
+        "avatarUrl": "https://avatars.example/builder-reviewer.png",
+        "isAgent": true
+      },
+      "assignees": [
+        {
+          "kind": "user",
+          "id": "chrispian",
+          "label": "chrispian"
+        }
+      ],
+      "state": "open",
+      "draft": false,
+      "reasons": [
+        "review_requested"
+      ],
+      "checks": {
+        "passed": 2,
+        "failed": 0,
+        "pending": 0,
+        "total": 2,
+        "failing": []
+      },
+      "mergeable": "mergeable",
+      "head_sha": "b9bde5dfabfb122d47d9d8b15ed443be34836f3a",
+      "updatedAt": "2026-10-30T02:00:00Z",
+      "additions": 210,
+      "deletions": 12,
+      "url": "https://github.example/hollis-labs/tachyon/pull/202",
+      "age_s": 3600,
+      "triage": {
+        "status": "active"
+      },
+      "cached": false,
+      "fetched_ms": 1793329170000
+    },
+    {
+      "pr_key": "github:hollis-labs/cerberus#55",
+      "ref": {
+        "repo": {
+          "host": "github",
+          "owner": "hollis-labs",
+          "name": "cerberus"
+        },
+        "number": 55
+      },
+      "title": "docs: forge plugin notes",
+      "author": {
+        "login": "octo-dev",
+        "avatarUrl": "https://avatars.example/octo-dev.png"
+      },
+      "assignees": [],
+      "state": "open",
+      "draft": true,
+      "reasons": [
+        "unassigned",
+        "stale"
+      ],
+      "checks": {
+        "passed": 0,
+        "failed": 0,
+        "pending": 0,
+        "total": 0,
+        "failing": []
+      },
+      "mergeable": "unknown",
+      "head_sha": "0789f6e56615fac323414c311549c5ffe106435d",
+      "updatedAt": "2026-10-21T03:00:00Z",
+      "additions": 40,
+      "deletions": 2,
+      "url": "https://github.example/hollis-labs/cerberus/pull/55",
+      "age_s": 777600,
+      "triage": {
+        "status": "active"
+      },
+      "cached": false,
+      "fetched_ms": 1793329170000
+    },
+    {
+      "pr_key": "github:hollis-labs/tachyon#203",
+      "ref": {
+        "repo": {
+          "host": "github",
+          "owner": "hollis-labs",
+          "name": "tachyon"
+        },
+        "number": 203
+      },
+      "title": "agents: A3 sessions API",
+      "author": {
+        "login": "planner",
+        "avatarUrl": "https://avatars.example/planner.png",
+        "isAgent": true
+      },
+      "assignees": [
+        {
+          "kind": "agent",
+          "id": "builder-reviewer",
+          "label": "builder-reviewer",
+          "urn": "msg://agent/agent-mux/builder-reviewer",
+          "task": "review",
+          "link_status": "sent"
+        }
+      ],
+      "state": "open",
+      "draft": false,
+      "reasons": [
+        "review_requested"
+      ],
+      "checks": {
+        "passed": 1,
+        "failed": 0,
+        "pending": 1,
+        "total": 2,
+        "failing": []
+      },
+      "mergeable": "mergeable",
+      "head_sha": "a134175223ed0061d7904adeef1792798e377011",
+      "updatedAt": "2026-10-30T02:30:00Z",
+      "additions": 900,
+      "deletions": 60,
+      "url": "https://github.example/hollis-labs/tachyon/pull/203",
+      "age_s": 1800,
+      "triage": {
+        "status": "active"
+      },
+      "cached": false,
+      "fetched_ms": 1793329170000
+    },
+    {
+      "pr_key": "github:hollis-labs/tachyon#204",
+      "ref": {
+        "repo": {
+          "host": "github",
+          "owner": "hollis-labs",
+          "name": "tachyon"
+        },
+        "number": 204
+      },
+      "title": "builder: B1 catalog index",
+      "author": {
+        "login": "planner",
+        "avatarUrl": "https://avatars.example/planner.png",
+        "isAgent": true
+      },
+      "assignees": [
+        {
+          "kind": "agent",
+          "id": "builder-reviewer",
+          "label": "builder-reviewer",
+          "urn": "msg://agent/agent-mux/builder-reviewer",
+          "task": "fix_checks",
+          "link_status": "failed"
+        }
+      ],
+      "state": "open",
+      "draft": false,
+      "reasons": [
+        "checks_failed"
+      ],
+      "checks": {
+        "passed": 0,
+        "failed": 1,
+        "pending": 0,
+        "total": 1,
+        "failing": [
+          {
+            "name": "go",
+            "url": "https://github.example/hollis-labs/tachyon/runs/2040"
+          }
+        ]
+      },
+      "mergeable": "mergeable",
+      "head_sha": "36f0ddbe5ebb0702f92398b3a4289583b6a93a57",
+      "updatedAt": "2026-10-30T01:30:00Z",
+      "additions": 300,
+      "deletions": 5,
+      "url": "https://github.example/hollis-labs/tachyon/pull/204",
+      "age_s": 5400,
+      "triage": {
+        "status": "active"
+      },
+      "cached": true,
+      "fetched_ms": 1793328800000
+    },
+    {
+      "pr_key": "github:hollis-labs/agent-os#9",
+      "ref": {
+        "repo": {
+          "host": "github",
+          "owner": "hollis-labs",
+          "name": "agent-os"
+        },
+        "number": 9
+      },
+      "title": "workers: heartbeat",
+      "author": {
+        "login": "octo-dev",
+        "avatarUrl": "https://avatars.example/octo-dev.png"
+      },
+      "assignees": [],
+      "state": "open",
+      "draft": false,
+      "reasons": [
+        "mentioned"
+      ],
+      "checks": {
+        "passed": 1,
+        "failed": 0,
+        "pending": 0,
+        "total": 1,
+        "failing": []
+      },
+      "mergeable": "unknown",
+      "head_sha": "476a1ba094e4dc83ffb3b240302759276ad4e7aa",
+      "updatedAt": "2026-10-29T03:00:00Z",
+      "additions": 18,
+      "deletions": 3,
+      "url": "https://github.example/hollis-labs/agent-os/pull/9",
+      "age_s": 86400,
+      "triage": {
+        "status": "snoozed",
+        "snooze_until": 1793336400000,
+        "by": "chrispian"
+      },
+      "cached": false,
+      "fetched_ms": 1793329170000
+    },
+    {
+      "pr_key": "github:hollis-labs/agent-os#10",
+      "ref": {
+        "repo": {
+          "host": "github",
+          "owner": "hollis-labs",
+          "name": "agent-os"
+        },
+        "number": 10
+      },
+      "title": "deploy: protected branch change",
+      "author": {
+        "login": "octo-dev",
+        "avatarUrl": "https://avatars.example/octo-dev.png"
+      },
+      "assignees": [],
+      "state": "open",
+      "draft": false,
+      "reasons": [
+        "review_requested"
+      ],
+      "checks": {
+        "passed": 1,
+        "failed": 0,
+        "pending": 0,
+        "total": 1,
+        "failing": []
+      },
+      "mergeable": "mergeable",
+      "head_sha": "ce2379282a92d3cefa2655500a2afa0273f0a51c",
+      "updatedAt": "2026-10-29T23:00:00Z",
+      "additions": 5,
+      "deletions": 5,
+      "url": "https://github.example/hollis-labs/agent-os/pull/10",
+      "age_s": 14400,
+      "triage": {
+        "status": "active"
+      },
+      "cached": false,
+      "fetched_ms": 1793329170000
+    },
+    {
+      "pr_key": "github:hollis-labs/tachyon#205",
+      "ref": {
+        "repo": {
+          "host": "github",
+          "owner": "hollis-labs",
+          "name": "tachyon"
+        },
+        "number": 205
+      },
+      "title": "planner: behind base",
+      "author": {
+        "login": "planner",
+        "avatarUrl": "https://avatars.example/planner.png",
+        "isAgent": true
+      },
+      "assignees": [],
+      "state": "open",
+      "draft": false,
+      "reasons": [
+        "review_requested"
+      ],
+      "checks": {
+        "passed": 1,
+        "failed": 0,
+        "pending": 0,
+        "total": 1,
+        "failing": []
+      },
+      "mergeable": "mergeable",
+      "head_sha": "5ddd419d803edaa32db4c8f49d9bed9b867f705c",
+      "updatedAt": "2026-10-29T03:00:00Z",
+      "additions": 77,
+      "deletions": 0,
+      "url": "https://github.example/hollis-labs/tachyon/pull/205",
+      "age_s": 86400,
+      "triage": {
+        "status": "active"
+      },
+      "cached": false,
+      "fetched_ms": 1793329170000
+    }
+  ],
+  "next_cursor": null,
+  "total": 8,
+  "cached": false,
+  "fetched_ms": 1793329170000,
+  "degraded": false
+}

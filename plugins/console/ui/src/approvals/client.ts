@@ -88,6 +88,8 @@ export interface ApprovalItem {
   request_snapshot: {
     kind: "approval" | "attention" | CardKind
     class?: "low" | "medium" | "high"
+    // false when the backend says this item cannot be decided in the browser.
+    approvable?: boolean
     // card.* requests carry their body in data and may list effects.
     data?: Record<string, unknown>
     effects?: { target: string; [key: string]: unknown }[]
@@ -220,7 +222,22 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       presenting.set(id, pending)
       return pending
     },
-    async decide(item: ApprovalItem, response: ApprovalResponse) {
+    async decide(item: ApprovalItem, response: ApprovalResponse, opts: { keepalive?: boolean } = {}) {
+      // A keepalive decision is sent while the page is closing: no time for the pre-check, so the
+      // server's expected_revision check is the guard.
+      if (opts.keepalive)
+        return request<ApprovalOutcome>(
+          `/items/${encodeURIComponent(item.item_id)}/resolve`,
+          {
+            method: "POST",
+            keepalive: true,
+            body: JSON.stringify({
+              expected_revision: item.revision,
+              presented_projection_revision: item.presented_projection_revision,
+              response,
+            }),
+          },
+        )
       // Compare to the exact projection the person reviewed; never silently
       // re-present newer content and carry their old decision onto it.
       const current = await get(item.item_id, true)
