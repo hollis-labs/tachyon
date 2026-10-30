@@ -6,9 +6,11 @@ import type { AgentState, PolicyTag } from './vocab'
 export const BUILDER_BASE = '/api/plugins/console/v1/builder'
 
 export interface Summary {
-  agents?: number
-  launches?: number
-  library?: Record<string, number>
+  agents?: { total: number; active: number; disabled: number; retired?: number | null }
+  launches?: { total: number; live?: number | null }
+  library?: { prompts: number; skills: number; tool_servers?: number | null; policies: number }
+  projects?: { total: number }
+  open_changes?: number
   catalog?: { observed_at?: number; source_status?: 'ok' | 'stale' | 'unreachable' }
   capabilities?: { retired?: boolean; one_step_save?: boolean; resolved_by?: string }
 }

@@ -12,3 +12,4 @@ describe('builder helpers', () => {
     expect(errorMessage(new BuilderError(500, 'x', 'boom'))).toBe('boom')
   })
 })
+

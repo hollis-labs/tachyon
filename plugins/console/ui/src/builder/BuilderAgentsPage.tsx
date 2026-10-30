@@ -45,7 +45,7 @@ export function BuilderAgentsPage() {
   const [summary] = useLoad(builderApi.summary, [])
   const [list, retry] = useLoad(() => builderApi.agents({ q: debounced, provider, state: state || undefined }), [debounced, provider, state])
   const counts = summary.status === 'ready' ? summary.data : undefined
-  const retiredShown = counts?.capabilities?.retired !== false
+  const retiredShown = counts?.capabilities?.retired === true
 
   const rows = list.status === 'ready' ? list.data.agents : []
   const providers = useMemo(() => [...new Set(rows.map((r) => r.provider).filter(Boolean))].sort(), [rows])
@@ -64,7 +64,7 @@ export function BuilderAgentsPage() {
         <p className="dash-support text-fg-muted">{DEFINITIONS_NOTE} <Link className="underline" to="/agents">Agents</Link>.</p>
       </header>
       <Segmented<BuilderTab> label="Builder areas" value="agents" onChange={() => undefined}
-        items={[{ value: 'agents', label: TAB_LABEL.agents, count: counts?.agents }, { value: 'launches', label: `${TAB_LABEL.launches} (soon)`, count: counts?.launches }, { value: 'library', label: `${TAB_LABEL.library} (soon)` }]} />
+        items={[{ value: 'agents', label: TAB_LABEL.agents, count: counts?.agents?.total }, { value: 'launches', label: `${TAB_LABEL.launches} (soon)`, count: counts?.launches?.total }, { value: 'library', label: `${TAB_LABEL.library} (soon)` }]} />
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
           <div className="flex flex-wrap gap-2 border-b border-border p-3">
