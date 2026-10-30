@@ -74,6 +74,7 @@ func main() {
 		AgentsStubs:                 os.Getenv("TACHYON_AGENTS_STUBS") == "1",
 		ChatClientContext:           os.Getenv("TACHYON_CHAT_CLIENT_CONTEXT") == "1",
 		ChatStubs:                   os.Getenv("TACHYON_CHAT_STUBS") == "1",
+		FileviewStubs:               os.Getenv("TACHYON_FILEVIEW_STUBS") == "1",
 		BuilderStubs:                os.Getenv("TACHYON_BUILDER_STUBS") == "1",
 		CardEffectsTorque:           os.Getenv("TACHYON_CARD_EFFECTS_TORQUE") == "1",
 		CardDeliveryFile:            os.Getenv("TACHYON_CARD_DELIVERY_FILE"),

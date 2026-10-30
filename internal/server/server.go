@@ -46,6 +46,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/internal/fileviewapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
@@ -68,6 +69,8 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// FileviewStubs mounts the fixture-backed file viewer contract (TACHYON_FILEVIEW_STUBS=1) for GUI development.
+	FileviewStubs bool
 	// BuilderStubs mounts the fixture-backed Builder and Registry contract (TACHYON_BUILDER_STUBS=1) for GUI development.
 	BuilderStubs bool
 	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
@@ -675,6 +678,13 @@ func (s *Server) Routes() http.Handler {
 		}
 		mux.Handle(chatapi.Prefix+"/", operator.RequireOperator(stub.Chat()))
 		mux.Handle(chatapi.TerminalPrefix+"/", operator.RequireOperatorReads(stub.Terminal()))
+	}
+	// File viewer contract stub (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. Every route needs an operator session, reads included, except the frame documents: a
+	// sandboxed iframe has an opaque origin and no cookie, so the single-use 256-bit id is the capability.
+	if s.cfg.FileviewStubs {
+		mux.Handle("GET "+fileviewapi.FramesPrefix, fileviewapi.Stub{}.FrameHandler())
+		mux.Handle(fileviewapi.Prefix+"/", operator.RequireOperatorReads(fileviewapi.Stub{}.Handler()))
 	}
 	// Builder + Registry contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below
 	// is unguarded. GETs are open; every write (changes, launch action, registry project patch) needs an operator session.
