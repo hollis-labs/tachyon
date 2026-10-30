@@ -30,13 +30,13 @@ type GitHub struct {
 	Base  string // default https://api.github.com
 	HTTP  *http.Client
 
-	mu        sync.Mutex
-	remaining int
-	resetMS   int64
-	known     bool
-	scopes    []string
-	etags     map[string]string
-	bodies    map[string][]byte
+	mu sync.Mutex
+	// rates is the last seen limit per GitHub bucket (X-RateLimit-Resource: core, search, ...). The search
+	// bucket is only 30 a minute, so it must never be read as the budget the rate floor guards.
+	rates  map[string]rateState
+	scopes []string
+	etags  map[string]string
+	bodies map[string][]byte
 }
 
 func (g *GitHub) base() string {
@@ -46,11 +46,18 @@ func (g *GitHub) base() string {
 	return "https://api.github.com"
 }
 
-// Rate reports the last seen rate limit; ok is false before the first response.
+type rateState struct {
+	remaining int
+	resetMS   int64
+}
+
+// Rate reports the last seen rate limit of the core API bucket, which is what the rate floor guards and the
+// status shows; ok is false before a core response. Search has its own small bucket and is tracked apart.
 func (g *GitHub) Rate() (remaining int, resetMS int64, ok bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.remaining, g.resetMS, g.known
+	r, ok := g.rates["core"]
+	return r.remaining, r.resetMS, ok
 }
 
 // Scopes are the OAuth scopes GitHub reported for the token (classic tokens only).
@@ -92,11 +99,21 @@ func (g *GitHub) get(ctx context.Context, path string, v any) error {
 	}
 	defer resp.Body.Close()
 	g.mu.Lock()
+	rateOut := false
 	if n, err := strconv.Atoi(resp.Header.Get("X-RateLimit-Remaining")); err == nil {
-		g.remaining, g.known = n, true
-		if reset, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
-			g.resetMS = reset * 1000
+		res := resp.Header.Get("X-RateLimit-Resource")
+		if res == "" {
+			res = "core"
 		}
+		if g.rates == nil {
+			g.rates = map[string]rateState{}
+		}
+		st := rateState{remaining: n}
+		if reset, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+			st.resetMS = reset * 1000
+		}
+		g.rates[res] = st
+		rateOut = n == 0 // this response's own bucket is empty
 	}
 	if s := resp.Header.Get("X-OAuth-Scopes"); s != "" {
 		g.scopes = nil
@@ -106,7 +123,6 @@ func (g *GitHub) get(ctx context.Context, path string, v any) error {
 			}
 		}
 	}
-	rateOut := g.known && g.remaining == 0
 	g.mu.Unlock()
 	switch {
 	case resp.StatusCode == http.StatusNotModified:
