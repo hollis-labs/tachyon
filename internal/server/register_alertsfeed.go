@@ -65,6 +65,7 @@ func startAlertsFeed(ctx context.Context, s *Server, db *localstore.Store) {
 	if os.Getenv("TACHYON_ALERTS_SOURCES") == "0" {
 		return
 	}
+	go f.emitApprovals(ctx, db)
 	limit := alertsource.NewLimiter(200)
 	if base := strings.TrimRight(strings.TrimSpace(s.cfg.Upstreams.ActivityURL), "/"); base != "" {
 		act := &alertsource.Activity{URL: base + "/api/stream", Sink: st, Cursor: st, Health: f.health, Limit: limit}
@@ -184,4 +185,47 @@ func noAuthHeader(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// emitApprovals raises an approval.requested alert for each new queue item, with the item as an "approval"
+// subject: the detail links to it and FollowApprovals settles it when it is decided or expires. The alert
+// carries the item's title and summary only. Items created while Tachyon was down are not replayed.
+func (f *alertsFeed) emitApprovals(ctx context.Context, db *localstore.Store) {
+	feed := approvalFeed{approvals.Changes(db)}
+	store := &approvals.Store{DB: db}
+	for ctx.Err() == nil {
+		ch, cancel := feed.Subscribe()
+	loop:
+		for {
+			select {
+			case <-ctx.Done():
+				cancel()
+				return
+			case c, ok := <-ch:
+				if !ok {
+					break loop
+				}
+				if c.Type != "item.created" {
+					continue
+				}
+				rec, err := store.Get(ctx, c.ItemID)
+				if err != nil {
+					continue
+				}
+				p := approvals.Project(rec, time.Now(), nil)
+				ev := alertsource.Event{Source: "approvals", SourceEventID: "created:" + c.ItemID, Kind: "approval.requested", AtMS: time.Now().UnixMilli(),
+					Subjects: []alertsapi.Subject{{Kind: alertstore.ApprovalSubject, Ref: c.ItemID, Label: alertsource.Clean(p.Title, 120)}},
+					Payload:  map[string]any{"title": alertsource.Clean(p.Title, 120), "summary": alertsource.Clean(p.Summary, 300)}}
+				if err := f.store.Ingest(ev); err != nil {
+					slog.Warn("alerts: approval alert failed", "err", err)
+				}
+			}
+		}
+		cancel()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
 }
