@@ -312,3 +312,20 @@ func contains(list map[string]any, id string) bool {
 	}
 	return false
 }
+
+func TestDecorate(t *testing.T) {
+	a := Alert{Kind: "approval.requested", Title: "Deploy it", Source: "approvals",
+		Subjects: []Subject{{Kind: "approval", Ref: "it1", Label: "Deploy it"}, {Kind: "task", Ref: "CW-1", URL: "/planner/CW-1"}, {Kind: "task", Ref: "CW-2", URL: "https://x.test/"}}}
+	Decorate(&a)
+	if a.SourceLabel != "Approvals" || a.DisplayTitle != "Needs your decision: Deploy it" || a.SubjectView == nil || a.SubjectView.Kind != "task" || a.SubjectView.Label != "CW-1" {
+		t.Fatalf("%+v", a)
+	}
+	if len(a.Links) != 3 || a.Links[1].Href != "/planner/CW-1" || a.Links[2].Href != "" {
+		t.Fatalf("links: %+v", a.Links)
+	}
+	b := Alert{Kind: "alert.raised", Title: "Disk full", Source: "build_farm"}
+	Decorate(&b)
+	if b.SourceLabel != "Build farm" || b.DisplayTitle != "" || b.SubjectView != nil || b.Links != nil {
+		t.Fatalf("%+v", b)
+	}
+}

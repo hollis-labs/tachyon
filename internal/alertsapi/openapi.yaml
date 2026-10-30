@@ -190,6 +190,10 @@ components:
         resolved_by: {type: string}
         primary: {allOf: [{$ref: "#/components/schemas/Primary"}], nullable: true}
         subjects: {type: array, items: {$ref: "#/components/schemas/Subject"}}
+        display_title: {type: string, description: "Optional plain sentence for the row; absent when the title is already readable."}
+        subject: {type: object, description: "Optional readable subject: the first non-approval subject, else the first.", properties: {kind: {type: string}, id: {type: string}, label: {type: string}}}
+        links: {type: array, description: "Optional chips for task, theme, session, pr and approval subjects. href only for an in-app route.", items: {type: object, required: [kind, ref, label], properties: {kind: {type: string, enum: [task, theme, session, pr, approval]}, ref: {type: string}, label: {type: string}, href: {type: string}}}}
+        source_label: {type: string, description: "Optional display name of the source (Torque, Approvals)."}
         escalate_at_ms: {type: integer, format: int64, nullable: true}
         escalated_at_ms: {type: integer, format: int64, nullable: true}
         version: {type: integer, format: int64, description: Send as expected_version on ops.}
