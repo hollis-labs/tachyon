@@ -129,7 +129,10 @@ export function TranscriptDashboard() {
   useEffect(() => {
     if (!linkedId || !snapshot) return
     const hit = snapshot.sessions.find((s) => s.id === linkedId)
+    // An id outside the snapshot still opens; the reader fills the header from the page.
     if (hit) setSelected(hit)
+    else if (/^[a-f0-9]{64}$/.test(linkedId))
+      setSelected({ id: linkedId, title: "", tool: "", kind: "", turns: 0, tokens: 0, tool_calls: 0, errors: 0 })
   }, [linkedId, snapshot])
   const open = (s?: Session) => {
     setSelected(s)

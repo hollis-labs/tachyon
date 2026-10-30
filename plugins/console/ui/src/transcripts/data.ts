@@ -35,6 +35,47 @@ export interface Snapshot {
   limit: number
   observed_at: string
 }
+/** Per-turn tool call. target and error_excerpt arrive later than the rest; all text is untrusted. */
+export interface ToolCall {
+  name: string
+  status?: "ok" | "error" | "none"
+  result_bytes?: number
+  started_at?: number
+  ended_at?: number
+  target?: string
+  error_excerpt?: string
+}
+export const failed = (t: { tool_calls?: ToolCall[] }) =>
+  !!t.tool_calls?.some((c) => c.status === "error")
+export function size(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1048576).toFixed(1)} MB`
+}
+export function took(c: ToolCall) {
+  if (c.started_at == null || c.ended_at == null || c.ended_at < c.started_at) return ""
+  const ms = c.ended_at - c.started_at
+  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`
+}
+/** Accepts both the current field names and the contract's (turn_count, ms timestamps). */
+export function normalizeSession(raw: Record<string, unknown>): Session {
+  const n = (...k: string[]) => {
+    for (const x of k) if (typeof raw[x] === "number") return raw[x] as number
+    return 0
+  }
+  const when = (v: unknown) =>
+    typeof v === "number" ? new Date(v).toISOString() : typeof v === "string" ? v : undefined
+  return {
+    ...(raw as unknown as Session),
+    started_at: when(raw.started_at),
+    ended_at: when(raw.ended_at),
+    turns: n("turns", "turn_count"),
+    tool_calls: n("tool_calls", "tool_call_count"),
+    errors: n("errors", "error_count"),
+    tokens: n("tokens"),
+    tool: typeof raw.tool === "string" ? raw.tool : Array.isArray(raw.tools) ? String(raw.tools[0] ?? "") : "",
+  }
+}
 export interface Detail {
   session: Session
   usage?: {
@@ -44,7 +85,13 @@ export interface Detail {
     cache_read_tokens: number
     cache_creation_tokens: number
   }
-  turns: { seq: number; role: string; ts?: string; text?: string }[]
+  turns: {
+    seq: number
+    role: string
+    ts?: string
+    text?: string
+    tool_calls?: ToolCall[]
+  }[]
   turn_total: number
   next_turn?: number
   subagents?: unknown[]

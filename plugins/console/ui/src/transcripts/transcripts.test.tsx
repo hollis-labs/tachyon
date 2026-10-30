@@ -252,6 +252,47 @@ describe("transcript dashboard", () => {
     fireEvent.keyDown(screen.getByLabelText("Transcript reader"), { key: "f", ctrlKey: true })
     expect(document.activeElement).toBe(find)
   })
+  it("shows tool calls as plain lines, expands an error excerpt, and steps through failed turns", async () => {
+    read.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/snapshot"
+          ? snapshot
+          : {
+              session: base,
+              turns: [
+                { seq: 0, role: "assistant", text: "ran it", tool_calls: [{ name: "Bash", status: "ok", result_bytes: 2048, started_at: 1000, ended_at: 3500 }] },
+                { seq: 1, role: "assistant", text: "failed one", tool_calls: [{ name: "Edit", status: "error", target: "src/a.ts", error_excerpt: "<b>boom</b>" }] },
+                { seq: 2, role: "assistant", text: "failed two", tool_calls: [{ name: "Bash", status: "error" }] },
+              ],
+              turn_total: 3,
+            },
+      ),
+    )
+    render(<TranscriptDashboard />)
+    fireEvent.click(await screen.findByRole("button", { name: /Fix routing/ }))
+    expect(await screen.findByText(/2\.0 KB/)).toBeTruthy()
+    expect(screen.getByText(/2\.5 s/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Show error" }))
+    // Untrusted text is shown as text, never parsed as markup.
+    expect(screen.getByText("<b>boom</b>")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Next error" }))
+    expect(screen.getByText("1 of 2 failed calls")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Next error" }))
+    expect(screen.getByText("2 of 2 failed calls")).toBeTruthy()
+  })
+  it("opens a valid deep-linked id outside the snapshot and says when it is not found", async () => {
+    const id = "c".repeat(64)
+    window.history.replaceState(null, "", `/?session=${id}`)
+    read.mockImplementation((path: string) =>
+      path === "/snapshot"
+        ? Promise.resolve(snapshot)
+        : Promise.reject(new TranscriptError(404, "not_found", "No such session")),
+    )
+    render(<TranscriptDashboard />)
+    expect(await screen.findByText("This session was not found.")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Back to sessions" }))
+    await waitFor(() => expect(screen.queryByLabelText("Transcript reader")).toBeNull())
+  })
   it("removes prior private data when source authorization is revoked", async () => {
     read.mockResolvedValue(snapshot)
     render(<TranscriptDashboard />)
