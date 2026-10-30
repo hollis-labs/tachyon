@@ -51,15 +51,6 @@ export function AppearanceSection() {
           ))}
         </fieldset>
       </Card>
-      <Card title="Theme" description="More themes later.">
-        <select
-          disabled
-          aria-label="Theme"
-          className="rounded-md border border-border bg-panel px-2 py-1.5 text-sm text-text-subtle"
-        >
-          <option>Nanite (default)</option>
-        </select>
-      </Card>
     </section>
   )
 }
