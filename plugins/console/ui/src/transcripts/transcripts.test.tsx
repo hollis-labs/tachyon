@@ -157,8 +157,10 @@ describe("transcript dashboard", () => {
     fireEvent.change(screen.getByLabelText("Search session metadata"), {
       target: { value: "routing" },
     })
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Design review/ })).toBeNull(),
+    )
     expect(screen.getByRole("button", { name: /Fix routing/ })).toBeTruthy()
-    expect(screen.queryByRole("button", { name: /Design review/ })).toBeNull()
     fireEvent.change(screen.getByLabelText("Search session metadata"), {
       target: { value: "no-match" },
     })
