@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Button, Textarea } from "@hollis-labs/design-components"
+import { ChevronRight } from "lucide-react"
 import { MessageBody } from "../chat/MessageBody"
 import {
   isCard,
@@ -48,6 +49,8 @@ function RunCard({ request }: { request: ApprovalItem["request_snapshot"] }) {
   )
 }
 
+const PHRASE = "approve"
+
 function EvidenceView({ evidence }: { evidence: Evidence }) {
   const url = safeHTTPS(typeof evidence.external_url === "string" ? evidence.external_url : undefined)
   return <details className="border-t border-border py-3">
@@ -79,6 +82,7 @@ export function DecisionDetail({
   const [error, setError] = useState("")
   const [note, setNote] = useState("")
   const [showNote, setShowNote] = useState(false)
+  const [typed, setTyped] = useState("")
   const [reply, setReply] = useState("")
   const [choice, setChoice] = useState<ApprovalResponse["decision"]>()
   const refresh = useCallback(async () => {
@@ -127,10 +131,12 @@ export function DecisionDetail({
     }
   }
   const request = item?.request_snapshot
+  // High-risk requests are approvable here, gated by a typed phrase (the server still enforces).
+  const needsPhrase = request?.class === "high"
   const card = !!request && isCard(request)
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
-    item && isPending(item) && !isExpired(item) && ready && !busy && request?.class !== "high" && request?.source.application_id !== "cerberus"
+    item && isPending(item) && !isExpired(item) && ready && !busy && request?.approvable !== false
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
@@ -269,16 +275,16 @@ export function DecisionDetail({
                   `Request ${item.state}`
                 }
               />
-            ) : request.class === "high" || request.source.application_id === "cerberus" ? (
-              <section className="rounded border border-danger/30 p-4">
-                <p className="dash-control text-fg-muted">Complete this decision in the provider console. This inbox cannot approve it.</p>
+            ) : request.approvable === false ? (
+              <section className="rounded border border-border p-4">
+                <p className="dash-control text-fg-muted">This request cannot be approved here. Complete the decision in the provider console.</p>
                 {ready && safeHTTPS(request.handoff_url) && <a href={safeHTTPS(request.handoff_url)} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open in {request.source.application_id === "cerberus" ? "Cerberus" : "provider console"}</a>}
               </section>
             ) : (
               <>
                 {!showNote ? (
-                  <button type="button" className="dash-control text-fg-muted underline-offset-2 hover:underline" onClick={() => setShowNote(true)}>
-                    Add note
+                  <button type="button" aria-expanded={false} className="inline-flex items-center gap-1 dash-control text-fg-muted underline underline-offset-2 hover:text-fg" onClick={() => setShowNote(true)}>
+                    <ChevronRight className="h-3 w-3" aria-hidden /> Add note
                   </button>
                 ) : (
                 <label className="block dash-control text-fg-muted">
@@ -323,9 +329,21 @@ export function DecisionDetail({
                           : "acknowledgement"}{" "}
                       of this request?
                     </p>
+                    {needsPhrase && choice === "approved" && (
+                      <label className="mt-3 block dash-control text-fg-muted">
+                        Type <span className="font-mono text-fg">{PHRASE}</span> to approve this high-risk request
+                        <input
+                          aria-label="Confirmation phrase"
+                          autoComplete="off"
+                          value={typed}
+                          onChange={(e) => setTyped(e.target.value)}
+                          className="mt-2 w-full border border-border bg-bg p-2 font-mono dash-control"
+                        />
+                      </label>
+                    )}
                     <div className="mt-3 flex gap-2">
                       <Button
-                        disabled={!canDecide}
+                        disabled={!canDecide || (needsPhrase && choice === "approved" && typed.trim().toLowerCase() !== PHRASE)}
                         onClick={() => void decide()}
                       >
                         {busy ? "Submitting…" : "Confirm decision"}

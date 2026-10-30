@@ -4,7 +4,7 @@ import type { ApprovalItem } from "./client"
 const RISK = {
   low: { text: "Low risk", tone: "border-border text-fg-muted" },
   medium: { text: "Medium risk", tone: "border-border text-fg-muted" },
-  high: { text: "High risk", tone: "border-danger/40 text-danger" },
+  high: { text: "High risk", tone: "border-danger bg-danger/10 text-danger" },
 } as const
 
 // Risk is always text; danger is the only colour.
