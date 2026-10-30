@@ -26,12 +26,15 @@ function fit(a: AgentRecord, task: AssignTask): number {
 export interface AssignDialogProps {
   pr: PendingPrSummary
   existing: AssignmentRecord[]
+  /** Further PRs assigned in the same step (bulk assign). */
+  also?: { pr: PendingPrSummary; existing: AssignmentRecord[] }[]
   onClose: () => void
   onDone?: (message: string) => void
 }
 
 /** Agent picker + task + note. Dispatches `pr.assign` through the ActionBus (IdentityConfirm runs there). */
-export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProps) {
+export function AssignDialog({ pr, existing, also = [], onClose, onDone }: AssignDialogProps) {
+  const targets = [{ pr, existing }, ...also]
   const agents = useAgentsClient()
   const { actionBus } = useConsoleSeams()
   const [list, setList] = useState<AgentRecord[] | null>(null)
@@ -65,7 +68,8 @@ export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProp
   }, [list, search, task])
 
   const agent = list?.find((a) => a.identity.id === agentId) ?? null
-  const dup = agent ? existing.find((r) => r.agentId === agent.identity.id && r.task === task) : undefined
+  const dupOf = (e: AssignmentRecord[]) => (agent ? e.find((r) => r.agentId === agent.identity.id && r.task === task) : undefined)
+  const dupCount = targets.filter((t) => dupOf(t.existing)).length
   const body = useMemo(
     () => (agent ? renderAssignmentBody(buildAssignmentPayload(pr, task, agent.identity.id, { note })) : ''),
     [agent, pr, task, note],
@@ -75,17 +79,23 @@ export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProp
     if (!agent) return
     setBusy(true)
     setError(null)
-    const res = await actionBus.dispatch(
-      assignAction({ pr, agent: agent.identity, task, note, setForgeAssignee: setForge, force: !!dup }),
-    )
+    let ok = 0
+    let last: string | undefined
+    for (const t of targets) {
+      const res = await actionBus.dispatch(
+        assignAction({ pr: t.pr, agent: agent.identity, task, note, setForgeAssignee: setForge, force: !!dupOf(t.existing) }),
+      )
+      if (res.status === 'ok') ok++
+      else last = res.status === 'denied' ? `Not confirmed: ${res.message ?? 'identity check failed'}` : (res.message ?? 'Assignment failed')
+    }
     setBusy(false)
-    if (res.status === 'ok') {
-      onDone?.(res.message ?? 'Assigned')
+    if (ok === targets.length) {
+      onDone?.(targets.length === 1 ? 'Assigned' : `Assigned ${ok} pull requests`)
       onClose()
-    } else setError(res.status === 'denied' ? `Not confirmed: ${res.message ?? 'identity check failed'}` : (res.message ?? 'Assignment failed'))
+    } else setError(targets.length === 1 ? (last ?? 'Assignment failed') : `${ok} of ${targets.length} assigned, ${targets.length - ok} failed: ${last}`)
   }
 
-  const title = `${pr.ref.repo.owner}/${pr.ref.repo.name}#${pr.ref.number}`
+  const title = targets.length === 1 ? `${pr.ref.repo.owner}/${pr.ref.repo.name}#${pr.ref.number}` : `${targets.length} pull requests`
   return (
     <Dialog open onOpenChange={open => { if (!open && !busy) onClose() }}>
       <DialogContent showCloseButton={false} data-dashboard-shape="square" data-dashboard-accent="yellow" aria-label={`Assign ${title} to an agent`} className="dash-detail-dialog flex max-h-[84vh] flex-col gap-0 p-0 sm:max-w-2xl">
@@ -99,7 +109,7 @@ export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProp
             <legend className="mb-1.5 font-mono dash-caption uppercase tracking-widest text-fg-faint">Task</legend>
             <div className="flex flex-wrap gap-1.5">
               {ASSIGN_TASKS.map((t) => (
-                <Button variant="outline" size="sm" key={t.id} type="button" aria-pressed={task === t.id} onClick={() => setTask(t.id)} className={`font-mono dash-label uppercase tracking-widest ${task === t.id ? 'border-warning text-warning' : 'border-border text-fg-muted hover:bg-surface'}`}>
+                <Button variant="outline" size="sm" key={t.id} type="button" aria-pressed={task === t.id} onClick={() => setTask(t.id)} className={`dash-label ${task === t.id ? 'border-fg text-fg' : 'border-border text-fg-muted hover:bg-surface'}`}>
                   {t.label}
                 </Button>
               ))}
@@ -133,7 +143,7 @@ export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProp
                 )
               })}
             </div>
-            {agent && !agent.identity.urn && <p className="mt-1.5 font-mono dash-support text-warning">No registered address for this agent; the message goes to a fallback address and may not be delivered.</p>}
+            {agent && !agent.identity.urn && <p className="mt-1.5 font-mono dash-support text-fg-muted">No registered address for this agent; the message goes to a fallback address and may not be delivered.</p>}
           </div>
 
           <label className="block">
@@ -155,16 +165,16 @@ export function AssignDialog({ pr, existing, onClose, onDone }: AssignDialogProp
             </div>
           )}
 
-          {dup && <p role="status" className="border border-warning/50 bg-warning/5 px-3 py-2 font-mono dash-control text-warning">Already assigned to {agent?.identity.name} for this task. Sending again repeats the message.</p>}
+          {dupCount > 0 && <p role="status" className="border border-border bg-surface px-3 py-2 font-mono dash-control text-fg">{dupCount === 1 && targets.length === 1 ? `Already assigned to ${agent?.identity.name} for this task.` : `${dupCount} already assigned to ${agent?.identity.name} for this task.`} Sending again repeats the message.</p>}
           {error && <p role="alert" className="border border-danger/50 bg-danger/5 px-3 py-2 font-mono dash-control text-danger">{error}</p>}
         </div>
 
         <footer className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
           <span className="font-mono dash-caption text-fg-faint">Needs identity confirmation: {setForge ? 'forge assign + message' : 'message'}</span>
           <span className="flex gap-2">
-            <Button variant="outline" size="sm" type="button" onClick={onClose} disabled={busy} className={`font-mono dash-label uppercase tracking-widest border-border text-fg-muted hover:bg-surface`}>Cancel</Button>
-            <Button variant="outline" size="sm" type="button" onClick={submit} disabled={!agent || busy} className={`font-mono dash-label uppercase tracking-widest border-warning text-warning hover:bg-warning/10`}>
-              {busy ? 'Assigning…' : dup ? 'Assign again' : 'Assign'}
+            <Button variant="outline" size="sm" type="button" onClick={onClose} disabled={busy} className={`dash-label border-border text-fg-muted hover:bg-surface`}>Cancel</Button>
+            <Button variant="outline" size="sm" type="button" onClick={submit} disabled={!agent || busy} className={`dash-label`}>
+              {busy ? 'Assigning…' : dupCount > 0 && targets.length === 1 ? 'Assign again' : targets.length > 1 ? `Assign ${targets.length}` : 'Assign'}
             </Button>
           </span>
         </footer>

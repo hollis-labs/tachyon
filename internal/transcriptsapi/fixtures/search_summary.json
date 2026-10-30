@@ -1,0 +1,35 @@
+{
+ "mode": "summary",
+ "items": [
+  {
+   "id": "d3cf2597d1b39167aa6e3a423879aa980691c155eacd3a50c3882646b3234fb7",
+   "kind": "claude",
+   "title": "Wire the forge stubs",
+   "project": "tachyon",
+   "model": "claude-sonnet-5-5",
+   "started_at": 1761800000000,
+   "ended_at": 1761803600000,
+   "turn_count": 60,
+   "tool_call_count": 34,
+   "error_count": 2,
+   "tools": [
+    "Bash",
+    "Edit",
+    "Read"
+   ],
+   "tags": [
+    "go",
+    "stubs"
+   ],
+   "has_enrichment": true,
+   "match": {
+    "field": "summary",
+    "snippet": "Wired the [forge] stubs and fixtures.",
+    "highlight": {
+     "format": "brackets"
+    }
+   }
+  }
+ ],
+ "next_cursor": null
+}

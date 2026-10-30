@@ -1,0 +1,129 @@
+{
+  "events": [
+    {
+      "event_id": "evt_h_approved",
+      "item_id": "ap_h_approved",
+      "kind": "resolved",
+      "decision": "approved",
+      "status": "approved",
+      "actor": {
+        "assurance": "operator-token",
+        "label": "You"
+      },
+      "at": "2026-10-30T02:55:00Z",
+      "note": "Looks right",
+      "reason": null,
+      "batch_id": null,
+      "mini": {
+        "title": "Update planner label",
+        "risk": "low",
+        "group": "change"
+      }
+    },
+    {
+      "event_id": "evt_h_denied",
+      "item_id": "ap_h_denied",
+      "kind": "resolved",
+      "decision": "denied",
+      "status": "denied",
+      "actor": {
+        "assurance": "browser-session",
+        "label": "Operator session"
+      },
+      "at": "2026-10-30T02:40:00Z",
+      "note": "Wrong target",
+      "reason": "wrong_target",
+      "batch_id": null,
+      "mini": {
+        "title": "Restart production gateway",
+        "risk": "medium",
+        "group": "change"
+      }
+    },
+    {
+      "event_id": "evt_h_expired",
+      "item_id": "ap_h_expired",
+      "kind": "expired",
+      "decision": null,
+      "status": "expired",
+      "actor": {
+        "ref": null,
+        "label": "System",
+        "assurance": "none"
+      },
+      "at": "2026-10-30T02:26:40Z",
+      "note": null,
+      "reason": "not_answered",
+      "batch_id": null,
+      "mini": {
+        "title": "Create nightly report",
+        "risk": "low",
+        "group": "change"
+      }
+    },
+    {
+      "event_id": "evt_h_withdrawn",
+      "item_id": "ap_h_withdrawn",
+      "kind": "withdrawn",
+      "decision": null,
+      "status": "withdrawn",
+      "actor": {
+        "ref": null,
+        "label": "System",
+        "assurance": "none"
+      },
+      "at": "2026-10-30T02:10:00Z",
+      "note": null,
+      "reason": "superseded_by_new_request",
+      "batch_id": null,
+      "mini": {
+        "title": "Update tool timeout (old)",
+        "risk": "low",
+        "group": "change"
+      }
+    },
+    {
+      "event_id": "evt_h_answered",
+      "item_id": "ap_h_answered",
+      "kind": "resolved",
+      "decision": "answered",
+      "status": "answered",
+      "actor": {
+        "ref": null,
+        "label": "System",
+        "assurance": "none"
+      },
+      "at": "2026-10-30T01:53:20Z",
+      "note": "Use main",
+      "reason": null,
+      "batch_id": null,
+      "mini": {
+        "title": "Which environment?",
+        "risk": "low",
+        "group": "question"
+      }
+    },
+    {
+      "event_id": "evt_h_batch",
+      "item_id": "ap_h_batch",
+      "kind": "batch_resolved",
+      "decision": "approved",
+      "status": "approved",
+      "actor": {
+        "assurance": "operator-token",
+        "label": "You"
+      },
+      "at": "2026-10-30T01:36:40Z",
+      "note": null,
+      "reason": null,
+      "batch_id": "6f1c2b04-7b0c-4f0e-9d2a-0a1b2c3d4e5f",
+      "mini": {
+        "title": "Update prompt tags",
+        "risk": "low",
+        "group": "change"
+      }
+    }
+  ],
+  "next_cursor": "h2",
+  "total": 6
+}

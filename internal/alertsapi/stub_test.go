@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func call(t *testing.T, h http.Handler, method, path, body string, hdr ...string) *httptest.ResponseRecorder {
@@ -193,11 +195,44 @@ func TestStateCompatibilityRoutes(t *testing.T) {
 	if w.Code != 200 || m["status"] != "settled" || m["resolution"] != "approved" || m["key"] != "al_checkpoint_01" {
 		t.Errorf("settle: %d %s", w.Code, w.Body.String())
 	}
-	if w := call(t, h, "PUT", StatePrefix+"/al_nope", `{"type":"read"}`); w.Code != 404 {
-		t.Errorf("unknown key: %d", w.Code)
-	}
 	if w := call(t, h, "PUT", StatePrefix+"/al_checkpoint_01", `{"type":"snooze"}`); w.Code != 400 {
 		t.Errorf("snooze without until: %d", w.Code)
+	}
+}
+
+// The console client keeps approval and bus event ids in the same state store, so any key is accepted and kept,
+// with epoch-ms numbers; until is epoch ms or RFC 3339.
+func TestStateKeepsAnyKeyAndAcceptsBothUntilForms(t *testing.T) {
+	h := NewStub().Handler()
+	w := call(t, h, "PUT", StatePrefix+"/approval:ap_1", `{"type":"dismiss","note":"later"}`)
+	m := obj(t, w)
+	if w.Code != 200 || m["key"] != "approval:ap_1" || m["status"] != "dismissed" || m["updatedAt"].(float64) <= 0 {
+		t.Fatalf("any key: %d %s", w.Code, w.Body.String())
+	}
+	soon := time.Now().Add(time.Hour)
+	for name, body := range map[string]string{
+		"ms":      `{"type":"snooze","until":` + strconv.FormatInt(soon.UnixMilli(), 10) + `}`,
+		"rfc3339": `{"type":"snooze","until":"` + soon.UTC().Format(time.RFC3339) + `"}`,
+	} {
+		w := call(t, h, "PUT", StatePrefix+"/bus:evt_9", body)
+		m := obj(t, w)
+		if w.Code != 200 || m["status"] != "snoozed" || m["snoozeUntil"].(float64) < float64(soon.UnixMilli()-1000) {
+			t.Errorf("%s: %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	if w := call(t, h, "PUT", StatePrefix+"/bus:evt_9", `{"type":"snooze","until":"soon"}`); w.Code != 400 {
+		t.Errorf("garbled until: %d", w.Code)
+	}
+	if w := call(t, h, "PUT", StatePrefix+"/bus:evt_9", `{"type":"explode"}`); w.Code != 400 {
+		t.Errorf("unknown type: %d", w.Code)
+	}
+	list := obj(t, call(t, h, "GET", StatePrefix+"?prefix=bus:", ""))["items"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["key"] != "bus:evt_9" {
+		t.Errorf("list keeps non-alert keys and honours prefix: %v", list)
+	}
+	// An alert id still changes the alert itself.
+	if w := call(t, h, "PUT", StatePrefix+"/al_checkpoint_01", `{"type":"read"}`); w.Code != 200 {
+		t.Errorf("alert key: %d", w.Code)
 	}
 }
 

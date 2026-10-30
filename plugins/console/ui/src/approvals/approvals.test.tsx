@@ -122,7 +122,7 @@ describe("approval review dialog", () => {
       decide,
       evidence: vi.fn(),
     }) as unknown as ApprovalClient
-  it("requires explicit confirmation, preserves notes, disables repeat submission and shows the authoritative result", async () => {
+  it("approves low and medium risk in one click, preserves notes, disables repeat submission and shows the authoritative result", async () => {
     let settle!: (value: unknown) => void
     const decide = vi.fn().mockImplementation(
       () =>
@@ -147,14 +147,13 @@ describe("approval review dialog", () => {
       ).toBe(false),
     )
     expect(screen.getByText("one").tagName).toBe("STRONG")
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }))
     fireEvent.change(screen.getByLabelText("Decision note"), {
       target: { value: "Only this request" },
     })
     fireEvent.click(screen.getByRole("button", { name: "Approve" }))
-    expect(decide).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
     expect(
-      (screen.getByRole("button", { name: "Submitting…" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "Approving…" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true)
     expect(decide).toHaveBeenCalledTimes(1)
@@ -200,7 +199,6 @@ describe("approval review dialog", () => {
       ).toBe(false),
     )
     fireEvent.click(screen.getByRole("button", { name: "Deny" }))
-    fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Request changed",
     )
@@ -213,7 +211,7 @@ describe("approval review dialog", () => {
 
 
 describe("approval list interaction", () => {
-  it("filters the shared rows and opens a request from the keyboard without deciding it", async () => {
+  it("lists requests in a queue, shows the selected detail beside it and filters without deciding", async () => {
     const client = {
       inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }),
       present: vi.fn().mockResolvedValue(item),
@@ -222,44 +220,66 @@ describe("approval list interaction", () => {
       get: vi.fn(),
     } as unknown as ApprovalClient
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
-    const row = await screen.findByRole("button", { name: "Create a session" })
-    row.focus()
-    fireEvent.keyDown(row, { key: "Enter" })
-    await screen.findByRole("dialog")
-    expect(client.present).toHaveBeenCalledWith(item.item_id)
-    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0])
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const row = await screen.findByRole("option", { name: /Create a session/ })
+    expect(row.getAttribute("aria-selected")).toBe("true")
+    await waitFor(() => expect(client.present).toHaveBeenCalledWith(item.item_id))
     fireEvent.change(screen.getByRole("searchbox", { name: "Search approvals" }), { target: { value: "unmatched" } })
     await screen.findByText("No matching requests.")
-    expect(screen.queryByRole("button", { name: "Create a session" })).toBeNull()
+    expect(screen.queryByRole("option", { name: /Create a session/ })).toBeNull()
     expect(client.decide).not.toHaveBeenCalled()
   })
 })
 
 describe("owned inbox tiers and pages", () => {
-  it("hands high-tier requests to the provider without local decision controls", async () => {
-    const high: ApprovalItem = { ...item, request_snapshot: { ...item.request_snapshot, class: "high", handoff_url: "https://cerberus.example/approve/one", source: { application_id: "cerberus", agent_id: "agent-one" } } }
-    const client = { present: vi.fn().mockResolvedValue(high), decide: vi.fn() } as unknown as ApprovalClient
-    render(<ApprovalDialog id={high.item_id} initial={high} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
-    expect((await screen.findByRole("link", { name: "Open in Cerberus" })).getAttribute("href")).toBe("https://cerberus.example/approve/one")
+  it("lets a high-risk request be approved only after typing the phrase, and hands off when the backend says it is not approvable", async () => {
+    const high: ApprovalItem = { ...item, request_snapshot: { ...item.request_snapshot, class: "high" } }
+    const decide = vi.fn().mockResolvedValue({ item_id: high.item_id, state: "resolved" })
+    const client = { present: vi.fn().mockResolvedValue(high), get: vi.fn().mockResolvedValue(high), decide } as unknown as ApprovalClient
+    const { unmount } = render(<ApprovalDialog id={high.item_id} initial={high} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
+    const confirm = screen.getByRole("button", { name: "Confirm decision" }) as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText("Confirmation phrase"), { target: { value: "approve" } })
+    expect(confirm.disabled).toBe(false)
+    unmount()
+    const blocked: ApprovalItem = { ...high, request_snapshot: { ...high.request_snapshot, approvable: false } }
+    render(<ApprovalDialog id={blocked.item_id} initial={blocked} client={{ present: vi.fn().mockResolvedValue(blocked), decide } as unknown as ApprovalClient} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await screen.findByText(/cannot be approved here/)
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
-    expect(screen.queryByRole("button", { name: "Deny" })).toBeNull()
-    expect(client.decide).not.toHaveBeenCalled()
   })
   it("loads bounded next pages and can return to the newest page", async () => {
     const second = { ...item, item_id: "older", request_snapshot: { ...item.request_snapshot, title: "Older request" } }
     const inbox = vi.fn().mockImplementation(async (_fresh, cursors) => ({ pending: cursors?.pending_before ? [second] : [item], history: [], next_pending: cursors?.pending_before ? undefined : "req-1", synced_at: new Date().toISOString(), revision: "1" }))
     render(<MemoryRouter><ApprovalProvider client={{ inbox } as unknown as ApprovalClient}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     fireEvent.click(await screen.findByRole("button", { name: "Next page" }))
-    await screen.findByText("Older request")
+    await screen.findByRole("option", { name: /Older request/ })
     expect(inbox).toHaveBeenLastCalledWith(true, { pending_before: "req-1" })
     fireEvent.click(screen.getByRole("button", { name: "First page" }))
-    await screen.findByText("Create a session")
+    await screen.findByRole("option", { name: /Create a session/ })
+  })
+})
+
+describe("held decisions", () => {
+  it("holds an approval in a toast so it can be undone, and sends nothing when undone", async () => {
+    const decide = vi.fn().mockResolvedValue({ item_id: item.item_id, state: "resolved" })
+    const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present: vi.fn().mockResolvedValue(item), get: vi.fn(), decide, evidence: vi.fn() } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
+    expect(screen.getByRole("list", { name: "Pending decisions" }).textContent).toMatch(/Approving in \d+s/)
+    expect(decide).not.toHaveBeenCalled()
+    // The held row is dimmed and selection has nowhere else to go (last item).
+    fireEvent.click(screen.getByRole("button", { name: /Undo/ }))
+    expect(screen.queryByRole("list", { name: "Pending decisions" })).toBeNull()
+    // Undo re-selects the item with its note intact.
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    expect(decide).not.toHaveBeenCalled()
   })
 })
 
 describe("approval deep link", () => {
-  it("opens the review dialog for /approvals?item=<id> and clears the parameter", async () => {
+  it("selects the request for /approvals?item=<id> and clears the parameter", async () => {
     const present = vi.fn().mockResolvedValue(item)
     const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present } as unknown as ApprovalClient
     render(
@@ -296,7 +316,6 @@ describe("card review dialog", () => {
     await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
     expect(screen.getByText("op status · target torque:task/CW-1 · value done")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Approve" }))
-    fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
     expect(decide.mock.calls[0][1]).toEqual({ kind: "card.approval", decision: "approved" })
   })
   it("always shows the bound operation, and labels a requester summary as unverified", async () => {
@@ -377,7 +396,7 @@ describe("approvals list", () => {
     expect(await screen.findByText(/^Form ·/)).toBeTruthy()
     expect(screen.getByText(/^Approval ·/)).toBeTruthy()
     fireEvent.change(screen.getByLabelText("Search approvals"), { target: { value: "form" } })
-    await waitFor(() => expect(screen.queryByText("Create a session")).toBeNull())
-    expect(screen.getByText("Fill me in")).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole("option", { name: /Create a session/ })).toBeNull())
+    expect(screen.getByRole("option", { name: /Fill me in/ })).toBeTruthy()
   })
 })

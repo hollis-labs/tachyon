@@ -1,0 +1,13 @@
+{
+ "available": true,
+ "enabled": true,
+ "semantic": false,
+ "modes": [
+  "text",
+  "summary"
+ ],
+ "ingest": {
+  "last_ingest_at": 1761791000000,
+  "state": "stale"
+ }
+}

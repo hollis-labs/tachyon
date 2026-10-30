@@ -1,0 +1,209 @@
+openapi: 3.0.3
+info:
+  title: Tachyon file viewer backend
+  version: "1.0"
+  description: |
+    Final shapes for the read-only file viewer. Design: tesseract 01M659AR9BC7CV1YTQQTPKVTCE
+    (project/tachyon/workspace/design). Files are on the Tachyon HOST, never the browser machine. Flat JSON,
+    snake_case, unix-ms timestamps, errors are {code,message}. null means "not known", never zero.
+    Every route needs an operator session (reads included, RequireOperatorReads) except GET /files/frames/{id},
+    whose unguessable single-use id is the capability. The stub (TACHYON_FILEVIEW_STUBS=1) answers from fixtures
+    and stores nothing. A path outside every root is always reported as not_found_or_hidden.
+servers:
+  - url: /api/plugins/console/v1/files
+paths:
+  /stat:
+    post:
+      summary: Batch stat (1 to 100 paths), shaped for ref hover cards. Denied or unknown paths come back as items, not errors.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [paths], additionalProperties: false, properties: {paths: {type: array, minItems: 1, maxItems: 100, items: {type: string}}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: "#/components/schemas/Stat"}}}}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /content:
+    get:
+      summary: |
+        Bytes of a host path or a caster ref. Honours Range (206), If-Range and If-None-Match (304). Text is always
+        text/plain; charset=utf-8 (the UI renders markdown, code and html source). Images keep their image/* type;
+        SVG carries a sandbox CSP and must be shown with an img tag only. nosniff on everything.
+      parameters:
+        - {name: path, in: query, schema: {type: string}}
+        - {name: caster_ref, in: query, schema: {type: string}, description: "Exactly one of path or caster_ref."}
+        - {name: Range, in: header, schema: {type: string}}
+        - {name: If-None-Match, in: header, schema: {type: string}}
+      responses:
+        "200": {description: bytes, headers: {ETag: {schema: {type: string}}, Last-Modified: {schema: {type: string}}, Content-Length: {schema: {type: integer}}, X-Content-Type-Options: {schema: {type: string}}, Content-Disposition: {schema: {type: string}}}}
+        "206": {description: partial content}
+        "304": {description: not modified}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {description: "denied (secret_pattern, symlink_escape) or namespace_not_allowed", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: not_found_or_hidden or not_found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "413": {description: over the inline cap; fetch in ranges, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /frame:
+    post:
+      summary: Mint a one-time frame document for an HTML file or caster ref. Load frame_url in an iframe with sandbox="" (no allow-same-origin).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                path: {type: string}
+                caster_ref: {type: string}
+                scripts: {type: boolean, description: "Per-file opt-in; refused 403 scripts_not_allowed unless fileview.run_scripts_allowed."}
+      responses:
+        "201": {description: minted, content: {application/json: {schema: {$ref: "#/components/schemas/Frame"}}}}
+        "400": {description: invalid or not_html, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "413": {description: HTML over 2 MiB; show the source instead, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /frames/{id}:
+    get:
+      summary: |
+        The frame document. NOT operator-guarded: the 256-bit id is the capability (single use, 5 minutes, bound to the
+        etag at mint time). CSP: default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox;
+        frame-ancestors 'self'. Also nosniff, no-store, Referrer-Policy no-referrer.
+      parameters: [{name: id, in: path, required: true, schema: {type: string, pattern: "^[0-9a-f]{64}$"}}]
+      responses:
+        "200": {description: text/html}
+        "404": {$ref: "#/components/responses/Error"}
+        "410": {description: used or expired, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /resolve:
+    get:
+      summary: Metadata for a caster ref. A floating ref (no @rev) reports the rev it resolved to.
+      parameters: [{name: ref, in: query, required: true, schema: {type: string, example: "caster://designer/page@2"}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/CasterRef"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "403": {description: namespace_not_allowed, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+  /roots:
+    get:
+      summary: Effective roots and caps, read-only.
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Roots"}}}}
+  /settings:
+    get:
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Settings"}}}}
+    put:
+      summary: Partial update of the file viewer settings. Adding a root needs an elevated session. Unknown fields are rejected.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SettingsPatch"}}}}
+      responses:
+        "200": {description: the settings after the update, content: {application/json: {schema: {$ref: "#/components/schemas/Settings"}}}}
+        "400": {description: invalid or invalid_root, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: user_roots_not_allowed, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /audit:
+    get:
+      summary: Recent opens, frames, caster reads and denials, newest first. No content is stored.
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 200}}
+        - {name: since, in: query, schema: {type: integer, format: int64}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {entries: {type: array, items: {$ref: "#/components/schemas/AuditEntry"}}, next_since: {type: integer, nullable: true}}}}}}
+components:
+  responses:
+    Error: {description: error, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties: {code: {type: string}, message: {type: string}}
+    Stat:
+      type: object
+      properties:
+        path: {type: string}
+        root_label: {type: string, nullable: true}
+        rel_path: {type: string, nullable: true}
+        exists: {type: boolean}
+        type: {type: string, nullable: true, enum: [file, dir, other]}
+        mime: {type: string, nullable: true}
+        kind: {type: string, nullable: true, enum: [html, markdown, text, json, yaml, toml, csv, code, image, binary]}
+        language: {type: string, nullable: true}
+        size: {type: integer, format: int64, nullable: true}
+        mtime: {type: integer, format: int64, nullable: true}
+        allowed: {type: boolean}
+        deny_reason: {type: string, nullable: true, enum: [secret_pattern, symlink_escape, too_large, not_found_or_hidden]}
+        etag: {type: string, nullable: true, description: "size+mtime+inode hash. Poll it; there is no file watcher."}
+    Frame:
+      type: object
+      properties:
+        frame_url: {type: string}
+        expires_at: {type: integer, format: int64}
+        etag: {type: string}
+        scripts: {type: boolean}
+    CasterRef:
+      type: object
+      properties:
+        ref: {type: string}
+        namespace: {type: string}
+        name: {type: string}
+        kind: {type: string}
+        mime: {type: string}
+        size: {type: integer, format: int64}
+        rev: {type: integer}
+        latest_rev: {type: integer}
+        floating: {type: boolean}
+        sha256: {type: string, description: "Also the content ETag."}
+        title: {type: string}
+        tags: {type: array, items: {type: string}}
+        revisions: {type: array, items: {type: object, properties: {rev: {type: integer}, sha256: {type: string}, size: {type: integer}, at: {type: integer, format: int64}, title: {type: string}}}}
+    Caps:
+      type: object
+      properties: {text_bytes: {type: integer}, image_bytes: {type: integer}, html_bytes: {type: integer}}
+    Roots:
+      type: object
+      properties:
+        roots: {type: array, items: {type: object, properties: {id: {type: string}, label: {type: string}, path_display: {type: string}, source: {type: string, enum: [default, app, user]}, writable: {type: boolean}, owner_only: {type: boolean}}}}
+        caps: {$ref: "#/components/schemas/Caps"}
+    Settings:
+      type: object
+      properties:
+        app:
+          type: object
+          properties:
+            roots: {type: array, items: {type: string}}
+            deny_extra: {type: array, items: {type: string}, description: "Added to the built-in deny list; built-ins cannot be removed."}
+            caps: {$ref: "#/components/schemas/Caps"}
+            caster_namespaces: {type: array, items: {type: string}}
+            run_scripts_allowed: {type: boolean}
+            allow_user_roots: {type: boolean}
+            audit_retention_days: {type: integer}
+        user:
+          type: object
+          description: Additions only (decision F-V4 pending).
+          properties: {roots: {type: array, items: {type: string}}}
+    SettingsPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        app:
+          type: object
+          additionalProperties: false
+          properties:
+            roots: {type: array, maxItems: 32, items: {type: string}}
+            deny_extra: {type: array, maxItems: 64, items: {type: string, maxLength: 128}}
+            caps: {$ref: "#/components/schemas/Caps"}
+            caster_namespaces: {type: array, items: {type: string}}
+            run_scripts_allowed: {type: boolean}
+            allow_user_roots: {type: boolean}
+            audit_retention_days: {type: integer, minimum: 1, maximum: 365}
+        user:
+          type: object
+          additionalProperties: false
+          properties: {roots: {type: array, maxItems: 32, items: {type: string}}}
+    AuditEntry:
+      type: object
+      properties:
+        id: {type: integer}
+        ts_ms: {type: integer, format: int64}
+        principal: {type: string, description: "Hashed browser-session ref; per cookie, not a person."}
+        kind: {type: string, enum: [stat, open, frame, caster]}
+        source: {type: string, enum: [host, caster]}
+        path_or_ref: {type: string}
+        resolved_root: {type: string, nullable: true}
+        outcome: {type: string, enum: [ok, denied, error]}
+        deny_reason: {type: string, nullable: true}
+        bytes_served: {type: integer, nullable: true}
+        etag: {type: string, nullable: true}

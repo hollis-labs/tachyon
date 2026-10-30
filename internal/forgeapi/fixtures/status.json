@@ -1,0 +1,17 @@
+{
+  "token_owner": "chrispian",
+  "scopes": [
+    "repo"
+  ],
+  "scope_warning": "The token has the broad classic repo scope. Prefer a fine-grained token limited to the watched repos.",
+  "rate": {
+    "remaining": 4210,
+    "reset_ms": 1793331000000
+  },
+  "watched": [
+    "org:hollis-labs"
+  ],
+  "last_refresh_ms": 1793329170000,
+  "degraded": false,
+  "note": ""
+}
