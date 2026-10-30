@@ -55,3 +55,16 @@ and `.id` to `ref`. `needs_you` comes from the rule only, and the catch-all neve
 State is in memory and resets on restart; times are shifted so timers look live. The stream replays a fixed
 script (`fixtures/stream.json`); it does not react to ops. Kinds with no emitter yet (host reboot,
 health-check failure, workstream created) are not in the fixtures.
+
+## Ingest and evaluator (AL2)
+
+- `internal/alertsrules`: `ParsePack` (invalid rules skipped and reported; `needsYou` on a rule without
+  `match.kinds` is cleared) and `Pack.Evaluate`. Passes every `engines`-compatible case in
+  `rulepack/conformance.json`. Titles cap at 120 and summaries at 300 characters; control characters go.
+- `internal/alertsource`: normalized `Event`, `DedupeKey` (source|id; Torque hashes type|subject|revision with a
+  one-minute fallback), `ParseActivityFrame`, `Activity` (SSE with `Last-Event-ID` from a `CursorStore`),
+  `Bus` over a `BusSource` seam, `Supervise` (backoff, panic contained, value never reported), `Limiter`
+  (burst per source per minute, drops reported through `Sink.Suppressed`) and `Health` for `/sources`.
+- Not wired: the alert store (AL1) supplies `Sink` and `CursorStore`; nothing starts these loops yet. The
+  Torque and Tether-poll adapters follow once AL1 lands. Bus events become kind `bus.<type>`; the default
+  pack shows them through the catch-all until a rule targets them.
