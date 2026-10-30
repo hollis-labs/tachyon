@@ -1,0 +1,288 @@
+openapi: 3.0.3
+info:
+  title: Tachyon Planner extension (PL0 contract)
+  version: "1"
+  description: |
+    New and extended Planner routes. Everything is under /api/plugins/console/v1/planner, JSON snake_case,
+    errors {error, code} (409 carries details.current). Writes are revision-checked where the item is
+    written (expected_revision). Existing list/get/board/patch responses gain the additive fields in
+    components.schemas.ItemExtras; the stub serves them as fixtures under GET /stub-fixtures/{name}
+    (themes, links, ...). The security posture is unchanged: no new guards; writes keep the existing planner write path.
+servers:
+  - url: /api/plugins/console/v1/planner
+paths:
+  /{db}/{id}/comments:
+    post:
+      summary: Comment, optionally with a status change and pin, in one revision write.
+      parameters: [{$ref: '#/components/parameters/db'}, {$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, expected_revision]
+              properties:
+                text: {type: string, maxLength: 16384}
+                kind: {type: string, enum: [comment, decision]}
+                status: {type: string, description: Themes apply it as a lifecycle action with reason = text.}
+                pin: {type: boolean}
+                expected_revision: {type: integer, minimum: 1}
+      responses:
+        "200": {description: comment, item, applied, content: {application/json: {schema: {$ref: '#/components/schemas/CommentResult'}}}}
+        "409": {$ref: '#/components/responses/Conflict'}
+  /{db}/{id}/relations:
+    post:
+      summary: Add a typed relation (stored on the source item).
+      parameters: [{$ref: '#/components/parameters/db'}, {$ref: '#/components/parameters/id'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RelationWrite'}}}}
+      responses:
+        "200": {description: updated item and links view, content: {application/json: {schema: {$ref: '#/components/schemas/RelationResult'}}}}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "422": {description: "self link, delivers only theme->roadmap, mitigates only theme->risk, needs only within one db; code cycle for a needs cycle"}
+    delete:
+      summary: Remove a typed relation.
+      parameters: [{$ref: '#/components/parameters/db'}, {$ref: '#/components/parameters/id'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RelationWrite'}}}}
+      responses:
+        "200": {description: updated item and links view, content: {application/json: {schema: {$ref: '#/components/schemas/RelationResult'}}}}
+  /{db}/{id}/links:
+    get:
+      summary: Outbound, inbound and external links, merging relations, legacy arrays and external links.
+      parameters: [{$ref: '#/components/parameters/db'}, {$ref: '#/components/parameters/id'}]
+      responses:
+        "200": {description: links view, content: {application/json: {schema: {$ref: '#/components/schemas/LinksView'}}}}
+  /ideas/{id}/promote:
+    post:
+      summary: Promote an idea (atomic, receipt, links back), mirroring the inbox promote.
+      parameters: [{$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to_db, expected_revision]
+              properties:
+                to_db: {type: string, enum: [themes, roadmap, decisions]}
+                target_id: {type: string}
+                fields: {type: object}
+                expected_revision: {type: integer, minimum: 1}
+      responses:
+        "200": {description: receipt, idea, created}
+  /themes/{id}/tasks:
+    get:
+      summary: Tasks of the theme's workstreams grouped by lane, with counts.
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        "200": {description: lanes, content: {application/json: {schema: {$ref: '#/components/schemas/ThemeTasks'}}}}
+        "502": {description: Torque unavailable (code source_unavailable)}
+  /tasks/{task}/transition:
+    post:
+      summary: A lane move as a real Torque status transition made by Tachyon.
+      description: Same status is a no-op 200. If Torque's status differs from expected_status the answer is 409 with the current status. blocked requires reason. Undo is the inverse transition (the client holds an 8 second window).
+      parameters: [{$ref: '#/components/parameters/task'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, expected_status]
+              properties:
+                to: {$ref: '#/components/schemas/Lane'}
+                expected_status: {$ref: '#/components/schemas/Lane'}
+                reason: {type: string}
+                summary: {type: string, maxLength: 600}
+                pr: {type: object}
+      responses:
+        "200": {description: task, event, undo}
+        "400": {description: blocked without reason, unknown lane}
+        "409": {$ref: '#/components/responses/Conflict'}
+  /tasks/{task}/meta:
+    put:
+      summary: Attach the optional "What shipped?" line and PR cites.
+      parameters: [{$ref: '#/components/parameters/task'}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                done_summary: {type: string, maxLength: 600}
+                pr_cites: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/PrCite'}}
+      responses:
+        "200": {description: stored meta; torque_comment is posted or failed (best effort)}
+  /task-context:
+    get:
+      summary: Where a task sits in its theme (for the Agents A5 task chip).
+      parameters: [{name: task, in: query, required: true, schema: {type: string, pattern: '^CW-\d{8}-\d{4}$'}}]
+      responses:
+        "200": {description: task, theme (null when not in a theme), index, count, assignment, stats}
+  /assignments:
+    post:
+      summary: Create an assignment object (assigned_to relation). Never changes Torque's own claim or executor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target]
+              properties:
+                target: {$ref: '#/components/schemas/AssignTarget'}
+                agent_id: {type: string, description: exactly one of agent_id and team_id}
+                team_id: {type: string}
+                note: {type: string, maxLength: 300}
+      responses:
+        "201": {description: assignment}
+    get:
+      summary: List assignments.
+      parameters:
+        - {name: agent_id, in: query, schema: {type: string}}
+        - {name: target, in: query, schema: {type: string}, description: "<db>/<id> or a Torque task id"}
+        - {name: state, in: query, schema: {type: string, enum: [active, completed, cancelled]}}
+      responses:
+        "200": {description: items}
+  /assignments/{id}/complete:
+    post: {summary: End an active assignment as completed., parameters: [{$ref: '#/components/parameters/id'}], responses: {"200": {description: assignment}, "409": {description: already ended}}}
+  /assignments/{id}/cancel:
+    post: {summary: End an active assignment as cancelled., parameters: [{$ref: '#/components/parameters/id'}], responses: {"200": {description: assignment}, "409": {description: already ended}}}
+  /agents/{agent_id}/work:
+    get:
+      summary: Items an agent works on (chat Work panel), each with why = assigned, session or referenced.
+      parameters: [{name: agent_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: items, content: {application/json: {schema: {$ref: '#/components/schemas/AgentWork'}}}}
+  /themes/{id}/timeline:
+    get:
+      summary: Milestones, momentum and events of a theme.
+      parameters:
+        - {$ref: '#/components/parameters/id'}
+        - {name: facet, in: query, schema: {type: string, enum: [all, tasks, prs, decisions, blockers, comments, workstreams]}}
+        - {name: before_seq, in: query, schema: {type: integer, minimum: 1}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 30}}
+      responses:
+        "200": {description: timeline, content: {application/json: {schema: {$ref: '#/components/schemas/Timeline'}}}}
+  /workstreams/{id}/timeline:
+    get:
+      summary: Same as the theme timeline for a workstream.
+      parameters: [{$ref: '#/components/parameters/id'}]
+      responses:
+        "200": {description: timeline, content: {application/json: {schema: {$ref: '#/components/schemas/Timeline'}}}}
+  /momentum:
+    get:
+      summary: Whole-portfolio momentum for the spine header; ingest.degraded says when derived data is partial.
+      responses:
+        "200": {description: label, score, text, by_label, ingest}
+  /need-you:
+    get:
+      summary: Items that need the operator, by reason and lens.
+      responses:
+        "200": {description: total, by_reason, by_lens, items, stale_days}
+  /stub/stream:
+    get:
+      summary: Stub only. Scripted SSE with replay after Last-Event-ID and resync beyond the ring. The real stream keeps its URL and gains these event types.
+      responses:
+        "200": {description: text/event-stream; events planner.changed, planner.item, planner.event, planner.task, planner.need_you, resync}
+  /stub-fixtures/{name}:
+    get:
+      summary: Stub only. A named fixture (extended list/get shapes and every scenario).
+      parameters: [{name: name, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: the fixture}
+components:
+  parameters:
+    db: {name: db, in: path, required: true, schema: {type: string, enum: [themes, workstreams, roadmap, ideas, decisions, risks, inbox]}}
+    id: {name: id, in: path, required: true, schema: {type: string}}
+    task: {name: task, in: path, required: true, schema: {type: string, pattern: '^CW-\d{8}-\d{4}$'}}
+  responses:
+    Conflict:
+      description: Record or task status changed; details.current holds the current state.
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  schemas:
+    Error:
+      type: object
+      required: [error, code]
+      properties: {error: {type: string}, code: {type: string}, details: {type: object}}
+    Lane: {type: string, enum: [todo, doing, review, blocked, done]}
+    Ref:
+      type: object
+      required: [db, id]
+      properties: {db: {type: string}, id: {type: string}}
+    AssignTarget:
+      description: A planner item {db,id} or a Torque task {kind:torque.task, ref}.
+      type: object
+      properties: {db: {type: string}, id: {type: string}, kind: {type: string, enum: [torque.task]}, ref: {type: string}}
+    PrCite:
+      type: object
+      required: [owner, repo, number]
+      properties: {host: {type: string}, owner: {type: string}, repo: {type: string}, number: {type: integer}, source: {type: string, enum: [manual, detected]}}
+    RelationWrite:
+      type: object
+      required: [kind, to, expected_revision]
+      properties:
+        kind: {type: string, enum: [needs, delivers, mitigates, relates]}
+        to: {$ref: '#/components/schemas/Ref'}
+        expected_revision: {type: integer, minimum: 1}
+    RelationResult:
+      type: object
+      properties: {item: {type: object}, links_view: {$ref: '#/components/schemas/LinksView'}}
+    LinksView:
+      type: object
+      properties:
+        outbound: {type: array, items: {type: object}}
+        inbound: {type: array, items: {type: object}}
+        external: {type: array, items: {type: object, description: "kind, ref, label; pr links add pr{host,owner,repo,number}"}}
+        legacy_mapped: {type: array, items: {type: object}}
+    CommentResult:
+      type: object
+      properties:
+        comment: {type: object, description: "id, kind, author, text, mentions[], created_at"}
+        item: {type: object}
+        applied: {type: object, description: which of status and pin were applied}
+    ThemeTasks:
+      type: object
+      properties:
+        theme_id: {type: string}
+        counts: {type: object}
+        lanes: {type: object, description: "lane -> tasks {id,title,status,priority,updated_at,assignees[],pr_cites[],done_summary?,blocked_reason?}"}
+        source: {type: object}
+    AgentWork:
+      type: object
+      properties:
+        agent_id: {type: string}
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: {type: string, enum: [theme, task, decision]}
+              id: {type: string}
+              title: {type: string}
+              status: {type: string}
+              progress: {type: object}
+              links: {type: array, items: {type: object}}
+              needs_user: {type: boolean}
+              updated_at: {type: string}
+              why: {type: string, enum: [assigned, session, referenced]}
+    Timeline:
+      type: object
+      properties:
+        milestones: {type: array, items: {type: object, description: "key approved|first_done|half_done, state reached|next|pending, at?"}}
+        momentum: {type: object, description: "label rising|steady|cooling|stalled, score, text, signals[], series[]"}
+        events: {type: array, items: {type: object, description: "seq, at, kind, text, refs[], delta{done,doing,review,blocked}, arrow up|flat|down"}}
+        next_before_seq: {type: integer, nullable: true}
+    ItemExtras:
+      description: Additive fields on list, board and get responses and accepted by PATCH.
+      type: object
+      properties:
+        pinned: {type: boolean}
+        pinned_at: {type: string}
+        area: {type: string}
+        horizon: {type: string, enum: [now, next, later, someday]}
+        done_summary: {type: string, maxLength: 600}
+        assignees: {type: array, items: {type: object}}
+        need_you: {type: object, description: "reasons[] review|decide|blocked|stale, since"}
+        relations_count: {type: integer}
+        momentum: {type: object}

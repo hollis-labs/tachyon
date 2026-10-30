@@ -738,6 +738,7 @@ func (s *Server) Routes() http.Handler {
 	if s.catalogIndex != nil && !s.cfg.BuilderStubs {
 		mux.Handle("GET "+builderapi.Prefix+"/summary", operator.RequireOperator(s.catalogIndex.SummaryHandler()))
 		mux.Handle("GET "+builderapi.Prefix+"/stream", operator.RequireOperator(s.catalogIndex.StreamHandler()))
+		s.mountBuilderRead(mux, operator.RequireOperator)
 	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
