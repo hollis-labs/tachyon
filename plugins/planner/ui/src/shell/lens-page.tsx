@@ -300,6 +300,7 @@ function LensFocus({ db, item, statuses, write, onPin, children }: { db: Planner
           <InlineEdit as="h1" id="lens-title" label={TEXT.titleLabel} value={item.title} onCommit={(title) => edit({ title })} className="min-w-0 font-sans text-xl font-semibold normal-case leading-tight tracking-normal text-fg" />
           <StatusPick status={item.status ?? ''} statuses={statuses} onPick={(status) => edit({ status })} />
           {item.mvp === true && <Chip square>{TEXT.mvp}</Chip>}
+          {typeof item.discuss_in === 'string' && item.discuss_in && <span className="flex items-center gap-1.5 text-control text-fg-muted">{TEXT.discussIn}<Chip square>{item.discuss_in}</Chip></span>}
         </div>
         {item.tldr && <InlineEdit as="p" multiline label={TEXT.descriptionLabel} value={item.tldr} onCommit={(tldr) => edit({ tldr })} className="max-w-prose text-control text-fg-muted" />}
       </header>

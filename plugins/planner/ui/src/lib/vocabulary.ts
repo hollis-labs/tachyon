@@ -216,6 +216,8 @@ export const TEXT = {
   themeNoun: 'theme',
   mvp: 'MVP',
   notes: 'Notes',
+  ideaWriting: 'Type to keep writing.',
+  discussIn: 'discuss in',
   notesSaved: 'Saved',
   promoteTo: 'Promote to',
   optionsGroup: 'Options',
