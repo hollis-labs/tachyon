@@ -98,7 +98,7 @@ export function AssignDialog({ pr, existing, also = [], onClose, onDone }: Assig
   const title = targets.length === 1 ? `${pr.ref.repo.owner}/${pr.ref.repo.name}#${pr.ref.number}` : `${targets.length} pull requests`
   return (
     <Dialog open onOpenChange={open => { if (!open && !busy) onClose() }}>
-      <DialogContent showCloseButton={false} data-dashboard-shape="square" data-dashboard-accent="yellow" aria-label={`Assign ${title} to an agent`} className="dash-detail-dialog flex max-h-[84vh] flex-col gap-0 p-0 sm:max-w-2xl">
+      <DialogContent showCloseButton={false} data-dashboard-shape="square" aria-label={`Assign ${title} to an agent`} className="dash-detail-dialog flex max-h-[84vh] flex-col gap-0 p-0 sm:max-w-2xl">
         <header className="border-b border-border px-4 py-3">
           <DialogTitle className="font-mono dash-caption uppercase tracking-widest text-fg-muted">Assign to an agent</DialogTitle>
           <DialogDescription className="mt-1 truncate font-mono dash-body text-fg">{title} <span className="text-fg-muted">{pr.title}</span></DialogDescription>

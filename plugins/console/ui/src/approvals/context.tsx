@@ -14,6 +14,8 @@ import {
   type ApprovalInbox,
   type ApprovalItem,
   type ApprovalResponse,
+  handoffItems,
+  isHandoffError,
 } from "./client"
 import { HeldToasts } from "./toasts"
 import { ApprovalDialog } from "./dialog"
@@ -116,6 +118,12 @@ export function ApprovalProvider({
         await client.decide(h.item, h.response, { keepalive })
         setNotice(`${h.response.decision === "approved" ? "Approved" : "Decided"}: ${h.item.request_snapshot.title}`)
       } catch (e) {
+        if (isHandoffError(e)) {
+          handoffItems.add(h.itemId)
+          setNotice("This request cannot be approved here. Complete the decision in the provider console.")
+          if (!keepalive) void refresh(true)
+          return
+        }
         setError(e instanceof Error ? e.message : "Decision not confirmed. Refresh to check the outcome.")
       }
       if (!keepalive) void refresh(true)
