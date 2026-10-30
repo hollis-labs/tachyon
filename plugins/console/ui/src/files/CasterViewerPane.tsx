@@ -1,4 +1,4 @@
-import { Skeleton } from '@hollis-labs/design-components'
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton } from '@hollis-labs/design-components'
 import { Check, Copy, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { RefDetailProps } from '../autolink/extensions'
@@ -72,18 +72,30 @@ function Ready({ info, rev, onRev, tick }: { info: CasterInfo; rev: number; onRe
     <>
       <div className="space-y-1">
         <h3 className="text-control font-medium text-fg">{current?.title || info.title || info.name}</h3>
-        <label className="flex items-center gap-2 text-caption text-fg-muted">
-          Revision
-          <select value={rev} onChange={(e) => onRev(Number(e.target.value))} className="border border-border bg-bg px-2 py-1 text-control text-fg">
-            {info.revisions.map((r) => (
-              <option key={r.rev} value={r.rev}>
-                {`Rev ${r.rev}${r.rev === info.latest_rev ? ' (latest)' : ''}${r.at ? `, ${relativeTime(r.at)}` : ''}`}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex items-center gap-2 text-caption text-fg-muted">
+          <span id="rev-label">Revision</span>
+          <Select value={String(rev)} onValueChange={(v) => v && onRev(Number(v))}>
+            <SelectTrigger aria-labelledby="rev-label" className="h-8 min-w-48 text-control">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {info.revisions.map((r) => (
+                <SelectItem key={r.rev} value={String(r.rev)}>
+                  {`Rev ${r.rev}${r.rev === info.latest_rev ? ' (latest)' : ''}${r.at ? ` · ${relativeTime(r.at)}` : ''}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         {info.floating && <p className="text-caption text-fg-muted">This link follows the latest revision; showing rev {info.rev} when it was opened.</p>}
-        {rev !== info.latest_rev && <p className="text-caption text-fg-muted">An older revision. Latest is rev {info.latest_rev}.</p>}
+        {rev !== info.latest_rev && (
+          <p className="text-caption text-fg-muted">
+            An older revision. Latest is rev {info.latest_rev}.{' '}
+            <Button type="button" variant="link" size="xs" onClick={() => onRev(info.latest_rev)}>
+              Go to latest
+            </Button>
+          </p>
+        )}
       </div>
       <Body stat={casterStat(info, pinned)} path={pinned} tick={tick} />
     </>
