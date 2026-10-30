@@ -10,11 +10,14 @@ import {
   type ApprovalItem,
   type ApprovalResponse,
   type CardAnswer,
+  handoffItems,
+  isHandoffError,
   type Evidence,
 } from "./client"
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { ActionRunPanel } from "./terminal"
 import { Countdown, RiskChip, ago, timeLeft } from "./parts"
+import { useApprovals } from "./context"
 
 const label = "font-mono dash-caption uppercase tracking-wide text-fg-faint"
 function safeHTTPS(raw?: string) {
@@ -69,20 +72,24 @@ export function DecisionDetail({
   client,
   onChanged,
   footer,
+  initialNote = "",
 }: {
   id: string
   initial?: ApprovalItem
   client: ApprovalClient
   onChanged(): void
   footer?: ReactNode
+  initialNote?: string
 }) {
   const [item, setItem] = useState(initial)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const [note, setNote] = useState("")
-  const [showNote, setShowNote] = useState(false)
+  const [note, setNote] = useState(initialNote)
+  const [showNote, setShowNote] = useState(!!initialNote)
   const [typed, setTyped] = useState("")
+  const [handoff, setHandoff] = useState(handoffItems.has(id))
+  useEffect(() => setHandoff(handoffItems.has(id)), [id])
   const [reply, setReply] = useState("")
   const [choice, setChoice] = useState<ApprovalResponse["decision"]>()
   const refresh = useCallback(async () => {
@@ -99,8 +106,8 @@ export function DecisionDetail({
   useEffect(() => {
     void refresh()
   }, [refresh])
-  async function decide(submitted?: CardAnswer[]) {
-    const decision = submitted ? "submitted" : choice
+  async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"]) {
+    const decision = submitted ? "submitted" : (direct ?? choice)
     if (!item || !decision || busy || !ready) return
     setBusy(true)
     setError("")
@@ -118,6 +125,14 @@ export function DecisionDetail({
       setChoice(undefined)
       onChanged()
     } catch (e) {
+      if (isHandoffError(e)) {
+        // Not decidable in the browser: show the handoff state, not the raw error.
+        handoffItems.add(item.item_id)
+        setHandoff(true)
+        setChoice(undefined)
+        setTyped("")
+        return
+      }
       setError(
         e instanceof Error
           ? e.message
@@ -130,13 +145,28 @@ export function DecisionDetail({
       setBusy(false)
     }
   }
+  const queue = useApprovals()
+  const isHeld = !!queue?.held.some((h) => h.itemId === id)
+  // Low/medium decisions are held for undo in the queue provider; high-risk and the
+  // no-provider case decide at once.
+  function decideOrHold(decision: "approved" | "denied") {
+    if (!item || !ready || busy) return
+    // Only an approval of a low/medium item is held; a denial is safe and immediate.
+    if (!queue || item.request_snapshot.class === "high" || decision === "denied")
+      return void decide(undefined, decision)
+    queue.hold(item, {
+      kind: item.request_snapshot.kind,
+      decision,
+      ...(note.trim() ? { note: note.trim() } : {}),
+    })
+  }
   const request = item?.request_snapshot
   // High-risk requests are approvable here, gated by a typed phrase (the server still enforces).
   const needsPhrase = request?.class === "high"
   const card = !!request && isCard(request)
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
-    item && isPending(item) && !isExpired(item) && ready && !busy && request?.approvable !== false
+    item && isPending(item) && !isExpired(item) && ready && !busy && !isHeld && request?.approvable !== false && !handoff
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
@@ -275,7 +305,7 @@ export function DecisionDetail({
                   `Request ${item.state}`
                 }
               />
-            ) : request.approvable === false ? (
+            ) : request.approvable === false || handoff ? (
               <section className="rounded border border-border p-4">
                 <p className="dash-control text-fg-muted">This request cannot be approved here. Complete the decision in the provider console.</p>
                 {ready && safeHTTPS(request.handoff_url) && <a href={safeHTTPS(request.handoff_url)} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open in {request.source.application_id === "cerberus" ? "Cerberus" : "provider console"}</a>}
@@ -363,14 +393,14 @@ export function DecisionDetail({
                         <Button
                           className="flex-1 sm:flex-none"
                           disabled={!canDecide}
-                          onClick={() => setChoice("approved")}
+                          onClick={() => (needsPhrase ? setChoice("approved") : decideOrHold("approved"))}
                         >
-                          {item?.action_run ? "Approve and run" : "Approve"}
+                          {busy || isHeld ? "Approving…" : item?.action_run ? "Approve and run" : "Approve"}
                         </Button>
                         <Button variant="outline"
                           className="flex-1 sm:flex-none"
                           disabled={!canDecide}
-                          onClick={() => setChoice("denied")}
+                          onClick={() => decideOrHold("denied")}
                         >
                           Deny
                         </Button>
@@ -378,7 +408,7 @@ export function DecisionDetail({
                     ) : (
                       <Button
                         disabled={!canDecide}
-                        onClick={() => setChoice("acknowledged")}
+                        onClick={() => void decide(undefined, "acknowledged")}
                       >
                         Acknowledge
                       </Button>

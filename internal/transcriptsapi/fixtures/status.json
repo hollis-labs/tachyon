@@ -1,0 +1,15 @@
+{
+ "available": true,
+ "enabled": true,
+ "semantic": true,
+ "modes": [
+  "text",
+  "summary",
+  "semantic",
+  "hybrid"
+ ],
+ "ingest": {
+  "last_ingest_at": 1761799880000,
+  "state": "ok"
+ }
+}

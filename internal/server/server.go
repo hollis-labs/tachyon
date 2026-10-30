@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/libs/app/app-host/plugins"
@@ -131,6 +132,7 @@ type Server struct {
 	states           []pluginState
 	instance         string
 	store            *localstore.Store
+	fileviewAudit    *fileview.Auditor
 	objects          *objects.Service
 	objectJobs       *objectsync.Jobs
 	cache            *apicache.Cache
@@ -147,6 +149,7 @@ type Server struct {
 	approvalCancel   context.CancelFunc
 	agentsCollector  *agentscollector.Collector
 	catalogIndex     *catalogindex.Index
+	ext              sync.Map // per-feature state set by startHooks, read by serverMounts (features.go)
 	actions          *actionrun.Service
 	cardFx           *cardfx.Store
 }
@@ -216,6 +219,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("cache policy: %w", err)
 	}
 	s.store = store
+	s.fileviewAudit = &fileview.Auditor{DB: store}
 	s.objects = objects.New(store)
 	s.cache = apicache.New(store, settings, s.cacheIdentity)
 	started := false
@@ -269,6 +273,9 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startCardEvents(approvalContext, store)
 	s.startAgentsCollector(approvalContext, store)
 	s.startCatalogIndex(approvalContext, store)
+	for _, hook := range startHooks {
+		hook(approvalContext, s, store)
+	}
 	s.startCardDelivery(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
@@ -504,6 +511,9 @@ func (s *Server) Routes() http.Handler {
 	for _, mount := range featureMounts {
 		mount(mux, operator)
 	}
+	for _, mount := range serverMounts {
+		mount(s, mux, operator)
+	}
 	if s.objects != nil {
 		// Local data is live and host-owned, independent of subprocess admission.
 		providers := []dataverbs.Provider{dataverbs.NewLocal(s.objects)}
@@ -700,6 +710,10 @@ func (s *Server) Routes() http.Handler {
 			(&fileview.Service{DB: s.store, Home: home}).Mount(mux, operator.RequireOperatorReads, operator.RequireOperator)
 		}
 	}
+	// File viewer audit log (real, V6): reading it is an operator act. One pattern, so it wins over the stub.
+	if s.fileviewAudit != nil {
+		s.fileviewAudit.MountAudit(mux, operator.RequireOperator)
+	}
 	// Builder + Registry contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below
 	// is unguarded. GETs are open; every write (changes, launch action, registry project patch) needs an operator session.
 	if s.cfg.BuilderStubs {
@@ -724,6 +738,7 @@ func (s *Server) Routes() http.Handler {
 	if s.catalogIndex != nil && !s.cfg.BuilderStubs {
 		mux.Handle("GET "+builderapi.Prefix+"/summary", operator.RequireOperator(s.catalogIndex.SummaryHandler()))
 		mux.Handle("GET "+builderapi.Prefix+"/stream", operator.RequireOperator(s.catalogIndex.StreamHandler()))
+		s.mountBuilderRead(mux, operator.RequireOperator)
 	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
@@ -871,6 +886,7 @@ func (s *Server) startActions(ctx context.Context, store *localstore.Store) {
 	}
 	s.actions = &actionrun.Service{Store: runs, Manager: manager, Approval: s.approvalInbox.Service}
 	go s.actions.Watch(ctx, 0)
+	go s.fileviewAudit.RunRetention(ctx, 24*time.Hour)
 }
 
 // startCardEffects runs the effects of approved cards. The Torque target is off

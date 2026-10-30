@@ -5,12 +5,13 @@ import { Countdown, RiskChip } from "./parts"
 const who = (i: ApprovalItem) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id
 
 // "Needs a decision" list: a listbox with named options; j/k and arrows move, Enter opens.
-export function ApprovalQueue({ items, selectedId, onSelect, empty, history }: {
+export function ApprovalQueue({ items, selectedId, onSelect, empty, history, held }: {
   items: ApprovalItem[]
   selectedId?: string
   onSelect(id: string): void
   empty: string
   history?: boolean
+  held?: Set<string>
 }) {
   function onKey(e: KeyboardEvent<HTMLUListElement>) {
     const dir = e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0
@@ -33,13 +34,13 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history }: {
             aria-selected={selected}
             aria-label={`${r.title}, ${who(i)}, ${r.class ?? "medium"} risk`}
             onClick={() => onSelect(i.item_id)}
-            className={`cursor-pointer px-4 py-3 ${selected ? "bg-surface/60" : "hover:bg-surface/30"}`}
+            className={`cursor-pointer px-4 py-3 ${held?.has(i.item_id) ? "opacity-50" : ""} ${selected ? "bg-surface/60" : "hover:bg-surface/30"}`}
           >
             <div className="flex items-start justify-between gap-2">
               <span className={`min-w-0 truncate dash-body text-fg ${selected ? "font-medium" : ""}`}>{r.title}</span>
               {history
                 ? <span className="font-mono dash-caption uppercase text-fg-muted">{i.terminal_outcome?.resolution?.response.decision ?? i.state}</span>
-                : <RiskChip risk={r.class} />}
+                : held?.has(i.item_id) ? <span className="font-mono dash-caption text-fg-muted">Approving…</span> : <RiskChip risk={r.class} />}
             </div>
             <div className="mt-1 flex items-center justify-between gap-2 font-mono dash-caption text-fg-faint">
               <span className="truncate">{kindLabel(r.kind)} · {who(i)}</span>

@@ -481,7 +481,7 @@ components:
       properties:
         type: {type: string, enum: [read, dismiss, snooze, settle, reopen]}
         note: {type: string}
-        until: {type: string, format: date-time, description: snooze, within 90 days}
+        until: {description: 'snooze: epoch ms (what the client sends) or an RFC 3339 string, within 90 days', oneOf: [{type: integer}, {type: string, format: date-time}]}
         preset: {type: string, enum: [1h, 4h, tomorrow]}
         resolution: {type: string}
         expected_version: {type: integer}
@@ -496,9 +496,9 @@ components:
             properties:
               key: {type: string}
               status: {type: string, enum: [unread, read, dismissed, snoozed, settled]}
-              snoozeUntil: {type: string, format: date-time}
+              snoozeUntil: {type: integer, description: epoch ms}
               resolution: {type: string}
               note: {type: string}
               by: {type: string}
-              updatedAt: {type: string, format: date-time}
+              updatedAt: {type: integer, description: epoch ms}
               version: {type: integer}

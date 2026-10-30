@@ -1,0 +1,29 @@
+{
+  "sources": [
+    {
+      "source": "activity",
+      "state": "ok",
+      "last_event_ms": 1793332780000,
+      "note": ""
+    },
+    {
+      "source": "torque",
+      "state": "ok",
+      "last_event_ms": 1793332710000,
+      "note": ""
+    },
+    {
+      "source": "approvals",
+      "state": "ok",
+      "last_event_ms": 1793332620000,
+      "note": ""
+    },
+    {
+      "source": "agents",
+      "state": "ok",
+      "last_event_ms": 1793332760000,
+      "note": ""
+    }
+  ],
+  "server_now_ms": 1793332800000
+}
