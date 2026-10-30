@@ -23,6 +23,7 @@ func (h *HTTP) Mount(mux *http.ServeMux, reads, writes func(http.Handler) http.H
 	mux.Handle("POST "+builderapi.Prefix+"/changes/{id}/submit", id(h.submit))
 	mux.Handle("POST "+builderapi.Prefix+"/changes/{id}/cancel", id(h.cancel))
 	mux.Handle("POST "+builderapi.Prefix+"/changes/{id}/rearm", id(h.rearm))
+	mux.Handle("POST "+builderapi.Prefix+"/launches/{id}/launch", id(h.launch))
 }
 
 func write(w http.ResponseWriter, status int, v any) {
@@ -123,4 +124,19 @@ func (h *HTTP) rearm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, 200, c)
+}
+
+func (h *HTTP) launch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		RequestID string `json:"request_id"`
+	}
+	if !decode(w, r, &in, 1<<10) {
+		return
+	}
+	res, e := h.Service().Launch(r.Context(), r.PathValue("id"), in.RequestID)
+	if e != nil {
+		fail(w, e)
+		return
+	}
+	write(w, 201, res)
 }

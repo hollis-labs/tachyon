@@ -79,6 +79,10 @@ type Tether interface {
 	Plan(ctx context.Context, name string, files []File) (Plan, error)
 	GetPlan(ctx context.Context, id string) (Plan, error)
 	Apply(ctx context.Context, id string) (ApplyResult, error)
+	// CreateSession and StartSession are the two legs of starting a catalog launch (needs the sessions scope).
+	// The key makes a retried create return the same session.
+	CreateSession(ctx context.Context, launchID, key string) (sessionID string, err error)
+	StartSession(ctx context.Context, sessionID string) error
 }
 
 // TetherError carries Tether's HTTP status and a short code; the message is Tether's own text, clipped.
@@ -158,7 +162,7 @@ func (t *httpTether) do(ctx context.Context, method, path string, in, out any) e
 	if err != nil {
 		return errUnreachable
 	}
-	if res.StatusCode != 200 {
+	if res.StatusCode != 200 && res.StatusCode != 201 {
 		te := &TetherError{Status: res.StatusCode, Code: "error"}
 		var e struct {
 			Code    string `json:"code"`
@@ -240,3 +244,21 @@ func clip(s string, n int) string {
 }
 
 func pointer[T any](v T) *T { return &v }
+
+func (t *httpTether) CreateSession(ctx context.Context, launchID, key string) (string, error) {
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := t.do(ctx, "POST", "/sessions", map[string]any{"launch": launchID, "idempotency_key": key}, &out); err != nil {
+		return "", err
+	}
+	if out.ID == "" {
+		return "", errors.New("Tether returned no session id")
+	}
+	return out.ID, nil
+}
+
+func (t *httpTether) StartSession(ctx context.Context, id string) error {
+	var out json.RawMessage
+	return t.do(ctx, "POST", "/sessions/"+url.PathEscape(id)+"/launch", nil, &out)
+}

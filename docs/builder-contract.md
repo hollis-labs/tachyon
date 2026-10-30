@@ -111,6 +111,22 @@ Migration `037_catalog_changes.sql` (take the next free number at merge).
   every state change publishes a replayable `change` event on `GET /builder/stream`.
 - **Not stored:** file content and environment values. The row holds the request (ops), the masked diff, checks, plan id
   and result; a re-arm recomputes the bundle from the ops.
-- **Not in this slice:** the launch action (`POST /launches/{id}/launch`), Library `part` targets and `archive` (B5),
-  env writes, and any new guard, audit table or step-up (posture). The approval step stays behind the host command; the
+- **Launch action** `POST /launches/{id}/launch {request_id}`: not a catalog change. Two Tether calls, `POST /sessions
+  {launch, idempotency_key: "builder-launch:<request_id>"}` then `POST /sessions/{id}/launch`; a retry with the same
+  `request_id` returns the same session. 201 `{session_id, agents_url:"/agents/<id>"}`. Tether's `agent_disabled`,
+  `worker_unavailable`, `worker_not_configured` and `idempotency_conflict` pass through as 409 with that code; an
+  unknown launch is 404. The body accepts `request_id` only (no env or override fields). Needs the `sessions` scope on
+  the same control token.
+- **Not in this slice:** Library `part` targets and `archive` (B5), env writes, and any new guard, audit table or step-up (posture). The approval step stays behind the host command; the
   place to swap it is `Service.Poll` reading the plan state.
+
+### Host setup for the change service and launch action (deploy list)
+
+1. On the Tether host create a token with the scopes `catalog.write` and `sessions` (use Tether's own token or pairing
+   command; the exact command depends on the Tether version and is not shown here), and write it to a file only the
+   Tachyon service user can read (mode 0600), for example `~/.config/tachyon/tether-control.token`.
+2. Set `TACHYON_TETHER_CONTROL_TOKEN_FILE` to that path in the Tachyon unit's environment and restart Tachyon. The
+   existing read token (`TetherTokenFile`) is unchanged and stays read-only.
+3. Tachyon never needs the catalog approval passphrase. The operator approves a submitted change on the host with the
+   command shown in the change (`tether catalog approve <plan_id>`); Tachyon then applies it.
+4. Without the variable the change and launch routes answer 503 `changes_unavailable` and everything else works.

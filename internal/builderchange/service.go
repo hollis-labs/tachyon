@@ -827,3 +827,39 @@ func slicesContains(l []string, s string) bool {
 }
 
 var _ = fmt.Sprintf
+
+// LaunchResult is the answer to the launch action.
+type LaunchResult struct {
+	SessionID string `json:"session_id"`
+	AgentsURL string `json:"agents_url"`
+}
+
+// passThrough are Tether's launch refusals the API reports as 409 with Tether's own code.
+var passThrough = map[string]bool{"agent_disabled": true, "worker_unavailable": true, "worker_not_configured": true, "idempotency_conflict": true}
+
+// Launch starts a session from a catalog launch (create, then start). It is not a catalog change. The request_id
+// is the idempotency key, so a retry after a lost answer returns the same session. No env or override reaches
+// Tether from here.
+func (s *Service) Launch(ctx context.Context, launchID, requestID string) (LaunchResult, *APIError) {
+	if !builderapi.IDPattern.MatchString(launchID) || !requestIDPattern.MatchString(requestID) {
+		return LaunchResult{}, refuse(400, "invalid", "Send a launch id slug and a request_id.")
+	}
+	key := "builder-launch:" + requestID
+	id, err := s.Tether.CreateSession(ctx, launchID, key)
+	if err == nil {
+		err = s.Tether.StartSession(ctx, id)
+	}
+	if err != nil {
+		var te *TetherError
+		if errors.As(err, &te) {
+			switch {
+			case passThrough[te.Code]:
+				return LaunchResult{}, refuse(409, te.Code, clip(catalogindex.MaskText(te.Message), 300))
+			case te.Status == 404:
+				return LaunchResult{}, refuse(404, "not_found", "No such launch.")
+			}
+		}
+		return LaunchResult{}, tetherErr(err)
+	}
+	return LaunchResult{SessionID: id, AgentsURL: "/agents/" + id}, nil
+}

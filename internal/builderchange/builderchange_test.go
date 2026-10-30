@@ -44,6 +44,10 @@ type fakeTether struct {
 	down     bool
 	nplan    int
 	applied  []string
+	sessErr  error
+	startErr error
+	sessKeys []string
+	started  []string
 }
 
 func newFake() *fakeTether {
@@ -102,6 +106,17 @@ func (f *fakeTether) GetPlan(_ context.Context, id string) (Plan, error) {
 		return Plan{}, &TetherError{Status: 404, Code: "not_found"}
 	}
 	return *p, nil
+}
+func (f *fakeTether) CreateSession(_ context.Context, launch, key string) (string, error) {
+	if f.sessErr != nil {
+		return "", f.sessErr
+	}
+	f.sessKeys = append(f.sessKeys, launch+"|"+key)
+	return "sess_new", nil
+}
+func (f *fakeTether) StartSession(_ context.Context, id string) error {
+	f.started = append(f.started, id)
+	return f.startErr
 }
 func (f *fakeTether) Apply(_ context.Context, id string) (ApplyResult, error) {
 	if f.applyErr != nil {
@@ -542,5 +557,46 @@ func TestCreateNewSkillAndLaunchOps(t *testing.T) {
 	e.do("POST", "/changes/"+c.ChangeID+"/cancel", "")
 	if w = e.do("POST", "/changes", req("n2", `{"target":{"kind":"launch","id":"l1"},"expected_sha":"`+sha(e.fake.files["launches/l1.yaml"])+`","op":{"type":"set","path":"env.K","value":"x"}}`)); w.Code != 400 {
 		t.Fatalf("env write: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestLaunchAction(t *testing.T) {
+	e := setup(t)
+	w := e.do("POST", "/launches/reviewer-tachyon/launch", `{"request_id":"L1"}`)
+	var out LaunchResult
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	if w.Code != 201 || out.SessionID != "sess_new" || out.AgentsURL != "/agents/sess_new" {
+		t.Fatalf("launch: %d %s", w.Code, w.Body)
+	}
+	if len(e.fake.sessKeys) != 1 || e.fake.sessKeys[0] != "reviewer-tachyon|builder-launch:L1" || len(e.fake.started) != 1 {
+		t.Fatalf("legs: %v %v", e.fake.sessKeys, e.fake.started)
+	}
+	for code := range passThrough {
+		e.fake.sessErr = &TetherError{Status: 409, Code: code, Message: "refused " + secret}
+		w = e.do("POST", "/launches/x/launch", `{"request_id":"L2"}`)
+		if w.Code != 409 || !strings.Contains(w.Body.String(), `"`+code+`"`) || strings.Contains(w.Body.String(), secret) {
+			t.Errorf("%s: %d %s", code, w.Code, w.Body)
+		}
+	}
+	e.fake.sessErr = &TetherError{Status: 502, Code: "worker_unavailable", Message: "offline"}
+	if w = e.do("POST", "/launches/x/launch", `{"request_id":"L3"}`); w.Code != 409 {
+		t.Errorf("worker_unavailable from a 502: %d", w.Code)
+	}
+	e.fake.sessErr = &TetherError{Status: 404, Code: "not_found"}
+	if w = e.do("POST", "/launches/x/launch", `{"request_id":"L4"}`); w.Code != 404 {
+		t.Errorf("unknown launch: %d", w.Code)
+	}
+	e.fake.sessErr = errUnreachable
+	if w = e.do("POST", "/launches/x/launch", `{"request_id":"L5"}`); w.Code != 503 {
+		t.Errorf("down: %d", w.Code)
+	}
+	e.fake.sessErr = nil
+	for name, body := range map[string]string{"no id": `{}`, "extra field": `{"request_id":"a","env":{"K":"v"}}`, "bad id": `{"request_id":"a b"}`, "not json": `x`} {
+		if w = e.do("POST", "/launches/x/launch", body); w.Code != 400 {
+			t.Errorf("%s: %d", name, w.Code)
+		}
+	}
+	if w = e.do("POST", "/launches/Bad_Id/launch", `{"request_id":"a"}`); w.Code != 400 {
+		t.Errorf("bad launch id: %d", w.Code)
 	}
 }
