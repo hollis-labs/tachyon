@@ -67,3 +67,11 @@ only a `counts` frame without an id. A subscriber that cannot keep up (buffer 64
 with its cursor; publishers never block. Heartbeat comment every 20 s. The handler does no auth: mount it
 behind the same guards as the other reads. Whether a frame toasts is decided by the caller (AL6 semantics)
 and passed to `AlertFrame`.
+
+## Console state compatibility (`/console/state`)
+
+The stub's `PUT /console/state/{key}` matches the console client's `HttpStateStore`: body `{type, until?, note?, resolution?}`
+for any key (the client also stores approval and bus event ids here), response `ItemState` with epoch-ms numbers
+(`snoozeUntil`, `updatedAt`). `until` is epoch ms or an RFC 3339 string. A key that is an alert id changes that alert;
+any other key is kept as its own state and listed by `GET /console/state[?prefix=]`. The real route is the PR2 store
+(#202); this is only the stub's mirror of it.

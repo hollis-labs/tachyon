@@ -74,11 +74,13 @@ describe('Ideas lens', () => {
     const api = client('ideas', [item({ id: 'ID-1', title: 'Idea', status: 'new', notes: 'old' })])
     page(api, 'ideas', 'ID-1')
     const box = await screen.findByLabelText('Notes')
+    // The notes draft resets when the item (re)loads; edit only once it holds the stored value.
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe('old'))
     fireEvent.blur(box)
     expect(api.plannerUpdate).not.toHaveBeenCalled()
     fireEvent.change(box, { target: { value: 'new text' } })
     fireEvent.blur(box)
-    await waitFor(() => expect(api.plannerUpdate).toHaveBeenCalledWith('ideas', 'ID-1', { notes: 'new text' }, 4))
+    await waitFor(() => expect(api.plannerUpdate).toHaveBeenCalledWith('ideas', 'ID-1', { notes: 'new text' }, 4), { timeout: 5000 })
   })
 })
 

@@ -1,5 +1,5 @@
 import { EmptyState, Toaster, TooltipProvider } from "@hollis-labs/design-components"
-import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/kit-dashboard"
+import { NavRail, type NavRailItem } from "@hollis-labs/kit-dashboard"
 import {
   type HostPluginInfo,
   HostPluginsProvider,
@@ -13,6 +13,9 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 import { useApi } from "./api/context"
 import { DataStatus } from "./DataStatus"
 import { plugins } from "./plugins"
+import { SettingsPage } from "./settings/SettingsPage"
+import { AvatarMenu } from "./user/AvatarMenu"
+import { UserPage } from "./user/UserPage"
 
 const DEFAULT_ROUTE = "/planner"
 
@@ -61,7 +64,7 @@ function Shell() {
         footerExtra={
           <>
             {extras}
-            <ThemeSwitcher />
+            <AvatarMenu />
           </>
         }
       />
@@ -79,6 +82,10 @@ function Shell() {
                 />
               )),
             )}
+            <Route path="/settings" element={<Navigate to="/settings/appearance" replace />} />
+            <Route path="/settings/account" element={<Navigate to="/user" replace />} />
+            <Route path="/user" element={<UserPage />} />
+            <Route path="/settings/:section" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to={DEFAULT_ROUTE} replace />} />
           </Routes>
         </div>
