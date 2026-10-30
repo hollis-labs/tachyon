@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/libs/app/app-host/plugins"
@@ -147,6 +148,7 @@ type Server struct {
 	approvalCancel   context.CancelFunc
 	agentsCollector  *agentscollector.Collector
 	catalogIndex     *catalogindex.Index
+	ext              sync.Map // per-feature state set by startHooks, read by serverMounts (features.go)
 	actions          *actionrun.Service
 	cardFx           *cardfx.Store
 }
@@ -269,6 +271,9 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startCardEvents(approvalContext, store)
 	s.startAgentsCollector(approvalContext, store)
 	s.startCatalogIndex(approvalContext, store)
+	for _, hook := range startHooks {
+		hook(approvalContext, s, store)
+	}
 	s.startCardDelivery(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
@@ -503,6 +508,9 @@ func (s *Server) Routes() http.Handler {
 	operator := approvals.New(s.cfg.ApprovalQueueURL)
 	for _, mount := range featureMounts {
 		mount(mux, operator)
+	}
+	for _, mount := range serverMounts {
+		mount(s, mux, operator)
 	}
 	if s.objects != nil {
 		// Local data is live and host-owned, independent of subprocess admission.
