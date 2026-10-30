@@ -2,7 +2,7 @@
 
 Answerable cards in a chat thread. The queue item (Approvals) stays the only record of the decision; this adds the thread binding.
 
-- `card.ask` takes optional `thread_ref` (and `message_ref`). The card is bound in `chat_card_refs` (migration 036), appears as a `card` note
+- `card.ask` takes optional `thread_ref` (and `message_ref`). The card is bound in `chat_card_refs` (migration 037), appears as a `card` note
   in app threads, and a `card` stream event `{item_id, kind, state}` is published. A thread that does not exist fails the ask.
 - `GET chat/threads/{ref}/cards?state=&since=` returns the chatapi Card projection (caption from the title, fields from `data.fields`
   or `data.options`, actions per kind, target from the first effect, `state` pending/resolved/expired/superseded, `result` once answered).
