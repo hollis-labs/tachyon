@@ -96,3 +96,50 @@ export function relativeTime(at: number, now = Date.now()): string {
   if (s < 86400 * 30) return `${Math.floor(s / 86400)}d ago`
   return new Date(ms).toLocaleDateString()
 }
+
+// ---- Library parts (prompts and policies): internal/builderchange/partops.go
+export type PartKind = 'prompts' | 'policies'
+export interface PartField {
+  path: string
+  label: string
+  kind: 'text' | 'longtext' | 'chips'
+}
+
+export const PART_FIELDS: Record<PartKind, readonly PartField[]> = {
+  prompts: [
+    { path: 'name', label: 'Name', kind: 'text' },
+    { path: 'summary', label: 'Summary', kind: 'text' },
+    { path: 'body', label: 'Body', kind: 'longtext' },
+  ],
+  policies: [
+    { path: 'name', label: 'Name', kind: 'text' },
+    { path: 'summary', label: 'Summary', kind: 'text' },
+    { path: 'permission_mode', label: 'Permission mode', kind: 'text' },
+    { path: 'network', label: 'Network', kind: 'text' },
+    { path: 'default_sandbox', label: 'Sandbox', kind: 'text' },
+    { path: 'mcp_scopes', label: 'Scopes', kind: 'chips' },
+  ],
+}
+
+type PartItem = { id: string; revision?: unknown; bundle?: unknown; [k: string]: unknown }
+
+/** What the part has now for a field; policy fields live in the bundle when it sets them. */
+export function partRead(it: PartItem, field: PartField): unknown {
+  const bundle = typeof it.bundle === 'object' && it.bundle !== null ? (it.bundle as Record<string, unknown>) : {}
+  const v = field.path in bundle ? bundle[field.path] : it[field.path]
+  if (field.kind === 'chips') return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  return typeof v === 'string' ? v : ''
+}
+
+export function changedPartPaths(kind: PartKind, it: PartItem, draft: Draft): string[] {
+  return PART_FIELDS[kind].filter((f) => f.path in draft && !same(draft[f.path], partRead(it, f))).map((f) => f.path)
+}
+
+/** One set op per changed field; the part revision is the expected_sha. */
+export function buildPartOps(kind: PartKind, it: PartItem, draft: Draft): ChangeOp[] {
+  return changedPartPaths(kind, it, draft).map((path) => ({
+    target: { kind: 'part', id: it.id, part_kind: kind === 'prompts' ? 'prompt' : 'policy' },
+    expected_sha: String(it.revision ?? ''),
+    op: { type: 'set', path, value: draft[path] },
+  }))
+}

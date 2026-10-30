@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type AgentDetail, BuilderError, errorMessage } from './api'
-import { buildOps, changedPaths, isOpen, minutesAndSeconds, relativeTime } from './changes'
+import { buildOps, buildPartOps, changedPartPaths, changedPaths, isOpen, minutesAndSeconds, relativeTime } from './changes'
 import { SECTIONS, STATE_LABEL } from './vocab'
 
 describe('builder helpers', () => {
@@ -42,5 +42,17 @@ describe('changes', () => {
     const now = 1_800_000_000_000
     expect(relativeTime(now - 12 * 60000, now)).toBe('12m ago')
     expect(relativeTime((now - 30 * 3600000) / 1000, now)).toBe('Yesterday')
+  })
+})
+
+describe('part ops', () => {
+  const policy = { id: 'strict', revision: 4, name: 'Strict', summary: '', bundle: { network: 'off', mcp_scopes: ['a'] } }
+  it('reads policy fields from the bundle and ignores unchanged ones', () => {
+    expect(changedPartPaths('policies', policy, { network: 'off', mcp_scopes: ['a'] })).toEqual([])
+  })
+  it('targets the part with its revision as expected_sha', () => {
+    expect(buildPartOps('policies', policy, { network: 'on' })).toEqual([
+      { target: { kind: 'part', id: 'strict', part_kind: 'policy' }, expected_sha: '4', op: { type: 'set', path: 'network', value: 'on' } },
+    ])
   })
 })
