@@ -79,5 +79,5 @@ sit behind the operator route guard and the API cache; the draft read is never c
   `{review_id, comment_ids[], state}`. `approve` needs no body; `request_changes` and `comment` need a body or comments. The key is written into
   the review body as `<!-- tachyon:idem=<key> -->`; a retry with the same key finds that review, posts nothing and returns 200 with
   `replayed: true`. GitHub's refusals (an inline comment off the diff, approving one's own PR) are 422 `invalid_args` with its message.
-- `GET|PUT|DELETE .../pulls/{n}/review-draft`: one draft per pull request (`forge_review_drafts`, migration 045), `{head_sha, draft}` in,
+- `GET|PUT|DELETE .../pulls/{n}/review-draft`: one draft per pull request (`forge_review_drafts`, migration 046), `{head_sha, draft}` in,
   `{pr_key, head_sha, updated_ms, draft}` out; no draft is 404. The draft is not cleared by a submit; the page deletes it.
