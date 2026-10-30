@@ -81,7 +81,7 @@ Stub limits: nothing is stored; change state comes from fixtures (a submit/cance
 fixture of the resulting state, relabelled with the requested id); filters are minimal (`q`, `provider`,
 `state`, `project`, `worker`, `live`).
 
-## Change handoff (BH1; contract and stub here, real service in the BH1 backend PR)
+## Change handoff (BH1, real)
 
 Without a standing `catalog.write` credential (the default; `TACHYON_TETHER_CONTROL_TOKEN_FILE` unset) Tachyon cannot
 plan or apply. The change service keeps its typed edits, diff, checks and stale detection and replaces only the
@@ -109,7 +109,15 @@ plan/apply step with a hand-off. Design: Tesseract `design_tachyon_builder_chang
 - Stub: handoff is the default mode; `X-Stub-Scenario: direct | unavailable` change `/capabilities` and the
   create/submit flow; on `/changes/{id}/check`, `detected` answers applied and `stale` answers stale.
   Fixtures: `chg_awaiting_handoff`, `chg_handoff_planned`, `chg_applied_detected`, `change_bundle`, `capabilities`.
-- Session mode (BH2, optional) is not part of this contract yet.
+- Session mode (BH2, optional) is not part of this contract yet (`handoff` lists only `copy`, `session_available` is false).
+- **Real service.** `internal/builderchange` runs in handoff mode when `TACHYON_TETHER_CONTROL_TOKEN_FILE` is unset and
+  the read token (`TETHER_TOKEN_FILE`) is set: Tether is wrapped read-only (`builderchange.ReadOnly`), every Tether write
+  answers 403 `no_control_credential`, and `validate` is best effort (a refusal becomes a `warn` check "Not validated
+  by Tether"). The 5 second poller reads each target file and compares its sha: all at `new_sha` -> `applied`
+  (`result.detected`), any file at neither its base nor its `new_sha` -> `stale`, a mix of base and new keeps waiting.
+  A launch action needs the control credential and answers 503 `changes_unavailable` in handoff mode, and `rearm` is
+  409 (there is no Tachyon plan). With a control token the original direct flow is unchanged. With neither token the
+  change routes answer 503 `changes_unavailable` and `GET /capabilities` says `unavailable`.
 
 ## Change service (B3, real)
 

@@ -46,6 +46,8 @@ type Target struct {
 	ID      string `json:"id"`
 	Path    string `json:"path"`
 	BaseSHA string `json:"base_sha"`
+	// NewSHA is the sha the file has once the change is applied; handoff mode detects "applied" when every file has it.
+	NewSHA string `json:"new_sha,omitempty"`
 }
 type Session struct {
 	SessionID string `json:"session_id"`
@@ -59,7 +61,7 @@ type PlanInfo struct {
 	PlanID         string `json:"plan_id"`
 	State          string `json:"state"`
 	Digest         string `json:"digest"`
-	ExpiresAt      int64  `json:"expires_at"`
+	ExpiresAt      *int64 `json:"expires_at"` // nil when the plan id is only a hint (handoff mode)
 	ApproveCommand string `json:"approve_command"`
 }
 type Result struct {
@@ -69,6 +71,19 @@ type Result struct {
 	Reloaded        bool     `json:"reloaded"`
 	ReloadError     *string  `json:"reload_error"`
 	AppliedAt       *int64   `json:"applied_at"`
+	// Detected is set in handoff mode, where the apply is seen from file shas: no backup or activation text.
+	Detected     bool `json:"detected,omitempty"`
+	FilesChanged int  `json:"files_changed,omitempty"`
+}
+
+// Handoff describes the bundle the operator (or a session) plans in Tether when Tachyon holds no control token.
+type Handoff struct {
+	Mode             string `json:"mode"`
+	Name             string `json:"name"`
+	BundleSHA256     string `json:"bundle_sha256"`
+	Files            int    `json:"files"`
+	SessionAvailable bool   `json:"session_available"`
+	Reason           string `json:"reason,omitempty"`
 }
 type Failure struct {
 	Step    string `json:"step"`
@@ -102,6 +117,7 @@ type Change struct {
 	Result        *Result           `json:"result"`
 	Failure       *Failure          `json:"failure"`
 	Stale         *Stale            `json:"stale"`
+	Handoff       *Handoff          `json:"handoff,omitempty"`
 	// PartEffects is what applying does to the Library parts tables (B5); omitted when the change touches no part.
 	PartEffects *builderparts.Effects `json:"part_effects,omitempty"`
 }
@@ -128,7 +144,11 @@ type OpIn struct {
 }
 
 // Service runs changes. Approval is the host's `tether catalog approve`; the service only watches for it.
+// Mode is builderapi.ModeHandoff when Tachyon holds no catalog.write credential (Tether is then a read-only
+// client): changes stop at awaiting_handoff and "applied" is detected from file shas. Empty or ModeDirect is
+// the original plan/approve/apply flow.
 type Service struct {
+	Mode   string
 	DB     *localstore.Store
 	Tether Tether
 	Index  *catalogindex.Store // masked snapshots; may be nil
@@ -136,6 +156,24 @@ type Service struct {
 	Now    func() time.Time
 
 	mu sync.Mutex
+}
+
+func (s *Service) handoff() bool { return s.Mode == builderapi.ModeHandoff }
+
+// ModeName is the mode GET /capabilities reports.
+func (s *Service) ModeName() string {
+	if s.handoff() {
+		return builderapi.ModeHandoff
+	}
+	return builderapi.ModeDirect
+}
+
+// noPlan reports whether a change has nothing to submit yet: no Tether plan (direct) or no bundle (handoff).
+func (s *Service) noPlan(c *Change) bool {
+	if s.handoff() {
+		return c.Handoff == nil
+	}
+	return c.Plan == nil
 }
 
 func (s *Service) now() time.Time {
@@ -320,7 +358,7 @@ func (s *Service) build(ctx context.Context, gs []group) (built, *APIError) {
 			return b, refuse(400, "no_change", "That edit changes nothing.")
 		}
 		b.files = append(b.files, File{Path: g.path, Content: next})
-		b.targets = append(b.targets, Target{Kind: g.kind, ID: g.id, Path: g.path, BaseSHA: sha})
+		b.targets = append(b.targets, Target{Kind: g.kind, ID: g.id, Path: g.path, BaseSHA: sha, NewSHA: shaOf(next)})
 		if exists {
 			b.base[g.path] = sha
 		}
@@ -398,6 +436,9 @@ func (s *Service) Create(ctx context.Context, operator string, req Request) (Cha
 			return Change{}, false, perr
 		}
 	}
+	if s.handoff() && c.Handoff != nil && len(c.Privileged) == 0 {
+		c.State = builderapi.ChangeAwaitingHandoff // nothing to acknowledge, so the bundle is ready
+	}
 	raw, _ := json.Marshal(req)
 	if err := s.insert(ctx, c, string(raw)); err != nil {
 		return Change{}, false, refuse(500, "internal", "The change could not be saved.")
@@ -422,7 +463,11 @@ func (s *Service) validateAndPlan(ctx context.Context, c *Change, files []File) 
 	}
 	c.Checks = append([]Check{}, rep.Results...)
 	if !rep.OK {
-		c.Plan = nil
+		c.Plan, c.Handoff = nil, nil
+		return nil
+	}
+	if s.handoff() {
+		c.Handoff = s.handoffFor(c, files)
 		return nil
 	}
 	plan, err := s.Tether.Plan(ctx, "builder "+c.ChangeID, files)
@@ -434,7 +479,7 @@ func (s *Service) validateAndPlan(ctx context.Context, c *Change, files []File) 
 		c.Plan = nil
 		return nil
 	}
-	c.Plan = &PlanInfo{PlanID: plan.ID, State: plan.State, Digest: plan.Digest, ExpiresAt: plan.ExpiresAt.UnixMilli(), ApproveCommand: "tether catalog approve " + plan.ID}
+	c.Plan = &PlanInfo{PlanID: plan.ID, State: plan.State, Digest: plan.Digest, ExpiresAt: pointer(plan.ExpiresAt.UnixMilli()), ApproveCommand: "tether catalog approve " + plan.ID}
 	c.Effect.Activation = plan.Activation
 	c.Effect.RunningSessions = []Session{}
 	for _, id := range plan.RunningSessions {
@@ -473,8 +518,8 @@ func (s *Service) Submit(ctx context.Context, id string, ack bool) (Change, *API
 			return *c, refuse(409, "validation_failed", "Fix the failing checks first.")
 		}
 	}
-	partsOnly := c.Plan == nil && c.PartEffects != nil && !hasFileTarget(*c)
-	if c.Plan == nil && !partsOnly {
+	partsOnly := s.noPlan(c) && c.PartEffects != nil && !hasFileTarget(*c)
+	if s.noPlan(c) && !partsOnly {
 		return *c, refuse(409, "validation_failed", "This change has no plan.")
 	}
 	if len(c.Privileged) > 0 && !ack {
@@ -491,6 +536,9 @@ func (s *Service) Submit(ctx context.Context, id string, ack bool) (Change, *API
 	}
 	c.AckPrivileged = ack
 	c.State = builderapi.ChangeAwaitingApproval
+	if s.handoff() {
+		c.State = builderapi.ChangeAwaitingHandoff
+	}
 	return s.save(ctx, c)
 }
 
@@ -519,7 +567,7 @@ func (s *Service) replan(ctx context.Context, c *Change) *APIError {
 	if perr = s.validateAndPlan(ctx, c, b.files); perr != nil {
 		return perr
 	}
-	if c.Plan == nil {
+	if s.noPlan(c) {
 		return refuse(409, "validation_failed", "Fix the failing checks first.")
 	}
 	return nil
@@ -532,6 +580,9 @@ func (s *Service) Rearm(ctx context.Context, id string) (Change, *APIError) {
 	c, perr := s.load(ctx, id)
 	if perr != nil {
 		return Change{}, perr
+	}
+	if s.handoff() {
+		return *c, refuse(409, "bad_state", "There is no Tachyon plan to re-arm; plan the bundle again in Tether.")
 	}
 	if c.State != builderapi.ChangeAwaitingApproval && c.State != builderapi.ChangeExpired {
 		return *c, refuse(409, "bad_state", "Only an awaiting or expired change can be re-armed.")
@@ -555,7 +606,7 @@ func (s *Service) Cancel(ctx context.Context, id string) (Change, *APIError) {
 		return Change{}, perr
 	}
 	switch c.State {
-	case builderapi.ChangeDraft, builderapi.ChangeAwaitingApproval, builderapi.ChangeStale, builderapi.ChangeExpired:
+	case builderapi.ChangeDraft, builderapi.ChangeAwaitingHandoff, builderapi.ChangeAwaitingApproval, builderapi.ChangeStale, builderapi.ChangeExpired:
 	default:
 		return *c, refuse(409, "bad_state", "This change can no longer be cancelled.")
 	}
@@ -568,8 +619,8 @@ func (s *Service) markStale(ctx context.Context, c *Change) {
 	var theirs []string
 	for p, base := range c.Base {
 		live, exists, err := s.Tether.ReadFile(ctx, p)
-		if err != nil || (exists && shaOf(live) == base) {
-			continue
+		if err != nil || (exists && (shaOf(live) == base || newSHA(c, p) != "" && shaOf(live) == newSHA(c, p))) {
+			continue // unchanged, or already at the value this change writes (a partly applied hand-off)
 		}
 		st.ChangedPaths = append(st.ChangedPaths, p)
 		if exists {
@@ -619,7 +670,7 @@ func (s *Service) Run(ctx context.Context) {
 
 // Poll makes one pass over the open changes that are waiting on Tether.
 func (s *Service) Poll(ctx context.Context) error {
-	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT change_id FROM catalog_changes WHERE state IN ('awaiting_approval','approved','applying')`)
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT change_id FROM catalog_changes WHERE state IN ('awaiting_handoff','awaiting_approval','approved','applying')`)
 	if err != nil {
 		return err
 	}
@@ -651,7 +702,15 @@ func (s *Service) step(ctx context.Context, id string) {
 			_, _ = s.save(ctx, c)
 		}
 		return
-	case builderapi.ChangeAwaitingApproval, builderapi.ChangeApproved:
+	case builderapi.ChangeAwaitingHandoff, builderapi.ChangeAwaitingApproval:
+		if s.handoff() {
+			s.observe(ctx, c)
+			return
+		}
+		if c.State == builderapi.ChangeAwaitingHandoff {
+			return
+		}
+	case builderapi.ChangeApproved:
 	default:
 		return
 	}
@@ -689,7 +748,7 @@ func (s *Service) step(ctx context.Context, id string) {
 		}
 		return
 	}
-	c.Plan.State, c.Plan.ExpiresAt = plan.State, plan.ExpiresAt.UnixMilli()
+	c.Plan.State, c.Plan.ExpiresAt = plan.State, pointer(plan.ExpiresAt.UnixMilli())
 	switch {
 	case plan.State == "approved":
 	case plan.State == "applied":
@@ -733,7 +792,8 @@ func (s *Service) step(ctx context.Context, id string) {
 
 func (s *Service) finish(ctx context.Context, c *Change, res ApplyResult) {
 	at := s.now().UnixMilli()
-	r := &Result{BackupID: res.BackupID, Activation: res.Activation, RestartRequired: nonNil(res.RestartRequired), Reloaded: res.Reloaded, AppliedAt: &at}
+	r := &Result{BackupID: res.BackupID, Activation: res.Activation, RestartRequired: nonNil(res.RestartRequired), Reloaded: res.Reloaded, AppliedAt: &at,
+		Detected: res.detected, FilesChanged: res.filesChanged}
 	if res.ReloadError != "" {
 		r.ReloadError = pointer(clip(catalogindex.MaskText(res.ReloadError), 300))
 	}
@@ -787,7 +847,7 @@ func (s *Service) recordSnapshots(ctx context.Context, c *Change) {
 	}
 	var snaps []catalogindex.Snapshot
 	for _, t := range c.Targets {
-		if c.Plan == nil || strings.HasPrefix(t.Path, partPathPrefix) {
+		if c.Plan == nil && !s.handoff() || strings.HasPrefix(t.Path, partPathPrefix) {
 			continue
 		}
 		live, exists, err := s.Tether.ReadFile(ctx, t.Path)
@@ -798,7 +858,11 @@ func (s *Service) recordSnapshots(ctx context.Context, c *Change) {
 		if m == "" {
 			continue
 		}
-		snaps = append(snaps, catalogindex.Snapshot{Path: t.Path, SHA: shaOf(live), Content: m, At: s.now(), Source: "builder", PlanID: c.Plan.PlanID, Actor: c.Operator})
+		planID := ""
+		if c.Plan != nil {
+			planID = c.Plan.PlanID
+		}
+		snaps = append(snaps, catalogindex.Snapshot{Path: t.Path, SHA: shaOf(live), Content: m, At: s.now(), Source: "builder", PlanID: planID, Actor: c.Operator})
 	}
 	if len(snaps) > 0 {
 		_ = s.Index.Apply(ctx, nil, nil, snaps)
@@ -807,7 +871,7 @@ func (s *Service) recordSnapshots(ctx context.Context, c *Change) {
 
 // ---- persistence
 
-var open = map[string]bool{builderapi.ChangeDraft: true, builderapi.ChangeAwaitingApproval: true, builderapi.ChangeApproved: true,
+var open = map[string]bool{builderapi.ChangeDraft: true, builderapi.ChangeAwaitingHandoff: true, builderapi.ChangeAwaitingApproval: true, builderapi.ChangeApproved: true,
 	builderapi.ChangeApplying: true, builderapi.ChangeStale: true}
 
 func (s *Service) insert(ctx context.Context, c Change, request string) error {
@@ -913,7 +977,7 @@ func (s *Service) List(ctx context.Context, state string) ([]Change, *APIError) 
 	switch {
 	case state == "" || state == "all":
 	case state == "open":
-		q += ` WHERE state IN ('draft','awaiting_approval','approved','applying','stale')`
+		q += ` WHERE state IN ('draft','awaiting_handoff','awaiting_approval','approved','applying','stale')`
 	case slicesContains(builderapi.ChangeStates, state):
 		q += ` WHERE state=?`
 		args = append(args, state)
@@ -962,6 +1026,9 @@ var passThrough = map[string]bool{"agent_disabled": true, "worker_unavailable": 
 func (s *Service) Launch(ctx context.Context, launchID, requestID string) (LaunchResult, *APIError) {
 	if !builderapi.IDPattern.MatchString(launchID) || !requestIDPattern.MatchString(requestID) {
 		return LaunchResult{}, refuse(400, "invalid", "Send a launch id slug and a request_id.")
+	}
+	if s.handoff() {
+		return LaunchResult{}, refuse(503, "changes_unavailable", "Launching a session needs the Tether control credential, which this host does not hold.")
 	}
 	key := "builder-launch:" + requestID
 	id, err := s.Tether.CreateSession(ctx, launchID, key)

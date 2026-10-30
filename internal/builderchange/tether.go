@@ -69,6 +69,10 @@ type ApplyResult struct {
 	Reloaded        bool     `json:"reloaded"`
 	ReloadError     string   `json:"reload_error"`
 	RestartRequired []string `json:"restart_required"`
+
+	// Set by the service itself in handoff mode, where the apply is seen from file shas rather than reported.
+	detected     bool
+	filesChanged int
 }
 
 // Tether is the catalog write API. The control token behind it holds catalog.write; it never holds the

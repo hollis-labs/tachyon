@@ -432,7 +432,7 @@ func TestExpiryRearmAndCancel(t *testing.T) {
 	w := e.do("POST", "/changes/"+c.ChangeID+"/rearm", "")
 	var got Change
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
-	if w.Code != 200 || got.State != "awaiting_approval" || got.Plan.PlanID != c.Plan.PlanID || got.Plan.ExpiresAt <= time.Now().UnixMilli() {
+	if w.Code != 200 || got.State != "awaiting_approval" || got.Plan.PlanID != c.Plan.PlanID || *got.Plan.ExpiresAt <= time.Now().UnixMilli() {
 		t.Fatalf("rearm: %d %s", w.Code, w.Body)
 	}
 	if w = e.do("POST", "/changes/"+c.ChangeID+"/rearm", `{}`); w.Code != 200 {
