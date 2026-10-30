@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/alertsapi"
+	"github.com/hollis-labs/tachyon/internal/alertsrules"
 )
 
 // Stream serves GET /alerts/stream. The caller mounts it behind the route guards; it checks nothing itself.
@@ -151,5 +152,37 @@ func Sources(snapshot func() []SourceState, now func() time.Time) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"sources": list, "server_now_ms": now().UnixMilli()})
+	})
+}
+
+// Rules serves GET /alerts/rules: the loaded rule pack as the read-only summary the Settings preview line uses
+// (id, description, kinds, action, severity, needs_you). Titles, templates and payload matchers stay server-side.
+func Rules(pack func() alertsrules.Pack) http.Handler {
+	type row struct {
+		ID          string   `json:"id"`
+		Description string   `json:"description"`
+		Kinds       []string `json:"kinds"`
+		Action      string   `json:"action"`
+		Severity    *string  `json:"severity"`
+		NeedsYou    bool     `json:"needs_you"`
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		p := pack()
+		rules := make([]row, 0, len(p.Rules))
+		for _, r := range p.Rules {
+			x := row{ID: r.ID, Description: r.Description, Kinds: append([]string{}, r.Match.Kinds...), Action: "alert"}
+			if r.Action == "drop" {
+				x.Action = "drop"
+			} else if r.Alert != nil {
+				if r.Alert.Severity != "" {
+					x.Severity = &r.Alert.Severity
+				}
+				x.NeedsYou = r.Alert.NeedsYou
+			}
+			rules = append(rules, x)
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"pack_id": p.ID, "version": p.Version, "label": p.Label, "rules": rules})
 	})
 }

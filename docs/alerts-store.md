@@ -76,9 +76,11 @@ The console client keeps calling `/console/state`. `StateCompat` wraps the item-
   per-source limiter raises the "N events dropped" alert. `TACHYON_ALERTS_SOURCES=0` leaves the adapters off; `TACHYON_ALERTS_STUBS=1`
   leaves all of this to the stub.
 - A new queue item raises an `approval.requested` alert (subject `approval:<item id>`, title and summary only); `FollowApprovals` settles it. Items created while Tachyon was down are not replayed.
-- Not started because they do not exist yet: the Torque and Tether-poll adapters. `GET /alerts/rules` is not served.
+- Torque (CW-20261030-0134): follows `TORQUE_URL` (default `http://127.0.0.1:8990`) + `/api/v1/events` with `TORQUE_API_TOKEN` as bearer (refused over plain http to a remote host). Only task state changes (`task.state_changed`, payload to/from/title) and pending checkpoints (`checkpoint.pending`) become events. Torque sends no ids or cursor, so the dedupe key is a hash of type|subject|`updated_at` (else a one-minute bucket), a reconnect starts live (events while disconnected are lost), and `/alerts/sources` shows `torque` as `degraded` ("no event ids yet") until Torque request R1 lands.
+- Tether poll (CW-20261030-0134): every 10 s reads Tether event history after the stored sequence (cursor `tether`; the first run starts at the head, nothing is replayed). Only a session waiting on a permission/answer (`agent.state`, payload state=waiting) and failed or dead-lettered messages (`message.failed`, `message.dead_lettered`) become events; at most 3 pages of 200 per poll, so a burst larger than that skips the oldest. Needs `TETHER_ADDR` and a read-scope `TETHER_TOKEN_FILE`.
+- `GET /alerts/rules` serves the loaded pack as the read-only Settings summary (`pack_id`, `version`, `label`, `rules[{id, description, kinds, action, severity|null, needs_you}]`); templates and payload matchers are not exposed.
 
 
 ## Not here
 
-Torque and Tether-poll adapters, and `GET /alerts/rules`, do not exist yet.
+Task-done settling of task-failed alerts; outbound sinks (AL7).

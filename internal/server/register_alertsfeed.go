@@ -48,8 +48,8 @@ var alertChange = map[string]struct {
 
 // startAlertsFeed gives the Alerts store its consumers (CW-20261030-0131): the SSE hub fed by the store's
 // OnChange (with the server-computed toast flag), the source health registry, and the ingest adapters that
-// exist today: the activity monitor stream and the Agents bus feed. Torque and Tether-poll adapters do not
-// exist yet. TACHYON_ALERTS_SOURCES=0 leaves the adapters off (the stream still runs). It runs after
+// exist today: the activity monitor stream, the Agents bus feed, Torque's event stream and the Tether history
+// poll (each only when its upstream is configured). TACHYON_ALERTS_SOURCES=0 leaves the adapters off (the stream still runs). It runs after
 // startAlerts (filename order) and stands down with the alerts stub.
 func startAlertsFeed(ctx context.Context, s *Server, db *localstore.Store) {
 	v, ok := s.ext.Load(alertsKey)
@@ -70,6 +70,32 @@ func startAlertsFeed(ctx context.Context, s *Server, db *localstore.Store) {
 	if base := strings.TrimRight(strings.TrimSpace(s.cfg.Upstreams.ActivityURL), "/"); base != "" {
 		act := &alertsource.Activity{URL: base + "/api/stream", Sink: st, Cursor: st, Health: f.health, Limit: limit}
 		go alertsource.Supervise(ctx, "activity", f.health, time.Minute, act.Run)
+	}
+	if base := strings.TrimRight(strings.TrimSpace(s.cfg.Upstreams.TorqueURL), "/"); base != "" {
+		tq := &alertsource.Torque{URL: base + "/api/v1/events", Token: s.cfg.Upstreams.TorqueToken, Sink: st, Health: f.health, Limit: limit}
+		go alertsource.Supervise(ctx, "torque", f.health, time.Minute, tq.Run)
+	}
+	if addr := strings.TrimSpace(s.cfg.Upstreams.TetherAddr); addr != "" {
+		if src, err := agentscollector.NewHTTPSource(addr, s.cfg.Upstreams.TetherTokenFile); err != nil {
+			slog.Warn("alerts: tether poll adapter not started", "err", err)
+			f.health.Set("tether", "down", "Tether is not configured for alerts.")
+		} else {
+			poll := &alertsource.TetherPoll{Src: src, Sink: st, Cursor: st, Health: f.health, Limit: limit}
+			go alertsource.Supervise(ctx, "tether", f.health, time.Minute, func(ctx context.Context) error {
+				t := time.NewTicker(10 * time.Second)
+				defer t.Stop()
+				for {
+					if err := poll.Poll(ctx); err != nil {
+						return err
+					}
+					select {
+					case <-ctx.Done():
+						return nil
+					case <-t.C:
+					}
+				}
+			})
+		}
 	}
 	bus := &alertsource.Bus{Src: busSource{db}, Sink: st, Cursor: st, Health: f.health, Limit: limit}
 	go alertsource.Supervise(ctx, "agents", f.health, time.Minute, func(ctx context.Context) error {
@@ -147,7 +173,7 @@ func (b busSource) Events(ctx context.Context, after int64) ([]agentscollector.B
 	return out, rows.Err()
 }
 
-// mountAlertsFeed mounts GET stream and GET sources by explicit pattern (the /api/plugins/ catch-all is
+// mountAlertsFeed mounts GET stream, GET sources and GET rules by explicit pattern (the /api/plugins/ catch-all is
 // unguarded). Like the other alert routes they are for the operator's browser session only.
 func mountAlertsFeed(s *Server, mux *http.ServeMux, _ *approvals.Bridge) {
 	if alertsStubsOn() {
@@ -172,6 +198,7 @@ func mountAlertsFeed(s *Server, mux *http.ServeMux, _ *approvals.Bridge) {
 	}, nil)
 	mux.Handle("GET "+alertsapi.Prefix+"/stream", noAuthHeader(stream))
 	mux.Handle("GET "+alertsapi.Prefix+"/sources", noAuthHeader(sources))
+	mux.Handle("GET "+alertsapi.Prefix+"/rules", noAuthHeader(alertsstream.Rules(f.store.Pack)))
 }
 
 // noAuthHeader refuses agent bearer calls, as the rest of the alert surface does.
