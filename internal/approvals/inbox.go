@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/tachyon/internal/approvals/assurance"
+	"github.com/hollis-labs/tachyon/internal/approvalsapi"
 	"github.com/hollis-labs/tachyon/internal/cards"
 )
 
@@ -125,6 +127,8 @@ type browserItem struct {
 	PresentedProjectionRevision int64 `json:"presented_projection_revision"`
 	ActionRun                   any   `json:"action_run,omitempty"`
 	CardReceipt                 any   `json:"card_receipt,omitempty"`
+	// Projection adds the queue fields (risk, group, batchable, ...). Nil leaves the item as it was.
+	Projection *Projection `json:"-"`
 }
 
 // ItemView has custom marshaling; explicitly add the presentation field.
@@ -144,6 +148,13 @@ func (item browserItem) MarshalJSON() ([]byte, error) {
 	if item.CardReceipt != nil {
 		fields["card_receipt"], _ = json.Marshal(item.CardReceipt)
 	}
+	if item.Projection != nil {
+		for k, v := range item.Projection.fields() {
+			if _, exists := fields[k]; !exists { // never shadow a stored field
+				fields[k], _ = json.Marshal(v)
+			}
+		}
+	}
 	return json.Marshal(fields)
 }
 
@@ -159,7 +170,8 @@ func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, er
 	if err != nil {
 		return browserItem{}, err
 	}
-	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision}
+	proj := Project(rec, time.Now())
+	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision, Projection: &proj}
 	if i.ActionRun != nil && operator {
 		out.ActionRun = i.ActionRun(r.Context(), id)
 	}
@@ -311,9 +323,14 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	writeValue(w, outcome)
 }
+
+// list serves the queue. The pending side comes from the derived index (filters,
+// search, urgency order, counts); history uses the index only when a filter is
+// given, otherwise the original newest-first page. Cursors are item ids.
 func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
+	q := r.URL.Query()
 	limit := 25
-	if raw := r.URL.Query().Get("limit"); raw != "" {
+	if raw := q.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > 100 {
 			writeHITLError(w, hitl.ErrInvalidRequest)
@@ -321,41 +338,83 @@ func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
 		}
 		limit = n
 	}
-	type page struct {
-		Pending     []browserItem `json:"pending"`
-		History     []browserItem `json:"history"`
-		NextPending string        `json:"next_pending,omitempty"`
-		NextHistory string        `json:"next_history,omitempty"`
-		SyncedAt    string        `json:"synced_at"`
-		Revision    string        `json:"revision"`
+	oneOf := func(v string, ok ...string) bool { return v == "" || slices.Contains(ok, v) }
+	status := q.Get("status")
+	if !oneOf(status, "pending", "history") || !oneOf(q.Get("order"), "urgency", "created") || !oneOf(q.Get("batchable"), "1") ||
+		!oneOf(q.Get("group"), approvalsapi.Groups...) || !oneOf(q.Get("risk"), "low", "medium", "high") ||
+		!oneOf(q.Get("history_status"), "approved", "denied", "answered", "expired", "withdrawn", "failed", "superseded") {
+		writeHITLError(w, hitl.ErrInvalidRequest)
+		return
 	}
-	out := page{Pending: []browserItem{}, History: []browserItem{}, SyncedAt: time.Now().UTC().Format(time.RFC3339Nano)}
-	for _, history := range []bool{false, true} {
-		before := r.URL.Query().Get("pending_before")
-		if history {
-			before = r.URL.Query().Get("history_before")
+	now := time.Now()
+	f := Filter{Group: q.Get("group"), Risk: q.Get("risk"), Q: q.Get("q"), Requester: q.Get("requester"), Status: q.Get("history_status"),
+		Batchable: q.Get("batchable") == "1", Order: q.Get("order"), Limit: limit, Operator: operator}
+	pendingCursor, historyCursor := q.Get("pending_before"), q.Get("history_before")
+	if c := q.Get("cursor"); c != "" {
+		if status == "history" {
+			historyCursor = c
+		} else {
+			pendingCursor = c
 		}
-		records, next, err := i.Store.Page(r.Context(), history, before, limit)
+	}
+	type page struct {
+		Pending     []browserItem  `json:"pending"`
+		History     []browserItem  `json:"history"`
+		NextPending string         `json:"next_pending,omitempty"`
+		NextHistory string         `json:"next_history,omitempty"`
+		SyncedAt    string         `json:"synced_at"`
+		ServerNowMs int64          `json:"server_now_ms"`
+		Revision    string         `json:"revision"`
+		Counts      map[string]any `json:"counts,omitempty"`
+	}
+	out := page{Pending: []browserItem{}, History: []browserItem{}, SyncedAt: now.UTC().Format(time.RFC3339Nano), ServerNowMs: now.UnixMilli()}
+	collect := func(ids []string, dst *[]browserItem) bool {
+		for _, id := range ids {
+			item, err := i.view(r, id, operator)
+			if err != nil {
+				writeHITLError(w, err)
+				return false
+			}
+			*dst = append(*dst, item)
+		}
+		return true
+	}
+	if status != "history" {
+		pf := f
+		pf.After = pendingCursor
+		ids, next, counts, err := i.Store.Pending(r.Context(), pf, now)
 		if err != nil {
 			writeHITLError(w, err)
 			return
 		}
-		for _, rec := range records {
-			item, err := i.view(r, rec.ItemID, operator)
-			if err != nil {
-				writeHITLError(w, err)
-				return
-			}
-			if history {
-				out.History = append(out.History, item)
-			} else {
-				out.Pending = append(out.Pending, item)
+		out.NextPending, out.Counts = next, counts
+		if !collect(ids, &out.Pending) {
+			return
+		}
+	}
+	if status != "pending" {
+		filtered := f.Group != "" || f.Risk != "" || f.Q != "" || f.Requester != "" || f.Status != ""
+		var ids []string
+		var next string
+		var err error
+		if filtered {
+			hf := f
+			hf.After = historyCursor
+			ids, next, err = i.Store.History(r.Context(), hf, now)
+		} else {
+			var recs []hitl.Record
+			recs, next, err = i.Store.Page(r.Context(), true, historyCursor, limit)
+			for _, rec := range recs {
+				ids = append(ids, rec.ItemID)
 			}
 		}
-		if history {
-			out.NextHistory = next
-		} else {
-			out.NextPending = next
+		if err != nil {
+			writeHITLError(w, err)
+			return
+		}
+		out.NextHistory = next
+		if !collect(ids, &out.History) {
+			return
 		}
 	}
 	out.Revision = out.SyncedAt

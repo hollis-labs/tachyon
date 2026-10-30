@@ -93,6 +93,9 @@ func (s *Store) Create(ctx context.Context, rec hitl.Record) (hitl.Record, bool,
 		if err == nil {
 			out, err = readRecord(tx.QueryRowContext(ctx, "SELECT record FROM approval_items WHERE id=?", rec.ItemID))
 			created = err == nil
+			if created {
+				indexTx(ctx, tx, out)
+			}
 		}
 		return err
 	})
@@ -124,6 +127,9 @@ func swapRecord(ctx context.Context, tx *sql.Tx, id string, expected int64, next
 		return err
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE approval_items SET state=?,revision=?,terminal=?,record=? WHERE id=?", next.State, next.Revision, next.State.IsTerminal(), raw, id)
+	if err == nil {
+		indexTx(ctx, tx, next)
+	}
 	return err
 }
 func (s *Store) DueForExpiry(ctx context.Context, now time.Time, limit int) ([]hitl.Record, error) {
