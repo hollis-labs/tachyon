@@ -12,6 +12,7 @@ import { getForgeClient } from '../refs/client'
 import { repoKey } from '../types'
 import { registerInboxActions, type InboxActionDeps } from './actions'
 import { AssignDialog } from './AssignDialog'
+import { PrPreviewDrawer } from './PrPreviewDrawer'
 import { useItemStates, useNow, usePendingPrs } from './hooks'
 import { prWorkspaceHref } from './href'
 import {
@@ -75,6 +76,7 @@ function Checks({ item }: { item: InboxItem }) {
 interface RowProps {
   selected: boolean
   onToggle: (i: InboxItem) => void
+  onPreview: (i: InboxItem) => void
   item: InboxItem
   now: number
   agentName: (id: string) => string
@@ -82,7 +84,7 @@ interface RowProps {
   onTriage: (i: InboxItem, op: 'dismiss' | 'settle' | 'reopen' | { snooze: number }) => Promise<void>
 }
 
-function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle }: RowProps) {
+function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle, onPreview }: RowProps) {
   const { pr } = item
   const [menu, setMenu] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -113,7 +115,7 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle }: R
             {item.categories.map((c) => <Pill key={c} category={c} />)}
             {item.status === 'snoozed' && item.triage?.snoozeUntil && <span className="font-mono dash-caption text-fg-muted">snoozed until {new Date(item.triage.snoozeUntil).toLocaleString()}</span>}
           </div>
-          <p className="mt-0.5 truncate dash-body text-fg-muted">{pr.title}</p>
+          <button type="button" onClick={() => onPreview(item)} aria-label={`Preview ${label}: ${pr.title}`} className="mt-0.5 block max-w-full truncate text-left dash-body text-fg-muted hover:text-fg hover:underline">{pr.title}</button>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono dash-support text-fg-muted">
             <span>by {pr.author.login}</span>
             <span>updated {ago(Date.parse(pr.updatedAt), now)}</span>
@@ -188,6 +190,8 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const [toast, setToast] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkAssigning, setBulkAssigning] = useState(false)
+  const [previewKey, setPreviewKey] = useState<string | null>(null)
   const [names, setNames] = useState<Record<string, string>>({})
 
   useEffect(() => registerInboxActions(actionBus, { forge, messaging, stateStore, forgeLogin }), [actionBus, forge, messaging, stateStore, forgeLogin])
@@ -228,22 +232,29 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const picked = items.filter((i) => selected.has(i.key))
   async function bulk(op: 'dismiss' | 'settle' | { snooze: number }) {
     setBulkBusy(true)
-    try {
-      for (const i of picked) await triage(i, op)
-      setToast(`${picked.length} pull request${picked.length === 1 ? '' : 's'} updated`)
-      setSelected(new Set())
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : 'Could not save')
-    } finally {
-      setBulkBusy(false)
+    const failed = new Set<string>()
+    let lastError = ''
+    for (const i of picked) {
+      try {
+        await triage(i, op)
+      } catch (e) {
+        failed.add(i.key)
+        lastError = e instanceof Error ? e.message : 'Could not save'
+      }
     }
+    const ok = picked.length - failed.size
+    setToast(failed.size ? `${ok} of ${picked.length} updated, ${failed.size} failed: ${lastError}` : `${ok} pull request${ok === 1 ? '' : 's'} updated`)
+    setSelected(failed)
+    setBulkBusy(false)
   }
+  const allSelected = items.length > 0 && picked.length === items.length
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(items.map((i) => i.key)))
   const set = (p: Partial<InboxFilter>) => setFilter((f) => ({ ...f, ...p }))
   const toggleCat = (c: InboxCategory) => set({ categories: filter.categories.includes(c) ? filter.categories.filter((x) => x !== c) : [...filter.categories, c] })
   const filtered = filter.categories.length > 0 || !!filter.repo || !!filter.search || filter.unassignedOnly
 
   return (
-    <section data-dashboard-shape="square" data-dashboard-accent="yellow" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg">
+    <section data-dashboard-shape="square" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg" onKeyDown={(e) => { if (e.key === 'Escape' && selected.size > 0 && !assigning && !bulkAssigning && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) setSelected(new Set()) }}>
       <PageHeader title="Pull requests">
         <Button variant="outline" size="sm" className="dash-header-action" onClick={() => void refresh()} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Button>
       </PageHeader>
@@ -276,9 +287,15 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
       </DashboardToolbar>
 
       {picked.length > 0 && (
-        <div role="toolbar" aria-label="Bulk actions" className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2">
+        <div role="toolbar" aria-label="Bulk actions" className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2">
           <span className="dash-control text-fg">{picked.length} selected</span>
-          {SNOOZE_PRESETS.slice(0, 1).map(p => <Button key={p.id} variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk({ snooze: now + p.ms })}>Snooze {p.label.toLowerCase()}</Button>)}
+          <Button variant="outline" size="sm" disabled={bulkBusy} onClick={() => setBulkAssigning(true)}>Assign to agent</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" disabled={bulkBusy} />}>Snooze</DropdownMenuTrigger>
+            <DropdownMenuContent aria-label="Snooze for" align="start" data-dashboard-shape="square" className="w-36">
+              {SNOOZE_PRESETS.map(p => <DropdownMenuItem key={p.id} onClick={() => void bulk({ snooze: now + p.ms })}>{p.label}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk('settle')}>Resolve</Button>
           <Button variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk('dismiss')}>Dismiss</Button>
           <Button variant="ghost" size="sm" disabled={bulkBusy} onClick={() => setSelected(new Set())}>Clear</Button>
@@ -298,7 +315,12 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
           {all.length === 0 ? 'Nothing pending. All PRs are reviewed, green and assigned.' : filtered || filter.view !== 'active' ? 'No pull requests match this view.' : 'Inbox clear.'}
         </p>
       ) : (
-        groups.map((g) => (
+        <>
+        <label className="flex items-center gap-2 border-b border-border px-4 py-1.5 dash-support text-fg-muted">
+          <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleAll} className="accent-primary" />
+          Select all
+        </label>
+        {groups.map((g) => (
           <div key={g.id} role="group" aria-label={g.label}>
             {groupBy !== 'none' && (
               <h3 className="border-b border-border bg-surface/40 px-4 py-1.5 font-mono dash-caption uppercase tracking-widest text-fg-muted">
@@ -307,14 +329,21 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
             )}
             <ul>
               {g.items.map((i) => (
-                <Row key={`${repoKey(i.pr.ref.repo)}#${i.pr.ref.number}`} item={i} now={now} agentName={(id) => names[id] ?? id} onAssign={setAssigning} onTriage={triage} selected={selected.has(i.key)} onToggle={toggle} />
+                <Row key={`${repoKey(i.pr.ref.repo)}#${i.pr.ref.number}`} item={i} now={now} agentName={(id) => names[id] ?? id} onAssign={setAssigning} onTriage={triage} selected={selected.has(i.key)} onToggle={toggle} onPreview={(x) => setPreviewKey(x.key)} />
               ))}
             </ul>
           </div>
-        ))
+        ))}
+        </>
       )}
 
       </div>
+      {previewKey && all.find((i) => i.key === previewKey) && (
+        <PrPreviewDrawer item={all.find((i) => i.key === previewKey)!} forge={forge} onClose={() => setPreviewKey(null)} onAssign={(i) => { setPreviewKey(null); setAssigning(i) }} />
+      )}
+      {bulkAssigning && picked.length > 0 && (
+        <AssignDialog pr={picked[0].pr} existing={picked[0].assignments} also={picked.slice(1).map((i) => ({ pr: i.pr, existing: i.assignments }))} onClose={() => setBulkAssigning(false)} onDone={(m) => { setToast(m); setSelected(new Set()); void refresh() }} />
+      )}
       {assigning && <AssignDialog pr={assigning.pr} existing={assigning.assignments} onClose={() => setAssigning(null)} onDone={(m) => { setToast(m); void refresh() }} />}
     </section>
   )

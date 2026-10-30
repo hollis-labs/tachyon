@@ -37,3 +37,43 @@ the stub keeps the whole prefix and the real summary/stream are not mounted.
   live Tether; parsing is tolerant (bare array or wrapped under files/items/entries; content or body).
 - `launches.live` is null until B2 (`used_by`); `open_changes`, prompts and policies are 0 until B3/B5.
 - Index rows are not yet served as agents/launches lists; that is B2.
+
+## Read model: agents and launches (B2a)
+
+`internal/builderread` serves `GET /agents`, `/agents/{id}`, `/agents/{id}/used_by|checks|history`, `/launches` and
+`/launches/{id}` from the catalog index (own read-only SQL over `catalog_entities` and `catalog_snapshots`). They
+mount one pattern each, behind `operator.RequireOperator`, only when the index is on and `TACHYON_BUILDER_STUBS` is
+off. Shapes follow `internal/builderapi/openapi.yaml`.
+
+- Everything is derived from masked snapshots; environment values never reach a response. Launch `env` is key names
+  plus `secret_like_count`. The tests plant secrets and fail if one appears in any body.
+- Paging uses `limit` (default 25, max 100) and a `c<offset>` cursor.
+- **Live data** (`live_sessions`, `live_count`) comes from Tether `GET /sessions?state=running`, cached 5 s. When Tether
+  is unreachable or not configured these fields are `null`, never `0`. The session wire names (`launch_id`,
+  `logical_agent_id`) are UNVERIFIED; a session without a launch still counts for its agent.
+- `used_by`: `teams` and `assigned_items` are `null` (no source yet). `extended_by` comes from the index.
+- `checks`: `references_exist` (skills, tool servers, extends), `model_set`, `extends_cycle`. `tether_validate`,
+  `part_drift` and `scope_review_age` need Tether and the Library, and are not produced yet.
+- `history`: one entry per kept snapshot, newest first; `diff` is a unified diff against the previous snapshot (null
+  for the oldest, or when a file exceeds 3000 lines). `privileged`, `activation` and `backup_id` are empty until the
+  change flow (B4) records them; `plan_id` and `actor` are set for snapshots written by the Builder.
+- Agent detail reads the editor sections from the masked YAML on a best-effort basis; `parts` is empty until the
+  Library (B2b).
+
+## Read model: library and resolved (B2b)
+
+Added to `internal/builderread`, same mount and guard as B2a: `GET /library/{kind}`, `/library/{kind}/{id}`,
+`/library/{kind}/{id}/used_by|history` and `GET /agents/{id}/resolved[?launch=]`.
+
+- **Backing:** `skills` come from the catalog skill files (masked content, `snapshot_seq`, 2000-byte `body_preview`).
+  `tool_servers` come from the listed `mcp-servers/` paths, which are never read (credentials): rows are presence only
+  (`status: "unknown"`, no health, transport, tool count or scopes; `read_only`). `prompts` and `policies` are
+  Tachyon-owned parts (B3, held): lists are empty and items read 404 until B3 lands.
+- **used_by:** agents (and their launches) that reference the item; projects too for tool servers.
+- **history:** skill snapshots, newest first, with `snapshot_seq`, `sha`, `actor`, `plan_id`. Tool servers have none.
+- **resolved:** always `resolved_by: "tachyon_approx"`. It walks `extends` (cycle-safe, first definition wins for
+  `permission_mode`, `network`, `default_sandbox`), unions skills, tool servers (plus the launch's project servers with
+  `?launch=`) and `mcp_scopes`, and sizes prompt parts at bytes/4. Tether's own resolution route is unverified and not
+  used; `notes` says what could not be known (health, missing parents or skills). The policy and prompt keys it reads
+  from the agent YAML (`permissions.network`, `permissions.default_sandbox`, `permissions.mcp_scopes`,
+  `prompt.system_prompt|agent_prompt|body`) are best effort and UNVERIFIED against real catalog files.

@@ -207,3 +207,4 @@ components:
         deny_reason: {type: string, nullable: true}
         bytes_served: {type: integer, nullable: true}
         etag: {type: string, nullable: true}
+        count: {type: integer, minimum: 1, default: 1, description: "Paths in a stat batch (one row per batch); 1 for everything else. Additive in V6."}
