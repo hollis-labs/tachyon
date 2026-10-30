@@ -35,7 +35,7 @@ Stub controls (request headers; the stub only):
 | `POST /items/{id}/resolve` | adds `response.confirmation`, `response.alternative_id`; error codes below |
 | `POST /items/{id}/defer`, `DELETE /items/{id}/defer` | snooze overlay; never extends expiry (`expires_before_snooze_ends`) |
 | `POST /batch/resolve` | up to 25 items, in order, not a transaction; whole batch needs elevated access |
-| `GET /history` | decision timeline with reasons; filters `status requester q from to limit cursor` |
+| `GET /history` | decision timeline with reasons; filters `status requester q from to kind limit cursor` (`requester` is an exact id). Events carry `requester{id,label,kind}\|null`; the page carries `facets{requesters:[{id,label,count}], statuses:[{status,count}]}`, each counted without its own filter |
 | `GET /events` | SSE; replay with `Last-Event-ID` or `?after=`; `?once=1` ends after the replay (stub) |
 | `GET /access` | `{state: none\|elevated, expires_in_s, can_elevate, ttl_policy, required_for}` |
 | `POST /secrets` | JSON `{item_id, field, value<=16 KiB}` or multipart (`file<=64 KiB`); 201 `{secret_ref, created_at, expires_at, size, fingerprint}`, never the value. `Idempotency-Key` replays. Errors: 400, 403 `assurance_insufficient` (+`step_up`), 404, 409 `item_not_pending` / `secret_field_unknown` / `idempotency_key_reuse`, 413, 429, 503. Resolve takes `answers[field] = {secret_ref}`, else 422 `secret_ref_invalid` |

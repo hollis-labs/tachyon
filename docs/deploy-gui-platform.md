@@ -5,6 +5,8 @@ Settings). Facts are from `origin/main` at the time of writing; re-check flags w
 this list. Per-feature detail lives in the `docs/*-contract.md` and feature pages linked below. Backend 2's earlier smoke notes:
 Tesseract `tachyon_deploy_smoke_20261030` (project/agent-os/workspace/portfolio-manager). Posture is relaxed: nothing here adds guards.
 
+**Smoke rule:** never start the tachyon binary without an explicit scratch `TACHYON_DATA_DIR` (and port), and check them before starting. The binary ignores `--help` and runs with default config on the live data dir (`~/.local/share/tachyon`), which migrates the live DB.
+
 ## 1. Build, back up, restart
 
 1. **Back up first.** The database is `$TACHYON_DATA_DIR/tachyon.db` (default `~/.local/share/.../tachyon.db`; look in the data dir the
