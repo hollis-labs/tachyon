@@ -10,6 +10,8 @@ import {
   type ApprovalItem,
   type ApprovalResponse,
   type CardAnswer,
+  handoffItems,
+  isHandoffError,
   type Evidence,
 } from "./client"
 import { CardData, CardForm, CardReceiptView } from "./card-body"
@@ -86,6 +88,8 @@ export function DecisionDetail({
   const [note, setNote] = useState(initialNote)
   const [showNote, setShowNote] = useState(!!initialNote)
   const [typed, setTyped] = useState("")
+  const [handoff, setHandoff] = useState(handoffItems.has(id))
+  useEffect(() => setHandoff(handoffItems.has(id)), [id])
   const [reply, setReply] = useState("")
   const [choice, setChoice] = useState<ApprovalResponse["decision"]>()
   const refresh = useCallback(async () => {
@@ -121,6 +125,14 @@ export function DecisionDetail({
       setChoice(undefined)
       onChanged()
     } catch (e) {
+      if (isHandoffError(e)) {
+        // Not decidable in the browser: show the handoff state, not the raw error.
+        handoffItems.add(item.item_id)
+        setHandoff(true)
+        setChoice(undefined)
+        setTyped("")
+        return
+      }
       setError(
         e instanceof Error
           ? e.message
@@ -154,7 +166,7 @@ export function DecisionDetail({
   const card = !!request && isCard(request)
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
-    item && isPending(item) && !isExpired(item) && ready && !busy && !isHeld && request?.approvable !== false
+    item && isPending(item) && !isExpired(item) && ready && !busy && !isHeld && request?.approvable !== false && !handoff
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
@@ -293,7 +305,7 @@ export function DecisionDetail({
                   `Request ${item.state}`
                 }
               />
-            ) : request.approvable === false ? (
+            ) : request.approvable === false || handoff ? (
               <section className="rounded border border-border p-4">
                 <p className="dash-control text-fg-muted">This request cannot be approved here. Complete the decision in the provider console.</p>
                 {ready && safeHTTPS(request.handoff_url) && <a href={safeHTTPS(request.handoff_url)} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open in {request.source.application_id === "cerberus" ? "Cerberus" : "provider console"}</a>}

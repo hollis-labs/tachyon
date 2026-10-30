@@ -131,6 +131,10 @@ export class ApprovalError extends Error {
     super(message)
   }
 }
+// Items the server refused with provider_handoff_required, remembered for the session so the
+// operator is not offered (or asked to confirm) the same decision twice.
+export const handoffItems = new Set<string>()
+export const isHandoffError = (e: unknown) => e instanceof ApprovalError && e.code === "provider_handoff_required"
 export const isCard = (item: Pick<ApprovalItem["request_snapshot"], "kind">) =>
   item.kind.startsWith("card.")
 // "Approval", "Question", "Form"… for the kind column and search.
