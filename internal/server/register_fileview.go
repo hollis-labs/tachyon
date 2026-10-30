@@ -33,8 +33,15 @@ func mountFileviewFiles(s *Server, mux *http.ServeMux, operator *approvals.Bridg
 		sum := sha256.Sum256([]byte(c.Value))
 		return "browser-session:" + hex.EncodeToString(sum[:])
 	}
-	(&fileview.Files{Guard: guard, Audit: s.fileviewAudit, Principal: principal}).Mount(mux, operator.RequireOperatorReads)
+	// The caster adapter (V5) is on when TACHYON_CASTER_TOKEN_FILE names the read-scoped device token made with
+	// `caster pair -scope read -label tachyon`; CASTER_URL overrides the daemon address. Off, caster_ref is 501.
+	var caster *fileview.Caster
+	if tf := os.Getenv("TACHYON_CASTER_TOKEN_FILE"); tf != "" {
+		caster = &fileview.Caster{Svc: svc, BaseURL: os.Getenv("CASTER_URL"), TokenFile: tf, Audit: s.fileviewAudit, Principal: principal}
+		caster.Mount(mux, operator.RequireOperatorReads)
+	}
+	(&fileview.Files{Guard: guard, Audit: s.fileviewAudit, Principal: principal, Caster: caster}).Mount(mux, operator.RequireOperatorReads)
 	// POST /frame mints a one-time frame and needs an operator session; GET /frames/{id} is the one unguarded
 	// route: a sandboxed iframe has an opaque origin and no cookie, so the 256-bit single-use id is the capability.
-	(&fileview.Frames{Guard: guard, Audit: s.fileviewAudit, Principal: principal}).Mount(mux, operator.RequireOperator)
+	(&fileview.Frames{Guard: guard, Audit: s.fileviewAudit, Principal: principal, Caster: caster}).Mount(mux, operator.RequireOperator)
 }
