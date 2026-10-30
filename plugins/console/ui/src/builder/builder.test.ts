@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { type AgentDetail, BuilderError, errorMessage } from './api'
-import { buildOps, changedPaths, isOpen, minutesAndSeconds } from './changes'
+import { buildOps, changedPaths, isOpen, minutesAndSeconds, relativeTime } from './changes'
 import { SECTIONS, STATE_LABEL } from './vocab'
 
 describe('builder helpers', () => {
   it('names every state and keeps sections in reading order', () => {
     expect(Object.keys(STATE_LABEL)).toEqual(['active', 'disabled', 'retired'])
-    expect(SECTIONS.map((s) => s.id)).toEqual(['identity', 'runtime', 'prompt', 'tools', 'policy'])
+    expect(SECTIONS.map((s) => s.id)).toEqual(['identity', 'runtime', 'prompt', 'tools', 'policy', 'resolved', 'used_by', 'checks', 'history'])
   })
   it('tolerates operator-only reads with a plain message', () => {
     expect(errorMessage(new BuilderError(403, 'x', 'no'))).toBe('Operator access is needed to view this.')
@@ -39,5 +39,8 @@ describe('changes', () => {
     expect(isOpen('awaiting_approval')).toBe(true)
     expect(isOpen('applied')).toBe(false)
     expect(minutesAndSeconds(125000)).toBe('2:05')
+    const now = 1_800_000_000_000
+    expect(relativeTime(now - 12 * 60000, now)).toBe('12m ago')
+    expect(relativeTime((now - 30 * 3600000) / 1000, now)).toBe('Yesterday')
   })
 })
