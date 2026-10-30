@@ -8,6 +8,7 @@ import { kindLabel } from "./client"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
+import { HistoryTimeline } from "./history"
 
 export function ApprovalsPage() {
   const queue = useApprovals()
@@ -42,7 +43,6 @@ export function ApprovalsPage() {
       </div>
     )
   const pendingCount = queue.inbox?.pending.length ?? 0
-  const historyCount = queue.inbox?.history.length ?? 0
   const rows = (queue.inbox?.[view] ?? []).filter((item) =>
     `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
       .toLowerCase()
@@ -66,17 +66,16 @@ export function ApprovalsPage() {
         </Button>
       </PageHeader>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
-        {historyCount > 0 && <DashboardViewTabs
+        <DashboardViewTabs
           variant="segments"
           label="Approvals view"
           value={view}
           onChange={(v) => setView(v as "pending" | "history")}
           items={[
             { value: "pending", label: "Pending", count: pendingCount },
-            // Hidden until there is history to show (the history API lands with #196).
-            ...(historyCount > 0 ? [{ value: "history", label: "History", count: historyCount }] : []),
+            { value: "history", label: "History" },
           ]}
-        />}
+        />
         <div className="dash-search-adapter w-72 max-w-full">
           <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} slashToFocus={false} />
         </div>
@@ -86,6 +85,9 @@ export function ApprovalsPage() {
           Approval queue unavailable: {queue.error}
         </p>
       )}
+      {view === "history" ? (
+        <HistoryTimeline client={queue.client} search={search} onOpen={queue.open} />
+      ) : (
       <div className="flex min-h-0 flex-1">
         <section
           aria-label={view === "pending" ? "Pending approvals" : "Approval history"}
@@ -95,7 +97,7 @@ export function ApprovalsPage() {
             items={rows}
             selectedId={current?.item_id}
             onSelect={select}
-            history={view === "history"}
+            history={false}
             held={heldIds}
             empty={
               queue.loading
@@ -125,6 +127,7 @@ export function ApprovalsPage() {
           )}
         </section>
       </div>
+      )}
     </div>
   )
 }
