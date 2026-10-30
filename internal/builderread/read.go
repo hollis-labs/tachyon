@@ -18,6 +18,7 @@ import (
 type Reader struct {
 	Index    *catalogindex.Store
 	Sessions SessionSource // nil: live data reports null
+	Tools    ToolSource    // nil: tool server health reads "unknown"
 }
 
 // Mount registers one explicit pattern per route. wrap guards each (the caller passes operator.RequireOperator).

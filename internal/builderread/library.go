@@ -1,6 +1,7 @@
 package builderread
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"strings"
@@ -43,7 +44,7 @@ type usage struct {
 }
 
 func (r *Reader) usage(req *http.Request, kind, id string) (usage, bool) {
-	ix, ok := r.usageIndex(req)
+	ix, ok := r.usageIndex(req.Context())
 	if !ok {
 		return usage{}, false
 	}
@@ -53,12 +54,12 @@ func (r *Reader) usage(req *http.Request, kind, id string) (usage, bool) {
 // usageIndex holds the agents, launches and projects once, so a list does not reload them per item.
 type usageIndex struct{ agents, launches, projects []file }
 
-func (r *Reader) usageIndex(req *http.Request) (usageIndex, bool) {
+func (r *Reader) usageIndex(ctx context.Context) (usageIndex, bool) {
 	var ix usageIndex
 	var ok1, ok2, ok3 bool
-	ix.agents, ok1 = r.kind2(req, catalogindex.KindAgent)
-	ix.launches, ok2 = r.kind2(req, catalogindex.KindLaunch)
-	ix.projects, ok3 = r.kind2(req, catalogindex.KindProject)
+	ix.agents, ok1 = r.kind2(ctx, catalogindex.KindAgent)
+	ix.launches, ok2 = r.kind2(ctx, catalogindex.KindLaunch)
+	ix.projects, ok3 = r.kind2(ctx, catalogindex.KindProject)
 	return ix, ok1 && ok2 && ok3
 }
 
@@ -96,12 +97,12 @@ func (ix usageIndex) of(kind, id string) usage {
 	return u
 }
 
-func (r *Reader) kind2(req *http.Request, kind string) ([]file, bool) {
-	fs, err := loadAll(req.Context(), r.Index, kind)
+func (r *Reader) kind2(ctx context.Context, kind string) ([]file, bool) {
+	fs, err := loadAll(ctx, r.Index, kind)
 	return fs, err == nil
 }
 
-func (r *Reader) libItem(f file, kind string, used int) map[string]any {
+func (r *Reader) libItem(f file, kind string, used int, tools map[string]ToolHealth) map[string]any {
 	row := map[string]any{"kind": kind, "id": f.ID, "name": orDefault(f.Name, f.ID), "used_by_count": used,
 		"layer": f.Layer, "source": "catalog", "path": f.Path, "sha": orNull(f.SHA)}
 	if kind == builderapi.LibSkills {
@@ -112,7 +113,12 @@ func (r *Reader) libItem(f file, kind string, used int) map[string]any {
 	// Tool servers are listed but never read (they hold credentials): presence only, no health from here.
 	row["summary"] = ""
 	row["transport"], row["tags"], row["status"], row["health"] = nil, []string{}, "unknown", nil
-	row["tool_count"], row["restarts"], row["scopes"] = nil, nil, nil
+	row["tool_count"], row["restarts"], row["scopes"] = nil, nil, nil // scopes are not readable (credentials)
+	if h, ok := tools[f.ID]; ok {
+		row["transport"], row["tags"], row["health"] = orNull(h.Transport), nonNilStrings(h.Tags), orNull(h.Health)
+		row["status"] = orDefault(h.Status, "unknown")
+		row["tool_count"], row["restarts"] = h.ToolCount, h.Restarts
+	}
 	row["read_only"], row["editable"] = true, false
 	return row
 }
@@ -129,14 +135,15 @@ func (r *Reader) libraryList(w http.ResponseWriter, req *http.Request) {
 		if !ok {
 			return
 		}
-		ix, ok := r.usageIndex(req)
+		tools := r.toolHealth(req.Context(), kind)
+		ix, ok := r.usageIndex(req.Context())
 		if !ok {
 			fail(w, 503, "catalog_unavailable", "The catalog index could not be read.")
 			return
 		}
 		q := strings.ToLower(strings.TrimSpace(req.URL.Query().Get("q")))
 		for _, f := range fs {
-			row := r.libItem(f, kind, len(ix.of(kind, f.ID).agents))
+			row := r.libItem(f, kind, len(ix.of(kind, f.ID).agents), tools)
 			if q != "" && !strings.Contains(strings.ToLower(f.ID+" "+str(row["name"])+" "+str(row["summary"])), q) {
 				continue
 			}
@@ -178,7 +185,7 @@ func (r *Reader) libraryItem(w http.ResponseWriter, req *http.Request) {
 		fail(w, 503, "catalog_unavailable", "The catalog index could not be read.")
 		return
 	}
-	row := r.libItem(f, kind, len(u.agents))
+	row := r.libItem(f, kind, len(u.agents), r.toolHealth(req.Context(), kind))
 	if kind == builderapi.LibSkills {
 		prev, trunc := f.Content, false
 		if len(prev) > previewBytes {
