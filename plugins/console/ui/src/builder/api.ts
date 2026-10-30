@@ -212,7 +212,7 @@ export interface Change {
     files: number
     session_available: boolean
     reason?: string
-    commands?: { step: 'plan' | 'approve' | 'apply'; label: string; command: string }[]
+    commands?: { step: 'plan' | 'approve' | 'apply'; label: string; command: string; kind?: 'shell' | 'session' | string }[]
   } | null
   stale?: {
     changed_paths: string[]
