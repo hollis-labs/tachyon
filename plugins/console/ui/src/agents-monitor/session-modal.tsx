@@ -7,6 +7,19 @@ import { stateText } from './session-parts'
 import { AGENTS } from './vocabulary'
 import type { Session } from './types'
 
+/** True below the 640px breakpoint: the modal goes full screen and the control panels become bottom sheets. */
+function useNarrow() {
+  const q = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 639px)') : null
+  const [narrow, setNarrow] = useState(q?.matches ?? false)
+  useEffect(() => {
+    if (!q) return
+    const on = () => setNarrow(q.matches)
+    q.addEventListener('change', on)
+    return () => q.removeEventListener('change', on)
+  }, [q])
+  return narrow
+}
+
 type Tab = 'now' | 'timeline' | 'context' | 'history'
 const TABS: readonly Tab[] = ['now', 'timeline', 'context', 'history']
 
@@ -18,6 +31,7 @@ const TABS: readonly Tab[] = ['now', 'timeline', 'context', 'history']
 export function SessionModal({ session, paused, now, onClose, onRestarted }: { session: Session; paused: boolean; now: number; onClose: () => void; onRestarted: (newId: string | null) => void }) {
   const [tab, setTab] = useState<Tab>('now')
   const [nudgeSeq, setNudgeSeq] = useState(0)
+  const narrow = useNarrow()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement
@@ -25,6 +39,7 @@ export function SessionModal({ session, paused, now, onClose, onRestarted }: { s
       const i = TABS.indexOf(tab)
       if (e.key === ']') setTab(TABS[Math.min(TABS.length - 1, i + 1)])
       else if (e.key === '[') setTab(TABS[Math.max(0, i - 1)])
+      else if (e.key === 'n') document.querySelector<HTMLButtonElement>('[data-nudge-trigger]:not(:disabled)')?.click()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -33,7 +48,7 @@ export function SessionModal({ session, paused, now, onClose, onRestarted }: { s
   const action = session.one_liner ? ` · ${session.one_liner.verb} ${session.one_liner.target}` : ''
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent showCloseButton={false} widthClassName="max-w-[980px]" className="flex h-[min(660px,calc(100dvh-5rem))] flex-col gap-0 overflow-hidden p-0 max-sm:h-dvh max-sm:max-w-none max-sm:rounded-none">
+      <DialogContent showCloseButton={false} showFullscreenToggle={false} fullscreen={narrow} widthClassName="max-w-[980px]" className="flex h-[min(660px,calc(100dvh-5rem))] flex-col gap-0 overflow-hidden p-0">
         <header className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-border-subtle px-4 py-3">
           <Avatar name={session.agent.name} />
           <div className="flex min-w-0 flex-col">
