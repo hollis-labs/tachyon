@@ -94,7 +94,7 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
   }
 
   return (
-    <div data-overlay="" className="fixed inset-0 z-[60] flex justify-end bg-black/60" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div data-overlay="" className="fixed inset-0 z-[60] flex justify-end bg-bg/60" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={ref}
         role="dialog"

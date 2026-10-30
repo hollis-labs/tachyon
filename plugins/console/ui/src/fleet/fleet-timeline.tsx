@@ -20,7 +20,7 @@ export function StateTimeline({ entries, now, windowMs, width = 120, height = 14
       shapeRendering="crispEdges"
       role="img"
       aria-label={`Observed state over the last ${minutes} minutes`}
-      className="shrink-0 bg-zinc-900/60"
+      className="shrink-0 bg-surface"
     >
       {segs.map((g, i) =>
         g.state ? <rect key={i} x={x(g.from)} y={0} width={Math.max(1, x(g.to) - x(g.from))} height={height} fill={FLEET_STATE_STYLE[g.state].fill} opacity={0.85} /> : null,
