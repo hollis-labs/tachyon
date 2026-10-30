@@ -296,3 +296,85 @@ func TestRegisterRules(t *testing.T) {
 		t.Fatal("registered kind not found")
 	}
 }
+
+func TestDestructiveMembersAreValidatedServerRaisedAndDigested(t *testing.T) {
+	reg := NewRegistry()
+	prep := func(extra map[string]any) (hitl.EnqueueRequest, error) {
+		extra["title"], extra["data"] = "Purge", map[string]any{}
+		r := req("card.approval", extra)
+		return r, reg.Prepare(&r, "service:x")
+	}
+	del := []map[string]any{{"target": "fake:a", "op": "delete"}}
+	// A destructive op raises the flag even when the asker says nothing or tries to clear it.
+	for _, d := range []any{nil, false, map[string]any{"irreversible": false, "summary": "tidy"}} {
+		extra := map[string]any{"effects": del}
+		if d != nil {
+			extra["destructive"] = d
+		}
+		r, err := prep(extra)
+		var got struct {
+			Irreversible bool   `json:"irreversible"`
+			Summary      string `json:"summary"`
+		}
+		if err != nil || json.Unmarshal(r.Extra["destructive"], &got) != nil || !got.Irreversible || got.Summary == "" || class(t, r) != "medium" {
+			t.Fatalf("%v: %v %s", d, err, r.Extra["destructive"])
+		}
+	}
+	// The asker may raise it.
+	r, err := prep(map[string]any{"effects": []map[string]any{{"target": "fake:a", "op": "set"}}, "destructive": map[string]any{"irreversible": true, "summary": "x"}})
+	if err != nil || r.Extra["destructive"] == nil {
+		t.Fatalf("raise: %v", err)
+	}
+	// Everything is covered by the digest, and a client digest that disagrees is refused.
+	base := map[string]any{"effects": del, "affected_items": []map[string]any{{"ref": "a", "label": "A", "kind": "file"}}, "alternatives": []map[string]any{{"id": "archive", "label": "Archive instead", "effects": []map[string]any{{"target": "fake:a", "op": "set"}}}}}
+	a, err := prep(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	da, _ := DigestOf(a.Kind, a.Extra)
+	for name, mut := range map[string]func(map[string]json.RawMessage){
+		"affected": func(m map[string]json.RawMessage) {
+			m["affected_items"] = json.RawMessage(`[{"ref":"b","label":"A","kind":"file"}]`)
+		},
+		"alternative": func(m map[string]json.RawMessage) { delete(m, "alternatives") },
+		"destructive": func(m map[string]json.RawMessage) {
+			m["destructive"] = json.RawMessage(`{"irreversible":false,"summary":"x"}`)
+		},
+	} {
+		cp := map[string]json.RawMessage{}
+		for k, v := range a.Extra {
+			cp[k] = v
+		}
+		mut(cp)
+		if d, _ := DigestOf(a.Kind, cp); d == da {
+			t.Errorf("%s change left the digest unchanged", name)
+		}
+	}
+	// No new members: the digest is what it always was.
+	plain, _ := prep(map[string]any{"effects": []map[string]any{{"target": "fake:a", "op": "set"}}})
+	old, _ := Digest(plain.Kind, plain.Extra["data"], plain.Extra["effects"])
+	if now, _ := DigestOf(plain.Kind, plain.Extra); now != old {
+		t.Error("a request without the new members must keep its old digest")
+	}
+	// Refusals.
+	many := make([]map[string]any, MaxAffectedItems+1)
+	for i := range many {
+		many[i] = map[string]any{"ref": "r", "label": "l", "kind": "k"}
+	}
+	alt := func(id string) map[string]any {
+		return map[string]any{"id": id, "label": "l", "effects": []map[string]any{{"target": "fake:a"}}}
+	}
+	for name, extra := range map[string]map[string]any{
+		"too many affected": {"affected_items": many},
+		"affected no label": {"affected_items": []map[string]any{{"ref": "r", "kind": "k"}}},
+		"four alternatives": {"alternatives": []map[string]any{alt("a1"), alt("a2"), alt("a3"), alt("a4")}},
+		"duplicate alt id":  {"alternatives": []map[string]any{alt("a1"), alt("a1")}},
+		"bad alt id":        {"alternatives": []map[string]any{alt("Bad Id")}},
+		"alt without fx":    {"alternatives": []map[string]any{{"id": "a1", "label": "l"}}},
+		"destructive str":   {"destructive": "yes"},
+	} {
+		if _, err := prep(extra); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+}

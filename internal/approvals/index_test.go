@@ -125,7 +125,10 @@ func TestProjectionGroupsRiskAndBatchEligibility(t *testing.T) {
 	if l.Counts["pending"].(float64) != 7 || l.Counts["batchable"].(float64) != 1 || l.Counts["by_group"].(map[string]any)["change"].(float64) != 2 {
 		t.Errorf("counts: %v", l.Counts)
 	}
-	if _, has := by[ok]["destructive"]; has {
+	if by[ok]["destructive"] != nil || by[ok]["affected_total"] != float64(0) {
+		t.Error("an ordinary item is not destructive and affects nothing")
+	}
+	if _, has := by[ok]["evidence"]; has {
 		t.Error("fields of later slices must be absent, not faked")
 	}
 }

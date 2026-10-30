@@ -174,3 +174,70 @@ func countEvents(t *testing.T, g gateEnv, id, kind string) int {
 	}
 	return n
 }
+
+func (g gateEnv) enqueueDestructive(t *testing.T, key string, alts bool) string {
+	t.Helper()
+	req := requestFixture(t, key, "medium")
+	req.Extra["destructive"] = json.RawMessage(`{"irreversible":true,"summary":"Deletes the items."}`)
+	req.Extra["affected_items"] = json.RawMessage(`[{"ref":"a","label":"A","kind":"file"},{"ref":"b","label":"B","kind":"file"}]`)
+	if alts {
+		req.Extra["alternatives"] = json.RawMessage(`[{"id":"archive","label":"Archive instead","effects":[{"target":"x:y"}]}]`)
+	}
+	h, err := g.inbox.Service.Enqueue(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h.ItemID
+}
+
+func (g gateEnv) resolveAlt(id, decision, phrase, alt string) *httptest.ResponseRecorder {
+	resp := map[string]string{"kind": "approval", "decision": decision}
+	if phrase != "" {
+		resp["confirmation"] = phrase
+	}
+	if alt != "" {
+		resp["alternative_id"] = alt
+	}
+	return serveJSON(g.inbox, "POST", Prefix+"/items/"+id+"/resolve", map[string]any{"expected_revision": 1, "presented_projection_revision": 1, "response": resp}, "", "session")
+}
+
+func TestDestructiveItemsNeedOperatorPhraseOrAnAlternative(t *testing.T) {
+	g := newGateEnv(t)
+	id := g.enqueueDestructive(t, "x1", true)
+	m := g.item(t, id)
+	if m["affected_total"] != float64(2) || m["destructive"] == nil || len(m["alternatives"].([]any)) != 1 || phraseOf(m) != "DELETE 2 ITEMS" || m["group"] != "destructive" {
+		t.Fatalf("projection: %v", m)
+	}
+	*g.elevated = false
+	if w := g.resolveAlt(id, "denied", "", ""); w.Code != 403 {
+		t.Fatalf("even a denial needs operator access: %d %s", w.Code, w.Body)
+	}
+	*g.elevated = true
+	if w := g.resolveAlt(id, "approved", "", ""); w.Code != 422 {
+		t.Fatalf("no phrase: %d %s", w.Code, w.Body)
+	}
+	if w := g.resolveAlt(id, "approved", "delete 2 items", ""); w.Code != 422 {
+		t.Fatalf("wrong case: %d", w.Code)
+	}
+	if w := g.resolveAlt(id, "approved", "", "nuke"); w.Code != 400 {
+		t.Fatalf("unknown alternative: %d %s", w.Code, w.Body)
+	}
+	if w := g.resolveAlt(id, "denied", "", "archive"); w.Code != 400 {
+		t.Fatalf("alternative with a denial: %d %s", w.Code, w.Body)
+	}
+	if w := g.resolveAlt(id, "approved", "", "archive"); w.Code != 200 {
+		t.Fatalf("alternative needs no phrase: %d %s", w.Code, w.Body)
+	}
+	rec, _ := g.inbox.Store.Get(context.Background(), id)
+	if res, ok := rec.Outcome.(hitl.Resolved); !ok || !strings.Contains(string(res.Resolution.Response.Extra["alternative_id"]), "archive") {
+		t.Fatalf("alternative not recorded: %+v", rec.Outcome)
+	}
+	// A phrase approves the main effects; an alternative on an item without any is invalid.
+	id = g.enqueueDestructive(t, "x2", false)
+	if w := g.resolveAlt(id, "approved", "", "archive"); w.Code != 400 {
+		t.Fatalf("%d", w.Code)
+	}
+	if w := g.resolveAlt(id, "approved", "DELETE 2 ITEMS", ""); w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}

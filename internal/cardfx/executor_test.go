@@ -13,6 +13,7 @@ import (
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/cards"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
@@ -208,5 +209,56 @@ func TestTorqueTargetValidatesAndPostsATransition(t *testing.T) {
 	}
 	if _, err := tq.Apply(context.Background(), Effect{Target: "torque:task/CW-20261023-0099", Op: "status", Value: "done"}); err == nil || !strings.Contains(err.Error(), "invalid transition") {
 		t.Fatalf("a Torque refusal must surface: %v", err)
+	}
+}
+
+func TestApprovedAlternativeRunsInsteadOfTheMainEffects(t *testing.T) {
+	inbox, store, items := setup(t)
+	ft := &fakeTarget{}
+	ex := New(items, store, ft)
+	ctx := context.Background()
+	alt := []map[string]any{{"id": "archive", "label": "Archive instead", "effects": []map[string]any{{"target": "fake:archived", "op": "set"}}}}
+	mk := func(key string) string {
+		return ask(t, inbox, key, []map[string]any{{"target": "fake:doomed", "op": "set"}}, func(r *hitl.EnqueueRequest) {
+			r.Extra["alternatives"], _ = json.Marshal(alt)
+			d, _ := cards.DigestOf(r.Kind, r.Extra)
+			r.Extra["op_digest"], _ = json.Marshal(d)
+		})
+	}
+	choose := func(id, alternative string) {
+		rev := int64(1)
+		who := hitl.Participant{PrincipalRef: "browser-session:op", Authority: "tachyon-inbox", Assurance: "operator-token", Responder: &hitl.Responder{Kind: "human-session", Ref: "browser-session:op"}}
+		resp := hitl.Response{Kind: "card.approval", Decision: "approved", Extra: map[string]json.RawMessage{}}
+		if alternative != "" {
+			resp.Extra["alternative_id"], _ = json.Marshal(alternative)
+		}
+		if _, err := inbox.Service.Respond(ctx, hitl.RespondCommand{ItemID: id, ExpectedRevision: &rev, Response: resp, Participant: who}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := mk("alt1")
+	choose(id, "archive")
+	if err := ex.Run(ctx); err != nil || len(ft.applied) != 1 || ft.applied[0].Target != "fake:archived" {
+		t.Fatalf("only the alternative must run: %v %v", err, ft.applied)
+	}
+	if r, _ := store.Get(ctx, id); r == nil || r.State != StateCompleted || r.Alternative != "archive" {
+		t.Fatalf("%+v", r)
+	}
+	// An alternative that is not in the approved request is refused, nothing runs.
+	ft.applied = nil
+	id = mk("alt2")
+	choose(id, "nuke")
+	if err := ex.Run(ctx); err != nil || len(ft.applied) != 0 {
+		t.Fatalf("%v %v", err, ft.applied)
+	}
+	if r, _ := store.Get(ctx, id); r == nil || r.State != StateRefused {
+		t.Fatalf("%+v", r)
+	}
+	// Without an alternative the main effects run.
+	id = mk("alt3")
+	choose(id, "")
+	_ = ex.Run(ctx)
+	if len(ft.applied) != 1 || ft.applied[0].Target != "fake:doomed" {
+		t.Fatalf("%v", ft.applied)
 	}
 }

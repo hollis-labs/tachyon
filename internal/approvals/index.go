@@ -110,6 +110,9 @@ func factsOf(rec hitl.Record) Facts {
 			f.Destructive = true
 		}
 	}
+	if raw := req.Extra["destructive"]; len(raw) > 0 && string(raw) != "null" && string(raw) != "false" {
+		f.Destructive = true
+	}
 	var data struct {
 		Fields []struct {
 			Type string `json:"type"`
@@ -217,6 +220,8 @@ type Projection struct {
 	ReasonReq     bool
 	DeferredUntil *time.Time
 	Gate          Gate
+	// Destructive-request members, as stored (and digested) by the card validator.
+	AffectedItems, Destructive, Alternatives json.RawMessage
 }
 
 // Project builds the projection of a record at now. batchable and batch_blockers
@@ -239,11 +244,14 @@ func Project(rec hitl.Record, now time.Time, deferredUntil *time.Time) Projectio
 	if blockers == nil {
 		blockers = []string{}
 	}
+	var stored hitl.EnqueueRequest
+	_ = json.Unmarshal(rec.Request, &stored)
 	return Projection{Kind: f.Kind, Title: f.Title, Summary: f.Summary,
 		Requester:  map[string]string{"id": f.ReqID, "label": f.ReqLabel, "kind": f.ReqKind},
 		SessionRef: f.SessionRef, AskedAt: rec.CreatedAt, Risk: f.Risk, RiskReasons: reasons, Group: f.Group,
 		Batchable: len(blockers) == 0, BatchBlockers: blockers, EffectClasses: classes, ExpiresAt: rec.ExpiresAt,
-		ServerNowMs: now.UnixMilli(), Recommend: f.Recommend, ReasonReq: f.ReasonReq, DeferredUntil: deferredUntil, Gate: CanResolve(rec, now)}
+		ServerNowMs: now.UnixMilli(), Recommend: f.Recommend, ReasonReq: f.ReasonReq, DeferredUntil: deferredUntil, Gate: CanResolve(rec, now),
+		AffectedItems: stored.Extra["affected_items"], Destructive: stored.Extra["destructive"], Alternatives: stored.Extra["alternatives"]}
 }
 
 func (p Projection) fields() map[string]any {
@@ -264,6 +272,10 @@ func (p Projection) fields() map[string]any {
 	if p.Recommend != "" {
 		m["recommendation"] = p.Recommend
 	}
+	m["affected_items"] = rawOr(p.AffectedItems, "[]")
+	m["affected_total"] = affectedCount(p.AffectedItems)
+	m["destructive"] = rawOr(p.Destructive, "null")
+	m["alternatives"] = rawOr(p.Alternatives, "[]")
 	m["approvable"] = p.Gate.Approvable
 	if !p.Gate.Approvable {
 		m["approvable_reason"] = p.Gate.Reason
@@ -547,4 +559,17 @@ func (i *Inbox) Maintain(ctx context.Context, every time.Duration, logf func(msg
 		case <-t.C:
 		}
 	}
+}
+
+func rawOr(raw json.RawMessage, fallback string) json.RawMessage {
+	if len(raw) == 0 || string(raw) == "null" {
+		return json.RawMessage(fallback)
+	}
+	return raw
+}
+
+func affectedCount(raw json.RawMessage) int {
+	var items []json.RawMessage
+	_ = json.Unmarshal(raw, &items)
+	return len(items)
 }
