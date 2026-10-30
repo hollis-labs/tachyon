@@ -10,10 +10,10 @@ Shapes are in `docs/alerts-contract.md` and `internal/alertsapi/openapi.yaml`; s
 | Store, ops, counts, prefs, `/console/state` compat for alert keys | `register_alerts.go` | `TACHYON_ALERTS_STUBS=1` serves fixtures instead |
 | Coalesce, escalate, snooze/defer wake (`Store.Maintain`) | started with the store | none |
 | Approval alerts settle from the Approvals broker | started with the store | none |
-| Stream hub, `GET /alerts/stream`, `GET /alerts/sources`, adapters (activity monitor, Agents bus) | `register_alertsfeed.go` | `TACHYON_ALERTS_SOURCES=0` leaves the adapters off; `TACHYON_ACTIVITY_URL` points the activity adapter |
+| Stream hub, `GET /alerts/stream`, `GET /alerts/sources`, `GET /alerts/rules`, adapters (activity monitor, Agents bus, Torque events, Tether poll) | `register_alertsfeed.go` | `TACHYON_ALERTS_SOURCES=0` leaves the adapters off; `TACHYON_ACTIVITY_URL`, `TORQUE_URL` (default loopback) and `TETHER_ADDR` start their adapters |
 | Forge `pr.*` events | forge index poller | `TACHYON_FORGE_STUBS=1` |
 
-Not built: Torque and Tether-poll adapters, `GET /alerts/rules`, outbound sinks (AL7, review-gated). Task-done settling of task-failed alerts is not done.
+Not built: outbound sinks (AL7, review-gated). Task-done settling of task-failed alerts is not done.
 
 ## Behaviour to know
 
