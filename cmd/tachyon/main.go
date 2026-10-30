@@ -70,10 +70,12 @@ func main() {
 		CacheDir:                    env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		ActionDetachGrace:           durationEnv("TACHYON_ACTION_DETACH_GRACE"),
 		AgentsCollector:             os.Getenv("TACHYON_AGENTS_COLLECTOR") != "0",
+		CatalogIndex:                os.Getenv("TACHYON_CATALOG_INDEX") != "0",
 		AgentsStubs:                 os.Getenv("TACHYON_AGENTS_STUBS") == "1",
-		ForgeStubs:                  os.Getenv("TACHYON_FORGE_STUBS") == "1",
 		ChatClientContext:           os.Getenv("TACHYON_CHAT_CLIENT_CONTEXT") == "1",
 		ChatStubs:                   os.Getenv("TACHYON_CHAT_STUBS") == "1",
+		FileviewStubs:               os.Getenv("TACHYON_FILEVIEW_STUBS") == "1",
+		BuilderStubs:                os.Getenv("TACHYON_BUILDER_STUBS") == "1",
 		CardEffectsTorque:           os.Getenv("TACHYON_CARD_EFFECTS_TORQUE") == "1",
 		CardDeliveryFile:            os.Getenv("TACHYON_CARD_DELIVERY_FILE"),
 		ActionHub: actionrun.SSH{

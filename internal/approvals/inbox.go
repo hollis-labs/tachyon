@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
+	"github.com/hollis-labs/tachyon/internal/approvals/assurance"
+	"github.com/hollis-labs/tachyon/internal/approvalsapi"
 	"github.com/hollis-labs/tachyon/internal/cards"
 )
 
@@ -31,6 +34,9 @@ type Inbox struct {
 	// (nil result means none yet). It holds ids and outcomes, no free text from
 	// the asker, so any browser session that can read the item may see it.
 	CardReceipt func(ctx context.Context, itemID string) any
+	// Assurance is the one place session strength is asked. NewInbox wires the
+	// Tangent bridge; tests and later providers replace it.
+	Assurance assurance.Provider
 }
 
 func NewInbox(store *Store, sessions *Bridge) *Inbox {
@@ -43,7 +49,11 @@ func NewInbox(store *Store, sessions *Bridge) *Inbox {
 		}
 		return fmt.Errorf("%w: decision does not match the request kind", hitl.ErrInvalidRequest)
 	}})
-	return &Inbox{Store: store, Service: service, Sessions: sessions}
+	in := &Inbox{Store: store, Service: service, Sessions: sessions}
+	if sessions != nil {
+		in.Assurance = &TangentProvider{Bridge: sessions}
+	}
+	return in
 }
 
 type sessionStatus struct {
@@ -58,11 +68,32 @@ func sameOrigin(r *http.Request) bool {
 	origin, err := url.Parse(r.Header.Get("Origin"))
 	return err == nil && origin.Host == r.Host && (origin.Scheme == "https" || origin.Scheme == "http") && origin.User == nil && origin.Path == "" && origin.RawQuery == "" && origin.Fragment == "" && r.Header.Get("Sec-Fetch-Site") != "cross-site"
 }
+
+// participant resolves the caller's session and writes the refusal itself.
 func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Participant, sessionStatus, bool) {
+	p, status, err := b.lookup(r)
+	if err != nil {
+		writeAssuranceError(w, err)
+		return hitl.Participant{}, sessionStatus{}, false
+	}
+	return p, status, true
+}
+
+func writeAssuranceError(w http.ResponseWriter, err *assurance.Error) {
+	if err.Body != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(err.Status)
+		_, _ = w.Write([]byte(err.Body))
+		return
+	}
+	fail(w, err.Status, err.Code, err.Message)
+}
+
+// lookup is participant without the response writing, so the assurance provider can reuse it.
+func (b *Bridge) lookup(r *http.Request) (hitl.Participant, sessionStatus, *assurance.Error) {
 	// Bearer requesters cannot acquire response authority by adding a cookie.
 	if r.Header.Get("Authorization") != "" {
-		fail(w, 403, "requester_cannot_approve", "Use the operator browser session for inbox access.")
-		return hitl.Participant{}, sessionStatus{}, false
+		return hitl.Participant{}, sessionStatus{}, &assurance.Error{Status: 403, Code: "requester_cannot_approve", Message: "Use the operator browser session for inbox access."}
 	}
 	check := r.Clone(r.Context())
 	u := *r.URL
@@ -75,24 +106,20 @@ func (b *Bridge) participant(w http.ResponseWriter, r *http.Request) (hitl.Parti
 	captured := &statusCapture{header: make(http.Header), status: 200}
 	b.ServeHTTP(captured, check)
 	if captured.status != 200 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(captured.status)
-		_, _ = w.Write([]byte(captured.body.String()))
-		return hitl.Participant{}, sessionStatus{}, false
+		return hitl.Participant{}, sessionStatus{}, &assurance.Error{Status: captured.status, Body: captured.body.String()}
 	}
 	var status sessionStatus
 	cookie, err := r.Cookie(CookieName)
 	if err != nil || cookie.Value == "" || json.Unmarshal([]byte(captured.body.String()), &status) != nil || status.Assurance == "" {
-		fail(w, 401, "session_required", "Connect an operator browser session.")
-		return hitl.Participant{}, sessionStatus{}, false
+		return hitl.Participant{}, sessionStatus{}, &assurance.Error{Status: 401, Code: "session_required", Message: "Connect an operator browser session."}
 	}
 	hash := sha256.Sum256([]byte(cookie.Value))
 	ref := "browser-session:" + hex.EncodeToString(hash[:])
-	assurance := "browser-session"
+	level := "browser-session"
 	if status.Elevated && status.Assurance == "operator-token" {
-		assurance = "operator-token"
+		level = "operator-token"
 	}
-	return hitl.Participant{PrincipalRef: ref, Authority: "tachyon-inbox/tangent-session", Assurance: assurance, Responder: &hitl.Responder{Kind: "human-session", Ref: ref}}, status, true
+	return hitl.Participant{PrincipalRef: ref, Authority: "tachyon-inbox/tangent-session", Assurance: level, Responder: &hitl.Responder{Kind: "human-session", Ref: ref}}, status, nil
 }
 
 type browserItem struct {
@@ -100,6 +127,8 @@ type browserItem struct {
 	PresentedProjectionRevision int64 `json:"presented_projection_revision"`
 	ActionRun                   any   `json:"action_run,omitempty"`
 	CardReceipt                 any   `json:"card_receipt,omitempty"`
+	// Projection adds the queue fields (risk, group, batchable, ...). Nil leaves the item as it was.
+	Projection *Projection `json:"-"`
 }
 
 // ItemView has custom marshaling; explicitly add the presentation field.
@@ -119,6 +148,13 @@ func (item browserItem) MarshalJSON() ([]byte, error) {
 	if item.CardReceipt != nil {
 		fields["card_receipt"], _ = json.Marshal(item.CardReceipt)
 	}
+	if item.Projection != nil {
+		for k, v := range item.Projection.fields() {
+			if _, exists := fields[k]; !exists { // never shadow a stored field
+				fields[k], _ = json.Marshal(v)
+			}
+		}
+	}
 	return json.Marshal(fields)
 }
 
@@ -134,7 +170,9 @@ func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, er
 	if err != nil {
 		return browserItem{}, err
 	}
-	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision}
+	now := time.Now()
+	proj := Project(rec, now, i.Store.DeferredUntil(r.Context(), id, now))
+	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision, Projection: &proj}
 	if i.ActionRun != nil && operator {
 		out.ActionRun = i.ActionRun(r.Context(), id)
 	}
@@ -146,15 +184,27 @@ func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, er
 func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	path := strings.TrimPrefix(r.URL.Path, Prefix)
+	if i.Assurance != nil && r.Method == http.MethodPost && (path == "/elevate" || path == "/de-elevate") {
+		if path == "/elevate" {
+			i.Assurance.Elevate(w, r)
+		} else {
+			i.Assurance.DeElevate(w, r)
+		}
+		return
+	}
 	if path == "/session" || path == "/status" || path == "/elevate" || path == "/de-elevate" {
 		i.Sessions.ServeHTTP(w, r)
 		return
 	}
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		fail(w, 405, "method_not_allowed", "Use GET or POST.")
 		return
 	}
-	if r.Method == http.MethodPost && !sameOrigin(r) {
+	if r.Method == http.MethodDelete && !strings.HasSuffix(path, "/defer") {
+		fail(w, 405, "method_not_allowed", "Use GET or POST.")
+		return
+	}
+	if r.Method != http.MethodGet && !sameOrigin(r) {
 		fail(w, 403, "origin_denied", "Use the Tachyon browser origin.")
 		return
 	}
@@ -164,6 +214,18 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/inbox" && r.Method == http.MethodGet {
 		i.list(w, r, participant.Assurance == "operator-token")
+		return
+	}
+	if r.Method == http.MethodGet && path == "/access" && i.Assurance != nil {
+		i.access(w, r)
+		return
+	}
+	if r.Method == http.MethodGet && path == "/events" {
+		i.events(w, r)
+		return
+	}
+	if r.Method == http.MethodGet && path == "/history" {
+		i.history(w, r, participant.PrincipalRef)
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -178,6 +240,21 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 2 && r.Method == http.MethodGet {
 		writeValue(w, item)
+		return
+	}
+	if len(parts) == 3 && parts[2] == "audit" && r.Method == http.MethodGet {
+		i.audit(w, r, item.ItemID, participant.PrincipalRef)
+		return
+	}
+	if len(parts) == 3 && parts[2] == "defer" && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {
+		var raw []byte
+		if r.Method == http.MethodPost {
+			if raw, err = commandBody(w, r); err != nil {
+				writeHITLError(w, err)
+				return
+			}
+		}
+		i.deferItem(w, r, item, participant, raw)
 		return
 	}
 	if len(parts) != 3 || r.Method != http.MethodPost || (parts[2] != "present" && parts[2] != "resolve") {
@@ -214,6 +291,8 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if parts[2] == "present" {
+		// One presentation event per session and item, so reopening a card does not flood the audit.
+		_ = i.Store.LogEvent(r.Context(), Event{EventID: "evt_" + item.ItemID + "_presented_" + participant.PrincipalRef[len(participant.PrincipalRef)-12:], ItemID: item.ItemID, Kind: "presented", ActorRef: participant.PrincipalRef, Assurance: participant.Assurance, Revision: item.Revision})
 		writeValue(w, item)
 		return
 	}
@@ -228,7 +307,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "unsupported_class", "This request cannot be decided here.")
 		return
 	}
-	if class == "medium" && participant.Assurance != "operator-token" {
+	if class == "medium" && !assurance.Satisfies(assurance.ParseLevel(participant.Assurance), assurance.ActionResolveMedium) {
 		fail(w, 403, "assurance_insufficient", "Enter your operator key to decide this request. "+ElevationCopy(session.ElevationTTL, session.ElevationExpiresAt))
 		return
 	}
@@ -270,9 +349,14 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	writeValue(w, outcome)
 }
+
+// list serves the queue. The pending side comes from the derived index (filters,
+// search, urgency order, counts); history uses the index only when a filter is
+// given, otherwise the original newest-first page. Cursors are item ids.
 func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
+	q := r.URL.Query()
 	limit := 25
-	if raw := r.URL.Query().Get("limit"); raw != "" {
+	if raw := q.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > 100 {
 			writeHITLError(w, hitl.ErrInvalidRequest)
@@ -280,41 +364,83 @@ func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
 		}
 		limit = n
 	}
-	type page struct {
-		Pending     []browserItem `json:"pending"`
-		History     []browserItem `json:"history"`
-		NextPending string        `json:"next_pending,omitempty"`
-		NextHistory string        `json:"next_history,omitempty"`
-		SyncedAt    string        `json:"synced_at"`
-		Revision    string        `json:"revision"`
+	oneOf := func(v string, ok ...string) bool { return v == "" || slices.Contains(ok, v) }
+	status := q.Get("status")
+	if !oneOf(status, "pending", "history") || !oneOf(q.Get("order"), "urgency", "created") || !oneOf(q.Get("batchable"), "1") ||
+		!oneOf(q.Get("group"), approvalsapi.Groups...) || !oneOf(q.Get("risk"), "low", "medium", "high") ||
+		!oneOf(q.Get("history_status"), "approved", "denied", "answered", "expired", "withdrawn", "failed", "superseded") {
+		writeHITLError(w, hitl.ErrInvalidRequest)
+		return
 	}
-	out := page{Pending: []browserItem{}, History: []browserItem{}, SyncedAt: time.Now().UTC().Format(time.RFC3339Nano)}
-	for _, history := range []bool{false, true} {
-		before := r.URL.Query().Get("pending_before")
-		if history {
-			before = r.URL.Query().Get("history_before")
+	now := time.Now()
+	f := Filter{Group: q.Get("group"), Risk: q.Get("risk"), Q: q.Get("q"), Requester: q.Get("requester"), Status: q.Get("history_status"),
+		Batchable: q.Get("batchable") == "1", Order: q.Get("order"), Limit: limit, Operator: operator}
+	pendingCursor, historyCursor := q.Get("pending_before"), q.Get("history_before")
+	if c := q.Get("cursor"); c != "" {
+		if status == "history" {
+			historyCursor = c
+		} else {
+			pendingCursor = c
 		}
-		records, next, err := i.Store.Page(r.Context(), history, before, limit)
+	}
+	type page struct {
+		Pending     []browserItem  `json:"pending"`
+		History     []browserItem  `json:"history"`
+		NextPending string         `json:"next_pending,omitempty"`
+		NextHistory string         `json:"next_history,omitempty"`
+		SyncedAt    string         `json:"synced_at"`
+		ServerNowMs int64          `json:"server_now_ms"`
+		Revision    string         `json:"revision"`
+		Counts      map[string]any `json:"counts,omitempty"`
+	}
+	out := page{Pending: []browserItem{}, History: []browserItem{}, SyncedAt: now.UTC().Format(time.RFC3339Nano), ServerNowMs: now.UnixMilli()}
+	collect := func(ids []string, dst *[]browserItem) bool {
+		for _, id := range ids {
+			item, err := i.view(r, id, operator)
+			if err != nil {
+				writeHITLError(w, err)
+				return false
+			}
+			*dst = append(*dst, item)
+		}
+		return true
+	}
+	if status != "history" {
+		pf := f
+		pf.After = pendingCursor
+		ids, next, counts, err := i.Store.Pending(r.Context(), pf, now)
 		if err != nil {
 			writeHITLError(w, err)
 			return
 		}
-		for _, rec := range records {
-			item, err := i.view(r, rec.ItemID, operator)
-			if err != nil {
-				writeHITLError(w, err)
-				return
-			}
-			if history {
-				out.History = append(out.History, item)
-			} else {
-				out.Pending = append(out.Pending, item)
+		out.NextPending, out.Counts = next, counts
+		if !collect(ids, &out.Pending) {
+			return
+		}
+	}
+	if status != "pending" {
+		filtered := f.Group != "" || f.Risk != "" || f.Q != "" || f.Requester != "" || f.Status != ""
+		var ids []string
+		var next string
+		var err error
+		if filtered {
+			hf := f
+			hf.After = historyCursor
+			ids, next, err = i.Store.History(r.Context(), hf, now)
+		} else {
+			var recs []hitl.Record
+			recs, next, err = i.Store.Page(r.Context(), true, historyCursor, limit)
+			for _, rec := range recs {
+				ids = append(ids, rec.ItemID)
 			}
 		}
-		if history {
-			out.NextHistory = next
-		} else {
-			out.NextPending = next
+		if err != nil {
+			writeHITLError(w, err)
+			return
+		}
+		out.NextHistory = next
+		if !collect(ids, &out.History) {
+			return
 		}
 	}
 	out.Revision = out.SyncedAt

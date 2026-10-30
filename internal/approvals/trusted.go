@@ -330,6 +330,7 @@ func (a *TrustedDecisions) Complete(ctx context.Context, cmd CompletionCommand) 
 	if err != nil {
 		return nil, err
 	}
+	a.store.publishID(ctx, cmd.ItemID)
 	return outcome, nil
 }
 

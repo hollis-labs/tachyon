@@ -88,6 +88,8 @@ export interface ApprovalItem {
   request_snapshot: {
     kind: "approval" | "attention" | CardKind
     class?: "low" | "medium" | "high"
+    // false when the backend says this item cannot be decided in the browser.
+    approvable?: boolean
     // card.* requests carry their body in data and may list effects.
     data?: Record<string, unknown>
     effects?: { target: string; [key: string]: unknown }[]
