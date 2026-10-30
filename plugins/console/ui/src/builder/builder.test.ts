@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parseEvent } from './stream'
 import { type AgentDetail, BuilderError, errorMessage } from './api'
 import { buildOps, buildPartOps, changedPartPaths, changingText, changedPaths, isOpen, minutesAndSeconds, relativeTime } from './changes'
+import { handoffStatus } from './HandoffPanel'
 import { SECTIONS, STATE_LABEL } from './vocab'
 
 describe('builder helpers', () => {
@@ -12,6 +13,23 @@ describe('builder helpers', () => {
   it('tolerates operator-only reads with a plain message', () => {
     expect(errorMessage(new BuilderError(403, 'x', 'no'))).toBe('Operator access is needed to view this.')
     expect(errorMessage(new BuilderError(500, 'x', 'boom'))).toBe('boom')
+  })
+})
+
+describe('hand-off status', () => {
+  const base = { change_id: 'c1', request_id: 'r1' }
+  it('says what the operator is waiting on, never claims immediate activation', () => {
+    expect(handoffStatus({ ...base, state: 'awaiting_handoff' }).text).toBe('Waiting for you to plan, approve and apply in Tether.')
+    expect(handoffStatus({ ...base, state: 'awaiting_approval', plan: { plan_id: 'plan_ABC12345', state: 'planned', digest: '', expires_at: 0, approve_command: '' } }).text).toBe('Plan plan_ABC is waiting for approval in Tether.')
+    const applied = handoffStatus({ ...base, state: 'applied', handoff: { mode: 'copy', name: 'n', bundle_sha256: '', files: 2, session_available: false } })
+    expect(applied.text).toBe('Applied. Detected 2 files changed.')
+    expect(applied.lines.join(' ')).toContain('new launches use the update')
+    expect(applied.lines.join(' ')).not.toMatch(/immediate/i)
+    expect(handoffStatus({ ...base, state: 'stale' }).text).toBe('Changed elsewhere. Review before preparing again.')
+    expect(handoffStatus({ ...base, state: 'failed', failure: { step: 'validate', code: 'x', message: 'bad' } })).toMatchObject({ text: 'Failed: validate: bad.', danger: true })
+  })
+  it('keeps awaiting_handoff open and polled', () => {
+    expect(isOpen('awaiting_handoff')).toBe(true)
   })
 })
 

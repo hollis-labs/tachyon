@@ -74,9 +74,9 @@ export function buildOps(agent: AgentDetail, draft: Draft): ChangeOp[] {
 }
 
 /** States in which the change still holds its paths. */
-export const OPEN_STATES: readonly ChangeState[] = ['draft', 'awaiting_approval', 'approved', 'applying', 'stale']
+export const OPEN_STATES: readonly ChangeState[] = ['draft', 'awaiting_handoff', 'awaiting_approval', 'approved', 'applying', 'stale']
 export const isOpen = (s: ChangeState) => OPEN_STATES.includes(s)
-export const isWaiting = (s: ChangeState) => s === 'awaiting_approval' || s === 'approved' || s === 'applying'
+export const isWaiting = (s: ChangeState) => s === 'awaiting_handoff' || s === 'awaiting_approval' || s === 'approved' || s === 'applying'
 
 export function minutesAndSeconds(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000))
