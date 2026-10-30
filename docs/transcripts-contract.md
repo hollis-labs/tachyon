@@ -70,3 +70,15 @@ Served by `internal/transcripts` on today's Fragments Engine. Not stubbed; no st
   parameters are 400. Never cached; the query text is not logged.
 - **`GET /status`.** Fragments Engine's status plus `capabilities` {search:true, find:false, errors:false, stats:false}.
 - **`GET /sessions/{id}`.** `turn_limit` 1..200, `turn_offset`; unknown parameters are 400.
+
+## Bridge Stage 2 (CW-20261030-0101, -0102)
+
+Needs the Fragments Engine changes (tool targets and error excerpts, per-turn search, freshness, stats). What this build can answer is
+in `GET /status` `capabilities` {search, find, errors, stats}, taken from the engine's own `features` list; on an older engine the three
+optional reads answer 501 `unsupported`.
+
+- `GET /sessions/{id}/find?q=&after_offset=&limit=`: turns of one session that contain the text. `q` 1..256, `limit` 1..100, never cached.
+- `GET /sessions/{id}/errors`: failed tool calls of the session (turn, tool, target, error excerpt). Never cached.
+- `GET /stats?since&until&tool&model&kind&project&has_error&tag`: whole-database totals and by day, tool, model and project.
+- `GET /sessions/{id}?turn_from_seq=N`: the turn window starting at that seq (seq is contiguous from 0, so it is the offset); not with `turn_offset`.
+- `GET /status` also passes `ingest {state, last_ingest_at, sources}` through when the engine reports it.
