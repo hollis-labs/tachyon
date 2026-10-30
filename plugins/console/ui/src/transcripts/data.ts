@@ -1,4 +1,6 @@
 import { hostFetch } from "@tachyon/host-sdk"
+import { APPROVAL_BASE } from "../approvals/client"
+import { operatorFetch } from "../operator/elevation"
 
 export interface Session {
   id: string
@@ -106,10 +108,23 @@ export class TranscriptError extends Error {
     super(message)
   }
 }
+// Transcripts share the operator session with the Approvals page (transcripts.read guard).
+let connecting: Promise<unknown> | undefined
+export async function connectSession() {
+  connecting ??= operatorFetch(APPROVAL_BASE + "/session", { method: "POST" })
+    .then((res) => {
+      if (!res.ok) throw new TranscriptError(res.status, "session_required", "Connect the approval queue first.")
+    })
+    .finally(() => {
+      connecting = undefined
+    })
+  await connecting
+}
 export async function read<T>(
   path: string,
   force = false,
   signal?: AbortSignal,
+  retried = false,
 ): Promise<T> {
   const res = await hostFetch(BASE + path, {
     headers: {
@@ -119,6 +134,15 @@ export async function read<T>(
     signal,
   })
   const body = await res.json().catch(() => null)
+  if (res.status === 401 && body?.code === "session_required" && !retried) {
+    // Same quiet connect the Approvals page does; if it fails the page asks the operator.
+    try {
+      await connectSession()
+    } catch {
+      throw new TranscriptError(401, "session_required", body.message ?? "Connect the approval queue first.")
+    }
+    return read<T>(path, force, signal, true)
+  }
   if (!res.ok)
     throw new TranscriptError(
       res.status,

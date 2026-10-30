@@ -18,6 +18,7 @@ import {
   compact,
   projectName,
   TranscriptError,
+  connectSession,
   type Snapshot,
   type Session,
   type Filters,
@@ -69,6 +70,7 @@ function Distribution({
 export function TranscriptDashboard() {
   const [snapshot, setSnapshot] = useState<Snapshot>()
   const [error, setError] = useState("")
+  const [needsSession, setNeedsSession] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filters>(defaults)
   const [selected, setSelected] = useState<Session>()
@@ -94,6 +96,7 @@ export function TranscriptDashboard() {
           setSnapshot(data)
           setLoadedAt(new Date().getTime())
           setError("")
+          setNeedsSession(false)
         }
       } catch (e) {
         if (
@@ -105,6 +108,7 @@ export function TranscriptDashboard() {
           setSnapshot(undefined)
           setSelected(undefined)
         }
+        if (active && sequence === n) setNeedsSession(e instanceof TranscriptError && e.code === "session_required")
         if (active && sequence === n)
           setError(
             e instanceof Error ? e.message : "Transcript source unavailable.",
@@ -209,7 +213,22 @@ export function TranscriptDashboard() {
             </Button>
           </div>
         </div>
-      {error && (
+      {error && needsSession && (
+        <div role="alert" className="space-y-2 border border-border p-4">
+          <p className="dash-body font-medium text-fg">Connect the approval queue</p>
+          <p className="dash-support text-fg-muted">
+            Transcripts use the same operator session as Approvals. Connect it to read them.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void connectSession().then(() => reload.current(), () => reload.current())}
+          >
+            Connect
+          </Button>
+        </div>
+      )}
+      {error && !needsSession && (
         <p
           role="alert"
           className={`dash-control ${snapshot ? "text-fg-muted" : "text-danger"}`}
