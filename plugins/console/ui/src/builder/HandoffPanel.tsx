@@ -1,7 +1,7 @@
 import { Button } from '@hollis-labs/design-components'
 import { Download, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { type Change, builderApi, errorMessage } from './api'
+import { BuilderError, type Change, builderApi, errorMessage } from './api'
 import { Diff } from './ReviewDialog'
 
 const COOLDOWN_MS = 5000
@@ -74,7 +74,13 @@ export function HandoffPanel({ change, onChange, onReload }: { change: Change; o
     setChecking(true)
     setError('')
     try {
-      onChange(await builderApi.check(change.change_id))
+      // The check route is optional: where it is missing, Check now just reads the change again.
+      onChange(
+        await builderApi.check(change.change_id).catch((e) => {
+          if (e instanceof BuilderError && (e.status === 404 || e.status === 405)) return builderApi.change(change.change_id)
+          throw e
+        }),
+      )
     } catch (e) {
       setError(errorMessage(e))
     } finally {
