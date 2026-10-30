@@ -33,6 +33,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/builderapi"
+	"github.com/hollis-labs/tachyon/internal/builderread"
 	"github.com/hollis-labs/tachyon/internal/carddelivery"
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
@@ -724,6 +725,13 @@ func (s *Server) Routes() http.Handler {
 	if s.catalogIndex != nil && !s.cfg.BuilderStubs {
 		mux.Handle("GET "+builderapi.Prefix+"/summary", operator.RequireOperator(s.catalogIndex.SummaryHandler()))
 		mux.Handle("GET "+builderapi.Prefix+"/stream", operator.RequireOperator(s.catalogIndex.StreamHandler()))
+		// Read model (B2a): agents and launches from the index. Live data needs Tether; without it the
+		// routes still answer and report live counts as null.
+		reader := &builderread.Reader{Index: s.catalogIndex.Store}
+		if sess, err := builderread.NewTetherSessions(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile); err == nil {
+			reader.Sessions = sess
+		}
+		reader.Mount(mux, operator.RequireOperator)
 	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
