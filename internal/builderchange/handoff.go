@@ -20,10 +20,24 @@ var planIDPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,80}$`)
 // Bundle is exactly the body of Tether's POST /catalog/plans, plus its sha256. It carries full file content
 // (which may contain environment values), so it is only ever served to the operator's browser, uncached.
 type Bundle struct {
-	Name   string `json:"name"`
-	Note   string `json:"note"`
-	Files  []File `json:"files"`
-	SHA256 string `json:"sha256"`
+	Name     string    `json:"name"`
+	Note     string    `json:"note"`
+	Files    []File    `json:"files"`
+	SHA256   string    `json:"sha256"`
+	Commands []Command `json:"commands"`
+}
+
+// commandsFor builds the three Tether commands for a bundle name. The CLI spellings are UNVERIFIED; they live
+// here so the UI can show whatever this says and a correction is one edit.
+func commandsFor(name, planID string) []Command {
+	if planID == "" {
+		planID = "<plan_id>"
+	}
+	return []Command{
+		{Step: "plan", Label: "Plan the bundle", Command: "tether catalog plan --name " + strconv.Quote(name) + " --file bundle.json"},
+		{Step: "approve", Label: "Approve the plan", Command: "tether catalog approve " + planID},
+		{Step: "apply", Label: "Apply the plan", Command: "tether catalog apply " + planID},
+	}
 }
 
 func bundleSHA(name, note string, files []File) string {
@@ -39,7 +53,7 @@ func bundleSHA(name, note string, files []File) string {
 func (s *Service) handoffFor(c *Change, files []File) *Handoff {
 	name := "builder " + c.ChangeID
 	return &Handoff{Mode: builderapi.HandoffCopy, Name: name, BundleSHA256: bundleSHA(name, c.Note, files), Files: len(files),
-		SessionAvailable: false, Reason: "not_configured"}
+		SessionAvailable: false, Reason: "not_configured", Commands: commandsFor(name, "")}
 }
 
 func newSHA(c *Change, path string) string {
@@ -86,7 +100,11 @@ func (s *Service) Bundle(ctx context.Context, id string) (Bundle, *APIError) {
 		}
 	}
 	name := "builder " + c.ChangeID
-	return Bundle{Name: name, Note: c.Note, Files: b.files, SHA256: bundleSHA(name, c.Note, b.files)}, nil
+	planID := ""
+	if c.Plan != nil {
+		planID = c.Plan.PlanID
+	}
+	return Bundle{Name: name, Note: c.Note, Files: b.files, SHA256: bundleSHA(name, c.Note, b.files), Commands: commandsFor(name, planID)}, nil
 }
 
 // MarkPlanned records the plan id the operator got from Tether, only so the UI can say "plan X awaiting
@@ -108,6 +126,7 @@ func (s *Service) MarkPlanned(ctx context.Context, id, planID string) (Change, *
 	if planID != "" {
 		c.Plan = &PlanInfo{PlanID: planID, State: "planned", ApproveCommand: "tether catalog approve " + planID}
 	}
+	c.Handoff.Commands = commandsFor(c.Handoff.Name, planID)
 	c.State = builderapi.ChangeAwaitingApproval
 	return s.save(ctx, c)
 }

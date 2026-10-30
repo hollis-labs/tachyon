@@ -68,6 +68,10 @@ func TestHandoffCreateBundleAndAppliedIsDetected(t *testing.T) {
 	if shaOf(b.Files[0].Content) != c.Targets[0].NewSHA {
 		t.Fatal("bundle content must hash to the target's new_sha")
 	}
+	if len(c.Handoff.Commands) != 3 || c.Handoff.Commands[0].Step != "plan" || !strings.Contains(c.Handoff.Commands[0].Command, `--name "`+c.Handoff.Name+`"`) ||
+		!strings.Contains(c.Handoff.Commands[1].Command, "<plan_id>") || len(b.Commands) != 3 {
+		t.Fatalf("commands: %+v / %+v", c.Handoff.Commands, b.Commands)
+	}
 	// nothing planned yet: the poller leaves it alone
 	if err := e.svc.Poll(context.Background()); err != nil || e.get(t, c.ChangeID).State != builderapi.ChangeAwaitingHandoff {
 		t.Fatalf("poll before apply: %v", err)
@@ -153,6 +157,9 @@ func TestHandoffMarkPlannedIsOnlyAHint(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
 	if w.Code != 200 || got.State != builderapi.ChangeAwaitingApproval || got.Plan == nil || got.Plan.ApproveCommand != "tether catalog approve plan_7Q3K9" || got.Plan.ExpiresAt != nil {
 		t.Fatalf("mark_planned: %d %s", w.Code, w.Body)
+	}
+	if got.Handoff.Commands[1].Command != "tether catalog approve plan_7Q3K9" || got.Handoff.Commands[2].Command != "tether catalog apply plan_7Q3K9" {
+		t.Fatalf("commands carry the plan id once known: %+v", got.Handoff.Commands)
 	}
 	if !strings.Contains(w.Body.String(), `"expires_at":null`) {
 		t.Fatalf("the hint has no expiry: %s", w.Body)
