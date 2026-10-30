@@ -52,6 +52,19 @@ function setup(over: Record<string, unknown> = {}, onNeedsAccess?: () => void) {
 }
 const lane = (id: string) => screen.getByRole('list', { name: id })
 
+describe('TaskBoard stream signals', () => {
+  it('refetches in place when the tick changes, not on first render', async () => {
+    const api = { provider: 'tachyon', subscribeEvents: () => () => {}, plannerThemeTasks: vi.fn(async () => tasks()) }
+    const ui = (tick: number) => <PlannerApiProvider client={api as never}><TaskBoard themeId="t1" tick={tick} /></PlannerApiProvider>
+    const { rerender } = render(ui(0))
+    expect(await screen.findByText('Task A')).toBeTruthy()
+    expect(api.plannerThemeTasks).toHaveBeenCalledTimes(1)
+    rerender(ui(1))
+    await waitFor(() => expect(api.plannerThemeTasks).toHaveBeenCalledTimes(2))
+    expect(screen.getByText('Task A')).toBeTruthy()
+  })
+})
+
 describe('TaskBoard', () => {
   it('shows the theme\'s tasks by lane with PR chips and assignees', async () => {
     setup()

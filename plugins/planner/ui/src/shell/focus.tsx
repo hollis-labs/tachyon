@@ -13,6 +13,8 @@ import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 const ACCESS_NOTE = 'planner-access-note'
 
 interface FocusProps {
+  /** Changes when the Planner stream says something changed: the board and timeline refetch. */
+  tick?: number
   /** Writes are disabled while the connection is down. */
   paused?: boolean
   /** The server refused a write for lack of operator access: controls are off and say why. */
@@ -28,13 +30,13 @@ interface FocusProps {
   onDetails: () => void
 }
 
-export function Focus({ paused, needsAccess, onRetryAccess, onNeedsAccess, row, board, view, onView, onAction, onBack, onDetails }: FocusProps) {
+export function Focus({ tick, paused, needsAccess, onRetryAccess, onNeedsAccess, row, board, view, onView, onAction, onBack, onDetails }: FocusProps) {
   const seg = themeSegments(row)
   const panels = useContributions('planner.focus.panel')
   const approved = (board.totals.in_flight ?? 0) + (board.totals.cleared ?? 0)
   const actions = themeRowActions(row.section, row.rank, approved)
   const owners = themeOwners(row)
-  const timeline = useThemeTimeline(row.id)
+  const timeline = useThemeTimeline(row.id, tick)
   const momentum = timeline.data?.momentum
   return (
     <section aria-labelledby="focus-title" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
@@ -79,7 +81,7 @@ export function Focus({ paused, needsAccess, onRetryAccess, onNeedsAccess, row, 
         </p>
       )}
       <div className="min-w-0 flex-1 p-4">
-        {view === 'board' ? <TaskBoard themeId={row.id} paused={paused || needsAccess} onNeedsAccess={onNeedsAccess} accessNoteId={needsAccess ? ACCESS_NOTE : undefined} /> : <ThemeTimelineView state={timeline} />}
+        {view === 'board' ? <TaskBoard themeId={row.id} tick={tick} paused={paused || needsAccess} onNeedsAccess={onNeedsAccess} accessNoteId={needsAccess ? ACCESS_NOTE : undefined} /> : <ThemeTimelineView state={timeline} />}
       </div>
     </section>
   )
