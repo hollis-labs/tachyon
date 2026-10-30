@@ -1,8 +1,8 @@
 import { AlertsSettingsSection } from "@tachyon/console-ui"
 import { useEffect, useRef } from "react"
 import { NavLink, useNavigate, useParams } from "react-router-dom"
-import { Card } from "./Card"
 import { AppearanceSection } from "./AppearanceSection"
+import { Card } from "./Card"
 import { GeneralSection, type GeneralSettings } from "./GeneralSection"
 import { resolveSection, SETTINGS_SECTIONS } from "./sections"
 
