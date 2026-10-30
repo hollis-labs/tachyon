@@ -80,10 +80,11 @@ func fixture(t *testing.T, sess SessionSource) (*Reader, *http.ServeMux, *fakeSo
 	now := time.Unix(1_800_000_000, 0).UTC()
 	src := &fakeSource{plan: "plan_1", files: map[string]string{
 		"agents/builder.yaml":        agentV1,
-		"agents/base.yaml":           "id: base\nabstract: true\n",
+		"agents/base.yaml":           "id: base\nabstract: true\nskills: [commit]\npermissions:\n  network: restricted\n  mcp_scopes: [tether:read]\nprompt:\n  system_prompt: Be careful.\n",
+		"projects/tachyon.yaml":      "id: tachyon\nmcp:\n  servers: [tether, extra]\n",
 		"agents/old.yaml":            "id: old\nenabled: false\nprovider: codex\nmodel: gpt-5\n",
 		"launches/builder-main.yaml": launchYAML,
-		"skills/commit.md":           "---\nid: commit\nname: Commit\n---\nBody\n",
+		"skills/commit.md":           "---\nid: commit\nname: Commit\ndescription: small commits\n---\nBody\nAuthorization: Bearer " + planted + "\n",
 		"mcp-servers/tether.yaml":    "command: x\nenv:\n  TOKEN: " + planted + "\n",
 	}}
 	ix := &catalogindex.Index{Source: src, Store: &catalogindex.Store{DB: db, Now: func() time.Time { return now }}, Bus: catalogindex.NewBroker(func() time.Time { return now })}

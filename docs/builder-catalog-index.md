@@ -59,3 +59,21 @@ off. Shapes follow `internal/builderapi/openapi.yaml`.
   change flow (B4) records them; `plan_id` and `actor` are set for snapshots written by the Builder.
 - Agent detail reads the editor sections from the masked YAML on a best-effort basis; `parts` is empty until the
   Library (B2b).
+
+## Read model: library and resolved (B2b)
+
+Added to `internal/builderread`, same mount and guard as B2a: `GET /library/{kind}`, `/library/{kind}/{id}`,
+`/library/{kind}/{id}/used_by|history` and `GET /agents/{id}/resolved[?launch=]`.
+
+- **Backing:** `skills` come from the catalog skill files (masked content, `snapshot_seq`, 2000-byte `body_preview`).
+  `tool_servers` come from the listed `mcp-servers/` paths, which are never read (credentials): rows are presence only
+  (`status: "unknown"`, no health, transport, tool count or scopes; `read_only`). `prompts` and `policies` are
+  Tachyon-owned parts (B3, held): lists are empty and items read 404 until B3 lands.
+- **used_by:** agents (and their launches) that reference the item; projects too for tool servers.
+- **history:** skill snapshots, newest first, with `snapshot_seq`, `sha`, `actor`, `plan_id`. Tool servers have none.
+- **resolved:** always `resolved_by: "tachyon_approx"`. It walks `extends` (cycle-safe, first definition wins for
+  `permission_mode`, `network`, `default_sandbox`), unions skills, tool servers (plus the launch's project servers with
+  `?launch=`) and `mcp_scopes`, and sizes prompt parts at bytes/4. Tether's own resolution route is unverified and not
+  used; `notes` says what could not be known (health, missing parents or skills). The policy and prompt keys it reads
+  from the agent YAML (`permissions.network`, `permissions.default_sandbox`, `permissions.mcp_scopes`,
+  `prompt.system_prompt|agent_prompt|body`) are best effort and UNVERIFIED against real catalog files.
