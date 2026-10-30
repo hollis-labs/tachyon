@@ -1,18 +1,16 @@
-import { Skeleton } from '@hollis-labs/design-components'
-import { Copy, RefreshCw } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogTitle, Skeleton } from '@hollis-labs/design-components'
+import { Check, Copy, Download, ExternalLink, Maximize2, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import type { RefDetailProps } from '../autolink/extensions'
+import { relativeTime } from '../builder/changes'
 import { contentUrl, denyMessage, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame } from './api'
 
 const BTN =
-  'inline-flex items-center gap-1.5 border border-border px-2 py-1 font-mono text-caption uppercase tracking-label text-fg-secondary transition-colors hover:border-fg-faint hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50'
+  'inline-flex items-center gap-1.5 border border-border px-2 py-1 text-control text-fg-secondary transition-colors hover:border-fg-faint hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50'
 const TEXT_KINDS: readonly FileKind[] = ['text', 'json', 'yaml', 'toml', 'csv', 'code']
 
-type Load =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'ready'; stat: FileStat }
+type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; stat: FileStat }
 
 /** Drawer body for a file path: stat first, then the viewer that fits the kind. */
 export function FileViewerPane({ refId }: RefDetailProps) {
@@ -21,6 +19,16 @@ export function FileViewerPane({ refId }: RefDetailProps) {
   const [load, setLoad] = useState<Load>({ status: 'loading' })
   const [tick, setTick] = useState(0)
   const reload = useCallback(() => setTick((n) => n + 1), [])
+  const [copied, setCopied] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const copyPath = () => {
+    void navigator.clipboard?.writeText(path)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  const stat = load.status === 'ready' ? load.stat : null
+  const canOpen = !!stat && stat.exists && stat.allowed && stat.type !== 'dir'
+  const kindOf = stat?.kind ?? 'binary'
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick re-runs the stat on Reload
   useEffect(() => {
@@ -41,9 +49,24 @@ export function FileViewerPane({ refId }: RefDetailProps) {
         <button type="button" className={BTN} onClick={reload}>
           <RefreshCw className="h-3 w-3" aria-hidden /> Reload
         </button>
-        <button type="button" className={BTN} onClick={() => void navigator.clipboard?.writeText(path)}>
-          <Copy className="h-3 w-3" aria-hidden /> Copy path
+        <button type="button" className={BTN} onClick={copyPath}>
+          {copied ? <Check className="h-3 w-3" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />} {copied ? 'Copied' : 'Copy path'}
         </button>
+        {canOpen && (
+          <>
+            <button type="button" className={BTN} onClick={() => setExpanded(true)}>
+              <Maximize2 className="h-3 w-3" aria-hidden /> Expand
+            </button>
+            {kindOf !== 'html' && (
+              <a className={BTN} href={contentUrl(path)} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3 w-3" aria-hidden /> Open in tab
+              </a>
+            )}
+            <a className={BTN} href={contentUrl(path)} download={path.split('/').pop()}>
+              <Download className="h-3 w-3" aria-hidden /> Download
+            </a>
+          </>
+        )}
       </div>
       {load.status === 'loading' && <Skeleton className="h-40 w-full" />}
       {load.status === 'error' && (
@@ -52,12 +75,23 @@ export function FileViewerPane({ refId }: RefDetailProps) {
         </p>
       )}
       {load.status === 'ready' && <Body stat={load.stat} path={path} line={line} tick={tick} />}
+      {load.status === 'ready' && (
+        <Dialog open={expanded} onOpenChange={setExpanded}>
+          <DialogContent className="max-h-[92vh] w-[min(96vw,72rem)] max-w-none overflow-auto">
+            <DialogTitle className="truncate text-control">{path.split('/').pop()}</DialogTitle>
+            <DialogDescription className="sr-only">Expanded view of {path}</DialogDescription>
+            {expanded && <Body stat={load.stat} path={path} line={line} tick={tick} expanded />}
+          </DialogContent>
+        </Dialog>
+      )}
       <p className="break-all font-mono text-caption text-fg-faint">{path}</p>
     </section>
   )
 }
 
-function Body({ stat, path, line, tick }: { stat: FileStat; path: string; line?: number; tick: number }) {
+const KIND_WORD: Record<string, string> = { markdown: 'Markdown', html: 'HTML', image: 'Image', json: 'JSON', yaml: 'YAML', toml: 'TOML', csv: 'CSV', code: 'Code', text: 'Text', binary: 'Binary' }
+
+function Body({ stat, path, line, tick, expanded = false }: { stat: FileStat; path: string; line?: number; tick: number; expanded?: boolean }) {
   if (!stat.exists || !stat.allowed) {
     return <p className="text-control text-fg-secondary">{denyMessage(stat.deny_reason, stat.exists)}</p>
   }
@@ -65,13 +99,13 @@ function Body({ stat, path, line, tick }: { stat: FileStat; path: string; line?:
   const kind = stat.kind ?? 'binary'
   return (
     <>
-      <p className="font-mono text-caption text-fg-faint">
-        {[kind, formatSize(stat.size), stat.mtime ? new Date(stat.mtime).toLocaleString() : ''].filter(Boolean).join(' · ')}
+      <p className="text-caption text-fg-muted" title={stat.mtime ? new Date(stat.mtime).toLocaleString() : undefined}>
+        {[KIND_WORD[kind] ?? kind, formatSize(stat.size), stat.mtime ? relativeTime(new Date(stat.mtime).getTime()) : ''].filter(Boolean).join(', ')}
       </p>
       {kind === 'image' && <Picture path={path} />}
-      {kind === 'html' && <Page path={path} tick={tick} />}
-      {kind === 'markdown' && <TextBody path={path} markdown tick={tick} />}
-      {TEXT_KINDS.includes(kind) && <TextBody path={path} line={line} tick={tick} />}
+      {kind === 'html' && <Page path={path} tick={tick} expanded={expanded} />}
+      {kind === 'markdown' && <TextBody path={path} markdown tick={tick} expanded={expanded} />}
+      {TEXT_KINDS.includes(kind) && <TextBody path={path} line={line} tick={tick} expanded={expanded} />}
       {kind === 'binary' && <p className="text-control text-fg-secondary">No preview for this type. Copy the path to open it elsewhere.</p>}
     </>
   )
@@ -80,17 +114,27 @@ function Body({ stat, path, line, tick }: { stat: FileStat; path: string; line?:
 function Picture({ path }: { path: string }) {
   const [full, setFull] = useState(false)
   const [broken, setBroken] = useState(false)
-  if (broken) return <p role="alert" className="text-control text-fg-secondary">The image could not be loaded.</p>
+  if (broken)
+    return (
+      <p role="alert" className="text-control text-fg-secondary">
+        The image could not be loaded.
+      </p>
+    )
   // SVG is only ever shown through <img>, as the contract requires.
   return (
-    <button type="button" className={`block w-full overflow-auto border border-border bg-surface ${full ? '' : 'cursor-zoom-in'}`} aria-label={full ? 'Fit image to width' : 'Show image at full size'} onClick={() => setFull((f) => !f)}>
+    <button
+      type="button"
+      className={`block w-full overflow-auto border border-border bg-surface ${full ? '' : 'cursor-zoom-in'}`}
+      aria-label={full ? 'Fit image to width' : 'Show image at full size'}
+      onClick={() => setFull((f) => !f)}
+    >
       <img src={contentUrl(path)} alt={path.split('/').pop() ?? 'image'} onError={() => setBroken(true)} className={full ? 'max-w-none' : 'h-auto w-full'} />
     </button>
   )
 }
 
 /** HTML renders in a single-use sandboxed frame (no scripts, no same-origin); Source shows the text. */
-function Page({ path, tick }: { path: string; tick: number }) {
+function Page({ path, tick, expanded = false }: { path: string; tick: number; expanded?: boolean }) {
   const [view, setView] = useState<'rendered' | 'source'>('rendered')
   const [frame, setFrame] = useState<Frame | { error: string } | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick re-mints the frame on Reload
@@ -110,24 +154,38 @@ function Page({ path, tick }: { path: string; tick: number }) {
     <div className="space-y-2">
       <div role="group" aria-label="HTML view" className="inline-flex border border-border">
         {(['rendered', 'source'] as const).map((v) => (
-          <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)} className={`px-2 py-1 font-mono text-caption uppercase tracking-label ${view === v ? 'bg-surface-hover text-fg' : 'text-fg-faint'}`}>
+          <button
+            key={v}
+            type="button"
+            aria-pressed={view === v}
+            onClick={() => setView(v)}
+            className={`px-2 py-1 font-mono text-caption uppercase tracking-label ${view === v ? 'bg-surface-hover text-fg' : 'text-fg-faint'}`}
+          >
             {v === 'rendered' ? 'Rendered' : 'Source'}
           </button>
         ))}
       </div>
-      {view === 'source' && <TextBody path={path} tick={tick} />}
+      {view === 'source' && <TextBody path={path} tick={tick} expanded={expanded} />}
       {view === 'rendered' && frame === null && <Skeleton className="h-64 w-full" />}
       {view === 'rendered' && frame && 'error' in frame && (
-        <p role="alert" className="text-control text-fg-secondary">{frame.error} Try Source.</p>
+        <p role="alert" className="text-control text-fg-secondary">
+          {frame.error} Try Source.
+        </p>
       )}
       {view === 'rendered' && frame && 'frame_url' in frame && (
-        <iframe title={`Preview of ${path.split('/').pop()}`} src={frame.frame_url} sandbox="" referrerPolicy="no-referrer" className="h-96 w-full border border-border bg-white" />
+        <iframe
+          title={`Preview of ${path.split('/').pop()}`}
+          src={frame.frame_url}
+          sandbox=""
+          referrerPolicy="no-referrer"
+          className={`${expanded ? 'h-[70vh]' : 'h-96'} w-full border border-border bg-white`}
+        />
       )}
     </div>
   )
 }
 
-function TextBody({ path, line, markdown, tick }: { path: string; line?: number; markdown?: boolean; tick: number }) {
+function TextBody({ path, line, markdown, tick, expanded = false }: { path: string; line?: number; markdown?: boolean; tick: number; expanded?: boolean }) {
   const [state, setState] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; text: string }>({ status: 'loading' })
   const [raw, setRaw] = useState(!markdown)
   const [wrap, setWrap] = useState(false)
@@ -149,7 +207,12 @@ function TextBody({ path, line, markdown, tick }: { path: string; line?: number;
   }, [state.status])
 
   if (state.status === 'loading') return <Skeleton className="h-40 w-full" />
-  if (state.status === 'error') return <p role="alert" className="text-control text-fg-secondary">{state.message}</p>
+  if (state.status === 'error')
+    return (
+      <p role="alert" className="text-control text-fg-secondary">
+        {state.message}
+      </p>
+    )
   const lines = state.text.split('\n')
   return (
     <div className="space-y-2">
@@ -170,10 +233,14 @@ function TextBody({ path, line, markdown, tick }: { path: string; line?: number;
           <Markdown>{state.text}</Markdown>
         </div>
       ) : (
-        <pre className={`max-h-[60vh] overflow-auto border border-border bg-surface p-2 font-mono text-caption leading-relaxed text-fg ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : ''}`}>
+        <pre
+          className={`${expanded ? 'max-h-[75vh]' : 'max-h-[60vh]'} overflow-auto border border-border bg-surface p-2 font-mono text-caption leading-relaxed text-fg ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : ''}`}
+        >
           {lines.map((l, i) => (
             <span key={i} ref={line === i + 1 ? target : undefined} className={`flex ${line === i + 1 ? 'bg-surface-hover' : ''}`}>
-              <span aria-hidden className="w-10 shrink-0 select-none pr-2 text-right text-fg-faint">{i + 1}</span>
+              <span aria-hidden className="w-10 shrink-0 select-none pr-2 text-right text-fg-faint">
+                {i + 1}
+              </span>
               <span className="min-w-0 flex-1">{l || ' '}</span>
             </span>
           ))}
