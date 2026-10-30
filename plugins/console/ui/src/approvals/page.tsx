@@ -3,12 +3,11 @@ import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { DashboardViewTabs } from "@hollis-labs/kit-dashboard/layout"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
-import { ShieldCheck, RefreshCw, KeyRound, ArrowLeft } from "lucide-react"
+import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
 import { kindLabel } from "./client"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
-import { elevationCopy, operatorElevation } from "../operator/elevation"
 
 export function ApprovalsPage() {
   const queue = useApprovals()
@@ -28,37 +27,6 @@ export function ApprovalsPage() {
   }, [linked, setParams])
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
-  const [operatorMessage, setOperatorMessage] = useState("")
-  const [unlocking, setUnlocking] = useState(false)
-  async function unlock() {
-    setUnlocking(true)
-    setOperatorMessage("")
-    try {
-      if (await operatorElevation.ensure())
-        setOperatorMessage(
-          `Operator access verified. ${elevationCopy(await operatorElevation.status())}`,
-        )
-    } catch (error) {
-      setOperatorMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not verify operator access.",
-      )
-    } finally {
-      setUnlocking(false)
-    }
-  }
-  async function revoke() {
-    setUnlocking(true)
-    try {
-      await operatorElevation.revoke()
-      setOperatorMessage("Operator access revoked.")
-    } catch (error) {
-      setOperatorMessage(error instanceof Error ? error.message : "Could not revoke operator access.")
-    } finally {
-      setUnlocking(false)
-    }
-  }
   if (!queue)
     return (
       <div className="flex h-full min-w-0 flex-col">
@@ -82,35 +50,26 @@ export function ApprovalsPage() {
   return (
     <div className="flex h-full min-w-0 flex-col">
       <PageHeader title="Approvals">
-        <Button variant="outline" size="sm" className="dash-header-action" disabled={unlocking} onClick={() => void unlock()}>
-          <KeyRound className="h-3 w-3" aria-hidden /> <span className="hidden sm:inline">Operator access</span><span className="sr-only sm:hidden">Operator access</span>
-        </Button>
-        <Button variant="outline" size="sm" className="dash-header-action" disabled={unlocking} onClick={() => void revoke()}>
-          <span className="hidden sm:inline">Revoke elevation</span><span className="sm:hidden">Revoke</span>
-        </Button>
         <Button variant="ghost" size="sm" aria-label="Refresh approvals" onClick={() => void queue.refresh(true)}>
           <RefreshCw className="h-3 w-3" />
         </Button>
       </PageHeader>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
         <DashboardViewTabs
+          variant="segments"
           label="Approvals view"
           value={view}
           onChange={(v) => setView(v as "pending" | "history")}
           items={[
             { value: "pending", label: "Pending", count: pendingCount },
-            { value: "history", label: "History", count: historyCount },
+            // Hidden until there is history to show (the history API lands with #196).
+            ...(historyCount > 0 ? [{ value: "history", label: "History", count: historyCount }] : []),
           ]}
         />
-        <span className="font-mono dash-caption text-fg-faint">
-          {queue.error ? "Unavailable" : (queue.inbox ? "Current" : "Connecting")}
-          {queue.inbox?.synced_at ? ` · Updated ${new Date(queue.inbox.synced_at).toLocaleTimeString()}` : ""}
-        </span>
         <div className="dash-search-adapter w-72 max-w-full">
           <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} slashToFocus={false} />
         </div>
       </div>
-      {operatorMessage && <p role="status" className="px-4 pt-2 dash-control text-fg-muted">{operatorMessage}</p>}
       {queue.error && (
         <p role="alert" className="mx-4 mt-2 rounded border border-danger/30 p-3 dash-control text-danger">
           Approval queue unavailable: {queue.error}

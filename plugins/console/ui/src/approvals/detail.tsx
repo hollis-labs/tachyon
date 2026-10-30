@@ -13,9 +13,9 @@ import {
 } from "./client"
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { ActionRunPanel } from "./terminal"
-import { Countdown, RiskChip } from "./parts"
+import { Countdown, RiskChip, ago, timeLeft } from "./parts"
 
-const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
+const label = "font-mono dash-caption uppercase tracking-wide text-fg-faint"
 function safeHTTPS(raw?: string) {
   try {
     const u = new URL(raw ?? "")
@@ -23,6 +23,31 @@ function safeHTTPS(raw?: string) {
   } catch { /* No unsafe links. */ }
   return undefined
 }
+// Exactly what will run: a bound command, diff and/or affected items, in a mono card.
+// Renders nothing when the payload carries none of them.
+function RunCard({ request }: { request: ApprovalItem["request_snapshot"] }) {
+  const data = request.data ?? {}
+  const text = (v: unknown) => (typeof v === "string" && v ? v : undefined)
+  const command = text(data.command)
+  const diff = text(data.diff)
+  const affected = Array.isArray(data.affected) ? data.affected.map(String) : []
+  if (!command && !diff && !affected.length) return null
+  return (
+    <section aria-label="Exactly what will run">
+      <h3 className={label}>Exactly what will run</h3>
+      <div className="mt-2 space-y-3 rounded border border-border bg-surface/40 p-3 font-mono dash-support text-fg">
+        {command && <pre className="whitespace-pre-wrap break-words">$ {command}</pre>}
+        {diff && <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words">{diff}</pre>}
+        {!!affected.length && (
+          <ul aria-label="Affected items" className="space-y-0.5">
+            {affected.map((a) => <li key={a}>{a}</li>)}
+          </ul>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function EvidenceView({ evidence }: { evidence: Evidence }) {
   const url = safeHTTPS(typeof evidence.external_url === "string" ? evidence.external_url : undefined)
   return <details className="border-t border-border py-3">
@@ -53,6 +78,7 @@ export function DecisionDetail({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [note, setNote] = useState("")
+  const [showNote, setShowNote] = useState(false)
   const [reply, setReply] = useState("")
   const [choice, setChoice] = useState<ApprovalResponse["decision"]>()
   const refresh = useCallback(async () => {
@@ -110,7 +136,7 @@ export function DecisionDetail({
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         <header>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="min-w-0 dash-body font-medium text-fg">{request?.title ?? "Review request"}</h2>
+            <h2 className="min-w-0 font-sans normal-case tracking-normal dash-body font-semibold text-fg">{request?.title ?? "Review request"}</h2>
             {request && <RiskChip risk={request.class} />}
           </div>
           <p className="mt-1 font-mono dash-support text-fg-muted">
@@ -143,6 +169,7 @@ export function DecisionDetail({
               )}
               {card && <CardData request={request} />}
             </section>
+            <RunCard request={request} />
             {request.details_markdown && (
               <section>
                 <h3 className={label}>Details</h3>
@@ -176,13 +203,13 @@ export function DecisionDetail({
             <dl className="grid grid-cols-2 gap-4 dash-support text-fg-muted">
               <div>
                 <dt className={label}>Requested</dt>
-                <dd>{new Date(item!.enqueued_at).toLocaleString()}</dd>
+                <dd title={new Date(item!.enqueued_at).toLocaleString()}>{ago(item!.enqueued_at)}</dd>
               </div>
               <div>
                 <dt className={label}>Expires</dt>
                 <dd>
                   {request.expires_at
-                    ? new Date(request.expires_at).toLocaleString()
+                    ? <span title={new Date(request.expires_at).toLocaleString()}>{timeLeft(request.expires_at) ?? "No expiry"}</span>
                     : "No expiry"}
                 </dd>
               </div>
@@ -243,12 +270,17 @@ export function DecisionDetail({
                 }
               />
             ) : request.class === "high" || request.source.application_id === "cerberus" ? (
-              <section className="rounded border border-warning/30 p-4">
+              <section className="rounded border border-danger/30 p-4">
                 <p className="dash-control text-fg-muted">Complete this decision in the provider console. This inbox cannot approve it.</p>
                 {ready && safeHTTPS(request.handoff_url) && <a href={safeHTTPS(request.handoff_url)} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open in {request.source.application_id === "cerberus" ? "Cerberus" : "provider console"}</a>}
               </section>
             ) : (
               <>
+                {!showNote ? (
+                  <button type="button" className="dash-control text-fg-muted underline-offset-2 hover:underline" onClick={() => setShowNote(true)}>
+                    Add note
+                  </button>
+                ) : (
                 <label className="block dash-control text-fg-muted">
                   Decision note (optional)
                   <Textarea
@@ -261,6 +293,7 @@ export function DecisionDetail({
                     className="mt-2 w-full dash-control"
                   />
                 </label>
+                )}
                 {request.kind === "attention" && (
                   <label className="block dash-control text-fg-muted">
                     Reply (optional)
@@ -280,7 +313,7 @@ export function DecisionDetail({
                 ) : request.kind === "card.question" || request.kind === "card.form" ? (
                   <CardForm request={request} busy={busy} disabled={!canDecide} onSubmit={(answers) => void decide(answers)} />
                 ) : choice ? (
-                  <section className="rounded border border-warning/30 bg-warning-muted/10 p-3">
+                  <section className="rounded border border-border bg-surface/40 p-3">
                     <p className="dash-control text-fg-muted">
                       Confirm{" "}
                       {choice === "approved"
@@ -291,15 +324,13 @@ export function DecisionDetail({
                       of this request?
                     </p>
                     <div className="mt-3 flex gap-2">
-                      <Button variant="outline" size="sm"
-                        className="font-mono dash-label"
+                      <Button
                         disabled={!canDecide}
                         onClick={() => void decide()}
                       >
                         {busy ? "Submitting…" : "Confirm decision"}
                       </Button>
-                      <Button variant="outline" size="sm"
-                        className="font-mono dash-label"
+                      <Button variant="outline"
                         disabled={busy}
                         onClick={() => setChoice(undefined)}
                       >
@@ -311,15 +342,15 @@ export function DecisionDetail({
                   <div className="flex gap-2">
                     {request.kind === "approval" || request.kind === "card.approval" ? (
                       <>
-                        <Button variant="outline" size="sm"
-                          className={`font-mono dash-label text-success`}
+                        <Button
+                          className="flex-1 sm:flex-none"
                           disabled={!canDecide}
                           onClick={() => setChoice("approved")}
                         >
                           {item?.action_run ? "Approve and run" : "Approve"}
                         </Button>
-                        <Button variant="outline" size="sm"
-                          className={`font-mono dash-label text-danger`}
+                        <Button variant="outline"
+                          className="flex-1 sm:flex-none"
                           disabled={!canDecide}
                           onClick={() => setChoice("denied")}
                         >
@@ -327,8 +358,7 @@ export function DecisionDetail({
                         </Button>
                       </>
                     ) : (
-                      <Button variant="outline" size="sm"
-                        className="font-mono dash-label"
+                      <Button
                         disabled={!canDecide}
                         onClick={() => setChoice("acknowledged")}
                       >
@@ -345,12 +375,12 @@ export function DecisionDetail({
               </>
             )}
         </>)}
-        <div className="flex justify-between border-t border-border pt-3">
-          <Button variant="outline" size="sm" className="font-mono dash-label" disabled={busy} onClick={() => void refresh()}>
-            Refresh request
-          </Button>
-          {footer}
-        </div>
+        {(error || footer) && (
+          <div className="flex justify-between gap-2">
+            {error ? <Button variant="outline" disabled={busy} onClick={() => void refresh()}>Review again</Button> : <span />}
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

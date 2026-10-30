@@ -147,6 +147,7 @@ describe("approval review dialog", () => {
       ).toBe(false),
     )
     expect(screen.getByText("one").tagName).toBe("STRONG")
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }))
     fireEvent.change(screen.getByLabelText("Decision note"), {
       target: { value: "Only this request" },
     })
