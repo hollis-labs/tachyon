@@ -112,29 +112,49 @@ export function HandoffPanel({ change, onChange, onReload }: { change: Change; o
           {commands.length > 0 ? (
             <div className="space-y-2">
               <ol className="space-y-2">
-                {commands.map((c, i) => (
-                  <li key={c.step} className="space-y-1">
-                    <p className="dash-support font-medium text-fg">
-                      {i + 1}. {c.label}
-                    </p>
-                    <div className="flex items-start gap-2">
-                      <code aria-label={`${c.step[0].toUpperCase()}${c.step.slice(1)} command`} className="block min-w-0 flex-1 break-all bg-surface p-2 font-mono dash-support text-fg">
-                        {c.command}
-                      </code>
-                      <Button type="button" variant="outline" size="sm" className="shrink-0 max-sm:min-h-10" onClick={() => copy(c.step, c.command)}>
-                        {copied === c.step ? 'Copied' : 'Copy'}
-                      </Button>
-                    </div>
-                  </li>
-                ))}
+                {commands.map((c, i) => {
+                  // An action is a tool a Tether session runs (no CLI); a shell step is a line to run on the host.
+                  const action = c.kind === 'action'
+                  const shell = !action && (c.kind === undefined || c.kind === 'shell')
+                  const envBlocked = action && change.handoff?.session_available === false && change.handoff.reason === 'contains_env_values'
+                  const tag = action ? 'Run in a Tether session' : shell ? 'Run in a terminal' : ''
+                  return (
+                    <li key={c.step} className="space-y-1">
+                      <p className="dash-support font-medium text-fg">
+                        {i + 1}. {c.label}
+                        {tag && <span className="ml-2 font-normal text-fg-muted">{tag}</span>}
+                      </p>
+                      {action &&
+                        (envBlocked ? (
+                          <p className="dash-support text-fg-muted">This change includes environment values, so do not paste the bundle into a session. Apply it from a terminal instead.</p>
+                        ) : (
+                          <>
+                            {c.tool && (
+                              <p className="dash-support text-fg-secondary">
+                                Tool: <span className="font-mono">{c.tool}</span>
+                              </p>
+                            )}
+                            {c.step === 'plan' && <p className="dash-support text-fg-muted">Give the session the bundle (Copy bundle above).</p>}
+                          </>
+                        ))}
+                      {!action && c.command && (
+                        <div className="flex items-start gap-2">
+                          <code aria-label={`${c.step[0].toUpperCase()}${c.step.slice(1)} command`} className="block min-w-0 flex-1 whitespace-pre-wrap break-all bg-surface p-2 font-mono dash-support text-fg">
+                            {c.command}
+                          </code>
+                          <Button type="button" variant="outline" size="sm" className="shrink-0 max-sm:min-h-10" onClick={() => copy(c.step, c.command ?? '')}>
+                            {copied === c.step ? 'Copied' : 'Copy'}
+                          </Button>
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
               </ol>
-              <p className="dash-support text-fg-muted">Run these in Tether on this machine. Approval needs your passphrase.</p>
+              <p className="dash-support text-fg-muted">Approval needs your passphrase.</p>
             </div>
           ) : (
             <p className="dash-support text-fg-muted">The commands are not available yet. Copy or download the bundle and plan it in Tether.</p>
-          )}
-          {change.handoff?.session_available === false && change.handoff.reason === 'contains_env_values' && (
-            <p className="dash-support text-fg-muted">Not available for changes that include environment values.</p>
           )}
         </>
       )}
