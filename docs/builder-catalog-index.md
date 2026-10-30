@@ -37,3 +37,25 @@ the stub keeps the whole prefix and the real summary/stream are not mounted.
   live Tether; parsing is tolerant (bare array or wrapped under files/items/entries; content or body).
 - `launches.live` is null until B2 (`used_by`); `open_changes`, prompts and policies are 0 until B3/B5.
 - Index rows are not yet served as agents/launches lists; that is B2.
+
+## Read model: agents and launches (B2a)
+
+`internal/builderread` serves `GET /agents`, `/agents/{id}`, `/agents/{id}/used_by|checks|history`, `/launches` and
+`/launches/{id}` from the catalog index (own read-only SQL over `catalog_entities` and `catalog_snapshots`). They
+mount one pattern each, behind `operator.RequireOperator`, only when the index is on and `TACHYON_BUILDER_STUBS` is
+off. Shapes follow `internal/builderapi/openapi.yaml`.
+
+- Everything is derived from masked snapshots; environment values never reach a response. Launch `env` is key names
+  plus `secret_like_count`. The tests plant secrets and fail if one appears in any body.
+- Paging uses `limit` (default 25, max 100) and a `c<offset>` cursor.
+- **Live data** (`live_sessions`, `live_count`) comes from Tether `GET /sessions?state=running`, cached 5 s. When Tether
+  is unreachable or not configured these fields are `null`, never `0`. The session wire names (`launch_id`,
+  `logical_agent_id`) are UNVERIFIED; a session without a launch still counts for its agent.
+- `used_by`: `teams` and `assigned_items` are `null` (no source yet). `extended_by` comes from the index.
+- `checks`: `references_exist` (skills, tool servers, extends), `model_set`, `extends_cycle`. `tether_validate`,
+  `part_drift` and `scope_review_age` need Tether and the Library, and are not produced yet.
+- `history`: one entry per kept snapshot, newest first; `diff` is a unified diff against the previous snapshot (null
+  for the oldest, or when a file exceeds 3000 lines). `privileged`, `activation` and `backup_id` are empty until the
+  change flow (B4) records them; `plan_id` and `actor` are set for snapshots written by the Builder.
+- Agent detail reads the editor sections from the masked YAML on a best-effort basis; `parts` is empty until the
+  Library (B2b).
