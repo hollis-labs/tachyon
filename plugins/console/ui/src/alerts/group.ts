@@ -22,14 +22,14 @@ export function dayLabel(ts: number, now: number): string {
 
 export interface Group<T> { id: string; label: string; items: T[] }
 
-/** Active: "Needs you" first, then "Everything else". History: one group per day, newest first. */
-export function groupActive<T extends { alert: Alert }>(rows: T[]): Group<T>[] {
+/** Active: "Needs you" first, then the rest under day pills. History: one group per day, newest first. */
+export function groupActive<T extends { alert: Alert }>(rows: T[], now: number): Group<T>[] {
   const need = rows.filter((r) => needsYou(r.alert))
   const rest = rows.filter((r) => !needsYou(r.alert))
   return [
-    { id: 'needs', label: 'Needs you', items: need },
-    { id: 'rest', label: 'Everything else', items: rest },
-  ].filter((g) => g.items.length)
+    ...(need.length ? [{ id: 'needs', label: 'Needs you', items: need }] : []),
+    ...groupHistory(rest, now),
+  ]
 }
 
 export function groupHistory<T extends { alert: Alert }>(rows: T[], now: number): Group<T>[] {

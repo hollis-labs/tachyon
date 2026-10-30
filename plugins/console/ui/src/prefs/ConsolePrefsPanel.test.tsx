@@ -10,7 +10,7 @@ describe('ConsolePrefsPanel', () => {
   it('emits patches for each control and states the critical rule', async () => {
     const onChange = vi.fn()
     render(<ConsolePrefsPanel prefs={DEFAULT_CONSOLE_PREFS} onChange={onChange} />)
-    expect(screen.getByText(/Critical alerts still break through/)).toBeTruthy()
+    expect(screen.getByText(/Critical alerts always pop up/)).toBeTruthy()
     // Base UI's switch toggles through its hidden checkbox.
     const toggle = (name: string) => {
       const sw = screen.getByRole('switch', { name })
@@ -22,11 +22,13 @@ describe('ConsolePrefsPanel', () => {
     await toggle('Quiet hours')
     expect(onChange).toHaveBeenLastCalledWith({ quietHoursEnabled: true })
     expect((screen.getByLabelText('Quiet hours start') as HTMLInputElement).disabled).toBe(true)
-    const muted = screen.getByPlaceholderText('agent-bravo, laptop')
-    fireEvent.change(muted, { target: { value: 'a, b' } })
-    expect(onChange).toHaveBeenCalledTimes(2)
-    fireEvent.blur(muted)
-    expect(onChange).toHaveBeenLastCalledWith({ mutedSources: ['a', ' b'] })
+    await toggle('Pop-up toasts')
+    expect(onChange).toHaveBeenLastCalledWith({ toastsEnabled: false })
+    fireEvent.click(screen.getByRole('button', { name: '+ Add source' }))
+    const muted = screen.getByLabelText('Source to mute')
+    fireEvent.change(muted, { target: { value: 'agent-bravo' } })
+    fireEvent.keyDown(muted, { key: 'Enter' })
+    expect(onChange).toHaveBeenLastCalledWith({ mutedSources: ['agent-bravo'] })
   })
 })
 
@@ -43,8 +45,8 @@ describe('Notify me about', () => {
     const onChange = vi.fn()
     render(<ConsolePrefsPanel prefs={DEFAULT_CONSOLE_PREFS} onChange={onChange} />)
     expect(screen.getByRole('tab', { name: 'Everything' }).getAttribute('aria-selected')).toBe('true')
-    expect(screen.getByText(/Every alert shows in the bell/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('tab', { name: 'Blockers' }))
+    expect(screen.getByText(/Toasts for everything/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'Blockers only' }))
     expect(onChange).toHaveBeenLastCalledWith({ bellMinSeverity: 'error', toastMinSeverity: 'error' })
   })
 })

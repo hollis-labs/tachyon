@@ -10,7 +10,7 @@ const alert = (severity: Alert['severity']): Alert => ({ id: 'a', severity, icon
 const show = (severity: Alert['severity']) => render(<MemoryRouter><AlertToast alert={alert(severity)} now={1000} onClose={() => undefined} /></MemoryRouter>)
 
 describe('<AlertToast>', () => {
-  it('counts down with a hairline that pauses on hover, and critical stays until dismissed with no countdown', () => {
+  it('counts down with a hairline that pauses on hover, and critical Stays until you dismiss it with no countdown', () => {
     show('warning')
     const bar = screen.getByTestId('alert-countdown')
     expect(bar.style.animationPlayState).toBe('running')
@@ -19,7 +19,7 @@ describe('<AlertToast>', () => {
     cleanup()
     show('critical')
     expect(screen.queryByTestId('alert-countdown')).toBeNull()
-    expect(screen.getByText('stays until dismissed')).toBeTruthy()
+    expect(screen.getByText('Stays until you dismiss it')).toBeTruthy()
     expect(screen.getByRole('alert')).toBeTruthy()
   })
 })

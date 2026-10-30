@@ -8,6 +8,7 @@ import { useApprovals } from '../../approvals/context'
 import { DecisionDetail } from '../../approvals/detail'
 import { useRestoreFocus } from '../../shell/restore-focus'
 import { AlertIcon } from '../AlertIcon'
+import { Chip } from '../../components/chip'
 import { AlertLinkButton } from '../AlertLinkButton'
 import { useAlertsController } from '../context'
 import { safeHref } from '../policy'
@@ -15,7 +16,7 @@ import { SEVERITY_STYLE } from '../severity-style'
 import { createAlertsClient, type AlertsClient } from './client'
 import type { ServerAlertDetail as Detail } from './types'
 
-const H = 'font-sans text-xs font-medium normal-case tracking-normal text-fg-muted'
+const H = 'font-mono dash-caption uppercase tracking-label text-fg-faint'
 const SNOOZES = [
   { label: '15 minutes', ms: 15 * 60_000 },
   { label: '1 hour', ms: 3_600_000 },
@@ -93,6 +94,14 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
     }
   }
 
+  const handleItems = [
+    ...SNOOZES.map((x) => ({ label: `Snooze ${x.label}`, run: () => c.snooze(id, x.ms) })),
+    { label: 'Snooze until tomorrow 09:00', run: () => c.snooze(id, untilTomorrow(c.now)) },
+    ...(c.settle ? [{ label: 'Mark handled', run: () => c.settle?.(id) }] : []),
+    { label: 'Dismiss', run: () => { c.dismiss(id); onClose() } },
+  ]
+  const showActions = !(approval && !closed)
+
   return (
     <div data-overlay="" className="fixed inset-0 z-[60] flex justify-end bg-bg/60" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
@@ -104,122 +113,120 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
         data-status={status}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="relative h-full w-full overflow-y-auto border-l border-border bg-bg-elevated outline-none md:max-w-xl"
+        className="relative flex h-full w-full flex-col border-l border-border bg-bg-elevated outline-none md:max-w-xl"
       >
-        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border-subtle bg-bg-elevated px-4 py-2.5">
+        <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
           <AlertIcon icon={alert.icon} severity={alert.severity} />
-          {sev.named && <span className={`text-xs ${sev.text}`}>{sev.label}</span>}
-          <span className="ml-auto text-xs text-fg-muted">{ago(alert.ts, c.now)}</span>
+          <span className="min-w-0 truncate font-mono dash-caption uppercase tracking-label text-fg-muted">
+            {sev.label} <span className="normal-case tracking-normal text-fg-faint">{alert.kind}</span>
+          </span>
+          <span className="ml-auto shrink-0 dash-support text-fg-muted">{ago(alert.ts, c.now)}</span>
           <Button type="button" variant="ghost" size="icon-xs" onClick={onClose} aria-label="Close alert detail" className="text-fg-muted">
             <X aria-hidden="true" />
           </Button>
         </header>
 
-        <section className="border-b border-border-subtle px-4 py-3">
-          <div className="flex items-start gap-2">
-            <h2 className="min-w-0 flex-1 break-words font-sans text-base font-semibold normal-case tracking-normal text-fg">{alert.title}</h2>
-            {handled && (
-              <Pill tone="neutral" className="shrink-0">
-                <span data-testid="alert-status">{status === 'snoozed' && entry.snoozeUntil ? `snoozed until ${when(entry.snoozeUntil)}` : (entry.resolution ?? status)}</span>
-              </Pill>
-            )}
-          </div>
-          {alert.detail && <p className="mt-1 break-words text-xs text-fg-secondary"><Linkified text={alert.detail} /></p>}
-          <p className="mt-1 text-xs text-fg-muted">{alert.source}</p>
-        </section>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <section className="space-y-2 px-4 py-4">
+            <div className="flex items-start gap-2">
+              <h2 className="min-w-0 flex-1 break-words font-sans dash-body font-semibold normal-case tracking-normal text-fg">{alert.title}</h2>
+              {handled && (
+                <Pill tone="neutral" className="shrink-0">
+                  <span data-testid="alert-status">{status === 'snoozed' && entry.snoozeUntil ? `snoozed until ${when(entry.snoozeUntil)}` : (entry.resolution ?? status)}</span>
+                </Pill>
+              )}
+            </div>
+            {alert.detail && <p className="break-words dash-control text-fg-muted"><Linkified text={alert.detail} /></p>}
+          </section>
 
-        {approval &&
-          (approval.provider_handoff ? (
-            <section aria-label="Approval" className="border-b border-border-subtle px-4 py-3">
-              <p className="rounded border border-border bg-surface/40 p-3 text-xs text-fg-muted">Approved through the provider. Nothing to decide here.</p>
-            </section>
-          ) : (
-            <section aria-label="Decision" className="border-b border-border-subtle">
-              <DecisionDetail id={approval.item_id} client={approvals} onChanged={() => { void queue?.refresh(true); load() }} />
-            </section>
-          ))}
-
-        {approval && !closed ? (
-          c.error && <p role="status" className="border-b border-border-subtle px-4 py-3 text-xs text-fg-muted">{c.error}</p>
-        ) : (
-          <div role="toolbar" aria-label="Alert actions" className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
-            {closed || status === 'snoozed' ? (
-              <>
-                <Button type="button" variant="outline" size="sm" onClick={() => c.restore(id)}>{closed ? 'Restore' : 'Bring back now'}</Button>
-                {approval && status === 'settled' && <span className="text-xs text-fg-muted">Settled by approval</span>}
-              </>
+          {approval &&
+            (approval.provider_handoff ? (
+              <section aria-label="Approval" className="px-4 pb-4">
+                <p className="rounded border border-border bg-surface/40 p-3 dash-support text-fg-muted">Approved through the provider. Nothing to decide here.</p>
+              </section>
             ) : (
-              <>
-                {c.settle && <Button type="button" size="sm" onClick={() => c.settle?.(id)}>Mark handled</Button>}
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Snooze" />}>Snooze</DropdownMenuTrigger>
-                  <DropdownMenuContent aria-label="Snooze" align="start" data-dashboard-shape="square" className="w-40">
-                    {SNOOZES.map((s) => <DropdownMenuItem key={s.label} onClick={() => c.snooze(id, s.ms)}>{s.label}</DropdownMenuItem>)}
-                    <DropdownMenuItem onClick={() => c.snooze(id, untilTomorrow(c.now))}>Tomorrow</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button type="button" variant="outline" size="sm" onClick={() => { c.dismiss(id); onClose() }}>Dismiss</Button>
-              </>
-            )}
-            {c.error && <span role="status" className="text-xs text-fg-muted">{c.error}</span>}
-          </div>
-        )}
+              <section aria-label="Decision" className="border-y border-border-subtle">
+                <DecisionDetail id={approval.item_id} client={approvals} onChanged={() => { void queue?.refresh(true); load() }} />
+              </section>
+            ))}
 
-        {failed && !detail && <p role="status" className="border-b border-border-subtle px-4 py-3 text-xs text-fg-muted">Could not load the details. <button type="button" className="underline" onClick={load}>Try again</button></p>}
+          {failed && !detail && <p role="status" className="px-4 py-3 dash-support text-fg-muted">Could not load the details. <button type="button" className="underline" onClick={load}>Try again</button></p>}
 
-        {detail && detail.technical.fields.length > 0 && (
-          <details className="border-b border-border-subtle px-4 py-3">
-            <summary className="cursor-pointer text-xs font-medium text-fg-muted">Technical details</summary>
-            <dl aria-label="Details" className="mt-2 grid grid-cols-[minmax(6rem,9rem)_1fr] gap-x-3 gap-y-1">
-              <dt className="truncate font-mono text-label text-fg-muted">kind</dt>
-              <dd className="min-w-0 break-words font-mono text-xs text-fg">{alert.kind}</dd>
-              {detail.technical.fields.map((f) => (
-                <div key={f.label} className="contents">
-                  <dt className="truncate font-mono text-label text-fg-muted">{f.label}</dt>
-                  <dd className="min-w-0 break-words font-mono text-xs text-fg"><Linkified text={f.value} /></dd>
-                </div>
-              ))}
-            </dl>
-          </details>
-        )}
+          {!!detail?.timeline.length && (
+            <section aria-label="Timeline" className="px-4 pb-4">
+              <h3 className={H}>What happened</h3>
+              <ol className="mt-3 space-y-3 border-l border-border pl-4">
+                {detail.timeline.map((t, i) => {
+                  const last = i === detail.timeline.length - 1
+                  return (
+                    <li key={`${t.at_ms}:${i}`} className="relative dash-control text-fg">
+                      <span aria-hidden className={`absolute -left-[calc(1rem+4px)] top-1.5 size-2 rounded-full border border-fg-muted ${last ? 'bg-fg' : 'bg-bg-elevated'}`} />
+                      {t.label} <span className="text-fg-muted">· {ago(t.at_ms, c.now)}</span>
+                    </li>
+                  )
+                })}
+              </ol>
+            </section>
+          )}
 
-        {(!!detail?.linked.length || alert.primary) && (
-          <section aria-label="Linked" className="border-b border-border-subtle px-4 py-3">
-            <h3 className={H}>Linked</h3>
-            <ul className="mt-2 flex flex-wrap items-center gap-2">
-              {detail?.linked.map((s) => {
-                const href = safeHref(s.url)
-                return (
-                  <li key={`${s.kind}:${s.ref}`} className="flex items-center gap-1.5 font-mono text-xs text-fg">
-                    <span className="text-xs text-fg-muted">{s.kind}</span>
-                    {href ? (
-                      <a href={href} className="underline decoration-fg-faint hover:decoration-fg-secondary" {...(href.startsWith('/') ? {} : { target: '_blank', rel: 'noopener noreferrer' })}>{s.label ?? s.ref}</a>
-                    ) : (
-                      <Linkified text={s.label && s.label !== s.ref ? `${s.label} ${s.ref}` : s.ref} />
-                    )}
-                  </li>
-                )
-              })}
-              {alert.primary && <li><AlertLinkButton link={alert.primary} onFollow={onClose} /></li>}
-            </ul>
-          </section>
-        )}
+          {(!!detail?.linked.length || alert.primary) && (
+            <section aria-label="Linked" className="px-4 pb-4">
+              <h3 className={H}>Linked</h3>
+              <ul className="mt-2 flex flex-wrap items-center gap-2">
+                {detail?.linked.map((s) => {
+                  const href = safeHref(s.url)
+                  const text = s.label && s.label !== s.ref ? s.label : s.ref
+                  return (
+                    <li key={`${s.kind}:${s.ref}`}>
+                      <Chip className="py-0.5">
+                        <span className="text-fg-faint">{s.kind}</span>
+                        {href ? (
+                          <a href={href} className="underline decoration-fg-faint hover:decoration-fg-secondary" {...(href.startsWith('/') ? {} : { target: '_blank', rel: 'noopener noreferrer' })}>{text}</a>
+                        ) : (
+                          <Linkified text={text} />
+                        )}
+                      </Chip>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
 
-        {!!detail?.timeline.length && (
-          <section aria-label="Timeline" className="px-4 py-3">
-            <h3 className={H}>Timeline</h3>
-            <ol className="mt-2 space-y-1">
-              {detail.timeline.map((t, i) => (
-                <li key={`${t.at_ms}:${i}`} className="flex gap-3 font-mono text-xs text-fg-secondary">
-                  <span className="w-16 shrink-0 text-fg-muted">{ago(t.at_ms, c.now)}</span>
-                  <span className="min-w-0 break-words">{t.label}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        )}
+          {detail && detail.technical.fields.length > 0 && (
+            <details className="px-4 pb-4">
+              <summary className="cursor-pointer font-mono dash-caption uppercase tracking-label text-fg-muted">Technical details</summary>
+              <dl aria-label="Details" className="mt-2 grid grid-cols-[minmax(6rem,9rem)_1fr] gap-x-3 gap-y-1">
+                <dt className="truncate font-mono text-label text-fg-muted">kind</dt>
+                <dd className="min-w-0 break-words font-mono text-xs text-fg">{alert.kind}</dd>
+                {detail.technical.fields.map((f) => (
+                  <div key={f.label} className="contents">
+                    <dt className="truncate font-mono text-label text-fg-muted">{f.label}</dt>
+                    <dd className="min-w-0 break-words font-mono text-xs text-fg"><Linkified text={f.value} /></dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          )}
+        </div>
+
+        <footer role="toolbar" aria-label="Alert actions" className="flex items-center gap-2 border-t border-border-subtle px-4 py-3">
+          {alert.primary && <AlertLinkButton link={alert.primary} onFollow={onClose} />}
+          {showActions && (closed || status === 'snoozed' ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => c.restore(id)}>{closed ? 'Restore' : 'Bring back now'}</Button>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Handle" />}>Handle ▾</DropdownMenuTrigger>
+              <DropdownMenuContent aria-label="Handle" align="start" data-dashboard-shape="square" className="w-60">
+                {handleItems.map((h) => <DropdownMenuItem key={h.label} onClick={h.run}>{h.label}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ))}
+          {approval && status === 'settled' && <span className="dash-support text-fg-muted">Settled by approval</span>}
+          {c.error && <span role="status" className="dash-support text-fg-muted">{c.error}</span>}
+          <span className="ml-auto dash-support text-fg-faint">Esc close</span>
+        </footer>
       </div>
     </div>
   )
 }
-

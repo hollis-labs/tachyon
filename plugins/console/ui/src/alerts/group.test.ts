@@ -11,8 +11,8 @@ describe('alert grouping', () => {
     expect(needsYou(a({ kind: 'agent.state' }))).toBe(true)
     expect(needsYou(a({ severity: 'error' }))).toBe(true)
     expect(needsYou(a({ kind: 'pr.merged' }))).toBe(false)
-    const g = groupActive([{ alert: a({ id: '1', kind: 'pr.merged' }) }, { alert: a({ id: '2', kind: 'approval.requested' }) }])
-    expect(g.map((x) => [x.label, x.items.length])).toEqual([['Needs you', 1], ['Everything else', 1]])
+    const g = groupActive([{ alert: a({ id: '1', kind: 'pr.merged', ts: NOW }) }, { alert: a({ id: '2', kind: 'approval.requested', ts: NOW }) }], NOW)
+    expect(g.map((x) => [x.label, x.items.length])).toEqual([['Needs you', 1], ['Today', 1]])
   })
   it('groups history by day, newest first order preserved', () => {
     const rows = [{ alert: a({ id: '1', ts: NOW - 1000 }) }, { alert: a({ id: '2', ts: NOW - 86_400_000 }) }, { alert: a({ id: '3', ts: NOW - 86_400_000 - 5 }) }]

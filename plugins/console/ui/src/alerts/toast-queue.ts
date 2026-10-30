@@ -27,7 +27,7 @@ export class ToastQueue {
     let next = this.stack.filter((a) => live.has(a.id)) // handled elsewhere: drop its toast
     // Quiet mode (manual or scheduled quiet hours) and muted sources hold back everything
     // below critical. A critical alert always gets through (owner decision).
-    const quiet = isQuietNow(prefs, now)
+    const quiet = isQuietNow(prefs, now) || !prefs.toastsEnabled
     const eligible = (a: Alert) =>
       a.severity === 'critical' || (!quiet && !isMutedSource(prefs, a.source) && severityAtLeast(a.severity, prefs.toastMinSeverity))
     next = next.filter(eligible)

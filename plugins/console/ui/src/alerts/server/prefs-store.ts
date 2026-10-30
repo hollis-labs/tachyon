@@ -13,6 +13,7 @@ export const fromServerPrefs = (p: ServerPrefs): ConsolePrefs =>
   sanitizePrefs({
     ...DEFAULT_CONSOLE_PREFS,
     ...levelPatch(p.notify_level),
+    toastsEnabled: p.toasts,
     quiet: p.quiet,
     quietHoursEnabled: p.quiet_hours.enabled,
     quietHoursStart: p.quiet_hours.start,
@@ -31,7 +32,7 @@ const deviceZone = () => {
 
 export const toServerPrefs = (p: ConsolePrefs, base?: ServerPrefs): ServerPrefs => ({
   notify_level: levelOf(p),
-  toasts: base?.toasts ?? true,
+  toasts: p.toastsEnabled,
   quiet: p.quiet,
   quiet_hours: { enabled: p.quietHoursEnabled, start: p.quietHoursStart, end: p.quietHoursEnd, tz: base?.quiet_hours.tz || deviceZone() },
   muted_sources: p.mutedSources,
