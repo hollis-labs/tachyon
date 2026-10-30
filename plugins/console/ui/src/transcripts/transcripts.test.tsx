@@ -201,7 +201,8 @@ describe("transcript dashboard", () => {
     render(<TranscriptDashboard />)
     await screen.findByText(/partial snapshot/)
     fireEvent.click(screen.getByRole("tab", { name: "Insights" }))
-    fireEvent.click(await screen.findByText("claude"))
+    // The Tools panel comes first on the page, so its bar is the first match.
+    fireEvent.click((await screen.findAllByText("claude"))[0])
     expect(screen.getByText(/Filtered to claude/)).toBeTruthy()
     expect(screen.queryByRole("button", { name: "Fix routing" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Reset filters" }))
