@@ -2,10 +2,10 @@ import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { StatusBadge } from '@hollis-labs/kit-dashboard'
 import { themeRowActions } from '@planner/components/planner/theme-board'
 import { statusToneKey, themeOwners } from '@planner/lib/planner'
-import { FACETS, TEXT } from '@planner/lib/vocabulary'
+import { TEXT } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
-import { fixtureEvents, fixtureMilestones, fixtureMomentum } from '@planner/fixtures/themes'
-import { EventTimeline, SegmentedProgress, StatusMenu } from '@planner/shared'
+import { SegmentedProgress, StatusMenu } from '@planner/shared'
+import { ThemeTimelineView, useThemeTimeline } from '@planner/shell/timeline'
 import { TaskBoard } from '@planner/shell/task-board'
 import { themeSegments } from '@planner/shell/spine'
 import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
@@ -28,6 +28,8 @@ export function Focus({ paused, row, board, view, onView, onAction, onBack, onDe
   const approved = (board.totals.in_flight ?? 0) + (board.totals.cleared ?? 0)
   const actions = themeRowActions(row.section, row.rank, approved)
   const owners = themeOwners(row)
+  const timeline = useThemeTimeline(row.id)
+  const momentum = timeline.data?.momentum
   return (
     <section aria-labelledby="focus-title" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
       <header className="flex flex-col gap-3 border-b border-border px-4 py-3">
@@ -58,34 +60,15 @@ export function Focus({ paused, row, board, view, onView, onAction, onBack, onDe
           <SegmentedProgress items={seg.items} label={seg.label} />
           <p className="flex flex-wrap gap-x-4 dash-caption text-fg-muted">
             <span>{seg.label}</span>
-            <span title={fixtureMomentum.detail}>{TEXT.momentum}: {fixtureMomentum.label}</span>
-            <span className="text-fg-faint">{TEXT.fixtureNote}</span>
+            {momentum && <span>{TEXT.momentum}: {TEXT.momentumLabels[momentum.label]}. {momentum.text}</span>}
           </p>
         </div>
         {panels.map((p) => <div key={p.id}>{p.render?.({ id: row.id })}</div>)}
         <DashboardViewTabs variant="segments" label={TEXT.viewLabel} value={view} onChange={(v) => onView(v === 'timeline' ? 'timeline' : 'board')} items={[{ value: 'board', label: TEXT.board }, { value: 'timeline', label: TEXT.timeline }]} />
       </header>
       <div className="min-w-0 flex-1 p-4">
-        {view === 'board' ? <TaskBoard themeId={row.id} paused={paused} /> : <ThemeTimeline />}
+        {view === 'board' ? <TaskBoard themeId={row.id} paused={paused} /> : <ThemeTimelineView state={timeline} />}
       </div>
     </section>
-  )
-}
-
-function ThemeTimeline() {
-  const sources = useContributions('planner.focus.timeline.source')
-  const events = [...fixtureEvents, ...sources.flatMap((s) => (Array.isArray(s.data) ? s.data : []))]
-  const facets = FACETS.map((f) => ({ id: f.id, label: f.label, count: f.id === 'all' ? events.length : events.filter((e) => e.facet === f.id).length }))
-  return (
-    <div className="flex flex-col gap-4">
-      <ol aria-label={TEXT.milestones} className="flex flex-wrap gap-x-6 gap-y-1">
-        {fixtureMilestones.map((m) => (
-          <li key={m.id} className="dash-caption text-fg-muted">
-            <span className="text-fg">{m.label}</span> · {m.state}
-          </li>
-        ))}
-      </ol>
-      <EventTimeline events={events} facets={facets} allFacet="all" facetsLabel={TEXT.timelineFacets} streamLabel={TEXT.timelineStream} emptyLabel={TEXT.timelineEmpty} filteredEmptyLabel={TEXT.timelineFilteredEmpty} />
-    </div>
   )
 }

@@ -298,3 +298,20 @@ export interface TaskMeta {
   done_summary?: string
   pr_cites?: PrCite[]
 }
+
+export type MomentumLabel = 'rising' | 'steady' | 'cooling' | 'stalled'
+export interface TimelineEntry {
+  seq: number
+  at: string
+  kind: 'task' | 'pr' | 'decision' | 'blocker' | 'comment' | 'workstream' | 'lifecycle' | 'link'
+  text: string
+  refs: { kind: string; ref: string }[]
+  delta?: { done: number; doing: number; review: number; blocked: number }
+  arrow?: 'up' | 'flat' | 'down'
+}
+export interface ThemeTimeline {
+  milestones: { key: 'approved' | 'first_done' | 'half_done'; state: 'reached' | 'next' | 'pending'; at?: string }[]
+  momentum: { label: MomentumLabel; score: number; text: string }
+  events: TimelineEntry[]
+  next_before_seq: number | null
+}
