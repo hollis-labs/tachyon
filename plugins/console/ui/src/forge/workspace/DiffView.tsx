@@ -20,7 +20,7 @@ const TOKEN_CLASS: Record<TokenKind, string> = {
 }
 
 const LINE_BG: Record<DiffLine['kind'], string> = {
-  add: 'bg-surface',
+  add: 'bg-success/10',
   del: 'bg-danger/10',
   context: '',
 }
