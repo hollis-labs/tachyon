@@ -505,3 +505,89 @@ describe("approval defer", () => {
     expect(undefer).toHaveBeenCalledWith("req-1")
   })
 })
+
+describe("defer near expiry and decision keys", () => {
+  const soon = (ms: number): ApprovalItem => ({
+    ...item,
+    request_snapshot: { ...item.request_snapshot, expires_at: new Date(Date.now() + ms).toISOString() },
+  })
+  const clientFor = (it: ApprovalItem, decide = vi.fn()) =>
+    ({ present: vi.fn().mockResolvedValue(it), decide, defer: vi.fn(), undefer: vi.fn() }) as unknown as ApprovalClient
+  it("offers only presets that end before the request expires", async () => {
+    const it = soon(5 * 3600 * 1000)
+    render(<ApprovalDialog id={it.item_id} initial={it} client={clientFor(it)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Decide later" }))
+    await act(async () => {})
+    expect(screen.getByRole("menuitem", { name: "4 hours" })).toBeTruthy()
+    expect(screen.queryByRole("menuitem", { name: "Tomorrow" })).toBeNull()
+  })
+  it("says so when nothing fits before expiry", async () => {
+    const it = soon(10 * 60 * 1000)
+    render(<ApprovalDialog id={it.item_id} initial={it} client={clientFor(it)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await screen.findByText(/cannot be snoozed/)
+    expect(screen.queryByRole("button", { name: "Decide later" })).toBeNull()
+  })
+  it("D on the focused decision bar denies; A on a high-risk request only opens the phrase step", async () => {
+    const decide = vi.fn().mockResolvedValue({ item_id: "req-1", state: "resolved" })
+    const high: ApprovalItem = { ...item, request_snapshot: { ...item.request_snapshot, class: "high" } }
+    render(<ApprovalDialog id={high.item_id} initial={high} client={clientFor(high, decide)} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Deny" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.keyDown(screen.getByRole("button", { name: "Approve" }), { key: "a" })
+    await screen.findByLabelText("Confirmation phrase")
+    expect(decide).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    fireEvent.keyDown(screen.getByRole("button", { name: "Deny" }), { key: "d" })
+    await waitFor(() => expect(decide).toHaveBeenCalled())
+  })
+})
+
+
+// Base UI checkboxes toggle through their hidden input.
+const tick = (name: string) =>
+  act(() => {
+    screen.getByRole("checkbox", { name }).parentElement?.querySelector<HTMLInputElement>("input[type=checkbox]")?.click()
+  })
+
+describe("batch approve", () => {
+  const low = (id: string, batchable: boolean): ApprovalItem => ({
+    ...item,
+    item_id: id,
+    batchable,
+    request_snapshot: { ...item.request_snapshot, title: `Request ${id}`, class: "low" },
+  })
+  it("sends one batch with each reviewed revision and a batch_id", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json({ batch_id: "b1", results: [], counts: {} }))
+    await createApprovalClient(fetcher).batchResolve([item], "approved", "b1")
+    expect(fetcher.mock.calls[0][0]).toMatch(/\/batch\/resolve$/)
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+      batch_id: "b1",
+      decision: "approved",
+      items: [{ item_id: "req-1", expected_revision: 4, presented_projection_revision: 3 }],
+    })
+  })
+  it("offers checkboxes only on batchable rows, confirms, and reports what stayed", async () => {
+    const a = low("a", true)
+    const b = low("b", true)
+    const c = low("c", false)
+    const batchResolve = vi.fn().mockResolvedValue({ batch_id: "x", results: [], counts: { resolved: 1, stale: 1 } })
+    const client = {
+      inbox: vi.fn().mockResolvedValue({ pending: [a, b, c], history: [] }),
+      present: vi.fn().mockResolvedValue(a),
+      batchResolve,
+    } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await screen.findByRole("option", { name: /Request a/ })
+    expect(screen.queryByRole("checkbox", { name: "Select Request c" })).toBeNull()
+    tick("Select Request a")
+    tick("Select Request b")
+    fireEvent.click(screen.getByRole("button", { name: "Approve selected" }))
+    expect(batchResolve).not.toHaveBeenCalled()
+    expect(screen.getByText(/Approve 2 requests\? This cannot be undone/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
+    await screen.findByText("1 approved, 1 left in the queue to review one by one.")
+    expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
+    expect(screen.queryByText(/left in the queue/)).toBeNull()
+  })
+})

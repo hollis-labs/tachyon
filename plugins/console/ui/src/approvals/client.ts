@@ -87,6 +87,9 @@ export interface ApprovalItem {
   terminal_outcome?: ApprovalOutcome
   // Set while the item is snoozed; it sorts last in the queue until then.
   deferred_until?: string | null
+  // Server-side batch eligibility; blockers are why an item must be reviewed one by one.
+  batchable?: boolean
+  batch_blockers?: string[]
   request_snapshot: {
     kind: "approval" | "attention" | CardKind
     class?: "low" | "medium" | "high"
@@ -128,6 +131,12 @@ export interface DeferResult {
   deferred_until: string | null
   expires_before_snooze_ends?: boolean
   revision: number
+}
+export type BatchStatus = "resolved" | "stale" | "ineligible" | "expired" | "conflict" | "error"
+export interface BatchResult {
+  batch_id: string
+  results: { item_id: string; status: BatchStatus; error?: { code: string; message: string } }[]
+  counts: Partial<Record<BatchStatus, number>>
 }
 export interface SecretStored {
   secret_ref: string
@@ -274,6 +283,22 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
     },
     undefer(id: string) {
       return request<DeferResult>(`/items/${encodeURIComponent(id)}/defer`, { method: "DELETE" })
+    },
+    // Each item is resolved on its own server-side: one failure never stops the next. The batch_id
+    // makes a retry of the same request return the same result.
+    batchResolve(items: ApprovalItem[], decision: "approved" | "denied", batchId: string = crypto.randomUUID()) {
+      return request<BatchResult>("/batch/resolve", {
+        method: "POST",
+        body: JSON.stringify({
+          batch_id: batchId,
+          decision,
+          items: items.map((i) => ({
+            item_id: i.item_id,
+            expected_revision: i.revision,
+            presented_projection_revision: i.presented_projection_revision ?? i.revision,
+          })),
+        }),
+      })
     },
     async decide(item: ApprovalItem, response: ApprovalResponse, opts: { keepalive?: boolean } = {}) {
       // A keepalive decision is sent while the page is closing: no time for the pre-check, so the
