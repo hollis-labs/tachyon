@@ -122,6 +122,22 @@ export interface ApprovalInbox {
   revision: string
 }
 export const APPROVAL_BASE = "/api/plugins/console/v1/approval-inbox"
+export interface HistoryEvent {
+  event_id: string
+  item_id: string
+  kind: string
+  at: string
+  actor: { ref: string; label: string; assurance?: string }
+  decision?: string
+  status?: string
+  note?: string
+  reason?: string
+  mini?: { title: string; risk?: string; group?: string }
+}
+export interface HistoryPage {
+  events: HistoryEvent[]
+  next_cursor?: string
+}
 export class ApprovalError extends Error {
   constructor(
     public status: number,
@@ -205,6 +221,10 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       return read<ApprovalInbox>(`/inbox${query.size ? `?${query}` : ""}`, fresh)
     },
     get,
+    history(opts: { q?: string; status?: string; cursor?: string; limit?: number } = {}) {
+      const query = new URLSearchParams(Object.entries(opts).filter((e): e is [string, string | number] => !!e[1]).map(([k, v]) => [k, String(v)]))
+      return read<HistoryPage>(`/history${query.size ? `?${query}` : ""}`, true)
+    },
     present(id: string) {
       const existing = presenting.get(id)
       if (existing) return existing
