@@ -124,6 +124,32 @@ export interface History {
   next_cursor?: string | null
 }
 
+export interface Launch {
+  id: string
+  agent: string
+  provider: string
+  model?: string | null
+  project: string
+  worker: string
+  env?: { keys: string[]; secret_like_count: number }
+  route?: string | null
+  chat?: boolean
+  enabled: boolean
+  live_count: number
+}
+
+export type LibraryKind = 'prompts' | 'skills' | 'tool_servers' | 'policies'
+
+export interface LibraryItem {
+  kind: LibraryKind
+  id: string
+  name: string
+  summary?: string
+  used_by_count?: number
+  editable?: boolean
+  [extra: string]: unknown
+}
+
 export type ChangeState = 'draft' | 'awaiting_approval' | 'approved' | 'applying' | 'applied' | 'failed' | 'rolled_back' | 'stale' | 'expired' | 'cancelled'
 
 export interface ChangeOp {
@@ -253,6 +279,15 @@ export const builderApi = {
   usedBy: (id: string) => get<UsedBy>(`/agents/${encodeURIComponent(id)}/used_by`),
   checks: (id: string) => get<Checks>(`/agents/${encodeURIComponent(id)}/checks`),
   history: (id: string, cursor?: string) => get<History>(`/agents/${encodeURIComponent(id)}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+  launches: (query: { q?: string; live?: boolean } = {}) => {
+    const p = new URLSearchParams()
+    if (query.q) p.set('q', query.q)
+    if (query.live) p.set('live', '1')
+    const qs = p.toString()
+    return get<{ launches: Launch[]; next_cursor?: string | null }>(`/launches${qs ? `?${qs}` : ''}`)
+  },
+  library: (kind: LibraryKind, q = '') => get<{ items: LibraryItem[] }>(`/library/${kind}${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  libraryItem: (kind: LibraryKind, id: string) => get<LibraryItem>(`/library/${kind}/${encodeURIComponent(id)}`),
   change: (id: string) => get<Change>(`/changes/${encodeURIComponent(id)}`),
   createChange: (request: { request_id: string; note?: string; ops: ChangeOp[] }) => send<Change>('/changes', request),
   submit: (id: string, ackPrivileged: boolean) => send<Change>(`/changes/${encodeURIComponent(id)}/submit`, { ack_privileged: ackPrivileged }),

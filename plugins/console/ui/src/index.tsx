@@ -5,6 +5,8 @@ import { ApiProvider } from "@tachyon/torque-client"
 import { consoleClient } from "@console/client"
 import { AgentsPage } from "./agents-monitor/page"
 import { BuilderAgentsPage } from "./builder/BuilderAgentsPage"
+import { BuilderLaunchesPage } from "./builder/BuilderLaunchesPage"
+import { BuilderLibraryPage } from "./builder/BuilderLibraryPage"
 import { overlayNav, overlayRoutes } from "./routes"
 import { ConsoleLayer, ConsoleNavExtras } from "./shell"
 
@@ -24,6 +26,10 @@ export const consolePlugin: TachyonPlugin = {
     { path: "/builder", element: <BuilderPage /> },
     { path: "/builder/agents", element: <BuilderAgentsPage /> },
     { path: "/builder/agents/:id", element: <BuilderAgentsPage /> },
+    { path: "/builder/launches", element: <BuilderLaunchesPage /> },
+    { path: "/builder/library", element: <BuilderLibraryPage /> },
+    { path: "/builder/library/:kind", element: <BuilderLibraryPage /> },
+    { path: "/builder/library/:kind/:id", element: <BuilderLibraryPage /> },
     ...overlayRoutes,
   ],
   Shell: ConsoleLayer,

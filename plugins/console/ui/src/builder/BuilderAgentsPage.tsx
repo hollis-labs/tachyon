@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Segmented } from '../components/segmented'
+import { useNavigate, useParams } from 'react-router-dom'
 import { AgentDetailPane } from './AgentDetailPane'
 import { type AgentRow, builderApi } from './api'
 import { useLoad } from './useLoad'
-import { type AgentState, BUILDER_TITLE, DEFINITIONS_NOTE, POLICY_LABEL, STATE_LABEL, TAB_LABEL, type BuilderTab } from './vocab'
+import { BuilderShell } from './BuilderShell'
+import { type AgentState, POLICY_LABEL, STATE_LABEL } from './vocab'
 
 const CHIP = 'inline-flex items-center border border-border px-1.5 py-px font-mono text-caption text-fg-secondary'
 
@@ -59,12 +59,7 @@ export function BuilderAgentsPage() {
   const states: (AgentState | '')[] = retiredShown ? ['', 'active', 'disabled', 'retired'] : ['', 'active', 'disabled']
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <header className="flex flex-wrap items-baseline gap-x-4 border-b border-border px-4 py-3">
-        <h1 className="text-lg font-semibold text-fg">{BUILDER_TITLE}</h1>
-        <p className="dash-support text-fg-muted">{DEFINITIONS_NOTE} <Link className="underline" to="/agents">Agents</Link>.</p>
-      </header>
-      <Segmented<BuilderTab> label="Builder areas" value="agents" onChange={() => undefined}
-        items={[{ value: 'agents', label: TAB_LABEL.agents, count: counts?.agents?.total }, { value: 'launches', label: `${TAB_LABEL.launches} (soon)`, count: counts?.launches?.total }, { value: 'library', label: `${TAB_LABEL.library} (soon)` }]} />
+      <BuilderShell tab="agents" counts={counts ?? null} />
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
           <div className="flex flex-wrap gap-2 border-b border-border p-3">
