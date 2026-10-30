@@ -33,10 +33,10 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history }: {
             aria-selected={selected}
             aria-label={`${r.title}, ${who(i)}, ${r.class ?? "medium"} risk`}
             onClick={() => onSelect(i.item_id)}
-            className={`cursor-pointer px-4 py-3 ${selected ? "bg-surface-hover" : "hover:bg-surface-hover/50"}`}
+            className={`cursor-pointer px-4 py-3 ${selected ? "bg-surface/60" : "hover:bg-surface/30"}`}
           >
             <div className="flex items-start justify-between gap-2">
-              <span className="min-w-0 truncate dash-body text-fg">{r.title}</span>
+              <span className={`min-w-0 truncate dash-body text-fg ${selected ? "font-medium" : ""}`}>{r.title}</span>
               {history
                 ? <span className="font-mono dash-caption uppercase text-fg-muted">{i.terminal_outcome?.resolution?.response.decision ?? i.state}</span>
                 : <RiskChip risk={r.class} />}

@@ -1,0 +1,20 @@
+{
+  "link": {
+    "link_id": "lnk_01",
+    "pr_key": "github:hollis-labs/tachyon#202",
+    "agent_id": "builder-reviewer",
+    "agent_urn": "msg://agent/agent-mux/builder-reviewer",
+    "task": "review",
+    "forge_login": "builder-reviewer",
+    "dedupe_key": "pr-assign:github:hollis-labs/tachyon#202:builder-reviewer:review",
+    "forge_assigned": true,
+    "message_id": "01a18000-0000-7000-8000-000000000001",
+    "status": "sent",
+    "reminders": 0,
+    "note": "",
+    "assigned_by": "chrispian",
+    "created_ms": 1793329140000,
+    "updated_ms": 1793329170000
+  },
+  "replayed": false
+}

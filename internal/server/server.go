@@ -46,6 +46,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/internal/fileview"
 	"github.com/hollis-labs/tachyon/internal/fileviewapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
@@ -251,6 +252,9 @@ func (s *Server) Start(ctx context.Context) error {
 			_ = s.approvalProducer.Watch(approvalContext, s.cfg.ApprovalProducerConfigFile, 0, slog.Default())
 		}()
 	}
+
+	// Backfill the queue index, then materialize expired items every 30 s so History fills without a reader.
+	go s.approvalInbox.Maintain(approvalContext, 30*time.Second, slog.Default().Info)
 
 	if s.cfg.AppAgentConfigFile != "" {
 		// The adapter re-reads this file on every call, so reinstalling the agent
@@ -688,6 +692,13 @@ func (s *Server) Routes() http.Handler {
 	if s.cfg.FileviewStubs {
 		mux.Handle("GET "+fileviewapi.FramesPrefix, fileviewapi.Stub{}.FrameHandler())
 		mux.Handle(fileviewapi.Prefix+"/", operator.RequireOperatorReads(fileviewapi.Stub{}.Handler()))
+	}
+	// File viewer settings and roots (real, V1). One pattern each, so they win over the stub's subtree when
+	// the stub is on. Reads need an operator session; the PUT needs an elevated one.
+	if s.store != nil {
+		if home, err := os.UserHomeDir(); err == nil {
+			(&fileview.Service{DB: s.store, Home: home}).Mount(mux, operator.RequireOperatorReads, operator.RequireOperator)
+		}
 	}
 	// Builder + Registry contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below
 	// is unguarded. GETs are open; every write (changes, launch action, registry project patch) needs an operator session.
