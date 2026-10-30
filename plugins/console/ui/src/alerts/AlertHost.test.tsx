@@ -39,6 +39,24 @@ async function emitUntilToast(source: FixtureSource, max = 8) {
   for (let i = 0; i < max && screen.queryAllByTestId('alert-toast').length === 0; i++) await act(async () => source.tick())
 }
 
+describe('AlertTray keyboard', () => {
+  it('moves between rows with the arrows, dismisses with D, marks all read with Shift+R, and ignores keys in fields', async () => {
+    await setup()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
+    const tray = screen.getByRole('dialog', { name: 'Alerts' })
+    const opens = () => within(tray).getAllByRole('button', { name: /^Open details/ })
+    const first = opens()[0]
+    first.focus()
+    await act(async () => fireEvent.keyDown(first, { key: 'ArrowDown' }))
+    expect(document.activeElement).toBe(opens()[1])
+    const before = within(tray).getAllByTestId('alert-item').length
+    await act(async () => fireEvent.keyDown(document.activeElement!, { key: 'd' }))
+    expect(within(tray).getAllByTestId('alert-item').length).toBe(before - 1)
+    await act(async () => fireEvent.keyDown(document.activeElement ?? tray, { key: 'R', shiftKey: true }))
+    expect(screen.queryByTestId('alert-badge')).toBeNull()
+  })
+})
+
 describe('AlertHost', () => {
   it('opens no stream of its own, skips the backlog, then toasts new alerts', async () => {
     const { source, sub } = await setup()

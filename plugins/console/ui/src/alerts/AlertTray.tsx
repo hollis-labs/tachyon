@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useConsoleState } from '../events/hooks'
 import { Button } from '@hollis-labs/design-components'
 import { BellOff, Settings, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -16,6 +17,7 @@ export function AlertTray() {
   const c = useAlertsController()
   const [tab, setTab] = useState<'active' | 'history'>('active')
   const ref = useRef<HTMLDivElement>(null)
+  const { status, ready } = useConsoleState()
   useRestoreFocus(c.open, '[data-alert-trigger]')
 
   useEffect(() => {
@@ -41,9 +43,35 @@ export function AlertTray() {
       aria-label="Alerts"
             tabIndex={-1}
       onKeyDown={(e) => {
-        if (e.key === 'Escape') c.setOpen(false)
+        if (e.key === 'Escape') { c.setOpen(false); return }
+        const t = e.target as HTMLElement
+        if (e.metaKey || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable) return
+        // Up / Down move between rows; S snoozes and D dismisses the focused row; Shift+R marks all read.
+        const opens = [...(ref.current?.querySelectorAll<HTMLElement>('button[aria-label^="Open details"]') ?? [])]
+        const here = opens.indexOf(t)
+        const row = t.closest<HTMLElement>('[data-alert-id]')
+        const id = row?.dataset.alertId
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          if (!opens.length) return
+          e.preventDefault()
+          const next = e.key === 'ArrowDown' ? Math.min(here + 1, opens.length - 1) : Math.max(here <= 0 ? 0 : here - 1, 0)
+          opens[here === -1 ? 0 : next]?.focus()
+        } else if (e.key === 's' && id && tab === 'active') {
+          e.preventDefault()
+          const after = opens[here + 1] ?? opens[here - 1]
+          c.snooze(id, HOUR)
+          after?.focus()
+        } else if (e.key === 'd' && id && tab === 'active') {
+          e.preventDefault()
+          const after = opens[here + 1] ?? opens[here - 1]
+          c.dismiss(id)
+          after?.focus()
+        } else if (e.key === 'R' && e.shiftKey) {
+          e.preventDefault()
+          c.markAllRead()
+        }
       }}
-      className="fixed bottom-3 left-14 z-50 flex max-h-[min(36rem,calc(100vh-1.5rem))] w-[min(26rem,calc(100vw-4.5rem))] flex-col border border-border bg-bg-elevated shadow-xl shadow-black/30 focus-visible:outline-none"
+      className="fixed bottom-3 left-14 z-50 flex max-h-[min(36rem,calc(100vh-1.5rem))] w-[min(26rem,calc(100vw-4.5rem))] max-md:!bottom-0 max-md:!left-0 max-md:max-h-[82dvh] max-md:!w-full max-md:rounded-t-xl flex-col border border-border bg-bg-elevated shadow-xl shadow-black/30 focus-visible:outline-none"
     >
       <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
         <h2 className="flex-1 font-sans text-sm font-semibold normal-case tracking-normal text-fg">
@@ -63,6 +91,11 @@ export function AlertTray() {
         </Button>
       </header>
 
+      {ready && status !== 'live' && (
+        <p role="status" className="border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">
+          {status === 'error' ? 'Alerts are not updating.' : 'Reconnecting…'} What you see may be out of date.
+        </p>
+      )}
       {c.prefs.quiet && (
         <div role="status" className="flex items-center gap-2 border-b border-border-subtle bg-surface/40 px-4 py-1.5 text-xs text-fg-muted">
           <BellOff aria-hidden="true" className="h-3 w-3" />

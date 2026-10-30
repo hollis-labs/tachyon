@@ -31,6 +31,7 @@ export function AlertListItem({ alert, status = 'unread', snoozeUntil, now, onRe
   return (
     <li
       data-testid="alert-item"
+      data-alert-id={alert.id}
       data-status={status}
       className={`group relative flex gap-3 border-b border-border-subtle px-4 py-2.5 ${handled ? 'opacity-60' : ''}`}
     >
