@@ -4,13 +4,14 @@ import { Link } from 'react-router-dom'
 import { Button, Checkbox, Input, OverflowMenu, Switch, Textarea } from '@hollis-labs/design-components'
 import { Chip } from '../components/chip'
 import { ChipListField } from './ChipListField'
+import { DirtyBar } from './DirtyBar'
 import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
-import { buildOps, changedPaths, changingText, type Draft, fieldByPath, newRequestId } from './changes'
+import { buildOps, changedPaths, type Draft, fieldByPath, newRequestId, reviewRows } from './changes'
 import { OutlineNav } from './OutlineNav'
 import { ChecksCard, HistorySection, ResolvedCard, UsedByCard, UsedBySection } from './InsightSections'
 import { Cap, Cite, Field as Row, Tile } from './parts'
 import { useChangeMode } from './capabilities'
-import { ModeNote, PreparedLabel } from './ModeNote'
+import { ModeNote } from './ModeNote'
 import { ReviewDialog } from './ReviewDialog'
 import { useBuilderStream } from './stream'
 import { useLoad } from './useLoad'
@@ -228,35 +229,12 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
           </Button>
         </div>
       )}
-      {editing && (
-        <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-5 py-2 dash-support text-fg-secondary">
-          {prepared ? <PreparedLabel /> : <span className="mr-auto">{changingText(dirty.map((p) => fieldByPath(p)?.label))}</span>}
-          {error && (
-            <span role="alert" className="text-danger">
-              {error}
-            </span>
-          )}
-          {!prepared && <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => guard(dirty.length, () => {
-              setEditing(false)
-              setDraft({})
-              setError('')
-            })}
-          >
-            Discard
-          </Button>}
-          <Button type="button" disabled={(dirty.length === 0 && !prepared) || busy} variant="default" size="sm" onClick={prepared ? viewPrepared : openReview}>
-            {prepared ? 'View hand-off' : busy ? (mode === 'handoff' ? 'Preparing' : 'Checking') : mode === 'handoff' ? 'Prepare change' : 'Review changes'}
-          </Button>
-        </div>
-      )}
       {discardDialog}
       {review && (
         <ReviewDialog
           initial={review}
+          subject={a.identity.name}
+          rows={reviewRows(a, draft)}
           onClose={(c) => {
             setReview(null)
             setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
@@ -337,6 +315,24 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
           <ChecksCard id={a.id} />
         </aside>
       </div>
+      {editing && (
+        <DirtyBar
+          labels={dirty.map((p) => fieldByPath(p)?.label)}
+          prepared={Boolean(prepared)}
+          error={error}
+          busy={busy}
+          mode={mode}
+          onDiscard={() =>
+            guard(dirty.length, () => {
+              setEditing(false)
+              setDraft({})
+              setError('')
+            })
+          }
+          onReview={openReview}
+          onViewPrepared={viewPrepared}
+        />
+      )}
     </div>
   )
 }

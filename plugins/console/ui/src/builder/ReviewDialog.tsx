@@ -1,7 +1,7 @@
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogTitle } from '@hollis-labs/design-components'
 import { useEffect, useState } from 'react'
 import { builderApi, type Change, errorMessage } from './api'
-import { isOpen, isWaiting, minutesAndSeconds } from './changes'
+import { isOpen, isWaiting, minutesAndSeconds, type ReviewRow } from './changes'
 import { useChangeMode } from './capabilities'
 import { HandoffPanel } from './HandoffPanel'
 import { useBuilderStream } from './stream'
@@ -42,6 +42,15 @@ export function Diff({ text }: { text: string }) {
   )
 }
 
+function EffectRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span>{label}</span>
+      <b className="text-right font-medium text-fg">{children}</b>
+    </div>
+  )
+}
+
 function Countdown({ expiresAt }: { expiresAt: number }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -53,7 +62,7 @@ function Countdown({ expiresAt }: { expiresAt: number }) {
 }
 
 /** Review a computed change, submit it, and follow it until it is applied or ends. */
-export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initial: Change; onClose: (c: Change) => void; onApplied: () => void; onReload: () => void }) {
+export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, rows }: { initial: Change; onClose: (c: Change) => void; onApplied: () => void; onReload: () => void; subject?: string; rows?: ReviewRow[] }) {
   const [change, setChange] = useChange(initial)
   const [mode] = useChangeMode()
   const [confirmCancel, setConfirmCancel] = useState(false)
@@ -87,15 +96,33 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
     <>
     <Dialog open onOpenChange={(open) => !open && !busy && onClose(change)}>
       <DialogContent
-        widthClassName="max-w-xl"
-        className="max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[88vh] max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-auto max-sm:rounded-b-none max-sm:rounded-t-lg"
+        widthClassName="max-w-3xl"
+        className="gap-3 max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[88vh] max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-auto max-sm:rounded-b-none max-sm:rounded-t-lg"
       >
-        <DialogTitle>{change.state === 'draft' ? 'Review changes' : inHandoff ? 'Hand off to Tether' : 'Change status'}</DialogTitle>
+        <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal">{change.state === 'draft' ? `Review changes${subject ? ` · ${subject}` : ''}` : inHandoff ? 'Hand off to Tether' : 'Change status'}</DialogTitle>
         <DialogDescription className="sr-only">Review the computed change and submit it for approval on the host.</DialogDescription>
-        {change.diff && <Diff text={change.diff} />}
-        {(change.checks ?? []).length > 0 && (
+        {rows && rows.length > 0 && change.state === 'draft' ? (
+          <dl aria-label="Changes">
+            {rows.map((r) => (
+              <div key={r.label} className="grid gap-1 border-t border-border-subtle py-1.5 text-xs sm:grid-cols-[140px_1fr_1fr] sm:gap-2.5">
+                <dt className="font-mono text-caption uppercase tracking-label text-fg-muted">{r.label}</dt>
+                <dd className="text-fg-muted line-through">
+                  <span className="sr-only">Was: </span>
+                  {r.from}
+                </dd>
+                <dd className="text-fg">
+                  <span className="sr-only">Now: </span>
+                  {r.to}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          change.diff && <Diff text={change.diff} />
+        )}
+        {(change.checks ?? []).some((c) => c.status !== 'ok') && (
           <ul aria-label="Checks" className="space-y-1">
-            {change.checks?.map((c) => (
+            {change.checks?.filter((c) => c.status !== 'ok').map((c) => (
               <li key={c.name + (c.entity ?? '')} className="dash-support text-fg-secondary">
                 <span className={c.status === 'fail' ? 'text-danger' : ''}>{CHECK_WORD[c.status]}</span> {c.message}
                 {c.remedy ? ` ${c.remedy}` : ''}
@@ -105,13 +132,18 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload }: { initia
         )}
         {privileged && <p className="dash-support text-fg-secondary">Privileged: {change.privileged?.map((p) => p.field || p.path).join(', ')}</p>}
         {!inHandoff && (
-        <div className="border border-border p-3 dash-support text-fg-secondary">
-          <p className="font-medium text-fg">Effect</p>
-          <p>{change.effect?.activation || 'Activation is reported after approval.'}</p>
-          {(change.effect?.running_sessions ?? []).length > 0 && <p>{change.effect?.running_sessions?.length} running session(s) keep their config until restarted.</p>}
-          {(change.effect?.restart_required ?? []).length > 0 && <p>Restart required: {change.effect?.restart_required?.join(', ')}</p>}
-          <p>Needs approval on the host.</p>
-        </div>
+          <div className="flex flex-col gap-2 rounded-panel border border-border p-3 text-xs text-fg-secondary">
+            <p className="font-mono text-caption uppercase tracking-label text-fg-muted">Effect</p>
+            <EffectRow label="Running sessions">
+              {(change.effect?.running_sessions ?? []).length > 0
+                ? `${change.effect?.running_sessions?.length} keep${change.effect?.running_sessions?.length === 1 ? 's' : ''} the current config until restarted`
+                : 'none affected'}
+            </EffectRow>
+            <EffectRow label="Launches">next launch uses the new config</EffectRow>
+            {change.effect?.activation && <EffectRow label="Activation">{change.effect.activation}</EffectRow>}
+            {(change.effect?.restart_required ?? []).length > 0 && <EffectRow label="Restart required">{change.effect?.restart_required?.join(', ')}</EffectRow>}
+            <EffectRow label="Approval">needed on the host</EffectRow>
+          </div>
         )}
         {inHandoff && change.state !== 'draft' && (
           <HandoffPanel change={change} onChange={setChange} onReload={onReload} />

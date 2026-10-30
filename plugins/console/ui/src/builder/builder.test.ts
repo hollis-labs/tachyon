@@ -79,8 +79,8 @@ describe('part ops', () => {
 describe('changingText', () => {
   it('lists what changed', () => {
     expect(changingText([])).toBe('No unsaved changes')
-    expect(changingText(['Body'])).toBe('Changing 1 field: Body')
-    expect(changingText(['Body', 'Summary'])).toBe('Changing 2 fields: Body, Summary')
+    expect(changingText(['Body'])).toBe('1 unsaved change · Body')
+    expect(changingText(['Body', 'Summary'])).toBe('2 unsaved changes · Body, Summary')
   })
 })
 

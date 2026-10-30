@@ -144,9 +144,25 @@ export function buildPartOps(kind: PartKind, it: PartItem, draft: Draft): Change
   }))
 }
 
-/** Dirty-bar text shared by every edit surface: 'Changing 2 fields: body, summary'. */
+/** Dirty-bar text shared by every edit surface: '2 unsaved changes · Body, Summary'. */
 export function changingText(labels: (string | undefined)[]): string {
   if (labels.length === 0) return 'No unsaved changes'
-  return `Changing ${labels.length} field${labels.length === 1 ? '' : 's'}: ${labels.join(', ')}`
+  return `${labels.length} unsaved change${labels.length === 1 ? '' : 's'} · ${labels.join(', ')}`
 }
 
+
+export interface ReviewRow {
+  label: string
+  from: string
+  to: string
+}
+
+const show = (v: unknown) => (Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'Enabled' : 'Disabled') : String(v ?? ''))
+
+/** One row per changed field for the Review dialog: what it was and what it becomes. Text, never colour alone. */
+export function reviewRows(agent: AgentDetail, draft: Draft): ReviewRow[] {
+  return changedPaths(agent, draft).flatMap((path) => {
+    const f = fieldByPath(path)
+    return f ? [{ label: f.label, from: show(f.read(agent)) || 'empty', to: show(draft[path]) || 'empty' }] : []
+  })
+}
