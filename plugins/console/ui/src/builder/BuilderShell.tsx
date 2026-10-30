@@ -31,8 +31,10 @@ export function BuilderShell({ tab, counts }: { tab: BuilderTab; counts?: Summar
         onChange={(t) => navigate(TAB_PATH[t])}
         items={[
           { value: 'agents', label: TAB_LABEL.agents, count: c?.agents?.total },
+          { value: 'teams', label: TAB_LABEL.teams },
           { value: 'launches', label: TAB_LABEL.launches, count: c?.launches?.total },
           { value: 'library', label: TAB_LABEL.library },
+          { value: 'projects', label: TAB_LABEL.projects },
         ]}
       />
     </>
