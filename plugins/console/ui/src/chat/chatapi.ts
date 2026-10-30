@@ -38,9 +38,6 @@ export function toMessage(threadId: string, m: ApiMessage): ChatMessage {
 /** Frames that mean "the messages changed". Live frames are not replayed, so each one is a prompt to refetch. */
 const CHANGES = new Set(['message', 'delta', 'tool', 'end', 'delivery', 'card', 'thread'])
 
-/** Fallback refetch cadence while a thread is open; the server mirrors Tether about every 5 seconds. */
-const POLL_MS = 4000
-
 export interface ChatApiOptions {
   fetchPage?: (ref: string, q: { before_seq?: number; limit: number }) => Promise<Page>
   post?: (ref: string, body: { text: string; idempotency_key: string }) => Promise<{ id: string }>
@@ -121,9 +118,6 @@ export function withChatApiMessages(base: ChatClient, o: ChatApiOptions = {}): C
         }
       }
       void sync()
-      // Tether-backed threads are mirrored by a background poll and publish no per-message frames, so the stream
-      // alone never shows a reply or a delivery change. A light refetch matches the server mirror cadence.
-      const poll = setInterval(() => void sync(), POLL_MS)
       let es: EventSource | null = null
       if (typeof EventSource !== 'undefined') {
         es = stream(ref)
@@ -145,7 +139,6 @@ export function withChatApiMessages(base: ChatClient, o: ChatApiOptions = {}): C
       }
       return () => {
         live = false
-        clearInterval(poll)
         es?.close()
       }
     },

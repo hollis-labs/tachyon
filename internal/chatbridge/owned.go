@@ -28,6 +28,9 @@ type Owned struct {
 	FreshSeconds      int
 	RevalidateSeconds int
 	CacheEnabled      bool
+	// Changed is called after a Tether turn is stored ("message") or its reply delivery moves ("delivery").
+	// It must not block; it may be nil.
+	Changed func(ctx context.Context, kind string, t Turn)
 	mu                sync.Mutex
 	cancel            context.CancelFunc
 	done              chan struct{}
@@ -232,6 +235,11 @@ func (o *Owned) sync(ctx context.Context) error {
 			})
 			if e != nil {
 				return e
+			}
+			if o.Changed != nil {
+				for _, t := range turns {
+					o.Changed(ctx, "message", t)
+				}
 			}
 			cursor = batch.NextSince
 			if len(batch.Messages) < 100 {
