@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@hollis-labs/design-components"
+import { Check, CircleDot, Clock, X } from "lucide-react"
 import type { ApprovalClient, HistoryEvent } from "./client"
 import { ago } from "./parts"
 
@@ -9,6 +10,16 @@ const VERB: Record<string, string> = {
   answered: "Answered",
   expired: "Expired",
   withdrawn: "Withdrawn",
+}
+function Marker({ e }: { e: HistoryEvent }) {
+  const k = e.status ?? e.decision ?? ""
+  const cls = k === "denied" ? "text-danger border-danger/60" : "text-fg-muted border-border"
+  const Icon = k === "approved" ? Check : k === "denied" ? X : k === "expired" ? Clock : CircleDot
+  return (
+    <span aria-hidden className={`absolute -left-[calc(1rem+9px)] top-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border bg-bg ${cls}`}>
+      <Icon className="h-2.5 w-2.5" />
+    </span>
+  )
 }
 const verb = (e: HistoryEvent) => VERB[e.status ?? ""] ?? VERB[e.decision ?? ""] ?? e.kind.replace(/_/g, " ")
 
@@ -65,7 +76,8 @@ export function HistoryTimeline({ client, search, onOpen }: { client: ApprovalCl
             <h3 className="mb-2"><span className="rounded-full border border-border px-2 py-0.5 font-mono dash-caption text-fg-muted">{d.label}</span></h3>
             <ul className="space-y-3 border-l border-border pl-4">
               {d.items.map((e) => (
-                <li key={e.event_id}>
+                <li key={e.event_id} className="relative">
+                  <Marker e={e} />
                   <button type="button" onClick={() => onOpen(e.item_id)} className="block w-full text-left">
                     <span className="dash-body text-fg"><span className="font-medium">{verb(e)}</span> · {e.mini?.title ?? e.item_id}</span>
                     <span className="block font-mono dash-caption text-fg-faint" title={new Date(e.at).toLocaleString()}>{e.actor.label} · {ago(e.at)}</span>

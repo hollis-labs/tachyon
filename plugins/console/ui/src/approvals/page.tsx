@@ -1,6 +1,6 @@
 import { Button, SearchInput } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
-import { DashboardViewTabs } from "@hollis-labs/kit-dashboard/layout"
+import { Segmented } from "../components/segmented"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
@@ -65,17 +65,16 @@ export function ApprovalsPage() {
           <RefreshCw className="h-3 w-3" />
         </Button>
       </PageHeader>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
-        <DashboardViewTabs
-          variant="segments"
+      <Segmented
           label="Approvals view"
           value={view}
-          onChange={(v) => setView(v as "pending" | "history")}
+          onChange={setView}
           items={[
-            { value: "pending", label: "Pending", count: pendingCount },
-            { value: "history", label: "History" },
+            { value: "pending" as const, label: "Pending", count: pendingCount },
+            { value: "history" as const, label: "History" },
           ]}
         />
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
         <div className="dash-search-adapter w-72 max-w-full">
           <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} slashToFocus={false} />
         </div>
