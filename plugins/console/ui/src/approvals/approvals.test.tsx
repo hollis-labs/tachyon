@@ -122,7 +122,7 @@ describe("approval review dialog", () => {
       decide,
       evidence: vi.fn(),
     }) as unknown as ApprovalClient
-  it("requires explicit confirmation, preserves notes, disables repeat submission and shows the authoritative result", async () => {
+  it("approves low and medium risk in one click, preserves notes, disables repeat submission and shows the authoritative result", async () => {
     let settle!: (value: unknown) => void
     const decide = vi.fn().mockImplementation(
       () =>
@@ -152,10 +152,8 @@ describe("approval review dialog", () => {
       target: { value: "Only this request" },
     })
     fireEvent.click(screen.getByRole("button", { name: "Approve" }))
-    expect(decide).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
     expect(
-      (screen.getByRole("button", { name: "Submitting…" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "Approving…" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true)
     expect(decide).toHaveBeenCalledTimes(1)
@@ -201,7 +199,6 @@ describe("approval review dialog", () => {
       ).toBe(false),
     )
     fireEvent.click(screen.getByRole("button", { name: "Deny" }))
-    fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Request changed",
     )
@@ -301,7 +298,6 @@ describe("card review dialog", () => {
     await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
     expect(screen.getByText("op status · target torque:task/CW-1 · value done")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Approve" }))
-    fireEvent.click(screen.getByRole("button", { name: "Confirm decision" }))
     expect(decide.mock.calls[0][1]).toEqual({ kind: "card.approval", decision: "approved" })
   })
   it("always shows the bound operation, and labels a requester summary as unverified", async () => {

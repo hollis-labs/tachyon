@@ -99,8 +99,8 @@ export function DecisionDetail({
   useEffect(() => {
     void refresh()
   }, [refresh])
-  async function decide(submitted?: CardAnswer[]) {
-    const decision = submitted ? "submitted" : choice
+  async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"]) {
+    const decision = submitted ? "submitted" : (direct ?? choice)
     if (!item || !decision || busy || !ready) return
     setBusy(true)
     setError("")
@@ -363,14 +363,14 @@ export function DecisionDetail({
                         <Button
                           className="flex-1 sm:flex-none"
                           disabled={!canDecide}
-                          onClick={() => setChoice("approved")}
+                          onClick={() => (needsPhrase ? setChoice("approved") : void decide(undefined, "approved"))}
                         >
-                          {item?.action_run ? "Approve and run" : "Approve"}
+                          {busy ? "Approving…" : item?.action_run ? "Approve and run" : "Approve"}
                         </Button>
                         <Button variant="outline"
                           className="flex-1 sm:flex-none"
                           disabled={!canDecide}
-                          onClick={() => setChoice("denied")}
+                          onClick={() => void decide(undefined, "denied")}
                         >
                           Deny
                         </Button>
@@ -378,7 +378,7 @@ export function DecisionDetail({
                     ) : (
                       <Button
                         disabled={!canDecide}
-                        onClick={() => setChoice("acknowledged")}
+                        onClick={() => void decide(undefined, "acknowledged")}
                       >
                         Acknowledge
                       </Button>
