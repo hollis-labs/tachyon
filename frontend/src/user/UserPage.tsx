@@ -10,6 +10,7 @@ import { WaitingStrip } from "./WaitingStrip"
 export function UserPage() {
   const heading = useRef<HTMLHeadingElement>(null)
   const [inbox] = useRemote(approvalsApi.inbox)
+  const [history] = useRemote(approvalsApi.history)
   useEffect(() => heading.current?.focus(), [])
   return (
     <div className="mx-auto max-w-[720px] space-y-4 p-4 md:p-6">
@@ -19,7 +20,7 @@ export function UserPage() {
       <WaitingStrip inbox={inbox} />
       <ProfileCard />
       <AccessCard />
-      <DecisionsCard inbox={inbox} />
+      <DecisionsCard history={history} />
       <DeviceCard />
     </div>
   )

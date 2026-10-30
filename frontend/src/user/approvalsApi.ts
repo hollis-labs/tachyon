@@ -11,19 +11,21 @@ export interface Access {
   ttl_policy?: string
 }
 
-export interface DecisionItem {
+export interface DecisionEvent {
+  event_id: string
   item_id: string
-  state: string
-  updated_at: string
-  request_snapshot: {
-    title: string
-    source: { application_label?: string; agent_label?: string; application_id: string }
-  }
+  kind: string
+  status: string
+  at: string
+  mini: { title: string; risk?: string; group?: string }
+}
+
+export interface History {
+  events: DecisionEvent[]
 }
 
 export interface InboxSummary {
   counts: { pending: number }
-  history: DecisionItem[]
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -36,7 +38,8 @@ async function get<T>(path: string): Promise<T> {
 
 export const approvalsApi = {
   access: () => get<Access>("/access"),
-  inbox: () => get<InboxSummary>("/inbox?status=history"),
+  inbox: () => get<InboxSummary>("/inbox"),
+  history: () => get<History>("/history?limit=20"),
   async deElevate(): Promise<void> {
     const res = await hostFetch(`${BASE}/de-elevate`, {
       method: "POST",
