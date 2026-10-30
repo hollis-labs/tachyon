@@ -1,4 +1,4 @@
-import type { LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
+import type { IdeaPromoteResult, IdeaPromoteTarget, LinksView, PlannerRef, RelationKind, RelationResult, PlannerBoard, PlannerDatabaseInfo, PlannerDb, PlannerItem, PlannerLink, PlannerOrdered, PlannerSchemaInfo, PlannerSearchHit, PlannerTaskBrief, PlannerWorkstreamTasks, TaskMeta, TaskLane, TaskTransitionResult, ThemeAction, ThemeBoard, ThemeTasks, ThemeTimeline } from './types'
 import type { Task, Comment, ListPage } from '@tachyon/torque-client'
 
 export interface PlannerEvent { type: string }
@@ -31,6 +31,8 @@ export interface PlannerClient {
   plannerInboxPromote(id: string, to: PlannerDb, rev: number, targetId: string, fields?: Record<string, unknown>): Promise<{ inbox: PlannerItem; item: PlannerItem }>
   /** Pin is item state: no comment needed. A stale revision is 409 with the current item. */
   plannerPin(db: PlannerDb, id: string, pinned: boolean, rev: number): Promise<{ item: { id: string; db: string; rev: number; pinned: boolean; pinned_at?: string } }>
+  /** Atomic: the same target id on a retry never creates twice. */
+  plannerIdeaPromote(id: string, to: IdeaPromoteTarget, rev: number, targetId: string): Promise<IdeaPromoteResult>
   plannerInboxDismiss(id: string, rev: number, note?: string): Promise<PlannerItem>
   plannerTaskTitles(ids: string[], signal?: AbortSignal): Promise<Record<string, PlannerTaskBrief | null>>
   plannerWorkstreamTasks(id: string, signal?: AbortSignal): Promise<PlannerWorkstreamTasks>

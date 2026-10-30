@@ -9,5 +9,11 @@
  "ingest": {
   "last_ingest_at": 1761791000000,
   "state": "stale"
+ },
+ "capabilities": {
+  "search": true,
+  "find": true,
+  "errors": true,
+  "stats": true
  }
 }
