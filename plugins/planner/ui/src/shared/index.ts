@@ -4,3 +4,4 @@ export { StatusMenu, type StatusMenuOption, type StatusMenuProps } from './statu
 export { EventTimeline, type EventTimelineProps, type TimelineEvent, type TimelineFacet } from './event-timeline'
 export { LaneBoard, type Lane, type LaneBoardLabels, type LaneBoardProps, type LaneCard } from './lane-board'
 export { CommandPalette, type CommandPaletteProps, type PaletteCommand } from './command-palette'
+export { LinkLayer, LinkPort, LinkTag, type LinkAnchorLabels } from './link-anchor'

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
-import { SegmentedProgress, SpineList, type SegmentedProgressItem, type SpineGroup } from '@planner/shared'
+import { LinkPort, LinkTag, SegmentedProgress, SpineList, type SegmentedProgressItem, type SpineGroup } from '@planner/shared'
 import { THEME_SECTIONS, themeWaiting } from '@planner/lib/planner'
 import { LENSES, TEXT } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
@@ -37,9 +37,11 @@ interface SpineProps {
   onTogglePin: (id: string) => void
   needYouOnly: boolean
   onNeedYou: (on: boolean) => void
+  /** Links by item id: relation kind and the other item's title (sample data until the backend writes links). */
+  links: ReadonlyMap<string, { kind: string; other: string }>
 }
 
-export function Spine({ board, selectedId, onSelect, onLens, pins, onTogglePin, needYouOnly, onNeedYou }: SpineProps) {
+export function Spine({ board, selectedId, onSelect, onLens, pins, onTogglePin, needYouOnly, onNeedYou, links }: SpineProps) {
   const lensExtras = useContributions('planner.lens')
   const itemMenu = useContributions('planner.spine.item.menu')
   const all = useMemo(() => rowsOf(board), [board])
@@ -54,13 +56,15 @@ export function Spine({ board, selectedId, onSelect, onLens, pins, onTogglePin, 
         rank: r.rank,
         pinned: pins.has(r.id),
         progress: <SegmentedProgress items={seg.items} label={seg.label} />,
+        port: <LinkPort id={r.id} title={r.title} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} />,
+        flags: links.has(r.id) ? <LinkTag>{TEXT.linked(links.get(r.id)!.kind, links.get(r.id)!.other)}</LinkTag> : undefined,
         menu: itemMenu.map((c) => <span key={c.id}>{c.render?.({ id: r.id })}</span>),
       }
     }
     const pinned = all.filter((r) => pins.has(r.id) && pass(r)).map(entry)
     const rest = THEME_SECTIONS.map((s) => ({ id: s.key, title: s.title, items: (board?.sections[s.key] ?? []).filter((r) => pass(r) && !pins.has(r.id)).map(entry) })).filter((g) => g.items.length > 0)
     return [...(pinned.length ? [{ id: 'pinned', title: TEXT.pinned, items: pinned }] : []), ...rest]
-  }, [all, board, itemMenu, needYouOnly, pins])
+  }, [all, board, itemMenu, links, needYouOnly, pins])
 
   const items = [...LENSES.map((l) => ({ value: l.db, label: l.label })), ...lensExtras.map((c) => ({ value: c.id, label: c.label ?? c.id }))]
   return (

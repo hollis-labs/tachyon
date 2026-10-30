@@ -73,7 +73,34 @@ export const TEXT = {
   movedOver: (c: string, l: string) => `${c} is over ${l}`,
   dropped: (c: string, l: string) => `Dropped ${c} in ${l}`,
   cancelled: (c: string) => `Cancelled moving ${c}`,
+  paletteTitle: 'Planner palette',
+  paletteEmpty: 'Nothing matches',
+  modeCreate: 'Create',
+  modeOpen: 'Open',
+  createTheme: 'Theme',
+  createIdea: 'Idea',
+  linkTo: 'Link to…',
+  linkKindTitle: 'How are they related?',
+  linkKindHint: 'Press 1 to 4, or Esc to cancel',
+  linked: (kind: string, other: string) => `${kind} ${other}`,
+  linkAdded: (from: string, kind: string, to: string) => `Linked ${from} ${kind} ${to}`,
+  linkPort: (title: string) => `Link ${title}`,
+  linkDragging: (title: string) => `Linking ${title}`,
+  doneSummaryLabel: 'What shipped?',
+  doneSummaryHint: 'Enter adds, Esc skips',
+  doneSummaryAdd: 'Add',
+  doneSummarySkip: 'Skip',
+  mentionLabel: 'Mention a theme',
+  keysHint: '/ palette · N new · L link · B board · M timeline · P pin · F finish · G then T/S/R/I/D/K/X lens',
 } as const
+
+export const LINK_KINDS = [
+  { id: 'needs', label: 'Needs' },
+  { id: 'delivers', label: 'Delivers' },
+  { id: 'mitigates', label: 'Mitigates' },
+  { id: 'relates', label: 'Relates to' },
+] as const
+export type LinkKind = (typeof LINK_KINDS)[number]['id']
 
 export const FACETS = [
   { id: 'all', label: 'All' },
