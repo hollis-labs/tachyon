@@ -201,6 +201,34 @@ describe("transcript dashboard", () => {
       screen.getByRole("button", { name: /Fix routing/ }).getAttribute("aria-current"),
     ).toBe("true")
   })
+  it("finds text in loaded turns with n of m and filters by speaker", async () => {
+    read.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/snapshot"
+          ? snapshot
+          : {
+              session: base,
+              turns: [
+                { seq: 0, role: "user", text: "alpha one" },
+                { seq: 1, role: "assistant", text: "beta" },
+                { seq: 2, role: "assistant", text: "alpha two" },
+              ],
+              turn_total: 3,
+            },
+      ),
+    )
+    render(<TranscriptDashboard />)
+    fireEvent.click(await screen.findByRole("button", { name: /Fix routing/ }))
+    fireEvent.change(await screen.findByLabelText("Find in transcript"), {
+      target: { value: "alpha" },
+    })
+    expect(await screen.findByText("1 of 2")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "Next match" }))
+    expect(screen.getByText("2 of 2")).toBeTruthy()
+    fireEvent.click(screen.getByRole("tab", { name: "You" }))
+    expect(screen.queryByText("alpha two")).toBeNull()
+    expect(await screen.findByText("1 of 1")).toBeTruthy()
+  })
   it("removes prior private data when source authorization is revoked", async () => {
     read.mockResolvedValue(snapshot)
     render(<TranscriptDashboard />)
