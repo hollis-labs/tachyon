@@ -1,3 +1,4 @@
+import { Checkbox } from "@hollis-labs/design-components"
 import type { KeyboardEvent } from "react"
 import { kindLabel, type ApprovalItem } from "./client"
 import { Countdown, RiskChip } from "./parts"
@@ -37,18 +38,21 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history, hel
             aria-selected={selected}
             aria-label={`${r.title}, ${who(i)}, ${r.class ?? "medium"} risk`}
             onClick={() => onSelect(i.item_id)}
-            className={`cursor-pointer px-4 py-3 ${held?.has(i.item_id) ? "opacity-50" : ""} ${selected ? "bg-surface/60" : "hover:bg-surface/30"}`}
+            className={`group cursor-pointer px-4 py-3 ${held?.has(i.item_id) ? "opacity-50" : ""} ${selected ? "bg-surface/60" : "hover:bg-surface/30"}`}
           >
             <div className="flex items-start gap-2">
               {onCheck && i.batchable && !history && (
-                <input
-                  type="checkbox"
-                  aria-label={`Select ${r.title}`}
-                  checked={checked?.has(i.item_id) ?? false}
+                // A 40px target on touch; on desktop the box shows on hover or focus, or once anything is picked.
+                <span
                   onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => onCheck(i.item_id, e.target.checked)}
-                  className="mt-1 shrink-0"
-                />
+                  className={`-m-2.5 flex shrink-0 items-center justify-center p-2.5 md:-m-1 md:p-1 ${checked?.size ? "" : "md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"}`}
+                >
+                  <Checkbox
+                    aria-label={`Select ${r.title}`}
+                    checked={checked?.has(i.item_id) ?? false}
+                    onCheckedChange={(v) => onCheck(i.item_id, v)}
+                  />
+                </span>
               )}
               <span className={`min-w-0 flex-1 truncate dash-body text-fg ${selected ? "font-medium" : ""}`}>{r.title}</span>
               {history

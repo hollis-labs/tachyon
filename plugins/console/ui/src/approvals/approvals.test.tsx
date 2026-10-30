@@ -543,6 +543,12 @@ describe("defer near expiry and decision keys", () => {
 })
 
 
+// Base UI checkboxes toggle through their hidden input.
+const tick = (name: string) =>
+  act(() => {
+    screen.getByRole("checkbox", { name }).parentElement?.querySelector<HTMLInputElement>("input[type=checkbox]")?.click()
+  })
+
 describe("batch approve", () => {
   const low = (id: string, batchable: boolean): ApprovalItem => ({
     ...item,
@@ -573,13 +579,15 @@ describe("batch approve", () => {
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     await screen.findByRole("option", { name: /Request a/ })
     expect(screen.queryByRole("checkbox", { name: "Select Request c" })).toBeNull()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Request a" }))
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Request b" }))
+    tick("Select Request a")
+    tick("Select Request b")
     fireEvent.click(screen.getByRole("button", { name: "Approve selected" }))
     expect(batchResolve).not.toHaveBeenCalled()
-    expect(screen.getByText(/Approve 2 low-risk requests\?/)).toBeTruthy()
+    expect(screen.getByText(/Approve 2 requests\? This cannot be undone/)).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
     await screen.findByText("1 approved, 1 left in the queue to review one by one.")
     expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
+    expect(screen.queryByText(/left in the queue/)).toBeNull()
   })
 })

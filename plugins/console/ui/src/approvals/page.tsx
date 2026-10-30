@@ -59,8 +59,10 @@ export function ApprovalsPage() {
   const current = live.find((r) => r.item_id === selectedId) ?? live[0]
   const restored = queue.restored
   const picked = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => checked.has(i.item_id) && i.batchable)
+  const batchable = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => i.batchable && !heldIds.has(i.item_id))
   const check = (id: string, on: boolean) => {
     setConfirming(undefined)
+    setBatchNote("")
     setChecked((c) => {
       const n = new Set(c)
       if (on) n.add(id)
@@ -133,7 +135,10 @@ export function ApprovalsPage() {
               {picked.length > 0 ? (
                 confirming ? (
                   <>
-                    <span>{confirming === "approved" ? "Approve" : "Deny"} {picked.length} low-risk {picked.length === 1 ? "request" : "requests"}?</span>
+                    <span>
+                      {confirming === "approved" ? "Approve" : "Deny"} {picked.length} {picked.length === 1 ? "request" : "requests"}? This cannot be undone.{" "}
+                      <span className="text-fg-faint">{[...new Set(picked.map((i) => i.request_snapshot.class ?? "medium"))].join(", ")} risk</span>
+                    </span>
                     <Button size="sm" disabled={batchBusy} onClick={() => void runBatch(confirming)}>{batchBusy ? "Working…" : "Confirm"}</Button>
                     <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => setConfirming(undefined)}>Back</Button>
                   </>
@@ -142,11 +147,17 @@ export function ApprovalsPage() {
                     <span>{picked.length} selected</span>
                     <Button size="sm" onClick={() => { setBatchNote(""); setConfirming("approved") }}>Approve selected</Button>
                     <Button size="sm" variant="outline" onClick={() => { setBatchNote(""); setConfirming("denied") }}>Deny selected</Button>
+                    {batchable.length > picked.length && (
+                      <Button size="sm" variant="ghost" onClick={() => setChecked(new Set(batchable.map((i: ApprovalItem) => i.item_id)))}>Select all {batchable.length}</Button>
+                    )}
                     <Button size="sm" variant="ghost" onClick={() => setChecked(new Set())}>Clear</Button>
                   </>
                 )
               ) : (
-                <span role="status">{batchNote}</span>
+                <>
+                  <span role="status">{batchNote}</span>
+                  <Button size="sm" variant="ghost" onClick={() => setBatchNote("")}>Dismiss</Button>
+                </>
               )}
             </div>
           )}
