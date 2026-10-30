@@ -274,12 +274,14 @@ type frame struct {
 		Detail  string `json:"detail"`
 		IsError bool   `json:"is_error"`
 	} `json:"meta"`
-	// Context is the runtime's meter, when it reports one (requested of Nanite; absent today).
-	Context struct {
+	// Usage is the runtime's context meter on run.finish and usage events (Nanite, CW-20261030-0010):
+	// used = context tokens after the last model call, window from the model catalog. Older Nanite
+	// builds send only scope/total, which leaves these zero.
+	Usage struct {
 		Used   int64  `json:"used"`
 		Window int64  `json:"window"`
 		Model  string `json:"model"`
-	} `json:"context"`
+	} `json:"usage"`
 	Error json.RawMessage `json:"error"`
 	Final struct {
 		Summary string `json:"summary"`
@@ -347,8 +349,8 @@ func (n *Nanite) Observe(ctx context.Context, session, turn string, emit func(Tu
 		if json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &f) != nil {
 			continue
 		}
-		if f.Context.Used > 0 || f.Context.Window > 0 {
-			emit(TurnEvent{Kind: EventContext, Used: f.Context.Used, Window: f.Context.Window, Model: f.Context.Model})
+		if f.Usage.Used > 0 || f.Usage.Window > 0 {
+			emit(TurnEvent{Kind: EventContext, Used: f.Usage.Used, Window: f.Usage.Window, Model: f.Usage.Model})
 		}
 		switch {
 		case f.Verb == "part.delta" && f.Text != "":

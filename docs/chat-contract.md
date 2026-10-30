@@ -79,5 +79,5 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   panel, ref, reason}` (preset `chat-panel-open`; panels plan, topics, bookmarks, work, activity, approvals, files, doc; 6 per
   minute per thread, 409 over that). A panel event is a hint only: `{panel, ref?, reason, source: agent|system}`.
   Context meter: `{used, window, model, source: runtime|unknown, breakdown: [], at}`. The numbers stay `null` and `source`
-  `unknown` until Nanite reports `context {used, window, model}` on a stream frame (requested, not confirmed); Tachyon already reads
-  that field when it appears, stores the latest report per thread and sends a `context` event. Tether threads are always `unknown`.
+  `unknown` until the thread's runtime reports a meter. Nanite (deployed 2026-10-30, CW-20261030-0010) sends `usage.{used,window,model}`
+  on `run.finish` and usage events: Tachyon stores the latest report per thread and sends a `context` event. Tether threads are always `unknown`.
