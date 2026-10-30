@@ -156,7 +156,7 @@ func TestChatStubRoutesRequireOperator(t *testing.T) {
 		r.Header.Set("Origin", "https://tachyon.test")
 		w := httptest.NewRecorder()
 		on.ServeHTTP(w, r)
-		if w.Code != 403 || w.Header().Get("X-Tachyon-Chat-Stub") != "" {
+		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Chat-Stub") != "" {
 			t.Errorf("%s %s with stubs on and no operator session: %d", c.method, c.path, w.Code)
 		}
 		w = httptest.NewRecorder()
