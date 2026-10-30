@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Segmented } from '../components/segmented'
@@ -32,7 +32,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 
-function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
+function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => void; dirtyRef: { current: number } }) {
   const [load, retry] = useLoad(() => registryApi.get(id), [id])
   const [editing, setEditing] = useState(false)
   const { guard, dialog: discardDialog } = useDiscardGuard()
@@ -61,6 +61,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const p: Project = saved ?? load.data
   const patch = profilePatch(p, draft)
   const dirty = Object.keys(patch).length
+  dirtyRef.current = editing ? dirty : 0
   const val = <K extends keyof ProjectPatch>(k: K, fallback: NonNullable<ProjectPatch[K]>) => (draft[k] ?? fallback) as NonNullable<ProjectPatch[K]>
   const set = (v: ProjectPatch) => setDraft((d) => ({ ...d, ...v }))
   const save = async () => {
@@ -248,7 +249,17 @@ type LinkFilter = 'all' | 'linked' | 'unlinked'
 /** Registry projects: list and profile. Profile edits write directly (operator session); catalog tool servers go through Builder changes. */
 export function RegistryProjectsPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
+  const rawNavigate = useNavigate()
+  const dirtyRef = useRef(0)
+  const { guard, dialog: leaveDialog } = useDiscardGuard()
+  // Moving away from a profile with unsaved edits asks first; the auto-select replace does not.
+  const navigate = (to: string, opts?: { replace?: boolean }) =>
+    opts?.replace
+      ? rawNavigate(to, opts)
+      : guard(dirtyRef.current, () => {
+          dirtyRef.current = 0
+          rawNavigate(to, opts)
+        })
   const [q, setQ] = useState('')
   const [debounced, setDebounced] = useState('')
   useEffect(() => {
@@ -260,10 +271,11 @@ export function RegistryProjectsPage() {
   const all: ProjectRow[] = load.status === 'ready' ? load.data.projects : []
   const rows = all.filter((r) => link === 'all' || (link === 'linked') === (r.link.state === 'linked'))
   useEffect(() => {
-    if (!id && rows.length > 0 && window.matchMedia?.('(min-width: 768px)').matches) navigate(`/registry/projects/${encodeURIComponent(rows[0].id)}`, { replace: true })
-  }, [id, rows, navigate])
+    if (!id && rows.length > 0 && window.matchMedia?.('(min-width: 768px)').matches) rawNavigate(`/registry/projects/${encodeURIComponent(rows[0].id)}`, { replace: true })
+  }, [id, rows, rawNavigate])
   return (
     <div className="flex h-full min-w-0 flex-col">
+      {leaveDialog}
       <header className="flex flex-wrap items-baseline gap-x-4 border-b border-border px-4 py-3">
         <h1 className="text-lg font-semibold text-fg">Registry</h1>
         <p className="dash-support text-fg-muted">Projects and the profile agents read.</p>
@@ -324,7 +336,7 @@ export function RegistryProjectsPage() {
           </div>
         </div>
         <div className={`${id ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col`}>
-          {id ? <ProfileDetail id={decodeURIComponent(id)} onBack={() => navigate('/registry/projects')} /> : <p className="p-5 dash-body text-fg-faint">Select a project.</p>}
+          {id ? <ProfileDetail id={decodeURIComponent(id)} dirtyRef={dirtyRef} onBack={() => navigate('/registry/projects')} /> : <p className="p-5 dash-body text-fg-faint">Select a project.</p>}
         </div>
       </div>
     </div>
