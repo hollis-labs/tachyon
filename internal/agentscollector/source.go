@@ -157,14 +157,15 @@ func (w wireSession) frame() (Frame, bool) {
 
 func (s *httpSource) Snapshot(ctx context.Context) (Snapshot, error) {
 	var w struct {
-		Env       string        `json:"env_id"`
+		EnvID     string        `json:"environment_id"` // the live key
+		Env       string        `json:"env_id"`         // older shape
 		HighWater int64         `json:"high_water_seq"`
 		Sessions  []wireSession `json:"sessions"`
 	}
 	if err := s.get(ctx, "/environment/snapshot", nil, 8<<20, &w); err != nil {
 		return Snapshot{}, err
 	}
-	out := Snapshot{Env: clean(w.Env, 80), HighWater: w.HighWater}
+	out := Snapshot{Env: clean(firstNonEmpty(w.EnvID, w.Env), 80), HighWater: w.HighWater}
 	for _, ws := range w.Sessions {
 		if f, ok := ws.frame(); ok {
 			out.Sessions = append(out.Sessions, f)
@@ -182,8 +183,8 @@ func (s *httpSource) Sessions(ctx context.Context) ([]Frame, error) {
 			q.Set("cursor", cursor)
 		}
 		var w struct {
-			Sessions   []wireSession `json:"sessions"`
-			NextCursor json.Number   `json:"next_cursor"`
+			Sessions   []wireSession   `json:"sessions"`
+			NextCursor json.RawMessage `json:"next_cursor"` // an opaque string live ("v1..."); older shapes sent a number
 		}
 		if err := s.get(ctx, "/sessions", q, 8<<20, &w); err != nil {
 			return nil, err
@@ -193,10 +194,11 @@ func (s *httpSource) Sessions(ctx context.Context) ([]Frame, error) {
 				out = append(out, f)
 			}
 		}
-		if w.NextCursor.String() == "" || w.NextCursor.String() == "0" || len(w.Sessions) == 0 {
+		next := cursorText(w.NextCursor)
+		if next == "" || next == "0" || next == cursor || len(w.Sessions) == 0 {
 			break
 		}
-		cursor = w.NextCursor.String()
+		cursor = next
 	}
 	return out, nil
 }
@@ -219,7 +221,7 @@ func (s *httpSource) History(ctx context.Context, since, before int64, limit int
 	}
 	var w struct {
 		Events     []json.RawMessage `json:"events"`
-		NextCursor int64             `json:"next_cursor"`
+		NextCursor json.RawMessage   `json:"next_cursor"`
 	}
 	if err := s.get(ctx, "/events", q, 16<<20, &w); err != nil {
 		return nil, 0, err
@@ -230,7 +232,22 @@ func (s *httpSource) History(ctx context.Context, since, before int64, limit int
 			out = append(out, f)
 		}
 	}
-	return out, w.NextCursor, nil
+	// This pager walks by sequence number; an opaque cursor would end the walk, never fail it.
+	next, _ := strconv.ParseInt(cursorText(w.NextCursor), 10, 64)
+	return out, next, nil
+}
+
+// cursorText reads a cursor that may be an opaque string, a number, or null.
+func cursorText(raw json.RawMessage) string {
+	var str string
+	if json.Unmarshal(raw, &str) == nil {
+		return strings.TrimSpace(str)
+	}
+	var n json.Number
+	if json.Unmarshal(raw, &n) == nil {
+		return n.String()
+	}
+	return ""
 }
 
 func (s *httpSource) Stream(ctx context.Context, after int64, on func(Frame) error, alive func()) error {

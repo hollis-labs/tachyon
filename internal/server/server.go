@@ -35,7 +35,13 @@ import (
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/chatactivity"
+	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/chatplan"
+	"github.com/hollis-labs/tachyon/internal/chatthreads"
+	"github.com/hollis-labs/tachyon/internal/chattopics"
+	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
@@ -64,6 +70,11 @@ type Config struct {
 	// AgentsCollector runs the always-on Agents collector (TACHYON_AGENTS_COLLECTOR=0 turns it off for debugging).
 	// It needs a Tether address; the read-scope token is the usual TETHER_TOKEN_FILE.
 	AgentsCollector bool
+	// ChatStubs mounts the fixture-backed chat contract (TACHYON_CHAT_STUBS=1) for GUI development.
+	ChatStubs bool
+	// ChatClientContext sends shared workspace items to the app agent as client_context on each
+	// turn (TACHYON_CHAT_CLIENT_CONTEXT=1). Off until Nanite confirms the field.
+	ChatClientContext bool
 	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
 	AppAgentConfigFile          string
 	ApprovalQueueURL            string
@@ -113,6 +124,11 @@ type Server struct {
 	cache            *apicache.Cache
 	chat             *chatbridge.Owned
 	appAgent         *appagent.Service
+	chatThreads      *chatthreads.Handler
+	chatWorkspace    *chatworkspace.Handler
+	chatTopics       *chattopics.Handler
+	chatPlan         *chatplan.Service
+	chatActivity     *chatactivity.Handler
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
@@ -252,6 +268,109 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	source, sourceErr := chatbridge.NewSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
 	s.chat = &chatbridge.Owned{Store: store, Source: source, SourceID: s.cfg.Upstreams.TetherAddr, ConfigError: sourceErr, Interval: s.cfg.ChatSyncInterval}
+	// The unified chat thread list and per-thread stream (both sources).
+	s.chatThreads = &chatthreads.Handler{
+		Agg: &chatthreads.Aggregator{App: s.appAgent, Chat: s.chat, State: &chatthreads.StateStore{DB: store}},
+		Hub: &chatthreads.Hub{DB: store},
+	}
+	// Activity feed and context meter. The service seams below record into it; a failed record
+	// never fails the change that caused it.
+	rec := &chatactivity.Recorder{Store: &chatactivity.Store{DB: store}, Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+		_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+	}}
+	s.chatActivity = &chatactivity.Handler{Rec: rec, Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err }}
+	ws := &chatworkspace.Store{DB: store, Dir: filepath.Join(s.cfg.DataDir, "workspace")}
+	s.chatWorkspace = &chatworkspace.Handler{
+		Store:  ws,
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		Published: func(ctx context.Context, thread, op, id string) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventWorkspace, map[string]any{"op": op, "id": id})
+			if op == "share" {
+				name := id
+				if it, err := ws.Get(ctx, thread, id); err == nil {
+					name = it.Name
+				}
+				rec.Quiet(ctx, thread, "file.shared", "user", "tachyon", []chatactivity.Cite{{Kind: "file", Ref: id, Label: name}}, chatactivity.Card("Shared "+name, "Shared with the agent", nil))
+			}
+		},
+	}
+	s.chatTopics = &chattopics.Handler{
+		Store:      &chattopics.Store{DB: store},
+		Exists:     func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		MessageSeq: s.chatThreads.MessageSeq,
+		Published: func(ctx context.Context, thread, typ, op, id string) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, map[string]any{"op": op, "id": id})
+			if op == "add" {
+				rec.Quiet(ctx, thread, typ+".added", "user", "tachyon", nil, chatactivity.Card(strings.ToUpper(typ[:1])+typ[1:]+" added", "", nil))
+			}
+		},
+	}
+	s.chatPlan = &chatplan.Service{
+		Store:  &chatplan.Store{DB: store},
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		ProjectOf: func(ctx context.Context, ref string) (string, error) {
+			st, err := s.chatThreads.Agg.State.Get(ctx, ref)
+			return st.ProjectID, err
+		},
+		Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+		},
+		Note: func(ctx context.Context, thread string, p chatplan.Plan) {
+			t, err := chatapi.ParseRef(thread)
+			if err != nil || t.Source != chatapi.SourceApp || s.appAgent == nil {
+				return
+			}
+			title := "Plan"
+			if p.Title != nil && *p.Title != "" {
+				title = *p.Title
+			}
+			_, _ = s.appAgent.AppendNote(ctx, t.ID, "plan", title, map[string]any{"plan_id": p.ID})
+		},
+		Notify: s.chatThreads.Notify,
+		Activity: func(ctx context.Context, thread, by, reason string, p chatplan.Plan) {
+			actor := "user"
+			if by == "agent" {
+				actor = "agent"
+			}
+			pr := p.Progress()
+			title := "Plan"
+			if p.Title != nil && *p.Title != "" {
+				title = *p.Title
+			}
+			rec.Quiet(ctx, thread, "plan.changed", actor, "tachyon", nil, chatactivity.Card(title+": "+reason, fmt.Sprintf("%d of %d steps done", pr.Done, pr.Total), nil))
+		},
+	}
+	s.chatThreads.Agg.PlanProgress = func(ctx context.Context, refs []string) map[string]chatthreads.Progress {
+		out := map[string]chatthreads.Progress{}
+		for ref, pr := range s.chatPlan.Store.Progress(ctx, refs) {
+			out[ref] = chatthreads.Progress{Done: pr.Done, Total: pr.Total}
+		}
+		return out
+	}
+	if s.appAgent != nil && s.cfg.ChatClientContext {
+		s.appAgent.ClientContext = func(ctx context.Context, id string) any {
+			cc, err := ws.ClientContextFor(ctx, chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
+			if err != nil || cc == nil {
+				return nil
+			}
+			return cc
+		}
+	}
+	if s.appAgent != nil {
+		s.appAgent.OnTool = func(id string, t appagent.Tool) {
+			status := t.Status
+			if status != "ok" && status != "error" {
+				return
+			}
+			rec.Quiet(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String(), "tool.call", "agent", "runtime", nil, chatactivity.Card(t.Name, status, nil))
+		}
+		s.appAgent.OnContext = func(id string, used, window int64, model string) {
+			rec.SetContext(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String(), used, window, model)
+		}
+		s.appAgent.OnChange = func(id string) {
+			s.chatThreads.Notify(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
+		}
+	}
 	s.chat.FreshSeconds = settings.Policies["chat-turns"].FreshSeconds
 	s.chat.RevalidateSeconds = settings.Policies["chat-turns"].RevalidateSeconds
 	s.chat.CacheEnabled = settings.Policies["chat-turns"].Enabled
@@ -383,8 +502,30 @@ func (s *Server) Routes() http.Handler {
 				slog.Warn("tesseract reads for agents disabled", "error", err)
 				tesseractReader = nil
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader))
+			var chatTools *dataverbs.ChatWorkspace
+			if s.chatWorkspace != nil {
+				chatTools = &dataverbs.ChatWorkspace{Store: s.chatWorkspace.Store, Thread: s.chatWorkspace.Exists}
+			}
+			var topicTools *dataverbs.ChatTopics
+			if s.chatTopics != nil {
+				topicTools = &dataverbs.ChatTopics{Store: s.chatTopics.Store, Thread: s.chatTopics.Exists, MessageSeq: s.chatTopics.MessageSeq,
+					Published: func(ctx context.Context, thread, op, id string) {
+						_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventTopic, map[string]any{"op": op, "id": id})
+						if op == "add" && s.chatActivity != nil {
+							s.chatActivity.Rec.Quiet(ctx, thread, "topic.added", "agent", "tachyon", nil, chatactivity.Card("Topic added", "", nil))
+						}
+					}}
+			}
+			var activityTools *dataverbs.ChatActivity
+			if s.chatActivity != nil {
+				activityTools = &dataverbs.ChatActivity{Rec: s.chatActivity.Rec, Thread: s.chatActivity.Exists}
+			}
+			var planTools *dataverbs.ChatPlan
+			if s.chatPlan != nil {
+				planTools = &dataverbs.ChatPlan{Service: s.chatPlan}
+			}
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools))
 		}
 	}
 	if s.store != nil {
@@ -471,6 +612,57 @@ func (s *Server) Routes() http.Handler {
 	// read); sends need operator assurance. Without a config file the routes answer
 	// 503 and say why. Tightening reads is a one-word change to RequireOperatorReads.
 	mux.Handle(appagent.Prefix+"/", operator.RequireOperator(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
+	// Real chat thread routes, mounted one by one: each is more specific than the stub's
+	// prefix below, so with TACHYON_CHAT_STUBS=1 these win and the stub serves the rest.
+	// RequireOperator lets GETs through and guards every write.
+	if s.chatThreads != nil {
+		real := s.chatThreads.Mux()
+		for _, route := range chatthreads.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatPlan != nil {
+		real := (&chatplan.Handler{Service: s.chatPlan}).Mux()
+		for _, route := range chatplan.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatActivity != nil {
+		real := s.chatActivity.Mux()
+		for _, route := range chatactivity.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatTopics != nil {
+		real := s.chatTopics.Mux()
+		for _, route := range chattopics.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatWorkspace != nil {
+		real := s.chatWorkspace.Mux()
+		for _, route := range chatworkspace.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+		// File bytes need operator assurance on reads too.
+		mux.Handle(chatworkspace.ContentRoute, operator.RequireOperatorReads(s.chatWorkspace.Content()))
+	}
+	// Chat contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. Writes need an operator session; workspace content and the terminal family
+	// need it on reads too. Real slices replace these mounts route by route.
+	if s.cfg.ChatStubs {
+		stub := chatapi.Stub{}
+		if s.chatWorkspace == nil {
+			mux.Handle("GET "+chatapi.WorkspaceContentPath, operator.RequireOperatorReads(stub.WorkspaceContent()))
+		}
+		mux.Handle(chatapi.Prefix+"/", operator.RequireOperator(stub.Chat()))
+		mux.Handle(chatapi.TerminalPrefix+"/", operator.RequireOperatorReads(stub.Terminal()))
+	}
 	// Agents contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
 	// unguarded. GETs are open; every write (nudge, restart, skip, settings) needs an operator session.
 	if s.agentsCollector != nil {
