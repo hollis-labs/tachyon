@@ -182,7 +182,7 @@ paths:
         awaiting_approval in handoff mode; 409 stale_base (and the change becomes stale) when a base moved.
       parameters: [{$ref: "#/components/parameters/id"}]
       responses:
-        "200": {description: ok, content: {application/json: {schema: {type: object, required: [name, files, sha256], properties: {name: {type: string}, note: {type: string}, files: {type: array, items: {type: object, required: [path, content], properties: {path: {type: string}, content: {type: string}}}}, sha256: {type: string}}}}}}
+        "200": {description: ok, content: {application/json: {schema: {type: object, required: [name, files, sha256], properties: {name: {type: string}, note: {type: string}, files: {type: array, items: {type: object, required: [path, content], properties: {path: {type: string}, content: {type: string}}}}, sha256: {type: string}, commands: {type: array, items: {$ref: "#/components/schemas/HandoffCommand"}}}}}}}
         "404": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
   /builder/changes/{id}/mark_planned:
@@ -197,7 +197,7 @@ paths:
         "409": {$ref: "#/components/responses/Error"}
   /builder/changes/{id}/check:
     post:
-      summary: Check now. Re-reads the files and answers the change (applied, stale, or unchanged).
+      summary: Check now. Forces an immediate catalog refresh, re-evaluates applied/stale and answers the change (applied, stale, or unchanged).
       parameters: [{$ref: "#/components/parameters/id"}]
       responses:
         "200": {description: the change, content: {application/json: {schema: {$ref: "#/components/schemas/Change"}}}}
@@ -485,6 +485,13 @@ components:
             path: {type: string, description: "Editor-model field path, for example policy.permission_mode."}
             value: {description: "Any JSON. Text must not contain a tachyon:prompt marker. Env values are write-only."}
             snapshot_seq: {type: integer, description: "restore_version only. Never restores env values."}
+    HandoffCommand:
+      type: object
+      required: [step, label, command]
+      properties:
+        step: {type: string, enum: [plan, approve, apply]}
+        label: {type: string}
+        command: {type: string}
     ChangeRequest:
       type: object
       required: [request_id, ops]
@@ -548,6 +555,7 @@ components:
             files: {type: integer}
             session_available: {type: boolean}
             reason: {type: string, description: "Why session_available is false: not_configured | contains_env_values | too_large."}
+            commands: {type: array, items: {$ref: "#/components/schemas/HandoffCommand"}, description: "Built server-side so the UI never hard-codes CLI flags. approve/apply carry <plan_id> until mark_planned supplies it."}
         failure:
           type: object
           nullable: true
