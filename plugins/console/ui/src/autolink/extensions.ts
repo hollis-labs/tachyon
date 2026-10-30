@@ -86,7 +86,22 @@ export function refActions(ref: RefIdentity, card: PreviewCard): RefAction[] {
 export interface RefDetailProps {
   refId: RefIdentity
   card: PreviewCard
+  /** Only for kinds that own their drawer chrome (see registerRefChrome). */
+  onClose?: () => void
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
 }
+
+const ownChrome = new Set<string>()
+
+/** The kind draws its own drawer header, actions and footer; the host drawer adds none. */
+export function registerRefChrome(kind: string): () => void {
+  ownChrome.add(kind)
+  return () => {
+    ownChrome.delete(kind)
+  }
+}
+export const refOwnsChrome = (kind: string) => ownChrome.has(kind)
 
 const detailRenderers = new Map<string, ComponentType<RefDetailProps>>()
 

@@ -97,7 +97,47 @@ export const casterStat = (c: CasterInfo, pinned: string): FileStat => ({
 
 export const contentUrl = (path: string) => (isCasterRef(path) ? `${FILES_BASE}/content?caster_ref=${encodeURIComponent(path)}` : `${FILES_BASE}/content?path=${encodeURIComponent(path)}`)
 
+export interface Caps {
+  text_bytes: number
+  image_bytes: number
+  html_bytes: number
+}
+export interface Root {
+  id: string
+  label: string
+  path_display: string
+  source: 'default' | 'app' | 'user'
+}
+export interface Roots {
+  roots: Root[]
+  caps: Caps
+}
+export interface FileSettings {
+  app: { roots: string[]; caster_namespaces: string[]; run_scripts_allowed?: boolean; allow_user_roots?: boolean }
+  user?: { roots: string[] }
+}
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) return fail(res)
+  return (await res.json()) as T
+}
+
 export const fileApi = {
+  async roots(): Promise<Roots> {
+    return json(await hostFetch(`${FILES_BASE}/roots`, { headers: { Accept: 'application/json' } }))
+  },
+  async settings(): Promise<FileSettings> {
+    return json(await hostFetch(`${FILES_BASE}/settings`, { headers: { Accept: 'application/json' } }))
+  },
+  async putSettings(app: { roots?: string[]; caster_namespaces?: string[] }): Promise<FileSettings> {
+    return json(
+      await hostFetch(`${FILES_BASE}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ app }),
+      }),
+    )
+  },
   async stat(path: string): Promise<FileStat> {
     const res = await hostFetch(`${FILES_BASE}/stat`, {
       method: 'POST',

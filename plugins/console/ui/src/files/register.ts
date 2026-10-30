@@ -1,4 +1,4 @@
-import { registerRefDetail } from '../autolink/extensions'
+import { registerRefChrome, registerRefDetail } from '../autolink/extensions'
 import { CasterViewerPane } from './CasterViewerPane'
 import { FileViewerPane } from './FileViewerPane'
 
@@ -8,5 +8,6 @@ export function registerFileRefs(): void {
   if (registered) return
   registered = true
   registerRefDetail('path', FileViewerPane)
+  registerRefChrome('path')
   registerRefDetail('caster', CasterViewerPane)
 }
