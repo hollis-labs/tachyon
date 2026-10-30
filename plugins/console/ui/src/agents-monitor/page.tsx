@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { EmptyState, Skeleton } from '@hollis-labs/design-components'
 import { PageHeader } from '@hollis-labs/kit-dashboard'
 import { FilterChipGroup } from '@hollis-labs/kit-dashboard/data'
@@ -9,6 +9,7 @@ import { TeamOperations } from '../agents/TeamOperations'
 import { Btn } from '../agents/ui'
 import { LaunchAgentDialog } from '../fleet/LaunchAgentDialog'
 import { useAgentsMonitor } from './data'
+import { SessionModal } from './session-modal'
 import { ageText } from './session-parts'
 import { SessionBoard, SessionCards, SessionRows, matchesFilter, matchesQuery, useViewState, type GroupBy, type SessionView } from './sessions-view'
 import { AGENTS, type FilterId } from './vocabulary'
@@ -33,7 +34,10 @@ export function AgentsPage() {
   const [groupBy, setGroupBy] = useState<GroupBy>('workroot')
   const [filter, setFilter] = useState<FilterId>('all')
   const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string>()
+  const navigate = useNavigate()
+  const { session: openId } = useParams<{ session?: string }>()
+  const openSession = (id: string) => navigate(`/agents/${encodeURIComponent(id)}${params.toString() ? `?${params}` : ''}`)
+  const openRow = data?.sessions.find((x) => x.id === openId)
   const [launchOpen, setLaunchOpen] = useState(false)
   const now = Date.now()
   const stale = status === 'reconnecting'
@@ -108,13 +112,23 @@ export function AgentsPage() {
               <EmptyState variant="empty" title={AGENTS.noMatch} description="" action={{ label: AGENTS.clearFilters, onClick: () => (setFilter('all'), setQuery('')) }} />
             ) : (
               <div className={stale ? 'opacity-60' : undefined}>
-                {view === 'rows' && <SessionRows sessions={visible} groupBy={groupBy} now={now} selectedId={selected} onSelect={setSelected} />}
-                {view === 'cards' && <SessionCards sessions={visible} now={now} onSelect={setSelected} />}
-                {view === 'board' && <SessionBoard sessions={visible} now={now} onSelect={setSelected} />}
+                {view === 'rows' && <SessionRows sessions={visible} groupBy={groupBy} now={now} selectedId={openId} onSelect={openSession} />}
+                {view === 'cards' && <SessionCards sessions={visible} now={now} onSelect={openSession} />}
+                {view === 'board' && <SessionBoard sessions={visible} now={now} onSelect={openSession} />}
               </div>
             )}
           </div>
         </>
+      )}
+      {openRow && (
+        <SessionModal
+          key={openRow.id}
+          session={openRow}
+          paused={stale}
+          now={now}
+          onClose={() => navigate(`/agents${params.toString() ? `?${params}` : ''}`)}
+          onRestarted={(next) => (void refetch(), navigate(next ? `/agents/${encodeURIComponent(next)}` : '/agents'))}
+        />
       )}
       <LaunchAgentDialog open={launchOpen} onClose={() => setLaunchOpen(false)} onLaunched={() => void refetch()} />
     </div>
