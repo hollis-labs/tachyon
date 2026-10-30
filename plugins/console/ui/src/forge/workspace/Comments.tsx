@@ -8,7 +8,7 @@ import type { Thread } from './diff-utils'
 export const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-fg-faint'
 
 export function Badge({ children, tone = 'border-border text-fg-muted' }: { children: ReactNode; tone?: string }) {
-  return <span className={`inline-flex shrink-0 items-center border px-1.5 py-px font-mono text-[10px] uppercase tracking-wider ${tone}`}>{children}</span>
+  return <span className={`inline-flex shrink-0 items-center px-1 text-[11px] ${tone}`}>{children}</span>
 }
 
 export function Author({ user }: { user: ForgeUser }) {
@@ -28,7 +28,7 @@ export function CommentItem({ c, posting, onReply }: { c: ForgeComment; posting?
         <Author user={c.author} />
         <span className="font-mono text-[10px] text-fg-faint">{posting ? 'posting…' : ago(Date.parse(c.createdAt), now)}</span>
         {onReply && !posting && (
-          <button type="button" onClick={onReply} className="ml-auto font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          <button type="button" onClick={onReply} className="ml-auto text-[11px] text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
             Reply
           </button>
         )}
@@ -117,7 +117,7 @@ export function ThreadView({ thread, posting, readOnly, onReply, showPath }: Thr
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="ml-auto font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="ml-auto text-[11px] text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {open ? 'Collapse' : `Show ${thread.replies.length + 1}`}
         </button>
@@ -144,7 +144,7 @@ export function ThreadView({ thread, posting, readOnly, onReply, showPath }: Thr
                   }}
                 />
               ) : (
-                <button type="button" onClick={() => setReplying(true)} className="font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                <button type="button" onClick={() => setReplying(true)} className="text-[11px] text-fg-faint hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                   Reply
                 </button>
               )}

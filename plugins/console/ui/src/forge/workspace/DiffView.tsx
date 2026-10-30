@@ -93,7 +93,7 @@ export function FileDiffView(props: FileDiffViewProps) {
           <div key={q.id} className="flex items-start gap-2 border-y border-dashed border-border bg-surface px-3 py-2" data-testid="forge-pending-comment">
             <Badge tone="border-border text-fg-muted">Pending review</Badge>
             <p className="min-w-0 flex-1 whitespace-pre-wrap text-[13px] text-fg [overflow-wrap:anywhere]">{q.body}</p>
-            <button type="button" onClick={() => props.unqueueComment(q.id)} className="font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <button type="button" onClick={() => props.unqueueComment(q.id)} className="text-[11px] text-fg-faint hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
               Discard
             </button>
           </div>,

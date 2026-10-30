@@ -49,10 +49,10 @@ export function MergePanel({ pr, onClose, onSubmit, onBusyChange }: { pr: PullRe
   }
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose() }}>
-      <DialogContent aria-label="Merge pull request" className="sm:max-w-lg">
-        <DialogTitle>Merge #{pr.ref.number}</DialogTitle>
+      <DialogContent aria-label="Merge pull request" className="sm:max-w-lg max-sm:!bottom-0 max-sm:!left-0 max-sm:!top-auto max-sm:!w-full max-sm:!max-w-full max-sm:!translate-x-0 max-sm:!translate-y-0 max-sm:rounded-t-xl">
+        <DialogTitle className="font-sans normal-case tracking-normal">Merge #{pr.ref.number}</DialogTitle>
         <DialogDescription>
-          <span className="font-mono">{pr.headBranch}</span> into <span className="font-mono">{pr.baseBranch}</span> · commit <span className="font-mono">{pr.headSha?.slice(0, 12) ?? 'unavailable'}</span>
+          <span className="font-mono">{pr.headBranch}</span> into <span className="font-mono">{pr.baseBranch}</span> · commit <span className="break-all font-mono">{pr.headSha?.slice(0, 12) ?? 'unavailable'}</span>
         </DialogDescription>
         {blocked && (
           <div role="alert" className="border border-danger/40 px-3 py-2">

@@ -5,7 +5,6 @@ import { SeamsContext } from '../../events/context'
 import { Btn } from '../../agents/ui'
 import { StepUpHost } from '../../agents/StepUpDialog'
 import { Linkified } from '../../autolink/Linkified'
-import { TONE } from '../../autolink/tone'
 import type { StatusTone } from '../../refs'
 import { createActionBus, MockIdentityConfirm, type ActionBus, type IdentityConfirm } from '../../seams'
 import type { ForgeClient } from '../client'
@@ -39,12 +38,20 @@ export interface PrWorkspaceProps {
 
 type Tab = 'files' | 'conversation' | 'checks'
 
+// The shared Btn is uppercase mono; the workspace wants sentence case.
+const FLAT = '!font-sans !normal-case !tracking-normal'
+
 const ACTOR: ForgeUser = { login: 'you' }
 
 // Monochrome: only danger carries colour; every other tone reads as muted text in a quiet box.
 function Pill({ tone, children }: { tone: StatusTone; children: ReactNode }) {
-  const cls = tone === 'danger' ? TONE.danger : 'border-border text-fg-muted'
-  return <span className={`inline-flex shrink-0 items-center border px-1.5 py-px text-[11px] ${cls}`}>{children}</span>
+  const cls = tone === 'danger' ? 'text-danger' : 'text-fg-muted'
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1.5 text-[12px] ${cls}`}>
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
+      {children}
+    </span>
+  )
 }
 
 function stateTone(pr: PullRequest): StatusTone {
@@ -136,6 +143,22 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
     requestAnimationFrame(() => document.getElementById(fileAnchorId(path))?.scrollIntoView?.({ block: 'start' }))
   }
 
+  // J / K: next / previous file; X: collapse or expand the current one. Inactive in fields and over overlays.
+  const paths = ready?.files.map((f) => f.path) ?? []
+  useEffect(() => {
+    if (tab !== 'files' || reviewing || merging) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target instanceof Element ? e.target : null
+      if (e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable=true], [role=dialog]')) return
+      const i = active ? paths.indexOf(active) : -1
+      if (e.key === 'j' && paths.length) select(paths[Math.min(i + 1, paths.length - 1)])
+      else if (e.key === 'k' && paths.length) select(paths[Math.max(i - 1, 0)])
+      else if (e.key === 'x' && active) toggle(active)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   const loaded = ready !== null
   useEffect(() => {
     if (!initialFile || !loaded) return
@@ -184,18 +207,18 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
           </h1>
           <Pill tone={stateTone(pr)}>{pr.draft && pr.state === 'open' ? 'draft' : pr.state}</Pill>
           <span className="ml-auto flex items-center gap-2">
-            <Btn onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
+            <Btn className={FLAT} onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
             {href && (
               <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 border border-border px-3 text-[12px] text-fg hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                 {hostLabel(prRef.repo.host)} <ExternalLink className="h-3 w-3" />
               </a>
             )}
             {!readOnly && (
-              <Btn tone="primary" disabled={mergeBusy} onClick={() => { setMerging(false); setReviewing((r) => !r) }} aria-expanded={reviewing}>
+              <Btn className={FLAT} tone="primary" disabled={mergeBusy} onClick={() => { setMerging(false); setReviewing((r) => !r) }} aria-expanded={reviewing}>
                 Review{ws.pending.length ? ` (${ws.pending.length})` : ''}
               </Btn>
             )}
-            {!readOnly && <Btn disabled={mergeBusy} onClick={() => { setReviewing(false); setMerging(m => !m) }} aria-expanded={merging}>Merge PR</Btn>}
+            {!readOnly && <Btn className={FLAT} disabled={mergeBusy} onClick={() => { setReviewing(false); setMerging(m => !m) }} aria-expanded={merging}>Merge PR</Btn>}
           </span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-fg-muted">
@@ -258,7 +281,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
                   </button>
                 ))}
               </div>
-              <Btn className="!h-7" onClick={() => (allOpen ? setClosedFiles(new Set(files.map((f) => f.path))) : setClosedFiles(new Set()))}>
+              <Btn className={`!h-7 ${FLAT}`} onClick={() => (allOpen ? setClosedFiles(new Set(files.map((f) => f.path))) : setClosedFiles(new Set()))}>
                 {allOpen ? 'Collapse all' : 'Expand all'}
               </Btn>
               <span className="font-mono text-[11px] text-fg-faint">

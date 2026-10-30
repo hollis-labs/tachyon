@@ -38,7 +38,7 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
 
   return (
     <Sheet open onOpenChange={(open) => { if (!open && !busy) onClose() }}>
-    <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-4 sm:max-w-md" aria-label="Submit review" data-testid="forge-review-panel">
+    <SheetContent side="right" className="flex !w-full flex-col gap-0 overflow-y-auto p-4 sm:!w-auto sm:max-w-md max-sm:!inset-x-0 max-sm:!bottom-0 max-sm:!top-auto max-sm:max-h-[85dvh] max-sm:rounded-t-xl" aria-label="Submit review" data-testid="forge-review-panel">
       <SheetTitle className="mb-1 font-sans text-base font-semibold normal-case tracking-normal text-fg">Finish your review</SheetTitle>
       <SheetDescription className="mb-3 dash-support text-fg-muted">Inline comments you queued are kept if you close this and come back.</SheetDescription>
       <textarea
@@ -70,7 +70,7 @@ export function ReviewPanel({ pending, onSubmit, onUnqueue, onClose }: ReviewPan
               <li key={p.id} className="flex items-baseline gap-2 py-1.5 text-[12px]">
                 <span className="shrink-0 font-mono text-fg-faint">{p.path}:{p.line}</span>
                 <span className="min-w-0 flex-1 truncate text-fg">{p.body}</span>
-                <button type="button" onClick={() => onUnqueue(p.id)} className="font-mono text-[10px] uppercase tracking-wider text-fg-faint hover:text-danger">Discard</button>
+                <button type="button" onClick={() => onUnqueue(p.id)} className="text-[11px] text-fg-faint hover:text-danger">Discard</button>
               </li>
             ))}
           </ul>

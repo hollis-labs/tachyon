@@ -94,6 +94,23 @@ describe('PrWorkspace', () => {
     expect(screen.getByTestId('forge-thread')).toBeTruthy()
   })
 
+  it('moves between files with j and k, collapses with x, and ignores keys typed in fields', async () => {
+    setup()
+    await screen.findByText(/alert tray/)
+    const open = () => [...document.querySelectorAll('button[aria-label^="Collapse "], button[aria-label^="Expand "]')].map((b) => b.getAttribute('aria-label'))
+    fireEvent.keyDown(window, { key: 'j' })
+    const first = open()
+    fireEvent.keyDown(window, { key: 'x' })
+    expect(open()).not.toEqual(first)
+    fireEvent.keyDown(window, { key: 'x' })
+    expect(open()).toEqual(first)
+    const box = document.createElement('input')
+    document.body.appendChild(box)
+    fireEvent.keyDown(box, { key: 'x' })
+    expect(open()).toEqual(first)
+    box.remove()
+  })
+
   it('handles binary, renamed and removed files, and draft/conflict state', async () => {
     setup(createMockForgeClient(), PR2)
     expect(await screen.findByText('Binary file not shown.')).toBeTruthy()
