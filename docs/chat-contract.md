@@ -34,3 +34,15 @@ subscriber is dropped and must refetch. Events are signals, not state.
 
 snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 origin_denied|operator_session_required,
 404 not_found, 409 conflict, 429 rate_limited, 503 not_configured), revision-checked writes answer 409 on a stale revision.
+
+## Slice status
+
+- T1 (threads) replaces these stubbed routes with real ones: `GET/POST /chat/threads`, `GET/PATCH /chat/threads/{ref}`,
+  `GET/POST .../messages`, `POST .../read`, `GET .../events`, `GET /chat/events`. Other routes stay stubs until their slice.
+- SSE ids come from a `chat_events` replay log (one monotonic seq across threads), written by `chatthreads.Hub.Publish`
+  for activity-class types. When T6 adds `chat_activity`, an `activity` event's own `seq` field is the activity row seq and
+  the SSE `id:` stays the event-log seq; clients resume with the SSE id only.
+- Lenses: `agents` currently equals `all` (every thread is an agent thread); `work` = threads with a project_id or, from T2,
+  a plan. Tether threads: title is the first turn's first line, `agent.address` is `tether://agent/<agent_id>` unless the id is
+  already a URN, POST messages replies to the newest open replyable turn (409 `conflict` when nothing is waiting).
+- `tether` thread `unread` counts turns newer than the last `POST .../read`; app threads use the existing read marker.

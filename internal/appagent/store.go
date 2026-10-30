@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +25,9 @@ const (
 	StateStreaming = "streaming"
 	StateComplete  = "complete"
 	StateFailed    = "failed"
+	// StateBlocked is a reply that ended because the agent needs the operator
+	// (runtime input_required). It is a blocker, not an error.
+	StateBlocked = "blocked"
 )
 
 var (
@@ -55,16 +59,18 @@ type Message struct {
 }
 
 type Thread struct {
-	ID             string    `json:"id"`
-	Agent          string    `json:"agent"`
-	Title          string    `json:"title"`
-	Owner          string    `json:"owner"`
-	Runtime        string    `json:"runtime"`
-	RuntimeSession string    `json:"-"`
-	Unread         int       `json:"unread"`
-	LastAt         time.Time `json:"last_at"`
-	LastPreview    string    `json:"last_preview,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string `json:"id"`
+	Agent          string `json:"agent"`
+	Title          string `json:"title"`
+	Owner          string `json:"owner"`
+	Runtime        string `json:"runtime"`
+	RuntimeSession string `json:"-"`
+	Unread         int    `json:"unread"`
+	// Blocked is true when the newest message is a reply waiting on the operator.
+	Blocked     bool      `json:"blocked"`
+	LastAt      time.Time `json:"last_at"`
+	LastPreview string    `json:"last_preview,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // Store persists threads and messages through Tachyon's one SQLite writer.
@@ -87,15 +93,16 @@ func (s *Store) CreateThread(ctx context.Context, id, agent, title string, now t
 }
 
 const threadSelect = `SELECT t.id,t.agent,t.title,t.owner,t.runtime,t.runtime_session,t.created_ns,
- COALESCE((SELECT COUNT(*) FROM app_agent_messages m WHERE m.thread_id=t.id AND m.role='agent' AND m.state IN ('complete','failed') AND m.seq>t.read_seq),0),
+ COALESCE((SELECT COUNT(*) FROM app_agent_messages m WHERE m.thread_id=t.id AND m.role='agent' AND m.state IN ('complete','failed','blocked') AND m.seq>t.read_seq),0),
  COALESCE((SELECT m.updated_ns FROM app_agent_messages m WHERE m.thread_id=t.id ORDER BY m.seq DESC LIMIT 1),t.updated_ns),
- COALESCE((SELECT substr(m.body,1,160) FROM app_agent_messages m WHERE m.thread_id=t.id ORDER BY m.seq DESC LIMIT 1),'')
+ COALESCE((SELECT substr(m.body,1,160) FROM app_agent_messages m WHERE m.thread_id=t.id ORDER BY m.seq DESC LIMIT 1),''),
+ COALESCE((SELECT m.state='blocked' FROM app_agent_messages m WHERE m.thread_id=t.id ORDER BY m.seq DESC LIMIT 1),0)
  FROM app_agent_threads t`
 
 func scanThread(row interface{ Scan(...any) error }) (Thread, error) {
 	var t Thread
 	var created, last int64
-	if err := row.Scan(&t.ID, &t.Agent, &t.Title, &t.Owner, &t.Runtime, &t.RuntimeSession, &created, &t.Unread, &last, &t.LastPreview); err != nil {
+	if err := row.Scan(&t.ID, &t.Agent, &t.Title, &t.Owner, &t.Runtime, &t.RuntimeSession, &created, &t.Unread, &last, &t.LastPreview, &t.Blocked); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Thread{}, ErrNotFound
 		}
@@ -289,4 +296,24 @@ func (s *Store) MarkRead(ctx context.Context, threadID string) error {
 		}
 		return nil
 	})
+}
+
+// ThreadsWithText returns the ids of threads having a message body that contains
+// text, case-insensitively. At most limit matches are returned.
+func (s *Store) ThreadsWithText(ctx context.Context, text string, limit int) (map[string]bool, error) {
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(text)
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT DISTINCT thread_id FROM app_agent_messages WHERE body LIKE ? ESCAPE '\' LIMIT ?`, "%"+esc+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }

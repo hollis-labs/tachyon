@@ -382,3 +382,47 @@ func TestAReplyAlwaysSortsAfterTheMessageItAnswers(t *testing.T) {
 		t.Fatalf("test premise: rows should share a timestamp: %v %v", stored[0].CreatedAt, stored[1].CreatedAt)
 	}
 }
+
+func TestInputRequiredBecomesBlockedNotFailed(t *testing.T) {
+	rt := &fakeRuntime{observeErr: errors.New("stream lost"), result: Result{State: "input_required", Text: "Which project?"}}
+	changed := make(chan string, 4)
+	s, st := newService(t, rt)
+	s.OnChange = func(id string) { changed <- id }
+	ch, cancel := s.Subscribe(DefaultThread)
+	defer cancel()
+	if _, err := s.Threads(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Send(context.Background(), DefaultThread, "plan it"); err != nil {
+		t.Fatal(err)
+	}
+	events := drain(t, ch, isEnd)
+	if end := events[len(events)-1]; end.State != StateBlocked || end.Error != "" {
+		t.Fatalf("end event: %+v", end)
+	}
+	select {
+	case id := <-changed:
+		if id != DefaultThread {
+			t.Fatal(id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnChange not called")
+	}
+	th, err := st.Thread(context.Background(), DefaultThread)
+	if err != nil || !th.Blocked || th.Unread != 1 {
+		t.Fatalf("thread: %+v %v", th, err)
+	}
+	msgs, _, _ := st.Messages(context.Background(), DefaultThread, 0, 10)
+	if got := msgs[len(msgs)-1]; got.State != StateBlocked || got.Body != "Which project?" {
+		t.Fatalf("reply: %+v", got)
+	}
+	// A later operator turn clears the blocker.
+	rt.result = Result{State: "completed", Text: "ok"}
+	if _, _, err := s.Send(context.Background(), DefaultThread, "Tachyon"); err != nil {
+		t.Fatal(err)
+	}
+	th, _ = st.Thread(context.Background(), DefaultThread)
+	if th.Blocked {
+		t.Fatal("still blocked after the operator answered")
+	}
+}

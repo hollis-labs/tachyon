@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hollis-labs/libs/app/app-host/plugins"
@@ -33,6 +34,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/catalog"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/chatthreads"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
@@ -107,6 +109,7 @@ type Server struct {
 	cache            *apicache.Cache
 	chat             *chatbridge.Owned
 	appAgent         *appagent.Service
+	chatThreads      *chatthreads.Handler
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
@@ -244,6 +247,16 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	source, sourceErr := chatbridge.NewSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
 	s.chat = &chatbridge.Owned{Store: store, Source: source, SourceID: s.cfg.Upstreams.TetherAddr, ConfigError: sourceErr, Interval: s.cfg.ChatSyncInterval}
+	// The unified chat thread list and per-thread stream (both sources).
+	s.chatThreads = &chatthreads.Handler{
+		Agg: &chatthreads.Aggregator{App: s.appAgent, Chat: s.chat, State: &chatthreads.StateStore{DB: store}},
+		Hub: &chatthreads.Hub{DB: store},
+	}
+	if s.appAgent != nil {
+		s.appAgent.OnChange = func(id string) {
+			s.chatThreads.Notify(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
+		}
+	}
 	s.chat.FreshSeconds = settings.Policies["chat-turns"].FreshSeconds
 	s.chat.RevalidateSeconds = settings.Policies["chat-turns"].RevalidateSeconds
 	s.chat.CacheEnabled = settings.Policies["chat-turns"].Enabled
@@ -460,6 +473,16 @@ func (s *Server) Routes() http.Handler {
 	// read); sends need operator assurance. Without a config file the routes answer
 	// 503 and say why. Tightening reads is a one-word change to RequireOperatorReads.
 	mux.Handle(appagent.Prefix+"/", operator.RequireOperator(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
+	// Real chat thread routes, mounted one by one: each is more specific than the stub's
+	// prefix below, so with TACHYON_CHAT_STUBS=1 these win and the stub serves the rest.
+	// RequireOperator lets GETs through and guards every write.
+	if s.chatThreads != nil {
+		real := s.chatThreads.Mux()
+		for _, route := range chatthreads.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
 	// Chat contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
 	// unguarded. Writes need an operator session; workspace content and the terminal family
 	// need it on reads too. Real slices replace these mounts route by route.

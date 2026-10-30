@@ -27,6 +27,7 @@ type UIMessage struct {
 	At        int64  `json:"at"`
 	Delivery  string `json:"delivery,omitempty"`
 	Streaming bool   `json:"streaming,omitempty"`
+	Blocked   bool   `json:"blocked,omitempty"`
 	Tools     []Tool `json:"tools"`
 	Error     string `json:"error,omitempty"`
 }
@@ -65,6 +66,9 @@ type Service struct {
 	Now       func() time.Time
 	PollEvery time.Duration
 	PollFor   time.Duration
+	// OnChange, if set, is called after a thread's summary-visible state changed
+	// (a reply finished or became blocked). It must not block.
+	OnChange func(threadID string)
 
 	mu   sync.Mutex
 	subs map[*sub]struct{}
@@ -155,6 +159,7 @@ func ui(m Message, delivery string) UIMessage {
 	} else {
 		u.From = "agent"
 		u.Streaming = m.State == StateStreaming
+		u.Blocked = m.State == StateBlocked
 	}
 	return u
 }
@@ -166,7 +171,7 @@ func delivery(reply *Message) string {
 		return "delivered"
 	case reply.State == StateFailed && reply.RuntimeTurn == "":
 		return "failed"
-	case reply.State == StateComplete:
+	case reply.State == StateComplete || reply.State == StateBlocked:
 		return "replied"
 	case reply.RuntimeTurn != "":
 		return "delivered"
@@ -412,11 +417,14 @@ func (s *Service) finish(l *live, state, errText string) {
 		}
 	}
 	s.mu.Lock()
-	s.publish(l.agent.ThreadID, Event{Type: "end", MessageID: l.agent.ID, Error: errText})
+	s.publish(l.agent.ThreadID, Event{Type: "end", MessageID: l.agent.ID, Error: errText, State: state})
 	if l.operator != "" {
 		s.publish(l.agent.ThreadID, Event{Type: "delivery", MessageID: l.operator, State: d})
 	}
 	s.mu.Unlock()
+	if s.OnChange != nil {
+		s.OnChange(l.agent.ThreadID)
+	}
 }
 
 // fail marks a message that never reached or never got an answer from the runtime.
@@ -459,6 +467,9 @@ func (s *Service) poll(ctx context.Context, l *live, session, turn string) {
 			s.mu.Unlock()
 			if res.State == "completed" {
 				s.finish(l, StateComplete, "")
+			} else if res.State == "input_required" {
+				// The agent is waiting on the operator: a blocker, not a failure.
+				s.finish(l, StateBlocked, "")
 			} else {
 				s.finish(l, StateFailed, redact.Text(firstNonEmpty(res.Error, "The agent run "+res.State+".")))
 			}
