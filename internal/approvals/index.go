@@ -528,6 +528,11 @@ func (i *Inbox) Maintain(ctx context.Context, every time.Duration, logf func(msg
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
+		if n, err := i.Secrets.Purge(ctx); err != nil && ctx.Err() == nil {
+			logf("approval secret purge failed", "error", err)
+		} else if n > 0 {
+			logf("approval secrets purged", "count", n)
+		}
 		if n, err := i.Service.ExpireDue(ctx); err != nil && ctx.Err() == nil {
 			logf("approval expiry sweep failed", "error", err)
 		} else if n > 0 {

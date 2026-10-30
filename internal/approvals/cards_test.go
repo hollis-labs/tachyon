@@ -131,6 +131,7 @@ func TestResolveAcceptsCardAnswersOnlyForCards(t *testing.T) {
 		writeValue(w, map[string]any{"elevated": elevated, "assurance": assurance})
 	}))
 	defer sessions.Close()
+	t.Setenv(SecretKeyFileEnv, writeKeyFile(t))
 	inbox := NewInbox(nativeStore(t), New(sessions.URL))
 	policy := ProducerPolicy{ApplicationID: "planner", MinimumClass: "medium"}
 	form := cardRequest("k-form", map[string]any{"data": map[string]any{"fields": []map[string]any{
@@ -160,14 +161,18 @@ func TestResolveAcceptsCardAnswersOnlyForCards(t *testing.T) {
 			t.Fatalf("%s: %d %s", name, w.Code, w.Body)
 		}
 	}
-	if w := send(map[string]any{"kind": "card.form", "decision": "submitted", "answers": answers(map[string]string{"secret_ref": "r1"})}); w.Code != 200 {
+	if w := send(map[string]any{"kind": "card.form", "decision": "submitted", "answers": answers(map[string]string{"secret_ref": "r1"})}); w.Code != 422 {
+		t.Fatalf("a made-up reference must be refused: %d %s", w.Code, w.Body)
+	}
+	r1 := submitSecretRef(t, inbox, handle.ItemID, "token", "hunter2")
+	if w := send(map[string]any{"kind": "card.form", "decision": "submitted", "answers": answers(map[string]string{"secret_ref": r1})}); w.Code != 200 {
 		t.Fatalf("valid form answers: %d %s", w.Code, w.Body)
 	}
 	rec, err := inbox.Store.Get(context.Background(), handle.ItemID)
 	if err != nil || rec.State != hitl.StateResolved {
 		t.Fatalf("%+v %v", rec, err)
 	}
-	if raw, _ := json.Marshal(rec); !strings.Contains(string(raw), "r1") || strings.Contains(string(raw), "hunter2") {
+	if raw, _ := json.Marshal(rec); !strings.Contains(string(raw), r1) || strings.Contains(string(raw), "hunter2") {
 		t.Fatalf("the reference is kept and no secret value was ever stored: %s", raw)
 	}
 	// Answers on an approval-kind item are refused: they apply only to cards.

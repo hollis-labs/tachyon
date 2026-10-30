@@ -214,3 +214,21 @@ func optionIn(options []any, want string) bool {
 	}
 	return false
 }
+
+// SecretFields lists the ids of the secret fields of a card request's form; none for other kinds.
+func SecretFields(req hitl.EnqueueRequest) []string {
+	if !IsCard(req.Kind) || len(req.Extra["data"]) == 0 {
+		return nil
+	}
+	fields, err := formFields(req.Extra["data"])
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, f := range fields {
+		if f.Type == "secret" {
+			out = append(out, f.ID)
+		}
+	}
+	return out
+}
