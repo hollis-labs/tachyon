@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { Button, Input, Textarea } from '@hollis-labs/design-components'
 import Markdown from 'react-markdown'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Segmented } from '../components/segmented'
@@ -47,8 +48,6 @@ function Value({ v }: { v: unknown }): ReactNode {
   return String(v)
 }
 
-const INPUT = 'w-full border border-border bg-bg px-2 py-1 dash-body text-fg'
-const BTN = 'border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover disabled:opacity-50'
 const GRID = 'grid gap-1 border-b border-border-subtle py-2 md:grid-cols-[10rem_1fr] md:gap-3'
 
 const POLICY_LEAD = new Set(['permission_mode', 'network', 'default_sandbox', 'mcp_scopes', 'scope_count', 'privileged', 'bundle', 'referencing_agents'])
@@ -130,9 +129,9 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
     return (
       <div role="alert" className="space-y-2 p-4">
         <p className="dash-body text-fg-secondary">{load.message}</p>
-        <button type="button" onClick={retry} className={BTN}>
+        <Button type="button" onClick={retry} variant="outline" size="sm">
           Retry
-        </button>
+        </Button>
       </div>
     )
   const it = load.data
@@ -159,9 +158,9 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{it.name}</h2>
         {canEdit && !editing && (
-          <button type="button" className={BTN} onClick={() => setEditing(true)}>
+          <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
             Edit
-          </button>
+          </Button>
         )}
       </div>
       {!canEdit && (kind === 'skills' || kind === 'tool_servers') && <p className="dash-support text-fg-muted">Read-only: managed in files.</p>}
@@ -173,9 +172,10 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
               {error}
             </span>
           )}
-          <button
+          <Button
             type="button"
-            className={BTN}
+            variant="outline"
+            size="sm"
             onClick={() => {
               if (!confirmDiscard(dirty.length)) return
               setEditing(false)
@@ -184,15 +184,10 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
             }}
           >
             Discard
-          </button>
-          <button
-            type="button"
-            disabled={dirty.length === 0 || busy}
-            className="border border-fg px-3 py-1 dash-control font-medium text-fg hover:bg-surface-hover disabled:opacity-50"
-            onClick={openReview}
-          >
+          </Button>
+          <Button type="button" disabled={dirty.length === 0 || busy} variant="default" size="sm" onClick={openReview}>
             {busy ? 'Checking' : 'Review changes'}
-          </button>
+          </Button>
         </div>
       )}
       {editing && partKind ? (
@@ -206,11 +201,10 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
                   {f.label}
                 </label>
                 {f.kind === 'longtext' ? (
-                  <textarea id={`lib-${f.path}`} className={`${INPUT} font-mono`} rows={14} value={String(value)} onChange={(e) => set(e.target.value)} />
+                  <Textarea id={`lib-${f.path}`} className="font-mono" rows={14} value={String(value)} onChange={(e) => set(e.target.value)} />
                 ) : f.kind === 'chips' ? (
-                  <input
+                  <Input
                     id={`lib-${f.path}`}
-                    className={INPUT}
                     placeholder="comma separated"
                     value={(value as string[]).join(', ')}
                     onChange={(e) =>
@@ -223,7 +217,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
                     }
                   />
                 ) : (
-                  <input id={`lib-${f.path}`} className={INPUT} value={String(value)} onChange={(e) => set(e.target.value)} />
+                  <Input id={`lib-${f.path}`} value={String(value)} onChange={(e) => set(e.target.value)} />
                 )}
               </div>
             )
@@ -234,9 +228,9 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
           {it.summary && <p className="dash-body text-fg-secondary">{it.summary}</p>}
           {body !== null && (
             <section aria-label="Body" className="space-y-2">
-              <button type="button" className={BTN} aria-pressed={raw} onClick={() => setRaw((r) => !r)}>
+              <Button type="button" variant="outline" size="sm" aria-pressed={raw} onClick={() => setRaw((r) => !r)}>
                 {raw ? 'Rendered' : 'Raw'}
-              </button>
+              </Button>
               {raw ? (
                 <pre className="max-h-[32rem] overflow-auto bg-surface p-3 font-mono dash-support text-fg">{body}</pre>
               ) : (
@@ -304,13 +298,7 @@ export function BuilderLibraryPage() {
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
           <div className="border-b border-border p-3">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search library"
-              aria-label="Search library"
-              className="w-full border border-border bg-bg px-2 py-1 dash-body text-fg"
-            />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search library" aria-label="Search library" />
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {load.status === 'loading' && (
@@ -323,9 +311,9 @@ export function BuilderLibraryPage() {
             {load.status === 'error' && (
               <div role="alert" className="space-y-2 p-4">
                 <p className="dash-body text-fg-secondary">{load.message}</p>
-                <button type="button" onClick={retry} className="border border-border px-2 py-1 dash-control text-fg-secondary hover:bg-surface-hover">
+                <Button type="button" onClick={retry} variant="outline" size="sm">
                   Retry
-                </button>
+                </Button>
               </div>
             )}
             {load.status === 'ready' && items.length === 0 && <p className="p-4 dash-body text-fg-faint">Nothing here.</p>}

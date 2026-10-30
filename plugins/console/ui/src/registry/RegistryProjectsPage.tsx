@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react'
+import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLoad } from '../builder/useLoad'
 import { BuilderError } from '../builder/api'
@@ -6,8 +7,6 @@ import { confirmDiscard } from '../builder/changes'
 import { NOT_REPORTED } from '../builder/vocab'
 import { type Project, type ProjectPatch, type ProjectRow, type ProjectStatus, errorMessage, profilePatch, registryApi } from './api'
 
-const BTN = 'border border-border px-3 py-1 dash-control text-fg-secondary hover:bg-surface-hover disabled:opacity-50'
-const INPUT = 'w-full border border-border bg-bg px-2 py-1 dash-body text-fg'
 const STATUS: Record<string, string> = { active: 'Active', paused: 'Paused', archived: 'Archived' }
 const FIELD_LABEL: Record<string, string> = { display_name: 'name', description: 'description', tags: 'tags', guidelines: 'guidelines', entry_points: 'entry points', status: 'status' }
 const fieldList = (keys: string[]) => keys.map((k) => FIELD_LABEL[k] ?? k).join(', ')
@@ -53,9 +52,9 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
     return (
       <div role="alert" className="space-y-2 p-5">
         <p className="dash-body text-fg-secondary">{load.message}</p>
-        <button type="button" onClick={retry} className={BTN}>
+        <Button type="button" onClick={retry} variant="outline" size="sm">
           Retry
-        </button>
+        </Button>
       </div>
     )
   const p: Project = saved ?? load.data
@@ -91,9 +90,9 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <p className="truncate font-mono dash-support text-fg-muted">{p.id}</p>
         </div>
         {!editing && (
-          <button type="button" className={BTN} onClick={() => setEditing(true)}>
+          <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
             Edit profile
-          </button>
+          </Button>
         )}
       </header>
       {editing && (
@@ -104,9 +103,10 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
               {error}
             </span>
           )}
-          <button
+          <Button
             type="button"
-            className={BTN}
+            variant="outline"
+            size="sm"
             onClick={() => {
               if (!confirmDiscard(dirty)) return
               setEditing(false)
@@ -115,10 +115,10 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
             }}
           >
             Discard
-          </button>
-          <button type="button" className="border border-fg px-3 py-1 dash-control font-medium text-fg hover:bg-surface-hover disabled:opacity-50" disabled={dirty === 0 || busy} onClick={save}>
+          </Button>
+          <Button type="button" variant="default" size="sm" disabled={dirty === 0 || busy} onClick={save}>
             {busy ? 'Saving' : 'Save profile'}
-          </button>
+          </Button>
         </div>
       )}
       {saved && !editing && (
@@ -131,41 +131,39 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <dl>
           <Row label="Name">
             {editing ? (
-              <input aria-label="Name" className={INPUT} maxLength={120} value={val('display_name', p.identity.display_name)} onChange={(e) => set({ display_name: e.target.value })} />
+              <Input aria-label="Name" maxLength={120} value={val('display_name', p.identity.display_name)} onChange={(e) => set({ display_name: e.target.value })} />
             ) : (
               p.identity.display_name || p.id
             )}
           </Row>
           <Row label="Description">
             {editing ? (
-              <textarea
-                aria-label="Description"
-                className={INPUT}
-                rows={3}
-                maxLength={2000}
-                value={val('description', p.identity.description)}
-                onChange={(e) => set({ description: e.target.value })}
-              />
+              <Textarea aria-label="Description" rows={3} maxLength={2000} value={val('description', p.identity.description)} onChange={(e) => set({ description: e.target.value })} />
             ) : (
               p.identity.description || <span className="text-fg-faint">none</span>
             )}
           </Row>
           <Row label="Status">
             {editing ? (
-              <select aria-label="Status" className={INPUT} value={val('status', p.identity.status as ProjectStatus)} onChange={(e) => set({ status: e.target.value as ProjectStatus })}>
-                {Object.entries(STATUS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
+              <Select value={val('status', p.identity.status as ProjectStatus)} onValueChange={(v) => v && set({ status: v as ProjectStatus })}>
+                <SelectTrigger className="h-8 w-full dash-body" aria-label="Status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(STATUS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>
+                      {v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               (STATUS[p.identity.status] ?? p.identity.status)
             )}
           </Row>
           <Row label="Tags">
             {editing ? (
-              <input aria-label="Tags" className={INPUT} placeholder="comma separated" value={val('tags', p.identity.tags).join(', ')} onChange={(e) => set({ tags: tags(e.target.value) })} />
+              <Input aria-label="Tags" placeholder="comma separated" value={val('tags', p.identity.tags).join(', ')} onChange={(e) => set({ tags: tags(e.target.value) })} />
             ) : p.identity.tags.length ? (
               p.identity.tags.join(', ')
             ) : (
@@ -179,9 +177,8 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <dl>
           <Row label="Entry points">
             {editing ? (
-              <textarea
+              <Textarea
                 aria-label="Entry points"
-                className={INPUT}
                 rows={3}
                 placeholder="one per line"
                 value={val('entry_points', p.guidance.entry_points).join('\n')}
@@ -201,7 +198,7 @@ function ProfileDetail({ id, onBack }: { id: string; onBack: () => void }) {
           </Row>
           <Row label="Guidelines">
             {editing ? (
-              <textarea aria-label="Guidelines" className={INPUT} rows={6} maxLength={8000} value={val('guidelines', p.guidance.guidelines)} onChange={(e) => set({ guidelines: e.target.value })} />
+              <Textarea aria-label="Guidelines" rows={6} maxLength={8000} value={val('guidelines', p.guidance.guidelines)} onChange={(e) => set({ guidelines: e.target.value })} />
             ) : p.guidance.guidelines ? (
               <p className="whitespace-pre-wrap">{p.guidance.guidelines}</p>
             ) : (
@@ -260,7 +257,7 @@ export function RegistryProjectsPage() {
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border md:w-80`}>
           <div className="border-b border-border p-3">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search projects" aria-label="Search projects" className={INPUT} />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search projects" aria-label="Search projects" />
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {load.status === 'loading' && (
@@ -273,9 +270,9 @@ export function RegistryProjectsPage() {
             {load.status === 'error' && (
               <div role="alert" className="space-y-2 p-4">
                 <p className="dash-body text-fg-secondary">{load.message}</p>
-                <button type="button" onClick={retry} className={BTN}>
+                <Button type="button" onClick={retry} variant="outline" size="sm">
                   Retry
-                </button>
+                </Button>
               </div>
             )}
             {load.status === 'ready' && rows.length === 0 && <p className="p-4 dash-body text-fg-faint">No projects match.</p>}

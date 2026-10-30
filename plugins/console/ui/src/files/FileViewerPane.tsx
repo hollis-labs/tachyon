@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogDescription, DialogTitle, Popover, PopoverContent, PopoverTrigger, Skeleton } from '@hollis-labs/design-components'
+import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, Popover, PopoverContent, PopoverTrigger, Skeleton } from '@hollis-labs/design-components'
 import { Check, Copy, Download, ExternalLink, Maximize2, MoreHorizontal, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
@@ -48,18 +48,18 @@ export function FileViewerPane({ refId }: RefDetailProps) {
   return (
     <section aria-label={`File ${path.split('/').pop()}`} className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={BTN} onClick={reload}>
+        <Button type="button" variant="outline" size="sm" onClick={reload}>
           <RefreshCw className="h-3 w-3" aria-hidden /> Reload
-        </button>
+        </Button>
         <div className="hidden items-center gap-2 sm:flex">
-          <button type="button" className={BTN} onClick={copyPath}>
+          <Button type="button" variant="outline" size="sm" onClick={copyPath}>
             {copied ? <Check className="h-3 w-3" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />} {copied ? 'Copied' : 'Copy path'}
-          </button>
+          </Button>
           {canOpen && (
             <>
-              <button type="button" className={BTN} onClick={() => setExpanded(true)}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setExpanded(true)}>
                 <Maximize2 className="h-3 w-3" aria-hidden /> Expand
-              </button>
+              </Button>
               {kindOf !== 'html' && (
                 <a className={BTN} href={contentUrl(path)} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-3 w-3" aria-hidden /> Open in tab
@@ -258,9 +258,9 @@ function TextBody({ path, line, markdown, tick, expanded = false }: { path: stri
           />
         )}
         {raw && (
-          <button type="button" className={BTN} aria-pressed={wrap} onClick={() => setWrap((w) => !w)}>
+          <Button type="button" variant="outline" size="sm" aria-pressed={wrap} onClick={() => setWrap((w) => !w)}>
             Wrap
-          </button>
+          </Button>
         )}
       </div>
       {markdown && !raw ? (

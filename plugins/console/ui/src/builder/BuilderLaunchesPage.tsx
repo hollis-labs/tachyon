@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button, Checkbox, Input } from '@hollis-labs/design-components'
 import { BuilderShell } from './BuilderShell'
 import { type Launch, builderApi } from './api'
 import { useLoad } from './useLoad'
@@ -52,15 +53,9 @@ export function BuilderLaunchesPage() {
     <div className="flex h-full min-w-0 flex-col">
       <BuilderShell tab="launches" />
       <div className="flex flex-wrap items-center gap-3 border-b border-border p-3">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search launches"
-          aria-label="Search launches"
-          className="min-w-0 flex-1 border border-border bg-bg px-2 py-1 dash-body text-fg"
-        />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search launches" aria-label="Search launches" />
         <label className="flex items-center gap-2 dash-control text-fg-secondary">
-          <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> Live only
+          <Checkbox checked={live} onCheckedChange={(v) => setLive(v === true)} /> Live only
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
@@ -74,9 +69,9 @@ export function BuilderLaunchesPage() {
         {load.status === 'error' && (
           <div role="alert" className="space-y-2 p-4">
             <p className="dash-body text-fg-secondary">{load.message}</p>
-            <button type="button" onClick={retry} className="border border-border px-2 py-1 dash-control text-fg-secondary hover:bg-surface-hover">
+            <Button type="button" onClick={retry} variant="outline" size="sm">
               Retry
-            </button>
+            </Button>
           </div>
         )}
         {load.status === 'ready' &&

@@ -1,11 +1,11 @@
 import { type ReactNode, useState } from 'react'
+import { Button } from '@hollis-labs/design-components'
 import { type Check, type HistoryEntry, builderApi, errorMessage } from './api'
 import { relativeTime } from './changes'
 import { Diff } from './ReviewDialog'
 import { type Load, useLoad } from './useLoad'
 import { NOT_REPORTED, SECTIONS } from './vocab'
 
-const BTN = 'border border-border px-2 py-1 dash-control text-fg-secondary hover:bg-surface-hover'
 const CHECK_WORD = { ok: 'Passed', warn: 'Warning', fail: 'Failed' } as const
 
 function Block({ id, children }: { id: string; children: ReactNode }) {
@@ -26,9 +26,9 @@ function Body<T>({ load, retry, children }: { load: Load<T>; retry: () => void; 
     return (
       <div role="alert" className="flex items-center gap-3">
         <span className="dash-body text-fg-secondary">{load.message}</span>
-        <button type="button" onClick={retry} className={BTN}>
+        <Button type="button" onClick={retry} variant="outline" size="sm">
           Retry
-        </button>
+        </Button>
       </div>
     )
   return <>{children(load.data)}</>
@@ -126,9 +126,9 @@ function FoldedDiff({ text }: { text: string }) {
   return (
     <div className="mt-1">
       {long && (
-        <button type="button" className={BTN} onClick={() => setOpen((o) => !o)}>
+        <Button type="button" variant="outline" size="sm" onClick={() => setOpen((o) => !o)}>
           {open ? 'Hide changes' : 'Show changes'}
-        </button>
+        </Button>
       )}
       {open && <Diff text={text} />}
     </div>
@@ -165,10 +165,11 @@ export function HistorySection({ id }: { id: string }) {
                 ))}
               </ul>
               {next && (
-                <button
+                <Button
                   type="button"
                   disabled={busy}
-                  className={BTN}
+                  variant="outline"
+                  size="sm"
                   onClick={async () => {
                     setBusy(true)
                     setMoreError('')
@@ -184,7 +185,7 @@ export function HistorySection({ id }: { id: string }) {
                   }}
                 >
                   {busy ? 'Loading' : 'Load more'}
-                </button>
+                </Button>
               )}
               {moreError && (
                 <p role="alert" className="dash-support text-fg-secondary">
