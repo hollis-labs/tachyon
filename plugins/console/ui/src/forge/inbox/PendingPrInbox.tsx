@@ -314,7 +314,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
 
       {loading && prs.length === 0 && !error ? (
         <p className="px-4 py-8 text-center font-mono dash-control text-fg-faint">Loading pending PRs…</p>
-      ) : groups.length === 0 ? (
+      ) : groups.length === 0 && error ? null : groups.length === 0 ? (
         <p className="px-4 py-8 text-center font-mono dash-control text-fg-faint">
           {all.length === 0 ? 'Nothing pending. All PRs are reviewed, green and assigned.' : filtered || filter.view !== 'active' ? 'No pull requests match this view.' : 'Inbox clear.'}
         </p>

@@ -1,5 +1,5 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@hollis-labs/design-components"
-import { Check, Monitor, Moon, Sun } from "lucide-react"
+import { Check, Monitor, Moon, Settings, Sun, User } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { MODES, type Mode, useMode } from "../mode"
@@ -28,7 +28,12 @@ export function AvatarMenu() {
         title="Account menu"
         className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-xs font-medium text-foreground transition-colors hover:bg-panel-hover"
       >
-        {initials(profile.name)}
+        {/* No name yet: the gear instead of a "?" */}
+        {profile.name.trim() ? (
+          initials(profile.name)
+        ) : (
+          <Settings aria-hidden="true" className="h-4 w-4" />
+        )}
       </PopoverTrigger>
       <PopoverContent side="right" align="end" className="w-56 p-1">
         <div role="menu" aria-label="Account">
@@ -49,6 +54,7 @@ export function AvatarMenu() {
             </div>
           </div>
           <button type="button" role="menuitem" className={ITEM} onClick={() => go("/user")}>
+            <User aria-hidden="true" className="h-3.5 w-3.5 text-text-subtle" />
             You
           </button>
           <button
@@ -57,6 +63,7 @@ export function AvatarMenu() {
             className={ITEM}
             onClick={() => go("/settings/appearance")}
           >
+            <Settings aria-hidden="true" className="h-3.5 w-3.5 text-text-subtle" />
             Settings
           </button>
           <fieldset

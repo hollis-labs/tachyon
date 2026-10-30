@@ -299,7 +299,7 @@ components:
         pinned: {type: boolean}
         pinned_at: {type: string, nullable: true}
         rev: {type: integer, description: item revision; request bodies send it back as expected_revision}
-        area: {type: string}
+        area: {type: string, enum: [hub, llm-gateway, mesh, gui, plugin-platform, fabric, nanite, harness, policy, tooling, process], description: the roadmap area enum}
         horizon: {type: string, enum: [now, next, later, someday]}
         done_summary: {type: string, maxLength: 600}
         assignees: {type: array, items: {type: object}}
