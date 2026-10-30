@@ -1,0 +1,1 @@
+{"id":"tpr_2","thread_ref":"app:t_01","session_id":null,"machine_id":"agent-os","command":"git status","command_digest":"sha256:beef","reason":"edited by operator","requested_by":"user","state":"pending","item_id":"apv_04","created_at":1793318400000,"expires_at":1793319300000,"supersedes":"tpr_1"}

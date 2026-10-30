@@ -1,0 +1,469 @@
+openapi: 3.0.3
+info:
+  title: Tachyon chat backend
+  version: "1.0-contract"
+  description: |
+    Contract for the chat GUI. Source design: tesseract:01M651VJ6DT88Q3YAJS9KJH6QJ (sections 2, 5, 6, 8, 10).
+    Served by the fixture stub under TACHYON_CHAT_STUBS=1; later slices replace routes one by one with these shapes.
+
+    thread_ref: "app:<app_agent_threads.id>" or "tether:<session_id>" (chatbridge grouping key: session_id, else local_session_id).
+    It is Tachyon-owned and stable; it is NOT the runtime session id. Path segments carry it verbatim (the colon is legal).
+
+    Conventions: JSON, snake_case, timestamps are unix milliseconds, ids are opaque strings. Errors are {code, message}
+    with 400 invalid, 403 origin_denied|operator_session_required, 404 not_found, 409 conflict (revision mismatch),
+    429 rate_limited, 503 not_configured. Every state-changing route needs an operator session and a same-origin Origin header.
+    GETs are open except terminal/* and workspace content, which need operator assurance on reads. The stub accepts the
+    request header X-Stub-Status (400-599) to force an error response of that status.
+servers:
+  - url: /api/plugins/console/v1
+tags:
+  - {name: threads}
+  - {name: plan}
+  - {name: topics}
+  - {name: workspace}
+  - {name: activity}
+  - {name: cards}
+  - {name: terminal}
+  - {name: events}
+paths:
+  /chat/threads:
+    get:
+      tags: [threads]
+      summary: Unified thread list across app-agent and Tether-turn threads
+      parameters:
+        - {name: lens, in: query, schema: {type: string, enum: [all, agents, work, archived], default: all}}
+        - {name: need_you, in: query, description: "true = blocked_on_user>0 only", schema: {type: boolean}}
+        - {name: q, in: query, description: "case-insensitive substring over title, agent, last_preview, app message bodies", schema: {type: string}}
+        - {name: before_at, in: query, schema: {type: integer, format: int64}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, required: [threads, has_more], properties: {threads: {type: array, items: {$ref: "#/components/schemas/ThreadSummary"}}, has_more: {type: boolean}}}}}}
+    post:
+      tags: [threads]
+      summary: Create an app-agent thread
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [agent], properties: {agent: {type: string}, title: {type: string}, project_id: {type: string}}}}}}
+      responses:
+        "201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Thread"}}}}
+  /chat/threads/{ref}:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [threads]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Thread"}}}}
+    patch:
+      tags: [threads]
+      summary: Pin, archive, retitle, or set project (overlay table; works for both sources)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {pinned: {type: boolean}, archived: {type: boolean}, title: {type: string}, project_id: {type: string, nullable: true}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Thread"}}}}
+  /chat/threads/{ref}/messages:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [threads]
+      parameters:
+        - {name: before_seq, in: query, schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, required: [messages, has_more], properties: {messages: {type: array, items: {$ref: "#/components/schemas/Message"}}, has_more: {type: boolean}}}}}}
+    post:
+      tags: [threads]
+      summary: Send an operator message (idempotent by idempotency_key)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [text, idempotency_key], properties: {text: {type: string}, idempotency_key: {type: string}}}}}}
+      responses:
+        "202": {description: accepted, content: {application/json: {schema: {type: object, properties: {id: {type: string}, seq: {type: integer}, idempotency_key: {type: string}, state: {type: string, enum: [accepted]}}}}}}
+        "409": {$ref: "#/components/responses/Error"}
+  /chat/threads/{ref}/read:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    post: {tags: [threads], responses: {"200": {$ref: "#/components/responses/Ok"}}}
+  /chat/threads/{ref}/plan:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [plan]
+      parameters: [{name: scope, in: query, schema: {type: string, enum: [thread, project], default: thread}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Plan"}}}}
+        "404": {$ref: "#/components/responses/Error"}
+    put:
+      tags: [plan]
+      summary: Upsert the whole plan; 409 when expected_revision is stale
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PlanWrite"}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Plan"}}}}
+        "409": {$ref: "#/components/responses/Error"}
+  /chat/threads/{ref}/plan/steps:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    post:
+      tags: [plan]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/StepWrite"}}}}
+      responses: {"201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/PlanStep"}}}}}
+  /chat/threads/{ref}/plan/steps/{id}:
+    parameters: [{$ref: "#/components/parameters/ref"}, {$ref: "#/components/parameters/id"}]
+    patch:
+      tags: [plan]
+      summary: Patch one step; 409 when expected_revision (of the plan) is stale
+      requestBody: {required: true, content: {application/json: {schema: {allOf: [{$ref: "#/components/schemas/StepWrite"}, {type: object, required: [expected_revision]}]}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/PlanStep"}}}}
+        "409": {$ref: "#/components/responses/Error"}
+  /chat/threads/{ref}/plan/reorder:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    post:
+      tags: [plan]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [step_ids, expected_revision], properties: {step_ids: {type: array, items: {type: string}}, expected_revision: {type: integer}}}}}}
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Plan"}}}}}
+  /chat/threads/{ref}/topics:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get: {tags: [topics], responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {topics: {type: array, items: {$ref: "#/components/schemas/Topic"}}}}}}}}}
+    post:
+      tags: [topics]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [title, message_ref], properties: {title: {type: string}, message_ref: {type: string}}}}}}
+      responses: {"201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Topic"}}}}}
+  /chat/threads/{ref}/topics/{id}:
+    parameters: [{$ref: "#/components/parameters/ref"}, {$ref: "#/components/parameters/id"}]
+    delete: {tags: [topics], responses: {"200": {$ref: "#/components/responses/Ok"}}}
+  /chat/threads/{ref}/bookmarks:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get: {tags: [topics], responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {bookmarks: {type: array, items: {$ref: "#/components/schemas/Bookmark"}}}}}}}}}
+    post:
+      tags: [topics]
+      summary: Idempotent per (thread_ref, message_ref)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [message_ref], properties: {message_ref: {type: string}, note: {type: string}}}}}}
+      responses: {"201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Bookmark"}}}}}
+  /chat/threads/{ref}/bookmarks/{id}:
+    parameters: [{$ref: "#/components/parameters/ref"}, {$ref: "#/components/parameters/id"}]
+    delete: {tags: [topics], responses: {"200": {$ref: "#/components/responses/Ok"}}}
+  /chat/threads/{ref}/workspace:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [workspace]
+      responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: "#/components/schemas/WorkspaceItem"}}, limits: {$ref: "#/components/schemas/WorkspaceLimits"}}}}}}}
+    post:
+      tags: [workspace]
+      summary: Upload a file (multipart, field "file") or add a link/ref (json)
+      description: Limits 25 MiB/file, 100 items and 250 MiB per thread; allow-listed sniffed MIME only. Errors 400 invalid, 413 too_large, 415 type_not_allowed.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data: {schema: {type: object, properties: {file: {type: string, format: binary}, shared: {type: boolean}}}}
+          application/json: {schema: {type: object, required: [type, name], properties: {type: {type: string, enum: [link, ref]}, name: {type: string}, url: {type: string}, ref: {type: string}, shared: {type: boolean}}}}
+      responses: {"201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/WorkspaceItem"}}}}}
+  /chat/threads/{ref}/workspace/{id}:
+    parameters: [{$ref: "#/components/parameters/ref"}, {$ref: "#/components/parameters/id"}]
+    patch:
+      tags: [workspace]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {shared: {type: boolean}, name: {type: string}}}}}}
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/WorkspaceItem"}}}}}
+    delete: {tags: [workspace], responses: {"200": {$ref: "#/components/responses/Ok"}}}
+  /chat/threads/{ref}/workspace/{id}/content:
+    parameters: [{$ref: "#/components/parameters/ref"}, {$ref: "#/components/parameters/id"}]
+    get:
+      tags: [workspace]
+      summary: File bytes. Operator assurance required on GET. Content-Disposition attachment, nosniff.
+      responses: {"200": {description: bytes, content: {application/octet-stream: {schema: {type: string, format: binary}}}}}
+  /chat/threads/{ref}/scratchpad:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get: {tags: [workspace], responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Scratchpad"}}}}}}
+    put:
+      tags: [workspace]
+      summary: Revision-checked; 64 KiB cap (413); 409 on stale revision
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [body, expected_revision], properties: {body: {type: string}, expected_revision: {type: integer}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Scratchpad"}}}}
+        "409": {$ref: "#/components/responses/Error"}
+  /chat/threads/{ref}/activity:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [activity]
+      parameters:
+        - {name: before_seq, in: query, schema: {type: integer}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 100}}
+        - {name: type, in: query, schema: {type: string}}
+        - {name: actor, in: query, schema: {type: string}}
+        - {name: q, in: query, schema: {type: string}}
+      responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {activity: {type: array, items: {$ref: "#/components/schemas/Activity"}}, has_more: {type: boolean}}}}}}}
+  /chat/threads/{ref}/activity/comments:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    post:
+      tags: [activity]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [body], properties: {body: {type: string}}}}}}
+      responses: {"201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Activity"}}}}}
+  /chat/threads/{ref}/cards:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [cards]
+      description: Thin projection of approval items bound to the thread. Answers go to the existing approval-inbox resolve route; there is no second resolver.
+      parameters:
+        - {name: state, in: query, schema: {type: string, enum: [pending, resolved, expired, superseded]}}
+        - {name: since, in: query, schema: {type: integer, format: int64}}
+      responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {cards: {type: array, items: {$ref: "#/components/schemas/Card"}}}}}}}}
+  /chat/threads/{ref}/context:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [threads]
+      description: used/window/model are null and source is "unknown" until Nanite supplies them (design 3j); render both.
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Context"}}}}}
+  /chat/threads/{ref}/work:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [threads]
+      parameters: [{name: agent, in: query, schema: {type: string}}]
+      description: Stub-sourced until the Planner assignee decision lands (assignee_resolved=false).
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Work"}}}}}
+  /chat/threads/{ref}/approval-rules:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get: {tags: [cards], responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {rules: {type: array, items: {$ref: "#/components/schemas/ApprovalRule"}}}}}}}}}
+  /chat/threads/{ref}/approval-rules/{id}:
+    parameters: [{$ref: "#/components/parameters/ref"}, {$ref: "#/components/parameters/id"}]
+    delete: {tags: [cards], responses: {"200": {$ref: "#/components/responses/Ok"}}}
+  /chat/settings:
+    get: {tags: [threads], responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Settings"}}}}}}
+    put:
+      tags: [threads]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Settings"}}}}
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Settings"}}}}}
+  /chat/events:
+    get:
+      tags: [events]
+      summary: Global spine stream; emits `thread` events for every thread
+      parameters: [{$ref: "#/components/parameters/lastEventId"}]
+      responses: {"200": {$ref: "#/components/responses/SSE"}}
+  /chat/threads/{ref}/events:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    get:
+      tags: [events]
+      summary: Thread event stream (SSE)
+      description: |
+        Frames are `data: {json}` where json is an Event envelope. Activity-class events (activity, plan, card, topic,
+        bookmark, workspace, terminal.run) also carry `id: <seq>`; reconnect with Last-Event-ID to replay what was missed.
+        Live-only signals (message, delta, tool, end, delivery, panel, context, thread) are not replayed: after a
+        reconnect refetch state. 15 s `: keepalive` comments. A slow subscriber is dropped and must refetch.
+        Events are signals, not state: the GUI must still work if every panel event is dropped.
+      parameters: [{$ref: "#/components/parameters/lastEventId"}]
+      responses: {"200": {$ref: "#/components/responses/SSE"}}
+  /terminal/machines:
+    get:
+      tags: [terminal]
+      summary: Machines reachable FROM THE TACHYON HOST. Names only; the client sends machine_id, never a hostname.
+      responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {machines: {type: array, items: {$ref: "#/components/schemas/Machine"}}}}}}}}
+  /terminal/sessions:
+    post:
+      tags: [terminal]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [machine_id], properties: {machine_id: {type: string}, thread_ref: {type: string}}}}}}
+      responses: {"201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/TerminalSession"}}}}}
+  /terminal/sessions/{id}/ws:
+    parameters: [{$ref: "#/components/parameters/id"}]
+    get:
+      tags: [terminal]
+      summary: WebSocket (same-origin only; the stub answers 501)
+      description: |
+        Binary frames are PTY bytes both ways. Client text frame {"type":"resize","cols":int,"rows":int}.
+        Server text frames {"type":"state","state":"open|stale|closed"} and {"type":"exit","code":int}.
+        State "stale" = operator elevation lapsed: the pane is read-only. Idle timeout 30 min; 4 sessions per operator.
+      responses: {"101": {description: switching protocols}}
+  /terminal/sessions/{id}:
+    parameters: [{$ref: "#/components/parameters/id"}]
+    delete: {tags: [terminal], responses: {"200": {$ref: "#/components/responses/Ok"}}}
+  /terminal/proposals:
+    get:
+      tags: [terminal]
+      parameters: [{name: thread_ref, in: query, schema: {type: string}}, {name: state, in: query, schema: {type: string}}]
+      responses: {"200": {description: ok, content: {application/json: {schema: {type: object, properties: {proposals: {type: array, items: {$ref: "#/components/schemas/Proposal"}}}}}}}}
+  /terminal/proposals/{id}/run:
+    parameters: [{$ref: "#/components/parameters/id"}]
+    post:
+      tags: [terminal]
+      summary: Approve and start. Refused with 409 when the digest no longer matches the proposal.
+      requestBody: {content: {application/json: {schema: {type: object, properties: {op_digest: {type: string}}}}}}
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Run"}}}}}
+  /terminal/proposals/{id}/deny:
+    parameters: [{$ref: "#/components/parameters/id"}]
+    post: {tags: [terminal], responses: {"200": {$ref: "#/components/responses/Ok"}}}
+  /terminal/proposals/{id}/edit:
+    parameters: [{$ref: "#/components/parameters/id"}]
+    post:
+      tags: [terminal]
+      summary: Creates a NEW proposal (new digest) and cancels the old one
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [command], properties: {command: {type: string}}}}}}
+      responses: {"201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Proposal"}}}}}
+  /terminal/runs/{run_id}:
+    parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+    get: {tags: [terminal], responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Run"}}}}}}
+components:
+  parameters:
+    ref: {name: ref, in: path, required: true, description: "thread_ref: app:<id> | tether:<session_id>", schema: {type: string, pattern: '^(app|tether):[^/\\\s]+$'}}
+    id: {name: id, in: path, required: true, schema: {type: string}}
+    lastEventId: {name: Last-Event-ID, in: header, schema: {type: integer, minimum: 0}}
+  responses:
+    Ok: {description: ok, content: {application/json: {schema: {type: object, properties: {ok: {type: boolean}}}}}}
+    Error: {description: error, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    SSE: {description: event stream, content: {text/event-stream: {schema: {type: string}}}}
+  schemas:
+    Error: {type: object, required: [code, message], properties: {code: {type: string}, message: {type: string}}}
+    Agent: {type: object, properties: {address: {type: string}, label: {type: string}, kind: {type: string}, agent_id: {type: string}}}
+    Capability: {type: object, properties: {mode: {type: string, enum: [live, inbox, readonly]}, can_send: {type: boolean}, detail: {type: string}}}
+    Progress: {type: object, nullable: true, properties: {done: {type: integer}, total: {type: integer}}}
+    Context:
+      type: object
+      properties:
+        used: {type: integer, nullable: true}
+        window: {type: integer, nullable: true}
+        model: {type: string, nullable: true}
+        source: {type: string, enum: [runtime, unknown]}
+        breakdown: {type: array, items: {type: object, properties: {label: {type: string}, tokens: {type: integer}}}}
+        at: {type: integer, format: int64}
+    ThreadSummary:
+      type: object
+      required: [thread_ref, source, title, pinned, archived, unread, last_at, blocked_on_user]
+      properties:
+        thread_ref: {type: string}
+        source: {type: string, enum: [app, tether]}
+        title: {type: string}
+        agent: {$ref: "#/components/schemas/Agent"}
+        capability: {$ref: "#/components/schemas/Capability"}
+        pinned: {type: boolean}
+        archived: {type: boolean}
+        unread: {type: integer}
+        last_at: {type: integer, format: int64}
+        last_preview: {type: string}
+        blocked_on_user: {type: integer, description: "open cards + presented Tether question/approval turns + input_required app messages"}
+        plan_progress: {$ref: "#/components/schemas/Progress"}
+        project_id: {type: string, nullable: true}
+        context: {$ref: "#/components/schemas/Context"}
+    Thread:
+      allOf:
+        - $ref: "#/components/schemas/ThreadSummary"
+        - type: object
+          properties: {forked_from: {type: string, nullable: true}, created_at: {type: integer, format: int64}}
+    Message:
+      type: object
+      properties:
+        seq: {type: integer}
+        id: {type: string}
+        role: {type: string, enum: [operator, agent, system]}
+        kind: {type: string, enum: [text, card, plan, system]}
+        text: {type: string}
+        at: {type: integer, format: int64}
+        meta: {type: object, nullable: true, description: "card: {item_id}; plan: {plan_id}; operator answer: {card_answer:{item_id,decision,answers}}"}
+    PlanStep:
+      type: object
+      properties:
+        id: {type: string}
+        position: {type: integer}
+        title: {type: string}
+        status: {type: string, enum: [todo, doing, blocked, done, cancelled]}
+        acceptance: {type: string}
+        task_ref: {type: string, nullable: true}
+        notes: {type: string}
+        updated_at: {type: integer, format: int64}
+        plan_revision: {type: integer}
+    StepWrite:
+      type: object
+      properties:
+        id: {type: string}
+        title: {type: string}
+        status: {type: string, enum: [todo, doing, blocked, done, cancelled]}
+        acceptance: {type: string}
+        notes: {type: string}
+        position: {type: integer}
+        expected_revision: {type: integer}
+    Plan:
+      type: object
+      properties:
+        id: {type: string}
+        scope: {type: string, enum: [thread, project]}
+        thread_ref: {type: string, nullable: true}
+        project_id: {type: string, nullable: true}
+        title: {type: string, nullable: true, description: "null = loose steps (the todo list)"}
+        status: {type: string, enum: [proposed, approved, active, done, cancelled]}
+        revision: {type: integer}
+        task_ref: {type: string, nullable: true}
+        created_by: {type: string}
+        created_at: {type: integer, format: int64}
+        updated_at: {type: integer, format: int64}
+        steps: {type: array, items: {$ref: "#/components/schemas/PlanStep"}}
+    PlanWrite:
+      type: object
+      required: [scope]
+      properties:
+        id: {type: string}
+        scope: {type: string, enum: [thread, project]}
+        title: {type: string, nullable: true}
+        steps: {type: array, items: {$ref: "#/components/schemas/StepWrite"}}
+        expected_revision: {type: integer}
+    Topic: {type: object, properties: {id: {type: string}, thread_ref: {type: string}, title: {type: string}, message_ref: {type: string}, seq: {type: integer, nullable: true}, added_by: {type: string, enum: [user, agent]}, created_at: {type: integer, format: int64}}}
+    Bookmark: {type: object, properties: {id: {type: string}, thread_ref: {type: string}, message_ref: {type: string}, note: {type: string}, created_at: {type: integer, format: int64}}}
+    WorkspaceItem:
+      type: object
+      properties:
+        id: {type: string}
+        thread_ref: {type: string}
+        type: {type: string, enum: [file, link, ref, image]}
+        name: {type: string}
+        mime: {type: string, nullable: true}
+        size_bytes: {type: integer, nullable: true}
+        sha256: {type: string, nullable: true}
+        url: {type: string, nullable: true}
+        ref: {type: string, nullable: true}
+        shared: {type: boolean, description: "unshare cannot recall what an earlier turn already saw"}
+        added_by: {type: string}
+        created_at: {type: integer, format: int64}
+        updated_at: {type: integer, format: int64}
+    WorkspaceLimits: {type: object, properties: {max_file_bytes: {type: integer}, max_items: {type: integer}, max_total_bytes: {type: integer}, used_items: {type: integer}, used_bytes: {type: integer}}}
+    Scratchpad: {type: object, properties: {thread_ref: {type: string}, body: {type: string}, revision: {type: integer}, updated_at: {type: integer, format: int64}}}
+    Cite: {type: object, properties: {kind: {type: string, enum: [task, pr, file]}, ref: {type: string}, label: {type: string}}}
+    Activity:
+      type: object
+      properties:
+        seq: {type: integer}
+        thread_ref: {type: string}
+        type: {type: string, enum: [tool.call, card.sent, card.answered, approval.decided, file.shared, plan.changed, task.closed, panel.opened, terminal.run, topic.added, bookmark.added, comment]}
+        actor: {type: string, description: "user | agent:<id> | rule:<id> | system; a plugin cannot spoof user"}
+        cite: {type: array, items: {$ref: "#/components/schemas/Cite"}}
+        payload: {type: object, nullable: true, description: "mini-card {title, cite, summary<=200, review_ref}; comment {body}"}
+        source: {type: string}
+        at: {type: integer, format: int64}
+    Card:
+      type: object
+      properties:
+        item_id: {type: string}
+        kind: {type: string, enum: [card.approval, card.question, card.form, card.notice, card.info, card.plan, card.dispatch]}
+        caption: {type: string}
+        cite: {type: array, items: {$ref: "#/components/schemas/Cite"}}
+        fields: {type: array, items: {type: object, description: "{id,type:enum|text|bool,label,options?,multi?,required}"}}
+        actions: {type: array, items: {type: object, properties: {id: {type: string}, label: {type: string}, key: {type: string}}}}
+        target: {type: object, nullable: true, description: "digest-bound {scheme,ref,op}; registered schemes only", properties: {scheme: {type: string}, ref: {type: string}, op: {type: string}}}
+        state: {type: string, enum: [pending, resolved, expired, superseded]}
+        class: {type: string, enum: [low, medium]}
+        reversible: {type: boolean, description: "false = commit immediately, show 'cannot be undone'; true = client defers the resolve POST 8 s for Undo"}
+        expires_at: {type: integer, format: int64}
+        presented_projection_revision: {type: integer}
+        op_digest: {type: string}
+        result: {type: object, nullable: true}
+        message_ref: {type: string, nullable: true}
+    ApprovalRule: {type: object, properties: {id: {type: string}, thread_ref: {type: string}, agent_id: {type: string}, tool: {type: string}, match: {type: object}, effect: {type: string, enum: [allow]}, expires_at: {type: integer, format: int64, nullable: true}, created_at: {type: integer, format: int64}, revoked_at: {type: integer, format: int64, nullable: true}}}
+    Work: {type: object, properties: {items: {type: array, items: {type: object, properties: {id: {type: string}, kind: {type: string, enum: [theme, task, decision]}, title: {type: string}, status: {type: string}, progress: {type: number, nullable: true}, links: {type: array, items: {$ref: "#/components/schemas/Cite"}}, needs_user: {type: boolean}, updated_at: {type: integer, format: int64}}}}, source: {type: string}, assignee_resolved: {type: boolean}}}
+    Settings: {type: object, properties: {scratchpad_placement: {type: string, enum: [drawer, aside]}}}
+    Machine: {type: object, properties: {machine_id: {type: string}, label: {type: string}, source: {type: string, enum: [objects, ssh_config]}, ssh_user: {type: string}, reachable: {type: boolean, nullable: true}}}
+    TerminalSession: {type: object, properties: {id: {type: string}, thread_ref: {type: string, nullable: true}, machine_id: {type: string}, ssh_user: {type: string}, state: {type: string, enum: [open, stale, closed]}, opened_by: {type: string}, opened_at: {type: integer, format: int64}, ended_at: {type: integer, format: int64, nullable: true}, ws_path: {type: string}}}
+    Proposal: {type: object, properties: {id: {type: string}, thread_ref: {type: string}, session_id: {type: string, nullable: true}, machine_id: {type: string}, command: {type: string}, command_digest: {type: string}, reason: {type: string}, requested_by: {type: string}, state: {type: string, enum: [pending, approved, denied, superseded, expired]}, item_id: {type: string}, created_at: {type: integer, format: int64}, expires_at: {type: integer, format: int64}, supersedes: {type: string, nullable: true}}}
+    Run: {type: object, description: "Field names match actionrun's Run JSON so one renderer serves both.", properties: {run_id: {type: string}, machine: {type: string}, command: {type: string}, state: {type: string, enum: [running, exited, failed, timeout, cancelled]}, exit_code: {type: integer, nullable: true}, output: {type: string, description: "redacted, ANSI-stripped, tail <= 64 KiB"}, requested_by: {type: string}, reason: {type: string}, op_digest: {type: string}, started_at: {type: integer, format: int64}, ended_at: {type: integer, format: int64, nullable: true}, duration_ms: {type: integer, nullable: true}, truncated: {type: boolean}}}
+    Event:
+      type: object
+      required: [type, thread_ref, at]
+      description: |
+        Flat envelope. Payload fields sit beside type/thread_ref/at. Because `type` names the event, the activity
+        record's own type is `activity_type` inside an `activity` event.
+      discriminator: {propertyName: type}
+      properties:
+        type: {type: string, enum: [message, delta, tool, end, delivery, card, plan, activity, panel, topic, bookmark, workspace, context, thread, terminal.run]}
+        thread_ref: {type: string}
+        at: {type: integer, format: int64}
+        message: {description: "existing app-agent frames, unchanged"}
+        card: {description: "{item_id, kind, state}"}
+        plan: {description: "{plan_id, revision, progress}"}
+        activity: {description: "{seq, activity_type, actor, cite, payload?}"}
+        panel: {description: "{panel: plan|topics|bookmarks|work|activity|approvals|files|doc, ref?, reason, source: agent|system}"}
+        topic_bookmark_workspace: {description: "{op: add|remove|share|unshare, id}"}
+        context: {description: "{used, window, model}"}
+        thread: {description: "{blocked, unread, plan_progress, pinned}"}
+        terminal.run: {description: "{run_id, state, chunk_seq, chunk<=4KiB ANSI-stripped, exit_code?, duration_ms?}"}
