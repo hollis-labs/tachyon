@@ -72,7 +72,7 @@ function Bubble({ m, agentLabel, marks }: { m: ChatMessage; agentLabel: string; 
     </div>
   )
   return (
-    <article id={m.id} data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} className={`group relative mx-auto w-full min-w-0 max-w-[760px] ${mine ? 'flex flex-col items-end' : ''}`}>
+    <article id={m.id} data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} tabIndex={-1} className={`group relative mx-auto w-full min-w-0 max-w-[760px] focus-visible:outline-none ${mine ? 'flex flex-col items-end' : ''}`}>
       {bookmarked && <Bookmark aria-label="Bookmarked" className="absolute -left-[18px] top-[3px] size-3 text-fg-secondary max-sm:hidden" />}
       {mine ? (
         <div className={`max-w-[70%] rounded-panel bg-surface px-3 py-2 text-control ${sending ? 'opacity-60' : ''}`}>

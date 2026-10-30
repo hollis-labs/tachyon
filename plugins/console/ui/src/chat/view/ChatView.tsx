@@ -8,7 +8,7 @@ import type { ChatThread } from '../types'
 import { ThreadList } from './ThreadList'
 import { Header } from '../workbench/Header'
 import { Spine, type StartOption } from '../workbench/Spine'
-import { useNarrow } from './useNarrow'
+import { useMobile, useNarrow } from './useNarrow'
 
 export interface ChatViewProps {
   threads: ChatThread[] | null
@@ -50,12 +50,13 @@ export function ChatView(props: ChatViewProps) {
 
 function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, startOptions, onTogglePin, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
+  const mobile = useMobile()
   const aside = useAside()
   const scratchPlacement = useScratchPlacement()
   const detailsOverlay = aside.open
 
   // Esc returns to the list on a narrow screen, unless it is meant for a field or an open sheet.
-  const inThread = narrow && !!activeThread && !!onBack
+  const inThread = mobile && !!activeThread && !!onBack
   useEffect(() => {
     if (!inThread) return
     const on = (e: KeyboardEvent) => {
@@ -98,7 +99,7 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
   }
 
   // Below 1024px the conversation list is the home screen: no empty pane, no hidden toggle to find.
-  if (narrow && !activeThread) {
+  if (mobile && !activeThread) {
     return (
       <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-bg">
         <ChatFreshness />
@@ -109,10 +110,10 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
 
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-bg">
-      {!narrow && <div className="flex w-72 shrink-0 border-r border-border-subtle">{spine}</div>}
+      {!mobile && <div className={`flex shrink-0 border-r border-border-subtle ${narrow ? 'w-60' : 'w-72'}`}>{spine}</div>}
       <main aria-label="Conversation" className="flex min-w-0 flex-1 flex-col">
         {activeThread ? (
-          <Header thread={activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={narrow ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} />
+          <Header thread={activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} />
         ) : (
           <header className="h-12 shrink-0 border-b border-border-subtle" />
         )}
