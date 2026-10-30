@@ -73,6 +73,9 @@ func NewHTTPSource(addr, tokenFile string) (Source, error) {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
+// errNotFound marks a 404 from Tether, so a route it never shipped can be told from a failing one.
+var errNotFound = errors.New("Tether answered HTTP 404")
+
 func (s *httpSource) get(ctx context.Context, path string, q url.Values, out any) error {
 	u := s.base + path
 	if len(q) > 0 {
@@ -89,6 +92,9 @@ func (s *httpSource) get(ctx context.Context, path string, q url.Values, out any
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
+		if res.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("%w for %s", errNotFound, path)
+		}
 		return fmt.Errorf("Tether answered HTTP %d for %s", res.StatusCode, path)
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, maxBody+1))
@@ -174,6 +180,9 @@ func (s *httpSource) Read(ctx context.Context, path string) (string, error) {
 func (s *httpSource) LastPlan(ctx context.Context) (string, error) {
 	var raw json.RawMessage
 	if err := s.get(ctx, "/catalog/history", url.Values{"limit": {"1"}}, &raw); err != nil {
+		if errors.Is(err, errNotFound) {
+			return "", nil // this Tether has no catalog history: no plan token, and not a failed pass
+		}
 		return "", err
 	}
 	for _, it := range list(raw, "plans", "items", "entries", "history") {
