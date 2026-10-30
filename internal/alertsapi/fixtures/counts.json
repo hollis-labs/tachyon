@@ -1,0 +1,14 @@
+{
+  "unread": 9,
+  "active": 11,
+  "needs_you": 5,
+  "by_severity": {
+    "debug": 0,
+    "info": 1,
+    "notice": 2,
+    "warning": 4,
+    "error": 3,
+    "critical": 1
+  },
+  "seq": 116
+}
