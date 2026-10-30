@@ -145,9 +145,9 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
     return (
       <div className={`p-6 ${className ?? ''}`} role="status" aria-label="Loading pull request" data-testid="pr-workspace-loading">
         <div className="space-y-2" aria-hidden>
-          <div className="h-3 w-1/3 animate-pulse bg-zinc-800" />
-          <div className="h-2 w-1/4 animate-pulse bg-zinc-800" />
-          <div className="mt-6 h-40 animate-pulse bg-zinc-900" />
+          <div className="h-3 w-1/3 animate-pulse bg-surface" />
+          <div className="h-2 w-1/4 animate-pulse bg-surface" />
+          <div className="mt-6 h-40 animate-pulse bg-surface" />
         </div>
       </div>
     )
@@ -156,8 +156,8 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
     const err = ws.load.status === 'error' ? ws.load : { message: 'Unknown error', code: undefined }
     return (
       <div className={`p-6 ${className ?? ''}`} role="alert" data-testid="pr-workspace-error">
-        <h1 className="font-mono text-sm uppercase tracking-widest text-red-300">{err.code === 'not_found' ? 'Pull request not found' : 'Could not load pull request'}</h1>
-        <p className="mt-2 text-[13px] text-zinc-400">{err.message}</p>
+        <h1 className="font-mono text-sm uppercase tracking-widest text-danger">{err.code === 'not_found' ? 'Pull request not found' : 'Could not load pull request'}</h1>
+        <p className="mt-2 text-[13px] text-fg-muted">{err.message}</p>
         <Btn className="mt-4" onClick={ws.reload}>Retry</Btn>
       </div>
     )
@@ -174,17 +174,17 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
 
   return (
     <div className={`flex h-full min-h-[480px] flex-col bg-bg ${className ?? ''}`} data-testid="pr-workspace">
-      <header className="shrink-0 border-b border-zinc-800/80 px-4 pb-0 pt-3">
+      <header className="shrink-0 border-b border-border px-4 pb-0 pt-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <GitPullRequest className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
-          <h1 className="min-w-0 text-[15px] font-medium text-zinc-100 [overflow-wrap:anywhere]">
-            {pr.title} <span className="font-mono text-zinc-500">#{pr.ref.number}</span>
+          <GitPullRequest className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />
+          <h1 className="min-w-0 text-[15px] font-medium text-fg [overflow-wrap:anywhere]">
+            {pr.title} <span className="font-mono text-fg-faint">#{pr.ref.number}</span>
           </h1>
           <Pill tone={stateTone(pr)}>{pr.draft && pr.state === 'open' ? 'draft' : pr.state}</Pill>
           <span className="ml-auto flex items-center gap-2">
             <Btn onClick={ws.reload} disabled={mergeBusy} aria-label="Refresh pull request"><RefreshCw className="inline h-3 w-3" /></Btn>
             {href && (
-              <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 border border-zinc-700 px-3 font-mono text-[11px] uppercase tracking-widest text-zinc-200 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">
+              <a href={href} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 border border-border px-3 font-mono text-[11px] uppercase tracking-widest text-fg hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                 {hostLabel(prRef.repo.host)} <ExternalLink className="h-3 w-3" />
               </a>
             )}
@@ -196,14 +196,14 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
             {!readOnly && <Btn disabled={mergeBusy} onClick={() => { setReviewing(false); setMerging(m => !m) }} aria-expanded={merging}>Merge PR</Btn>}
           </span>
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-zinc-400">
-          <span className="font-mono text-zinc-500">{prRef.repo.owner}/{prRef.repo.name}</span>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-fg-muted">
+          <span className="font-mono text-fg-faint">{prRef.repo.owner}/{prRef.repo.name}</span>
           <Author user={pr.author} />
-          <span className="font-mono text-zinc-300 [overflow-wrap:anywhere]">{pr.headBranch} {'→'} {pr.baseBranch}</span>
+          <span className="font-mono text-fg [overflow-wrap:anywhere]">{pr.headBranch} {'→'} {pr.baseBranch}</span>
           {sizeText(pr) && <span className="font-mono">{sizeText(pr)}</span>}
           <Pill tone={merge.tone}>{merge.text}</Pill>
           <Pill tone={checksTone(checks)}>{checksText(checks)}</Pill>
-          <span className="text-zinc-400">{reviewText(pr.reviews)}</span>
+          <span className="text-fg-muted">{reviewText(pr.reviews)}</span>
         </div>
         <nav className="mt-2 flex gap-0 font-mono text-[11px] uppercase tracking-widest" aria-label="Workspace sections" role="tablist">
           {([
@@ -217,7 +217,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
               type="button"
               aria-selected={tab === id}
               onClick={() => setTab(id)}
-              className={`-mb-px border-b-2 px-3 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-300 ${tab === id ? 'border-amber-300 text-zinc-100' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+              className={`-mb-px border-b-2 px-3 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${tab === id ? 'border-fg text-fg' : 'border-transparent text-fg-faint hover:text-fg'}`}
             >
               {label}
             </button>
@@ -225,7 +225,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
         </nav>
       </header>
 
-      {mergeSuccess && <p role="status" className="border-b border-zinc-800 px-4 py-3 text-[13px] text-emerald-300">{mergeSuccess}</p>}
+      {mergeSuccess && <p role="status" className="border-b border-border px-4 py-3 text-[13px] text-success">{mergeSuccess}</p>}
       {merging && !readOnly && <MergePanel pr={pr} onBusyChange={setMergeBusy} onClose={() => setMerging(false)} onSubmit={async input => {
         const result = await ws.mergePr(input)
         if (result.ok) setMergeSuccess(`Pull request #${pr.ref.number} merged into ${pr.baseBranch}.`)
@@ -238,11 +238,11 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
 
       {tab === 'files' && (
         <div className="flex min-h-0 flex-1">
-          <aside className="hidden w-72 shrink-0 flex-col border-r border-zinc-800/80 md:flex">
+          <aside className="hidden w-72 shrink-0 flex-col border-r border-border md:flex">
             <FileTree files={files} active={active} threads={threadsByPath} onSelect={select} />
           </aside>
           <div className="min-w-0 flex-1 overflow-auto" data-testid="forge-diff-scroll">
-            <div className="flex flex-wrap items-center gap-3 border-b border-zinc-800/80 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-3 border-b border-border px-3 py-2">
               <div className="flex" role="group" aria-label="Diff layout">
                 {(['unified', 'split'] as DiffMode[]).map((m) => (
                   <button
@@ -250,7 +250,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
                     type="button"
                     aria-pressed={mode === m}
                     onClick={() => setMode(m)}
-                    className={`h-7 border px-3 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 ${mode === m ? 'border-amber-300 bg-amber-300/10 text-amber-200' : 'border-zinc-700 text-zinc-400 hover:text-zinc-200'}`}
+                    className={`h-7 border px-3 font-mono text-[11px] uppercase tracking-widest focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${mode === m ? 'border-fg bg-surface text-fg-muted' : 'border-border text-fg-muted hover:text-fg'}`}
                   >
                     {m}
                   </button>
@@ -259,13 +259,13 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
               <Btn className="!h-7" onClick={() => (allOpen ? setClosedFiles(new Set(files.map((f) => f.path))) : setClosedFiles(new Set()))}>
                 {allOpen ? 'Collapse all' : 'Expand all'}
               </Btn>
-              <span className="font-mono text-[11px] text-zinc-500">
-                {files.length} file{files.length === 1 ? '' : 's'} · <span className="text-emerald-400">+{files.reduce((n, f) => n + f.additions, 0)}</span>{' '}
-                <span className="text-red-400">{'−'}{files.reduce((n, f) => n + f.deletions, 0)}</span>
+              <span className="font-mono text-[11px] text-fg-faint">
+                {files.length} file{files.length === 1 ? '' : 's'} · <span className="text-success">+{files.reduce((n, f) => n + f.additions, 0)}</span>{' '}
+                <span className="text-danger">{'−'}{files.reduce((n, f) => n + f.deletions, 0)}</span>
               </span>
               {readOnly && <Badge>read only</Badge>}
             </div>
-            {files.length === 0 && <p className="px-4 py-6 text-[13px] text-zinc-500">No file changes in this pull request.</p>}
+            {files.length === 0 && <p className="px-4 py-6 text-[13px] text-fg-faint">No file changes in this pull request.</p>}
             {files.map((f) => (
               <FileDiffView
                 key={f.path}
@@ -291,14 +291,14 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
         <div className="min-h-0 flex-1 overflow-auto" data-testid="forge-conversation">
           <div className="max-w-4xl">
             <Section title="Description">
-              <div className="px-4 py-3 text-[13px] leading-relaxed text-zinc-300 [overflow-wrap:anywhere]">
-                {pr.body?.trim() ? <Linkified text={pr.body} preserveWhitespace /> : <span className="text-zinc-500">No description provided.</span>}
+              <div className="px-4 py-3 text-[13px] leading-relaxed text-fg [overflow-wrap:anywhere]">
+                {pr.body?.trim() ? <Linkified text={pr.body} preserveWhitespace /> : <span className="text-fg-faint">No description provided.</span>}
               </div>
-              {commits.length > 0 && <p className="border-t border-zinc-800/60 px-4 py-2 font-mono text-[11px] text-zinc-500">{commits.length} commit{commits.length === 1 ? '' : 's'}, latest {ago(Date.parse(commits[commits.length - 1].authoredAt), now)}</p>}
+              {commits.length > 0 && <p className="border-t border-border px-4 py-2 font-mono text-[11px] text-fg-faint">{commits.length} commit{commits.length === 1 ? '' : 's'}, latest {ago(Date.parse(commits[commits.length - 1].authoredAt), now)}</p>}
             </Section>
             <Section title={`Timeline ${convo.length + postingIssue.length}`}>
-              <div className="divide-y divide-zinc-800/60">
-                {convo.length + postingIssue.length === 0 && <p className="px-4 py-3 text-[12px] text-zinc-500">No comments yet.</p>}
+              <div className="divide-y divide-border">
+                {convo.length + postingIssue.length === 0 && <p className="px-4 py-3 text-[12px] text-fg-faint">No comments yet.</p>}
                 {convo.map((e) =>
                   e.type === 'comment' ? (
                     <CommentItem key={e.comment.id} c={e.comment} />
@@ -308,7 +308,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
                         <Author user={e.review.author} />
                         <Pill tone={reviewTone(e.review)}>{e.review.state.replace('_', ' ')}</Pill>
                       </div>
-                      {e.review.body && <div className="mt-1 text-[13px] text-zinc-300 [overflow-wrap:anywhere]"><Linkified text={e.review.body} preserveWhitespace /></div>}
+                      {e.review.body && <div className="mt-1 text-[13px] text-fg [overflow-wrap:anywhere]"><Linkified text={e.review.body} preserveWhitespace /></div>}
                     </div>
                   ),
                 )}
@@ -338,23 +338,23 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
           <div className="max-w-4xl">
             <Section title={`Checks ${pr.checks.length}`}>
               {pr.checks.length === 0 ? (
-                <p className="px-4 py-3 text-[12px] text-zinc-500">No checks reported for this pull request.</p>
+                <p className="px-4 py-3 text-[12px] text-fg-faint">No checks reported for this pull request.</p>
               ) : (
-                <ul className="divide-y divide-zinc-800/60">
+                <ul className="divide-y divide-border">
                   {pr.checks.map((c) => (
                     <li key={c.id} className="flex items-center gap-3 px-4 py-2 text-[13px]">
-                      <span className="min-w-0 flex-1 truncate text-zinc-200">{c.name}</span>
+                      <span className="min-w-0 flex-1 truncate text-fg">{c.name}</span>
                       <Pill tone={checkTone(c)}>{c.status !== 'completed' ? c.status.replace('_', ' ') : (c.conclusion ?? 'done').replace('_', ' ')}</Pill>
-                      {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-zinc-200" aria-label={`Open ${c.name} on the forge`}><ExternalLink className="h-3.5 w-3.5" /></a>}
+                      {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-fg-faint hover:text-fg" aria-label={`Open ${c.name} on the forge`}><ExternalLink className="h-3.5 w-3.5" /></a>}
                     </li>
                   ))}
                 </ul>
               )}
             </Section>
             <Section title="Merge state">
-              <div className="space-y-1 px-4 py-3 text-[13px] text-zinc-300">
+              <div className="space-y-1 px-4 py-3 text-[13px] text-fg">
                 <Pill tone={merge.tone}>{merge.text}</Pill>
-                {!readOnly && <p className="text-[12px] text-zinc-500">Use Merge PR above to choose a merge method and confirm. GitHub enforces repository rules.</p>}
+                {!readOnly && <p className="text-[12px] text-fg-faint">Use Merge PR above to choose a merge method and confirm. GitHub enforces repository rules.</p>}
               </div>
             </Section>
           </div>
@@ -377,8 +377,8 @@ function reviewTone(r: Review): StatusTone {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-b border-zinc-800/80">
-      <h2 className={`${LABEL} border-b border-zinc-800/60 px-4 py-2`}>{title}</h2>
+    <section className="border-b border-border">
+      <h2 className={`${LABEL} border-b border-border px-4 py-2`}>{title}</h2>
       {children}
     </section>
   )
