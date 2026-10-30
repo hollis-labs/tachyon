@@ -156,9 +156,24 @@ export interface HistoryEvent {
   reason?: string
   mini?: { title: string; risk?: string; group?: string }
 }
+export interface AuditEvent {
+  event_id: string
+  ts: string
+  kind: string
+  actor: { ref: string; label: string; assurance?: string }
+  decision?: string
+  note?: string
+  reason?: string
+}
+export interface HistoryFacets {
+  requesters: { id: string; label: string; count: number }[]
+  statuses: { status: string; count: number }[]
+}
 export interface HistoryPage {
   events: HistoryEvent[]
   next_cursor?: string
+  // Computed over the current filter except each facet's own, so a menu still lists the other choices.
+  facets?: HistoryFacets
 }
 export class ApprovalError extends Error {
   constructor(
@@ -245,7 +260,10 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       return read<ApprovalInbox>(`/inbox${query.size ? `?${query}` : ""}`, fresh)
     },
     get,
-    history(opts: { q?: string; status?: string; cursor?: string; limit?: number } = {}) {
+    audit(id: string) {
+      return read<{ item_id: string; events: AuditEvent[] }>(`/items/${encodeURIComponent(id)}/audit`, true)
+    },
+    history(opts: { q?: string; status?: string; requester?: string; cursor?: string; limit?: number } = {}) {
       const query = new URLSearchParams(Object.entries(opts).filter((e): e is [string, string | number] => !!e[1]).map(([k, v]) => [k, String(v)]))
       return read<HistoryPage>(`/history${query.size ? `?${query}` : ""}`, true)
     },

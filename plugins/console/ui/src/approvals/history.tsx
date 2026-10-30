@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@hollis-labs/design-components"
 import { Check, CircleDot, Clock, X } from "lucide-react"
-import type { ApprovalClient, HistoryEvent } from "./client"
+import type { ApprovalClient, HistoryEvent, HistoryFacets } from "./client"
 import { ago } from "./parts"
 
 const VERB: Record<string, string> = {
@@ -33,24 +33,26 @@ function dayLabel(at: string, now = new Date()) {
 }
 
 // History: what was decided, by whom and why, newest first, grouped under day pills.
-export function HistoryTimeline({ client, search, onOpen }: { client: ApprovalClient; search: string; onOpen(itemId: string): void }) {
+export function HistoryTimeline({ client, search, status, requester, onOpen, onFacets }: { client: ApprovalClient; search: string; status: string; requester: string; onOpen(itemId: string): void; onFacets?(f: HistoryFacets | undefined): void }) {
   const [events, setEvents] = useState<HistoryEvent[] | null>(null)
   const [next, setNext] = useState<string>()
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const filtered = !!(status || requester.trim() || search.trim())
   const load = useCallback(async (cursor?: string) => {
     setLoading(true)
     setError("")
     try {
-      const page = await client.history({ q: search.trim(), cursor })
+      const page = await client.history({ q: search.trim(), status, requester: requester.trim(), cursor })
       setEvents((cur) => (cursor && cur ? [...cur, ...page.events] : page.events))
       setNext(page.next_cursor)
+      if (!cursor) onFacets?.(page.facets)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load history")
     } finally {
       setLoading(false)
     }
-  }, [client, search])
+  }, [client, search, status, requester, onFacets])
   useEffect(() => { void load() }, [load])
   const days: { label: string; items: HistoryEvent[] }[] = []
   for (const e of events ?? []) {
@@ -67,7 +69,7 @@ export function HistoryTimeline({ client, search, onOpen }: { client: ApprovalCl
         </div>
       )}
       {events && !events.length && !error && (
-        <p className="py-10 text-center dash-body text-fg-faint">{search ? "No decisions match." : "No decisions yet."}</p>
+        <p className="py-10 text-center dash-body text-fg-faint">{filtered ? "Nothing matches these filters." : "No decisions yet."}</p>
       )}
       {!events && !error && <p className="py-10 text-center dash-body text-fg-faint">Loading history…</p>}
       <ol aria-label="Decision history" className="space-y-5">

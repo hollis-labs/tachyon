@@ -303,7 +303,7 @@ describe("held decisions", () => {
 describe("history", () => {
   it("shows decisions under day pills with who and why, and opens an item", async () => {
     const now = new Date().toISOString()
-    const history = vi.fn().mockResolvedValue({ events: [
+    const history = vi.fn().mockResolvedValue({ facets: { requesters: [{ id: "agent-one", label: "agent-one", count: 3 }, { id: "agent-two", label: "agent-two", count: 1 }], statuses: [] }, events: [
       { event_id: "e1", item_id: "req-1", kind: "resolved", status: "approved", at: now, actor: { ref: "s", label: "You" }, mini: { title: "Create a session" }, note: "Looks right" },
       { event_id: "e2", item_id: "req-2", kind: "expired", status: "expired", at: now, actor: { ref: "", label: "System" }, mini: { title: "Rotate token" } },
     ] })
@@ -315,7 +315,19 @@ describe("history", () => {
     expect(list.textContent).toContain("Approved · Create a session")
     expect(list.textContent).toContain("Looks right")
     expect(list.textContent).toContain("Expired · Rotate token")
-    expect(history).toHaveBeenCalledWith({ q: "", cursor: undefined })
+    expect(history).toHaveBeenCalledWith({ q: "", status: "", requester: "", cursor: undefined })
+    // Filters go to the server: a decision menu and a requester field.
+    fireEvent.click(screen.getByRole("button", { name: "Filter by requester" }))
+    await act(async () => {})
+    // Requesters come from the server's facets when present.
+    expect(screen.getByRole("menuitem", { name: "agent-two" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("menuitem", { name: "agent-one" }))
+    await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "", requester: "agent-one", cursor: undefined }))
+    fireEvent.click(screen.getByRole("button", { name: "Filter by decision" }))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole("menuitem", { name: "Denied" }))
+    await waitFor(() => expect(history).toHaveBeenLastCalledWith({ q: "", status: "denied", requester: "agent-one", cursor: undefined }))
+    expect(screen.getByRole("button", { name: "Filter by decision" }).textContent).toBe("Decision: Denied")
   })
 })
 
@@ -589,5 +601,28 @@ describe("batch approve", () => {
     expect(batchResolve).toHaveBeenCalledWith([a, b], "approved")
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
     expect(screen.queryByText(/left in the queue/)).toBeNull()
+  })
+})
+
+describe("audit trail", () => {
+  it("loads a decided item's events only when opened", async () => {
+    const decided: ApprovalItem = { ...item, state: "resolved", terminal_outcome: { item_id: "req-1", state: "resolved", resolution: { response: { kind: "approval", decision: "approved" }, resolved_at: "2026-10-30T10:00:00Z", participant: { principal_ref: "operator", authority: "queue", assurance: "participant" } } } as never }
+    const audit = vi.fn().mockResolvedValue({ item_id: "req-1", events: [
+      { event_id: "a1", ts: "2026-10-30T09:00:00Z", kind: "presented", actor: { ref: "s", label: "You" } },
+      { event_id: "a2", ts: "2026-10-30T10:00:00Z", kind: "resolved", decision: "approved", note: "Looks right", actor: { ref: "s", label: "You" } },
+    ] })
+    const client = { present: vi.fn().mockResolvedValue(decided), decide: vi.fn(), audit } as unknown as ApprovalClient
+    const { container } = render(<ApprovalDialog id="req-1" initial={decided} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    const summary = await screen.findByText("Audit trail")
+    expect(audit).not.toHaveBeenCalled()
+    const details = summary.closest("details") as HTMLDetailsElement
+    details.open = true
+    fireEvent(details, new Event("toggle"))
+    const list = await screen.findByRole("list", { name: "Audit trail" })
+    expect(list.textContent).toContain("Presented by you")
+    expect(list.textContent).toContain("Approved by you")
+    expect(list.textContent).toContain("Looks right")
+    expect(audit).toHaveBeenCalledWith("req-1")
+    expect(container).toBeTruthy()
   })
 })
