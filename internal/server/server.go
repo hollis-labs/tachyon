@@ -29,6 +29,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/approvalsapi"
 	"github.com/hollis-labs/tachyon/internal/carddelivery"
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
@@ -70,6 +71,8 @@ type Config struct {
 	// ChatClientContext sends shared workspace items to the app agent as client_context on each
 	// turn (TACHYON_CHAT_CLIENT_CONTEXT=1). Off until Nanite confirms the field.
 	ChatClientContext bool
+	// ApprovalsStubs mounts the fixture-backed Approvals backend contract (TACHYON_APPROVALS_STUBS=1) for GUI development.
+	ApprovalsStubs bool
 	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
 	AppAgentConfigFile          string
 	ApprovalQueueURL            string
@@ -582,6 +585,15 @@ func (s *Server) Routes() http.Handler {
 		// actually sends it; RequireOperator reads that cookie.
 		mux.HandleFunc("GET "+approvals.ElevationSettingsPath, elevation.Handler)
 		mux.Handle("PUT "+approvals.ElevationSettingsPath, operator.RequireOperator(http.HandlerFunc(elevation.Handler)))
+	}
+	// Approvals backend contract stubs (dev only). Mounted route by route on the inbox prefix, so the real
+	// session, status, elevate and de-elevate routes keep answering. Writes need an operator session.
+	if s.cfg.ApprovalsStubs {
+		stub := approvalsapi.Stub{}.Handler()
+		for _, route := range approvalsapi.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+approvalsapi.Prefix+path, operator.RequireOperator(stub))
+		}
 	}
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})

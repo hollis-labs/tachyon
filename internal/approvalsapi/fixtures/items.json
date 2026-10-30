@@ -1,0 +1,1282 @@
+{
+  "ap_cmd_deploy": {
+    "contract_version": "1",
+    "item_id": "ap_cmd_deploy",
+    "state": "presented",
+    "revision": 2,
+    "presented_projection_revision": 2,
+    "request_snapshot": {
+      "kind": "approval",
+      "title": "Run deploy on staging",
+      "summary": "Deploys build 4412 to staging with the registered deploy action.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "medium",
+      "expires_at": "2026-10-30T03:30:00Z",
+      "effects": [
+        {
+          "target": "action:deploy-staging",
+          "op": "run",
+          "summary": "Run the registered deploy action"
+        }
+      ],
+      "action": {
+        "id": "deploy-staging",
+        "machine": "worker-a"
+      }
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "approval",
+    "title": "Run deploy on staging",
+    "summary": "Deploys build 4412 to staging with the registered deploy action.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-cmd_depl",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "medium",
+    "risk_reasons": [
+      "command_exec",
+      "effects_present"
+    ],
+    "group": "command",
+    "batchable": false,
+    "batch_blockers": [
+      "risk_not_low",
+      "command_exec",
+      "irreversible_effect"
+    ],
+    "effect_classes": [
+      "run"
+    ],
+    "expires_at": "2026-10-30T03:30:00Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "waiting",
+    "evidence": [
+      {
+        "ref": "torque:CW-20261030-0034",
+        "label": "Task CW-20261030-0034",
+        "kind": "torque"
+      },
+      {
+        "ref": "path:/srv/app/deploy.log",
+        "label": "Last deploy log",
+        "kind": "path"
+      }
+    ],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": "Approve: the build passed CI and staging is the dev-labelled target.",
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_change_a": {
+    "contract_version": "1",
+    "item_id": "ap_change_a",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Update tool server timeout",
+      "summary": "Raise the github tool server timeout from 30s to 60s.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T05:00:00Z",
+      "effects": [
+        {
+          "target": "catalog:tool_servers/github",
+          "op": "update",
+          "summary": "timeout 30s -> 60s"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "card.approval",
+    "title": "Update tool server timeout",
+    "summary": "Raise the github tool server timeout from 30s to 60s.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-change_a",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": true,
+    "batch_blockers": [],
+    "effect_classes": [
+      "update"
+    ],
+    "expires_at": "2026-10-30T05:00:00Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [
+      {
+        "ref": "caster://hollis/catalog/tool_servers/github",
+        "label": "github tool server",
+        "kind": "caster"
+      }
+    ],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_change_b": {
+    "contract_version": "1",
+    "item_id": "ap_change_b",
+    "state": "presented",
+    "revision": 4,
+    "presented_projection_revision": 4,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Create review prompt",
+      "summary": "Add the prompt library entry review-checklist.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T03:46:40Z",
+      "effects": [
+        {
+          "target": "catalog:prompts/review-checklist",
+          "op": "create",
+          "summary": "new prompt"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "card.approval",
+    "title": "Create review prompt",
+    "summary": "Add the prompt library entry review-checklist.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-change_b",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": true,
+    "batch_blockers": [],
+    "effect_classes": [
+      "create"
+    ],
+    "expires_at": "2026-10-30T03:46:40Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_change_c": {
+    "contract_version": "1",
+    "item_id": "ap_change_c",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Restart the collector",
+      "summary": "Restart the agents collector after a config change.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T03:01:30Z",
+      "effects": [
+        {
+          "target": "service:agents-collector",
+          "op": "restart",
+          "summary": "restart"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "card.approval",
+    "title": "Restart the collector",
+    "summary": "Restart the agents collector after a config change.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-change_c",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": true,
+    "batch_blockers": [],
+    "effect_classes": [
+      "restart"
+    ],
+    "expires_at": "2026-10-30T03:01:30Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": "Expires in 90 seconds.",
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_change_noeffects": {
+    "contract_version": "1",
+    "item_id": "ap_change_noeffects",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "approval",
+      "title": "Plain producer approval",
+      "summary": "A producer asks for approval without declaring effects.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T03:53:20Z",
+      "effects": []
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "approval",
+    "title": "Plain producer approval",
+    "summary": "A producer asks for approval without declaring effects.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-change_n",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [],
+    "group": "change",
+    "batchable": false,
+    "batch_blockers": [
+      "no_effects_declared"
+    ],
+    "effect_classes": [],
+    "expires_at": "2026-10-30T03:53:20Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_change_archive": {
+    "contract_version": "1",
+    "item_id": "ap_change_archive",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Archive stale launches",
+      "summary": "Archive two launches that have not run in 90 days.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T03:53:20Z",
+      "effects": [
+        {
+          "target": "catalog:launches/old-a",
+          "op": "archive",
+          "summary": "archive"
+        },
+        {
+          "target": "catalog:launches/old-b",
+          "op": "archive",
+          "summary": "archive"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "card.approval",
+    "title": "Archive stale launches",
+    "summary": "Archive two launches that have not run in 90 days.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-change_a",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": false,
+    "batch_blockers": [
+      "irreversible_effect"
+    ],
+    "effect_classes": [
+      "archive"
+    ],
+    "expires_at": "2026-10-30T03:53:20Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_destructive_med": {
+    "contract_version": "1",
+    "item_id": "ap_destructive_med",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Delete three scratch environments",
+      "summary": "Permanently delete env-scratch-1, -2 and -3.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "medium",
+      "expires_at": "2026-10-30T03:56:40Z",
+      "effects": [
+        {
+          "target": "env:scratch-1",
+          "op": "delete",
+          "summary": "delete"
+        },
+        {
+          "target": "env:scratch-2",
+          "op": "delete",
+          "summary": "delete"
+        },
+        {
+          "target": "env:scratch-3",
+          "op": "delete",
+          "summary": "delete"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "card.approval",
+    "title": "Delete three scratch environments",
+    "summary": "Permanently delete env-scratch-1, -2 and -3.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-destruct",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "medium",
+    "risk_reasons": [
+      "destructive",
+      "effects_present"
+    ],
+    "group": "destructive",
+    "batchable": false,
+    "batch_blockers": [
+      "risk_not_low",
+      "destructive",
+      "irreversible_effect"
+    ],
+    "effect_classes": [
+      "delete"
+    ],
+    "expires_at": "2026-10-30T03:56:40Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [
+      {
+        "ref": "env:scratch-1",
+        "label": "scratch-1",
+        "kind": "environment",
+        "note": "idle 40 days"
+      },
+      {
+        "ref": "env:scratch-2",
+        "label": "scratch-2",
+        "kind": "environment"
+      },
+      {
+        "ref": "env:scratch-3",
+        "label": "scratch-3",
+        "kind": "environment",
+        "note": "has 1 open session"
+      }
+    ],
+    "affected_total": 3,
+    "destructive": {
+      "irreversible": true,
+      "summary": "Deletes three environments and their stored state.",
+      "phrase": "DELETE 3 ITEMS"
+    },
+    "alternatives": [
+      {
+        "id": "archive",
+        "label": "Archive instead",
+        "effects": [
+          {
+            "target": "env:scratch-1",
+            "op": "archive",
+            "summary": "archive"
+          },
+          {
+            "target": "env:scratch-2",
+            "op": "archive",
+            "summary": "archive"
+          },
+          {
+            "target": "env:scratch-3",
+            "op": "archive",
+            "summary": "archive"
+          }
+        ]
+      }
+    ],
+    "recommendation": "Archive instead unless the open session is finished.",
+    "reason_required": true,
+    "provider_handoff": false
+  },
+  "ap_destructive_high": {
+    "contract_version": "1",
+    "item_id": "ap_destructive_high",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Purge the old transcript store",
+      "summary": "Permanently purge transcripts older than 2025.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "high",
+      "expires_at": "2026-10-30T03:56:40Z",
+      "effects": [
+        {
+          "target": "store:transcripts",
+          "op": "purge",
+          "summary": "purge"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "card.approval",
+    "title": "Purge the old transcript store",
+    "summary": "Permanently purge transcripts older than 2025.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-destruct",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "high",
+    "risk_reasons": [
+      "destructive",
+      "effects_present",
+      "provider_handoff"
+    ],
+    "group": "destructive",
+    "batchable": false,
+    "batch_blockers": [
+      "risk_not_low",
+      "destructive",
+      "irreversible_effect"
+    ],
+    "effect_classes": [
+      "other"
+    ],
+    "expires_at": "2026-10-30T03:56:40Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [
+      {
+        "ref": "store:transcripts",
+        "label": "Transcript store",
+        "kind": "store",
+        "note": "41,200 rows"
+      }
+    ],
+    "affected_total": 1,
+    "destructive": {
+      "irreversible": true,
+      "summary": "Purges every transcript row older than 2025-01-01.",
+      "phrase": "PURGE TRANSCRIPT STORE"
+    },
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": true,
+    "provider_handoff": true
+  },
+  "ap_question": {
+    "contract_version": "1",
+    "item_id": "ap_question",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "approval",
+      "title": "Which branch should the agent use?",
+      "summary": "The agent needs a choice before it can continue.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T03:56:40Z",
+      "effects": [],
+      "questions": [
+        {
+          "id": "branch",
+          "text": "Branch",
+          "options": [
+            "main",
+            "release/2026-10"
+          ]
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "approval",
+    "title": "Which branch should the agent use?",
+    "summary": "The agent needs a choice before it can continue.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-question",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "interactive"
+    ],
+    "group": "question",
+    "batchable": false,
+    "batch_blockers": [
+      "interactive",
+      "no_effects_declared"
+    ],
+    "effect_classes": [],
+    "expires_at": "2026-10-30T03:56:40Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_form": {
+    "contract_version": "1",
+    "item_id": "ap_form",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "approval",
+      "title": "Project details",
+      "summary": "Fill in the new project's display fields.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T03:56:40Z",
+      "effects": [],
+      "fields": [
+        {
+          "id": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        },
+        {
+          "id": "notes",
+          "kind": "text",
+          "label": "Notes"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "approval",
+    "title": "Project details",
+    "summary": "Fill in the new project's display fields.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-form",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "interactive"
+    ],
+    "group": "form",
+    "batchable": false,
+    "batch_blockers": [
+      "interactive",
+      "no_effects_declared"
+    ],
+    "effect_classes": [],
+    "expires_at": "2026-10-30T03:56:40Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_secret": {
+    "contract_version": "1",
+    "item_id": "ap_secret",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "approval",
+      "title": "Provide the deploy token",
+      "summary": "The deploy action needs a token to continue.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "medium",
+      "expires_at": "2026-10-30T03:56:40Z",
+      "effects": [],
+      "fields": [
+        {
+          "id": "deploy_token",
+          "kind": "secret",
+          "label": "Deploy token",
+          "required": true
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "approval",
+    "title": "Provide the deploy token",
+    "summary": "The deploy action needs a token to continue.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-secret",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "medium",
+    "risk_reasons": [
+      "secret_field",
+      "interactive"
+    ],
+    "group": "secret",
+    "batchable": false,
+    "batch_blockers": [
+      "risk_not_low",
+      "interactive",
+      "has_secret",
+      "no_effects_declared"
+    ],
+    "effect_classes": [],
+    "expires_at": "2026-10-30T03:56:40Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_notice": {
+    "contract_version": "1",
+    "item_id": "ap_notice",
+    "state": "presented",
+    "revision": 1,
+    "presented_projection_revision": 1,
+    "request_snapshot": {
+      "kind": "attention",
+      "title": "Collector reconnected",
+      "summary": "The agents collector reconnected after 4 minutes.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": null,
+      "effects": []
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "attention",
+    "title": "Collector reconnected",
+    "summary": "The agents collector reconnected after 4 minutes.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-notice",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [],
+    "group": "notice",
+    "batchable": false,
+    "batch_blockers": [
+      "kind_not_batchable",
+      "no_effects_declared"
+    ],
+    "effect_classes": [],
+    "expires_at": null,
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_deferred": {
+    "contract_version": "1",
+    "item_id": "ap_deferred",
+    "state": "presented",
+    "revision": 2,
+    "presented_projection_revision": 2,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Update fleet label",
+      "summary": "Relabel worker-b as staging.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T05:00:00Z",
+      "effects": [
+        {
+          "target": "fleet:worker-b",
+          "op": "update",
+          "summary": "label -> staging"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:50:00Z",
+    "updated_at": "2026-10-30T02:50:30Z",
+    "kind": "card.approval",
+    "title": "Update fleet label",
+    "summary": "Relabel worker-b as staging.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-deferred",
+    "asked_at": "2026-10-30T02:50:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": false,
+    "batch_blockers": [
+      "deferred"
+    ],
+    "effect_classes": [
+      "update"
+    ],
+    "expires_at": "2026-10-30T05:00:00Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": "2026-10-30T03:30:00Z",
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false
+  },
+  "ap_h_approved": {
+    "contract_version": "1",
+    "item_id": "ap_h_approved",
+    "state": "resolved",
+    "revision": 3,
+    "presented_projection_revision": 3,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Update planner label",
+      "summary": "Rename planner worker label.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T04:00:00Z",
+      "effects": [
+        {
+          "target": "fleet:planner",
+          "op": "update",
+          "summary": "label"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:45:00Z",
+    "updated_at": "2026-10-30T02:45:30Z",
+    "kind": "card.approval",
+    "title": "Update planner label",
+    "summary": "Rename planner worker label.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-h_approv",
+    "asked_at": "2026-10-30T02:45:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": false,
+    "batch_blockers": [],
+    "effect_classes": [
+      "update"
+    ],
+    "expires_at": "2026-10-30T04:00:00Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "succeeded",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false,
+    "terminal_outcome": {
+      "type": "resolved",
+      "decision": "approved",
+      "resolution_id": "res_01",
+      "resolved_at": "2026-10-30T02:55:00Z",
+      "note": "Looks right",
+      "participant": {
+        "assurance": "operator-token",
+        "label": "You"
+      }
+    }
+  },
+  "ap_h_denied": {
+    "contract_version": "1",
+    "item_id": "ap_h_denied",
+    "state": "resolved",
+    "revision": 3,
+    "presented_projection_revision": 3,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Restart production gateway",
+      "summary": "Restart the prod gateway.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "medium",
+      "expires_at": "2026-10-30T04:00:00Z",
+      "effects": [
+        {
+          "target": "service:gateway",
+          "op": "restart",
+          "summary": "restart"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T02:20:00Z",
+    "updated_at": "2026-10-30T02:20:30Z",
+    "kind": "card.approval",
+    "title": "Restart production gateway",
+    "summary": "Restart the prod gateway.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-h_denied",
+    "asked_at": "2026-10-30T02:20:00Z",
+    "risk": "medium",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": false,
+    "batch_blockers": [],
+    "effect_classes": [
+      "restart"
+    ],
+    "expires_at": "2026-10-30T04:00:00Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false,
+    "terminal_outcome": {
+      "type": "resolved",
+      "decision": "denied",
+      "resolution_id": "res_02",
+      "resolved_at": "2026-10-30T02:40:00Z",
+      "note": "Wrong target",
+      "reason_code": "wrong_target",
+      "participant": {
+        "assurance": "browser-session",
+        "label": "Operator session"
+      }
+    }
+  },
+  "ap_h_expired": {
+    "contract_version": "1",
+    "item_id": "ap_h_expired",
+    "state": "expired",
+    "revision": 2,
+    "presented_projection_revision": 2,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Create nightly report",
+      "summary": "Create a nightly report job.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T02:26:40Z",
+      "effects": [
+        {
+          "target": "job:nightly",
+          "op": "create",
+          "summary": "create"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T01:30:00Z",
+    "updated_at": "2026-10-30T01:30:30Z",
+    "kind": "card.approval",
+    "title": "Create nightly report",
+    "summary": "Create a nightly report job.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-h_expire",
+    "asked_at": "2026-10-30T01:30:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": false,
+    "batch_blockers": [],
+    "effect_classes": [
+      "create"
+    ],
+    "expires_at": "2026-10-30T02:26:40Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false,
+    "terminal_outcome": {
+      "type": "expired",
+      "expired_at": "2026-10-30T02:26:40Z",
+      "reason_code": "not_answered"
+    }
+  },
+  "ap_h_withdrawn": {
+    "contract_version": "1",
+    "item_id": "ap_h_withdrawn",
+    "state": "canceled",
+    "revision": 2,
+    "presented_projection_revision": 2,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Update tool timeout (old)",
+      "summary": "Replaced by a newer request.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T04:00:00Z",
+      "effects": [
+        {
+          "target": "catalog:tool_servers/tether",
+          "op": "update",
+          "summary": "timeout"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T01:53:20Z",
+    "updated_at": "2026-10-30T01:53:50Z",
+    "kind": "card.approval",
+    "title": "Update tool timeout (old)",
+    "summary": "Replaced by a newer request.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-h_withdr",
+    "asked_at": "2026-10-30T01:53:20Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": false,
+    "batch_blockers": [],
+    "effect_classes": [
+      "update"
+    ],
+    "expires_at": "2026-10-30T04:00:00Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false,
+    "terminal_outcome": {
+      "type": "canceled",
+      "canceled_at": "2026-10-30T02:10:00Z",
+      "cause": "withdrawn_by_requester",
+      "reason_code": "superseded_by_new_request"
+    }
+  },
+  "ap_h_answered": {
+    "contract_version": "1",
+    "item_id": "ap_h_answered",
+    "state": "resolved",
+    "revision": 2,
+    "presented_projection_revision": 2,
+    "request_snapshot": {
+      "kind": "approval",
+      "title": "Which environment?",
+      "summary": "Pick the target environment.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T04:00:00Z",
+      "effects": []
+    },
+    "enqueued_at": "2026-10-30T01:40:00Z",
+    "updated_at": "2026-10-30T01:40:30Z",
+    "kind": "approval",
+    "title": "Which environment?",
+    "summary": "Pick the target environment.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-h_answer",
+    "asked_at": "2026-10-30T01:40:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "interactive"
+    ],
+    "group": "question",
+    "batchable": false,
+    "batch_blockers": [],
+    "effect_classes": [],
+    "expires_at": "2026-10-30T04:00:00Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false,
+    "terminal_outcome": {
+      "type": "resolved",
+      "decision": "answered",
+      "resolution_id": "res_03",
+      "resolved_at": "2026-10-30T01:53:20Z",
+      "reply": "Use main"
+    }
+  },
+  "ap_h_batch": {
+    "contract_version": "1",
+    "item_id": "ap_h_batch",
+    "state": "resolved",
+    "revision": 3,
+    "presented_projection_revision": 3,
+    "request_snapshot": {
+      "kind": "card.approval",
+      "title": "Update prompt tags",
+      "summary": "Tag cleanup in the prompt library.",
+      "source": {
+        "app": "tachyon-agents",
+        "agent": "builder-reviewer"
+      },
+      "class": "low",
+      "expires_at": "2026-10-30T04:00:00Z",
+      "effects": [
+        {
+          "target": "catalog:prompts/tags",
+          "op": "update",
+          "summary": "tags"
+        }
+      ]
+    },
+    "enqueued_at": "2026-10-30T01:20:00Z",
+    "updated_at": "2026-10-30T01:20:30Z",
+    "kind": "card.approval",
+    "title": "Update prompt tags",
+    "summary": "Tag cleanup in the prompt library.",
+    "requester": {
+      "id": "builder-reviewer",
+      "label": "Builder Reviewer",
+      "kind": "agent"
+    },
+    "session_ref": "session-h_batch",
+    "asked_at": "2026-10-30T01:20:00Z",
+    "risk": "low",
+    "risk_reasons": [
+      "effects_present"
+    ],
+    "group": "change",
+    "batchable": false,
+    "batch_blockers": [],
+    "effect_classes": [
+      "update"
+    ],
+    "expires_at": "2026-10-30T04:00:00Z",
+    "server_now_ms": 1793329200000,
+    "deferred_until": null,
+    "run_state": "none",
+    "evidence": [],
+    "affected_items": [],
+    "affected_total": 0,
+    "destructive": null,
+    "alternatives": [],
+    "recommendation": null,
+    "reason_required": false,
+    "provider_handoff": false,
+    "terminal_outcome": {
+      "type": "resolved",
+      "decision": "approved",
+      "resolution_id": "res_04",
+      "resolved_at": "2026-10-30T01:36:40Z",
+      "batch_id": "6f1c2b04-7b0c-4f0e-9d2a-0a1b2c3d4e5f",
+      "participant": {
+        "assurance": "operator-token",
+        "label": "You"
+      }
+    }
+  }
+}
