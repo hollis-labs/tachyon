@@ -1,6 +1,6 @@
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SearchInput } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
-import { Segmented } from "../components/segmented"
+import { PillTabs } from "../components/pill-tabs"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
@@ -9,6 +9,7 @@ import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
 import { HistoryTimeline } from "./history"
+import { BatchPanel } from "./batch-panel"
 
 const STATUSES = [["", "All"], ["approved", "Approved"], ["denied", "Denied"], ["answered", "Answered"], ["expired", "Expired"], ["withdrawn", "Withdrawn"]] as const
 
@@ -55,6 +56,8 @@ export function ApprovalsPage() {
   const seen = [...new Set((queue.inbox ? [...queue.inbox.pending, ...queue.inbox.history] : []).map((i) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id))].sort()
   const requesters = facets?.requesters.length ? facets.requesters.map((r) => r.label) : seen
   const pendingCount = queue.inbox?.pending.length ?? 0
+  const historyCount = facets?.statuses.length ? facets.statuses.reduce((n, x) => n + x.count, 0) : undefined
+  const facetCount = (v: string) => (v ? facets?.statuses.find((x) => x.status === v)?.count : historyCount)
   const rows = (queue.inbox?.[view] ?? []).filter((item) =>
     `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
       .toLowerCase()
@@ -67,6 +70,7 @@ export function ApprovalsPage() {
   const current = live.find((r) => r.item_id === selectedId) ?? live[0]
   const restored = queue.restored
   const picked = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => checked.has(i.item_id) && i.batchable)
+  const lowRisk = (queue.inbox?.pending ?? []).filter((i) => i.batchable && i.request_snapshot.class === "low" && !heldIds.has(i.item_id))
   const batchable = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => i.batchable && !heldIds.has(i.item_id))
   const check = (id: string, on: boolean) => {
     setConfirming(undefined)
@@ -106,47 +110,48 @@ export function ApprovalsPage() {
   }
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <PageHeader title={view === "pending" && pendingCount > 0 ? `Approvals · ${pendingCount} pending` : "Approvals"}>
+      <PageHeader title="Approvals">
         <Button variant="ghost" size="sm" aria-label="Refresh approvals" onClick={() => void queue.refresh(true)}>
           <RefreshCw className="h-3 w-3" />
         </Button>
       </PageHeader>
-      <Segmented
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
+        <PillTabs
           label="Approvals view"
           value={view}
-          onChange={setView}
+          onChange={(v) => setView(v as "pending" | "history")}
           items={[
-            { value: "pending" as const, label: "Pending", count: pendingCount },
-            { value: "history" as const, label: "History" },
+            { value: "pending", label: "Pending", count: pendingCount },
+            { value: "history", label: "History", ...(historyCount !== undefined ? { count: historyCount } : {}) },
           ]}
+          className="w-auto"
         />
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
         <div className="dash-search-adapter w-72 max-w-full">
-          <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} slashToFocus={false} />
+          <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} />
         </div>
-        {view === "history" && (
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by decision" />}>
-                Decision: {STATUSES.find(([v]) => v === status)?.[1]}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent aria-label="Filter by decision" align="start" data-dashboard-shape="square" className="w-40">
-                {STATUSES.map(([v, l]) => <DropdownMenuItem key={v} onClick={() => setStatus(v)}>{l}</DropdownMenuItem>)}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by requester" />}>
-                Requested by: {requester || "anyone"}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent aria-label="Filter by requester" align="start" data-dashboard-shape="square" className="w-48">
-                <DropdownMenuItem onClick={() => setRequester("")}>Anyone</DropdownMenuItem>
-                {requesters.map((r) => <DropdownMenuItem key={r} onClick={() => setRequester(r)}>{r}</DropdownMenuItem>)}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {(status || requester) && <Button type="button" variant="ghost" size="sm" onClick={() => { setStatus(""); setRequester("") }}>Clear filters</Button>}
-          </>
-        )}
       </div>
+      {view === "history" && (
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
+          <PillTabs
+            size="sm"
+            label="Filter by decision"
+            value={status}
+            onChange={setStatus}
+            items={STATUSES.map(([v, l]) => ({ value: v, label: l, ...(facetCount(v) !== undefined ? { count: facetCount(v) } : {}) }))}
+            className="w-auto"
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by requester" />}>
+              Requested by: {requester || "anyone"}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent aria-label="Filter by requester" align="start" data-dashboard-shape="square" className="w-48">
+              <DropdownMenuItem onClick={() => setRequester("")}>Anyone</DropdownMenuItem>
+              {requesters.map((r) => <DropdownMenuItem key={r} onClick={() => setRequester(r)}>{r}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {(status || requester) && <Button type="button" variant="ghost" size="sm" onClick={() => { setStatus(""); setRequester("") }}>Clear filters</Button>}
+        </div>
+      )}
       {queue.error && (
         <p role="alert" className="mx-4 mt-2 rounded border border-danger/30 p-3 dash-control text-danger">
           Approval queue unavailable: {queue.error}
@@ -160,35 +165,25 @@ export function ApprovalsPage() {
           aria-label={view === "pending" ? "Pending approvals" : "Approval history"}
           className={`min-h-0 w-full shrink-0 overflow-auto border-r border-border md:block md:w-96 ${showDetail && current ? "hidden" : "block"}`}
         >
-          {view === "pending" && (picked.length > 0 || batchNote) && (
-            <div role="region" aria-label="Batch decision" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 dash-control text-fg-muted">
+          {view === "pending" && (
+            <div className="flex items-center justify-between gap-2 px-4 py-2">
               {picked.length > 0 ? (
-                confirming ? (
-                  <>
-                    <span>
-                      {confirming === "approved" ? "Approve" : "Deny"} {picked.length} {picked.length === 1 ? "request" : "requests"}? This cannot be undone.{" "}
-                      <span className="text-fg-faint">{[...new Set(picked.map((i) => i.request_snapshot.class ?? "medium"))].join(", ")} risk</span>
-                    </span>
-                    <Button size="sm" disabled={batchBusy} onClick={() => void runBatch(confirming)}>{batchBusy ? "Working…" : "Confirm"}</Button>
-                    <Button size="sm" variant="outline" disabled={batchBusy} onClick={() => setConfirming(undefined)}>Back</Button>
-                  </>
-                ) : (
-                  <>
-                    <span>{picked.length} selected</span>
-                    <Button size="sm" onClick={() => { setBatchNote(""); setConfirming("approved") }}>Approve selected</Button>
-                    <Button size="sm" variant="outline" onClick={() => { setBatchNote(""); setConfirming("denied") }}>Deny selected</Button>
-                    {batchable.length > picked.length && (
-                      <Button size="sm" variant="ghost" onClick={() => setChecked(new Set(batchable.map((i: ApprovalItem) => i.item_id)))}>Select all {batchable.length}</Button>
-                    )}
-                    <Button size="sm" variant="ghost" onClick={() => setChecked(new Set())}>Clear</Button>
-                  </>
-                )
+                <>
+                  <span className="dash-control text-fg">{picked.length} selected</span>
+                  <Button size="sm" variant="ghost" onClick={() => { setChecked(new Set()); setConfirming(undefined) }}>Clear</Button>
+                </>
               ) : (
                 <>
-                  <span role="status">{batchNote}</span>
-                  <Button size="sm" variant="ghost" onClick={() => setBatchNote("")}>Dismiss</Button>
+                  <h2 className="font-mono dash-caption uppercase tracking-label text-fg-faint">Needs a decision</h2>
+                  {lowRisk.length > 0 && <Button size="sm" variant="ghost" className="dash-label" onClick={() => setChecked(new Set(lowRisk.map((i) => i.item_id)))}>Select low risk</Button>}
                 </>
               )}
+            </div>
+          )}
+          {view === "pending" && picked.length === 0 && batchNote && (
+            <div role="region" aria-label="Batch decision" className="flex items-center gap-2 border-y border-border px-4 py-2 dash-control text-fg-muted">
+              <span role="status">{batchNote}</span>
+              <Button size="sm" variant="ghost" onClick={() => setBatchNote("")}>Dismiss</Button>
             </div>
           )}
           <ApprovalQueue
@@ -215,7 +210,18 @@ export function ApprovalsPage() {
           </div>
         </section>
         <section aria-label="Decision detail" className={`min-h-0 min-w-0 flex-1 md:block ${showDetail && current ? "block" : "hidden"}`}>
-          {current ? (
+          {view === "pending" && picked.length > 0 ? (
+            <BatchPanel
+              items={picked}
+              confirming={confirming}
+              busy={batchBusy}
+              onConfirm={(d) => { setBatchNote(""); setConfirming(d) }}
+              onCancel={() => setConfirming(undefined)}
+              onBack={() => { setConfirming(undefined); setChecked(new Set()) }}
+              onRun={(d) => void runBatch(d)}
+              onOpen={(id) => { setChecked(new Set()); select(id) }}
+            />
+          ) : current ? (
             <>
               <Button variant="ghost" size="sm" className="m-2 md:hidden" onClick={() => setShowDetail(false)}>
                 <ArrowLeft className="h-3 w-3" /> Back

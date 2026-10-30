@@ -1,6 +1,8 @@
 import { Checkbox } from "@hollis-labs/design-components"
 import type { KeyboardEvent } from "react"
+import { Chip } from "../components/chip"
 import { kindLabel, type ApprovalItem } from "./client"
+import { InitialsAvatar } from "../components/initials-avatar"
 import { Countdown, RiskChip } from "./parts"
 
 const who = (i: ApprovalItem) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id
@@ -40,30 +42,34 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history, hel
             onClick={() => onSelect(i.item_id)}
             className={`group cursor-pointer px-4 py-3 ${held?.has(i.item_id) ? "opacity-50" : ""} ${selected ? "bg-surface/60" : "hover:bg-surface/30"}`}
           >
-            <div className="flex items-start gap-2">
-              {onCheck && i.batchable && !history && (
-                // A 40px target on touch; on desktop the box shows on hover or focus, or once anything is picked.
+            <div className="flex items-start gap-3">
+              {onCheck && !history && (
+                // A 40px target on touch. Only batchable items can be picked; the others keep the space.
                 <span
                   onClick={(e) => e.stopPropagation()}
-                  className={`-m-2.5 flex shrink-0 items-center justify-center p-2.5 md:-m-1 md:p-1 ${checked?.size ? "" : "md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"}`}
+                  className={`-m-2.5 flex shrink-0 items-center justify-center p-2.5 md:-m-1 md:p-1 ${i.batchable ? "" : "invisible"}`}
                 >
                   <Checkbox
                     aria-label={`Select ${r.title}`}
+                    disabled={!i.batchable}
                     checked={checked?.has(i.item_id) ?? false}
                     onCheckedChange={(v) => onCheck(i.item_id, v)}
                   />
                 </span>
               )}
-              <span className={`min-w-0 flex-1 truncate dash-body text-fg ${selected ? "font-medium" : ""}`}>{r.title}</span>
-              {history
-                ? <span className="font-mono dash-caption uppercase text-fg-muted">{i.terminal_outcome?.resolution?.response.decision ?? i.state}</span>
-                : held?.has(i.item_id) ? <span className="font-mono dash-caption text-fg-muted">Approving…</span> : <RiskChip risk={r.class} />}
-            </div>
-            <div className="mt-1 flex items-center justify-between gap-2 font-mono dash-caption text-fg-faint">
-              <span className="truncate">{kindLabel(r.kind)} · {who(i)}</span>
-              {!history && (i.deferred_until && Date.parse(i.deferred_until) > Date.now()
-                ? <span>Snoozed</span>
-                : <Countdown expiresAt={r.expires_at} />)}
+              <InitialsAvatar name={who(i)} className="mt-0.5 size-8" />
+              <div className="min-w-0 flex-1">
+                <div className={`truncate dash-body text-fg ${selected ? "font-medium" : ""}`}>{r.title}</div>
+                <div className="truncate dash-support text-fg-muted">{who(i)} · {kindLabel(r.kind).toLowerCase()}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  {history
+                    ? <Chip>{i.terminal_outcome?.resolution?.response.decision ?? i.state}</Chip>
+                    : held?.has(i.item_id) ? <Chip>Approving…</Chip> : <RiskChip risk={r.class} />}
+                  {!history && (i.deferred_until && Date.parse(i.deferred_until) > Date.now()
+                    ? <Chip tone="faint">Snoozed</Chip>
+                    : <Countdown expiresAt={r.expires_at} />)}
+                </div>
+              </div>
             </div>
           </li>
         )

@@ -170,7 +170,7 @@ describe('ServerAlertDetail', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
     await act(async () => fireEvent.click(within(screen.getByRole('dialog', { name: 'Alerts' })).getAllByRole('button', { name: /^Open details/ })[0]))
   }
-  const approvalsClient = () => ({ inbox: vi.fn().mockResolvedValue({ pending: [approvalItem], history: [] }), present: vi.fn().mockResolvedValue(approvalItem), decide: vi.fn() }) as unknown as ApprovalClient
+  const approvalsClient = () => ({ audit: vi.fn().mockResolvedValue({ item_id: 'apr_1', events: [] }), inbox: vi.fn().mockResolvedValue({ pending: [approvalItem], history: [] }), present: vi.fn().mockResolvedValue(approvalItem), decide: vi.fn() }) as unknown as ApprovalClient
 
   it('embeds the shared Approvals decision for an approval alert and never decides through the alert', async () => {
     detailOf = (id) => ({ alert: alert(id, { icon: 'approval' }), timeline: [], linked: [], technical: { fields: [] }, actions: [], approval: { item_id: 'apr_1', expires_at_ms: 9e12, class: 'high', risk_display: 'High', provider_handoff: false }, server_now_ms: 2 })
