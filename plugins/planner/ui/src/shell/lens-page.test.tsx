@@ -68,7 +68,7 @@ describe('Roadmap lens', () => {
   it('writes the horizon with the item revision', async () => {
     const api = client('roadmap', [item({ id: 'RM-1', title: 'Thing', status: 'idea', horizon: 'now' })], { horizon: ['now', 'next', 'later'], status: ['idea'] })
     page(api, 'roadmap', 'RM-1')
-    fireEvent.click(await screen.findByRole('tab', { name: 'next' }))
+    fireEvent.click(await screen.findByRole('radio', { name: /next/ }))
     await waitFor(() => expect(api.plannerUpdate).toHaveBeenCalledWith('roadmap', 'RM-1', { horizon: 'next' }, 4))
   })
 })
