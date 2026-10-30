@@ -52,6 +52,7 @@ export const TEXT = {
   groupNew: 'New',
   groupArchived: 'Archived',
   groupNeedsDecision: 'Needs decision',
+  needsDecision: 'Needs decision',
   groupDecided: 'Decided',
   groupOpen: 'Open',
   groupMitigatingResolved: 'Mitigating · Resolved',
