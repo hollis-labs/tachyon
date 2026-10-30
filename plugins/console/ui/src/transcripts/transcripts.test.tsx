@@ -189,7 +189,8 @@ describe("transcript dashboard", () => {
       false,
       expect.any(AbortSignal),
     )
-    expect(screen.getByText("You")).toBeTruthy()
+    // One "You" in the speaker filter, one on the turn itself.
+    expect(screen.getAllByText("You")).toHaveLength(2)
     expect(screen.queryByRole("button", { name: "Load more turns" })).toBeNull()
     expect(window.location.search).toBe(`?session=${base.id}`)
     fireEvent.keyDown(document.body, { key: "Escape" })
