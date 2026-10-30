@@ -73,6 +73,8 @@ function Checks({ item }: { item: InboxItem }) {
 }
 
 interface RowProps {
+  selected: boolean
+  onToggle: (i: InboxItem) => void
   item: InboxItem
   now: number
   agentName: (id: string) => string
@@ -80,7 +82,7 @@ interface RowProps {
   onTriage: (i: InboxItem, op: 'dismiss' | 'settle' | 'reopen' | { snooze: number }) => Promise<void>
 }
 
-function Row({ item, now, agentName, onAssign, onTriage }: RowProps) {
+function Row({ item, now, agentName, onAssign, onTriage, selected, onToggle }: RowProps) {
   const { pr } = item
   const [menu, setMenu] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -102,6 +104,7 @@ function Row({ item, now, agentName, onAssign, onTriage }: RowProps) {
   return (
     <li className={`border-b border-border/80 px-4 py-3 ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        <input type="checkbox" aria-label={`Select ${label}`} checked={selected} onChange={() => onToggle(item)} className="mt-1 accent-primary" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link to={prWorkspaceHref(pr.ref)} className="font-mono dash-body text-fg underline-offset-2 hover:text-fg hover:underline">
@@ -183,6 +186,8 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const [groupBy, setGroupBy] = useState<GroupBy>(initialGroupBy)
   const [assigning, setAssigning] = useState<InboxItem | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [names, setNames] = useState<Record<string, string>>({})
 
   useEffect(() => registerInboxActions(actionBus, { forge, messaging, stateStore, forgeLogin }), [actionBus, forge, messaging, stateStore, forgeLogin])
@@ -213,6 +218,25 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
     else if (op === 'settle') await stateStore.apply({ type: 'settle', key: i.triageKey, resolution: 'resolved' })
     else if (op === 'reopen') await stateStore.apply({ type: 'reopen', key: i.triageKey })
     else await stateStore.apply({ type: 'snooze', key: i.triageKey, until: op.snooze })
+  }
+  const toggle = (i: InboxItem) => setSelected((cur) => {
+    const next = new Set(cur)
+    if (!next.delete(i.key)) next.add(i.key)
+    return next
+  })
+  // Bulk triage runs the same per-item ops; selection that no longer matches the view drops out.
+  const picked = items.filter((i) => selected.has(i.key))
+  async function bulk(op: 'dismiss' | 'settle' | { snooze: number }) {
+    setBulkBusy(true)
+    try {
+      for (const i of picked) await triage(i, op)
+      setToast(`${picked.length} pull request${picked.length === 1 ? '' : 's'} updated`)
+      setSelected(new Set())
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Could not save')
+    } finally {
+      setBulkBusy(false)
+    }
   }
   const set = (p: Partial<InboxFilter>) => setFilter((f) => ({ ...f, ...p }))
   const toggleCat = (c: InboxCategory) => set({ categories: filter.categories.includes(c) ? filter.categories.filter((x) => x !== c) : [...filter.categories, c] })
@@ -251,6 +275,15 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
         {filtered && <Button variant="outline" size="sm" className="dash-label" onClick={() => setFilter(f => ({ ...DEFAULT_FILTER, view: f.view }))}>Clear</Button>}
       </DashboardToolbar>
 
+      {picked.length > 0 && (
+        <div role="toolbar" aria-label="Bulk actions" className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2">
+          <span className="dash-control text-fg">{picked.length} selected</span>
+          {SNOOZE_PRESETS.slice(0, 1).map(p => <Button key={p.id} variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk({ snooze: now + p.ms })}>Snooze {p.label.toLowerCase()}</Button>)}
+          <Button variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk('settle')}>Resolve</Button>
+          <Button variant="outline" size="sm" disabled={bulkBusy} onClick={() => void bulk('dismiss')}>Dismiss</Button>
+          <Button variant="ghost" size="sm" disabled={bulkBusy} onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
       {error && (
         <p role="alert" className="border-b border-danger/40 bg-danger/5 px-4 py-2 font-mono dash-control text-danger">
           Could not load pending PRs: {error}
@@ -274,7 +307,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
             )}
             <ul>
               {g.items.map((i) => (
-                <Row key={`${repoKey(i.pr.ref.repo)}#${i.pr.ref.number}`} item={i} now={now} agentName={(id) => names[id] ?? id} onAssign={setAssigning} onTriage={triage} />
+                <Row key={`${repoKey(i.pr.ref.repo)}#${i.pr.ref.number}`} item={i} now={now} agentName={(id) => names[id] ?? id} onAssign={setAssigning} onTriage={triage} selected={selected.has(i.key)} onToggle={toggle} />
               ))}
             </ul>
           </div>
