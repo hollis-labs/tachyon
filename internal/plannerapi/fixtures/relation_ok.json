@@ -1,1 +1,1 @@
-{"item":{"id":"theme-agents-console","db":"themes","revision":15,"relations_count":5},"links_view":{"outbound":[{"kind":"needs","to":{"db":"themes","id":"theme-forge-gui"},"title":"Forge GUI","status":"in_progress"}],"inbound":[],"external":[]}}
+{"item":{"id":"theme-agents-console","db":"themes","rev":15,"relations_count":5},"links_view":{"outbound":[{"kind":"needs","to":{"db":"themes","id":"theme-forge-gui"},"title":"Forge GUI","status":"in_progress"}],"inbound":[],"external":[]}}

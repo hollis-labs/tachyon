@@ -5,7 +5,7 @@ info:
   description: |
     New and extended Planner routes. Everything is under /api/plugins/console/v1/planner, JSON snake_case,
     errors {error, code} (409 carries details.current). Writes are revision-checked where the item is
-    written (expected_revision). Existing list/get/board/patch responses gain the additive fields in
+    written (expected_revision in request bodies). Item payloads name the revision `rev`. Existing list/get/board/patch responses gain the additive fields in
     components.schemas.ItemExtras; the stub serves them as fixtures under GET /stub-fixtures/{name}
     (themes, links, ...). The security posture is unchanged: no new guards; writes keep the existing planner write path.
 servers:
@@ -31,6 +31,25 @@ paths:
       responses:
         "200": {description: comment, item, applied, content: {application/json: {schema: {$ref: '#/components/schemas/CommentResult'}}}}
         "409": {$ref: '#/components/responses/Conflict'}
+  /{db}/{id}/pin:
+    put:
+      summary: Pin or unpin an item. A toggle; no comment needed.
+      parameters: [{$ref: '#/components/parameters/db'}, {$ref: '#/components/parameters/id'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pinned, expected_revision]
+              properties:
+                pinned: {type: boolean}
+                expected_revision: {type: integer, minimum: 1}
+      responses:
+        "200": {description: "item {id, db, rev, pinned, pinned_at (null when unpinned)}", content: {application/json: {schema: {type: object, properties: {item: {type: object}}}}}}
+        "404": {description: not found}
+        "409": {description: "code revision_conflict; details.current is the current item", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /{db}/{id}/relations:
     post:
       summary: Add a typed relation (stored on the source item).
@@ -278,7 +297,8 @@ components:
       type: object
       properties:
         pinned: {type: boolean}
-        pinned_at: {type: string}
+        pinned_at: {type: string, nullable: true}
+        rev: {type: integer, description: item revision; request bodies send it back as expected_revision}
         area: {type: string}
         horizon: {type: string, enum: [now, next, later, someday]}
         done_summary: {type: string, maxLength: 600}

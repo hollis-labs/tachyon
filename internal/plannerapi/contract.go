@@ -19,6 +19,7 @@ const Prefix = "/api/plugins/console/v1/planner"
 var Routes = []string{
 	// items
 	"POST /{db}/{id}/comments", // extended: status, pin, mentions
+	"PUT /{db}/{id}/pin",       // toggle; item payloads name the revision `rev`, request bodies keep expected_revision
 	"POST /{db}/{id}/relations", "DELETE /{db}/{id}/relations", "GET /{db}/{id}/links",
 	"POST /ideas/{id}/promote",
 	// tasks (Torque-backed)

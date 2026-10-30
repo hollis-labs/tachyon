@@ -15,7 +15,7 @@ import { useContributions } from '@planner/lib/regions'
 import { Focus } from '@planner/shell/focus'
 import { Spine, rowsOf } from '@planner/shell/spine'
 import { TEXT } from '@planner/lib/vocabulary'
-import type { PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
+import type { LinksView, PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
 const REFRESH_MS = 30_000
 const PIN_KEY = 'planner.pins'
@@ -49,8 +49,7 @@ export default function PlannerShell() {
   const [details, setDetails] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState<'main' | 'link' | null>(null)
   const [creating, setCreating] = useState<'themes' | 'ideas' | null>(null)
-  // Sample until the backend has a link write with a kind (build pack section 7).
-  const [links, setLinks] = useState<{ from: string; to: string; kind: LinkKind }[]>([])
+  const [linksView, setLinksView] = useState<LinksView | null>(null)
   const [pendingLink, setPendingLink] = useState<{ from: string; to: string } | null>(null)
   const extraCommands = useContributions('planner.palette.command')
   const openId = id ? decodeURIComponent(id) : undefined
@@ -82,6 +81,13 @@ export default function PlannerShell() {
     return () => { live = false }
   }, [api, row?.id, row?.rev]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!row) return setLinksView(null)
+    let live = true
+    api.plannerLinks('themes', row.id).then((v) => live && setLinksView(v), () => live && setLinksView(null))
+    return () => { live = false }
+  }, [api, row?.id, row?.rev]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const open = (next: string) => navigate(`/planner/themes/${encodeURIComponent(next)}${view === 'timeline' ? '?view=timeline' : ''}`)
   const togglePin = (pid: string) =>
     setPins((p) => {
@@ -102,14 +108,39 @@ export default function PlannerShell() {
 
   const all = useMemo(() => rowsOf(board), [board])
   const titleOf = (rid: string) => all.find((r) => r.id === rid)?.title ?? rid
-  const spineLinks = useMemo(() => new Map(links.map((l) => [l.from, { kind: l.kind, other: titleOf(l.to) }])), [links, all]) // eslint-disable-line react-hooks/exhaustive-deps
-  const rowLinks = links.filter((l) => l.from === openId || l.to === openId).map((l) => ({ kind: l.kind, label: titleOf(l.from === openId ? l.to : l.from) }))
-  const addLink = (kind: LinkKind) => {
+  const kindLabel = (k: string) => LINK_KINDS.find((x) => x.id === k)?.label ?? k
+  // The spine tags the open theme with its first outgoing link; the context lists every link.
+  const spineLinks = useMemo(() => {
+    const first = linksView?.outbound[0]
+    return new Map(openId && first ? [[openId, { kind: first.kind, other: first.title }]] : [])
+  }, [linksView, openId])
+  const rowLinks = [
+    ...(linksView?.outbound ?? []).map((l) => ({ kind: kindLabel(l.kind), label: l.title })),
+    ...(linksView?.inbound ?? []).map((l) => ({ kind: TEXT.linkedFrom(kindLabel(l.kind)), label: l.title })),
+    ...(linksView?.external ?? []).map((l) => ({ kind: l.kind, label: l.label })),
+  ]
+  const addLink = async (kind: LinkKind) => {
     if (!pendingLink) return
-    const link = { ...pendingLink, kind }
-    setLinks((ls) => [...ls, link])
+    const { from, to } = pendingLink
+    const source = all.find((r) => r.id === from)
     setPendingLink(null)
-    toast(TEXT.linkAdded(titleOf(link.from), LINK_KINDS.find((k) => k.id === kind)?.label ?? kind, titleOf(link.to)), { duration: 8000, action: { label: TEXT.undo, onClick: () => setLinks((ls) => ls.filter((l) => l !== link)) } })
+    if (!source) return
+    try {
+      const done = await api.plannerRelationAdd('themes', from, kind, { db: 'themes', id: to }, source.rev)
+      setLinksView(done.links_view)
+      toast(TEXT.linkAdded(titleOf(from), kindLabel(kind), titleOf(to)), {
+        duration: 8000,
+        action: {
+          label: TEXT.undo,
+          onClick: () => api.plannerRelationRemove('themes', from, kind, { db: 'themes', id: to }, (done.item.rev ?? done.item.revision ?? source.rev)).then((r) => setLinksView(r.links_view), (err) => notifyError(err, TEXT.writeFailed)),
+        },
+      })
+      await load()
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'cycle') toast(TEXT.linkCycle)
+      else notifyError(err, TEXT.writeFailed)
+      await load()
+    }
   }
   const step = (delta: 1 | -1) => {
     const rows = [...document.querySelectorAll<HTMLElement>('[role="listbox"] [role="option"]')]
@@ -203,7 +234,7 @@ export default function PlannerShell() {
         onRunAndLink={row ? (cmd) => cmd.startsWith('open:') && setPendingLink({ from: row.id, to: cmd.slice(5) }) : undefined}
       />
       <CommandPalette key="link" open={paletteOpen === 'link'} onOpenChange={(o) => !o && setPaletteOpen(null)} title={TEXT.linkTo} modes={[{ id: 'link', label: TEXT.linkTo }]} commands={linkCommands} emptyLabel={TEXT.paletteEmpty} onRun={(to) => row && setPendingLink({ from: row.id, to })} />
-      <LinkKindPicker open={pendingLink !== null} from={pendingLink ? titleOf(pendingLink.from) : ''} to={pendingLink ? titleOf(pendingLink.to) : ''} onPick={addLink} onCancel={() => setPendingLink(null)} />
+      <LinkKindPicker open={pendingLink !== null} from={pendingLink ? titleOf(pendingLink.from) : ''} to={pendingLink ? titleOf(pendingLink.to) : ''} onPick={(k) => void addLink(k)} onCancel={() => setPendingLink(null)} />
       <PlannerCreateDialog db={creating ?? 'themes'} open={creating !== null} onOpenChange={(o) => !o && setCreating(null)} nextRank={(board?.totals.in_flight ?? 0) + (board?.totals.cleared ?? 0) + 1} onCreated={(it) => { void load(); if (creating === 'themes') open(it.id) }} />
     </div>
   )

@@ -199,3 +199,12 @@ describe('ServerAlertDetail', () => {
     expect(client.op).toHaveBeenCalledWith('al_b', { op: 'settle' }, 4)
   })
 })
+
+describe('derived display fields', () => {
+  it('prefers the server display title and source label without changing the source id', async () => {
+    const { toAlert } = await import('./adapt')
+    const base = { alert_id: 'a1', title: 'approval.requested', source: 'approvals', count: 1, severity: 'warning', kind: 'approval', icon: 'bell', rule_id: 'r', needs_you: true, summary: '', coalesce_key: '', last_at_ms: 1, primary: null } as never
+    expect(toAlert({ ...(base as object), display_title: 'Needs your decision: Deploy', source_label: 'Approvals' } as never)).toMatchObject({ title: 'Needs your decision: Deploy', source: 'approvals', sourceLabel: 'Approvals' })
+    expect(toAlert(base)).toMatchObject({ title: 'approval.requested', sourceLabel: undefined })
+  })
+})
