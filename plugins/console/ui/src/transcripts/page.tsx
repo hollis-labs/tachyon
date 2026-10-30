@@ -215,7 +215,7 @@ export function TranscriptDashboard() {
           </div>
         </div>
       {error && access && (
-        <div role="status" className="flex flex-col items-center gap-2 px-4 py-16 text-center">
+        <div role={access === "denied" ? "alert" : "status"} className="flex flex-col items-center gap-2 px-4 py-16 text-center">
           <p className="dash-body font-medium text-fg">{access === "session" ? "Operator access needed" : "Access denied"}</p>
           <p className="max-w-md dash-support text-fg-muted">
             {access === "session"
