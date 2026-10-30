@@ -1,4 +1,5 @@
-/** Settings sections, in list order. `soon` sections are listed but not reachable. */
+/** Settings sections, in list order. `soon` sections are listed but not reachable.
+ * Account lives on /user (the /user page owns it; /settings/account redirects there). */
 export interface SettingsSection {
   id: string
   label: string
@@ -9,6 +10,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "appearance", label: "Appearance" },
   { id: "alerts", label: "Alerts" },
   { id: "general", label: "General" },
+  { id: "agents", label: "Agents", soon: true },
 ]
 
 export const DEFAULT_SECTION = "appearance"
