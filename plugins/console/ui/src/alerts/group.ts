@@ -7,6 +7,7 @@ import type { Alert } from './types'
  * else is information. Client-side until the mapper carries a "needs you" flag on the kind.
  */
 export function needsYou(a: Alert): boolean {
+  if (a.needsYou !== undefined) return a.needsYou // server alerts: decided by the rule pack
   if (a.severity === 'error' || a.severity === 'critical') return true
   return a.kind === KINDS.approvalRequested || a.kind === KINDS.agentState
 }
