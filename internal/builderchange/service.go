@@ -84,6 +84,14 @@ type Handoff struct {
 	Files            int    `json:"files"`
 	SessionAvailable bool   `json:"session_available"`
 	Reason           string `json:"reason,omitempty"`
+	// Commands are built here so the UI never hard-codes CLI flags; approve and apply carry <plan_id> until known.
+	Commands []Command `json:"commands"`
+}
+
+type Command struct {
+	Step    string `json:"step"` // plan | approve | apply
+	Label   string `json:"label"`
+	Command string `json:"command"`
 }
 type Failure struct {
 	Step    string `json:"step"`
