@@ -12,6 +12,8 @@ import (
 
 	"github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/chatapi"
+	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
@@ -154,6 +156,67 @@ func TestChatWorkspacePreset(t *testing.T) {
 		for _, v := range grants.Verbs {
 			if agentaccess.ChatWorkspaceVerb(v) {
 				t.Errorf("%s widened with %s", name, v)
+			}
+		}
+	}
+}
+
+func TestChatTopicAddVerb(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var published []string
+	topics := &ChatTopics{
+		Store: &chattopics.Store{DB: db},
+		Thread: func(_ context.Context, ref string) error {
+			if ref == "app:ghost" {
+				return errors.New("none")
+			}
+			return nil
+		},
+		MessageSeq: func(_ context.Context, _ chatapi.ThreadRef, m string) (int64, error) {
+			if m == "m1" {
+				return 7, nil
+			}
+			return 0, errors.New("no")
+		},
+		Published: func(_ context.Context, thread, op, id string) { published = append(published, thread+" "+op) },
+	}
+	p := &scopedLocal{local: NewLocal(nil), topics: topics, principal: auth.Principal{Verified: true, ID: "agent", Scopes: []string{"verb:chat.topic.add"}}}
+	out, err := chatCall(p, "chat.topic.add", `{"thread_ref":"app:t1","title":"Design","message_ref":"m1"}`)
+	if err != nil || out["added_by"] != "agent" || out["seq"] != 7.0 || out["title"] != "Design" {
+		t.Fatal(out, err)
+	}
+	if len(published) != 1 || published[0] != "app:t1 add" {
+		t.Fatalf("published: %v", published)
+	}
+	for name, args := range map[string]string{
+		"tether":  `{"thread_ref":"tether:s","title":"x","message_ref":"m1"}`,
+		"ghost":   `{"thread_ref":"app:ghost","title":"x","message_ref":"m1"}`,
+		"message": `{"thread_ref":"app:t1","title":"x","message_ref":"zzz"}`,
+		"title":   `{"thread_ref":"app:t1","title":" ","message_ref":"m1"}`,
+		"unknown": `{"thread_ref":"app:t1","title":"x","message_ref":"m1","added_by":"user"}`,
+	} {
+		if _, err := chatCall(p, "chat.topic.add", args); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+	if v := p.Verbs(); len(v) != 1 || !v[0].Mutates {
+		t.Fatalf("verbs: %v", v)
+	}
+	p.principal.Scopes = []string{"verb:chat.workspace.get"}
+	if _, err := chatCall(p, "chat.topic.add", `{"thread_ref":"app:t1","title":"x","message_ref":"m1"}`); err == nil {
+		t.Fatal("ran without its grant")
+	}
+	if err := agentaccess.ChatTopicAdd().Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range []agentaccess.Grants{agentaccess.AppAgentRead(), agentaccess.ChatWorkspaceRead(), agentaccess.CardAsk()} {
+		for _, v := range g.Verbs {
+			if agentaccess.ChatTopicVerb(v) {
+				t.Errorf("a preset widened with %s", v)
 			}
 		}
 	}

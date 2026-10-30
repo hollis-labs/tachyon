@@ -317,3 +317,13 @@ func (s *Store) ThreadsWithText(ctx context.Context, text string, limit int) (ma
 	}
 	return out, rows.Err()
 }
+
+// MessageSeq returns the seq of a message of the thread, or ErrNotFound.
+func (s *Store) MessageSeq(ctx context.Context, threadID, messageID string) (int64, error) {
+	var seq int64
+	err := s.DB.Reader.QueryRowContext(ctx, `SELECT seq FROM app_agent_messages WHERE thread_id=? AND id=?`, threadID, messageID).Scan(&seq)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return seq, err
+}
