@@ -45,6 +45,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/forgeapi"
+	"github.com/hollis-labs/tachyon/internal/itemstate"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
@@ -138,6 +139,7 @@ type Server struct {
 	approvalTrusted  *approvals.TrustedAPI
 	approvalCancel   context.CancelFunc
 	agentsCollector  *agentscollector.Collector
+	itemState        *itemstate.Store
 	actions          *actionrun.Service
 	cardFx           *cardfx.Store
 }
@@ -256,6 +258,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startCardEffects(approvalContext, store)
 	s.startCardEvents(approvalContext, store)
 	s.startAgentsCollector(approvalContext, store)
+	s.startItemState(approvalContext, store)
 	s.startCardDelivery(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
@@ -686,6 +689,13 @@ func (s *Server) Routes() http.Handler {
 		mux.Handle(forgeapi.StatePrefix, h)
 		mux.Handle(forgeapi.StatePrefix+"/", h)
 	}
+	// Shared item-state store (PR2). GETs are open like every console read; PUT and bulk need an
+	// operator session and refuse agents. With ForgeStubs on the forge stub owns this prefix instead.
+	if s.itemState != nil && !s.cfg.ForgeStubs {
+		h := operator.RequireOperator(s.itemState.Handler(forgeapi.StatePrefix))
+		mux.Handle(forgeapi.StatePrefix, h)
+		mux.Handle(forgeapi.StatePrefix+"/", h)
+	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
@@ -869,6 +879,13 @@ func (s *Server) startAgentsCollector(ctx context.Context, store *localstore.Sto
 	}}
 	s.agentsCollector = &agentscollector.Collector{Source: src, Store: cstore, Sink: live, TurnEnded: live.EndTurn}
 	s.agentsCollector.Start(ctx)
+}
+
+// startItemState opens the shared console item-state store behind /console/state (PR2) and runs
+// its snooze wake loop. Key prefixes are an allow-list; Alerts compat (AL1) adds its own.
+func (s *Server) startItemState(ctx context.Context, store *localstore.Store) {
+	s.itemState = &itemstate.Store{DB: store, Prefixes: []string{"pr-inbox:", "pr-assign:"}}
+	go s.itemState.Maintain(ctx, itemstate.WakeInterval, slog.Default().Warn)
 }
 
 // startCardEvents publishes card.* events to the hub. It is off unless
