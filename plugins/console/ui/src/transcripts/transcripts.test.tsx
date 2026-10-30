@@ -174,9 +174,10 @@ describe("transcript dashboard", () => {
           : {
               session: base,
               turns: [
-                { seq: 0, role: "assistant", text: "A **formatted** reply" },
+                { seq: 0, role: "user", text: "Hi" },
+                { seq: 1, role: "assistant", text: "A **formatted** reply" },
               ],
-              turn_total: 1,
+              turn_total: 2,
             },
       ),
     )
@@ -188,10 +189,17 @@ describe("transcript dashboard", () => {
       false,
       expect.any(AbortSignal),
     )
+    expect(screen.getByText("You")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Load more turns" })).toBeNull()
+    expect(window.location.search).toBe(`?session=${base.id}`)
+    fireEvent.keyDown(document.body, { key: "Escape" })
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Transcript reader")).toBeNull(),
+    )
+    expect(window.location.search).toBe("")
     expect(
-      (screen.getByRole("button", { name: "Next turns" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true)
+      screen.getByRole("button", { name: /Fix routing/ }).getAttribute("aria-current"),
+    ).toBe("true")
   })
   it("removes prior private data when source authorization is revoked", async () => {
     read.mockResolvedValue(snapshot)
