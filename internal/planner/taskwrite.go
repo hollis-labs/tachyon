@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -69,16 +70,23 @@ func (t *Tasks) write(ctx context.Context, path string, body any) error {
 	return nil
 }
 
-// Transition sets a task's status; comment is posted atomically with it. Leaving done needs force.
+// Transition sets a task's status. Torque's REST transition takes only status and force (a comment
+// field is silently ignored, unlike the MCP tool), so the comment is posted after it as a Torque
+// comment; the move stands even if the comment fails. Leaving done needs force.
 func (t *Tasks) Transition(ctx context.Context, id, status, comment string, force bool) error {
 	body := map[string]any{"status": status}
-	if comment != "" {
-		body["comment"], body["comment_author"] = comment, "tachyon-planner"
-	}
 	if force {
 		body["force"] = true
 	}
-	return t.write(ctx, "/api/v1/tasks/"+url.PathEscape(id)+"/transition", body)
+	if err := t.write(ctx, "/api/v1/tasks/"+url.PathEscape(id)+"/transition", body); err != nil {
+		return err
+	}
+	if comment != "" {
+		if err := t.Comment(ctx, id, comment); err != nil {
+			slog.Warn("planner: task moved but its comment was not posted", "task", id, "err", err)
+		}
+	}
+	return nil
 }
 
 // Comment posts a Torque comment. Callers treat a failure as best-effort.
