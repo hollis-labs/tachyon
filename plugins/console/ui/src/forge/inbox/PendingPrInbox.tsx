@@ -53,7 +53,7 @@ const VIEWS: { id: Exclude<TriageView, 'all'>; label: string }[] = [
 ]
 
 function Pill({ category }: { category: InboxCategory }) {
-  return <RecordTag className={CATEGORY_TONE[category]}>{CATEGORY_LABEL[category]}</RecordTag>
+  return <RecordTag className={`!font-sans !normal-case !tracking-normal ${CATEGORY_TONE[category]}`}>{CATEGORY_LABEL[category]}</RecordTag>
 }
 
 function Checks({ item }: { item: InboxItem }) {
@@ -263,7 +263,9 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
         {views.active} need attention{refreshedAt ? ` · loaded ${ago(refreshedAt, now)}` : ''}
       </p>
       <div className="min-h-0 flex-1 overflow-auto">
+      <div className="[&_[role=tab]]:font-sans [&_[role=tab]]:normal-case [&_[role=tab]]:tracking-normal [&_[role=tab]_*]:font-sans [&_[role=tab]_*]:normal-case [&_[role=tab]_*]:tracking-normal">
       <DashboardViewTabs variant="segments" label="Triage state" value={filter.view} onChange={view => set({ view: view as TriageView })} items={VIEWS.map(v => ({ value: v.id, label: v.label, count: views[v.id] }))} />
+      </div>
 
       <DashboardToolbar className="border-b border-border px-4 py-2">
         <DropdownMenu>
@@ -330,7 +332,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
         {groups.map((g) => (
           <div key={g.id} role="group" aria-label={g.label}>
             {groupBy !== 'none' && (
-              <h3 className="border-b border-border bg-surface/40 px-4 py-1.5 dash-support font-medium text-fg-muted">
+              <h3 className="border-b border-border bg-surface/40 px-4 py-1.5 font-sans dash-support font-medium normal-case tracking-normal text-fg-muted">
                 {g.label} <span className="text-fg-faint">{g.items.length}</span>
               </h3>
             )}
