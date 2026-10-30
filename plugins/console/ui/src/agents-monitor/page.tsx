@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { EmptyState, Skeleton } from '@hollis-labs/design-components'
-import { PageHeader } from '@hollis-labs/kit-dashboard'
+import { EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
 import { FilterChipGroup } from '@hollis-labs/kit-dashboard/data'
 import { DashboardSearchToolbar, DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { SegmentedProgress } from '@planner/shared'
@@ -57,6 +56,9 @@ export function AgentsPage() {
     return () => window.removeEventListener('keydown', onKey)
   }) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const all = data?.sessions ?? []
+  const filterCount = { all: null, working: all.filter((x) => matchesFilter(x, 'working')).length, needs_you: all.filter((x) => matchesFilter(x, 'needs_you')).length, stale: all.filter((x) => matchesFilter(x, 'stale')).length }
+  const filterLabel = (f: FilterId) => (filterCount[f] === null ? AGENTS.filters[f] : `${AGENTS.filters[f]} ${filterCount[f]}`)
   const visible = useMemo(() => (data?.sessions ?? []).filter((s) => matchesFilter(s, filter) && matchesQuery(s, query)), [data, filter, query])
   const counts = useMemo(() => {
     const c = { working: 0, waiting: 0, idle: 0, stale: 0, unknown: 0, ...data?.summary } as Record<SessionState, number>
@@ -65,35 +67,52 @@ export function AgentsPage() {
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <PageHeader title={AGENTS.title}>
+      <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border-subtle px-4">
+        <h1 className="font-mono text-caption font-semibold uppercase leading-none tracking-label text-fg">{AGENTS.title}</h1>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0 overflow-x-auto [scrollbar-width:none]">
+          <TabsList aria-label={AGENTS.tabsLabel} className="h-auto flex-nowrap gap-0.5 bg-transparent p-0">
+            {TABS.map((t) => (
+              <TabsTrigger key={t} value={t} className="h-7 gap-1.5 rounded-control px-3 text-xs font-normal text-fg-muted data-[active]:bg-selection data-[active]:font-semibold data-[active]:text-fg">
+                {AGENTS.tabs[t]}
+                {t === 'sessions' && data && <small className="font-mono text-caption text-fg-faint">{data.sessions.length}</small>}
+                {t === 'activity' && <small className="font-mono text-caption text-fg-faint">{AGENTS.live}</small>}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <span className="flex-1" />
         {data && (
-          <span className="dash-caption text-fg-muted">
-            {data.collector.collecting ? AGENTS.collecting(data.collector.sessions, data.collector.last_event_at ? ageText(now - data.collector.last_event_at) : '—') : AGENTS.notCollecting}
+          <span className="hidden items-center gap-1.5 font-mono text-label text-fg-secondary sm:flex">
+            <i aria-hidden className="size-1.5 rounded-full bg-fg/85" />
+            {data.collector.collecting ? AGENTS.collecting(data.collector.sessions, data.collector.last_event_at ? ageText(now - data.collector.last_event_at) : AGENTS.na) : AGENTS.notCollecting}
           </span>
         )}
-      </PageHeader>
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2">
-        <DashboardViewTabs label={AGENTS.tabsLabel} value={tab} onChange={(v) => setTab(v as Tab)} items={TABS.map((t) => ({ value: t, label: AGENTS.tabs[t] }))} />
-        <Btn tone="primary" className="ml-auto" onClick={() => setLaunchOpen(true)}>{AGENTS.launch}</Btn>
+        <Btn tone="primary" className="shrink-0" onClick={() => setLaunchOpen(true)}>{AGENTS.launch}</Btn>
       </div>
 
       {tab === 'teams' && <div className="flex-1 overflow-auto"><TeamOperations /></div>}
       {tab === 'activity' && <ActivityTab busTick={busTick} now={now} />}
       {tab === 'sessions' && (
         <>
-          <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
-            <div className="min-w-48 flex-1">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle px-4 py-2.5 text-xs text-fg-secondary">
+            {([['working', counts.working], ['waiting', counts.waiting], ['idle', counts.idle], ['unknown', counts.unknown]] as const).map(([k, n]) => (
+              <span key={k} className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{data ? n : AGENTS.na}</b> {k}</span>
+            ))}
+            {counts.stale > 0 && <span className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{counts.stale}</b> stale</span>}
+            <div className="w-full sm:w-[200px]">
               <SegmentedProgress
                 label={AGENTS.summaryText(counts)}
-                items={[{ state: 'doing', count: counts.working }, { state: 'review', count: counts.waiting }, { state: 'todo', count: counts.idle + counts.stale + counts.unknown }]}
+                items={[{ state: 'done', count: counts.working }, { state: 'blocked', count: counts.waiting }, { state: 'todo', count: counts.idle + counts.stale + counts.unknown }]}
               />
             </div>
+            <span className="flex-1" />
             {/* The page's one live region: counts per state, polite. */}
-            <p role="status" aria-live="polite" className="dash-caption text-fg-muted">{AGENTS.summaryText(counts)}</p>
+            <p role="status" aria-live="polite" className="sr-only">{AGENTS.summaryText(counts)}</p>
+            <span className="ml-auto text-fg-muted sm:ml-0">{AGENTS.streamStatus[status]}</span>
           </div>
           {stale && <p role="status" className="border-b border-border px-4 py-2 dash-caption text-fg-muted">{AGENTS.reconnecting}</p>}
           <DashboardSearchToolbar value={query} onChange={setQuery} label={AGENTS.searchLabel} placeholder={AGENTS.searchPlaceholder} slashToFocus>
-            <FilterChipGroup ariaLabel={AGENTS.filtersLabel} variant="outline" chips={(Object.keys(AGENTS.filters) as FilterId[]).map((f) => ({ value: f, label: AGENTS.filters[f] }))} selected={[filter]} onToggle={(v) => setFilter(v as FilterId)} />
+            <FilterChipGroup ariaLabel={AGENTS.filtersLabel} variant="outline" chips={(Object.keys(AGENTS.filters) as FilterId[]).map((f) => ({ value: f, label: filterLabel(f), activeClassName: f === 'needs_you' ? 'text-danger' : undefined }))} selected={[filter]} onToggle={(v) => setFilter(v as FilterId)} />
             <div className="hidden items-center gap-2 sm:flex">
               <label className="dash-caption text-fg-muted" htmlFor="agents-group">{AGENTS.groupBy}</label>
               <select id="agents-group" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="rounded-md border border-border bg-panel px-2 py-1 dash-caption text-fg">
