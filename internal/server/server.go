@@ -35,6 +35,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/chatthreads"
+	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
@@ -60,6 +61,9 @@ type Config struct {
 	ChatSyncInterval time.Duration
 	// ChatStubs mounts the fixture-backed chat contract (TACHYON_CHAT_STUBS=1) for GUI development.
 	ChatStubs bool
+	// ChatClientContext sends shared workspace items to the app agent as client_context on each
+	// turn (TACHYON_CHAT_CLIENT_CONTEXT=1). Off until Nanite confirms the field.
+	ChatClientContext bool
 	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
 	AppAgentConfigFile          string
 	ApprovalQueueURL            string
@@ -110,6 +114,7 @@ type Server struct {
 	chat             *chatbridge.Owned
 	appAgent         *appagent.Service
 	chatThreads      *chatthreads.Handler
+	chatWorkspace    *chatworkspace.Handler
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
@@ -252,6 +257,23 @@ func (s *Server) Start(ctx context.Context) error {
 		Agg: &chatthreads.Aggregator{App: s.appAgent, Chat: s.chat, State: &chatthreads.StateStore{DB: store}},
 		Hub: &chatthreads.Hub{DB: store},
 	}
+	ws := &chatworkspace.Store{DB: store, Dir: filepath.Join(s.cfg.DataDir, "workspace")}
+	s.chatWorkspace = &chatworkspace.Handler{
+		Store:  ws,
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		Published: func(ctx context.Context, thread, op, id string) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventWorkspace, map[string]any{"op": op, "id": id})
+		},
+	}
+	if s.appAgent != nil && s.cfg.ChatClientContext {
+		s.appAgent.ClientContext = func(ctx context.Context, id string) any {
+			cc, err := ws.ClientContextFor(ctx, chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
+			if err != nil || cc == nil {
+				return nil
+			}
+			return cc
+		}
+	}
 	if s.appAgent != nil {
 		s.appAgent.OnChange = func(id string) {
 			s.chatThreads.Notify(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
@@ -385,8 +407,12 @@ func (s *Server) Routes() http.Handler {
 				slog.Warn("tesseract reads for agents disabled", "error", err)
 				tesseractReader = nil
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader))
+			var chatTools *dataverbs.ChatWorkspace
+			if s.chatWorkspace != nil {
+				chatTools = &dataverbs.ChatWorkspace{Store: s.chatWorkspace.Store, Thread: s.chatWorkspace.Exists}
+			}
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools))
 		}
 	}
 	if s.store != nil {
@@ -483,12 +509,23 @@ func (s *Server) Routes() http.Handler {
 			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
 		}
 	}
+	if s.chatWorkspace != nil {
+		real := s.chatWorkspace.Mux()
+		for _, route := range chatworkspace.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+		// File bytes need operator assurance on reads too.
+		mux.Handle(chatworkspace.ContentRoute, operator.RequireOperatorReads(s.chatWorkspace.Content()))
+	}
 	// Chat contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
 	// unguarded. Writes need an operator session; workspace content and the terminal family
 	// need it on reads too. Real slices replace these mounts route by route.
 	if s.cfg.ChatStubs {
 		stub := chatapi.Stub{}
-		mux.Handle("GET "+chatapi.WorkspaceContentPath, operator.RequireOperatorReads(stub.WorkspaceContent()))
+		if s.chatWorkspace == nil {
+			mux.Handle("GET "+chatapi.WorkspaceContentPath, operator.RequireOperatorReads(stub.WorkspaceContent()))
+		}
 		mux.Handle(chatapi.Prefix+"/", operator.RequireOperator(stub.Chat()))
 		mux.Handle(chatapi.TerminalPrefix+"/", operator.RequireOperatorReads(stub.Terminal()))
 	}

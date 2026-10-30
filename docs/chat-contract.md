@@ -46,3 +46,9 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   a plan. Tether threads: title is the first turn's first line, `agent.address` is `tether://agent/<agent_id>` unless the id is
   already a URN, POST messages replies to the newest open replyable turn (409 `conflict` when nothing is waiting).
 - `tether` thread `unread` counts turns newer than the last `POST .../read`; app threads use the existing read marker.
+- T4 (workspace, scratchpad, settings) replaces those stubs: `GET/POST .../workspace`, `PATCH/DELETE .../workspace/{id}`,
+  `GET .../workspace/{id}/content` (operator assurance on reads), `GET/PUT .../scratchpad`, `GET/PUT /chat/settings`.
+  Upload errors: 413 `too_large` / `limit_reached`, 415 `type_not_allowed`. A `workspace` event `{op: add|remove|share|unshare, id}`
+  is published on each change. Agent verbs `chat.workspace.list` / `chat.workspace.get` read only items the operator shared,
+  for app threads only (preset `chat-workspace-read`; no existing preset gained them). Shared items go to the app agent as
+  `client_context` v1 on each turn only when `TACHYON_CHAT_CLIENT_CONTEXT=1` (off until Nanite confirms the field and its size limit).

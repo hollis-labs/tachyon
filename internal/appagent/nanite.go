@@ -240,6 +240,9 @@ func (n *Nanite) Submit(ctx context.Context, session, text string) (string, erro
 	}
 	_, session = splitSession(session)
 	body := map[string]any{"content": []map[string]string{{"kind": "text", "text": text}}, "delivery": "at_idle", "delta_mode": "live"}
+	if cc := ClientContextFrom(ctx); cc != nil {
+		body["client_context"] = cc
+	}
 	resp, cancel, err := n.do(ctx, cfg, http.MethodPost, "/sessions/"+url.PathEscape(session)+"/turns", body, "application/json", 30*time.Second)
 	if err != nil {
 		return "", err
