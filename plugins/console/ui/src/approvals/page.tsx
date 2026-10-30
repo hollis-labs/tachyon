@@ -27,6 +27,13 @@ export function ApprovalsPage() {
   }, [linked, setParams])
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
+  const restoredItem = queue?.restored
+  useEffect(() => {
+    if (restoredItem) {
+      setSelectedId(restoredItem.itemId)
+      setShowDetail(true)
+    }
+  }, [restoredItem])
   if (!queue)
     return (
       <div className="flex h-full min-w-0 flex-col">
@@ -42,7 +49,11 @@ export function ApprovalsPage() {
       .includes(search.toLowerCase()),
   )
   // After a decision the row leaves the queue and selection moves to the next item.
-  const current = rows.find((r) => r.item_id === selectedId) ?? rows[0]
+  // A held (about to be committed) approval is skipped: selection advances to the next item.
+  const heldIds = new Set(queue.held.map((h) => h.itemId))
+  const live = rows.filter((r) => !heldIds.has(r.item_id))
+  const current = live.find((r) => r.item_id === selectedId) ?? live[0]
+  const restored = queue.restored
   const select = (id: string) => {
     setSelectedId(id)
     setShowDetail(true)
@@ -85,6 +96,7 @@ export function ApprovalsPage() {
             selectedId={current?.item_id}
             onSelect={select}
             history={view === "history"}
+            held={heldIds}
             empty={
               queue.loading
                 ? "Loading approvals…"
@@ -106,7 +118,7 @@ export function ApprovalsPage() {
               <Button variant="ghost" size="sm" className="m-2 md:hidden" onClick={() => setShowDetail(false)}>
                 <ArrowLeft className="h-3 w-3" /> Back
               </Button>
-              <DecisionDetail key={current.item_id} id={current.item_id} initial={current} client={queue.client} onChanged={() => void queue.refresh(true)} />
+              <DecisionDetail key={current.item_id} initialNote={restored?.itemId === current.item_id ? restored.note : ""} id={current.item_id} initial={current} client={queue.client} onChanged={() => void queue.refresh(true)} />
             </>
           ) : (
             <p className="p-6 text-center dash-body text-fg-faint">Select a request to review it.</p>

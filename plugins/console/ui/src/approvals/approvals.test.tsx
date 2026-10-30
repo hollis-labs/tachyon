@@ -260,6 +260,24 @@ describe("owned inbox tiers and pages", () => {
   })
 })
 
+describe("held decisions", () => {
+  it("holds an approval in a toast so it can be undone, and sends nothing when undone", async () => {
+    const decide = vi.fn().mockResolvedValue({ item_id: item.item_id, state: "resolved" })
+    const client = { inbox: vi.fn().mockResolvedValue({ pending: [item], history: [] }), present: vi.fn().mockResolvedValue(item), get: vi.fn(), decide, evidence: vi.fn() } as unknown as ApprovalClient
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }))
+    expect(screen.getByRole("list", { name: "Pending decisions" }).textContent).toMatch(/Approving in \d+s/)
+    expect(decide).not.toHaveBeenCalled()
+    // The held row is dimmed and selection has nowhere else to go (last item).
+    fireEvent.click(screen.getByRole("button", { name: /Undo/ }))
+    expect(screen.queryByRole("list", { name: "Pending decisions" })).toBeNull()
+    // Undo re-selects the item with its note intact.
+    await waitFor(() => expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false))
+    expect(decide).not.toHaveBeenCalled()
+  })
+})
+
 describe("approval deep link", () => {
   it("selects the request for /approvals?item=<id> and clears the parameter", async () => {
     const present = vi.fn().mockResolvedValue(item)
