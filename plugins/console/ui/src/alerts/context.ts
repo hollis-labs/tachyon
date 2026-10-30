@@ -21,6 +21,8 @@ export interface AlertsController {
   dismiss: (id: string) => void
   snooze: (id: string, ms: number) => void
   restore: (id: string) => void
+  /** Server alerts: close an alert as handled (an optional resolution text). */
+  settle?: (id: string, resolution?: string) => void
   /** Server alerts only: connection to the alerts stream. Absent for the console-event feed. */
   feed?: { ready: boolean; status: 'live' | 'connecting' | 'reconnecting' | 'error' }
   /** Server alerts only: last failed write, plain text. */

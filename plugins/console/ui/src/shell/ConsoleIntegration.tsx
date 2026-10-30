@@ -51,7 +51,8 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
     registerWorkflowKinds(registry)
     return { messaging, chat, registry, hitl: new HttpHitlClient(), workflow: new HttpWorkflowClient() }
   })
-  const body = <ApprovalProvider><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></ApprovalProvider>
+  const bodyNoApprovals = <><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></>
+  const body = <ApprovalProvider>{bodyNoApprovals}</ApprovalProvider>
   return (
     <MessagingProvider client={messaging} operator={OPERATOR_ADDRESS}>
       <AgentUnreadProvider>
@@ -60,7 +61,7 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
             <HitlProvider client={hitl} present={false}>
               <WorkflowProvider client={workflow}>
                 {serverAlerts ? (
-                  <ServerAlertHost>{body}</ServerAlertHost>
+                  <ApprovalProvider><ServerAlertHost>{bodyNoApprovals}</ServerAlertHost></ApprovalProvider>
                 ) : (
                   <AlertHost rules={DEFAULT_RULE_PACK}>{body}</AlertHost>
                 )}

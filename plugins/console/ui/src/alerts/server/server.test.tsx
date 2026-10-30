@@ -7,11 +7,13 @@ import { ConsoleProvider } from '../../events/provider'
 import { FixtureSource } from '../../testkit/events-fixture-source'
 import { DEFAULT_CONSOLE_PREFS } from '../../prefs/types'
 import { AlertTrayTrigger } from '../AlertTrayTrigger'
+import { ApprovalProvider } from '../../approvals/context'
+import type { ApprovalClient, ApprovalItem } from '../../approvals/client'
 import { AlertsApiError, type AlertsClient } from './client'
 import { fromServerPrefs, toServerPrefs } from './prefs-store'
 import { ServerAlertHost } from './ServerAlertHost'
 import { ServerAlertsStore } from './store'
-import type { ServerAlert, ServerCounts, ServerFrame, ServerPrefs } from './types'
+import type { ServerAlert, ServerAlertDetail, ServerCounts, ServerFrame, ServerPrefs } from './types'
 
 afterEach(cleanup)
 
@@ -24,10 +26,15 @@ const alert = (id: string, over: Partial<ServerAlert> = {}): ServerAlert => ({
 const counts = (n = 0): ServerCounts => ({ unread: n, active: n, needs_you: 0, by_severity: {}, seq: 1 })
 const prefs: ServerPrefs = { notify_level: 'warnings', toasts: true, quiet: false, quiet_hours: { enabled: false, start: '22:00', end: '07:00', tz: 'Europe/Berlin' }, muted_sources: [], coalesce_window_sec: 120 }
 
+let detailOf: (id: string) => ServerAlertDetail = (id) => ({
+  alert: alert(id), timeline: [{ at_ms: 1000, label: 'This alert' }], linked: [], technical: { fields: [{ label: 'task', value: 'CW-1' }] }, actions: [], approval: null, server_now_ms: 2000,
+})
+
 function fakeClient(active: ServerAlert[], history: ServerAlert[] = []) {
   const c = {
     list: vi.fn(async (view: 'active' | 'history') => ({ alerts: view === 'active' ? active : history, next: null, counts: counts(active.length), seq: 5, server_now_ms: Date.now() })),
     counts: vi.fn(),
+    detail: vi.fn(async (id: string) => detailOf(id)),
     op: vi.fn(async (id: string, op: { op: string }, v: number) => ({ ...alert(id), version: v + 1, read: op.op === 'read' })),
     bulk: vi.fn(async () => ({ updated: [], skipped: [], counts: counts(0), seq: 6 })),
     prefs: vi.fn(async () => prefs),
@@ -120,5 +127,60 @@ describe('ServerAlertHost', () => {
     expect(within(tray).getByText('Needs you')).toBeTruthy()
     await act(async () => fireEvent.click(within(tray).getByRole('button', { name: /Mark all read/ })))
     expect(client.bulk).toHaveBeenCalledWith('read', { ids: ['al_1'] })
+  })
+})
+
+
+describe('ServerAlertDetail', () => {
+  const approvalItem: ApprovalItem = {
+    item_id: 'apr_1', state: 'presented', revision: 2, enqueued_at: '2026-10-30T10:00:00Z', updated_at: '2026-10-30T10:00:00Z',
+    request_snapshot: { kind: 'approval', class: 'high', title: 'Restart station', request: 'Restart it.', source: { agent_id: 'a', application_id: 'tether' } },
+  }
+  async function open(client: ReturnType<typeof fakeClient>, approvals: ApprovalClient) {
+    await act(async () => {
+      render(
+        <MemoryRouter>
+          <ApiProvider client={{} as never}>
+            <ConsoleProvider source={new FixtureSource({ intervalMs: 0, initial: 0 })} resyncMs={0}>
+              <ApprovalProvider client={approvals}>
+                <ServerAlertHost client={client}>
+                  <AlertTrayTrigger />
+                </ServerAlertHost>
+              </ApprovalProvider>
+            </ConsoleProvider>
+          </ApiProvider>
+        </MemoryRouter>,
+      )
+    })
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /^Alerts/ })))
+    await act(async () => fireEvent.click(within(screen.getByRole('dialog', { name: 'Alerts' })).getAllByRole('button', { name: /^Open details/ })[0]))
+  }
+  const approvalsClient = () => ({ inbox: vi.fn().mockResolvedValue({ pending: [approvalItem], history: [] }), present: vi.fn().mockResolvedValue(approvalItem), decide: vi.fn() }) as unknown as ApprovalClient
+
+  it('embeds the shared Approvals decision for an approval alert and never decides through the alert', async () => {
+    detailOf = (id) => ({ alert: alert(id, { icon: 'approval' }), timeline: [], linked: [], technical: { fields: [] }, actions: [], approval: { item_id: 'apr_1', expires_at_ms: 9e12, class: 'high', risk_display: 'High', provider_handoff: false }, server_now_ms: 2 })
+    const client = fakeClient([alert('al_a', { icon: 'approval', kind: 'approval.requested' })])
+    const approvals = approvalsClient()
+    await open(client, approvals)
+    const decision = await screen.findByRole('region', { name: 'Decision' })
+    await within(decision).findByRole('button', { name: 'Approve' })
+    expect(approvals.present).toHaveBeenCalledWith('apr_1')
+    expect(client.op).not.toHaveBeenCalledWith('al_a', expect.objectContaining({ op: 'settle' }), expect.anything())
+    expect(screen.queryByRole('button', { name: 'Mark handled' })).toBeNull()
+  })
+  it('shows a read-only card when the provider handled the approval', async () => {
+    detailOf = (id) => ({ alert: alert(id), timeline: [], linked: [], technical: { fields: [] }, actions: [], approval: { item_id: 'apr_1', expires_at_ms: 9e12, class: 'low', risk_display: 'Low', provider_handoff: true }, server_now_ms: 2 })
+    const client = fakeClient([alert('al_a')])
+    await open(client, approvalsClient())
+    await screen.findByText(/Approved through the provider/)
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+  })
+  it('marks an ordinary alert handled with its version and lists technical details', async () => {
+    detailOf = (id) => ({ alert: alert(id), timeline: [{ at_ms: 1000, label: 'This alert' }], linked: [], technical: { fields: [{ label: 'task', value: 'CW-1' }] }, actions: [], approval: null, server_now_ms: 2 })
+    const client = fakeClient([alert('al_b', { version: 3 })])
+    await open(client, approvalsClient())
+    await screen.findByText('Technical details')
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Mark handled' })))
+    expect(client.op).toHaveBeenCalledWith('al_b', { op: 'settle' }, 4)
   })
 })
