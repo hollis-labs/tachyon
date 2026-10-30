@@ -439,3 +439,50 @@ func TestHTTPSourceStreamsAndGuardsTheToken(t *testing.T) {
 }
 
 func mustTime(v string) time.Time { t, _ := time.Parse(time.RFC3339, v); return t }
+
+// Shapes seen against live Tether: the snapshot names the environment environment_id, and
+// /sessions pages with an opaque string cursor.
+func TestHTTPSourceReadsTheLiveSnapshotKeyAndOpaqueSessionCursors(t *testing.T) {
+	var cursors []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/environment/snapshot":
+			fmt.Fprint(w, `{"environment_id":"env-live-1","high_water_seq":7,"sessions":[]}`)
+		case "/sessions":
+			cursors = append(cursors, r.URL.Query().Get("cursor"))
+			page := func(from, n int, next string) {
+				var items []string
+				for i := from; i < from+n; i++ {
+					items = append(items, fmt.Sprintf(`{"id":"s%d","session_state":"running"}`, i))
+				}
+				fmt.Fprintf(w, `{"sessions":[%s],"next_cursor":%s}`, strings.Join(items, ","), next)
+			}
+			switch r.URL.Query().Get("cursor") {
+			case "":
+				page(0, 200, `"v1.eyJvIjoyMDB9"`)
+			case "v1.eyJvIjoyMDB9":
+				page(200, 50, `""`)
+			default:
+				w.WriteHeader(400)
+			}
+		case "/events":
+			fmt.Fprint(w, `{"events":[{"seq":9,"kind":"session.work_state_changed","session_id":"s1","at":"2026-10-30T01:00:00Z","payload_json":{"to":"idle"}}],"next_cursor":"v1.opaque"}`)
+		}
+	}))
+	defer srv.Close()
+	s, err := NewHTTPSource(srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := s.Snapshot(context.Background())
+	if err != nil || snap.Env != "env-live-1" || snap.HighWater != 7 {
+		t.Fatalf("snapshot: %v %+v", err, snap)
+	}
+	got, err := s.Sessions(context.Background())
+	if err != nil || len(got) != 250 || len(cursors) != 2 || cursors[1] != "v1.eyJvIjoyMDB9" {
+		t.Fatalf("more than 200 sessions must page on the opaque cursor: %d %v %v", len(got), cursors, err)
+	}
+	if _, next, err := s.History(context.Background(), 0, 0, 10); err != nil || next != 0 {
+		t.Fatalf("an opaque /events cursor ends the walk, it does not fail it: %d %v", next, err)
+	}
+}

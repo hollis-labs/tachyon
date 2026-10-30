@@ -1,0 +1,1 @@
+{"rules":[{"id":"ar_1","thread_ref":"app:t_01","agent_id":"tachyon","tool":"read_file","match":{"kind":"args_digest","digest":"sha256:ab12","display":"read_file(path=README.md)"},"effect":"allow","expires_at":1793923200000,"created_at":1793300450000,"revoked_at":null}]}
