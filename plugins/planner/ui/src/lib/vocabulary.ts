@@ -108,6 +108,7 @@ export const TEXT = {
   timeline: 'Timeline',
   viewLabel: 'Focus view',
   moveTo: 'Move to',
+  finish: 'Finish',
   back: 'Back',
   searchShort: 'Search',
   pin: 'Pin',

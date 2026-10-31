@@ -12,6 +12,7 @@ import { themeSegments } from '@planner/shell/spine'
 import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
 const ACCESS_NOTE = 'planner-access-note'
+const NOW = '\u0000current'
 const SECTION_DOT: Record<string, DotState> = { in_flight: 'doing', cleared: 'review', queued: 'review', proposed: 'todo', parked: 'todo', landed: 'done' }
 
 interface FocusProps {
@@ -82,10 +83,10 @@ export function Focus({ tick, paused, needsAccess, onRetryAccess, onNeedsAccess,
             }
             triggerLabel={`${section?.title ?? row.status}. ${TEXT.moveTo}`}
             heading={TEXT.moveTo}
-            current=""
-            options={actions.map((a) => ({ value: a.label, label: a.label }))}
+            current={NOW}
+            options={[{ value: NOW, label: section?.title ?? row.status }, ...actions.map((a) => ({ value: a.label, label: a.action === 'finish' ? TEXT.finish : a.label }))]}
             onSelect={(label) => {
-              const a = actions.find((x) => x.label === label)
+              const a = actions.find((x) => (x.action === 'finish' ? TEXT.finish : x.label) === label)
               if (a) void onAction(row, a.action, a.position === undefined ? undefined : { position: a.position })
             }}
             disabled={actions.length === 0 || locked}
