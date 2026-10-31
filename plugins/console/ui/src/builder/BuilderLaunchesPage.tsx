@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { BuilderShell } from './BuilderShell'
 import { type Launch, builderApi, errorMessage } from './api'
 import { newRequestId } from './changes'
+import { EntityDialog, LAUNCH_FIELDS } from './EntityDialog'
+import { useChangeMode } from './capabilities'
 import { Cite, Field, Muted, RailCard } from './parts'
 import { useLoad } from './useLoad'
 import { NOT_REPORTED } from './vocab'
@@ -34,7 +36,20 @@ function Dot({ on }: { on: boolean }) {
   return <i aria-hidden className={`inline-block size-[7px] shrink-0 rounded-full ${on ? 'bg-fg opacity-90' : 'bg-fg-faint opacity-60'}`} />
 }
 
-function LaunchDetail({ l, agentName }: { l: Launch; agentName: string }) {
+const launchValues = (l: Launch): Record<string, string | boolean> => ({
+  agent: l.agent,
+  provider: l.provider,
+  project: l.project,
+  worker: l.worker,
+  'workspace.mode': l.workspace?.mode ?? '',
+  route: l.route ?? '',
+  chat: l.chat === true,
+  enabled: l.enabled,
+})
+
+function LaunchDetail({ l, agentName, onChanged }: { l: Launch; agentName: string; onChanged: () => void }) {
+  const [mode] = useChangeMode()
+  const [dialog, setDialog] = useState<'edit' | 'duplicate'>()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -76,12 +91,16 @@ function LaunchDetail({ l, agentName }: { l: Launch; agentName: string }) {
         </Field>
       </dl>
       <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" size="sm" disabled title="Editing a launch arrives with the launch editor">
-          Edit
-        </Button>
-        <Button type="button" variant="outline" size="sm" disabled title="Duplicating a launch arrives with the launch editor">
-          Duplicate
-        </Button>
+        {mode !== 'unavailable' && (
+          <>
+            <Button type="button" variant="outline" size="sm" onClick={() => setDialog('edit')}>
+              Edit
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setDialog('duplicate')}>
+              Duplicate
+            </Button>
+          </>
+        )}
         <span className="flex-1" />
         <Button type="button" size="sm" disabled={busy || !l.enabled} onClick={start}>
           {busy ? 'Launching' : 'Launch ▸'}
@@ -93,6 +112,19 @@ function LaunchDetail({ l, agentName }: { l: Launch; agentName: string }) {
         </p>
       )}
       <Muted>Launching opens the session on Agents. Saving never changes a running session.</Muted>
+      {dialog && (
+        <EntityDialog
+          kind="launch"
+          mode={dialog === 'edit' ? 'edit' : 'create'}
+          noun="launch"
+          fields={LAUNCH_FIELDS}
+          initial={launchValues(l)}
+          id={dialog === 'edit' ? l.id : undefined}
+          sha={l.sha}
+          onClose={() => setDialog(undefined)}
+          onApplied={onChanged}
+        />
+      )}
     </RailCard>
   )
 }
@@ -105,6 +137,8 @@ export function BuilderLaunchesPage() {
   const [project, setProject] = useState('')
   const [worker, setWorker] = useState('')
   const [picked, setPicked] = useState<string>()
+  const [creating, setCreating] = useState(false)
+  const [mode] = useChangeMode()
   const [load, retry] = useLoad(() => builderApi.launches({ q, live }), [q, live])
   const [agents] = useLoad(() => builderApi.agents({}), [])
   const names = useMemo(() => new Map((agents.status === 'ready' ? agents.data.agents : []).map((a) => [a.id, a.name])), [agents])
@@ -132,9 +166,12 @@ export function BuilderLaunchesPage() {
           Live only
         </button>
         <span className="flex-1" />
-        <Button type="button" size="sm" disabled title="Creating a launch arrives with the launch editor" className="hidden sm:inline-flex">
-          New launch
-        </Button>
+        {mode !== 'unavailable' && (
+          <Button type="button" size="sm" onClick={() => setCreating(true)} className="hidden sm:inline-flex">
+            New launch
+          </Button>
+        )}
+        {creating && <EntityDialog kind="launch" mode="create" noun="launch" fields={LAUNCH_FIELDS} initial={{ chat: false, enabled: true }} onClose={() => setCreating(false)} onApplied={retry} />}
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto">
@@ -191,7 +228,7 @@ export function BuilderLaunchesPage() {
         </div>
         {sel && (
           <aside aria-label="Launch" className="hidden w-[360px] shrink-0 overflow-auto border-l border-border-subtle p-3.5 lg:block">
-            <LaunchDetail key={sel.id} l={sel} agentName={nameOf(sel)} />
+            <LaunchDetail key={sel.id} l={sel} agentName={nameOf(sel)} onChanged={retry} />
           </aside>
         )}
       </div>

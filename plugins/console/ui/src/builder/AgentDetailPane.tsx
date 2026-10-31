@@ -5,6 +5,7 @@ import { Button, Checkbox, Input, OverflowMenu, Switch, Textarea } from '@hollis
 import { Chip } from '../components/chip'
 import { ChipListField } from './ChipListField'
 import { DirtyBar } from './DirtyBar'
+import { AGENT_FIELDS, EntityDialog } from './EntityDialog'
 import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
 import { buildOps, changedPaths, type Draft, fieldByPath, newRequestId, reviewRows } from './changes'
 import { OutlineNav } from './OutlineNav'
@@ -112,6 +113,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
   })
   const scroller = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   const [draft, setDraft] = useState<Draft>({})
   const [review, setReview] = useState<Change | null>(null)
   const [busy, setBusy] = useState(false)
@@ -206,6 +208,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
           ariaLabel="More actions"
           actions={[
             { label: 'Copy slug', onSelect: () => void navigator.clipboard?.writeText(a.identity.id) },
+            ...(mode !== 'unavailable' ? [{ label: 'Duplicate agent', onSelect: () => setDuplicating(true) }] : []),
             ...(a.identity.urn ? [{ label: 'Copy URN', onSelect: () => void navigator.clipboard?.writeText(a.identity.urn ?? '') }] : []),
           ]}
         />
@@ -230,6 +233,17 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
         </div>
       )}
       {discardDialog}
+      {duplicating && (
+        <EntityDialog
+          kind="agent"
+          mode="create"
+          noun="agent"
+          fields={AGENT_FIELDS}
+          initial={{ 'identity.name': `${a.identity.name} copy`, 'identity.description': a.identity.description ?? '', 'runtime.provider': a.runtime.provider ?? '', 'runtime.model': a.runtime.model ?? '' }}
+          onClose={() => setDuplicating(false)}
+          onApplied={() => setDuplicating(false)}
+        />
+      )}
       {review && (
         <ReviewDialog
           initial={review}
