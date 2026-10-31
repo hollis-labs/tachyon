@@ -216,7 +216,7 @@ export function RestartControl({ session, paused, onDone, live = CONTROLS_LIVE }
       trigger={({ onClick, ref }) => <Button ref={ref} size="sm" variant="outline" disabled={why !== null} title={why ?? undefined} className="border-danger/35 text-danger" aria-expanded={open} onClick={onClick}>{AGENTS.modal.restart}</Button>}
     >
       <>
-        <h4 className="font-mono text-caption uppercase tracking-label text-fg-muted">{R.title}</h4>
+        <h3 className="font-mono text-caption uppercase tracking-label text-fg-muted">{R.title}</h3>
         <p className="text-control text-fg">{R.explain} {R.discardsNote(pendingNow)}</p>
         {/* KIT-GAP: checkbox inside a popover (kit brief pending); native input until it lands. */}
         <label className="flex items-center gap-2 text-xs text-fg-secondary">
