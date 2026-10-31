@@ -833,7 +833,7 @@ func (s *Server) Routes() http.Handler {
 	}
 	// File viewer audit log (real, V6): reading it is an operator act. One pattern, so it wins over the stub.
 	if s.fileviewAudit != nil {
-		s.fileviewAudit.MountAudit(mux, operator.RequireOperator)
+		s.fileviewAudit.MountAudit(mux, operator.RequireOperatorReads)
 	}
 	// Builder + Registry contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below
 	// is unguarded. GETs are open; every write (changes, launch action, registry project patch) needs an operator session.
