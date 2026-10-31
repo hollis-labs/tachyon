@@ -122,9 +122,16 @@ async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T
 }
 
+export interface DirEntry { name: string; kind: 'dir' | 'file'; size?: number; mtime?: number }
+export interface DirListing { root: string; path: string; truncated: boolean; entries: DirEntry[] }
+
 export const fileApi = {
   async roots(): Promise<Roots> {
     return json(await hostFetch(`${FILES_BASE}/roots`, { headers: { Accept: 'application/json' } }))
+  },
+  /** One directory of an allow-listed root (dirs first). `path` is relative to the root; '' is the root itself. */
+  async list(root: string, path = ''): Promise<DirListing> {
+    return json(await hostFetch(`${FILES_BASE}/list?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`, { headers: { Accept: 'application/json' } }))
   },
   async settings(): Promise<FileSettings> {
     return json(await hostFetch(`${FILES_BASE}/settings`, { headers: { Accept: 'application/json' } }))
