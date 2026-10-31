@@ -184,11 +184,11 @@ function CardItem({ card, labels, readOnly, blocked, lifted }: { card: LaneCard;
   const { setNodeRef, attributes, listeners } = useDraggable({ id: card.id, disabled: card.pending || readOnly })
   if (lifted) {
     return (
-      <li ref={setNodeRef} {...attributes} {...listeners} className="grid h-11 place-items-center rounded-control border border-dashed border-fg-muted font-mono text-caption uppercase tracking-label text-fg-muted">{labels.wasHere ?? ''}</li>
+      <li ref={setNodeRef} {...attributes} {...listeners} role="listitem" className="grid h-11 place-items-center rounded-control border border-dashed border-fg-muted font-mono text-caption uppercase tracking-label text-fg-muted">{labels.wasHere ?? ''}</li>
     )
   }
   return (
-    <li ref={setNodeRef} {...(readOnly ? {} : { ...attributes, ...listeners })} aria-label={undefined} aria-roledescription={readOnly ? undefined : labels.dragHint} aria-busy={card.pending || undefined} className={cn('flex min-w-0 flex-col gap-0.5 break-words rounded-control border border-border-subtle bg-bg-elevated px-2 py-1.5 text-xs leading-snug outline-none hover:border-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring', blocked && 'border-l-2 border-l-danger', card.pending && 'opacity-70')}>
+    <li ref={setNodeRef} {...(readOnly ? {} : { ...attributes, ...listeners })} role="listitem" aria-label={undefined} aria-roledescription={readOnly ? undefined : labels.dragHint} aria-busy={card.pending || undefined} className={cn('flex min-w-0 flex-col gap-0.5 break-words rounded-control border border-border-subtle bg-bg-elevated px-2 py-1.5 text-xs leading-snug outline-none hover:border-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring', blocked && 'border-l-2 border-l-danger', card.pending && 'opacity-70')}>
       {card.content}
       {card.pending && <span className="text-caption text-fg-faint">{labels.pending}</span>}
     </li>

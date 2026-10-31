@@ -27,7 +27,7 @@ export function Drawer({ mode, size, onSize, onClose, children }: { mode: Drawer
         tabIndex={-1}
         role="region"
         aria-label={`${TITLE[mode]} drawer`}
-        className="-mb-[18px] mt-3 flex w-full max-w-[716px] flex-col overflow-hidden rounded-t-panel border border-b-0 border-surface-hover bg-bg pb-[18px] shadow-[0_-10px_28px_rgba(0,0,0,.45)] focus-visible:outline-none max-sm:mb-0 max-sm:mt-0 max-sm:max-w-none max-sm:pb-0"
+        className="-mb-[18px] mt-3 flex w-full max-w-[716px] flex-col overflow-hidden rounded-t-panel border border-b-0 border-surface-hover bg-bg pb-[18px] shadow-[0_-10px_28px_rgb(0_0_0/calc(.45*var(--sh)))] focus-visible:outline-none max-sm:mb-0 max-sm:mt-0 max-sm:max-w-none max-sm:pb-0"
       >
         <div className="flex h-[30px] shrink-0 items-center gap-0.5 border-b border-border-subtle bg-surface pl-3 pr-2">
           <span className={CAPTION}>{TITLE[mode]}</span>

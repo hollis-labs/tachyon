@@ -54,7 +54,7 @@ export function AlertToast({ alert, now, durationMs, onClose, onRead, onExpand }
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className="pointer-events-auto relative flex gap-3 overflow-hidden border border-border bg-bg-elevated px-3 py-2.5 shadow-lg shadow-black/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="pointer-events-auto relative flex gap-3 overflow-hidden border border-border bg-bg-elevated px-3 py-2.5 shadow-[0_8px_24px_rgb(0_0_0/calc(.3*var(--sh)))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       {total !== null && (
         // Hairline countdown; pauses with the timer and is dropped under reduced motion.

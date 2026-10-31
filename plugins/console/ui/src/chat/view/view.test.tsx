@@ -107,7 +107,7 @@ describe('ChatView', () => {
     const onBack = vi.fn()
     try {
       const { rerender } = render(<ChatView threads={T} activeThread={null} onSelectThread={() => undefined} onBack={onBack} />)
-      expect(screen.getByRole('listbox', { name: 'Chats' })).toBeTruthy()
+      expect(screen.getByRole('group', { name: 'Chats' })).toBeTruthy()
       expect(screen.queryByText('Select a chat')).toBeNull()
       rerender(<ChatView threads={T} activeThread={T[0]} onSelectThread={() => undefined} onBack={onBack}><p>conversation body</p></ChatView>)
       fireEvent.click(screen.getByLabelText('Back to chats'))
@@ -250,7 +250,7 @@ describe('ChatPage', () => {
     setup()
     await flush()
     expect(screen.getByText('Select a chat')).toBeTruthy()
-    const list = screen.getByRole('listbox', { name: 'Chats' })
+    const list = screen.getByRole('group', { name: 'Chats' })
     fireEvent.click(within(list).getByText(MOCK_CHAT_AGENTS[1].agent.label))
     await flush()
     expect(screen.getByTestId('where').textContent).toMatch(/^\/chat\/.+/)
@@ -273,7 +273,7 @@ describe('ChatPage', () => {
   it('sends through the client from the composer', async () => {
     const client = setup()
     await flush()
-    fireEvent.click(within(screen.getByRole('listbox', { name: 'Chats' })).getByText(MOCK_CHAT_AGENTS[0].agent.label))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Chats' })).getByText(MOCK_CHAT_AGENTS[0].agent.label))
     await flush()
     const box = screen.getByLabelText('Message')
     fireEvent.change(box, { target: { value: 'status?' } })
