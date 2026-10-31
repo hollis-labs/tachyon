@@ -16,6 +16,7 @@ import { useContributions } from '@planner/lib/regions'
 import { Focus } from '@planner/shell/focus'
 import { themeRowActions } from '@planner/components/planner/theme-board'
 import { needsYou, rowsOf, useThemeGroups } from '@planner/shell/spine'
+import { LoadError, loadMessage } from '@planner/shell/load-error'
 import { TEXT } from '@planner/lib/vocabulary'
 import type { LinksView, PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 import { THEME_SECTIONS } from '@planner/lib/planner'
@@ -74,7 +75,7 @@ export default function PlannerShell() {
       setError(null)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'feature_disabled') setOff(true)
-      else setError(err instanceof Error ? err.message : TEXT.loadFailed)
+      else setError(loadMessage(err))
     }
   }, [api])
 
@@ -264,19 +265,17 @@ export default function PlannerShell() {
   )
   const spineBody = board ? (
     <SpineList label={TEXT.spineLabel} groups={groups} selectedId={openId} onSelect={open} onTogglePin={(pid) => void togglePin(pid)} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needYouOnly ? TEXT.needYouEmpty : TEXT.lensEmpty('Themes')} />
-  ) : error ? null : (
-    <div className="flex flex-col gap-2 p-1" aria-busy>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+  ) : error ? (
+    <LoadError title={TEXT.loadFailedLens('Themes')} message={error} onRetry={() => void load()} />
+  ) : (
+    <div role="status" aria-busy aria-label={TEXT.loading} className="flex flex-col gap-2 p-1">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
   )
   const notice = error ? (
     board ? (
       <p role="status" className="border-t border-border-subtle px-3 py-2 text-caption text-fg-muted">
         {TEXT.reconnecting(new Date(goodAt ?? Date.now()).toLocaleTimeString())}. {TEXT.writesPaused} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
       </p>
-    ) : (
-      <p role="alert" className="border-t border-border-subtle px-3 py-2 text-caption text-danger">
-        {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
-      </p>
-    )
+    ) : null
   ) : null
   return (
     <LinkLayer titleOf={titleOf} labels={{ port: TEXT.linkPort, dragging: TEXT.linkDragging }} onLink={(from, to) => setPendingLink({ from, to })}>

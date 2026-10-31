@@ -11,6 +11,7 @@ import { boardAge, sentenceCase } from '@planner/lib/planner'
 import { LENSES, lensPath, TEXT } from '@planner/lib/vocabulary'
 import { CAPTION, Chip, CommandPalette, InlineEdit, PaletteHint, Pips, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
 import { Context, type ContextLink } from '@planner/shell/context'
+import { LoadError, loadMessage } from '@planner/shell/load-error'
 import { PlannerFrame } from '@planner/shell/frame'
 import { usePlannerKeys } from '@planner/shell/use-planner-keys'
 import { DecisionBody } from '@planner/shell/lenses/decisions'
@@ -127,7 +128,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
       setGoodAt(Date.now())
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : TEXT.loadFailed)
+      setError(loadMessage(err))
     }
   }, [api, db])
   useEffect(() => {
@@ -259,10 +260,10 @@ export default function LensPage({ db }: { db: PlannerDb }) {
         onToggleContext={() => setCtxCollapsed((v) => !v)}
         focused={selected && (Boolean(item) || db === 'inbox')}
         onBack={() => navigate(lensPath(db))}
-        spine={items ? <SpineList label={TEXT.spineLabel} groups={groups} selectedId={openId} onSelect={open} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needOnly ? TEXT.needYouEmpty : TEXT.lensEmpty(lens.label)} /> : error ? null : <div className="flex flex-col gap-2 p-1" aria-busy>{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>}
-        spineNotice={error ? (
-          <p role="alert" className="border-t border-border-subtle px-3 py-2 text-caption text-danger">
-            {error} <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
+        spine={items ? <SpineList label={TEXT.spineLabel} groups={groups} selectedId={openId} onSelect={open} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needOnly ? TEXT.needYouEmpty : TEXT.lensEmpty(lens.label)} /> : error ? <LoadError title={TEXT.loadFailedLens(lens.label)} message={error} onRetry={() => void load()} /> : <div role="status" aria-busy aria-label={TEXT.loading} className="flex flex-col gap-2 p-1">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>}
+        spineNotice={error && items ? (
+          <p role="status" className="border-t border-border-subtle px-3 py-2 text-caption text-fg-muted">
+            {TEXT.reconnecting(new Date().toLocaleTimeString())}. <button type="button" className="underline" onClick={() => void load()}>{TEXT.retry}</button>
           </p>
         ) : null}
         context={context}
