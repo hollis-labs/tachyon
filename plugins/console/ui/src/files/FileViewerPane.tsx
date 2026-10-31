@@ -22,6 +22,14 @@ const MUTED = 'text-control text-fg-muted'
 const basename = (p: string) => p.split('/').pop() ?? p
 const extOf = (p: string) => basename(p).split('.').pop()?.toLowerCase() ?? ''
 
+const ICON_BY_EXT: Record<string, string> = {
+  html: 'file-html', htm: 'file-html', png: 'file-image', jpg: 'file-image', jpeg: 'file-image', gif: 'file-image', webp: 'file-image', svg: 'file-image',
+  json: 'file-json', yaml: 'file-json', yml: 'file-json', toml: 'file-json', csv: 'file-json',
+  md: 'file', txt: 'file', log: 'file',
+}
+/** Icon token for a file chip, from the extension alone (no stat on a chip render). */
+export const chipIconToken = (path: string) => ICON_BY_EXT[extOf(path)] ?? (extOf(path) === basename(path) ? 'file' : 'file-code')
+
 export function metaLine(stat: FileStat | null, path: string): string {
   if (!stat) return ''
   if (!stat.exists || !stat.allowed) return stat.deny_reason === 'too_large' ? ['Large', formatSize(stat.size)].filter(Boolean).join(' · ') : 'Blocked'
