@@ -85,6 +85,9 @@ func ParseFrame(raw []byte) (Frame, bool) {
 	if json.Unmarshal(raw, &w) != nil || w.Kind == "" {
 		return Frame{}, false
 	}
+	if w.App == "tether" {
+		w.App = "" // the live stream stamps Tether's own events app=tether; App is for events another app published
+	}
 	f := Frame{Kind: w.Kind, App: w.App, SessionID: w.SessionID, EventID: w.ID, Seq: w.Seq, Reason: w.Reason}
 	if env, n, ok := strings.Cut(w.ID, ":"); ok {
 		f.Env = env
