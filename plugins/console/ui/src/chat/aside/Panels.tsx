@@ -10,6 +10,7 @@ import { MessageBody } from '../MessageBody'
 import type { ChatMessage } from '../types'
 import { chatJSON } from '../roster'
 import { useWorkspace, type WorkspaceItem } from '../drawer/model'
+import { FileTree } from './FileTree'
 import type { Activity, Plan, PlanStep, Rule, WorkItem } from './data'
 import type { Marks } from './context'
 
@@ -273,7 +274,7 @@ export function FilesPanel({ threadRef, demo, onOpenDoc }: { threadRef?: string;
   const items = ws.items.filter((i) => i.name.toLowerCase().includes(filter.toLowerCase()))
   return (
     <>
-      <span className={CAPTION}>Files · {demo ? '~/dev/hollis-labs' : 'this session'}</span>
+      <span className={CAPTION}>Files{demo ? ' · ~/dev/hollis-labs' : ''}</span>
       <label className="flex h-7 items-center gap-2 rounded-control border border-border px-2.5 text-xs text-fg-muted"><input aria-label="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter files" className="min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-xs focus-visible:bg-transparent!" /></label>
       {demo ? (
         <div role="tree" aria-label="Files" className="flex flex-col">
@@ -281,10 +282,14 @@ export function FilesPanel({ threadRef, demo, onOpenDoc }: { threadRef?: string;
             <div key={n.name} role="treeitem" aria-selected={!!n.hl} style={{ paddingLeft: 6 + n.depth * 16 }} className={cn(ROW, n.hl && 'bg-selection text-fg')}>{n.open === undefined ? null : n.open ? <ChevronDown aria-hidden className="size-3" /> : <ChevronRight aria-hidden className="size-3" />}<span className="flex-1">{n.name}</span>{n.flag && <Chip square>{n.flag}</Chip>}</div>
           ))}
         </div>
-      ) : ws.loading ? <p role="status" className="text-xs text-fg-muted">Loading files…</p> : items.length === 0 ? (
-        <Empty>{ws.items.length ? 'No file matches.' : 'No files in this chat. Drop files into the Workspace to share them with the agent.'}</Empty>
       ) : (
-        <ul className="flex flex-col">{items.map((i) => <li key={i.id}><button type="button" onClick={() => onOpenDoc(i)} className={cn(ROW, 'w-full text-left')}><FileText aria-hidden className="size-3 text-fg-muted" /><span className="min-w-0 flex-1 truncate">{i.name}</span>{i.shared && <Chip square>shared</Chip>}</button></li>)}</ul>
+        <>
+          <FileTree filter={filter} />
+          {(ws.loading || items.length > 0) && <span className={CAPTION}>Shared in this chat</span>}
+          {ws.loading ? <p role="status" className="text-xs text-fg-muted">Loading files…</p> : items.length > 0 && (
+            <ul className="flex flex-col">{items.map((i) => <li key={i.id}><button type="button" onClick={() => onOpenDoc(i)} className={cn(ROW, 'w-full text-left')}><FileText aria-hidden className="size-3 text-fg-muted" /><span className="min-w-0 flex-1 truncate">{i.name}</span>{i.shared && <Chip square>shared</Chip>}</button></li>)}</ul>
+          )}
+        </>
       )}
       <Err>{ws.error}</Err>
       <p className="text-xs text-fg-muted">Drag a file onto the composer to share it</p>
