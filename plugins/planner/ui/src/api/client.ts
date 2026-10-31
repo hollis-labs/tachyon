@@ -104,6 +104,7 @@ export class TachyonPlannerClient implements PlannerClient {
   }
   plannerWorkstreamTasks = (id: string, signal?: AbortSignal) => this.request<PlannerWorkstreamTasks>(`/workstreams/${uuid(id)}/tasks`, undefined, undefined, signal)
   plannerThemeTasks = (themeId: string, signal?: AbortSignal) => this.request<ThemeTasks>(`/themes/${encodeURIComponent(themeId)}/tasks`, undefined, undefined, signal)
+  plannerThemeTaskCreate = (themeId: string, title: string, rev?: number) => this.send<{ task: { id: string; title: string; status: string } }>(`/themes/${uuid(themeId)}/tasks`, { title, ...(rev === undefined ? {} : { expected_revision: revision(rev) }) })
   plannerThemeTimeline = (themeId: string, opts?: { before_seq?: number; limit?: number }, signal?: AbortSignal) => this.request<ThemeTimeline>(`/themes/${encodeURIComponent(themeId)}/timeline`, undefined, { before_seq: opts?.before_seq, limit: opts?.limit }, signal)
   plannerTaskTransition = (task: string, to: TaskLane, expectedStatus: TaskLane, args?: { reason?: string }) => this.send<TaskTransitionResult>(`/tasks/${encodeURIComponent(task)}/transition`, { to, expected_status: expectedStatus, ...(args?.reason ? { reason: args.reason } : {}) })
   plannerTaskMeta = (task: string, meta: { done_summary?: string; pr_cites?: { host: string; owner: string; repo: string; number: number }[] }) => this.send<TaskMeta>(`/tasks/${encodeURIComponent(task)}/meta`, meta, 'PUT')

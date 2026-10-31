@@ -5,7 +5,7 @@ import { EmptyState, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-l
 import { PlannerFrame } from '@planner/shell/frame'
 import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
 import { PlannerApiError as ApiError } from '@planner/api/errors'
-import { authorizing, notifyError, notifyWriteError } from '@planner/api/notifications'
+import { authorizing, notifyError, notifySuccess, notifyWriteError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { CommandPalette, LinkLayer, PaletteHint, SpineList, type PaletteCommand } from '@planner/shared'
 import { Context } from '@planner/shell/context'
@@ -19,7 +19,7 @@ import { needsYou, rowsOf, useThemeGroups } from '@planner/shell/spine'
 import { LoadError, loadMessage } from '@planner/shell/load-error'
 import { TEXT } from '@planner/lib/vocabulary'
 import type { LinksView, PlannerComment, PlannerDb, ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
-import { THEME_SECTIONS } from '@planner/lib/planner'
+import { THEME_SECTIONS, shortTaskId } from '@planner/lib/planner'
 
 const REFRESH_MS = 30_000
 const PIN_KEY = 'planner.pins'
@@ -233,6 +233,7 @@ export default function PlannerShell() {
   const commands = useCallback(
     (q: string): PaletteCommand[] => [
       { id: 'create:themes', mode: 'create', text: TEXT.createTheme, label: q ? TEXT.createThemeIn(q) : TEXT.createTheme, group: TEXT.paletteKindTheme, hint: '↵', always: true },
+      ...(row && q ? [{ id: 'create:task', mode: 'create', text: q, label: TEXT.createTaskUnder(q, row.rank), group: TEXT.paletteKindTask, hint: 'T', always: true }] : []),
       { id: 'create:ideas', mode: 'create', text: TEXT.createIdea, label: q ? TEXT.createIdeaNamed(q) : TEXT.createIdea, group: TEXT.paletteKindIdea, hint: 'I', always: true },
       ...extraCommands.map((c) => ({ id: `ext:${c.id}`, mode: String((c.data as { mode?: string } | undefined)?.mode ?? 'create'), text: c.label ?? c.id, label: c.label ?? c.id })),
       ...all.map((r) => ({ id: `open:${r.id}`, mode: 'open', group: TEXT.paletteKindTheme, hint: row && r.id !== row.id ? TEXT.paletteLink : undefined, text: `${r.id} ${r.title}`, label: r.title })),
@@ -321,7 +322,12 @@ export default function PlannerShell() {
         emptyLabel={TEXT.paletteEmpty}
         hints={<><PaletteHint k="↵">{TEXT.hintEnter}</PaletteHint>{row && <PaletteHint k="⇥">{TEXT.hintTab(`#${row.rank}`)}</PaletteHint>}<PaletteHint k="@">{TEXT.hintAt}</PaletteHint><PaletteHint k="esc">{TEXT.hintEsc}</PaletteHint></>}
         onRun={(cmd, q) => {
-          if (cmd.startsWith('open:')) open(cmd.slice(5))
+          if (cmd === 'create:task' && row) {
+            void authorizing(() => api.plannerThemeTaskCreate(row.id, q)).then(
+              (res) => { notifySuccess(TEXT.taskAdded(shortTaskId(res.task.id))); setTick((t) => t + 1) },
+              (err) => notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true)),
+            )
+          } else if (cmd.startsWith('open:')) open(cmd.slice(5))
           else if (cmd === 'create:themes' || cmd === 'create:ideas') (setCreateTitle(q), setCreating(cmd === 'create:ideas' ? 'ideas' : 'themes'))
         }}
         onRunAndLink={row ? (cmd) => cmd.startsWith('open:') && setPendingLink({ from: row.id, to: cmd.slice(5) }) : undefined}
