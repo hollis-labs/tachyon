@@ -2,7 +2,6 @@ import { AlertsSettingsSection } from "@tachyon/console-ui"
 import { useEffect, useMemo, useRef } from "react"
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { AppearanceSection } from "./AppearanceSection"
-import { Card } from "./Card"
 import { GeneralSection } from "./GeneralSection"
 import { stubApi } from "./general"
 import { resolveSection, SETTINGS_SECTIONS } from "./sections"
@@ -76,7 +75,7 @@ export function SettingsPage() {
         >
           <div className="w-full max-w-[680px]">
             {active === "appearance" && <AppearanceSection />}
-            {active === "alerts" && <AlertsSettingsSection card={Card} />}
+            {active === "alerts" && <AlertsSettingsSection />}
             {active === "general" && <GeneralSection api={api} />}
           </div>
         </div>
