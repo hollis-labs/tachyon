@@ -186,6 +186,8 @@ func (s *Owned) themeBoard(ctx context.Context, tasks *Tasks, o BoardOptions, in
 			}
 		}
 		row["unmet_dependencies"] = unmet
+		// Always present, so the board says the server keeps pins (an absent field reads as "no server pins").
+		row["pinned"] = t["pinned"] == true
 		if failed[i] {
 			unavailable++
 			row["progress"] = Item{"available": false}

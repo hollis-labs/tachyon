@@ -157,6 +157,10 @@ func TestThemeBoardSectionsOrderAndProgress(t *testing.T) {
 	if rowNamed(t, board, "cleared", "Second")["unmet_dependencies"] != 1 {
 		t.Fatal("dependency on a theme that is not done is unmet")
 	}
+	// Every row carries an explicit pinned flag, so a client can tell the server keeps pins.
+	if v, ok := first["pinned"].(bool); !ok || v {
+		t.Fatal("rows report pinned=false when unpinned", first["pinned"])
+	}
 	// Header total counts distinct tasks across themes shown: CW-1,2,3,5,6.
 	hp := object(board["progress"])
 	if hp["total"] != 5 || hp["done"] != 2 {
