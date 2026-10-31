@@ -315,7 +315,7 @@ export function TranscriptReader({
           )}
         </p>
       </header>
-      <div className="flex flex-wrap items-center gap-2 border-y border-border px-5 py-2.5 max-md:px-4">
+      <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 bg-bg border-y border-border px-5 py-2.5 max-md:px-4">
         <div className="flex min-w-0 basis-72 items-center gap-1.5 max-md:basis-full md:max-w-md md:flex-1">
           <div className="dash-search-adapter min-w-0 flex-1">
             <SearchInput
