@@ -66,6 +66,10 @@ func TestBindProjectAndCount(t *testing.T) {
 	if c.State != "pending" || c.Class != "low" || c.Caption != "Which project?" || len(c.Fields) != 2 || c.MessageRef == nil || *c.MessageRef != "m_3" {
 		t.Fatalf("projection: %+v", c)
 	}
+	opts, _ := c.Fields[0]["options"].([]map[string]any)
+	if len(opts) != 1 || opts[0]["id"] != "a" || opts[0]["value"] != "a" || opts[0]["label"] != "A" || opts[0]["description"] != "" || opts[0]["recommended"] != false {
+		t.Fatalf("option shape: %v", c.Fields[0]["options"])
+	}
 	if n := b.OpenCounts(ctx, []string{"app:t1", "app:t2"}); n["app:t1"] != 1 || n["app:t2"] != 0 {
 		t.Fatalf("open counts: %v", n)
 	}
