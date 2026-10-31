@@ -1,4 +1,4 @@
-import { AlertsSettingsSection } from "@tachyon/console-ui"
+import { AlertsSettingsSection, SessionBanner } from "@tachyon/console-ui"
 import { useEffect, useMemo, useRef } from "react"
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { AppearanceSection } from "./AppearanceSection"
@@ -60,6 +60,7 @@ export function SettingsPage() {
           {active === "appearance" ? "Saved on this device" : "Applies to this Tachyon"}
         </span>
       </header>
+      <SessionBanner />
       <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         <nav
           aria-label="Settings sections"
