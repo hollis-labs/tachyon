@@ -27,6 +27,10 @@ const (
 // PolicyFields are the agent fields a policy bundle sets, in editor-model terms.
 var PolicyFields = []string{"permission_mode", "network", "default_sandbox", "mcp_scopes", "lifecycle", "recovery"}
 
+// RulesKey is the bundle key for a policy's plain-language rules. Tether has no rules object, so the rules live only
+// in the Library part: they are never compiled into an agent file and never count toward drift.
+const RulesKey = "rules"
+
 // Part is a Library part. Prompts carry Text; policies carry Bundle (only the keys they set).
 type Part struct {
 	Kind, ID, Name, Summary, Text string
@@ -272,7 +276,9 @@ func itoa(n int) string { return strconv.Itoa(n) }
 func PolicyHash(fields map[string]any) string {
 	keys := make([]string, 0, len(fields))
 	for k := range fields {
-		keys = append(keys, k)
+		if k != RulesKey {
+			keys = append(keys, k)
+		}
 	}
 	sort.Strings(keys)
 	ordered := make([]any, 0, len(keys)*2)

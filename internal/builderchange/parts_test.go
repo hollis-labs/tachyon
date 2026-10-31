@@ -225,3 +225,28 @@ func keysOf(m map[string]any) []string {
 	}
 	return out
 }
+
+func TestPolicyRulesAreStoredInTheBundleAndNeverCompiledOrDrift(t *testing.T) {
+	e := setup(t)
+	c := e.create(t, "r1", partOp("policy", "ruled", "", "create", "", `{"name":"Ruled","summary":"","bundle":{"permission_mode":"plan"}}`))
+	e.submit(c.ChangeID, false)
+	c = e.create(t, "r2", partOp("policy", "ruled", "1", "set", "rules", `["Ask before deleting files","Never push to main"]`))
+	if len(c.Privileged) != 0 {
+		t.Fatalf("rules are not a privileged field: %+v", c.Privileged)
+	}
+	e.submit(c.ChangeID, false)
+	p := e.part(t, "policy", "ruled")
+	rules, _ := p.Bundle["rules"].([]any)
+	if len(rules) != 2 || p.Bundle["permission_mode"] != "plan" {
+		t.Fatalf("bundle: %+v", p.Bundle)
+	}
+	if builderparts.PolicyHash(map[string]any{"permission_mode": "plan"}) != builderparts.PolicyHash(p.Bundle) {
+		t.Error("rules must not change the compiled hash")
+	}
+	for _, bad := range []string{`"not a list"`, `[""]`, `[1]`} {
+		w := e.do("POST", "/changes", req("rb"+bad, partOp("policy", "ruled", "2", "set", "rules", bad)))
+		if w.Code == 201 {
+			t.Errorf("rules %s accepted", bad)
+		}
+	}
+}

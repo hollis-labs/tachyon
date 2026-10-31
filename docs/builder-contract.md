@@ -208,3 +208,13 @@ Client text may not contain either marker (`marker_forbidden`), so text cannot f
 Migration `039_library_parts.sql` (take the next free number at merge).
 
 **Not done:** multi-agent *rollback* of a partly applied fleet is Tether's (one plan, atomic); a policy edit does not unset a field a newer bundle dropped; bodies are not read from Tether, only from the masked index.
+
+## Registry writes and policy rules (default choices)
+
+- `PATCH /registry/projects/{id}` body `{display_name?, description?, tags?, guidelines?, entry_points?, status?}` (status `active` or
+  `archived`; archived is Tether's `deprecated`) returns the updated project in the detail shape. `POST /registry/projects/{id}/link`
+  `{catalog_id}` and `DELETE /registry/projects/{id}/link` store the link as `props.catalog_id` on the registry profile and return the
+  project. They write with the control token (`TACHYON_TETHER_CONTROL_TOKEN_FILE`) and need its `registry.write` scope: no token file is
+  501 `registry_write_unavailable`, a token without the scope is 403 `tether_write_denied`. Operator session required.
+- A policy part accepts `set`/`remove` on path `rules`: up to 50 strings of 1 to 500 characters. Tether has no rules object, so rules live
+  only in the Library part; they are never compiled into an agent file, never privileged and never count toward drift.
