@@ -20,6 +20,7 @@ type Derived struct {
 	OneLiner    *agentsderive.OneLiner
 	CallsInTurn int
 	CallsDelta  int
+	TokDelta    *[4]int64 // tokens to add to the session total and the minute/hour buckets; nil = none seen
 	CtxUsed     int64
 	CtxWindow   int64
 	CtxModel    string
@@ -60,6 +61,9 @@ func (s *Store) SetDerived(ctx context.Context, id string, d Derived) error {
   last_clear_inferred=CASE WHEN excluded.last_clear_ns>0 THEN excluded.last_clear_inferred ELSE last_clear_inferred END,
   last_activity_ns=MAX(last_activity_ns,excluded.last_activity_ns), updated_ns=excluded.updated_ns`,
 			id, d.At.UnixNano(), d.At.UnixNano(), s.now().UnixNano(), ol, d.CallsInTurn, used, window, model, string(comp), clearNS, clearInf, d.CallsDelta)
+		if err == nil && d.TokDelta != nil {
+			err = addTokens(ctx, tx, id, d.At, *d.TokDelta)
+		}
 		if err != nil || !d.CtxSeen {
 			return err
 		}
@@ -155,4 +159,23 @@ func (s *Store) Sessions(ctx context.Context) ([]SessionRow, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// addTokens adds metered tokens to the session total (which turns the session from unmetered to metered) and to
+// the minute and hour buckets.
+func addTokens(ctx context.Context, tx *sql.Tx, id string, at time.Time, t [4]int64) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE agents_sessions SET tok_in=COALESCE(tok_in,0)+?, tok_out=COALESCE(tok_out,0)+?, tok_cr=COALESCE(tok_cr,0)+?, tok_cw=COALESCE(tok_cw,0)+? WHERE session_id=?`, t[0], t[1], t[2], t[3], id); err != nil {
+		return err
+	}
+	for _, b := range []struct {
+		kind string
+		ns   int64
+	}{{"min", at.Truncate(time.Minute).UnixNano()}, {"hour", at.Truncate(time.Hour).UnixNano()}} {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO agents_samples(session_id,bucket_ns,bucket_kind,tok_in,tok_out,tok_cr,tok_cw) VALUES(?,?,?,?,?,?,?)
+ ON CONFLICT(session_id,bucket_kind,bucket_ns) DO UPDATE SET tok_in=tok_in+excluded.tok_in, tok_out=tok_out+excluded.tok_out, tok_cr=tok_cr+excluded.tok_cr, tok_cw=tok_cw+excluded.tok_cw`,
+			id, b.ns, b.kind, t[0], t[1], t[2], t[3]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

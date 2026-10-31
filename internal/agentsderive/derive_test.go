@@ -2,6 +2,7 @@ package agentsderive
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -188,5 +189,21 @@ func TestFreshOutputWithoutWorkStateIsInferredWorking(t *testing.T) {
 	r = Derive(Input{WorkState: "idle", LastActivity: now.Add(-2 * time.Second)}, now, 0)
 	if r.State != Idle || r.Inferred {
 		t.Fatalf("a known work state wins: %+v", r)
+	}
+}
+
+func TestBilledTokensCountOnlyFinishedAPICalls(t *testing.T) {
+	line := func(s string) string { return s + "\n" }
+	body := line(`{"type":"assistant","message":{"model":"m","usage":{"input_tokens":2,"output_tokens":8,"cache_read_input_tokens":100}}}`) +
+		line(`{"type":"stream_event","event":{"type":"message_delta","usage":{"input_tokens":2,"output_tokens":205,"cache_read_input_tokens":100,"cache_creation_input_tokens":7}}}`)
+	payload, _ := json.Marshal(map[string]string{"data": base64.StdEncoding.EncodeToString([]byte(body))})
+	e := ExtractOutput(payload)
+	if e.Billed == nil || e.Billed.Input != 2 || e.Billed.Output != 205 || e.Billed.CacheRead != 100 || e.Billed.CacheWrite != 7 {
+		t.Fatalf("%+v", e.Billed)
+	}
+	only := base64.StdEncoding.EncodeToString([]byte(line(`{"type":"assistant","message":{"usage":{"input_tokens":2,"output_tokens":8}}}`)))
+	p2, _ := json.Marshal(map[string]string{"data": only})
+	if ExtractOutput(p2).Billed != nil {
+		t.Fatal("a partial assistant line is not a finished call")
 	}
 }
