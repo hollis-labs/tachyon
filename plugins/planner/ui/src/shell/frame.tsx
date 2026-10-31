@@ -63,15 +63,14 @@ export function PlannerFrame({ active, onLens, counts, portfolio, needYou, fresh
           <Button variant="outline" size="sm" onClick={onBack} className="sm:hidden max-sm:px-2">‹ {TEXT.back}</Button>
         )}
         <h1 className="font-mono text-caption font-semibold uppercase tracking-label max-sm:tracking-normal">{TEXT.appName}</h1>
-        <Button variant="outline" size="sm" onClick={onPalette} className="min-w-0 justify-start font-normal text-fg-muted max-sm:px-2 sm:w-80">
-          <span className="truncate max-sm:hidden">{TEXT.searchPlaceholder}</span>
-          <span className="sm:hidden">{TEXT.searchShort}</span>
+        <Button variant="outline" size="sm" onClick={onPalette} className={cn('min-w-0 justify-start font-normal text-fg-muted max-sm:px-2 sm:w-80', focused ? 'max-sm:w-20' : 'max-sm:w-28')}>
+          <span className="truncate">{TEXT.searchPlaceholder}</span>
           <Kbd className="ml-auto max-sm:hidden">/</Kbd>
         </Button>
         <span className="flex-1" />
         <span className="text-label text-fg-muted max-sm:hidden">{fresh}</span>
-        {onDetails && focused && (
-          <Button variant="outline" size="sm" onClick={onDetails} className="lg:hidden max-sm:px-2">{TEXT.detailsLabel}</Button>
+        {onDetails && (
+          <Button variant="outline" size="sm" onClick={onDetails} disabled={!focused} className="lg:hidden max-sm:px-2">{TEXT.detailsLabel}</Button>
         )}
         <Button variant="outline" size="icon-sm" aria-label={contextCollapsed ? TEXT.showDetails : TEXT.collapseDetails} aria-pressed={contextCollapsed} onClick={onToggleContext} className="max-lg:hidden">
           <PanelRight />
