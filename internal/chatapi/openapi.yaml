@@ -349,6 +349,7 @@ components:
         unread: {type: integer}
         last_at: {type: integer, format: int64}
         last_preview: {type: string}
+        blocked_breakdown: {type: object, properties: {approvals: {type: integer}, questions: {type: integer}}, description: "blocked_on_user split: approval-like cards and approval turns vs questions; always sums to blocked_on_user"}
         blocked_on_user: {type: integer, description: "open cards + presented Tether question/approval turns + input_required app messages"}
         plan_progress: {$ref: "#/components/schemas/Progress"}
         project_id: {type: string, nullable: true}

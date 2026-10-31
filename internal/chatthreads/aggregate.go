@@ -37,6 +37,12 @@ type Context struct {
 }
 
 // Summary is one row of the unified thread list (openapi ThreadSummary + Thread).
+// Breakdown is what a blocked thread is waiting for.
+type Breakdown struct {
+	Approvals int `json:"approvals"`
+	Questions int `json:"questions"`
+}
+
 type Summary struct {
 	Ref           string     `json:"thread_ref"`
 	Source        string     `json:"source"`
@@ -49,11 +55,13 @@ type Summary struct {
 	LastAt        int64      `json:"last_at"`
 	LastPreview   string     `json:"last_preview"`
 	BlockedOnUser int        `json:"blocked_on_user"`
-	PlanProgress  *Progress  `json:"plan_progress"`
-	ProjectID     *string    `json:"project_id"`
-	Context       Context    `json:"context"`
-	ForkedFrom    *string    `json:"forked_from"`
-	CreatedAt     int64      `json:"created_at"`
+	// BlockedBreakdown splits BlockedOnUser into approvals to give and questions to answer.
+	BlockedBreakdown Breakdown `json:"blocked_breakdown"`
+	PlanProgress     *Progress `json:"plan_progress"`
+	ProjectID        *string   `json:"project_id"`
+	Context          Context   `json:"context"`
+	ForkedFrom       *string   `json:"forked_from"`
+	CreatedAt        int64     `json:"created_at"`
 
 	pinnedNS int64
 	search   string // lowercased title, agent, preview and (tether) turn text
@@ -75,8 +83,9 @@ type Aggregator struct {
 	Chat  *chatbridge.Owned
 	State *StateStore
 	// Hooks for later slices; nil means "none yet".
-	PlanProgress func(ctx context.Context, refs []string) map[string]Progress // T2: chat_plans
-	CardBlocks   func(ctx context.Context, refs []string) map[string]int      // T5: open chat_card_refs
+	PlanProgress  func(ctx context.Context, refs []string) map[string]Progress // T2: chat_plans
+	CardBlocks    func(ctx context.Context, refs []string) map[string]int      // T5: open chat_card_refs
+	CardApprovals func(ctx context.Context, refs []string) map[string]int      // the open ones that are approvals
 }
 
 func preview(s string) string {
@@ -105,6 +114,7 @@ func (a *Aggregator) appSummaries(ctx context.Context) ([]Summary, error) {
 		}
 		if t.Blocked {
 			s.BlockedOnUser = 1
+			s.BlockedBreakdown.Questions = 1
 		}
 		s.search = strings.ToLower(t.Title + "\n" + t.Agent + "\n" + t.LastPreview)
 		out = append(out, s)
@@ -188,6 +198,11 @@ func (a *Aggregator) tetherSummary(g tgroup, readNS int64) Summary {
 		}
 		if open(t) && (t.Kind == "question" || t.Kind == "approval") {
 			s.BlockedOnUser++
+			if t.Kind == "approval" {
+				s.BlockedBreakdown.Approvals++
+			} else {
+				s.BlockedBreakdown.Questions++
+			}
 		}
 		if open(t) && t.Replyable {
 			s.Capability.CanSend = true
@@ -249,6 +264,19 @@ func (a *Aggregator) all(ctx context.Context) ([]Summary, error) {
 		m := a.CardBlocks(ctx, refs)
 		for i := range out {
 			out[i].BlockedOnUser += m[out[i].Ref]
+		}
+		// Of the open cards, the approval-like ones are approvals; the rest are questions.
+		ap := map[string]int{}
+		if a.CardApprovals != nil {
+			ap = a.CardApprovals(ctx, refs)
+		}
+		for i := range out {
+			n, k := m[out[i].Ref], ap[out[i].Ref]
+			if k > n {
+				k = n
+			}
+			out[i].BlockedBreakdown.Approvals += k
+			out[i].BlockedBreakdown.Questions += n - k
 		}
 	}
 	return out, nil

@@ -156,3 +156,8 @@ func compact(v any) string {
 	}
 	return fmt.Sprint(v)
 }
+
+// OpenApprovalCounts is the chatthreads CardApprovals hook.
+func (b *Binder) OpenApprovalCounts(ctx context.Context, refs []string) map[string]int {
+	return b.Refs.OpenApprovalCounts(ctx, refs)
+}

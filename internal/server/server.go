@@ -454,6 +454,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Changes: approvals.Changes(store),
 	}
 	s.chatThreads.Agg.CardBlocks = s.chatCards.OpenCounts
+	s.chatThreads.Agg.CardApprovals = s.chatCards.OpenApprovalCounts
 	if s.appAgent != nil {
 		// Runtime tool approvals (approval.request) become cards; the answer goes back to the runtime, once scope.
 		rt := &chatcards.Runtime{B: s.chatCards, Registry: approvals.CardRegistry, Source: "tachyon-chat",

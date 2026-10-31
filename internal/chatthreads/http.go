@@ -478,7 +478,7 @@ func (h *Handler) Notify(ctx context.Context, ref string) {
 		return
 	}
 	_, _ = h.Hub.Publish(context.WithoutCancel(ctx), ref, chatapi.EventThread, map[string]any{
-		"blocked": s.BlockedOnUser, "unread": s.Unread, "plan_progress": s.PlanProgress, "pinned": s.Pinned,
+		"blocked": s.BlockedOnUser, "blocked_breakdown": s.BlockedBreakdown, "unread": s.Unread, "plan_progress": s.PlanProgress, "pinned": s.Pinned,
 		"archived": s.Archived, "title": s.Title, "last_at": s.LastAt, "last_preview": s.LastPreview,
 	})
 }
