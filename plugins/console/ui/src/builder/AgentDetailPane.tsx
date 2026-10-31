@@ -18,7 +18,8 @@ import { useBuilderStream } from './stream'
 import { useLoad } from './useLoad'
 import { INHERITS, NOT_REPORTED, SECTIONS, STATE_LABEL } from './vocab'
 
-const text = (v: string | null | undefined) => (v ? v : NOT_REPORTED)
+/** null means the backend did not report it; an empty string is a real, empty value. */
+const text = (v: string | null | undefined) => (v == null ? NOT_REPORTED : v === '' ? <span className="text-fg-faint">none</span> : v)
 
 const chipsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 

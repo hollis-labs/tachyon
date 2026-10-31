@@ -71,7 +71,7 @@ export function ResolvedCard({ id }: { id: string }) {
               <RailRow label="Scopes">{r.scopes?.length ? r.scopes.join(', ') : none}</RailRow>
               <RailRow label="Prompt">
                 {r.prompt_parts?.length ? plural(r.prompt_parts.length, 'part') : NOT_REPORTED}
-                {r.prompt_tokens_est != null ? ` · ${r.prompt_tokens_estimated ? '~' : ''}${r.prompt_tokens_est} tokens` : ''}
+                {r.prompt_parts?.length && r.prompt_tokens_est != null ? ` · ${r.prompt_tokens_estimated ? '~' : ''}${r.prompt_tokens_est} tokens` : ''}
               </RailRow>
               {r.extends_chain && r.extends_chain.length > 1 && <RailRow label="Extends">{r.extends_chain.slice(1).join(' → ')}</RailRow>}
               {(r.notes ?? []).map((n) => (
