@@ -147,11 +147,7 @@ describe("transcript dashboard", () => {
     render(<TranscriptDashboard />)
     await screen.findByText(/partial snapshot/)
     fireEvent.click(screen.getByRole("tab", { name: "Insights" }))
-    expect(
-      within(
-        screen.getByRole("region", { name: "Database overview" }),
-      ).getByText("100"),
-    ).toBeTruthy()
+    expect(screen.getByText(/of 100 recorded/)).toBeTruthy()
     fireEvent.click(screen.getByRole("tab", { name: "Sessions" }))
     expect(screen.getByRole("button", { name: /Design review/ })).toBeTruthy()
     fireEvent.change(screen.getByLabelText("Search session metadata"), {

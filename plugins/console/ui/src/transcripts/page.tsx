@@ -165,6 +165,7 @@ export function TranscriptDashboard() {
   )
   // With search on the bridge, a typed query reads transcript content; without it the box filters titles.
   const searching = canSearch && filter.query.trim().length >= 2
+  const undated = (snapshot?.sessions ?? []).filter((x) => !x.started_at).length
   const totals = useMemo(() => summarize(rows), [rows])
   const tools = useMemo(() => rank(rows, "tool"), [rows])
   const set = (patch: Partial<Filters>) => {
@@ -262,58 +263,12 @@ export function TranscriptDashboard() {
           ))}
         </div>
       )}
-      {tab === "insights" && <section
-        aria-label="Database overview"
-        className="overflow-hidden rounded border border-border bg-surface/20"
-      >
-        <div className="border-b border-border px-4 py-2 font-mono dash-caption uppercase tracking-wider text-fg-faint">
-          Entire transcript database
-        </div>
-        <KpiGrid cols="grid-cols-2 lg:grid-cols-4">
-          <Kpi
-            label="Recorded sessions"
-            value={facets ? number(facets.total) : "—"}
-            sub="Main sessions and subagents"
-          />
-          <Kpi
-            label="Enrichment coverage"
-            value={
-              facets
-                ? `${facets.total ? Math.round((facets.enriched / facets.total) * 100) : 0}%`
-                : "—"
-            }
-            sub={
-              facets
-                ? `${number(facets.enriched)} enriched sessions`
-                : "Awaiting source"
-            }
-          />
-          <Kpi
-            label="Project paths"
-            value={facets ? number(facets.project_count) : "—"}
-            sub="Distinct recorded paths, including worktrees"
-          />
-          <Kpi
-            label="Tools / models"
-            value={
-              facets ? `${facets.tools.length} / ${facets.models.length}` : "—"
-            }
-            sub="Recorded labels, including aliases"
-          />
-        </KpiGrid>
-      </section>}
       {tab === "sessions" ? (
         <div className={`shrink-0 border-b border-border px-4 py-3`}>
           <SessionToolbar filter={filter} facets={facets} set={set} reset={reset} count={searching ? hitCount : rows.length} mode={searchMode} onMode={setSearchMode} semantic={canSearch && (status?.modes ?? []).some((m) => m === "semantic" || m === "hybrid")} />
         </div>
       ) : null}
       <section className={`${tab === "sessions" ? "hidden" : "shrink-0 space-y-4"}`} aria-label="Filtered transcript insights">
-        {tab === "insights" && (
-          <>
-            <WindowPicker filter={filter} set={set} />
-            <span className="block dash-control text-fg-muted">{number(rows.length)} sessions in view</span>
-          </>
-        )}
         {filteredTo && (
           <p className="flex items-center gap-2 dash-control text-fg-muted">
             Filtered to {filteredTo}
@@ -333,8 +288,13 @@ export function TranscriptDashboard() {
           )}
         {tab === "insights" && (
           <>
-        <div className="overflow-hidden rounded border border-border bg-surface/20">
+        <div className="overflow-hidden rounded-panel border border-border">
           <KpiGrid cols="grid-cols-2 lg:grid-cols-4">
+            <Kpi
+              label="Sessions in view"
+              value={snapshot ? number(rows.length) : "—"}
+              sub={facets ? `of ${number(facets.total)} recorded` : "Awaiting source"}
+            />
             <Kpi
               label="Conversation turns"
               value={snapshot ? compact(totals.turns) : "—"}
@@ -343,19 +303,25 @@ export function TranscriptDashboard() {
             <Kpi
               label="Reported tokens"
               value={snapshot ? compact(totals.tokens) : "—"}
-              sub="Includes cached tokens; not a cost estimate"
-            />
-            <Kpi
-              label="Tool calls"
-              value={snapshot ? compact(totals.calls) : "—"}
-              sub="Recorded invocations"
+              sub="Includes cached; not a cost estimate"
             />
             <Kpi
               label="Tool errors"
               value={snapshot ? number(totals.errors) : "—"}
               sub={`${number(totals.affected)} sessions affected`}
+              accent={totals.errors ? "var(--color-danger)" : undefined}
             />
           </KpiGrid>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 dash-support text-fg-muted">
+          <p>
+            {snapshot && !snapshot.complete ? `Based on the latest ${number(snapshot.limit)} sessions. ` : ""}
+            {facets
+              ? `Database: ${facets.total ? Math.round((facets.enriched / facets.total) * 100) : 0}% enriched (${number(facets.enriched)} sessions) · ${number(facets.project_count)} project paths · ${facets.tools.length} tools / ${facets.models.length} models`
+              : ""}
+            {undated > 0 && filter.days > 0 ? ` · ${number(undated)} sessions without a start time are not shown` : ""}
+          </p>
+          <WindowPicker filter={filter} set={set} />
         </div>
         <Panel
           title="Session activity"
@@ -418,6 +384,7 @@ export function TranscriptDashboard() {
             />
           </Panel>
         </div>
+        <p className="dash-support text-fg-muted">Clicking a bar sets that filter on the Sessions tab.</p>
           </>
         )}
       </section>
@@ -474,7 +441,7 @@ export function TranscriptDashboard() {
           )}
         </section>
       )}
-      {tab === "sessions" && <p className="shrink-0 border-t border-border px-4 py-3 dash-label text-fg-muted">Read-only · Fragments Engine owns the records · redacted transcripts</p>}
+      <p className="shrink-0 border-t border-border px-4 py-3 dash-label text-fg-muted">Read-only · Fragments Engine owns the records · redacted transcripts</p>
       </div>
     </div>
   )
