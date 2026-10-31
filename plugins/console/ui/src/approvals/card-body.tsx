@@ -124,7 +124,7 @@ export function CardForm({ request, itemId, client, busy, disabled, onSubmit }: 
           {f.label}{f.required ? " *" : ""}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {stored[f.id] && <span className="text-fg">Stored · <span className="font-mono">{stored[f.id]}</span></span>}
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setSecretFor(f)}>{stored[f.id] ? "Replace" : "Provide secret…"}</Button>
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setSecretFor(f)}>{stored[f.id] ? "Replace" : "Enter securely…"}</Button>
           </div>
         </div>
       ) : (
@@ -157,7 +157,7 @@ export function CardForm({ request, itemId, client, busy, disabled, onSubmit }: 
         </label>
       ))}
       <Button type="submit" variant="outline" size="sm" className="font-mono dash-label" disabled={!answers || disabled || busy}>
-        {busy ? "Submitting…" : "Submit"}
+        {busy ? "Sending…" : request.kind === "card.question" ? "Send answer" : "Submit"}
       </Button>
     </form>
       {secretFor && (
