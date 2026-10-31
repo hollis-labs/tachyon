@@ -119,8 +119,8 @@ export function SpineList({ groups, selectedId, onSelect, onTogglePin, label, pe
                           <span className="absolute right-3 top-1/2 z-10 -translate-y-1/2">{it.tag}</span>
                         </>
                       )}
-                      {it.port}
                     </div>
+                    {it.port}
                     {it.menu && <div className="absolute right-1.5 top-1.5 z-10">{it.menu}</div>}
                   </div>
                 )
