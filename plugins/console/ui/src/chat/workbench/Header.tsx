@@ -59,7 +59,7 @@ export function Header({ thread, onSelectSession, onTogglePin, onBack, onDetails
       <span aria-hidden className="grid size-7 place-items-center rounded-control bg-surface font-mono text-xs font-semibold">{initials(thread.title)}</span>
       <h1 className="m-0 flex min-w-0 items-center gap-1 text-control font-semibold normal-case tracking-normal text-fg">
         <span className="truncate">{thread.title}</span>
-        {switchActions.length > 0 && <OverflowMenu ariaLabel="Switch session" actions={switchActions} align="start" />}
+        {switchActions.length > 0 && <span className="max-sm:hidden"><OverflowMenu ariaLabel="Switch session" actions={switchActions} align="start" /></span>}
       </h1>
       <span className="max-sm:hidden"><Chip square>{role}</Chip></span>
       {model && <span className="font-mono text-label text-fg-muted max-sm:hidden">{model}</span>}
@@ -73,7 +73,8 @@ export function Header({ thread, onSelectSession, onTogglePin, onBack, onDetails
           <PanelRight aria-hidden className="size-3.5" /> Details
         </button>
       )}
-      {actions.length > 0 ? <OverflowMenu ariaLabel="Chat actions" actions={actions} align="end" /> : <MoreHorizontal aria-hidden className="size-4 text-fg-muted" />}
+      {/* KIT-GAP: OverflowMenu has no trigger slot; the golden's bordered chip trigger is styled from outside. */}
+      {actions.length > 0 ? <span className="max-sm:hidden [&>button]:h-5 [&>button]:rounded-full [&>button]:border [&>button]:border-border [&>button]:px-1.5"><OverflowMenu ariaLabel="Chat actions" actions={actions} align="end" /></span> : <MoreHorizontal aria-hidden className="size-4 text-fg-muted" />}
     </header>
   )
 }
