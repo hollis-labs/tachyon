@@ -4,6 +4,7 @@ export interface SegmentedItem<T extends string> {
   value: T
   label: string
   count?: number
+  disabled?: boolean
 }
 
 export function Segmented<T extends string>({
@@ -33,8 +34,9 @@ export function Segmented<T extends string>({
               type="button"
               role="tab"
               aria-selected={on}
+              disabled={it.disabled}
               onClick={() => onChange(it.value)}
-              className={`whitespace-nowrap px-2 py-1 sm:px-3 dash-control ${i > 0 ? 'border-l border-border' : ''} ${on ? 'bg-surface font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}
+              className={`whitespace-nowrap px-2 py-1 sm:px-3 dash-control ${i > 0 ? 'border-l border-border' : ''} ${on ? 'bg-surface font-medium text-fg' : 'text-fg-muted hover:text-fg'} disabled:cursor-not-allowed disabled:opacity-50`}
             >
               {it.label}
               {it.count !== undefined && <span className={`ml-1 sm:ml-1.5 ${on ? 'text-fg-muted' : 'text-fg-faint'}`}>{it.count}</span>}

@@ -172,6 +172,33 @@ export function TranscriptReader({
     if (current === undefined) return
     document.getElementById(`turn-${current}`)?.scrollIntoView?.({ block: "center" })
   }, [current])
+  // Matches are painted with the CSS Custom Highlight API: plain text ranges, never markup.
+  useEffect(() => {
+    const reg = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights
+    const Hl = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight
+    if (!reg || !Hl) return
+    if (!q) {
+      reg.delete("transcript-find")
+      return
+    }
+    const ranges: Range[] = []
+    for (const el of box.current?.querySelectorAll("[data-turn-text]") ?? []) {
+      const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const text = (n.textContent ?? "").toLowerCase()
+        for (let i = text.indexOf(q); i >= 0; i = text.indexOf(q, i + q.length)) {
+          const r = document.createRange()
+          r.setStart(n, i)
+          r.setEnd(n, i + q.length)
+          ranges.push(r)
+        }
+      }
+    }
+    reg.set("transcript-find", new Hl(...ranges))
+    return () => {
+      reg.delete("transcript-find")
+    }
+  }, [q, shown.length, turns.length])
   const step = (by: number) => {
     if (!hits.length) return
     setLast("find")
@@ -251,6 +278,7 @@ export function TranscriptReader({
       aria-label="Transcript reader"
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto"
     >
+      <style>{"::highlight(transcript-find){background-color:var(--selection);color:inherit}"}</style>
       <button type="button" onClick={onClose} className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5 text-left dash-label text-fg-secondary md:hidden">
         <ArrowLeft className="size-3.5" aria-hidden /> Sessions
       </button>
@@ -288,17 +316,40 @@ export function TranscriptReader({
         </p>
       </header>
       <div className="flex flex-wrap items-center gap-2 border-y border-border px-5 py-2.5 max-md:px-4">
-        <div className="dash-search-adapter min-w-0 basis-72 max-md:basis-full md:max-w-md md:flex-1">
-          <SearchInput
-            ariaLabel="Find in loaded turns"
-            placeholder={next !== undefined ? "Find in loaded turns" : "Find in transcript"}
-            value={find}
-            onChange={(v) => {
-              setFind(v)
-              setCur(0)
-            }}
-            debounceMs={0}
-          />
+        <div className="flex min-w-0 basis-72 items-center gap-1.5 max-md:basis-full md:max-w-md md:flex-1">
+          <div className="dash-search-adapter min-w-0 flex-1">
+            <SearchInput
+              ariaLabel="Find in loaded turns"
+              placeholder={next !== undefined ? "Find in loaded turns" : "Find in transcript"}
+              value={find}
+              onChange={(v) => {
+                setFind(v)
+                setCur(0)
+              }}
+              debounceMs={0}
+            />
+          </div>
+          {q && (
+            <>
+              <Button variant="outline" size="icon-sm" aria-label="Previous match" disabled={!hits.length} onClick={() => step(-1)}>
+                <ChevronUp className="size-4" />
+              </Button>
+              <Button variant="outline" size="icon-sm" aria-label="Next match" disabled={!hits.length} onClick={() => step(1)}>
+                <ChevronDown className="size-4" />
+              </Button>
+            </>
+          )}
+        <span role="status" aria-live="polite" className={`dash-label text-fg-muted`}>
+          {last === "error" && bad.length
+            ? `${eAt + 1} of ${bad.length} failed calls${next !== undefined ? " in loaded turns" : ""}`
+            : q
+            ? hits.length
+              ? `${at + 1} of ${hits.length}${next !== undefined ? " in loaded turns" : ""}`
+              : next !== undefined
+                ? "No matches in loaded turns · Load more to search further"
+                : "No matches"
+            : ""}
+        </span>
         </div>
         <Segmented
           bare
@@ -312,32 +363,11 @@ export function TranscriptReader({
             { value: "tool", label: "Tool" },
           ]}
         />
-        {q && (
-          <>
-            <Button variant="ghost" size="icon-sm" aria-label="Previous match" disabled={!hits.length} onClick={() => step(-1)}>
-              <ChevronUp className="size-4" />
-            </Button>
-            <Button variant="ghost" size="icon-sm" aria-label="Next match" disabled={!hits.length} onClick={() => step(1)}>
-              <ChevronDown className="size-4" />
-            </Button>
-          </>
-        )}
         {bad.length > 0 && (
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => nextError(1)}>
             Next error ↓ {bad.length}
           </Button>
         )}
-        <span role="status" aria-live="polite" className="dash-label text-fg-muted">
-          {last === "error" && bad.length
-            ? `${eAt + 1} of ${bad.length} failed calls${next !== undefined ? " in loaded turns" : ""}`
-            : q
-            ? hits.length
-              ? `${at + 1} of ${hits.length}${next !== undefined ? " in loaded turns" : ""}`
-              : next !== undefined
-                ? "No matches in loaded turns · Load more to search further"
-                : "No matches"
-            : ""}
-        </span>
       </div>
       {!turns.length && !loading && !error && !missing && <p className="px-5 py-3 dash-support text-fg-faint">No recorded turns</p>}
       <div className="relative px-5 py-4 max-md:px-4">
@@ -371,7 +401,7 @@ export function TranscriptReader({
                     )}
                   </div>
                   {turn.text ? (
-                    <div className="mt-0.5"><MessageBody body={turn.text} /></div>
+                    <div className="mt-0.5" data-turn-text><MessageBody body={turn.text} /></div>
                   ) : (
                     <p className="mt-0.5 dash-support italic text-fg-faint">No text recorded for this event.</p>
                   )}

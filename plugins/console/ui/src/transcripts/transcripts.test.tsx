@@ -301,14 +301,13 @@ describe("transcript dashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to sessions" }))
     await waitFor(() => expect(screen.queryByLabelText("Transcript reader")).toBeNull())
   })
-  it("does not request /status while the backend has no such route (TR1)", async () => {
-    read.mockResolvedValue(snapshot)
+  it("asks the bridge for /status once and keeps working when it is missing", async () => {
+    read.mockImplementation((path: string) => (path === "/status" ? Promise.reject(new Error("404")) : Promise.resolve(snapshot)))
     render(<TranscriptDashboard />)
     await screen.findByText(/partial snapshot/)
-    expect(read.mock.calls.map((c) => c[0])).not.toContain("/status")
+    expect(read.mock.calls.filter((c) => c[0] === "/status")).toHaveLength(1)
   })
-  // Re-enable with useSearchStatus when TR1 ships /transcripts/status.
-  it.skip("offers content search only when the bridge says it exists and shows snippets as text", async () => {
+  it("offers content search only when the bridge says it exists and shows snippets as text", async () => {
     read.mockImplementation((path: string) => {
       if (path === "/snapshot") return Promise.resolve(snapshot)
       if (path === "/status")
@@ -322,9 +321,7 @@ describe("transcript dashboard", () => {
       return Promise.reject(new Error("unexpected " + path))
     })
     render(<TranscriptDashboard />)
-    fireEvent.click(await screen.findByRole("tab", { name: "Content" }))
-    fireEvent.change(screen.getByLabelText("Search transcript content"), { target: { value: "forge" } })
-    fireEvent.click(screen.getByRole("button", { name: "Search" }))
+    fireEvent.change(await screen.findByLabelText("Search session metadata"), { target: { value: "forge" } })
     expect((await screen.findByText("forge")).tagName).toBe("STRONG")
     expect(screen.getByText(/<i>x<\/i>/)).toBeTruthy()
     expect(screen.getByText(/Semantic search is unavailable/)).toBeTruthy()
@@ -334,7 +331,7 @@ describe("transcript dashboard", () => {
     read.mockResolvedValue(snapshot)
     render(<TranscriptDashboard />)
     await screen.findByText(/partial snapshot/)
-    expect(screen.queryByRole("tab", { name: "Content" })).toBeNull()
+    expect(screen.getByRole("tab", { name: "Semantic" }).hasAttribute("disabled")).toBe(true)
   })
   it("removes prior private data when source authorization is revoked", async () => {
     read.mockResolvedValue(snapshot)

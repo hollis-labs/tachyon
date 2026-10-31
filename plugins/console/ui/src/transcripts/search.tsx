@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react"
-import { Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@hollis-labs/design-components"
-import { ago } from "./sessions"
+import { Button } from "@hollis-labs/design-components"
+import { stamp } from "./sessions"
 import { normalizeSession, projectName, read, type Filters, type Session } from "./data"
 
 export interface Status {
@@ -23,11 +23,22 @@ interface SearchResult {
 }
 
 /**
- * Content search is offered only when the bridge says so; an absent flag means no. The deployed backend has
- * no /transcripts/status yet (TR1), and asking for it was recorded as a page error, so no request is made.
+ * Content search is offered only when the bridge says so; an absent flag or a failed request means no.
+ * The status is read once per page load and is never cached across visits.
  */
 export function useSearchStatus(): Status | undefined {
-  return undefined
+  const [status, setStatus] = useState<Status>()
+  useEffect(() => {
+    let live = true
+    read<Status>("/status").then(
+      (s) => live && setStatus(s),
+      () => live && setStatus({}),
+    )
+    return () => {
+      live = false
+    }
+  }, [])
+  return status
 }
 
 /** Snippet text with the matched span in bold; plain text only, never markup. */
@@ -51,31 +62,36 @@ export function Highlighted({ snippet = "", highlight }: Match & { snippet?: str
   return <>{out}</>
 }
 
-export function ContentSearch({
+/** Rows from /search for the toolbar query; the query lives in component state only, never the URL or history. */
+export function SearchResults({
+  q,
+  mode,
   filter,
-  modes,
   activeId,
   onOpen,
   onActive,
+  onCount,
+  onReset,
 }: {
+  q: string
+  mode: "text" | "semantic"
   filter: Filters
-  modes: string[]
   activeId: string
   onOpen(s: Session): void
   onActive(id: string): void
+  onCount(n: number | undefined): void
+  onReset(): void
 }) {
-  // The query lives in component state only: not in the URL, history or logs.
-  const [q, setQ] = useState("")
-  const [mode, setMode] = useState("text")
   const [hits, setHits] = useState<Hit[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [notice, setNotice] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const [asked, setAsked] = useState("")
+  const [asked, setAsked] = useState(false)
+  const key = JSON.stringify([q, mode, filter.tool, filter.model, filter.kind, filter.errors])
 
-  const run = async (query: string, after?: string) => {
-    const p = new URLSearchParams({ q: query, mode, limit: "20" })
+  const run = async (after?: string) => {
+    const p = new URLSearchParams({ q, mode, limit: "20" })
     if (after) p.set("cursor", after)
     if (filter.tool) p.set("tool", filter.tool)
     if (filter.model) p.set("model", filter.model)
@@ -84,97 +100,73 @@ export function ContentSearch({
     setLoading(true)
     setError("")
     try {
-      const r = await read<SearchResult>(`/search?${p}`)
-      const next = (r.items ?? []).map((i) => ({
-        session: normalizeSession(i),
-        match: i.match as Match | undefined,
-      }))
+      const r = await read<SearchResult>(`/search?${p}`, true)
+      const next = (r.items ?? []).map((i) => ({ session: normalizeSession(i), match: i.match as Match | undefined }))
       setHits((h) => (after ? [...h, ...next] : next))
       setCursor(r.next_cursor ?? null)
       setNotice(r.notice?.message ?? "")
-      setAsked(query)
+      setAsked(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Search is unavailable.")
     } finally {
       setLoading(false)
     }
   }
-  const submit = () => q.trim() && void run(q.trim())
+  useEffect(() => {
+    const t = setTimeout(() => void run(), 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  useEffect(() => {
+    onCount(asked && !loading && !error ? hits.length : undefined)
+  }, [asked, loading, error, hits.length, onCount])
+  useEffect(() => () => onCount(undefined), [onCount])
 
+  const note = [mode === "semantic" ? "Semantic search: best matching session summaries first." : "", notice].filter(Boolean).join(" ")
   return (
     <div>
-      <form
-        className="flex flex-wrap items-center gap-2 px-4 py-3"
-        onSubmit={(e) => {
-          e.preventDefault()
-          submit()
-        }}
-      >
-        <Input
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search what was said"
-          aria-label="Search transcript content"
-          maxLength={256}
-          className="h-8 min-w-0 flex-1 dash-body"
-        />
-        {modes.length > 1 && (
-          <Select value={mode} onValueChange={(v) => v && setMode(String(v))}>
-            <SelectTrigger className="h-8 w-36 dash-body" aria-label="Match type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {modes.map((m) => (
-                <SelectItem key={m} value={m}>
-                  {m[0].toUpperCase() + m.slice(1)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <Button type="submit" size="sm" disabled={!q.trim() || loading}>
-          Search
-        </Button>
-      </form>
-      {notice && <p className="px-4 pb-2 dash-control text-fg-muted">{notice}</p>}
+      {note && <p className="border-b border-border bg-surface/40 px-4 py-2 dash-support text-fg-secondary">{note}</p>}
       {error && (
-        <p role="alert" className="px-4 pb-2 dash-control text-danger">
+        <p role="alert" className="flex items-center gap-2 px-4 py-3 dash-control text-danger">
           {error}
+          <Button variant="outline" size="sm" onClick={() => void run()}>Retry</Button>
         </p>
       )}
-      {loading && (
-        <p role="status" className="px-4 pb-2 dash-control text-fg-muted">
-          Searching…
-        </p>
-      )}
+      {loading && <p role="status" className="px-4 py-3 dash-control text-fg-muted">Searching…</p>}
       {asked && !loading && !hits.length && !error && (
-        <p className="p-10 text-center dash-body text-fg-faint">No sessions match this search.</p>
+        <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+          <p className="dash-body font-medium text-fg">No sessions match these filters</p>
+          <p className="dash-support text-fg-muted">Try a wider time window or clear a filter.</p>
+          <Button variant="outline" size="sm" onClick={onReset}>Reset filters</Button>
+        </div>
       )}
       <ul className={loading ? "opacity-50" : ""} aria-busy={loading}>
         {hits.map(({ session: s, match }) => (
-          <li key={s.id} className="border-b border-border-subtle">
+          <li key={s.id}>
             <button
               type="button"
               data-row={s.id}
               aria-current={s.id === activeId ? "true" : undefined}
               onFocus={() => onActive(s.id)}
               onClick={() => onOpen(s)}
-              className={`block w-full px-4 py-2.5 text-left hover:bg-surface-hover focus-visible:bg-surface-hover ${s.id === activeId ? "bg-surface" : ""}`}
+              className={`flex w-full items-start gap-3 border-l-2 px-4 py-2.5 text-left hover:bg-surface-hover focus-visible:bg-surface-hover ${s.id === activeId ? "border-fg bg-surface" : "border-transparent"}`}
             >
-              <span className="flex items-baseline justify-between gap-3">
-                <span className="truncate dash-body text-fg">{s.title || "Untitled session"}</span>
-                <span className="shrink-0 dash-caption text-fg-faint" title={s.started_at ? new Date(s.started_at).toLocaleString() : undefined}>
-                  {s.started_at ? ago(s.started_at) : ""}
+              <span aria-hidden className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border dash-caption font-medium uppercase text-fg-secondary">{(s.tool || "?")[0]}</span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="truncate dash-body text-fg">{s.title || "Untitled session"}</span>
+                  <span className="shrink-0 font-mono dash-caption text-fg-muted" title={s.started_at ? new Date(s.started_at).toLocaleString() : undefined}>
+                    {s.started_at ? stamp(s.started_at) : ""}
+                  </span>
                 </span>
-              </span>
-              {match?.snippet && (
-                <span className="mt-0.5 line-clamp-2 block dash-control text-fg-muted">
-                  <Highlighted {...match} />
+                {match?.snippet && (
+                  <span className="mt-0.5 line-clamp-2 block dash-support text-fg-muted">
+                    <Highlighted {...match} />
+                  </span>
+                )}
+                <span className="mt-0.5 block truncate dash-support text-fg-muted">
+                  {[projectName(s.project), s.kind === "subagent" ? "subagent" : "main", s.model].filter(Boolean).join(" · ")}
                 </span>
-              )}
-              <span className="mt-0.5 block truncate dash-caption text-fg-faint">
-                {[projectName(s.project), s.tool, s.model].filter(Boolean).join(" · ")}
               </span>
             </button>
           </li>
@@ -182,7 +174,7 @@ export function ContentSearch({
       </ul>
       {cursor && (
         <div className="px-4 py-3">
-          <Button variant="outline" size="sm" disabled={loading} onClick={() => void run(asked, cursor)}>
+          <Button variant="outline" size="sm" disabled={loading} onClick={() => void run(cursor)}>
             Load more
           </Button>
         </div>

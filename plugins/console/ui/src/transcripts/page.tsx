@@ -8,7 +8,7 @@ import { Activity, BarChart3, Boxes, FileText, RefreshCw } from "lucide-react"
 import { Segmented } from "../components/segmented"
 import { TranscriptReader } from "./detail"
 import { SessionList, SessionToolbar, WindowPicker } from "./sessions"
-import { useSearchStatus } from "./search"
+import { SearchResults, useSearchStatus } from "./search"
 import {
   read,
   filterSessions,
@@ -75,7 +75,9 @@ export function TranscriptDashboard() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filters>(defaults)
   const [selected, setSelected] = useState<Session>()
-  useSearchStatus()
+  const status = useSearchStatus()
+  const canSearch = status?.capabilities?.search === true
+  const [hitCount, setHitCount] = useState<number>()
   const [searchMode, setSearchMode] = useState<"text" | "semantic">("text")
   const [activeId, setActiveId] = useState("")
   const [tab, setTab] = useState<Tab>("sessions")
@@ -161,6 +163,8 @@ export function TranscriptDashboard() {
     () => filterSessions(snapshot?.sessions ?? [], filter),
     [snapshot, filter],
   )
+  // With search on the bridge, a typed query reads transcript content; without it the box filters titles.
+  const searching = canSearch && filter.query.trim().length >= 2
   const totals = useMemo(() => summarize(rows), [rows])
   const tools = useMemo(() => rank(rows, "tool"), [rows])
   const set = (patch: Partial<Filters>) => {
@@ -300,7 +304,7 @@ export function TranscriptDashboard() {
       </section>}
       {tab === "sessions" ? (
         <div className={`shrink-0 border-b border-border px-4 py-3`}>
-          <SessionToolbar filter={filter} facets={facets} set={set} reset={reset} count={rows.length} mode={searchMode} onMode={setSearchMode} />
+          <SessionToolbar filter={filter} facets={facets} set={set} reset={reset} count={searching ? hitCount : rows.length} mode={searchMode} onMode={setSearchMode} semantic={canSearch && (status?.modes ?? []).some((m) => m === "semantic" || m === "hybrid")} />
         </div>
       ) : null}
       <section className={`${tab === "sessions" ? "hidden" : "shrink-0 space-y-4"}`} aria-label="Filtered transcript insights">
@@ -423,7 +427,10 @@ export function TranscriptDashboard() {
             ref={listPane}
             className={`${selected ? "max-md:hidden" : ""} flex min-h-0 w-full flex-col overflow-auto md:w-[26rem] md:shrink-0 md:border-r md:border-border`}
           >
-            {!!rows.length && (
+            {searching && (
+              <SearchResults q={filter.query.trim()} mode={searchMode} filter={filter} activeId={activeId} onActive={setActiveId} onOpen={open} onCount={setHitCount} onReset={reset} />
+            )}
+            {!searching && !!rows.length && (
               <SessionList
                 key={JSON.stringify(filter)}
                 rows={rows}
@@ -433,7 +440,7 @@ export function TranscriptDashboard() {
                 keys
               />
             )}
-            {!rows.length && !loading && (
+            {!searching && !rows.length && !loading && (
               <div className="space-y-3 p-10 text-center dash-body text-fg-faint">
                 {!snapshot ? (
                   <>

@@ -174,14 +174,17 @@ export function SessionToolbar({
   count,
   mode,
   onMode,
+  semantic,
 }: {
   filter: Filters
   facets?: Facets
   set(patch: Partial<Filters>): void
   reset(): void
-  count: number
+  count?: number
   mode: "text" | "semantic"
   onMode(m: "text" | "semantic"): void
+  /** The bridge offers semantic matching; without it the segment stays visible but off. */
+  semantic: boolean
 }) {
   const [sheet, setSheet] = useState(false)
   const active = [filter.tool, filter.model, filter.kind].filter(Boolean).length + (filter.errors ? 1 : 0)
@@ -191,7 +194,7 @@ export function SessionToolbar({
         <div className="dash-search-adapter min-w-0 flex-1">
           <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project or tag…" value={filter.query} onChange={(query) => set({ query })} debounceMs={0} slashToFocus />
         </div>
-        <Segmented bare label="Search mode" value={mode} onChange={onMode} items={[{ value: "text", label: "Text" }, { value: "semantic", label: "Semantic" }]} />
+        <Segmented bare label="Search mode" value={mode} onChange={onMode} items={[{ value: "text", label: "Text" }, { value: "semantic", label: "Semantic", disabled: !semantic }]} />
       </div>
       <WindowPicker filter={filter} set={set} />
       <div className="hidden flex-wrap items-center gap-2 md:flex">
@@ -203,7 +206,7 @@ export function SessionToolbar({
       <Button variant="outline" size="sm" className="md:hidden" onClick={() => setSheet(true)}>
         <SlidersHorizontal className="h-3 w-3" /> Filters{active ? ` (${active})` : ""}
       </Button>
-      <span className="ml-auto dash-label text-fg-muted">{number(count)} sessions</span>
+      <span className="ml-auto dash-label text-fg-muted">{count === undefined ? "Searching…" : `${number(count)} sessions`}</span>
       {sheet && (
         <Dialog open onOpenChange={(o) => !o && setSheet(false)}>
           <DialogContent>
