@@ -35,6 +35,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [noWrite, setNoWrite] = useState(false)
+  const [linkId, setLinkId] = useState('')
   const [archiving, setArchiving] = useState(false)
   const [mode, recheckMode] = useChangeMode()
   const [servers, setServers] = useState<string[] | null>(null)
@@ -86,6 +87,21 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
     }
   }
   const save = () => void send(patch)
+  const doLink = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      setSaved(await registryApi.link(p.id, linkId))
+      setSavedFields('link')
+      setLinkId('')
+    } catch (e) {
+      const unsupported = e instanceof BuilderError && [404, 405, 501].includes(e.status)
+      if (unsupported) setNoWrite(true)
+      setError(unsupported ? 'Linking needs Tether write access.' : errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   const c = p.consumed_by
   const archived = p.identity.status === 'archived'
   const current = p.catalog?.mcp_servers ?? null
@@ -201,7 +217,15 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
         <section aria-label="Tool servers" className="flex flex-col gap-2">
           <Cap>Tool servers</Cap>
           {p.link.state === 'unlinked' ? (
-            <p className="text-control text-fg-secondary">Not linked to a catalog project{p.link.reason ? `: ${p.link.reason}` : '.'}</p>
+            <div className="flex flex-col gap-2">
+              <p className="text-control text-fg-secondary">Not linked to a catalog project{p.link.reason ? `: ${p.link.reason}` : '.'}</p>
+              <div className="flex items-center gap-2">
+                <Input aria-label="Catalog project id" className="max-w-[260px]" placeholder="catalog project id" value={linkId} onChange={(e) => setLinkId(e.target.value.trim())} />
+                <Button type="button" size="sm" variant="outline" disabled={busy || linkId === '' || noWrite} title={noWrite ? 'Needs Tether write access' : undefined} onClick={() => void doLink()}>
+                  Link
+                </Button>
+              </div>
+            </div>
           ) : (
             <dl className="flex flex-col gap-2">
               <Row label="Servers">
