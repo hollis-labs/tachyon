@@ -2,6 +2,7 @@
 // the runtime behind the agent (Nanite today) is invisible here. Server contract:
 // internal/appagent (/api/plugins/console/v1/app-agent). Transport details stay in this file.
 
+import { spineHub } from './live'
 import { chatFetch } from './roster'
 import type { Recipient } from '../messaging'
 import type { ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryPage, HistoryQuery } from './types'
@@ -20,7 +21,6 @@ interface WireMessage extends ChatMessage {
   seq: number
 }
 
-const THREAD_POLL_MS = 5000
 const RETRY_FIRST_MS = 250
 const PAUSE_NOTICE_AFTER_MS = 8000
 const RETRY_MAX_MS = 10000
@@ -197,8 +197,9 @@ export function createAppAgentChatClient(f: typeof fetch = chatFetch): ChatClien
       let live = true
       const tick = () => listThreads().then((t) => { if (live) listener(t) }, (e) => { if (live) onError?.(e instanceof Error ? e.message : String(e)) })
       void tick() // first answer now, not after one poll interval
-      const timer = setInterval(tick, THREAD_POLL_MS)
-      return () => { live = false; clearInterval(timer) }
+      // No interval: the spine stream says when any thread row changed (app threads included); a reconnect re-lists too.
+      const offSpine = spineHub().subscribe((f) => { if (f.type === 'thread' || f.type === 'reconnected') void tick() })
+      return () => { live = false; offSpine() }
     },
   }
 }

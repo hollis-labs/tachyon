@@ -167,7 +167,9 @@ describe('app agent ChatClient', () => {
     debug.mockRestore()
   })
 
-  it('polls threads and reports failures', async () => {
+  it('re-lists on a spine thread frame (no interval) and reports failures', async () => {
+    const sources: { onmessage: ((m: { data: string }) => void) | null }[] = []
+    vi.stubGlobal('EventSource', class { onmessage: ((m: { data: string }) => void) | null = null; onopen = null; onerror = null; constructor() { sources.push(this) } close() { sources.splice(sources.indexOf(this), 1) } })
     const f = vi.fn().mockResolvedValueOnce(json({ threads: [thread('app-tachyon', 1)] })).mockResolvedValueOnce(json({ error: { message: 'down' } }, 500))
     const c = createAppAgentChatClient(f as never)
     const lists: string[][] = []
@@ -175,9 +177,13 @@ describe('app agent ChatClient', () => {
     const off = c.subscribeThreads((t) => lists.push(t.map((x) => x.id)), (m) => errors.push(m))
     await tick() // the first answer does not wait a poll interval
     expect(lists).toEqual([['app-tachyon']])
-    await tick(5000)
-    off()
     await tick(10000)
+    expect(f).toHaveBeenCalledTimes(1) // no poll
+    sources[0].onmessage?.({ data: JSON.stringify({ type: 'thread' }) })
+    await tick()
+    off()
+    expect(sources).toHaveLength(0)
+    vi.unstubAllGlobals()
     expect(lists).toEqual([['app-tachyon']])
     expect(errors).toEqual(['down'])
     expect(f).toHaveBeenCalledTimes(2)
