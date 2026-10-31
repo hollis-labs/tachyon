@@ -179,7 +179,7 @@ export default function PlannerShell() {
   const rowLinks = [
     ...(linksView?.outbound ?? []).map((l) => ({ kind: l.kind, label: l.title, note: l.status })),
     ...(linksView?.inbound ?? []).map((l) => ({ kind: l.kind, label: l.title, note: TEXT.linkedFromNote })),
-    ...(linksView?.external ?? []).map((l) => ({ kind: l.kind, label: l.label })),
+    ...(linksView?.external ?? []).map((l) => ({ kind: l.kind, label: l.label, path: l.kind === 'file' ? l.ref : undefined })),
   ]
   const addLink = async (kind: LinkKind) => {
     if (!pendingLink) return

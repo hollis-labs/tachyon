@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Pin } from 'lucide-react'
+import { RefChip } from '@console/autolink'
 import { Button, cn } from '@hollis-labs/design-components'
 import { TEXT } from '@planner/lib/vocabulary'
 import { boardAge } from '@planner/lib/planner'
@@ -15,6 +16,8 @@ export interface ContextLink {
   label: string
   /** Right-aligned note: "blocks", "open". */
   note?: string
+  /** An absolute or ~/ path of a file link: the row opens it in the shared file viewer. */
+  path?: string
 }
 
 export interface ContextDecision {
@@ -98,7 +101,9 @@ export function Context({ db, id, rev, pinned: pinnedNow, comments, links, decis
               <li key={`${l.kind}:${l.label}`} className="-mx-1.5 flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs text-fg-secondary hover:bg-selection">
                 <span className="w-14 shrink-0 font-mono text-caption text-fg-muted">{l.kind}</span>
                 <StateDot state="todo" className="shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{l.label}</span>
+                {l.path
+                  ? <span className="min-w-0 flex-1 truncate"><RefChip kind="path" canonical={l.path} fallbackLabel={l.label} /></span>
+                  : <span className="min-w-0 flex-1 truncate">{l.label}</span>}
                 {l.note && <span className="shrink-0 text-label text-fg-muted">{l.note}</span>}
               </li>
             ))}
