@@ -19,6 +19,7 @@ type OutputSink interface {
 type Derived struct {
 	OneLiner    *agentsderive.OneLiner
 	CallsInTurn int
+	CallsDelta  int
 	CtxUsed     int64
 	CtxWindow   int64
 	CtxModel    string
@@ -50,15 +51,15 @@ func (s *Store) SetDerived(ctx context.Context, id string, d Derived) error {
 		clearNS, clearInf = d.LastClear.At.UnixNano(), b2int(d.LastClear.Inferred)
 	}
 	return s.DB.Writer.Submit(ctx, "agents_derived", func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO agents_sessions(session_id,started_ns,last_activity_ns,updated_ns,one_liner_json,calls_this_turn,ctx_used,ctx_window,ctx_model,compactions_json,last_clear_ns,last_clear_inferred)
- VALUES(?,?,?,?,?,?,?,?,?,?,COALESCE(?,0),COALESCE(?,0))
+		_, err := tx.ExecContext(ctx, `INSERT INTO agents_sessions(session_id,started_ns,last_activity_ns,updated_ns,one_liner_json,calls_this_turn,ctx_used,ctx_window,ctx_model,compactions_json,last_clear_ns,last_clear_inferred,tool_calls)
+ VALUES(?,?,?,?,?,?,?,?,?,?,COALESCE(?,0),COALESCE(?,0),?)
  ON CONFLICT(session_id) DO UPDATE SET one_liner_json=COALESCE(excluded.one_liner_json,one_liner_json), calls_this_turn=excluded.calls_this_turn,
   ctx_used=COALESCE(excluded.ctx_used,ctx_used), ctx_window=COALESCE(excluded.ctx_window,ctx_window), ctx_model=COALESCE(excluded.ctx_model,ctx_model),
-  compactions_json=excluded.compactions_json,
+  compactions_json=excluded.compactions_json, tool_calls=COALESCE(tool_calls,0)+excluded.tool_calls,
   last_clear_ns=CASE WHEN excluded.last_clear_ns>0 THEN excluded.last_clear_ns ELSE last_clear_ns END,
   last_clear_inferred=CASE WHEN excluded.last_clear_ns>0 THEN excluded.last_clear_inferred ELSE last_clear_inferred END,
   last_activity_ns=MAX(last_activity_ns,excluded.last_activity_ns), updated_ns=excluded.updated_ns`,
-			id, d.At.UnixNano(), d.At.UnixNano(), s.now().UnixNano(), ol, d.CallsInTurn, used, window, model, string(comp), clearNS, clearInf)
+			id, d.At.UnixNano(), d.At.UnixNano(), s.now().UnixNano(), ol, d.CallsInTurn, used, window, model, string(comp), clearNS, clearInf, d.CallsDelta)
 		if err != nil || !d.CtxSeen {
 			return err
 		}
