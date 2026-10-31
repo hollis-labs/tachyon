@@ -76,7 +76,7 @@ export function AlertTray() {
           c.markAllRead()
         }
       }}
-      className="fixed bottom-3 left-14 z-50 flex max-h-[min(36rem,calc(100vh-1.5rem))] w-[min(26rem,calc(100vw-4.5rem))] max-md:!bottom-0 max-md:!left-0 max-md:max-h-[82dvh] max-md:!w-full max-md:rounded-t-xl flex-col border border-border bg-bg-elevated shadow-xl shadow-black/30 focus-visible:outline-none"
+      className="fixed bottom-3 left-14 z-50 flex max-h-[min(36rem,calc(100vh-1.5rem))] w-[min(26rem,calc(100vw-4.5rem))] max-md:!bottom-0 max-md:!left-0 max-md:max-h-[82dvh] max-md:!w-full max-md:rounded-t-xl flex-col border border-border bg-bg-elevated shadow-[0_12px_32px_rgb(0_0_0/calc(.3*var(--sh)))] focus-visible:outline-none"
     >
       <header className="flex items-center gap-3 border-b border-border-subtle px-4 py-2.5">
         <h2 className="font-mono dash-caption uppercase tracking-label text-fg">Alerts</h2>

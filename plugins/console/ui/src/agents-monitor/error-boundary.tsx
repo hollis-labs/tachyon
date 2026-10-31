@@ -29,7 +29,7 @@ export class AgentsErrorBoundary extends Component<Props, { error: Error | null 
     if (!this.state.error) return this.props.children
     const { onClose } = this.props
     return (
-      <div role="alert" className={onClose ? 'fixed inset-0 z-[70] grid place-items-center bg-black/40 p-4' : undefined}>
+      <div role="alert" className={onClose ? 'fixed inset-0 z-[70] grid place-items-center bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] p-4' : undefined}>
         <div className={onClose ? 'w-full max-w-md rounded-panel border border-border bg-bg-elevated p-4' : undefined}>
           <EmptyState
             variant="error"

@@ -76,7 +76,7 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
   const item = 'flex h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-control text-fg-secondary hover:bg-selection hover:text-fg focus-visible:bg-selection focus-visible:outline-none'
   return (
     <div className="relative z-10 shrink-0 px-6 max-sm:px-2">
-      <div ref={wrap} className="relative mx-auto w-full max-w-[760px] rounded-panel border border-surface-hover bg-bg-elevated shadow-[0_10px_28px_rgba(0,0,0,.45)]">
+      <div ref={wrap} className="relative mx-auto w-full max-w-[760px] rounded-panel border border-surface-hover bg-bg-elevated shadow-[0_10px_28px_rgb(0_0_0/calc(.45*var(--sh)))]">
         {strip.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-2">
             {strip.map((s) => (

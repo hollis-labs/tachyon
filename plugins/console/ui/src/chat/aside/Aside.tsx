@@ -114,8 +114,8 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
       aria-label="Details"
       className={cn(
         'flex min-h-0 w-[360px] shrink-0 flex-col border-l border-border-subtle bg-bg-elevated max-[1100px]:w-[300px]',
-        narrow && 'absolute bottom-0 right-0 top-12 z-40 shadow-[-16px_0_40px_rgba(0,0,0,.5)]',
-        'max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:z-50 max-sm:h-[72%] max-sm:w-full max-sm:rounded-t-panel max-sm:border-l-0 max-sm:border-t max-sm:border-t-surface-hover max-sm:shadow-[0_-16px_40px_rgba(0,0,0,.5)]',
+        narrow && 'absolute bottom-0 right-0 top-12 z-40 shadow-[-16px_0_40px_rgb(0_0_0/calc(.5*var(--sh)))]',
+        'max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:z-50 max-sm:h-[72%] max-sm:w-full max-sm:rounded-t-panel max-sm:border-l-0 max-sm:border-t max-sm:border-t-surface-hover max-sm:shadow-[0_-16px_40px_rgb(0_0_0/calc(.5*var(--sh)))]',
         a.full && 'fixed! inset-0! top-0! z-50! h-auto! w-full! max-w-none rounded-none! border-0!',
       )}
     >
