@@ -15,6 +15,7 @@ import type {
   Repo,
   RepoRef,
   Review,
+  ForgeStatus,
   ReviewDraft,
   ReviewValidation,
   ReviewInput,
@@ -56,6 +57,8 @@ export interface ForgeClient {
   mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult>
   /** effect: write */
   assign(ref: PrRef, input: AssignInput): Promise<PullRequest>
+  /** effect: read. Optional freshness signal. */
+  getStatus?(): Promise<ForgeStatus>
   /** effect: read */
   listPendingPrs(): Promise<PendingPrSummary[]>
 }

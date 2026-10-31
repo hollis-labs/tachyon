@@ -9,17 +9,22 @@ export interface PendingPrsState {
   loading: boolean
   error: string | null
   refreshedAt: number | null
+  /** The forge's own last refresh (ms) when it reports one; else null. */
+  forgeRefreshedAt: number | null
+  /** The forge is answering from cache (degraded). */
+  cached: boolean
   refresh: () => Promise<void>
 }
 
 /** Loads ForgeClient.listPendingPrs(), optionally polling. Opens no stream. */
 export function usePendingPrs(client: ForgeClient, opts: { pollMs?: number } = {}): PendingPrsState {
   const { pollMs = 0 } = opts
-  const [s, setS] = useState<Omit<PendingPrsState, 'refresh'>>({ prs: [], loading: true, error: null, refreshedAt: null })
+  const [s, setS] = useState<Omit<PendingPrsState, 'refresh'>>({ prs: [], loading: true, error: null, refreshedAt: null, forgeRefreshedAt: null, cached: false })
   const load = useCallback(async () => {
     try {
       const prs = await client.listPendingPrs()
-      setS({ prs, loading: false, error: null, refreshedAt: Date.now() })
+      const st = await client.getStatus?.().catch(() => null)
+      setS({ prs, loading: false, error: null, refreshedAt: Date.now(), forgeRefreshedAt: st?.lastRefreshMs ?? null, cached: st?.degraded === true })
     } catch (e) {
       setS((p) => ({ ...p, loading: false, error: e instanceof Error ? e.message : 'Could not load pending PRs' }))
     }

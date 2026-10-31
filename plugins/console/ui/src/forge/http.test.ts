@@ -167,3 +167,9 @@ describe('HttpForgeClient review draft', () => {
     expect(JSON.parse(call(put.fetch).init.body as string)).toEqual({ head_sha: 'h2', draft: { comments: [{ body: 'y', path: 'b.go', line: 1, side: 'RIGHT' }] } })
   })
 })
+
+it('getStatus maps last refresh and degraded', async () => {
+  const { client, fetch } = mk({ data: { last_refresh_ms: 1700000000000, degraded: true } })
+  expect(await client.getStatus()).toEqual({ lastRefreshMs: 1700000000000, degraded: true })
+  expect(call(fetch).url).toMatch(/\/status$/)
+})
