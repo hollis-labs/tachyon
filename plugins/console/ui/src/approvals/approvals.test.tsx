@@ -17,7 +17,7 @@ import {
   type ApprovalClient,
 } from "./client"
 import { noteServerNow, serverNow } from "./clock"
-import { MAX_BATCH, batchEligibility, orderPending } from "./batch"
+import { MAX_BATCH, batchEligibility, inlineDecisionBlocker, orderPending } from "./batch"
 import { ApprovalDialog } from "./dialog"
 import { ApprovalProvider } from "./context"
 import { ApprovalsPage } from "./page"
@@ -691,6 +691,16 @@ describe("batch eligibility", () => {
     expect(batchEligibility({ batchable: false, batch_blockers: ["risk_not_low", "needs_review"] }).reasons).toEqual(["Not low risk: review it on its own.", "Needs review."])
     expect(batchEligibility({ batchable: false }).reasons).toEqual(["Review it on its own."])
     expect(MAX_BATCH).toBe(25)
+  })
+})
+
+describe("inline decisions", () => {
+  it("keeps typed confirmations and required reasons on the Approvals page", () => {
+    expect(inlineDecisionBlocker({ confirm: { phrase: "DELETE 3 ITEMS" } }, { decision: "approved" })).toMatch(/typed confirmation/)
+    expect(inlineDecisionBlocker({ confirm: { phrase: "X" } }, { decision: "denied" })).toBeUndefined()
+    expect(inlineDecisionBlocker({ reason_required: true }, { decision: "denied" })).toMatch(/reason/)
+    expect(inlineDecisionBlocker({ reason_required: true }, { decision: "denied", note: "no" })).toBeUndefined()
+    expect(inlineDecisionBlocker({}, { decision: "approved" })).toBeUndefined()
   })
 })
 

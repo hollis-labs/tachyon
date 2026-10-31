@@ -72,3 +72,16 @@ export function orderPending<T extends Pick<ApprovalItem, "deferred_until" | "en
     || RISK_RANK[a.request_snapshot.class ?? "medium"] - RISK_RANK[b.request_snapshot.class ?? "medium"]
     || ms(a.enqueued_at) - ms(b.enqueued_at))
 }
+
+/**
+ * Why an inline (chat) card cannot take this decision on its own, or undefined when it can. The card has no
+ * place to type a confirmation phrase or write a reason, so those go to the Approvals page.
+ */
+export function inlineDecisionBlocker(
+  item: Pick<ApprovalItem, "confirm" | "reason_required">,
+  response: { decision: string; note?: string },
+): string | undefined {
+  if (response.decision === "approved" && item.confirm?.phrase) return "This needs a typed confirmation. Open it in Approvals."
+  if (response.decision === "denied" && item.reason_required && !response.note?.trim()) return "A reason is needed to deny this. Open it in Approvals."
+  return undefined
+}
