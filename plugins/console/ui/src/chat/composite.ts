@@ -9,6 +9,7 @@ import type { ChatClient, ChatThread } from './types'
  */
 export function createCompositeChatClient(primary: ChatClient, app: ChatClient): ChatClient {
   let lastApp: ChatThread[] = [] // newest app agent threads we know of
+  let lastPrimary: ChatThread[] = [] // newest Tether threads we know of
   const forThread = (id: string) => (isAppThread(id) ? app : primary)
   const merge = (a: ChatThread[], b: ChatThread[]) => [...a, ...b].sort((x, y) => y.lastAt - x.lastAt)
   return {
@@ -22,6 +23,7 @@ export function createCompositeChatClient(primary: ChatClient, app: ChatClient):
         }),
       ])
       lastApp = a
+      lastPrimary = p
       return merge(p, a)
     },
     openThread: (agent: Recipient) => (isAppAgent(agent) ? app : primary).openThread(agent),
@@ -30,12 +32,14 @@ export function createCompositeChatClient(primary: ChatClient, app: ChatClient):
     markRead: (id) => forThread(id).markRead(id),
     subscribe: (id, l) => forThread(id).subscribe(id, l),
     subscribeThreads(listener, onError) {
-      let p: ChatThread[] = []
+      // Seed both sides from the last full listing: with no poll interval the Tether side may not push again until a
+      // spine frame, and an empty seed would leave only the app agent's thread in the list.
+      let p: ChatThread[] = lastPrimary
       // Start from what listThreads last saw: the Tether poll often fires first, and an empty
       // app list would make the Tachyon thread vanish until the app poll arrives.
       let a: ChatThread[] = lastApp
       const push = () => listener(merge(p, a))
-      const offP = primary.subscribeThreads((t) => { p = t; push() }, onError)
+      const offP = primary.subscribeThreads((t) => { p = lastPrimary = t; push() }, onError)
       // The app agent is optional: its failures are not reported as chat errors.
       const offA = app.subscribeThreads((t) => { a = lastApp = t; push() })
       return () => { offP(); offA() }

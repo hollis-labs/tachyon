@@ -6,6 +6,7 @@ import { TerminalPane } from '../drawer/TerminalPane'
 import { WorkspacePane } from '../drawer/WorkspacePane'
 import { useScratchPlacement, useWorkspace, type DrawerMode, type DrawerSize } from '../drawer/model'
 import { DEMO } from '../cards/useBlocks'
+import { useThreadFrames } from '../live'
 import { NewThread } from '../workbench/NewThread'
 import { useChatKeys } from '../workbench/keys'
 import { useAsideOptional, useRegisterConversation, type Marks } from '../aside/context'
@@ -65,6 +66,8 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
   const ws = useWorkspace(threadRef)
   const placement = useScratchPlacement()
   const aside = useAsideOptional()
+  const [offline, setOffline] = useState(false)
+  useThreadFrames(threadRef, (f) => { if (f.type === 'dropped') setOffline(true); else if (f.type === 'reconnected') setOffline(false) }, !DEMO)
   const bms = useBookmarks(threadRef, aside?.tick ?? 0)
   const tps = useTopics(threadRef, aside?.tick ?? 0)
   const marks = useMemo<Marks>(() => ({ bookmarks: bms.bookmarks, toggleBookmark: (r) => void bms.toggle(r), topics: tps.topics, addTopic: (t, r) => void tps.add(t, r) }), [bms.bookmarks, bms.toggle, tps.topics, tps.add])
@@ -107,6 +110,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {status}
+      {offline && <p role="status" className="border-b border-border-subtle px-4 py-1.5 text-xs text-fg-muted">Reconnecting… You can keep typing; a send that fails keeps your draft and can be retried.</p>}
       {error && (
         <div role="alert" className="flex items-center gap-3 border-b border-danger/30 px-4 py-2 text-xs text-danger">
           <span>{error} Your draft is kept.</span>
