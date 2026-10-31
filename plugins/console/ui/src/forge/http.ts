@@ -30,6 +30,7 @@ import {
   type Repo,
   type RepoRef,
   type Review,
+  type ReviewDraft,
   type ReviewValidation,
   type CommentCheck,
   type ReviewInput,
@@ -141,7 +142,7 @@ export class HttpForgeClient implements ForgeClient {
     this.doFetch = opts.fetch ?? hostFetch
   }
 
-  private async request(method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown, write = false): Promise<unknown> {
+  private async request(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, write = false): Promise<unknown> {
     const headers: Record<string, string> = { Accept: 'application/json', ...this.opts.headers }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
     if (write) {
@@ -232,6 +233,32 @@ export class HttpForgeClient implements ForgeClient {
       return st === 'outdated' || st === 'invalid_line' ? st : 'ok'
     })
     return { headMoved: o.head_moved === true, statuses }
+  }
+
+  async getReviewDraft(ref: PrRef): Promise<ReviewDraft | null> {
+    let raw: unknown
+    try {
+      raw = await this.request('GET', `${prPath(ref)}/review-draft`)
+    } catch (e) {
+      if (e instanceof ForgeError && e.code === 'not_found') return null
+      throw e
+    }
+    const o = isObj(raw) ? raw : {}
+    const d = isObj(o.draft) ? o.draft : {}
+    const comments = (Array.isArray(d.comments) ? d.comments : []).filter(isObj).map((c) => ({
+      body: String(c.body ?? ''), path: typeof c.path === 'string' ? c.path : undefined, line: typeof c.line === 'number' ? c.line : undefined,
+      side: c.side === 'LEFT' || c.side === 'left' ? ('left' as const) : ('right' as const),
+    }))
+    return { headSha: typeof o.head_sha === 'string' ? o.head_sha : '', comments }
+  }
+
+  async saveReviewDraft(ref: PrRef, draft: ReviewDraft): Promise<void> {
+    const comments = draft.comments.map((c) => ({ ...c, side: c.side === 'left' ? 'LEFT' : 'RIGHT' }))
+    await this.request('PUT', `${prPath(ref)}/review-draft`, { head_sha: draft.headSha, draft: { comments } }, true)
+  }
+
+  async deleteReviewDraft(ref: PrRef): Promise<void> {
+    await this.request('DELETE', `${prPath(ref)}/review-draft`, undefined, true)
   }
 
   async getMergePreflight(ref: PrRef): Promise<MergePreflight> {

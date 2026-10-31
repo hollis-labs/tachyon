@@ -154,3 +154,16 @@ it('validateReview maps per-comment statuses and head_moved', async () => {
   expect(call(fetch).url).toMatch(/\/pulls\/271\/reviews\/validate$/)
   expect(r).toEqual({ headMoved: true, statuses: ['outdated', 'invalid_line', 'ok'] })
 })
+
+describe('HttpForgeClient review draft', () => {
+  it('reads a draft, treats 404 as none, and saves in the wire shape', async () => {
+    const got = mk({ data: { pr_key: 'k', head_sha: 'h1', updated_ms: 1, draft: { comments: [{ body: 'x', path: 'a.go', line: 2, side: 'LEFT' }] } } })
+    expect(await got.client.getReviewDraft(ref)).toEqual({ headSha: 'h1', comments: [{ body: 'x', path: 'a.go', line: 2, side: 'left' }] })
+    const none = mk({ error: { code: 'not_found', message: 'No saved review draft.' } }, { status: 404 })
+    expect(await none.client.getReviewDraft(ref)).toBeNull()
+    const put = mk({ data: {} })
+    await put.client.saveReviewDraft(ref, { headSha: 'h2', comments: [{ body: 'y', path: 'b.go', line: 1, side: 'right' }] })
+    expect(call(put.fetch).init.method).toBe('PUT')
+    expect(JSON.parse(call(put.fetch).init.body as string)).toEqual({ head_sha: 'h2', draft: { comments: [{ body: 'y', path: 'b.go', line: 1, side: 'RIGHT' }] } })
+  })
+})

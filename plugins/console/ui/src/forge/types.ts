@@ -242,6 +242,9 @@ export type CommentCheck = 'ok' | 'outdated' | 'invalid_line'
 /** POST reviews/validate: whether queued inline comments still land on the current head. */
 export interface ReviewValidation { headMoved: boolean; statuses: CommentCheck[] }
 
+/** Saved review in progress: the queued inline comments, pinned to the head they were written on. */
+export interface ReviewDraft { headSha: string; comments: NonNullable<ReviewInput['comments']> }
+
 export interface AssignInput {
   /** Full replacement set of assignee logins. */
   assignees: string[]
