@@ -31,8 +31,12 @@ for (const mode of MODES) for (const width of WIDTHS) {
   await page.waitForTimeout(1500)
   const nav = await page.evaluate(() => [...document.querySelectorAll('nav a[href^="/"]')].map((a) => a.getAttribute('href')))
   for (const route of [...new Set([...ROUTES, ...nav])]) {
-    await page.goto(base + route, { waitUntil: 'load' }).catch(() => undefined)
-    await page.waitForTimeout(2500)
+    // A route can hard-navigate once (redirects, session connect): retry until the app document is there.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await page.goto(base + route, { waitUntil: 'load' }).catch(() => undefined)
+      await page.waitForTimeout(2500)
+      if (await page.evaluate(() => !!document.documentElement.lang).catch(() => false)) break
+    }
     await page.waitForFunction(() => document.documentElement.lang && document.documentElement.getAttribute('data-mode'), null, { timeout: 15000 }).catch(() => undefined)
     const resolved = await page.evaluate(() => document.documentElement.getAttribute('data-mode'))
     await page.addScriptTag({ content: axeSrc })
