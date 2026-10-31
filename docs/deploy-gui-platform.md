@@ -78,6 +78,8 @@ Tachyon is the operator: it should hold full read and write on every app it talk
 | Cards events | `HOLLIS_EVENTS_URL` | `HOLLIS_AUTH_TOKEN_FILE_TACHYON` | publish | not in the route | not in the route |
 | Tangent | none | none | Tachyon has no Tangent integration | not probed | not probed |
 
+**Dev-open grants (agent-os, 2026-10-31).** Tesseract: `TESSERACT_TOKEN_FILE=/home/chrispian/.config/tachyon/tokens/tesseract-operator.token`, a managed token (client `app:tachyon`, namespaces `*` including `user/*`, scopes read/write/promote/maintain, no admin) minted with `tesseract context token create` under the server's XDG env (`/var/lib/fabric/xdg/*`; a token minted without it lands in the wrong store and answers 401). Cerberus: the daemon socket `unix:/home/chrispian/.cerberus/cerberus.sock` needs no token (so `credential` reads `missing` while `read_probe` is `ok`); lifecycle POSTs (`/resources/{id}/reload|stop|deploy`) pass with `{"acknowledged":true}` on dev-labelled resources; logs and health are plain GETs. Tachyon's own code only reads Cerberus through that socket; GUI lifecycle still goes through Approve-and-Run (no `start` verb in the catalog).
+
 Token files must be mode 0600 and are refused over plain http to a non-loopback host.
 
 **Stub flags.** `TACHYON_ALERTS_STUBS`, `TACHYON_FORGE_STUBS`, `TACHYON_PLANNER_STUBS`, `TACHYON_CHAT_STUBS`, `TACHYON_AGENTS_STUBS`,
