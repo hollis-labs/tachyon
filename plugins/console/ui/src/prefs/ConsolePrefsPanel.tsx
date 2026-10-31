@@ -18,10 +18,10 @@ export interface ConsolePrefsPanelProps {
 
 function Row({ title, help, children }: { title: string; help: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border px-4 py-3 last:border-b-0">
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border-subtle px-4 py-3.5 last:border-b-0">
       <div className="min-w-0 flex-1 basis-56">
-        <p className="dash-control font-medium text-fg">{title}</p>
-        <p className="mt-0.5 dash-support text-fg-muted">{help}</p>
+        <p className="font-bold text-fg">{title}</p>
+        <p className="text-xs leading-normal text-fg-muted">{help}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">{children}</div>
     </div>
@@ -47,7 +47,7 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
 
   return (
     <form aria-label="Alert preferences" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-      <div className="rounded-md border border-border">
+      <div className="rounded-panel border border-border">
         <Row title="Notify me about" help="Sets what appears in the bell, the list and toasts.">
           <Segmented
             label="Notify me about"
@@ -58,16 +58,10 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
           />
         </Row>
         <p className="sr-only" aria-live="polite">{previewLine(levelOf(prefs), prefs.quiet)}</p>
-        <Row title="Pop-up toasts" help="Critical alerts always pop up and stay until dismissed.">
+        <Row title="Pop-up toasts" help="Critical alerts always pop up.">
           <Switch aria-label="Pop-up toasts" checked={prefs.toastsEnabled} onCheckedChange={(v) => onChange({ toastsEnabled: v })} />
         </Row>
-      </div>
-
-      <div className="rounded-md border border-border">
-        <Row title="Quiet" help={help('quiet')}>
-          <Switch aria-label="Quiet mode" checked={prefs.quiet} onCheckedChange={(v) => onChange({ quiet: v })} />
-        </Row>
-        <Row title="Quiet hours" help="Repeats every day in your local time.">
+        <Row title="Quiet hours" help="Repeats every day in your timezone.">
           <Switch aria-label="Quiet hours" checked={prefs.quietHoursEnabled} onCheckedChange={(v) => onChange({ quietHoursEnabled: v })} />
           <input type="time" aria-label="Quiet hours start" value={prefs.quietHoursStart} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursStart: e.target.value })} className={INPUT} />
           <span className="dash-control text-fg-muted">to</span>
@@ -75,7 +69,16 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
         </Row>
       </div>
 
-      <div className="rounded-md border border-border">
+      <details className="group">
+        <summary className="cursor-pointer font-mono text-caption uppercase tracking-label text-fg-muted">More alert settings</summary>
+        <div className="mt-3 space-y-4">
+        <div className="rounded-panel border border-border">
+        <Row title="Quiet" help={help('quiet')}>
+          <Switch aria-label="Quiet mode" checked={prefs.quiet} onCheckedChange={(v) => onChange({ quiet: v })} />
+        </Row>
+        </div>
+
+      <div className="rounded-panel border border-border">
         <Row title="Muted sources" help="Agents or machines that never raise a toast. Critical still does.">
           <ul aria-label="Muted sources" className="flex flex-wrap items-center justify-end gap-1.5">
             {prefs.mutedSources.map((s) => (
@@ -116,10 +119,12 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
         </Row>
       </div>
 
-      <div className="rounded-md border border-dashed border-border px-4 py-3">
+      <div className="rounded-panel border border-dashed border-border px-4 py-3">
         <p className="font-mono dash-caption uppercase tracking-label text-fg-faint">What you will see</p>
         <p className="mt-1 dash-control text-fg-muted" aria-live="polite">{seeLine(prefs)}</p>
       </div>
+        </div>
+      </details>
     </form>
   )
 }
