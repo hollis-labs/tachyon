@@ -173,7 +173,7 @@ export interface HistoryEvent {
 }
 export interface AuditEvent {
   event_id: string
-  ts: string
+  at: string
   kind: string
   actor: { ref: string; label: string; assurance?: string }
   decision?: string

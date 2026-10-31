@@ -31,7 +31,7 @@ export function AuditTrail({ id, client }: { id: string; client: ApprovalClient 
         <ol aria-label="Audit trail" className="mt-2 space-y-2">
           {events.map((e) => (
             <li key={e.event_id}>
-              <span className="dash-control text-fg" title={new Date(e.ts).toLocaleString()}>{words(e.decision ?? e.kind)} by {e.actor.label === "You" ? "you" : e.actor.label}, {ago(e.ts)}</span>
+              <span className="dash-control text-fg" title={new Date(e.at).toLocaleString()}>{words(e.decision ?? e.kind)} by {e.actor.label === "You" ? "you" : e.actor.label}, {ago(e.at)}</span>
               {(e.note || e.reason) && <span className="block dash-support text-fg-muted">{e.note ?? e.reason}</span>}
             </li>
           ))}

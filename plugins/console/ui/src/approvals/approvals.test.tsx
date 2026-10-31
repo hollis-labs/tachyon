@@ -755,8 +755,8 @@ describe("audit trail", () => {
   it("lists a request's audit events with a count", async () => {
     const decided: ApprovalItem = { ...item, state: "resolved", terminal_outcome: { item_id: "req-1", state: "resolved", resolution: { response: { kind: "approval", decision: "approved" }, resolved_at: "2026-10-30T10:00:00Z", participant: { principal_ref: "operator", authority: "queue", assurance: "participant" } } } as never }
     const audit = vi.fn().mockResolvedValue({ item_id: "req-1", events: [
-      { event_id: "a1", ts: "2026-10-30T09:00:00Z", kind: "presented", actor: { ref: "s", label: "You" } },
-      { event_id: "a2", ts: "2026-10-30T10:00:00Z", kind: "resolved", decision: "approved", note: "Looks right", actor: { ref: "s", label: "You" } },
+      { event_id: "a1", at: "2026-10-30T09:00:00Z", kind: "presented", actor: { ref: "s", label: "You" } },
+      { event_id: "a2", at: "2026-10-30T10:00:00Z", kind: "resolved", decision: "approved", note: "Looks right", actor: { ref: "s", label: "You" } },
     ] })
     const client = { present: vi.fn().mockResolvedValue(decided), decide: vi.fn(), audit } as unknown as ApprovalClient
     render(<ApprovalDialog id="req-1" initial={decided} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
