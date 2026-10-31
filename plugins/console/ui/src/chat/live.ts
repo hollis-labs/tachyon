@@ -8,7 +8,7 @@ export interface Hub { subscribe: (l: Listener) => () => void }
 
 /**
  * One EventSource per stream URL, shared by every subscriber and closed with the last one. Frames are signals, not
- * state: a reconnect after a drop delivers a synthetic `{type:'reconnected'}` so subscribers refetch what they show
+ * state: a drop delivers `{type:'dropped'}` (the UI says Reconnecting) and a reconnect after it delivers a synthetic `{type:'reconnected'}` so subscribers refetch what they show
  * (live-only frames are not replayed; activity-class frames replay through Last-Event-ID, which the browser sends).
  */
 function hub(url: string, make: (u: string) => EventSource = (u) => new EventSource(u)): Hub {
@@ -18,7 +18,7 @@ function hub(url: string, make: (u: string) => EventSource = (u) => new EventSou
   const open = () => {
     es = make(url)
     es.onopen = () => { if (dropped) ls.forEach((l) => l({ type: 'reconnected' })); dropped = false }
-    es.onerror = () => { dropped = true }
+    es.onerror = () => { if (!dropped) ls.forEach((l) => l({ type: 'dropped' })); dropped = true }
     es.onmessage = (m) => {
       let f: Frame
       try { f = JSON.parse(m.data) as Frame } catch { return }
