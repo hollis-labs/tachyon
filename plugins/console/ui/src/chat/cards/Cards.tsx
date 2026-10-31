@@ -46,12 +46,15 @@ export function DecisionCard({ block, commit }: { block: Of<'decision'>; commit?
         <>
           <div role="radiogroup" aria-label={`Options for ${block.title}`} className="flex flex-col">
             {block.options.map((o, i) => (
-              <div key={o.id} role="radio" aria-checked={false} className="flex items-center gap-3 border-t border-border-subtle py-2 first:border-t-0 max-sm:flex-wrap">
-                <span aria-hidden className="w-3.5 font-mono text-label font-semibold text-fg-muted">{String.fromCharCode(65 + i)}</span>
-                <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-control max-sm:min-w-[60%]">
-                  <b className="font-semibold">{o.label}</b>
-                  {o.recommended && <span className="self-center font-mono text-caption uppercase tracking-label text-fg-secondary">recommended</span>}
-                  {o.description && <span className="w-full text-xs text-fg-muted">{o.description}</span>}
+              <div key={o.id} className="flex items-center gap-3 border-t border-border-subtle py-2 first:border-t-0 max-sm:flex-wrap">
+                {/* The radio is the text; Choose is its own button beside it (a radio may not contain a control). */}
+                <div role="radio" aria-checked={false} aria-label={`${String.fromCharCode(65 + i)}: ${o.label}${o.recommended ? ', recommended' : ''}`} className="flex min-w-0 flex-1 items-center gap-3 max-sm:min-w-[60%]">
+                  <span aria-hidden className="w-3.5 font-mono text-label font-semibold text-fg-muted">{String.fromCharCode(65 + i)}</span>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-control">
+                    <b className="font-semibold">{o.label}</b>
+                    {o.recommended && <span className="self-center font-mono text-caption uppercase tracking-label text-fg-secondary">recommended</span>}
+                    {o.description && <span className="w-full text-xs text-fg-muted">{o.description}</span>}
+                  </div>
                 </div>
                 <Act primary={o.recommended} kbd={String(i + 1)} aria-label={`Choose ${o.label}`} onClick={() => a.answer(o.id)}>Choose</Act>
               </div>
