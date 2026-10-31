@@ -160,10 +160,10 @@ export function PrPreviewDrawer({ item, forge, actions = [], onClose, onAssign, 
             )}
           </Section>
         </div>
-        <footer className="flex items-center gap-2 border-t border-border px-4 py-3">
-          <Button size="sm" onClick={() => onAssign(item)}>{item.assignments.length ? 'Assign again' : 'Assign agent'}</Button>
-          <Button variant="outline" size="sm" onClick={() => onAskReview(item)}>Ask for review</Button>
-          <Link to={prWorkspaceHref(summary.ref)} data-slot="button" className={buttonVariants({ variant: 'outline', size: 'sm' })}>Open workspace</Link>
+        <footer className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
+          <Button size="sm" onClick={() => onAssign(item)}>{item.assignments.length ? 'Assign again' : 'Assign agent'} ▸</Button>
+          <Button variant="outline" size="sm" onClick={() => onAskReview(item)}>Ask for review ▾</Button>
+          <Link to={prWorkspaceHref(summary.ref)} data-slot="button" className={buttonVariants({ variant: 'outline', size: 'sm' })}>Open workspace ▸</Link>
           <span className="ml-auto"><OverflowMenu ariaLabel="More actions" actions={actions} /></span>
         </footer>
       </SheetContent>
