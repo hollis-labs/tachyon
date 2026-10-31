@@ -29,7 +29,7 @@ export function PillTabs({ label, value, onChange, items, size = 'md', className
             className={`h-auto flex-none rounded-full px-3 py-1 font-normal normal-case ${size === 'sm' ? 'dash-label' : 'dash-control'} text-fg-muted after:hidden data-active:!bg-surface-hover data-active:!text-fg dark:data-active:!bg-surface-hover`}
           >
             {it.label}
-            {it.count !== undefined && <span className="font-mono dash-caption tabular-nums text-fg-muted">{it.count}</span>}
+            {it.count !== undefined && <span className="font-mono dash-caption tabular-nums text-fg-secondary">{it.count}</span>}
           </TabsTrigger>
         ))}
       </TabsList>

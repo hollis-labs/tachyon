@@ -228,12 +228,12 @@ describe("approval list interaction", () => {
       get: vi.fn(),
     } as unknown as ApprovalClient
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
-    const row = await screen.findByRole("option", { name: /Create a session/ })
-    expect(row.getAttribute("aria-selected")).toBe("true")
+    const row = await screen.findByRole("listitem", { name: /Create a session/ })
+    expect(row.getAttribute("aria-current")).toBe("true")
     await waitFor(() => expect(client.present).toHaveBeenCalledWith(item.item_id))
     fireEvent.change(screen.getByRole("searchbox", { name: "Search approvals" }), { target: { value: "unmatched" } })
     await screen.findByText("No matching requests.")
-    expect(screen.queryByRole("option", { name: /Create a session/ })).toBeNull()
+    expect(screen.queryByRole("listitem", { name: /Create a session/ })).toBeNull()
     expect(client.decide).not.toHaveBeenCalled()
   })
 })
@@ -317,10 +317,10 @@ describe("owned inbox tiers and pages", () => {
     const inbox = vi.fn().mockImplementation(async (_fresh, cursors) => ({ pending: cursors?.pending_before ? [second] : [item], history: [], next_pending: cursors?.pending_before ? undefined : "req-1", synced_at: new Date().toISOString(), revision: "1" }))
     render(<MemoryRouter><ApprovalProvider client={{ ...noAudit, inbox } as unknown as ApprovalClient}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     fireEvent.click(await screen.findByRole("button", { name: "Next page" }))
-    await screen.findByRole("option", { name: /Older request/ })
+    await screen.findByRole("listitem", { name: /Older request/ })
     expect(inbox).toHaveBeenLastCalledWith(true, { pending_before: "req-1" })
     fireEvent.click(screen.getByRole("button", { name: "First page" }))
-    await screen.findByRole("option", { name: /Create a session/ })
+    await screen.findByRole("listitem", { name: /Create a session/ })
   })
 })
 
@@ -535,8 +535,8 @@ describe("approvals list", () => {
     expect(await screen.findByText(/· form$/)).toBeTruthy()
     expect(screen.getByText(/· approval$/)).toBeTruthy()
     fireEvent.change(screen.getByLabelText("Search approvals"), { target: { value: "form" } })
-    await waitFor(() => expect(screen.queryByRole("option", { name: /Create a session/ })).toBeNull())
-    expect(screen.getByRole("option", { name: /Fill me in/ })).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole("listitem", { name: /Create a session/ })).toBeNull())
+    expect(screen.getByRole("listitem", { name: /Fill me in/ })).toBeTruthy()
   })
 })
 
@@ -643,7 +643,7 @@ describe("batch approve", () => {
       batchResolve,
     } as unknown as ApprovalClient
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
-    await screen.findByRole("option", { name: /Request a/ })
+    await screen.findByRole("listitem", { name: /Request a/ })
     expect((screen.getByRole("checkbox", { name: /Request c cannot be batched/ }) as HTMLElement).getAttribute("data-disabled")).not.toBeNull()
     tick("Select Request a")
     tick("Select Request b")
@@ -678,7 +678,7 @@ describe("batch approve", () => {
       access: vi.fn().mockResolvedValue({ state: "none", can_elevate: true, required_for: { batch: true } }),
     } as unknown as ApprovalClient
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
-    await screen.findByRole("option", { name: /Request a/ })
+    await screen.findByRole("listitem", { name: /Request a/ })
     tick("Select Request a")
     await screen.findByText(/Operator access needed/)
     expect((screen.getByRole("button", { name: "Approve 1" }) as HTMLButtonElement).disabled).toBe(true)

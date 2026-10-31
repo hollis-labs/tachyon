@@ -9,7 +9,8 @@ import { Countdown, RiskChip } from "./parts"
 
 const who = (i: ApprovalItem) => i.request_snapshot.source.agent_label ?? i.request_snapshot.source.agent_id
 
-// "Needs a decision" list: a listbox with named options; j/k and arrows move, Enter opens.
+// "Needs a decision" list: named rows; j/k and arrows move, Enter opens. A row holds a batch checkbox, so it is a list item with
+// aria-current (a listbox option may not contain a control).
 export function ApprovalQueue({ items, selectedId, onSelect, empty, history, held, checked, onCheck }: {
   items: ApprovalItem[]
   selectedId?: string
@@ -31,15 +32,14 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history, hel
   }
   if (!items.length) return <p className="px-4 py-10 text-center dash-body text-fg-faint">{empty}</p>
   return (
-    <ul role="listbox" aria-label={history ? "Approval history" : "Needs a decision"} tabIndex={0} onKeyDown={onKey} className="divide-y divide-border/70">
+    <ul role="list" aria-label={history ? "Approval history" : "Needs a decision"} tabIndex={0} onKeyDown={onKey} className="divide-y divide-border/70">
       {items.map((i) => {
         const r = i.request_snapshot
         const selected = i.item_id === selectedId
         return (
           <li
             key={i.item_id}
-            role="option"
-            aria-selected={selected}
+            aria-current={selected || undefined}
             aria-label={`${r.title}, ${who(i)}, ${r.class ?? "medium"} risk`}
             onClick={() => onSelect(i.item_id)}
             className={`group cursor-pointer px-4 py-3 ${held?.has(i.item_id) ? "opacity-50" : ""} ${selected ? "bg-surface/60" : "hover:bg-surface/30"}`}
