@@ -45,6 +45,7 @@ export interface ConversationViewProps {
   blocks?: StreamBlock[]
   commit?: Commit
   runActions?: import('../cards/useBlocks').RunActions
+  blocksLoaded?: boolean
   /** Reload after a load or stream failure. */
   onRetry?: () => void
   /** The agent's role chip, for the new-thread summary. */
@@ -56,7 +57,7 @@ export interface ConversationViewProps {
 }
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
-export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, commit, runActions, threadRef, onRetry, role, mentions }: ConversationViewProps) {
+export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, blocksLoaded, commit, runActions, threadRef, onRetry, role, mentions }: ConversationViewProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [value, setValueState] = useState(() => getDraft(threadId))
   const setValue = (v: string) => { setValueState(v); setDraft(threadId, v) }
@@ -80,7 +81,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
   const area = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { area.current?.focus() }, [threadId])
   useChatKeys({ pick: (p) => aside?.pick(p), panel: aside?.panel ?? 'plan', open: !!aside?.open, toggleBookmark: marks.toggleBookmark })
-  useRegisterConversation({ ref: threadRef, agent: agentLabel, messages, blocks: blocks ?? [], commit, onInsert: insert, marks })
+  useRegisterConversation({ ref: threadRef, agent: agentLabel, messages, blocks: blocks ?? [], blocksLoaded, commit, onInsert: insert, marks })
   useEffect(() => { setDrawer(null) }, [threadId])
   useEffect(() => {
     const on = (e: KeyboardEvent) => {

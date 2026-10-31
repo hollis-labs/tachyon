@@ -9,6 +9,8 @@ import { ThreadList } from './ThreadList'
 import { Header } from '../workbench/Header'
 import { Spine, type StartOption } from '../workbench/Spine'
 import { useMobile, useNarrow } from './useNarrow'
+import { HeaderFilterContext } from './headerFilter'
+import { useReplyFilter } from '../replyFilter'
 
 export interface ChatViewProps {
   threads: ChatThread[] | null
@@ -52,6 +54,7 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
   const narrow = useNarrow()
   const mobile = useMobile()
   const aside = useAside()
+  const [replyFilter, setReplyFilter] = useReplyFilter()
   const scratchPlacement = useScratchPlacement()
   const detailsOverlay = aside.open
 
@@ -111,9 +114,10 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-bg">
       {!mobile && <div className={`flex shrink-0 border-r border-border-subtle ${narrow ? 'w-60' : 'w-72'}`}>{spine}</div>}
+      <HeaderFilterContext.Provider value={true}>
       <main aria-label="Conversation" className="flex min-w-0 flex-1 flex-col">
         {activeThread ? (
-          <Header thread={activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} />
+          <Header thread={activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} actions={[{ label: replyFilter === 'mine' ? 'Show all replies' : 'Only show replies to me', onSelect: () => setReplyFilter(replyFilter === 'mine' ? 'all' : 'mine') }, { label: 'Copy link to this chat', onSelect: () => void navigator.clipboard?.writeText(location.href) }]} />
         ) : (
           <header className="h-12 shrink-0 border-b border-border-subtle" />
         )}
@@ -124,6 +128,7 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
           </div>
         )}
       </main>
+      </HeaderFilterContext.Provider>
       {activeThread && <Aside thread={activeThread} scratchInAside={scratchPlacement === 'aside'} sessionRef={activeThread.sessionRef ?? activeThread.sessions?.[0]?.ref} />}
     </div>
   )

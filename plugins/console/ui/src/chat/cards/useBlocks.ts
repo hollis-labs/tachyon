@@ -76,13 +76,14 @@ export function useBlocks(ref: string | undefined) {
   const [plan, setPlan] = useState<StreamBlock | null>(null)
   const [runs, setRuns] = useState<StreamBlock[]>([])
   const [error, setError] = useState('')
+  const [loaded, setLoaded] = useState(DEMO)
   const enc = ref ? encodeURIComponent(ref) : ''
-  const loadCards = useCallback(() => chatJSON<{ cards: ApiCard[] }>(`/threads/${enc}/cards`).then((d) => { setCards((d.cards ?? []).map(cardToBlock).filter((b): b is StreamBlock => !!b)); setError('') }, (e) => setError(e instanceof Error ? e.message : 'Could not load cards.')), [enc])
+  const loadCards = useCallback(() => chatJSON<{ cards: ApiCard[] }>(`/threads/${enc}/cards`).then((d) => { setCards((d.cards ?? []).map(cardToBlock).filter((b): b is StreamBlock => !!b)); setError(''); setLoaded(true) }, (e) => setError(e instanceof Error ? e.message : 'Could not load cards.')), [enc])
   const loadPlan = useCallback(() => chatJSON<ApiPlan>(`/threads/${enc}/plan`).then((p) => setPlan(planToBlock(p)), () => setPlan(null)), [enc])
   const loadRuns = useCallback(() => terminalJSON<{ runs: ApiRun[] }>(`/runs?thread_ref=${enc}&closed=false`).then((d) => setRuns((d.runs ?? []).map(runToBlock).filter((b): b is StreamBlock => !!b)), () => setRuns([])), [enc])
   useEffect(() => {
     if (demo) { setCards(demoBlocks(Date.now())); return }
-    setCards([]); setPlan(null); setRuns([])
+    setCards([]); setPlan(null); setRuns([]); setLoaded(false)
     if (!ref) return
     void loadCards(); void loadPlan(); void loadRuns()
   }, [ref, demo, loadCards, loadPlan, loadRuns])
@@ -110,7 +111,7 @@ export function useBlocks(ref: string | undefined) {
     setCloseOnComplete: async (id, v) => { await terminalJSON(`/runs/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ close_on_complete: v }) }) },
   }), [loadRuns])
   const blocks = useMemo(() => (demo ? cards : [...cards, ...(plan ? [plan] : []), ...runs]), [demo, cards, plan, runs])
-  return { blocks, commit, runActions: demo ? undefined : runActions, error }
+  return { blocks, commit, runActions: demo ? undefined : runActions, error, loaded }
 }
 
 function toResponse(block: StreamBlock, value: unknown, kind: string): ApprovalResponse {

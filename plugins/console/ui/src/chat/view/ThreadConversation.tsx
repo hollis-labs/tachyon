@@ -5,6 +5,7 @@ import { applyReplyFilter, hiddenReplies, useReplyFilter, type ReplyFilter } fro
 import { ReplyFilterToggle } from '../ReplyFilterToggle'
 import type { ChatMessage, ChatThread } from '../types'
 import type { PaletteActions } from '../workbench/Palette'
+import { useFilterInHeader } from './headerFilter'
 import { ConversationView } from './ConversationView'
 
 /** Shown when the reply filter hides everything that has loaded so far. */
@@ -35,9 +36,10 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
   const ref = thread.sessionRef ?? thread.sessions?.[0]?.ref
   const convId = ref ? sessionThreadId(ref) : thread.id
   const { messages, capability, loading, hasMore, loadOlder, send, sendError, error, retry } = useChatThread(convId)
-  const { blocks, commit, runActions } = useBlocks(ref)
+  const { blocks, commit, runActions, loaded: blocksLoaded } = useBlocks(ref)
   const cap = capability ?? thread.capability
   const [replyFilter, setReplyFilter] = useReplyFilter()
+  const inHeader = useFilterInHeader()
   const shown = applyReplyFilter(messages, replyFilter)
   const note = cap.mode === 'offline' ? 'Agent is offline. This will queue.' : cap.mode === 'mail-only' ? 'Mail only. Reply may take a while.' : null
   return (
@@ -59,9 +61,10 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
       note={note}
       palette={palette}
       blocks={blocks}
+      blocksLoaded={blocksLoaded}
       commit={commit}
       runActions={runActions}
-      toolbarStart={<ReplyFilterToggle value={replyFilter} onChange={setReplyFilter} />}
+      toolbarStart={inHeader ? undefined : <ReplyFilterToggle value={replyFilter} onChange={setReplyFilter} />}
       empty={messages.length > 0 ? <FilteredEmpty messages={messages} filter={replyFilter} hasMore={hasMore} onShowAll={() => setReplyFilter('all')} onLoadOlder={() => void loadOlder()} /> : undefined}
     />
   )

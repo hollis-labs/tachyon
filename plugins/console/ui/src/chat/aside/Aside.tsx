@@ -47,12 +47,15 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
     hadPlan.current = has
     // biome-ignore lint/correctness/useExhaustiveDependencies: a.auto is stable enough; only the plan transition matters
   }, [plan.plan, plan.loading])
-  const lastWaiting = useRef(0)
+  // Approvals already waiting when the thread opens do not move the aside (the golden rests on Plan); a new one does.
+  const lastWaiting = useRef<number | null>(null)
+  const loaded = !!conv?.blocksLoaded
   useEffect(() => {
-    if (waiting > lastWaiting.current) a.auto('approvals', 'opened by agent')
+    if (!loaded) { lastWaiting.current = null; return }
+    if (lastWaiting.current !== null && waiting > lastWaiting.current) a.auto('approvals', 'opened by agent')
     lastWaiting.current = waiting
     // biome-ignore lint/correctness/useExhaustiveDependencies: only the count matters
-  }, [waiting])
+  }, [waiting, loaded])
 
   const openDocFor = async (i: { id: string; name: string; mime?: string | null; shared: boolean }) => {
     if (!ref) return

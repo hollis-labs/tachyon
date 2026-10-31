@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import { resetReplyFilterForTest } from './replyFilter'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { readdirSync, readFileSync } from 'node:fs'
@@ -14,6 +15,7 @@ import type { ChatClient, ChatMessage, ChatThread, ReplyAudience } from './types
 beforeEach(() => {
   Element.prototype.scrollTo ??= () => undefined
   try { localStorage.clear() } catch { /* storage may be unavailable */ }
+  resetReplyFilterForTest()
 })
 afterEach(cleanup)
 

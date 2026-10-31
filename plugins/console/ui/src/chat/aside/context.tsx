@@ -11,7 +11,7 @@ export const PANELS: { id: PanelId; label: string }[] = [
 ]
 
 /** What the open conversation registers so the aside can show it without a second fetch. */
-export interface ConversationData { ref?: string; agent?: string; messages: ChatMessage[]; blocks: StreamBlock[]; commit?: Commit; onInsert: (text: string) => void; marks: Marks }
+export interface ConversationData { ref?: string; agent?: string; messages: ChatMessage[]; blocks: StreamBlock[]; blocksLoaded?: boolean; commit?: Commit; onInsert: (text: string) => void; marks: Marks }
 
 export interface Marks { bookmarks: Bookmark[]; toggleBookmark: (messageRef: string) => void; topics: Topic[]; addTopic: (title: string, messageRef: string) => void }
 
@@ -85,7 +85,7 @@ export const useAsideOptional = () => useContext(Ctx)
 /** Register the open conversation with the aside while mounted. */
 export function useRegisterConversation(c: ConversationData) {
   const reg = useAsideOptional()?.register
-  const key = `${c.ref}|${c.agent}|${c.messages.length}|${c.messages.at(-1)?.id}|${c.blocks.map((b) => b.id).join(',')}|${c.marks.bookmarks.map((b) => b.id).join(',')}|${c.marks.topics.map((t) => t.id).join(',')}`
+  const key = `${c.ref}|${c.agent}|${c.messages.length}|${c.messages.at(-1)?.id}|${c.blocksLoaded}|${c.blocks.map((b) => b.id).join(',')}|${c.marks.bookmarks.map((b) => b.id).join(',')}|${c.marks.topics.map((t) => t.id).join(',')}`
   const latest = useRef(c)
   latest.current = c
   // biome-ignore lint/correctness/useExhaustiveDependencies: key summarises c
