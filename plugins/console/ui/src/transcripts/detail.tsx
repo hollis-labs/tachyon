@@ -48,7 +48,7 @@ function ToolCalls({
       {calls.map((c, i) => {
         const bad = c.status === "error"
         const expandable = !!c.error_excerpt
-        const status = bad ? `failed${took(c) ? ` · ${took(c)}` : ""}` : [c.status === "ok" ? "ok" : "", took(c), c.result_bytes != null ? size(c.result_bytes) : ""].filter(Boolean).join(" ")
+        const status = bad ? `failed${took(c) ? ` · ${took(c)}` : ""}` : [c.status === "ok" ? "ok" : "", took(c), c.result_bytes ? size(c.result_bytes) : ""].filter(Boolean).join(" ")
         const Row = expandable ? "button" : "div"
         return (
           <li key={i} id={`call-${seq}-${i}`} tabIndex={-1} className="outline-none focus-visible:bg-surface">
@@ -285,7 +285,7 @@ export function TranscriptReader({
       <header className="px-5 pb-3 pt-4 max-md:px-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="font-sans text-lg font-semibold normal-case leading-snug tracking-normal text-fg" title={session.title}>
+            <h2 className="font-sans text-base font-semibold [overflow-wrap:anywhere] md:text-lg normal-case leading-snug tracking-normal text-fg" title={session.title}>
               {session.title || "Untitled session"}
             </h2>
             <p className="mt-0.5 dash-support text-fg-muted">
