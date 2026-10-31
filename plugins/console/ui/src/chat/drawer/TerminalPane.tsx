@@ -3,6 +3,7 @@ import { Chip } from '@planner/shared'
 import { Act } from '../cards/Block'
 import { TERMINAL_BASE } from '../roster'
 import { useThreadFrames } from '../live'
+import { PtyTerminal } from './PtyTerminal'
 import { operatorFetch } from '../../operator/elevation'
 import { CAPTION } from '@planner/shared'
 
@@ -31,6 +32,9 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
   const [machine, setMachine] = useState(demo ? 'dev-box' : '')
   const [proposals, setProposals] = useState<Proposal[]>(demo ? [DEMO_PROPOSAL] : [])
   const [error, setError] = useState('')
+  const [session, setSession] = useState<{ id: string; ws: string } | null>(null)
+  const [state, setState] = useState('')
+  const [editing, setEditing] = useState<{ id: string; command: string } | null>(null)
   useEffect(() => {
     if (demo) return
     let live = true
@@ -50,6 +54,26 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
     tj<{ proposals: Proposal[] }>(`/proposals?thread_ref=${encodeURIComponent(threadRef)}&state=pending`).then((d) => setProposals(d.proposals ?? []), () => undefined)
   }, [demo, threadRef, machines, reload])
 
+  const connect = async () => {
+    setError('')
+    try {
+      const d = await tj<{ id: string; ws_path: string }>('/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ machine_id: machine, thread_ref: threadRef }) })
+      setSession({ id: d.id, ws: d.ws_path }); setState('connecting')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not connect. Try again.') }
+  }
+  const disconnect = async () => {
+    const s = session
+    setSession(null); setState('')
+    if (s) await tj(`/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }).catch(() => undefined)
+  }
+  const saveEdit = async () => {
+    if (!editing) return
+    setError('')
+    try {
+      const np = await tj<Proposal>(`/proposals/${encodeURIComponent(editing.id)}/edit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: editing.command }) })
+      setProposals((xs) => [...xs.filter((x) => x.id !== editing.id), np]); setEditing(null)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not edit the proposal. The original is still waiting.') }
+  }
   const act = async (p: Proposal, verb: 'run' | 'deny') => {
     setError('')
     if (demo) { setProposals((xs) => xs.filter((x) => x.id !== p.id)); return }
@@ -71,18 +95,22 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
             {machines.map((m) => <option key={m.machine_id} value={m.machine_id}>● {m.label}</option>)}
           </select>
         </label>
-        <span className="text-label text-fg-muted">{demo ? 'ssh · saved key · connected' : 'ssh · saved key'}</span>
+        <span className="text-label text-fg-muted" role="status">{demo ? 'ssh · saved key · connected' : session ? `ssh · saved key · ${state}` : 'ssh · saved key · not connected'}</span>
         <span className="flex-1" />
-        <Chip square>+ Connect to…</Chip>
+        {!demo && (session ? <Act onClick={() => void disconnect()}>Disconnect</Act> : <Act primary onClick={() => void connect()}>Connect</Act>)}
+        {demo && <Chip square>+ Connect to…</Chip>}
       </div>
-      <div role="log" aria-label="Terminal output" className="flex-1 whitespace-pre-wrap rounded-control border border-border-subtle bg-bg-elevated px-2.5 py-2 font-mono text-xs leading-relaxed text-fg-secondary">
-        {demo ? <><span className="text-fg-muted">chris@dev-box ~/dev/hollis-labs</span> $ git status -sb{'\n'}<span className="text-fg">## main...origin/main</span>{'\n'} M apps/tachyon/plugins/chat/ui/src/Chat.tsx{'\n'}<span className="text-fg-muted">chris@dev-box ~/dev/hollis-labs</span> $ </> : <span className="text-fg-muted">Session output appears here.</span>}
+      {session && <PtyTerminal wsPath={session.ws} onState={setState} />}
+      <div role="log" aria-label="Terminal output" className={`${session ? '' : 'flex-1 '}whitespace-pre-wrap rounded-control border border-border-subtle bg-bg-elevated px-2.5 py-2 font-mono text-xs leading-relaxed text-fg-secondary`}>
+        {demo ? <><span className="text-fg-muted">chris@dev-box ~/dev/hollis-labs</span> $ git status -sb{'\n'}<span className="text-fg">## main...origin/main</span>{'\n'} M apps/tachyon/plugins/chat/ui/src/Chat.tsx{'\n'}<span className="text-fg-muted">chris@dev-box ~/dev/hollis-labs</span> $ </> : session ? null : <span className="text-fg-muted">Connect to a machine to open a session. Commands the agent proposes appear below.</span>}
         {proposals.map((p) => (
           <div key={p.id} className="mt-2 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-2 font-sans">
             <span className={CAPTION}>{p.requested_by} wants to run</span>
-            <code className="rounded-sm bg-surface px-1.5 py-0.5 font-mono text-xs text-fg">{p.command}</code>
-            <Act primary kbd="↵" onClick={() => void act(p, 'run')}>Run</Act>
-            <Act disabled title="Edit lands with the live terminal">Edit</Act>
+            {editing?.id === p.id ? (
+              <input aria-label="Edit command" autoFocus value={editing.command} onChange={(e) => setEditing({ id: p.id, command: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') void saveEdit(); if (e.key === 'Escape') setEditing(null) }} className="h-7 min-w-[40%] flex-1 rounded-control border border-border bg-bg px-2 font-mono text-xs focus-visible:bg-bg!" />
+            ) : <code className="rounded-sm bg-surface px-1.5 py-0.5 font-mono text-xs text-fg">{p.command}</code>}
+            {editing?.id === p.id ? <Act primary onClick={() => void saveEdit()}>Save</Act> : <Act primary kbd="↵" onClick={() => void act(p, 'run')}>Run</Act>}
+            {editing?.id !== p.id && <Act onClick={() => setEditing({ id: p.id, command: p.command })}>Edit</Act>}
             <Act danger onClick={() => void act(p, 'deny')}>Deny</Act>
             <span className="text-label text-fg-muted">needs approval · policy</span>
           </div>
