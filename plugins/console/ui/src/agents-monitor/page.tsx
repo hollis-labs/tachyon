@@ -73,14 +73,14 @@ export function AgentsPage() {
     <StaleAfterContext.Provider value={settings.data?.stale_after_s ?? 900}>
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border-subtle px-4">
-        <h1 className="font-mono text-caption font-semibold uppercase leading-none tracking-label text-fg">{AGENTS.title}</h1>
+        <h1 className="sr-only font-mono text-caption font-semibold uppercase sm:not-sr-only leading-none tracking-label text-fg">{AGENTS.title}</h1>
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0 overflow-x-auto [scrollbar-width:none]">
           <TabsList aria-label={AGENTS.tabsLabel} className="h-auto flex-nowrap gap-0.5 bg-transparent p-0">
             {TABS.map((t) => (
-              <TabsTrigger key={t} value={t} className="h-7 gap-1.5 rounded-control px-3 text-xs font-normal text-fg-muted data-[active]:bg-selection data-[active]:font-semibold data-[active]:text-fg">
+              <TabsTrigger key={t} value={t} className="h-7 gap-1.5 rounded-control px-2 text-xs sm:px-3 font-normal text-fg-muted data-[active]:bg-selection data-[active]:font-semibold data-[active]:text-fg">
                 {AGENTS.tabs[t]}
-                {t === 'sessions' && data && <small className="font-mono text-caption text-fg-faint">{data.sessions.length}</small>}
-                {t === 'activity' && <small className="font-mono text-caption text-fg-faint">{AGENTS.live}</small>}
+                {t === 'sessions' && data && <small className="hidden font-mono text-caption text-fg-faint sm:inline">{data.sessions.length}</small>}
+                {t === 'activity' && <small className="hidden font-mono text-caption text-fg-faint sm:inline">{AGENTS.live}</small>}
               </TabsTrigger>
             ))}
           </TabsList>
