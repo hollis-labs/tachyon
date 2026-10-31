@@ -2,8 +2,10 @@ package dataverbs
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/tachyon/internal/approvals"
 )
 
@@ -23,6 +25,12 @@ func TestSeedEveryShapeEnqueues(t *testing.T) {
 		ids, err := c.Seed(context.Background(), shape, "t1")
 		if err != nil || len(ids) != n {
 			t.Fatalf("shape %s: %v %v", shape, ids, err)
+		}
+		if shape == "e" {
+			res, err := c.Service.Get(context.Background(), hitl.GetCommand{ContractVersion: hitl.ContractVersion, ItemID: ids[0], Caller: hitl.CallerAssertion{ApplicationID: "tachyon-test"}})
+			if err != nil || !strings.Contains(string(res.Item.RequestSnapshot), `"class":"low"`) {
+				t.Fatalf("shape e must stay low: %v", err)
+			}
 		}
 	}
 	if _, err := c.Seed(context.Background(), "z", "t1"); err == nil {
