@@ -271,7 +271,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
         {body}
       </PlannerFrame>
       <Sheet open={details && Boolean(item)} onOpenChange={setDetails}>
-        <SheetContent className="lg:hidden">
+        <SheetContent className="lg:hidden max-sm:w-full! max-sm:max-w-none!">
           <SheetTitle className="sr-only">{TEXT.detailsLabel}</SheetTitle>
           {context}
         </SheetContent>
