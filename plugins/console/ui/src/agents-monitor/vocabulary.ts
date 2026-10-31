@@ -5,6 +5,7 @@
 import type { SessionState } from './types'
 
 export const AGENTS = {
+  inferred: 'inferred',
   title: 'Agents',
   tabs: { sessions: 'Sessions', activity: 'Activity', teams: 'Teams' },
   tabsLabel: 'Agent views',

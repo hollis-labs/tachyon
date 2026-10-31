@@ -98,7 +98,7 @@ export function AgentsPage() {
       {tab !== 'teams' && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle px-4 py-2.5 text-xs text-fg-secondary">
           {([['working', counts.working], ['waiting', counts.waiting], ['idle', counts.idle], ['unknown', counts.unknown]] as const).map(([k, n]) => (
-            <span key={k} className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{data ? n : AGENTS.na}</b> {k}</span>
+            <span key={k} className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{data ? `${k === 'working' && n > 0 && (data.sessions ?? []).some((x) => x.state === 'working' && x.state_inferred) ? '~' : ''}${n}` : AGENTS.na}</b> {k}</span>
           ))}
           {counts.stale > 0 && <span className="flex items-baseline gap-1.5"><b className="font-mono text-base font-semibold tabular-nums text-fg">{counts.stale}</b> stale</span>}
           <div className="w-full sm:w-[200px]">

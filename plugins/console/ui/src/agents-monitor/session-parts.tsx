@@ -55,5 +55,6 @@ export function stateText(s: Session, now: number): string {
   if (s.needs_you.reason) return AGENTS.needsYou[s.needs_you.reason]
   if (s.state === 'stale') return s.stale_reason ? `${AGENTS.states.stale}: ${AGENTS.staleReasons[s.stale_reason]}` : AGENTS.states.stale
   if (s.state === 'idle' && s.last_activity_at !== null) return AGENTS.idleFor(ageText(now - s.last_activity_at))
+  if (s.state === 'working' && s.state_inferred) return `~${AGENTS.states.working.toLowerCase()} (${AGENTS.inferred})`
   return AGENTS.states[s.state]
 }
