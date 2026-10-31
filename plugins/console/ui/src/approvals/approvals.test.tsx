@@ -459,7 +459,7 @@ describe("card review dialog", () => {
     fireEvent.change(screen.getByLabelText("Count"), { target: { value: "3" } })
     expect(screen.queryByRole("textbox", { name: "Token ref" })).toBeNull()
     storeSecret.mockResolvedValue({ secret_ref: "secret://tachyon/abc", expires_at: 1, fingerprint: "sha256:1a2b3c4d" })
-    fireEvent.click(screen.getByRole("button", { name: "Provide secret…" }))
+    fireEvent.click(screen.getByRole("button", { name: "Enter securely…" }))
     const dlg = await screen.findByRole("dialog")
     const field = within(dlg).getByLabelText("Secret value") as HTMLInputElement
     expect(field.type).toBe("password")
@@ -488,7 +488,7 @@ describe("card review dialog", () => {
     storeSecret
       .mockRejectedValueOnce(new ApprovalError(403, "assurance_insufficient", "step up", { action: "secret_submit" }))
       .mockResolvedValueOnce({ secret_ref: "secret://tachyon/z", expires_at: 1, fingerprint: "sha256:ffffffff" })
-    fireEvent.click(await screen.findByRole("button", { name: "Provide secret…" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Enter securely…" }))
     const dlg = await screen.findByRole("dialog")
     fireEvent.change(within(dlg).getByLabelText("Secret value"), { target: { value: "s3cret" } })
     fireEvent.click(within(dlg).getByRole("button", { name: "Store secret" }))
@@ -505,7 +505,7 @@ describe("card review dialog", () => {
     const q = card("card.question", { question: "Which branch?", options: ["main", "dev"] })
     const decide = vi.fn().mockResolvedValue({ item_id: q.item_id, state: "resolved" })
     open(q, decide)
-    const submit = await screen.findByRole("button", { name: "Submit" })
+    const submit = await screen.findByRole("button", { name: "Send answer" })
     fireEvent.change(screen.getByLabelText("Which branch?"), { target: { value: "dev" } })
     await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(submit)
@@ -513,7 +513,7 @@ describe("card review dialog", () => {
     cleanup()
     open(card("card.info", { fact: 1 }), vi.fn())
     await screen.findByText(/nothing to answer/)
-    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Send answer" })).toBeNull()
   })
   it("shows what happened after an approved card's effects ran", async () => {
     const current = {
