@@ -50,3 +50,12 @@ describe('chat drawer', () => {
     expect(screen.queryByRole('region', { name: /drawer/ })).toBeNull()
   })
 })
+
+describe('workspace refs', () => {
+  it('only an absolute host path is a File viewer ref', async () => {
+    const { pathRefOf } = await import('./model')
+    expect(pathRefOf({ type: 'ref', ref: '/home/a/b.md' })).toBe('/home/a/b.md')
+    expect(pathRefOf({ type: 'ref', ref: 'tach:task/CW-1' })).toBeNull()
+    expect(pathRefOf({ type: 'file', ref: '/x' })).toBeNull()
+  })
+})

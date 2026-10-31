@@ -3,7 +3,8 @@ import { FileText, Image as ImageIcon, Link2, Plus, X } from 'lucide-react'
 import { Chip } from '@planner/shared'
 import { Act } from '../cards/Block'
 import { cn } from '@hollis-labs/design-components'
-import type { WorkspaceItem } from './model'
+import { useAutolink } from '../../autolink/context'
+import { pathRefOf, type WorkspaceItem } from './model'
 
 const ICON = { file: FileText, image: ImageIcon, link: Link2, ref: Link2 } as const
 
@@ -18,6 +19,7 @@ function Toggle({ on, label, onChange }: { on: boolean; label: string; onChange:
 /** Files, links, references and images for this session, with a share-with-agent toggle. Shared items appear in the composer strip. */
 export function WorkspacePane({ ws }: { ws: { items: WorkspaceItem[]; loading: boolean; error: string; share: (id: string, v: boolean) => void; remove: (id: string) => void; addFile: (f: File) => Promise<void>; addLink: (u: string) => Promise<void> } }) {
   const input = useRef<HTMLInputElement>(null)
+  const autolink = useAutolink()
   const [over, setOver] = useState(false)
   const drop = (e: React.DragEvent) => {
     e.preventDefault(); setOver(false)
@@ -47,7 +49,7 @@ export function WorkspacePane({ ws }: { ws: { items: WorkspaceItem[]; loading: b
           return (
             <div key={i.id} className="group relative flex flex-col gap-1.5 rounded-control border border-border p-2 text-xs text-fg-secondary">
               <div className="grid h-11 place-items-center rounded-sm bg-surface text-fg-muted"><Icon aria-hidden className="size-4" /></div>
-              <span className="truncate text-fg" title={i.name}>{i.name}</span>
+              {pathRefOf(i) ? <button type="button" onClick={() => autolink.openDrawer({ kind: 'path', canonical: pathRefOf(i) as string })} title={`Open ${i.name}`} className="truncate text-left text-fg underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">{i.name}</button> : <span className="truncate text-fg" title={i.name}>{i.name}</span>}
               <div className="flex items-center justify-between font-mono text-caption text-fg-muted"><span>{i.type}</span><Toggle on={i.shared} label={`Share ${i.name} with the agent`} onChange={(v) => ws.share(i.id, v)} /></div>
               <button type="button" aria-label={`Remove ${i.name}`} onClick={() => ws.remove(i.id)} className="absolute right-1 top-1 hidden size-5 place-items-center rounded-sm bg-bg-elevated text-fg-muted hover:text-fg group-hover:grid group-focus-within:grid"><X aria-hidden className="size-3" /></button>
             </div>
