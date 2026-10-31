@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"encoding/json"
 	"context"
 	"fmt"
 	"sort"
@@ -22,6 +23,22 @@ type Progress struct {
 	Missing  int            `json:"missing,omitempty"` // direct task ids Torque did not return
 	AsOf     string         `json:"as_of"`
 	statuses map[string]string
+}
+
+// MarshalJSON sends null (not 0) for the counts of a theme with no linked tasks: nothing was collected, which
+// is not the same as nothing being done.
+func (p Progress) MarshalJSON() ([]byte, error) {
+	type plain Progress
+	if p.Linked {
+		return json.Marshal(plain(p))
+	}
+	return json.Marshal(struct {
+		plain
+		Done   *int           `json:"done"`
+		Total  *int           `json:"total"`
+		Open   *int           `json:"open"`
+		Counts map[string]int `json:"counts"`
+	}{plain: plain(p)})
 }
 
 const doneStatus = "done"
