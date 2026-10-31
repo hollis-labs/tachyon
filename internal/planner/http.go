@@ -304,6 +304,13 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err == nil {
 				out, err = h.Transition(ctx, parts[1], b, actor)
 			}
+		case r.Method == http.MethodPost && len(parts) == 3 && db == "priorities" && parts[2] == "tasks":
+			var b Item
+			b, err = readBody(w, r, "title", "expected_revision")
+			if err == nil {
+				out, err = h.CreateThemeTask(ctx, id, b, actor)
+				status = 201
+			}
 		case r.Method == http.MethodPut && len(parts) == 3 && parts[0] == "tasks" && parts[2] == "meta":
 			var b Item
 			b, err = readBody(w, r, "done_summary", "pr_cites")

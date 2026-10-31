@@ -93,3 +93,37 @@ func (t *Tasks) Transition(ctx context.Context, id, status, comment string, forc
 func (t *Tasks) Comment(ctx context.Context, id, text string) error {
 	return t.write(ctx, "/api/v1/tasks/"+url.PathEscape(id)+"/comments", map[string]any{"content": text, "author": "tachyon-planner"})
 }
+
+// Create makes a Torque task and returns it as Torque stored it. The identity in Torque is the token owner.
+func (t *Tasks) Create(ctx context.Context, body map[string]any) (TaskBrief, error) {
+	var out TaskBrief
+	if t == nil {
+		return out, ErrTaskSource
+	}
+	if err := upstreamauth.Guard(t.Base, t.Token); err != nil {
+		return out, ErrTaskSource
+	}
+	raw, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.Base+"/api/v1/tasks", bytes.NewReader(raw))
+	if err != nil {
+		return out, ErrTaskSource
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if t.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+t.Token)
+	}
+	resp, err := t.Client.Do(req)
+	if err != nil {
+		return out, ErrTaskSource
+	}
+	defer resp.Body.Close()
+	msg, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode/100 != 2 {
+		return out, fmt.Errorf("%w: Torque refused (HTTP %d)", ErrTaskSource, resp.StatusCode)
+	}
+	if json.Unmarshal(msg, &out) != nil || !taskID.MatchString(out.ID) {
+		return out, fmt.Errorf("%w: Torque returned an unreadable task", ErrTaskSource)
+	}
+	return out, nil
+}

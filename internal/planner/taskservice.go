@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"slices"
@@ -508,4 +509,84 @@ func (s *Owned) CommentWithStatus(ctx context.Context, db, id string, rev int64,
 		item["pinned"] = true
 	}
 	return Item{"comment": comment, "item": item, "applied": applied}, nil
+}
+
+// CreateThemeTask opens a todo Torque task under a theme. The theme's workstreams name the Torque project and tag the
+// task lands in; the call refuses when they name none, or name more than one place, rather than choosing for the operator.
+func (h *HTTP) CreateThemeTask(ctx context.Context, themeID string, b Item, actor string) (Item, error) {
+	title := strings.TrimSpace(textField(b, "title"))
+	if title == "" || len([]rune(title)) > 300 {
+		return nil, fmt.Errorf("%w: title is required, at most 300 characters", objects.ErrInvalid)
+	}
+	theme, err := h.Owned.Get(ctx, "priorities", themeID)
+	if err != nil {
+		return nil, err
+	}
+	if _, has := b["expected_revision"]; has {
+		rev, e := expected(b)
+		if e != nil {
+			return nil, e
+		}
+		if cur, _ := theme["rev"].(int64); cur != 0 && cur != rev {
+			return nil, objects.ErrConflict
+		}
+	}
+	ws, err := h.Owned.themeWorkstreams(ctx, theme)
+	if err != nil {
+		return nil, err
+	}
+	type scope struct{ project, tag string }
+	var scopes []scope
+	seen := map[scope]bool{}
+	for _, w := range ws {
+		tag := textField(w, "torque_tag")
+		projects := []string{}
+		for _, v := range array(w["torque_project_ids"]) {
+			if p, ok := v.(string); ok && taskID.MatchString(p) {
+				projects = append(projects, p)
+			}
+		}
+		if len(projects) == 0 && tag == "" {
+			continue
+		}
+		if len(projects) == 0 {
+			projects = []string{""}
+		}
+		for _, p := range projects {
+			if sc := (scope{p, tag}); !seen[sc] {
+				seen[sc] = true
+				scopes = append(scopes, sc)
+			}
+		}
+	}
+	switch {
+	case len(scopes) == 0:
+		return nil, fmt.Errorf("%w: this theme links no Torque project or tag, so there is nowhere to put a task", ErrRule)
+	case len(scopes) > 1:
+		return nil, fmt.Errorf("%w: this theme links more than one Torque project or tag; create the task in Torque or narrow the theme", ErrRule)
+	}
+	body := map[string]any{"title": title}
+	if scopes[0].project != "" {
+		body["project_id"] = scopes[0].project
+	}
+	if scopes[0].tag != "" {
+		body["tags"] = []string{scopes[0].tag}
+	}
+	t, err := h.Tasks.Create(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+	status := t.Status
+	if status == "" {
+		status = "todo"
+	}
+	slog.Info("planner: task created under theme", "theme", themeID, "task", t.ID, "actor", actor)
+	return Item{"task": Item{"id": t.ID, "title": orString(t.Title, title), "status": status}}, nil
+}
+
+func orString(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
