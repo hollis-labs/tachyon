@@ -5,7 +5,7 @@ import Markdown from 'react-markdown'
 import type { RefDetailProps } from '../autolink/extensions'
 import { relativeTime } from '../builder/changes'
 import { Segmented } from '../components/segmented'
-import { contentUrl, denyMessage, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame } from './api'
+import { contentUrl, denyMessage, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame, PREVIEW_HEAD_BYTES } from './api'
 import { FileAccessDialog } from './FileAccessDialog'
 
 const TEXT_KINDS: readonly FileKind[] = ['text', 'json', 'yaml', 'toml', 'csv', 'code']
@@ -21,6 +21,14 @@ const MUTED = 'text-control text-fg-muted'
 
 const basename = (p: string) => p.split('/').pop() ?? p
 const extOf = (p: string) => basename(p).split('.').pop()?.toLowerCase() ?? ''
+
+const ICON_BY_EXT: Record<string, string> = {
+  html: 'file-html', htm: 'file-html', png: 'file-image', jpg: 'file-image', jpeg: 'file-image', gif: 'file-image', webp: 'file-image', svg: 'file-image',
+  json: 'file-json', yaml: 'file-json', yml: 'file-json', toml: 'file-json', csv: 'file-json',
+  md: 'file', txt: 'file', log: 'file',
+}
+/** Icon token for a file chip, from the extension alone (no stat on a chip render). */
+export const chipIconToken = (path: string) => ICON_BY_EXT[extOf(path)] ?? (extOf(path) === basename(path) ? 'file' : 'file-code')
 
 export function metaLine(stat: FileStat | null, path: string): string {
   if (!stat) return ''
@@ -213,6 +221,15 @@ interface BodyProps {
 export function Body({ stat, path, line, tick, expanded = false, onText, onDims, onAccess, onCopyPath }: BodyProps) {
   if (!stat.exists || !stat.allowed) {
     if (stat.deny_reason === 'too_large') {
+      const kindOfBig = stat.kind ?? 'binary'
+      if (kindOfBig === 'markdown' || TEXT_KINDS.includes(kindOfBig)) {
+        return (
+          <div className="space-y-2 pt-3">
+            <p className={HEAD}>File is {formatSize(stat.size)}, showing the first 200 KB</p>
+            <TextBody path={path} head tick={tick} expanded={expanded} language={stat.language ?? extOf(path)} onText={onText} />
+          </div>
+        )
+      }
       return (
         <div className="space-y-1 pt-3">
           <p className={HEAD}>File is {formatSize(stat.size)}, too large to preview</p>
@@ -364,7 +381,7 @@ function Page({ path, tick, expanded, onText }: { path: string; tick: number; ex
   )
 }
 
-function TextBody({ path, line, markdown, tick, expanded = false, language, onText }: { path: string; line?: number; markdown?: boolean; tick: number; expanded?: boolean; language?: string; onText?: (t: string) => void }) {
+function TextBody({ path, line, markdown, head, tick, expanded = false, language, onText }: { path: string; line?: number; markdown?: boolean; head?: boolean; tick: number; expanded?: boolean; language?: string; onText?: (t: string) => void }) {
   const [state, setState] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; text: string }>({ status: 'loading' })
   const [raw, setRaw] = useState(!markdown)
   const [wrap, setWrap] = useState(false)
@@ -377,7 +394,8 @@ function TextBody({ path, line, markdown, tick, expanded = false, language, onTe
   useEffect(() => {
     let live = true
     setState({ status: 'loading' })
-    fileApi.text(path).then(
+    const read = head ? fileApi.textHead(path, PREVIEW_HEAD_BYTES) : fileApi.text(path)
+    read.then(
       (r) => {
         if (!live) return
         setState({ status: 'ready', text: r.text })
@@ -388,7 +406,7 @@ function TextBody({ path, line, markdown, tick, expanded = false, language, onTe
     return () => {
       live = false
     }
-  }, [path, tick])
+  }, [path, tick, head])
   useEffect(() => {
     if (state.status === 'ready') target.current?.scrollIntoView?.({ block: 'center' })
   }, [state.status])
