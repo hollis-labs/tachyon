@@ -368,14 +368,15 @@ export function createTetherChatClient(mail: ChatClient): ChatClient {
         }
       }
       void sync()
-      const timer = setInterval(() => void sync(), 5000)
+      // No interval: refresh on the spine stream, the data-refresh signal and focus.
+      const offSpine = spineHub().subscribe((f) => { if (f.type === 'thread' || f.type === 'reconnected') void sync() })
       const offs = ['chat', 'chat-turns'].map((scope) =>
         dataRefreshRegistry(scope).subscribe(() => void sync()),
       )
       window.addEventListener('focus', sync)
       return () => {
         live = false
-        clearInterval(timer)
+        offSpine()
         offs.forEach((off) => off())
         window.removeEventListener('focus', sync)
         set.delete(listener)
