@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"database/sql"
 	"sort"
 
 	"github.com/hollis-labs/tachyon/internal/objects"
@@ -19,6 +20,20 @@ func assignmentOf(ctx context.Context, task string) any {
 		return a
 	}
 	return nil
+}
+
+// timeOnTask sums how long Tether sessions launched with this task ran (end, else last activity, minus start).
+// It is null when no session carries the task: nothing was measured.
+func (h *HTTP) timeOnTask(ctx context.Context, task string) any {
+	if h.Store == nil || h.Store.Reader == nil {
+		return nil
+	}
+	var ms sql.NullInt64
+	err := h.Store.Reader.QueryRowContext(ctx, `SELECT SUM((COALESCE(NULLIF(ended_ns,0),last_activity_ns)-started_ns)/1000000) FROM agents_sessions WHERE task_ref=? AND started_ns>0 AND COALESCE(NULLIF(ended_ns,0),last_activity_ns)>=started_ns`, task).Scan(&ms)
+	if err != nil || !ms.Valid {
+		return nil
+	}
+	return ms.Int64
 }
 
 // TaskContext answers where a Torque task sits in its theme (Agents A5 task chip). The theme is the first
@@ -61,7 +76,7 @@ func (h *HTTP) TaskContext(ctx context.Context, task string) (Item, error) {
 			"index":      at + 1,
 			"count":      len(tasks),
 			"assignment": assignmentOf(ctx, task),
-			"stats":      Item{"done_in_theme": done, "events": 0, "time_on_task_ms": nil},
+			"stats":      Item{"done_in_theme": done, "events": 0, "time_on_task_ms": h.timeOnTask(ctx, task)},
 		}, nil
 	}
 	titles, err := h.Tasks.Titles(ctx, []string{task})
@@ -75,6 +90,6 @@ func (h *HTTP) TaskContext(ctx context.Context, task string) (Item, error) {
 	return Item{
 		"task":  Item{"id": b.ID, "title": b.Title, "status": b.Status},
 		"theme": nil, "index": nil, "count": nil, "assignment": assignmentOf(ctx, task),
-		"stats": Item{"done_in_theme": 0, "events": 0, "time_on_task_ms": nil},
+		"stats": Item{"done_in_theme": 0, "events": 0, "time_on_task_ms": h.timeOnTask(ctx, task)},
 	}, nil
 }
