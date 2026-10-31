@@ -61,12 +61,12 @@ export function SpineList({ groups, selectedId, onSelect, onTogglePin, label, pe
   const toggle = (id: string) => setOpened((o) => { const n = new Set(o); if (!n.delete(id)) n.add(id); return n })
 
   const focusAt = (i: number) => {
-    const rows = root.current?.querySelectorAll<HTMLElement>('[role="option"]')
+    const rows = root.current?.querySelectorAll<HTMLElement>('[data-spine-row]')
     rows?.[Math.max(0, Math.min(i, (rows?.length ?? 1) - 1))]?.focus()
   }
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return
-    const rows = [...(root.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])]
+    const rows = [...(root.current?.querySelectorAll<HTMLElement>('[data-spine-row]') ?? [])]
     const at = rows.indexOf(document.activeElement as HTMLElement)
     const k = e.key.toLowerCase()
     if (k === 'j' || e.key === 'ArrowDown') (e.preventDefault(), focusAt(at + 1))
@@ -76,22 +76,22 @@ export function SpineList({ groups, selectedId, onSelect, onTogglePin, label, pe
 
   if (all.length === 0 && emptyLabel) return <p className={cn('px-3 py-2 text-xs text-fg-muted', className)}>{emptyLabel}</p>
 
-  // One listbox per group (a listbox may own only options): the heading, a real button when collapsible, sits above its own
-  // listbox. The row's overflow menu is a sibling of its option, not a control inside it.
+  // A group is a list of rows (not a listbox: a row also carries an overflow menu and a link port, which a listbox option may not
+  // contain or sit beside). The row is a button with aria-current when selected; its menu and port are siblings of it.
   return (
     <div ref={root} role="group" aria-label={label} onKeyDown={onKeyDown} className={cn('flex min-w-0 flex-col', className)}>
       {groups.map((g) => (
         <div key={g.id} className="flex flex-col">
           <GroupHeading id={`spine-${g.id}`} count={g.items.length} onToggle={g.collapsed ? () => toggle(g.id) : undefined} open={!folded(g)}>{g.title}</GroupHeading>
           {!folded(g) && (
-            <div role="listbox" aria-labelledby={`spine-${g.id}`} className="flex flex-col">
+            <div role="list" aria-labelledby={`spine-${g.id}`} className="flex flex-col">
               {g.items.map((it) => {
                 const selected = it.id === selectedId
                 return (
-                  <div key={it.id} className="relative">
+                  <div key={it.id} role="listitem" className="relative">
                     <div
-                      role="option"
-                      aria-selected={selected}
+                      role="button"
+                      data-spine-row=""
                       aria-current={selected || undefined}
                       tabIndex={selected || (!selectedId && it.id === all[0]?.id) ? 0 : -1}
                       onClick={() => onSelect(it.id)}
