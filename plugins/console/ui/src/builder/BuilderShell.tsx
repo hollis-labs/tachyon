@@ -44,7 +44,7 @@ export function BuilderShell({ tab, counts }: { tab: BuilderTab; counts?: Summar
       <span className="flex-1" />
       <p className="hidden shrink-0 text-label text-fg-muted sm:block">
         {DEFINITIONS_NOTE}{' '}
-        <Link className="text-fg-secondary hover:text-fg" to="/agents">
+        <Link className="text-fg-secondary underline underline-offset-2 hover:text-fg" to="/agents">
           Agents ▸
         </Link>
       </p>

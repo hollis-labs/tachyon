@@ -97,7 +97,7 @@ export function UsedByCard({ load, retry }: { load: Load<UsedBy>; retry: () => v
               {(u.live_sessions?.length ?? 0) > 0 && (
                 <>
                   {' · '}
-                  <Link className="text-fg-secondary hover:text-fg" to="/agents">
+                  <Link className="text-fg-secondary underline underline-offset-2 hover:text-fg" to="/agents">
                     Open on Agents ▸
                   </Link>
                 </>
