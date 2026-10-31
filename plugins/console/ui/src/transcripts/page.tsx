@@ -7,8 +7,8 @@ import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import { Activity, BarChart3, Boxes, FileText, RefreshCw } from "lucide-react"
 import { Segmented } from "../components/segmented"
 import { TranscriptReader } from "./detail"
-import { SessionFilters, SessionList, WindowPicker } from "./sessions"
-import { ContentSearch, useSearchStatus } from "./search"
+import { SessionList, SessionToolbar, WindowPicker } from "./sessions"
+import { useSearchStatus } from "./search"
 import {
   read,
   filterSessions,
@@ -75,9 +75,8 @@ export function TranscriptDashboard() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filters>(defaults)
   const [selected, setSelected] = useState<Session>()
-  const status = useSearchStatus()
-  const canSearch = status?.capabilities?.search === true
-  const [searchMode, setSearchMode] = useState<"meta" | "content">("meta")
+  useSearchStatus()
+  const [searchMode, setSearchMode] = useState<"text" | "semantic">("text")
   const [activeId, setActiveId] = useState("")
   const [tab, setTab] = useState<Tab>("sessions")
   const [filteredTo, setFilteredTo] = useState("")
@@ -219,48 +218,38 @@ export function TranscriptDashboard() {
     )
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <PageHeader title="Transcripts" />
-      <div className="border-b border-border px-4 py-2 dash-support text-fg-muted">
-        <p className="font-mono dash-caption text-fg-faint">Dashboards / Fragments Engine</p>
-        <p>Explore recorded conversations, usage, and the work behind them. Read-only; Fragments Engine owns the records.</p>
-      </div>
-      <div className={`min-h-0 flex-1 p-4 ${tab === "sessions" ? "flex flex-col gap-5 overflow-hidden" : "space-y-5 overflow-auto"}`}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Segmented<Tab>
-            bare
-            label="Transcript views"
-            value={tab}
-            onChange={setTab}
-            items={[
-              { value: "sessions", label: "Sessions" },
-              { value: "insights", label: "Insights" },
-            ]}
-          />
-          <div className="flex items-center gap-2 dash-control text-fg-faint">
-            <span role="status">
-              {snapshot
-                ? `Updated ${sinceLabel(loadedAt, now)} · ${number(snapshot.sessions.length)} sessions loaded${snapshot.complete ? "" : ` · partial snapshot, latest ${number(snapshot.limit)} maximum`}`
-                : "Waiting for metadata"}
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => reload.current()}>
-              <RefreshCw className="h-3 w-3" /> Refresh
-            </Button>
-          </div>
-        </div>
+      {/* KIT-GAP: PageHeader has no slot beside the title; the golden puts the Sessions/Insights tabs next to it. */}
+      <PageHeader title="Transcripts">
+        <Segmented<Tab>
+          bare
+          label="Transcript views"
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: "sessions", label: "Sessions" },
+            { value: "insights", label: "Insights" },
+          ]}
+        />
+        <span role="status" className="ml-auto truncate dash-label text-fg-muted max-md:hidden">
+          {snapshot
+            ? `Updated ${sinceLabel(loadedAt, now)} · ${number(facets?.total ?? snapshot.sessions.length)} sessions${snapshot.complete ? "" : ` · partial snapshot, latest ${number(snapshot.limit)} maximum`}`
+            : "Waiting for metadata"}
+        </span>
+        <Button variant="outline" size="icon-sm" aria-label="Refresh" className="max-md:ml-auto" onClick={() => reload.current()}>
+          <RefreshCw className="size-3.5" />
+        </Button>
+      </PageHeader>
+      <div className={`min-h-0 flex-1 ${tab === "sessions" ? "flex flex-col overflow-hidden" : "space-y-5 overflow-auto p-4"}`}>
       {error && !access && (
-        <p
-          role="alert"
-          className={`dash-control ${snapshot ? "text-fg-muted" : "text-danger"}`}
-        >
-          Transcript source unavailable: {error}
-          {snapshot && " Showing the last snapshot."}{" "}
-          <button className="underline" onClick={() => reload.current()}>
+        <div role="alert" className={`flex flex-wrap items-center gap-2 rounded-panel border px-3 py-2 dash-control ${tab === "sessions" ? "mx-4 mt-3" : ""} ${snapshot ? "border-border text-fg-muted" : "border-danger/60 text-fg-muted"}`}>
+          <span><strong className={snapshot ? "text-fg" : "text-danger"}>Transcript source unavailable.</strong>{" "}{snapshot ? `Showing the last saved snapshot from ${sinceLabel(loadedAt, now)}.` : error}</span>
+          <Button variant="outline" size="sm" onClick={() => reload.current()}>
             Retry
-          </button>
-        </p>
+          </Button>
+        </div>
       )}
       {loading && !snapshot && (
-        <div role="status" className="space-y-2">
+        <div role="status" className="space-y-2 px-4 py-3">
           <p className="dash-control text-fg-muted">
             Building the first metadata snapshot… Later visits use the saved one.
           </p>
@@ -309,17 +298,18 @@ export function TranscriptDashboard() {
           />
         </KpiGrid>
       </section>}
-      <section className={`shrink-0 space-y-4 ${tab === "sessions" && selected ? "max-md:hidden" : ""}`} aria-label="Filtered transcript insights">
-        {tab === "sessions" ? (
-          <SessionFilters filter={filter} facets={facets} set={set} reset={reset} />
-        ) : (
-          <WindowPicker filter={filter} set={set} />
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-3 dash-control">
-          <span className="text-fg-muted">
-            {number(rows.length)} sessions in view
-          </span>
+      {tab === "sessions" ? (
+        <div className={`shrink-0 border-b border-border px-4 py-3 ${selected ? "max-md:hidden" : ""}`}>
+          <SessionToolbar filter={filter} facets={facets} set={set} reset={reset} count={rows.length} mode={searchMode} onMode={setSearchMode} />
         </div>
+      ) : null}
+      <section className={`${tab === "sessions" ? "hidden" : "shrink-0 space-y-4"}`} aria-label="Filtered transcript insights">
+        {tab === "insights" && (
+          <>
+            <WindowPicker filter={filter} set={set} />
+            <span className="block dash-control text-fg-muted">{number(rows.length)} sessions in view</span>
+          </>
+        )}
         {filteredTo && (
           <p className="flex items-center gap-2 dash-control text-fg-muted">
             Filtered to {filteredTo}
@@ -428,35 +418,11 @@ export function TranscriptDashboard() {
         )}
       </section>
       {tab === "sessions" && (
-        <section aria-label="Transcript sessions" className="-mx-4 -mb-4 flex min-h-0 flex-1 border-t border-border">
+        <section aria-label="Transcript sessions" className="flex min-h-0 flex-1">
           <div
             ref={listPane}
             className={`${selected ? "max-md:hidden" : ""} flex min-h-0 w-full flex-col overflow-auto md:w-[26rem] md:shrink-0 md:border-r md:border-border`}
           >
-            {canSearch && (
-              <Segmented<"meta" | "content">
-                label="Search in"
-                value={searchMode}
-                onChange={setSearchMode}
-                items={[
-                  { value: "meta", label: "Titles and metadata" },
-                  { value: "content", label: "Content" },
-                ]}
-              />
-            )}
-            {canSearch && searchMode === "content" ? (
-              <ContentSearch
-                filter={filter}
-                modes={status?.modes ?? ["text"]}
-                activeId={activeId}
-                onActive={setActiveId}
-                onOpen={open}
-              />
-            ) : (
-              <>
-            <div className="px-4 py-3">
-              <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project, or tag…" value={filter.query} onChange={query => set({ query })} debounceMs={0} />
-            </div>
             {!!rows.length && (
               <SessionList
                 key={JSON.stringify(filter)}
@@ -488,19 +454,20 @@ export function TranscriptDashboard() {
                 )}
               </div>
             )}
-              </>
-            )}
           </div>
           {selected && (
             <TranscriptReader key={selected.id} session={selected} onClose={close} />
           )}
           {!selected && (
-            <p className="hidden flex-1 items-center justify-center dash-body text-fg-faint md:flex">
-              Select a session to read it.
-            </p>
+            <div className="hidden flex-1 flex-col items-center justify-center gap-2 md:flex">
+              <span aria-hidden className="mb-2 flex size-9 items-center justify-center rounded-full border border-border text-fg-muted"><FileText className="size-4" /></span>
+              <p className="dash-body font-medium text-fg">Select a session to read it</p>
+              <p className="dash-support text-fg-muted">Transcripts are read-only and redacted.</p>
+            </div>
           )}
         </section>
       )}
+      {tab === "sessions" && <p className="shrink-0 border-t border-border px-4 py-3 dash-label text-fg-muted">Read-only · Fragments Engine owns the records · redacted transcripts</p>}
       </div>
     </div>
   )

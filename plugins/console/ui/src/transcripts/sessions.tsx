@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  SearchInput,
   Select,
   SelectContent,
   SelectItem,
@@ -28,9 +29,9 @@ type Facets = Snapshot["facets"]
 const ALL = "__all"
 
 export const WINDOWS = [
-  { value: "1", label: "24h" },
   { value: "7", label: "7d" },
   { value: "30", label: "30d" },
+  { value: "90", label: "90d" },
   { value: "0", label: "All" },
 ]
 
@@ -69,6 +70,15 @@ export function groupByDay(rows: Session[], now = new Date().getTime()) {
   return groups
 }
 
+/** Row stamp: "1h ago" inside two hours, the clock time later today, then the day. */
+export function stamp(iso: string, now = new Date().getTime()) {
+  const age = now - Date.parse(iso)
+  if (age < 7200000) return ago(iso, now)
+  return dayLabel(iso, now) === "Today"
+    ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })
+    : ago(iso, now)
+}
+
 export function ago(iso: string, now = new Date().getTime()) {
   const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000))
   if (s < 60) return "just now"
@@ -100,7 +110,7 @@ function Pick({
       value={value === "" ? ALL : value}
       onValueChange={(v) => onChange(v === null || v === ALL ? "" : String(v))}
     >
-      <SelectTrigger className="h-8 w-44 dash-body" aria-label={label}>
+      <SelectTrigger className="h-8 w-auto min-w-28 dash-body" aria-label={label}>
         <SelectValue>{(v: unknown) => (v === ALL || v == null ? all : (options.find((o) => o.value === v)?.label ?? String(v)))}</SelectValue>
       </SelectTrigger>
       <SelectContent>
@@ -156,31 +166,44 @@ export function WindowPicker({
   )
 }
 
-export function SessionFilters({
+export function SessionToolbar({
   filter,
   facets,
   set,
   reset,
+  count,
+  mode,
+  onMode,
 }: {
   filter: Filters
   facets?: Facets
   set(patch: Partial<Filters>): void
   reset(): void
+  count: number
+  mode: "text" | "semantic"
+  onMode(m: "text" | "semantic"): void
 }) {
   const [sheet, setSheet] = useState(false)
   const active = [filter.tool, filter.model, filter.kind].filter(Boolean).length + (filter.errors ? 1 : 0)
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <WindowPicker filter={filter} set={set} />
-      <div className="hidden flex-wrap items-center gap-2 sm:flex">
-        <Controls filter={filter} facets={facets} set={set} />
-        <Button variant="ghost" size="sm" onClick={reset}>
-          Reset
-        </Button>
+      <div className="flex min-w-0 basis-96 items-center gap-1 max-md:basis-full md:max-w-md md:flex-1">
+        <div className="dash-search-adapter min-w-0 flex-1">
+          <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project or tag…" value={filter.query} onChange={(query) => set({ query })} debounceMs={0} slashToFocus />
+        </div>
+        <Segmented bare label="Search mode" value={mode} onChange={onMode} items={[{ value: "text", label: "Text" }, { value: "semantic", label: "Semantic" }]} />
       </div>
-      <Button variant="outline" size="sm" className="sm:hidden" onClick={() => setSheet(true)}>
+      <WindowPicker filter={filter} set={set} />
+      <div className="hidden flex-wrap items-center gap-2 md:flex">
+        <Pick label="Tool" value={filter.tool} all="All tools" options={(facets?.tools ?? []).map((x) => ({ value: x, label: x }))} onChange={(tool) => set({ tool })} />
+        <Pick label="Model" value={filter.model} all="All models" options={(facets?.models ?? []).map((x) => ({ value: x, label: x }))} onChange={(model) => set({ model })} />
+        <Pick label="Session kind" value={filter.kind} all="All kinds" options={KINDS} onChange={(kind) => set({ kind })} />
+        <Button variant={filter.errors ? "secondary" : "outline"} size="sm" className="rounded-full" aria-pressed={filter.errors} onClick={() => set({ errors: !filter.errors })}>With errors</Button>
+      </div>
+      <Button variant="outline" size="sm" className="md:hidden" onClick={() => setSheet(true)}>
         <SlidersHorizontal className="h-3 w-3" /> Filters{active ? ` (${active})` : ""}
       </Button>
+      <span className="ml-auto dash-label text-fg-muted">{number(count)} sessions</span>
       {sheet && (
         <Dialog open onOpenChange={(o) => !o && setSheet(false)}>
           <DialogContent>
@@ -205,7 +228,7 @@ export function SessionFilters({
   )
 }
 
-const STEP = 50
+const STEP = 20
 
 export function SessionList({
   rows,
@@ -241,38 +264,48 @@ export function SessionList({
     return () => document.removeEventListener("keydown", onKey)
   }, [keys, activeId])
   const now = new Date().getTime()
+  const more = useRef<HTMLDivElement>(null)
+  // Paging follows the scroll: the sentinel under the list asks for the next page.
+  useEffect(() => {
+    const el = more.current
+    if (!el || typeof IntersectionObserver === "undefined") return
+    const io = new IntersectionObserver((e) => e[0]?.isIntersecting && setLimit((n) => n + STEP))
+    io.observe(el)
+    return () => io.disconnect()
+  }, [rows.length, limit])
   return (
     <div ref={box}>
       {groupByDay(shown, now).map((g) => (
         <section key={g.label} aria-label={g.label}>
-          <h3 className="sticky top-0 border-b border-border-subtle bg-bg px-4 py-1.5 dash-caption text-fg-faint">
-            {g.label}
+          <h3 className="sticky top-0 z-10 bg-bg px-4 pb-1 pt-3">
+            <span className="inline-block rounded-full bg-surface px-2.5 py-0.5 dash-label font-normal normal-case tracking-normal text-fg-secondary">{g.label}</span>
           </h3>
           <ul>
             {g.rows.map((s) => (
-              <li key={s.id} className="border-b border-border-subtle">
+              <li key={s.id}>
                 <button
                   type="button"
                   data-row={s.id}
                   aria-current={s.id === activeId ? "true" : undefined}
                   onFocus={() => onActive(s.id)}
                   onClick={() => onOpen(s)}
-                  className={`flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-surface-hover focus-visible:bg-surface-hover ${s.id === activeId ? "bg-surface" : ""}`}
+                  className={`flex w-full items-center gap-3 border-l-2 px-4 py-2.5 text-left hover:bg-surface-hover focus-visible:bg-surface-hover ${s.id === activeId ? "border-fg bg-surface" : "border-transparent"}`}
                 >
+                  <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border dash-caption font-medium uppercase text-fg-secondary">{(s.tool || "?")[0]}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate dash-body text-fg" title={s.title}>
                       {s.title || "Untitled session"}
                     </span>
-                    <span className="mt-0.5 block truncate dash-caption text-fg-faint" title={s.project}>
-                      {[projectName(s.project), s.tool, s.model, s.kind === "subagent" ? "subagent" : ""].filter(Boolean).join(" · ")}
+                    <span className="mt-0.5 block truncate dash-support text-fg-muted" title={s.project}>
+                      {[projectName(s.project), s.kind === "subagent" ? "subagent" : "main", s.model].filter(Boolean).join(" · ")}
                     </span>
                   </span>
-                  <span className="shrink-0 text-right dash-caption text-fg-faint">
+                  <span className="shrink-0 text-right font-mono dash-caption text-fg-muted max-md:hidden">
                     <span className="block" title={s.started_at ? new Date(s.started_at).toLocaleString() : undefined}>
-                      {s.started_at ? ago(s.started_at, now) : "Unknown"}
+                      {s.started_at ? stamp(s.started_at, now) : "Unknown"}
                     </span>
                     <span className="block">
-                      {number(s.turns)} turns{s.errors ? ` · ${number(s.errors)} ${s.errors === 1 ? "error" : "errors"}` : ""}
+                      {number(s.turns)} turns{s.tokens ? ` · ${compact(s.tokens)}` : ""}{s.errors ? ` · ${number(s.errors)} err` : ""}
                     </span>
                   </span>
                 </button>
@@ -281,15 +314,8 @@ export function SessionList({
           </ul>
         </section>
       ))}
-      <div className="flex items-center justify-between px-4 py-3 dash-control text-fg-faint">
-        <span>
-          {rows.length ? `Showing ${number(shown.length)} of ${number(rows.length)} · ${compact(rows.reduce((n, s) => n + s.tokens, 0))} tokens` : "0 sessions"}
-        </span>
-        {rows.length > shown.length && (
-          <Button variant="ghost" size="sm" onClick={() => setLimit(limit + STEP)}>
-            Show more
-          </Button>
-        )}
+      <div ref={more} className="px-4 py-3 dash-label text-fg-muted">
+        {rows.length ? `Showing ${number(shown.length)} of ${number(rows.length)}${rows.length > shown.length ? " · scroll for more" : ""}` : "0 sessions"}
       </div>
     </div>
   )

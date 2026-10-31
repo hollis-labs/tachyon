@@ -371,7 +371,7 @@ describe("transcript dashboard", () => {
     read.mockRejectedValue(new Error("offline"))
     refresh.fn()
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "Showing the last snapshot",
+      "Showing the last saved snapshot",
     )
     expect(screen.getByRole("button", { name: /Fix routing/ })).toBeTruthy()
   })
