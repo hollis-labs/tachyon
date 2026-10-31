@@ -44,3 +44,15 @@ func TestForgeStubRoutesRequireOperator(t *testing.T) {
 		t.Errorf("stub list: %d", w.Code)
 	}
 }
+
+func TestPluginForgeWritesNeedAnOperatorSession(t *testing.T) {
+	h := New(Config{PluginBinDir: t.TempDir()}).Routes()
+	base := "https://tachyon.test/api/plugins/console/v1/forge/repos/github/o/r/pulls/1"
+	for _, c := range [][2]string{{"POST", "/comments"}, {"PUT", "/assignees"}, {"PUT", "/merge"}, {"POST", "/reviews"}} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(c[0], base+c[1], strings.NewReader(`{"body":"x"}`)))
+		if w.Code != 403 {
+			t.Errorf("%s %s without a session: %d %s", c[0], c[1], w.Code, w.Body.String())
+		}
+	}
+}
