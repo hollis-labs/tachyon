@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -17,6 +18,10 @@ import (
 
 const Prefix = "/api/plugins/console/v1/approval-inbox"
 const CookieName = "tachyon_approvals"
+
+// AssuranceEnv selects the assurance posture. "dev" is the open dev posture; anything else is the normal one.
+const AssuranceEnv = "TACHYON_ASSURANCE"
+
 const CookiePath = "/api/plugins/console/v1/"
 
 var itemPath = regexp.MustCompile(`^/items/[a-zA-Z0-9_-]+$`)
@@ -26,6 +31,10 @@ var evidencePath = regexp.MustCompile(`^/items/[a-zA-Z0-9_-]+/evidence/[0-9]+/(r
 type Bridge struct {
 	URL    string
 	Client *http.Client
+	// Dev is the sanctioned dev posture (TACHYON_ASSURANCE=dev): the network boundary (Tailscale/Caddy) is the
+	// only gate, so every request counts as an elevated operator session and nothing is asked of Tangent.
+	// Default off. Hardening is CW-20261030-0082.
+	Dev bool
 
 	mu         sync.Mutex
 	lockedTill time.Time
@@ -42,7 +51,7 @@ func (b *Bridge) lockedUntil() time.Time {
 }
 
 func New(addr string) *Bridge {
-	return &Bridge{URL: strings.TrimRight(addr, "/"), Client: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &Bridge{Dev: os.Getenv(AssuranceEnv) == "dev", URL: strings.TrimRight(addr, "/"), Client: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func fail(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
@@ -51,6 +60,9 @@ func fail(w http.ResponseWriter, status int, code, message string) {
 }
 func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
+	if b.Dev && b.serveDev(w, r) {
+		return
+	}
 	u, err := url.Parse(b.URL)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || upstreamauth.Guard(b.URL, "participant") != nil {
 		fail(w, 503, "configuration", "Configure Tachyon's approval queue address (HTTPS or loopback).")
@@ -182,4 +194,32 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(res.StatusCode)
 	_, _ = w.Write(data)
+}
+
+// serveDev answers the session routes locally in the dev posture. It reports false for anything else, which then
+// takes the normal path (inbox reads and writes are Tachyon's own and never reach Tangent from here).
+func (b *Bridge) serveDev(w http.ResponseWriter, r *http.Request) bool {
+	path := strings.TrimPrefix(r.URL.Path, Prefix)
+	post := r.Method == http.MethodPost
+	var body string
+	switch {
+	case path == "/status" && r.Method == http.MethodGet:
+		body = `{"elevated":true,"assurance":"operator-token"}`
+	case post && (path == "/session" || path == "/elevate"):
+		body = `{"connected":true,"elevated":true,"assurance":"operator-token"}`
+		if path == "/session" {
+			body = `{"connected":true}`
+		}
+	case post && path == "/de-elevate":
+		body = `{"elevated":true,"assurance":"operator-token"}`
+	default:
+		return false
+	}
+	if post && !sameOrigin(r) {
+		fail(w, 403, "origin_denied", "Approval actions require the Tachyon browser origin.")
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(body))
+	return true
 }

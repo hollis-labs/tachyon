@@ -103,6 +103,10 @@ func (b *Bridge) lookup(r *http.Request) (hitl.Participant, sessionStatus, *assu
 	if r.Header.Get("Authorization") != "" {
 		return hitl.Participant{}, sessionStatus{}, &assurance.Error{Status: 403, Code: "requester_cannot_approve", Message: "Use the operator browser session for inbox access."}
 	}
+	if b.Dev {
+		ref := "dev-posture"
+		return hitl.Participant{PrincipalRef: ref, Authority: "tachyon-inbox/dev-posture", Assurance: "operator-token", Responder: &hitl.Responder{Kind: "human-session", Ref: ref}}, sessionStatus{Elevated: true, Assurance: "operator-token"}, nil
+	}
 	check := r.Clone(r.Context())
 	u := *r.URL
 	u.Path = Prefix + "/status"
