@@ -168,6 +168,7 @@ export function ApprovalsPage() {
           {(status || requester) && <Button type="button" variant="ghost" size="sm" onClick={() => { setStatus(""); setRequester("") }}>Clear filters</Button>}
         </div>
       )}
+      {queue.stream === "down" && !queue.error && queue.inbox && <p role="status" className="px-4 pt-2 dash-support text-fg-faint">Updates every 10 s</p>}
       {queue.error && (
         <p role="alert" className="mx-4 mt-2 rounded border border-danger/30 p-3 dash-control text-danger">
           Approval queue unavailable: {queue.error}

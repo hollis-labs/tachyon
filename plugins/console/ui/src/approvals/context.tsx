@@ -9,6 +9,7 @@ import {
 } from "react"
 import { dataRefreshRegistry } from "@tachyon/host-sdk"
 import {
+  APPROVAL_BASE,
   approvalClient,
   type ApprovalClient,
   type ApprovalInbox,
@@ -25,6 +26,8 @@ interface ApprovalContextValue {
   error?: string
   loading: boolean
   refresh(fresh?: boolean): Promise<void>
+  /** "live" while the server stream is connected; "down" means the queue refreshes by polling every 10 s. */
+  stream: "live" | "down"
   page(view: "pending" | "history", cursor?: string): Promise<void>
   cursors: { pending_before?: string; history_before?: string }
   open(id?: string): void
@@ -44,6 +47,9 @@ export interface HeldDecision {
   response: ApprovalResponse
 }
 export const HOLD_MS = 8000
+export const POLL_MS = 10000
+// Item events on GET /approval-inbox/events (docs/approvals-contract.md); any of them means the queue changed.
+const STREAM_EVENTS = ["item.created", "item.updated", "item.resolved", "item.expired", "item.deferred", "item.undeferred", "resync"]
 const MAX_VISIBLE = 3
 const Context = createContext<ApprovalContextValue | null>(null)
 export function ApprovalProvider({
@@ -56,6 +62,8 @@ export function ApprovalProvider({
   const [inbox, setInbox] = useState<ApprovalInbox>()
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
+  const [stream, setStream] = useState<"live" | "down">("down")
+  const streamLive = useRef(false)
   const [selected, setSelected] = useState<string>()
   const cursors = useRef<{ pending_before?: string; history_before?: string }>({})
   const active = useRef(true)
@@ -83,15 +91,39 @@ export function ApprovalProvider({
   useEffect(() => {
     active.current = true
     void refresh()
+    // Polling is the fallback: it runs only while the stream is down.
     const timer = setInterval(() => {
-      if (document.visibilityState !== "hidden") void refresh(true)
-    }, 10000)
+      if (!streamLive.current && document.visibilityState !== "hidden") void refresh(true)
+    }, POLL_MS)
+    let es: EventSource | undefined
+    let pending: ReturnType<typeof setTimeout> | undefined
+    if (typeof EventSource !== "undefined") {
+      es = new EventSource(`${APPROVAL_BASE}/events`)
+      const changed = () => {
+        // Several events can arrive together; one refresh covers them.
+        clearTimeout(pending)
+        pending = setTimeout(() => void refresh(true), 150)
+      }
+      es.onopen = () => {
+        streamLive.current = true
+        setStream("live")
+        void refresh(true)
+      }
+      es.onerror = () => {
+        streamLive.current = false
+        setStream("down")
+      }
+      for (const name of STREAM_EVENTS) es.addEventListener(name, changed)
+    }
     const off = dataRefreshRegistry("approvals").subscribe(() => {
       void refresh()
     })
     return () => {
       active.current = false
       clearInterval(timer)
+      clearTimeout(pending)
+      es?.close()
+      streamLive.current = false
       off()
     }
   }, [refresh])
@@ -174,7 +206,7 @@ export function ApprovalProvider({
   }, [commit])
   const open = (id?: string) => setSelected(id ?? inbox?.pending[0]?.item_id)
   return (
-    <Context.Provider value={{ inbox, error, loading, refresh, page, cursors: cursors.current, open, client, held, hold, undo, restored }}>
+    <Context.Provider value={{ inbox, error, loading, refresh, stream, page, cursors: cursors.current, open, client, held, hold, undo, restored }}>
       {children}
       <HeldToasts held={held} onUndo={undo} notice={notice} />
       {selected && (
