@@ -57,6 +57,13 @@ function Shell() {
 
   return (
     <div className="tachyon-shell flex h-full w-full overflow-hidden bg-bg text-foreground">
+      <button
+        type="button"
+        onClick={() => document.getElementById("main")?.focus()}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:border focus:border-border focus:bg-bg focus:px-3 focus:py-2 focus:text-sm focus:text-foreground"
+      >
+        Skip to content
+      </button>
       <NavRail
         items={items}
         logo={<Atom className="h-5 w-5" />}
@@ -68,7 +75,11 @@ function Shell() {
           </>
         }
       />
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
+      <main
+        id="main"
+        tabIndex={-1}
+        className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg outline-none"
+      >
         <DataStatus />
         <div className="min-h-0 flex-1 overflow-auto">
           <Routes>
