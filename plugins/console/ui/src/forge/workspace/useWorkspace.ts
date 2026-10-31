@@ -79,12 +79,16 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
 
   // Queued review comments survive a reload: restore the saved draft once per PR, then mirror changes (debounced).
   const draftReady = useRef<string | null>(null)
+  /** A draft exists server-side (restored or saved), so an empty queue should delete it; otherwise no write is sent. */
+  const draftExists = useRef(false)
   useEffect(() => {
     if (!client.getReviewDraft) return
     let live = true
     draftReady.current = null
+    draftExists.current = false
     client.getReviewDraft(stable).then((d) => {
       if (!live) return
+      draftExists.current = !!d
       if (d && d.comments.length) setPending((p) => (p.length ? p : d.comments.map((c, i) => ({ ...c, id: `d-${i}-${++tmp}` }))))
       draftReady.current = key
     }, () => { if (live) draftReady.current = key })
@@ -95,8 +99,13 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
     if (!client.saveReviewDraft || draftReady.current !== key || !headForDraft) return
     const t = setTimeout(() => {
       const comments = pending.map((c) => ({ body: c.body, path: c.path, line: c.line, side: c.side }))
-      const op = comments.length ? client.saveReviewDraft!(stable, { headSha: headForDraft, comments }) : client.deleteReviewDraft?.(stable)
-      void op?.catch(() => undefined)
+      if (comments.length) {
+        draftExists.current = true
+        void client.saveReviewDraft!(stable, { headSha: headForDraft, comments }).catch(() => undefined)
+      } else if (draftExists.current) {
+        draftExists.current = false
+        void client.deleteReviewDraft?.(stable)?.catch(() => undefined)
+      }
     }, 800)
     return () => clearTimeout(t)
   }, [client, key, stable, pending, headForDraft])
