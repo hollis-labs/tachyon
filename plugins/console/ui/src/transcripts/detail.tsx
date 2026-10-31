@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Button, Input, Skeleton } from "@hollis-labs/design-components"
-import { ArrowLeft, ChevronDown, ChevronUp, Copy, X } from "lucide-react"
+import { Button, OverflowMenu, SearchInput, Skeleton } from "@hollis-labs/design-components"
+import { ArrowLeft, ChevronDown, ChevronUp, Copy } from "lucide-react"
 import { Segmented } from "../components/segmented"
 import { MessageBody } from "../chat/MessageBody"
-import { normalizeSession, read, number, size, took, TranscriptError, type Session, type Detail } from "./data"
-import { ago } from "./sessions"
+import { normalizeSession, projectName, read, number, size, took, TranscriptError, type Session, type Detail } from "./data"
 
 type Turn = Detail["turns"][number]
 
@@ -32,72 +31,67 @@ function CopyTurn({ text, label = "Copy turn text" }: { text: string; label?: st
   )
 }
 
-const FRIENDLY: Record<string, string> = {
-  Bash: "Ran shell",
-  Read: "Read file",
-  Edit: "Edited file",
-  MultiEdit: "Edited file",
-  Write: "Wrote file",
-  Grep: "Searched files",
-  Glob: "Listed files",
-  WebFetch: "Fetched page",
-  WebSearch: "Searched the web",
-}
-
 function ToolCalls({
   seq,
   calls,
+  missing,
 }: {
   seq: number
   calls: NonNullable<Detail["turns"][number]["tool_calls"]>
+  /** Sources without recorded calls (ChatGPT exports) say so instead of showing nothing. */
+  missing?: boolean
 }) {
   const [open, setOpen] = useState<number>(-1)
-  const [all, setAll] = useState(false)
-  const anyFailed = calls.some((c) => c.status === "error")
-  // More than three calls fold under a summary, unless one failed (so Next error can land on it).
-  if (calls.length > 3 && !all && !anyFailed)
-    return (
-      <button
-        type="button"
-        aria-expanded={false}
-        onClick={() => setAll(true)}
-        className="mt-2 dash-control text-fg-muted underline"
-      >
-        {calls.length} tool calls
-      </button>
-    )
+  if (!calls.length) return missing ? <p className="mt-2 dash-support text-fg-faint">No tool calls recorded</p> : null
   return (
-    <ul className="mt-2 space-y-1 dash-control text-fg-muted" aria-label="Tool calls">
-      {calls.map((c, i) => (
-        <li key={i} id={`call-${seq}-${i}`} tabIndex={-1} className="outline-none focus-visible:bg-surface">
-          {FRIENDLY[c.name] ? <span>{FRIENDLY[c.name]}</span> : <span className="font-mono dash-caption">{c.name}</span>}
-          {c.target && <span className="break-all"> {c.target}</span>}
-          {c.status === "error" && (
-            <span className="text-danger">
-              {" "}· <X className="inline h-3 w-3" aria-hidden /> failed
-            </span>
-          )}
-          {c.result_bytes != null && <span className="text-fg-faint"> · {size(c.result_bytes)}</span>}
-          {took(c) && <span className="text-fg-faint"> · {took(c)}</span>}
-          {c.error_excerpt && (
-            <>
-              {" "}
-              <button className="underline" onClick={() => setOpen(open === i ? -1 : i)}>
-                {open === i ? "Hide error" : "Show error"}
-              </button>
-              {open === i && (
-                <div className="mt-1">
-                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle p-2 dash-caption text-fg-secondary">
-                    {c.error_excerpt}
-                  </pre>
-                  <CopyTurn text={c.error_excerpt} label="Copy error" />
-                </div>
-              )}
-            </>
-          )}
-        </li>
-      ))}
+    <ul className="mt-2 space-y-1.5" aria-label="Tool calls">
+      {calls.map((c, i) => {
+        const bad = c.status === "error"
+        const expandable = !!c.error_excerpt
+        const status = bad ? `failed${took(c) ? ` · ${took(c)}` : ""}` : [c.status === "ok" ? "ok" : "", took(c), c.result_bytes != null ? size(c.result_bytes) : ""].filter(Boolean).join(" ")
+        const Row = expandable ? "button" : "div"
+        return (
+          <li key={i} id={`call-${seq}-${i}`} tabIndex={-1} className="outline-none focus-visible:bg-surface">
+            <Row
+              {...(expandable ? { type: "button" as const, "aria-expanded": open === i, "aria-label": open === i ? "Hide error" : "Show error", onClick: () => setOpen(open === i ? -1 : i) } : {})}
+              className={`flex w-full items-center gap-2 rounded-control border px-3 py-1.5 text-left dash-support ${bad ? "border-danger/60" : "border-border"}`}
+            >
+              <span aria-hidden className={`w-3 shrink-0 text-center dash-caption ${bad ? "text-danger" : "text-fg-muted"}`}>{bad ? "✗" : expandable ? (open === i ? "▾" : "▸") : "▸"}</span>
+              <span className="shrink-0 font-semibold text-fg">{c.name}</span>
+              {c.target && <span className="min-w-0 flex-1 truncate text-fg-secondary">{c.target}</span>}
+              {!c.target && <span className="flex-1" />}
+              {status && <span className={`shrink-0 font-mono dash-caption ${bad ? "text-danger" : "text-fg-muted"}`}>{status}</span>}
+            </Row>
+            {open === i && c.error_excerpt && (
+              <div className="mt-1.5 rounded-control border border-border px-3 py-2">
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono dash-caption text-fg-secondary">{c.error_excerpt}</pre>
+                <CopyTurn text={c.error_excerpt} label="Copy error" />
+              </div>
+            )}
+          </li>
+        )
+      })}
     </ul>
+  )
+}
+
+/** Single-letter disc for the rail; the user gets a person mark, agents their tool initial. */
+function Mark({ role, tool }: { role: string; tool: string }) {
+  const user = role === "user"
+  return <span aria-hidden className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-bg font-mono dash-caption font-semibold uppercase text-fg-secondary">{user ? "U" : (tool || role || "?")[0]}</span>
+}
+
+const clock = (ts?: string) => (ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : "")
+
+/** Large figures in the usage strip: 1.1M, 0.3M. */
+const fig = (n = 0) => new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n)
+
+function CopyButton({ text, label, done }: { text: string; label: string; done: string }) {
+  const [ok, setOk] = useState(false)
+  return (
+    <Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(text).then(() => { setOk(true); setTimeout(() => setOk(false), 1500) })}>
+      {ok ? done : label}
+    </Button>
   )
 }
 
@@ -178,6 +172,33 @@ export function TranscriptReader({
     if (current === undefined) return
     document.getElementById(`turn-${current}`)?.scrollIntoView?.({ block: "center" })
   }, [current])
+  // Matches are painted with the CSS Custom Highlight API: plain text ranges, never markup.
+  useEffect(() => {
+    const reg = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights
+    const Hl = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight
+    if (!reg || !Hl) return
+    if (!q) {
+      reg.delete("transcript-find")
+      return
+    }
+    const ranges: Range[] = []
+    for (const el of box.current?.querySelectorAll("[data-turn-text]") ?? []) {
+      const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const text = (n.textContent ?? "").toLowerCase()
+        for (let i = text.indexOf(q); i >= 0; i = text.indexOf(q, i + q.length)) {
+          const r = document.createRange()
+          r.setStart(n, i)
+          r.setEnd(n, i + q.length)
+          ranges.push(r)
+        }
+      }
+    }
+    reg.set("transcript-find", new Hl(...ranges))
+    return () => {
+      reg.delete("transcript-find")
+    }
+  }, [q, shown.length, turns.length])
   const step = (by: number) => {
     if (!hits.length) return
     setLast("find")
@@ -215,7 +236,7 @@ export function TranscriptReader({
   const onKeyDown = (e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
       e.preventDefault()
-      box.current?.querySelector<HTMLInputElement>("input[aria-label='Find in transcript']")?.focus()
+      box.current?.querySelector<HTMLInputElement>("input[aria-label='Find in loaded turns']")?.focus()
     }
   }
 
@@ -242,6 +263,14 @@ export function TranscriptReader({
     return () => io.disconnect()
   }, [next, turns.length, more])
 
+  const gaps = new Set<number>()
+  let prev = 0
+  for (const t of shown) {
+    const at = t.ts ? Date.parse(t.ts) : 0
+    if (at && (!prev || at - prev > 600000)) gaps.add(t.seq)
+    if (at) prev = at
+  }
+  const link = typeof window === "undefined" ? "" : `${window.location.origin}/dashboards/transcripts?session=${session.id}`
   return (
     <article
       ref={box}
@@ -249,98 +278,84 @@ export function TranscriptReader({
       aria-label="Transcript reader"
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto"
     >
-      <header className="sticky top-0 z-10 flex items-start gap-3 border-b border-border bg-bg px-4 py-3">
-        <Button variant="ghost" size="sm" className="md:hidden" onClick={onClose}>
-          <ArrowLeft className="h-4 w-4" /> Sessions
-        </Button>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate dash-body font-medium text-fg" title={session.title}>
-            {session.title || "Untitled session"}
-          </h2>
-          <p className="truncate dash-control text-fg-muted">
-            {session.tool} · {session.model || "Model unspecified"} · {session.kind}
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" className="max-md:hidden" onClick={onClose} aria-label="Close reader">
-          <X className="h-4 w-4" />
-        </Button>
-      </header>
-      <dl className="grid gap-3 border-b border-border px-4 py-3 dash-control sm:grid-cols-2">
-        <div>
-          <dt className="text-fg-faint">Project</dt>
-          <dd className="mt-1 break-all text-fg-muted">{session.project || "Unspecified"}</dd>
-        </div>
-        <div>
-          <dt className="text-fg-faint">Started</dt>
-          <dd className="mt-1 text-fg-muted" title={session.started_at ? new Date(session.started_at).toLocaleString() : undefined}>
-            {session.started_at ? ago(session.started_at) : "Unknown"}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-fg-faint">Recorded activity</dt>
-          <dd className="mt-1 text-fg-muted">
-            {number(session.turns)} turns · {number(session.tool_calls)} tool calls · {number(session.errors)} tool errors
-          </dd>
-        </div>
-        <div>
-          <dt className="text-fg-faint">Session ID</dt>
-          <dd className="mt-1 break-all font-mono dash-caption text-fg-muted">{session.id}</dd>
-        </div>
-        {usage && (
-          <div className="sm:col-span-2">
-            <dt className="text-fg-faint">Tokens</dt>
-            <dd className="mt-1 text-fg-muted">
-              {number(usage.input_tokens)} in · {number(usage.output_tokens)} out · {number(usage.cache_read_tokens)} cache reads · {number(usage.cache_creation_tokens)} cache writes
-            </dd>
+      <style>{"::highlight(transcript-find){background-color:var(--color-selection);color:inherit}"}</style>
+      <button type="button" onClick={onClose} className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5 text-left dash-label text-fg-secondary md:hidden">
+        <ArrowLeft className="size-3.5" aria-hidden /> Sessions
+      </button>
+      <header className="px-5 pb-3 pt-4 max-md:px-4">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-sans text-lg font-semibold normal-case leading-snug tracking-normal text-fg" title={session.title}>
+              {session.title || "Untitled session"}
+            </h2>
+            <p className="mt-0.5 dash-support text-fg-muted">
+              {[session.tool, session.model || "Model unspecified", `${session.kind === "subagent" ? "subagent" : "main"} session`].join(" · ")}
+              {session.started_at && ` · started ${new Date(session.started_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}`}
+              {session.project && <> · <span className="font-mono">{projectName(session.project)}</span></>}
+            </p>
           </div>
-        )}
-      </dl>
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-        <Input
-          type="search"
-          value={find}
-          onChange={(e) => {
-            setFind(e.target.value)
-            setCur(0)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              step(e.shiftKey ? -1 : 1)
-            }
-          }}
-          placeholder="Find in transcript"
-          aria-label="Find in transcript"
-          className="h-8 w-56 dash-body"
-        />
-        <Button variant="ghost" size="sm" aria-label="Previous match" disabled={!hits.length} onClick={() => step(-1)}>
-          <ChevronUp className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="sm" aria-label="Next match" disabled={!hits.length} onClick={() => step(1)}>
-          <ChevronDown className="h-4 w-4" />
-        </Button>
-        {bad.length > 0 && (
-          <Button variant="outline" size="sm" onClick={() => nextError(1)}>
-            Next error
-          </Button>
-        )}
-        <span role="status" aria-live="polite" className="dash-control text-fg-faint">
+          <div className="flex shrink-0 items-center gap-1.5">
+            <CopyButton text={session.id} label="Copy ID" done="Copied" />
+            <CopyButton text={link} label="Copy link" done="Copied" />
+            <OverflowMenu ariaLabel="More" actions={[{ label: "Close", onSelect: onClose }]} />
+          </div>
+        </div>
+        <p className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 dash-support text-fg-muted" aria-label="Session usage">
+          <span><b className="font-mono font-normal text-fg">{number(session.turns)}</b> turns</span>
+          <span><b className="font-mono font-normal text-fg">{number(session.tool_calls)}</b> tool calls</span>
+          <span className={session.errors ? "text-danger" : ""}><b className="font-mono font-normal">{number(session.errors)}</b> tool errors</span>
+          {usage && (
+            <>
+              <span aria-hidden className="h-3 border-l border-border" />
+              <span>in <b className="font-mono font-normal text-fg">{fig(usage.input_tokens)}</b></span>
+              <span>out <b className="font-mono font-normal text-fg">{fig(usage.output_tokens)}</b></span>
+              <span>cache read <b className="font-mono font-normal text-fg">{fig(usage.cache_read_tokens)}</b></span>
+              <span>cache write <b className="font-mono font-normal text-fg">{fig(usage.cache_creation_tokens)}</b></span>
+            </>
+          )}
+        </p>
+      </header>
+      <div className="flex flex-wrap items-center gap-2 border-y border-border px-5 py-2.5 max-md:px-4">
+        <div className="flex min-w-0 basis-72 items-center gap-1.5 max-md:basis-full md:max-w-md md:flex-1">
+          <div className="dash-search-adapter min-w-0 flex-1">
+            <SearchInput
+              ariaLabel="Find in loaded turns"
+              placeholder={next !== undefined ? "Find in loaded turns" : "Find in transcript"}
+              value={find}
+              onChange={(v) => {
+                setFind(v)
+                setCur(0)
+              }}
+              debounceMs={0}
+            />
+          </div>
+          {q && (
+            <>
+              <Button variant="outline" size="icon-sm" aria-label="Previous match" disabled={!hits.length} onClick={() => step(-1)}>
+                <ChevronUp className="size-4" />
+              </Button>
+              <Button variant="outline" size="icon-sm" aria-label="Next match" disabled={!hits.length} onClick={() => step(1)}>
+                <ChevronDown className="size-4" />
+              </Button>
+            </>
+          )}
+        <span role="status" aria-live="polite" className={`dash-label text-fg-muted`}>
           {last === "error" && bad.length
             ? `${eAt + 1} of ${bad.length} failed calls${next !== undefined ? " in loaded turns" : ""}`
             : q
             ? hits.length
               ? `${at + 1} of ${hits.length}${next !== undefined ? " in loaded turns" : ""}`
               : next !== undefined
-                ? "No matches in loaded turns"
+                ? "No matches in loaded turns · Load more to search further"
                 : "No matches"
             : ""}
         </span>
+        </div>
         <Segmented
           bare
           label="Filter by speaker"
           value={role}
           onChange={setRole}
-          className="ml-auto"
           items={[
             { value: "all", label: "All" },
             { value: "user", label: "You" },
@@ -348,44 +363,56 @@ export function TranscriptReader({
             { value: "tool", label: "Tool" },
           ]}
         />
+        {bad.length > 0 && (
+          <Button variant="outline" size="sm" className="rounded-full" onClick={() => nextError(1)}>
+            Next error ↓ {bad.length}
+          </Button>
+        )}
       </div>
-      <div className="px-4 py-2 dash-control text-fg-faint">
-        {turns.length
-          ? `${role === "all" ? `${number(turns.length)} of ${number(total)} turns` : `${number(shown.length)} ${roleLabel(role).toLowerCase()} turns of ${number(turns.length)} loaded`} · redacted transcript`
-          : loading || error
-            ? ""
-            : "No recorded turns"}
-      </div>
-      <div className="divide-y divide-border-subtle px-4">
-        {shown.map((turn) => (
-          <article
-            key={turn.seq}
-            id={`turn-${turn.seq}`}
-            aria-current={turn.seq === current || (last === "error" && turn.seq === bad[eAt]?.seq) ? "true" : undefined}
-            className={`py-4 [contain-intrinsic-size:auto_120px] [content-visibility:auto] ${turn.seq === current || (last === "error" && turn.seq === bad[eAt]?.seq) ? "bg-surface" : ""}`}
-          >
-            <div className="mb-2 flex items-center gap-3 dash-control">
-              <span className="font-medium text-fg-secondary">{roleLabel(turn.role)}</span>
-              <span className="text-fg-faint">#{turn.seq}</span>
-              {turn.ts && (
-                <time className="text-fg-faint" title={new Date(turn.ts).toLocaleString()}>
-                  {new Date(turn.ts).toLocaleTimeString()}
-                </time>
+      {!turns.length && !loading && !error && !missing && <p className="px-5 py-3 dash-support text-fg-faint">No recorded turns</p>}
+      <div className="relative px-5 py-4 max-md:px-4">
+        {shown.length > 0 && <span aria-hidden className="absolute bottom-0 left-8 top-0 border-l border-border max-md:left-7" />}
+        {shown.map((turn) => {
+          const active = turn.seq === current || (last === "error" && turn.seq === bad[eAt]?.seq)
+          return (
+            <div key={turn.seq}>
+              {gaps.has(turn.seq) && (
+                <div className="relative z-10 mb-3 ml-9 mt-2"><span className="inline-block rounded-full bg-surface px-2.5 py-0.5 font-mono dash-label text-fg-secondary">{clock(turn.ts)}</span></div>
               )}
-              {turn.text && (
-                <span className="ml-auto">
-                  <CopyTurn text={turn.text} />
-                </span>
-              )}
+              <article
+                id={`turn-${turn.seq}`}
+                aria-current={active ? "true" : undefined}
+                className={`group relative mb-4 flex gap-3 [contain-intrinsic-size:auto_120px] [content-visibility:auto] ${active ? "rounded-control bg-surface" : ""}`}
+              >
+                <Mark role={turn.role} tool={session.tool} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2 dash-support">
+                    <span className="font-medium text-fg">{turn.role === "user" ? "You" : session.tool || roleLabel(turn.role)}</span>
+                    <span className="font-mono dash-caption text-fg-muted">#{turn.seq}</span>
+                    {turn.ts && (
+                      <time className="font-mono dash-caption text-fg-muted" title={new Date(turn.ts).toLocaleString()}>
+                        {clock(turn.ts)}
+                      </time>
+                    )}
+                    {turn.text && (
+                      <span className="ml-auto opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
+                        <CopyTurn text={turn.text} />
+                      </span>
+                    )}
+                  </div>
+                  {turn.text ? (
+                    <div className="mt-0.5" data-turn-text><MessageBody body={turn.text} /></div>
+                  ) : (
+                    <p className="mt-0.5 dash-support italic text-fg-faint">No text recorded for this event.</p>
+                  )}
+                  {turn.truncated && <p className="mt-1 dash-support text-fg-faint">This turn was cut off at 20 KiB.</p>}
+                  {!!turn.thinking_bytes && <p className="mt-1 dash-support text-fg-faint">Thinking ({number(turn.thinking_bytes)} bytes)</p>}
+                  {!!turn.tool_calls?.length && <ToolCalls seq={turn.seq} calls={turn.tool_calls} />}
+                </div>
+              </article>
             </div>
-            {turn.text ? (
-              <MessageBody body={turn.text} />
-            ) : (
-              <p className="dash-control italic text-fg-faint">No text recorded for this event.</p>
-            )}
-            {!!turn.tool_calls?.length && <ToolCalls seq={turn.seq} calls={turn.tool_calls} />}
-          </article>
-        ))}
+          )
+        })}
       </div>
       {missing && (
         <div className="space-y-3 px-4 py-10 text-center dash-body text-fg-faint">
