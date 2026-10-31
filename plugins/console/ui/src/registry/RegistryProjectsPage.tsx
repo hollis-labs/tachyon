@@ -34,6 +34,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
   const [savedFields, setSavedFields] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [noWrite, setNoWrite] = useState(false)
   const [archiving, setArchiving] = useState(false)
   const [mode, recheckMode] = useChangeMode()
   const [servers, setServers] = useState<string[] | null>(null)
@@ -75,7 +76,10 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
       setDraft({})
       return true
     } catch (e) {
-      setError(e instanceof BuilderError && e.code === 'assurance_insufficient' ? 'Saving needs a stronger sign-in. Step up your access, then save again.' : errorMessage(e))
+      // The real registry lives in Tether; until the host holds its control token the write route answers 404/405/501.
+      const unsupported = e instanceof BuilderError && [404, 405, 501].includes(e.status)
+      if (unsupported) setNoWrite(true)
+      setError(unsupported ? 'Saving the registry profile needs Tether write access.' : e instanceof BuilderError && e.code === 'assurance_insufficient' ? 'Saving needs a stronger sign-in. Step up your access, then save again.' : errorMessage(e))
       return false
     } finally {
       setBusy(false)
@@ -148,7 +152,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
             Archive
           </Button>
         )}
-        <Button type="button" size="sm" disabled={dirty === 0 || busy} onClick={save}>
+        <Button type="button" size="sm" disabled={dirty === 0 || busy || noWrite} title={noWrite ? 'Needs Tether write access' : undefined} onClick={save}>
           {busy ? 'Saving' : error ? 'Retry' : 'Save'}
         </Button>
       </header>
