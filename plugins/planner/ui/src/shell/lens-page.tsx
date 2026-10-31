@@ -158,7 +158,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     api.plannerLinks(db, item.id).then((v) => live && setLinks([
       ...v.outbound.map((l) => ({ kind: l.kind, label: l.title, note: l.status })),
       ...v.inbound.map((l) => ({ kind: l.kind, label: l.title, note: TEXT.linkedFromNote })),
-      ...v.external.map((l) => ({ kind: l.kind, label: l.label })),
+      ...v.external.map((l) => ({ kind: l.kind, label: l.label, path: l.kind === 'file' ? l.ref : undefined })),
     ]), () => live && setLinks([]))
     return () => { live = false }
   }, [api, db, item?.id, item?.rev])
