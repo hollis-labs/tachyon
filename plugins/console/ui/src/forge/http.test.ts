@@ -66,7 +66,7 @@ describe('HttpForgeClient writes', () => {
     const { url, init } = call(fetch)
     expect(url).toMatch(/\/pulls\/271\/comments$/)
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual({ body: 'hi' })
+    expect(JSON.parse(init.body as string)).toEqual({ body: 'hi\n\n_Posted from Tachyon._' })
     expect(init.headers).toMatchObject({ 'X-Identity-Confirm': 'tok', 'Idempotency-Key': 'k1', 'Content-Type': 'application/json' })
     expect(c.id).toBe('1')
   })

@@ -1,6 +1,6 @@
 import { Button, Callout, Dialog, DialogContent, DialogTitle } from '@hollis-labs/design-components'
 import { useEffect, useRef, useState } from 'react'
-import { approvalClient } from '../../approvals/client'
+import { operatorElevation } from '../../operator/elevation'
 import type { ForgeClient } from '../client'
 import type { MergeInput, MergeMethod, MergePreflight, PullRequest } from '../types'
 import type { WriteResult } from './useWorkspace'
@@ -63,18 +63,18 @@ export function MergePanel({ pr, fileCount, client, onClose, onSubmit, onBusyCha
     client.getMergePreflight(pr.ref).then((r) => { if (live) { setPf(r); if (r.defaultMethod) setMethod(r.defaultMethod) } }, () => { if (live) setPf(null) })
     return () => { live = false }
   }, [client, pr.ref.repo.host, pr.ref.repo.owner, pr.ref.repo.name, pr.ref.number, pr.headSha])
-  // Ready for decision P1: when the Approvals access endpoint says a merge needs elevation and the operator has none, say so.
-  // The endpoint reports no merge requirement today, so nothing shows until it does; an unreadable answer blocks nothing.
+  // Decision default (P1): merging uses the operator session. When it is not elevated the dialog says so; Confirm still works and
+  // asks for the operator key (operatorFetch), so nothing is blocked client-side.
   const [needsAccess, setNeedsAccess] = useState(false)
   useEffect(() => {
     let live = true
-    approvalClient.access().then((a) => { if (live) setNeedsAccess(a.state === 'none' && (a.required_for as { merge?: boolean } | undefined)?.merge === true) }, () => undefined)
+    operatorElevation.status().then((st) => { if (live) setNeedsAccess(!st.elevated) }, () => undefined)
     return () => { live = false }
   }, [])
   const checking = pf === undefined || pf?.state === 'pending'
   const hard = pf ? pf.blockers.filter((b) => b.code !== 'checks_pending').map((b) => blockerSentence(b.code, b.message)) : local.hard
   const soft = pf ? pf.blockers.filter((b) => b.code === 'checks_pending').map((b) => blockerSentence(b.code, b.message)) : local.soft
-  const blocked = hard.length > 0 || checking || needsAccess
+  const blocked = hard.length > 0 || checking
   const methods = pf && pf.methodsAllowed.length ? METHODS.filter((m) => pf.methodsAllowed.includes(m.value)) : METHODS
   async function submit() {
     if (inFlight.current || blocked) return
@@ -124,7 +124,7 @@ export function MergePanel({ pr, fileCount, client, onClose, onSubmit, onBusyCha
         </fieldset>
         {needsAccess && (
           <p role="status" className="rounded border border-border p-3 text-control text-fg-muted">
-            Operator access needed. Merging needs elevated access; connect it from Approvals, then come back.
+            Operator access needed. Merging uses your operator session. Confirm merge will ask for your operator key.
           </p>
         )}
         {checking && <p role="status" className="text-xs text-fg-muted">Checking…</p>}
