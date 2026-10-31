@@ -20,6 +20,9 @@ type Status struct {
 	OpenGaps      int                       `json:"open_gaps"`
 	Retention     map[string]any            `json:"retention"`
 	BusTopics     map[string]string         `json:"bus_topics"`
+	// FramesSeen counts stream frames by kind since start; Unparsed counts frames that did not parse.
+	FramesSeen map[string]int64 `json:"frames_seen"`
+	Unparsed   int64            `json:"frames_unparsed"`
 }
 
 // Status reports whether collection is actually happening. "collecting" is true only while the
@@ -49,7 +52,8 @@ func (c *Collector) Status(ctx context.Context) (Status, error) {
 		DroppedOutput: c.dropped.Load(), OpenGaps: gaps,
 		Retention: map[string]any{"last_run_at": nilTime(st.RetentionLast), "rows_pruned": st.Pruned},
 		// Which Activity topics can ever have data: the bus feed (A4) turns these on.
-		BusTopics: c.Store.BusTopics(ctx),
+		BusTopics:  c.Store.BusTopics(ctx),
+		FramesSeen: c.kindCounts(), Unparsed: Unparsed.Load(),
 	}
 	if out.Strategy == "" {
 		out.Strategy = "fallback"
