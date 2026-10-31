@@ -53,6 +53,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/internal/fileview"
 	"github.com/hollis-labs/tachyon/internal/fileviewapi"
+	"github.com/hollis-labs/tachyon/internal/forgeapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
@@ -863,6 +864,12 @@ func (s *Server) Routes() http.Handler {
 		s.mountBuilderRead(mux, operator.RequireOperator)
 	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
+	// Forge writes the console plugin serves itself. Without these patterns they fall to the unguarded
+	// /api/plugins/ catch-all below, where anyone could post a comment or assign people as Tachyon's GitHub identity.
+	pluginForge := s.inventory.APIRoutes()
+	forgePulls := forgeapi.Prefix + "/repos/{host}/{owner}/{name}/pulls/{num}"
+	mux.Handle("POST "+forgePulls+"/comments", operator.RequireOperator(pluginForge))
+	mux.Handle("PUT "+forgePulls+"/assignees", operator.RequireOperator(pluginForge))
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
 		mux.HandleFunc(apicache.ImportedTeamsPath, s.cache.ImportedTeamsHandler)
