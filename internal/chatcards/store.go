@@ -97,6 +97,15 @@ func (s *Store) ForThread(ctx context.Context, thread string, since int64, limit
 
 // OpenCounts returns, per thread ref, how many bound cards are still waiting for an answer.
 func (s *Store) OpenCounts(ctx context.Context, refs []string) map[string]int {
+	return s.openCounts(ctx, refs, "")
+}
+
+// OpenApprovalCounts is OpenCounts limited to approval-like cards (approvals, tool approvals, plans, dispatches).
+func (s *Store) OpenApprovalCounts(ctx context.Context, refs []string) map[string]int {
+	return s.openCounts(ctx, refs, ` AND (c.kind LIKE '%approval%' OR c.kind IN ('card.plan','card.dispatch'))`)
+}
+
+func (s *Store) openCounts(ctx context.Context, refs []string, extra string) map[string]int {
 	out := map[string]int{}
 	if len(refs) == 0 {
 		return out
@@ -111,7 +120,7 @@ func (s *Store) OpenCounts(ctx context.Context, refs []string) map[string]int {
 		ph += "?"
 	}
 	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT c.thread_ref, COUNT(*) FROM chat_card_refs c JOIN approval_items a ON a.id = c.item_id
- WHERE c.thread_ref IN (`+ph+`) AND a.state IN ('submitted','validated','staged','presented') GROUP BY c.thread_ref`, args...)
+ WHERE c.thread_ref IN (`+ph+`) AND a.state IN ('submitted','validated','staged','presented')`+extra+` GROUP BY c.thread_ref`, args...)
 	if err != nil {
 		return out
 	}
