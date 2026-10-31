@@ -163,9 +163,9 @@ export function ThemeTimelineView({ state, progress }: { state: TimelineState; p
   const toHalf = Math.max(0, Math.ceil(progress.total / 2) - progress.done)
   const milestones: Milestone[] = data.milestones.map((m) => ({
     key: m.key,
-    label: TEXT.milestoneLabels[m.key],
+    label: m.label ?? (TEXT.milestoneLabels as Record<string, string>)[m.key] ?? m.key,
     state: m.state,
-    note: m.state === 'reached' ? TEXT.milestoneDone : m.state === 'next' ? (m.key === 'half_done' ? TEXT.milestoneNextToGo(toHalf) : TEXT.milestoneNext) : TEXT.milestoneLater,
+    note: m.note ?? (m.state === 'reached' ? TEXT.milestoneDone : m.state === 'next' ? (m.key === 'half_done' ? TEXT.milestoneNextToGo(toHalf) : TEXT.milestoneNext) : TEXT.milestoneLater),
   }))
   const series = doneSeries(events, progress.done)
   return (
