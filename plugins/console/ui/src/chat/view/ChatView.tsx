@@ -10,6 +10,7 @@ import { Header } from '../workbench/Header'
 import { Spine, type StartOption } from '../workbench/Spine'
 import { useMobile, useNarrow } from './useNarrow'
 import { HeaderFilterContext } from './headerFilter'
+import { useThreadFrames } from '../live'
 import { useReplyFilter } from '../replyFilter'
 
 export interface ChatViewProps {
@@ -54,6 +55,12 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
   const narrow = useNarrow()
   const mobile = useMobile()
   const aside = useAside()
+  // A `context` frame carries the live window use; it updates the header meter without waiting for a list refresh.
+  const [liveCtx, setLiveCtx] = useState<{ ref: string; used: number | null; window: number | null; model: string | null } | null>(null)
+  const ctxRef = activeThread ? (activeThread.sessionRef ?? activeThread.sessions?.[0]?.ref) : undefined
+  useThreadFrames(ctxRef, (f) => {
+    if (f.type === 'context' && ctxRef) setLiveCtx({ ref: ctxRef, used: typeof f.used === 'number' ? f.used : null, window: typeof f.window === 'number' ? f.window : null, model: typeof f.model === 'string' ? f.model : null })
+  })
   const [replyFilter, setReplyFilter] = useReplyFilter()
   const scratchPlacement = useScratchPlacement()
   const detailsOverlay = aside.open
@@ -117,7 +124,7 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
       <HeaderFilterContext.Provider value={true}>
       <main aria-label="Conversation" className="flex min-w-0 flex-1 flex-col">
         {activeThread ? (
-          <Header thread={activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} actions={[{ label: replyFilter === 'mine' ? 'Show all replies' : 'Only show replies to me', onSelect: () => setReplyFilter(replyFilter === 'mine' ? 'all' : 'mine') }, { label: 'Copy link to this chat', onSelect: () => void navigator.clipboard?.writeText(location.href) }]} />
+          <Header thread={liveCtx && liveCtx.ref === ctxRef ? { ...activeThread, context: { used: liveCtx.used, window: liveCtx.window, model: liveCtx.model ?? activeThread.context?.model ?? null } } : activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} actions={[{ label: replyFilter === 'mine' ? 'Show all replies' : 'Only show replies to me', onSelect: () => setReplyFilter(replyFilter === 'mine' ? 'all' : 'mine') }, { label: 'Copy link to this chat', onSelect: () => void navigator.clipboard?.writeText(location.href) }]} />
         ) : (
           <header className="h-12 shrink-0 border-b border-border-subtle" />
         )}

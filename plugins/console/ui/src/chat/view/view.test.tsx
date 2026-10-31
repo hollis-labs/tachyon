@@ -145,6 +145,18 @@ describe('ChatView containment', () => {
   })
 })
 
+describe('ChatView live context frame', () => {
+  it('a context frame updates the header meter', async () => {
+    const sources: { onmessage: ((m: { data: string }) => void) | null }[] = []
+    vi.stubGlobal('EventSource', class { onmessage: ((m: { data: string }) => void) | null = null; onopen = null; onerror = null; constructor() { sources.push(this) } close() {} })
+    try {
+      render(<ChatView threads={T} activeThread={{ ...T[0], sessions: [{ ref: 'tether:s1', title: 's', lastAt: 1, unread: 0 }] }} onSelectThread={() => undefined}><p>body</p></ChatView>)
+      await act(async () => { for (const s of sources) s.onmessage?.({ data: JSON.stringify({ type: 'context', used: 32000, window: 160000, model: 'opus-5-5' }) }) })
+      expect(screen.getByText(/32K of 160K tokens|32,000 of 160,000 tokens|32000 of 160000 tokens/)).toBeTruthy()
+    } finally { vi.unstubAllGlobals() }
+  })
+})
+
 describe('ChatView compact (the dock)', () => {
   it('shows the thread list, then the conversation with a way back, and no side columns', () => {
     const onSelect = vi.fn()
