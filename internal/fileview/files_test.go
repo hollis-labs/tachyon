@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -301,5 +302,31 @@ func TestListOmitsSecretsAndRejectsEscapes(t *testing.T) {
 		if w := e.do("GET", "/api/plugins/console/v1/files/list?"+q, ""); w.Code != 400 && w.Code != 404 {
 			t.Fatalf("%s: %d", q, w.Code)
 		}
+	}
+}
+
+func TestListFlagsGitModified(t *testing.T) {
+	e := filesSetup(t)
+	run := func(args ...string) {
+		c := exec.Command("git", append([]string{"-C", e.dev, "-c", "user.email=a@b", "-c", "user.name=t"}, args...)...)
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Skipf("git unavailable: %v %s", err, out)
+		}
+	}
+	run("init", "-q")
+	run("add", "readme.md", "sub")
+	run("commit", "-qm", "x")
+	if err := os.WriteFile(filepath.Join(e.dev, "readme.md"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := e.do("GET", "/api/plugins/console/v1/files/list?root=dev", "")
+	var out struct{ Entries []Entry }
+	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	got := map[string]bool{}
+	for _, en := range out.Entries {
+		got[en.Name] = en.Modified
+	}
+	if !got["readme.md"] || got["sub"] {
+		t.Fatalf("modified flags: %+v", got)
 	}
 }

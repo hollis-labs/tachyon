@@ -45,7 +45,7 @@ paths:
         - {name: root, in: query, required: true, schema: {type: string}, description: "A root id from /roots."}
         - {name: path, in: query, schema: {type: string}, description: "Directory relative to the root; no '..'."}
       responses:
-        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {root: {type: string}, path: {type: string}, truncated: {type: boolean}, entries: {type: array, items: {type: object, required: [name, kind], properties: {name: {type: string}, kind: {type: string, enum: [dir, file]}, size: {type: integer}, mtime: {type: integer}}}}}}}}}
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {root: {type: string}, path: {type: string}, truncated: {type: boolean}, entries: {type: array, items: {type: object, required: [name, kind], properties: {name: {type: string}, kind: {type: string, enum: [dir, file]}, size: {type: integer}, mtime: {type: integer}, modified: {type: boolean, description: "git reports it changed or untracked"}}}}}}}}}
         "400": {$ref: "#/components/responses/Error"}
         "404": {description: not_found_or_hidden, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /frame:
