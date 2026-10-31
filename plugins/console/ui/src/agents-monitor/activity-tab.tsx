@@ -20,6 +20,8 @@ export interface BusEvent {
   card: { title: string; summary: string } | null
 }
 interface BusResponse { events: BusEvent[]; next_before: number | null }
+/** The server sends null for an empty list. */
+const norm = (r: BusResponse): BusResponse => ({ ...r, events: r.events ?? [] })
 
 const FACET_OF: Partial<Record<BusEvent['type'], string>> = { deploy: 'deploys', restart: 'restarts', task: 'tasks', failure: 'failures' }
 const TOPIC_OF: Record<string, BusEvent['type']> = { deploys: 'deploy', restarts: 'restart', tasks: 'task', failures: 'failure' }
@@ -40,12 +42,12 @@ export function toBusTimeline(events: readonly BusEvent[], now: number): Entry[]
     body: (
       <span>
         {e.subject}
-        {e.refs.length > 0 && !e.card && <span className="ml-1.5 inline-flex gap-1">{e.refs.map((r) => <Cite key={r.ref}>{r.label} ↗</Cite>)}</span>}
+        {(e.refs ?? []).length > 0 && !e.card && <span className="ml-1.5 inline-flex gap-1">{(e.refs ?? []).map((r) => <Cite key={r.ref}>{r.label} ↗</Cite>)}</span>}
         <span className="text-fg-faint"> · {e.app}{e.actor ? ` · ${e.actor}` : ''}</span>
       </span>
     ),
     card: e.card,
-    cites: e.refs.map((r) => r.label),
+    cites: (e.refs ?? []).map((r) => r.label),
   }))
 }
 
@@ -61,7 +63,7 @@ export function ActivityTab({ busTick, now }: { busTick: number; now: number }) 
 
   const loadHead = useCallback(async () => {
     try {
-      const r = await agentsGet<BusResponse>('/bus/events?limit=50')
+      const r = norm(await agentsGet<BusResponse>('/bus/events?limit=50'))
       setEvents((old) => {
         // Keep what the user paged in below the new head.
         const seen = new Set(r.events.map((e) => e.id))
@@ -80,7 +82,7 @@ export function ActivityTab({ busTick, now }: { busTick: number; now: number }) 
   const more = async () => {
     if (next === null) return
     try {
-      const r = await agentsGet<BusResponse>(`/bus/events?limit=50&before_seq=${next}`)
+      const r = norm(await agentsGet<BusResponse>(`/bus/events?limit=50&before_seq=${next}`))
       setEvents((old) => [...(old ?? []), ...r.events])
       setNext(r.next_before)
     } catch (err) {

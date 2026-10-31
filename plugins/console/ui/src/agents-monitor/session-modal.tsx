@@ -54,7 +54,7 @@ export function SessionModal({ session, paused, now, onClose, onRestarted }: { s
           <div className="flex min-w-0 flex-col">
             <DialogTitle className="font-sans text-[15px] font-semibold normal-case leading-tight tracking-normal text-fg">{session.agent.name}</DialogTitle>
             <DialogDescription className="text-label text-fg-muted">
-              {session.kind} · {session.provider}{session.model ? ` · ${session.model}` : ''} · {M.sessionWord} {session.id.slice(0, 8)}
+              {session.kind}{session.provider ? ` · ${session.provider}` : ''}{session.model ? ` · ${session.model}` : ''} · {M.sessionWord} {session.id.slice(0, 8)}
             </DialogDescription>
           </div>
           <span className="flex min-w-0 items-center gap-2 text-xs text-fg">
