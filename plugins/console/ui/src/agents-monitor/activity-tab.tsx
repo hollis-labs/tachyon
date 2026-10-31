@@ -109,7 +109,7 @@ export function ActivityTab({ busTick, now }: { busTick: number; now: number }) 
 
   if (error && events === null) return <p role="alert" className="p-4 text-xs text-danger">{A.loadFailed}: {error} <button type="button" className="underline" onClick={() => void loadHead()}>{A.retry}</button></p>
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
+    <div tabIndex={0} className="min-h-0 flex-1 overflow-auto outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
       <div className="flex max-w-[860px] flex-col gap-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="min-w-48 flex-1"><SearchInput value={query} onChange={setQuery} placeholder={A.searchPlaceholder} ariaLabel={A.searchLabel} slashToFocus={false} /></div>

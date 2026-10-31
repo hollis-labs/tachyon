@@ -72,7 +72,7 @@ export function SessionModal({ session, paused, now, onClose, onRestarted }: { s
               <TabsTrigger key={t} value={t} className="h-[26px] flex-none rounded-full border border-transparent px-3 text-xs font-normal text-fg-muted data-[active]:border-border data-[active]:bg-selection data-[active]:font-semibold data-[active]:text-fg">{M.tabs[t]}</TabsTrigger>
             ))}
           </TabsList>
-          <div className="min-h-0 flex-1 overflow-auto p-4">
+          <div tabIndex={0} className="min-h-0 flex-1 overflow-auto p-4 outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
             {tab === 'now' && <NowTab s={session} now={now} />}
             {tab === 'timeline' && <TimelineTab key={nudgeSeq} s={session} now={now} />}
             {tab === 'context' && <ContextTab s={session} now={now} />}
