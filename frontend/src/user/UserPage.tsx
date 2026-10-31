@@ -1,3 +1,4 @@
+import { SessionBanner } from "@tachyon/console-ui"
 import { useEffect, useRef } from "react"
 import { AccessCard } from "./AccessCard"
 import { alertsApi, approvalsApi } from "./approvalsApi"
@@ -26,6 +27,7 @@ export function UserPage() {
         </h1>
         <span className="text-label text-fg-muted">Saved on this Tachyon</span>
       </header>
+      <SessionBanner />
       <div className="flex min-h-0 flex-1 justify-center overflow-auto p-6 max-sm:p-3.5">
         <div className="flex w-full max-w-[720px] flex-col gap-3.5">
           <WaitingStrip inbox={inbox} alerts={alerts} />
