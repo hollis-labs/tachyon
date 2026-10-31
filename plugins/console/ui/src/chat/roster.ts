@@ -19,6 +19,14 @@ export interface ChatAgent {
 const quiet = (input: RequestInfo | URL, init?: RequestInit) => (init?.method ?? 'GET').toUpperCase() === 'GET' || String(input instanceof Request ? input.url : input).endsWith('/read')
 export const chatFetch: typeof fetch = (input, init) => (quiet(input, init) ? hostFetch(input, init) : operatorFetch(input, init))
 export const CHAT_BASE = '/api/plugins/console/v1/chat'
+/** The terminal service is a sibling of chat, not under it. Reads need operator assurance (401 without a session). */
+export const TERMINAL_BASE = '/api/plugins/console/v1/terminal'
+export async function terminalJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await chatFetch(TERMINAL_BASE + path, { ...init, headers: { Accept: 'application/json', ...init?.headers } })
+  const body = await res.json().catch(() => null)
+  if (!res.ok) throw Object.assign(new Error(body?.error?.message ?? body?.message ?? `Terminal request failed (${res.status})`), { status: res.status })
+  return body as T
+}
 export async function chatJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await chatFetch(CHAT_BASE + path, {
     ...init,

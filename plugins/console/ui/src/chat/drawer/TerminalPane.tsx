@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Chip } from '@planner/shared'
 import { Act } from '../cards/Block'
-import { CHAT_BASE } from '../roster'
+import { TERMINAL_BASE } from '../roster'
 import { useThreadFrames } from '../live'
 import { operatorFetch } from '../../operator/elevation'
 import { CAPTION } from '@planner/shared'
 
 /** terminal/* needs operator assurance even for reads: opening the terminal is the moment the operator is asked. */
 async function tj<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await operatorFetch(`${CHAT_BASE}${path}`, { ...init, headers: { Accept: 'application/json', ...init?.headers } })
+  const res = await operatorFetch(`${TERMINAL_BASE}${path}`, { ...init, headers: { Accept: 'application/json', ...init?.headers } })
   const body = await res.json().catch(() => null)
   if (!res.ok) throw Object.assign(new Error(body?.message ?? body?.error?.message ?? `Terminal request failed (${res.status})`), { status: res.status })
   return body as T
@@ -34,7 +34,7 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
   useEffect(() => {
     if (demo) return
     let live = true
-    tj<{ machines?: Machine[] }>('/terminal/machines').then((d) => {
+    tj<{ machines?: Machine[] }>('/machines').then((d) => {
       if (!live) return
       setMachines(d.machines ?? []); setMachine(d.machines?.[0]?.machine_id ?? '')
     }, (e: Error & { status?: number }) => {
@@ -47,14 +47,14 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
   useThreadFrames(threadRef, (f) => { if (f.type === 'terminal.run' || f.type === 'card' || f.type === 'reconnected') setReload((n) => n + 1) }, !demo)
   useEffect(() => {
     if (demo || !threadRef || !machines) return
-    tj<{ proposals: Proposal[] }>(`/terminal/proposals?thread_ref=${encodeURIComponent(threadRef)}&state=pending`).then((d) => setProposals(d.proposals ?? []), () => undefined)
+    tj<{ proposals: Proposal[] }>(`/proposals?thread_ref=${encodeURIComponent(threadRef)}&state=pending`).then((d) => setProposals(d.proposals ?? []), () => undefined)
   }, [demo, threadRef, machines, reload])
 
   const act = async (p: Proposal, verb: 'run' | 'deny') => {
     setError('')
     if (demo) { setProposals((xs) => xs.filter((x) => x.id !== p.id)); return }
     try {
-      await tj(`/terminal/proposals/${encodeURIComponent(p.id)}/${verb}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(verb === 'run' ? { op_digest: p.op_digest } : {}) })
+      await tj(`/proposals/${encodeURIComponent(p.id)}/${verb}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(verb === 'run' ? { op_digest: p.op_digest } : {}) })
       setProposals((xs) => xs.filter((x) => x.id !== p.id))
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not answer the proposal. It is still waiting.') }
   }

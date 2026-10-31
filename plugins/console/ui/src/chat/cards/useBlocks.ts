@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { approvalClient, type ApprovalResponse } from '../../approvals/client'
-import { chatJSON } from '../roster'
+import { chatJSON, terminalJSON } from '../roster'
 import { useThreadFrames } from '../live'
 import { demoBlocks } from './fixtures'
 import type { Commit } from './Cards'
@@ -79,7 +79,7 @@ export function useBlocks(ref: string | undefined) {
   const enc = ref ? encodeURIComponent(ref) : ''
   const loadCards = useCallback(() => chatJSON<{ cards: ApiCard[] }>(`/threads/${enc}/cards`).then((d) => { setCards((d.cards ?? []).map(cardToBlock).filter((b): b is StreamBlock => !!b)); setError('') }, (e) => setError(e instanceof Error ? e.message : 'Could not load cards.')), [enc])
   const loadPlan = useCallback(() => chatJSON<ApiPlan>(`/threads/${enc}/plan`).then((p) => setPlan(planToBlock(p)), () => setPlan(null)), [enc])
-  const loadRuns = useCallback(() => chatJSON<{ runs: ApiRun[] }>(`/terminal/runs?thread_ref=${enc}&closed=false`).then((d) => setRuns((d.runs ?? []).map(runToBlock).filter((b): b is StreamBlock => !!b)), () => setRuns([])), [enc])
+  const loadRuns = useCallback(() => terminalJSON<{ runs: ApiRun[] }>(`/runs?thread_ref=${enc}&closed=false`).then((d) => setRuns((d.runs ?? []).map(runToBlock).filter((b): b is StreamBlock => !!b)), () => setRuns([])), [enc])
   useEffect(() => {
     if (demo) { setCards(demoBlocks(Date.now())); return }
     setCards([]); setPlan(null); setRuns([])
@@ -105,9 +105,9 @@ export function useBlocks(ref: string | undefined) {
     void loadCards()
   }, [loadCards])
   const runActions = useMemo<RunActions>(() => ({
-    stop: async (id) => { await chatJSON(`/terminal/runs/${encodeURIComponent(id)}/stop`, { method: 'POST' }); void loadRuns() },
-    close: async (id) => { await chatJSON(`/terminal/runs/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ closed: true }) }); void loadRuns() },
-    setCloseOnComplete: async (id, v) => { await chatJSON(`/terminal/runs/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ close_on_complete: v }) }) },
+    stop: async (id) => { await terminalJSON(`/runs/${encodeURIComponent(id)}/stop`, { method: 'POST' }); void loadRuns() },
+    close: async (id) => { await terminalJSON(`/runs/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ closed: true }) }); void loadRuns() },
+    setCloseOnComplete: async (id, v) => { await terminalJSON(`/runs/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ close_on_complete: v }) }) },
   }), [loadRuns])
   const blocks = useMemo(() => (demo ? cards : [...cards, ...(plan ? [plan] : []), ...runs]), [demo, cards, plan, runs])
   return { blocks, commit, runActions: demo ? undefined : runActions, error }
