@@ -1,7 +1,8 @@
 # File viewer: security review notes (V8)
 
 For the reviewer of the file viewer stack (V1 settings, V2 guard, V3 stat/content, V4 frames, V6 audit). V5, the
-caster adapter, is not built; every `caster_ref` path answers 501 and is **not** covered here. Per the current
+caster adapter, is built (`/resolve`, `caster_ref` content and frames) but its namespace allow-list and ref audit
+are not reviewed here. Per the current
 posture there are no extra guards, step-up or assurance levels in this slice; the swap point stays
 `operator.RequireOperator` / `RequireOperatorReads` in `register_fileview.go`.
 
@@ -57,11 +58,12 @@ is the id and the sandbox, not a second origin (F-V2):
 
 Every open, frame mint and denial is written synchronously with a hash of the session cookie as principal; stat
 batches are one best-effort row. No file content, and caster refs lose query and fragment. Retention is 30 days
-by default. The audit read is operator-only.
+by default. The audit read is operator-only: `GET /audit` is mounted with `RequireOperatorReads` (it was briefly mounted with
+`RequireOperator`, which lets GETs through; fixed in #526).
 
 ## Not covered or skipped (posture)
 
-- Caster adapter (V5): 501 until built; its review (namespace allow-list, ref audit) happens with that PR.
+- Caster adapter (V5): built; a reviewer should still check its namespace allow-list and the ref audit.
 - No step-up for opening a file, no per-file consent, no rate limit on `/stat` or `/content`, no scan of file
   content for secrets: skipped as purely hardening.
 - Frames are not shared across restarts and the audit has no tamper evidence.
