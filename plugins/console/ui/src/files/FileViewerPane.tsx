@@ -512,7 +512,7 @@ function TextBody({ path, line, markdown, head, tick, expanded = false, language
       </div>
       {markdown && !raw ? (
         <div ref={rendered} className="max-w-none text-control text-fg [&_:is(h1,h2,h3,h4)]:font-sans [&_:is(h1,h2,h3,h4)]:normal-case [&_:is(h1,h2,h3,h4)]:tracking-normal [&_:is(h1,h2,h3,h4)]:font-bold [&_:is(h1,h2,h3,h4)]:text-fg [&_h1]:mb-2 [&_h1]:text-lg [&_h2]:mb-1 [&_h2]:mt-3 [&_h2]:text-control [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:font-mono [&_code]:text-label [&_pre]:overflow-auto [&_pre]:rounded-control [&_pre]:border [&_pre]:border-border-subtle [&_pre]:p-2 [&_table]:my-2 [&_table]:block [&_table]:overflow-x-auto [&_table]:text-label [&_:is(th,td)]:border [&_:is(th,td)]:border-border-subtle [&_:is(th,td)]:px-2 [&_:is(th,td)]:py-1 [&_th]:text-left [&_th]:font-semibold">
-          <Markdown remarkPlugins={[remarkGfm]}>{state.text}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} components={{ pre: ({ node: _node, ...props }) => <pre tabIndex={0} {...props} /> }}>{state.text}</Markdown>
         </div>
       ) : (
         <pre tabIndex={0} className={`${expanded ? 'max-h-[75vh]' : 'max-h-[60vh]'} overflow-auto rounded-panel border border-border-subtle bg-bg py-2 font-mono text-caption leading-relaxed text-fg ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : ''}`}>
