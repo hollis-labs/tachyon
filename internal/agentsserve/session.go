@@ -136,7 +136,7 @@ type extras struct {
 	any   bool
 }
 
-const sessionCols = `session_id,session_state,work_state,work_known,pending_approval,pending_question,alive,worker_online,started_ns,last_activity_ns,ended_ns,provider,model,workroot,agent_urn,logical_agent_id,agent_name,parent_session_id,replaced_by,one_liner_json,ctx_used,ctx_window,compactions_json,last_clear_ns,last_clear_inferred,tok_in,tok_out,tok_cr,tok_cw,tool_calls,task_ref FROM agents_sessions`
+const sessionCols = `session_id,session_state,work_state,work_known,pending_approval,pending_question,alive,worker_online,started_ns,last_activity_ns,ended_ns,provider,COALESCE(NULLIF(model,''),ctx_model,'') AS model,workroot,agent_urn,logical_agent_id,agent_name,parent_session_id,replaced_by,one_liner_json,ctx_used,ctx_window,compactions_json,last_clear_ns,last_clear_inferred,tok_in,tok_out,tok_cr,tok_cw,tool_calls,task_ref FROM agents_sessions`
 
 func tri(n sql.NullInt64) *bool {
 	if !n.Valid {
