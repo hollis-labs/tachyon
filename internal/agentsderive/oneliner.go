@@ -217,3 +217,20 @@ func mcpLine(name string) (string, string) {
 	}
 	return verb, strings.Join(noun, " ")
 }
+
+var past = map[string]string{"Reading": "Read", "Writing": "Wrote", "Updating": "Updated", "Removing": "Removed", "Running": "Ran", "Searching": "Searched",
+	"Listing": "Listed", "Editing": "Edited", "Fetching": "Fetched", "Delegating": "Delegated", "Asking": "Asked", "Using": "Used"}
+
+// PastLine is a finished tool call as a timeline line: the one-liner's verb and short target in the past tense
+// ("Read message", "Wrote comment"), never the raw tool name.
+func PastLine(tool string) string {
+	o := Describe(tool, nil)
+	v := o.Verb
+	if p, ok := past[v]; ok {
+		v = p
+	}
+	if o.Target == "" || o.Target == "a command" {
+		return v
+	}
+	return v + " " + o.Target
+}

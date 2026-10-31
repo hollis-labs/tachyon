@@ -214,7 +214,7 @@ func humanize(sum string) (text string, hidden bool) {
 		return "", true
 	case strings.HasPrefix(sum, "tool.call"):
 		if _, tool, ok := strings.Cut(sum, ": "); ok && tool != "" {
-			return "Used " + tool, false
+			return agentsderive.PastLine(tool), false
 		}
 		return "Used a tool", false
 	case strings.HasPrefix(sum, "session.work_state_changed: "):
@@ -247,7 +247,7 @@ func humanize(sum string) (text string, hidden bool) {
 }
 
 func toolOf(text string) string {
-	return strings.ToLower(strings.TrimPrefix(text, "Used "))
+	return strings.ToLower(text)
 }
 
 type timelineEvent struct {

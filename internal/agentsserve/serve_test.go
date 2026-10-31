@@ -312,7 +312,7 @@ func TestTimelineFiltersGroupsRunsAndShowsGaps(t *testing.T) {
 			runs = append(runs, ev)
 		}
 	}
-	if len(runs) != 1 || runs[0]["calls"] != float64(3) || !strings.Contains(runs[0]["summary"].(string), "3 tool calls (read x2, grep x1)") {
+	if len(runs) != 1 || runs[0]["calls"] != float64(3) || !strings.Contains(runs[0]["summary"].(string), "3 tool calls (read x2, searched x1)") {
 		t.Fatalf("one run of three expected: %v", runs)
 	}
 	if len(grouped.Events) != 4 { // work state, Edit alone, message, run
