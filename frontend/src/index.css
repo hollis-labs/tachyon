@@ -9,8 +9,12 @@
 @import "@hollis-labs/design-app-runtime/shell-reset.css";
 
 /* Shadow strength: full in dark, softer in light (shadows are `rgb(0 0 0 / calc(a * var(--sh)))`, never a literal alpha). */
-:root { --sh: 1; }
-[data-mode="light"] { --sh: 0.28; }
+:root {
+  --sh: 1;
+}
+[data-mode="light"] {
+  --sh: 0.28;
+}
 
 /* Tailwind does not scan node_modules or sibling workspaces on its own. */
 @source "../../packages/*/src/**/*";
