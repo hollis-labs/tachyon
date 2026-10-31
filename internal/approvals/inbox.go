@@ -118,6 +118,9 @@ func (b *Bridge) lookup(r *http.Request) (hitl.Participant, sessionStatus, *assu
 	}
 	var status sessionStatus
 	cookie, err := r.Cookie(CookieName)
+	if b.Dev && (err != nil || cookie.Value == "") {
+		cookie, err = &http.Cookie{Name: CookieName, Value: "dev-posture"}, nil
+	}
 	if err != nil || cookie.Value == "" || json.Unmarshal([]byte(captured.body.String()), &status) != nil || status.Assurance == "" {
 		return hitl.Participant{}, sessionStatus{}, &assurance.Error{Status: 401, Code: "session_required", Message: "Connect an operator browser session."}
 	}
