@@ -25,6 +25,7 @@ type Session struct {
 	Model           *string      `json:"model"`
 	Workroot        string       `json:"workroot"`
 	State           string       `json:"state"`
+	StateInferred   bool         `json:"state_inferred,omitempty"` // working because output is fresh, not because Tether said so
 	StaleReason     *string      `json:"stale_reason"`
 	StaleSince      *int64       `json:"stale_since"`
 	NeedsYou        NeedsYou     `json:"needs_you"`
@@ -283,6 +284,7 @@ func build(r row, ex *extras, now time.Time, staleAfter time.Duration) Session {
 			s.RuntimeMS = end.Sub(started).Milliseconds()
 		}
 	}
+	s.StateInferred = d.Inferred
 	if d.StaleReason != "" {
 		s.StaleReason = strp(d.StaleReason)
 		s.StaleSince = ms(d.StaleSince)
