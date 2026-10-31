@@ -57,6 +57,9 @@ const MORE_NOUN: Record<InboxCategory, string> = {
   unassigned: 'unassigned',
 }
 
+/** The forge returns at most this many pending pull requests. */
+const PENDING_CAP = 100
+
 function ChecksMeter({ item }: { item: InboxItem }) {
   const c = item.pr.checksSummary
   const r = item.pr.reviewSummary
@@ -351,6 +354,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
             )
           })
         )}
+        {prs.length >= PENDING_CAP && <p className="px-4 py-3 text-xs text-fg-muted">Showing first {PENDING_CAP}. Resolve or dismiss some to see more.</p>}
       </div>
       {previewKey && all.find((i) => i.key === previewKey) && (
         <PrPreviewDrawer
