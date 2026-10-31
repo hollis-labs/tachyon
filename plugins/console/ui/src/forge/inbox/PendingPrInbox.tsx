@@ -183,7 +183,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const agentsClient = useAgentsClient()
   const state = useItemStates()
   const now = useNow()
-  const { prs, loading, error, refresh, refreshedAt } = usePendingPrs(forge, { pollMs })
+  const { prs, loading, error, refresh, refreshedAt, forgeRefreshedAt, cached } = usePendingPrs(forge, { pollMs })
   const [filter, setFilter] = useState<InboxFilter>({ ...DEFAULT_FILTER, ...initialFilter })
   const [groupBy, setGroupBy] = useState<GroupBy>(initialGroupBy)
   const [assigning, setAssigning] = useState<{ item: InboxItem; task?: AssignTask } | null>(null)
@@ -260,7 +260,8 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
       {/* KIT-GAP: PageHeader has no slot beside the title; the golden puts the "N need attention" chip next to it. */}
       <PageHeader title="Pull requests">
         <Chip>{views.active} need attention</Chip>
-        {refreshedAt && <span className="dash-label text-fg-muted max-md:hidden">Updated {ago(refreshedAt, now)}</span>}
+        {cached && <Chip>Cached</Chip>}
+        {refreshedAt && <span className="dash-label text-fg-muted max-md:hidden">Updated {ago(forgeRefreshedAt ?? refreshedAt, now)}</span>}
         <Button variant="outline" size="icon-sm" aria-label="Refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw className="size-3.5" /></Button>
         <OverflowMenu ariaLabel="More" actions={[
           { label: `${groupBy === 'category' ? '✓ ' : ''}Group by reason`, onSelect: () => setGroupBy('category') },

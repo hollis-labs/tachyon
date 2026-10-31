@@ -245,6 +245,9 @@ export interface ReviewValidation { headMoved: boolean; statuses: CommentCheck[]
 /** Saved review in progress: the queued inline comments, pinned to the head they were written on. */
 export interface ReviewDraft { headSha: string; comments: NonNullable<ReviewInput['comments']> }
 
+/** GET status: when the forge cache last refreshed and whether the answer is degraded (served from cache). */
+export interface ForgeStatus { lastRefreshMs: number | null; degraded: boolean }
+
 export interface AssignInput {
   /** Full replacement set of assignee logins. */
   assignees: string[]

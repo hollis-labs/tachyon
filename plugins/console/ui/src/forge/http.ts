@@ -30,6 +30,7 @@ import {
   type Repo,
   type RepoRef,
   type Review,
+  type ForgeStatus,
   type ReviewDraft,
   type ReviewValidation,
   type CommentCheck,
@@ -259,6 +260,11 @@ export class HttpForgeClient implements ForgeClient {
 
   async deleteReviewDraft(ref: PrRef): Promise<void> {
     await this.request('DELETE', `${prPath(ref)}/review-draft`, undefined, true)
+  }
+
+  async getStatus(): Promise<ForgeStatus> {
+    const o = (await this.request('GET', '/status')) as Record<string, unknown>
+    return { lastRefreshMs: typeof o?.last_refresh_ms === 'number' && o.last_refresh_ms > 0 ? o.last_refresh_ms : null, degraded: o?.degraded === true }
   }
 
   async getMergePreflight(ref: PrRef): Promise<MergePreflight> {
