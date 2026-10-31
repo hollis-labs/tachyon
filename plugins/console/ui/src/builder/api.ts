@@ -1,4 +1,5 @@
 import { hostFetch } from '@tachyon/host-sdk'
+import { operatorFetch } from '../operator/elevation'
 import type { AgentState, PolicyTag } from './vocab'
 
 // Builder + Registry read model (internal/builderapi/openapi.yaml). GETs are open
@@ -251,8 +252,8 @@ export class BuilderError extends Error {
   }
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await hostFetch(BUILDER_BASE + path, { headers: { Accept: 'application/json' } })
+async function get<T>(path: string, fetcher: typeof fetch = hostFetch): Promise<T> {
+  const res = await fetcher(BUILDER_BASE + path, { headers: { Accept: 'application/json' } })
   if (!res.ok) {
     let code = 'error'
     let message = `Request failed (${res.status})`
@@ -268,8 +269,9 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T
 }
 
+// Writes go through operator elevation: a 401 operator_session_required opens the key prompt and replays once.
 async function send<T>(path: string, body: unknown): Promise<T> {
-  const res = await hostFetch(BUILDER_BASE + path, {
+  const res = await operatorFetch(BUILDER_BASE + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
@@ -328,7 +330,7 @@ export const builderApi = {
   /** Starts a session from a catalog launch. Not a catalog change; the request carries only an id. */
   launch: (id: string, requestId: string) => send<{ session_id: string; agents_url?: string }>(`/launches/${encodeURIComponent(id)}/launch`, { request_id: requestId }),
   /** The bundle holds full file content: fetch it on demand for copy or download, never keep or log it. */
-  bundle: (id: string) => get<Bundle>(`/changes/${encodeURIComponent(id)}/bundle`),
+  bundle: (id: string) => get<Bundle>(`/changes/${encodeURIComponent(id)}/bundle`, operatorFetch),
   check: (id: string) => send<Change>(`/changes/${encodeURIComponent(id)}/check`, {}),
 }
 

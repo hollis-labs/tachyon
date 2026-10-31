@@ -1,4 +1,5 @@
 import { hostFetch } from '@tachyon/host-sdk'
+import { operatorFetch } from '../operator/elevation'
 import { BuilderError, errorMessage } from '../builder/api'
 
 // Registry (Projects) read model and profile write: internal/builderapi/openapi.yaml.
@@ -40,7 +41,7 @@ export interface Project {
 export type ProjectPatch = Partial<{ display_name: string; description: string; tags: string[]; guidelines: string; entry_points: string[]; status: ProjectStatus }>
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await hostFetch(REGISTRY_BASE + path, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}) } })
+  const res = await (init?.method && init.method !== 'GET' ? operatorFetch : hostFetch)(REGISTRY_BASE + path, { ...init, headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}) } })
   if (!res.ok) {
     let code = 'error'
     let message = `Request failed (${res.status})`
