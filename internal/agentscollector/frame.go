@@ -58,7 +58,7 @@ type wireFrame struct {
 	Time      string          `json:"time"`
 	At        string          `json:"at"`
 	App       string          `json:"app"`
-	Scope     string          `json:"scope"`
+	Scope     json.RawMessage `json:"scope"` // an object on the live stream
 	SessionID string          `json:"session_id"`
 	Reason    string          `json:"reason"`
 	Payload   json.RawMessage `json:"payload"`
