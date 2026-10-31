@@ -102,7 +102,7 @@ reserved in `forgeapi.StepUpLevels`; nothing here adds a guard, audit row or rat
   settled, links_done}`. `delete_branch` is a best-effort delete after the merge, only for a branch in the same repository.
 - Idempotency: the answer for a key is stored 24 hours (`forge_idempotency`, migration 045); the same key and body returns it, the same
   key with a different body is 409 `idempotency_conflict`. Only a merge or a `head_moved` answer is stored, so a refusal can be retried.
-- `audit_class: "lifecycle"` is the contract's label only. No audit row is written (deferred to CW-20261030-0082). `links_done` counts the agent links closed by
+- `audit_class: "lifecycle"` is the contract's label only. An audit row is written (`forge_audit`, read with `GET /audit`). `links_done` counts the agent links closed by
   the merge (PR7).
 
 ## Assign agent (PR7, real)
@@ -141,7 +141,8 @@ refused. `HEAD` is the 40-hex head sha from a read.
 | Merge preflight, merge | `GET B/<P>/merge-preflight`, `PUT B/<P>/merge` | real (PR5) |
 | Review validate, review, drafts | `POST B/<P>/reviews/validate`, `POST B/<P>/reviews`, `GET/PUT/DELETE B/<P>/review-draft` | real (PR6) |
 | Assign agent | `POST B/<P>/assign-agent` | real (PR7) |
-| Audit, step-up, rate limits | none | deferred (CW-20261030-0082) |
+| Audit | merge, review, assign, comment, assignees write one forge_audit row each; `GET /audit` reads them | built |
+| Step-up, rate limits | none | deferred (CW-20261030-0082) |
 
 ```sh
 curl -s "$B/pulls/pending?state=active&limit=20"                       # inbox

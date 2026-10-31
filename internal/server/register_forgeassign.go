@@ -71,7 +71,7 @@ func mountForgeAssign(s *Server, mux *http.ServeMux, operator *approvals.Bridge)
 		}
 	}
 	s.ext.Store(forgeAssignKey, h)
-	guarded := operator.RequireOperator(h.Mux())
+	guarded := operator.RequireOperator(s.forgeAudit().Wrap("assign", h.Mux()))
 	if s.cache != nil {
 		guarded = s.cache.Wrap(guarded)
 	}

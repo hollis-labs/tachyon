@@ -868,8 +868,8 @@ func (s *Server) Routes() http.Handler {
 	// /api/plugins/ catch-all below, where anyone could post a comment or assign people as Tachyon's GitHub identity.
 	pluginForge := s.inventory.APIRoutes()
 	forgePulls := forgeapi.Prefix + "/repos/{host}/{owner}/{name}/pulls/{num}"
-	mux.Handle("POST "+forgePulls+"/comments", operator.RequireOperator(pluginForge))
-	mux.Handle("PUT "+forgePulls+"/assignees", operator.RequireOperator(pluginForge))
+	mux.Handle("POST "+forgePulls+"/comments", operator.RequireOperator(s.forgeAudit().Wrap("comment", pluginForge)))
+	mux.Handle("PUT "+forgePulls+"/assignees", operator.RequireOperator(s.forgeAudit().Wrap("assignees", pluginForge)))
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
 		mux.HandleFunc(apicache.ImportedTeamsPath, s.cache.ImportedTeamsHandler)

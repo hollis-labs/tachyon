@@ -21,6 +21,7 @@ func mountForgeReview(s *Server, mux *http.ServeMux, operator *approvals.Bridge)
 	}
 	h := &forgereview.Handler{Token: s.cfg.Upstreams.GitHubToken, DB: s.store}
 	guarded := operator.RequireOperator(h.Mux())
+	reviewed := operator.RequireOperator(s.forgeAudit().Wrap("review", h.Mux()))
 	write := guarded
 	if s.cache != nil {
 		write = s.cache.Wrap(guarded)
@@ -29,7 +30,14 @@ func mountForgeReview(s *Server, mux *http.ServeMux, operator *approvals.Bridge)
 		if strings.HasPrefix(route, "GET ") {
 			mux.Handle(route, guarded)
 		} else {
-			mux.Handle(route, write)
+			w := write
+			if route == "POST "+strings.SplitN(forgereview.Routes[1], " ", 2)[1] {
+				w = reviewed
+				if s.cache != nil {
+					w = s.cache.Wrap(reviewed)
+				}
+			}
+			mux.Handle(route, w)
 		}
 	}
 }
