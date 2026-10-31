@@ -278,7 +278,7 @@ export function TranscriptReader({
       aria-label="Transcript reader"
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto"
     >
-      <style>{"::highlight(transcript-find){background-color:var(--selection);color:inherit}"}</style>
+      <style>{"::highlight(transcript-find){background-color:var(--color-selection);color:inherit}"}</style>
       <button type="button" onClick={onClose} className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5 text-left dash-label text-fg-secondary md:hidden">
         <ArrowLeft className="size-3.5" aria-hidden /> Sessions
       </button>
