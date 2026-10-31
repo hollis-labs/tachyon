@@ -121,6 +121,10 @@ type wireSession struct {
 	TaskID       string          `json:"task_id"`
 	StartedAt    string          `json:"started_at"`
 	UpdatedAt    string          `json:"updated_at"`
+	// Live /environment/snapshot names (tetherclient.EnvironmentSession).
+	LogicalAgentID string `json:"logical_agent_id"`
+	InstanceStatus string `json:"instance_status"`
+	LastActivity   string `json:"last_activity"`
 }
 
 // frame turns a listed session into a synthetic snapshot frame. work_state may be a string or an
@@ -132,6 +136,7 @@ func (w wireSession) frame() (Frame, bool) {
 	}
 	f := Frame{Kind: "session.snapshot", SessionID: id, SessionState: clean(firstNonEmpty(w.SessionState, w.State), 40),
 		Provider: clean(w.Provider, 60), Model: clean(w.Model, 80), Workroot: clean(firstNonEmpty(w.Workroot, w.WorkingDir), 300),
+		LogicalAgentID: clean(w.LogicalAgentID, 120), AgentName: clean(w.LogicalAgentID, 120),
 		TaskRef: clean(w.TaskID, 60), PendingApproval: w.PendingA, PendingQuestion: w.PendingQ}
 	var str string
 	var obj struct {
@@ -146,7 +151,10 @@ func (w wireSession) frame() (Frame, bool) {
 	if f.WorkState == "unknown" {
 		f.WorkState = ""
 	}
-	for _, s := range []string{w.UpdatedAt, w.StartedAt} {
+	if f.WorkState == "" && w.InstanceStatus == "waiting" {
+		f.WorkState = "waiting" // running/starting say nothing about busy vs idle, so they stay unknown
+	}
+	for _, s := range []string{w.LastActivity, w.UpdatedAt, w.StartedAt} {
 		if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
 			f.At = t.UTC()
 			break
