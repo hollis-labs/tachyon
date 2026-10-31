@@ -254,6 +254,45 @@ describe("owned inbox tiers and pages", () => {
     await screen.findByText(/cannot be approved here/)
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull()
   })
+  it("uses the server's confirm phrase, sends it as confirmation, offers the alternative and needs a reason to deny", async () => {
+    const destructive: ApprovalItem = {
+      ...item,
+      request_snapshot: { ...item.request_snapshot, class: "medium" },
+      confirm: { phrase: "DELETE 3 ITEMS" },
+      destructive: { irreversible: true, summary: "Deletes three environments." },
+      affected_items: [{ ref: "e:1", label: "scratch-1", note: "idle 40 days" }, { ref: "e:2", label: "scratch-2" }, { ref: "e:3", label: "scratch-3" }],
+      affected_total: 7,
+      alternatives: [{ id: "archive", label: "Archive instead" }],
+      reason_required: true,
+    }
+    const decide = vi.fn().mockResolvedValue({ item_id: destructive.item_id, state: "resolved" })
+    const client = { ...noAudit, present: vi.fn().mockResolvedValue(destructive), get: vi.fn().mockResolvedValue(destructive), decide } as unknown as ApprovalClient
+    render(<ApprovalDialog id={destructive.item_id} initial={destructive} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    await screen.findByText("Deletes three environments.")
+    expect(screen.getByText("scratch-1 (idle 40 days)")).toBeTruthy()
+    expect(screen.getByText("+ 4 more")).toBeTruthy()
+    const approve = screen.getByRole("button", { name: /^Approve/ }) as HTMLButtonElement
+    fireEvent.change(screen.getByLabelText("Confirmation phrase"), { target: { value: "delete 3 items" } })
+    await waitFor(() => expect(approve.disabled).toBe(true)) // case-sensitive
+    fireEvent.change(screen.getByLabelText("Confirmation phrase"), { target: { value: "DELETE 3 ITEMS" } })
+    await waitFor(() => expect(approve.disabled).toBe(false))
+    expect((screen.getByRole("button", { name: /^Deny/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/A reason is needed to deny/)).toBeTruthy()
+    fireEvent.click(approve)
+    await waitFor(() => expect(decide).toHaveBeenCalledTimes(1))
+    expect(decide.mock.calls[0][1]).toMatchObject({ decision: "approved", confirmation: "DELETE 3 ITEMS" })
+  })
+  it("approves an alternative with its id and no confirmation phrase", async () => {
+    const withAlt: ApprovalItem = { ...item, confirm: { phrase: "DELETE 3 ITEMS" }, alternatives: [{ id: "archive", label: "Archive instead" }] }
+    const decide = vi.fn().mockResolvedValue({ item_id: withAlt.item_id, state: "resolved" })
+    const client = { ...noAudit, present: vi.fn().mockResolvedValue(withAlt), get: vi.fn().mockResolvedValue(withAlt), decide } as unknown as ApprovalClient
+    render(<ApprovalDialog id={withAlt.item_id} initial={withAlt} client={client} onClose={vi.fn()} onChanged={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: "Archive instead" }))
+    await waitFor(() => expect(decide).toHaveBeenCalled())
+    const sent = decide.mock.calls[0][1]
+    expect(sent).toMatchObject({ decision: "approved", alternative_id: "archive" })
+    expect(sent.confirmation).toBeUndefined()
+  })
   it("switches to the provider handoff state on provider_handoff_required, without the raw error, and remembers it", async () => {
     const high: ApprovalItem = { ...item, request_snapshot: { ...item.request_snapshot, class: "high", handoff_url: "https://cerberus.example/approve/one" } }
     const decide = vi.fn().mockRejectedValue(new ApprovalError(403, "provider_handoff_required", "provider handoff required"))

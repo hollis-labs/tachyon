@@ -34,12 +34,15 @@ function safeHTTPS(raw?: string) {
 // Renders nothing when the payload carries none of them. A registered action's own run card
 // (machine, state, terminal) replaces the plain command.
 const AFFECTED_SHOWN = 4
-function RunCard({ request, run }: { request: ApprovalItem["request_snapshot"]; run?: ReactNode }) {
+function RunCard({ request, item, run }: { request: ApprovalItem["request_snapshot"]; item?: ApprovalItem; run?: ReactNode }) {
   const data = request.data ?? {}
   const text = (v: unknown) => (typeof v === "string" && v ? v : undefined)
   const command = run ? undefined : text(data.command)
   const diff = text(data.diff)
-  const affected = Array.isArray(data.affected) ? data.affected.map(String) : []
+  // The server's affected_items (label and note) win over the free-form list a producer put in data.
+  const served = item?.affected_items ?? []
+  const affected = served.length ? served.map((a) => (a.note ? `${a.label} (${a.note})` : a.label)) : Array.isArray(data.affected) ? data.affected.map(String) : []
+  const affectedTotal = Math.max(item?.affected_total ?? 0, affected.length)
   if (!command && !diff && !affected.length && !run) return null
   return (
     <section aria-label="Exactly what will run">
@@ -55,7 +58,7 @@ function RunCard({ request, run }: { request: ApprovalItem["request_snapshot"]; 
               <ul aria-label="Affected items" className="mt-1.5 space-y-0.5">
                 {affected.slice(0, AFFECTED_SHOWN).map((a) => <li key={a}>{a}</li>)}
               </ul>
-              {affected.length > AFFECTED_SHOWN && <p className="mt-1 text-fg-muted">+ {affected.length - AFFECTED_SHOWN} more</p>}
+              {affectedTotal > Math.min(AFFECTED_SHOWN, affected.length) && <p className="mt-1 text-fg-muted">+ {affectedTotal - Math.min(AFFECTED_SHOWN, affected.length)} more</p>}
             </div>
           )}
         </div>
@@ -159,7 +162,7 @@ export function DecisionDetail({
       setBusy(false)
     }
   }
-  async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"]) {
+  async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"], alternativeId?: string) {
     const decision = submitted ? "submitted" : direct
     if (!item || !decision || busy || !ready) return
     setBusy(true)
@@ -170,6 +173,8 @@ export function DecisionDetail({
         decision,
         ...(submitted ? { answers: submitted } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
+        ...(decision === "approved" && item.confirm?.phrase && !alternativeId ? { confirmation: typed.trim() } : {}),
+        ...(alternativeId ? { alternative_id: alternativeId } : {}),
         ...(reply.trim() && item.request_snapshot.kind === "attention"
           ? { reply: reply.trim() }
           : {}),
@@ -202,7 +207,7 @@ export function DecisionDetail({
   function decideOrHold(decision: "approved" | "denied") {
     if (!item || !ready || busy) return
     // Only an approval of a low/medium item is held; a denial is safe and immediate.
-    if (!queue || item.request_snapshot.class === "high" || decision === "denied")
+    if (!queue || item.request_snapshot.class === "high" || item.confirm || decision === "denied")
       return void decide(undefined, decision)
     queue.hold(item, {
       kind: item.request_snapshot.kind,
@@ -212,10 +217,13 @@ export function DecisionDetail({
   }
   const request = item?.request_snapshot
   // High-risk requests are approvable here, gated by a typed phrase (the server still enforces).
-  const needsPhrase = request?.class === "high"
+  // The server derives the phrase (item.confirm); the client only guesses for a producer that sends none.
+  const needsPhrase = !!item?.confirm?.phrase || request?.class === "high"
   const affectedCount = Array.isArray(request?.data?.affected) ? request.data.affected.length : 0
-  const phrase = affectedCount ? `DELETE ${affectedCount}` : PHRASE
-  const phraseOk = typed.trim().toLowerCase() === phrase.toLowerCase()
+  const phrase = item?.confirm?.phrase ?? (affectedCount ? `DELETE ${affectedCount}` : PHRASE)
+  const phraseOk = item?.confirm?.phrase ? typed.trim() === phrase : typed.trim().toLowerCase() === phrase.toLowerCase()
+  // A denial needs a reason when the server says so.
+  const denyNeedsReason = !!item?.reason_required && !note.trim()
   const card = !!request && isCard(request)
   const resolution = item?.terminal_outcome?.resolution
   const canDecide =
@@ -276,6 +284,7 @@ export function DecisionDetail({
             </section>
             <RunCard
               request={request}
+              item={item}
               run={item?.action_run ? <ActionRunPanel initial={item.action_run} approved={resolution?.response.decision === "approved"} /> : undefined}
             />
             {request.details_markdown && (
@@ -296,11 +305,11 @@ export function DecisionDetail({
                 </section>
               </div>
             )}
-            {!!request.evidence?.length && (
+            {!!(request.evidence ?? item?.evidence)?.length && (
               <section>
                 <h3 className={label}>Evidence</h3>
                 <div className="mt-2 rounded border border-border">
-                  {request.evidence.map((e, i) => <EvidenceView key={i} evidence={e} />)}
+                  {(request.evidence ?? item?.evidence ?? []).map((e, i) => <EvidenceView key={i} evidence={e} />)}
                 </div>
               </section>
             )}
@@ -386,9 +395,11 @@ export function DecisionDetail({
                     />
                   </label>
                 )}
+                {denyNeedsReason && <p className="dash-support text-fg-muted">A reason is needed to deny this request. Add it in the note.</p>}
                 {needsPhrase && (request.kind === "approval" || request.kind === "card.approval") && (
                   <div className="rounded border border-danger/40 p-3">
                     <p className="dash-control text-danger">This cannot be undone.</p>
+                    {item?.destructive?.summary && <p className="mt-1 dash-support text-fg-muted">{item.destructive.summary}</p>}
                     <label className="mt-2 block dash-control text-fg-muted">
                       Type <span className="font-mono text-fg">{phrase}</span> to confirm
                       <input
@@ -432,8 +443,11 @@ export function DecisionDetail({
                   )
                 })()}
                 {(request.kind === "approval" || request.kind === "card.approval") ? (
-                  <div className="ml-auto flex gap-2">
-                    <Button variant="outline" disabled={!canDecide} onClick={() => decideOrHold("denied")}>
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    {item?.alternatives?.map((a) => (
+                      <Button key={a.id} variant="outline" disabled={!canDecide} onClick={() => void decide(undefined, "approved", a.id)}>{a.label}</Button>
+                    ))}
+                    <Button variant="outline" disabled={!canDecide || denyNeedsReason} onClick={() => decideOrHold("denied")}>
                       Deny <Keycap>D</Keycap>
                     </Button>
                     <Button disabled={!canDecide || (needsPhrase && !phraseOk)} onClick={approve}>

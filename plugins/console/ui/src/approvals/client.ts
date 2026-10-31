@@ -14,6 +14,10 @@ export interface ApprovalResponse {
   note?: string
   reply?: string
   answers?: CardAnswer[]
+  // The server's typed phrase, for an approval that carries `confirm`.
+  confirmation?: string
+  // Approve one of the item's `alternatives` instead of the original request.
+  alternative_id?: string
 }
 export interface ApprovalOutcome {
   item_id: string
@@ -91,6 +95,16 @@ export interface ApprovalItem {
   // Server-side batch eligibility; blockers are why an item must be reviewed one by one.
   batchable?: boolean
   batch_blockers?: string[]
+  // Server projection (docs/approvals-contract.md). Every high-class and every destructive item carries `confirm`.
+  confirm?: { phrase: string }
+  affected_items?: { ref: string; label: string; kind?: string; note?: string }[]
+  affected_total?: number
+  destructive?: { irreversible?: boolean; summary?: string }
+  alternatives?: { id: string; label: string }[]
+  // A reason (the note) is required to deny.
+  reason_required?: boolean
+  evidence?: Evidence[]
+  server_now_ms?: number
   request_snapshot: {
     kind: "approval" | "attention" | CardKind
     class?: "low" | "medium" | "high"
