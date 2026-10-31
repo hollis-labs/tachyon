@@ -32,6 +32,7 @@ type alertsFeed struct {
 	health *alertsource.Health
 	store  *alertstore.Store
 	api    *alertstore.API
+	sink   *alertSink
 }
 
 // alertChange maps the store's change names to the stream's frame types and toast reasons.
@@ -58,7 +59,7 @@ func startAlertsFeed(ctx context.Context, s *Server, db *localstore.Store) {
 	}
 	api := v.(*alertstore.API)
 	st := api.Store
-	f := &alertsFeed{hub: alertsstream.NewHub(1000), health: alertsource.NewHealth(), store: st, api: api}
+	f := &alertsFeed{hub: alertsstream.NewHub(1000), health: alertsource.NewHealth(), store: st, api: api, sink: s.newAlertSink()}
 	s.ext.Store(alertsFeedKey, f)
 	st.OnChange = f.publish
 
@@ -137,6 +138,7 @@ func (f *alertsFeed) publish(id string, seq int64, change string) {
 		slog.Warn("alerts: stream publish failed", "err", err)
 		return
 	}
+	f.sink.notify(a, seq, toast)
 	if c, err := f.store.Counts(ctx); err == nil {
 		_ = f.hub.Publish(seq, alertsstream.CountsFrame(c, now))
 	}
