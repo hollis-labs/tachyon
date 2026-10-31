@@ -9,8 +9,10 @@ import (
 
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/hollis-labs/tachyon/internal/agentsapi"
+	"github.com/hollis-labs/tachyon/internal/chatbridge"
 )
 
 // Sender delivers a nudge to an agent as Tether mail (the control token holds the messages scope). It returns
@@ -19,11 +21,23 @@ type Sender interface {
 	Send(ctx context.Context, to, subject, body string, meta map[string]string) (string, error)
 }
 
-// Interrupt and restart need Tether verbs that do not exist yet (CW-20261030-0025). Each is gated on a
-// capability flag, never faked: with the flag off the request answers 409 and nothing is sent.
+// Interrupter cancels the running turn of a session (Tether: a reply with interrupt:true to its latest routed
+// message) and delivers body as the next turn. It returns the interrupt result for ControlRequest.interrupt.
+type Interrupter interface {
+	Interrupt(ctx context.Context, sessionID, body string) (string, error)
+}
+
+// Restarter stops a session and resumes its logical agent (Tether session stop, then logical-agent resume).
+type Restarter interface {
+	Stop(ctx context.Context, sessionID string) error
+	Resume(ctx context.Context, logicalAgentID, key string) (newSessionID string, err error)
+}
+
 const (
-	interruptReason = "Tether has no session interrupt yet."
-	restartReason   = "Tether has no session restart yet."
+	interruptReason = "This session has no routed turn Tachyon can interrupt."
+	restartReason   = "This agent has no logical agent to resume."
+	// handoffWait is how long a restart waits for the agent to write its handoff before it proceeds.
+	handoffWait = 60 * time.Second
 )
 
 // control is the ControlRequest of the contract.
@@ -93,8 +107,8 @@ func (s *Server) saveControl(ctx context.Context, c control, insert bool) error 
 				c.RequestID, c.Kind, c.SessionID, c.State, c.Step, c.Error, c.Interrupt, c.MessageID, h, c.NewSessionID, c.DiscardedPending, c.WaitEndsAt, c.CreatedAt, c.UpdatedAt); err != nil {
 				return err
 			}
-		} else if _, err := tx.ExecContext(ctx, `UPDATE agents_controls SET state=?,step=?,error=?,interrupt=?,message_id=?,updated_ms=? WHERE request_id=?`,
-			c.State, c.Step, c.Error, c.Interrupt, c.MessageID, c.UpdatedAt, c.RequestID); err != nil {
+		} else if _, err := tx.ExecContext(ctx, `UPDATE agents_controls SET state=?,step=?,error=?,interrupt=?,message_id=?,new_session_id=?,wait_ends_at=?,updated_ms=? WHERE request_id=?`,
+			c.State, c.Step, c.Error, c.Interrupt, c.MessageID, c.NewSessionID, c.WaitEndsAt, c.UpdatedAt, c.RequestID); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO agents_stream(type,at_ns,data_json) VALUES('control',?,?)`, s.now().UnixNano(), string(ev))
@@ -106,8 +120,16 @@ func (s *Server) saveControl(ctx context.Context, c control, insert bool) error 
 func (s *Server) capabilities(sess Session) Capabilities {
 	return Capabilities{
 		Nudge:     s.Sender != nil && sess.Agent.URN != nil && sess.State != StateEnded,
-		Interrupt: Interrupt{Reason: strp(interruptReason)},
+		Interrupt: Interrupt{Available: s.Interrupter != nil && sess.State != StateEnded, Reason: s.interruptWhy(sess)},
+		Restart:   s.Restarter != nil && sess.Agent.LogicalAgentID != nil && sess.State != StateEnded,
 	}
+}
+
+func (s *Server) interruptWhy(sess Session) *string {
+	if s.Interrupter != nil && sess.State != StateEnded {
+		return nil
+	}
+	return strp("Interrupt is not available for this session.")
 }
 
 func (s *Server) nudge(w http.ResponseWriter, r *http.Request) {
@@ -139,11 +161,31 @@ func (s *Server) nudge(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "nudge_unsupported", "This session cannot receive nudges.")
 		return
 	}
-	if b.Interrupt { // never silently downgrade: the client offers "send without interrupt"
+	if b.Interrupt && !s.capabilities(sess).Interrupt.Available { // never silently downgrade
 		fail(w, 409, "interrupt_unsupported", interruptReason)
 		return
 	}
 	c := control{RequestID: b.RequestID, Kind: agentsapi.ControlNudge, SessionID: sess.ID, State: "queued"}
+	if b.Interrupt {
+		res, err := s.Interrupter.Interrupt(r.Context(), sess.ID, b.Text)
+		switch {
+		case errors.Is(err, chatbridge.ErrNothingToInterrupt), errors.Is(err, chatbridge.ErrNotReplyable):
+			fail(w, 409, "interrupt_unsupported", interruptReason)
+			return
+		case err != nil:
+			msg := "Tether could not interrupt the session."
+			c.State, c.Error = "failed", &msg
+		default:
+			c.State, c.Interrupt = "interrupted_then_delivered", &res
+		}
+		if err := s.saveControl(r.Context(), c, true); err != nil {
+			internal(w)
+			return
+		}
+		saved, _ := s.loadControl(r.Context(), c.RequestID)
+		reply(w, 202, saved)
+		return
+	}
 	if err := s.saveControl(r.Context(), c, true); err != nil {
 		internal(w)
 		return
@@ -189,7 +231,70 @@ func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "stale_session", "expected_session_id is not the agent's current session.")
 		return
 	}
-	fail(w, 409, "restart_unsupported", restartReason)
+	if old, ok := s.loadControl(r.Context(), b.RequestID); ok { // a retry of the same request
+		if old.SessionID != sess.ID || old.Kind != agentsapi.ControlRestart {
+			fail(w, 409, "conflict", "That request_id belongs to another request.")
+			return
+		}
+		reply(w, 202, old)
+		return
+	}
+	if !s.capabilities(sess).Restart {
+		fail(w, 409, "restart_unsupported", restartReason)
+		return
+	}
+	c := control{RequestID: b.RequestID, Kind: agentsapi.ControlRestart, SessionID: sess.ID, State: "requested", Handoff: b.Handoff}
+	if err := s.saveControl(r.Context(), c, true); err != nil {
+		internal(w)
+		return
+	}
+	skip := make(chan struct{})
+	s.skips.Store(c.RequestID, skip)
+	go s.runRestart(c, sess, skip)
+	saved, _ := s.loadControl(r.Context(), c.RequestID)
+	reply(w, 202, saved)
+}
+
+// runRestart walks requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done. A failure
+// records the step it stopped at.
+func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
+	defer s.skips.Delete(c.RequestID)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	set := func(state string) { c.State = state; _ = s.saveControl(ctx, c, false) }
+	fail := func(step string, err error) {
+		msg := "Tether could not complete the restart: " + step + "."
+		c.Step, c.Error = &step, &msg
+		_ = err
+		set("failed")
+	}
+	if c.Handoff && s.Sender != nil && sess.Agent.URN != nil {
+		if _, err := s.Sender.Send(ctx, *sess.Agent.URN, "Restart: write your handoff", "The operator is restarting this session. Write your handoff to Tesseract now.", map[string]string{"source": "tachyon-agents-restart", "request_id": c.RequestID}); err == nil {
+			set("handoff_sent")
+			end := s.now().Add(handoffWait).UnixMilli()
+			c.WaitEndsAt = &end
+			set("waiting")
+			select {
+			case <-skip:
+			case <-time.After(handoffWait):
+			case <-ctx.Done():
+			}
+		}
+	}
+	set("stopping")
+	if err := s.Restarter.Stop(ctx, sess.ID); err != nil {
+		fail("stopping", err)
+		return
+	}
+	set("stopped")
+	set("resuming")
+	id, err := s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, "tachyon-restart-"+c.RequestID)
+	if err != nil {
+		fail("resuming", err)
+		return
+	}
+	c.NewSessionID = &id
+	set("done")
 }
 
 func (s *Server) getControl(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +306,7 @@ func (s *Server) getControl(w http.ResponseWriter, r *http.Request) {
 	fail(w, 404, "not_found", "No such control request.")
 }
 
-// skipControl skips the restart handoff wait; no restart can exist yet, so it never has a wait to skip.
+// skipControl ends the restart handoff wait early.
 func (s *Server) skipControl(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("request_id")
 	c, ok := s.loadControl(r.Context(), id)
@@ -213,5 +318,8 @@ func (s *Server) skipControl(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "not_waiting", "This request is not waiting for a handoff.")
 		return
 	}
-	fail(w, 409, "restart_unsupported", restartReason)
+	if ch, ok := s.skips.LoadAndDelete(id); ok {
+		close(ch.(chan struct{}))
+	}
+	reply(w, 202, c)
 }

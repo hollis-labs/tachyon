@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hollis-labs/tachyon/internal/chatbridge"
 )
 
 type fakeSender struct {
@@ -86,5 +88,58 @@ func TestCapabilitiesFollowTheSender(t *testing.T) {
 	s := decode[Session](t, e.get("/sessions/m1"))
 	if !s.Capabilities.Nudge || s.Capabilities.Interrupt.Available || s.Capabilities.Interrupt.Reason == nil || s.Capabilities.Restart {
 		t.Fatalf("with a sender: %+v", s.Capabilities)
+	}
+}
+
+type fakeCtl struct {
+	stopped, resumed string
+	stopErr          error
+	interrupts       int
+	intErr           error
+}
+
+func (f *fakeCtl) Stop(_ context.Context, id string) error { f.stopped = id; return f.stopErr }
+func (f *fakeCtl) Resume(_ context.Context, la, _ string) (string, error) {
+	f.resumed = la
+	return "s2", nil
+}
+func (f *fakeCtl) Interrupt(context.Context, string, string) (string, error) {
+	f.interrupts++
+	return "cancelled", f.intErr
+}
+
+func TestNudgeWithInterruptUsesTheInterrupter(t *testing.T) {
+	f := &fakeCtl{}
+	e := controlEnv(t, &fakeSender{})
+	e.srv.Interrupter = f
+	c := decode[control](t, e.send("POST", "/sessions/m1/nudge", `{"request_id":"i1","text":"stop that","interrupt":true}`))
+	if c.State != "interrupted_then_delivered" || c.Interrupt == nil || *c.Interrupt != "cancelled" || f.interrupts != 1 {
+		t.Fatalf("%+v interrupts=%d", c, f.interrupts)
+	}
+	f.intErr = chatbridge.ErrNothingToInterrupt
+	if w := e.send("POST", "/sessions/m1/nudge", `{"request_id":"i2","text":"again","interrupt":true}`); w.Code != 409 || !strings.Contains(w.Body.String(), "interrupt_unsupported") {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
+func TestRestartStopsThenResumesTheLogicalAgent(t *testing.T) {
+	f := &fakeCtl{}
+	e := controlEnv(t, nil)
+	e.frame("session.work_state_changed", "m1", 56*time.Minute, `{"to":"processing","provider":"claude","agent_urn":"msg://agent/x/builder","logical_agent_id":"la1"}`)
+	e.srv.Restarter = f
+	w := e.send("POST", "/sessions/m1/restart", `{"request_id":"rs1","expected_session_id":"m1"}`)
+	if w.Code != 202 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var c control
+	for i := 0; i < 100; i++ {
+		c = decode[control](t, e.get("/controls/rs1"))
+		if c.State == "done" || c.State == "failed" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if c.State != "done" || c.NewSessionID == nil || *c.NewSessionID != "s2" || f.stopped != "m1" || f.resumed != "la1" {
+		t.Fatalf("%+v stopped=%q resumed=%q", c, f.stopped, f.resumed)
 	}
 }

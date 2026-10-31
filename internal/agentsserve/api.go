@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/agentsapi"
@@ -28,8 +29,12 @@ type Server struct {
 	Assigner Assigner
 	// Sender delivers nudges as Tether mail (A6); nil turns the nudge capability off.
 	Sender Sender
+	// Interrupter and Restarter turn the interrupt and restart capabilities on (A6); nil leaves them off.
+	Interrupter Interrupter
+	Restarter   Restarter
 
-	hub hub
+	hub   hub
+	skips sync.Map // restart request_id -> chan struct{} closed to skip the handoff wait
 }
 
 // Assigner joins a session's task to its Planner theme.

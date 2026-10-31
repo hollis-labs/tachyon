@@ -108,11 +108,21 @@ type httpTether struct {
 // NewTether builds the client with the control token file (catalog.write). Like the other Tether clients it
 // refuses a credential over plain http to a non-loopback host.
 func NewTether(addr, tokenFile string) (Tether, error) {
+	base, c, err := NewControlClient(addr, tokenFile)
+	if err != nil {
+		return nil, err
+	}
+	return &httpTether{base: base, client: c}, nil
+}
+
+// NewControlClient is the authenticated HTTP client for Tether's control address (a unix socket, tcp: or http
+// URL) and the base URL to use with it. The control token never leaves the client.
+func NewControlClient(addr, tokenFile string) (string, *http.Client, error) {
 	if strings.TrimSpace(addr) == "" || tokenFile == "" {
-		return nil, errors.New("Tether address or control token file is missing")
+		return "", nil, errors.New("Tether address or control token file is missing")
 	}
 	if err := upstreamauth.Guard(addr, tokenFile); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	base := strings.TrimRight(addr, "/")
 	tr := http.DefaultTransport.(*http.Transport).Clone()
@@ -129,10 +139,10 @@ func NewTether(addr, tokenFile string) (Tether, error) {
 	}
 	rt, err := upstreamauth.Wrap(tr, base, tokenFile)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
-	return &httpTether{base: base, client: &http.Client{Transport: header{rt}, Timeout: 60 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	return base, &http.Client{Transport: header{rt}, Timeout: 60 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
 }
 
 type header struct{ http.RoundTripper }

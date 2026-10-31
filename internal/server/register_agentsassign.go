@@ -1,7 +1,10 @@
 package server
 
 import (
+	"os"
 	"strings"
+
+	"github.com/hollis-labs/tachyon/internal/builderchange"
 
 	"github.com/hollis-labs/tachyon/internal/builderread"
 	"github.com/hollis-labs/tachyon/internal/forgeassign"
@@ -37,4 +40,18 @@ func (s *Server) agentsSender() agentsserve.Sender {
 		return nil
 	}
 	return &forgeassign.TetherMail{Base: base, Client: c}
+}
+
+// agentsRestarter restarts sessions with the Tether control token (TACHYON_TETHER_CONTROL_TOKEN_FILE, sessions
+// scope). Without it restart stays off.
+func (s *Server) agentsRestarter() agentsserve.Restarter {
+	tf := strings.TrimSpace(os.Getenv("TACHYON_TETHER_CONTROL_TOKEN_FILE"))
+	if tf == "" {
+		return nil
+	}
+	base, c, err := builderchange.NewControlClient(controlAddr(s.cfg.Upstreams.TetherAddr), tf)
+	if err != nil {
+		return nil
+	}
+	return &agentsserve.TetherRestarter{Base: base, Client: c}
 }
