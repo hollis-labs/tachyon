@@ -26,14 +26,15 @@ func (c *Cards) Seed(ctx context.Context, shape, tag string) ([]string, error) {
 	noop := []map[string]any{{"target": "test:noop", "op": "annotate", "summary": "Nothing happens."}}
 	del := []map[string]any{{"target": "test:noop", "op": "delete", "summary": "Pretend delete; nothing happens."}}
 	items := []map[string]any{{"ref": "test:item/1", "label": "Test item 1", "kind": "test"}, {"ref": "test:item/2", "label": "Test item 2", "kind": "test"}}
+	destructive := map[string]any{"irreversible": true, "summary": "Pretend delete of two test items."}
 	var specs []spec
 	switch shape {
 	case "a":
 		specs = []spec{{"TEST (a) approve or deny: medium command", map[string]any{"class": "medium", "effects": noop}}}
 	case "b":
-		specs = []spec{{"TEST (b) destructive: confirm phrase", map[string]any{"class": "high", "effects": del, "affected_items": items, "destructive": true}}}
+		specs = []spec{{"TEST (b) destructive: confirm phrase", map[string]any{"class": "medium", "effects": del, "affected_items": items, "destructive": destructive}}}
 	case "c":
-		specs = []spec{{"TEST (c) destructive with alternatives", map[string]any{"class": "medium", "effects": del, "affected_items": items, "destructive": true,
+		specs = []spec{{"TEST (c) destructive with alternatives", map[string]any{"class": "medium", "effects": del, "affected_items": items, "destructive": destructive,
 			"alternatives": []map[string]any{{"id": "archive", "label": "Archive instead", "effects": noop}}}}}
 	case "d":
 		specs = []spec{{"TEST (d) needs a reason to deny", map[string]any{"class": "medium", "effects": noop, "reason_required": true}}}
