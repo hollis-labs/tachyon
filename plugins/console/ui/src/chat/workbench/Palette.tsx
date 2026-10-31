@@ -12,6 +12,8 @@ export interface PaletteActions {
   onCopyLink?: () => void
   onPanel?: (panel: 'plan' | 'work') => void
   onDrawer?: (mode: 'scratch' | 'terminal' | 'workspace') => void
+  /** Puts text in the composer; backs the Create > Card row. */
+  onDraft?: (text: string) => void
 }
 
 const MODES = [
@@ -39,6 +41,7 @@ export function ChatPalette({ open, onOpenChange, a }: { open: boolean; onOpenCh
       if (a.onTogglePin) add({ id: 'pin', mode: 'chat', group: 'Chat', label: a.active.pinned ? 'Unpin this chat' : 'Pin this chat', text: 'pin unpin chat' }, a.onTogglePin)
       if (a.onCopyLink) add({ id: 'link', mode: 'chat', group: 'Chat', label: 'Copy link to this chat', text: 'copy link chat' }, a.onCopyLink)
     }
+    if (a.active && a.onDraft) add({ id: 'create-card', mode: 'create', group: 'Card', label: 'Ask the agent to draft a card', text: 'card draft', always: true }, () => undefined)
     for (const o of a.startOptions) add({ id: `start-${o.id}`, mode: 'create', group: 'Chat', label: `Start a chat with ${o.label}`, text: `start new chat ${o.label}` }, o.onSelect)
     for (const t of a.threads) add({ id: `open-${t.id}`, mode: 'open', group: 'Chat', label: `${t.title}${t.lastPreview ? ` · ${t.lastPreview.slice(0, 50)}` : ''}`, text: `${t.title} ${t.lastPreview ?? ''}` }, () => a.onOpenThread(t.id))
     return { list, run }
@@ -50,7 +53,10 @@ export function ChatPalette({ open, onOpenChange, a }: { open: boolean; onOpenCh
       title="Chat commands"
       modes={MODES}
       commands={cmds.list}
-      onRun={(id) => cmds.run.get(id)?.()}
+      onRun={(id, q) => {
+        if (id === 'create-card') a.onDraft?.(q ? `Draft a ${q} card` : 'Draft a card')
+        else cmds.run.get(id)?.()
+      }}
       emptyLabel="Nothing matches."
       hints={<><PaletteHint k="↵">run</PaletteHint><PaletteHint k="Esc">close</PaletteHint></>}
     />

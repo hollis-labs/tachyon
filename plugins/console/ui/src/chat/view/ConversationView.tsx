@@ -145,7 +145,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
         onRemoveStrip={(id) => ws.share(id, false)}
         extra={toolbarStart}
       />
-      {palette && <ChatPalette open={paletteOpen} onOpenChange={setPaletteOpen} a={{ ...palette, onDrawer: openDrawer, onPanel: aside ? (p) => aside.pick(p) : undefined }} />}
+      {palette && <ChatPalette open={paletteOpen} onOpenChange={setPaletteOpen} a={{ ...palette, onDrawer: openDrawer, onDraft: (t) => { setValue(t); area.current?.focus() }, onPanel: aside ? (p) => aside.pick(p) : undefined }} />}
     </div>
   )
 }
