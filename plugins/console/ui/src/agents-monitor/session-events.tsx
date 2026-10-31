@@ -119,7 +119,7 @@ export function EventFeed({ entries, now, limit, label, time = 'age', onMore }: 
       <span aria-hidden className="absolute bottom-3 left-3 top-3 border-l border-border" />
       {days.map((d) => (
         <section key={d.day} className="flex flex-col">
-          <h4 className="relative z-10 flex items-center gap-3 py-1.5"><span aria-hidden className="size-6 shrink-0" /><Chip className={cn('h-5 bg-bg-elevated', CAPTION, 'normal-case tracking-normal')}>{d.day}</Chip></h4>
+          <h2 className="relative z-10 flex items-center gap-3 py-1.5"><span aria-hidden className="size-6 shrink-0" /><Chip className={cn('h-5 bg-bg-elevated', CAPTION, 'normal-case tracking-normal')}>{d.day}</Chip></h2>
           <ul className="flex flex-col">{d.rows.map((e) => <Row key={e.id} e={e} now={now} time={time} />)}</ul>
         </section>
       ))}
