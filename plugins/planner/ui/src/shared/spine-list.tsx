@@ -79,8 +79,11 @@ export function SpineList({ groups, selectedId, onSelect, onTogglePin, label, pe
   return (
     <div ref={root} role="listbox" aria-label={label} onKeyDown={onKeyDown} className={cn('flex min-w-0 flex-col', className)}>
       {groups.map((g) => (
-        <div key={g.id} role="group" aria-labelledby={`spine-${g.id}`} className="flex flex-col">
-          <GroupHeading id={`spine-${g.id}`} count={g.items.length} onToggle={g.collapsed ? () => toggle(g.id) : undefined} open={!folded(g)}>{g.title}</GroupHeading>
+        <div key={g.id} role="group" aria-label={g.collapsed ? undefined : g.title} aria-labelledby={g.collapsed ? `spine-${g.id}` : undefined} className="flex flex-col">
+          {/* A listbox group may own only options: the plain heading is visual (the group is named by aria-label); a collapsible heading is a real button and stays exposed. */}
+          <div aria-hidden={g.collapsed ? undefined : true}>
+            <GroupHeading id={`spine-${g.id}`} count={g.items.length} onToggle={g.collapsed ? () => toggle(g.id) : undefined} open={!folded(g)}>{g.title}</GroupHeading>
+          </div>
           {!folded(g) && g.items.map((it) => {
             const selected = it.id === selectedId
             return (
