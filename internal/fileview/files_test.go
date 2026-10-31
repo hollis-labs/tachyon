@@ -269,3 +269,37 @@ func TestAuditRowsCarryNoContentOrQuery(t *testing.T) {
 		t.Errorf("audit rows missing: %+v", found)
 	}
 }
+
+func TestListOmitsSecretsAndRejectsEscapes(t *testing.T) {
+	e := filesSetup(t)
+	w := e.do("GET", "/api/plugins/console/v1/files/list?root=dev", "")
+	if w.Code != 200 {
+		t.Fatalf("list: %d %s", w.Code, w.Body)
+	}
+	var out struct {
+		Entries []Entry `json:"entries"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, en := range out.Entries {
+		names[en.Name] = en.Kind
+	}
+	if names["sub"] != "dir" || names["readme.md"] != "file" || out.Entries[0].Kind != "dir" {
+		t.Fatalf("entries: %+v", out.Entries)
+	}
+	for _, hidden := range []string{".env", "id_rsa", "to-env", "innocent.txt", "etc-dir", "to-etc"} {
+		if _, ok := names[hidden]; ok {
+			t.Fatalf("%s must be omitted: %+v", hidden, out.Entries)
+		}
+	}
+	if w := e.do("GET", "/api/plugins/console/v1/files/list?root=dev&path=sub", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "notes.txt") {
+		t.Fatalf("sub: %d %s", w.Code, w.Body)
+	}
+	for _, q := range []string{"root=dev&path=../.ssh", "root=nope", "root=dev&path=readme.md"} {
+		if w := e.do("GET", "/api/plugins/console/v1/files/list?"+q, ""); w.Code != 400 && w.Code != 404 {
+			t.Fatalf("%s: %d", q, w.Code)
+		}
+	}
+}

@@ -38,6 +38,16 @@ paths:
         "403": {description: "denied (secret_pattern, symlink_escape) or namespace_not_allowed", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
         "404": {description: not_found_or_hidden or not_found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
         "413": {description: over the inline cap; fetch in ranges, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /list:
+    get:
+      summary: Entries of one directory under an allow-listed root (project tree). Secret names and links leaving the root are omitted; dirs first, at most 1000 entries (truncated=true beyond).
+      parameters:
+        - {name: root, in: query, required: true, schema: {type: string}, description: "A root id from /roots."}
+        - {name: path, in: query, schema: {type: string}, description: "Directory relative to the root; no '..'."}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {root: {type: string}, path: {type: string}, truncated: {type: boolean}, entries: {type: array, items: {type: object, required: [name, kind], properties: {name: {type: string}, kind: {type: string, enum: [dir, file]}, size: {type: integer}, mtime: {type: integer}}}}}}}}}
+        "400": {$ref: "#/components/responses/Error"}
+        "404": {description: not_found_or_hidden, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /frame:
     post:
       summary: Mint a one-time frame document for an HTML file or caster ref. Load frame_url in an iframe with sandbox="" (no allow-same-origin).

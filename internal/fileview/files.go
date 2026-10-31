@@ -35,6 +35,7 @@ func (f *Files) Mount(mux *http.ServeMux, guard func(http.Handler) http.Handler)
 	}
 	mux.Handle("POST "+fileviewapi.Prefix+"/stat", guard(http.HandlerFunc(f.stat)))
 	mux.Handle("GET "+fileviewapi.Prefix+"/content", guard(http.HandlerFunc(f.content)))
+	mux.Handle("GET "+fileviewapi.Prefix+"/list", guard(http.HandlerFunc(f.list)))
 }
 
 // Stat is one item of the POST /stat answer.
