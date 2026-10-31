@@ -142,7 +142,7 @@ Migration `038_catalog_changes.sql` (take the next free number at merge).
   `restore_version`. `restore_version` takes the masked snapshot, keeps the live env values and refuses a masked value
   the live file cannot supply (400 `restore_masked`). Text containing a `tachyon:prompt` marker is 400
   `marker_forbidden`; a file over 256 KiB or text over 64 KiB is 413. Targets: agent, launch, project, skill.
-  **Environment values are not writable from the Builder yet** (400 `env_write_unsupported`).
+  **Launch environment variables are writable** with `set`/`remove` on path `env.NAME` (upper-case name, string value up to 4 KiB). Values stay write-only: reads, diffs and snapshots mask them, and a launch carrying env values is never handed to a session. Agent, project and `provider_overrides` env stay refused (400 `env_write_unsupported`).
 - **Submit** needs `ack_privileged` when the edit touches a privileged field or Tether's plan lists privileged files
   (400 `ack_required`). The change moves to `awaiting_approval`; `plan.approve_command` is what the operator runs on
   the host. `rearm` rebuilds the bundle on the live files and plans again (same bundle, same `plan_id`).
