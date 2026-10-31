@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { operatorFetch } from '../operator/elevation'
 import { AGENTS_BASE } from './data'
 
 export class AgentsApiError extends Error {
@@ -8,7 +9,8 @@ export class AgentsApiError extends Error {
 }
 
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
-  const r = await fetch(`${AGENTS_BASE}${path}`, {
+  // Writes answer 403 assurance_insufficient until the operator key is entered; operatorFetch prompts and replays once.
+  const r = await (method === 'GET' ? fetch : operatorFetch)(`${AGENTS_BASE}${path}`, {
     method,
     credentials: 'same-origin',
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
