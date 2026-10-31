@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
@@ -21,6 +22,20 @@ func mountPlannerAssign(s *Server, mux *http.ServeMux, operator *approvals.Bridg
 		return
 	}
 	svc := plannerassign.New(objects.New(s.store), strings.TrimRight(strings.TrimSpace(s.cfg.Upstreams.TorqueURL), "/"))
+	planner.TaskAssignment = func(ctx context.Context, task string) planner.Item {
+		as, err := svc.Assignees(ctx, task)
+		if err != nil || len(as) == 0 {
+			return nil
+		}
+		a := as[0]
+		out := planner.Item{"id": a.ID, "state": a.State}
+		if a.AgentID != "" {
+			out["agent_id"] = a.AgentID
+		} else {
+			out["team_id"] = a.TeamID
+		}
+		return out
+	}
 	h := operator.RequireOperator(svc.Handler())
 	for _, route := range plannerassign.Routes {
 		method, path, _ := strings.Cut(route, " ")
