@@ -73,6 +73,7 @@ export interface AgentDetail {
     network?: string | null
     default_sandbox?: string | null
     mcp_scopes?: string[]
+    rules?: string[]
   }
   launches?: { id: string; project: string; worker: string; enabled: boolean; live_count: number }[]
   revision?: {

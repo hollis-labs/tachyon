@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { BuilderShell } from './BuilderShell'
 import { type Launch, builderApi, errorMessage } from './api'
 import { newRequestId } from './changes'
+import { EnvDialog } from './EnvDialog'
 import { EntityDialog, LAUNCH_FIELDS } from './EntityDialog'
 import { useChangeMode } from './capabilities'
 import { Cite, Field, Muted, RailCard } from './parts'
@@ -49,7 +50,7 @@ const launchValues = (l: Launch): Record<string, string | boolean> => ({
 
 function LaunchDetail({ l, agentName, onChanged }: { l: Launch; agentName: string; onChanged: () => void }) {
   const [mode] = useChangeMode()
-  const [dialog, setDialog] = useState<'edit' | 'duplicate'>()
+  const [dialog, setDialog] = useState<'edit' | 'duplicate' | 'env'>()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -99,6 +100,9 @@ function LaunchDetail({ l, agentName, onChanged }: { l: Launch; agentName: strin
             <Button type="button" variant="outline" size="sm" onClick={() => setDialog('duplicate')}>
               Duplicate
             </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setDialog('env')}>
+              Set variable
+            </Button>
           </>
         )}
         <span className="flex-1" />
@@ -112,7 +116,8 @@ function LaunchDetail({ l, agentName, onChanged }: { l: Launch; agentName: strin
         </p>
       )}
       <Muted>Launching opens the session on Agents. Saving never changes a running session.</Muted>
-      {dialog && (
+      {dialog === 'env' && <EnvDialog launchId={l.id} sha={l.sha} onClose={() => setDialog(undefined)} onApplied={onChanged} />}
+      {dialog && dialog !== 'env' && (
         <EntityDialog
           kind="launch"
           mode={dialog === 'edit' ? 'edit' : 'create'}
