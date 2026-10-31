@@ -1,0 +1,315 @@
+{
+ "collector": {
+  "collecting": true,
+  "sessions": 30,
+  "last_event_at": null,
+  "strategy": "snapshot",
+  "sources": {
+   "tether": {
+    "detail": "",
+    "state": "streaming"
+   }
+  },
+  "dropped_output_frames": 0,
+  "open_gaps": 32,
+  "retention": {
+   "last_run_at": 1793405141313,
+   "rows_pruned": 0
+  },
+  "bus_topics": {
+   "card": "off",
+   "deploy": "off",
+   "failure": "off",
+   "host": "no_emitter",
+   "lifecycle": "off",
+   "restart": "off",
+   "task": "off",
+   "workstream": "no_emitter"
+  }
+ },
+ "sessions": [
+  {
+   "id": "15e26ba8-85dd-4e6b-9146-13a9c8d5c808",
+   "agent": {
+    "urn": null,
+    "name": "session 15e26ba8",
+    "logical_agent_id": null
+   },
+   "kind": "process",
+   "provider": "",
+   "model": null,
+   "workroot": "",
+   "state": "idle",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793331803000,
+   "last_activity_at": 1793331803000,
+   "runtime_ms": 73459730,
+   "one_liner": null,
+   "context": {
+    "used": null,
+    "window": null,
+    "pct": null,
+    "source": "unknown",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": false,
+    "input": null,
+    "output": null,
+    "cache_read": null,
+    "cache_write": null,
+    "hour": null
+   },
+   "tool_call_count": 0,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": false,
+    "interrupt": {
+     "available": false,
+     "reason": "Tether has no session interrupt yet."
+    },
+    "restart": false
+   }
+  },
+  {
+   "id": "c2628a8e-87a3-49cc-9ab7-3d69b596b860",
+   "agent": {
+    "urn": null,
+    "name": "session c2628a8e",
+    "logical_agent_id": null
+   },
+   "kind": "process",
+   "provider": "",
+   "model": null,
+   "workroot": "",
+   "state": "idle",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793331803000,
+   "last_activity_at": 1793331803000,
+   "runtime_ms": 73459730,
+   "one_liner": null,
+   "context": {
+    "used": null,
+    "window": null,
+    "pct": null,
+    "source": "unknown",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": false,
+    "input": null,
+    "output": null,
+    "cache_read": null,
+    "cache_write": null,
+    "hour": null
+   },
+   "tool_call_count": 0,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": false,
+    "interrupt": {
+     "available": false,
+     "reason": "Tether has no session interrupt yet."
+    },
+    "restart": false
+   }
+  },
+  {
+   "id": "f336c821-a8a8-48a7-b1a1-b1389217a2dc",
+   "agent": {
+    "urn": null,
+    "name": "session f336c821",
+    "logical_agent_id": null
+   },
+   "kind": "process",
+   "provider": "",
+   "model": null,
+   "workroot": "",
+   "state": "idle",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793331803000,
+   "last_activity_at": 1793331803000,
+   "runtime_ms": 73459730,
+   "one_liner": null,
+   "context": {
+    "used": null,
+    "window": null,
+    "pct": null,
+    "source": "unknown",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": false,
+    "input": null,
+    "output": null,
+    "cache_read": null,
+    "cache_write": null,
+    "hour": null
+   },
+   "tool_call_count": 0,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": false,
+    "interrupt": {
+     "available": false,
+     "reason": "Tether has no session interrupt yet."
+    },
+    "restart": false
+   }
+  }
+ ],
+ "summary": {
+  "idle": 3,
+  "stale": 1,
+  "unknown": 27,
+  "waiting": 0,
+  "working": 0
+ }
+}

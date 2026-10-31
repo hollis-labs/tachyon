@@ -172,6 +172,7 @@ const CHART_H = 110
 
 /** Context use over time: the line, a dashed warning line, and a dot where context was compacted (hollow when inferred). */
 function ContextChart({ d }: { d: Series }) {
+  d = { ...d, compactions: d.compactions ?? [], clears: d.clears ?? [] }
   const t0 = d.points[0].at
   const span = Math.max(1, d.points[d.points.length - 1].at - t0)
   const x = (at: number) => ((at - t0) / span) * 100
@@ -190,7 +191,7 @@ function ContextChart({ d }: { d: Series }) {
         <line x1="0" x2="600" y1={y(d.warn_pct)} y2={y(d.warn_pct)} stroke="currentColor" strokeDasharray="4 4" className="text-danger" opacity="0.6" vectorEffect="non-scaling-stroke" />
         <polyline fill="none" stroke="currentColor" strokeWidth="1.5" points={pts} vectorEffect="non-scaling-stroke" />
       </svg>
-      {d.compactions.map((c) => (
+      {(d.compactions ?? []).map((c) => (
         <i key={c.at} aria-hidden title={c.inferred ? M.inferred : undefined} className={cn('absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-fg', c.inferred ? 'bg-bg-elevated' : 'bg-fg')} style={{ left: `${x(c.at)}%`, top: y(pctAt(c.at)) }} />
       ))}
     </div>
@@ -206,13 +207,13 @@ export function ContextTab({ s, now }: { s: Session; now: number }) {
       <section aria-labelledby="ctx-chart" className="flex flex-col gap-2 rounded-panel border border-border p-3">
         <h3 id="ctx-chart" className={caption}>{M.contextOverTime}</h3>
         <Panel read={series}>
-          {(d) => d.points.length < 2 ? <p className="text-xs text-fg-muted">{M.noSeries}</p> : (
+          {(d) => (d.points ?? []).length < 2 ? <p className="text-xs text-fg-muted">{M.noSeries}</p> : (
             <>
               <ContextChart d={d} />
               <div className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-caption text-fg-muted">
-                {d.compactions.map((c) => <span key={c.at}>⟲ {M.compaction}{c.before != null && c.after != null ? ` ${compact(c.before)} → ${compact(c.after)}` : ''} ({ageText(now - c.at)} ago){c.inferred ? ` · ${M.inferred}` : ''}</span>)}
+                {(d.compactions ?? []).map((c) => <span key={c.at}>⟲ {M.compaction}{c.before != null && c.after != null ? ` ${compact(c.before)} → ${compact(c.after)}` : ''} ({ageText(now - c.at)} ago){c.inferred ? ` · ${M.inferred}` : ''}</span>)}
                 <span>- - {M.warnLine(d.warn_pct)}</span>
-                {d.clears.length > 0 && <span>{M.lastClearLegend} {ageText(now - d.clears[d.clears.length - 1].at)} ago{d.clears[d.clears.length - 1].inferred ? ` · ${M.inferred}` : ''}</span>}
+                {(d.clears ?? []).length > 0 && <span>{M.lastClearLegend} {ageText(now - d.clears[d.clears.length - 1].at)} ago{d.clears[d.clears.length - 1].inferred ? ` · ${M.inferred}` : ''}</span>}
               </div>
             </>
           )}
@@ -253,10 +254,10 @@ export function HistoryTab({ s }: { s: Session }) {
     <section aria-labelledby="hist" className="flex flex-col gap-3.5">
       <h3 id="hist" className={caption}>{M.historyTitle}</h3>
       <Panel read={read}>
-        {(d) => d.sessions.length === 0 ? <p className="text-xs text-fg-muted">{M.historyEmpty}</p> : (
+        {(d) => (d.sessions ?? []).length === 0 ? <p className="text-xs text-fg-muted">{M.historyEmpty}</p> : (
           <div className="grid grid-cols-[1.2fr_80px_90px_90px_1.4fr] gap-x-2 text-xs text-fg-secondary max-sm:grid-cols-[1fr_70px_70px]">
             {[M.started, M.ran, M.tokensTitle, M.toolCalls, M.ended].map((h, i) => <div key={h} className={cn('border-b border-border-subtle pb-1', caption, i > 2 && 'max-sm:hidden')}>{h}</div>)}
-            {[{ id: s.id, started_at: s.started_at, ran_ms: s.runtime_ms, tokens: total, tools: s.tool_call_count, reason: M.running, current: true }, ...d.sessions.map((h) => ({ id: h.session_id, started_at: h.started_at, ran_ms: h.ran_ms, tokens: s.tokens.metered || h.tokens ? compact((h.tokens.input ?? 0) + (h.tokens.output ?? 0)) : M.unmetered, tools: h.tool_calls, reason: h.end_reason, current: false }))].map((h) => (
+            {[{ id: s.id, started_at: s.started_at, ran_ms: s.runtime_ms, tokens: total, tools: s.tool_call_count, reason: M.running, current: true }, ...(d.sessions ?? []).map((h) => ({ id: h.session_id, started_at: h.started_at, ran_ms: h.ran_ms, tokens: h.tokens ? compact((h.tokens.input ?? 0) + (h.tokens.output ?? 0)) : M.unmetered, tools: h.tool_calls, reason: h.end_reason, current: false }))].map((h) => (
               <div key={h.id} className="contents">
                 <div className="border-b border-border-subtle py-1.5 text-fg">{when(h.started_at)}{h.current && ` · ${M.current}`}</div>
                 <div className="border-b border-border-subtle py-1.5 font-mono">{h.ran_ms > 0 ? ageText(h.ran_ms) : M.na}</div>

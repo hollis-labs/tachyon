@@ -10,7 +10,7 @@ export type GroupBy = 'workroot' | 'agent' | 'none'
 export const needsYou = (s: Session) => s.needs_you.reason !== null
 
 const groupKey = (s: Session, by: GroupBy) => (by === 'workroot' ? s.workroot : by === 'agent' ? s.agent.name : '')
-const groupTitle = (key: string) => (key ? key.split('/').filter(Boolean).pop() ?? key : AGENTS.sessionsList)
+const groupTitle = (key: string, by: GroupBy = 'none') => (key ? key.split('/').filter(Boolean).pop() ?? key : by === 'none' ? AGENTS.sessionsList : AGENTS.noWorkspace)
 
 /** Two initials for a name of several words, the first letter for a single word. */
 export const initials = (name: string) => {
@@ -33,7 +33,7 @@ export function SessionChips({ s }: { s: Session }) {
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1">
       <Chip square>{AGENTS.kind[s.kind]}</Chip>
-      <Chip square>{s.provider}</Chip>
+      {s.provider && <Chip square>{s.provider}</Chip>}
       {s.needs_you.reason && <Chip tone="danger" title={s.needs_you.since ? `${AGENTS.sinceLabel} ${ageText(Date.now() - s.needs_you.since)}` : undefined}>{AGENTS.needsYouChip[s.needs_you.reason]}</Chip>}
       {s.state === 'stale' && <Chip tone="warning">{AGENTS.states.stale.toLowerCase()}</Chip>}
       {s.state === 'stale' && s.stale_reason && <Chip tone="warning">{AGENTS.staleReasonChip(s.stale_reason)}</Chip>}
@@ -152,16 +152,16 @@ export function SessionRows({ sessions, groupBy, now, selectedId, onSelect }: { 
       {groups.map((g) => {
         const working = g.list.filter((s) => s.state === 'working').length
         return (
-          <section key={g.key || 'all'} aria-label={groupTitle(g.key)}>
+          <section key={g.key || 'all'} aria-label={groupTitle(g.key, groupBy)}>
             {groupBy !== 'none' && (
               <h3 className={cn('flex items-center gap-2.5 px-4 pb-1.5 pt-3.5', CAPTION)}>
-                <span>{groupTitle(g.key)}</span>
+                <span>{groupTitle(g.key, groupBy)}</span>
                 <span className="text-fg-faint">{AGENTS.sessionCount(g.list.length)}</span>
                 <span className="flex-1" />
                 <span className="text-fg-faint">{AGENTS.workingCount(working)}</span>
               </h3>
             )}
-            <ul aria-label={groupTitle(g.key)}>
+            <ul aria-label={groupTitle(g.key, groupBy)}>
               {g.list.map((s) => (
                 <SessionRow key={s.id} s={s} now={now} selected={s.id === selectedId} tabbable={selectedId ? s.id === selectedId : s.id === firstId} onOpen={onSelect} />
               ))}

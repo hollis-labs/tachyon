@@ -9,6 +9,7 @@ import { Btn } from '../agents/ui'
 import { LaunchAgentDialog } from '../fleet/LaunchAgentDialog'
 import { useAgentsMonitor } from './data'
 import { ActivityTab } from './activity-tab'
+import { AgentsErrorBoundary } from './error-boundary'
 import { SessionModal } from './session-modal'
 import { ageText } from './session-parts'
 import { SessionBoard, SessionCards, SessionRows, matchesFilter, matchesQuery, useViewState, type GroupBy, type SessionView } from './sessions-view'
@@ -109,7 +110,7 @@ export function AgentsPage() {
         </div>
       )}
       {tab === 'teams' && <div className="flex-1 overflow-auto"><TeamOperations /></div>}
-      {tab === 'activity' && <ActivityTab busTick={busTick} now={now} />}
+      {tab === 'activity' && <AgentsErrorBoundary><ActivityTab busTick={busTick} now={now} /></AgentsErrorBoundary>}
       {tab === 'sessions' && (
         <>
           {stale && <p role="status" className="border-b border-border px-4 py-2 dash-caption text-fg-muted">{AGENTS.reconnecting}</p>}
@@ -133,16 +134,19 @@ export function AgentsPage() {
             ) : visible.length === 0 ? (
               <EmptyState variant="empty" title={AGENTS.noMatch} description="" action={{ label: AGENTS.clearFilters, onClick: () => (setFilter('all'), setQuery('')) }} />
             ) : (
+              <AgentsErrorBoundary resetKey={`${view}${groupBy}`}>
               <div className={stale ? 'opacity-60' : undefined}>
                 {view === 'rows' && <SessionRows sessions={visible} groupBy={groupBy} now={now} selectedId={openId} onSelect={openSession} />}
                 {view === 'cards' && <SessionCards sessions={visible} now={now} onSelect={openSession} />}
                 {view === 'board' && <SessionBoard sessions={visible} now={now} onSelect={openSession} />}
               </div>
+              </AgentsErrorBoundary>
             )}
           </div>
         </>
       )}
       {openRow && (
+        <AgentsErrorBoundary resetKey={openRow.id} onClose={() => navigate(`/agents${params.toString() ? `?${params}` : ''}`)}>
         <SessionModal
           key={openRow.id}
           session={openRow}
@@ -151,6 +155,7 @@ export function AgentsPage() {
           onClose={() => navigate(`/agents${params.toString() ? `?${params}` : ''}`)}
           onRestarted={(next) => (void refetch(), navigate(next ? `/agents/${encodeURIComponent(next)}` : '/agents'))}
         />
+        </AgentsErrorBoundary>
       )}
       <LaunchAgentDialog open={launchOpen} onClose={() => setLaunchOpen(false)} onLaunched={() => void refetch()} />
     </div>

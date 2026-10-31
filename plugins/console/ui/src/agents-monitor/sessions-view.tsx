@@ -35,7 +35,7 @@ export function SessionCards({ sessions, now, onSelect }: { sessions: readonly S
               <Avatar name={s.agent.name} />
               <span className="flex min-w-0 flex-col">
                 <b className="truncate text-control font-semibold text-fg">{s.agent.name}</b>
-                <span className="text-label text-fg-muted">{AGENTS.kind[s.kind]} · {s.provider}{needsYou(s) && <> · <span className="text-danger">{AGENTS.needsYouChip[s.needs_you.reason!]}</span></>}{s.state === 'stale' && <> · {AGENTS.states.stale.toLowerCase()}{s.stale_reason && ` (${AGENTS.staleReasonChip(s.stale_reason)})`}</>}</span>
+                <span className="text-label text-fg-muted">{AGENTS.kind[s.kind]}{s.provider ? ` · ${s.provider}` : ''}{needsYou(s) && <> · <span className="text-danger">{AGENTS.needsYouChip[s.needs_you.reason!]}</span></>}{s.state === 'stale' && <> · {AGENTS.states.stale.toLowerCase()}{s.stale_reason && ` (${AGENTS.staleReasonChip(s.stale_reason)})`}</>}</span>
               </span>
               <span className="flex-1" />
               <SessionDot s={s} />

@@ -12,6 +12,11 @@ export interface StreamEvent {
   collector?: Partial<Collector>
 }
 
+/** The server sends null for an empty list and "" for unknown text; the UI reads arrays and never a null list. */
+export function normalizeSessions(r: SessionsResponse): SessionsResponse {
+  return { ...r, summary: r.summary ?? {}, sessions: (r.sessions ?? []).map((s) => ({ ...s, spark: s.spark ?? [], needs_you: s.needs_you ?? { reason: null, since: null }, context: s.context ?? { used: null, window: null, pct: null, source: 'unknown', breakdown: null }, tokens: s.tokens ?? { metered: false, input: null, output: null, cache_read: null, cache_write: null }, pending: s.pending ?? { approval: false, question: false, known: false }, capabilities: s.capabilities ?? { nudge: false, interrupt: { available: false, reason: null }, restart: false } })) }
+}
+
 const isFull = (p: Partial<Session> & { id: string }): p is Session => !!p.agent && !!p.needs_you && !!p.context
 
 /** Applies one live snapshot to the held data. bus, control and gap do not change the sessions list. */
@@ -43,7 +48,7 @@ export function useAgentsMonitor() {
     try {
       const r = await fetch(`${AGENTS_BASE}/sessions`)
       if (!r.ok) throw new Error(`The server answered ${r.status}`)
-      setData((await r.json()) as SessionsResponse)
+      setData(normalizeSessions((await r.json()) as SessionsResponse))
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load')

@@ -45,7 +45,7 @@ const FACET_OF: Record<string, string> = { tool: 'tools', message: 'messages', a
 
 /** Events newest first, with collection gaps put where they happened and never filled in. */
 export function toTimeline(d: EventsResponse, now: number): Entry[] {
-  const rows: Entry[] = d.events.map((e, i) => {
+  const rows: Entry[] = (d.events ?? []).map((e, i) => {
     const at = e.at ?? e.started_at ?? 0
     const isRun = e.type === 'tool_run'
     return {
@@ -58,11 +58,11 @@ export function toTimeline(d: EventsResponse, now: number): Entry[] {
       tone: e.type === 'error' ? 'blocked' : 'neutral',
       summary: e.summary,
       calls: e.calls,
-      children: e.events,
+      children: e.events ?? undefined,
       card: e.card,
     }
   })
-  const gaps: Entry[] = d.gaps.map((g, i) => ({ id: `gap${i}`, at: g.end, day: dayLabel(g.end, now), time: clock(g.end), facet: 'lifecycle', type: 'gap', tone: 'neutral', summary: M.gap(g.reason), gap: g.reason }))
+  const gaps: Entry[] = (d.gaps ?? []).map((g, i) => ({ id: `gap${i}`, at: g.end, day: dayLabel(g.end, now), time: clock(g.end), facet: 'lifecycle', type: 'gap', tone: 'neutral', summary: M.gap(g.reason), gap: g.reason }))
   return [...rows, ...gaps].sort((a, b) => b.at - a.at)
 }
 
