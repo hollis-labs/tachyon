@@ -98,6 +98,11 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
 
   const [tab, setTab] = useState<Tab>('files')
   const [mode, setMode] = useState<DiffMode>(initialMode)
+  const validateQueued = useMemo(() => {
+    const headSha = ws.load.status === 'ready' ? ws.load.data.pr.headSha : undefined
+    if (!client.validateReview || !headSha) return undefined
+    return (pending: typeof ws.pending) => client.validateReview!(prRef, { headSha, comments: pending.map((c) => ({ body: c.body, path: c.path, line: c.line, side: c.side })) })
+  }, [client, prRef, ws.load])
   const [reviewing, setReviewing] = useState(false)
   const [asking, setAsking] = useState<AssignTask | null>(null)
   const [mergeBusy, setMergeBusy] = useState(false)
@@ -244,7 +249,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
       }} />}
 
       {reviewing && !readOnly && (
-        <ReviewPanel prLabel={`${prRef.repo.name}#${prRef.number}`} pending={ws.pending} onUnqueue={ws.unqueueComment} onClose={() => setReviewing(false)} onSubmit={({ verdict, body }) => ws.submitReview({ verdict, body })} />
+        <ReviewPanel validate={validateQueued} prLabel={`${prRef.repo.name}#${prRef.number}`} pending={ws.pending} onUnqueue={ws.unqueueComment} onClose={() => setReviewing(false)} onSubmit={({ verdict, body }) => ws.submitReview({ verdict, body })} />
       )}
       {asking && <AssignDialog pr={toSummary(pr)} existing={[]} initialTask={asking} onClose={() => setAsking(null)} />}
 

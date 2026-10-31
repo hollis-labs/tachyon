@@ -238,6 +238,10 @@ export interface ReviewInput {
   comments?: Omit<AddCommentInput, 'inReplyTo'>[]
 }
 
+export type CommentCheck = 'ok' | 'outdated' | 'invalid_line'
+/** POST reviews/validate: whether queued inline comments still land on the current head. */
+export interface ReviewValidation { headMoved: boolean; statuses: CommentCheck[] }
+
 export interface AssignInput {
   /** Full replacement set of assignee logins. */
   assignees: string[]
