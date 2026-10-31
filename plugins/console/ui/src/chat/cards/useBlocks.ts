@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { approvalClient, type ApprovalResponse } from '../../approvals/client'
 import { chatJSON } from '../roster'
+import { useThreadFrames } from '../live'
 import { demoBlocks } from './fixtures'
 import type { Commit } from './Cards'
 import type { StreamBlock } from './types'
@@ -46,17 +47,19 @@ export const DEMO = typeof location !== 'undefined' && new URLSearchParams(locat
 export function useBlocks(ref: string | undefined) {
   const demo = DEMO
   const [blocks, setBlocks] = useState<StreamBlock[]>([])
+  const loadRef = useRef<() => Promise<void> | void>(() => undefined)
   useEffect(() => {
     if (demo) { setBlocks(demoBlocks(Date.now())); return }
     if (!ref) { setBlocks([]); return }
     let live = true
-    const load = () => chatJSON<{ cards: ApiCard[] }>(`/threads/${encodeURIComponent(ref)}/cards`)
+    loadRef.current = () => chatJSON<{ cards: ApiCard[] }>(`/threads/${encodeURIComponent(ref)}/cards`)
       .then((d) => { if (live) setBlocks((d.cards ?? []).map(cardToBlock).filter((b): b is StreamBlock => !!b)) })
       .catch(() => undefined)
-    void load()
-    const t = setInterval(load, 5000)
-    return () => { live = false; clearInterval(t) }
+    void loadRef.current()
+    return () => { live = false }
   }, [ref, demo])
+  // A `card` frame (or a reconnect) means the bound cards changed: refetch. No interval.
+  useThreadFrames(ref, (f) => { if (f.type === 'card' || f.type === 'reconnected') void loadRef.current() }, !demo)
 
   /** Answers go through the Approvals queue, the only record of the decision; demo blocks have no item and stay local. */
   const commit: Commit = useCallback(async (block, value) => {

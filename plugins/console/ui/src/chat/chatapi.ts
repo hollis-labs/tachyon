@@ -1,4 +1,5 @@
 import { CONSOLE_API_BASE, consoleJson } from '../lib/http'
+import { threadHub } from './live'
 import type { ChatClient, ChatEvent, ChatMessage, HistoryQuery } from './types'
 
 /** A conversation id for one chat API session thread. Everything else goes to the wrapped client. */
@@ -61,7 +62,6 @@ export function withChatApiMessages(base: ChatClient, o: ChatApiOptions = {}): C
   const post =
     o.post ?? ((ref, body) => consoleJson<{ id: string }>(path(ref, '/messages'), { method: 'POST', body }))
   const markRead = o.markRead ?? ((ref) => consoleJson(path(ref, '/read'), { method: 'POST' }))
-  const stream = o.stream ?? ((ref) => new EventSource(`${CONSOLE_API_BASE}${path(ref, '/events')}`))
   const newKey = o.newKey ?? (() => crypto.randomUUID())
   const oldestSeq = new Map<string, number>()
   const pending = new Map<string, { body: string; key: string }>()
@@ -118,28 +118,26 @@ export function withChatApiMessages(base: ChatClient, o: ChatApiOptions = {}): C
         }
       }
       void sync()
+      // Default: the shared per-thread stream (one connection for the page). `o.stream` is the test seam.
       let es: EventSource | null = null
-      if (typeof EventSource !== 'undefined') {
-        es = stream(ref)
-        let dropped = false
-        es.onopen = () => {
-          if (dropped) void sync()
-          dropped = false
-        }
-        es.onerror = () => {
-          dropped = true
-        }
-        es.onmessage = (m) => {
-          try {
-            if (CHANGES.has((JSON.parse(m.data) as { type?: string }).type ?? '')) void sync()
-          } catch {
-            /* a malformed frame is skipped */
+      let off: (() => void) | null = null
+      if (o.stream) {
+        if (typeof EventSource !== 'undefined') {
+          es = o.stream(ref)
+          let dropped = false
+          es.onopen = () => { if (dropped) void sync(); dropped = false }
+          es.onerror = () => { dropped = true }
+          es.onmessage = (m) => {
+            try { if (CHANGES.has((JSON.parse(m.data) as { type?: string }).type ?? '')) void sync() } catch { /* a malformed frame is skipped */ }
           }
         }
+      } else {
+        off = threadHub(ref).subscribe((f) => { if (CHANGES.has(f.type) || f.type === 'reconnected') void sync() })
       }
       return () => {
         live = false
         es?.close()
+        off?.()
       }
     },
   }

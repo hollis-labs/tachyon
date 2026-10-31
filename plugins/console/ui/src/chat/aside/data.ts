@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CHAT_BASE, chatJSON } from '../roster'
+import { chatJSON } from '../roster'
+import { useThreadFrames, type Frame } from '../live'
 import { DEMO } from '../cards/useBlocks'
 import { DEMO_ACTIVITY, DEMO_BOOKMARKS, DEMO_PLAN, DEMO_RULES, DEMO_TOPICS, DEMO_WORK } from './fixtures'
 
@@ -15,16 +16,9 @@ export interface WorkItem { id: string; kind: 'theme' | 'task' | 'decision'; tit
 export interface Activity { seq: number; type: string; actor: string; cite?: { kind: string; ref: string; label: string }[]; payload?: { title?: string; summary?: string; body?: string; review_ref?: string; cite?: { label: string }[] } | null; at?: number }
 export interface Rule { id: string; tool: string; effect: string; created_at: number }
 
-/** Server frames for a thread; `panel` frames drive the auto aside, the rest are prompts to refetch. */
-export function useThreadEvents(ref: string | undefined, onFrame: (f: { type: string; [k: string]: unknown }) => void) {
-  const cb = useRef(onFrame)
-  cb.current = onFrame
-  useEffect(() => {
-    if (!ref || DEMO || typeof EventSource === 'undefined') return
-    const es = new EventSource(`${CHAT_BASE}/threads/${enc(ref)}/events`)
-    es.onmessage = (m) => { try { cb.current(JSON.parse(m.data)) } catch { /* a malformed frame is skipped */ } }
-    return () => es.close()
-  }, [ref])
+/** Server frames for a thread (one shared stream); `panel` frames drive the auto aside, the rest are prompts to refetch. */
+export function useThreadEvents(ref: string | undefined, onFrame: (f: Frame) => void) {
+  useThreadFrames(ref, onFrame, !DEMO)
 }
 
 /** Fetch once, refetch on a tick and when `signal` changes. A failed read is an error string, never a crash. */
@@ -43,7 +37,6 @@ function useRead<T>(ref: string | undefined, path: string, pick: (d: never) => T
     // biome-ignore lint/correctness/useExhaustiveDependencies: pick and empty are stable by construction
   }, [ref, path, demo])
   useEffect(() => { void load() }, [load, signal])
-  useEffect(() => { if (demo !== undefined || !ref) return; const t = setInterval(load, 15000); return () => clearInterval(t) }, [load, ref, demo])
   return { data, loading, error, reload: load, set: setData }
 }
 

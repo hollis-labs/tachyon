@@ -37,7 +37,7 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
   // Server frames: `panel` asks for a panel; everything else is a prompt to refetch.
   useThreadEvents(ref, (f) => {
     if (f.type === 'panel' && typeof f.panel === 'string') a.auto(f.panel as PanelId, f.source === 'agent' ? 'opened by agent' : 'opened by system')
-    if (['plan', 'activity', 'topic', 'bookmark', 'workspace', 'card'].includes(f.type)) a.bump()
+    if (['plan', 'activity', 'topic', 'bookmark', 'workspace', 'card', 'reconnected'].includes(f.type)) a.bump()
   })
   // Agent wrote a plan -> Plan. Approval pending -> Approvals. (Frames may not arrive on every host; the read model is the fallback.)
   const hadPlan = useRef(false)
