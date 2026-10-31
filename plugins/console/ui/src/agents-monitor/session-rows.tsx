@@ -1,9 +1,12 @@
-import { useMemo, useRef, type KeyboardEvent } from 'react'
+import { createContext, useContext, useMemo, useRef, type KeyboardEvent } from 'react'
 import { cn } from '@hollis-labs/design-components'
 import { CAPTION, Chip, Kbd } from '@planner/shared'
 import { OneLiner, ageText, stateText } from './session-parts'
 import { AGENTS } from './vocabulary'
 import type { Session } from './types'
+
+/** stale_after_s from the settings, so the stale chip says the real threshold. */
+export const StaleAfterContext = createContext(900)
 
 export type GroupBy = 'workroot' | 'agent' | 'none'
 
@@ -30,13 +33,14 @@ export function SessionDot({ s }: { s: Session }) {
 
 /** Kind, provider and the needs-you or stale chips, in the order the golden draws them. */
 export function SessionChips({ s }: { s: Session }) {
+  const staleAfter = useContext(StaleAfterContext)
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1">
       <Chip square>{AGENTS.kind[s.kind]}</Chip>
       {s.provider && <Chip square>{s.provider}</Chip>}
       {s.needs_you.reason && <Chip tone="danger" title={s.needs_you.since ? `${AGENTS.sinceLabel} ${ageText(Date.now() - s.needs_you.since)}` : undefined}>{AGENTS.needsYouChip[s.needs_you.reason]}</Chip>}
       {s.state === 'stale' && <Chip tone="warning">{AGENTS.states.stale.toLowerCase()}</Chip>}
-      {s.state === 'stale' && s.stale_reason && <Chip tone="warning">{AGENTS.staleReasonChip(s.stale_reason)}</Chip>}
+      {s.state === 'stale' && s.stale_reason && <Chip tone="warning">{AGENTS.staleReasonChip(s.stale_reason, staleAfter)}</Chip>}
     </span>
   )
 }
@@ -48,6 +52,19 @@ export function SessionLine({ s, now }: { s: Session; now: number }) {
       <SessionDot s={s} />
       <span className="sr-only">{stateText(s, now)}.</span>
       {s.one_liner ? <OneLiner line={s.one_liner} now={now} fallback={AGENTS.noActivity} /> : <span className="truncate text-fg-secondary">{stateText(s, now)}</span>}
+    </span>
+  )
+}
+
+/** The theme/task line: only when the session has an assignment. */
+export function AssignmentLine({ s }: { s: Session }) {
+  const a = s.assignment
+  if (!a || (!a.theme_ref && !a.task_ref)) return null
+  return (
+    <span className="truncate text-label text-fg-muted">
+      {a.theme_ref && a.theme_ref.replace(/^.*theme[:/]/, '')}{a.theme_ref && a.task_ref && ' · '}
+      {a.task_ref && <b className="font-mono font-medium text-fg-secondary">{a.task_ref}</b>}
+      {a.index != null && a.count != null && ` ${a.index}/${a.count}`}
     </span>
   )
 }
@@ -116,6 +133,7 @@ export function SessionRow({ s, now, selected, tabbable, onOpen }: { s: Session;
           <SessionChips s={s} />
         </span>
         <SessionLine s={s} now={now} />
+        <AssignmentLine s={s} />
       </span>
       <ContextBar pct={s.context.pct} />
       <span className="hidden sm:block lg:hidden"><Stat value={up} caption={AGENTS.uptime} title={s.runtime_ms > 0 ? undefined : AGENTS.naReason} /></span>

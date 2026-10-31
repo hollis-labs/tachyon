@@ -42,12 +42,14 @@ export function KpiStrip({ s, now }: { s: Session; now: number }) {
   const na = { value: M.na, title: AGENTS.naReason }
   const tokens = s.tokens.metered ? { value: fmt((s.tokens.input ?? 0) + (s.tokens.output ?? 0)), title: undefined } : { value: M.unmetered, title: M.unmeteredReason }
   const clear = s.last_clear_at ? { value: `${s.last_clear_at.inferred ? '~' : ''}${ageText(now - s.last_clear_at.at)} ago`, title: s.last_clear_at.inferred ? M.inferred : undefined } : { value: M.never, title: undefined }
+  // 0 with nothing metered or seen is "not collected", not zero calls.
+  const noCalls = s.tool_call_count === null || (s.tool_call_count === 0 && !s.tokens.metered && !s.one_liner)
   const kpis: [string, ReactNode, string | undefined][] = [
     [M.kpi.state, AGENTS.states[s.state], undefined],
     [M.kpi.runtime, s.runtime_ms > 0 ? ageText(s.runtime_ms) : na.value, s.runtime_ms > 0 ? undefined : na.title],
     [M.kpi.context, s.context.pct === null ? na.value : `${s.context.pct}%`, s.context.pct === null ? AGENTS.contextNa : undefined],
     [M.kpi.tokens, tokens.value, tokens.title],
-    [M.kpi.calls, s.tool_call_count === null ? na.value : fmt(s.tool_call_count), s.tool_call_count === null ? na.title : undefined],
+    [M.kpi.calls, noCalls ? na.value : fmt(s.tool_call_count), noCalls ? M.callsNotCollected : undefined],
     [M.kpi.lastClear, clear.value, clear.title],
   ]
   return (
@@ -116,7 +118,7 @@ export function NowTab({ s, now }: { s: Session; now: number }) {
       </div>
       <section aria-labelledby="now-latest" className="flex flex-col gap-1">
         <h3 id="now-latest" className={caption}>{M.latest}</h3>
-        <Panel read={latest}>{(d) => <EventFeed entries={toTimeline(d, now)} now={now} label={M.latest} />}</Panel>
+        <Panel read={latest}>{(d) => (toTimeline(d, now).length === 0 ? <p className="text-xs text-fg-muted">{M.latestEmpty}</p> : <EventFeed entries={toTimeline(d, now)} now={now} label={M.latest} />)}</Panel>
       </section>
     </div>
   )

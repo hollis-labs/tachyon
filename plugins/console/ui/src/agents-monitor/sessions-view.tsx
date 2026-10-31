@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { LaneBoard, type Lane } from '@planner/shared'
 import { Avatar, ContextBar, SessionDot, Spark, needsYou } from './session-rows'
 import { ageText, stateText } from './session-parts'
 import { OneLiner } from './session-parts'
@@ -74,37 +73,40 @@ function Assignment({ s }: { s: Session }) {
   )
 }
 
+const BOARD_LIMIT = 8
+
+/** Four columns of cards (the golden has no lane box); a column folds past BOARD_LIMIT behind "+N more". */
 export function SessionBoard({ sessions, now, onSelect }: { sessions: readonly Session[]; now: number; onSelect: (id: string) => void }) {
-  const byId = new Map(sessions.map((s) => [s.id, s]))
-  const lanes: Lane[] = BOARD_COLS.map((c) => ({
-    id: c,
-    title: AGENTS.boardCols[c],
-    limit: 8,
-    cards: sessions.filter((s) => colOf(s) === c).map((s) => ({
-      id: s.id,
-      content: (
-        <button type="button" aria-label={`${s.agent.name}, ${stateText(s, now)}`} onClick={() => onSelect(s.id)} className="flex w-full flex-col gap-1.5 text-left">
-          <span className="flex items-center gap-2">
-            <Avatar name={s.agent.name} className="size-[22px] text-micro" />
-            <b className="min-w-0 truncate text-control font-semibold text-fg">{s.agent.name}</b>
-            <span className="flex-1" />
-            <span className="text-label text-fg-muted">{s.context.pct === null ? AGENTS.na : `${s.context.pct}%`}</span>
-          </span>
-          <span className="flex min-w-0 items-center text-xs text-fg-secondary"><span className="sr-only">{stateText(s, now)}.</span>{lineOf(s, now)}</span>
-          <Assignment s={s} />
-        </button>
-      ),
-    })),
-  }))
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
   return (
-    <LaneBoard
-      readOnly
-      className="p-4"
-      lanes={lanes}
-      cardTitle={(id) => byId.get(id)?.agent.name ?? id}
-      onMove={() => undefined}
-      labels={{ lane: AGENTS.boardLane, empty: AGENTS.boardEmpty, more: (n) => `+${n} more`, pickedUp: () => '', movedOver: () => '', dropped: () => '', cancelled: () => '', pending: '', dragHint: '' }}
-    />
+    <div className="grid grid-cols-[repeat(4,minmax(220px,1fr))] items-start gap-3 overflow-x-auto p-4">
+      {BOARD_COLS.map((c) => {
+        const cards = sessions.filter((s) => colOf(s) === c)
+        const shown = open.has(c) ? cards : cards.slice(0, BOARD_LIMIT)
+        return (
+          <section key={c} aria-label={AGENTS.boardLane(AGENTS.boardCols[c], cards.length)} className="flex min-w-0 flex-col gap-2">
+            <h3 className="flex justify-between px-0.5 pb-1 font-mono text-caption uppercase tracking-label text-fg-muted"><span>{AGENTS.boardCols[c]}</span><span className="text-fg-faint">{cards.length}</span></h3>
+            <ul className="flex flex-col gap-2">
+              {shown.map((s) => (
+                <li key={s.id}>
+                  <button type="button" aria-label={`${s.agent.name}, ${stateText(s, now)}`} onClick={() => onSelect(s.id)} className="flex w-full flex-col gap-1.5 rounded-panel border border-border bg-bg-elevated p-2.5 text-left outline-none hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+                    <span className="flex items-center gap-2">
+                      <Avatar name={s.agent.name} className="size-[22px] text-micro" />
+                      <b className="min-w-0 truncate text-control font-semibold text-fg">{s.agent.name}</b>
+                      <span className="flex-1" />
+                      <span className="text-label text-fg-muted">{s.context.pct === null ? AGENTS.na : `${s.context.pct}%`}</span>
+                    </span>
+                    <span className="flex min-w-0 items-center text-xs text-fg-secondary"><span className="sr-only">{stateText(s, now)}.</span>{lineOf(s, now)}</span>
+                    <Assignment s={s} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {cards.length > shown.length && <button type="button" onClick={() => setOpen(new Set([...open, c]))} className="px-0.5 text-left text-label text-fg-muted hover:text-fg-secondary">{AGENTS.boardMore(cards.length - shown.length)}</button>}
+          </section>
+        )
+      })}
+    </div>
   )
 }
 

@@ -8,10 +8,12 @@ import { TeamOperations } from '../agents/TeamOperations'
 import { Btn } from '../agents/ui'
 import { LaunchAgentDialog } from '../fleet/LaunchAgentDialog'
 import { useAgentsMonitor } from './data'
+import { useAgentsRead, type AgentsSettings } from './api'
 import { ActivityTab } from './activity-tab'
 import { AgentsErrorBoundary } from './error-boundary'
 import { SessionModal } from './session-modal'
 import { ageText } from './session-parts'
+import { StaleAfterContext } from './session-rows'
 import { SessionBoard, SessionCards, SessionRows, matchesFilter, matchesQuery, useViewState, type GroupBy, type SessionView } from './sessions-view'
 import { AGENTS, type FilterId } from './vocabulary'
 import type { SessionState } from './types'
@@ -31,6 +33,7 @@ export function AgentsPage() {
   const tab: Tab = TABS.includes(params.get('tab') as Tab) ? (params.get('tab') as Tab) : 'sessions'
   const setTab = (t: Tab) => setParams(t === 'sessions' ? {} : { tab: t })
   const { data, status, error, refetch, busTick } = useAgentsMonitor()
+  const settings = useAgentsRead<AgentsSettings>('/settings')
   const [view, setView] = useViewState<SessionView>('agents.view', 'rows', ['rows', 'cards', 'board'])
   const [groupBy, setGroupBy] = useState<GroupBy>('workroot')
   const [filter, setFilter] = useState<FilterId>('all')
@@ -67,6 +70,7 @@ export function AgentsPage() {
   }, [data])
 
   return (
+    <StaleAfterContext.Provider value={settings.data?.stale_after_s ?? 900}>
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border-subtle px-4">
         <h1 className="font-mono text-caption font-semibold uppercase leading-none tracking-label text-fg">{AGENTS.title}</h1>
@@ -159,5 +163,6 @@ export function AgentsPage() {
       )}
       <LaunchAgentDialog open={launchOpen} onClose={() => setLaunchOpen(false)} onLaunched={() => void refetch()} />
     </div>
+    </StaleAfterContext.Provider>
   )
 }
