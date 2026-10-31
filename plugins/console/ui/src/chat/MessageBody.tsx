@@ -1,4 +1,4 @@
-import { Children, isValidElement, memo, type ReactNode } from 'react'
+import { Children, isValidElement, memo, useEffect, useRef, type ReactNode } from 'react'
 import { ChatMarkdown, type StreamdownProps } from '@hollis-labs/kit-chat/markdown'
 import { RefChip } from '../autolink/RefChip'
 import { linkifiedMarkdownComponents } from '../autolink/markdown'
@@ -38,8 +38,27 @@ export const MessageBody = memo(function MessageBody({
   body: string
   streaming?: boolean
 }) {
+  const root = useRef<HTMLDivElement>(null)
+  // Wide tables and code blocks scroll inside the message; a scroller must be reachable by keyboard (axe scrollable-region-focusable).
+  useEffect(() => {
+    const el = root.current
+    if (!el) return
+    const mark = () => {
+      for (const n of el.querySelectorAll<HTMLElement>('[class*="overflow-x-auto"], [class*="overflow-y-auto"], [class*="overflow-auto"]')) {
+        if ((n.scrollWidth > n.clientWidth || n.scrollHeight > n.clientHeight) && !n.hasAttribute('tabindex')) {
+          n.tabIndex = 0
+          n.setAttribute('role', 'region')
+          n.setAttribute('aria-label', 'Scrollable content')
+        }
+      }
+    }
+    mark()
+    const mo = new MutationObserver(mark)
+    mo.observe(el, { childList: true, subtree: true })
+    return () => mo.disconnect()
+  }, [body])
   return (
-    <div data-chat-prose className="mt-2 min-w-0">
+    <div ref={root} data-chat-prose className="mt-2 min-w-0">
       <ChatMarkdown
         streaming={streaming}
         controls={false}
