@@ -1,3 +1,4 @@
+import { spineHub } from './live'
 import { operatorFetch } from '../operator/elevation'
 import { dataRefreshRegistry, hostFetch } from '@tachyon/host-sdk'
 import { useEffect, useState } from 'react'
@@ -87,12 +88,12 @@ export function useChatRoster() {
       }
     }
     void sync()
-    const timer = setInterval(() => void sync(), 5000)
+    const offSpine = spineHub().subscribe((f) => { if (f.type === 'thread' || f.type === 'reconnected') void sync() })
     const off = dataRefreshRegistry('chat').subscribe(() => void sync())
     window.addEventListener('focus', sync)
     return () => {
       live = false
-      clearInterval(timer)
+      offSpine()
       off()
       window.removeEventListener('focus', sync)
     }

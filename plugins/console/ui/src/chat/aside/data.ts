@@ -95,12 +95,26 @@ export function useWork(ref: string | undefined, agent: string | undefined, sign
 export function useActivity(ref: string | undefined, signal: number) {
   const r = useRead<{ activity: Activity[]; has_more?: boolean }>(ref, '/activity?limit=50', (d: { activity: Activity[]; has_more?: boolean }) => d, { activity: [] }, DEMO ? DEMO_ACTIVITY : undefined, signal)
   const [err, setErr] = useState('')
+  const [older, setOlder] = useState<{ rows: Activity[]; hasMore: boolean } | null>(null)
+  useEffect(() => { setOlder(null) }, [ref])
+  const first = r.data.activity ?? []
+  const events = older ? [...first, ...older.rows.filter((o) => !first.some((f) => f.seq === o.seq))] : first
+  const hasMore = older ? older.hasMore : !!r.data.has_more
+  /** Older events: the next page before the oldest seq we hold. */
+  const more = async () => {
+    if (DEMO || !ref || !events.length) return
+    const before = Math.min(...events.map((e) => e.seq))
+    try {
+      const d = await chatJSON<{ activity: Activity[]; has_more?: boolean }>(`/threads/${enc(ref)}/activity?limit=50&before_seq=${before}`)
+      setOlder({ rows: [...(older?.rows ?? []), ...(d.activity ?? [])], hasMore: !!d.has_more }); setErr('')
+    } catch (e) { setErr(msg(e, 'Could not load older activity.')) }
+  }
   const comment = async (body: string) => {
     if (DEMO || !ref) return true
     try { await chatJSON(`/threads/${enc(ref)}/activity/comments`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ body }) }); setErr(''); await r.reload(); return true }
     catch (e) { setErr(msg(e, 'Could not post the comment. Your text is kept.')); return false }
   }
-  return { events: r.data.activity ?? [], hasMore: !!r.data.has_more, loading: r.loading, error: err || r.error, comment }
+  return { events, hasMore, loading: r.loading, error: err || r.error, comment, more }
 }
 
 export function useRules(ref: string | undefined, signal: number) {

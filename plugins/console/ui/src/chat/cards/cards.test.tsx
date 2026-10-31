@@ -69,3 +69,15 @@ describe('run card', () => {
     expect(screen.getByRole('checkbox', { name: 'Close when done' }).getAttribute('aria-checked')).toBe('true')
   })
 })
+
+describe('live mapping', () => {
+  it('maps run records to run cards and hides proposals', async () => {
+    const { runToBlock, planToBlock } = await import('./useBlocks')
+    const done = runToBlock({ run_id: 'r', machine: 'dev-box', command: 'ls', state: 'finished', exit_code: 0, duration_ms: 2140, approval: { mode: 'policy' }, started_at: 5 })
+    expect(done).toMatchObject({ kind: 'run', run: { state: 'finished', seconds: 2.1, approval: 'policy', exitCode: 0 } })
+    expect(runToBlock({ run_id: 'r2', command: 'x', state: 'pending_approval' })).toBeNull()
+    const plan = planToBlock({ id: 'p', steps: [{ id: 'a', title: 'A', status: 'done', position: 0 }, { id: 'b', title: 'B', status: 'doing', position: 1 }, { id: 'c', title: 'C', status: 'todo', position: 2 }, { id: 'd', title: 'D', status: 'cancelled', position: 3 }] })
+    expect(plan).toMatchObject({ kind: 'plan', total: 3, done: 1, doing: 1 })
+    expect(planToBlock({ id: 'p', steps: [] })).toBeNull()
+  })
+})

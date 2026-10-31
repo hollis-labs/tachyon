@@ -1,3 +1,4 @@
+import { spineHub } from './live'
 import { dataRefreshRegistry } from '@tachyon/host-sdk'
 import type { Recipient } from '../messaging'
 import { chatFetch, chatJSON, chatRecipient, fetchChatAgents, type ChatAgent } from './roster'
@@ -382,21 +383,19 @@ export function createTetherChatClient(mail: ChatClient): ChatClient {
     },
     subscribeThreads(listener, onError) {
       let live = true
-      const timer = setInterval(() => {
-        void client.listThreads().then(
-          (t) => {
-            if (live) listener(t)
-          },
-          (e) => {
-            if (live) onError?.(e instanceof Error ? e.message : 'Chat roster unavailable')
-          },
-        )
-      }, 5000)
-      const off = mail.subscribeThreads(() => void client.listThreads().then(listener, () => undefined))
+      const relist = () => void client.listThreads().then(
+        (t) => { if (live) listener(t) },
+        (e) => { if (live) onError?.(e instanceof Error ? e.message : 'Chat roster unavailable') },
+      )
+      // No interval: the spine stream says when a row changed, a reconnect or a refresh signal re-lists.
+      const offSpine = spineHub().subscribe((f) => { if (f.type === 'thread' || f.type === 'reconnected') relist() })
+      const offMail = mail.subscribeThreads(() => void client.listThreads().then(listener, () => undefined))
+      const offRefresh = dataRefreshRegistry('chat').subscribe(relist)
       return () => {
         live = false
-        clearInterval(timer)
-        off()
+        offSpine()
+        offMail()
+        offRefresh()
       }
     },
   }

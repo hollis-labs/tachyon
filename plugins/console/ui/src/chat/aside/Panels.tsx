@@ -160,7 +160,7 @@ const actorName = (a: string) => (a === 'user' ? 'You' : a.replace(/^(agent|rule
 const dayOf = (at?: number) => (at && new Date(at).toDateString() === new Date().toDateString() ? 'Today' : 'Earlier')
 const SHOW = 8
 
-export function ActivityPanel({ events, hasMore, loading, error, comment }: { events: Activity[]; hasMore: boolean; loading: boolean; error: string; comment: (b: string) => Promise<boolean> }) {
+export function ActivityPanel({ events, hasMore, loading, error, comment, more }: { events: Activity[]; hasMore: boolean; loading: boolean; error: string; comment: (b: string) => Promise<boolean>; more?: () => Promise<void> }) {
   const [q, setQ] = useState('')
   const [oldest, setOldest] = useState(false)
   const [kind, setKind] = useState('all')
@@ -221,9 +221,9 @@ export function ActivityPanel({ events, hasMore, loading, error, comment }: { ev
               </li>
             )
           })}
-          {(shown.length > SHOW || hasMore) && !all && (
-            <li className="flex items-center gap-2.5 py-1.5"><i aria-hidden className="z-[1] grid size-[22px] place-items-center rounded-full border-2 border-bg-elevated bg-surface text-fg-secondary"><ChevronDown className="size-3" /></i><button type="button" onClick={() => setAll(true)} className="text-label text-fg-secondary hover:text-fg">Show {Math.max(shown.length - SHOW, 1)} more events</button></li>
-          )}
+          {(shown.length > SHOW && !all) || (all && hasMore) ? (
+            <li className="flex items-center gap-2.5 py-1.5"><i aria-hidden className="z-[1] grid size-[22px] place-items-center rounded-full border-2 border-bg-elevated bg-surface text-fg-secondary"><ChevronDown className="size-3" /></i><button type="button" onClick={() => { if (!all) setAll(true); else void more?.() }} className="text-label text-fg-secondary hover:text-fg">{all ? 'Load older events' : `Show ${shown.length - SHOW} more events`}</button></li>
+          ) : null}
         </ol>
       )}
       <Err>{error}</Err>

@@ -92,7 +92,7 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
       case 'topics': return <TopicsPanel marks={marks} />
       case 'bookmarks': return <BookmarksPanel marks={marks} messages={conv?.messages ?? []} agent={thread.title} />
       case 'work': return <WorkPanel items={work.items} source={work.source} loading={work.loading} error={work.error} />
-      case 'activity': return <ActivityPanel events={activity.events} hasMore={activity.hasMore} loading={activity.loading} error={activity.error} comment={activity.comment} />
+      case 'activity': return <ActivityPanel events={activity.events} hasMore={activity.hasMore} loading={activity.loading} error={activity.error} comment={activity.comment} more={activity.more} />
       case 'approvals': return <ApprovalsPanel blocks={blocks} commit={conv?.commit} agent={thread.title} rules={rules.rules} revoke={rules.revoke} />
       case 'files': return <FilesPanel threadRef={ref} demo={DEMO} onOpenDoc={(i) => void openDocFor(i)} />
       case 'doc': return <DocPanel doc={a.doc ?? (DEMO ? DEMO_DOC : null)} onShare={() => void shareDoc()} onClose={() => { a.setFull(false); a.pick('files') }} />
