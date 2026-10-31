@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -290,8 +291,8 @@ func (s *httpSource) Stream(ctx context.Context, after int64, on func(Frame) err
 					if err := on(f); err != nil {
 						return err
 					}
-				} else {
-					Unparsed.Add(1)
+				} else if Unparsed.Add(1) <= 5 {
+					slog.Warn("agents collector: unparsed stream frame", "event", event, "shape", frameShape([]byte(data.String())))
 				}
 				data.Reset()
 			}
@@ -335,4 +336,30 @@ func withKind(data []byte, event string) []byte {
 		return data
 	}
 	return out
+}
+
+// frameShape describes a frame by key and JSON type only (never values), for diagnosing a parse failure.
+func frameShape(raw []byte) string {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return "not an object: " + errText(err)
+	}
+	var b strings.Builder
+	for k, v := range m {
+		t := "?"
+		if len(v) > 0 {
+			t = map[byte]string{'{': "object", '[': "array", '"': "string", 't': "bool", 'f': "bool", 'n': "null"}[v[0]]
+			if t == "" {
+				t = "number"
+			}
+		}
+		b.WriteString(k + ":" + t + " ")
+	}
+	var w wireFrame
+	if err := json.Unmarshal(raw, &w); err != nil {
+		b.WriteString("| " + errText(err))
+	} else if w.Kind == "" {
+		b.WriteString("| kind empty")
+	}
+	return b.String()
 }
