@@ -128,7 +128,7 @@ export function AgentsPage() {
               <DashboardViewTabs variant="segments" label={AGENTS.viewLabel} value={view} onChange={(v) => setView(v as SessionView)} items={(['rows', 'cards', 'board'] as const).map((v) => ({ value: v, label: AGENTS.views[v] }))} />
             </div>
           </DashboardSearchToolbar>
-          <div className="min-h-0 flex-1 overflow-auto">
+          <div tabIndex={0} className="min-h-0 flex-1 overflow-auto outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
             {status === 'error' ? (
               <EmptyState variant="error" title={AGENTS.loadFailed} description={error ?? ''} action={{ label: AGENTS.retry, onClick: () => void refetch() }} />
             ) : data === null ? (
