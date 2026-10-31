@@ -48,6 +48,7 @@ export interface HeldDecision {
 }
 export const HOLD_MS = 8000
 export const POLL_MS = 10000
+const RECONNECT_MS = 5000
 // Item events on GET /approval-inbox/events (docs/approvals-contract.md); any of them means the queue changed.
 const STREAM_EVENTS = ["item.created", "item.updated", "item.resolved", "item.expired", "item.deferred", "item.undeferred", "resync"]
 const MAX_VISIBLE = 3
@@ -90,20 +91,23 @@ export function ApprovalProvider({
   )
   useEffect(() => {
     active.current = true
-    void refresh()
     // Polling is the fallback: it runs only while the stream is down.
     const timer = setInterval(() => {
       if (!streamLive.current && document.visibilityState !== "hidden") void refresh(true)
     }, POLL_MS)
     let es: EventSource | undefined
     let pending: ReturnType<typeof setTimeout> | undefined
-    if (typeof EventSource !== "undefined") {
+    let retry: ReturnType<typeof setTimeout> | undefined
+    const changed = () => {
+      // Several events can arrive together; one refresh covers them.
+      clearTimeout(pending)
+      pending = setTimeout(() => void refresh(true), 150)
+    }
+    // The stream needs the session cookie the first inbox call sets, and the browser gives up
+    // for good on a refused stream, so open it after a load and reopen it when it closes.
+    const connect = () => {
+      if (!active.current || typeof EventSource === "undefined" || es) return
       es = new EventSource(`${APPROVAL_BASE}/events`)
-      const changed = () => {
-        // Several events can arrive together; one refresh covers them.
-        clearTimeout(pending)
-        pending = setTimeout(() => void refresh(true), 150)
-      }
       es.onopen = () => {
         streamLive.current = true
         setStream("live")
@@ -112,9 +116,16 @@ export function ApprovalProvider({
       es.onerror = () => {
         streamLive.current = false
         setStream("down")
+        if (es?.readyState === 2) {
+          es.close()
+          es = undefined
+          clearTimeout(retry)
+          retry = setTimeout(() => void refresh(true).then(connect), RECONNECT_MS)
+        }
       }
       for (const name of STREAM_EVENTS) es.addEventListener(name, changed)
     }
+    void refresh().then(connect)
     const off = dataRefreshRegistry("approvals").subscribe(() => {
       void refresh()
     })
@@ -122,6 +133,7 @@ export function ApprovalProvider({
       active.current = false
       clearInterval(timer)
       clearTimeout(pending)
+      clearTimeout(retry)
       es?.close()
       streamLive.current = false
       off()
