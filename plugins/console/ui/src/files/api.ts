@@ -122,7 +122,7 @@ async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T
 }
 
-export interface DirEntry { name: string; kind: 'dir' | 'file'; size?: number; mtime?: number }
+export interface DirEntry { name: string; kind: 'dir' | 'file'; size?: number; mtime?: number; modified?: boolean }
 export interface DirListing { root: string; path: string; truncated: boolean; entries: DirEntry[] }
 
 export const fileApi = {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Folder } from 'lucide-react'
 import { cn } from '@hollis-labs/design-components'
 import { fileApi, type DirEntry, type Root } from '../../files/api'
+import { Chip } from '@planner/shared'
 import { useAutolink } from '../../autolink/context'
 
 interface Node { key: string; root: Root; rel: string; entry: DirEntry }
@@ -31,8 +32,7 @@ export function FileTree({ filter }: { filter: string }) {
     if (next && !kids[key]) load(key, root, rel)
   }
   const openFile = (n: Node) => {
-    // path_display is the absolute root path; a '~'-style display cannot be opened as a ref.
-    if (!n.root.path_display.startsWith('/')) return
+    // path_display is '~/...' under the service home or absolute; files/stat and files/content accept both as-is.
     autolink.openDrawer({ kind: 'path', canonical: `${n.root.path_display.replace(/\/$/, '')}/${n.rel}` })
   }
   const rows = (root: Root, rel: string, depth: number): React.ReactNode => {
@@ -54,6 +54,7 @@ export function FileTree({ filter }: { filter: string }) {
             className={cn('flex cursor-pointer items-center gap-2 rounded-control px-1.5 py-[5px] text-xs text-fg-secondary hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring')}>
             {e.kind === 'dir' ? (open[ck] ? <ChevronDown aria-hidden className="size-3" /> : <ChevronRight aria-hidden className="size-3" />) : <FileText aria-hidden className="size-3 text-fg-muted" />}
             <span className="min-w-0 flex-1 truncate">{e.name}</span>
+            {e.modified && <Chip square><span className="sr-only">modified</span><span aria-hidden>M</span></Chip>}
           </div>
           {e.kind === 'dir' && open[ck] && <div role="group">{rows(root, r, depth + 1)}</div>}
         </div>
