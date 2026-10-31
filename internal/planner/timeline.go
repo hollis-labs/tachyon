@@ -126,7 +126,49 @@ func (h *HTTP) milestones(ctx context.Context, theme Item) []Item {
 	first := state(done >= 1, stamp(firstDone), &next)
 	half := state(total > 0 && done*2 >= total, stamp(halfDone), &next)
 	approved["key"], first["key"], half["key"] = "approved", "first_done", "half_done"
-	return []Item{approved, first, half}
+	out := []Item{approved, first, half}
+	if rel := h.releaseMilestone(ctx, theme, &next); rel != nil {
+		out = append(out, rel)
+	}
+	return out
+}
+
+// releaseMilestone is the optional release signal of a theme: its "release" field, an object {label, note?, task_id?,
+// released_at?} (or just a label string). It is reached when released_at is set or the named Torque task is done;
+// a theme without the field has no release milestone.
+func (h *HTTP) releaseMilestone(ctx context.Context, theme Item, seenNext *bool) Item {
+	var label, note, taskID, at string
+	switch v := theme["release"].(type) {
+	case string:
+		label = v
+	case map[string]any:
+		label, note, taskID, at = textField(v, "label"), textField(v, "note"), textField(v, "task_id"), textField(v, "released_at")
+	}
+	if label == "" {
+		return nil
+	}
+	reached := at != ""
+	if !reached && taskID != "" && h.Tasks != nil {
+		if t, err := h.Tasks.Get(ctx, taskID); err == nil && t.Status == "done" {
+			reached, at = true, t.UpdatedAt
+		}
+	}
+	m := Item{"key": "release", "label": label}
+	switch {
+	case reached:
+		m["state"] = "reached"
+		if at != "" {
+			m["at"] = at
+		}
+	case !*seenNext:
+		m["state"], *seenNext = "next", true
+	default:
+		m["state"] = "pending"
+	}
+	if note != "" {
+		m["note"] = note
+	}
+	return m
 }
 
 func mustDecode(raw string) Item {

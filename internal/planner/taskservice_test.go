@@ -219,3 +219,36 @@ func TestCreateThemeTaskUsesTheThemesProjectAndTag(t *testing.T) {
 		t.Fatal("unlinked theme", code)
 	}
 }
+
+func TestTimelineReleaseMilestoneFromTheThemesReleaseField(t *testing.T) {
+	h, _ := taskHTTP(t)
+	ws := mk(t, h.Owned, "workstreams", "WS", Item{"torque_tag": "planner"})
+	find := func(th Item) Item {
+		code, out := h.do(t, "GET", "/themes/"+th["id"].(string)+"/timeline", "")
+		if code != 200 {
+			t.Fatal(code, out)
+		}
+		for _, m := range array(out["milestones"]) {
+			if object(m)["key"] == "release" {
+				return object(m)
+			}
+		}
+		return nil
+	}
+	plain := mk(t, h.Owned, "themes", "Plain", Item{"workstream_ids": []any{ws["id"]}})
+	if find(plain) != nil {
+		t.Fatal("no release field means no release milestone")
+	}
+	open := mk(t, h.Owned, "themes", "Open", Item{"workstream_ids": []any{ws["id"]}, "release": Item{"label": "v1 tag", "note": "after login-link", "task_id": "CW-3"}})
+	if m := find(open); m == nil || m["label"] != "v1 tag" || m["note"] != "after login-link" || m["state"] == "reached" {
+		t.Fatalf("task still todo: %v", m)
+	}
+	done := mk(t, h.Owned, "themes", "Done", Item{"workstream_ids": []any{ws["id"]}, "release": Item{"label": "v1 tag", "task_id": "CW-2"}})
+	if m := find(done); m == nil || m["state"] != "reached" {
+		t.Fatalf("done task reaches the milestone: %v", m)
+	}
+	dated := mk(t, h.Owned, "themes", "Dated", Item{"release": Item{"label": "v2", "released_at": "2026-10-30T10:00:00Z"}})
+	if m := find(dated); m == nil || m["state"] != "reached" || m["at"] != "2026-10-30T10:00:00Z" {
+		t.Fatalf("released_at: %v", m)
+	}
+}
