@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"strconv"
 
 	"gopkg.in/yaml.v3"
@@ -101,7 +102,7 @@ func applyPart(p builderparts.Part, creating bool, edits []Edit) (builderparts.P
 	}
 	if p.Kind == builderparts.KindPolicy {
 		for k := range p.Bundle {
-			if !isPolicyField(k) {
+			if !isPolicyField(k) && k != builderparts.RulesKey {
 				return p, nil, refuse(400, "invalid", k+" is not a policy field.")
 			}
 		}
@@ -135,6 +136,31 @@ func setPartField(p *builderparts.Part, e Edit, privs *[]Priv) *APIError {
 			return refuse(400, "invalid", "body is the text of a prompt.")
 		}
 		p.Text = s
+	case builderparts.RulesKey:
+		if p.Kind != builderparts.KindPolicy {
+			return refuse(400, "invalid", "rules belong to a policy.")
+		}
+		next := map[string]any{}
+		for k, v := range p.Bundle {
+			next[k] = v
+		}
+		if e.Type == builderapi.OpRemove {
+			delete(next, e.Path)
+		} else {
+			var rules []string
+			if e.Type != builderapi.OpSet || json.Unmarshal(e.Value, &rules) != nil || len(rules) > 50 {
+				return refuse(400, "invalid", "rules is a list of up to 50 plain-language rules.")
+			}
+			out := make([]any, 0, len(rules))
+			for _, r := range rules {
+				if r = strings.TrimSpace(r); r == "" || len([]rune(r)) > 500 {
+					return refuse(400, "invalid", "Each rule is 1 to 500 characters.")
+				}
+				out = append(out, r)
+			}
+			next[e.Path] = out
+		}
+		p.Bundle = next
 	default:
 		if p.Kind != builderparts.KindPolicy || !isPolicyField(e.Path) {
 			return refuse(400, "invalid", "That field cannot be edited.")
@@ -359,7 +385,9 @@ func (pp *partPass) compile(ctx context.Context, g group, path, content string) 
 		} else {
 			fields := make([]string, 0, len(p.Bundle))
 			for f := range p.Bundle {
-				fields = append(fields, f)
+				if f != builderparts.RulesKey {
+					fields = append(fields, f)
+				}
 			}
 			sort.Strings(fields)
 			for _, f := range fields {

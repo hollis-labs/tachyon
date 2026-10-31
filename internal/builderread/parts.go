@@ -28,7 +28,9 @@ func partKindOf(libKind string) (string, bool) {
 func bundleKeys(p builderparts.Part) []string {
 	out := make([]string, 0, len(p.Bundle))
 	for k := range p.Bundle {
-		out = append(out, k)
+		if k != builderparts.RulesKey { // rules are never compiled into an agent file
+			out = append(out, k)
+		}
 	}
 	sort.Strings(out)
 	return out
