@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Chip } from '@planner/shared'
 import { Act } from '../cards/Block'
-import { CHAT_BASE, chatFetch, chatJSON } from '../roster'
+import { CHAT_BASE } from '../roster'
+import { useThreadFrames } from '../live'
+import { operatorFetch } from '../../operator/elevation'
 import { CAPTION } from '@planner/shared'
+
+/** terminal/* needs operator assurance even for reads: opening the terminal is the moment the operator is asked. */
+async function tj<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await operatorFetch(`${CHAT_BASE}${path}`, { ...init, headers: { Accept: 'application/json', ...init?.headers } })
+  const body = await res.json().catch(() => null)
+  if (!res.ok) throw Object.assign(new Error(body?.message ?? body?.error?.message ?? `Terminal request failed (${res.status})`), { status: res.status })
+  return body as T
+}
 
 interface Machine { machine_id: string; label: string; reachable?: boolean | null }
 interface Proposal { id: string; command: string; reason?: string; requested_by: string; state: string; op_digest?: string }
@@ -24,25 +34,27 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
   useEffect(() => {
     if (demo) return
     let live = true
-    chatFetch(`${CHAT_BASE}/terminal/machines`).then(async (res) => {
+    tj<{ machines?: Machine[] }>('/terminal/machines').then((d) => {
       if (!live) return
-      if (res.status === 404 || res.status === 501) { setUnavailable('The terminal is not available on this host yet. Commands the agent proposes will show here once it is.'); return }
-      if (!res.ok) { setUnavailable('Could not reach the terminal service. Try again in a moment.'); return }
-      const d = (await res.json()) as { machines?: Machine[] }
       setMachines(d.machines ?? []); setMachine(d.machines?.[0]?.machine_id ?? '')
-    }, () => { if (live) setUnavailable('Could not reach the terminal service. Try again in a moment.') })
+    }, (e: Error & { status?: number }) => {
+      if (!live) return
+      setUnavailable(e.status === 404 || e.status === 501 ? 'The terminal is not available on this host yet. Commands the agent proposes will show here once it is.' : e.status === 401 || e.status === 403 ? 'The terminal needs an unlocked operator session. Unlock, then reopen the terminal.' : 'Could not reach the terminal service. Try again in a moment.')
+    })
     return () => { live = false }
   }, [demo])
+  const [reload, setReload] = useState(0)
+  useThreadFrames(threadRef, (f) => { if (f.type === 'terminal.run' || f.type === 'card' || f.type === 'reconnected') setReload((n) => n + 1) }, !demo)
   useEffect(() => {
     if (demo || !threadRef || !machines) return
-    chatJSON<{ proposals: Proposal[] }>(`/terminal/proposals?thread_ref=${encodeURIComponent(threadRef)}&state=pending`).then((d) => setProposals(d.proposals ?? []), () => undefined)
-  }, [demo, threadRef, machines])
+    tj<{ proposals: Proposal[] }>(`/terminal/proposals?thread_ref=${encodeURIComponent(threadRef)}&state=pending`).then((d) => setProposals(d.proposals ?? []), () => undefined)
+  }, [demo, threadRef, machines, reload])
 
   const act = async (p: Proposal, verb: 'run' | 'deny') => {
     setError('')
     if (demo) { setProposals((xs) => xs.filter((x) => x.id !== p.id)); return }
     try {
-      await chatJSON(`/terminal/proposals/${encodeURIComponent(p.id)}/${verb}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(verb === 'run' ? { op_digest: p.op_digest } : {}) })
+      await tj(`/terminal/proposals/${encodeURIComponent(p.id)}/${verb}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(verb === 'run' ? { op_digest: p.op_digest } : {}) })
       setProposals((xs) => xs.filter((x) => x.id !== p.id))
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not answer the proposal. It is still waiting.') }
   }
