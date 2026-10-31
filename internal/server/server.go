@@ -1060,6 +1060,10 @@ func (s *Server) startAgentsCollector(ctx context.Context, store *localstore.Sto
 	}}
 	s.agentsCollector = &agentscollector.Collector{Source: src, Store: cstore, Sink: live, TurnEnded: live.EndTurn}
 	s.agentsCollector.Start(ctx)
+	// Tether emits no fleet.node.* or workstream.created events; poll them so the host and workstream topics have data.
+	if fs, ok := src.(agentscollector.FleetSource); ok {
+		go (&agentscollector.FleetEmitter{Source: fs, Store: cstore}).Run(ctx)
+	}
 }
 
 // startCatalogIndex follows the Tether catalog into the Builder's read model (B1). Like the Agents

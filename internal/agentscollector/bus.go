@@ -295,7 +295,7 @@ func (s *Store) BusEvents(ctx context.Context, q BusQuery) ([]map[string]any, in
 // in the last 7 days), off (none did, but an emitter may exist behind a disabled export), or
 // no_emitter (nothing in the fleet produces it; design section 6).
 func (s *Store) BusTopics(ctx context.Context) map[string]string {
-	out := map[string]string{"deploy": "off", "restart": "off", "task": "off", "failure": "off", "host": "no_emitter", "workstream": "no_emitter", "lifecycle": "off", "card": "off"}
+	out := map[string]string{"deploy": "off", "restart": "off", "task": "off", "failure": "off", "host": "off", "workstream": "off", "lifecycle": "off", "card": "off"}
 	cut := s.now().Add(-EventRetention).UnixNano()
 	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT DISTINCT type FROM bus_events WHERE at_ns>=?`, cut)
 	if err != nil {

@@ -141,7 +141,7 @@ func TestBusFeedIsStoredIdempotentlyAndServed(t *testing.T) {
 		}
 	}
 	s, _ := c.Status(context.Background())
-	if s.BusTopics["deploy"] != "live" || s.BusTopics["failure"] != "live" || s.BusTopics["task"] != "live" || s.BusTopics["restart"] != "off" || s.BusTopics["host"] != "no_emitter" || s.BusTopics["workstream"] != "no_emitter" {
+	if s.BusTopics["deploy"] != "live" || s.BusTopics["failure"] != "live" || s.BusTopics["task"] != "live" || s.BusTopics["restart"] != "off" || s.BusTopics["host"] != "off" || s.BusTopics["workstream"] != "off" {
 		t.Fatalf("topics: %v", s.BusTopics)
 	}
 }
