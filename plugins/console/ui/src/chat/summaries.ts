@@ -10,6 +10,7 @@ interface ApiThread {
   last_at?: number
   last_preview?: string
   blocked_on_user?: number
+  blocked_breakdown?: { approvals?: number; questions?: number }
   archived?: boolean
   pinned?: boolean
   plan_progress?: { done: number; total: number } | null
@@ -40,6 +41,7 @@ export function withChatApiSummaries(base: ChatClient, load: () => Promise<ApiTh
           unread: sessions.reduce((n, s) => n + s.unread, 0),
           needsYou: list.some((a) => (a.blocked_on_user ?? 0) > 0),
           blocked: list.reduce((n, a) => n + (a.blocked_on_user ?? 0), 0),
+          blockedBreakdown: list.some((a) => a.blocked_breakdown) ? { approvals: list.reduce((n, a) => n + (a.blocked_breakdown?.approvals ?? 0), 0), questions: list.reduce((n, a) => n + (a.blocked_breakdown?.questions ?? 0), 0) } : undefined,
           pinned: list.some((a) => a.pinned),
           plan: list.find((a) => a.plan_progress && a.plan_progress.total > 0)?.plan_progress ?? undefined,
           context: newest.context ? { used: newest.context.used ?? null, window: newest.context.window ?? null, model: newest.context.model ?? null } : undefined,

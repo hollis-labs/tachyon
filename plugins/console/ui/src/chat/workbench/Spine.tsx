@@ -59,6 +59,8 @@ export function Spine({ threads, activeId, onSelect, startOptions = [], error, o
     return () => window.removeEventListener('keydown', on)
   }, [startOptions.length])
 
+  const sum = (k: 'approvals' | 'questions') => (threads ?? []).reduce((n, t) => n + (t.blockedBreakdown?.[k] ?? 0), 0)
+  const hasSplit = (threads ?? []).some((t) => t.blockedBreakdown)
   const blockedTotal = (threads ?? []).reduce((n, t) => n + (t.blocked ?? 0), 0)
   const shown = useMemo(() => (threads ?? []).filter((t) => inLens(t, lens) && (!q || matches(t, q)) && (!onlyBlocked || (t.blocked ?? 0) > 0)), [threads, lens, q, onlyBlocked])
 
@@ -133,8 +135,12 @@ export function Spine({ threads, activeId, onSelect, startOptions = [], error, o
         <button type="button" aria-pressed={onlyBlocked} onClick={() => setOnlyBlocked((v) => !v)} className={cn('mx-2 my-1 flex h-7 items-center gap-2 whitespace-nowrap rounded-control border border-border px-2.5 text-xs text-fg-secondary hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring', onlyBlocked && 'bg-selection text-fg')}>
           <StateDot state="blocked" />
           {blockedTotal} need you
-          {/* The chat API reports one blocked count; it does not split approvals from questions. */}
-          <Chip square className="ml-auto">answer {blockedTotal}</Chip>
+          {hasSplit ? (
+            <span className="ml-auto flex gap-1.5">
+              {sum('approvals') > 0 && <Chip square>approve {sum('approvals')}</Chip>}
+              {sum('questions') > 0 && <Chip square>answer {sum('questions')}</Chip>}
+            </span>
+          ) : <Chip square className="ml-auto">answer {blockedTotal}</Chip>}
         </button>
       )}
       {error && (

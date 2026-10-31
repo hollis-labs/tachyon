@@ -40,3 +40,13 @@ describe('withChatApiSummaries', () => {
     expect(marked).toEqual(['tether:new', 'tether:old'])
   })
 })
+
+describe('blocked breakdown', () => {
+  it('sums approve/answer counts over an agent\'s sessions', async () => {
+    const { withChatApiSummaries } = await import('./summaries')
+    const base = { listThreads: async () => [{ id: 'a', agent: { address: 'a', label: 'a', kind: 'agent', agentId: 'pm' }, title: 'a', capability: { mode: 'live' }, unread: 0, lastAt: 1 }], subscribeThreads: () => () => undefined } as never
+    const c = withChatApiSummaries(base, async () => [{ thread_ref: 't1', agent: { agent_id: 'pm' }, blocked_on_user: 3, blocked_breakdown: { approvals: 2, questions: 1 } }, { thread_ref: 't2', agent: { agent_id: 'pm' }, blocked_on_user: 1, blocked_breakdown: { approvals: 0, questions: 1 } }])
+    const [t] = await c.listThreads()
+    expect(t.blockedBreakdown).toEqual({ approvals: 2, questions: 2 })
+  })
+})

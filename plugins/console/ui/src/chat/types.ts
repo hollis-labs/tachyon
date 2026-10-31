@@ -34,6 +34,8 @@ export interface ChatThread {
   pinned?: boolean
   /** Count of open cards and questions waiting on the operator, summed over the agent's sessions. */
   blocked?: number
+  /** `blocked` split by what the operator must do: approve (approval turns and cards) or answer (the rest). */
+  blockedBreakdown?: { approvals: number; questions: number }
   /** Plan progress of the newest session that has a plan. */
   plan?: { done: number; total: number }
   /** Context window use of the newest session (chat API `context`). */
