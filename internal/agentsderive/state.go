@@ -41,7 +41,11 @@ type Result struct {
 	StaleReason string
 	StaleSince  time.Time
 	NeedsYou    string // approval | question | ""
+	Inferred    bool   // working because output arrived moments ago; Tether sent no work state
 }
+
+// OutputWorking is how recent the last output must be to call a session working when no work state is known.
+const OutputWorking = 20 * time.Second
 
 func yes(p *bool) bool { return p != nil && *p }
 func no(p *bool) bool  { return p != nil && !*p }
@@ -79,6 +83,8 @@ func Derive(in Input, now time.Time, staleAfter time.Duration) Result {
 		base = Working
 	case in.WorkState == "idle":
 		base = Idle
+	case in.WorkState == "" && !in.LastActivity.IsZero() && now.Sub(in.LastActivity) >= 0 && now.Sub(in.LastActivity) <= OutputWorking:
+		base, r.Inferred = Working, true // the stream carries no work-state events; fresh output means it is producing
 	case !in.LastActivity.IsZero() || no(in.Alive):
 		base = Idle // activity seen but no work state: quiet, not unknown
 	}

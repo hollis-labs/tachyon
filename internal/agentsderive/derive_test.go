@@ -175,3 +175,18 @@ func TestRunsAndSpark(t *testing.T) {
 		t.Fatalf("%v", s)
 	}
 }
+func TestFreshOutputWithoutWorkStateIsInferredWorking(t *testing.T) {
+	now := time.Now()
+	r := Derive(Input{LastActivity: now.Add(-5 * time.Second)}, now, 0)
+	if r.State != Working || !r.Inferred {
+		t.Fatalf("fresh output: %+v", r)
+	}
+	r = Derive(Input{LastActivity: now.Add(-5 * time.Minute)}, now, 0)
+	if r.State != Idle || r.Inferred {
+		t.Fatalf("old activity: %+v", r)
+	}
+	r = Derive(Input{WorkState: "idle", LastActivity: now.Add(-2 * time.Second)}, now, 0)
+	if r.State != Idle || r.Inferred {
+		t.Fatalf("a known work state wins: %+v", r)
+	}
+}
