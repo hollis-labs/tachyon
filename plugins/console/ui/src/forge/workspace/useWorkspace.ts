@@ -113,7 +113,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
   const submitReview = useCallback(
     async (input: Omit<ReviewInput, 'comments'>): Promise<WriteResult> => {
       const comments = pending.map((c) => ({ body: c.body, path: c.path, line: c.line, side: c.side }))
-      const res = await bus.dispatch(reviewAction(stable, { ...input, ...(comments.length ? { comments } : {}) }))
+      const res = await bus.dispatch(reviewAction(stable, { ...input, headSha: input.headSha ?? (state.key === key && state.load.status === 'ready' ? state.load.data.pr.headSha : undefined), ...(comments.length ? { comments } : {}) }))
       if (res.status === 'ok') {
         setPending([])
         // Reviews add comments server-side; refetch for the true state.
@@ -122,7 +122,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
       }
       return { ok: false, message: res.message ?? `Review not submitted (${res.status})` }
     },
-    [bus, pending, stable],
+    [bus, pending, stable, state, key],
   )
 
   const mergePr = useCallback(async (input: MergeInput): Promise<WriteResult> => {

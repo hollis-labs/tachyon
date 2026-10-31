@@ -233,6 +233,8 @@ export interface AddCommentInput {
 export interface ReviewInput {
   verdict: ReviewVerdict
   body?: string
+  /** Head commit the reviewer saw; the forge refuses with head_moved when it changed. */
+  headSha?: string
   comments?: Omit<AddCommentInput, 'inReplyTo'>[]
 }
 
