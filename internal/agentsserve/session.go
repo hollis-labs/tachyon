@@ -266,7 +266,7 @@ func build(r row, ex *extras, now time.Time, staleAfter time.Duration) Session {
 	if !r.ended.IsZero() {
 		end = r.ended
 	}
-	s := Session{ID: r.id, Kind: "process", Provider: r.provider, Model: strp(r.model), Workroot: r.workroot, State: d.State,
+	s := Session{ID: r.id, Kind: "process", Provider: providerOf(r.provider, r.model), Model: strp(r.model), Workroot: r.workroot, State: d.State,
 		Agent:           Agent{URN: strp(r.urn), Name: agentName(r), LogicalAgentID: strp(r.logical)},
 		LastActivityAt:  ms(r.last),
 		ToolCallCount:   countOrNil(r.toolCalls),
@@ -413,4 +413,22 @@ func countOrNil(n int64) *int64 {
 		return nil
 	}
 	return &n
+}
+
+// providerOf keeps the stored provider and, when none was collected, names it from the model id's well-known
+// prefix. An unrecognised model stays blank rather than guessed.
+func providerOf(stored, model string) string {
+	if stored != "" {
+		return stored
+	}
+	m := strings.ToLower(model)
+	switch {
+	case strings.HasPrefix(m, "claude"):
+		return "claude"
+	case strings.HasPrefix(m, "gpt"), strings.HasPrefix(m, "o1"), strings.HasPrefix(m, "o3"), strings.HasPrefix(m, "o4"), strings.Contains(m, "codex"):
+		return "codex"
+	case strings.HasPrefix(m, "gemini"):
+		return "gemini"
+	}
+	return ""
 }
