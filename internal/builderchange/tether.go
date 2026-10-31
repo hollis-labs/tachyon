@@ -179,13 +179,27 @@ func (t *httpTether) do(ctx context.Context, method, path string, in, out any) e
 	if res.StatusCode != 200 && res.StatusCode != 201 {
 		te := &TetherError{Status: res.StatusCode, Code: "error"}
 		var e struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-			Error   string `json:"error"`
+			Code    string          `json:"code"`
+			Message string          `json:"message"`
+			Error   json.RawMessage `json:"error"`
 		}
 		if json.Unmarshal(raw, &e) == nil {
 			te.Code = e.Code
-			te.Message = e.Message + e.Error
+			te.Message = e.Message
+			// Tether answers {"error":{"code","message"}}; older routes answer {"error":"text"}.
+			var nested struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			}
+			var text string
+			if json.Unmarshal(e.Error, &nested) == nil && (nested.Code != "" || nested.Message != "") {
+				if te.Code == "" {
+					te.Code = nested.Code
+				}
+				te.Message += nested.Message
+			} else if json.Unmarshal(e.Error, &text) == nil {
+				te.Message += text
+			}
 		}
 		if te.Code == "" {
 			te.Code = "error"
