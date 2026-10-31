@@ -51,7 +51,6 @@ export const FIELDS: readonly FieldDef[] = [
     kind: 'chips',
     read: (a) => list(a.policy?.mcp_scopes),
   },
-  { path: 'policy.rules', label: 'Rules', kind: 'chips', read: (a) => list(a.policy?.rules) },
 ]
 
 export const fieldByPath = (path: string) => FIELDS.find((f) => f.path === path)

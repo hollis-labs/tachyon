@@ -320,7 +320,6 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
               {text(a.policy?.network)}
             </Field>
             <Field path="policy.mcp_scopes" ctx={ctx} />
-            <Field path="policy.rules" ctx={ctx} />
           </Section>
           <UsedBySection load={usedBy} retry={retryUsedBy} />
           <HistorySection id={a.id} />
