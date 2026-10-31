@@ -312,7 +312,8 @@ export interface TimelineEntry {
   arrow?: 'up' | 'flat' | 'down'
 }
 export interface ThemeTimeline {
-  milestones: { key: 'approved' | 'first_done' | 'half_done'; state: 'reached' | 'next' | 'pending'; at?: string }[]
+  /** The three built-in keys are labelled here; any other key is a release signal and carries its own label and note ("v1 tag", "after login-link"). */
+  milestones: { key: 'approved' | 'first_done' | 'half_done' | (string & {}); state: 'reached' | 'next' | 'pending'; at?: string; label?: string; note?: string }[]
   momentum: { label: MomentumLabel; score: number; text: string }
   events: TimelineEntry[]
   next_before_seq: number | null

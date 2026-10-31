@@ -48,6 +48,13 @@ describe('timeline', () => {
     expect(list.textContent).not.toMatch(/v1/i)
     expect(screen.getByText(/History starts Oct 29/)).toBeTruthy()
   })
+  it('shows a release milestone only when the server sends one, with its own label and note', async () => {
+    const withTag = { ...page(), milestones: [...page().milestones, { key: 'release', state: 'pending' as const, label: 'v1 tag', note: 'after login-link' }] }
+    setup(vi.fn().mockResolvedValue(withTag))
+    const list = await screen.findByRole('list', { name: /Milestones/i })
+    expect(list.textContent).toContain('v1 tag')
+    expect(list.textContent).toContain('after login-link')
+  })
   it('pages earlier events with the cursor', async () => {
     const fn = vi.fn()
       .mockResolvedValueOnce(page({ next_before_seq: 400 }))
