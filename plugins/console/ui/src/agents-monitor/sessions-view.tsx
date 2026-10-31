@@ -85,7 +85,7 @@ export function SessionBoard({ sessions, now, onSelect }: { sessions: readonly S
         const shown = open.has(c) ? cards : cards.slice(0, BOARD_LIMIT)
         return (
           <section key={c} aria-label={AGENTS.boardLane(AGENTS.boardCols[c], cards.length)} className="flex min-w-0 flex-col gap-2">
-            <h3 className="flex justify-between px-0.5 pb-1 font-mono text-caption uppercase tracking-label text-fg-muted"><span>{AGENTS.boardCols[c]}</span><span className="text-fg-faint">{cards.length}</span></h3>
+            <h2 className="flex justify-between px-0.5 pb-1 font-mono text-caption uppercase tracking-label text-fg-muted"><span>{AGENTS.boardCols[c]}</span><span className="text-fg-faint">{cards.length}</span></h2>
             <ul className="flex flex-col gap-2">
               {shown.map((s) => (
                 <li key={s.id}>

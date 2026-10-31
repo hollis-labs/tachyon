@@ -172,12 +172,12 @@ export function SessionRows({ sessions, groupBy, now, selectedId, onSelect }: { 
         return (
           <section key={g.key || 'all'} aria-label={groupTitle(g.key, groupBy)}>
             {groupBy !== 'none' && (
-              <h3 className={cn('flex items-center gap-2.5 px-4 pb-1.5 pt-3.5', CAPTION)}>
+              <h2 className={cn('flex items-center gap-2.5 px-4 pb-1.5 pt-3.5', CAPTION)}>
                 <span>{groupTitle(g.key, groupBy)}</span>
                 <span className="text-fg-faint">{AGENTS.sessionCount(g.list.length)}</span>
                 <span className="flex-1" />
                 <span className="text-fg-faint">{AGENTS.workingCount(working)}</span>
-              </h3>
+              </h2>
             )}
             <ul aria-label={groupTitle(g.key, groupBy)}>
               {g.list.map((s) => (
