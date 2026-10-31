@@ -16,6 +16,9 @@ export interface WorkspaceItem {
   added_by?: string
 }
 
+/** The host path behind a `ref` item (absolute path), which the File viewer opens; null for uploads and links. */
+export const pathRefOf = (i: { type?: string; ref?: string | null }): string | null => (i.type === 'ref' && i.ref && i.ref.startsWith('/') ? i.ref : null)
+
 const enc = encodeURIComponent
 
 /** Workspace items of one thread (files, links, references, images) and which are shared with the agent. */

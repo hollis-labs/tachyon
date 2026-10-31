@@ -7,6 +7,8 @@ import { chatFetch, CHAT_BASE, chatJSON } from '../roster'
 import { ScratchPane } from '../drawer/ScratchPane'
 import type { ChatThread } from '../types'
 import { useNarrow } from '../view/useNarrow'
+import { useAutolink } from '../../autolink/context'
+import { pathRefOf } from '../drawer/model'
 import { useAside, PANELS, type PanelId } from './context'
 import { DEMO_DOC } from './fixtures'
 import { useActivity, useBookmarks, usePlan, useRules, useThreadEvents, useTopics, useWork } from './data'
@@ -57,7 +59,11 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
     // biome-ignore lint/correctness/useExhaustiveDependencies: only the count matters
   }, [waiting, loaded])
 
-  const openDocFor = async (i: { id: string; name: string; mime?: string | null; shared: boolean }) => {
+  const autolink = useAutolink()
+  const openDocFor = async (i: { id: string; name: string; mime?: string | null; shared: boolean; type?: string; ref?: string | null }) => {
+    // A host path is the File viewer's: open its ref drawer, ship no second viewer.
+    const path = pathRefOf(i)
+    if (path) { autolink.openDrawer({ kind: 'path', canonical: path }); return }
     if (!ref) return
     if (!TEXTY.test(i.mime ?? i.name)) { a.openDoc({ name: i.name, text: `${i.name} can't be previewed here. Use Download from the Workspace.`, itemId: i.id, shared: i.shared }); return }
     try {
