@@ -32,6 +32,7 @@ var chatRoutes = []route{
 	{"GET /threads/{ref}/messages", 200, "messages"},
 	{"POST /threads/{ref}/messages", 202, "message_accepted"},
 	{"POST /threads/{ref}/read", 200, "ok"},
+	{"POST /threads/{ref}/stop", 202, "stop"},
 	{"GET /threads/{ref}/plan", 200, "plan"},
 	{"PUT /threads/{ref}/plan", 200, "plan"},
 	{"POST /threads/{ref}/plan/steps", 201, "plan_step"},

@@ -24,7 +24,7 @@ var Routes = []string{
 	"GET /threads", "POST /threads",
 	"GET /threads/{ref}", "PATCH /threads/{ref}",
 	"GET /threads/{ref}/messages", "POST /threads/{ref}/messages",
-	"POST /threads/{ref}/read",
+	"POST /threads/{ref}/read", "POST /threads/{ref}/stop",
 	"GET /threads/{ref}/events", "GET /events",
 }
 
@@ -53,6 +53,7 @@ func (h *Handler) Mux() http.Handler {
 		"GET /threads/{ref}": h.get, "PATCH /threads/{ref}": h.patch,
 		"GET /threads/{ref}/messages": h.messages, "POST /threads/{ref}/messages": h.send,
 		"POST /threads/{ref}/read":  h.read,
+		"POST /threads/{ref}/stop":  h.stop,
 		"GET /threads/{ref}/events": h.events, "GET /events": h.spine,
 	}
 	for _, r := range Routes {
@@ -83,6 +84,8 @@ func (h *Handler) problem(w http.ResponseWriter, err error) {
 		fail(w, 400, "invalid", err.Error())
 	case errors.Is(err, appagent.ErrNotConfigured):
 		fail(w, 503, "not_configured", "The app agent is not configured on this Tachyon.")
+	case errors.Is(err, chatbridge.ErrNothingToInterrupt):
+		fail(w, 409, "nothing_to_stop", "This session has no running turn Tachyon can interrupt.")
 	case errors.Is(err, chatbridge.ErrConflict), errors.Is(err, chatbridge.ErrNotReplyable):
 		fail(w, 409, "conflict", err.Error())
 	default:
@@ -468,6 +471,30 @@ func (h *Handler) send(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Notify(ctx, t.String())
 	reply(w, 202, map[string]any{"id": target.ID + ":reply", "seq": len(tetherMessages(g)) + 1, "idempotency_key": in.Key, "state": "accepted"})
+}
+
+// stop interrupts the running turn of a Tether-backed session (Tether reply with interrupt:true). The app agent's
+// runtime has no cancel call, so an app thread answers 501.
+func (h *Handler) stop(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	if t.Source == chatapi.SourceApp {
+		fail(w, 501, "not_supported", "The app agent cannot be interrupted; wait for the reply to finish.")
+		return
+	}
+	if h.Agg.Chat == nil {
+		fail(w, 503, "not_configured", "Tether chat is not configured on this Tachyon.")
+		return
+	}
+	res, err := h.Agg.Chat.Interrupt(r.Context(), t.ID, "Stop the current turn and wait for my next message.")
+	if err != nil {
+		h.problem(w, err)
+		return
+	}
+	h.Notify(r.Context(), t.String())
+	reply(w, 202, map[string]any{"thread_ref": t.String(), "state": "stop_requested", "interrupt": res})
 }
 
 // Notify publishes the thread's summary-visible state on its stream and the spine. It

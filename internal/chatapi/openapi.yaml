@@ -75,6 +75,15 @@ paths:
   /chat/threads/{ref}/read:
     parameters: [{$ref: "#/components/parameters/ref"}]
     post: {tags: [threads], responses: {"200": {$ref: "#/components/responses/Ok"}}}
+  /chat/threads/{ref}/stop:
+    parameters: [{$ref: "#/components/parameters/ref"}]
+    post:
+      tags: [threads]
+      summary: Interrupt the running turn of a Tether session (reply with interrupt:true). 501 for an app thread (the app agent cannot be interrupted); 409 nothing_to_stop when the session has no routed turn.
+      responses:
+        "202": {description: stop requested, content: {application/json: {schema: {type: object, properties: {thread_ref: {type: string}, state: {type: string, enum: [stop_requested]}, interrupt: {type: string}}}}}}
+        "409": {$ref: "#/components/responses/Error"}
+        "501": {$ref: "#/components/responses/Error"}
   /chat/threads/{ref}/plan:
     parameters: [{$ref: "#/components/parameters/ref"}]
     get:

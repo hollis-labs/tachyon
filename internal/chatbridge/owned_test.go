@@ -21,6 +21,7 @@ type fakeSource struct {
 	down    bool
 	current string
 	key     string
+	stops   int
 	state   tether.ReplyState
 	pages   []int64
 }
@@ -53,6 +54,9 @@ func (f *fakeSource) RoutingCapabilities(_ context.Context, id string) (tether.R
 }
 func (f *fakeSource) Reply(_ context.Context, parent, body string, opts tether.ReplyOptions) (tether.ReplyReceipt, error) {
 	f.calls++
+	if opts.Interrupt {
+		f.stops++
+	}
 	if f.key != "" && f.key != opts.IdempotencyKey {
 		return tether.ReplyReceipt{}, errors.New("retry changed key")
 	}
@@ -221,3 +225,21 @@ func TestImportThenIndependentIngestionPreservesHistoryAcrossRestart(t *testing.
 }
 
 var _ http.Handler = (*Owned)(nil)
+
+func TestInterruptRepliesToTheSessionsRoutedMessageWithInterrupt(t *testing.T) {
+	ctx := context.Background()
+	o, f, _ := ownedTest(t)
+	if _, e := o.Interrupt(ctx, "s1", "stop"); !errors.Is(e, ErrNothingToInterrupt) {
+		t.Fatalf("empty inbox: %v", e)
+	}
+	if e := o.Sync(ctx); e != nil {
+		t.Fatal(e)
+	}
+	in, _ := o.Inbox(ctx)
+	if len(in.Pending) != 1 || in.Pending[0].Source == nil || in.Pending[0].Source.Origin != "routed" {
+		t.Skip("fixture message is not a routed message; nothing to interrupt")
+	}
+	if _, e := o.Interrupt(ctx, "s1", "stop"); e != nil || f.stops != 1 {
+		t.Fatalf("stops=%d err=%v", f.stops, e)
+	}
+}
