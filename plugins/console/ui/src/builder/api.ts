@@ -139,6 +139,7 @@ export interface Launch {
   project: string
   worker: string
   env?: { keys: string[]; secret_like_count: number }
+  sha?: string | null
   workspace?: { mode?: string; base?: string } | null
   route?: string | null
   chat?: boolean

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@hollis-labs/design-components'
 import { type Summary, builderApi } from './api'
 import { useChangeMode } from './capabilities'
+import { AGENT_FIELDS, EntityDialog } from './EntityDialog'
 import { type BuilderTab, BUILDER_TITLE, DEFINITIONS_NOTE, TAB_LABEL, TAB_PATH } from './vocab'
 
 const TABS: BuilderTab[] = ['agents', 'launches', 'library']
@@ -11,6 +12,8 @@ const TABS: BuilderTab[] = ['agents', 'launches', 'library']
 export function BuilderShell({ tab, counts }: { tab: BuilderTab; counts?: Summary | null }) {
   const [own, setOwn] = useState<Summary | null>(null)
   const [mode] = useChangeMode()
+  const [creating, setCreating] = useState(false)
+  const navigate = useNavigate()
   useEffect(() => {
     if (counts !== undefined) return
     builderApi.summary().then(setOwn, () => undefined)
@@ -46,9 +49,20 @@ export function BuilderShell({ tab, counts }: { tab: BuilderTab; counts?: Summar
         </Link>
       </p>
       {mode !== 'unavailable' && (
-        <Button type="button" size="sm" disabled title="Creating an agent arrives with the edit flow" className="hidden sm:inline-flex">
+        <Button type="button" size="sm" onClick={() => setCreating(true)} className="hidden sm:inline-flex">
           New agent
         </Button>
+      )}
+      {creating && (
+        <EntityDialog
+          kind="agent"
+          mode="create"
+          noun="agent"
+          fields={AGENT_FIELDS}
+          initial={{}}
+          onClose={() => setCreating(false)}
+          onApplied={() => navigate('/builder/agents')}
+        />
       )}
     </header>
   )

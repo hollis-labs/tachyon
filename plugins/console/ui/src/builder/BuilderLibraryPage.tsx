@@ -4,6 +4,7 @@ import { Button, Input, SearchInput, Textarea } from '@hollis-labs/design-compon
 import Markdown from 'react-markdown'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Chip } from '../components/chip'
+import { ChipListField } from './ChipListField'
 import { DirtyBar } from './DirtyBar'
 import { Cap, Muted } from './parts'
 import { BuilderShell } from './BuilderShell'
@@ -245,19 +246,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
                 {f.kind === 'longtext' ? (
                   <Textarea id={`lib-${f.path}`} className="font-mono" rows={14} value={String(value)} onChange={(e) => set(e.target.value)} />
                 ) : f.kind === 'chips' ? (
-                  <Input
-                    id={`lib-${f.path}`}
-                    placeholder="comma separated"
-                    value={(value as string[]).join(', ')}
-                    onChange={(e) =>
-                      set(
-                        e.target.value
-                          .split(',')
-                          .map((x) => x.trim())
-                          .filter(Boolean),
-                      )
-                    }
-                  />
+                  <ChipListField label={f.label} editable value={value as string[]} onChange={set} />
                 ) : (
                   <Input id={`lib-${f.path}`} value={String(value)} onChange={(e) => set(e.target.value)} />
                 )}
