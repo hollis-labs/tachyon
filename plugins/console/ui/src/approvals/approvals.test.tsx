@@ -695,7 +695,8 @@ describe("batch eligibility", () => {
 
 describe("approval stream", () => {
   class FakeES {
-    static last: FakeES
+    static last: FakeES | undefined
+    readyState = 0
     onopen?: () => void
     onerror?: () => void
     handlers: Record<string, () => void> = {}
@@ -704,23 +705,26 @@ describe("approval stream", () => {
     addEventListener(n: string, h: () => void) { this.handlers[n] = h }
     close() { this.closed = true }
   }
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => { vi.unstubAllGlobals(); FakeES.last = undefined })
   it("refreshes on a stream event, says it polls only while the stream is down, and closes on unmount", async () => {
     vi.stubGlobal("EventSource", FakeES)
     const inbox = vi.fn().mockResolvedValue({ pending: [], history: [] })
     const client = { inbox, ...noAudit } as unknown as ApprovalClient
     const { unmount } = render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     await screen.findByText("Updates every 10 s")
-    expect(FakeES.last.url).toMatch(/\/approval-inbox\/events$/)
-    await act(async () => FakeES.last.onopen?.())
+    // The stream opens only after the first inbox load, once the session cookie exists.
+    await waitFor(() => expect(FakeES.last).toBeDefined())
+    expect(inbox).toHaveBeenCalled()
+    expect(FakeES.last!.url).toMatch(/\/approval-inbox\/events$/)
+    await act(async () => FakeES.last!.onopen?.())
     await waitFor(() => expect(screen.queryByText("Updates every 10 s")).toBeNull())
     const before = inbox.mock.calls.length
-    await act(async () => FakeES.last.handlers["item.created"]?.())
+    await act(async () => FakeES.last!.handlers["item.created"]?.())
     await waitFor(() => expect(inbox.mock.calls.length).toBeGreaterThan(before))
-    await act(async () => FakeES.last.onerror?.())
+    await act(async () => FakeES.last!.onerror?.())
     await screen.findByText("Updates every 10 s")
     unmount()
-    expect(FakeES.last.closed).toBe(true)
+    expect(FakeES.last!.closed).toBe(true)
   })
 })
 
