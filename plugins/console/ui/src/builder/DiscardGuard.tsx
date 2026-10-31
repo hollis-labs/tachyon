@@ -14,7 +14,7 @@ export function useDiscardGuard(description = 'Your edits have not been sent for
           </DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end [&>button]:w-full sm:[&>button]:w-auto pt-2">
           <Button type="button" variant="outline" size="sm" onClick={() => setPending(undefined)}>
             Keep editing
           </Button>
