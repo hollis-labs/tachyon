@@ -10,6 +10,7 @@ import { MessageBody } from '../MessageBody'
 import type { ChatMessage } from '../types'
 import { chatJSON } from '../roster'
 import { useWorkspace, type WorkspaceItem } from '../drawer/model'
+import { DEMO } from '../cards/useBlocks'
 import { FileTree } from './FileTree'
 import type { Activity, Plan, PlanStep, Rule, WorkItem } from './data'
 import type { Marks } from './context'
@@ -253,8 +254,15 @@ export function ApprovalsPanel({ blocks, commit, agent, rules, revoke }: { block
   const open = blocks.filter((b): b is Extract<StreamBlock, { kind: 'approval' }> => b.kind === 'approval' && !b.answered)
   return (
     <>
-      <span className={CAPTION}>Approval queue · {open.length} waiting</span>
+      <span className={CAPTION}>Approval queue · {open.length + (DEMO && open.length > 0 ? 1 : 0)} waiting</span>
       {open.length === 0 ? <Empty>Nothing is waiting. Approvals the agent asks for appear here.</Empty> : open.map((b) => <QueueItem key={b.id} block={b} commit={commit} agent={agent} />)}
+      {/* Golden r2 queue (demo only): a second agent's file write with a diff review. */}
+      {DEMO && open.length > 0 && (
+        <div className="flex flex-col overflow-hidden rounded-control border border-border">
+          <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2"><Chip square>fs_write</Chip><span className="flex-1" /><span className="text-label text-fg-muted">Task Ops Manager</span></div>
+          <div className="flex flex-col gap-2.5 p-3"><span className="text-xs">Write docs/vocab.md (3.2 KB)</span><div className="flex flex-wrap gap-2"><Act>Review diff</Act><Act primary>Allow</Act><Act danger>Deny</Act></div></div>
+        </div>
+      )}
       {rules.length > 0 && (
         <section className="flex flex-col gap-1.5"><span className={CAPTION}>Always allowed in this chat</span>
           {rules.map((r) => <div key={r.id} className={ROW}><Lock aria-hidden className="size-3 text-fg-muted" /><span className="min-w-0 flex-1 truncate font-mono text-caption">{r.tool}</span><button type="button" onClick={() => revoke(r.id)} className="text-label text-fg-secondary underline">Revoke</button></div>)}
