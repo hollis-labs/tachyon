@@ -21,6 +21,7 @@ type Reader struct {
 	Sessions SessionSource // nil: live data reports null
 	Tools    ToolSource    // nil: tool server health reads "unknown"
 	Projects ProjectSource // nil: the registry routes answer 503
+	Writer   ProjectWriter // nil: registry writes answer 501
 }
 
 // Mount registers one explicit pattern per route. wrap guards each (the caller passes operator.RequireOperator).

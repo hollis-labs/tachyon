@@ -1,7 +1,11 @@
 package builderread
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/hollis-labs/tachyon/internal/builderapi"
@@ -100,4 +104,62 @@ func field(m map[string]any, path ...string) any {
 		v = mm[p]
 	}
 	return v
+}
+
+type fakeWriter struct {
+	patches []map[string]any
+	urns    []string
+	err     error
+}
+
+func (f *fakeWriter) Patch(_ context.Context, urn string, p map[string]any) error {
+	f.urns, f.patches = append(f.urns, urn), append(f.patches, p)
+	return f.err
+}
+
+func TestRegistryWritesPatchLinkAndRefusals(t *testing.T) {
+	r, mux, _, _ := fixture(t, nil)
+	r.Projects = fakeProjects{list: []RegProject{{URN: "msg://project/tachyon", DisplayName: "Tachyon", Status: "active"}, {URN: "msg://project/p_9", DisplayName: "Scratch"}}}
+	id := func(h http.Handler) http.Handler { return h }
+	r.MountWrites(mux, id)
+	const reg = builderapi.RegistryPrefix + "/projects"
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
+		return w
+	}
+	if w := do("PATCH", reg+"/tachyon", `{"description":"x"}`); w.Code != 501 {
+		t.Fatalf("no writer is 501: %d", w.Code)
+	}
+	fw := &fakeWriter{}
+	r.Writer = fw
+	w := do("PATCH", reg+"/tachyon", `{"display_name":"Tachyon 2","tags":["app","ui"],"status":"archived"}`)
+	if w.Code != 200 || len(fw.patches) != 1 || fw.urns[0] != "msg://project/tachyon" {
+		t.Fatalf("patch: %d %s %v", w.Code, w.Body, fw.patches)
+	}
+	p := fw.patches[0]
+	if p["display_name"] != "Tachyon 2" || p["status"] != "deprecated" || p["last_updated_by"] == "" || p["tags"].(map[string]any)["mode"] != "replace" {
+		t.Fatalf("tether patch: %v", p)
+	}
+	for _, body := range []string{`{}`, `{"nope":1}`, `{"description":null}`, `{"status":"paused"}`, `{"tags":[1]}`, `{"display_name":"  "}`} {
+		if w := do("PATCH", reg+"/tachyon", body); w.Code != 400 {
+			t.Errorf("%s accepted: %d", body, w.Code)
+		}
+	}
+	if w := do("PATCH", reg+"/nope", `{"description":"x"}`); w.Code != 404 {
+		t.Errorf("unknown project: %d", w.Code)
+	}
+	if w := do("POST", reg+"/p_9/link", `{"catalog_id":"tachyon"}`); w.Code != 200 || fw.patches[len(fw.patches)-1]["props"].(map[string]string)["catalog_id"] != "tachyon" {
+		t.Fatalf("link: %d %s", w.Code, w.Body)
+	}
+	if w := do("POST", reg+"/p_9/link", `{"catalog_id":"missing"}`); w.Code != 400 {
+		t.Errorf("link to an unknown catalog project: %d", w.Code)
+	}
+	if w := do("DELETE", reg+"/p_9/link", ``); w.Code != 200 || fw.patches[len(fw.patches)-1]["props"].(map[string]string)["catalog_id"] != "" {
+		t.Fatalf("unlink: %d", w.Code)
+	}
+	fw.err = &WriteError{Status: 403}
+	if w := do("PATCH", reg+"/tachyon", `{"description":"x"}`); w.Code != 403 || !strings.Contains(w.Body.String(), "tether_write_denied") {
+		t.Errorf("token without registry.write: %d %s", w.Code, w.Body)
+	}
 }
