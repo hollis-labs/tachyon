@@ -1,4 +1,6 @@
-import { CONSOLE_API_BASE, consoleJson } from '../lib/http'
+import { CONSOLE_API_BASE, consoleJson, type FetchLike } from '../lib/http'
+import { operatorFetch } from '../operator/elevation'
+import { markReadQuiet } from './readState'
 import { threadHub } from './live'
 import type { ChatClient, ChatEvent, ChatMessage, HistoryQuery } from './types'
 
@@ -60,8 +62,8 @@ export function withChatApiMessages(base: ChatClient, o: ChatApiOptions = {}): C
     o.fetchPage ??
     ((ref, q) => consoleJson<Page>(path(ref, `/messages?limit=${q.limit}${q.before_seq ? `&before_seq=${q.before_seq}` : ''}`)))
   const post =
-    o.post ?? ((ref, body) => consoleJson<{ id: string }>(path(ref, '/messages'), { method: 'POST', body }))
-  const markRead = o.markRead ?? ((ref) => consoleJson(path(ref, '/read'), { method: 'POST' }))
+    o.post ?? ((ref, body) => consoleJson<{ id: string }>(path(ref, '/messages'), { method: 'POST', body, fetch: operatorFetch as FetchLike }))
+  const markRead = o.markRead ?? ((ref) => markReadQuiet(ref))
   const newKey = o.newKey ?? (() => crypto.randomUUID())
   const oldestSeq = new Map<string, number>()
   const pending = new Map<string, { body: string; key: string }>()
