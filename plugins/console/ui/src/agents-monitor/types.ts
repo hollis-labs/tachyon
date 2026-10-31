@@ -14,6 +14,8 @@ export interface Session {
   model: string | null
   workroot: string
   state: SessionState
+  /** True when state=working was derived from output in the last 20s (no work-state events); read as "~". */
+  state_inferred?: boolean
   stale_reason: StaleReason | null
   stale_since: number | null
   needs_you: { reason: 'approval' | 'question' | null; since: number | null }

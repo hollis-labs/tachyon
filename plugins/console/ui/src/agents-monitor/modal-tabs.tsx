@@ -45,7 +45,7 @@ export function KpiStrip({ s, now }: { s: Session; now: number }) {
   // 0 with nothing metered or seen is "not collected", not zero calls.
   const noCalls = s.tool_call_count === null || (s.tool_call_count === 0 && !s.tokens.metered && !s.one_liner)
   const kpis: [string, ReactNode, string | undefined][] = [
-    [M.kpi.state, AGENTS.states[s.state], undefined],
+    [M.kpi.state, s.state === 'working' && s.state_inferred ? `~${AGENTS.states.working}` : AGENTS.states[s.state], s.state === 'working' && s.state_inferred ? M.inferred : undefined],
     [M.kpi.runtime, s.runtime_ms > 0 ? ageText(s.runtime_ms) : na.value, s.runtime_ms > 0 ? undefined : na.title],
     [M.kpi.context, s.context.pct === null ? na.value : `${s.context.pct}%`, s.context.pct === null ? AGENTS.contextNa : undefined],
     [M.kpi.tokens, tokens.value, tokens.title],
