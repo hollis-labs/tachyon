@@ -52,6 +52,13 @@ func newTorqueFake(t *testing.T) (*torqueFake, *httptest.Server) {
 			}
 			f.status[id] = body.Status
 			w.WriteHeader(200)
+		case r.Method == "POST" && r.URL.Path == "/api/v1/tasks":
+			b, _ := io.ReadAll(r.Body)
+			f.posts = append(f.posts, r.URL.Path+" "+string(b))
+			var in struct{ Title string }
+			_ = json.Unmarshal(b, &in)
+			w.WriteHeader(201)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "CW-9", "title": in.Title, "status": "todo"})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/comments"):
 			b, _ := io.ReadAll(r.Body)
 			f.posts = append(f.posts, r.URL.Path+" "+string(b))
@@ -188,5 +195,27 @@ func TestTransitionCommentGoesToTheCommentsEndpoint(t *testing.T) {
 	}
 	if len(f.posts) != 2 || strings.Contains(f.posts[0], "waiting on Tether") || !strings.HasSuffix(strings.Fields(f.posts[0])[0], "/transition") || !strings.Contains(f.posts[1], "/comments") || !strings.Contains(f.posts[1], "waiting on Tether") {
 		t.Fatal("Torque's REST transition ignores a comment, so it must be posted separately:", f.posts)
+	}
+}
+
+func TestCreateThemeTaskUsesTheThemesProjectAndTag(t *testing.T) {
+	h, f := taskHTTP(t)
+	ws := mk(t, h.Owned, "workstreams", "WS", Item{"torque_tag": "planner", "torque_project_ids": []any{"CW-P1"}})
+	th := mk(t, h.Owned, "themes", "Theme", Item{"workstream_ids": []any{ws["id"]}})
+	path := "/themes/" + th["id"].(string) + "/tasks"
+	code, out := h.do(t, "POST", path, `{"title":"  New thing "}`)
+	task := object(out["task"])
+	if code != 201 || task["id"] != "CW-9" || task["title"] != "New thing" || task["status"] != "todo" {
+		t.Fatal(code, out)
+	}
+	if got := f.posts[len(f.posts)-1]; !strings.Contains(got, `"project_id":"CW-P1"`) || !strings.Contains(got, `"tags":["planner"]`) {
+		t.Fatal(got)
+	}
+	if code, _ := h.do(t, "POST", path, `{"title":""}`); code != 400 {
+		t.Fatal("empty title", code)
+	}
+	bare := mk(t, h.Owned, "themes", "Bare", Item{})
+	if code, _ := h.do(t, "POST", "/themes/"+bare["id"].(string)+"/tasks", `{"title":"x"}`); code != 422 {
+		t.Fatal("unlinked theme", code)
 	}
 }
