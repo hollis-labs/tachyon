@@ -14,7 +14,7 @@ import (
 // CardSeedPath creates labelled TEST approval cards so the Approvals UI can be proven on a live queue.
 const CardSeedPath = "/api/plugins/console/v1/approval-inbox-seed"
 
-// mountCardSeed mounts POST CardSeedPath {"shape":"a|b|c|d|e"} for same-origin browser requests only (no
+// mountCardSeed mounts POST CardSeedPath {"shape":"a|b|c|d|e|f"} for same-origin browser requests only (no
 // operator elevation: it only creates labelled TEST cards that target test:noop, so deciding them changes
 // nothing). It is a test aid, not a product route.
 func mountCardSeed(mux *http.ServeMux, _ *approvals.Bridge, c *dataverbs.Cards) {
@@ -30,7 +30,7 @@ func mountCardSeed(mux *http.ServeMux, _ *approvals.Bridge, c *dataverbs.Cards) 
 		w.Header().Set("Content-Type", "application/json")
 		if json.NewDecoder(r.Body).Decode(&in) != nil {
 			w.WriteHeader(400)
-			_, _ = w.Write([]byte(`{"code":"invalid","message":"Send {\"shape\":\"a|b|c|d|e\"}."}`))
+			_, _ = w.Write([]byte(`{"code":"invalid","message":"Send {\"shape\":\"a|b|c|d|e|f\"}."}`))
 			return
 		}
 		ids, err := c.Seed(r.Context(), in.Shape, strconv.FormatInt(time.Now().UnixNano(), 36))
