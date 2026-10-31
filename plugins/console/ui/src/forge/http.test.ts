@@ -125,7 +125,8 @@ it('merges the confirmed head using the selected method and confirmation token',
   expect(await client.mergePr(ref, { method: 'squash', headSha: 'head-sha' })).toMatchObject({ merged: true })
   expect(call(fetch).url).toMatch(/\/pulls\/271\/merge$/)
   expect(call(fetch).init).toMatchObject({ method: 'PUT', headers: { 'X-Identity-Confirm': 'confirmed' } })
-  expect(JSON.parse(call(fetch).init.body as string)).toEqual({ method: 'squash', headSha: 'head-sha' })
+  expect(JSON.parse(call(fetch).init.body as string)).toEqual({ method: 'squash', head_sha: 'head-sha' })
+  expect((call(fetch).init.headers as Record<string, string>)['Idempotency-Key']).toBeTruthy()
   const rejected = mk({ data: { merged: false, message: 'Branch rules prevent merging' } })
   await expect(rejected.client.mergePr(ref, { method: 'merge', headSha: 'head' })).rejects.toThrow('Branch rules prevent merging')
 })
@@ -137,4 +138,12 @@ describe('HttpForgeClient merge preflight', () => {
     expect(call(fetch).url).toBe('/api/v1/forge/repos/github/hollis-labs/torque/pulls/271/merge-preflight')
     expect(pf).toEqual({ state: 'blocked', headSha: 'abc', baseRef: 'main', blockers: [{ code: 'conflicts', message: 'x' }], methodsAllowed: ['squash'], defaultMethod: 'squash', behindBy: 2 })
   })
+})
+
+it('sends the review with the pinned head_sha in snake_case', async () => {
+  const { client, fetch } = mk({ data: { review_id: 1, comment_ids: [], state: 'COMMENTED' } }, {}, { idempotencyKey: () => 'k9' })
+  await client.reviewPr(ref, { verdict: 'comment', body: 'hi', headSha: 'abc', comments: [{ body: 'x', path: 'a.go', line: 3, side: 'left' }] })
+  expect(call(fetch).url).toMatch(/\/pulls\/271\/reviews$/)
+  expect(JSON.parse(call(fetch).init.body as string)).toMatchObject({ verdict: 'comment', head_sha: 'abc', comments: [{ side: 'LEFT' }] })
+  expect(call(fetch).init.headers).toMatchObject({ 'Idempotency-Key': 'k9' })
 })

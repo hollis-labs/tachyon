@@ -8,6 +8,7 @@ import { hostFetch } from "@tachyon/host-sdk"
 // passed through untouched; missing collection fields are defaulted.
 
 import type { ForgeClient } from './client'
+import { newIdempotencyKey } from '../lib/http'
 import {
   ForgeError,
   type ForgeUser,
@@ -144,7 +145,7 @@ export class HttpForgeClient implements ForgeClient {
     if (write) {
       const tok = await this.opts.confirmToken?.()
       if (tok) headers['X-Identity-Confirm'] = tok
-      const key = this.opts.idempotencyKey?.()
+      const key = (this.opts.idempotencyKey ?? newIdempotencyKey)()
       if (key) headers['Idempotency-Key'] = key
     }
     let res: Response
@@ -214,7 +215,9 @@ export class HttpForgeClient implements ForgeClient {
   }
 
   async reviewPr(ref: PrRef, input: ReviewInput): Promise<Review> {
-    return (await this.request('POST', `${prPath(ref)}/reviews`, input, true)) as Review
+    // Wire shape: snake_case, pinned to the head the reviewer saw (409 head_moved when it changed).
+    const body = { verdict: input.verdict, body: input.body, comments: input.comments?.map((c) => ({ ...c, side: c.side === 'left' ? 'LEFT' : 'RIGHT' })), head_sha: input.headSha }
+    return (await this.request('POST', `${prPath(ref)}/reviews`, body, true)) as Review
   }
 
   async getMergePreflight(ref: PrRef): Promise<MergePreflight> {
@@ -234,7 +237,7 @@ export class HttpForgeClient implements ForgeClient {
   }
 
   async mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult> {
-    const result = await this.request('PUT', `${prPath(ref)}/merge`, input, true) as MergeResult
+    const result = await this.request('PUT', `${prPath(ref)}/merge`, { method: input.method, head_sha: input.headSha }, true) as MergeResult
     if (!result || result.merged !== true) throw new ForgeError('conflict', result?.message || 'GitHub did not confirm the merge')
     return result
   }
