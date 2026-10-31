@@ -32,7 +32,8 @@ func accessSpecs(s *Server) func() []accessstatus.Spec {
 			{App: "tesseract", BaseURL: u.TesseractURL, TokenFile: u.TesseractTokenFile, Read: &accessstatus.Probe{Path: "/v1/items/tachyon-access-probe"},
 				WriteNote: "Tesseract writes create items"},
 			{App: "cerberus", BaseURL: u.CerberusAddr, TokenFile: u.CerberusTokenFile, Read: &accessstatus.Probe{Path: "/hosts"},
-				WriteNote: "no harmless Cerberus write"},
+				// Reload of a resource id that does not exist: authorized, nothing changes (the daemon answers success:false).
+				Write: &accessstatus.Probe{Method: "POST", Path: "/resources/tachyon-access-probe/reload", Body: `{"acknowledged":true}`}},
 			nanite,
 			{App: "fragments_engine", BaseURL: s.cfg.FragmentsURL, TokenFile: s.cfg.FragmentsTokenFile, Read: &accessstatus.Probe{Path: "/v1/transcripts/status"},
 				WriteNote: "Tachyon only reads Fragments Engine"},
