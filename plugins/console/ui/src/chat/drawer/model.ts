@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { CHAT_BASE, chatFetch, chatJSON } from '../roster'
 
 export type DrawerMode = 'scratch' | 'terminal' | 'workspace'
@@ -96,13 +96,28 @@ export function useScratchpad(ref: string | undefined) {
   return { body, change, state, error, retry: () => void save(body) }
 }
 
+type Placement = 'drawer' | 'aside'
+// One shared value (loaded once from chat/settings) so the header menu, the composer icon and the aside agree.
+let placement: Placement = 'drawer'
+let loaded = false
+const psubs = new Set<() => void>()
+const pnotify = () => psubs.forEach((f) => f())
+const psub = (f: () => void) => { psubs.add(f); return () => { psubs.delete(f) } }
+
 /** Where the scratchpad lives: the drawer (default) or the aside panel. */
-export function useScratchPlacement(): 'drawer' | 'aside' {
-  const [p, setP] = useState<'drawer' | 'aside'>('drawer')
+export function useScratchPlacement(): Placement {
   useEffect(() => {
-    let live = true
-    chatJSON<{ scratchpad_placement?: string }>('/settings').then((s) => { if (live && s.scratchpad_placement === 'aside') setP('aside') }, () => undefined)
-    return () => { live = false }
+    if (loaded) return
+    loaded = true
+    chatJSON<{ scratchpad_placement?: string }>('/settings').then((s) => { if (s.scratchpad_placement === 'aside' && placement !== 'aside') { placement = 'aside'; pnotify() } }, () => { loaded = false })
   }, [])
-  return p
+  return useSyncExternalStore(psub, () => placement, () => 'drawer' as Placement)
+}
+
+/** Change the setting (PUT merges): optimistic, rolled back with the error when the save fails. */
+export async function setScratchPlacement(next: Placement): Promise<void> {
+  const prev = placement
+  placement = next; pnotify()
+  try { await chatJSON('/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scratchpad_placement: next }) }) }
+  catch (e) { placement = prev; pnotify(); throw e }
 }
