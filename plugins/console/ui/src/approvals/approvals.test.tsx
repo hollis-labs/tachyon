@@ -16,6 +16,7 @@ import {
   type ApprovalItem,
   type ApprovalClient,
 } from "./client"
+import { noteServerNow, serverNow } from "./clock"
 import { MAX_BATCH, batchEligibility, orderPending } from "./batch"
 import { ApprovalDialog } from "./dialog"
 import { ApprovalProvider } from "./context"
@@ -690,6 +691,18 @@ describe("batch eligibility", () => {
     expect(batchEligibility({ batchable: false, batch_blockers: ["risk_not_low", "needs_review"] }).reasons).toEqual(["Not low risk: review it on its own.", "Needs review."])
     expect(batchEligibility({ batchable: false }).reasons).toEqual(["Review it on its own."])
     expect(MAX_BATCH).toBe(25)
+  })
+})
+
+describe("server clock", () => {
+  it("shifts countdowns by the server's offset and ignores a bad value", () => {
+    const local = 1_000_000
+    noteServerNow(local + 60_000, local)
+    expect(serverNow() - Date.now()).toBeCloseTo(60_000, -2)
+    noteServerNow("nope")
+    expect(serverNow() - Date.now()).toBeCloseTo(60_000, -2)
+    noteServerNow(Date.now())
+    expect(Math.abs(serverNow() - Date.now())).toBeLessThan(50)
   })
 })
 

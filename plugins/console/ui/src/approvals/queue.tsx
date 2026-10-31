@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react"
 import { Chip } from "../components/chip"
 import { kindLabel, type ApprovalItem } from "./client"
 import { InitialsAvatar } from "../components/initials-avatar"
+import { serverNow } from "./clock"
 import { batchEligibility } from "./batch"
 import { Countdown, RiskChip } from "./parts"
 
@@ -72,7 +73,7 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history, hel
                   {history
                     ? <Chip>{i.terminal_outcome?.resolution?.response.decision ?? i.state}</Chip>
                     : held?.has(i.item_id) ? <Chip>Approving…</Chip> : <RiskChip risk={r.class} />}
-                  {!history && (i.deferred_until && Date.parse(i.deferred_until) > Date.now()
+                  {!history && (i.deferred_until && Date.parse(i.deferred_until) > serverNow()
                     ? <Chip tone="faint">Snoozed</Chip>
                     : <Countdown expiresAt={r.expires_at} />)}
                 </div>
