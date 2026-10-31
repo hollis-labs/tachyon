@@ -111,7 +111,7 @@ func Project(rec hitl.Record, ref Ref, now time.Time) Card {
 	}
 	var data struct {
 		Fields  []map[string]any `json:"fields"`
-		Options []map[string]any `json:"options"`
+		Options []any            `json:"options"`
 		Multi   bool             `json:"multi"`
 	}
 	_ = json.Unmarshal(req.Extra["data"], &data)
@@ -122,6 +122,11 @@ func Project(rec hitl.Record, ref Ref, now time.Time) Card {
 		c.Fields = []map[string]any{
 			{"id": "answer", "type": "enum", "label": "Answer", "options": data.Options, "multi": data.Multi, "required": true},
 			{"id": "note", "type": "text", "label": "Note", "required": false},
+		}
+	}
+	for _, f := range c.Fields {
+		if opts, ok := f["options"].([]any); ok {
+			f["options"] = normalizeOptions(opts)
 		}
 	}
 	if res, ok := rec.Outcome.(hitl.Resolved); ok {
@@ -137,4 +142,37 @@ func Project(rec hitl.Record, ref Ref, now time.Time) Card {
 		}
 	}
 	return c
+}
+
+// normalizeOptions gives every option the one shape the client maps: {id, value, label, description, recommended}.
+// Askers may send plain strings or {value|id, label, description?, recommended?}; the answer value is the id.
+func normalizeOptions(in []any) []map[string]any {
+	out := make([]map[string]any, 0, len(in))
+	for _, o := range in {
+		m := map[string]any{"description": "", "recommended": false}
+		switch v := o.(type) {
+		case string:
+			m["id"], m["value"], m["label"] = v, v, v
+		case map[string]any:
+			id, _ := v["value"].(string)
+			if id == "" {
+				id, _ = v["id"].(string)
+			}
+			label, _ := v["label"].(string)
+			if label == "" {
+				label = id
+			}
+			m["id"], m["value"], m["label"] = id, id, label
+			if d, ok := v["description"].(string); ok {
+				m["description"] = d
+			}
+			if r, ok := v["recommended"].(bool); ok {
+				m["recommended"] = r
+			}
+		default:
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }

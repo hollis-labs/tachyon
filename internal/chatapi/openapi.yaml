@@ -453,7 +453,7 @@ components:
         kind: {type: string, enum: [card.approval, card.question, card.form, card.notice, card.info, card.plan, card.dispatch]}
         caption: {type: string}
         cite: {type: array, items: {$ref: "#/components/schemas/Cite"}}
-        fields: {type: array, items: {type: object, description: "{id,type:enum|text|bool,label,options?,multi?,required}"}}
+        fields: {type: array, items: {type: object, description: "{id,type:enum|text|bool,label,options?,multi?,required}; enum options are {id,value,label,description,recommended} (value = id = the answer to send)"}}
         actions: {type: array, items: {type: object, properties: {id: {type: string}, label: {type: string}, key: {type: string}}}}
         target: {type: object, nullable: true, description: "digest-bound {scheme,ref,op}; registered schemes only", properties: {scheme: {type: string}, ref: {type: string}, op: {type: string}}}
         state: {type: string, enum: [pending, resolved, expired, superseded]}
