@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/hollis-labs/tachyon/internal/alertstore"
 	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
 )
@@ -13,10 +14,15 @@ import (
 // CardSeedPath creates labelled TEST approval cards so the Approvals UI can be proven on a live queue.
 const CardSeedPath = "/api/plugins/console/v1/approval-inbox-seed"
 
-// mountCardSeed mounts POST CardSeedPath {"shape":"a|b|c|d|e"} behind the operator session. The cards target
-// test:noop, so deciding them changes nothing. It is a test aid, not a product route.
-func mountCardSeed(mux *http.ServeMux, operator *approvals.Bridge, c *dataverbs.Cards) {
-	mux.Handle("POST "+CardSeedPath, operator.RequireOperator(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// mountCardSeed mounts POST CardSeedPath {"shape":"a|b|c|d|e"} for same-origin browser requests only (no
+// operator elevation: it only creates labelled TEST cards that target test:noop, so deciding them changes
+// nothing). It is a test aid, not a product route.
+func mountCardSeed(mux *http.ServeMux, _ *approvals.Bridge, c *dataverbs.Cards) {
+	mux.Handle("POST "+CardSeedPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" || !alertstore.SameOrigin(r) {
+			http.Error(w, `{"code":"forbidden","message":"Same-origin browser requests only."}`, 403)
+			return
+		}
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
 		var in struct {
 			Shape string `json:"shape"`
@@ -36,5 +42,5 @@ func mountCardSeed(mux *http.ServeMux, operator *approvals.Bridge, c *dataverbs.
 		}
 		w.WriteHeader(201)
 		_ = json.NewEncoder(w).Encode(map[string]any{"shape": in.Shape, "item_ids": ids})
-	})))
+	}))
 }
