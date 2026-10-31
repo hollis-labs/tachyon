@@ -206,8 +206,8 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     pin: () => item && void togglePin(item),
     finish: () => undefined,
     step: (delta) => {
-      const rows = [...document.querySelectorAll<HTMLElement>('[role="listbox"] [role="option"]')]
-      const at = rows.findIndex((r) => r.getAttribute('aria-selected') === 'true')
+      const rows = [...document.querySelectorAll<HTMLElement>('[data-spine-row]')]
+      const at = rows.findIndex((r) => r.getAttribute('aria-current') === 'true')
       const next = rows[Math.max(0, Math.min(rows.length - 1, at + delta))]
       next?.click()
       next?.focus()

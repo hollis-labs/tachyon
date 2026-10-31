@@ -17,7 +17,7 @@ describe('SpineList', () => {
   it('moves focus with J/K and opens with Enter', () => {
     const onSelect = vi.fn()
     render(<SpineList label="Items" onSelect={onSelect} selectedId="a" groups={[{ id: 'g', title: 'Group', items: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }]} />)
-    const [a, b] = screen.getAllByRole('option')
+    const [a, b] = screen.getAllByRole('button')
     a.focus()
     fireEvent.keyDown(a, { key: 'j' })
     expect(document.activeElement).toBe(b)
