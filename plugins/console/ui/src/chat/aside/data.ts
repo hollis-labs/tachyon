@@ -55,7 +55,7 @@ export function usePlan(ref: string | undefined, signal: number) {
     if (DEMO) { const p = r.data; if (p) r.set({ ...p, steps: [...p.steps, { id: `n${p.steps.length}`, position: p.steps.length, title, status: 'todo' }] }); return }
     if (!ref) return
     try {
-      if (!r.data) await chatJSON(`/threads/${enc(ref)}/plan`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ scope: 'thread', title: null, steps: [{ title }] }) })
+      if (!r.data) await chatJSON(`/threads/${enc(ref)}/plan`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ scope: 'thread', title: null, steps: [{ title }], expected_revision: 0 }) })
       else await chatJSON(`/threads/${enc(ref)}/plan/steps`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ title }) })
       setErr(''); await r.reload()
     } catch (e) { setErr(msg(e, 'Could not add the step.')) }
