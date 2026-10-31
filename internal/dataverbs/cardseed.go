@@ -67,6 +67,11 @@ func (c *Cards) Seed(ctx context.Context, shape, tag string) ([]string, error) {
 		if err := c.Registry.Prepare(&req, "tachyon-test"); err != nil {
 			return ids, err
 		}
+		if shape == "e" {
+			// Prepare raises any card with effects to medium. The batchable shape is seeded low on purpose (the
+			// class is not part of the op digest), so the UI has low-risk items to select.
+			req.Extra["class"], _ = json.Marshal("low")
+		}
 		h, err := c.Service.Enqueue(ctx, req)
 		if err != nil {
 			return ids, err
