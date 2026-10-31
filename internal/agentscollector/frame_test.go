@@ -16,3 +16,14 @@ func TestParseFrameLiveScopeObject(t *testing.T) {
 		t.Fatalf("live frame with an object scope must parse: %+v %v", f, ok)
 	}
 }
+
+func TestParseFrameTetherAppIsNative(t *testing.T) {
+	f, ok := ParseFrame([]byte(`{"kind":"tool.call.started","app":"tether","id":"env:5","seq":5,"session_id":"s1","payload":{"tool":"x"}}`))
+	if !ok || f.App != "" || f.SessionID != "s1" {
+		t.Fatalf("%+v", f)
+	}
+	f, _ = ParseFrame([]byte(`{"kind":"task.state_changed","app":"torque","session_id":"s1"}`))
+	if f.App != "torque" {
+		t.Fatal(f.App)
+	}
+}
