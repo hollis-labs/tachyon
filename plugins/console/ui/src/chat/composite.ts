@@ -34,11 +34,12 @@ export function createCompositeChatClient(primary: ChatClient, app: ChatClient):
     subscribeThreads(listener, onError) {
       // Seed both sides from the last full listing: with no poll interval the Tether side may not push again until a
       // spine frame, and an empty seed would leave only the app agent's thread in the list.
-      let p: ChatThread[] = lastPrimary
+      let p: ChatThread[] | null = null
       // Start from what listThreads last saw: the Tether poll often fires first, and an empty
       // app list would make the Tachyon thread vanish until the app poll arrives.
       let a: ChatThread[] = lastApp
-      const push = () => listener(merge(p, a))
+      // Until the Tether side pushes, use the newest full listing at the moment of each push (the first listing may still be in flight when we subscribe).
+      const push = () => listener(merge(p ?? lastPrimary, a))
       const offP = primary.subscribeThreads((t) => { p = lastPrimary = t; push() }, onError)
       // The app agent is optional: its failures are not reported as chat errors.
       const offA = app.subscribeThreads((t) => { a = lastApp = t; push() })

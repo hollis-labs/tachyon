@@ -13,4 +13,20 @@ describe('composite thread list', () => {
     c.subscribeThreads((t) => { last = t })
     expect(last.map((t) => t.id)).toEqual(['app', 't1', 't2'])
   })
+
+  it('a late first listing is used by an app push that arrives before the Tether side pushes', async () => {
+    let appPush: (t: ChatThread[]) => void = () => undefined
+    let release: (t: ChatThread[]) => void = () => undefined
+    const slow = new Promise<ChatThread[]>((r) => { release = r })
+    const primary = { listThreads: () => slow, subscribeThreads: () => () => undefined } as unknown as ChatClient
+    const app = stub([th('app', 3)], (l) => { appPush = l })
+    const c = createCompositeChatClient(primary, app)
+    let last: ChatThread[] = []
+    const listing = c.listThreads()
+    c.subscribeThreads((t) => { last = t })
+    release([th('t1', 2)])
+    await listing
+    appPush([th('app', 5)])
+    expect(last.map((t) => t.id)).toEqual(['app', 't1'])
+  })
 })
