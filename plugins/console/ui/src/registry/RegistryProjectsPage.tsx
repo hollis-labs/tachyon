@@ -288,7 +288,7 @@ export function RegistryProjectsPage() {
   return (
     <div className="flex h-full min-w-0 flex-col">
       {leaveDialog}
-      <header className="flex h-12 shrink-0 items-center gap-3 overflow-x-auto border-b border-border-subtle px-4">
+      <header tabIndex={0} className="flex h-12 shrink-0 items-center gap-3 overflow-x-auto border-b border-border-subtle px-4">
         <h1 className="font-mono text-caption font-semibold uppercase tracking-label text-fg">Registry</h1>
         <nav aria-label="Registry areas" className="flex shrink-0 gap-0.5">
           <span aria-current="page" className="inline-flex h-7 items-center gap-1.5 rounded-control bg-selection px-3 text-xs font-semibold text-fg">
