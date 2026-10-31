@@ -18,6 +18,7 @@ import {
 } from "./client"
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { ActionRunPanel } from "./terminal"
+import { noteServerNow, serverNow } from "./clock"
 import { Countdown, RiskChip, ago, timeLeft } from "./parts"
 import { AuditTrail } from "./audit"
 import { useApprovals } from "./context"
@@ -125,7 +126,9 @@ export function DecisionDetail({
     setReady(false)
     setError("")
     try {
-      setItem(await client.present(id))
+      const presented = await client.present(id)
+      noteServerNow(presented.server_now_ms)
+      setItem(presented)
       setReady(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to review request")
@@ -421,7 +424,7 @@ export function DecisionDetail({
                 {item && isPending(item) && !isExpired(item) && (() => {
                   const expiry = request.expires_at ? Date.parse(request.expires_at) : undefined
                   // A snoozed item must not expire unnoticed: offer only presets that end first.
-                  const presets = DEFER_PRESETS.filter((p) => expiry === undefined || Date.now() + p.seconds * 1000 < expiry)
+                  const presets = DEFER_PRESETS.filter((p) => expiry === undefined || serverNow() + p.seconds * 1000 < expiry)
                   const dueBefore = expiry !== undefined && item.deferred_until && expiry < Date.parse(item.deferred_until)
                   return item.deferred_until ? (
                     <p className="flex flex-wrap items-center gap-2 dash-control text-fg-muted">

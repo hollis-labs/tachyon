@@ -1,3 +1,4 @@
+import { serverNow } from "./clock"
 import { useEffect, useState } from "react"
 import { Chip } from "../components/chip"
 import type { ApprovalItem } from "./client"
@@ -31,10 +32,10 @@ export function timeLeft(expiresAt: string | undefined, now = Date.now()) {
 
 // Re-renders each 30s; not a live region (the page announces thresholds, not ticks).
 export function Countdown({ expiresAt, bare }: { expiresAt?: string; bare?: boolean }) {
-  const [now, setNow] = useState(Date.now())
+  const [now, setNow] = useState(serverNow())
   useEffect(() => {
     if (!expiresAt) return
-    const t = setInterval(() => setNow(Date.now()), 30000)
+    const t = setInterval(() => setNow(serverNow()), 30000)
     return () => clearInterval(t)
   }, [expiresAt])
   const left = timeLeft(expiresAt, now)

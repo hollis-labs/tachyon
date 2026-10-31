@@ -18,6 +18,7 @@ import {
   handoffItems,
   isHandoffError,
 } from "./client"
+import { noteServerNow } from "./clock"
 import { HeldToasts } from "./toasts"
 import { ApprovalDialog } from "./dialog"
 
@@ -74,6 +75,7 @@ export function ApprovalProvider({
       const n = ++sequence.current
       try {
         const next = await client.inbox(fresh, cursors.current)
+        noteServerNow(next.pending[0]?.server_now_ms ?? next.history[0]?.server_now_ms)
         if (active.current && n === sequence.current) {
           setInbox(next)
           setError(undefined)
