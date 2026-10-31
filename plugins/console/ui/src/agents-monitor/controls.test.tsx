@@ -56,7 +56,7 @@ describe('Nudge', () => {
   })
 
   it('is disabled with a visible reason until the backend controls are approved', () => {
-    render(<NudgeControl session={session} paused={false} onSent={vi.fn()} />)
+    render(<NudgeControl session={session} paused={false} live={false} onSent={vi.fn()} />)
     const b = screen.getByRole('button', { name: /^Nudge/ }) as HTMLButtonElement
     expect(b.disabled).toBe(true)
     expect(b.title).toMatch(/waiting for backend approval/)

@@ -24,7 +24,7 @@ export const overlayRoutes: PluginRoute[] = [
 ]
 
 export const overlayNav: PluginNavItem[] = [
-  { key: "dashboards", label: "Dashboards", to: "/dashboards/transcripts", match: "/dashboards", icon: <ChartNoAxesCombined className="h-4 w-4" />, priority: 32 },
+  { key: "dashboards", label: "Transcripts", to: "/dashboards/transcripts", match: "/dashboards", icon: <ChartNoAxesCombined className="h-4 w-4" />, priority: 32 },
   { key: "chat", label: "Chat", to: "/chat", icon: <MessageSquare className="h-4 w-4" />, priority: 25 },
   { key: "approvals", label: "Approvals", to: "/approvals", icon: <ShieldCheck className="h-4 w-4" />, priority: 35 },
   {
