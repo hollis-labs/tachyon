@@ -693,6 +693,37 @@ describe("batch eligibility", () => {
   })
 })
 
+describe("approval stream", () => {
+  class FakeES {
+    static last: FakeES
+    onopen?: () => void
+    onerror?: () => void
+    handlers: Record<string, () => void> = {}
+    closed = false
+    constructor(public url: string) { FakeES.last = this }
+    addEventListener(n: string, h: () => void) { this.handlers[n] = h }
+    close() { this.closed = true }
+  }
+  afterEach(() => vi.unstubAllGlobals())
+  it("refreshes on a stream event, says it polls only while the stream is down, and closes on unmount", async () => {
+    vi.stubGlobal("EventSource", FakeES)
+    const inbox = vi.fn().mockResolvedValue({ pending: [], history: [] })
+    const client = { inbox, ...noAudit } as unknown as ApprovalClient
+    const { unmount } = render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await screen.findByText("Updates every 10 s")
+    expect(FakeES.last.url).toMatch(/\/approval-inbox\/events$/)
+    await act(async () => FakeES.last.onopen?.())
+    await waitFor(() => expect(screen.queryByText("Updates every 10 s")).toBeNull())
+    const before = inbox.mock.calls.length
+    await act(async () => FakeES.last.handlers["item.created"]?.())
+    await waitFor(() => expect(inbox.mock.calls.length).toBeGreaterThan(before))
+    await act(async () => FakeES.last.onerror?.())
+    await screen.findByText("Updates every 10 s")
+    unmount()
+    expect(FakeES.last.closed).toBe(true)
+  })
+})
+
 describe("audit trail", () => {
   it("lists a request's audit events with a count", async () => {
     const decided: ApprovalItem = { ...item, state: "resolved", terminal_outcome: { item_id: "req-1", state: "resolved", resolution: { response: { kind: "approval", decision: "approved" }, resolved_at: "2026-10-30T10:00:00Z", participant: { principal_ref: "operator", authority: "queue", assurance: "participant" } } } as never }
