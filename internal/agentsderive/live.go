@@ -20,7 +20,8 @@ type Live struct {
 type Saved struct {
 	OneLiner    *OneLiner
 	CallsInTurn int
-	CallsDelta  int // tool calls seen since the last save; the store adds them to the session total
+	CallsDelta  int    // tool calls seen since the last save; the store adds them to the session total
+	TokDelta    *Usage // tokens of the API calls finished since the last save; nil when none were seen
 	Meter       Meter
 	At          time.Time
 }
@@ -30,6 +31,7 @@ type liveSession struct {
 	last    *OneLiner
 	calls   int
 	unsaved int
+	tokens  *Usage
 	savedAt time.Time
 }
 
@@ -66,6 +68,15 @@ func (l *Live) Output(ctx context.Context, id string, at time.Time, payload []by
 		s.calls++
 		s.unsaved++
 	}
+	if e.Billed != nil {
+		if s.tokens == nil {
+			s.tokens = &Usage{}
+		}
+		s.tokens.Input += e.Billed.Input
+		s.tokens.Output += e.Billed.Output
+		s.tokens.CacheRead += e.Billed.CacheRead
+		s.tokens.CacheWrite += e.Billed.CacheWrite
+	}
 	s.meter.Observe(e, at)
 	if !s.savedAt.IsZero() && at.Sub(s.savedAt) < time.Second { // throttled; the next output saves the newer figures
 		l.mu.Unlock()
@@ -73,6 +84,7 @@ func (l *Live) Output(ctx context.Context, id string, at time.Time, payload []by
 	}
 	s.savedAt = at
 	snap := Saved{CallsInTurn: s.calls, CallsDelta: s.unsaved, Meter: s.meter, At: at}
+	snap.TokDelta, s.tokens = s.tokens, nil
 	s.unsaved = 0
 	snap.Meter.Compactions = append([]Marker(nil), s.meter.Compactions...)
 	if s.last != nil {

@@ -23,6 +23,7 @@ type Extracted struct {
 	Window  int64  // contextWindow from a result frame
 	Model   string
 	Compact *int64 // compact_boundary pre_tokens
+	Billed  *Usage // summed final usage of the API calls that finished in the frame (message_delta)
 }
 
 type claudeLine struct {
@@ -117,6 +118,13 @@ func ExtractOutput(payload []byte) Extracted {
 			if l.Event.Type == "message_delta" {
 				if u := l.Event.Usage.get(); u != nil {
 					out.Usage = u
+					if out.Billed == nil {
+						out.Billed = &Usage{}
+					}
+					out.Billed.Input += u.Input
+					out.Billed.Output += u.Output
+					out.Billed.CacheRead += u.CacheRead
+					out.Billed.CacheWrite += u.CacheWrite
 				}
 			}
 		case "result":

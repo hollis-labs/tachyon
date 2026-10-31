@@ -1041,7 +1041,7 @@ func (s *Server) startAgentsCollector(ctx context.Context, store *localstore.Sto
 	cstore := &agentscollector.Store{DB: store}
 	// Output payloads are reduced in memory by the derivation sink and never stored.
 	live := &agentsderive.Live{Save: func(ctx context.Context, id string, d agentsderive.Saved) error {
-		return cstore.SetDerived(ctx, id, agentscollector.Derived{OneLiner: d.OneLiner, CallsInTurn: d.CallsInTurn, CallsDelta: d.CallsDelta, At: d.At,
+		return cstore.SetDerived(ctx, id, agentscollector.Derived{OneLiner: d.OneLiner, CallsInTurn: d.CallsInTurn, CallsDelta: d.CallsDelta, TokDelta: tokDelta(d.TokDelta), At: d.At,
 			CtxUsed: d.Meter.Used, CtxWindow: d.Meter.Window, CtxModel: d.Meter.Model, CtxSeen: d.Meter.Seen, Compactions: d.Meter.Compactions, LastClear: d.Meter.LastClear})
 	}}
 	s.agentsCollector = &agentscollector.Collector{Source: src, Store: cstore, Sink: live, TurnEnded: live.EndTurn}
@@ -1189,4 +1189,11 @@ func (s *Server) itemRunState(ctx context.Context, itemID string) string {
 		}
 	}
 	return ""
+}
+
+func tokDelta(u *agentsderive.Usage) *[4]int64 {
+	if u == nil {
+		return nil
+	}
+	return &[4]int64{u.Input, u.Output, u.CacheRead, u.CacheWrite}
 }
