@@ -31,6 +31,7 @@ import {
   type Repo,
   type RepoRef,
   type Review,
+  type AuditEntry,
   type ForgeStatus,
   type ReviewDraft,
   type ReviewValidation,
@@ -268,6 +269,15 @@ export class HttpForgeClient implements ForgeClient {
 
   async deleteReviewDraft(ref: PrRef): Promise<void> {
     await this.request('DELETE', `${prPath(ref)}/review-draft`, undefined, true)
+  }
+
+  async listAudit(limit = 100): Promise<AuditEntry[]> {
+    const raw = await this.request('GET', `/audit?limit=${limit}`)
+    const rows = isObj(raw) && Array.isArray(raw.entries) ? raw.entries : Array.isArray(raw) ? raw : []
+    return rows.filter(isObj).map((r) => ({
+      id: Number(r.id), at: Number(r.ts_ms), op: String(r.op ?? ''), prKey: String(r.pr_key ?? ''), actor: String(r.actor_ref ?? ''), outcome: String(r.outcome ?? ''),
+      errorCode: typeof r.error_code === 'string' ? r.error_code : undefined, githubRef: typeof r.github_ref === 'string' ? r.github_ref : undefined,
+    }))
   }
 
   async getStatus(): Promise<ForgeStatus> {

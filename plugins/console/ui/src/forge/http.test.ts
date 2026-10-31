@@ -173,3 +173,9 @@ it('getStatus maps last refresh and degraded', async () => {
   expect(await client.getStatus()).toEqual({ lastRefreshMs: 1700000000000, degraded: true })
   expect(call(fetch).url).toMatch(/\/status$/)
 })
+
+it('listAudit maps entries', async () => {
+  const { client, fetch } = mk({ entries: [{ id: 3, ts_ms: 1700000000000, op: 'merge', pr_key: 'github:o/r#1', actor_ref: 'operator', outcome: 'ok', github_ref: 'abc' }] })
+  expect(await client.listAudit(50)).toEqual([{ id: 3, at: 1700000000000, op: 'merge', prKey: 'github:o/r#1', actor: 'operator', outcome: 'ok', errorCode: undefined, githubRef: 'abc' }])
+  expect(call(fetch).url).toMatch(/\/audit\?limit=50$/)
+})
