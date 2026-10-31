@@ -639,6 +639,9 @@ func (s *Server) Routes() http.Handler {
 					cardTools.Bind = s.chatCards.Bind
 				}
 			}
+			if cardTools != nil {
+				mountCardSeed(mux, operator, cardTools)
+			}
 			// Read-only Tesseract search and read for agents; nil (feature off) when no address is set.
 			tesseractReader, err := tesseractread.New(s.cfg.Upstreams.TesseractURL, s.cfg.Upstreams.TesseractTokenFile)
 			if err != nil {
