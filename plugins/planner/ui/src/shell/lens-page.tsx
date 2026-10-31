@@ -267,7 +267,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
         onDetails={() => setDetails(true)}
         contextCollapsed={ctxCollapsed}
         onToggleContext={() => setCtxCollapsed((v) => !v)}
-        focused={selected && (Boolean(item) || db === 'inbox')}
+        focused={Boolean(item) || (db === 'inbox' && Boolean(openId))}
         onBack={() => navigate(lensPath(db))}
         spine={items ? <SpineList label={TEXT.spineLabel} groups={groups} selectedId={openId} onSelect={open} pendingLabel={TEXT.saving} pinnedLabel={TEXT.pinned} emptyLabel={needOnly ? TEXT.needYouEmpty : TEXT.lensEmpty(lens.label)} /> : error ? <LoadError title={TEXT.loadFailedLens(lens.label)} message={error} onRetry={() => void load()} /> : <div role="status" aria-busy aria-label={TEXT.loading} className="flex flex-col gap-2 p-1">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>}
         spineNotice={error && items ? (
