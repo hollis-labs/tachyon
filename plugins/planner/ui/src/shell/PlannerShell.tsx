@@ -5,7 +5,7 @@ import { EmptyState, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-l
 import { PlannerFrame } from '@planner/shell/frame'
 import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
 import { PlannerApiError as ApiError } from '@planner/api/errors'
-import { notifyError, notifyWriteError } from '@planner/api/notifications'
+import { authorizing, notifyError, notifyWriteError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { CommandPalette, LinkLayer, PaletteHint, SpineList, type PaletteCommand } from '@planner/shared'
 import { Context } from '@planner/shell/context'
@@ -129,7 +129,7 @@ export default function PlannerShell() {
       return
     }
     try {
-      await api.plannerPin('themes', pid, !r.pinned, r.rev)
+      await authorizing(() => api.plannerPin('themes', pid, !r.pinned, r.rev))
     } catch (err) {
       notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true))
     }
@@ -147,7 +147,7 @@ export default function PlannerShell() {
   }, [serverPins])
   const act = async (r: ThemeRow, action: ThemeAction, args?: { position?: number }) => {
     try {
-      await api.plannerThemeAction(r.id, action, r.rev, args)
+      await authorizing(() => api.plannerThemeAction(r.id, action, r.rev, args))
       await load()
     } catch (err) {
       await load()
@@ -157,7 +157,7 @@ export default function PlannerShell() {
 
   const edit = async (r: ThemeRow, patch: Record<string, unknown>) => {
     try {
-      await api.plannerUpdate('themes', r.id, patch, r.rev)
+      await authorizing(() => api.plannerUpdate('themes', r.id, patch, r.rev))
     } catch (err) {
       notifyWriteError(err, TEXT.writeFailed, () => setNeedsAccess(true))
     }
@@ -187,7 +187,7 @@ export default function PlannerShell() {
     setPendingLink(null)
     if (!source) return
     try {
-      const done = await api.plannerRelationAdd('themes', from, kind, { db: 'themes', id: to }, source.rev)
+      const done = await authorizing(() => api.plannerRelationAdd('themes', from, kind, { db: 'themes', id: to }, source.rev))
       setLinksView(done.links_view)
       setJustLinked({ from, to, kind: kindLabel(kind) })
       toast(TEXT.linkAdded(titleOf(from), kindLabel(kind), titleOf(to)), {

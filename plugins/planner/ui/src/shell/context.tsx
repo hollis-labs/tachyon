@@ -5,7 +5,7 @@ import { Button, cn } from '@hollis-labs/design-components'
 import { TEXT } from '@planner/lib/vocabulary'
 import { boardAge } from '@planner/lib/planner'
 import { useContributions } from '@planner/lib/regions'
-import { notifyError } from '@planner/api/notifications'
+import { authorizing, notifyError } from '@planner/api/notifications'
 import { usePlannerApi } from '@planner/api/context'
 import { CAPTION, Kbd, LinkDropZone, StateDot, StatusMenu, type StatusMenuOption } from '@planner/shared'
 import type { PlannerComment, PlannerDb, PlannerItem } from '@planner/api/types'
@@ -76,7 +76,7 @@ export function Context({ db, id, rev, pinned: pinnedNow, comments, links, decis
     if (!body || sending) return
     setSending(true)
     try {
-      await api.plannerComment(db, id, body, rev, undefined, pinChange === undefined ? undefined : { pin: pinChange })
+      await authorizing(() => api.plannerComment(db, id, body, rev, undefined, pinChange === undefined ? undefined : { pin: pinChange }))
       if (status && onStatus) await onStatus(status)
       setText('')
       setPinChange(undefined)
@@ -187,7 +187,7 @@ function PendingDecision({ decision, onDone }: { decision: ContextDecision; onDo
     if (busy) return
     setBusy(true)
     try {
-      await fn()
+      await authorizing(fn)
       onDone()
     } catch (err) {
       notifyError(err, TEXT.writeFailed)

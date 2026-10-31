@@ -7,7 +7,7 @@ import { usePlannerApi as useApi } from '@planner/api/context'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
 import { PlannerApiError as ApiError } from '@planner/api/errors'
 import { buildNewItem, createDraft, createSpecs, missingRequired, plannerMeta, validationErrors, type Draft, type FieldError } from '@planner/lib/planner'
-import { notifyError, notifySuccess } from '@planner/api/notifications'
+import { authorizing, notifyError, notifySuccess } from '@planner/api/notifications'
 import type { PlannerDb, PlannerItem } from '@planner/api/types'
 
 interface PlannerCreateDialogProps {
@@ -49,7 +49,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, init
     setSubmitting(true)
     setErrors([])
     try {
-      const created = await api.plannerCreate(db, buildNewItem(specs, draft), retainedId.current)
+      const created = await authorizing(() => api.plannerCreate(db, buildNewItem(specs, draft), retainedId.current))
       notifySuccess(`Created ${created.id}`)
       onOpenChange(false)
       onCreated(created)
