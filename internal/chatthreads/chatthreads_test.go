@@ -527,3 +527,24 @@ func TestPlanMessagesAndProgressAppearInThreads(t *testing.T) {
 		t.Fatal("AppendNote accepted a missing thread")
 	}
 }
+
+func TestMessageAndDeliveryFramesAreReplayable(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	ref := "app:app-tachyon"
+	for _, typ := range []string{"message", "delivery"} {
+		id, err := e.h.Hub.Publish(ctx, ref, typ, map[string]any{"message_id": "m1"})
+		if err != nil || id == 0 {
+			t.Fatalf("%s: id %d err %v", typ, id, err)
+		}
+	}
+	rows, _ := e.h.Hub.Replay(ctx, ref, 0)
+	if len(rows) != 2 {
+		t.Fatalf("logged: %d", len(rows))
+	}
+	s := e.stream(t, "/threads/"+ref+"/events", "Last-Event-ID", itoa(rows[0].ID))
+	id, ev := s.next(t)
+	if id != itoa(rows[1].ID) || ev["type"] != "delivery" || ev["message_id"] != "m1" || ev["thread_ref"] != ref {
+		t.Fatalf("resumed: %s %v", id, ev)
+	}
+}

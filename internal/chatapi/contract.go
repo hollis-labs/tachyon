@@ -64,7 +64,7 @@ const (
 // live signals; a reconnecting client refetches state instead.
 func IDed(t string) bool {
 	switch t {
-	case EventActivity, EventPlan, EventCard, EventTopic, EventBookmark, EventWorkspace, EventTerminal:
+	case EventMessage, EventDelivery, EventActivity, EventPlan, EventCard, EventTopic, EventBookmark, EventWorkspace, EventTerminal:
 		return true
 	}
 	return false

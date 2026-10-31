@@ -74,7 +74,7 @@ func TestSSEReplayAndResume(t *testing.T) {
 	h := Stub{}.Chat()
 	w := do(h, "GET", Prefix+"/threads/app:t_01/events?once=1")
 	ids, evs := frames(t, w.Body.String())
-	if len(evs) != 8 || len(ids) != 5 {
+	if len(evs) != 10 || len(ids) != 7 {
 		t.Fatalf("full replay: %d events %d ids", len(evs), len(ids))
 	}
 	for _, e := range evs {
@@ -87,7 +87,7 @@ func TestSSEReplayAndResume(t *testing.T) {
 	}
 	w = do(h, "GET", Prefix+"/threads/app:t_01/events?once=1", "Last-Event-ID", "3")
 	ids, evs = frames(t, w.Body.String())
-	if len(ids) != 2 || ids[0] != "4" || len(evs) != 2 {
+	if len(ids) != 4 || ids[0] != "4" || len(evs) != 4 {
 		t.Fatalf("resume: %v %d", ids, len(evs))
 	}
 	if w := do(h, "GET", Prefix+"/threads/app:t_01/events?once=1", "Last-Event-ID", "x"); w.Code != 400 {

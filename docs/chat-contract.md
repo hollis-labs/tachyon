@@ -22,7 +22,7 @@ Flat JSON per SSE `data:` line: `{"type", "thread_ref", "at", ...payload}`. `at`
 end, delivery (existing, unchanged); card, plan, activity, panel, topic, bookmark, workspace, context, thread,
 terminal.run (new). The activity record's own type is `activity_type` inside an `activity` event.
 
-Activity-class events (activity, plan, card, topic, bookmark, workspace, terminal.run) carry `id: <seq>` and are replayed
+Activity-class events (message, delivery, activity, plan, card, topic, bookmark, workspace, terminal.run) carry `id: <seq>` and are replayed
 after `Last-Event-ID`; the rest are live signals, so after a reconnect refetch state. 15 s keepalive comments. A slow
 subscriber is dropped and must refetch. Events are signals, not state.
 
