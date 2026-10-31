@@ -141,6 +141,14 @@ func Apply(kind, id, path, live string, exists bool, edits []Edit, snapshot func
 			content = c
 			continue
 		}
+		if kind == builderapi.TargetLaunch && strings.HasPrefix(e.Path, "env.") {
+			c, err := editEnv(content, e)
+			if err != nil {
+				return "", nil, err
+			}
+			content = c
+			continue
+		}
 		yp, err := yamlPath(kind, e.Path)
 		if err != nil {
 			return "", nil, err
@@ -167,6 +175,33 @@ func Apply(kind, id, path, live string, exists bool, edits []Edit, snapshot func
 		}
 	}
 	return content, privs, nil
+}
+
+var envPath = regexp.MustCompile(`^env\.[A-Z_][A-Z0-9_]{0,63}$`)
+
+const maxEnvValue = 4096
+
+// editEnv sets or removes one environment variable of a launch (path env.NAME). Values are write-only: they are
+// stored in the file but every read, diff and snapshot masks them, and a launch with env values is never handed to a
+// session. Only string values; append is not an env operation.
+func editEnv(content string, e Edit) (string, *OpError) {
+	if !envPath.MatchString(e.Path) {
+		return "", bad("invalid", "An environment variable is env.NAME with an upper-case name.")
+	}
+	switch e.Type {
+	case builderapi.OpSet:
+		var v string
+		if json.Unmarshal(e.Value, &v) != nil {
+			return "", bad("invalid", "An environment value is a string.")
+		}
+		if len(v) > maxEnvValue {
+			return "", &OpError{413, "too_large", "An environment value is at most 4 KiB."}
+		}
+	case builderapi.OpRemove:
+	default:
+		return "", bad("invalid", "Environment variables are set or removed.")
+	}
+	return editYAML(content, []string{"env", strings.TrimPrefix(e.Path, "env.")}, e)
 }
 
 var idSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)

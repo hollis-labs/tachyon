@@ -555,8 +555,11 @@ func TestCreateNewSkillAndLaunchOps(t *testing.T) {
 		t.Fatalf("skill:\n%q", skill)
 	}
 	e.do("POST", "/changes/"+c.ChangeID+"/cancel", "")
-	if w = e.do("POST", "/changes", req("n2", `{"target":{"kind":"launch","id":"l1"},"expected_sha":"`+sha(e.fake.files["launches/l1.yaml"])+`","op":{"type":"set","path":"env.K","value":"x"}}`)); w.Code != 400 {
-		t.Fatalf("env write: %d %s", w.Code, w.Body)
+	if w = e.do("POST", "/changes", req("n2", `{"target":{"kind":"launch","id":"l1"},"expected_sha":"`+sha(e.fake.files["launches/l1.yaml"])+`","op":{"type":"set","path":"env.K","value":"x"}}`)); w.Code != 201 {
+		t.Fatalf("launch env write: %d %s", w.Code, w.Body)
+	}
+	if strings.Contains(w.Body.String(), `"value":"x"`) {
+		t.Fatalf("env value must not be echoed: %s", w.Body)
 	}
 }
 
@@ -598,5 +601,35 @@ func TestLaunchAction(t *testing.T) {
 	}
 	if w = e.do("POST", "/launches/Bad_Id/launch", `{"request_id":"a"}`); w.Code != 400 {
 		t.Errorf("bad launch id: %d", w.Code)
+	}
+}
+
+func TestLaunchEnvSetAndRemoveButNeverOnAgentsOrWithBadShapes(t *testing.T) {
+	raw := func(s string) json.RawMessage { return json.RawMessage(s) }
+	live := "id: l1\nname: L1\nagent: reviewer\nenv:\n  KEEP: one\n"
+	out, _, err := Apply("launch", "l1", "p", live, true, []Edit{{Type: "set", Path: "env.API_BASE", Value: raw(`"https://x.test"`)}, {Type: "remove", Path: "env.KEEP"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "API_BASE: https://x.test") || strings.Contains(out, "KEEP") {
+		t.Fatalf("env edit:\n%s", out)
+	}
+	masked, _, merr := catalogindex.MaskYAML(out)
+	if merr != nil || strings.Contains(masked, "x.test") {
+		t.Fatalf("env values must read masked:\n%s", masked)
+	}
+	for name, c := range map[string]struct {
+		kind string
+		e    Edit
+	}{
+		"agent env":     {"agent", Edit{Type: "set", Path: "env.A", Value: raw(`"v"`)}},
+		"lower name":    {"launch", Edit{Type: "set", Path: "env.api", Value: raw(`"v"`)}},
+		"non string":    {"launch", Edit{Type: "set", Path: "env.API", Value: raw(`12`)}},
+		"append":        {"launch", Edit{Type: "append", Path: "env.API", Value: raw(`"v"`)}},
+		"whole env map": {"launch", Edit{Type: "set", Path: "env", Value: raw(`{"A":"b"}`)}},
+	} {
+		if _, _, err := Apply(c.kind, "x", "p", live, true, []Edit{c.e}, nil); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
 	}
 }
