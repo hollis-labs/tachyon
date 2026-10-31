@@ -34,7 +34,7 @@ type Session struct {
 	OneLiner        any          `json:"one_liner"`
 	Context         Context      `json:"context"`
 	Tokens          Tokens       `json:"tokens"`
-	ToolCallCount   int64        `json:"tool_call_count"`
+	ToolCallCount   *int64       `json:"tool_call_count"` // null until a tool call is collected (0 would read as "none ran")
 	LastClearAt     *Clear       `json:"last_clear_at"`
 	Compactions     []Compaction `json:"compactions"`
 	Pending         Pending      `json:"pending"`
@@ -268,7 +268,7 @@ func build(r row, ex *extras, now time.Time, staleAfter time.Duration) Session {
 	s := Session{ID: r.id, Kind: "process", Provider: r.provider, Model: strp(r.model), Workroot: r.workroot, State: d.State,
 		Agent:           Agent{URN: strp(r.urn), Name: agentName(r), LogicalAgentID: strp(r.logical)},
 		LastActivityAt:  ms(r.last),
-		ToolCallCount:   r.toolCalls,
+		ToolCallCount:   countOrNil(r.toolCalls),
 		Compactions:     []Compaction{},
 		ParentSessionID: strp(r.parent), ReplacedBy: strp(r.replaced), ObservedBy: []string{"tether"},
 		Capabilities: Capabilities{Interrupt: Interrupt{Reason: strp("Controls are not enabled yet.")}},
@@ -405,3 +405,10 @@ func (s *Server) all(ctx context.Context) ([]Session, error) {
 }
 
 func sha256sum(b []byte) [32]byte { return sha256.Sum256(b) }
+
+func countOrNil(n int64) *int64 {
+	if n <= 0 {
+		return nil
+	}
+	return &n
+}

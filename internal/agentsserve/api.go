@@ -656,7 +656,7 @@ func (s *Server) tokens(w http.ResponseWriter, r *http.Request) {
 	}
 	reply(w, 200, map[string]any{"metered": true,
 		"hour":    map[string]int64{"input": hour.in, "output": hour.out, "cache_read": hour.cr, "cache_write": hour.cw, "tool_calls": hour.calls},
-		"session": map[string]int64{"input": *sess.Tokens.Input, "output": *sess.Tokens.Output, "cache_read": *sess.Tokens.CacheRead, "cache_write": *sess.Tokens.CacheWrite, "tool_calls": sess.ToolCallCount},
+		"session": map[string]int64{"input": *sess.Tokens.Input, "output": *sess.Tokens.Output, "cache_read": *sess.Tokens.CacheRead, "cache_write": *sess.Tokens.CacheWrite, "tool_calls": orZero(sess.ToolCallCount)},
 		"share":   share, "trend": trend})
 }
 
@@ -724,6 +724,13 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 }
 
 func derefi(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+func orZero(p *int64) int64 {
 	if p == nil {
 		return 0
 	}
