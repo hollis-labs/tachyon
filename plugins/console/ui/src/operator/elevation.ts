@@ -6,6 +6,16 @@ interface Status {
   operator_token_configured: boolean
   elevation_ttl?: string
   elevation_expires_at?: string
+  // Optional until auth hardening (CW-20261030-0082): the UI lights these up when present.
+  session?: "active" | "expired" | "none"
+  methods?: string[]
+  attempts_left?: number
+}
+
+export interface StepUp {
+  action?: string
+  risk?: string
+  summary?: string
 }
 
 // Tangent owns the lifetime (always | never | <N>d) and the stamped end.
@@ -21,16 +31,22 @@ export function elevationCopy(s?: Pick<Status, "elevation_ttl" | "elevation_expi
   if (days) return `Access lasts ${days === "1" ? "1 day" : days + " days"}.`
   return "Access lifetime is set by the authorization service."
 }
-interface Prompt {
+export interface Prompt {
   open: boolean
   submitting: boolean
   error: string
+  stepUp?: StepUp
+  methods?: string[]
+  attemptsLeft?: number
+  // Estimated end of a lockout (no Retry-After guarantee, not persisted over a restart).
+  lockedUntil?: number
 }
+const IDLE: Prompt = { open: false, submitting: false, error: "" }
 
 // The authority and expiry remain server-owned. Only prompt state is
 // kept here; neither the key nor a fabricated "unlocked" flag is persisted.
 export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
-  let state: Prompt = { open: false, submitting: false, error: "" }
+  let state: Prompt = IDLE
   let pending:
     | { promise: Promise<boolean>; resolve(value: boolean): void }
     | undefined
@@ -44,7 +60,7 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
   const finish = (value: boolean) => {
     const p = pending
     pending = undefined
-    set({ open: false, submitting: false, error: "" })
+    set(IDLE)
     p?.resolve(value)
   }
   async function status(): Promise<Status> {
@@ -74,6 +90,20 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
     lastStatus = value
     return value
   }
+  // Read-only session probe for the expired banner; never opens a session or a prompt.
+  async function expired(): Promise<boolean> {
+    try {
+      const res = await fetcher(BASE + "/status", {
+        headers: { "Cache-Control": "no-store", Accept: "application/json" },
+      })
+      if (!res.ok) return false
+      const value = (await res.json()) as Status
+      lastStatus = value
+      return value.session === "expired"
+    } catch {
+      return false
+    }
+  }
   async function revoke() {
     const res = await fetcher(BASE + "/de-elevate", {
       method: "POST",
@@ -86,7 +116,7 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
     lastStatus = value
     return value
   }
-  async function ensure() {
+  async function ensure(ctx?: { stepUp?: StepUp; methods?: string[] }) {
     const current = await status()
     if (current.elevated && current.assurance === "operator-token") return true
     if (!current.operator_token_configured)
@@ -99,13 +129,20 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
       resolve = fn
     })
     pending = { promise, resolve }
-    set({ open: true, submitting: false, error: "" })
+    set({
+      open: true,
+      submitting: false,
+      error: "",
+      stepUp: ctx?.stepUp,
+      methods: ctx?.methods ?? current.methods,
+      attemptsLeft: current.attempts_left,
+    })
     return promise
   }
   async function submit(token: string) {
     if (!pending || state.submitting) return
     const attempt = pending
-    set({ open: true, submitting: true, error: "" })
+    set({ ...state, open: true, submitting: true, error: "" })
     try {
       const res = await fetcher(BASE + "/elevate", {
         method: "POST",
@@ -117,12 +154,22 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
       })
       if (pending !== attempt) return
       if (!res.ok) {
+        const body = await res.clone().json().catch(() => ({}))
+        const retry = Number(res.headers.get("Retry-After"))
+        const attemptsLeft =
+          typeof body.attempts_left === "number" ? body.attempts_left : undefined
         set({
+          ...state,
           open: true,
           submitting: false,
+          attemptsLeft,
+          lockedUntil:
+            res.status === 429
+              ? Date.now() + (retry > 0 ? retry : 300) * 1000
+              : undefined,
           error:
             res.status === 429
-              ? "Too many attempts. Wait a minute and try again."
+              ? "Too many attempts."
               : res.status >= 500
                 ? "The authorization service could not be reached."
                 : "That operator key was not accepted.",
@@ -136,6 +183,7 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
     } catch {
       if (pending === attempt)
         set({
+          ...state,
           open: true,
           submitting: false,
           error: "Elevation could not be confirmed. Please try again.",
@@ -158,7 +206,7 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
       )
     )
       return res
-    if (!(await ensure())) return res
+    if (!(await ensure({ stepUp: body.step_up, methods: body.methods }))) return res
     init?.signal?.throwIfAborted()
     // Only a definite pre-action assurance refusal is replayed, exactly once.
     return fetcher(input, init)
@@ -167,6 +215,8 @@ export function createOperatorElevation(fetcher: typeof fetch = hostFetch) {
     ensure,
     revoke,
     lifetimeCopy: () => elevationCopy(lastStatus),
+    lastStatus: () => lastStatus,
+    expired,
     status,
     submit,
     cancel: () => finish(false),

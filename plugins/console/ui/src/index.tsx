@@ -14,6 +14,7 @@ import { overlayNav, overlayRoutes } from "./routes"
 import { ConsoleLayer, ConsoleNavExtras } from "./shell"
 
 export { AlertsSettingsSection } from "./alerts/AlertsSettingsSection"
+export { SessionBanner } from "./operator/SessionBanner"
 
 export const consolePlugin: TachyonPlugin = {
   id: "console",
