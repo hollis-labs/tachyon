@@ -4,7 +4,7 @@ import { ChevronDown, Pin } from 'lucide-react'
 import { OverflowMenu, Sheet, SheetContent, SheetTitle, Skeleton } from '@hollis-labs/design-components'
 import { createPlannerId } from '@planner/api/identity'
 import { usePlannerApi, usePlannerEvents } from '@planner/api/context'
-import { notifyError } from '@planner/api/notifications'
+import { authorizing, notifyError } from '@planner/api/notifications'
 import { PlannerCreateDialog } from '@planner/components/planner/planner-create-dialog'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
 import { boardAge, sentenceCase } from '@planner/lib/planner'
@@ -173,7 +173,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
     inFlight.current = true
     setBusy(true)
     try {
-      await fn()
+      await authorizing(fn)
     } catch (err) {
       notifyError(err, TEXT.writeFailed)
     } finally {
@@ -226,7 +226,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
       onCommented={() => void load()}
       mentionable={(items ?? []).map((i) => ({ id: i.id, title: i.title, ref: typeof i.legacy_id === 'string' ? i.legacy_id : undefined }))}
       statusOptions={(schema?.enums.status ?? []).map((s) => ({ value: s, label: sentenceCase(s) }))}
-      onStatus={async (status) => { await api.plannerUpdate(db, item.id, { status }, item.rev + 1) }}
+      onStatus={async (status) => { await authorizing(() => api.plannerUpdate(db, item.id, { status }, item.rev + 1)) }}
     />
   )
   const selected = Boolean(item) || db === 'inbox'

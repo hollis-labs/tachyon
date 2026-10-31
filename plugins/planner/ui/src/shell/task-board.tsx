@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { Button } from '@hollis-labs/design-components'
 import { usePlannerApi } from '@planner/api/context'
 import { PlannerApiError } from '@planner/api/errors'
-import { notifyWriteError } from '@planner/api/notifications'
+import { authorizing, notifyWriteError } from '@planner/api/notifications'
 import { shortTaskId } from '@planner/lib/planner'
 import { LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
 import { FloatingPrompt, LaneBoard, StatusMenu, type Lane } from '@planner/shared'
@@ -64,7 +64,7 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
     setStatus(id, to)
     setPending((p) => new Set(p).add(id))
     try {
-      await api.plannerTaskTransition(id, to, from, why ? { reason: why } : undefined)
+      await authorizing(() => api.plannerTaskTransition(id, to, from, why ? { reason: why } : undefined))
       if (undoable)
         toast(TEXT.moved(task?.title ?? id, laneTitle(to)), {
           duration: 8000,
@@ -101,7 +101,7 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
     setShipped(null)
     if (!add || !id || !summary.trim()) return
     try {
-      await api.plannerTaskMeta(id, { done_summary: summary.trim() })
+      await authorizing(() => api.plannerTaskMeta(id, { done_summary: summary.trim() }))
       setData((d) => d && { ...d, lanes: { ...d.lanes, done: d.lanes.done.map((t) => (t.id === id ? { ...t, done_summary: summary.trim() } : t)) } })
     } catch (e) {
       notifyWriteError(e, TEXT.writeFailed, onNeedsAccess)
