@@ -24,6 +24,10 @@ export interface History {
   events: DecisionEvent[]
 }
 
+export interface AlertCounts {
+  needs_you: number
+}
+
 export interface InboxSummary {
   counts: { pending: number }
 }
@@ -70,6 +74,18 @@ async function get<T>(path: string): Promise<T> {
   })
   if (!res.ok) throw new Error(`${path} ${res.status}`)
   return (await res.json()) as T
+}
+
+export const alertsApi = {
+  async counts(): Promise<AlertCounts> {
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("user-stub"))
+      return { needs_you: 2 }
+    const res = await hostFetch("/api/plugins/console/v1/alerts/counts", {
+      headers: { Accept: "application/json", "Cache-Control": "no-store" },
+    })
+    if (!res.ok) throw new Error(`alerts/counts ${res.status}`)
+    return (await res.json()) as AlertCounts
+  },
 }
 
 export const approvalsApi = {

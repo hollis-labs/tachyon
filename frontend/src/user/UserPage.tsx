@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { AccessCard } from "./AccessCard"
-import { approvalsApi } from "./approvalsApi"
+import { alertsApi, approvalsApi } from "./approvalsApi"
 import { DecisionsCard } from "./DecisionsCard"
 import { DeviceCard } from "./DeviceCard"
 import { ProfileCard } from "./ProfileCard"
@@ -11,6 +11,7 @@ export function UserPage() {
   const heading = useRef<HTMLHeadingElement>(null)
   const [inbox] = useRemote(approvalsApi.inbox)
   const [history] = useRemote(approvalsApi.history)
+  const [alerts] = useRemote(alertsApi.counts)
   const [access, reloadAccess] = useRemote(approvalsApi.access)
   useEffect(() => heading.current?.focus(), [])
   return (
@@ -27,7 +28,7 @@ export function UserPage() {
       </header>
       <div className="flex min-h-0 flex-1 justify-center overflow-auto p-6 max-sm:p-3.5">
         <div className="flex w-full max-w-[720px] flex-col gap-3.5">
-          <WaitingStrip inbox={inbox} />
+          <WaitingStrip inbox={inbox} alerts={alerts} />
           <ProfileCard elevated={access.status === "ready" && access.data.state === "elevated"} />
           <AccessCard state={access} reload={reloadAccess} />
           <DecisionsCard history={history} />
