@@ -233,9 +233,9 @@ paths:
       tags: [events]
       summary: Thread event stream (SSE)
       description: |
-        Frames are `data: {json}` where json is an Event envelope. Activity-class events (activity, plan, card, topic,
+        Frames are `data: {json}` where json is an Event envelope. Activity-class events (message, delivery, activity, plan, card, topic,
         bookmark, workspace, terminal.run) also carry `id: <seq>`; reconnect with Last-Event-ID to replay what was missed.
-        Live-only signals (message, delta, tool, end, delivery, panel, context, thread) are not replayed: after a
+        Live-only signals (delta, tool, end, panel, context, thread) are not replayed: after a
         reconnect refetch state. 15 s `: keepalive` comments. A slow subscriber is dropped and must refetch.
         Events are signals, not state: the GUI must still work if every panel event is dropped.
       parameters: [{$ref: "#/components/parameters/lastEventId"}]
