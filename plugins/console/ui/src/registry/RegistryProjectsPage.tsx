@@ -5,7 +5,12 @@ import { Chip } from '../components/chip'
 import { ChipListField } from '../builder/ChipListField'
 import { Cap, Field as Row, Tile } from '../builder/parts'
 import { useLoad } from '../builder/useLoad'
-import { BuilderError } from '../builder/api'
+import { BuilderError, builderApi, type Change } from '../builder/api'
+import { useChangeMode } from '../builder/capabilities'
+import { newRequestId, type ReviewRow } from '../builder/changes'
+import { DirtyBar } from '../builder/DirtyBar'
+import { ModeNote } from '../builder/ModeNote'
+import { ReviewDialog } from '../builder/ReviewDialog'
 import { useDiscardGuard } from '../builder/DiscardGuard'
 import { NOT_REPORTED } from '../builder/vocab'
 import { type Project, type ProjectPatch, type ProjectRow, type ProjectStatus, errorMessage, profilePatch, registryApi } from './api'
@@ -30,10 +35,18 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [archiving, setArchiving] = useState(false)
+  const [mode, recheckMode] = useChangeMode()
+  const [servers, setServers] = useState<string[] | null>(null)
+  const [review, setReview] = useState<Change | null>(null)
+  const [prepared, setPrepared] = useState<string>()
+  const [cbusy, setCbusy] = useState(false)
   useEffect(() => {
     setDraft({})
     setSaved(null)
     setError('')
+    setServers(null)
+    setReview(null)
+    setPrepared(undefined)
   }, [id])
 
   if (load.status === 'loading') return <div aria-busy="true" className="m-5 h-40 animate-pulse rounded-control bg-surface" />
@@ -71,6 +84,38 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
   const save = () => void send(patch)
   const c = p.consumed_by
   const archived = p.identity.status === 'archived'
+  const current = p.catalog?.mcp_servers ?? null
+  const serversChanged = servers !== null && JSON.stringify(servers) !== JSON.stringify(current ?? [])
+  dirtyRef.current = dirty + (serversChanged ? 1 : 0)
+  const canCatalog = p.link.state === 'linked' && p.link.catalog_id != null && mode !== 'unavailable'
+  const rows: ReviewRow[] = serversChanged ? [{ label: 'Tool servers', from: (current ?? []).join(', ') || 'inherited (torque only)', to: (servers ?? []).join(', ') || 'empty' }] : []
+  const openReview = async () => {
+    setCbusy(true)
+    setError('')
+    try {
+      setReview(
+        await builderApi.createChange({
+          request_id: newRequestId(),
+          ops: [{ target: { kind: 'project', id: p.link.catalog_id ?? '' }, expected_sha: p.catalog?.sha ?? '', op: { type: 'set', path: 'mcp.servers', value: servers ?? [] } }],
+        }),
+      )
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setCbusy(false)
+    }
+  }
+  const viewPrepared = async () => {
+    if (!prepared) return
+    setCbusy(true)
+    try {
+      setReview(await builderApi.change(prepared))
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setCbusy(false)
+    }
+  }
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -156,12 +201,12 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
           ) : (
             <dl className="flex flex-col gap-2">
               <Row label="Servers">
-                {p.catalog?.mcp_servers == null ? <span className="text-fg-faint">inherited</span> : <ChipListField label="Tool servers" value={p.catalog.mcp_servers} empty="none granted" />}
+                <ChipListField label="Tool servers" editable={canCatalog} value={servers ?? current ?? []} onChange={setServers} empty={current == null ? 'inherited' : 'none granted'} />
               </Row>
               {p.catalog?.repo_root && <Row label="Repository"><span className="font-mono text-xs">{p.catalog.repo_root}</span></Row>}
             </dl>
           )}
-          <p className="text-label text-fg-muted">A non-empty list replaces the default (torque only). Tool servers are chosen in Builder and applied through a change.</p>
+          <p className="text-label text-fg-muted">A non-empty list replaces the default (torque only). Changing them is a reviewed change, applied by the Builder save mode.</p>
         </section>
         <section aria-label="Consumed by" className="flex flex-col gap-2">
           <Cap>Consumed by</Cap>
@@ -174,6 +219,39 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
           </ul>
         </section>
       </div>
+      {mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
+      {(serversChanged || prepared) && (
+        <DirtyBar
+          labels={rows.map((r) => r.label)}
+          prepared={Boolean(prepared)}
+          busy={cbusy}
+          mode={mode}
+          onDiscard={() => setServers(null)}
+          onReview={openReview}
+          onViewPrepared={viewPrepared}
+        />
+      )}
+      {review && (
+        <ReviewDialog
+          initial={review}
+          subject={p.identity.display_name || p.id}
+          rows={rows}
+          onClose={(c) => {
+            setReview(null)
+            setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
+          }}
+          onApplied={() => {
+            setServers(null)
+            setPrepared(undefined)
+            retry()
+          }}
+          onReload={() => {
+            setReview(null)
+            setServers(null)
+            retry()
+          }}
+        />
+      )}
     </div>
   )
 }
