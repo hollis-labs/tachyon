@@ -64,6 +64,19 @@ describe('ServerAlertsStore', () => {
     store.apply(frame('alert.removed', alert('al_2')))
     expect(store.getSnapshot().alerts.some((a) => a.alert_id === 'al_2')).toBe(false)
   })
+  it('re-toasts an escalation or wake the server flags, and a reload or resync never toasts', async () => {
+    const client = fakeClient([alert('al_1')])
+    const store = new ServerAlertsStore(client, () => ({}) as EventSource)
+    const toasted: string[] = []
+    store.onToast((a) => toasted.push(`${a.alert_id}:v${a.version}`))
+    await store.load()
+    store.apply(frame('alert.updated', alert('al_1', { version: 2, severity: 'error', escalated_at_ms: 5000 }), { toast: true, reason: 'escalated' }))
+    store.apply(frame('alert.updated', alert('al_1', { version: 3, status: 'active' }), { toast: true, reason: 'woke' }))
+    expect(toasted).toEqual(['al_1:v2', 'al_1:v3'])
+    store.apply(frame('resync'))
+    await store.load()
+    expect(toasted).toHaveLength(2)
+  })
   it('refetches on resync', async () => {
     const client = fakeClient([alert('al_1')])
     const store = new ServerAlertsStore(client, () => ({}) as EventSource)
