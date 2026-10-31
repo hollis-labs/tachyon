@@ -43,6 +43,7 @@ export interface ConversationViewProps {
   /** Cards, tool-call rows and run cards between the messages. */
   blocks?: StreamBlock[]
   commit?: Commit
+  runActions?: import('../cards/useBlocks').RunActions
   /** Reload after a load or stream failure. */
   onRetry?: () => void
   /** The agent's role chip, for the new-thread summary. */
@@ -54,7 +55,7 @@ export interface ConversationViewProps {
 }
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
-export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, commit, threadRef, onRetry, role, mentions }: ConversationViewProps) {
+export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, commit, runActions, threadRef, onRetry, role, mentions }: ConversationViewProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [value, setValueState] = useState(() => getDraft(threadId))
   const setValue = (v: string) => { setValueState(v); setDraft(threadId, v) }
@@ -112,7 +113,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
           {onRetry && <button type="button" onClick={onRetry} className="underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">Retry</button>}
         </div>
       )}
-      <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty ?? (messages.length === 0 && !loading ? <NewThread agent={agentLabel} role={role} onPick={insert} /> : undefined)} blocks={blocks} commit={commit} marks={marks} onOpenPanel={aside ? () => aside.pick('plan') : undefined} />
+      <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty ?? (messages.length === 0 && !loading ? <NewThread agent={agentLabel} role={role} onPick={insert} /> : undefined)} blocks={blocks} commit={commit} runActions={runActions} marks={marks} onOpenPanel={aside ? () => aside.pick('plan') : undefined} />
       {drawer && (
         <Drawer mode={drawer} size={size} onSize={setSize} onClose={() => { setDrawer(null); area.current?.focus() }}>
           {drawer === 'scratch' && <ScratchPane threadRef={threadRef} onInsert={insert} />}

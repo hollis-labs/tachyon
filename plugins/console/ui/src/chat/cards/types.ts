@@ -37,6 +37,8 @@ interface Base {
   at: number
   /** The Approvals queue item the answer goes to; absent for fixtures and read-only blocks. */
   itemId?: string
+  /** The message this block follows (Card.message_ref); with no timestamp of its own it sorts after that message, else last. */
+  afterRef?: string
 }
 
 export type StreamBlock =

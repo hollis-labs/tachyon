@@ -78,7 +78,7 @@ it('streams a reply with a tool chip and linkifies refs', async () => {
   expect(document.querySelector('[data-streaming="true"]')).toBeTruthy()
   await tick(5000)
   expect(document.querySelector('[data-streaming="true"]')).toBeNull()
-  expect(screen.getByLabelText('Tool calls')).toBeTruthy()
+  expect(screen.getByRole('button', { name: /tool call/ })).toBeTruthy()
   expect(document.querySelectorAll('[data-ref-kind="torque.task"]').length).toBeGreaterThan(0)
   expect(document.querySelector('[data-state="read"]')).toBeTruthy()
 })
