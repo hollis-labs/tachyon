@@ -30,6 +30,8 @@ import {
   type Repo,
   type RepoRef,
   type Review,
+  type ReviewValidation,
+  type CommentCheck,
   type ReviewInput,
 } from './types'
 
@@ -218,6 +220,18 @@ export class HttpForgeClient implements ForgeClient {
     // Wire shape: snake_case, pinned to the head the reviewer saw (409 head_moved when it changed).
     const body = { verdict: input.verdict, body: input.body, comments: input.comments?.map((c) => ({ ...c, side: c.side === 'left' ? 'LEFT' : 'RIGHT' })), head_sha: input.headSha }
     return (await this.request('POST', `${prPath(ref)}/reviews`, body, true)) as Review
+  }
+
+  async validateReview(ref: PrRef, input: { headSha: string; comments: NonNullable<ReviewInput['comments']> }): Promise<ReviewValidation> {
+    const comments = input.comments.map((c) => ({ ...c, side: c.side === 'left' ? 'LEFT' : 'RIGHT' }))
+    const raw = await this.request('POST', `${prPath(ref)}/reviews/validate`, { head_sha: input.headSha, comments })
+    const o = isObj(raw) ? raw : {}
+    const rows = (Array.isArray(o.comments) ? o.comments : []).filter(isObj)
+    const statuses: CommentCheck[] = input.comments.map((_, i) => {
+      const st = rows.find((r) => r.index === i)?.status
+      return st === 'outdated' || st === 'invalid_line' ? st : 'ok'
+    })
+    return { headMoved: o.head_moved === true, statuses }
   }
 
   async getMergePreflight(ref: PrRef): Promise<MergePreflight> {

@@ -147,3 +147,10 @@ it('sends the review with the pinned head_sha in snake_case', async () => {
   expect(JSON.parse(call(fetch).init.body as string)).toMatchObject({ verdict: 'comment', head_sha: 'abc', comments: [{ side: 'LEFT' }] })
   expect(call(fetch).init.headers).toMatchObject({ 'Idempotency-Key': 'k9' })
 })
+
+it('validateReview maps per-comment statuses and head_moved', async () => {
+  const { client, fetch } = mk({ data: { head_sha_current: 'n', head_moved: true, comments: [{ index: 1, status: 'invalid_line' }, { index: 0, status: 'outdated' }] } })
+  const r = await client.validateReview(ref, { headSha: 'o', comments: [{ body: 'a', path: 'a.go', line: 1, side: 'right' }, { body: 'b', path: 'b.go', line: 2, side: 'left' }, { body: 'c', path: 'c.go', line: 3 }] })
+  expect(call(fetch).url).toMatch(/\/pulls\/271\/reviews\/validate$/)
+  expect(r).toEqual({ headMoved: true, statuses: ['outdated', 'invalid_line', 'ok'] })
+})
