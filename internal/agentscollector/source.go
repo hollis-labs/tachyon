@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/upstreamauth"
@@ -105,6 +106,9 @@ func (s *httpSource) get(ctx context.Context, path string, q url.Values, max int
 	}
 	return json.NewDecoder(io.LimitReader(res.Body, max)).Decode(out)
 }
+
+// Unparsed counts stream frames ParseFrame rejected.
+var Unparsed atomic.Int64
 
 type wireSession struct {
 	ID           string          `json:"id"`
@@ -286,6 +290,8 @@ func (s *httpSource) Stream(ctx context.Context, after int64, on func(Frame) err
 					if err := on(f); err != nil {
 						return err
 					}
+				} else {
+					Unparsed.Add(1)
 				}
 				data.Reset()
 			}

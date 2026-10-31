@@ -39,6 +39,8 @@ type Collector struct {
 	mu       sync.Mutex
 	src      SourceStatus
 	outputs  atomic.Int64
+	kindMu   sync.Mutex
+	kinds    map[string]int64 // frames seen by kind since start (names and counts only)
 	dropped  atomic.Int64
 	streamed atomic.Bool
 	resync   atomic.Bool // a gap frame arrived: the next pass re-seeds from the snapshot instead of resuming the old cursor
@@ -285,6 +287,7 @@ func (c *Collector) follow(ctx context.Context, after int64) error {
 	c.streamed.Store(true)
 	err := c.Source.Stream(ctx, after, func(f Frame) error {
 		alive()
+		c.countKind(f.Kind)
 		switch {
 		case f.Output:
 			c.outputs.Add(1)
@@ -384,4 +387,26 @@ func (c *Collector) write(ctx context.Context, queue <-chan Frame, touch map[str
 			}
 		}
 	}
+}
+
+// countKind keeps a bounded tally of frame kinds so an empty timeline can be told apart from an empty stream.
+func (c *Collector) countKind(kind string) {
+	c.kindMu.Lock()
+	defer c.kindMu.Unlock()
+	if c.kinds == nil {
+		c.kinds = map[string]int64{}
+	}
+	if _, ok := c.kinds[kind]; ok || len(c.kinds) < 40 {
+		c.kinds[kind]++
+	}
+}
+
+func (c *Collector) kindCounts() map[string]int64 {
+	c.kindMu.Lock()
+	defer c.kindMu.Unlock()
+	out := make(map[string]int64, len(c.kinds))
+	for k, v := range c.kinds {
+		out[k] = v
+	}
+	return out
 }
