@@ -54,9 +54,13 @@ export function size(bytes = 0) {
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1048576).toFixed(1)} MB`
 }
+/** Timestamps arrive as ms numbers or ISO strings; anything unparseable is unknown. */
+const stamp = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" ? Date.parse(v) : NaN)
 export function took(c: ToolCall) {
-  if (c.started_at == null || c.ended_at == null || c.ended_at < c.started_at) return ""
-  const ms = c.ended_at - c.started_at
+  const a = stamp(c.started_at)
+  const z = stamp(c.ended_at)
+  if (!Number.isFinite(a) || !Number.isFinite(z) || z < a) return ""
+  const ms = z - a
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`
 }
 /** Accepts both the current field names and the contract's (turn_count, ms timestamps). */
