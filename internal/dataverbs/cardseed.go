@@ -23,7 +23,7 @@ func (c *Cards) Seed(ctx context.Context, shape, tag string) ([]string, error) {
 		title string
 		extra map[string]any
 	}
-	noop := []map[string]any{{"target": "test:noop", "op": "annotate", "summary": "Nothing happens."}}
+	noop := []map[string]any{{"target": "test:noop", "op": "update", "summary": "Nothing happens."}}
 	del := []map[string]any{{"target": "test:noop", "op": "delete", "summary": "Pretend delete; nothing happens."}}
 	items := []map[string]any{{"ref": "test:item/1", "label": "Test item 1", "kind": "test"}, {"ref": "test:item/2", "label": "Test item 2", "kind": "test"}}
 	destructive := map[string]any{"irreversible": true, "summary": "Pretend delete of two test items."}
