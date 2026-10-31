@@ -295,7 +295,9 @@ func build(r row, ex *extras, now time.Time, staleAfter time.Duration) Session {
 		s.NeedsYou = NeedsYou{Reason: strp(d.NeedsYou), Since: ms(r.last)}
 	}
 	s.Pending.Approval, s.Pending.Question = r.pa != nil && *r.pa, r.pq != nil && *r.pq
-	if r.oneLiner.Valid && r.oneLiner.String != "" {
+	// The line says what the session is doing now, so it shows only while it is working or waiting; an idle,
+	// stale or ended session keeps no "Running ..." line.
+	if r.oneLiner.Valid && r.oneLiner.String != "" && (d.State == agentsderive.Working || d.State == agentsderive.Waiting) {
 		var ol map[string]any
 		if json.Unmarshal([]byte(r.oneLiner.String), &ol) == nil {
 			s.OneLiner = ol

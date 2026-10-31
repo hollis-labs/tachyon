@@ -291,7 +291,7 @@ func TestTimelineFiltersGroupsRunsAndShowsGaps(t *testing.T) {
 	if len(flat.Events) != 6 { // 4 finished calls + message + work state; started halves are hidden
 		t.Fatalf("flat: %d %v", len(flat.Events), flat.Events)
 	}
-	if flat.Events[0]["summary"] != "Work state processing -> idle" || flat.Events[2]["summary"] != "Sent a message" && flat.Events[2]["type"] != "message" {
+	if flat.Events[0]["summary"] != "Went idle" || flat.Events[2]["summary"] != "Sent a message" && flat.Events[2]["type"] != "message" {
 		t.Errorf("newest first, humanised: %v %v", flat.Events[0]["summary"], flat.Events[2])
 	}
 	for _, ev := range flat.Events {

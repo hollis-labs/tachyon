@@ -132,16 +132,20 @@ func ParseFrame(raw []byte) (Frame, bool) {
 	}
 	if len(body) > 0 && len(body) <= 64<<10 {
 		var p struct {
-			To              string `json:"to"`
-			From            string `json:"from"`
-			State           string `json:"state"`
-			SessionState    string `json:"session_state"`
-			WorkState       string `json:"work_state"`
-			Provider        string `json:"provider"`
-			Model           string `json:"model"`
-			Workroot        string `json:"workroot"`
-			WorkingDir      string `json:"working_dir"`
-			TaskID          string `json:"task_id"`
+			To           string `json:"to"`
+			From         string `json:"from"`
+			State        string `json:"state"`
+			SessionState string `json:"session_state"`
+			WorkState    string `json:"work_state"`
+			Provider     string `json:"provider"`
+			Model        string `json:"model"`
+			Workroot     string `json:"workroot"`
+			WorkingDir   string `json:"working_dir"`
+			TaskID       string `json:"task_id"`
+			Entity       struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"entity"`
 			PendingApproval *bool  `json:"pending_approval"`
 			PendingQuestion *bool  `json:"pending_question"`
 			Tool            string `json:"tool"`
@@ -177,6 +181,9 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			f.Provider, f.Model = clean(p.Provider, 60), clean(p.Model, 80)
 			f.Workroot = clean(firstNonEmpty(p.Workroot, p.WorkingDir), 300)
 			f.TaskRef = clean(firstNonEmpty(p.TaskID, p.Task), 60)
+			if f.TaskRef == "" && p.Entity.Type == "task" {
+				f.TaskRef = clean(p.Entity.ID, 60) // task.state_changed names its task as entity{type,id}
+			}
 			if w.App != "" || strings.Contains(f.Kind, ".state_changed") || strings.HasPrefix(f.Kind, "alert.") || strings.HasPrefix(f.Kind, "fleet.") || strings.HasPrefix(f.Kind, "card.") || strings.HasPrefix(f.Kind, "workstream.") {
 				f.Name = clean(firstNonEmpty(p.Name, firstNonEmpty(p.Resource, p.Subject)), 80)
 				f.State = clean(firstNonEmpty(p.State, firstNonEmpty(p.To, p.Status)), 24)
@@ -264,4 +271,14 @@ func (f Frame) Summary() string {
 		s += ": " + f.SessionState
 	}
 	return clean(s, 200)
+}
+
+// noopTransition reports a summary of the form "kind: x -> x": a state change that changed nothing.
+func noopTransition(sum string) bool {
+	_, rest, ok := strings.Cut(sum, ": ")
+	if !ok {
+		return false
+	}
+	from, to, ok := strings.Cut(rest, " -> ")
+	return ok && from == to
 }

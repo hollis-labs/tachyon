@@ -68,7 +68,7 @@ func TestOneLinerTable(t *testing.T) {
 		{"mcp__tether__tether_message_send", map[string]any{"to": "msg://agent/agent-mux/agt_454f2timi7", "payload_json": "SECRET-MAIL"}, "Sent mail to agt_454f2timi7"},
 		{"mcp__tether__tesseract_get", map[string]any{"namespace": "project/tachyon/workspace/design", "item_id": "01M"}, "Reading memory project/tachyon/workspace/design"},
 		{"mcp__tether__workspace_write", map[string]any{"namespace": "project/tachyon/workspace/handoff", "body": "SECRET"}, "Writing memory project/tachyon/workspace/handoff"},
-		{"SomethingNew", map[string]any{"x": "SECRET"}, "Using SomethingNew"},
+		{"SomethingNew", map[string]any{"x": "SECRET"}, "Using a tool"},
 		{"WebFetch", map[string]any{"url": "https://u:SECRET@host/"}, "Fetching a web page"},
 	} {
 		o := Describe(c.tool, c.in)
@@ -205,5 +205,24 @@ func TestBilledTokensCountOnlyFinishedAPICalls(t *testing.T) {
 	p2, _ := json.Marshal(map[string]string{"data": only})
 	if ExtractOutput(p2).Billed != nil {
 		t.Fatal("a partial assistant line is not a finished call")
+	}
+}
+
+func TestOneLinerNeverShowsRawToolNamesOrShellKeywords(t *testing.T) {
+	for _, c := range []struct{ tool, cmd, verb, target string }{
+		{"mcp__tether__tether_message_mark_read", "", "Updating", "message"},
+		{"mcp__tether__torque_comment_add", "", "Writing", "comment"},
+		{"mcp__tether__tether_events_history", "", "Reading", "events"},
+		{"Bash", "for p in a b; do curl x; done", "Running", "a shell loop"},
+		{"Bash", "cd /x && go test ./...", "Running", "go"},
+		{"Bash", "sudo curl -s u", "Running", "curl"},
+	} {
+		in := map[string]any{}
+		if c.cmd != "" {
+			in["command"] = c.cmd
+		}
+		if o := Describe(c.tool, in); o.Verb != c.verb || o.Target != c.target {
+			t.Errorf("%s %q: got %q %q", c.tool, c.cmd, o.Verb, o.Target)
+		}
 	}
 }

@@ -124,7 +124,7 @@ func (s *Store) Apply(ctx context.Context, frames []Frame) error {
 			if f.SessionID == "" || f.App != "" {
 				continue // an app-published event belongs to the feed, not to a session
 			}
-			if typ := Type(f.Kind); typ != "" && f.EventID != "" {
+			if typ := Type(f.Kind); typ != "" && f.EventID != "" && !noopTransition(f.Summary()) {
 				res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO agents_events(session_id,tether_seq,tether_event_id,type,at_ns,actor,summary) VALUES(?,?,?,?,?,?,?)`,
 					f.SessionID, f.Seq, f.EventID, typ, at, "tether", f.Summary())
 				if err != nil {

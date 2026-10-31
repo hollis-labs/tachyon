@@ -100,12 +100,7 @@ func Describe(tool string, in map[string]any) OneLiner {
 		o.Verb, o.Target = "Writing", path.Base(str(in, "file_path"))
 	case "Bash":
 		o.Verb = "Running"
-		f := strings.Fields(str(in, "command"))
-		if len(f) > 0 && cmdOK.MatchString(f[0]) && !strings.Contains(f[0], "=") {
-			o.Target = path.Base(f[0])
-		} else {
-			o.Target = "a command"
-		}
+		o.Target = shellTarget(strings.Fields(str(in, "command")))
 	case "WebFetch":
 		o.Verb, o.Target = "Fetching", "a web page"
 	case "WebSearch":
@@ -142,7 +137,7 @@ func Describe(tool string, in map[string]any) OneLiner {
 				o.Target += " " + ns
 			}
 		default:
-			o.Verb, o.Target = "Using", clipRunes(name, 60)
+			o.Verb, o.Target = mcpLine(name)
 		}
 	}
 	o.Target = strings.TrimSpace(redact.Text(o.Target))
@@ -150,4 +145,75 @@ func Describe(tool string, in map[string]any) OneLiner {
 		o.Target = string([]rune(o.Target)[:len([]rune(o.Target))-1])
 	}
 	return o
+}
+
+var shellPrefix = map[string]bool{"sudo": true, "env": true, "time": true, "nohup": true, "command": true, "exec": true}
+var shellBlock = map[string]string{"for": "a shell loop", "while": "a shell loop", "until": "a shell loop", "if": "a shell script", "case": "a shell script",
+	"do": "a shell script", "then": "a shell script", "{": "a shell script", "(": "a shell script", "[": "a shell script", "[[": "a shell script", "function": "a shell script"}
+
+// shellTarget names a Bash command by its first real word: wrappers (sudo, env, time) and a leading cd are
+// skipped, a shell keyword reads as a script or loop, and anything unusual reads as "a command".
+func shellTarget(f []string) string {
+	for len(f) > 0 && shellPrefix[f[0]] {
+		f = f[1:]
+	}
+	if len(f) > 2 && f[0] == "cd" {
+		for i, w := range f {
+			if w == "&&" || w == ";" {
+				f = f[i+1:]
+				break
+			}
+		}
+	}
+	if len(f) == 0 {
+		return "a command"
+	}
+	if b, ok := shellBlock[f[0]]; ok {
+		return b
+	}
+	if cmdOK.MatchString(f[0]) && !strings.Contains(f[0], "=") {
+		return path.Base(f[0])
+	}
+	return "a command"
+}
+
+var mcpServers = map[string]bool{"tether": true, "torque": true, "tangent": true, "tesseract": true}
+var readWords = map[string]bool{"get": true, "list": true, "show": true, "read": true, "search": true, "recall": true, "inbox": true, "status": true, "history": true, "lookup": true, "view": true, "peek": true, "wait": true, "await": true, "health": true, "whoami": true, "facets": true}
+var writeWords = map[string]bool{"add": true, "create": true, "send": true, "write": true, "post": true, "enqueue": true, "emit": true, "reply": true, "notify": true, "register": true, "launch": true, "open": true}
+var changeWords = map[string]bool{"update": true, "set": true, "edit": true, "transition": true, "assign": true, "mark": true, "move": true, "promote": true, "touch": true, "renew": true, "ack": true, "consume": true}
+var removeWords = map[string]bool{"delete": true, "remove": true, "archive": true, "cancel": true, "stop": true, "revoke": true, "withdraw": true, "close": true, "purge": true}
+
+// mcpLine turns an MCP tool name into verb + short target ("torque_comment_add" -> "Writing", "comment"),
+// never the raw tool name. A name it cannot read becomes "Using a tool".
+func mcpLine(name string) (string, string) {
+	words := strings.Split(strings.ToLower(name), "_")
+	if len(words) > 1 && mcpServers[words[0]] {
+		words = words[1:]
+	}
+	verb, vi := "", -1
+	for i, w := range words {
+		switch {
+		case changeWords[w]:
+			verb, vi = "Updating", i
+		case writeWords[w]:
+			verb, vi = "Writing", i
+		case removeWords[w]:
+			verb, vi = "Removing", i
+		case readWords[w] && vi < 0:
+			verb, vi = "Reading", i
+		}
+		if verb == "Updating" || verb == "Removing" {
+			break
+		}
+	}
+	var noun []string
+	for i, w := range words {
+		if i != vi && !(verb == "Updating" && (readWords[w] || writeWords[w])) && w != "" {
+			noun = append(noun, w)
+		}
+	}
+	if verb == "" || len(noun) == 0 {
+		return "Using", "a tool"
+	}
+	return verb, strings.Join(noun, " ")
 }
