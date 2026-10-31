@@ -599,7 +599,7 @@ describe("batch approve", () => {
       inbox: vi.fn().mockResolvedValue({ pending: [a, b, c], history: [] }),
       ...noAudit,
       present: vi.fn().mockResolvedValue(a),
-      access: vi.fn().mockResolvedValue({ batch_allowed: true }),
+      access: vi.fn().mockResolvedValue({ state: "elevated", can_elevate: true, required_for: { batch: true } }),
       batchResolve,
     } as unknown as ApprovalClient
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
@@ -635,7 +635,7 @@ describe("batch approve", () => {
       inbox: vi.fn().mockResolvedValue({ pending: [a], history: [] }),
       ...noAudit,
       present: vi.fn().mockResolvedValue(a),
-      access: vi.fn().mockResolvedValue({ batch_allowed: false }),
+      access: vi.fn().mockResolvedValue({ state: "none", can_elevate: true, required_for: { batch: true } }),
     } as unknown as ApprovalClient
     render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
     await screen.findByRole("option", { name: /Request a/ })
@@ -648,7 +648,7 @@ describe("batch approve", () => {
 describe("batch eligibility", () => {
   it("explains a refusal from the server's blockers and caps a batch at 25", () => {
     expect(batchEligibility({ batchable: true })).toEqual({ ok: true, reasons: [] })
-    expect(batchEligibility({ batchable: false, batch_blockers: ["high_risk", "needs_review"] }).reasons).toEqual(["High risk: review it on its own.", "Needs review."])
+    expect(batchEligibility({ batchable: false, batch_blockers: ["risk_not_low", "needs_review"] }).reasons).toEqual(["Not low risk: review it on its own.", "Needs review."])
     expect(batchEligibility({ batchable: false }).reasons).toEqual(["Review it on its own."])
     expect(MAX_BATCH).toBe(25)
   })

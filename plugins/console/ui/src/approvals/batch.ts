@@ -3,14 +3,20 @@ import type { ApprovalItem, BatchStatus } from "./client"
 /** Most requests one batch decision may cover. */
 export const MAX_BATCH = 25
 
+// The server's blocker codes (docs/approvals-contract.md, in its canonical order).
 const BLOCKER_COPY: Record<string, string> = {
-  high_risk: "High risk: review it on its own.",
+  not_pending: "No longer waiting for a decision.",
+  kind_not_batchable: "This kind of request is decided one by one.",
+  risk_not_low: "Not low risk: review it on its own.",
+  interactive: "Interactive: needs you in the terminal.",
+  has_secret: "Needs a secret entered securely.",
+  command_exec: "Runs a command: review the exact command.",
   destructive: "Destructive: needs its own confirmation.",
-  needs_input: "Needs an answer, not a yes or no.",
-  needs_secret: "Needs a secret entered securely.",
-  deferred: "Snoozed until later.",
+  no_effects_declared: "Does not say what it will change.",
+  irreversible_effect: "Cannot be undone.",
   expired: "Already expired.",
-  stale: "Changed since it was listed.",
+  deferred: "Snoozed until later.",
+  needs_operator_access: "Needs operator access.",
 }
 
 const humanize = (code: string) => {
@@ -30,6 +36,17 @@ export function batchEligibility(item: Pick<ApprovalItem, "batchable" | "batch_b
   const reasons = (item.batch_blockers ?? []).map((b) => BLOCKER_COPY[b] ?? humanize(b))
   return { ok: false, reasons: reasons.length ? reasons : ["Review it on its own."] }
 }
+
+/** GET /access, as the server returns it. */
+export interface Access {
+  state: "none" | "elevated"
+  can_elevate?: boolean
+  expires_in_s?: number
+  required_for?: { batch?: boolean; medium?: boolean; destructive?: boolean }
+}
+
+/** Whether a batch decision is blocked for lack of operator access. An unreadable answer blocks nothing; the server still refuses. */
+export const batchNeedsAccess = (a: Pick<Access, "state" | "required_for"> | undefined) => !!a && a.state === "none" && a.required_for?.batch !== false
 
 export const BATCH_STATUS_COPY: Record<BatchStatus, string> = {
   resolved: "Decided",
