@@ -62,6 +62,7 @@ export const registryApi = {
   get: (id: string) => call<Project>(`/${encodeURIComponent(id)}`),
   /** Links a registry project to a catalog project (or unlinks with null). Shape agreed with Backend Builder 2. */
   link: (id: string, catalogId: string | null) => call<Project>(`/${encodeURIComponent(id)}/link`, { method: 'POST', body: JSON.stringify({ catalog_id: catalogId }) }),
+  unlink: (id: string) => call<Project>(`/${encodeURIComponent(id)}/link`, { method: 'DELETE' }),
   patch: (id: string, patch: ProjectPatch) => call<Project>(`/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
 }
 

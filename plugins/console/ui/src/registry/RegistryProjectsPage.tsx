@@ -80,24 +80,24 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
       // The real registry lives in Tether; until the host holds its control token the write route answers 404/405/501.
       const unsupported = e instanceof BuilderError && [404, 405, 501].includes(e.status)
       if (unsupported) setNoWrite(true)
-      setError(unsupported ? 'Saving the registry profile needs Tether write access.' : e instanceof BuilderError && e.code === 'assurance_insufficient' ? 'Saving needs a stronger sign-in. Step up your access, then save again.' : errorMessage(e))
+      setError(e instanceof BuilderError && e.code === 'tether_write_denied' ? 'The Tether token lacks registry.write. Saving needs that scope.' : unsupported ? 'Saving the registry profile needs Tether write access.' : e instanceof BuilderError && e.code === 'assurance_insufficient' ? 'Saving needs a stronger sign-in. Step up your access, then save again.' : errorMessage(e))
       return false
     } finally {
       setBusy(false)
     }
   }
   const save = () => void send(patch)
-  const doLink = async () => {
+  const doLink = async (unlink = false) => {
     setBusy(true)
     setError('')
     try {
-      setSaved(await registryApi.link(p.id, linkId))
-      setSavedFields('link')
+      setSaved(unlink ? await registryApi.unlink(p.id) : await registryApi.link(p.id, linkId))
+      setSavedFields(unlink ? 'unlinked' : 'link')
       setLinkId('')
     } catch (e) {
       const unsupported = e instanceof BuilderError && [404, 405, 501].includes(e.status)
       if (unsupported) setNoWrite(true)
-      setError(unsupported ? 'Linking needs Tether write access.' : errorMessage(e))
+      setError(e instanceof BuilderError && e.code === 'tether_write_denied' ? 'The Tether token lacks registry.write. Linking needs that scope.' : unsupported ? 'Linking needs Tether write access.' : errorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -221,7 +221,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
               <p className="text-control text-fg-secondary">Not linked to a catalog project{p.link.reason ? `: ${p.link.reason}` : '.'}</p>
               <div className="flex items-center gap-2">
                 <Input aria-label="Catalog project id" className="max-w-[260px]" placeholder="catalog project id" value={linkId} onChange={(e) => setLinkId(e.target.value.trim())} />
-                <Button type="button" size="sm" variant="outline" disabled={busy || linkId === '' || noWrite} title={noWrite ? 'Needs Tether write access' : undefined} onClick={() => void doLink()}>
+                <Button type="button" size="sm" variant="outline" disabled={busy || linkId === '' || noWrite} title={noWrite ? 'Needs Tether write access' : undefined} onClick={() => void doLink(false)}>
                   Link
                 </Button>
               </div>
@@ -230,6 +230,14 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
             <dl className="flex flex-col gap-2">
               <Row label="Servers">
                 <ChipListField label="Tool servers" editable={canCatalog} value={servers ?? current ?? []} onChange={setServers} empty={current == null ? 'inherited' : 'none granted'} />
+              </Row>
+              <Row label="Catalog project">
+                <span className="flex items-center gap-2">
+                  <span className="font-mono text-xs">{p.link.catalog_id}</span>
+                  <Button type="button" size="sm" variant="outline" disabled={busy || noWrite} title={noWrite ? 'Needs Tether write access' : undefined} onClick={() => void doLink(true)}>
+                    Unlink
+                  </Button>
+                </span>
               </Row>
               {p.catalog?.repo_root && <Row label="Repository"><span className="font-mono text-xs">{p.catalog.repo_root}</span></Row>}
             </dl>
