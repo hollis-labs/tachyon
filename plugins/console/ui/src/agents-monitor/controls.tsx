@@ -11,9 +11,9 @@ const R = AGENTS.restart
 
 /**
  * Backend A6 (Nudge/Restart) is not approved yet: until it is, both controls render disabled with a
- * reason and nothing is sent. Set VITE_AGENTS_CONTROLS=1 on a dev instance to review the popovers.
+ * reason and nothing is sent. Controls are on by default and still follow the backend capability flags; VITE_AGENTS_CONTROLS=0 turns them off.
  */
-export const CONTROLS_LIVE = (import.meta.env?.VITE_AGENTS_CONTROLS as string | undefined) === '1'
+export const CONTROLS_LIVE = (import.meta.env?.VITE_AGENTS_CONTROLS as string | undefined) !== '0'
 
 interface ControlProps {
   session: Session

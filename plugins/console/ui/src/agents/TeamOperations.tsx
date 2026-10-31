@@ -10,7 +10,7 @@ import { Block, Btn } from './ui'
 const operations = { assign: 'Dispatch saved assignment', address: 'Message team address', member_add: 'Add member to slot', member_remove: 'Remove member', cancel: 'Cancel member work', dissolve: 'Dissolve run' }
 type Operation = keyof typeof operations
 
-function RunOperations({ team, formation, onLocked }: { team: ObjectRecord; formation: ActionReceipt; onLocked(locked: boolean): void }) {
+export function RunOperations({ team, formation, onLocked }: { team: ObjectRecord; formation: ActionReceipt; onLocked(locked: boolean): void }) {
   const assignments = useOwnedRecords(ownedBuilderClient, 'assignment')
   const [assignmentID, setAssignmentID] = useState(''), [operation, setOperation] = useState<Operation>('address')
   const [address, setAddress] = useState(''), [body, setBody] = useState(''), [member, setMember] = useState(''), [slot, setSlot] = useState('')

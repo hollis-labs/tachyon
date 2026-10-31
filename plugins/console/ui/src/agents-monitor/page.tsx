@@ -4,7 +4,6 @@ import { EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/
 import { FilterChipGroup } from '@hollis-labs/kit-dashboard/data'
 import { DashboardSearchToolbar, DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { SegmentedProgress } from '@planner/shared'
-import { TeamOperations } from '../agents/TeamOperations'
 import { Btn } from '../agents/ui'
 import { LaunchAgentDialog } from '../fleet/LaunchAgentDialog'
 import { useAgentsMonitor } from './data'
@@ -12,6 +11,7 @@ import { useAgentsRead, type AgentsSettings } from './api'
 import { ActivityTab } from './activity-tab'
 import { AgentsErrorBoundary } from './error-boundary'
 import { SessionModal } from './session-modal'
+import { TeamsTab } from './teams-tab'
 import { ageText } from './session-parts'
 import { StaleAfterContext } from './session-rows'
 import { SessionBoard, SessionCards, SessionRows, matchesFilter, matchesQuery, useViewState, type GroupBy, type SessionView } from './sessions-view'
@@ -113,7 +113,7 @@ export function AgentsPage() {
           <span className="ml-auto text-fg-muted sm:ml-0">{AGENTS.streamStatus[status]}</span>
         </div>
       )}
-      {tab === 'teams' && <div className="flex-1 overflow-auto"><TeamOperations /></div>}
+      {tab === 'teams' && <AgentsErrorBoundary><TeamsTab /></AgentsErrorBoundary>}
       {tab === 'activity' && <AgentsErrorBoundary><ActivityTab busTick={busTick} now={now} /></AgentsErrorBoundary>}
       {tab === 'sessions' && (
         <>
