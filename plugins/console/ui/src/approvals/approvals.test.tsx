@@ -694,6 +694,16 @@ describe("batch eligibility", () => {
   })
 })
 
+describe("inline decisions", () => {
+  it("keeps typed confirmations and required reasons on the Approvals page", () => {
+    expect(inlineDecisionBlocker({ confirm: { phrase: "DELETE 3 ITEMS" } }, { decision: "approved" })).toMatch(/typed confirmation/)
+    expect(inlineDecisionBlocker({ confirm: { phrase: "X" } }, { decision: "denied" })).toBeUndefined()
+    expect(inlineDecisionBlocker({ reason_required: true }, { decision: "denied" })).toMatch(/reason/)
+    expect(inlineDecisionBlocker({ reason_required: true }, { decision: "denied", note: "no" })).toBeUndefined()
+    expect(inlineDecisionBlocker({}, { decision: "approved" })).toBeUndefined()
+  })
+})
+
 describe("server clock", () => {
   it("shifts countdowns by the server's offset and ignores a bad value", () => {
     const local = 1_000_000
