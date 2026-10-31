@@ -12,6 +12,8 @@ import {
   ForgeError,
   type ForgeUser,
   type MergeInput,
+  type MergePreflight,
+  type MergeMethod,
   type MergeResult,
   type AddCommentInput,
   type AssignInput,
@@ -213,6 +215,22 @@ export class HttpForgeClient implements ForgeClient {
 
   async reviewPr(ref: PrRef, input: ReviewInput): Promise<Review> {
     return (await this.request('POST', `${prPath(ref)}/reviews`, input, true)) as Review
+  }
+
+  async getMergePreflight(ref: PrRef): Promise<MergePreflight> {
+    const raw = await this.request('GET', `${prPath(ref)}/merge-preflight`)
+    const o = isObj(raw) ? raw : {}
+    const methods = (Array.isArray(o.methods_allowed) ? o.methods_allowed : []).filter((m): m is MergeMethod => m === 'merge' || m === 'squash' || m === 'rebase')
+    const state = o.state === 'ready' || o.state === 'blocked' || o.state === 'pending' ? o.state : 'unknown'
+    return {
+      state,
+      headSha: typeof o.head_sha === 'string' ? o.head_sha : '',
+      baseRef: typeof o.base_ref === 'string' ? o.base_ref : '',
+      blockers: (Array.isArray(o.blockers) ? o.blockers : []).filter(isObj).map((b) => ({ code: String(b.code ?? ''), message: String(b.message ?? '') })),
+      methodsAllowed: methods,
+      defaultMethod: methods.find((m) => m === o.default_method),
+      behindBy: typeof o.behind_by === 'number' ? o.behind_by : 0,
+    }
   }
 
   async mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult> {

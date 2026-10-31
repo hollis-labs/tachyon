@@ -237,7 +237,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
       </header>
 
       {mergeSuccess && <p role="status" className="border-b border-border px-4 py-3 text-control text-fg">{mergeSuccess}</p>}
-      {merging && !readOnly && <MergePanel pr={pr} fileCount={files.length} onBusyChange={setMergeBusy} onClose={() => setMerging(false)} onSubmit={async (input) => {
+      {merging && !readOnly && <MergePanel client={client} pr={pr} fileCount={files.length} onBusyChange={setMergeBusy} onClose={() => setMerging(false)} onSubmit={async (input) => {
         const result = await ws.mergePr(input)
         if (result.ok) setMergeSuccess(`Pull request #${pr.ref.number} merged into ${pr.baseBranch}.`)
         return result
