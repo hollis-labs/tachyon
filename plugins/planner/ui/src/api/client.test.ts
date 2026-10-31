@@ -13,6 +13,15 @@ function installFetch(fetcher: ReturnType<typeof vi.fn>) {
 }
 
 describe('Tachyon Planner host contract', () => {
+  it('creates a Torque task under a theme with the title and optional revision', async () => {
+    const fetcher = vi.fn().mockResolvedValue(json({ task: { id: 'CW-1', title: 'x', status: 'todo' } }, 201))
+    installFetch(fetcher)
+    const res = await new TachyonPlannerClient().plannerThemeTaskCreate(id, 'x', 4)
+    expect(res.task.id).toBe('CW-1')
+    expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/${id}/tasks`)
+    expect(fetcher.mock.calls[0][1].method).toBe('POST')
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ title: 'x', expected_revision: 4 })
+  })
   it('resolves a UUID reference through the host without guessing its database', async () => {
     const fetcher = vi.fn().mockResolvedValue(json({ db: 'risks', id: target, item: { id: target, rev: 1 } }))
     installFetch(fetcher)

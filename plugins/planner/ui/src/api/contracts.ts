@@ -38,6 +38,8 @@ export interface PlannerClient {
   plannerWorkstreamTasks(id: string, signal?: AbortSignal): Promise<PlannerWorkstreamTasks>
   /** The theme's Torque tasks grouped by lane. */
   plannerThemeTasks(themeId: string, signal?: AbortSignal): Promise<ThemeTasks>
+  /** A new Torque task under the theme (project and tag come from its workstreams). 422 when the theme links no single place. */
+  plannerThemeTaskCreate(themeId: string, title: string, rev?: number): Promise<{ task: { id: string; title: string; status: string } }>
   /** Milestones, momentum and events for a theme, newest first; `before_seq` pages backwards. */
   plannerThemeTimeline(themeId: string, opts?: { before_seq?: number; limit?: number }, signal?: AbortSignal): Promise<ThemeTimeline>
   /** A real Torque status transition. A differing current status is a 409 with details.current. Undo is the inverse call. */

@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { Button } from '@hollis-labs/design-components'
 import { usePlannerApi } from '@planner/api/context'
 import { PlannerApiError } from '@planner/api/errors'
-import { authorizing, notifyWriteError } from '@planner/api/notifications'
+import { authorizing, notifySuccess, notifyWriteError } from '@planner/api/notifications'
 import { shortTaskId } from '@planner/lib/planner'
 import { LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
 import { FloatingPrompt, LaneBoard, StatusMenu, type Lane } from '@planner/shared'
@@ -28,6 +28,7 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
   const [summary, setSummary] = useState('')
   const [blocking, setBlocking] = useState<{ id: string; from: TaskLane } | null>(null)
   const [reason, setReason] = useState('')
+  const [adding, setAdding] = useState<string | null>(null)
   const live = useRef(true)
   useEffect(() => { live.current = true; return () => { live.current = false } }, [])
 
@@ -58,6 +59,32 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
       lanes[status] = [{ ...moved, status }, ...lanes[status]]
       return { ...d, lanes }
     })
+
+  // "A" opens the new-task prompt, unless a field has focus or a modifier is held.
+  useEffect(() => {
+    if (paused) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key.toLowerCase() !== 'a' || e.metaKey || e.ctrlKey || e.altKey || t?.closest('input,textarea,select,[contenteditable],[role=dialog]')) return
+      e.preventDefault()
+      setAdding((v) => v ?? '')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [paused])
+
+  async function addTask() {
+    const title = (adding ?? '').trim()
+    if (!title) return
+    setAdding(null)
+    try {
+      const res = await authorizing(() => api.plannerThemeTaskCreate(themeId, title))
+      notifySuccess(TEXT.taskAdded(shortTaskId(res.task.id)))
+      await load()
+    } catch (e) {
+      notifyWriteError(e, TEXT.writeFailed, onNeedsAccess)
+    }
+  }
 
   async function transition(id: string, from: TaskLane, to: TaskLane, why?: string, undoable = true) {
     const task = byId.get(id)
@@ -156,12 +183,15 @@ export function TaskBoard({ themeId, tick = 0, paused, onNeedsAccess, accessNote
     state: l.id,
     collapsed: l.id === 'done',
     emptyText: EMPTY[l.id],
-    add: l.id === 'todo' || l.id === 'doing' ? { label: TEXT.addTask, key: l.id === 'todo' ? TEXT.addTaskKey : undefined, disabled: true, reason: TEXT.addTaskNeedsBackend } : undefined,
+    add: l.id === 'todo' ? { label: TEXT.addTask, key: TEXT.addTaskKey, onAdd: () => setAdding('') } : undefined,
     cards: (data.lanes[l.id as LaneId] ?? []).map(card),
   }))
   const movedTask = shipped ? byId.get(shipped) : undefined
   return (
     <>
+      {adding !== null && (
+        <FloatingPrompt heading={TEXT.newTask} label={TEXT.newTaskTitle} value={adding} onChange={setAdding} note={TEXT.newTaskNote} submitLabel={TEXT.newTaskAdd} skipLabel={TEXT.blockedReasonCancel} onSubmit={() => void addTask()} onSkip={() => setAdding(null)} />
+      )}
       {blocking && (
         <FloatingPrompt heading={TEXT.blockedHeading} subject={<PromptSubject task={byId.get(blocking.id)} />} label={TEXT.blockedReasonLabel} value={reason} onChange={setReason} note={TEXT.blockedReasonHint} submitLabel={TEXT.blockedReasonAdd} skipLabel={TEXT.blockedReasonCancel} onSubmit={() => submitBlock()} onSkip={() => setBlocking(null)} />
       )}
