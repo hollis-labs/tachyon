@@ -1,4 +1,5 @@
 import { consoleJson } from '../lib/http'
+import { spineHub } from './live'
 import type { ChatClient, ChatThread, ThreadSession } from './types'
 
 interface ApiThread {
@@ -76,7 +77,9 @@ export function withChatApiSummaries(base: ChatClient, load: () => Promise<ApiTh
       let live = true
       const push = (t: ChatThread[]) => { if (live) listener(decorate(t)) }
       const off = base.subscribeThreads((t) => void refresh().then(() => push(t)), onError)
-      return () => { live = false; off() }
+      // The global spine stream: a `thread` frame (or a reconnect) means a row changed, so re-list now instead of waiting a tick.
+      const offSpine = spineHub().subscribe((f) => { if (f.type === 'thread' || f.type === 'reconnected') void base.listThreads().then((t) => refresh().then(() => push(t)), () => undefined) })
+      return () => { live = false; off(); offSpine() }
     },
   }
 }
