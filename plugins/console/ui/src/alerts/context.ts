@@ -21,8 +21,8 @@ export interface AlertsController {
   dismiss: (id: string) => void
   snooze: (id: string, ms: number) => void
   restore: (id: string) => void
-  /** Server alerts: close an alert as handled (an optional resolution text). */
-  settle?: (id: string, resolution?: string) => void
+  /** Server alerts: close an alert as handled (an optional short resolution label and a free-text note). */
+  settle?: (id: string, resolution?: string, note?: string) => void
   /** Server alerts: hold an alert back until the thing it points at changes. */
   deferUntilChange?: (id: string, ref: { kind: string; ref: string }) => void
   /** Server alerts only: connection to the alerts stream. Absent for the console-event feed. */

@@ -220,7 +220,7 @@ function Drawer({ id, client: clientProp, approvals: approvalsProp }: { id: stri
           <form
             aria-label="Settle with a note"
             className="space-y-2 border-t border-border-subtle px-4 py-3"
-            onSubmit={(e) => { e.preventDefault(); c.settle?.(id, settling.trim() || undefined); setDid('Settled'); setSettling(null) }}
+            onSubmit={(e) => { e.preventDefault(); c.settle?.(id, undefined, settling.trim() || undefined); setDid('Settled'); setSettling(null) }}
           >
             <Textarea aria-label="Note" autoFocus rows={2} value={settling} onChange={(e) => setSettling(e.target.value)} placeholder="What was done?" />
             <div className="flex justify-end gap-2">

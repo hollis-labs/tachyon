@@ -201,7 +201,7 @@ describe('ServerAlertDetail', () => {
     await act(async () => fireEvent.click(await screen.findByRole('menuitem', { name: /Settle with a note/ })))
     fireEvent.change(await screen.findByLabelText('Note'), { target: { value: 'Fixed upstream' } })
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Settle' })))
-    expect(client.op).toHaveBeenCalledWith('al_b', { op: 'settle', resolution: 'Fixed upstream' }, 4)
+    expect(client.op).toHaveBeenCalledWith('al_b', { op: 'settle', note: 'Fixed upstream' }, 4)
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeTruthy()
   })
   it('shows at most four related chips as plain labels and counts the rest', async () => {
