@@ -29,7 +29,7 @@ export function SessionCards({ sessions, now, onSelect }: { sessions: readonly S
     <ul aria-label={AGENTS.sessionsList} className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3 p-4 max-sm:grid-cols-1">
       {sessions.map((s) => (
         <li key={s.id}>
-          <button type="button" aria-label={`${s.agent.name}, ${stateText(s, now)}`} onClick={() => onSelect(s.id)} className="group flex w-full flex-col gap-2 rounded-panel border border-border bg-bg-elevated p-3 text-left outline-none hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+          <button type="button" onClick={() => onSelect(s.id)} className="group flex w-full flex-col gap-2 rounded-panel border border-border bg-bg-elevated p-3 text-left outline-none hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
             <span className="flex items-center gap-2.5">
               <Avatar name={s.agent.name} />
               <span className="flex min-w-0 flex-col">
@@ -89,7 +89,7 @@ export function SessionBoard({ sessions, now, onSelect }: { sessions: readonly S
             <ul className="flex flex-col gap-2">
               {shown.map((s) => (
                 <li key={s.id}>
-                  <button type="button" aria-label={`${s.agent.name}, ${stateText(s, now)}`} onClick={() => onSelect(s.id)} className="flex w-full flex-col gap-1.5 rounded-panel border border-border bg-bg-elevated p-2.5 text-left outline-none hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+                  <button type="button" onClick={() => onSelect(s.id)} className="flex w-full flex-col gap-1.5 rounded-panel border border-border bg-bg-elevated p-2.5 text-left outline-none hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
                     <span className="flex items-center gap-2">
                       <Avatar name={s.agent.name} className="size-[22px] text-micro" />
                       <b className="min-w-0 truncate text-control font-semibold text-fg">{s.agent.name}</b>
