@@ -250,7 +250,7 @@ export function DecisionDetail({
   const bullets = (b: string) => <MessageBody body={b} />
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+      <div tabIndex={0} className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         <header className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <h2 className="font-sans normal-case tracking-normal dash-body font-semibold text-fg">{request?.title ?? "Review request"}</h2>

@@ -40,7 +40,7 @@ export function BatchPanel({ items, confirming, busy, accessNeeded, onConfirm, o
   const risks = [...new Set(items.map((i) => i.request_snapshot.class ?? "medium"))]
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+      <div tabIndex={0} className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
         <header>
           <h2 className="font-sans normal-case tracking-normal dash-body font-semibold text-fg">Approve {n} {noun}</h2>
           <p className="mt-1 dash-support text-fg-muted">Low-risk requests the server marked safe to decide together. Each is still recorded on its own.</p>
