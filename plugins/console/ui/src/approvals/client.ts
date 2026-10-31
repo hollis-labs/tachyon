@@ -1,3 +1,4 @@
+import type { Access } from "./batch"
 import { operatorFetch } from "../operator/elevation"
 
 // Tachyon-owned HITL v1 browser projection. Decisions retain the producer's contract;
@@ -301,7 +302,7 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
     },
     // Whether this operator may decide in bulk. The route needs the inbox grant, like the rest.
     access() {
-      return request<{ batch_allowed: boolean; reason?: string }>("/access")
+      return request<Access>("/access")
     },
     undefer(id: string) {
       return request<DeferResult>(`/items/${encodeURIComponent(id)}/defer`, { method: "DELETE" })

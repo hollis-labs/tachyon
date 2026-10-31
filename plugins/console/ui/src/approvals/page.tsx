@@ -6,7 +6,7 @@ import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
 import { ApprovalError, kindLabel, type ApprovalItem, type BatchResult, type HistoryFacets } from "./client"
 import { Chip } from "../components/chip"
-import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility, orderPending } from "./batch"
+import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility, batchNeedsAccess, orderPending } from "./batch"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
@@ -117,7 +117,7 @@ export function ApprovalsPage() {
   useEffect(() => {
     if (!hasBatch || !queue) return
     let live = true
-    queue.client.access().then((a) => live && setAccessNeeded(!a.batch_allowed), () => {})
+    queue.client.access().then((a) => live && setAccessNeeded(batchNeedsAccess(a)), () => {})
     return () => { live = false }
   }, [hasBatch, queue])
   const select = (id: string) => {
