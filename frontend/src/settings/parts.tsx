@@ -28,8 +28,17 @@ export function SettingsColumn({
 }
 
 /** Flat bordered group of rows. */
-export function SetCard({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col rounded-panel border border-border">{children}</div>
+export function SetCard({ children, label }: { children: ReactNode; label?: string }) {
+  return (
+    <div className="flex flex-col rounded-panel border border-border">
+      {label && (
+        <p className="border-b border-border-subtle px-4 py-2 font-mono text-caption uppercase leading-none tracking-label text-fg-muted">
+          {label}
+        </p>
+      )}
+      {children}
+    </div>
+  )
 }
 
 /** Title + helper on the left, control on the right. `sub` adds the divider above. */

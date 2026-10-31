@@ -3,14 +3,13 @@ import { useEffect, useMemo, useRef } from "react"
 import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { AppearanceSection } from "./AppearanceSection"
 import { GeneralSection } from "./GeneralSection"
-import { stubApi } from "./general"
+import { devStubApi, realApi } from "./general"
 import { resolveSection, SETTINGS_SECTIONS } from "./sections"
 
-// KIT-GAP: no settings manifest route is live, so General runs on a fixture. `?settings-stub=fail|conflict|slow|error` shows the failure states.
 const useGeneralApi = () => {
   const [params] = useSearchParams()
-  const mode = params.get("settings-stub")
-  return useMemo(() => stubApi(mode), [mode])
+  const dev = import.meta.env.DEV ? params.get("settings-stub") : null
+  return useMemo(() => (dev ? devStubApi(dev) : realApi()), [dev])
 }
 
 const ITEM = "block whitespace-nowrap rounded-control px-3 py-[7px] text-xs leading-normal sm:mx-2"
@@ -57,7 +56,9 @@ export function SettingsPage() {
         <h1 className="font-mono text-caption font-semibold uppercase leading-none tracking-label text-fg">
           Settings
         </h1>
-        <span className="text-label text-fg-muted">Saved on this device</span>
+        <span className="text-label text-fg-muted">
+          {active === "appearance" ? "Saved on this device" : "Applies to this Tachyon"}
+        </span>
       </header>
       <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         <nav

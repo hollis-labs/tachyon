@@ -6,6 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Input,
   Pill,
   Select,
   SelectContent,
@@ -13,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
   Skeleton,
+  Switch,
 } from "@hollis-labs/design-components"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
@@ -25,10 +27,11 @@ import {
 import { SetCard, SettingsColumn } from "./parts"
 
 const INTRO = "Defaults for how Tachyon behaves. Each setting shows where its value comes from."
-const SOURCE: Record<SettingField["source"], string> = {
+const SOURCE: Record<string, string> = {
   default: "Default",
-  overridden: "Overridden",
-  env: "From environment",
+  override: "Overridden",
+  env: "Environment",
+  file: "From file",
 }
 
 type Load =
@@ -93,7 +96,7 @@ export function GeneralSection({ api }: { api: GeneralApi }) {
           g.fields.filter((f) => changes.includes(f)).map((f) => [f.key, draft[f.key]]),
         )
         if (Object.keys(set).length === 0) continue
-        const { results } = await api.save(g.id, set)
+        const { results } = await api.save(g, set)
         for (const [key, r] of Object.entries(results as Record<string, FieldResult>)) {
           if (r === "ok") total.ok++
           else
@@ -174,7 +177,7 @@ export function GeneralSection({ api }: { api: GeneralApi }) {
       )}
       {load.status === "ready" &&
         groups.map((g) => (
-          <SetCard key={g.id}>
+          <SetCard key={g.id} label={groups.length > 1 ? g.label : undefined}>
             {g.fields.map((f) => (
               <FieldRow
                 key={f.key}
@@ -335,44 +338,75 @@ function FieldRow({
   onChange: (v: string) => void
 }) {
   const locked = !!field.readOnlyReason
+  const off = locked || disabled
+  const note = [
+    locked
+      ? field.operatorOnly
+        ? "Operator access needed"
+        : field.readOnlyReason?.replace(/\.$/, "")
+      : "",
+    field.restartRequired ? "Applies after restart" : "",
+  ].filter(Boolean)
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border-subtle px-4 py-3 first:border-t-0">
       <div className="flex max-w-80 flex-col gap-0.5">
         <p className="font-bold text-fg">{field.label}</p>
-        <p className="text-xs leading-normal text-fg-muted">{field.help}</p>
-        {locked && (
+        {field.help && <p className="text-xs leading-normal text-fg-muted">{field.help}</p>}
+        {note.length > 0 && (
           <p className="text-xs leading-normal text-fg-muted">
-            {field.readOnlyReason}. {field.note ? `${field.note}. ` : ""}
-            <a href="/user" className="text-fg underline">
-              Get operator access
-            </a>
+            {note.join(". ")}.
+            {field.operatorOnly && (
+              <>
+                {" "}
+                <a href="/user" className="text-fg underline">
+                  Get operator access
+                </a>
+              </>
+            )}
           </p>
-        )}
-        {!locked && field.note && (
-          <p className="text-xs leading-normal text-fg-muted">{field.note}</p>
         )}
       </div>
       <div className="flex items-center gap-2">
-        <Select
-          value={value}
-          disabled={locked || disabled}
-          onValueChange={(v) => v && onChange(String(v))}
-        >
-          <SelectTrigger aria-label={field.label} className="h-7 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {field.options.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {/* Registered settings only; unregistered fields would show no chip. */}
-        <Pill className="rounded-xs font-mono text-caption normal-case">
-          {SOURCE[field.source]}
-        </Pill>
+        {field.kind === "enum" && (
+          <Select value={value} disabled={off} onValueChange={(v) => v && onChange(String(v))}>
+            <SelectTrigger aria-label={field.label} className="h-7 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {field.options.map((o) => (
+                <SelectItem key={o} value={o}>
+                  {o}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {field.kind === "boolean" && (
+          <Switch
+            aria-label={field.label}
+            checked={value === "true"}
+            disabled={off}
+            onCheckedChange={(c) => onChange(String(c))}
+          />
+        )}
+        {(field.kind === "integer" || field.kind === "string") && (
+          <Input
+            aria-label={field.label}
+            type={field.kind === "integer" ? "number" : "text"}
+            min={field.min}
+            max={field.max}
+            value={value}
+            disabled={off}
+            onChange={(e) => onChange(e.target.value)}
+            className="h-7 w-36 text-xs"
+          />
+        )}
+        {/* Registered settings only; the manifest names the layer the value comes from. */}
+        <span title={field.source.label}>
+          <Pill className="rounded-xs font-mono text-caption normal-case">
+            {SOURCE[field.source.kind] ?? field.source.kind}
+          </Pill>
+        </span>
       </div>
     </div>
   )
