@@ -16,7 +16,7 @@ export function RiskBody({ item, statuses, write }: { item: PlannerItem; statuse
   const [bars, setBars] = useState<Record<string, ReturnType<typeof themeSegments>>>({})
   useEffect(() => {
     let live = true
-    api.plannerThemeBoard().then((b) => live && setBars(Object.fromEntries(rowsOf(b).map((r) => [r.id, themeSegments(r)]))), () => {})
+    api.plannerThemeBoard({ include_proposed: true }).then((b) => live && setBars(Object.fromEntries(rowsOf(b).map((r) => [r.id, themeSegments(r)]))), () => {})
     return () => { live = false }
   }, [api])
   useEffect(() => {
