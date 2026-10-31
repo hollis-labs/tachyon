@@ -170,7 +170,7 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
           )}
         </div>
       </header>
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 py-3">
+      <div tabIndex={0} className="min-h-0 flex-1 space-y-3 overflow-auto px-4 py-3">
         {changed && (
           <p role="status" className="flex items-center gap-2 text-label text-fg-muted">
             Changed on disk.
@@ -296,7 +296,7 @@ function Picture({ path, ext, size, onDims }: { path: string; ext: string; size?
         />
       </div>
       {/* KIT-GAP: the checkerboard is drawn from tokens here until the kit has a transparency ground. */}
-      <div className="max-h-[70vh] overflow-auto rounded-panel border border-border bg-[repeating-conic-gradient(var(--color-surface)_0_25%,var(--color-bg)_0_50%)] bg-[length:12px_12px] p-2">
+      <div tabIndex={0} className="max-h-[70vh] overflow-auto rounded-panel border border-border bg-[repeating-conic-gradient(var(--color-surface)_0_25%,var(--color-bg)_0_50%)] bg-[length:12px_12px] p-2">
         {/* SVG is only ever shown through <img>, as the contract requires. */}
         <img
           src={contentUrl(path)}
@@ -366,7 +366,7 @@ function Page({ path, tick, expanded, onText }: { path: string; tick: number; ex
         </p>
       )}
       {view === 'rendered' && frame && 'frame_url' in frame && (
-        <div className="overflow-auto rounded-panel border border-border p-2">
+        <div tabIndex={0} className="overflow-auto rounded-panel border border-border p-2">
           <iframe
             title={`Preview of ${basename(path)}`}
             src={frame.frame_url}
@@ -514,7 +514,7 @@ function TextBody({ path, line, markdown, head, tick, expanded = false, language
           <Markdown>{state.text}</Markdown>
         </div>
       ) : (
-        <pre className={`${expanded ? 'max-h-[75vh]' : 'max-h-[60vh]'} overflow-auto rounded-panel border border-border-subtle bg-bg py-2 font-mono text-caption leading-relaxed text-fg ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : ''}`}>
+        <pre tabIndex={0} className={`${expanded ? 'max-h-[75vh]' : 'max-h-[60vh]'} overflow-auto rounded-panel border border-border-subtle bg-bg py-2 font-mono text-caption leading-relaxed text-fg ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : ''}`}>
           {lines.map((l, i) => (
             <span
               key={i}
