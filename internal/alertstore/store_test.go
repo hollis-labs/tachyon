@@ -3,6 +3,7 @@ package alertstore
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -346,5 +347,21 @@ func TestStateCompat(t *testing.T) {
 	w = do("GET", alertsapi.StatePrefix+"?prefix=pr-inbox:", "")
 	if strings.Contains(w.Body.String(), id) {
 		t.Fatalf("prefix filter: %s", w.Body)
+	}
+}
+
+func TestNeedsYouCountIncludesReadAlerts(t *testing.T) {
+	f := newFixture(t)
+	if err := f.s.Ingest(ev("need", "e1", 1000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.DB.Writer.Submit(context.Background(), "test_read", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, "UPDATE alerts SET read=1")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := f.s.Counts(context.Background()); c.NeedsYou != 1 || c.Unread != 0 {
+		t.Fatalf("%+v", c)
 	}
 }

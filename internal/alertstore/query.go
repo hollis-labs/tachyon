@@ -190,9 +190,10 @@ func (s *Store) Counts(ctx context.Context) (alertsapi.Counts, error) {
 		c.BySeverity[sev] += n
 		if read == 0 {
 			c.Unread += n
-			if needs == 1 {
-				c.NeedsYou += n
-			}
+		}
+		// NeedsYou counts every active needs-you alert, read or not, so the badge matches the Needs you group.
+		if needs == 1 {
+			c.NeedsYou += n
 		}
 	}
 	if err := rows.Err(); err != nil {
