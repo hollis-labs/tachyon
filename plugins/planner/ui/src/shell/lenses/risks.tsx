@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { usePlannerApi } from '@planner/api/context'
 import { sentenceCase } from '@planner/lib/planner'
 import { TEXT } from '@planner/lib/vocabulary'
-import { CAPTION, SegmentedSwitch } from '@planner/shared'
+import { CAPTION, SegmentedProgress, SegmentedSwitch } from '@planner/shared'
+import { rowsOf, themeSegments } from '@planner/shell/spine'
 import type { PlannerItem } from '@planner/api/types'
 
 export type Write = (fn: () => Promise<unknown>) => Promise<void>
@@ -11,6 +12,13 @@ export type Write = (fn: () => Promise<unknown>) => Promise<void>
 export function RiskBody({ item, statuses, write }: { item: PlannerItem; statuses: string[]; write: Write }) {
   const api = usePlannerApi()
   const [themes, setThemes] = useState<{ id: string; title: string }[] | null>(null)
+  // The mitigating themes' progress comes from the theme board; a theme it does not list simply shows no bar.
+  const [bars, setBars] = useState<Record<string, ReturnType<typeof themeSegments>>>({})
+  useEffect(() => {
+    let live = true
+    api.plannerThemeBoard().then((b) => live && setBars(Object.fromEntries(rowsOf(b).map((r) => [r.id, themeSegments(r)]))), () => {})
+    return () => { live = false }
+  }, [api])
   useEffect(() => {
     let live = true
     setThemes(null)
@@ -37,6 +45,7 @@ export function RiskBody({ item, statuses, write }: { item: PlannerItem; statuse
               <li key={t.id} className="flex flex-col gap-1 rounded-panel border border-border bg-bg-elevated px-3 py-2">
                 <span className="font-mono text-caption text-fg-muted">{t.id.slice(0, 8)} · {TEXT.themeNoun}</span>
                 <a href={`/planner/themes/${encodeURIComponent(t.id)}`} className="text-control text-fg hover:underline">{t.title}</a>
+                {bars[t.id] && <SegmentedProgress size="sm" label={bars[t.id].label} items={bars[t.id].items} />}
               </li>
             ))}
           </ul>
