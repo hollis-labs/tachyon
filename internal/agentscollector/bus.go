@@ -96,6 +96,9 @@ func NormalizeBus(f Frame) (BusEvent, bool) {
 		b.App = "tether"
 	}
 	name := okName(f.Name)
+	if name == "" && typ == "task" && f.TaskRef == "" {
+		return BusEvent{}, false // a task event that names no task says nothing; do not publish "unknown"
+	}
 	if name == "" {
 		name = "unknown"
 	}

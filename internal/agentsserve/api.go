@@ -218,7 +218,30 @@ func humanize(sum string) (text string, hidden bool) {
 		}
 		return "Used a tool", false
 	case strings.HasPrefix(sum, "session.work_state_changed: "):
-		return "Work state " + strings.TrimPrefix(sum, "session.work_state_changed: "), false
+		_, to, _ := strings.Cut(strings.TrimPrefix(sum, "session.work_state_changed: "), " -> ")
+		switch {
+		case to == "idle":
+			return "Went idle", false
+		case to == "processing" || to == "working" || to == "running":
+			return "Started working", false
+		case strings.HasPrefix(to, "waiting"):
+			return "Waiting on you", false
+		}
+		return "Work state " + to, false
+	case strings.HasPrefix(sum, "session.state_changed: "):
+		from, to, _ := strings.Cut(strings.TrimPrefix(sum, "session.state_changed: "), " -> ")
+		if from == to {
+			return "", true // a no-op transition
+		}
+		return "Session " + to, false
+	case !strings.Contains(sum, ": "):
+		if i := strings.Index(sum, "."); i > 0 && !strings.Contains(sum, " ") {
+			w := strings.ReplaceAll(strings.TrimPrefix(sum[i+1:], "."), "_", " ")
+			if sum[:i] != "session" {
+				w = sum[:i] + " " + w
+			}
+			return strings.ToUpper(w[:1]) + w[1:], false
+		}
 	}
 	return sum, false
 }
@@ -369,7 +392,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	evs := make([]timelineEvent, 0, len(rows))
 	for _, e := range rows {
-		text, _ := humanize(e.text)
+		text, hidden := humanize(e.text)
+		if hidden {
+			continue
+		}
 		evs = append(evs, timelineEvent{ID: "ev_" + strconv.FormatInt(e.id, 10), Seq: e.seq, SessionID: id, Type: e.typ, At: e.atNS / int64(time.Millisecond),
 			Actor: e.actor, Summary: text, Cite: []any{}})
 	}

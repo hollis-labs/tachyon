@@ -162,3 +162,15 @@ func TestBusRetention(t *testing.T) {
 		t.Fatal("the 8-day-old event survived")
 	}
 }
+
+func TestTaskEventNamesItsTaskFromEntityOrIsDropped(t *testing.T) {
+	f, _ := ParseFrame([]byte(`{"kind":"task.state_changed","id":"e:9","app":"torque","payload":{"entity":{"type":"task","id":"CW-20261031-0013"},"from":"doing","to":"done"}}`))
+	b, ok := NormalizeBus(f)
+	if !ok || b.Subject != "CW-20261031-0013 done" || len(b.Refs) != 1 {
+		t.Fatalf("%v %+v", ok, b)
+	}
+	f, _ = ParseFrame([]byte(`{"kind":"task.state_changed","id":"e:10","app":"torque","payload":{"to":"done"}}`))
+	if _, ok := NormalizeBus(f); ok {
+		t.Fatal("a task event naming no task is not published")
+	}
+}
