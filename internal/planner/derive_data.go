@@ -340,12 +340,18 @@ func (h *HTTP) streamProgress(ctx context.Context, items []Item) {
 			p, err := ps.theme(ctx, Item{}, []Item{it})
 			if err != nil {
 				it["progress"] = Item{"available": false, "done": nil, "total": nil, "open": nil, "counts": nil, "linked": false, "note": "Torque is not reachable"}
+				it["counts"] = Item{"done": nil, "total": nil}
 				return
 			}
 			var m Item
 			if b, e := json.Marshal(p); e == nil && json.Unmarshal(b, &m) == nil {
 				m["available"] = true
 				it["progress"] = m
+				if p.Linked {
+					it["counts"] = Item{"done": p.Done, "total": p.Total}
+				} else {
+					it["counts"] = Item{"done": nil, "total": nil}
+				}
 			}
 		}(it)
 	}
