@@ -4,6 +4,7 @@ import { FileText, GitCompare, Paperclip } from "lucide-react"
 import { Chip } from "../components/chip"
 import { Keycap } from "../components/keycap"
 import { MessageBody } from "../chat/MessageBody"
+import { Linkified } from "../autolink/Linkified"
 import {
   isCard,
   isExpired,
@@ -88,8 +89,10 @@ function EvidenceView({ evidence }: { evidence: Evidence }) {
       <span className="dash-label text-fg-muted group-open:text-fg">View</span>
     </summary>
     <div className="border-t border-border px-3 py-2">
+      {/* File and task references inside evidence open the shared ref drawer, like everywhere else. */}
       {evidence.type === "markdown" ? <MessageBody body={evidence.content ?? ""} /> :
-        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono dash-support text-fg-muted">{evidence.content ?? JSON.stringify(evidence, null, 2)}</pre>}
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono dash-support text-fg-muted"><Linkified text={evidence.content ?? JSON.stringify(evidence, null, 2)} preserveWhitespace /></pre>}
+      {typeof evidence.ref === "string" && evidence.ref && <p className="mt-2 dash-control"><Linkified text={evidence.ref} /></p>}
       {url && <a href={url} target="_blank" rel="noopener noreferrer" className="dash-control text-info">Open evidence</a>}
     </div>
   </details>
