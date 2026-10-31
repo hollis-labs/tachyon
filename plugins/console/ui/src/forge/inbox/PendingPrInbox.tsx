@@ -121,8 +121,8 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, anySelected, 
   const reasons = [item.primary, ...item.categories.filter((c) => c !== item.primary)].filter((c): c is InboxCategory => c !== 'other')
   const actions = triageActions(active, now, busy, run)
   return (
-    <li onClick={() => onPreview(item)} className={`group flex cursor-pointer items-start gap-3 border-b border-border px-4 py-3 ${selected ? 'bg-surface/50' : 'hover:bg-surface/40'} ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
-      <span onClick={(e) => e.stopPropagation()} className={`-m-2.5 flex shrink-0 items-center justify-center p-2.5 md:-m-1 md:p-1 ${anySelected ? '' : 'md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100'}`}>
+    <li onClick={() => onPreview(item)} className={`group flex cursor-pointer items-start gap-3 px-4 py-3 ${selected ? 'bg-surface/50' : 'hover:bg-surface/40'} ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
+      <span onClick={(e) => e.stopPropagation()} className={`-m-2.5 flex shrink-0 items-center justify-center p-2.5 md:-m-1 md:p-1 ${anySelected ? '' : 'max-md:hidden md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100'}`}>
         <Checkbox aria-label={`Select ${label}`} checked={selected} onCheckedChange={() => onToggle(item)} />
       </span>
       <span aria-hidden className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border ${danger ? 'border-danger/60 text-danger' : 'border-border text-fg-muted'}`}>

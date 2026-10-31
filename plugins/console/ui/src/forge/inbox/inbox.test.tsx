@@ -268,7 +268,7 @@ describe('<PendingPrInbox>', () => {
     const dialog = await screen.findByRole('dialog')
     await within(dialog).findByRole('region', { name: 'Checks' })
     expect(within(dialog).getByRole('region', { name: 'Files changed' })).toBeTruthy()
-    expect(within(dialog).getByRole('link', { name: 'Open workspace' }).getAttribute('href')).toMatch(/^\/pr\/github\//)
+    expect(within(dialog).getByRole('link', { name: 'Open workspace ▸' }).getAttribute('href')).toMatch(/^\/pr\/github\//)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
