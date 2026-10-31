@@ -37,9 +37,9 @@ export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: 
   const drop = (gs: SpineGroup[]) => gs.filter((g) => g.items.length > 0)
   switch (db) {
     case 'workstreams': {
-      // Per-stream task counts arrive as `counts: {done, total}` once the list route sends them; until then no bar is drawn.
+      // Per-stream task counts: `counts` (null for an unlinked stream), or `progress` on a server that has not added the alias yet.
       const row = (i: PlannerItem) => {
-        const c = i.counts as { done?: number; total?: number } | undefined
+        const c = (i.counts as { done?: number | null; total?: number | null } | undefined)?.total ? (i.counts as { done?: number; total?: number }) : (i.progress as { done?: number; total?: number } | undefined)
         const total = Number(c?.total) || 0
         const done = Math.min(Number(c?.done) || 0, total)
         return entry(i, {
