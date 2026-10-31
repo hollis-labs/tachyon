@@ -74,7 +74,7 @@ export function ContextBar({ pct }: { pct: number | null }) {
   if (pct === null) {
     return (
       <span role="progressbar" aria-label={AGENTS.contextLabel(null)} title={AGENTS.contextNa} className="relative block h-4 overflow-hidden rounded-sm bg-surface-hover">
-        <b className="absolute right-1.5 top-0 font-mono text-micro font-semibold leading-4 text-fg-faint">{AGENTS.na}</b>
+        <b className="absolute right-1.5 top-0 font-mono text-micro font-semibold leading-4 text-fg">{AGENTS.na}</b>
       </span>
     )
   }
