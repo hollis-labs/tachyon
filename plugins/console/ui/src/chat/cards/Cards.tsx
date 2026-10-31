@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent } from 'react'
 import { ArrowRight, ChevronRight, ListChecks, Lock, Scale, SquareTerminal } from 'lucide-react'
+import { Link, useInRouterContext } from 'react-router-dom'
 import { Chip, Kbd, SegmentedProgress, StateDot } from '@planner/shared'
 import { Act, Block, LINK } from './Block'
 import { useAnswer } from './useAnswer'
@@ -96,6 +97,9 @@ export function ApprovalCard({ block, commit }: { block: Of<'approval'>; commit?
   }
   const answered = a.phase === 'answered' || a.phase === 'saving'
   const decision = a.value ?? block.answered?.decision
+  const inRouter = useInRouterContext()
+  // A request that needs a typed phrase or a reason is decided in Approvals; say so and go there.
+  const deferred = !!block.itemId && !!a.error && /Open it in Approvals/.test(a.error) && inRouter
   return (
     <Block label={`Approval: ${block.title}`} icon={<Lock className="size-3.5" />} caption="Approval" title={block.title} aside={<Chip square>{block.tool}{block.count && block.count > 1 ? ` ×${block.count}` : ''}</Chip>} onKeyDown={answered ? undefined : onKey}>
       {answered ? (
@@ -113,6 +117,7 @@ export function ApprovalCard({ block, commit }: { block: Of<'approval'>; commit?
           </div>
           {details && <p className="font-mono text-xs text-fg-secondary">{block.tool}{block.count && block.count > 1 ? ` × ${block.count}` : ''} · {block.title}</p>}
           <Err>{a.error}</Err>
+          {deferred && <Link to={`/approvals?item=${encodeURIComponent(block.itemId!)}`} className={LINK}>Open in Approvals <ChevronRight aria-hidden className="inline size-3" /></Link>}
         </>
       )}
     </Block>

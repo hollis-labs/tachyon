@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import { ApprovalCard, DecisionCard, PlanCard } from './Cards'
 import { RunCard } from './RunCard'
 import { demoBlocks } from './fixtures'
@@ -38,6 +39,14 @@ describe('answerable cards', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Allow once/ })) })
     expect(screen.getByRole('alert').textContent).toContain('Conflict')
     expect(screen.getByRole('button', { name: /Deny/ })).toBeTruthy()
+  })
+
+  it('a request that needs a typed phrase links to it in Approvals', async () => {
+    const block = { ...get('approval'), reversible: false, itemId: 'item 1' }
+    const commit = () => Promise.reject(new Error('This needs a typed confirmation. Open it in Approvals.'))
+    render(<MemoryRouter><ApprovalCard block={block} commit={commit} /></MemoryRouter>)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Allow once/ })) })
+    expect(screen.getByRole('link', { name: /Open in Approvals/ }).getAttribute('href')).toBe('/approvals?item=item%201')
   })
 
   it('an approval that already ran says it cannot be undone', async () => {
