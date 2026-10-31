@@ -323,8 +323,12 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
           </Section>
           <UsedBySection load={usedBy} retry={retryUsedBy} />
           <HistorySection id={a.id} />
+          <div className="flex flex-col gap-3.5 xl:hidden">
+            <ResolvedCard id={a.id} />
+            <ChecksCard id={a.id} />
+          </div>
         </div>
-        <aside aria-label="Resolved, used by and checks" className="hidden w-[300px] shrink-0 flex-col gap-3.5 overflow-auto border-l border-border-subtle p-3.5 lg:flex">
+        <aside aria-label="Resolved, used by and checks" className="hidden w-[300px] shrink-0 flex-col gap-3.5 overflow-auto border-l border-border-subtle p-3.5 xl:flex">
           <ResolvedCard id={a.id} />
           <UsedByCard load={usedBy} retry={retryUsedBy} />
           <ChecksCard id={a.id} />
