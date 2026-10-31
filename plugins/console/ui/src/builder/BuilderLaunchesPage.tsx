@@ -208,13 +208,19 @@ export function BuilderLaunchesPage() {
                 ))}
               </div>
               {rows.map((l) => (
-                <button
+                <div
                   key={l.id}
-                  type="button"
                   role="row"
+                  tabIndex={0}
                   aria-selected={l.id === sel?.id}
                   onClick={() => setPicked(l.id)}
-                  className={`grid w-full ${COLS} items-center gap-3 border-t border-border-subtle px-4 py-2.5 text-left text-xs hover:bg-selection ${l.id === sel?.id ? 'bg-selection' : ''}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setPicked(l.id)
+                    }
+                  }}
+                  className={`grid w-full ${COLS} cursor-pointer items-center gap-3 border-t border-border-subtle px-4 py-2.5 text-left text-xs outline-none hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring ${l.id === sel?.id ? 'bg-selection' : ''}`}
                 >
                   <span role="cell" className="flex min-w-0 items-center gap-2 font-mono">
                     <Dot on={l.enabled} />
@@ -226,7 +232,7 @@ export function BuilderLaunchesPage() {
                   <span role="cell" className="hidden truncate sm:block">{l.worker}</span>
                   <span role="cell" className="hidden truncate sm:block">{l.workspace?.mode ?? '—'}</span>
                   <span role="cell" className="hidden sm:block">{l.live_count > 0 ? l.live_count : '—'}</span>
-                </button>
+                </div>
               ))}
             </div>
           )}

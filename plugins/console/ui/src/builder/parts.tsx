@@ -27,9 +27,9 @@ export function Tile({ name, large = false }: { name: string; large?: boolean })
 /** Section heading: mono caps. */
 export function Cap({ children, id }: { children: ReactNode; id?: string }) {
   return (
-    <h3 id={id} className="font-mono text-caption uppercase tracking-label text-fg-muted">
+    <h2 id={id} className="font-mono text-caption uppercase tracking-label text-fg-muted">
       {children}
-    </h3>
+    </h2>
   )
 }
 
@@ -57,7 +57,7 @@ export function RailCard({ title, aside, children }: { title: ReactNode; aside?:
   return (
     <section className="flex flex-col gap-2 rounded-panel border border-border p-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="font-mono text-caption uppercase tracking-label text-fg-muted">{title}</h3>
+        <h2 className="font-mono text-caption uppercase tracking-label text-fg-muted">{title}</h2>
         {aside}
       </div>
       {children}
