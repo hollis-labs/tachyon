@@ -17,7 +17,7 @@ import {
   type ApprovalClient,
 } from "./client"
 import { noteServerNow, serverNow } from "./clock"
-import { MAX_BATCH, batchEligibility, orderPending } from "./batch"
+import { MAX_BATCH, batchEligibility, inlineDecisionBlocker, orderPending } from "./batch"
 import { ApprovalDialog } from "./dialog"
 import { ApprovalProvider } from "./context"
 import { ApprovalsPage } from "./page"

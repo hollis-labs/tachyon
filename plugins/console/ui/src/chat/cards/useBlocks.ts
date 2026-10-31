@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { approvalClient, type ApprovalResponse } from '../../approvals/client'
+import { inlineDecisionBlocker } from '../../approvals/batch'
 import { chatJSON, terminalJSON } from '../roster'
 import { useThreadFrames } from '../live'
 import { demoBlocks } from './fixtures'
@@ -102,6 +103,8 @@ export function useBlocks(ref: string | undefined) {
     if (!block.itemId) return
     const item = await approvalClient.get(block.itemId, true)
     const response = toResponse(block, value, item.request_snapshot.kind)
+    const blocked = inlineDecisionBlocker(item, response)
+    if (blocked) throw new Error(blocked)
     await approvalClient.decide(item, response)
     void loadCards()
   }, [loadCards])
