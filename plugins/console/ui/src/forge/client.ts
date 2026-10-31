@@ -15,6 +15,7 @@ import type {
   Repo,
   RepoRef,
   Review,
+  AuditEntry,
   ForgeStatus,
   ReviewDraft,
   ReviewValidation,
@@ -57,6 +58,8 @@ export interface ForgeClient {
   mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult>
   /** effect: write */
   assign(ref: PrRef, input: AssignInput): Promise<PullRequest>
+  /** effect: read. Optional: the forge write audit (operator-gated), newest first. */
+  listAudit?(limit?: number): Promise<AuditEntry[]>
   /** effect: read. Optional freshness signal. */
   getStatus?(): Promise<ForgeStatus>
   /** effect: read */

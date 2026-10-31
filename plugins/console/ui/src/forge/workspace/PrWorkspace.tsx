@@ -25,6 +25,7 @@ import { registerWorkspaceActions } from './actions'
 import { Author, Badge, CommentItem, Composer, LABEL, ThreadView } from './Comments'
 import { buildThreadIndex, type Thread } from './diff-utils'
 import { FileDiffView, type DiffMode } from './DiffView'
+import { AuditList } from './AuditList'
 import { FileTree } from './FileTree'
 import { MergePanel } from './MergePanel'
 import { ReviewPanel } from './ReviewPanel'
@@ -320,6 +321,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
               {postingIssue.map((c) => <li key={c.id} className="relative"><CommentItem c={c} posting /></li>)}
               {convo.length + postingIssue.length === 0 && <li className="text-xs text-fg-faint">No comments yet.</li>}
             </ol>
+            <AuditList client={client} prRef={prRef} now={now} />
             {index.orphaned.length > 0 && (
               <div className="mt-6">
                 <h2 className={`${LABEL} mb-2`}>Comments on files no longer in the diff · {index.orphaned.length}</h2>

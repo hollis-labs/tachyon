@@ -248,6 +248,9 @@ export interface ReviewDraft { headSha: string; comments: NonNullable<ReviewInpu
 /** GET status: when the forge cache last refreshed and whether the answer is degraded (served from cache). */
 export interface ForgeStatus { lastRefreshMs: number | null; degraded: boolean }
 
+/** One forge write recorded server-side (GET /audit). Never carries a body. */
+export interface AuditEntry { id: number; at: number; op: string; prKey: string; actor: string; outcome: string; errorCode?: string; githubRef?: string }
+
 export interface AssignInput {
   /** Full replacement set of assignee logins. */
   assignees: string[]
