@@ -9,7 +9,7 @@ import { PlannerCreateDialog } from '@planner/components/planner/planner-create-
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
 import { boardAge, sentenceCase } from '@planner/lib/planner'
 import { LENSES, lensPath, TEXT } from '@planner/lib/vocabulary'
-import { CAPTION, Chip, CommandPalette, InlineEdit, PaletteHint, Pips, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
+import { CAPTION, Chip, CommandPalette, InlineEdit, PaletteHint, Pips, SegmentedProgress, SpineList, StateDot, StatusMenu, type DotState, type PaletteCommand, type SpineGroup } from '@planner/shared'
 import { Context, type ContextLink } from '@planner/shell/context'
 import { LoadError, loadMessage } from '@planner/shell/load-error'
 import { PlannerFrame } from '@planner/shell/frame'
@@ -37,7 +37,16 @@ export function lensGroups(db: PlannerDb, items: readonly PlannerItem[], needs: 
   const drop = (gs: SpineGroup[]) => gs.filter((g) => g.items.length > 0)
   switch (db) {
     case 'workstreams': {
-      const row = (i: PlannerItem) => entry(i, { flags: str(i.phase) ? chip(str(i.phase)) : undefined })
+      // Per-stream task counts arrive as `counts: {done, total}` once the list route sends them; until then no bar is drawn.
+      const row = (i: PlannerItem) => {
+        const c = i.counts as { done?: number; total?: number } | undefined
+        const total = Number(c?.total) || 0
+        const done = Math.min(Number(c?.done) || 0, total)
+        return entry(i, {
+          flags: str(i.phase) ? chip(str(i.phase)) : undefined,
+          progress: total > 0 ? <SegmentedProgress size="sm" label={TEXT.progressText(done, total, 0)} items={[{ state: 'done', count: done }, { state: 'todo', count: total - done }]} /> : undefined,
+        })
+      }
       return drop([
         { id: 'active', title: TEXT.groupActive, items: pick((i) => i.status === 'active').map(row) },
         { id: 'quiet', title: TEXT.groupPausedDraft, collapsed: true, items: pick((i) => i.status === 'paused' || i.status === 'draft').map(row) },
