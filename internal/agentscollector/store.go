@@ -309,6 +309,8 @@ func (s *Store) Prune(ctx context.Context) (int64, error) {
 		{`DELETE FROM agents_events WHERE id IN (SELECT id FROM agents_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
 		{`DELETE FROM agents_stream WHERE id IN (SELECT id FROM agents_stream WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
 		{`DELETE FROM bus_events WHERE id IN (SELECT id FROM bus_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
+		// Task events stored before they named their task read "unknown <state>"; they carry no information.
+		{`DELETE FROM bus_events WHERE id IN (SELECT id FROM bus_events WHERE type='task' AND subject LIKE 'unknown %' AND at_ns<? LIMIT ?)`, now.Add(time.Hour)},
 		{`DELETE FROM agents_gaps WHERE id IN (SELECT id FROM agents_gaps WHERE end_ns<? LIMIT ?)`, now.Add(-GapRetention)},
 		{`DELETE FROM agents_samples WHERE rowid IN (SELECT rowid FROM agents_samples WHERE bucket_kind='min' AND bucket_ns<? LIMIT ?)`, now.Add(-MinuteSampleRetention)},
 		{`DELETE FROM agents_samples WHERE rowid IN (SELECT rowid FROM agents_samples WHERE bucket_kind='hour' AND bucket_ns<? LIMIT ?)`, now.Add(-HourSampleRetention)},
