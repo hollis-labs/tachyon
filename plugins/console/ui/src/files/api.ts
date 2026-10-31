@@ -160,6 +160,12 @@ export const fileApi = {
     if (!res.ok) return fail(res)
     return { text: await res.text(), etag: res.headers.get('ETag') }
   },
+  /** The first `bytes` of a file over the text cap; the host serves Range for text kinds. */
+  async textHead(path: string, bytes: number): Promise<{ text: string; etag: string | null }> {
+    const res = await hostFetch(contentUrl(path), { headers: { Range: `bytes=0-${bytes - 1}`, 'Cache-Control': 'no-store' } })
+    if (!res.ok) return fail(res)
+    return { text: await res.text(), etag: res.headers.get('ETag') }
+  },
   async frame(path: string): Promise<Frame> {
     const res = await hostFetch(`${FILES_BASE}/frame`, {
       method: 'POST',
@@ -170,6 +176,8 @@ export const fileApi = {
     return (await res.json()) as Frame
   },
 }
+
+export const PREVIEW_HEAD_BYTES = 200 * 1024
 
 // ---------- pure helpers ----------
 
