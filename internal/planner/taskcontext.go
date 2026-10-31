@@ -7,6 +7,20 @@ import (
 	"github.com/hollis-labs/tachyon/internal/objects"
 )
 
+// TaskAssignment, when set (by the assignment mount, which imports this package), returns the primary active
+// assignment of a Torque task as {id, agent_id|team_id, state}, or nil.
+var TaskAssignment func(ctx context.Context, task string) Item
+
+func assignmentOf(ctx context.Context, task string) any {
+	if TaskAssignment == nil {
+		return nil
+	}
+	if a := TaskAssignment(ctx, task); a != nil {
+		return a
+	}
+	return nil
+}
+
 // TaskContext answers where a Torque task sits in its theme (Agents A5 task chip). The theme is the first
 // one whose Torque scope lists the task; a task in no theme answers theme null. Assignment and time on task
 // are not derived yet and stay null/zero.
@@ -46,7 +60,7 @@ func (h *HTTP) TaskContext(ctx context.Context, task string) (Item, error) {
 			"theme":      Item{"id": theme["id"], "title": theme["title"], "progress": Item{"done": done, "total": len(tasks)}},
 			"index":      at + 1,
 			"count":      len(tasks),
-			"assignment": nil,
+			"assignment": assignmentOf(ctx, task),
 			"stats":      Item{"done_in_theme": done, "events": 0, "time_on_task_ms": nil},
 		}, nil
 	}
@@ -60,7 +74,7 @@ func (h *HTTP) TaskContext(ctx context.Context, task string) (Item, error) {
 	}
 	return Item{
 		"task":  Item{"id": b.ID, "title": b.Title, "status": b.Status},
-		"theme": nil, "index": nil, "count": nil, "assignment": nil,
+		"theme": nil, "index": nil, "count": nil, "assignment": assignmentOf(ctx, task),
 		"stats": Item{"done_in_theme": 0, "events": 0, "time_on_task_ms": nil},
 	}, nil
 }
