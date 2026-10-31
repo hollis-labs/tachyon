@@ -51,6 +51,7 @@ export const FIELDS: readonly FieldDef[] = [
     kind: 'chips',
     read: (a) => list(a.policy?.mcp_scopes),
   },
+  { path: 'policy.rules', label: 'Rules', kind: 'chips', read: (a) => list(a.policy?.rules) },
 ]
 
 export const fieldByPath = (path: string) => FIELDS.find((f) => f.path === path)
@@ -118,6 +119,7 @@ export const PART_FIELDS: Record<PartKind, readonly PartField[]> = {
     { path: 'network', label: 'Network', kind: 'text' },
     { path: 'default_sandbox', label: 'Sandbox', kind: 'text' },
     { path: 'mcp_scopes', label: 'Scopes', kind: 'chips' },
+    { path: 'rules', label: 'Rules', kind: 'chips' },
   ],
 }
 

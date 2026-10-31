@@ -56,7 +56,7 @@ function Value({ v }: { v: unknown }): ReactNode {
 
 const GRID = 'grid gap-0.5 py-[3px] sm:grid-cols-[130px_1fr] sm:gap-3'
 
-const POLICY_LEAD = new Set(['permission_mode', 'network', 'default_sandbox', 'mcp_scopes', 'scope_count', 'privileged', 'bundle', 'referencing_agents'])
+const POLICY_LEAD = new Set(['permission_mode', 'network', 'default_sandbox', 'mcp_scopes', 'rules', 'scope_count', 'privileged', 'bundle', 'referencing_agents'])
 const WORD = (v: unknown) => (typeof v === 'string' && v ? v : NOT_REPORTED)
 
 /** A policy is a bundle of settings an agent takes on, then the agents it applies to. */
@@ -64,6 +64,7 @@ function PolicyLead({ it }: { it: LibraryItem }) {
   const bundle = isObj(it.bundle) ? it.bundle : {}
   const val = (k: string) => (k in bundle ? bundle[k] : it[k])
   const scopes = Array.isArray(val('mcp_scopes')) ? (val('mcp_scopes') as unknown[]).map(String) : null
+  const rules = Array.isArray(val('rules')) ? (val('rules') as unknown[]).map(String) : null
   const agents = Array.isArray(it.referencing_agents) ? (it.referencing_agents as { id: string }[]) : null
   return (
     <>
@@ -76,6 +77,7 @@ function PolicyLead({ it }: { it: LibraryItem }) {
               ['Network', WORD(val('network'))],
               ['Sandbox', WORD(val('default_sandbox'))],
               ['Scopes', scopes === null ? (typeof it.scope_count === 'number' ? `${it.scope_count} scopes` : NOT_REPORTED) : scopes.length ? scopes.join(', ') : 'none'],
+              ['Rules', rules === null ? NOT_REPORTED : rules.length ? rules.join(', ') : 'none'],
             ] as const
           ).map(([k, v]) => (
             <div key={k} className={GRID}>
