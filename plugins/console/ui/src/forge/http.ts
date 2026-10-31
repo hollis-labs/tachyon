@@ -38,6 +38,10 @@ import {
   type ReviewInput,
 } from './types'
 
+/** Decision default (Chrispian 2026-10-31): attribution footer on. GitHub writes are the token owner's; the footer says they came from Tachyon. */
+export const ATTRIBUTION_FOOTER = '\n\n_Posted from Tachyon._'
+const attributed = (body?: string) => (body && body.trim() ? body + ATTRIBUTION_FOOTER : body)
+
 export const DEFAULT_FORGE_BASE = '/api/plugins/console/v1/forge'
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
@@ -219,12 +223,12 @@ export class HttpForgeClient implements ForgeClient {
   }
 
   async addComment(ref: PrRef, input: AddCommentInput): Promise<ForgeComment> {
-    return (await this.request('POST', `${prPath(ref)}/comments`, input, true)) as ForgeComment
+    return (await this.request('POST', `${prPath(ref)}/comments`, { ...input, body: attributed(input.body) ?? input.body }, true)) as ForgeComment
   }
 
   async reviewPr(ref: PrRef, input: ReviewInput): Promise<Review> {
     // Wire shape: snake_case, pinned to the head the reviewer saw (409 head_moved when it changed).
-    const body = { verdict: input.verdict, body: input.body, comments: input.comments?.map((c) => ({ ...c, side: c.side === 'left' ? 'LEFT' : 'RIGHT' })), head_sha: input.headSha }
+    const body = { verdict: input.verdict, body: attributed(input.body), comments: input.comments?.map((c) => ({ ...c, side: c.side === 'left' ? 'LEFT' : 'RIGHT' })), head_sha: input.headSha }
     return (await this.request('POST', `${prPath(ref)}/reviews`, body, true)) as Review
   }
 
