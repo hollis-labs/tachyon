@@ -25,7 +25,7 @@ func mountForgeMerge(s *Server, mux *http.ServeMux, operator *approvals.Bridge) 
 	}
 	h := &forgemerge.Handler{Token: s.cfg.Upstreams.GitHubToken, DB: s.store}
 	h.After = func(ctx context.Context, prKey, sha string) forgemerge.Settled { return afterMerge(s, ctx, prKey, sha) }
-	guarded := operator.RequireOperator(h.Mux())
+	guarded := operator.RequireOperator(s.forgeAudit().Wrap("merge", h.Mux()))
 	write := guarded
 	if s.cache != nil {
 		write = s.cache.Wrap(guarded)
