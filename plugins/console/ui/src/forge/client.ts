@@ -15,6 +15,7 @@ import type {
   Repo,
   RepoRef,
   Review,
+  ReviewDraft,
   ReviewValidation,
   ReviewInput,
 } from './types'
@@ -45,6 +46,12 @@ export interface ForgeClient {
   getMergePreflight?(ref: PrRef): Promise<MergePreflight>
   /** effect: read. Optional: absent when the forge has no validate route. */
   validateReview?(ref: PrRef, input: { headSha: string; comments: NonNullable<ReviewInput['comments']> }): Promise<ReviewValidation>
+  /** effect: read. Optional draft persistence; null when none is saved. */
+  getReviewDraft?(ref: PrRef): Promise<ReviewDraft | null>
+  /** effect: write */
+  saveReviewDraft?(ref: PrRef, draft: ReviewDraft): Promise<void>
+  /** effect: write */
+  deleteReviewDraft?(ref: PrRef): Promise<void>
   /** effect: write, ack */
   mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult>
   /** effect: write */

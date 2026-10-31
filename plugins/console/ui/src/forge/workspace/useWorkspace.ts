@@ -77,6 +77,30 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
 
   useEffect(() => dataRefreshRegistry('forge').subscribe(() => setVersion(v => v + 1)), [])
 
+  // Queued review comments survive a reload: restore the saved draft once per PR, then mirror changes (debounced).
+  const draftReady = useRef<string | null>(null)
+  useEffect(() => {
+    if (!client.getReviewDraft) return
+    let live = true
+    draftReady.current = null
+    client.getReviewDraft(stable).then((d) => {
+      if (!live) return
+      if (d && d.comments.length) setPending((p) => (p.length ? p : d.comments.map((c, i) => ({ ...c, id: `d-${i}-${++tmp}` }))))
+      draftReady.current = key
+    }, () => { if (live) draftReady.current = key })
+    return () => { live = false }
+  }, [client, key, stable])
+  const headForDraft = state.key === key && state.load.status === 'ready' ? state.load.data.pr.headSha : undefined
+  useEffect(() => {
+    if (!client.saveReviewDraft || draftReady.current !== key || !headForDraft) return
+    const t = setTimeout(() => {
+      const comments = pending.map((c) => ({ body: c.body, path: c.path, line: c.line, side: c.side }))
+      const op = comments.length ? client.saveReviewDraft!(stable, { headSha: headForDraft, comments }) : client.deleteReviewDraft?.(stable)
+      void op?.catch(() => undefined)
+    }, 800)
+    return () => clearTimeout(t)
+  }, [client, key, stable, pending, headForDraft])
+
   // Reset transient state when the PR changes.
   const [seenKey, setSeenKey] = useState(key)
   if (seenKey !== key) {
