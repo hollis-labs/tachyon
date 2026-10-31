@@ -312,7 +312,7 @@ function LensFocus({ db, item, statuses, severities, write, onPin, children }: {
     <section aria-labelledby="lens-title" className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5 max-sm:px-4 max-sm:py-4">
       <header className="flex flex-col gap-2.5">
         <div className="flex flex-wrap items-center gap-2.5">
-          <Chip square title={item.id}>{short}</Chip>
+          <Chip square title={typeof item.legacy_id === 'string' ? `${item.legacy_id} · ${item.id}` : item.id}>{short.length > 12 ? `${short.slice(0, 11)}…` : short}</Chip>
           <span className={CAPTION}>{KIND[db]}{typeof item.kind === 'string' ? ` · ${item.kind}` : typeof item.area === 'string' ? ` · ${item.area}` : ''}</span>
           <span className="flex-1" />
           <button type="button" aria-pressed={Boolean(item.pinned)} onClick={onPin} className="rounded-full">
