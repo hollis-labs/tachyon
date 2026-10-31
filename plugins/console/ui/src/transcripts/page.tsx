@@ -299,7 +299,7 @@ export function TranscriptDashboard() {
         </KpiGrid>
       </section>}
       {tab === "sessions" ? (
-        <div className={`shrink-0 border-b border-border px-4 py-3 ${selected ? "max-md:hidden" : ""}`}>
+        <div className={`shrink-0 border-b border-border px-4 py-3`}>
           <SessionToolbar filter={filter} facets={facets} set={set} reset={reset} count={rows.length} mode={searchMode} onMode={setSearchMode} />
         </div>
       ) : null}

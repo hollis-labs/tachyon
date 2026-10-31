@@ -220,7 +220,7 @@ describe("transcript dashboard", () => {
     )
     render(<TranscriptDashboard />)
     fireEvent.click(await screen.findByRole("button", { name: /Fix routing/ }))
-    fireEvent.change(await screen.findByLabelText("Find in transcript"), {
+    fireEvent.change(await screen.findByLabelText("Find in loaded turns"), {
       target: { value: "alpha" },
     })
     expect(await screen.findByText("1 of 2")).toBeTruthy()
@@ -256,7 +256,7 @@ describe("transcript dashboard", () => {
     )
     render(<TranscriptDashboard />)
     fireEvent.click(await screen.findByRole("button", { name: /Fix routing/ }))
-    const find = await screen.findByLabelText("Find in transcript")
+    const find = await screen.findByLabelText("Find in loaded turns")
     fireEvent.keyDown(screen.getByLabelText("Transcript reader"), { key: "f", ctrlKey: true })
     expect(document.activeElement).toBe(find)
   })
@@ -283,9 +283,9 @@ describe("transcript dashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show error" }))
     // Untrusted text is shown as text, never parsed as markup.
     expect(screen.getByText("<b>boom</b>")).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: "Next error" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Next error/  }))
     expect(screen.getByText("1 of 2 failed calls")).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: "Next error" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Next error/  }))
     expect(screen.getByText("2 of 2 failed calls")).toBeTruthy()
   })
   it("opens a valid deep-linked id outside the snapshot and says when it is not found", async () => {

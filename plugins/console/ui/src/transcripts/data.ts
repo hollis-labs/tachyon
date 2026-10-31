@@ -93,6 +93,10 @@ export interface Detail {
     ts?: string
     text?: string
     tool_calls?: ToolCall[]
+    /** Thinking text is never stored; only its size can arrive. */
+    thinking_bytes?: number
+    /** Turn text over 20 KiB arrives cut off. */
+    truncated?: boolean
   }[]
   turn_total: number
   next_turn?: number
