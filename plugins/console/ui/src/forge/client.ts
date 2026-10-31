@@ -1,5 +1,6 @@
 import type {
   MergeInput,
+  MergePreflight,
   MergeResult,
   AddCommentInput,
   AssignInput,
@@ -39,6 +40,8 @@ export interface ForgeClient {
   addComment(ref: PrRef, input: AddCommentInput): Promise<ForgeComment>
   /** effect: write, ack */
   reviewPr(ref: PrRef, input: ReviewInput): Promise<Review>
+  /** effect: read. Optional: clients without a preflight route fall back to local checks. */
+  getMergePreflight?(ref: PrRef): Promise<MergePreflight>
   /** effect: write, ack */
   mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult>
   /** effect: write */

@@ -129,3 +129,12 @@ it('merges the confirmed head using the selected method and confirmation token',
   const rejected = mk({ data: { merged: false, message: 'Branch rules prevent merging' } })
   await expect(rejected.client.mergePr(ref, { method: 'merge', headSha: 'head' })).rejects.toThrow('Branch rules prevent merging')
 })
+
+describe('HttpForgeClient merge preflight', () => {
+  it('maps the wire answer and drops unknown methods', async () => {
+    const { fetch, client } = mk({ state: 'blocked', head_sha: 'abc', base_ref: 'main', blockers: [{ code: 'conflicts', message: 'x' }], methods_allowed: ['squash', 'octopus'], default_method: 'squash', behind_by: 2 })
+    const pf = await client.getMergePreflight(ref)
+    expect(call(fetch).url).toBe('/api/v1/forge/repos/github/hollis-labs/torque/pulls/271/merge-preflight')
+    expect(pf).toEqual({ state: 'blocked', headSha: 'abc', baseRef: 'main', blockers: [{ code: 'conflicts', message: 'x' }], methodsAllowed: ['squash'], defaultMethod: 'squash', behindBy: 2 })
+  })
+})
