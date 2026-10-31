@@ -3,10 +3,12 @@ package planner
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/plannerapi"
@@ -148,6 +150,10 @@ func (h *HTTP) themeNeeds(ctx context.Context, theme Item, decisions []Item, now
 // enrich adds need_you (and momentum for themes) to listed or fetched items, then applies the
 // need_you filter (review|decide|blocked|stale|any).
 func (h *HTTP) enrich(ctx context.Context, db string, items []Item, filter string) ([]Item, error) {
+	if db == "workstreams" && filter == "" {
+		h.streamProgress(ctx, items)
+		return items, nil
+	}
 	if db != "priorities" && db != "decisions" {
 		if filter != "" {
 			return []Item{}, nil
@@ -314,4 +320,34 @@ func (h *HTTP) themeSeries(ctx context.Context, theme Item, days int) []Item {
 		out = append(out, Item{"at": at.Format(time.RFC3339), "done": d, "total": total})
 	}
 	return out
+}
+
+// streamProgress adds a per-stream task roll-up (the Streams spine counts) to each workstream row. Reads run
+// eight at a time and share Torque lookups; a stream whose read fails gets available:false, never zeros.
+func (h *HTTP) streamProgress(ctx context.Context, items []Item) {
+	if h.Tasks == nil {
+		return
+	}
+	ps := newProgressSource(h.Tasks, time.Now())
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for _, it := range items {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(it Item) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			p, err := ps.theme(ctx, Item{}, []Item{it})
+			if err != nil {
+				it["progress"] = Item{"available": false, "done": nil, "total": nil, "open": nil, "counts": nil, "linked": false, "note": "Torque is not reachable"}
+				return
+			}
+			var m Item
+			if b, e := json.Marshal(p); e == nil && json.Unmarshal(b, &m) == nil {
+				m["available"] = true
+				it["progress"] = m
+			}
+		}(it)
+	}
+	wg.Wait()
 }
