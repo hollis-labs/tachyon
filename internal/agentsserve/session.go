@@ -254,6 +254,21 @@ func agentName(r row) string {
 	return "session " + short
 }
 
+// agentMuxURNPrefix is the Tether address space of managed agents: msg://agent/agent-mux/<launch id>.
+const agentMuxURNPrefix = "msg://agent/agent-mux/"
+
+// routedURN is the Tether message address Nudge sends to. Frames that carry no agent_urn still name a logical
+// agent, and Tether routes mail to msg://agent/agent-mux/<logical agent id>; an unnamed session has no address.
+func routedURN(r row) string {
+	if r.urn != "" {
+		return r.urn
+	}
+	if r.logical != "" && !strings.ContainsAny(r.logical, "/ ?#") {
+		return agentMuxURNPrefix + r.logical
+	}
+	return ""
+}
+
 // build derives one Session. now and staleAfter are explicit so reads are deterministic in tests.
 func build(r row, ex *extras, now time.Time, staleAfter time.Duration) Session {
 	d := agentsderive.Derive(agentsderive.Input{SessionState: r.sessionState, WorkState: r.workState, PendingApproval: r.pa, PendingQuestion: r.pq,
@@ -267,7 +282,7 @@ func build(r row, ex *extras, now time.Time, staleAfter time.Duration) Session {
 		end = r.ended
 	}
 	s := Session{ID: r.id, Kind: "process", Provider: providerOf(r.provider, r.model), Model: strp(r.model), Workroot: r.workroot, State: d.State,
-		Agent:           Agent{URN: strp(r.urn), Name: agentName(r), LogicalAgentID: strp(r.logical)},
+		Agent:           Agent{URN: strp(routedURN(r)), Name: agentName(r), LogicalAgentID: strp(r.logical)},
 		LastActivityAt:  ms(r.last),
 		ToolCallCount:   countOrNil(r.toolCalls),
 		Compactions:     []Compaction{},

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -27,9 +28,18 @@ type Bridge struct {
 	URL    string
 	Client *http.Client
 
+	// Dev is the sanctioned dev posture (TACHYON_ASSURANCE=dev): the tailnet is the boundary, so every request is
+	// answered as an elevated operator-token session and /elevate needs no key. Off unless the env says so.
+	Dev bool
+
 	mu         sync.Mutex
 	lockedTill time.Time
 }
+
+// DevPostureEnv switches the dev posture on when it equals "dev".
+const DevPostureEnv = "TACHYON_ASSURANCE"
+
+const devStatusBody = `{"elevated":true,"assurance":"operator-token","elevation_ttl":"dev posture"}`
 
 // lockoutEstimate is how long Tachyon assumes Tangent's sign-in rate limit holds after a 429. Tangent counts 5
 // failures per minute per session and sends no Retry-After, so this is an estimate (Tangent request R1).
@@ -42,7 +52,7 @@ func (b *Bridge) lockedUntil() time.Time {
 }
 
 func New(addr string) *Bridge {
-	return &Bridge{URL: strings.TrimRight(addr, "/"), Client: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &Bridge{Dev: os.Getenv(DevPostureEnv) == "dev", URL: strings.TrimRight(addr, "/"), Client: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func fail(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
@@ -51,12 +61,21 @@ func fail(w http.ResponseWriter, status int, code, message string) {
 }
 func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
+	path := strings.TrimPrefix(r.URL.Path, Prefix)
+	if b.Dev && ((path == "/status" && r.Method == http.MethodGet) || ((path == "/elevate" || path == "/de-elevate") && r.Method == http.MethodPost)) {
+		if r.Method == http.MethodPost && !sameOrigin(r) {
+			fail(w, 403, "origin_denied", "Approval actions require the Tachyon browser origin.")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(devStatusBody))
+		return
+	}
 	u, err := url.Parse(b.URL)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || upstreamauth.Guard(b.URL, "participant") != nil {
 		fail(w, 503, "configuration", "Configure Tachyon's approval queue address (HTTPS or loopback).")
 		return
 	}
-	path := strings.TrimPrefix(r.URL.Path, Prefix)
 	bootstrap := path == "/session" && r.Method == http.MethodPost
 	target := ""
 	switch {
