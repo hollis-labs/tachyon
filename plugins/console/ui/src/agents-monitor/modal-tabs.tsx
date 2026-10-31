@@ -261,7 +261,7 @@ export function HistoryTab({ s }: { s: Session }) {
             {[M.started, M.ran, M.tokensTitle, M.toolCalls, M.ended].map((h, i) => <div key={h} className={cn('border-b border-border-subtle pb-1', caption, i > 2 && 'max-sm:hidden')}>{h}</div>)}
             {[{ id: s.id, started_at: s.started_at, ran_ms: s.runtime_ms, tokens: total, tools: s.tool_call_count, reason: M.running, current: true }, ...(d.sessions ?? []).map((h) => ({ id: h.session_id, started_at: h.started_at, ran_ms: h.ran_ms, tokens: h.tokens ? compact((h.tokens.input ?? 0) + (h.tokens.output ?? 0)) : M.unmetered, tools: h.tool_calls, reason: h.end_reason, current: false }))].map((h) => (
               <div key={h.id} className="contents">
-                <div className="border-b border-border-subtle py-1.5 text-fg">{when(h.started_at)}{h.current && ` · ${M.current}`}</div>
+                <div className="border-b border-border-subtle py-1.5 text-fg"><Link to={`/dashboards/transcripts?session=${encodeURIComponent(h.id)}`} className="underline-offset-2 hover:underline">{when(h.started_at)}</Link>{h.current && ` · ${M.current}`}</div>
                 <div className="border-b border-border-subtle py-1.5 font-mono">{h.ran_ms > 0 ? ageText(h.ran_ms) : M.na}</div>
                 <div className="border-b border-border-subtle py-1.5 font-mono">{h.tokens}</div>
                 <div className="border-b border-border-subtle py-1.5 font-mono max-sm:hidden">{h.tools === null ? M.na : fmt(h.tools)}</div>
