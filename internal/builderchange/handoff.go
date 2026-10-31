@@ -71,7 +71,7 @@ func bundleSHA(name, note string, files []File) string {
 
 // handoffFor describes the copy-mode bundle for a validated change. Session mode (BH2) is not offered yet.
 func (s *Service) handoffFor(c *Change, files []File) *Handoff {
-	name := "builder " + c.ChangeID
+	name := "builder-" + c.ChangeID
 	reason := "not_configured"
 	for _, f := range files {
 		if hasEnvValues(f) {
@@ -125,7 +125,7 @@ func (s *Service) Bundle(ctx context.Context, id string) (Bundle, *APIError) {
 			return Bundle{}, refuse(409, "changed", "The change no longer matches the live catalog. Cancel it and edit again.")
 		}
 	}
-	name := "builder " + c.ChangeID
+	name := "builder-" + c.ChangeID
 	planID := ""
 	if c.Plan != nil {
 		planID = c.Plan.PlanID

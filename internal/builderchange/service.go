@@ -482,7 +482,7 @@ func (s *Service) validateAndPlan(ctx context.Context, c *Change, files []File) 
 		c.Handoff = s.handoffFor(c, files)
 		return nil
 	}
-	plan, err := s.Tether.Plan(ctx, "builder "+c.ChangeID, files)
+	plan, err := s.Tether.Plan(ctx, "builder-"+c.ChangeID, files)
 	if err != nil {
 		return tetherErr(err)
 	}

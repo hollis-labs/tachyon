@@ -216,7 +216,8 @@ func (t *httpTether) ReadFile(ctx context.Context, path string) (string, bool, e
 	}
 	err := t.do(ctx, "GET", "/catalog/files?path="+url.QueryEscape(path), nil, &out)
 	var te *TetherError
-	if errors.As(err, &te) && te.Status == 404 {
+	// Tether answers a missing file with 400 "<path> does not exist" (older builds with 404).
+	if errors.As(err, &te) && (te.Status == 404 || (te.Status == 400 && strings.HasSuffix(te.Message, "does not exist"))) {
 		return "", false, nil
 	}
 	if err != nil {
