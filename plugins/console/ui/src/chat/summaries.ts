@@ -1,4 +1,5 @@
 import { consoleJson } from '../lib/http'
+import { markReadQuiet } from './readState'
 import { spineHub } from './live'
 import type { ChatClient, ChatThread, ThreadSession } from './types'
 
@@ -86,7 +87,7 @@ export function withChatApiSummaries(base: ChatClient, load: () => Promise<ApiTh
   }
 }
 
-const postRead = (ref: string) => consoleJson(`/chat/threads/${encodeURIComponent(ref)}/read`, { method: 'POST' })
+const postRead = (ref: string) => markReadQuiet(ref)
 
 async function fetchApiThreads(): Promise<ApiThread[]> {
   const body = await consoleJson<{ threads?: ApiThread[] }>('/chat/threads?limit=200')

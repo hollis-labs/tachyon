@@ -7,7 +7,8 @@ import { chatRecipient, useChatRoster } from '../roster'
 import type { ChatThread } from '../types'
 import { ChatView } from './ChatView'
 import { ThreadConversation } from './ThreadConversation'
-import { consoleJson } from '../../lib/http'
+import { consoleJson, type FetchLike } from '../../lib/http'
+import { operatorFetch } from '../../operator/elevation'
 
 /** /chat and /chat/:threadId. Wires the mail ChatClient into ChatView. */
 export function ChatPage() {
@@ -71,7 +72,7 @@ export function ChatPage() {
   const togglePin = useCallback(() => {
     const ref = active?.sessionRef ?? active?.sessions?.[0]?.ref
     if (!active || !ref) return
-    consoleJson(`/chat/threads/${encodeURIComponent(ref)}`, { method: 'PATCH', body: { pinned: !active.pinned } }).then(retry, (e) => setOpenError(e instanceof Error ? e.message : 'Could not pin'))
+    consoleJson(`/chat/threads/${encodeURIComponent(ref)}`, { method: 'PATCH', body: { pinned: !active.pinned }, fetch: operatorFetch as FetchLike }).then(retry, (e) => setOpenError(e instanceof Error ? e.message : 'Could not pin'))
   }, [active, retry])
 
   return (
