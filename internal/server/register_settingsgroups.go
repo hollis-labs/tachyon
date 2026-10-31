@@ -26,7 +26,7 @@ func init() { registerStart(startSettingsGroups) }
 // (waits on its store).
 func startSettingsGroups(_ context.Context, s *Server, db *localstore.Store) {
 	reg := settingsRegistryOn(s, db)
-	for _, g := range []settingsreg.Group{generalGroup(), chatGroup(), agentsGroup(), transcriptsGroup()} {
+	for _, g := range []settingsreg.Group{generalGroup(), chatGroup(), agentsGroup(), transcriptsGroup(), alertsGroup()} {
 		if err := reg.Register(g); err != nil {
 			slog.Warn("settings group not registered", "group", g.ID, "err", err)
 		}
