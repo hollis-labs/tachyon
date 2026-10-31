@@ -9,6 +9,7 @@ import { hostFetch } from "@tachyon/host-sdk"
 
 import type { ForgeClient } from './client'
 import { newIdempotencyKey } from '../lib/http'
+import { operatorFetch } from '../operator/elevation'
 import {
   ForgeError,
   type ForgeUser,
@@ -135,15 +136,18 @@ function normalizeFile(v: unknown): FileDiff {
 export class HttpForgeClient implements ForgeClient {
   private readonly base: string
   private readonly doFetch: FetchLike
+  /** Writes (and review validation) go through the operator session: a 401 operator_session_required connects it and replays once. */
+  private readonly doWriteFetch: FetchLike
   private readonly opts: HttpForgeClientOptions
 
   constructor(opts: HttpForgeClientOptions = {}) {
     this.opts = opts
     this.base = (opts.baseUrl ?? DEFAULT_FORGE_BASE).replace(/\/+$/, '')
     this.doFetch = opts.fetch ?? hostFetch
+    this.doWriteFetch = opts.fetch ?? (operatorFetch as FetchLike)
   }
 
-  private async request(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, write = false): Promise<unknown> {
+  private async request(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, write = false, operator = write): Promise<unknown> {
     const headers: Record<string, string> = { Accept: 'application/json', ...this.opts.headers }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
     if (write) {
@@ -154,7 +158,7 @@ export class HttpForgeClient implements ForgeClient {
     }
     let res: Response
     try {
-      res = await this.doFetch(this.base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+      res = await (operator ? this.doWriteFetch : this.doFetch)(this.base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
     } catch (e) {
       throw new ForgeError('unavailable', e instanceof Error ? e.message : 'network error')
     }
@@ -226,7 +230,7 @@ export class HttpForgeClient implements ForgeClient {
 
   async validateReview(ref: PrRef, input: { headSha: string; comments: NonNullable<ReviewInput['comments']> }): Promise<ReviewValidation> {
     const comments = input.comments.map((c) => ({ ...c, side: c.side === 'left' ? 'LEFT' : 'RIGHT' }))
-    const raw = await this.request('POST', `${prPath(ref)}/reviews/validate`, { head_sha: input.headSha, comments })
+    const raw = await this.request('POST', `${prPath(ref)}/reviews/validate`, { head_sha: input.headSha, comments }, false, true)
     const o = isObj(raw) ? raw : {}
     const rows = (Array.isArray(o.comments) ? o.comments : []).filter(isObj)
     const statuses: CommentCheck[] = input.comments.map((_, i) => {
