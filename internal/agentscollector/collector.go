@@ -287,7 +287,7 @@ func (c *Collector) follow(ctx context.Context, after int64) error {
 	c.streamed.Store(true)
 	err := c.Source.Stream(ctx, after, func(f Frame) error {
 		alive()
-		c.countKind(f.Kind)
+		c.countKind(frameTag(f))
 		switch {
 		case f.Output:
 			c.outputs.Add(1)
@@ -387,6 +387,19 @@ func (c *Collector) write(ctx context.Context, queue <-chan Frame, touch map[str
 			}
 		}
 	}
+}
+
+// frameTag names a frame kind with why it may not become a timeline row: an app publisher ("@app") or no session
+// ("!sid"). It exists so an empty events table can be told apart from frames that were skipped.
+func frameTag(f Frame) string {
+	k := f.Kind
+	if f.App != "" && !f.Output {
+		k += "@" + f.App
+	}
+	if f.SessionID == "" && !f.Output {
+		k += "!sid"
+	}
+	return k
 }
 
 // countKind keeps a bounded tally of frame kinds so an empty timeline can be told apart from an empty stream.
