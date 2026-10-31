@@ -190,7 +190,7 @@ export function SessionToolbar({
   const active = [filter.tool, filter.model, filter.kind].filter(Boolean).length + (filter.errors ? 1 : 0)
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex min-w-0 basis-96 items-center gap-1 max-md:basis-full md:max-w-md md:flex-1">
+      <div className="flex min-w-0 basis-96 md:min-w-80 items-center gap-1 max-md:basis-full md:max-w-md md:flex-1">
         <div className="dash-search-adapter min-w-0 flex-1">
           <SearchInput ariaLabel="Search session metadata" placeholder="Search title, project or tag…" value={filter.query} onChange={(query) => set({ query })} debounceMs={0} slashToFocus />
         </div>
