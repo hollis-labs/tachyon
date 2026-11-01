@@ -32,11 +32,13 @@ type Frame struct {
 	TaskRef         string
 	// Identity and lineage, when the payload says (unverified wire names: agent_urn, logical_agent_id, agent_name).
 	AgentURN, LogicalAgentID, AgentName, ParentSession, ReplacedBy string
-	PendingApproval                                                *bool
-	PendingQuestion                                                *bool
-	Tool                                                           string // sanitized tool name only
-	Reason                                                         string // gap or end reason
-	DeliveryState                                                  string // message frames: payload delivery.state (retry_scheduled, dead_letter, expired, ...)
+	// CardID and CardType name the card of a card.* event (its payload carries no title).
+	CardID, CardType string
+	PendingApproval  *bool
+	PendingQuestion  *bool
+	Tool             string // sanitized tool name only
+	Reason           string // gap or end reason
+	DeliveryState    string // message frames: payload delivery.state (retry_scheduled, dead_letter, expired, ...)
 
 	Gap          bool // a gap frame: events were missed
 	Synchronized bool // the catch-up is over, live frames follow
@@ -155,6 +157,8 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			CacheRead       *int64 `json:"cache_read"`
 			CacheWrite      *int64 `json:"cache_write"`
 			Name            string `json:"name"`
+			CardID          string `json:"card_id"`
+			CardType        string `json:"card_type"`
 			Resource        string `json:"resource"`
 			Subject         string `json:"subject"`
 			Status          string `json:"status"`
@@ -190,6 +194,7 @@ func ParseFrame(raw []byte) (Frame, bool) {
 				f.Version, f.PR = clean(p.Version, 40), clean(firstNonEmpty(p.PR, p.PullRequest), 140)
 				f.Title, f.BusActor = clean(p.Title, 200), clean(p.Actor, 80)
 			}
+			f.CardID, f.CardType = clean(p.CardID, 80), clean(p.CardType, 40)
 			f.AgentURN, f.LogicalAgentID, f.AgentName = clean(p.AgentURN, 200), clean(p.LogicalAgent, 120), clean(p.AgentName, 120)
 			f.ParentSession, f.ReplacedBy = clean(p.ParentSession, 128), clean(p.ReplacedBy, 128)
 			f.PendingApproval, f.PendingQuestion = p.PendingApproval, p.PendingQuestion

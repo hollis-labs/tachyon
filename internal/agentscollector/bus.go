@@ -96,6 +96,12 @@ func NormalizeBus(f Frame) (BusEvent, bool) {
 		b.App = "tether"
 	}
 	name := okName(f.Name)
+	if typ == "card" && name == "" {
+		name = strings.TrimSpace(okName(f.CardType) + " " + shortID(okName(f.CardID)))
+		if name == "" {
+			return BusEvent{}, false // a card event that names no card says nothing
+		}
+	}
 	if name == "" && typ == "task" && f.TaskRef == "" {
 		return BusEvent{}, false // a task event that names no task says nothing; do not publish "unknown"
 	}
