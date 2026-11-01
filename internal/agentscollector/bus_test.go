@@ -45,6 +45,7 @@ func TestNormalizeBusMapsTheCatalogKinds(t *testing.T) {
 		"task closed":   {busFrame(7, "task.state_changed", "torque", `{"task_id":"CW-20261030-0002","state":"done","title":"Threads","pr":"hollis-labs/tachyon#171"}`), "task", "CW-20261030-0002 done", "info", true, true, "task,pr"},
 		"host":          {busFrame(8, "fleet.node.down", "cerberus", `{"name":"hub"}`), "host", "hub down", "warn", false, false, ""},
 		"workstream":    {busFrame(9, "workstream.created", "tether", `{"name":"agents-gui"}`), "workstream", "workstream agents-gui created", "info", false, false, ""},
+		"card by id":    {busFrame(11, "card.resolved", "tachyon", `{"card_id":"card_8f3a9c21d0","card_type":"form"}`), "card", "card resolved: form card_8f3", "info", false, false, ""},
 		"card":          {busFrame(10, "card.answered", "tachyon", `{"name":"Which project?"}`), "card", "card answered: Which project?", "info", false, false, ""},
 	} {
 		b := normalize(t, c.raw)
