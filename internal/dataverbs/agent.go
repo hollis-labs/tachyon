@@ -202,10 +202,10 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 		return invokeTesseract(ctx, p.tesseract, name, raw, p.principal)
 	}
 	if agentaccess.ChatWorkspaceVerb(name) {
-		return invokeChat(ctx, p.chat, name, raw, p.principal)
+		return invokeChat(ctx, p.chat, name, raw, p.principal, p.session)
 	}
 	if agentaccess.ChatActivityVerb(name) {
-		return invokeChatActivity(ctx, p.activity, name, raw, p.principal)
+		return invokeChatActivity(ctx, p.activity, name, raw, p.principal, p.session)
 	}
 	if agentaccess.ChatPlanVerb(name) {
 		return invokeChatPlan(ctx, p.plan, name, raw, p.principal, p.session)
@@ -214,7 +214,7 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 		return invokeTerminal(ctx, p.terminal, name, raw, p.principal)
 	}
 	if agentaccess.ChatTopicVerb(name) {
-		return invokeChatTopic(ctx, p.topics, name, raw, p.principal)
+		return invokeChatTopic(ctx, p.topics, name, raw, p.principal, p.session)
 	}
 	if agentaccess.TorqueVerb(name) {
 		return invokeTorque(ctx, p.torque, name, raw, p.principal)
