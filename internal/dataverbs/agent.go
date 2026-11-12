@@ -11,6 +11,7 @@ import (
 	"github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/planner"
 	"github.com/hollis-labs/tachyon/internal/tesseractread"
@@ -73,7 +74,9 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) h
 			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: trustedSession(principal, r.Header.Get(SessionHeader))}
 			// Authentication has already verified this request. scopedLocal checks
 			// the verb/kinds and supplies the principal actor for every invocation.
-			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r.WithContext(withLineage(r.Context(), principal, r.Header)))
+			ctx := withLineage(r.Context(), principal, r.Header)
+			p.recordLineage(ctx)
+			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r.WithContext(ctx))
 		})).ServeHTTP(w, r)
 	})
 }
@@ -85,6 +88,23 @@ func trustedSession(p auth.Principal, header string) string {
 		return ""
 	}
 	return strings.TrimSpace(header)
+}
+
+// recordLineage notes the proxied session in the plan lineage on any request it makes, not only
+// plan verbs, so a chain S2 -> S1 -> S0 resolves even when S1 never touched the plan. It also
+// moves a continued conversation's plan to the session on first sight. Nothing is asked of the agent.
+func (p *scopedLocal) recordLineage(ctx context.Context) {
+	l := lineageOf(ctx)
+	if p.session == "" || l.agent == "" || p.plan == nil || p.plan.Service == nil {
+		return
+	}
+	if _, err := chatapi.ParseRef("tether:" + p.session); err != nil {
+		return
+	}
+	if _, err := chatapi.ParseRef("tether:" + l.continues); err != nil {
+		l.continues = "" // not a session id: treat the session as a fresh start
+	}
+	p.plan.Service.Attach(ctx, p.session, l.agent, l.continues)
 }
 
 type scopedLocal struct {

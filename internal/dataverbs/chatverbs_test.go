@@ -637,6 +637,7 @@ func TestChatPlanCarryOverThroughProxy(t *testing.T) {
 	}
 	call := func(p auth.Principal, session, agent, continues, verb, in string) (map[string]any, error) {
 		sl, lctx := as(p, session, agent, continues)
+		sl.recordLineage(lctx) // what the agent handler does for every proxied request
 		out, err := invokeChatPlan(lctx, plan, verb, json.RawMessage(in), sl.principal, sl.session)
 		if err != nil {
 			return nil, err

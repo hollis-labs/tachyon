@@ -84,6 +84,31 @@ func TestCarryWalksChainThroughPlanlessSession(t *testing.T) {
 	}
 }
 
+// S1 is recorded only by Attach (any proxied request), never by a plan verb or a direct Carry.
+func TestCarryChainRecordedByAttachOnly(t *testing.T) {
+	s, _ := lineageSetup(t)
+	ctx := context.Background()
+	s.Attach(ctx, "s0", "agent-a", "")
+	s.Attach(ctx, "s1", "agent-a", "s0") // s1 is seen on a non-plan request; nobody has a plan yet
+	writePlan(t, s, "s0", "Deep")
+	s.Attach(ctx, "s2", "agent-a", "s1")
+	if p, err := planOf(s, "s2"); err != nil || p.Title == nil || *p.Title != "Deep" {
+		t.Fatalf("plan not carried across a planless, Attach-recorded hop: %+v %v", p, err)
+	}
+}
+
+// A hop that is only a clear marker has no agent: it cannot be verified, so nothing is carried.
+func TestMarkerOnlyAncestorCarriesNothing(t *testing.T) {
+	s, _ := lineageSetup(t)
+	ctx := context.Background()
+	writePlan(t, s, "s0", "Deep")
+	mustExec(t, s, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns) VALUES('s1','','s0',0,1)`)
+	s.Attach(ctx, "s2", "agent-a", "s1")
+	if _, err := planOf(s, "s2"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("plan carried through an agent-less hop")
+	}
+}
+
 func TestFreshSessionCarriesNothing(t *testing.T) {
 	s, _ := lineageSetup(t)
 	ctx := context.Background()

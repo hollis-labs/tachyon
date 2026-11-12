@@ -61,12 +61,8 @@ func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Ca
 			return err
 		}
 		var cleared int
-		var stored string
-		if err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared FROM chat_session_lineage WHERE session_id=?`, session).Scan(&stored, &cont, &cleared); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT continues_id,cleared FROM chat_session_lineage WHERE session_id=?`, session).Scan(&cont, &cleared); err != nil {
 			return err
-		}
-		if stored != agent {
-			return ErrAgentMismatch
 		}
 		if cleared != 0 || !cont.Valid {
 			return nil
@@ -88,7 +84,10 @@ func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Ca
 			if err != nil {
 				return err
 			}
-			if rowAgent != "" && rowAgent != agent {
+			if rowAgent == "" {
+				return nil // a clear marker with no agent: the hop cannot be verified, so carry nothing
+			}
+			if rowAgent != agent {
 				return ErrAgentMismatch
 			}
 			from := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: cur}.String()

@@ -404,14 +404,6 @@ func (c *ChatPlan) proxyThread(ctx context.Context, raw, session string) (chatap
 			return t, denied()
 		}
 	}
-	// The verified logical agent makes the session known before its first turn, and lets a
-	// replacement session pick up the plan of the conversation it continues (no agent action).
-	if l := lineageOf(ctx); l.agent != "" && c.Service != nil {
-		if _, err := chatapi.ParseRef("tether:" + l.continues); err != nil {
-			l.continues = "" // not a session id: treat the session as a fresh start
-		}
-		c.Service.Attach(ctx, session, l.agent, l.continues)
-	}
 	if _, err := c.Thread(ctx, own.String()); err != nil {
 		return own, invalid("Your session has no thread of its own yet; chat plans attach to a thread once the session has one.")
 	}
