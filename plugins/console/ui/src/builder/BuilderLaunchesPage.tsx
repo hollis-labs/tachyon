@@ -145,8 +145,8 @@ export function BuilderLaunchesPage() {
   const [creating, setCreating] = useState(false)
   const [mode] = useChangeMode()
   const [load, retry] = useLoad(() => builderApi.launches({ q, live }), [q, live])
-  const [agents] = useLoad(() => builderApi.agents({}), [])
-  const names = useMemo(() => new Map((agents.status === 'ready' ? agents.data.agents : []).map((a) => [a.id, a.name])), [agents])
+  const [agents] = useLoad(() => builderApi.allAgents(), [])
+  const names = useMemo(() => new Map((agents.status === 'ready' ? agents.data : []).map((a) => [a.id, a.name])), [agents])
   const all = load.status === 'ready' ? load.data.launches : []
   const uniq = (pick: (l: Launch) => string) => [...new Set(all.map(pick).filter(Boolean))].sort()
   const rows = all.filter((l) => (!provider || l.provider === provider) && (!project || l.project === project) && (!worker || l.worker === worker))
