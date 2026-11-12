@@ -18,7 +18,7 @@ import (
 // Command is operator-local credential administration, never an HTTP endpoint.
 func Command(ctx context.Context, dataDir string, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: tachyon access issue|bind|unbind|list|revoke|disable [flags]")
+		return errors.New("usage: tachyon access issue|bind|unbind|pin-proxy|unpin-proxy|list|revoke|disable [flags]")
 	}
 	cmd := args[0]
 	f := flag.NewFlagSet("access "+cmd, flag.ContinueOnError)
@@ -35,6 +35,9 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		f.StringVar(&agents, "agent", "", "comma-separated agent ids or addresses this identity may act for (chat plan verbs)")
 		f.StringVar(&kinds, "kinds", "", "explicit Planner kinds; overrides the preset")
 		f.StringVar(&verbs, "verbs", "", "explicit supported verbs; overrides the preset")
+	case "pin-proxy":
+		f.StringVar(&identity, "identity", "", "service identity UUID of the Tether MCP proxy (replaces any previous pin)")
+	case "unpin-proxy":
 	case "bind", "unbind":
 		f.StringVar(&identity, "identity", "", "service identity UUID")
 		f.StringVar(&agents, "agent", "", "agent id or address (bind accepts a comma-separated list)")
@@ -104,6 +107,9 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 	if (cmd == "bind" || cmd == "unbind") && (identity == "" || agents == "") {
 		return errors.New("--identity and --agent are required")
 	}
+	if cmd == "pin-proxy" && identity == "" {
+		return errors.New("--identity is required")
+	}
 	if (cmd == "revoke" || cmd == "disable") && id == "" {
 		return errors.New("--id is required")
 	}
@@ -145,6 +151,16 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 			return err
 		}
 		return json.NewEncoder(out).Encode(map[string]any{"identity_id": identity, "agents": bound})
+	case "pin-proxy":
+		if err := s.PinProxy(ctx, identity); err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(map[string]any{"identity_id": identity, "proxy": true})
+	case "unpin-proxy":
+		if err := s.UnpinProxy(ctx); err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(map[string]any{"proxy": false})
 	case "list":
 		ts, err := s.List(ctx)
 		if err != nil {

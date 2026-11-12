@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/hollis-labs/libs/core/util/svcerr"
 	"github.com/hollis-labs/libs/security/auth"
@@ -39,12 +40,21 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) h
 				writeError(w, denied())
 				return
 			}
-			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: r.Header.Get(SessionHeader)}
+			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: trustedSession(principal, r.Header.Get(SessionHeader))}
 			// Authentication has already verified this request. scopedLocal checks
 			// the verb/kinds and supplies the principal actor for every invocation.
 			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r)
 		})).ServeHTTP(w, r)
 	})
+}
+
+// trustedSession returns the X-Tether-Session-Id value only when the authenticated principal is the
+// pinned Tether proxy. From any other caller the header is ignored, so a forged header selects nothing.
+func trustedSession(p auth.Principal, header string) string {
+	if !agentaccess.IsTetherProxy(p) {
+		return ""
+	}
+	return strings.TrimSpace(header)
 }
 
 type scopedLocal struct {
@@ -59,8 +69,8 @@ type scopedLocal struct {
 	plan      *ChatPlan
 	activity  *ChatActivity
 	terminal  *ChatTerminal
-	// session is the caller's Tether session id, from the SessionHeader request header. It only
-	// picks a default chat thread; it grants nothing.
+	// session is the Tether session id the pinned proxy is acting for, from the SessionHeader request
+	// header. It is empty unless the principal is the pinned proxy (see trustedSession).
 	session string
 }
 

@@ -187,6 +187,8 @@ type Token struct {
 	ExpiresAt  time.Time  `json:"expires_at"`
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 	DisabledAt *time.Time `json:"disabled_at,omitempty"`
+	// Proxy is true when this token's identity is the pinned Tether proxy.
+	Proxy bool `json:"proxy,omitempty"`
 }
 type Store struct{ DB *localstore.Store }
 
@@ -324,6 +326,57 @@ func (s *Store) Agents(ctx context.Context, identityID string) ([]string, error)
 	}
 	return out, rows.Err()
 }
+
+// ProxyScope is the principal scope carried only by the pinned Tether proxy identity: "proxy:tether".
+// Handlers accept X-Tether-* actor headers when, and only when, the authenticated principal has it.
+const (
+	ProxyScope  = "proxy"
+	ProxyTether = "tether"
+)
+
+// IsTetherProxy reports whether the verified principal is the pinned Tether proxy.
+func IsTetherProxy(p auth.Principal) bool { return Allows(p, ProxyScope, ProxyTether) }
+
+// PinProxy makes one active identity the trusted Tether proxy, replacing any previous pin.
+// Like bindings it applies to the identity's existing tokens at once (Verify reads it on every call).
+func (s *Store) PinProxy(ctx context.Context, identityID string) error {
+	if _, err := uuid.Parse(identityID); err != nil {
+		return errors.New("identity must be a UUID")
+	}
+	return s.DB.Writer.Submit(ctx, "service-proxy.pin", func(ctx context.Context, tx *sql.Tx) error {
+		var one int
+		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM service_identities WHERE id=? AND disabled_at IS NULL", identityID).Scan(&one); err != nil {
+			return errors.New("active service identity not found")
+		}
+		_, err := tx.ExecContext(ctx, "INSERT INTO service_proxy_pin(id,identity_id,pinned_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET identity_id=excluded.identity_id, pinned_at=excluded.pinned_at", identityID, time.Now().Unix())
+		return err
+	})
+}
+
+// UnpinProxy removes the pin; it reports an error when nothing was pinned.
+func (s *Store) UnpinProxy(ctx context.Context) error {
+	return s.DB.Writer.Submit(ctx, "service-proxy.unpin", func(ctx context.Context, tx *sql.Tx) error {
+		r, err := tx.ExecContext(ctx, "DELETE FROM service_proxy_pin WHERE id=1")
+		if err != nil {
+			return err
+		}
+		if n, err := r.RowsAffected(); err == nil && n == 0 {
+			return errors.New("no proxy identity is pinned")
+		}
+		return nil
+	})
+}
+
+// ProxyIdentity returns the pinned identity id, or "" when none.
+func (s *Store) ProxyIdentity(ctx context.Context) (string, error) {
+	var id string
+	err := s.DB.Reader.QueryRowContext(ctx, "SELECT identity_id FROM service_proxy_pin WHERE id=1").Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
 func (s *Store) Verify(ctx context.Context, secret string) (auth.Principal, error) {
 	if !tokenfile.ValidHex(secret) {
 		return auth.Principal{}, auth.ErrInvalidToken
@@ -351,6 +404,13 @@ func (s *Store) Verify(ctx context.Context, secret string) (auth.Principal, erro
 	scopes := g.scopes()
 	for _, a := range agents {
 		scopes = append(scopes, AgentScope+":"+a)
+	}
+	pinned, err := s.ProxyIdentity(ctx)
+	if err != nil {
+		return auth.Principal{}, auth.ErrUnavailable
+	}
+	if pinned != "" && pinned == identity {
+		scopes = append(scopes, ProxyScope+":"+ProxyTether)
 	}
 	return auth.Principal{Verified: true, ID: identity, Kind: "service", Display: name, TokenID: id, Scopes: scopes, ExpiresAt: time.Unix(expiry, 0).UTC()}, nil
 }
@@ -404,10 +464,15 @@ func (s *Store) List(ctx context.Context) ([]Token, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	pinned, err := s.ProxyIdentity(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for i := range out {
 		if out[i].Agents, err = s.Agents(ctx, out[i].IdentityID); err != nil {
 			return nil, err
 		}
+		out[i].Proxy = pinned != "" && pinned == out[i].IdentityID
 	}
 	return out, nil
 }

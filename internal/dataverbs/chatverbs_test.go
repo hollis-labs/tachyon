@@ -291,15 +291,11 @@ func TestChatPlanVerbs(t *testing.T) {
 	if _, err = chatCall(p, "chat.plan.get", `{}`); err == nil || !strings.Contains(err.Error(), "thread_ref is required") {
 		t.Fatal("default thread guessed among several:", err)
 	}
-	// The caller's own session picks its thread.
+	// A direct (non-proxy) credential cannot select a thread by session id: the value is ignored, so
+	// a forged X-Tether-Session-Id changes nothing.
 	p.session = "s1"
-	got, err = chatCall(p, "chat.plan.get", `{}`)
-	if err != nil || got["title"] != "T" {
-		t.Fatal("default thread did not resolve to the caller's session:", got, err)
-	}
-	p.session = "nope"
-	if _, err = chatCall(p, "chat.plan.get", `{}`); err == nil {
-		t.Fatal("unknown session resolved to a thread")
+	if _, err = chatCall(p, "chat.plan.get", `{}`); err == nil || !strings.Contains(err.Error(), "thread_ref is required") {
+		t.Fatal("a direct caller's session id selected a thread:", err)
 	}
 	p.session = ""
 	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"tether:other"}`); err == nil {
@@ -470,5 +466,73 @@ func TestChatPlanBinding(t *testing.T) {
 	named := &scopedLocal{local: NewLocal(nil), plan: plan, principal: auth.Principal{Verified: true, ID: "id-4", Display: "taskops-manager", Scopes: verbs}}
 	if _, err := chatCall(named, "chat.plan.get", `{"thread_ref":"tether:mine"}`); err != nil {
 		t.Fatal("name fallback refused:", err)
+	}
+}
+
+// The pinned Tether proxy acts for the session named in X-Tether-Session-Id; its agent comes from
+// that session's thread, with no binding and no thread_ref.
+func TestChatPlanThroughPinnedProxy(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	svc := &chatplan.Service{Store: &chatplan.Store{DB: db}, Exists: func(context.Context, string) error { return nil }, Note: func(context.Context, string, chatplan.Plan) {}}
+	plan := &ChatPlan{Service: svc,
+		Thread: func(_ context.Context, ref string) (ChatThread, error) {
+			switch ref {
+			case "tether:alice", "tether:bob":
+				return ChatThread{Ref: ref, AgentID: strings.TrimPrefix(ref, "tether:")}, nil
+			}
+			return ChatThread{}, errors.New("none")
+		},
+		Threads: func(context.Context) ([]ChatThread, error) {
+			return []ChatThread{{Ref: "tether:alice", AgentID: "alice"}, {Ref: "tether:bob", AgentID: "bob"}}, nil
+		}}
+	scopes := []string{"verb:chat.plan.get", "verb:chat.plan.write", "verb:chat.plan.step"}
+	proxy := auth.Principal{Verified: true, ID: "proxy-id", Display: "tether-mcp-proxy", Scopes: append([]string{"proxy:tether"}, scopes...)}
+	as := func(session string) *scopedLocal {
+		return &scopedLocal{local: NewLocal(nil), plan: plan, principal: proxy, session: session}
+	}
+	// No binding, no thread_ref: the session's own thread.
+	if out, err := chatCall(as("alice"), "chat.plan.write", `{"title":"A","steps":[{"title":"one"}]}`); err != nil || out["revision"] != 1.0 {
+		t.Fatal("proxy could not write the session's own plan:", out, err)
+	}
+	if out, err := chatCall(as("alice"), "chat.plan.get", `{"thread_ref":"tether:alice"}`); err != nil || out["title"] != "A" {
+		t.Fatal("explicit thread_ref equal to the session thread must work:", out, err)
+	}
+	// Cross-agent denial: alice's session cannot read or write bob's thread, by ref.
+	for _, verb := range []string{"chat.plan.get", "chat.plan.write"} {
+		if _, err := chatCall(as("alice"), verb, `{"thread_ref":"tether:bob","steps":[]}`); err == nil {
+			t.Fatalf("%s: session alice reached bob's thread through the proxy", verb)
+		}
+	}
+	if _, err := chatCall(as("bob"), "chat.plan.get", `{}`); err == nil {
+		t.Fatal("bob has no plan yet; expected not found, and certainly not alice's plan")
+	}
+	// A session with no thread, and a call with no session id, are errors, never a guess.
+	if _, err := chatCall(as("carol"), "chat.plan.get", `{}`); err == nil || !strings.Contains(err.Error(), "no thread") {
+		t.Fatal("session without a thread resolved:", err)
+	}
+	if _, err := chatCall(as(""), "chat.plan.get", `{}`); err == nil || !strings.Contains(err.Error(), "X-Tether-Session-Id") {
+		t.Fatal("proxy with no session id was served:", err)
+	}
+	if _, err := chatCall(as("../x"), "chat.plan.get", `{}`); err == nil {
+		t.Fatal("malformed session id accepted")
+	}
+}
+
+// X-Tether-Session-Id is honoured only for the pinned proxy.
+func TestTrustedSessionHeaderOnlyFromProxy(t *testing.T) {
+	direct := auth.Principal{Verified: true, ID: "agent", Scopes: []string{"verb:chat.plan.get"}}
+	proxy := auth.Principal{Verified: true, ID: "px", Scopes: []string{"proxy:tether"}}
+	if got := trustedSession(direct, "tether-s1"); got != "" {
+		t.Fatalf("forged header from a direct caller was kept: %q", got)
+	}
+	if got := trustedSession(auth.Principal{ID: "px", Scopes: []string{"proxy:tether"}}, "s1"); got != "" {
+		t.Fatalf("an unverified principal must not be trusted: %q", got)
+	}
+	if got := trustedSession(proxy, "  s1 "); got != "s1" {
+		t.Fatalf("pinned proxy header = %q", got)
 	}
 }

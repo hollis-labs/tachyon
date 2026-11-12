@@ -294,15 +294,26 @@ func ownsThread(p auth.Principal, t ChatThread) bool {
 }
 
 // planThread resolves the thread a plan verb works on.
+//
+// Direct callers (any credential that is not the pinned Tether proxy):
 //   - With thread_ref: it must exist (404) and belong to the caller (403).
-//   - Without it, the thread is tied to the caller, never guessed: first the thread of the
-//     caller's own Tether session (the X-Tether-Session-Id request header, matched against
-//     tether:<id>), else the caller's only open thread. Anything else is an error naming
-//     thread_ref as required.
+//   - Without it, the caller's only open thread; the X-Tether-* headers are ignored (see
+//     trustedSession). Anything else is an error naming thread_ref as required.
+//
+// The pinned Tether proxy acts for exactly one session, the one named by X-Tether-Session-Id, and
+// its agent is derived from that session's own thread (tether:<session>), not from a binding:
+//   - No session id: refused. The proxy has no agent of its own.
+//   - thread_ref, if given, must be that same thread; any other thread is denied, so one agent's
+//     session can never reach another agent's plan through the proxy.
+//   - The session must already have a thread (404-style error otherwise).
 func (c *ChatPlan) planThread(ctx context.Context, raw string, principal auth.Principal, session string) (chatapi.ThreadRef, error) {
 	if c.Thread == nil || c.Threads == nil {
 		return chatapi.ThreadRef{}, svcerr.New(svcerr.CodeUnavailable, "Chat threads are not available on this host.")
 	}
+	if agentaccess.IsTetherProxy(principal) {
+		return c.proxyThread(ctx, raw, session)
+	}
+	session = ""
 	if raw == "" {
 		ts, err := c.Threads(ctx)
 		if err != nil {
@@ -314,24 +325,15 @@ func (c *ChatPlan) planThread(ctx context.Context, raw string, principal auth.Pr
 				owned = append(owned, t)
 			}
 		}
-		if session = strings.TrimSpace(session); session != "" {
-			for _, t := range owned {
-				if t.Ref == "tether:"+session {
-					return chatapi.ParseRef(t.Ref)
-				}
-			}
-		}
-		if len(owned) == 1 && session == "" {
+		if len(owned) == 1 {
 			return chatapi.ParseRef(owned[0].Ref)
 		}
 		msg := "thread_ref is required (app:<id> or tether:<id>): this call cannot be tied to one of your chat threads."
 		switch {
 		case len(owned) == 0:
 			msg += " No open thread belongs to this credential; check it is bound to your agent."
-		case session != "":
-			msg += " Your session has no thread of its own yet."
 		default:
-			msg += fmt.Sprintf(" %d open threads belong to this credential and the call carried no session id.", len(owned))
+			msg += fmt.Sprintf(" %d open threads belong to this credential; pass thread_ref, or call through the Tether proxy so the session picks the thread.", len(owned))
 		}
 		return chatapi.ThreadRef{}, invalid(msg)
 	}
@@ -347,6 +349,31 @@ func (c *ChatPlan) planThread(ctx context.Context, raw string, principal auth.Pr
 		return t, denied()
 	}
 	return t, nil
+}
+
+// proxyThread is planThread for the pinned Tether proxy: the thread is the session's own.
+func (c *ChatPlan) proxyThread(ctx context.Context, raw, session string) (chatapi.ThreadRef, error) {
+	session = strings.TrimSpace(session)
+	if session == "" {
+		return chatapi.ThreadRef{}, invalid("The Tether proxy must send X-Tether-Session-Id: it has no agent of its own.")
+	}
+	own, err := chatapi.ParseRef("tether:" + session)
+	if err != nil {
+		return chatapi.ThreadRef{}, invalid("X-Tether-Session-Id is not a valid session id.")
+	}
+	if raw != "" {
+		t, err := chatapi.ParseRef(raw)
+		if err != nil {
+			return t, invalid("thread_ref must look like app:<id> or tether:<id>.")
+		}
+		if t.String() != own.String() {
+			return t, denied()
+		}
+	}
+	if _, err := c.Thread(ctx, own.String()); err != nil {
+		return own, invalid("Your session has no thread of its own yet; chat plans attach to a thread once the session has one.")
+	}
+	return own, nil
 }
 
 type chatPlanGet struct {
