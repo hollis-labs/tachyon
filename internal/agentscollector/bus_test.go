@@ -12,8 +12,11 @@ import (
 	"time"
 )
 
+// busFrame stamps events a little before now, so they stay inside the 7-day retention and topic window
+// however old the test file gets.
 func busFrame(id int, kind, app, payload string) string {
-	return fmt.Sprintf(`{"id":"e:%d","kind":%q,"app":%q,"time":"2026-10-30T01:00:%02dZ","payload":%s}`, id, kind, app, id%60, payload)
+	at := time.Now().UTC().Add(-time.Hour).Truncate(time.Minute).Add(time.Duration(id%60) * time.Second)
+	return fmt.Sprintf(`{"id":"e:%d","kind":%q,"app":%q,"time":%q,"payload":%s}`, id, kind, app, at.Format(time.RFC3339), payload)
 }
 
 func normalize(t *testing.T, raw string) BusEvent {
