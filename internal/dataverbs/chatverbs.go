@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"reflect"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/hollis-labs/libs/core/util/svcerr"
@@ -237,11 +238,90 @@ func invokeChatTopic(ctx context.Context, c *ChatTopics, name string, raw json.R
 	return json.Marshal(topic)
 }
 
-// ChatPlan is what the plan verbs need: the shared plan service.
-type ChatPlan struct{ Service *chatplan.Service }
+// ChatThread is what the plan verbs need to know about a thread to decide who it belongs to.
+type ChatThread struct {
+	Ref     string
+	AgentID string
+	Address string
+	LastAt  int64
+}
+
+// ChatPlan is what the plan verbs need: the shared plan service and the thread lookups behind the
+// ownership check. Thread reads one thread; Threads lists the visible ones (any source).
+type ChatPlan struct {
+	Service *chatplan.Service
+	Thread  func(ctx context.Context, ref string) (ChatThread, error)
+	Threads func(ctx context.Context) ([]ChatThread, error)
+}
+
+// agentKey reduces an agent id or address to its bare id: "tether://agent/x", "msg://agent/x" and
+// "x" all become "x". A credential belongs to a thread when its identity name or id equals the
+// thread agent's key, or the thread's own id.
+func agentKey(s string) string {
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+		s = strings.TrimPrefix(s, "agent/")
+	}
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func ownsThread(p auth.Principal, t ChatThread) bool {
+	caller := map[string]bool{}
+	for _, v := range []string{p.Display, p.ID} {
+		if k := agentKey(v); k != "" {
+			caller[k] = true
+		}
+	}
+	id := t.Ref
+	if i := strings.Index(id, ":"); i >= 0 {
+		id = id[i+1:]
+	}
+	for _, v := range []string{t.AgentID, t.Address, id} {
+		if k := agentKey(v); k != "" && caller[k] {
+			return true
+		}
+	}
+	return false
+}
+
+// planThread resolves the thread a plan verb works on. With no thread_ref it is the caller's own
+// most recently active thread; with one, the caller must belong to that thread.
+func (c *ChatPlan) planThread(ctx context.Context, raw string, principal auth.Principal) (chatapi.ThreadRef, error) {
+	if c.Thread == nil || c.Threads == nil {
+		return chatapi.ThreadRef{}, svcerr.New(svcerr.CodeUnavailable, "Chat threads are not available on this host.")
+	}
+	if raw == "" {
+		ts, err := c.Threads(ctx)
+		if err != nil {
+			return chatapi.ThreadRef{}, svcerr.New(svcerr.CodeUnavailable, "Chat threads are unavailable.")
+		}
+		var best *ChatThread
+		for i := range ts {
+			if ownsThread(principal, ts[i]) && (best == nil || ts[i].LastAt > best.LastAt) {
+				best = &ts[i]
+			}
+		}
+		if best == nil {
+			return chatapi.ThreadRef{}, svcerr.New(svcerr.CodeNotFound, "No chat thread belongs to this credential. Pass thread_ref (app:<id> or tether:<id>) of a thread you are in.")
+		}
+		return chatapi.ParseRef(best.Ref)
+	}
+	t, err := chatapi.ParseRef(raw)
+	if err != nil {
+		return t, invalid("thread_ref must look like app:<id> or tether:<id>.")
+	}
+	th, err := c.Thread(ctx, t.String())
+	if err != nil {
+		return t, svcerr.New(svcerr.CodeNotFound, "No such chat thread.")
+	}
+	if !ownsThread(principal, th) {
+		return t, denied()
+	}
+	return t, nil
+}
 
 type chatPlanGet struct {
-	ThreadRef string `json:"thread_ref"`
+	ThreadRef string `json:"thread_ref,omitempty"`
 }
 type chatPlanStepIn struct {
 	ID         string  `json:"id,omitempty"`
@@ -251,13 +331,13 @@ type chatPlanStepIn struct {
 	Notes      *string `json:"notes,omitempty"`
 }
 type chatPlanWrite struct {
-	ThreadRef string           `json:"thread_ref"`
+	ThreadRef string           `json:"thread_ref,omitempty"`
 	Title     *string          `json:"title,omitempty"`
 	Steps     []chatPlanStepIn `json:"steps"`
 	Expected  int64            `json:"expected_revision,omitempty"`
 }
 type chatPlanStep struct {
-	ThreadRef  string  `json:"thread_ref"`
+	ThreadRef  string  `json:"thread_ref,omitempty"`
 	StepID     string  `json:"step_id"`
 	Title      *string `json:"title,omitempty"`
 	Status     *string `json:"status,omitempty"`
@@ -266,16 +346,16 @@ type chatPlanStep struct {
 	Expected   int64   `json:"expected_revision"`
 }
 
-const planRules = " Step statuses are todo, doing, blocked, done, cancelled. A step linked to a Torque task follows that task's status; you may only park it (blocked). You propose plans; the operator approves them."
+const planRules = " thread_ref (app:<id> or tether:<id>) is optional: omit it to use your own most recent thread; the thread must be one you belong to. Step statuses are todo, doing, blocked, done, cancelled. A step linked to a Torque task follows that task's status; you may only park it (blocked). You propose plans; the operator approves them."
 
 func chatPlanVerbs() []Verb {
 	return []Verb{
-		{Name: "chat.plan.get", Description: "Read the working plan of an app chat thread (thread_ref looks like app:<id>): its revision and steps with ids. Read it before changing a plan you did not just write; the operator may have edited it." + planRules,
-			InputSchema: inputSchema(reflect.TypeFor[chatPlanGet](), []string{"thread_ref"})},
-		{Name: "chat.plan.write", Mutates: true, Description: "Write the whole plan of an app chat thread: a title (omit it for a loose todo list) and the ordered steps. Keep each step's id to update it; steps without an id are new; steps you leave out are removed. Pass expected_revision from chat.plan.get when a plan already exists (0 or omitted when it does not); a stale revision is refused. Writing also posts the plan to the chat." + planRules,
-			InputSchema: inputSchema(reflect.TypeFor[chatPlanWrite](), []string{"thread_ref", "steps"})},
+		{Name: "chat.plan.get", Description: "Read the working plan of a chat thread you are in (app: or tether:): its revision and steps with ids. Read it before changing a plan you did not just write; the operator may have edited it." + planRules,
+			InputSchema: inputSchema(reflect.TypeFor[chatPlanGet](), []string{})},
+		{Name: "chat.plan.write", Mutates: true, Description: "Write the whole plan of a chat thread you are in: a title (omit it for a loose todo list) and the ordered steps. Keep each step's id to update it; steps without an id are new; steps you leave out are removed. Pass expected_revision from chat.plan.get when a plan already exists (0 or omitted when it does not); a stale revision is refused. Writing also posts the plan to the chat." + planRules,
+			InputSchema: inputSchema(reflect.TypeFor[chatPlanWrite](), []string{"steps"})},
 		{Name: "chat.plan.step", Mutates: true, Description: "Change one step of the thread's plan (title, status, acceptance, notes) without rewriting the plan. expected_revision is the plan revision you last saw; the result carries the new one." + planRules,
-			InputSchema: inputSchema(reflect.TypeFor[chatPlanStep](), []string{"thread_ref", "step_id", "expected_revision"})},
+			InputSchema: inputSchema(reflect.TypeFor[chatPlanStep](), []string{"step_id", "expected_revision"})},
 	}
 }
 
@@ -297,13 +377,7 @@ func invokeChatPlan(ctx context.Context, c *ChatPlan, name string, raw json.RawM
 	if c == nil || c.Service == nil {
 		return nil, svcerr.New(svcerr.CodeUnavailable, "Chat plans are not enabled on this host.")
 	}
-	threadOf := func(s string) (chatapi.ThreadRef, error) {
-		t, err := chatapi.ParseRef(s)
-		if err != nil || t.Source != chatapi.SourceApp {
-			return t, invalid("thread_ref must be an app chat thread such as app:<id>.")
-		}
-		return t, nil
-	}
+	threadOf := func(s string) (chatapi.ThreadRef, error) { return c.planThread(ctx, s, principal) }
 	var out any
 	switch name {
 	case "chat.plan.get":

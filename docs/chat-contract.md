@@ -63,7 +63,7 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   `POST .../plan/reorder` also need the plan's `expected_revision`; every change bumps the plan revision. A step linked to a Torque
   task (`task_ref`, set only by the Dispatch card in T5) follows the task's status: by hand it can only be parked (`blocked`) and
   unparked (`todo`), else 409 `linked_step`. `SyncTaskStatuses` is the one-way Torque sync (not scheduled yet). Agent writes
-  (`chat.plan.get|write|step`, preset `chat-plan`) can propose and cancel but never approve, post a `kind: "plan"` message
+  (`chat.plan.get|write|step`, preset `chat-plan`) work on `app:` and `tether:` threads alike. `thread_ref` is optional: omitted, the verb uses the caller's own most recently active thread; given, the caller must belong to that thread (else 403). A credential belongs to a thread when its identity name or id equals the thread agent's id (`tether://agent/<id>` and bare `<id>` are the same) or the thread's own id; a thread that is not the caller's is 404 or 403, never readable. A `tether:` plan posts no chat message (only app threads have a message log) but fires the same `plan` and `panel` events, so the panel refreshes. Agent writes can propose and cancel but never approve, post a `kind: "plan"` message
   (`meta.plan_id`) to the thread and send a `panel` signal. Events: `plan {plan_id, revision, progress}`.
 - T6 (activity, panel events, context meter): `GET .../activity?before_seq&limit<=100&type&q&actor` (newest first, `has_more`),
   `POST .../activity/comments {body<=2000}` (always `actor: "user"`; any other field is a 400), `GET .../context`. `chat_activity`

@@ -241,7 +241,19 @@ func TestChatPlanVerbs(t *testing.T) {
 		},
 		Note: func(context.Context, string, chatplan.Plan) { notes++ },
 	}
-	p := &scopedLocal{local: NewLocal(nil), plan: &ChatPlan{Service: svc}, principal: auth.Principal{Verified: true, ID: "agent",
+	p := &scopedLocal{local: NewLocal(nil), plan: &ChatPlan{Service: svc,
+		Thread: func(_ context.Context, ref string) (ChatThread, error) {
+			if ref == "app:ghost" {
+				return ChatThread{}, errors.New("none")
+			}
+			if ref == "tether:other" {
+				return ChatThread{Ref: ref, AgentID: "someone"}, nil
+			}
+			return ChatThread{Ref: ref, AgentID: "agent"}, nil
+		},
+		Threads: func(context.Context) ([]ChatThread, error) {
+			return []ChatThread{{Ref: "app:t1", AgentID: "agent", LastAt: 1}, {Ref: "tether:s1", Address: "tether://agent/agent", LastAt: 5}, {Ref: "tether:other", AgentID: "someone", LastAt: 9}}, nil
+		}}, principal: auth.Principal{Verified: true, ID: "agent",
 		Scopes: []string{"verb:chat.plan.get", "verb:chat.plan.write", "verb:chat.plan.step"}}}
 	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"app:t1"}`); err == nil {
 		t.Fatal("get before any plan should be not found")
@@ -270,8 +282,21 @@ func TestChatPlanVerbs(t *testing.T) {
 	if err != nil || got["revision"] != 2.0 {
 		t.Fatal(got, err)
 	}
+	// A tether: thread, and the default thread (the caller's most recent: tether:s1), need no hand-supplied id.
+	out, err = chatCall(p, "chat.plan.write", `{"thread_ref":"tether:s1","title":"T","steps":[{"title":"a"}]}`)
+	if err != nil || out["revision"] != 1.0 {
+		t.Fatal(out, err)
+	}
+	got, err = chatCall(p, "chat.plan.get", `{}`)
+	if err != nil || got["title"] != "T" {
+		t.Fatal("default thread did not resolve to the caller's own:", got, err)
+	}
+	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"tether:other"}`); err == nil {
+		t.Fatal("read a thread the caller does not belong to")
+	}
 	for name, args := range map[string]string{
-		"tether":  `{"thread_ref":"tether:s","steps":[]}`,
+		"bad ref": `{"thread_ref":"nope:s","steps":[]}`,
+		"foreign": `{"thread_ref":"tether:other","steps":[]}`,
 		"ghost":   `{"thread_ref":"app:ghost","steps":[]}`,
 		"project": `{"thread_ref":"app:t1","scope":"project","steps":[]}`,
 		"status":  `{"thread_ref":"app:t2","steps":[{"title":"a","status":"nope"}]}`,
