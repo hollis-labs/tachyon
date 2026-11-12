@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button, SearchInput, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@hollis-labs/design-components'
 import { useNavigate } from 'react-router-dom'
 import { BuilderShell } from './BuilderShell'
@@ -147,7 +147,28 @@ export function BuilderLaunchesPage() {
   const [load, retry] = useLoad(() => builderApi.launches({ q, live }), [q, live])
   const [agents] = useLoad(() => builderApi.allAgents(), [])
   const names = useMemo(() => new Map((agents.status === 'ready' ? agents.data : []).map((a) => [a.id, a.name])), [agents])
-  const all = load.status === 'ready' ? load.data.launches : []
+  // The server pages the list (25 at a time); later pages are appended here and reset whenever the query reloads.
+  const [more, setMore] = useState<Launch[]>([])
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [paging, setPaging] = useState<'idle' | 'busy' | 'error'>('idle')
+  useEffect(() => {
+    setMore([])
+    setPaging('idle')
+    setCursor(load.status === 'ready' ? (load.data.next_cursor ?? null) : null)
+  }, [load])
+  const loadMore = () => {
+    if (!cursor) return
+    setPaging('busy')
+    builderApi.launches({ q, live, cursor }).then(
+      (page) => {
+        setMore((prev) => [...prev, ...page.launches])
+        setCursor(page.next_cursor ?? null)
+        setPaging('idle')
+      },
+      () => setPaging('error'),
+    )
+  }
+  const all = load.status === 'ready' ? [...load.data.launches, ...more] : []
   const uniq = (pick: (l: Launch) => string) => [...new Set(all.map(pick).filter(Boolean))].sort()
   const rows = all.filter((l) => (!provider || l.provider === provider) && (!project || l.project === project) && (!worker || l.worker === worker))
   const sel = rows.find((l) => l.id === picked) ?? rows[0]
@@ -234,6 +255,18 @@ export function BuilderLaunchesPage() {
                   <span role="cell" className="hidden sm:block">{l.live_count > 0 ? l.live_count : '—'}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {load.status === 'ready' && cursor && (
+            <div className="flex flex-col items-start gap-2 border-t border-border-subtle p-3">
+              {paging === 'error' && (
+                <p role="alert" className="text-label text-fg-secondary">
+                  Could not load more launches.
+                </p>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={loadMore} disabled={paging === 'busy'}>
+                {paging === 'busy' ? 'Loading' : paging === 'error' ? 'Retry' : 'Load more'}
+              </Button>
             </div>
           )}
         </div>

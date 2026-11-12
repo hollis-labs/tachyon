@@ -324,9 +324,10 @@ export const builderApi = {
   usedBy: (id: string) => get<UsedBy>(`/agents/${encodeURIComponent(id)}/used_by`),
   checks: (id: string) => get<Checks>(`/agents/${encodeURIComponent(id)}/checks`),
   history: (id: string, cursor?: string) => get<History>(`/agents/${encodeURIComponent(id)}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
-  launches: (query: { q?: string; live?: boolean } = {}) => {
+  launches: (query: { q?: string; live?: boolean; cursor?: string } = {}) => {
     const p = new URLSearchParams()
     if (query.q) p.set('q', query.q)
+    if (query.cursor) p.set('cursor', query.cursor)
     if (query.live) p.set('live', '1')
     const qs = p.toString()
     return get<{ launches: Launch[]; next_cursor?: string | null }>(`/launches${qs ? `?${qs}` : ''}`)
