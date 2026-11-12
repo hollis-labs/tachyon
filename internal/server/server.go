@@ -668,7 +668,23 @@ func (s *Server) Routes() http.Handler {
 			}
 			var planTools *dataverbs.ChatPlan
 			if s.chatPlan != nil {
-				planTools = &dataverbs.ChatPlan{Service: s.chatPlan}
+				agg := s.chatThreads.Agg
+				asThread := func(t chatthreads.Summary) dataverbs.ChatThread {
+					return dataverbs.ChatThread{Ref: t.Ref, AgentID: t.Agent.AgentID, Address: t.Agent.Address, LastAt: t.LastAt, Archived: t.Archived}
+				}
+				planTools = &dataverbs.ChatPlan{Service: s.chatPlan,
+					Thread: func(ctx context.Context, ref string) (dataverbs.ChatThread, error) {
+						t, err := agg.Get(ctx, ref)
+						return asThread(t), err
+					},
+					Threads: func(ctx context.Context) ([]dataverbs.ChatThread, error) {
+						ts, err := agg.Summaries(ctx)
+						out := make([]dataverbs.ChatThread, len(ts))
+						for i, t := range ts {
+							out[i] = asThread(t)
+						}
+						return out, err
+					}}
 			}
 			var termTools *dataverbs.ChatTerminal
 			if s.chatTerminal != nil {

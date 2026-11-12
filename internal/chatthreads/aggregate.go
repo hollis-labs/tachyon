@@ -285,6 +285,10 @@ func (a *Aggregator) all(ctx context.Context) ([]Summary, error) {
 // work reports whether a thread belongs to the Work lens: it has a plan or a project.
 func work(s Summary) bool { return s.PlanProgress != nil || s.ProjectID != nil }
 
+// Summaries returns every thread (archived included, no page limit) with overlay applied, for
+// callers that must filter by owner rather than page through a list.
+func (a *Aggregator) Summaries(ctx context.Context) ([]Summary, error) { return a.all(ctx) }
+
 // List returns the filtered page, pinned first then newest, and whether more remain.
 func (a *Aggregator) List(ctx context.Context, q Query) ([]Summary, bool, error) {
 	all, err := a.all(ctx)

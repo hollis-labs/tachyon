@@ -18,6 +18,10 @@ import (
 
 const AgentPrefix = "/api/agent/v1/data"
 
+// SessionHeader optionally carries the caller's Tether session id so chat.plan.* can default to
+// that session's thread (tether:<id>) with no thread_ref.
+const SessionHeader = "X-Tether-Session-Id"
+
 // NewAgentHTTP authenticates every route, including discovery. Browser cookies
 // and claimed actor headers cannot establish a service principal here.
 func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) http.Handler {
@@ -35,7 +39,7 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) h
 				writeError(w, denied())
 				return
 			}
-			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal}
+			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: r.Header.Get(SessionHeader)}
 			// Authentication has already verified this request. scopedLocal checks
 			// the verb/kinds and supplies the principal actor for every invocation.
 			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r)
@@ -55,6 +59,9 @@ type scopedLocal struct {
 	plan      *ChatPlan
 	activity  *ChatActivity
 	terminal  *ChatTerminal
+	// session is the caller's Tether session id, from the SessionHeader request header. It only
+	// picks a default chat thread; it grants nothing.
+	session string
 }
 
 // agentServices picks the optional host services out of the constructor's
@@ -191,7 +198,7 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 		return invokeChatActivity(ctx, p.activity, name, raw, p.principal)
 	}
 	if agentaccess.ChatPlanVerb(name) {
-		return invokeChatPlan(ctx, p.plan, name, raw, p.principal)
+		return invokeChatPlan(ctx, p.plan, name, raw, p.principal, p.session)
 	}
 	if agentaccess.TerminalVerb(name) {
 		return invokeTerminal(ctx, p.terminal, name, raw, p.principal)

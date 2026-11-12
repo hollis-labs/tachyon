@@ -241,7 +241,19 @@ func TestChatPlanVerbs(t *testing.T) {
 		},
 		Note: func(context.Context, string, chatplan.Plan) { notes++ },
 	}
-	p := &scopedLocal{local: NewLocal(nil), plan: &ChatPlan{Service: svc}, principal: auth.Principal{Verified: true, ID: "agent",
+	p := &scopedLocal{local: NewLocal(nil), plan: &ChatPlan{Service: svc,
+		Thread: func(_ context.Context, ref string) (ChatThread, error) {
+			if ref == "app:ghost" {
+				return ChatThread{}, errors.New("none")
+			}
+			if ref == "tether:other" {
+				return ChatThread{Ref: ref, AgentID: "someone"}, nil
+			}
+			return ChatThread{Ref: ref, AgentID: "agent"}, nil
+		},
+		Threads: func(context.Context) ([]ChatThread, error) {
+			return []ChatThread{{Ref: "app:t1", AgentID: "agent", LastAt: 1}, {Ref: "tether:s1", Address: "tether://agent/agent", LastAt: 5}, {Ref: "tether:other", AgentID: "someone", LastAt: 9}}, nil
+		}}, principal: auth.Principal{Verified: true, ID: "agent",
 		Scopes: []string{"verb:chat.plan.get", "verb:chat.plan.write", "verb:chat.plan.step"}}}
 	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"app:t1"}`); err == nil {
 		t.Fatal("get before any plan should be not found")
@@ -270,8 +282,32 @@ func TestChatPlanVerbs(t *testing.T) {
 	if err != nil || got["revision"] != 2.0 {
 		t.Fatal(got, err)
 	}
+	// A tether: thread, and the default thread (the caller's most recent: tether:s1), need no hand-supplied id.
+	out, err = chatCall(p, "chat.plan.write", `{"thread_ref":"tether:s1","title":"T","steps":[{"title":"a"}]}`)
+	if err != nil || out["revision"] != 1.0 {
+		t.Fatal(out, err)
+	}
+	// Two open threads and no session id: the caller cannot be tied to one, so it is an error, not a guess.
+	if _, err = chatCall(p, "chat.plan.get", `{}`); err == nil || !strings.Contains(err.Error(), "thread_ref is required") {
+		t.Fatal("default thread guessed among several:", err)
+	}
+	// The caller's own session picks its thread.
+	p.session = "s1"
+	got, err = chatCall(p, "chat.plan.get", `{}`)
+	if err != nil || got["title"] != "T" {
+		t.Fatal("default thread did not resolve to the caller's session:", got, err)
+	}
+	p.session = "nope"
+	if _, err = chatCall(p, "chat.plan.get", `{}`); err == nil {
+		t.Fatal("unknown session resolved to a thread")
+	}
+	p.session = ""
+	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"tether:other"}`); err == nil {
+		t.Fatal("read a thread the caller does not belong to")
+	}
 	for name, args := range map[string]string{
-		"tether":  `{"thread_ref":"tether:s","steps":[]}`,
+		"bad ref": `{"thread_ref":"nope:s","steps":[]}`,
+		"foreign": `{"thread_ref":"tether:other","steps":[]}`,
 		"ghost":   `{"thread_ref":"app:ghost","steps":[]}`,
 		"project": `{"thread_ref":"app:t1","scope":"project","steps":[]}`,
 		"status":  `{"thread_ref":"app:t2","steps":[{"title":"a","status":"nope"}]}`,
@@ -375,5 +411,64 @@ func TestChatActivityAndPanelVerbs(t *testing.T) {
 				t.Errorf("a preset widened with %s", v)
 			}
 		}
+	}
+}
+
+func TestChatPlanBinding(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	svc := &chatplan.Service{Store: &chatplan.Store{DB: db}, Exists: func(context.Context, string) error { return nil }, Note: func(context.Context, string, chatplan.Plan) {}}
+	threads := map[string]ChatThread{
+		"tether:mine":   {Ref: "tether:mine", AgentID: "msg://agent/agent-mux/taskops-manager", LastAt: 3},
+		"tether:theirs": {Ref: "tether:theirs", AgentID: "someone-else", LastAt: 9},
+	}
+	plan := &ChatPlan{Service: svc,
+		Thread: func(_ context.Context, ref string) (ChatThread, error) {
+			if th, ok := threads[ref]; ok {
+				return th, nil
+			}
+			return ChatThread{}, errors.New("none")
+		},
+		Threads: func(context.Context) ([]ChatThread, error) {
+			return []ChatThread{threads["tether:mine"], threads["tether:theirs"]}, nil
+		}}
+	verbs := []string{"verb:chat.plan.get", "verb:chat.plan.write", "verb:chat.plan.step"}
+	// A purpose-named credential (no name match) that is explicitly bound to the agent.
+	bound := &scopedLocal{local: NewLocal(nil), plan: plan, principal: auth.Principal{Verified: true, ID: "id-1", Display: "task-ops-chat-plan",
+		Scopes: append(append([]string{}, verbs...), "agent:taskops-manager")}}
+	out, err := chatCall(bound, "chat.plan.write", `{"thread_ref":"tether:mine","title":"Ship","steps":[{"title":"One"}]}`)
+	if err != nil || out["revision"] != 1.0 {
+		t.Fatal("bound credential refused:", out, err)
+	}
+	// Its only open thread is the default; the foreign one is never reachable.
+	if got, err := chatCall(bound, "chat.plan.get", `{}`); err != nil || got["title"] != "Ship" {
+		t.Fatal("bound credential default thread:", got, err)
+	}
+	if _, err := chatCall(bound, "chat.plan.get", `{"thread_ref":"tether:theirs"}`); err == nil || !strings.Contains(err.Error(), "does not grant access") {
+		t.Fatal("foreign thread reachable or wrong error:", err)
+	}
+	if _, err := chatCall(bound, "chat.plan.get", `{"thread_ref":"tether:ghost"}`); err == nil || !strings.Contains(err.Error(), "No such chat thread") {
+		t.Fatal("missing thread should be not found:", err)
+	}
+	// The same purpose-named credential with no binding is refused (name equality does not match).
+	unbound := &scopedLocal{local: NewLocal(nil), plan: plan, principal: auth.Principal{Verified: true, ID: "id-2", Display: "task-ops-chat-plan", Scopes: verbs}}
+	if _, err := chatCall(unbound, "chat.plan.get", `{"thread_ref":"tether:mine"}`); err == nil {
+		t.Fatal("unbound credential reached a thread")
+	}
+	if _, err := chatCall(unbound, "chat.plan.get", `{}`); err == nil || !strings.Contains(err.Error(), "thread_ref is required") {
+		t.Fatal("unbound default thread:", err)
+	}
+	// A binding to a different agent does not reach this thread.
+	other := &scopedLocal{local: NewLocal(nil), plan: plan, principal: auth.Principal{Verified: true, ID: "id-3", Display: "x", Scopes: append(append([]string{}, verbs...), "agent:another")}}
+	if _, err := chatCall(other, "chat.plan.get", `{"thread_ref":"tether:mine"}`); err == nil {
+		t.Fatal("foreign binding reached a thread")
+	}
+	// Name equality still works as a documented fallback.
+	named := &scopedLocal{local: NewLocal(nil), plan: plan, principal: auth.Principal{Verified: true, ID: "id-4", Display: "taskops-manager", Scopes: verbs}}
+	if _, err := chatCall(named, "chat.plan.get", `{"thread_ref":"tether:mine"}`); err != nil {
+		t.Fatal("name fallback refused:", err)
 	}
 }

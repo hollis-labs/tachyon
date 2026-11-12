@@ -181,6 +181,7 @@ type Token struct {
 	ID         string     `json:"id"`
 	IdentityID string     `json:"identity_id"`
 	Name       string     `json:"name"`
+	Agents     []string   `json:"agents,omitempty"`
 	Grants     Grants     `json:"grants"`
 	CreatedAt  time.Time  `json:"created_at"`
 	ExpiresAt  time.Time  `json:"expires_at"`
@@ -236,6 +237,93 @@ func (s *Store) Issue(ctx context.Context, identityID, name string, grants Grant
 	}
 	return t, secret, nil
 }
+
+// AgentKey reduces an agent id or address to its bare lowercase id: "tether://agent/x",
+// "msg://agent/agent-mux/x" and "x" all become "x" ("agent-mux/x" keeps its last path element).
+func AgentKey(v string) string {
+	v = strings.TrimSpace(v)
+	if i := strings.Index(v, "://"); i >= 0 {
+		v = v[i+3:]
+		v = strings.TrimPrefix(v, "agent/")
+	}
+	if i := strings.LastIndex(v, "/"); i >= 0 {
+		v = v[i+1:]
+	}
+	return strings.ToLower(strings.TrimSpace(v))
+}
+
+// AgentScope is the principal scope an agent binding becomes: "agent:<key>".
+const AgentScope = "agent"
+
+// Bind records that an identity may act for the given agents (chat plan verbs check it).
+// It adds to any existing bindings, applies to tokens already issued (Verify reads it on every
+// call), and is idempotent. The identity must exist and be active.
+func (s *Store) Bind(ctx context.Context, identityID string, agents []string) ([]string, error) {
+	if _, err := uuid.Parse(identityID); err != nil {
+		return nil, errors.New("identity must be a UUID")
+	}
+	keys := []string{}
+	for _, a := range agents {
+		k := AgentKey(a)
+		if k == "" || len(k) > 200 {
+			return nil, errors.New("agent is required (maximum 200 bytes)")
+		}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("at least one agent is required")
+	}
+	now := time.Now().Unix()
+	err := s.DB.Writer.Submit(ctx, "service-identity.bind", func(ctx context.Context, tx *sql.Tx) error {
+		var one int
+		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM service_identities WHERE id=? AND disabled_at IS NULL", identityID).Scan(&one); err != nil {
+			return errors.New("active service identity not found")
+		}
+		for _, k := range keys {
+			if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO service_identity_agents(identity_id,agent_key,created_at) VALUES(?,?,?)", identityID, k, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.Agents(ctx, identityID)
+}
+
+// Unbind removes one agent from an identity. It reports an error when nothing was bound.
+func (s *Store) Unbind(ctx context.Context, identityID, agent string) error {
+	k := AgentKey(agent)
+	return s.DB.Writer.Submit(ctx, "service-identity.unbind", func(ctx context.Context, tx *sql.Tx) error {
+		r, err := tx.ExecContext(ctx, "DELETE FROM service_identity_agents WHERE identity_id=? AND agent_key=?", identityID, k)
+		if err != nil {
+			return err
+		}
+		if n, err := r.RowsAffected(); err == nil && n == 0 {
+			return errors.New("binding not found")
+		}
+		return nil
+	})
+}
+
+// Agents lists the agents an identity is bound to, sorted.
+func (s *Store) Agents(ctx context.Context, identityID string) ([]string, error) {
+	rows, err := s.DB.Reader.QueryContext(ctx, "SELECT agent_key FROM service_identity_agents WHERE identity_id=? ORDER BY agent_key", identityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
 func (s *Store) Verify(ctx context.Context, secret string) (auth.Principal, error) {
 	if !tokenfile.ValidHex(secret) {
 		return auth.Principal{}, auth.ErrInvalidToken
@@ -256,7 +344,15 @@ func (s *Store) Verify(ctx context.Context, secret string) (auth.Principal, erro
 	if json.Unmarshal([]byte(grants), &g) != nil || g.Validate() != nil {
 		return auth.Principal{}, auth.ErrInvalidToken
 	}
-	return auth.Principal{Verified: true, ID: identity, Kind: "service", Display: name, TokenID: id, Scopes: g.scopes(), ExpiresAt: time.Unix(expiry, 0).UTC()}, nil
+	agents, err := s.Agents(ctx, identity)
+	if err != nil {
+		return auth.Principal{}, auth.ErrUnavailable
+	}
+	scopes := g.scopes()
+	for _, a := range agents {
+		scopes = append(scopes, AgentScope+":"+a)
+	}
+	return auth.Principal{Verified: true, ID: identity, Kind: "service", Display: name, TokenID: id, Scopes: scopes, ExpiresAt: time.Unix(expiry, 0).UTC()}, nil
 }
 func (s *Store) Revoke(ctx context.Context, id string, identity bool) error {
 	table, field := "service_tokens", "revoked_at"
@@ -305,5 +401,13 @@ func (s *Store) List(ctx context.Context) ([]Token, error) {
 		}
 		out = append(out, t)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].Agents, err = s.Agents(ctx, out[i].IdentityID); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
