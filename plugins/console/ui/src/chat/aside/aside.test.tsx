@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AsideProvider, useAside } from './context'
 import { ActivityPanel, ApprovalsPanel, PlanPanel, TopicsPanel } from './Panels'
+import { TabStrip } from './TabStrip'
 import { DEMO_ACTIVITY, DEMO_PLAN } from './fixtures'
 
 afterEach(cleanup)
@@ -69,5 +70,43 @@ describe('panels', () => {
     fireEvent.change(screen.getByLabelText('Comment'), { target: { value: 'hello' } })
     await act(async () => { fireEvent.submit(screen.getByLabelText('Comment').closest('form')!) })
     expect((screen.getByLabelText('Comment') as HTMLInputElement).value).toBe('hello')
+  })
+})
+
+describe('tab strip', () => {
+  const dims = (el: HTMLElement, o: { scrollWidth: number; clientWidth: number; scrollLeft?: number }) => {
+    Object.defineProperty(el, 'scrollWidth', { configurable: true, value: o.scrollWidth })
+    Object.defineProperty(el, 'clientWidth', { configurable: true, value: o.clientWidth })
+    el.scrollLeft = o.scrollLeft ?? 0
+  }
+  const strip = () => render(<TabStrip label="Panels" activeKey="a"><button role="tab" aria-selected="true">A</button><button role="tab" aria-selected="false">B</button></TabStrip>)
+
+  it('keeps one line and shows no arrows when nothing overflows', () => {
+    strip()
+    const list = screen.getByRole('tablist')
+    expect(list.className).toContain('flex-nowrap')
+    dims(list, { scrollWidth: 200, clientWidth: 200 })
+    fireEvent.scroll(list)
+    expect((screen.getByTestId('tabs-left') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByTestId('tabs-right') as HTMLButtonElement).disabled).toBe(true)
+  })
+  it('enables the arrow for each direction that has more tabs, and scrolls on click', () => {
+    strip()
+    const list = screen.getByRole('tablist')
+    list.scrollTo = vi.fn() as unknown as typeof list.scrollTo
+    dims(list, { scrollWidth: 600, clientWidth: 200 })
+    fireEvent.scroll(list)
+    expect((screen.getByTestId('tabs-left') as HTMLButtonElement).disabled).toBe(true)
+    const right = screen.getByRole('button', { name: 'Scroll tabs right' }) as HTMLButtonElement
+    expect(right.disabled).toBe(false)
+    fireEvent.click(right)
+    expect(list.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: 140 }))
+    dims(list, { scrollWidth: 600, clientWidth: 200, scrollLeft: 200 })
+    fireEvent.scroll(list)
+    expect((screen.getByTestId('tabs-left') as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByTestId('tabs-right') as HTMLButtonElement).disabled).toBe(false)
+    dims(list, { scrollWidth: 600, clientWidth: 200, scrollLeft: 400 })
+    fireEvent.scroll(list)
+    expect((screen.getByTestId('tabs-right') as HTMLButtonElement).disabled).toBe(true)
   })
 })
