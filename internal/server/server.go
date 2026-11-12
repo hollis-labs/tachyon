@@ -670,7 +670,7 @@ func (s *Server) Routes() http.Handler {
 			if s.chatPlan != nil {
 				agg := s.chatThreads.Agg
 				asThread := func(t chatthreads.Summary) dataverbs.ChatThread {
-					return dataverbs.ChatThread{Ref: t.Ref, AgentID: t.Agent.AgentID, Address: t.Agent.Address, LastAt: t.LastAt}
+					return dataverbs.ChatThread{Ref: t.Ref, AgentID: t.Agent.AgentID, Address: t.Agent.Address, LastAt: t.LastAt, Archived: t.Archived}
 				}
 				planTools = &dataverbs.ChatPlan{Service: s.chatPlan,
 					Thread: func(ctx context.Context, ref string) (dataverbs.ChatThread, error) {
@@ -678,7 +678,7 @@ func (s *Server) Routes() http.Handler {
 						return asThread(t), err
 					},
 					Threads: func(ctx context.Context) ([]dataverbs.ChatThread, error) {
-						ts, _, err := agg.List(ctx, chatthreads.Query{Lens: "all", Limit: 200})
+						ts, err := agg.Summaries(ctx)
 						out := make([]dataverbs.ChatThread, len(ts))
 						for i, t := range ts {
 							out[i] = asThread(t)

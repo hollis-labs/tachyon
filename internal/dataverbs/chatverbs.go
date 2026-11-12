@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/hollis-labs/libs/core/util/svcerr"
 	"github.com/hollis-labs/libs/security/auth"
+	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/chattopics"
@@ -240,53 +242,64 @@ func invokeChatTopic(ctx context.Context, c *ChatTopics, name string, raw json.R
 
 // ChatThread is what the plan verbs need to know about a thread to decide who it belongs to.
 type ChatThread struct {
-	Ref     string
-	AgentID string
-	Address string
-	LastAt  int64
+	Ref      string
+	AgentID  string
+	Address  string
+	LastAt   int64
+	Archived bool
 }
 
 // ChatPlan is what the plan verbs need: the shared plan service and the thread lookups behind the
-// ownership check. Thread reads one thread; Threads lists the visible ones (any source).
+// ownership check. Thread reads one thread; Threads lists every thread (any source, archived
+// included, no page limit) so the owner filter below never misses one.
 type ChatPlan struct {
 	Service *chatplan.Service
 	Thread  func(ctx context.Context, ref string) (ChatThread, error)
 	Threads func(ctx context.Context) ([]ChatThread, error)
 }
 
-// agentKey reduces an agent id or address to its bare id: "tether://agent/x", "msg://agent/x" and
-// "x" all become "x". A credential belongs to a thread when its identity name or id equals the
-// thread agent's key, or the thread's own id.
-func agentKey(s string) string {
-	if i := strings.Index(s, "://"); i >= 0 {
-		s = s[i+3:]
-		s = strings.TrimPrefix(s, "agent/")
-	}
-	return strings.ToLower(strings.TrimSpace(s))
-}
-
+// ownsThread decides whether a credential may act on a thread. Two paths, in order:
+//  1. An explicit binding: the identity was bound to an agent (`tachyon access issue --agent` or
+//     `tachyon access bind`), which the principal carries as an "agent:<key>" scope. The thread
+//     belongs to the caller when its agent id or address reduces to a bound key.
+//  2. Fallback, for credentials issued before bindings existed: the identity name or id equals
+//     the thread agent's key, or the thread's own id. This is a documented convenience, not the
+//     only way: a purpose-named credential needs a binding.
 func ownsThread(p auth.Principal, t ChatThread) bool {
-	caller := map[string]bool{}
-	for _, v := range []string{p.Display, p.ID} {
-		if k := agentKey(v); k != "" {
-			caller[k] = true
-		}
-	}
+	threadKeys := []string{}
 	id := t.Ref
 	if i := strings.Index(id, ":"); i >= 0 {
 		id = id[i+1:]
 	}
 	for _, v := range []string{t.AgentID, t.Address, id} {
-		if k := agentKey(v); k != "" && caller[k] {
+		if k := agentaccess.AgentKey(v); k != "" {
+			threadKeys = append(threadKeys, k)
+		}
+	}
+	for _, k := range threadKeys {
+		if agentaccess.Allows(p, agentaccess.AgentScope, k) {
 			return true
+		}
+	}
+	for _, v := range []string{p.Display, p.ID} {
+		if c := agentaccess.AgentKey(v); c != "" {
+			for _, k := range threadKeys {
+				if c == k {
+					return true
+				}
+			}
 		}
 	}
 	return false
 }
 
-// planThread resolves the thread a plan verb works on. With no thread_ref it is the caller's own
-// most recently active thread; with one, the caller must belong to that thread.
-func (c *ChatPlan) planThread(ctx context.Context, raw string, principal auth.Principal) (chatapi.ThreadRef, error) {
+// planThread resolves the thread a plan verb works on.
+//   - With thread_ref: it must exist (404) and belong to the caller (403).
+//   - Without it, the thread is tied to the caller, never guessed: first the thread of the
+//     caller's own Tether session (the X-Tether-Session-Id request header, matched against
+//     tether:<id>), else the caller's only open thread. Anything else is an error naming
+//     thread_ref as required.
+func (c *ChatPlan) planThread(ctx context.Context, raw string, principal auth.Principal, session string) (chatapi.ThreadRef, error) {
 	if c.Thread == nil || c.Threads == nil {
 		return chatapi.ThreadRef{}, svcerr.New(svcerr.CodeUnavailable, "Chat threads are not available on this host.")
 	}
@@ -295,16 +308,32 @@ func (c *ChatPlan) planThread(ctx context.Context, raw string, principal auth.Pr
 		if err != nil {
 			return chatapi.ThreadRef{}, svcerr.New(svcerr.CodeUnavailable, "Chat threads are unavailable.")
 		}
-		var best *ChatThread
-		for i := range ts {
-			if ownsThread(principal, ts[i]) && (best == nil || ts[i].LastAt > best.LastAt) {
-				best = &ts[i]
+		var owned []ChatThread
+		for _, t := range ts {
+			if !t.Archived && ownsThread(principal, t) {
+				owned = append(owned, t)
 			}
 		}
-		if best == nil {
-			return chatapi.ThreadRef{}, svcerr.New(svcerr.CodeNotFound, "No chat thread belongs to this credential. Pass thread_ref (app:<id> or tether:<id>) of a thread you are in.")
+		if session = strings.TrimSpace(session); session != "" {
+			for _, t := range owned {
+				if t.Ref == "tether:"+session {
+					return chatapi.ParseRef(t.Ref)
+				}
+			}
 		}
-		return chatapi.ParseRef(best.Ref)
+		if len(owned) == 1 && session == "" {
+			return chatapi.ParseRef(owned[0].Ref)
+		}
+		msg := "thread_ref is required (app:<id> or tether:<id>): this call cannot be tied to one of your chat threads."
+		switch {
+		case len(owned) == 0:
+			msg += " No open thread belongs to this credential; check it is bound to your agent."
+		case session != "":
+			msg += " Your session has no thread of its own yet."
+		default:
+			msg += fmt.Sprintf(" %d open threads belong to this credential and the call carried no session id.", len(owned))
+		}
+		return chatapi.ThreadRef{}, invalid(msg)
 	}
 	t, err := chatapi.ParseRef(raw)
 	if err != nil {
@@ -373,11 +402,11 @@ func planError(err error) error {
 	return svcerr.New(svcerr.CodeUnavailable, "Chat plans are unavailable.")
 }
 
-func invokeChatPlan(ctx context.Context, c *ChatPlan, name string, raw json.RawMessage, principal auth.Principal) (json.RawMessage, error) {
+func invokeChatPlan(ctx context.Context, c *ChatPlan, name string, raw json.RawMessage, principal auth.Principal, session string) (json.RawMessage, error) {
 	if c == nil || c.Service == nil {
 		return nil, svcerr.New(svcerr.CodeUnavailable, "Chat plans are not enabled on this host.")
 	}
-	threadOf := func(s string) (chatapi.ThreadRef, error) { return c.planThread(ctx, s, principal) }
+	threadOf := func(s string) (chatapi.ThreadRef, error) { return c.planThread(ctx, s, principal, session) }
 	var out any
 	switch name {
 	case "chat.plan.get":

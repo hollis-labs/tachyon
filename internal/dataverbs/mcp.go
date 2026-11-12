@@ -29,7 +29,7 @@ func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) ht
 		if !ok || !principal.Verified {
 			return nil
 		}
-		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal}
+		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: r.Header.Get(SessionHeader)}
 		server := mcpserver.NewServer("tachyon-planner", "1.0.0")
 		for _, v := range p.Verbs() {
 			server.RegisterTool(mcpserver.Tool{

@@ -18,12 +18,12 @@ import (
 // Command is operator-local credential administration, never an HTTP endpoint.
 func Command(ctx context.Context, dataDir string, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: tachyon access issue|list|revoke|disable [flags]")
+		return errors.New("usage: tachyon access issue|bind|unbind|list|revoke|disable [flags]")
 	}
 	cmd := args[0]
 	f := flag.NewFlagSet("access "+cmd, flag.ContinueOnError)
 	f.SetOutput(io.Discard)
-	var name, identity, path, id, kinds, verbs, preset string
+	var name, identity, path, id, kinds, verbs, preset, agents string
 	var ttl time.Duration
 	switch cmd {
 	case "issue":
@@ -32,8 +32,12 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		f.StringVar(&path, "token-file", "", "new private token file (never overwritten)")
 		f.DurationVar(&ttl, "ttl", 30*24*time.Hour, "token lifetime, maximum 2160h")
 		f.StringVar(&preset, "preset", "planner-read", "planner-read, planner-torque-read, torque-read, tesseract-read, app-agent-read, chat-workspace-read, chat-topic-add, chat-plan, chat-activity-append, chat-panel-open, terminal-propose, portfolio-read, portfolio-write, actions-request or card-ask")
+		f.StringVar(&agents, "agent", "", "comma-separated agent ids or addresses this identity may act for (chat plan verbs)")
 		f.StringVar(&kinds, "kinds", "", "explicit Planner kinds; overrides the preset")
 		f.StringVar(&verbs, "verbs", "", "explicit supported verbs; overrides the preset")
+	case "bind", "unbind":
+		f.StringVar(&identity, "identity", "", "service identity UUID")
+		f.StringVar(&agents, "agent", "", "agent id or address (bind accepts a comma-separated list)")
 	case "revoke", "disable":
 		f.StringVar(&id, "id", "", "token UUID for revoke, identity UUID for disable")
 	case "list":
@@ -97,6 +101,9 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 			return err
 		}
 	}
+	if (cmd == "bind" || cmd == "unbind") && (identity == "" || agents == "") {
+		return errors.New("--identity and --agent are required")
+	}
 	if (cmd == "revoke" || cmd == "disable") && id == "" {
 		return errors.New("--id is required")
 	}
@@ -112,12 +119,32 @@ func Command(ctx context.Context, dataDir string, args []string, out io.Writer) 
 		if err != nil {
 			return err
 		}
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if agents != "" {
+			if t.Agents, err = s.Bind(ctx, t.IdentityID, splitList(agents)); err != nil {
+				return errors.Join(err, s.Revoke(cleanup, t.ID, false))
+			}
+		}
 		if err := tokenfile.Create(path, secret); err != nil {
-			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
 			return errors.Join(err, s.Revoke(cleanup, t.ID, false))
 		}
 		return json.NewEncoder(out).Encode(t)
+	case "bind":
+		bound, err := s.Bind(ctx, identity, splitList(agents))
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(map[string]any{"identity_id": identity, "agents": bound})
+	case "unbind":
+		if err := s.Unbind(ctx, identity, agents); err != nil {
+			return err
+		}
+		bound, err := s.Agents(ctx, identity)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(map[string]any{"identity_id": identity, "agents": bound})
 	case "list":
 		ts, err := s.List(ctx)
 		if err != nil {
