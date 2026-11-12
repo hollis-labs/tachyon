@@ -10,6 +10,7 @@ import { useNarrow } from '../view/useNarrow'
 import { useAutolink } from '../../autolink/context'
 import { pathRefOf } from '../drawer/model'
 import { useAside, PANELS, type PanelId } from './context'
+import { TabStrip } from './TabStrip'
 import { DEMO_DOC } from './fixtures'
 import { useActivity, useBookmarks, usePlan, useRules, useThreadEvents, useTopics, useWork } from './data'
 import { ActivityPanel, ApprovalsPanel, BookmarksPanel, DocPanel, FilesPanel, PlanPanel, TopicsPanel, WorkPanel } from './Panels'
@@ -127,13 +128,13 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
         <button type="button" aria-label={a.full ? 'Exit full window' : 'Full window'} aria-pressed={a.full} title="Full window" onClick={() => { a.setFull(!a.full) }} className="grid size-[22px] place-items-center rounded-control border border-border text-fg-secondary hover:bg-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">{a.full ? <Minimize2 aria-hidden className="size-3" /> : <Maximize2 aria-hidden className="size-3" />}</button>
         <button type="button" aria-label="Close details" onClick={() => { a.setFull(false); a.setOpen(false) }} className="grid size-[22px] place-items-center text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring lg:hidden"><X aria-hidden className="size-3.5" /></button>
       </div>
-      <div role="tablist" aria-label="Panels" className="flex shrink-0 flex-wrap gap-0.5 border-b border-border-subtle px-2 py-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto">
+      <TabStrip label="Panels" activeKey={a.panel}>
         {tabs.map((t) => (
           <button key={t.id} type="button" role="tab" id={`aside-tab-${t.id}`} aria-selected={a.panel === t.id} aria-controls="aside-panel" onClick={() => a.pick(t.id)} className={cn('inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-label text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring', a.panel === t.id && 'border border-border bg-selection text-fg')}>
             {t.label}{counts[t.id] && <small className="font-mono text-caption text-fg-faint">{counts[t.id]}</small>}{t.id === 'doc' && <small className="font-mono text-caption text-fg-faint">⤢</small>}
           </button>
         ))}
-      </div>
+      </TabStrip>
       <div id="aside-panel" role="tabpanel" aria-labelledby={`aside-tab-${a.panel}`} className={cn('flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto p-3', a.panel === 'doc' && 'items-stretch')}>{body}</div>
     </aside>
   )
