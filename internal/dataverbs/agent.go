@@ -23,6 +23,36 @@ const AgentPrefix = "/api/agent/v1/data"
 // that session's thread (tether:<id>) with no thread_ref.
 const SessionHeader = "X-Tether-Session-Id"
 
+// ContinuesHeader and LogicalAgentHeader carry, from the pinned Tether proxy only, the session the
+// caller's session continues (a relaunch) and the logical agent it acts for. chat.plan.* uses them
+// to carry a plan over to a replacement session of the same conversation.
+const (
+	ContinuesHeader    = "X-Tether-Continues-Session-Id"
+	LogicalAgentHeader = "X-Tether-Logical-Agent-Id"
+)
+
+type lineageKey struct{}
+
+// lineage is the trusted continuation context of one proxied request.
+type lineage struct{ agent, continues string }
+
+// withLineage attaches the continuation headers to ctx, only for the pinned proxy.
+func withLineage(ctx context.Context, p auth.Principal, h http.Header) context.Context {
+	if !agentaccess.IsTetherProxy(p) {
+		return ctx
+	}
+	l := lineage{agent: strings.TrimSpace(h.Get(LogicalAgentHeader)), continues: strings.TrimSpace(h.Get(ContinuesHeader))}
+	if l == (lineage{}) {
+		return ctx
+	}
+	return context.WithValue(ctx, lineageKey{}, l)
+}
+
+func lineageOf(ctx context.Context) lineage {
+	l, _ := ctx.Value(lineageKey{}).(lineage)
+	return l
+}
+
 // NewAgentHTTP authenticates every route, including discovery. Browser cookies
 // and claimed actor headers cannot establish a service principal here.
 func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) http.Handler {
@@ -43,7 +73,7 @@ func NewAgentHTTP(s *objects.Service, verifier auth.Verifier, services ...any) h
 			p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: trustedSession(principal, r.Header.Get(SessionHeader))}
 			// Authentication has already verified this request. scopedLocal checks
 			// the verb/kinds and supplies the principal actor for every invocation.
-			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r)
+			newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r.WithContext(withLineage(r.Context(), principal, r.Header)))
 		})).ServeHTTP(w, r)
 	})
 }

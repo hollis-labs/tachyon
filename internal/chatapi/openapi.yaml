@@ -99,6 +99,12 @@ paths:
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Plan"}}}}
         "409": {$ref: "#/components/responses/Error"}
+    delete:
+      tags: [plan]
+      summary: Clear the thread's plan. For a Tether thread it also stops older plans from being carried into it or its replacement sessions.
+      responses:
+        "204": {description: cleared}
+        "404": {$ref: "#/components/responses/Error"}
   /chat/threads/{ref}/plan/steps:
     parameters: [{$ref: "#/components/parameters/ref"}]
     post:

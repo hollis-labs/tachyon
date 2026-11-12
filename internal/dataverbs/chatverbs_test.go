@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -605,5 +606,68 @@ func TestChatVerbsThroughPinnedProxy(t *testing.T) {
 	}
 	if _, err := chatCall(direct, "chat.panel.open", `{"thread_ref":"tether:alice","panel":"plan"}`); err == nil {
 		t.Error("direct credential reached a tether thread")
+	}
+}
+
+// A replacement session carries its predecessor's plan, from the first plan verb, with no
+// thread_ref and before it has a single turn. The continuation headers count only from the proxy.
+func TestChatPlanCarryOverThroughProxy(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	svc := &chatplan.Service{Store: &chatplan.Store{DB: db}, Exists: func(context.Context, string) error { return nil }}
+	known := func(ctx context.Context, ref string) (ChatThread, error) {
+		for _, st := range svc.Store.Sessions(ctx) {
+			if st.Ref == ref {
+				return ChatThread{Ref: ref, AgentID: st.Agent}, nil
+			}
+		}
+		return ChatThread{}, errors.New("none")
+	}
+	plan := &ChatPlan{Service: svc, Thread: known, Threads: func(context.Context) ([]ChatThread, error) { return nil, nil }}
+	scopes := []string{"proxy:tether", "verb:chat.plan.get", "verb:chat.plan.write", "verb:chat.plan.step"}
+	proxy := auth.Principal{Verified: true, ID: "proxy-id", Scopes: scopes}
+	as := func(p auth.Principal, session, agent, continues string) (*scopedLocal, context.Context) {
+		h := http.Header{}
+		h.Set(LogicalAgentHeader, agent)
+		h.Set(ContinuesHeader, continues)
+		return &scopedLocal{local: NewLocal(nil), plan: plan, principal: p, session: trustedSession(p, session)}, withLineage(context.Background(), p, h)
+	}
+	call := func(p auth.Principal, session, agent, continues, verb, in string) (map[string]any, error) {
+		sl, lctx := as(p, session, agent, continues)
+		out, err := invokeChatPlan(lctx, plan, verb, json.RawMessage(in), sl.principal, sl.session)
+		if err != nil {
+			return nil, err
+		}
+		var m map[string]any
+		_ = json.Unmarshal(out, &m)
+		return m, nil
+	}
+	// s1 writes a plan before any turn exists.
+	if out, werr := call(proxy, "s1", "worker", "", "chat.plan.write", `{"title":"Ship","steps":[{"title":"one"}]}`); werr != nil || out["revision"] != 1.0 {
+		t.Fatal("session without turns could not write:", out, werr)
+	}
+	// A forged continuation from a direct credential is ignored (and gets no thread of its own).
+	direct := auth.Principal{Verified: true, ID: "direct", Scopes: scopes[1:]}
+	if _, dctx := as(direct, "s2", "worker", "s1"); lineageOf(dctx) != (lineage{}) {
+		t.Fatal("continuation headers were kept for a non-proxy caller")
+	}
+	// A different logical agent claiming to continue s1 gets nothing.
+	if _, gerr := call(proxy, "s3", "intruder", "s1", "chat.plan.get", `{}`); gerr == nil {
+		t.Fatal("another agent read the carried plan")
+	}
+	// A fresh session of the same agent starts clean.
+	if _, ferr := call(proxy, "s4", "worker", "", "chat.plan.get", `{}`); ferr == nil {
+		t.Fatal("fresh session got a plan")
+	}
+	// The replacement gets the plan on its first get, revision bumped once.
+	out, rerr := call(proxy, "s2", "worker", "s1", "chat.plan.get", `{}`)
+	if rerr != nil || out["title"] != "Ship" || out["revision"] != 2.0 {
+		t.Fatal("replacement did not receive the plan:", out, rerr)
+	}
+	if _, oerr := call(proxy, "s1", "worker", "", "chat.plan.get", `{}`); oerr == nil {
+		t.Fatal("the old session still holds a copy")
 	}
 }

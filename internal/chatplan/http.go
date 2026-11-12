@@ -11,7 +11,7 @@ import (
 
 // Routes are mounted explicitly by the server under chatapi.Prefix, each behind RequireOperator.
 var Routes = []string{
-	"GET /threads/{ref}/plan", "PUT /threads/{ref}/plan",
+	"GET /threads/{ref}/plan", "PUT /threads/{ref}/plan", "DELETE /threads/{ref}/plan",
 	"POST /threads/{ref}/plan/steps", "PATCH /threads/{ref}/plan/steps/{id}", "POST /threads/{ref}/plan/reorder",
 }
 
@@ -48,7 +48,7 @@ func problem(w http.ResponseWriter, err error) {
 func (h *Handler) Mux() http.Handler {
 	m := http.NewServeMux()
 	hs := map[string]http.HandlerFunc{
-		"GET /threads/{ref}/plan": h.get, "PUT /threads/{ref}/plan": h.put,
+		"GET /threads/{ref}/plan": h.get, "PUT /threads/{ref}/plan": h.put, "DELETE /threads/{ref}/plan": h.clear,
 		"POST /threads/{ref}/plan/steps": h.addStep, "PATCH /threads/{ref}/plan/steps/{id}": h.patchStep, "POST /threads/{ref}/plan/reorder": h.reorder,
 	}
 	for _, r := range Routes {
@@ -90,6 +90,21 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, 200, p)
+}
+
+// clear removes the thread's plan (the operator's "clear plan" / "new conversation") and stops
+// an older plan from being carried into this thread's replacements.
+func (h *Handler) clear(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	if err := h.Service.Clear(r.Context(), t); err != nil {
+		problem(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(204)
 }
 
 type stepJSON struct {

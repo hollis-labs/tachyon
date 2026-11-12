@@ -86,6 +86,27 @@ type Aggregator struct {
 	PlanProgress  func(ctx context.Context, refs []string) map[string]Progress // T2: chat_plans
 	CardBlocks    func(ctx context.Context, refs []string) map[string]int      // T5: open chat_card_refs
 	CardApprovals func(ctx context.Context, refs []string) map[string]int      // the open ones that are approvals
+	// Sessions lists Tether sessions known from the plan lineage, which may have no inbox turn yet.
+	// Those holding a plan are listed; any of them resolves through Get.
+	Sessions func(ctx context.Context) []SessionStub
+}
+
+// SessionStub is a Tether session known without inbox turns.
+type SessionStub struct {
+	Ref     string
+	Agent   string
+	SeenNS  int64
+	HasPlan bool
+}
+
+func stubSummary(st SessionStub) Summary {
+	id := strings.TrimPrefix(st.Ref, "tether:")
+	title := "Session " + id
+	ms := st.SeenNS / 1e6
+	return Summary{Ref: st.Ref, Source: chatapi.SourceTether, Title: title, CreatedAt: ms, LastAt: ms,
+		Agent:      Agent{Address: "tether://agent/" + st.Agent, Label: st.Agent, Kind: "agent", AgentID: st.Agent},
+		Capability: Capability{Mode: "inbox", Detail: "This session has no turns yet; it appears here because it holds a plan."},
+		Context:    Context{Source: "unknown"}, search: strings.ToLower(title + "\n" + st.Agent)}
 }
 
 func preview(s string) string {
@@ -243,8 +264,17 @@ func (a *Aggregator) all(ctx context.Context) ([]Summary, error) {
 	if err != nil {
 		return nil, err
 	}
+	have := map[string]bool{}
 	for _, g := range groups {
 		out = append(out, a.tetherSummary(g, states[g.ref].ReadNS))
+		have[g.ref] = true
+	}
+	if a.Sessions != nil {
+		for _, st := range a.Sessions(ctx) {
+			if st.HasPlan && !have[st.Ref] {
+				out = append(out, stubSummary(st))
+			}
+		}
 	}
 	refs := make([]string, len(out))
 	for i := range out {
@@ -362,6 +392,17 @@ func (a *Aggregator) Get(ctx context.Context, ref string) (Summary, error) {
 	for _, s := range all {
 		if s.Ref == ref {
 			return s, nil
+		}
+	}
+	if a.Sessions != nil {
+		for _, st := range a.Sessions(ctx) {
+			if st.Ref == ref {
+				s := stubSummary(st)
+				if state, err := a.State.Get(ctx, ref); err == nil {
+					a.overlay(&s, state)
+				}
+				return s, nil
+			}
 		}
 	}
 	return Summary{}, ErrNotFound
