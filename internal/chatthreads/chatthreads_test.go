@@ -548,3 +548,23 @@ func TestMessageAndDeliveryFramesAreReplayable(t *testing.T) {
 		t.Fatalf("resumed: %s %v", id, ev)
 	}
 }
+
+func TestForAgentResolvesOwnThreadsOnly(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	e.seedTurn(t, "f1", "s1", "terminal", "old", "2020-10-30T10:00:00Z", false)
+	e.seedTurn(t, "f2", "s2", "terminal", "new", "2020-10-30T11:00:00Z", false)
+	// The tether agent id is agt_demo, bare or as an address.
+	got, err := e.h.Agg.ForAgent(ctx, "tether://agent/agt_demo", "")
+	if err != nil || got.Ref != "tether:s2" {
+		t.Fatal(got.Ref, err)
+	}
+	if got, err = e.h.Agg.ForAgent(ctx, "agt_demo", "tether:s1"); err != nil || got.Ref != "tether:s1" {
+		t.Fatal(got.Ref, err)
+	}
+	for _, c := range [][2]string{{"someone-else", "tether:s1"}, {"someone-else", ""}, {"", ""}, {"agt_demo", "tether:nope"}} {
+		if _, err := e.h.Agg.ForAgent(ctx, c[0], c[1]); err != ErrNotFound {
+			t.Errorf("%v: %v", c, err)
+		}
+	}
+}

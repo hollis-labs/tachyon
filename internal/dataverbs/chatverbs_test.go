@@ -241,7 +241,18 @@ func TestChatPlanVerbs(t *testing.T) {
 		},
 		Note: func(context.Context, string, chatplan.Plan) { notes++ },
 	}
-	p := &scopedLocal{local: NewLocal(nil), plan: &ChatPlan{Service: svc}, principal: auth.Principal{Verified: true, ID: "agent",
+	p := &scopedLocal{local: NewLocal(nil), plan: &ChatPlan{Service: svc, Thread: func(_ context.Context, c auth.Principal, ref string) (string, error) {
+		if c.Display != "me" {
+			return "", errors.New("not yours")
+		}
+		switch ref {
+		case "":
+			return "tether:s", nil
+		case "app:t1", "app:t2", "app:t3", "tether:s":
+			return ref, nil
+		}
+		return "", errors.New("not yours")
+	}}, principal: auth.Principal{Verified: true, ID: "agent", Display: "me",
 		Scopes: []string{"verb:chat.plan.get", "verb:chat.plan.write", "verb:chat.plan.step"}}}
 	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"app:t1"}`); err == nil {
 		t.Fatal("get before any plan should be not found")
@@ -271,7 +282,8 @@ func TestChatPlanVerbs(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	for name, args := range map[string]string{
-		"tether":  `{"thread_ref":"tether:s","steps":[]}`,
+		"other":   `{"thread_ref":"app:other","steps":[]}`,
+		"badref":  `{"thread_ref":"nope","steps":[]}`,
 		"ghost":   `{"thread_ref":"app:ghost","steps":[]}`,
 		"project": `{"thread_ref":"app:t1","scope":"project","steps":[]}`,
 		"status":  `{"thread_ref":"app:t2","steps":[{"title":"a","status":"nope"}]}`,
@@ -281,6 +293,18 @@ func TestChatPlanVerbs(t *testing.T) {
 			t.Errorf("%s: expected an error", name)
 		}
 	}
+	// No thread_ref: the caller's own thread (any source), refused for someone who owns none.
+	if out, err = chatCall(p, "chat.plan.write", `{"title":"Mine","steps":[{"title":"A"}]}`); err != nil || out["revision"] != 1.0 {
+		t.Fatal(out, err)
+	}
+	if got, err = chatCall(p, "chat.plan.get", `{"thread_ref":"tether:s"}`); err != nil || got["title"] != "Mine" {
+		t.Fatal(got, err)
+	}
+	p.principal.Display = "stranger"
+	if _, err = chatCall(p, "chat.plan.get", `{}`); err == nil {
+		t.Fatal("a stranger read a thread")
+	}
+	p.principal.Display = "me"
 	if v := p.Verbs(); len(v) != 3 {
 		t.Fatalf("verbs: %v", v)
 	}

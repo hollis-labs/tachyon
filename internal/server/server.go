@@ -24,6 +24,7 @@ import (
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
+	"github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
@@ -668,7 +669,10 @@ func (s *Server) Routes() http.Handler {
 			}
 			var planTools *dataverbs.ChatPlan
 			if s.chatPlan != nil {
-				planTools = &dataverbs.ChatPlan{Service: s.chatPlan}
+				planTools = &dataverbs.ChatPlan{Service: s.chatPlan, Thread: func(ctx context.Context, caller auth.Principal, ref string) (string, error) {
+					sum, err := s.chatThreads.Agg.ForAgent(ctx, caller.Display, ref)
+					return sum.Ref, err
+				}}
 			}
 			var termTools *dataverbs.ChatTerminal
 			if s.chatTerminal != nil {

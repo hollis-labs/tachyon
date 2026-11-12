@@ -65,6 +65,12 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   unparked (`todo`), else 409 `linked_step`. `SyncTaskStatuses` is the one-way Torque sync (not scheduled yet). Agent writes
   (`chat.plan.get|write|step`, preset `chat-plan`) can propose and cancel but never approve, post a `kind: "plan"` message
   (`meta.plan_id`) to the thread and send a `panel` signal. Events: `plan {plan_id, revision, progress}`.
+  The verbs work for every thread source (`app:<id>` and `tether:<id>`; the tether id is the Tether `session_id`, else the
+  `local_session_id`). `thread_ref` is optional: left out, the verb uses the caller's own most recently active, unarchived thread.
+  A thread belongs to the agent that answers in it: the credential's identity name must equal the thread's `agent.agent_id`
+  (a bare id or a `tether://agent/<id>` / `tachyon://agent/<id>` address), so issue a chat-plan credential with `--name <agent id>`.
+  An explicit `thread_ref` of a thread the caller does not belong to answers 404, same as a missing one.
+  Only app threads get the `kind: "plan"` message; every source gets the `plan` event, the activity row and the summary refresh.
 - T6 (activity, panel events, context meter): `GET .../activity?before_seq&limit<=100&type&q&actor` (newest first, `has_more`),
   `POST .../activity/comments {body<=2000}` (always `actor: "user"`; any other field is a 400), `GET .../context`. `chat_activity`
   is append-only and keeps the newest 5000 rows per thread; its `seq` is the feed cursor (the SSE `id:` of an `activity` event comes

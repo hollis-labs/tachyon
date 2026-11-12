@@ -362,3 +362,47 @@ func (a *Aggregator) Get(ctx context.Context, ref string) (Summary, error) {
 	}
 	return Summary{}, ErrNotFound
 }
+
+// agentKey reduces an agent address ("tether://agent/x", "tachyon://agent/x" or a bare id) to its id.
+func agentKey(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	return s
+}
+
+// ForAgent resolves a thread the agent belongs to: a thread belongs to the agent that answers in it. A
+// non-empty ref must name such a thread (ErrNotFound otherwise, so an agent cannot tell another agent's
+// threads from missing ones); an empty ref picks the agent's most recently active, unarchived thread of
+// any source.
+func (a *Aggregator) ForAgent(ctx context.Context, agent, ref string) (Summary, error) {
+	key := agentKey(agent)
+	if key == "" {
+		return Summary{}, ErrNotFound
+	}
+	all, err := a.all(ctx)
+	if err != nil {
+		return Summary{}, err
+	}
+	var best *Summary
+	for i := range all {
+		s := &all[i]
+		if agentKey(s.Agent.AgentID) != key {
+			continue
+		}
+		if ref != "" {
+			if s.Ref == ref {
+				return *s, nil
+			}
+			continue
+		}
+		if !s.Archived && (best == nil || s.LastAt > best.LastAt) {
+			best = s
+		}
+	}
+	if best == nil {
+		return Summary{}, ErrNotFound
+	}
+	return *best, nil
+}
