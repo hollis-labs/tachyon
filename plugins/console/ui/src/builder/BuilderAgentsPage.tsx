@@ -51,7 +51,29 @@ export function BuilderAgentsPage() {
   const counts = summary.status === 'ready' ? summary.data : undefined
   const retiredShown = counts?.capabilities?.retired === true
 
-  const rows = list.status === 'ready' ? list.data.agents : []
+  // The server pages the list (25 at a time); later pages are appended here and reset whenever the query reloads.
+  const [more, setMore] = useState<AgentRow[]>([])
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [paging, setPaging] = useState<'idle' | 'busy' | 'error'>('idle')
+  useEffect(() => {
+    setMore([])
+    setPaging('idle')
+    setCursor(list.status === 'ready' ? (list.data.next_cursor ?? null) : null)
+  }, [list])
+  const loadMore = () => {
+    if (!cursor) return
+    setPaging('busy')
+    builderApi.agents({ q, provider, state, cursor }).then(
+      (page) => {
+        setMore((prev) => [...prev, ...page.agents])
+        setCursor(page.next_cursor ?? null)
+        setPaging('idle')
+      },
+      () => setPaging('error'),
+    )
+  }
+
+  const rows = list.status === 'ready' ? [...list.data.agents, ...more] : []
   const providers = useMemo(() => [...new Set(rows.map((r) => r.provider).filter(Boolean))].sort(), [rows])
   const select = (next: string) => navigate(`/builder/agents/${encodeURIComponent(next)}`)
 
@@ -119,6 +141,18 @@ export function BuilderAgentsPage() {
               <p className="p-4 text-control text-fg-muted">{q || provider ? 'No agents match. Clear the search or filter.' : `No ${STATE_LABEL[state].toLowerCase()} agents.`}</p>
             )}
             {list.status === 'ready' && rows.length > 0 && <Rows rows={rows} selected={id} onSelect={select} />}
+            {list.status === 'ready' && cursor && (
+              <div className="flex flex-col items-start gap-2 border-t border-border-subtle p-3">
+                {paging === 'error' && (
+                  <p role="alert" className="text-label text-fg-secondary">
+                    Could not load more agents.
+                  </p>
+                )}
+                <Button type="button" variant="outline" size="sm" onClick={loadMore} disabled={paging === 'busy'}>
+                  {paging === 'busy' ? 'Loading' : paging === 'error' ? 'Retry' : 'Load more'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         <div className={`${id ? 'flex' : 'hidden sm:flex'} min-w-0 flex-1 flex-col`}>
