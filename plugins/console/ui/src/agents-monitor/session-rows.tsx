@@ -81,7 +81,7 @@ export function ContextBar({ pct }: { pct: number | null }) {
   const v = Math.max(0, Math.min(100, pct))
   return (
     <span role="progressbar" aria-label={AGENTS.contextLabel(pct)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={v} className="relative block h-4 overflow-hidden rounded-sm bg-surface-hover">
-      <i className={cn('absolute inset-y-0 left-0', v >= 90 ? 'bg-danger/70' : 'bg-fg/50')} style={{ width: `${v}%` }} />
+      <i className={cn('absolute inset-y-0 left-0', v >= 90 ? 'bg-danger/30' : 'bg-fg/50')} style={{ width: `${v}%` }} />
       <b className="absolute right-1.5 top-0 font-mono text-micro font-semibold leading-4 text-fg">{v}%</b>
     </span>
   )
