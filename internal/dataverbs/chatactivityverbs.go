@@ -21,18 +21,18 @@ type ChatActivity struct {
 }
 
 type chatActivityAppend struct {
-	ThreadRef string              `json:"thread_ref,omitempty"`
-	Type      string              `json:"type"`
-	Title     string              `json:"title"`
-	Summary   string              `json:"summary,omitempty"`
-	Cite      []chatactivity.Cite `json:"cite,omitempty"`
-	ReviewRef *string             `json:"review_ref,omitempty"`
+	ThreadRef string              `json:"thread_ref,omitempty" desc:"Chat thread: app:<id>, or tether:<your session id>. Through Tether, omit it to use your own session's thread; any other thread is denied."`
+	Type      string              `json:"type" desc:"task.closed (you finished a task) or note (anything else worth a line)."`
+	Title     string              `json:"title" desc:"Headline the operator sees, up to 120 characters, e.g. \"Merged the login fix\"."`
+	Summary   string              `json:"summary,omitempty" desc:"One or two lines of detail, up to 200 characters."`
+	Cite      []chatactivity.Cite `json:"cite,omitempty" desc:"Up to 8 things the entry refers to, shown as chips."`
+	ReviewRef *string             `json:"review_ref,omitempty" desc:"What the operator should review, e.g. a pull request reference."`
 }
 type chatPanelOpen struct {
-	ThreadRef string `json:"thread_ref,omitempty"`
-	Panel     string `json:"panel"`
-	Ref       string `json:"ref,omitempty"`
-	Reason    string `json:"reason,omitempty"`
+	ThreadRef string `json:"thread_ref,omitempty" desc:"Chat thread: app:<id>, or tether:<your session id>. Through Tether, omit it to use your own session's thread; any other thread is denied."`
+	Panel     string `json:"panel" desc:"plan, topics, bookmarks, work, activity, approvals, files or doc."`
+	Ref       string `json:"ref,omitempty" desc:"Item inside the panel to point at (a plan step id, topic id, task id, file id), up to 200 characters. The screen may not use it yet."`
+	Reason    string `json:"reason,omitempty" desc:"Why the operator should look, up to 200 characters. Shown with the panel."`
 }
 
 // agentActivityTypes are the only types an agent may write. The rest are written by Tachyon itself,
@@ -41,9 +41,9 @@ var agentActivityTypes = map[string]bool{"task.closed": true, "note": true}
 
 func chatActivityVerbs() []Verb {
 	return []Verb{
-		{Name: "chat.activity.append", Mutates: true, Description: "Add an entry to your chat thread's activity feed. Use to leave the operator a short, citable record such as a closed task or a note. type is task.closed or note. title (up to 120 characters) and summary (up to 200) are shown to the operator; cite points at tasks, pull requests or files as {kind: task|pr|file, ref, label}; review_ref names what to review. The entry is attributed to you: you cannot write as the operator or as Tachyon. 30 per minute per thread." + threadRefRule,
+		{Name: "chat.activity.append", Mutates: true, Description: "Add an entry to your chat thread's activity feed. Use when you finish something the operator would want to see later: a closed task, a merged pull request, a decision. Keep it to a short, citable record. type is task.closed or note. title (up to 120 characters) and summary (up to 200) are shown to the operator; cite points at tasks, pull requests or files as {kind: task|pr|file, ref, label}; review_ref names what to review. The entry is attributed to you: you cannot write as the operator or as Tachyon. 30 per minute per thread." + threadRefRule,
 			InputSchema: inputSchema(reflect.TypeFor[chatActivityAppend](), []string{"type", "title"})},
-		{Name: "chat.panel.open", Mutates: true, Description: "Ask the operator's chat screen to open a side panel in your chat thread. Use when the operator should look at something you just produced. panel is one of plan, topics, bookmarks, work, activity, approvals, files, doc; ref optionally names the item. This is a hint the screen may ignore, for example when the operator locked their layout. At most 6 per minute per thread." + threadRefRule,
+		{Name: "chat.panel.open", Mutates: true, Description: "Ask the operator's chat screen to open a side panel (the strip beside the conversation that shows the plan, topics, bookmarks, work, activity, approvals, files and documents of this thread). Use when the operator should look at something you just produced or must decide something. panel is one of plan, topics, bookmarks, work, activity, approvals, files, doc; ref optionally names one item in it (a plan step id, topic id, task id, file id; the screen opens the panel itself and may not scroll to it yet). Returns {ok: true} once the hint is sent; it is a hint the screen may ignore, for example when the operator locked their layout, so it does not mean the operator looked. At most 6 per minute per thread." + threadRefRule,
 			InputSchema: inputSchema(reflect.TypeFor[chatPanelOpen](), []string{"panel"})},
 	}
 }

@@ -37,9 +37,10 @@ var tesseractVerbs = []string{"tesseract.recall", "tesseract.get"}
 // chat-workspace-read preset grants them; they name no object kinds.
 var chatWorkspaceVerbs = []string{"chat.workspace.list", "chat.workspace.get"}
 
-// ChatTopicVerbs let an agent add a topic (a named jump point) to an app chat thread. Only the
-// chat-topic-add preset grants them; they name no object kinds.
-var chatTopicVerbs = []string{"chat.topic.add"}
+// ChatTopicVerbs let an agent add a topic (a named jump point) to a chat thread and read what the
+// operator sees in the Topics, Bookmarks and Approvals panels. Only the chat-topic-add preset grants
+// them; they name no object kinds.
+var chatTopicVerbs = []string{"chat.topic.add", "chat.topic.list", "chat.bookmark.list", "chat.approvals.list"}
 
 // ChatPlanVerbs read and write the working plan of an app chat thread. Only the chat-plan preset
 // grants them; they name no object kinds.

@@ -177,3 +177,29 @@ func TestRuntimeToolApproval(t *testing.T) {
 		t.Fatal("a medium request must still ask")
 	}
 }
+
+func TestOpenApprovalsListsOnlyOpenApprovalLikeCards(t *testing.T) {
+	b, st, ctx := setup(t)
+	question(t, st, ctx, "q1")
+	approval := question(t, st, ctx, "a1")
+	_ = approval
+	if err := b.Refs.Bind(ctx, "q1", "app:t1", "m1", "card.question"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Refs.Bind(ctx, "a1", "app:t1", "m2", "card.tool_approval"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.Refs.OpenApprovals(ctx, "app:t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ItemID != "a1" || got[0].MessageRef != "m2" || got[0].State != "presented" {
+		t.Fatalf("open approvals: %+v (a question card is not an approval)", got)
+	}
+	if other, _ := b.Refs.OpenApprovals(ctx, "app:other"); len(other) != 0 {
+		t.Fatalf("another thread's approvals leaked: %+v", other)
+	}
+	if n := b.Refs.OpenApprovalCounts(ctx, []string{"app:t1"})["app:t1"]; n != len(got) {
+		t.Fatalf("the list (%d) and the badge count (%d) disagree", len(got), n)
+	}
+}

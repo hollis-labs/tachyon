@@ -105,6 +105,38 @@ func (s *Store) OpenApprovalCounts(ctx context.Context, refs []string) map[strin
 	return s.openCounts(ctx, refs, ` AND (c.kind LIKE '%approval%' OR c.kind IN ('card.plan','card.dispatch'))`)
 }
 
+// OpenApproval is one card still waiting for an answer, as an agent may see it.
+type OpenApproval struct {
+	ItemID     string `json:"item_id"`
+	Kind       string `json:"kind"`
+	State      string `json:"state"`
+	MessageRef string `json:"message_ref,omitempty"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+// OpenApprovals lists the thread's approval-like cards that are still open, oldest first (the same set
+// OpenApprovalCounts counts, so the Approvals panel badge and this list agree).
+func (s *Store) OpenApprovals(ctx context.Context, thread string) ([]OpenApproval, error) {
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT c.item_id, c.kind, a.state, c.message_ref, c.created_ns FROM chat_card_refs c JOIN approval_items a ON a.id = c.item_id
+ WHERE c.thread_ref = ? AND a.state IN ('submitted','validated','staged','presented') AND (c.kind LIKE '%approval%' OR c.kind IN ('card.plan','card.dispatch')) ORDER BY c.created_ns LIMIT 100`, thread)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []OpenApproval{}
+	for rows.Next() {
+		var o OpenApproval
+		var msg sql.NullString
+		var ns int64
+		if err := rows.Scan(&o.ItemID, &o.Kind, &o.State, &msg, &ns); err != nil {
+			return nil, err
+		}
+		o.MessageRef, o.CreatedAt = msg.String, ns/1e6
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) openCounts(ctx context.Context, refs []string, extra string) map[string]int {
 	out := map[string]int{}
 	if len(refs) == 0 {

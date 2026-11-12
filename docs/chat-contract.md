@@ -55,7 +55,7 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
 - T3 (topics, bookmarks): `GET/POST .../topics`, `DELETE .../topics/{id}`, `GET/POST .../bookmarks`, `DELETE .../bookmarks/{id}`.
   `message_ref` must be a message of that thread (400 otherwise); a topic's `seq` is resolved server-side for click-to-jump.
   POST bookmark is idempotent per (thread, message): 201 on create, 200 with the existing row on repeat (a repeat note updates it).
-  Caps: 200 topics, 500 bookmarks per thread (413 `limit_reached`). Agent verb `chat.topic.add` (app threads, preset `chat-topic-add`).
+  Caps: 200 topics, 500 bookmarks per thread (413 `limit_reached`). Agent verbs `chat.topic.add` (app threads, preset `chat-topic-add`) and the read verbs `chat.topic.list`, `chat.bookmark.list` and `chat.approvals.list` (same preset and thread rule; they return `{topics}`, `{bookmarks}` and `{approvals: [{item_id, kind, state, message_ref, created_at}]}`, the last being the open approval-like cards behind the Approvals panel badge; read only, an agent cannot answer them). Schemas: every input field carries a `description` (Go struct tag `desc:`), and every chat and terminal verb description has a "Use when" sentence; a test enforces both. `chat.panel.open` returns `{ok:true}` once the hint is sent; `ref` is recorded in the event but the screen does not scroll to it yet.
 - T2 (plan/todos): one plan per thread (`scope=thread`) and one per project (`scope=project`, resolved from the thread's
   `project_id`; 409 `no_project` when the chat has none). A todo list is a plan with `title: null`. `PUT .../plan` replaces the
   whole plan (`expected_revision` 0 to create; 409 on a stale one; `id`, if sent, must name the existing plan); steps keep

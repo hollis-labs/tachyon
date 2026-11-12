@@ -670,6 +670,12 @@ func (s *Server) Routes() http.Handler {
 			var topicTools *dataverbs.ChatTopics
 			if s.chatTopics != nil {
 				topicTools = &dataverbs.ChatTopics{Store: s.chatTopics.Store, Thread: s.chatTopics.Exists, MessageSeq: s.chatTopics.MessageSeq,
+					OpenApprovals: func(ctx context.Context, thread string) ([]chatcards.OpenApproval, error) {
+						if s.chatCards == nil {
+							return []chatcards.OpenApproval{}, nil
+						}
+						return s.chatCards.Refs.OpenApprovals(ctx, thread)
+					},
 					Published: func(ctx context.Context, thread, op, id string) {
 						_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventTopic, map[string]any{"op": op, "id": id})
 						if op == "add" && s.chatActivity != nil {
