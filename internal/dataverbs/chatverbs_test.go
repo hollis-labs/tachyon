@@ -536,3 +536,74 @@ func TestTrustedSessionHeaderOnlyFromProxy(t *testing.T) {
 		t.Fatalf("pinned proxy header = %q", got)
 	}
 }
+
+// The pinned Tether proxy reaches workspace, topic, activity and panel verbs for its own session
+// thread only (tether:<session>); thread_ref is optional and defaults to it.
+func TestChatVerbsThroughPinnedProxy(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	exists := func(_ context.Context, ref string) error {
+		if ref == "tether:alice" || ref == "tether:bob" {
+			return nil
+		}
+		return errors.New("none")
+	}
+	st := &chatworkspace.Store{DB: db, Dir: filepath.Join(t.TempDir(), "workspace")}
+	addText(t, st, "tether:alice", "notes.txt", "text/plain", []byte("hello"), true)
+	rec := &chatactivity.Recorder{Store: &chatactivity.Store{DB: db}, Publish: func(context.Context, string, string, map[string]any) {}}
+	scopes := []string{"proxy:tether", "verb:chat.workspace.list", "verb:chat.workspace.get", "verb:chat.topic.add", "verb:chat.activity.append", "verb:chat.panel.open"}
+	proxy := auth.Principal{Verified: true, ID: "proxy-id", Display: "tether-mcp-proxy", Scopes: scopes}
+	as := func(session string) *scopedLocal {
+		return &scopedLocal{local: NewLocal(nil), principal: proxy, session: session,
+			chat:     &ChatWorkspace{Store: st, Thread: exists},
+			topics:   &ChatTopics{Store: &chattopics.Store{DB: db}, Thread: exists},
+			activity: &ChatActivity{Rec: rec, Thread: exists}}
+	}
+	calls := map[string]string{
+		"chat.workspace.list":  `%s`,
+		"chat.workspace.get":   `{%s"id":"ws_notes.txt"}`,
+		"chat.topic.add":       `{%s"title":"t","message_ref":"m1"}`,
+		"chat.activity.append": `{%s"type":"note","title":"x"}`,
+		"chat.panel.open":      `{%s"panel":"plan"}`,
+	}
+	args := func(verb, ref string) string {
+		in := ""
+		if ref != "" {
+			in = `"thread_ref":"` + ref + `",`
+		}
+		if verb == "chat.workspace.list" {
+			return "{" + strings.TrimSuffix(in, ",") + "}"
+		}
+		return strings.Replace(calls[verb], "%s", in, 1)
+	}
+	for verb := range calls {
+		for _, ref := range []string{"", "tether:alice"} {
+			if _, err := chatCall(as("alice"), verb, args(verb, ref)); err != nil {
+				t.Errorf("%s ref=%q: own session refused: %v", verb, ref, err)
+			}
+		}
+		for _, ref := range []string{"tether:bob", "app:t1"} {
+			if _, err := chatCall(as("alice"), verb, args(verb, ref)); err == nil {
+				t.Errorf("%s: alice's session reached %s", verb, ref)
+			}
+		}
+		if _, err := chatCall(as(""), verb, args(verb, "")); err == nil {
+			t.Errorf("%s: served with no session id", verb)
+		}
+		if _, err := chatCall(as("carol"), verb, args(verb, "")); err == nil {
+			t.Errorf("%s: session without a thread resolved", verb)
+		}
+	}
+	// A direct credential still needs an app: thread_ref and cannot use a session id.
+	direct := as("alice")
+	direct.principal = auth.Principal{Verified: true, ID: "agent", Scopes: scopes[1:]}
+	if _, err := chatCall(direct, "chat.panel.open", `{"panel":"plan"}`); err == nil {
+		t.Error("direct credential without thread_ref was served")
+	}
+	if _, err := chatCall(direct, "chat.panel.open", `{"thread_ref":"tether:alice","panel":"plan"}`); err == nil {
+		t.Error("direct credential reached a tether thread")
+	}
+}

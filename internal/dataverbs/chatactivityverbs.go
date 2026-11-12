@@ -21,7 +21,7 @@ type ChatActivity struct {
 }
 
 type chatActivityAppend struct {
-	ThreadRef string              `json:"thread_ref"`
+	ThreadRef string              `json:"thread_ref,omitempty"`
 	Type      string              `json:"type"`
 	Title     string              `json:"title"`
 	Summary   string              `json:"summary,omitempty"`
@@ -29,7 +29,7 @@ type chatActivityAppend struct {
 	ReviewRef *string             `json:"review_ref,omitempty"`
 }
 type chatPanelOpen struct {
-	ThreadRef string `json:"thread_ref"`
+	ThreadRef string `json:"thread_ref,omitempty"`
 	Panel     string `json:"panel"`
 	Ref       string `json:"ref,omitempty"`
 	Reason    string `json:"reason,omitempty"`
@@ -41,14 +41,14 @@ var agentActivityTypes = map[string]bool{"task.closed": true, "note": true}
 
 func chatActivityVerbs() []Verb {
 	return []Verb{
-		{Name: "chat.activity.append", Mutates: true, Description: "Add an entry to an app chat thread's activity feed (thread_ref looks like app:<id>). type is task.closed or note. title (up to 120 characters) and summary (up to 200) are shown to the operator; cite points at tasks, pull requests or files as {kind: task|pr|file, ref, label}; review_ref names what to review. The entry is attributed to you: you cannot write as the operator or as Tachyon.",
-			InputSchema: inputSchema(reflect.TypeFor[chatActivityAppend](), []string{"thread_ref", "type", "title"})},
-		{Name: "chat.panel.open", Mutates: true, Description: "Ask the operator's chat screen to open a side panel (thread_ref looks like app:<id>). panel is one of plan, topics, bookmarks, work, activity, approvals, files, doc; ref optionally names the item. This is a hint the screen may ignore, for example when the operator locked their layout. At most 6 per minute per thread.",
-			InputSchema: inputSchema(reflect.TypeFor[chatPanelOpen](), []string{"thread_ref", "panel"})},
+		{Name: "chat.activity.append", Mutates: true, Description: "Add an entry to your chat thread's activity feed. Use to leave the operator a short, citable record such as a closed task or a note. type is task.closed or note. title (up to 120 characters) and summary (up to 200) are shown to the operator; cite points at tasks, pull requests or files as {kind: task|pr|file, ref, label}; review_ref names what to review. The entry is attributed to you: you cannot write as the operator or as Tachyon. 30 per minute per thread." + threadRefRule,
+			InputSchema: inputSchema(reflect.TypeFor[chatActivityAppend](), []string{"type", "title"})},
+		{Name: "chat.panel.open", Mutates: true, Description: "Ask the operator's chat screen to open a side panel in your chat thread. Use when the operator should look at something you just produced. panel is one of plan, topics, bookmarks, work, activity, approvals, files, doc; ref optionally names the item. This is a hint the screen may ignore, for example when the operator locked their layout. At most 6 per minute per thread." + threadRefRule,
+			InputSchema: inputSchema(reflect.TypeFor[chatPanelOpen](), []string{"panel"})},
 	}
 }
 
-func invokeChatActivity(ctx context.Context, c *ChatActivity, name string, raw json.RawMessage, principal auth.Principal) (json.RawMessage, error) {
+func invokeChatActivity(ctx context.Context, c *ChatActivity, name string, raw json.RawMessage, principal auth.Principal, session string) (json.RawMessage, error) {
 	if c == nil || c.Rec == nil {
 		return nil, svcerr.New(svcerr.CodeUnavailable, "Chat activity is not enabled on this host.")
 	}
@@ -98,12 +98,9 @@ func invokeChatActivity(ctx context.Context, c *ChatActivity, name string, raw j
 	default:
 		return nil, denied()
 	}
-	t, err := chatapi.ParseRef(threadRef)
-	if err != nil || t.Source != chatapi.SourceApp {
-		return nil, invalid("thread_ref must be an app chat thread such as app:<id>.")
-	}
-	if c.Thread != nil && c.Thread(ctx, t.String()) != nil {
-		return nil, svcerr.New(svcerr.CodeNotFound, "No such chat thread.")
+	t, err := chatThreadFor(ctx, threadRef, principal, session, c.Thread)
+	if err != nil {
+		return nil, err
 	}
 	out, err := run(t)
 	if err != nil {
