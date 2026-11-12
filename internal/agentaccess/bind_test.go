@@ -89,3 +89,68 @@ func openStore(t *testing.T, dir string) *Store {
 	}
 	return &Store{DB: db}
 }
+
+func TestPinProxy(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	var out bytes.Buffer
+	issue := func(name, file string) Token {
+		out.Reset()
+		if err := Command(ctx, dir, []string{"issue", "--name", name, "--preset", "chat-plan", "--token-file", filepath.Join(dir, file)}, &out); err != nil {
+			t.Fatal(err)
+		}
+		var tk Token
+		if err := json.Unmarshal(out.Bytes(), &tk); err != nil {
+			t.Fatal(err)
+		}
+		return tk
+	}
+	proxyTok, other := issue("tether-mcp-proxy", "p"), issue("someone-else", "o")
+	scopes := func(file string) []string {
+		secret, _ := os.ReadFile(filepath.Join(dir, file))
+		s := openStore(t, dir)
+		defer s.DB.Close()
+		p, err := s.Verify(ctx, string(bytes.TrimSpace(secret)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p.Scopes
+	}
+	if slices.Contains(scopes("p"), "proxy:tether") {
+		t.Fatal("unpinned identity carries the proxy scope")
+	}
+	// Pin applies to the already-issued token; other identities are untouched.
+	if err := Command(ctx, dir, []string{"pin-proxy", "--identity", proxyTok.IdentityID}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(scopes("p"), "proxy:tether") || slices.Contains(scopes("o"), "proxy:tether") {
+		t.Fatal("pin did not apply to exactly the pinned identity")
+	}
+	// Pinning another identity moves the pin (there is only ever one).
+	if err := Command(ctx, dir, []string{"pin-proxy", "--identity", other.IdentityID}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(scopes("p"), "proxy:tether") || !slices.Contains(scopes("o"), "proxy:tether") {
+		t.Fatal("pin did not move")
+	}
+	out.Reset()
+	if err := Command(ctx, dir, []string{"list"}, &out); err != nil || !bytes.Contains(out.Bytes(), []byte(`"proxy":true`)) {
+		t.Fatal("list does not show the pin:", out.String(), err)
+	}
+	// Unknown / disabled identity, missing flag, clear, clear again.
+	if err := Command(ctx, dir, []string{"pin-proxy", "--identity", "5b0d3a3e-1111-4111-8111-111111111111"}, &out); err == nil {
+		t.Fatal("pinned a missing identity")
+	}
+	if err := Command(ctx, dir, []string{"pin-proxy"}, &out); err == nil {
+		t.Fatal("pin-proxy without --identity accepted")
+	}
+	if err := Command(ctx, dir, []string{"unpin-proxy"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(scopes("o"), "proxy:tether") {
+		t.Fatal("unpin left the scope")
+	}
+	if err := Command(ctx, dir, []string{"unpin-proxy"}, &out); err == nil {
+		t.Fatal("unpin with nothing pinned should report it")
+	}
+}
