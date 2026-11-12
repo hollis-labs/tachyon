@@ -547,13 +547,6 @@ func (s *Store) LinkStep(ctx context.Context, planID, stepID, taskRef string, ex
 	})
 }
 
-// PurgeThread deletes the thread's plan (the explicit thread-delete path).
-func (s *Store) PurgeThread(ctx context.Context, thread string) error {
-	return s.DB.Writer.Submit(ctx, "chat_plan_purge", func(ctx context.Context, tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM chat_plan_steps WHERE plan_id IN (SELECT id FROM chat_plans WHERE scope='thread' AND thread_ref=?)`, thread); err != nil {
-			return err
-		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM chat_plans WHERE scope='thread' AND thread_ref=?`, thread)
-		return err
-	})
-}
+// PurgeThread deletes the thread's plan (the explicit thread-delete path) and, for a Tether
+// thread, marks its lineage cleared (see Clear).
+func (s *Store) PurgeThread(ctx context.Context, thread string) error { return s.Clear(ctx, thread) }

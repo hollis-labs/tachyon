@@ -3,6 +3,7 @@ package chatplan
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 )
@@ -23,6 +24,57 @@ type Service struct {
 	Activity func(ctx context.Context, thread, by, reason string, p Plan)
 	// Notify refreshes the thread's summary on its stream and the spine; may be nil.
 	Notify func(ctx context.Context, thread string)
+	// Carried records a plan moved to a replacement session in the new thread's feed; may be nil.
+	Carried func(ctx context.Context, from, to string, p Plan)
+}
+
+// Attach is called for a session acting through the pinned Tether proxy: it records the session
+// in the lineage and, when the session continues another of the same logical agent and has no
+// plan yet, moves that conversation's plan to it. Nothing is asked of the agent. A refused or
+// failed carry leaves the session on a clean start; the old plan stays under the old thread.
+func (s *Service) Attach(ctx context.Context, session, agent, continues string) {
+	res, err := s.Store.Carry(ctx, session, agent, continues)
+	if err != nil {
+		slog.Warn("chat plan carry-over not applied", "session", session, "continues", continues, "err", err)
+		return
+	}
+	if !res.Moved {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	slog.Info("chat plan carried", "from", res.From, "to", res.To, "plan", res.Plan.ID)
+	if s.Carried != nil {
+		s.Carried(ctx, res.From, res.To, res.Plan)
+	}
+	if s.Publish != nil {
+		s.Publish(ctx, res.To, chatapi.EventPlan, map[string]any{"plan_id": res.Plan.ID, "revision": res.Plan.Revision, "progress": res.Plan.Progress()})
+		s.Publish(ctx, res.To, chatapi.EventPanel, map[string]any{"panel": "plan", "ref": res.Plan.ID, "reason": "plan carried over from the previous session", "source": "agent"})
+	}
+	if s.Notify != nil {
+		s.Notify(ctx, res.From)
+		s.Notify(ctx, res.To)
+	}
+}
+
+// Clear removes the thread's plan and, for a Tether thread, stops older plans from being carried
+// into it or any later replacement.
+func (s *Service) Clear(ctx context.Context, ref chatapi.ThreadRef) error {
+	if s.Exists != nil {
+		if err := s.Exists(ctx, ref.String()); err != nil {
+			return ErrNotFound
+		}
+	}
+	if err := s.Store.Clear(ctx, ref.String()); err != nil {
+		return err
+	}
+	ctx = context.WithoutCancel(ctx)
+	if s.Publish != nil {
+		s.Publish(ctx, ref.String(), chatapi.EventPlan, map[string]any{"plan_id": "", "revision": 0, "progress": Progress{}})
+	}
+	if s.Notify != nil {
+		s.Notify(ctx, ref.String())
+	}
+	return nil
 }
 
 func (s *Service) owner(ctx context.Context, ref chatapi.ThreadRef, scope string) (string, string, error) {

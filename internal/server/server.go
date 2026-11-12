@@ -427,6 +427,21 @@ func (s *Server) Start(ctx context.Context) error {
 			rec.Quiet(ctx, thread, "plan.changed", actor, "tachyon", nil, chatactivity.Card(title+": "+reason, fmt.Sprintf("%d of %d steps done", pr.Done, pr.Total), nil))
 		},
 	}
+	s.chatPlan.Carried = func(ctx context.Context, from, to string, p chatplan.Plan) {
+		title := "Plan"
+		if p.Title != nil && *p.Title != "" {
+			title = *p.Title
+		}
+		pr := p.Progress()
+		rec.Quiet(ctx, to, "plan.carried", "tachyon", "tachyon", nil, chatactivity.Card(title+": carried over from "+from, fmt.Sprintf("%d of %d steps done", pr.Done, pr.Total), nil))
+	}
+	s.chatThreads.Agg.Sessions = func(ctx context.Context) []chatthreads.SessionStub {
+		var out []chatthreads.SessionStub
+		for _, st := range s.chatPlan.Store.Sessions(ctx) {
+			out = append(out, chatthreads.SessionStub{Ref: st.Ref, Agent: st.Agent, SeenNS: st.SeenNS, HasPlan: st.HasPlan})
+		}
+		return out
+	}
 	s.chatThreads.Agg.PlanProgress = func(ctx context.Context, refs []string) map[string]chatthreads.Progress {
 		out := map[string]chatthreads.Progress{}
 		for ref, pr := range s.chatPlan.Store.Progress(ctx, refs) {
