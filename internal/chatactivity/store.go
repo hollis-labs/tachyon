@@ -33,9 +33,9 @@ var Types = map[string]bool{
 }
 
 type Cite struct {
-	Kind  string `json:"kind"`
-	Ref   string `json:"ref"`
-	Label string `json:"label"`
+	Kind  string `json:"kind" desc:"What is cited: task, pr or file."`
+	Ref   string `json:"ref" desc:"The task id, pull request reference or file path."`
+	Label string `json:"label" desc:"Short text the operator sees on the chip."`
 }
 
 // Entry is one activity row. Payload is a mini-card {title, cite, summary, review_ref} or, for a

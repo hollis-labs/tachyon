@@ -15,6 +15,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/chatactivity"
 	"github.com/hollis-labs/tachyon/internal/chatapi"
+	"github.com/hollis-labs/tachyon/internal/chatcards"
 	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/chattopics"
 	"github.com/hollis-labs/tachyon/internal/chatworkspace"
@@ -670,5 +671,84 @@ func TestChatPlanCarryOverThroughProxy(t *testing.T) {
 	}
 	if _, oerr := call(proxy, "s1", "worker", "", "chat.plan.get", `{}`); oerr == nil {
 		t.Fatal("the old session still holds a copy")
+	}
+}
+
+func TestChatTopicReadVerbs(t *testing.T) {
+	db, err := localstore.Open(context.Background(), filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := &chattopics.Store{DB: db}
+	ctx := context.Background()
+	if _, err := store.AddTopic(ctx, "app:t1", "Design", "m1", int64p(1), "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.AddBookmark(ctx, "app:t1", "m2", "important"); err != nil {
+		t.Fatal(err)
+	}
+	topics := &ChatTopics{Store: store, Thread: func(_ context.Context, _ string) error { return nil },
+		OpenApprovals: func(_ context.Context, thread string) ([]chatcards.OpenApproval, error) {
+			return []chatcards.OpenApproval{{ItemID: "i1", Kind: "card.approval", State: "presented"}}, nil
+		}}
+	p := &scopedLocal{local: NewLocal(nil), topics: topics, principal: auth.Principal{Verified: true, ID: "agent", Scopes: []string{"verb:chat.topic.list", "verb:chat.bookmark.list", "verb:chat.approvals.list"}}}
+	for verb, key := range map[string]string{"chat.topic.list": "topics", "chat.bookmark.list": "bookmarks", "chat.approvals.list": "approvals"} {
+		out, err := chatCall(p, verb, `{"thread_ref":"app:t1"}`)
+		if err != nil {
+			t.Fatalf("%s: %v", verb, err)
+		}
+		if l, _ := out[key].([]any); len(l) != 1 {
+			t.Errorf("%s: %v", verb, out)
+		}
+	}
+	for _, v := range p.Verbs() {
+		if v.Mutates {
+			t.Errorf("%s is a read verb but Mutates", v.Name)
+		}
+	}
+	if _, err := chatCall(p, "chat.topic.list", `{"thread_ref":"tether:s"}`); err == nil {
+		t.Error("a direct credential read a tether: thread")
+	}
+	p.principal.Scopes = []string{"verb:chat.topic.add"}
+	if _, err := chatCall(p, "chat.bookmark.list", `{"thread_ref":"app:t1"}`); err == nil {
+		t.Error("ran without its grant")
+	}
+}
+
+// Every chat and terminal verb says when to use it, and every input field says what it is for.
+func TestChatVerbsAreDescribed(t *testing.T) {
+	var all []Verb
+	all = append(all, chatVerbs()...)
+	all = append(all, chatTopicVerbs()...)
+	all = append(all, chatPlanVerbs()...)
+	all = append(all, chatActivityVerbs()...)
+	all = append(all, terminalVerbs()...)
+	var check func(path string, s any)
+	check = func(path string, s any) {
+		m, _ := s.(map[string]any)
+		props, _ := m["properties"].(map[string]any)
+		for name, p := range props {
+			pm, _ := p.(map[string]any)
+			if d, _ := pm["description"].(string); d == "" {
+				t.Errorf("%s.%s has no description", path, name)
+			}
+			check(path+"."+name, p)
+			if alts, ok := pm["anyOf"].([]any); ok {
+				for _, a := range alts {
+					if am, ok := a.(map[string]any); ok {
+						if items, ok := am["items"]; ok {
+							check(path+"."+name+"[]", items)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, v := range all {
+		if !strings.Contains(v.Description, "se when") && !strings.Contains(v.Description, "se after") && !strings.Contains(v.Description, "se before") {
+			t.Errorf("%s: description has no use-when sentence", v.Name)
+		}
+		check(v.Name, v.InputSchema)
 	}
 }
