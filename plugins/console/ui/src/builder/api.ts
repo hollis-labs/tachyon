@@ -307,6 +307,18 @@ export const builderApi = {
     const qs = p.toString()
     return get<AgentList>(`/agents${qs ? `?${qs}` : ''}`)
   },
+  /** Every page of the agents list, for id-to-name lookups. Capped so a runaway cursor cannot loop. */
+  allAgents: async (query: AgentQuery = {}): Promise<AgentRow[]> => {
+    const rows: AgentRow[] = []
+    let cursor: string | undefined
+    for (let page = 0; page < 40; page++) {
+      const list = await builderApi.agents({ ...query, cursor })
+      rows.push(...list.agents)
+      if (!list.next_cursor) break
+      cursor = list.next_cursor
+    }
+    return rows
+  },
   agent: (id: string) => get<AgentDetail>(`/agents/${encodeURIComponent(id)}`),
   resolved: (id: string) => get<Resolved>(`/agents/${encodeURIComponent(id)}/resolved`),
   usedBy: (id: string) => get<UsedBy>(`/agents/${encodeURIComponent(id)}/used_by`),
