@@ -13,7 +13,7 @@ export interface PaletteActions {
   onCopyLink?: () => void
   onPanel?: (panel: 'plan' | 'work') => void
   onDrawer?: (mode: 'scratch' | 'terminal' | 'workspace') => void
-  /** Puts text in the composer; backs the Create > Card row. */
+  /** Puts text in the composer; backs the Create > Task and Card rows. */
   onDraft?: (text: string) => void
 }
 
@@ -42,6 +42,8 @@ export function ChatPalette({ open, onOpenChange, a }: { open: boolean; onOpenCh
       if (a.onTogglePin) add({ id: 'pin', mode: 'chat', group: 'Chat', label: a.active.pinned ? 'Unpin this chat' : 'Pin this chat', text: 'pin unpin chat' }, a.onTogglePin)
       if (a.onCopyLink) add({ id: 'link', mode: 'chat', group: 'Chat', label: 'Copy link to this chat', text: 'copy link chat' }, a.onCopyLink)
     }
+    // The agent creates the task through its dispatch card, so the target is shown and policy applies before anything is written.
+    if (a.active && a.onDraft) add({ id: 'create-task', mode: 'create', group: 'Task', label: 'Ask the agent to create a task', text: 'task create', always: true }, () => undefined)
     if (a.active && a.onDraft) add({ id: 'create-card', mode: 'create', group: 'Card', label: 'Ask the agent to draft a card', text: 'card draft', always: true }, () => undefined)
     for (const o of a.startOptions) add({ id: `start-${o.id}`, mode: 'create', group: 'Chat', label: `Start a chat with ${o.label}`, text: `start new chat ${o.label}` }, o.onSelect)
     for (const t of a.threads) add({ id: `open-${t.id}`, mode: 'open', group: 'Chat', label: `${t.title}${t.lastPreview ? ` · ${previewLine(t.lastPreview).slice(0, 50)}` : ''}`, text: `${t.title} ${t.lastPreview ?? ''}` }, () => a.onOpenThread(t.id))
@@ -55,7 +57,8 @@ export function ChatPalette({ open, onOpenChange, a }: { open: boolean; onOpenCh
       modes={MODES}
       commands={cmds.list}
       onRun={(id, q) => {
-        if (id === 'create-card') a.onDraft?.(q ? `Draft a ${q} card` : 'Draft a card')
+        if (id === 'create-task') a.onDraft?.(q ? `Create a task: ${q}` : 'Create a task')
+        else if (id === 'create-card') a.onDraft?.(q ? `Draft a ${q} card` : 'Draft a card')
         else cmds.run.get(id)?.()
       }}
       emptyLabel="Nothing matches."
