@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AsideProvider, useAside } from './context'
-import { ActivityPanel, ApprovalsPanel, PlanPanel, TopicsPanel } from './Panels'
+import { ActivityPanel, ApprovalsPanel, PlanPanel, TopicsPanel, WorkPanel } from './Panels'
 import { TabStrip } from './TabStrip'
 import { DEMO_ACTIVITY, DEMO_PLAN } from './fixtures'
 
@@ -70,6 +70,22 @@ describe('panels', () => {
     fireEvent.change(screen.getByLabelText('Comment'), { target: { value: 'hello' } })
     await act(async () => { fireEvent.submit(screen.getByLabelText('Comment').closest('form')!) })
     expect((screen.getByLabelText('Comment') as HTMLInputElement).value).toBe('hello')
+  })
+})
+
+describe('work panel', () => {
+  it('draws one segment per status when a row carries counts, and a plain done/todo bar otherwise', () => {
+    render(<WorkPanel loading={false} error="" source="planner" items={[
+      { id: 'CW-1', kind: 'task', title: 'Plan task', status: 'doing', progress: 0.5, counts: { done: 2, doing: 1, blocked: 1, todo: 0 }, updated_at: 0 },
+      { id: 'TH-1', kind: 'theme', title: 'Theme', status: 'doing', progress: 0.25, updated_at: 0 },
+    ]} />)
+    const [withCounts, plain] = screen.getAllByRole('progressbar')
+    expect(withCounts.getAttribute('aria-valuemax')).toBe('4')
+    expect(withCounts.getAttribute('aria-valuenow')).toBe('2')
+    expect(withCounts.children.length).toBe(3)
+    expect(plain.children.length).toBe(2)
+    // The plan task has its own bar, so it is not repeated under Doing.
+    expect(screen.queryByText('Doing')).toBeNull()
   })
 })
 

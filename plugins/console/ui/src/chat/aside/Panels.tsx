@@ -120,8 +120,9 @@ export function BookmarksPanel({ marks, messages, agent }: { marks: Marks; messa
 export function WorkPanel({ items, source, loading, error }: { items: WorkItem[]; source?: string; loading: boolean; error: string }) {
   if (loading) return <p role="status" className="text-xs text-fg-muted">Loading work…</p>
   const need = items.filter((i) => i.needs_user)
-  const themes = items.filter((i) => i.kind === 'theme')
-  const doing = items.filter((i) => i.kind === 'task' && i.status === 'doing')
+  // Themes, and any row that carries child work (the thread plan's task), get a progress bar.
+  const themes = items.filter((i) => i.kind === 'theme' || !!i.counts)
+  const doing = items.filter((i) => i.kind === 'task' && i.status === 'doing' && !i.counts)
   return (
     <>
       <div className="flex items-center gap-2"><span className={CAPTION}>Work · assigned to this agent</span><span className="flex-1" /><a href="/planner" className="no-underline"><Chip selected>Mini Planner</Chip></a></div>
@@ -138,7 +139,7 @@ export function WorkPanel({ items, source, loading, error }: { items: WorkItem[]
           {themes.map((t, i) => (
             <div key={t.id} className={cn('flex flex-col gap-1 rounded-control px-2.5 py-2', i === 0 && 'bg-selection')}>
               <div className="flex items-center gap-2 text-control font-medium"><span className="min-w-0 flex-1 truncate">{t.title}</span>{t.needs_user && <StateDot state="blocked" />}</div>
-              <SegmentedProgress size="sm" className="h-[3px]" label={`${t.title}: ${Math.round((t.progress ?? 0) * 100)}% done`} items={[{ state: 'done', count: Math.round((t.progress ?? 0) * 100) }, { state: 'todo', count: 100 - Math.round((t.progress ?? 0) * 100) }]} />
+              <SegmentedProgress size="sm" className="h-[3px]" label={`${t.title}: ${Math.round((t.progress ?? 0) * 100)}% done`} items={t.counts ? [{ state: 'done', count: t.counts.done }, { state: 'doing', count: t.counts.doing }, { state: 'blocked', count: t.counts.blocked }, { state: 'todo', count: t.counts.todo }] : [{ state: 'done', count: Math.round((t.progress ?? 0) * 100) }, { state: 'todo', count: 100 - Math.round((t.progress ?? 0) * 100) }]} />
             </div>
           ))}
           {doing.length > 0 && (

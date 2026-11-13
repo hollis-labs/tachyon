@@ -61,6 +61,12 @@ func TestWorkJoinsAssignmentsAndPlanLinks(t *testing.T) {
 	if p := by["CW-1"].Progress; p == nil || *p != 0.5 {
 		t.Fatalf("plan task progress counts non-cancelled steps: %+v", by["CW-1"])
 	}
+	if c := by["CW-1"].Counts; c == nil || *c != (Counts{Done: 1, Todo: 1}) {
+		t.Fatalf("plan task carries step counts by status, cancelled left out: %+v", by["CW-1"].Counts)
+	}
+	if by["CW-2"].Counts != nil {
+		t.Fatalf("rows without child work have no counts: %+v", by["CW-2"])
+	}
 }
 
 func TestWorkWithoutAgentOrSources(t *testing.T) {

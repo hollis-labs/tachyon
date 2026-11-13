@@ -11,8 +11,8 @@ export const DEMO_PLAN: Plan = { id: 'p', status: 'active', revision: 1, task_re
 export const DEMO_TOPICS: Topic[] = [['Generative UI direction', 14, 2], ['Parallax candidate gate', 14, 20], ['Plugin region names', 13, 55], ['Who owns the vocabulary', 13, 40]].map(([title, h, m], i) => ({ id: `t${i}`, title: title as string, message_ref: `m${i}`, seq: i + 1, added_by: 'agent' as const, created_at: at(h as number, m as number) }))
 export const DEMO_BOOKMARKS: Bookmark[] = [{ id: 'b1', message_ref: 'm1', note: 'Three viable paths. I recommend the hybrid; it keeps go-envelopes…', created_at: at(14, 2) }, { id: 'b2', message_ref: 'm2', note: 'Cards must be answerable in place.', created_at: at(13, 31) }, { id: 'b3', message_ref: 'm3', note: 'Owner for the vocabulary is the Designer.', created_at: at(12, 48) }]
 export const DEMO_WORK: { items: WorkItem[]; source: string } = { source: 'planner', items: [
-  { id: 'CW-0105', kind: 'theme', title: 'Generative UI epic', status: 'doing', progress: 0.55, needs_user: true, updated_at: now },
-  { id: 'CW-0106', kind: 'theme', title: 'Plugin region vocabulary', status: 'doing', progress: 0.33, updated_at: now },
+  { id: 'CW-0105', kind: 'theme', title: 'Generative UI epic', status: 'doing', progress: 0.55, counts: { done: 15, doing: 3, blocked: 1, todo: 9 }, needs_user: true, updated_at: now },
+  { id: 'CW-0106', kind: 'theme', title: 'Plugin region vocabulary', status: 'doing', progress: 0.33, counts: { done: 4, doing: 2, blocked: 0, todo: 6 }, updated_at: now },
   { id: 'CW-0107', kind: 'theme', title: 'Parallax candidate gate', status: 'todo', progress: 0, updated_at: now },
   { id: 'CW-0108', kind: 'task', title: 'Draft shared UI vocabulary', status: 'doing', updated_at: now },
   { id: 'DEC-0042', kind: 'decision', title: 'Generative UI direction', status: 'blocked', needs_user: true, updated_at: now },
