@@ -312,7 +312,7 @@ function NewProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   const label = 'font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-2'
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent widthClassName="max-w-xl" className="gap-3 max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[88vh] max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-auto max-sm:rounded-b-none max-sm:rounded-t-lg">
+      <DialogContent widthClassName="max-w-xl" className="gap-3 max-sm:-mx-4 max-sm:-mb-4 max-sm:max-h-[88vh] max-sm:w-[calc(100%+2rem)] max-sm:max-w-none max-sm:self-end max-sm:overflow-auto max-sm:rounded-b-none max-sm:border-b-0">
         <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal">New project</DialogTitle>
         <DialogDescription className="text-xs text-fg-muted">Adds a project to the shared registry. The id is assigned when it is created.</DialogDescription>
         <div className="flex flex-col gap-2">
