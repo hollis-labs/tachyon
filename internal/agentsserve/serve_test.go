@@ -370,6 +370,9 @@ func TestContextTokensAndHistory(t *testing.T) {
 	if s.Agent.Name != "Builder" || deref(s.Agent.URN) != "msg://agent/x/builder" || deref(s.Agent.LogicalAgentID) != "builder" {
 		t.Errorf("agent identity: %+v", s.Agent)
 	}
+	if u := decode[Session](t, e.get("/sessions/u1")); s.Kind != "chat" || u.Kind != "process" {
+		t.Errorf("a named roster agent is chat and a bare process is process: %q %q", s.Kind, u.Kind)
+	}
 	if s.Context.Used == nil || *s.Context.Used != 150000 || *s.Context.Pct != 15 || s.Context.Source != "stream" || len(s.Compactions) != 1 || !s.Compactions[0].Inferred {
 		t.Errorf("context: %+v %+v", s.Context, s.Compactions)
 	}
