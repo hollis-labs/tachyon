@@ -17,4 +17,11 @@ describe('mark read without operator access', () => {
     await markReadQuiet('a'); await markReadQuiet('b')
     expect(calls).toHaveLength(2)
   })
+  it('shares one request for a session that is already being marked, and posts again once it settles', async () => {
+    status = 200
+    await Promise.all([markReadQuiet('a'), markReadQuiet('a'), markReadQuiet('b')])
+    expect(calls).toEqual(['/chat/threads/a/read', '/chat/threads/b/read'])
+    await markReadQuiet('a')
+    expect(calls).toHaveLength(3)
+  })
 })
