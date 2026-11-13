@@ -202,8 +202,16 @@ describe('ConversationView', () => {
 
   it('shows Stop in place of Send while the agent is replying, and the reason when the stop fails', async () => {
     const onStop = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('This session has no running turn Tachyon can interrupt.'))
-    const { rerender } = render(<ConversationView {...base} onSend={vi.fn()} canSend={false} onStop={onStop} />)
+    const onSend = vi.fn()
+    const { rerender } = render(<ConversationView {...base} onSend={onSend} canSend={false} onStop={onStop} />)
     expect(screen.queryByRole('button', { name: /Send/ })).toBeNull()
+    // The draft can be written while the agent works; Enter does not send it.
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement
+    expect(box.disabled).toBe(false)
+    fireEvent.change(box, { target: { value: 'next thing' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(box.value).toBe('next thing')
+    expect(onSend).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
     await flush()
     expect(onStop).toHaveBeenCalledTimes(1)

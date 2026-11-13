@@ -67,7 +67,8 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
   const [mi, setMi] = useState(0)
   useEffect(() => setMi(0), [at?.[2]])
   const pickMention = (name: string) => { onChange(value.replace(/@[\w-]*$/, `@${name} `)); area.current?.focus() }
-  const send = () => { if (value.trim() && !busy && !disabled) onSubmit(value) }
+  // While the agent is mid-reply the draft can be written but not sent.
+  const send = () => { if (value.trim() && !busy && !disabled && !onStop) onSubmit(value) }
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (options.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setMi((i) => (i + 1) % options.length); return }

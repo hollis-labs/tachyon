@@ -44,7 +44,7 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
   const shown = applyReplyFilter(messages, replyFilter)
   // Only a Tether session mid-turn can be interrupted (the app agent answers 501).
   const stoppable = !!ref && ref.startsWith('tether:') && cap.mode === 'session' && cap.canSend === false
-  const note = cap.mode === 'offline' ? 'Agent is offline. This will queue.' : cap.mode === 'mail-only' ? 'Mail only. Reply may take a while.' : null
+  const note = stoppable ? 'Working on a turn. Your draft is kept.' : cap.mode === 'offline' ? 'Agent is offline. This will queue.' : cap.mode === 'mail-only' ? 'Mail only. Reply may take a while.' : null
   return (
     <ConversationView
       threadId={convId}
