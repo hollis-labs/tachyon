@@ -12,6 +12,7 @@ import { type Change, type LibraryItem, type LibraryKind, builderApi, errorMessa
 import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, newRequestId, partRead } from './changes'
 import { useChangeMode } from './capabilities'
 import { ModeNote } from './ModeNote'
+import { PartDialog } from './PartDialog'
 import { ReviewDialog } from './ReviewDialog'
 import { useLoad } from './useLoad'
 import { LIBRARY_KINDS, NOT_REPORTED } from './vocab'
@@ -151,7 +152,7 @@ function UsedBy({ kind, id }: { kind: LibraryKind; id: string }) {
   )
 }
 
-function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
+function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; onListChanged: (openId?: string) => void }) {
   const [load, retry] = useLoad(() => builderApi.libraryItem(kind, id), [kind, id])
   const { guard, dialog: discardDialog } = useDiscardGuard()
   const [mode, recheckMode] = useChangeMode()
@@ -162,6 +163,7 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [raw, setRaw] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   // biome-ignore lint/correctness/useExhaustiveDependencies: a different item starts clean
   useEffect(() => {
     setEditing(false)
@@ -215,6 +217,25 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
       setBusy(false)
     }
   }
+  // Archive is a reviewed change like any other; a part still attached to an agent is refused by the backend.
+  const archive = async () => {
+    if (!partKind) return
+    setBusy(true)
+    setError('')
+    try {
+      setReview(
+        await builderApi.createChange({
+          request_id: newRequestId(),
+          ops: [{ target: { kind: 'part', id: it.id, part_kind: partKind === 'prompts' ? 'prompt' : 'policy' }, expected_sha: String(it.revision ?? ''), op: { type: 'archive' } }],
+        }),
+      )
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const archived = it.archived === true
   const SKIP_NOW = partKind === 'prompts' ? SKIP : new Set([...SKIP, 'revision'])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -228,12 +249,33 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
             Edit
           </Button>
         )}
-        <Button type="button" variant="outline" size="sm" disabled title="Duplicating a part arrives with the part editor">
-          Duplicate
-        </Button>
+        {partKind && mode !== 'unavailable' && (
+          <Button type="button" variant="outline" size="sm" onClick={() => guard(dirty.length, () => setDuplicating(true))}>
+            Duplicate
+          </Button>
+        )}
+        {canEdit && !editing && !archived && mode !== 'unavailable' && (
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void archive()}>
+            Archive
+          </Button>
+        )}
       </header>
+      {duplicating && partKind && (
+        <PartDialog
+          kind={partKind}
+          duplicateOf={it.id}
+          seed={{ name: `${it.name} copy`, summary: it.summary ?? '', body: body ?? '', bundle: isObj(it.bundle) ? it.bundle : undefined }}
+          onClose={() => setDuplicating(false)}
+          onApplied={onListChanged}
+        />
+      )}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
       {canEdit && mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
+      {!editing && error && (
+        <p role="alert" className="text-control text-fg-secondary">
+          {error}
+        </p>
+      )}
       {!canEdit && (kind === 'skills' || kind === 'tool_servers') && <Muted>Read-only: managed in files.</Muted>}
       {editing && partKind ? (
         <div>
@@ -324,7 +366,10 @@ function Detail({ kind, id }: { kind: LibraryKind; id: string }) {
             setReview(null)
             setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
           }}
-          onApplied={applied}
+          onApplied={() => {
+            applied()
+            onListChanged()
+          }}
           onReload={() => {
             setReview(null)
             setDraft({})
@@ -347,6 +392,14 @@ export function BuilderLibraryPage() {
   const items: LibraryItem[] = load.status === 'ready' ? load.data.items : []
   const lib = summary.status === 'ready' ? summary.data.library : undefined
   const kindLabel = LIBRARY_KINDS.find((k) => k.id === kind)?.label ?? 'items'
+  const [mode] = useChangeMode()
+  const [creating, setCreating] = useState(false)
+  // Prompts and policies are Tachyon-managed parts; skills and tool servers are read-only here.
+  const partKind: PartKind | null = kind === 'prompts' || kind === 'policies' ? kind : null
+  const listChanged = (openId?: string) => {
+    retry()
+    if (openId) navigate(`/builder/library/${kind}/${encodeURIComponent(openId)}`)
+  }
   return (
     <div className="flex h-full min-w-0 flex-col">
       <BuilderShell tab="library" counts={summary.status === 'ready' ? summary.data : null} />
@@ -368,9 +421,17 @@ export function BuilderLibraryPage() {
       </nav>
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden sm:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border-subtle sm:w-[340px]`}>
-          <div className="dash-search-adapter p-2 [&_div]:min-w-0">
-            <SearchInput value={q} onChange={setQ} placeholder={`Search ${kindLabel.toLowerCase()}`} ariaLabel="Search library" />
+          <div className="flex items-center gap-2 p-2">
+            <div className="dash-search-adapter min-w-0 flex-1 [&_div]:min-w-0">
+              <SearchInput value={q} onChange={setQ} placeholder={`Search ${kindLabel.toLowerCase()}`} ariaLabel="Search library" />
+            </div>
+            {partKind && mode !== 'unavailable' && (
+              <Button type="button" size="sm" onClick={() => setCreating(true)} className="shrink-0">
+                {partKind === 'prompts' ? 'New prompt' : 'New policy'}
+              </Button>
+            )}
           </div>
+          {creating && partKind && <PartDialog kind={partKind} onClose={() => setCreating(false)} onApplied={listChanged} />}
           <div className="min-h-0 flex-1 overflow-auto border-t border-border-subtle">
             {load.status === 'loading' && (
               <div aria-busy="true" className="space-y-2 p-4">
@@ -415,7 +476,7 @@ export function BuilderLibraryPage() {
               <Link to={`/builder/library/${kind}`} className="px-4 pt-3 text-control text-fg-muted hover:text-fg sm:hidden">
                 ‹ {kindLabel}
               </Link>
-              <Detail kind={kind} id={decodeURIComponent(id)} />
+              <Detail kind={kind} id={decodeURIComponent(id)} onListChanged={listChanged} />
             </>
           ) : (
             <p className="p-5 text-control text-fg-faint">Select an item to read it.</p>

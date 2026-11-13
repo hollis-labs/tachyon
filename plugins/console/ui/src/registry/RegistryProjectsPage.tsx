@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Button, ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogTitle, Input, SearchInput, Textarea } from '@hollis-labs/design-components'
+import { Button, ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogTitle, Input, OverflowMenu, SearchInput, Textarea } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Chip } from '../components/chip'
 import { ChipListField } from '../builder/ChipListField'
@@ -421,6 +421,9 @@ export function RegistryProjectsPage() {
         <Button type="button" size="sm" onClick={() => guard(dirtyRef.current, () => setCreating(true))} className="hidden sm:inline-flex">
           New project
         </Button>
+        <span className="sticky -right-4 shrink-0 border-l border-border-subtle bg-bg px-2 sm:hidden">
+          <OverflowMenu ariaLabel="More actions" actions={[{ label: 'New project', onSelect: () => guard(dirtyRef.current, () => setCreating(true)) }]} />
+        </span>
         {creating && (
           <NewProjectDialog
             onClose={() => setCreating(false)}
