@@ -13,7 +13,7 @@ import { ChecksCard, HistorySection, ResolvedCard, UsedByCard, UsedBySection } f
 import { Cap, Cite, Field as Row, Tile } from './parts'
 import { useChangeMode } from './capabilities'
 import { ModeNote } from './ModeNote'
-import { ReviewDialog } from './ReviewDialog'
+import { AppliedNote, ReviewDialog } from './ReviewDialog'
 import { useBuilderStream } from './stream'
 import { useLoad } from './useLoad'
 import { INHERITS, NOT_REPORTED, SECTIONS, STATE_LABEL } from './vocab'
@@ -149,6 +149,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
   const [duplicating, setDuplicating] = useState(false)
   const [draft, setDraft] = useState<Draft>({})
   const [review, setReview] = useState<Change | null>(null)
+  const [saved, setSaved] = useState<Change | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const applied = useCallback(() => {
@@ -269,6 +270,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
         />
       </header>
       {mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
+      {saved && <AppliedNote change={saved} onDismiss={() => setSaved(null)} />}
       {reconnecting && (
         <p role="status" className="px-5 py-2 dash-support text-fg-muted">
           Reconnecting · editing is kept
@@ -313,7 +315,11 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             setReview(null)
             setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
           }}
-          onApplied={applied}
+          onApplied={(c) => {
+            setReview(null)
+            setSaved(c)
+            applied()
+          }}
           onReload={() => {
             setReview(null)
             setDraft({})
