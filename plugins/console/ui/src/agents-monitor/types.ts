@@ -1,5 +1,6 @@
 // Shapes from the Agents monitor contract (internal/agentsapi/openapi.yaml). Only what the UI reads.
-export type SessionState = 'working' | 'waiting' | 'idle' | 'stale' | 'unknown'
+/** ended is only ever read from the session detail: the list never carries an ended session. */
+export type SessionState = 'working' | 'waiting' | 'idle' | 'stale' | 'unknown' | 'ended'
 export type StaleReason = 'no_events' | 'not_alive' | 'worker_offline'
 
 export interface OneLinerData { verb: string; target: string; tool: string; at: number; calls_this_turn: number }

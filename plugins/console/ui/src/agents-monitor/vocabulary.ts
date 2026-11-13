@@ -25,7 +25,7 @@ export const AGENTS = {
   viewLabel: 'Session view',
   views: { rows: 'Rows', cards: 'Cards', board: 'Board' },
   filters: { all: 'All', working: 'Working', needs_you: 'Needs you', stale: 'Stale' },
-  states: { working: 'Working', waiting: 'Waiting', idle: 'Idle', stale: 'Stale', unknown: 'Unknown' } as Record<SessionState, string>,
+  states: { working: 'Working', waiting: 'Waiting', idle: 'Idle', stale: 'Stale', unknown: 'Unknown', ended: 'Ended' } as Record<SessionState, string>,
   needsYou: { approval: 'Needs approval', question: 'Has a question' },
   needsYouChip: { approval: 'approval', question: 'question' },
   sinceLabel: 'since',
@@ -59,6 +59,9 @@ export const AGENTS = {
   boardMore: (n: number) => `+${n} more`,
   boardEmpty: (t: string) => `No sessions in ${t}`,
   open: 'Open',
+  sessionGone: 'Session not found',
+  sessionGoneDetail: 'It may have ended more than 30 days ago, or the link is wrong.',
+  backToSessions: 'Back to sessions',
   activity: {
     filtersLabel: 'Activity filters',
     streamLabel: 'Events, newest first',

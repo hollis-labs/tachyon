@@ -12,10 +12,15 @@ export interface StreamEvent {
   collector?: Partial<Collector>
 }
 
+const normalizeSession = (s: Session): Session => ({ ...s, spark: s.spark ?? [], needs_you: s.needs_you ?? { reason: null, since: null }, context: s.context ?? { used: null, window: null, pct: null, source: 'unknown', breakdown: null }, tokens: s.tokens ?? { metered: false, input: null, output: null, cache_read: null, cache_write: null }, pending: s.pending ?? { approval: false, question: false, known: false }, capabilities: s.capabilities ?? { nudge: false, interrupt: { available: false, reason: null }, restart: false } })
+
 /** The server sends null for an empty list and "" for unknown text; the UI reads arrays and never a null list. */
 export function normalizeSessions(r: SessionsResponse): SessionsResponse {
-  return { ...r, summary: r.summary ?? {}, sessions: (r.sessions ?? []).map((s) => ({ ...s, spark: s.spark ?? [], needs_you: s.needs_you ?? { reason: null, since: null }, context: s.context ?? { used: null, window: null, pct: null, source: 'unknown', breakdown: null }, tokens: s.tokens ?? { metered: false, input: null, output: null, cache_read: null, cache_write: null }, pending: s.pending ?? { approval: false, question: false, known: false }, capabilities: s.capabilities ?? { nudge: false, interrupt: { available: false, reason: null }, restart: false } })) }
+  return { ...r, summary: r.summary ?? {}, sessions: (r.sessions ?? []).map(normalizeSession) }
 }
+
+/** A session read on its own (one that left the list because it ended), in the list's shape. */
+export const normalizeDetail = normalizeSession
 
 const isFull = (p: Partial<Session> & { id: string }): p is Session => !!p.agent && !!p.needs_you && !!p.context
 
