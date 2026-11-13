@@ -3,7 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useKeys } from './keys'
 import { SECTIONS, type SectionId } from './vocab'
 
-/** Anchors for a scrolling form; the section nearest the top is current. The rail shows from 1024; below it the same sections are a select. */
+/** Anchors for a scrolling form; the section nearest the top is current. The rail shows from 1024; between 640 and 1024 the same sections are a select; at 390 the golden has neither. */
 export function OutlineNav({ root, variant = 'rail' }: { root: React.RefObject<HTMLElement | null>; variant?: 'rail' | 'select' }) {
   const [current, setCurrent] = useState<SectionId>('identity')
   useEffect(() => {
@@ -39,7 +39,7 @@ export function OutlineNav({ root, variant = 'rail' }: { root: React.RefObject<H
   useKeys(variant === 'rail' ? { '[': () => stepSection(-1), ']': () => stepSection(1) } : {})
   if (variant === 'select')
     return (
-      <div className="shrink-0 border-b border-border-subtle px-4 py-2 lg:hidden">
+      <div className="hidden shrink-0 border-b border-border-subtle px-4 py-2 sm:block lg:hidden">
         <Select value={current} onValueChange={(v) => v != null && go(String(v) as SectionId)}>
           <SelectTrigger className="h-7 w-full text-xs" aria-label="Go to section">
             <SelectValue>{(v: unknown) => SECTIONS.find((s) => s.id === v)?.label ?? 'Section'}</SelectValue>

@@ -114,6 +114,37 @@ function PolicyLead({ it }: { it: LibraryItem }) {
   )
 }
 
+const SKILL_LEAD = new Set(['body_preview', 'body_truncated', 'layer', 'path', 'read_only', 'snapshot_seq', 'source'])
+
+/** A skill as the golden shows it: name, where it comes from (path, short content hash, layer) and a preview of the file. */
+function SkillLead({ it }: { it: LibraryItem }) {
+  const sha = typeof it.sha === 'string' && it.sha ? it.sha.slice(0, 7) : ''
+  const source = [it.path, sha, it.layer || it.source].filter((v) => typeof v === 'string' && v !== '').join(' · ')
+  const preview = typeof it.body_preview === 'string' ? it.body_preview : ''
+  return (
+    <>
+      <dl>
+        <div className={GRID}>
+          <dt className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-1">Name</dt>
+          <dd className="min-w-0 font-mono text-control text-fg">{it.name}</dd>
+        </div>
+        <div className={GRID}>
+          <dt className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-1">Source</dt>
+          <dd className="min-w-0 text-control text-fg [overflow-wrap:anywhere]">{source || NOT_REPORTED}</dd>
+        </div>
+      </dl>
+      {preview && (
+        <section aria-label="Preview" className="flex flex-col gap-1.5">
+          <pre tabIndex={0} className="max-h-[22rem] overflow-auto whitespace-pre-wrap rounded-panel border border-border p-3 font-mono text-xs text-fg-secondary">
+            {preview}
+          </pre>
+          {it.body_truncated === true && <Muted>Preview only: the file is longer.</Muted>}
+        </section>
+      )}
+    </>
+  )
+}
+
 /** Who a part reaches: read before changing it. Agents link to their detail. */
 function UsedBy({ kind, id }: { kind: LibraryKind; id: string }) {
   const [load, retry] = useLoad(() => builderApi.libraryUsedBy(kind, id), [kind, id])
@@ -317,6 +348,7 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
             </section>
           )}
           {kind === 'policies' && <PolicyLead it={it} />}
+          {kind === 'skills' && <SkillLead it={it} />}
           {kind !== 'policies' && (
             <section aria-label="Used by" className="flex flex-col gap-2">
               <Cap>Used by</Cap>
@@ -327,7 +359,7 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
           {kind === 'policies' && <Cap>Details</Cap>}
           <dl>
             {Object.entries(it)
-              .filter(([k]) => !SKIP_NOW.has(k) && !(kind === 'policies' && POLICY_LEAD.has(k)))
+              .filter(([k]) => !SKIP_NOW.has(k) && !(kind === 'policies' && POLICY_LEAD.has(k)) && !(kind === 'skills' && SKILL_LEAD.has(k)))
               .map(([k, v]) => (
                 <div key={k} className={GRID}>
                   <dt className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-1">{label(k)}</dt>

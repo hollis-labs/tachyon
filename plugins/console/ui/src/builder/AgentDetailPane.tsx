@@ -169,9 +169,14 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
     return (
       <div role="alert" className="space-y-2 p-5">
         <p className="dash-body text-fg-secondary">{load.message}</p>
-        <Button type="button" onClick={retry} variant="outline" size="sm">
-          Retry
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onBack} className="sm:hidden">
+            ‹ Agents
+          </Button>
+          <Button type="button" onClick={retry} variant="outline" size="sm">
+            Retry
+          </Button>
+        </div>
       </div>
     )
   const a: AgentDetail = load.data
