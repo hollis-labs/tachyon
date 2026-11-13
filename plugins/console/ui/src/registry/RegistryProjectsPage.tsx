@@ -482,7 +482,7 @@ export function RegistryProjectsPage() {
               </div>
             )}
             {load.status === 'ready' && rows.length === 0 && (
-              <p className="p-4 text-control text-fg-faint">{all.length === 0 && !q ? 'No projects in the registry yet.' : 'No projects match. Clear the search or filters.'}</p>
+              <p className="p-4 text-control text-fg-faint">{all.length === 0 && !q ? 'No projects yet.' : 'No projects match. Clear the search or filters.'}</p>
             )}
             <ul aria-label="Projects">
               {rows.map((r) => (
