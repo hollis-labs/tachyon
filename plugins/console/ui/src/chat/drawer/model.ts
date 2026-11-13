@@ -21,32 +21,44 @@ export const pathRefOf = (i: { type?: string; ref?: string | null }): string | n
 
 const enc = encodeURIComponent
 
-/** Workspace items of one thread (files, links, references, images) and which are shared with the agent. */
-export function useWorkspace(ref: string | undefined) {
-  const [items, setItems] = useState<WorkspaceItem[]>([])
+/** The golden r2 Workspace, shown on ?demo=cards so the drawer and the composer strip are reviewable on the real route. */
+export const DEMO_WORKSPACE: WorkspaceItem[] = [
+  { id: 'w1', type: 'file', name: 'options-paper.md', shared: true },
+  { id: 'w2', type: 'link', name: 'planner-golden.html', shared: true },
+  { id: 'w3', type: 'image', name: 'wireframe.png', shared: false },
+]
+
+/**
+ * Workspace items of one thread (files, links, references, images) and which are shared with the agent.
+ * With `demo` items the hook is local only: nothing is read or written.
+ */
+export function useWorkspace(ref: string | undefined, demo?: WorkspaceItem[]) {
+  const [items, setItems] = useState<WorkspaceItem[]>(demo ?? [])
   const [loading, setLoading] = useState(!!ref)
   const [error, setError] = useState('')
   const load = useCallback(async () => {
-    if (!ref) { setItems([]); setLoading(false); return }
+    if (!ref) { if (!demo) setItems([]); setLoading(false); return }
     try {
       const d = await chatJSON<{ items: WorkspaceItem[] }>(`/threads/${enc(ref)}/workspace`)
       setItems(d.items ?? []); setError('')
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the Workspace.') }
     finally { setLoading(false) }
-  }, [ref])
+  }, [ref, demo])
   useEffect(() => { setLoading(!!ref); void load() }, [load, ref])
 
   const share = useCallback(async (id: string, shared: boolean) => {
-    if (!ref) return
+    if (!ref && !demo) return
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, shared } : x)))
+    if (!ref) return
     try { await chatJSON(`/threads/${enc(ref)}/workspace/${enc(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shared }) }) }
     catch (e) { setItems((xs) => xs.map((x) => (x.id === id ? { ...x, shared: !shared } : x))); setError(e instanceof Error ? e.message : 'Could not change sharing.') }
-  }, [ref])
+  }, [ref, demo])
   const remove = useCallback(async (id: string) => {
+    if (demo) setItems((xs) => xs.filter((x) => x.id !== id))
     if (!ref) return
     try { await chatJSON(`/threads/${enc(ref)}/workspace/${enc(id)}`, { method: 'DELETE' }); setItems((xs) => xs.filter((x) => x.id !== id)) }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not remove the item.') }
-  }, [ref])
+  }, [ref, demo])
   const addFile = useCallback(async (file: File) => {
     if (!ref) return
     const form = new FormData(); form.append('file', file)

@@ -4,7 +4,7 @@ import { Drawer } from '../drawer/Drawer'
 import { ScratchPane } from '../drawer/ScratchPane'
 import { TerminalPane } from '../drawer/TerminalPane'
 import { WorkspacePane } from '../drawer/WorkspacePane'
-import { useScratchPlacement, useWorkspace, type DrawerMode, type DrawerSize } from '../drawer/model'
+import { DEMO_WORKSPACE, useScratchPlacement, useWorkspace, type DrawerMode, type DrawerSize } from '../drawer/model'
 import { DEMO } from '../cards/useBlocks'
 import { useThreadFrames } from '../live'
 import { NewThread } from '../workbench/NewThread'
@@ -76,7 +76,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
   }
   const [drawer, setDrawer] = useState<DrawerMode | null>(null)
   const [size, setSize] = useState<DrawerSize>('half')
-  const ws = useWorkspace(threadRef)
+  const ws = useWorkspace(DEMO ? undefined : threadRef, DEMO ? DEMO_WORKSPACE : undefined)
   const placement = useScratchPlacement()
   const aside = useAsideOptional()
   const [offline, setOffline] = useState(false)
