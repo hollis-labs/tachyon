@@ -174,6 +174,9 @@ func (c *Collector) reconcile(ctx context.Context) error {
 	if err := c.Store.Apply(ctx, running); err != nil {
 		return err
 	}
+	if err := c.Store.NameLifecycle(ctx); err != nil {
+		return err
+	}
 	ended := map[string]string{}
 	for _, state := range []string{"completed", "killed", "failed"} {
 		if len(live) == len(ended) {
