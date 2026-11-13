@@ -281,7 +281,12 @@ func build(r row, ex *extras, now time.Time, staleAfter time.Duration) Session {
 	if !r.ended.IsZero() {
 		end = r.ended
 	}
-	s := Session{ID: r.id, Kind: "process", Provider: providerOf(r.provider, r.model), Model: strp(r.model), Workroot: r.workroot, State: d.State,
+	// A launched, named roster agent is "chat"; a bare provider process with no logical agent is "process".
+	kind := "process"
+	if r.logical != "" {
+		kind = "chat"
+	}
+	s := Session{ID: r.id, Kind: kind, Provider: providerOf(r.provider, r.model), Model: strp(r.model), Workroot: r.workroot, State: d.State,
 		Agent:           Agent{URN: strp(routedURN(r)), Name: agentName(r), LogicalAgentID: strp(r.logical)},
 		LastActivityAt:  ms(r.last),
 		ToolCallCount:   countOrNil(r.toolCalls),
