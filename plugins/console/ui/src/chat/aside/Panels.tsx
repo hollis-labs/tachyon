@@ -103,9 +103,9 @@ export function BookmarksPanel({ marks, messages, agent }: { marks: Marks; messa
           const m = messages.find((x) => x.id === b.message_ref)
           return (
             <li key={b.id} className="group relative">
-              <button type="button" onClick={() => jump(b.message_ref)} className="flex w-full flex-col gap-1 rounded-control border border-border p-3 text-left hover:bg-selection">
+              <button type="button" onClick={() => jump(b.message_ref)} className="flex w-full flex-col gap-2.5 rounded-panel border border-border bg-bg-elevated p-3 text-left hover:bg-selection">
                 <span className="text-label text-fg-muted">{m ? (m.from === 'operator' ? 'You' : agent) : 'Message'} · {time(m?.at ?? b.created_at)}</span>
-                <span className="line-clamp-2 text-xs text-fg-secondary">{m?.body ?? b.note}</span>
+                <span className="line-clamp-2 text-xs text-fg">{m?.body ?? b.note}</span>
               </button>
               <button type="button" aria-label="Remove bookmark" onClick={() => marks.toggleBookmark(b.message_ref)} className="absolute right-1.5 top-1.5 hidden size-5 place-items-center rounded-sm text-fg-muted hover:text-fg group-hover:grid group-focus-within:grid"><X aria-hidden className="size-3" /></button>
             </li>
