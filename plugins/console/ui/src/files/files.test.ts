@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { denyMessage, errorMessage, FileError, formatSize } from './api'
+import { applyCaps, denyMessage, errorMessage, FileError, formatSize } from './api'
 
 describe('file viewer helpers', () => {
   it('formats sizes', () => {
@@ -20,6 +20,20 @@ describe('file viewer helpers', () => {
 })
 
 import { casterStat, contentUrl, parseCasterRef, pinCasterRef } from './api'
+
+describe('preview caps', () => {
+  const caps = { text_bytes: 2 * 1024 * 1024, image_bytes: 25 * 1024 * 1024, html_bytes: 2 * 1024 * 1024 }
+  const stat = { path: '/x/a.json', exists: true, allowed: true, type: 'file' as const, kind: 'json' as const, size: 3 * 1024 * 1024 }
+  it('reads an allowed text file over the text cap as too_large', () => {
+    expect(applyCaps(stat, caps)).toMatchObject({ allowed: false, deny_reason: 'too_large', size: stat.size })
+  })
+  it('leaves files under the cap, images under the image cap, denied files and unknown caps alone', () => {
+    expect(applyCaps({ ...stat, size: 1024 }, caps)).toEqual({ ...stat, size: 1024 })
+    expect(applyCaps({ ...stat, kind: 'image' }, caps).allowed).toBe(true)
+    expect(applyCaps({ ...stat, allowed: false, deny_reason: 'secret_pattern' }, caps).deny_reason).toBe('secret_pattern')
+    expect(applyCaps(stat, null).allowed).toBe(true)
+  })
+})
 
 describe('caster refs', () => {
   it('parses only the two allowed shapes', () => {

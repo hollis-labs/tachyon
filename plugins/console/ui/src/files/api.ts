@@ -186,6 +186,27 @@ export const fileApi = {
 
 export const PREVIEW_HEAD_BYTES = 200 * 1024
 
+let capsRead: Promise<Caps | null> | null = null
+/** The host's preview caps, read once per page; null when roots cannot be read. */
+export function previewCaps(): Promise<Caps | null> {
+  capsRead ??= fileApi.roots().then(
+    (r) => r.caps ?? null,
+    () => {
+      capsRead = null
+      return null
+    },
+  )
+  return capsRead
+}
+
+const CAP_KIND: Partial<Record<FileKind, keyof Caps>> = { image: 'image_bytes', html: 'html_bytes', markdown: 'text_bytes', text: 'text_bytes', json: 'text_bytes', yaml: 'text_bytes', toml: 'text_bytes', csv: 'text_bytes', code: 'text_bytes' }
+/** A stat the host allowed but whose size is over its preview cap reads as too_large, so the viewer never asks for a body the host refuses (413). */
+export function applyCaps(stat: FileStat, caps: Caps | null): FileStat {
+  const cap = caps && stat.kind ? caps[CAP_KIND[stat.kind] as keyof Caps] : undefined
+  if (!stat.exists || !stat.allowed || stat.type === 'dir' || cap == null || stat.size == null || stat.size <= cap) return stat
+  return { ...stat, allowed: false, deny_reason: 'too_large' }
+}
+
 // ---------- pure helpers ----------
 
 export function formatSize(bytes: number | null | undefined): string {
