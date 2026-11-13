@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogTitle,
+  Input,
 } from "@hollis-labs/design-components"
 import { operatorElevation } from "./elevation"
 
@@ -26,8 +27,6 @@ const clock = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
 
 const cap = "font-mono text-label uppercase tracking-wide text-fg-muted"
-const field =
-  "w-full rounded-control border border-border bg-bg-elevated px-2.5 py-2 text-xs text-fg disabled:opacity-50"
 
 export function OperatorPrompt() {
   const state = useSyncExternalStore(
@@ -63,8 +62,9 @@ export function OperatorPrompt() {
       : "Sign in to Tachyon"
   return (
     <Dialog open={state.open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="z-[100] flex w-[min(440px,calc(100vw-32px))] flex-col gap-3 rounded-panel border border-surface-hover bg-bg-elevated p-4 sm:max-w-[440px]">
-        <DialogTitle className="text-[15px] font-semibold text-fg">{title}</DialogTitle>
+      {/* Golden: a centred card on desktop, a bottom sheet at 390. */}
+      <DialogContent className="z-[100] flex w-[min(440px,calc(100vw-32px))] flex-col gap-3 rounded-panel border border-surface-hover bg-bg-elevated p-4 sm:max-w-[440px] max-sm:-mx-4 max-sm:-mb-4 max-sm:max-h-[88vh] max-sm:w-[calc(100%+2rem)] max-sm:max-w-none max-sm:self-end max-sm:overflow-auto max-sm:rounded-b-none max-sm:border-b-0">
+        <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">{title}</DialogTitle>
         {locked ? (
           <>
             <div
@@ -100,19 +100,19 @@ export function OperatorPrompt() {
                   <span className="font-mono">{step.summary ?? step.action}</span>
                   <span className="flex-1" />
                   {step.risk && (
-                    <span className="rounded-sm border border-border px-1.5 py-0.5 font-mono text-label uppercase text-danger">
+                    <span className="rounded-sm border border-danger/35 px-1.5 py-0.5 font-mono text-label text-danger first-letter:uppercase">
                       {step.risk} risk
                     </span>
                   )}
                 </div>
                 {step.summary && step.action && (
-                  <div className="px-3 py-2.5 text-xs text-fg-muted">{step.action}</div>
+                  <div className="bg-surface px-3 py-2.5 font-mono text-xs text-fg-muted">{step.action}</div>
                 )}
               </div>
             )}
             <label className="flex flex-col gap-1.5">
               <span className={cap}>Operator key</span>
-              <input
+              <Input
                 type="password"
                 aria-label="Operator key"
                 aria-invalid={wrong || undefined}
@@ -121,7 +121,7 @@ export function OperatorPrompt() {
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
                 disabled={state.submitting}
-                className={`${field} font-mono ${wrong ? "border-danger" : ""}`}
+                className={`font-mono ${wrong ? "border-danger" : ""}`}
               />
               {wrong && (
                 <span role="alert" className="text-label text-danger">
