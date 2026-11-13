@@ -311,7 +311,7 @@ export function DocPanel({ doc, onShare, onClose }: { doc: { name: string; text:
   return (
     <>
       <div className="flex flex-wrap items-center gap-2"><span className={CAPTION}>Doc · full window</span><Chip square>{doc.name}</Chip><span className="flex-1" /><Act onClick={onShare} aria-pressed={!!doc.shared}>{doc.shared ? 'Shared with agent' : 'Share with agent'}</Act><Act kbd="Esc" onClick={onClose}>Close</Act></div>
-      <article aria-label={doc.name} className="max-w-[70ch] self-center text-control leading-[1.7]"><MessageBody body={doc.text} /></article>
+      <article aria-label={doc.name} className="max-w-[70ch] self-center text-control leading-[1.7] [&_:is(h1,h2,h3)]:text-base! [&_:is(h1,h2,h3)]:text-fg!"><MessageBody body={doc.text} /></article>
     </>
   )
 }

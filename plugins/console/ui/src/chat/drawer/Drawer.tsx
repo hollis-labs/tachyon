@@ -10,7 +10,7 @@ const SIZES: { id: DrawerSize; glyph: string; label: string }[] = [
   { id: 'half', glyph: '½', label: 'Half height' },
   { id: 'full', glyph: '⤢', label: 'Full height' },
 ]
-const HEIGHT: Record<DrawerSize, string> = { quarter: 'h-[120px]', half: 'h-[250px]', full: 'h-[max(250px,calc(100dvh-330px))]' }
+const HEIGHT: Record<DrawerSize, string> = { quarter: 'h-[120px]', half: 'h-[250px] max-sm:h-[46dvh]', full: 'h-[max(250px,calc(100dvh-330px))]' }
 
 /**
  * chat.drawer: hidden until opened, no tab menu. A lighter header strip (mode, size, close) over a recessed body,

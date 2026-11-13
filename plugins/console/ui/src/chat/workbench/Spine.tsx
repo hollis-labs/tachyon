@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@hollis-labs/design-components'
 import { CAPTION, Chip, Kbd, SegmentedProgress, SpineList, StateDot, type SpineGroup } from '@planner/shared'
+import { previewLine } from '../preview'
 import type { ChatThread } from '../types'
 
 export type Lens = 'all' | 'agents' | 'work' | 'archived'
@@ -76,7 +77,7 @@ export function Spine({ threads, activeId, onSelect, startOptions = [], error, o
         </>
       ),
       meta: (t.plan || t.lastPreview) && (
-        <span className="truncate text-xs text-fg-muted">{[t.lastPreview, t.plan ? `plan ${t.plan.done} of ${t.plan.total}` : ''].filter(Boolean).join(' · ')}</span>
+        <span className="truncate text-xs text-fg-muted">{[previewLine(t.lastPreview), t.plan ? `plan ${t.plan.done} of ${t.plan.total}` : ''].filter(Boolean).join(' · ')}</span>
       ),
       progress: t.plan && t.plan.total > 0 ? <SegmentedProgress size="sm" items={planItems(t.plan)} label={`Plan ${t.plan.done} of ${t.plan.total} done`} className="h-[3px]" /> : undefined,
     })
