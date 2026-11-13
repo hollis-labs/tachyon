@@ -6,7 +6,7 @@ import { Chip } from '../components/chip'
 import { ChipListField } from './ChipListField'
 import { DirtyBar } from './DirtyBar'
 import { AGENT_FIELDS, EntityDialog } from './EntityDialog'
-import { type AgentDetail, builderApi, type Change, errorMessage } from './api'
+import { type AgentDetail, builderApi, type UsedBy, type Change, errorMessage } from './api'
 import { buildOps, changedPaths, type Draft, fieldByPath, newRequestId, reviewRows } from './changes'
 import { OutlineNav } from './OutlineNav'
 import { ChecksCard, HistorySection, ResolvedCard, UsedByCard, UsedBySection } from './InsightSections'
@@ -100,6 +100,18 @@ function LaunchProfiles({ launches }: { launches: NonNullable<AgentDetail['launc
   )
 }
 
+/** Why an agent cannot be retired now, or '' when nothing uses it. Unknown usage blocks too. */
+function retireBlockers(u: UsedBy | null, status: string): string {
+  if (!u) return status === 'loading' ? 'checking use' : 'use not reported'
+  const parts = [
+    u.live_sessions?.length ? `${u.live_sessions.length} live session${u.live_sessions.length === 1 ? '' : 's'}` : '',
+    u.launches?.length ? `${u.launches.length} launch${u.launches.length === 1 ? '' : 'es'}` : '',
+    u.teams?.length ? `${u.teams.length} team${u.teams.length === 1 ? '' : 's'}` : '',
+    u.extended_by?.length ? `extended by ${u.extended_by.length}` : '',
+  ].filter(Boolean)
+  return parts.length ? `in use: ${parts.join(', ')}` : ''
+}
+
 /** Editor model of one agent: read-only until Edit; saving goes through Review and host approval. */
 export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void }) {
   const [load, retry] = useLoad(() => builderApi.agent(id), [id])
@@ -156,6 +168,22 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
     },
   }
   const enabled = 'runtime.enabled' in draft ? draft['runtime.enabled'] === true : a.runtime.enabled !== false
+  const blockers = retireBlockers(usedBy.status === 'ready' ? usedBy.data : null, usedBy.status)
+  const retire = async () => {
+    setBusy(true)
+    setError('')
+    const base = { target: { kind: 'agent' as const, id: a.id }, expected_sha: a.revision?.sha ?? '' }
+    try {
+      setReview(await builderApi.createChange({
+        request_id: newRequestId(),
+        ops: [{ ...base, op: { type: 'set', path: 'runtime.enabled', value: false } }, { ...base, op: { type: 'set', path: 'runtime.lifecycle_state', value: 'retired' } }],
+      }))
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
   const projects = [...new Set((a.launches ?? []).map((l) => l.project).filter(Boolean))]
   const viewPrepared = async () => {
     if (!prepared) return
@@ -210,6 +238,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
           actions={[
             { label: 'Copy slug', onSelect: () => void navigator.clipboard?.writeText(a.identity.id) },
             ...(mode !== 'unavailable' ? [{ label: 'Duplicate agent', onSelect: () => setDuplicating(true) }] : []),
+            ...(canEdit && a.state !== 'retired' ? [{ label: blockers ? `Retire agent (${blockers})` : 'Retire agent', disabled: !!blockers || busy, onSelect: () => void retire() }] : []),
             ...(a.identity.urn ? [{ label: 'Copy URN', onSelect: () => void navigator.clipboard?.writeText(a.identity.urn ?? '') }] : []),
           ]}
         />
