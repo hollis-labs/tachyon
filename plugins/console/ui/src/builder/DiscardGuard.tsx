@@ -9,7 +9,7 @@ export function useDiscardGuard(description = 'Your edits have not been sent for
     <Dialog open onOpenChange={(o) => !o && setPending(undefined)}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">
             Discard {pending.n} change{pending.n === 1 ? '' : 's'}?
           </DialogTitle>
           <DialogDescription>{description}</DialogDescription>

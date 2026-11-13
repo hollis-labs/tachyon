@@ -13,7 +13,7 @@ function MockStepUp({ identity }: { identity: MockIdentityConfirm }) {
     <Dialog open onOpenChange={open => { if (!open) identity.resolve(head.id, 'cancelled', 'dismissed') }}>
       <DialogContent widthClassName="max-w-md">
         <DialogHeader>
-          <DialogTitle>Confirm your identity</DialogTitle>
+          <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">Confirm your identity</DialogTitle>
           <DialogDescription>This change needs a fresh confirmation. Nothing happens until you confirm.</DialogDescription>
         </DialogHeader>
         <dl className="space-y-3 px-5 py-4 dash-body">

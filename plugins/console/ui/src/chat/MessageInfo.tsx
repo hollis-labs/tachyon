@@ -30,7 +30,7 @@ export function MessageInfo({ message: m, onClose }: { message: ChatMessage; onC
               <Icon className="h-8 w-8" />
             </span>
             <div className="min-w-0">
-              <DialogTitle>Message details</DialogTitle>
+              <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">Message details</DialogTitle>
               <DialogDescription className="mt-1 font-mono text-[11px]">
                 {m.from === 'operator' ? 'You' : (d?.agentName ?? 'Agent')} ·{' '}
                 {new Date(m.at).toLocaleString()}

@@ -281,7 +281,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
     {confirmCancel && (
       <Dialog open onOpenChange={(o) => !o && setConfirmCancel(false)}>
         <DialogContent widthClassName="max-w-sm">
-          <DialogTitle>Cancel this prepared change?</DialogTitle>
+          <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">Cancel this prepared change?</DialogTitle>
           <DialogDescription>Your edits stay in the editor. Nothing was applied.</DialogDescription>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end [&>button]:w-full sm:[&>button]:w-auto">
             <Button type="button" variant="outline" size="sm" onClick={() => setConfirmCancel(false)}>

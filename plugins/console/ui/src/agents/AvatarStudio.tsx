@@ -62,7 +62,7 @@ export function AvatarStudio({ urn, name, open, onClose, client = avatarClient }
       {/* The dialog renders in a portal outside the page's yellow accent scope, so it is restored here. */}
       <div data-dashboard-accent="yellow">
       <DialogHeader>
-        <DialogTitle>Avatar · {name}</DialogTitle>
+        <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">Avatar · {name}</DialogTitle>
         <DialogDescription>Previews are free and store nothing. Set avatar replaces the saved image for this agent.</DialogDescription>
       </DialogHeader>
       <div className="grid gap-5 px-5 py-4 sm:grid-cols-[14rem_1fr]">

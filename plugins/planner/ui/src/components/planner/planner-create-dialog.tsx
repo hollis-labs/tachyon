@@ -66,7 +66,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, init
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="dash-detail-dialog max-h-[85vh] overflow-auto" widthClassName="max-w-lg">
         <DialogHeader>
-          <DialogTitle>New {meta.singular}</DialogTitle>
+          <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">New {meta.singular}</DialogTitle>
           <DialogDescription>Fill in the essentials. Everything else can be edited once it exists.</DialogDescription>
         </DialogHeader>
         <PlannerWriteError error={writeError} />
