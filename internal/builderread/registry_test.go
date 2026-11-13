@@ -117,6 +117,11 @@ func (f *fakeWriter) Patch(_ context.Context, urn string, p map[string]any) erro
 	return f.err
 }
 
+func (f *fakeWriter) Create(_ context.Context, p map[string]any) (string, error) {
+	f.patches = append(f.patches, p)
+	return "msg://project/prj_new1", f.err
+}
+
 func TestRegistryWritesPatchLinkAndRefusals(t *testing.T) {
 	r, mux, _, _ := fixture(t, nil)
 	r.Projects = fakeProjects{list: []RegProject{{URN: "msg://project/tachyon", DisplayName: "Tachyon", Status: "active"}, {URN: "msg://project/p_9", DisplayName: "Scratch"}}}
@@ -161,5 +166,38 @@ func TestRegistryWritesPatchLinkAndRefusals(t *testing.T) {
 	fw.err = &WriteError{Status: 403}
 	if w := do("PATCH", reg+"/tachyon", `{"description":"x"}`); w.Code != 403 || !strings.Contains(w.Body.String(), "tether_write_denied") {
 		t.Errorf("token without registry.write: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestRegistryCreate(t *testing.T) {
+	r, mux, _, _ := fixture(t, nil)
+	r.Projects = fakeProjects{list: []RegProject{{URN: "msg://project/prj_new1", DisplayName: "Fresh", Status: "active"}}}
+	r.MountWrites(mux, func(h http.Handler) http.Handler { return h })
+	const reg = builderapi.RegistryPrefix + "/projects"
+	do := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest("POST", reg, strings.NewReader(body)))
+		return w
+	}
+	if w := do(`{"display_name":"Fresh"}`); w.Code != 501 {
+		t.Fatalf("no writer is 501: %d", w.Code)
+	}
+	fw := &fakeWriter{}
+	r.Writer = fw
+	for _, bad := range []string{`{"description":"x"}`, `{"display_name":" "}`, `{"display_name":"a","status":"active"}`, `{"display_name":"a","tags":"x"}`} {
+		if w := do(bad); w.Code != 400 {
+			t.Fatalf("%s should be 400, got %d", bad, w.Code)
+		}
+	}
+	w := do(`{"display_name":"Fresh","description":"d","tags":["a"]}`)
+	if w.Code != 201 || !strings.Contains(w.Body.String(), `"display_name":"Fresh"`) {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if len(fw.patches) != 1 || fw.patches[0]["display_name"] != "Fresh" {
+		t.Fatalf("profile sent: %v", fw.patches)
+	}
+	fw.err = &WriteError{Status: 403}
+	if w := do(`{"display_name":"Fresh"}`); w.Code != 403 {
+		t.Fatalf("denied: %d", w.Code)
 	}
 }

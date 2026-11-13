@@ -19,6 +19,8 @@ import (
 // ProjectWriter updates a Tether registry project profile (needs the registry.write scope).
 type ProjectWriter interface {
 	Patch(ctx context.Context, urn string, patch map[string]any) error
+	// Create registers a project (POST /registry/projects) and returns the URN Tether minted.
+	Create(ctx context.Context, profile map[string]any) (string, error)
 }
 
 // WriteError carries Tether's HTTP status for a refused registry write.
@@ -56,11 +58,38 @@ func (t *tetherWriter) Patch(ctx context.Context, urn string, patch map[string]a
 	return nil
 }
 
+func (t *tetherWriter) Create(ctx context.Context, profile map[string]any) (string, error) {
+	raw, _ := json.Marshal(profile)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.base+"/registry/projects", bytes.NewReader(raw))
+	if err != nil {
+		return "", errors.New("Tether unreachable")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	res, err := t.client.Do(req)
+	if err != nil {
+		return "", errors.New("Tether unreachable")
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode != http.StatusCreated {
+		return "", &WriteError{Status: res.StatusCode}
+	}
+	var out struct {
+		URN string `json:"urn"`
+	}
+	if json.Unmarshal(body, &out) != nil || out.URN == "" {
+		return "", errors.New("Tether answered without a project URN")
+	}
+	return out.URN, nil
+}
+
 const updatedBy = "tachyon:operator-browser"
 
 // MountWrites registers the registry project writes behind guard (RequireOperator). Without a writer they answer
 // 501 so the client can show that Tether write access is missing.
 func (r *Reader) MountWrites(mux *http.ServeMux, guard func(http.Handler) http.Handler) {
+	mux.Handle("POST "+builderapi.RegistryPrefix+"/projects", guard(http.HandlerFunc(r.registryCreate)))
 	b := builderapi.RegistryPrefix + "/projects/{id}"
 	mux.Handle("PATCH "+b, guard(http.HandlerFunc(r.registryPatch)))
 	mux.Handle("POST "+b+"/link", guard(http.HandlerFunc(r.registryLink)))
@@ -196,6 +225,64 @@ func (r *Reader) registryPatch(w http.ResponseWriter, req *http.Request) {
 	}
 	r.reset()
 	r.registryItem(w, req)
+}
+
+// registryCreate registers a project: display_name is required; description and tags are optional. Answers 201 with
+// the same object GET /registry/projects/{id} returns.
+func (r *Reader) registryCreate(w http.ResponseWriter, req *http.Request) {
+	if r.Writer == nil {
+		fail(w, 501, "registry_write_unavailable", "Tachyon holds no Tether credential that can write the registry.")
+		return
+	}
+	in, ok := decodeObject(w, req)
+	if !ok {
+		return
+	}
+	profile := map[string]any{"last_updated_by": updatedBy}
+	for k, val := range in {
+		switch k {
+		case "display_name", "description":
+			s, isStr := val.(string)
+			max := map[string]int{"display_name": 120, "description": 2000}[k]
+			if !isStr || utf8.RuneCountInString(s) > max || (k == "display_name" && strings.TrimSpace(s) == "") {
+				fail(w, 400, "invalid", "Field "+fmt.Sprintf("%q", k)+" has the wrong type or size.")
+				return
+			}
+			profile[k] = s
+		case "tags":
+			l, isList := stringList(val, 20, 40)
+			if !isList {
+				fail(w, 400, "invalid", "Field \"tags\" has the wrong type or size.")
+				return
+			}
+			profile[k] = l
+		default:
+			fail(w, 400, "invalid", "Field "+fmt.Sprintf("%q", k)+" is not accepted when creating a project.")
+			return
+		}
+	}
+	if _, has := profile["display_name"]; !has {
+		fail(w, 400, "invalid", "display_name is required.")
+		return
+	}
+	urn, err := r.Writer.Create(req.Context(), profile)
+	if err != nil {
+		r.writeFailed(w, err)
+		return
+	}
+	r.reset()
+	req.SetPathValue("id", regID(RegProject{URN: urn}))
+	r.registryItem(&createdWriter{ResponseWriter: w}, req)
+}
+
+// createdWriter turns the item read's 200 into the 201 a create answers.
+type createdWriter struct{ http.ResponseWriter }
+
+func (c *createdWriter) WriteHeader(code int) {
+	if code == http.StatusOK {
+		code = http.StatusCreated
+	}
+	c.ResponseWriter.WriteHeader(code)
 }
 
 func (r *Reader) registryLink(w http.ResponseWriter, req *http.Request) {
