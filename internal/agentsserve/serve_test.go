@@ -623,3 +623,57 @@ func TestMountedRoutesAreExactlyTheDocumentedOnes(t *testing.T) {
 		}
 	}
 }
+
+type fakeAssigner struct{ asked []string }
+
+func (f *fakeAssigner) Assignment(_ context.Context, _ string, task string) any {
+	f.asked = append(f.asked, task)
+	if task == "CW-JOINED" {
+		return map[string]any{"theme_ref": "planner:theme/t1", "task_ref": task, "index": 2, "count": 5}
+	}
+	return nil
+}
+
+type fakeWorker map[string][2]string
+
+func (f fakeWorker) Work(_ context.Context, agent string) (string, string) {
+	return f[agent][0], f[agent][1]
+}
+
+// A session launched without a Tether task shows what the Planner assigned to its agent; its own task wins.
+func TestPlannerAssignmentShowsOnTheAgentsSession(t *testing.T) {
+	e := newEnv(t)
+	e.now = t0.Add(time.Hour)
+	for id, p := range map[string]string{
+		"s_theme":  `{"to":"idle","logical_agent_id":"themer"}`,
+		"s_task":   `{"to":"idle","logical_agent_id":"tasker"}`,
+		"s_joined": `{"to":"idle","logical_agent_id":"joiner"}`,
+		"s_own":    `{"to":"idle","logical_agent_id":"themer","task_id":"CW-OWN"}`,
+		"s_none":   `{"to":"idle","logical_agent_id":"nobody"}`,
+		"s_bare":   `{"to":"idle"}`,
+	} {
+		e.frame("session.work_state_changed", id, 10*time.Minute, p)
+	}
+	as := &fakeAssigner{}
+	e.srv.Assigner = as
+	e.srv.Worker = fakeWorker{"themer": {"", "planner:theme/t9"}, "tasker": {"CW-LOOSE", ""}, "joiner": {"CW-JOINED", ""}}
+	got := func(id string) map[string]any {
+		m, _ := decode[Session](t, e.get("/sessions/"+id)).Assignment.(map[string]any)
+		return m
+	}
+	if a := got("s_theme"); a["theme_ref"] != "planner:theme/t9" || a["task_ref"] != nil || a["index"] != nil {
+		t.Errorf("a theme assignment shows the theme alone: %v", a)
+	}
+	if a := got("s_task"); a["task_ref"] != "CW-LOOSE" || a["theme_ref"] != nil {
+		t.Errorf("a task in no theme shows the task alone: %v", a)
+	}
+	if a := got("s_joined"); a["theme_ref"] != "planner:theme/t1" || a["count"] != float64(5) {
+		t.Errorf("a Planner-assigned task is joined to its theme: %v", a)
+	}
+	if a := got("s_own"); a != nil {
+		t.Errorf("the session's own task wins and is not replaced by the Planner's: %v", a)
+	}
+	if got("s_none") != nil || got("s_bare") != nil {
+		t.Error("no assignment stays null")
+	}
+}

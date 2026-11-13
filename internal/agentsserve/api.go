@@ -27,6 +27,8 @@ type Server struct {
 	Now       func() time.Time
 	// Assigner supplies Session.assignment (A5); nil leaves it null.
 	Assigner Assigner
+	// Worker supplies the Planner's own assignment for an agent whose session has no Tether task; nil skips it.
+	Worker Worker
 	// Sender delivers nudges as Tether mail (A6); nil turns the nudge capability off.
 	Sender Sender
 	// Interrupter and Restarter turn the interrupt and restart capabilities on (A6); nil leaves them off.
@@ -40,6 +42,12 @@ type Server struct {
 // Assigner joins a session's task to its Planner theme.
 type Assigner interface {
 	Assignment(ctx context.Context, sessionID, taskRef string) any
+}
+
+// Worker says what the Planner has assigned to an agent: a Torque task, a theme ("planner:theme/<id>"),
+// either or neither. It is asked only for a session Tether did not launch with a task.
+type Worker interface {
+	Work(ctx context.Context, agentID string) (taskRef, themeRef string)
 }
 
 func (s *Server) now() time.Time {
