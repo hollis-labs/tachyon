@@ -93,3 +93,43 @@ func TestChatAndGeneralMapLegacyRows(t *testing.T) {
 		t.Error("transcripts must be read-only")
 	}
 }
+
+// The chat group shows Continue on new sessions (default on) and keeps the row's other keys.
+func TestChatGroupContinueDefault(t *testing.T) {
+	db, reg := groupStore(t)
+	ctx := context.Background()
+	g, _ := reg.Group("chat")
+	var field *admin.Field
+	for i := range g.Fields {
+		if g.Fields[i].Key == "continue_new_sessions" {
+			field = &g.Fields[i]
+		}
+	}
+	if field == nil || field.Type != admin.BooleanType || field.Default == nil || field.Default.Value() != true || field.Title != "Default for Continue on new sessions" {
+		t.Fatalf("field: %+v", field)
+	}
+	if err := db.Writer.Submit(ctx, "t", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO app_settings(key,value) VALUES('chat.settings','{"scratchpad_placement":"drawer","terminal_close_on_complete":true}')`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Writer.Submit(ctx, "t", func(ctx context.Context, tx *sql.Tx) error {
+		return g.Storage.Save(ctx, tx, settingsreg.Stored{Over: map[string]admin.Scalar{"continue_new_sessions": boolScalar(false)}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	_ = db.Reader.QueryRow(`SELECT value FROM app_settings WHERE key='chat.settings'`).Scan(&raw)
+	var m map[string]any
+	if json.Unmarshal([]byte(raw), &m) != nil || m["continue_new_sessions"] != false || m["terminal_close_on_complete"] != true {
+		t.Fatalf("row: %s", raw)
+	}
+	if _, ok := m["scratchpad_placement"]; ok {
+		t.Fatalf("a reset field must leave the row: %s", raw)
+	}
+	st, err := g.Storage.Load(ctx, db.Reader)
+	if err != nil || st.Over["continue_new_sessions"].Value() != false {
+		t.Fatalf("load: %+v %v", st, err)
+	}
+}

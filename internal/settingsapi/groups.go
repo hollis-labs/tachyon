@@ -62,7 +62,10 @@ func Specs() []Spec {
 			},
 			Operator: map[string]struct{}{"elevation_ttl": {}}},
 		{ID: GroupChat, Label: "Chat", Precedence: std,
-			Fields: []admin.Field{{Key: "scratchpad_placement", Type: admin.StringType, Title: "Scratchpad placement", Default: sc("side"), Enum: vals("side", "bottom"), Editable: true}}},
+			Fields: []admin.Field{
+				{Key: "scratchpad_placement", Type: admin.StringType, Title: "Scratchpad placement", Default: sc("side"), Enum: vals("side", "bottom"), Editable: true},
+				{Key: "continue_new_sessions", Type: admin.BooleanType, Title: "Default for Continue on new sessions", Default: bc(true), Editable: true},
+			}},
 		{ID: GroupAgents, Label: "Agents", Precedence: std,
 			Fields: []admin.Field{
 				{Key: "stale_after_s", Type: admin.IntegerType, Title: "Mark a session stale after (seconds)", Default: ic(900), Minimum: f64(10), Maximum: f64(86400), Editable: true},

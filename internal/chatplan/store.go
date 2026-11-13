@@ -106,6 +106,8 @@ type WriteIn struct {
 type Store struct {
 	DB  *localstore.Store
 	Now func() time.Time
+	// ContinueDefault is the "Default for Continue on new sessions" chat setting; nil means on.
+	ContinueDefault func(ctx context.Context) bool
 }
 
 func (s *Store) now() time.Time {

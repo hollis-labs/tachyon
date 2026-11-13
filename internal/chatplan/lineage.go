@@ -33,11 +33,20 @@ type Stub struct {
 
 func sessionOf(ref string) string { return strings.TrimPrefix(ref, "tether:") }
 
+// continueDefault is the Continue value a session's lineage row takes when it is first written:
+// the "Default for Continue on new sessions" chat setting, on when unset.
+func (s *Store) continueDefault(ctx context.Context) int {
+	if s.ContinueDefault == nil || s.ContinueDefault(ctx) {
+		return 1
+	}
+	return 0
+}
+
 // Carry records the session in the lineage (first sight wins) and, when it has no plan of its own,
 // moves the nearest ancestor's plan to it. The ancestor chain is the one Tether reported
 // (continues), walked through the lineage rows; every recorded hop must belong to the same
-// logical agent. A session with no continues, a cleared session, or an unrecorded ancestor
-// carries nothing. The move is one transaction: one live plan, revision bumped once.
+// logical agent. A session with no continues, a cleared session, an ancestor whose Continue is off,
+// or an unrecorded ancestor carries nothing. The move is one transaction: one live plan, revision bumped once.
 func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Carried, error) {
 	var out Carried
 	if session == "" || agent == "" {
@@ -51,13 +60,14 @@ func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Ca
 		return out, nil
 	}
 	now := s.now()
+	on := s.continueDefault(ctx)
 	err := s.DB.Writer.Submit(ctx, "chat_plan_carry", func(ctx context.Context, tx *sql.Tx) error {
 		out = Carried{}
 		var cont sql.NullString
-		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns) VALUES(?,?,?,0,?)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on) VALUES(?,?,?,0,?,?)
  ON CONFLICT(session_id) DO UPDATE SET agent_id=CASE WHEN agent_id='' THEN excluded.agent_id ELSE agent_id END,
  continues_id=CASE WHEN continues_id IS NULL THEN excluded.continues_id ELSE continues_id END`,
-			session, agent, nullIf(continues), now.UnixNano()); err != nil {
+			session, agent, nullIf(continues), now.UnixNano(), on); err != nil {
 			return err
 		}
 		var cleared int
@@ -76,8 +86,8 @@ func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Ca
 		for hop := 0; hop < MaxLineageHops && cur != ""; hop++ {
 			var rowAgent string
 			var next sql.NullString
-			var rowCleared int
-			err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared FROM chat_session_lineage WHERE session_id=?`, cur).Scan(&rowAgent, &next, &rowCleared)
+			var rowCleared, rowOn int
+			err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared,continue_on FROM chat_session_lineage WHERE session_id=?`, cur).Scan(&rowAgent, &next, &rowCleared, &rowOn)
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil // never seen through the proxy: nothing to verify, nothing to carry
 			}
@@ -89,6 +99,9 @@ func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Ca
 			}
 			if rowAgent != agent {
 				return ErrAgentMismatch
+			}
+			if rowOn == 0 {
+				return nil // the operator turned Continue off for this session: its replacement starts fresh
 			}
 			from := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: cur}.String()
 			p, perr := s.get(ctx, tx, "scope='thread' AND thread_ref=?", from)
@@ -159,6 +172,7 @@ func (s *Store) Sessions(ctx context.Context) []Stub {
 // lineage row so a later replacement never resurrects an older plan through it.
 func (s *Store) Clear(ctx context.Context, thread string) error {
 	now := s.now()
+	on := s.continueDefault(ctx)
 	return s.DB.Writer.Submit(ctx, "chat_plan_clear", func(ctx context.Context, tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM chat_plan_steps WHERE plan_id IN (SELECT id FROM chat_plans WHERE scope='thread' AND thread_ref=?)`, thread); err != nil {
 			return err
@@ -169,8 +183,53 @@ func (s *Store) Clear(ctx context.Context, thread string) error {
 		if !strings.HasPrefix(thread, "tether:") {
 			return nil
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns) VALUES(?,'',NULL,1,?)
- ON CONFLICT(session_id) DO UPDATE SET cleared=1`, sessionOf(thread), now.UnixNano())
+		_, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on) VALUES(?,'',NULL,1,?,?)
+ ON CONFLICT(session_id) DO UPDATE SET cleared=1`, sessionOf(thread), now.UnixNano(), on)
+		return err
+	})
+}
+
+// Continue reports the session's Continue flag. A session with no lineage row yet gets one now,
+// with agent ” (like a clear marker, so a walk cannot pass through it before Tether names the
+// agent) and the current default: first sight wins, so a later change of the default never
+// flips a session the operator has already seen.
+func (s *Store) Continue(ctx context.Context, session string) (bool, error) {
+	if session == "" {
+		return false, ErrInvalid
+	}
+	var on int
+	err := s.DB.Reader.QueryRowContext(ctx, `SELECT continue_on FROM chat_session_lineage WHERE session_id=?`, session).Scan(&on)
+	if err == nil {
+		return on != 0, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	def := s.continueDefault(ctx)
+	now := s.now()
+	err = s.DB.Writer.Submit(ctx, "chat_session_continue_pin", func(ctx context.Context, tx *sql.Tx) error {
+		if _, e := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on) VALUES(?,'',NULL,0,?,?)
+ ON CONFLICT(session_id) DO NOTHING`, session, now.UnixNano(), def); e != nil {
+			return e
+		}
+		return tx.QueryRowContext(ctx, `SELECT continue_on FROM chat_session_lineage WHERE session_id=?`, session).Scan(&on)
+	})
+	return on != 0, err
+}
+
+// SetContinue sets the session's Continue flag; the lineage and any plan are otherwise untouched.
+func (s *Store) SetContinue(ctx context.Context, session string, on bool) error {
+	if session == "" {
+		return ErrInvalid
+	}
+	v := 0
+	if on {
+		v = 1
+	}
+	now := s.now()
+	return s.DB.Writer.Submit(ctx, "chat_session_continue_set", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on) VALUES(?,'',NULL,0,?,?)
+ ON CONFLICT(session_id) DO UPDATE SET continue_on=excluded.continue_on`, session, now.UnixNano(), v)
 		return err
 	})
 }

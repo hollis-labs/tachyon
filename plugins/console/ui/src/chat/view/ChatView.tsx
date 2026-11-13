@@ -25,6 +25,9 @@ export interface ChatViewProps {
   /** Agents a chat can start with (the Start menu, ⌘N). */
   startOptions?: StartOption[]
   onTogglePin?: () => void
+  /** The open session's Continue flag (see useContinue); null hides the toggle. */
+  continueOn?: boolean | null
+  onToggleContinue?: () => void
   /**
    * 'page' (default): threads | conversation | details. 'compact': one column for a
    * drawer, showing the thread list or the open conversation with a back button.
@@ -51,7 +54,7 @@ export function ChatView(props: ChatViewProps) {
   )
 }
 
-function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, startOptions, onTogglePin, variant = 'page', onBack, children }: ChatViewProps) {
+function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, startOptions, onTogglePin, continueOn, onToggleContinue, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
   const mobile = useMobile()
   const aside = useAside()
@@ -124,7 +127,7 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
       <HeaderFilterContext.Provider value={true}>
       <main aria-label="Conversation" className="flex min-w-0 flex-1 flex-col">
         {activeThread ? (
-          <Header thread={liveCtx && liveCtx.ref === ctxRef ? { ...activeThread, context: { used: liveCtx.used, window: liveCtx.window, model: liveCtx.model ?? activeThread.context?.model ?? null } } : activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} actions={[{ label: replyFilter === 'mine' ? 'Show all replies' : 'Only show replies to me', onSelect: () => setReplyFilter(replyFilter === 'mine' ? 'all' : 'mine') }, { label: scratchPlacement === 'aside' ? 'Open scratchpad in the drawer' : 'Open scratchpad in the aside', onSelect: () => void setScratchPlacement(scratchPlacement === 'aside' ? 'drawer' : 'aside').catch(() => undefined) }, { label: 'Copy link to this chat', onSelect: () => void navigator.clipboard?.writeText(location.href) }]} />
+          <Header thread={liveCtx && liveCtx.ref === ctxRef ? { ...activeThread, context: { used: liveCtx.used, window: liveCtx.window, model: liveCtx.model ?? activeThread.context?.model ?? null } } : activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} continueOn={continueOn} onToggleContinue={onToggleContinue} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} actions={[{ label: replyFilter === 'mine' ? 'Show all replies' : 'Only show replies to me', onSelect: () => setReplyFilter(replyFilter === 'mine' ? 'all' : 'mine') }, { label: scratchPlacement === 'aside' ? 'Open scratchpad in the drawer' : 'Open scratchpad in the aside', onSelect: () => void setScratchPlacement(scratchPlacement === 'aside' ? 'drawer' : 'aside').catch(() => undefined) }, { label: 'Copy link to this chat', onSelect: () => void navigator.clipboard?.writeText(location.href) }]} />
         ) : (
           <header className="h-12 shrink-0 border-b border-border-subtle" />
         )}

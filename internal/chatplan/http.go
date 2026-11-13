@@ -13,6 +13,7 @@ import (
 var Routes = []string{
 	"GET /threads/{ref}/plan", "PUT /threads/{ref}/plan", "DELETE /threads/{ref}/plan",
 	"POST /threads/{ref}/plan/steps", "PATCH /threads/{ref}/plan/steps/{id}", "POST /threads/{ref}/plan/reorder",
+	"GET /threads/{ref}/continue", "PUT /threads/{ref}/continue",
 }
 
 type Handler struct{ Service *Service }
@@ -38,6 +39,8 @@ func problem(w http.ResponseWriter, err error) {
 		fail(w, 409, "linked_step", "This step is linked to a task and follows that task's status. You can park it (blocked).")
 	case errors.Is(err, ErrNoProject):
 		fail(w, 409, "no_project", "This chat has no project, so there is no project plan.")
+	case errors.Is(err, ErrNotContinuable):
+		fail(w, 409, "not_continuable", "Continue applies to Tether sessions only.")
 	case errors.Is(err, ErrInvalid):
 		fail(w, 400, "invalid", "Check the plan: titles are required (200 characters), at most 100 steps, known statuses and step ids.")
 	default:
@@ -50,6 +53,7 @@ func (h *Handler) Mux() http.Handler {
 	hs := map[string]http.HandlerFunc{
 		"GET /threads/{ref}/plan": h.get, "PUT /threads/{ref}/plan": h.put, "DELETE /threads/{ref}/plan": h.clear,
 		"POST /threads/{ref}/plan/steps": h.addStep, "PATCH /threads/{ref}/plan/steps/{id}": h.patchStep, "POST /threads/{ref}/plan/reorder": h.reorder,
+		"GET /threads/{ref}/continue": h.getContinue, "PUT /threads/{ref}/continue": h.putContinue,
 	}
 	for _, r := range Routes {
 		method, path, _ := strings.Cut(r, " ")
@@ -105,6 +109,45 @@ func (h *Handler) clear(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(204)
+}
+
+type continueJSON struct {
+	Continue *bool `json:"continue"`
+}
+
+// getContinue returns the session's Continue flag (the default when first seen).
+func (h *Handler) getContinue(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	on, err := h.Service.Continue(r.Context(), t)
+	if err != nil {
+		problem(w, err)
+		return
+	}
+	reply(w, 200, map[string]bool{"continue": on})
+}
+
+// putContinue sets the session's Continue flag: {"continue": true|false}.
+func (h *Handler) putContinue(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	var in continueJSON
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Continue == nil {
+		fail(w, 400, "invalid", "Send continue (true or false).")
+		return
+	}
+	if err := h.Service.SetContinue(r.Context(), t, *in.Continue); err != nil {
+		problem(w, err)
+		return
+	}
+	reply(w, 200, map[string]bool{"continue": *in.Continue})
 }
 
 type stepJSON struct {

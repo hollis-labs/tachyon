@@ -393,7 +393,10 @@ func (s *Server) Start(ctx context.Context) error {
 		},
 	}
 	s.chatPlan = &chatplan.Service{
-		Store:  &chatplan.Store{DB: store},
+		Store: &chatplan.Store{DB: store, ContinueDefault: func(ctx context.Context) bool {
+			st, serr := ws.Settings(ctx)
+			return serr != nil || st.ContinueNewSessions
+		}},
 		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
 		ProjectOf: func(ctx context.Context, ref string) (string, error) {
 			st, err := s.chatThreads.Agg.State.Get(ctx, ref)
