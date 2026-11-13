@@ -400,10 +400,26 @@ func Summary(ss []Session) map[string]int {
 	return out
 }
 
-// withAssignment fills the A5 join for a session launched with a task; without an Assigner it stays null.
+// withAssignment fills the A5 join. The session's own Tether task wins; a session launched without one
+// takes what the Planner has assigned to its agent (a task, joined to its theme the same way, or a theme
+// alone). With neither it stays null.
 func (s *Server) withAssignment(ctx context.Context, sess Session, r row) Session {
-	if s.Assigner != nil && r.taskRef != "" {
-		sess.Assignment = s.Assigner.Assignment(ctx, r.id, r.taskRef)
+	task, theme := r.taskRef, ""
+	if task == "" && r.logical != "" && s.Worker != nil {
+		task, theme = s.Worker.Work(ctx, r.logical)
+	}
+	if s.Assigner != nil && task != "" {
+		sess.Assignment = s.Assigner.Assignment(ctx, r.id, task)
+	}
+	if sess.Assignment == nil && r.taskRef == "" && (task != "" || theme != "") {
+		a := map[string]string{} // only what the Planner said: no "task n of m" without the theme join
+		if task != "" {
+			a["task_ref"] = task
+		}
+		if theme != "" {
+			a["theme_ref"] = theme
+		}
+		sess.Assignment = a
 	}
 	sess.Capabilities = s.capabilities(sess)
 	return sess
