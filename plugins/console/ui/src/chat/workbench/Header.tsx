@@ -1,4 +1,4 @@
-import { MoreHorizontal, Pin, PanelRight } from 'lucide-react'
+import { Link2, Link2Off, MoreHorizontal, Pin, PanelRight } from 'lucide-react'
 import { ChevronLeft } from 'lucide-react'
 import { OverflowMenu, cn, type OverflowAction } from '@hollis-labs/design-components'
 import { Chip } from '@planner/shared'
@@ -35,6 +35,9 @@ export interface HeaderProps {
   /** Session switcher: the agent's other sessions. */
   onSelectSession?: (ref: string) => void
   onTogglePin?: () => void
+  /** The session's Continue flag; null or absent hides the toggle (not a Tether session, or not loaded). */
+  continueOn?: boolean | null
+  onToggleContinue?: () => void
   onBack?: () => void
   /** Details toggle, shown below 1024px (the aside is an overlay or bottom sheet there). */
   onDetails?: () => void
@@ -42,8 +45,16 @@ export interface HeaderProps {
   actions?: OverflowAction[]
 }
 
-/** chat.header: avatar tile, name, role and model chips, context meter, pin, overflow. */
-export function Header({ thread, onSelectSession, onTogglePin, onBack, onDetails, detailsOpen, actions = [] }: HeaderProps) {
+/** Label and tooltip of the Continue toggle in each state. */
+export const CONTINUE_LABEL = {
+  on: 'Continue on: the plan follows to the next session',
+  off: 'Continue off: the next session starts fresh',
+} as const
+
+const chip = 'inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-border text-fg-secondary hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring'
+
+/** chat.header: avatar tile, name, role and model chips, context meter, pin, continue, overflow. */
+export function Header({ thread, onSelectSession, onTogglePin, continueOn, onToggleContinue, onBack, onDetails, detailsOpen, actions = [] }: HeaderProps) {
   const role = thread.agent.agentId ?? thread.agent.label
   const model = thread.context?.model
   const sessions = thread.sessions ?? []
@@ -65,9 +76,14 @@ export function Header({ thread, onSelectSession, onTogglePin, onBack, onDetails
       {model && <span className="font-mono text-label text-fg-muted max-sm:hidden">{model}</span>}
       <span className="flex-1" />
       <ContextMeter used={thread.context?.used ?? null} window={thread.context?.window ?? null} className="max-sm:hidden" />
-      <button type="button" onClick={onTogglePin} aria-pressed={!!thread.pinned} className={cn('inline-flex h-5 items-center gap-1.5 rounded-full border border-border px-2 text-label text-fg-secondary hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring max-sm:hidden', thread.pinned && 'bg-selection text-fg')}>
-        <Pin aria-hidden className="size-3" /> {thread.pinned ? 'Pinned' : 'Pin'}
+      <button type="button" onClick={onTogglePin} aria-pressed={!!thread.pinned} aria-label={thread.pinned ? 'Pinned' : 'Pin'} title={thread.pinned ? 'Pinned' : 'Pin'} className={cn(chip, thread.pinned && 'bg-selection text-fg')}>
+        <Pin aria-hidden className="size-3" />
       </button>
+      {continueOn != null && (
+        <button type="button" onClick={onToggleContinue} aria-pressed={continueOn} aria-label={continueOn ? CONTINUE_LABEL.on : CONTINUE_LABEL.off} title={continueOn ? CONTINUE_LABEL.on : CONTINUE_LABEL.off} className={cn(chip, continueOn ? 'bg-selection text-fg' : 'border-dashed text-fg-muted')}>
+          {continueOn ? <Link2 aria-hidden className="size-3" /> : <Link2Off aria-hidden className="size-3" />}
+        </button>
+      )}
       {onDetails && (
         <button type="button" onClick={onDetails} aria-expanded={detailsOpen} className="inline-flex h-7 items-center gap-1.5 rounded-control border border-border px-2.5 text-label text-fg-secondary hover:bg-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
           <PanelRight aria-hidden className="size-3.5" /> Details

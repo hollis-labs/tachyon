@@ -7,6 +7,7 @@ import { chatRecipient, useChatRoster } from '../roster'
 import type { ChatThread } from '../types'
 import { ChatView } from './ChatView'
 import { ThreadConversation } from './ThreadConversation'
+import { useContinue } from '../workbench/continue'
 import { consoleJson, type FetchLike } from '../../lib/http'
 import { operatorFetch } from '../../operator/elevation'
 
@@ -69,6 +70,7 @@ export function ChatPage() {
     })),
     [agents, client, select],
   )
+  const cont = useContinue(active ? (active.sessionRef ?? active.sessions?.[0]?.ref) : undefined)
   const togglePin = useCallback(() => {
     const ref = active?.sessionRef ?? active?.sessions?.[0]?.ref
     if (!active || !ref) return
@@ -78,7 +80,7 @@ export function ChatPage() {
   return (
     <ChatView
       threads={threads}
-      threadsError={error ?? openError}
+      threadsError={error ?? openError ?? (cont.error || null)}
       onRetryThreads={retry}
       activeThread={active}
       onSelectThread={select}
@@ -87,6 +89,8 @@ export function ChatPage() {
       newChatActions={newChatActions}
       startOptions={startOptions}
       onTogglePin={togglePin}
+      continueOn={cont.on}
+      onToggleContinue={cont.toggle}
     >
       {active && (
         <ThreadConversation
