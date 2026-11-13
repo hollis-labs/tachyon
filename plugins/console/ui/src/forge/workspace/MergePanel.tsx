@@ -117,7 +117,7 @@ export function MergePanel({ pr, fileCount, client, onClose, onSubmit, onBusyCha
             {methods.map((m) => (
               <label key={m.value} className={`flex cursor-pointer items-center gap-3 rounded border border-border px-3 py-2.5 text-control ${method === m.value ? 'bg-surface-hover' : 'hover:bg-surface/40'}`}>
                 <input type="radio" name="merge-method" value={m.value} checked={method === m.value} onChange={() => setMethod(m.value)} className="accent-primary" />
-                <span className="font-medium text-fg">{m.label}</span>
+                <span className="font-semibold text-fg">{m.label}</span>
               </label>
             ))}
           </div>
