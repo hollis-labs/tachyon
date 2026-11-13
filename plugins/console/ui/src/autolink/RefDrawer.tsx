@@ -50,6 +50,9 @@ function DrawerBody({ target, onClose, expanded, onExpandedChange }: { target: R
 }
 
 /** Right-hand detail drawer. Esc, the close button and the backdrop dismiss it; focus is trapped and restored. */
+/** A kit Dialog is open right now (the drawer's own sheet is a base-ui dialog too, but marks itself sheet-content). */
+const dialogOpen = () => typeof document !== 'undefined' && !!document.querySelector('[data-slot="dialog-content"]')
+
 export function RefDrawer({ target, onClose }: { target: RefIdentity | null; onClose: () => void }) {
   // Keep the last target mounted so the exit animation does not flash an empty panel.
   const [last, setLast] = useState<RefIdentity | null>(target)
@@ -59,9 +62,14 @@ export function RefDrawer({ target, onClose }: { target: RefIdentity | null; onC
   const own = !!shown && !!refDetail(shown.kind) && refOwnsChrome(shown.kind)
   // A new target opens collapsed.
   const [seen, setSeen] = useState(target)
+  // Stacking rule: the drawer normally sits below dialogs (a dialog opened from inside the drawer, such as
+  // assign or review, covers and dims it). Opened while a kit Dialog is already open (a chip inside a modal),
+  // it takes the dialog layer instead, and being mounted later puts it on top of that dialog.
+  const [raised, setRaised] = useState(() => !!target && dialogOpen())
   if (target !== seen) {
     setSeen(target)
     setExpanded(false)
+    if (target && !seen) setRaised(dialogOpen())
   }
 
   return (
@@ -71,6 +79,7 @@ export function RefDrawer({ target, onClose }: { target: RefIdentity | null; onC
         showCloseButton={!own}
         className={`w-full gap-0 border-border p-0 ${own ? `data-[side=right]:w-full ${expanded ? 'data-[side=right]:sm:w-[calc(100vw-3.5rem)] data-[side=right]:sm:max-w-none' : 'data-[side=right]:sm:max-w-[480px]'}` : 'data-[side=right]:sm:max-w-md'}`}
         data-testid="ref-drawer"
+        raised={raised}
       >
         {own ? (
           <>
