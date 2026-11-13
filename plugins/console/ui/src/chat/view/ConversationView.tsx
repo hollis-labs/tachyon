@@ -144,7 +144,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
         onSubmit={(v) => void submit(v)}
         agentLabel={agentLabel}
         busy={busy}
-        disabled={!canSend}
+        disabled={!canSend && !onStop}
         note={note}
         sendError={sendError}
         stopError={stopError}
