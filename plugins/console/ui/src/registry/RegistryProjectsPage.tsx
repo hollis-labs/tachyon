@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Button, ConfirmDialog, Input, SearchInput, Textarea } from '@hollis-labs/design-components'
+import { Button, ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogTitle, Input, SearchInput, Textarea } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Chip } from '../components/chip'
 import { ChipListField } from '../builder/ChipListField'
@@ -292,6 +292,63 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
   )
 }
 
+/** New registry project: name, description and tags. Writes directly (operator session), like the profile Save. */
+function NewProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (p: Project) => void }) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [tags, setTags] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      onCreated(await registryApi.create({ display_name: name.trim(), ...(description.trim() ? { description: description.trim() } : {}), ...(tags.length ? { tags } : {}) }))
+    } catch (e) {
+      setError(e instanceof BuilderError && (e.status === 501 || e.status === 404 || e.status === 405) ? 'Needs Tether write access.' : e instanceof BuilderError && e.code === 'tether_write_denied' ? 'The Tether token lacks registry.write.' : errorMessage(e))
+      setBusy(false)
+    }
+  }
+  const label = 'font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-2'
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent widthClassName="max-w-xl" className="gap-3 max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[88vh] max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-auto max-sm:rounded-b-none max-sm:rounded-t-lg">
+        <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal">New project</DialogTitle>
+        <DialogDescription className="text-xs text-fg-muted">Adds a project to the shared registry. The id is assigned when it is created.</DialogDescription>
+        <div className="flex flex-col gap-2">
+          <label className="grid gap-1 sm:grid-cols-[130px_1fr] sm:gap-3">
+            <span className={label}>Name</span>
+            <Input aria-label="Name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label className="grid gap-1 sm:grid-cols-[130px_1fr] sm:gap-3">
+            <span className={label}>Description</span>
+            <Input aria-label="Description" value={description} maxLength={2000} onChange={(e) => setDescription(e.target.value)} />
+          </label>
+          <div className="grid gap-1 sm:grid-cols-[130px_1fr] sm:gap-3">
+            <span className={label}>Tags</span>
+            <span className="flex min-h-8 items-center">
+              <ChipListField label="Tags" editable value={tags} onChange={setTags} />
+            </span>
+          </div>
+        </div>
+        {error && (
+          <p role="alert" className="text-xs text-fg-secondary">
+            Could not create the project. {error}
+          </p>
+        )}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end [&>button]:w-full sm:[&>button]:w-auto">
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" size="sm" disabled={busy || name.trim() === ''} onClick={submit}>
+            {busy ? 'Creating' : 'Create project'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /** Registry projects: list and profile. Profile edits write directly (operator session); catalog tool servers go through Builder changes. */
 export function RegistryProjectsPage() {
   const { id } = useParams()
@@ -306,6 +363,7 @@ export function RegistryProjectsPage() {
           dirtyRef.current = 0
           rawNavigate(to, opts)
         })
+  const [creating, setCreating] = useState(false)
   const [q, setQ] = useState('')
   const [load, retry] = useLoad(() => registryApi.list(q), [q])
   const [activeOnly, setActiveOnly] = useState(true)
@@ -360,9 +418,20 @@ export function RegistryProjectsPage() {
         </nav>
         <span className="flex-1" />
         <p className="hidden shrink-0 text-label text-fg-muted sm:block">Shared data · used by Tachyon and other apps</p>
-        <Button type="button" size="sm" disabled title="Creating a project arrives with the registry write path" className="hidden sm:inline-flex">
+        <Button type="button" size="sm" onClick={() => guard(dirtyRef.current, () => setCreating(true))} className="hidden sm:inline-flex">
           New project
         </Button>
+        {creating && (
+          <NewProjectDialog
+            onClose={() => setCreating(false)}
+            onCreated={(p) => {
+              setCreating(false)
+              dirtyRef.current = 0
+              retry()
+              rawNavigate(`/registry/projects/${encodeURIComponent(p.id)}`)
+            }}
+          />
+        )}
       </header>
       <div className="flex min-h-0 flex-1">
         <div className={`${id ? 'hidden sm:flex' : 'flex'} w-full shrink-0 flex-col border-r border-border-subtle sm:w-[340px]`}>
