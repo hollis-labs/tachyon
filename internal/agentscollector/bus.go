@@ -12,6 +12,7 @@ import (
 
 	"github.com/hollis-labs/libs/security/redact"
 	"github.com/hollis-labs/tachyon/internal/agentsapi"
+	"github.com/hollis-labs/tachyon/internal/agentsderive"
 )
 
 // BusRef is a cite: a task, a pull request or a session.
@@ -77,6 +78,29 @@ func busType(f Frame) string {
 		return "card"
 	case f.App == "" && (k == "session.started" || k == "session.ended" || k == "session.resumed" || k == "session.restarted"):
 		return "lifecycle"
+	case f.App == "" && k == "session.state_changed" && sessionTurn(f) != "":
+		return "lifecycle" // Tether reports a start or an end as a state change, not as its own kind
+	}
+	return ""
+}
+
+// sessionTurn reads a session.state_changed frame as "started", "ended", "killed" or "failed", or ""
+// when the change is neither a start nor an end. A second terminal state after a first one
+// (killed, then completed) is the same end and is not reported twice.
+func sessionTurn(f Frame) string {
+	switch f.SessionState {
+	case "running":
+		if f.From == "launching" || f.From == "ready" || f.From == "created" {
+			return "started"
+		}
+	case "completed", "killed", "failed":
+		if agentsderive.EndedState(f.From) || f.From == f.SessionState {
+			return ""
+		}
+		if f.SessionState == "completed" {
+			return "ended"
+		}
+		return f.SessionState
 	}
 	return ""
 }
@@ -163,7 +187,20 @@ func NormalizeBus(f Frame) (BusEvent, bool) {
 			who = f.SessionID
 			b.Refs = append(b.Refs, BusRef{"session", f.SessionID, shortID(f.SessionID)})
 		}
-		b.Subject = who + " " + strings.TrimPrefix(f.Kind, "session.")
+		what := strings.TrimPrefix(f.Kind, "session.")
+		if f.Kind == "session.state_changed" {
+			what = sessionTurn(f)
+			// The agent's name when the store knows it (Apply fills it in); a bare id is shortened.
+			if who = okName(f.AgentName); who == "" {
+				who = "session " + shortID(f.SessionID)
+			}
+			if what == "failed" {
+				b.Severity = "error"
+			} else if what == "killed" {
+				what, b.Severity = "was killed", "warn"
+			}
+		}
+		b.Subject = who + " " + what
 		if f.Reason != "" {
 			b.Subject += " (" + f.Reason + ")"
 		}

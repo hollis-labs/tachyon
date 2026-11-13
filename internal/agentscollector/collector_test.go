@@ -603,6 +603,9 @@ func TestKilledAndCompletedSessionsEndAndReconcile(t *testing.T) {
 	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id='s_killed' AND ended_ns>0 AND end_reason='killed'`); n != 1 {
 		t.Fatal("a killed session has an end")
 	}
+	if n := count(t, c, `SELECT COUNT(*) FROM bus_events WHERE type='lifecycle' AND subject='session s_killed was killed'`); n != 1 {
+		t.Error("the end of a session is a lifecycle event on the feed")
+	}
 	c.Source = listerSource{&fakeSource{}, map[string][]Frame{
 		"running":   {{Kind: "session.snapshot", SessionID: "s_live", SessionState: "running", Workroot: "tachyon", At: time.Now()}},
 		"completed": {{Kind: "session.snapshot", SessionID: "s_missed", SessionState: "completed"}, {Kind: "session.snapshot", SessionID: "s_other", SessionState: "completed"}},
