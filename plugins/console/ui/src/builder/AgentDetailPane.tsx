@@ -39,7 +39,7 @@ function Field({ path, ctx, children }: { path: string; ctx: EditCtx; children?:
   if (def.kind === 'chips') {
     return (
       <Row label={def.label}>
-        <ChipListField label={def.label} value={chipsOf(value)} editable={ctx.canEdit} onChange={(next) => ctx.set(path, next)} />
+        <ChipListField label={def.label} value={chipsOf(value)} editable={ctx.canEdit} removable={ctx.editing} onChange={(next) => ctx.set(path, next)} />
       </Row>
     )
   }

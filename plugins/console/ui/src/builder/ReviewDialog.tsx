@@ -1,6 +1,6 @@
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogTitle } from '@hollis-labs/design-components'
 import { useEffect, useRef, useState } from 'react'
-import { builderApi, type Change, errorMessage } from './api'
+import { BUILDER_BASE, builderApi, type Change, errorMessage } from './api'
 import { isOpen, isWaiting, minutesAndSeconds, type ReviewRow } from './changes'
 import { useChangeMode } from './capabilities'
 import { HandoffPanel } from './HandoffPanel'
@@ -140,6 +140,17 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
   }, [])
   // Leaving a draft (Keep editing, Close, Esc) cancels it on the server: an open draft blocks the next Review of the
   // same file with 409 change_open, and nothing in the editor could cancel it afterwards.
+  // Closing or reloading the tab with a draft open would leave it on the server too: cancel it on the way out.
+  const leaving = useRef(change)
+  leaving.current = change
+  useEffect(() => {
+    const leave = () => {
+      const c = leaving.current
+      if (c.state === 'draft') navigator.sendBeacon?.(`${BUILDER_BASE}/changes/${encodeURIComponent(c.change_id)}/cancel`, new Blob(['{}'], { type: 'application/json' }))
+    }
+    window.addEventListener('pagehide', leave)
+    return () => window.removeEventListener('pagehide', leave)
+  }, [])
   const dismiss = async () => {
     if (change.state !== 'draft') return onClose(change)
     setBusy(true)

@@ -7,11 +7,13 @@ const CHIP = 'inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded bor
  * Chips with a remove cross and a dashed "+ Add". Read-only it is plain chips.
  * KIT-GAP: the design kit has no chip-list field; this is the Builder-owned one until the kit brief lands.
  */
-export function ChipListField({ label, value, onChange, editable = false, empty = 'none' }: {
+export function ChipListField({ label, value, onChange, editable = false, removable = editable, empty = 'none' }: {
   label: string
   value: readonly string[]
   onChange?: (next: string[]) => void
   editable?: boolean
+  /** Show the remove × on each chip. Defaults to `editable`; an editor in read view offers + Add only. */
+  removable?: boolean
   empty?: string
 }) {
   const [adding, setAdding] = useState(false)
@@ -38,7 +40,7 @@ export function ChipListField({ label, value, onChange, editable = false, empty 
       {value.map((v) => (
         <li key={v} className={CHIP}>
           {v}
-          {editable && (
+          {editable && removable && (
             <button type="button" aria-label={`Remove ${v} from ${label}`} onClick={() => onChange?.(value.filter((x) => x !== v))} className="text-fg-faint hover:text-fg">
               ×
             </button>

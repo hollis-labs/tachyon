@@ -259,9 +259,9 @@ export function BuilderLaunchesPage() {
                 >
                   <span role="cell" className="flex min-w-0 items-center gap-2 font-mono">
                     <Dot on={l.enabled} />
-                    <span className="truncate">{l.id}</span>
+                    <span className="truncate max-sm:whitespace-normal max-sm:[overflow-wrap:anywhere]">{l.id}</span>
                   </span>
-                  <span role="cell" className="truncate">{nameOf(l)}</span>
+                  <span role="cell" className="truncate max-sm:whitespace-normal max-sm:[overflow-wrap:anywhere]">{nameOf(l)}</span>
                   <span role="cell" className="truncate">{l.provider}</span>
                   <span role="cell" className="hidden truncate sm:block">{l.project}</span>
                   <span role="cell" className="hidden truncate sm:block">{l.worker}</span>
