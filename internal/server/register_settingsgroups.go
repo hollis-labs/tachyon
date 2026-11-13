@@ -91,25 +91,78 @@ func (r rowStorage) Save(ctx context.Context, tx *sql.Tx, st settingsreg.Stored)
 	return err
 }
 
+// chatGroup maps the chat.settings row. The row also holds keys the registry does not manage
+// (terminal_close_on_complete, written by the chat settings route), so Save merges into it.
 func chatGroup() settingsreg.Group {
 	return settingsreg.Group{ID: "chat", Label: "Chat",
-		Fields: []admin.Field{{Key: "scratchpad_placement", Type: admin.StringType, Title: "Scratchpad placement",
-			Default: strPtr("drawer"), Enum: enumOf("drawer", "aside"), Editable: true}},
-		Storage: rowStorage{key: "chat.settings",
-			decode: func(raw string) map[string]admin.Scalar {
-				var v struct {
-					P string `json:"scratchpad_placement"`
-				}
-				if json.Unmarshal([]byte(raw), &v) != nil || (v.P != "drawer" && v.P != "aside") {
-					return nil
-				}
-				return map[string]admin.Scalar{"scratchpad_placement": sstr(v.P)}
-			},
-			encode: func(o map[string]admin.Scalar) (string, error) {
-				p, _ := scalarString(o["scratchpad_placement"])
-				b, err := json.Marshal(map[string]string{"scratchpad_placement": p})
-				return string(b), err
-			}}}
+		Fields: []admin.Field{
+			{Key: "scratchpad_placement", Type: admin.StringType, Title: "Scratchpad placement",
+				Default: strPtr("drawer"), Enum: enumOf("drawer", "aside"), Editable: true},
+			{Key: "continue_new_sessions", Type: admin.BooleanType, Title: "Default for Continue on new sessions",
+				Description: "When on, a new session's plan follows to the session that continues it. Each chat header can turn it off for that session; changing this default does not change sessions already seen.",
+				Default:     boolPtr(true), Editable: true},
+		},
+		Storage: chatStorage{}}
+}
+
+type chatStorage struct{}
+
+const chatSettingsKey = "chat.settings"
+
+func (chatStorage) row(ctx context.Context, q settingsreg.Querier) (map[string]any, error) {
+	var raw string
+	err := q.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key = ?`, chatSettingsKey).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return map[string]any{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]any{}
+	if json.Unmarshal([]byte(raw), &m) != nil {
+		return map[string]any{}, nil
+	}
+	return m, nil
+}
+
+func (c chatStorage) Load(ctx context.Context, q settingsreg.Querier) (settingsreg.Stored, error) {
+	st := settingsreg.Stored{Over: map[string]admin.Scalar{}, Pending: map[string]bool{}}
+	m, err := c.row(ctx, q)
+	if err != nil {
+		return st, err
+	}
+	if p, ok := m["scratchpad_placement"].(string); ok && (p == "drawer" || p == "aside") {
+		st.Over["scratchpad_placement"] = sstr(p)
+	}
+	if v, ok := m["continue_new_sessions"].(bool); ok {
+		st.Over["continue_new_sessions"] = boolScalar(v)
+	}
+	return st, nil
+}
+
+func (c chatStorage) Save(ctx context.Context, tx *sql.Tx, st settingsreg.Stored) error {
+	m, err := c.row(ctx, tx)
+	if err != nil {
+		return err
+	}
+	delete(m, "scratchpad_placement")
+	delete(m, "continue_new_sessions")
+	if v, ok := st.Over["scratchpad_placement"]; ok {
+		m["scratchpad_placement"], _ = scalarString(v)
+	}
+	if v, ok := st.Over["continue_new_sessions"]; ok {
+		m["continue_new_sessions"], _ = v.Value().(bool)
+	}
+	if len(m) == 0 {
+		_, err := tx.ExecContext(ctx, `DELETE FROM app_settings WHERE key = ?`, chatSettingsKey)
+		return err
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, chatSettingsKey, string(raw))
+	return err
 }
 
 func agentsGroup() settingsreg.Group {

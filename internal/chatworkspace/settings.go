@@ -15,10 +15,13 @@ type Settings struct {
 	ScratchpadPlacement string `json:"scratchpad_placement"`
 	// TerminalCloseOnComplete is the default for new terminal run cards' "Close when done" box.
 	TerminalCloseOnComplete bool `json:"terminal_close_on_complete"`
+	// ContinueNewSessions is the default for a new Tether session's Continue toggle (its plan
+	// follows to the session that continues it). On unless the user turned it off.
+	ContinueNewSessions bool `json:"continue_new_sessions"`
 }
 
 func (s *Store) Settings(ctx context.Context) (Settings, error) {
-	out := Settings{ScratchpadPlacement: "drawer"}
+	out := Settings{ScratchpadPlacement: "drawer", ContinueNewSessions: true}
 	var raw string
 	err := s.DB.Reader.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key=?`, settingsKey).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -35,7 +38,11 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 }
 
 func (s *Store) SaveSettings(ctx context.Context, in Settings) error {
-	b, err := json.Marshal(in)
+	row := map[string]any{"scratchpad_placement": in.ScratchpadPlacement, "terminal_close_on_complete": in.TerminalCloseOnComplete}
+	if !in.ContinueNewSessions {
+		row["continue_new_sessions"] = false // left out when on, so the Settings page shows it as the default
+	}
+	b, err := json.Marshal(row)
 	if err != nil {
 		return err
 	}

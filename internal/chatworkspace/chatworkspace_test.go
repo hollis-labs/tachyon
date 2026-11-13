@@ -395,6 +395,31 @@ func TestSettings(t *testing.T) {
 	}
 }
 
+// Continue on new sessions defaults on, and a PUT of another field keeps it.
+func TestSettingsContinueNewSessions(t *testing.T) {
+	e := setup(t)
+	if _, s := e.json(t, "GET", "/settings", ""); s["continue_new_sessions"] != true {
+		t.Fatalf("default: %v", s)
+	}
+	if code, _ := e.json(t, "PUT", "/settings", `{"continue_new_sessions":false}`); code != 200 {
+		t.Fatal(code)
+	}
+	if code, _ := e.json(t, "PUT", "/settings", `{"scratchpad_placement":"aside"}`); code != 200 {
+		t.Fatal(code)
+	}
+	if _, s := e.json(t, "GET", "/settings", ""); s["continue_new_sessions"] != false || s["scratchpad_placement"] != "aside" {
+		t.Fatalf("saved: %v", s)
+	}
+	if code, _ := e.json(t, "PUT", "/settings", `{"continue_new_sessions":true}`); code != 200 {
+		t.Fatal(code)
+	}
+	var raw string
+	_ = e.h.Store.DB.Reader.QueryRow(`SELECT value FROM app_settings WHERE key='chat.settings'`).Scan(&raw)
+	if strings.Contains(raw, "continue_new_sessions") {
+		t.Fatalf("the default is not stored as an override: %s", raw)
+	}
+}
+
 func TestClientContext(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()

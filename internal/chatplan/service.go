@@ -77,6 +77,39 @@ func (s *Service) Clear(ctx context.Context, ref chatapi.ThreadRef) error {
 	return nil
 }
 
+// ErrNotContinuable refuses the Continue flag on a thread that is not a Tether session: only
+// those have a lineage a replacement session can follow.
+var ErrNotContinuable = errors.New("continue applies to Tether sessions only")
+
+func (s *Service) continuable(ctx context.Context, ref chatapi.ThreadRef) error {
+	if ref.Source != chatapi.SourceTether {
+		return ErrNotContinuable
+	}
+	if s.Exists != nil {
+		if err := s.Exists(ctx, ref.String()); err != nil {
+			return ErrNotFound
+		}
+	}
+	return nil
+}
+
+// Continue reports whether the session's plan follows to the session that continues it.
+func (s *Service) Continue(ctx context.Context, ref chatapi.ThreadRef) (bool, error) {
+	if err := s.continuable(ctx, ref); err != nil {
+		return false, err
+	}
+	return s.Store.Continue(ctx, ref.ID)
+}
+
+// SetContinue turns the session's Continue on or off. Off: its replacement starts fresh, as if
+// Tether had reported no continues; the plan stays where it is.
+func (s *Service) SetContinue(ctx context.Context, ref chatapi.ThreadRef, on bool) error {
+	if err := s.continuable(ctx, ref); err != nil {
+		return err
+	}
+	return s.Store.SetContinue(ctx, ref.ID, on)
+}
+
 func (s *Service) owner(ctx context.Context, ref chatapi.ThreadRef, scope string) (string, string, error) {
 	if s.Exists != nil {
 		if err := s.Exists(ctx, ref.String()); err != nil {

@@ -429,12 +429,13 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		ScratchpadPlacement     *string `json:"scratchpad_placement"`
 		TerminalCloseOnComplete *bool   `json:"terminal_close_on_complete"`
+		ContinueNewSessions     *bool   `json:"continue_new_sessions"`
 	}
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&in); err != nil || (in.ScratchpadPlacement == nil && in.TerminalCloseOnComplete == nil) ||
+	if err := dec.Decode(&in); err != nil || (in.ScratchpadPlacement == nil && in.TerminalCloseOnComplete == nil && in.ContinueNewSessions == nil) ||
 		(in.ScratchpadPlacement != nil && *in.ScratchpadPlacement != "drawer" && *in.ScratchpadPlacement != "aside") {
-		fail(w, 400, "invalid", "Send scratchpad_placement (drawer or aside) and/or terminal_close_on_complete (true or false).")
+		fail(w, 400, "invalid", "Send scratchpad_placement (drawer or aside), terminal_close_on_complete and/or continue_new_sessions (true or false).")
 		return
 	}
 	// A field left out keeps its saved value.
@@ -448,6 +449,9 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.TerminalCloseOnComplete != nil {
 		cur.TerminalCloseOnComplete = *in.TerminalCloseOnComplete
+	}
+	if in.ContinueNewSessions != nil {
+		cur.ContinueNewSessions = *in.ContinueNewSessions
 	}
 	if err := h.Store.SaveSettings(r.Context(), cur); err != nil {
 		h.problem(w, err)
