@@ -29,7 +29,10 @@ func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) ht
 		if !ok || !principal.Verified {
 			return nil
 		}
-		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: r.Header.Get(SessionHeader)}
+		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: trustedSession(principal, r.Header.Get(SessionHeader))}
+		// The X-Tether-* headers count only from the pinned proxy, as on the HTTP route. Lineage is
+		// recorded before any tool runs, so a replacement session's first plan call finds its plan.
+		p.recordLineage(withLineage(r.Context(), principal, r.Header))
 		server := mcpserver.NewServer("tachyon-planner", "1.0.0")
 		for _, v := range p.Verbs() {
 			server.RegisterTool(mcpserver.Tool{
@@ -37,6 +40,8 @@ func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) ht
 				Description: v.Description, InputSchema: v.InputSchema,
 				ReadOnlyHint: !v.Mutates, DestructiveHint: v.Mutates, IdempotentHint: !v.Mutates,
 				Handler: func(ctx context.Context, args map[string]any) (any, error) {
+					// The SDK's tool ctx is not guaranteed to descend from the request's.
+					ctx = withLineage(ctx, principal, r.Header)
 					raw, err := json.Marshal(args)
 					if err != nil {
 						return nil, err
