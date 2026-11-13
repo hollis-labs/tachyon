@@ -26,7 +26,7 @@ export interface Entry {
   /** Replaces the summary text when the source already has parts (bus events). */
   body?: ReactNode
   /** Chips drawn at the right edge of the mini card: PR and issue refs. */
-  cites?: string[]
+  cites?: ReactNode
   gap?: string
 }
 
@@ -89,7 +89,7 @@ function Row({ e, now, time }: { e: Entry; now: number; time: 'age' | 'clock' })
           )}
           {e.card && (
             <div className="mt-2 max-w-sm rounded-panel border border-border bg-bg px-3 py-2 text-xs">
-              <div className="flex items-center gap-2"><b className="text-control font-semibold text-fg">{e.card.title}</b><span className="flex-1" />{e.cites?.map((c) => <Cite key={c}>{c} ↗</Cite>)}</div>
+              <div className="flex items-center gap-2"><b className="text-control font-semibold text-fg">{e.card.title}</b><span className="flex-1" />{e.cites}</div>
               <div className="text-fg-muted">{e.card.summary}</div>
             </div>
           )}

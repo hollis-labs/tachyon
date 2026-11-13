@@ -26,7 +26,7 @@ describe('Activity', () => {
     expect(same.card).toBeNull()
     expect(told.card).toEqual({ title: 'tachyon 1.2', summary: 'Rolled out' })
     render(<>{same.body}</>)
-    expect(screen.getByText(/CW-1 ↗/)).toBeTruthy()
+    expect(document.querySelector('a[data-ref-kind="torque.task"]')?.getAttribute('href')).toBe('/tasks/CW-1') // the shared reference chip, not a dead label
   })
 
   it('shows the empty state, then pages older events in with Show more', async () => {
