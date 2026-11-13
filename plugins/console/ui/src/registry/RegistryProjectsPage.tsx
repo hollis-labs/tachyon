@@ -9,6 +9,7 @@ import { BuilderError, builderApi, type Change } from '../builder/api'
 import { useChangeMode } from '../builder/capabilities'
 import { newRequestId, type ReviewRow } from '../builder/changes'
 import { DirtyBar } from '../builder/DirtyBar'
+import { stepId, useKeys } from '../builder/keys'
 import { ModeNote } from '../builder/ModeNote'
 import { ReviewDialog } from '../builder/ReviewDialog'
 import { useDiscardGuard } from '../builder/DiscardGuard'
@@ -395,6 +396,11 @@ export function RegistryProjectsPage() {
   useEffect(() => {
     if (!id && rows.length > 0 && window.matchMedia?.('(min-width: 641px)').matches) rawNavigate(`/registry/projects/${encodeURIComponent(rows[0].id)}`, { replace: true })
   }, [id, rows, rawNavigate])
+  const step = (by: 1 | -1) => {
+    const next = stepId(rows.map((r) => r.id), id ? decodeURIComponent(id) : undefined, by)
+    if (next && next !== id) navigate(`/registry/projects/${encodeURIComponent(next)}`)
+  }
+  useKeys({ j: () => step(1), k: () => step(-1) })
   const pill = (on: boolean) => `inline-flex h-5 items-center rounded-full border border-border px-2 text-label ${on ? 'bg-selection text-fg' : 'text-fg-secondary hover:text-fg'}`
   return (
     <div className="flex h-full min-w-0 flex-col">

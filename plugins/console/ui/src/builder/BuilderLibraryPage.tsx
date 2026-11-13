@@ -11,6 +11,7 @@ import { BuilderShell } from './BuilderShell'
 import { type Change, type LibraryItem, type LibraryKind, builderApi, errorMessage } from './api'
 import { type Draft, PART_FIELDS, type PartKind, buildPartOps, changedPartPaths, newRequestId, partRead } from './changes'
 import { useChangeMode } from './capabilities'
+import { stepId, useKeys } from './keys'
 import { ModeNote } from './ModeNote'
 import { PartDialog } from './PartDialog'
 import { ReviewDialog } from './ReviewDialog'
@@ -396,6 +397,11 @@ export function BuilderLibraryPage() {
   const [creating, setCreating] = useState(false)
   // Prompts and policies are Tachyon-managed parts; skills and tool servers are read-only here.
   const partKind: PartKind | null = kind === 'prompts' || kind === 'policies' ? kind : null
+  const step = (by: 1 | -1) => {
+    const next = stepId(items.map((it) => it.id), id ? decodeURIComponent(id) : undefined, by)
+    if (next) navigate(`/builder/library/${kind}/${encodeURIComponent(next)}`)
+  }
+  useKeys({ j: () => step(1), k: () => step(-1) })
   const listChanged = (openId?: string) => {
     retry()
     if (openId) navigate(`/builder/library/${kind}/${encodeURIComponent(openId)}`)

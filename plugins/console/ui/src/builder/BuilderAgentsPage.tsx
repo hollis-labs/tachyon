@@ -7,6 +7,7 @@ import { type AgentRow, builderApi } from './api'
 import { BuilderShell } from './BuilderShell'
 import { useChangeMode } from './capabilities'
 import { AGENT_FIELDS, EntityDialog } from './EntityDialog'
+import { stepId, useKeys } from './keys'
 import { Tile } from './parts'
 import { useLoad } from './useLoad'
 import { type AgentState, POLICY_LABEL, STATE_LABEL } from './vocab'
@@ -78,6 +79,12 @@ export function BuilderAgentsPage() {
   const rows = list.status === 'ready' ? [...list.data.agents, ...more] : []
   const providers = useMemo(() => [...new Set(rows.map((r) => r.provider).filter(Boolean))].sort(), [rows])
   const select = (next: string) => navigate(`/builder/agents/${encodeURIComponent(next)}`)
+
+  const step = (by: 1 | -1) => {
+    const next = stepId(rows.map((r) => r.id), id, by)
+    if (next && next !== id) select(next)
+  }
+  useKeys({ j: () => step(1), k: () => step(-1) })
 
   // On wide screens something is always selected once the list exists.
   useEffect(() => {
