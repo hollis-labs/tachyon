@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm'
 import type { RefDetailProps } from '../autolink/extensions'
 import { relativeTime } from '../builder/changes'
 import { Segmented } from '../components/segmented'
-import { applyCaps, type Caps, contentUrl, denyMessage, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame, PREVIEW_HEAD_BYTES, previewCaps } from './api'
+import { applyCaps, type Caps, contentUrl, denyMessage, displayPath, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame, hostRoots, PREVIEW_HEAD_BYTES, type Roots } from './api'
 import { FileAccessDialog } from './FileAccessDialog'
 
 const TEXT_KINDS: readonly FileKind[] = ['text', 'json', 'yaml', 'toml', 'csv', 'code']
@@ -14,7 +14,7 @@ const KIND_WORD: Record<string, string> = { markdown: 'Markdown', html: 'HTML', 
 const LANG: Record<string, string> = { go: 'Go', ts: 'TypeScript', tsx: 'TSX', js: 'JavaScript', py: 'Python', rs: 'Rust', sh: 'Shell', sql: 'SQL', css: 'CSS', json: 'JSON', yaml: 'YAML', toml: 'TOML', md: 'Markdown' }
 const KIND_ICON: Record<string, typeof FileIcon> = { html: PanelsTopLeft, markdown: FileText, code: Code, image: ImageIcon, text: FileText, json: Code, yaml: Code, toml: Code, csv: FileText }
 
-type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; stat: FileStat; caps: Caps | null }
+type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; stat: FileStat; roots: Roots | null }
 
 const CHIP = 'rounded-xs border border-border px-1.5 py-0.5 font-mono text-caption text-fg-secondary'
 const HEAD = 'text-control font-bold text-fg'
@@ -56,6 +56,7 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
   const canOpen = !!stat && stat.exists && stat.allowed && stat.type !== 'dir'
   const kind = stat?.kind ?? 'binary'
   const name = basename(path)
+  const shown = displayPath(stat, load.status === 'ready' ? load.roots : null, path)
 
   const copy = (value: string) => {
     void navigator.clipboard?.writeText(value)
@@ -70,8 +71,8 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
     setText(null)
     setDims('')
     setLoad({ status: 'loading' })
-    Promise.all([fileApi.stat(path), previewCaps()]).then(
-      ([s, caps]) => live && setLoad({ status: 'ready', stat: applyCaps(s, caps), caps }),
+    Promise.all([fileApi.stat(path), hostRoots()]).then(
+      ([s, roots]) => live && setLoad({ status: 'ready', stat: applyCaps(s, roots?.caps ?? null), roots }),
       (e) => live && setLoad({ status: 'error', message: errorMessage(e) }),
     )
     return () => {
@@ -116,18 +117,19 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
         box.select()
       }}
     >
-      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-border-subtle px-4 py-3">
-        <span aria-hidden className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-control bg-surface text-fg-secondary">
+      {/* Actions flow after the title as in the golden: the first fit beside it, the rest wrap left-aligned below. */}
+      <header className="flex flex-wrap items-start gap-x-1.5 gap-y-2 border-b border-border-subtle px-4 py-3">
+        <span aria-hidden className="mt-0.5 mr-1.5 flex size-7 shrink-0 items-center justify-center rounded-control bg-surface text-fg-secondary">
           <Icon className="size-3.5" />
         </span>
-        <div className="min-w-0 flex-1 basis-40">
+        <div className="min-w-0 flex-1 basis-auto">
           <h2 className="truncate font-mono text-control font-bold normal-case tracking-normal text-fg" title={path}>
             {name}
             {line ? `:${line}` : ''}
           </h2>
           <p className="text-label text-fg-muted">{meta || ' '}</p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="contents">
           {canOpen && onExpandedChange && (
             <Button type="button" variant="outline" size="sm" className={sm} onClick={() => onExpandedChange(!expanded)}>
               {expanded ? <Minimize2 aria-hidden className="size-3" /> : <Maximize2 aria-hidden className="size-3" />}
@@ -196,11 +198,11 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
           </div>
         )}
         {load.status === 'ready' && (
-          <Body stat={load.stat} caps={load.caps} path={path} line={line} tick={tick} expanded={expanded} onText={setText} onDims={setDims} onAccess={() => setAccess(true)} onCopyPath={() => copy(path)} />
+          <Body stat={load.stat} caps={load.roots?.caps} path={path} line={line} tick={tick} expanded={expanded} onText={setText} onDims={setDims} onAccess={() => setAccess(true)} onCopyPath={() => copy(path)} />
         )}
       </div>
       <footer className="truncate border-t border-border-subtle px-4 py-2.5 font-mono text-caption text-fg-muted" title={path}>
-        {path}
+        {shown}
       </footer>
       <FileAccessDialog open={access} onOpenChange={setAccess} />
     </section>
@@ -346,7 +348,9 @@ function Page({ path, tick, expanded, onText }: { path: string; tick: number; ex
             { value: 'source', label: 'Source' },
           ]}
         />
+        {/* No room for a 1440 preview on a phone: the golden hides the width switch at 390. */}
         {view === 'rendered' && (
+          <div className="hidden sm:block">
           <Segmented<'desktop' | 'mobile'>
             bare
             label="Preview width"
@@ -357,6 +361,7 @@ function Page({ path, tick, expanded, onText }: { path: string; tick: number; ex
               { value: 'mobile', label: 'Mobile 390' },
             ]}
           />
+          </div>
         )}
       </div>
       {view === 'source' && <TextBody path={path} tick={tick} expanded={expanded} language="html" onText={onText} />}

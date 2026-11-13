@@ -186,17 +186,21 @@ export const fileApi = {
 
 export const PREVIEW_HEAD_BYTES = 200 * 1024
 
-let capsRead: Promise<Caps | null> | null = null
-/** The host's preview caps, read once per page; null when roots cannot be read. */
-export function previewCaps(): Promise<Caps | null> {
-  capsRead ??= fileApi.roots().then(
-    (r) => r.caps ?? null,
-    () => {
-      capsRead = null
-      return null
-    },
-  )
-  return capsRead
+let rootsRead: Promise<Roots | null> | null = null
+/** The host's roots and preview caps, read once per page; null when they cannot be read (and asked again next time). */
+export function hostRoots(): Promise<Roots | null> {
+  rootsRead ??= fileApi.roots().catch(() => {
+    rootsRead = null
+    return null
+  })
+  return rootsRead
+}
+
+/** A path as the operator knows it: the root's display path (~/Downloads) plus the path inside it; the absolute path otherwise. */
+export function displayPath(stat: FileStat | null, roots: Roots | null, path: string): string {
+  const root = stat?.root_label ? roots?.roots.find((r) => r.label === stat.root_label) : undefined
+  if (!root || stat?.rel_path == null) return path
+  return stat.rel_path ? `${root.path_display}/${stat.rel_path}` : root.path_display
 }
 
 const CAP_KIND: Partial<Record<FileKind, keyof Caps>> = { image: 'image_bytes', html: 'html_bytes', markdown: 'text_bytes', text: 'text_bytes', json: 'text_bytes', yaml: 'text_bytes', toml: 'text_bytes', csv: 'text_bytes', code: 'text_bytes' }
