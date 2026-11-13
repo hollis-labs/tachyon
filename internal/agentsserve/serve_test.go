@@ -123,6 +123,8 @@ func seed(t *testing.T) *env {
 	e.exec(`UPDATE agents_sessions SET alive=0 WHERE session_id='s_dead'`)
 	e.frame("session.created", "s_new", recent, `{"provider":"pty"}`) // a lifecycle event only: no work state
 	e.frame("session.ended", "s_end", 10*time.Minute, `{"session_state":"ended","reason":"stopped","provider":"claude"}`)
+	e.frame("session.work_state_changed", "s_killed", recent, `{"from":"processing","to":"idle","provider":"claude"}`)
+	e.frame("session.state_changed", "s_killed", recent, `{"from":"running","to":"killed"}`) // Tether's terminal state
 	return e
 }
 
@@ -145,6 +147,9 @@ func TestListDerivesEveryStateAndNeverFakesZero(t *testing.T) {
 	}
 	if _, listed := by["s_end"]; listed {
 		t.Error("an ended session is not listed without include_ended")
+	}
+	if _, listed := by["s_killed"]; listed {
+		t.Error("a killed session is not listed without include_ended")
 	}
 	if r := by["s_old"]; r.StaleReason == nil || *r.StaleReason != "no_events" || r.StaleSince == nil {
 		t.Errorf("s_old stale reason: %+v", r)
@@ -204,7 +209,7 @@ func TestListFiltersAndValidation(t *testing.T) {
 	if l := decode[list](t, e.get("/sessions?q=%2Fwork%2Fother")); len(l.Sessions) != 1 {
 		t.Errorf("q by workroot: %d", len(l.Sessions))
 	}
-	if l := decode[list](t, e.get("/sessions?include_ended=1")); len(l.Sessions) != 7 || l.Summary["idle"] != 2 {
+	if l := decode[list](t, e.get("/sessions?include_ended=1")); len(l.Sessions) != 8 || l.Summary["idle"] != 2 {
 		t.Errorf("include_ended: %d %v", len(l.Sessions), l.Summary)
 	}
 	g := decode[list](t, e.get("/sessions?group=workroot"))

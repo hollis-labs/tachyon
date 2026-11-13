@@ -33,6 +33,8 @@ func TestStateRules(t *testing.T) {
 		"unknown flags stay unknown":      {Input{}, Unknown, "", ""},
 		"explicit false is not waiting":   {Input{WorkState: "idle", PendingApproval: b(false), PendingQuestion: b(false), LastActivity: ago(time.Minute)}, Idle, "", ""},
 		"ended":                           {Input{SessionState: "ended", WorkState: "processing"}, Ended, "", ""},
+		"killed is ended":                 {Input{SessionState: "killed", WorkState: "idle", LastActivity: ago(time.Minute)}, Ended, "", ""},
+		"completed is ended":              {Input{SessionState: "completed", LastActivity: ago(time.Minute)}, Ended, "", ""},
 		"no work state but recent events": {Input{LastActivity: ago(time.Minute), Alive: b(true)}, Idle, "", ""},
 	} {
 		got := Derive(c.in, now, 0)

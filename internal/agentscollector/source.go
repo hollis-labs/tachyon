@@ -42,6 +42,11 @@ type Source interface {
 	Stream(ctx context.Context, after int64, on func(Frame) error, alive func()) error
 }
 
+// Lister is the optional part of a Source the reconcile pass uses: the sessions in one Tether state.
+type Lister interface {
+	SessionsIn(ctx context.Context, state string, pages int) ([]Frame, error)
+}
+
 type httpSource struct {
 	base   string
 	client *http.Client
@@ -130,6 +135,9 @@ type wireSession struct {
 	LogicalAgentID string `json:"logical_agent_id"`
 	InstanceStatus string `json:"instance_status"`
 	LastActivity   string `json:"last_activity"`
+	// GET /sessions names the project; its workspace is a per-session directory, so the project is
+	// the only value sessions share and is what the monitor groups by when no workroot is sent.
+	ProjectID string `json:"project_id"`
 }
 
 // frame turns a listed session into a synthetic snapshot frame. work_state may be a string or an
@@ -140,7 +148,7 @@ func (w wireSession) frame() (Frame, bool) {
 		return Frame{}, false
 	}
 	f := Frame{Kind: "session.snapshot", SessionID: id, SessionState: clean(firstNonEmpty(w.SessionState, w.State), 40),
-		Provider: clean(w.Provider, 60), Model: clean(w.Model, 80), Workroot: clean(firstNonEmpty(w.Workroot, w.WorkingDir), 300),
+		Provider: clean(w.Provider, 60), Model: clean(w.Model, 80), Workroot: clean(firstNonEmpty(firstNonEmpty(w.Workroot, w.WorkingDir), w.ProjectID), 300),
 		LogicalAgentID: clean(w.LogicalAgentID, 120), AgentName: clean(w.LogicalAgentID, 120),
 		TaskRef: clean(w.TaskID, 60), PendingApproval: w.PendingA, PendingQuestion: w.PendingQ}
 	var str string
@@ -188,10 +196,15 @@ func (s *httpSource) Snapshot(ctx context.Context) (Snapshot, error) {
 }
 
 func (s *httpSource) Sessions(ctx context.Context) ([]Frame, error) {
+	return s.SessionsIn(ctx, "running", 20)
+}
+
+// SessionsIn lists the sessions Tether holds in one state, newest first, up to pages of 200.
+func (s *httpSource) SessionsIn(ctx context.Context, state string, pages int) ([]Frame, error) {
 	var out []Frame
 	cursor := ""
-	for page := 0; page < 20; page++ {
-		q := url.Values{"state": {"running"}, "limit": {"200"}}
+	for page := 0; page < pages; page++ {
+		q := url.Values{"state": {state}, "limit": {"200"}}
 		if cursor != "" {
 			q.Set("cursor", cursor)
 		}

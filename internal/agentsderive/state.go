@@ -52,7 +52,7 @@ func no(p *bool) bool  { return p != nil && !*p }
 
 // Derive applies the rules of addendum 1 over design 3.1:
 //
-//   - ended sessions are Ended (History, not Sessions);
+//   - ended sessions (see EndedState) are Ended (History, not Sessions);
 //   - waiting = awaiting_* work state, or a pending approval/question; needs_you carries which;
 //   - stale when the session is dead (not alive, orphaned, process gone) or its worker is offline,
 //     whatever else it looks like, and when it is working or waiting with no event for staleAfter;
@@ -64,8 +64,7 @@ func Derive(in Input, now time.Time, staleAfter time.Duration) Result {
 	if staleAfter <= 0 {
 		staleAfter = DefaultStaleAfter
 	}
-	switch in.SessionState {
-	case "ended", "stopped", "exited", "failed":
+	if EndedState(in.SessionState) {
 		return Result{State: Ended}
 	}
 	var r Result
@@ -98,6 +97,16 @@ func Derive(in Input, now time.Time, staleAfter time.Duration) Result {
 		r.State, r.StaleReason, r.StaleSince = Stale, NoEvents, in.LastActivity
 	}
 	return r
+}
+
+// EndedState reports whether a session state is terminal. Tether's own terminal states are
+// completed, failed and killed; the others are older or synthetic names for the same thing.
+func EndedState(state string) bool {
+	switch state {
+	case "ended", "stopped", "exited", "failed", "completed", "killed":
+		return true
+	}
+	return false
 }
 
 func since(t, now time.Time) time.Time {

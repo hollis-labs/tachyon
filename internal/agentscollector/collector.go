@@ -135,6 +135,9 @@ func (c *Collector) retention(ctx context.Context) {
 		every = pruneEvery
 	}
 	for {
+		if err := c.reconcile(ctx); err != nil && ctx.Err() == nil {
+			slog.Warn("agents session reconcile failed", "err", errText(err))
+		}
 		if _, err := c.Store.Prune(ctx); err != nil && ctx.Err() == nil {
 			slog.Warn("agents retention failed", "err", err)
 		}
@@ -144,6 +147,49 @@ func (c *Collector) retention(ctx context.Context) {
 		case <-time.After(every):
 		}
 	}
+}
+
+// reconcile ends the sessions the store still holds as live but Tether lists as completed, killed
+// or failed. An end event missed while Tachyon was away (or read before those states counted as
+// terminal) otherwise leaves the session on the monitor as idle for good. Only a session Tether
+// itself lists in a terminal state is ended; one that is merely absent from the running list is
+// left alone. The running list also refreshes each live session's name and project.
+func (c *Collector) reconcile(ctx context.Context) error {
+	l, ok := c.Source.(Lister)
+	if !ok {
+		return nil
+	}
+	running, err := l.SessionsIn(ctx, "running", 20)
+	if err != nil {
+		return err
+	}
+	live, err := c.Store.LiveIDs(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range running {
+		delete(live, running[i].SessionID)
+		running[i].At = time.Time{} // a listing is not activity
+	}
+	if err := c.Store.Apply(ctx, running); err != nil {
+		return err
+	}
+	ended := map[string]string{}
+	for _, state := range []string{"completed", "killed", "failed"} {
+		if len(live) == len(ended) {
+			break
+		}
+		frames, err := l.SessionsIn(ctx, state, 10)
+		if err != nil {
+			return err
+		}
+		for _, f := range frames {
+			if live[f.SessionID] {
+				ended[f.SessionID] = state
+			}
+		}
+	}
+	return c.Store.MarkEnded(ctx, ended)
 }
 
 // pass is one connection's life: bootstrap, backfill, then stream until it breaks.

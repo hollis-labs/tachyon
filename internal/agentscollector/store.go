@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/hollis-labs/tachyon/internal/agentsderive"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
@@ -190,8 +191,7 @@ func upsertSession(ctx context.Context, tx *sql.Tx, f Frame, at, now int64) erro
 	}
 	var ended int64
 	var reason string
-	switch f.SessionState {
-	case "ended", "stopped", "exited", "failed", "orphaned":
+	if agentsderive.EndedState(f.SessionState) || f.SessionState == "orphaned" {
 		ended, reason = at, f.SessionState
 		if ended == 0 {
 			ended = now
@@ -214,8 +214,8 @@ func upsertSession(ctx context.Context, tx *sql.Tx, f Frame, at, now int64) erro
   task_ref=CASE WHEN excluded.task_ref<>'' THEN excluded.task_ref ELSE task_ref END,
   started_ns=CASE WHEN excluded.started_ns=0 THEN started_ns WHEN started_ns=0 THEN excluded.started_ns ELSE MIN(started_ns,excluded.started_ns) END,
   last_activity_ns=MAX(last_activity_ns,excluded.last_activity_ns),
-  ended_ns=CASE WHEN excluded.ended_ns>0 THEN excluded.ended_ns ELSE ended_ns END,
-  end_reason=CASE WHEN excluded.ended_ns>0 THEN excluded.end_reason ELSE end_reason END,
+  ended_ns=CASE WHEN excluded.ended_ns>0 THEN excluded.ended_ns WHEN excluded.session_state IN ('running','launching') THEN 0 ELSE ended_ns END,
+  end_reason=CASE WHEN excluded.ended_ns>0 THEN excluded.end_reason WHEN excluded.session_state IN ('running','launching') THEN '' ELSE end_reason END,
   tool_calls=tool_calls+excluded.tool_calls,
   agent_urn=CASE WHEN excluded.agent_urn<>'' THEN excluded.agent_urn ELSE agent_urn END,
   logical_agent_id=CASE WHEN excluded.logical_agent_id<>'' THEN excluded.logical_agent_id ELSE logical_agent_id END,
@@ -298,10 +298,55 @@ func (s *Store) SessionCount(ctx context.Context) (n int, err error) {
 	return
 }
 
+// LiveIDs returns the sessions that have no end recorded.
+func (s *Store) LiveIDs(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT session_id FROM agents_sessions WHERE ended_ns=0`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// MarkEnded records a terminal state (by session id) for sessions that have no end recorded. The
+// end time is the last activity seen, since the listing does not say when the session stopped.
+func (s *Store) MarkEnded(ctx context.Context, ended map[string]string) error {
+	if len(ended) == 0 {
+		return nil
+	}
+	now := s.now().UnixNano()
+	return s.DB.Writer.Submit(ctx, "agents_mark_ended", func(ctx context.Context, tx *sql.Tx) error {
+		for id, state := range ended {
+			if _, err := tx.ExecContext(ctx, `UPDATE agents_sessions SET session_state=?, end_reason=?, ended_ns=CASE WHEN last_activity_ns>0 THEN last_activity_ns ELSE ? END, updated_ns=? WHERE session_id=? AND ended_ns=0`,
+				state, state, now, now, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // Prune deletes expired rows in batches of 1000, one writer transaction each, and records a receipt.
 func (s *Store) Prune(ctx context.Context) (int64, error) {
 	now := s.now()
 	var total int64
+	// Sessions that ended as completed or killed before those states were read as terminal have no
+	// end time; stamp it from their last activity so retention applies to them too.
+	if err := s.DB.Writer.Submit(ctx, "agents_end_backfill", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE agents_sessions SET ended_ns=CASE WHEN last_activity_ns>0 THEN last_activity_ns ELSE updated_ns END, end_reason=session_state
+ WHERE ended_ns=0 AND session_state IN ('completed','killed')`)
+		return err
+	}); err != nil {
+		return total, err
+	}
 	for _, job := range []struct {
 		sql string
 		cut time.Time

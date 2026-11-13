@@ -565,3 +565,69 @@ func TestGapReseedsTheCursorBackwards(t *testing.T) {
 	}
 	runUntil(t, c, func() bool { return count(t, c, `SELECT COUNT(*) FROM agents_collector_state WHERE last_seq=50`) >= 1 })
 }
+
+type listerSource struct {
+	*fakeSource
+	by map[string][]Frame
+}
+
+func (l listerSource) SessionsIn(_ context.Context, state string, _ int) ([]Frame, error) {
+	return l.by[state], nil
+}
+
+// Tether ends a session as completed or killed (session.state_changed names it as "to"). Both end
+// the session, and a session whose end event was missed is ended from Tether's own listing.
+func TestKilledAndCompletedSessionsEndAndReconcile(t *testing.T) {
+	c := newCollector(t, &fakeSource{})
+	ctx := context.Background()
+	var frames []Frame
+	for _, raw := range []string{
+		frameJSON("e:1", "session.work_state_changed", "s_killed", "2026-10-30T01:00:00Z", `{"from":"processing","to":"idle"}`),
+		frameJSON("e:2", "session.state_changed", "s_killed", "2026-10-30T01:00:01Z", `{"from":"running","to":"killed"}`),
+		frameJSON("e:3", "session.work_state_changed", "s_missed", "2026-10-30T01:00:02Z", `{"from":"processing","to":"idle"}`),
+		frameJSON("e:4", "session.work_state_changed", "s_live", "2026-10-30T01:00:03Z", `{"from":"processing","to":"idle"}`),
+		frameJSON("e:5", "session.work_state_changed", "s_absent", "2026-10-30T01:00:04Z", `{"from":"processing","to":"idle"}`),
+	} {
+		f, ok := ParseFrame([]byte(raw))
+		if !ok {
+			t.Fatalf("did not parse: %s", raw)
+		}
+		frames = append(frames, f)
+	}
+	if frames[1].SessionState != "killed" || frames[1].Summary() != "session.state_changed: running -> killed" {
+		t.Fatalf("state_changed frame: %+v %q", frames[1], frames[1].Summary())
+	}
+	if err := c.Store.Apply(ctx, frames); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id='s_killed' AND ended_ns>0 AND end_reason='killed'`); n != 1 {
+		t.Fatal("a killed session has an end")
+	}
+	c.Source = listerSource{&fakeSource{}, map[string][]Frame{
+		"running":   {{Kind: "session.snapshot", SessionID: "s_live", SessionState: "running", Workroot: "tachyon", At: time.Now()}},
+		"completed": {{Kind: "session.snapshot", SessionID: "s_missed", SessionState: "completed"}, {Kind: "session.snapshot", SessionID: "s_other", SessionState: "completed"}},
+	}}
+	if err := c.reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id='s_missed' AND session_state='completed' AND ended_ns>0`); n != 1 {
+		t.Error("a session Tether lists as completed is ended")
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id IN ('s_live','s_absent') AND ended_ns=0`); n != 2 {
+		t.Error("a running session, and one Tether lists nowhere, stay live")
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id='s_live' AND workroot='tachyon' AND last_activity_ns<?`, time.Now().Add(-time.Hour).UnixNano()); n != 1 {
+		t.Error("the running listing fills the project and is not activity")
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions`); n != 4 {
+		t.Errorf("sessions the store never saw are not added from the ended listing: %d", n)
+	}
+	// A session that runs again is live again.
+	again, _ := ParseFrame([]byte(frameJSON("e:9", "session.state_changed", "s_killed", "2026-10-30T02:00:00Z", `{"from":"killed","to":"running"}`)))
+	if err := c.Store.Apply(ctx, []Frame{again}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id='s_killed' AND ended_ns=0`); n != 1 {
+		t.Error("a session that runs again has no end")
+	}
+}

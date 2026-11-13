@@ -182,6 +182,9 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			f.WorkState = clean(firstNonEmpty(p.To, p.WorkState), 40)
 			f.From = clean(p.From, 40)
 			f.SessionState = clean(firstNonEmpty(p.SessionState, p.State), 40)
+			if f.Kind == "session.state_changed" && f.SessionState == "" {
+				f.SessionState = clean(p.To, 40) // Tether names the new session state as "to" (running -> killed)
+			}
 			f.Provider, f.Model = clean(p.Provider, 60), clean(p.Model, 80)
 			f.Workroot = clean(firstNonEmpty(p.Workroot, p.WorkingDir), 300)
 			f.TaskRef = clean(firstNonEmpty(p.TaskID, p.Task), 60)
