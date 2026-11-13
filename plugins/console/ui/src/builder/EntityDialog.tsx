@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogTitle, Input } from '@hollis-labs/design-components'
 import { type Change, type ChangeOp, builderApi, errorMessage } from './api'
 import { type ReviewRow, newRequestId } from './changes'
@@ -16,7 +16,7 @@ export interface EntityField {
 export const AGENT_FIELDS: EntityField[] = [
   { path: 'identity.name', label: 'Name', kind: 'text', required: true },
   { path: 'identity.description', label: 'Summary', kind: 'text' },
-  { path: 'runtime.provider', label: 'Provider', kind: 'text', hint: 'for example claude' },
+  { path: 'runtime.provider', label: 'Provider', kind: 'text', hint: 'for example claude-code' },
   { path: 'runtime.model', label: 'Model', kind: 'text' },
 ]
 
@@ -38,7 +38,7 @@ const SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/
  * Create, duplicate or edit one catalog entity (agent or launch). Never saves by itself: it builds change ops,
  * asks the backend to compute the change, and hands it to the Review dialog, so the save mode decides what happens.
  */
-export function EntityDialog({ kind, mode, fields, initial, id: fixedId, sha, noun, onClose, onApplied }: {
+export function EntityDialog({ kind, mode, fields, initial, id: fixedId, sha, noun, options, onClose, onApplied }: {
   kind: 'agent' | 'launch'
   mode: 'create' | 'edit'
   fields: EntityField[]
@@ -46,9 +46,12 @@ export function EntityDialog({ kind, mode, fields, initial, id: fixedId, sha, no
   id?: string
   sha?: string | null
   noun: string
+  /** Known catalog values per field path, offered as suggestions; the field stays free text. */
+  options?: Record<string, string[]>
   onClose: () => void
   onApplied: () => void
 }) {
+  const listId = useId()
   const [id, setId] = useState(fixedId ?? '')
   const [vals, setVals] = useState<Values>(initial)
   const [busy, setBusy] = useState(false)
@@ -118,7 +121,22 @@ export function EntityDialog({ kind, mode, fields, initial, id: fixedId, sha, no
                   <Checkbox aria-label={f.label} checked={vals[f.path] === true} onCheckedChange={(v) => setVals((s) => ({ ...s, [f.path]: v === true }))} />
                 </span>
               ) : (
-                <Input aria-label={f.label} value={String(vals[f.path] ?? '')} placeholder={f.hint} onChange={(e) => setVals((s) => ({ ...s, [f.path]: e.target.value }))} />
+                <span className="flex flex-col">
+                  <Input
+                    aria-label={f.label}
+                    value={String(vals[f.path] ?? '')}
+                    placeholder={f.hint}
+                    list={options?.[f.path]?.length ? `${listId}-${f.path}` : undefined}
+                    onChange={(e) => setVals((s) => ({ ...s, [f.path]: e.target.value }))}
+                  />
+                  {options?.[f.path]?.length ? (
+                    <datalist id={`${listId}-${f.path}`}>
+                      {options[f.path].map((o) => (
+                        <option key={o} value={o} />
+                      ))}
+                    </datalist>
+                  ) : null}
+                </span>
               )}
             </label>
           ))}

@@ -48,7 +48,7 @@ const launchValues = (l: Launch): Record<string, string | boolean> => ({
   enabled: l.enabled,
 })
 
-function LaunchDetail({ l, agentName, onChanged }: { l: Launch; agentName: string; onChanged: () => void }) {
+function LaunchDetail({ l, agentName, options, onChanged }: { l: Launch; agentName: string; options: Record<string, string[]>; onChanged: () => void }) {
   const [mode] = useChangeMode()
   const [dialog, setDialog] = useState<'edit' | 'duplicate' | 'env'>()
   const navigate = useNavigate()
@@ -126,6 +126,7 @@ function LaunchDetail({ l, agentName, onChanged }: { l: Launch; agentName: strin
           initial={launchValues(l)}
           id={dialog === 'edit' ? l.id : undefined}
           sha={l.sha}
+          options={options}
           onClose={() => setDialog(undefined)}
           onApplied={onChanged}
         />
@@ -173,6 +174,8 @@ export function BuilderLaunchesPage() {
   const rows = all.filter((l) => (!provider || l.provider === provider) && (!project || l.project === project) && (!worker || l.worker === worker))
   const sel = rows.find((l) => l.id === picked) ?? rows[0]
   const nameOf = (l: Launch) => names.get(l.agent) ?? l.agent
+  // Known values for the launch dialogs, so a typo such as provider "claude" is not the easy path.
+  const options = { agent: [...names.keys()].sort(), provider: uniq((l) => l.provider), project: uniq((l) => l.project), worker: uniq((l) => l.worker) }
   return (
     <div className="flex h-full min-w-0 flex-col">
       <BuilderShell tab="launches" />
@@ -197,7 +200,7 @@ export function BuilderLaunchesPage() {
             New launch
           </Button>
         )}
-        {creating && <EntityDialog kind="launch" mode="create" noun="launch" fields={LAUNCH_FIELDS} initial={{ chat: false, enabled: true }} onClose={() => setCreating(false)} onApplied={retry} />}
+        {creating && <EntityDialog kind="launch" mode="create" noun="launch" fields={LAUNCH_FIELDS} initial={{ chat: false, enabled: true }} options={options} onClose={() => setCreating(false)} onApplied={retry} />}
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto">
@@ -272,7 +275,7 @@ export function BuilderLaunchesPage() {
         </div>
         {sel && (
           <aside aria-label="Launch" className="hidden w-[360px] shrink-0 overflow-auto border-l border-border-subtle p-3.5 lg:block">
-            <LaunchDetail key={sel.id} l={sel} agentName={nameOf(sel)} onChanged={retry} />
+            <LaunchDetail key={sel.id} l={sel} agentName={nameOf(sel)} options={options} onChanged={retry} />
           </aside>
         )}
       </div>
