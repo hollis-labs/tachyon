@@ -582,6 +582,8 @@ func (s *Server) contextSeries(w http.ResponseWriter, r *http.Request) {
 
 // points reads minute buckets while they exist (48 h) and hour buckets before that, thinned to a
 // bounded number so a long range stays small.
+// A sample taken from a frame that did not name the window (most do not) uses the session's last known
+// window; before this such samples were dropped and the line stopped hours short of the current figure.
 func (s *Server) points(ctx context.Context, id string, fromMS, toMS int64, now time.Time) ([]point, error) {
 	cut := now.Add(-agentscollector.MinuteSampleRetention).UnixMilli()
 	var pts []point
@@ -592,8 +594,11 @@ func (s *Server) points(ctx context.Context, id string, fromMS, toMS int64, now 
 		if k.lo > k.hi {
 			continue
 		}
-		rs, err := s.DB.Reader.QueryContext(ctx, `SELECT bucket_ns,ctx_used,ctx_window FROM agents_samples WHERE session_id=? AND bucket_kind=? AND bucket_ns>=? AND bucket_ns<=? AND ctx_used IS NOT NULL AND ctx_window>0 ORDER BY bucket_ns`,
-			id, k.kind, k.lo*int64(time.Millisecond), k.hi*int64(time.Millisecond))
+		rs, err := s.DB.Reader.QueryContext(ctx, `SELECT bucket_ns,ctx_used,w FROM (
+   SELECT bucket_ns,ctx_used,COALESCE(NULLIF(ctx_window,0),(SELECT ctx_window FROM agents_sessions WHERE session_id=?),0) AS w
+   FROM agents_samples WHERE session_id=? AND bucket_kind=? AND bucket_ns>=? AND bucket_ns<=? AND ctx_used IS NOT NULL
+ ) WHERE w>0 ORDER BY bucket_ns`,
+			id, id, k.kind, k.lo*int64(time.Millisecond), k.hi*int64(time.Millisecond))
 		if err != nil {
 			return nil, err
 		}
