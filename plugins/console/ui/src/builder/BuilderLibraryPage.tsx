@@ -278,7 +278,10 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-subtle px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-col">
           <h2 className="truncate font-mono text-base font-semibold normal-case tracking-normal text-fg">{it.name}</h2>
-          <span className="text-label text-fg-muted">Library · {LIBRARY_KINDS.find((k) => k.id === kind)?.label}</span>
+          <span className="text-label text-fg-muted">
+            Library · {LIBRARY_KINDS.find((k) => k.id === kind)?.label}
+            {archived ? ' · archived' : ''}
+          </span>
         </div>
         {canEdit && !editing && mode !== 'unavailable' && (
           <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
@@ -503,7 +506,10 @@ export function BuilderLibraryPage() {
                     onClick={() => navigate(`/builder/library/${kind}/${encodeURIComponent(it.id)}`)}
                     className={`flex w-full flex-col px-3.5 py-2.5 text-left hover:bg-selection ${it.id === id ? 'bg-selection' : ''}`}
                   >
-                    <b className="truncate font-mono text-control font-semibold text-fg">{it.name}</b>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <b className="truncate font-mono text-control font-semibold text-fg">{it.name}</b>
+                      {it.archived === true && <Chip>archived</Chip>}
+                    </span>
                     <span className="truncate text-label text-fg-muted">
                       {[it.summary, it.used_by_count != null ? `used by ${it.used_by_count} ${it.used_by_count === 1 ? 'agent' : 'agents'}` : ''].filter(Boolean).join(' · ')}
                     </span>
