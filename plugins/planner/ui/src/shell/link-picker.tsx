@@ -17,7 +17,7 @@ export function LinkKindPicker({ open, from, to, onPick, onCancel }: { open: boo
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent widthClassName="max-w-sm">
         <DialogHeader>
-          <DialogTitle>{TEXT.linkKindTitle}</DialogTitle>
+          <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">{TEXT.linkKindTitle}</DialogTitle>
           <DialogDescription>{from} → {to}. {TEXT.linkKindHint}</DialogDescription>
         </DialogHeader>
         <ul className="flex flex-col gap-1">
