@@ -4,9 +4,11 @@ import { Chip, SetCard, SetRow } from "../settings/parts"
 import { type Access, approvalsApi } from "./approvalsApi"
 import type { Remote } from "./useRemote"
 
-export function minutesLeft(s?: number): string {
-  const m = Math.max(1, Math.ceil((s ?? 0) / 60))
-  return `${m} min left`
+/** Time left on elevation. No expiry (expires_in_s 0 or absent, e.g. "always" or the dev posture) names the policy instead of inventing a minute. */
+export function minutesLeft(s?: number, policy?: string): string {
+  if (!s || s <= 0)
+    return policy ? policy.charAt(0).toUpperCase() + policy.slice(1) : "No time limit"
+  return `${Math.ceil(s / 60)} min left`
 }
 
 export function AccessCard({ state, reload }: { state: Remote<Access>; reload: () => void }) {
@@ -57,7 +59,7 @@ export function AccessCard({ state, reload }: { state: Remote<Access>; reload: (
         >
           {elevated && (
             <div className="flex items-center gap-2">
-              <Chip>{minutesLeft(state.data.expires_in_s)}</Chip>
+              <Chip>{minutesLeft(state.data.expires_in_s, state.data.ttl_policy)}</Chip>
               <Button
                 type="button"
                 variant="outline"

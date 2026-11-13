@@ -24,12 +24,17 @@ export function relativeTime(iso: string, now = Date.now()): string {
 /** Hidden until the approvals history can be read; a failure here never shows an error. */
 export function DecisionsCard({ history }: { history: Remote<History> }) {
   if (history.status !== "ready") return null
-  const rows: DecisionEvent[] = history.data.events.filter((e) => DECIDED.has(e.status)).slice(0, 5)
+  const rows: DecisionEvent[] = (history.data.events ?? [])
+    .filter((e) => DECIDED.has(e.status))
+    .slice(0, 5)
   return (
     <SetCard>
       <SetRow title="Your recent decisions" help="Approvals you answered. Newest first.">
         {rows.length > 0 && (
-          <Link to="/approvals" className="text-xs text-fg underline">
+          <Link
+            to="/approvals"
+            className="text-xs text-fg-secondary hover:text-fg hover:underline focus-visible:underline"
+          >
             See all in Approvals
           </Link>
         )}
