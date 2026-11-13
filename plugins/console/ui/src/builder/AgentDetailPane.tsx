@@ -5,7 +5,7 @@ import { Button, Checkbox, Input, OverflowMenu, Switch, Textarea } from '@hollis
 import { Chip } from '../components/chip'
 import { ChipListField } from './ChipListField'
 import { DirtyBar } from './DirtyBar'
-import { AGENT_FIELDS, EntityDialog } from './EntityDialog'
+import { AGENT_FIELDS, EntityDialog, LAUNCH_FIELDS } from './EntityDialog'
 import { type AgentDetail, builderApi, type UsedBy, type Change, errorMessage } from './api'
 import { buildOps, changedPaths, type Draft, fieldByPath, newRequestId, reviewRows } from './changes'
 import { OutlineNav } from './OutlineNav'
@@ -73,15 +73,31 @@ function Section({ id, children }: { id: string; children: ReactNode }) {
   )
 }
 
-/** Launch profiles of this agent. New launch arrives with the Launches slice. */
-function LaunchProfiles({ launches }: { launches: NonNullable<AgentDetail['launches']> }) {
+/** Launch profiles of this agent. New launch opens the launch dialog with this agent filled in. */
+function LaunchProfiles({ agentId, launches, canCreate, onChanged }: { agentId: string; launches: NonNullable<AgentDetail['launches']>; canCreate: boolean; onChanged: () => void }) {
+  const [creating, setCreating] = useState(false)
+  const uniq = (pick: (l: (typeof launches)[number]) => string) => [...new Set(launches.map(pick).filter(Boolean))].sort()
   return (
     <div className="flex flex-col gap-1.5 rounded-panel border border-border px-3 py-2 sm:ml-[142px]">
       <div className="flex items-center justify-between gap-2">
         <Cap>Launch profiles</Cap>
-        <button type="button" disabled title="Creating a launch arrives with the Launches slice" className="inline-flex h-5 items-center rounded-full border border-dashed border-border px-2 text-label text-fg-muted disabled:opacity-60">
-          + New launch
-        </button>
+        {canCreate && (
+          <button type="button" onClick={() => setCreating(true)} className="inline-flex h-5 items-center rounded-full border border-dashed border-border px-2 text-label text-fg-muted hover:text-fg">
+            + New launch
+          </button>
+        )}
+        {creating && (
+          <EntityDialog
+            kind="launch"
+            mode="create"
+            noun="launch"
+            fields={LAUNCH_FIELDS}
+            initial={{ agent: agentId, chat: false, enabled: true }}
+            options={{ agent: [agentId], project: uniq((l) => l.project), worker: uniq((l) => l.worker) }}
+            onClose={() => setCreating(false)}
+            onApplied={onChanged}
+          />
+        )}
       </div>
       {launches.length === 0 && <p className="text-xs text-fg-faint">No launch profiles.</p>}
       {launches.map((l) => (
@@ -121,9 +137,13 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
   const [mode, recheckMode] = useChangeMode()
   const [prepared, setPrepared] = useState<string>()
   const filePath = load.status === 'ready' ? load.data.revision?.path : null
-  useBuilderStream((e) => {
+  const live = useBuilderStream((e) => {
     if (e.type === 'catalog' && e.source === 'observed' && filePath && e.changed_paths?.some((p) => filePath.endsWith(p) || p.endsWith(filePath))) setElsewhere(true)
   })
+  // The stream dropped after having been connected: say so, and keep the editor as it is.
+  const wasLive = useRef(false)
+  if (live) wasLive.current = true
+  const reconnecting = wasLive.current && !live
   const scroller = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
@@ -244,6 +264,11 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
         />
       </header>
       {mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
+      {reconnecting && (
+        <p role="status" className="px-5 py-2 dash-support text-fg-muted">
+          Reconnecting · editing is kept
+        </p>
+      )}
       {elsewhere && (
         <div role="status" className="flex flex-wrap items-center gap-3 px-5 py-2 dash-support text-fg-muted">
           <span className="mr-auto">This agent changed elsewhere.{dirty.length > 0 ? ' Reloading drops your unsaved changes.' : ''}</span>
@@ -291,6 +316,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
           }}
         />
       )}
+      <OutlineNav root={scroller} variant="select" />
       <div className="flex min-h-0 flex-1">
         <OutlineNav root={scroller} />
         <div ref={scroller} className="flex min-w-0 flex-1 flex-col gap-[22px] overflow-auto px-5 py-4 [&>*]:flex-none">
@@ -322,7 +348,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
               )}
             </Row>
           </Section>
-          <LaunchProfiles launches={a.launches ?? []} />
+          <LaunchProfiles agentId={a.id} launches={a.launches ?? []} canCreate={mode !== 'unavailable'} onChanged={retry} />
           <Section id="prompt">
             <Row label="Boot profile">
               {a.prompt?.boot_fragments?.length ? a.prompt.boot_fragments.map((b) => <Cite key={b} to={`/builder/library/prompts/${encodeURIComponent(b)}`}>{b}</Cite>) : <span className="text-fg-faint">none</span>}

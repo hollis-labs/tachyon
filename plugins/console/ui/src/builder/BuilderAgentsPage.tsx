@@ -5,6 +5,8 @@ import { Chip } from '../components/chip'
 import { AgentDetailPane } from './AgentDetailPane'
 import { type AgentRow, builderApi } from './api'
 import { BuilderShell } from './BuilderShell'
+import { useChangeMode } from './capabilities'
+import { AGENT_FIELDS, EntityDialog } from './EntityDialog'
 import { Tile } from './parts'
 import { useLoad } from './useLoad'
 import { type AgentState, POLICY_LABEL, STATE_LABEL } from './vocab'
@@ -84,6 +86,10 @@ export function BuilderAgentsPage() {
 
   const states: AgentState[] = retiredShown ? ['active', 'disabled', 'retired'] : ['active', 'disabled']
   const countOf = (s: AgentState) => counts?.agents?.[s]
+  // The catalog holds no agents at all (not merely none in this state or search). Templates are not offered: the backend has none.
+  const noAgents = counts?.agents?.total === 0 && !q && !provider
+  const [mode] = useChangeMode()
+  const [creating, setCreating] = useState(false)
   return (
     <div className="flex h-full min-w-0 flex-col">
       <BuilderShell tab="agents" counts={counts ?? null} />
@@ -137,9 +143,20 @@ export function BuilderAgentsPage() {
                 </Button>
               </div>
             )}
-            {list.status === 'ready' && rows.length === 0 && (
+            {list.status === 'ready' && rows.length === 0 && noAgents && (
+              <div className="flex flex-col items-start gap-2 p-4">
+                <p className="text-control text-fg-muted">No agents yet.</p>
+                {mode !== 'unavailable' && (
+                  <Button type="button" size="sm" onClick={() => setCreating(true)}>
+                    New agent
+                  </Button>
+                )}
+              </div>
+            )}
+            {list.status === 'ready' && rows.length === 0 && !noAgents && (
               <p className="p-4 text-control text-fg-muted">{q || provider ? 'No agents match. Clear the search or filter.' : `No ${STATE_LABEL[state].toLowerCase()} agents.`}</p>
             )}
+            {creating && <EntityDialog kind="agent" mode="create" noun="agent" fields={AGENT_FIELDS} initial={{}} onClose={() => setCreating(false)} onApplied={retry} />}
             {list.status === 'ready' && rows.length > 0 && <Rows rows={rows} selected={id} onSelect={select} />}
             {list.status === 'ready' && cursor && (
               <div className="flex flex-col items-start gap-2 border-t border-border-subtle p-3">
