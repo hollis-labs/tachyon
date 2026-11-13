@@ -19,11 +19,12 @@ export interface ConsolePrefsPanelProps {
 function Row({ title, help, children }: { title: string; help: ReactNode; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border-subtle px-4 py-3.5 last:border-b-0">
-      <div className="min-w-0 flex-1 basis-56">
+      <div className="min-w-0 flex-1 basis-40">
         <p className="font-bold text-fg">{title}</p>
         <p className="text-xs leading-normal text-fg-muted">{help}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">{children}</div>
+      {/* min-w-0 + max-w-full: at 390 a wide control (the notify segmented) scrolls inside the card instead of overflowing it. */}
+      <div className="flex min-w-0 max-w-full items-center gap-2">{children}</div>
     </div>
   )
 }
@@ -49,6 +50,7 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
     <form aria-label="Alert preferences" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
       <div className="rounded-panel border border-border">
         <Row title="Notify me about" help="Sets what appears in the bell, the list and toasts.">
+          <div className="min-w-0 max-w-full overflow-x-auto">
           <Segmented
             label="Notify me about"
             value={levelOf(prefs)}
@@ -56,11 +58,15 @@ export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
             bare
             items={NOTIFY_LEVELS.map((l) => ({ value: l.id, label: l.label }))}
           />
+          </div>
         </Row>
         <p className="sr-only" aria-live="polite">{previewLine(levelOf(prefs), prefs.quiet)}</p>
         <Row title="Pop-up toasts" help="Critical alerts always pop up.">
           <Switch aria-label="Pop-up toasts" checked={prefs.toastsEnabled} onCheckedChange={(v) => onChange({ toastsEnabled: v })} />
         </Row>
+      </div>
+      {/* Golden: quiet hours is its own card. */}
+      <div className="rounded-panel border border-border">
         <Row title="Quiet hours" help="Repeats every day in your timezone.">
           <Switch aria-label="Quiet hours" checked={prefs.quietHoursEnabled} onCheckedChange={(v) => onChange({ quietHoursEnabled: v })} />
           <input type="time" aria-label="Quiet hours start" value={prefs.quietHoursStart} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursStart: e.target.value })} className={INPUT} />

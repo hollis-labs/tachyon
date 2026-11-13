@@ -4,6 +4,7 @@ import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-d
 import { AppearanceSection } from "./AppearanceSection"
 import { GeneralSection } from "./GeneralSection"
 import { devStubApi, realApi } from "./general"
+import { SettingsColumn } from "./parts"
 import { resolveSection, SETTINGS_SECTIONS } from "./sections"
 
 const useGeneralApi = () => {
@@ -77,7 +78,15 @@ export function SettingsPage() {
         >
           <div className="w-full max-w-[680px]">
             {active === "appearance" && <AppearanceSection />}
-            {active === "alerts" && <AlertsSettingsSection />}
+            {active === "alerts" && (
+              <SettingsColumn
+                id="settings-alerts-h"
+                title="Alerts"
+                intro="Choose what reaches you and how loudly."
+              >
+                <AlertsSettingsSection bodyOnly />
+              </SettingsColumn>
+            )}
             {active === "general" && <GeneralSection api={api} />}
           </div>
         </div>
