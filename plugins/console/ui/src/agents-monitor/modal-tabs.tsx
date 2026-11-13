@@ -244,7 +244,7 @@ export function ContextTab({ s, now }: { s: Session; now: number }) {
 
 // ---------- History ----------
 
-interface History { sessions: { session_id: string; started_at: number; ran_ms: number; tokens: Record<string, number>; tool_calls: number; ended_at: number; end_reason: string }[] }
+interface History { sessions: { session_id: string; started_at: number; ran_ms: number; tokens: Record<string, number> | null; tool_calls: number | null; ended_at: number; end_reason: string }[] }
 
 const when = (at: number) => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 const failed = (reason: string) => /fail|error/i.test(reason)
