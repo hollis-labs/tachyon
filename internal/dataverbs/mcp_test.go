@@ -1,7 +1,10 @@
 package dataverbs
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/tesseractread"
 	"github.com/hollis-labs/tachyon/internal/torqueread"
 )
@@ -314,5 +318,111 @@ func TestAgentMCPTesseractToolsAreOptInAndNamespaceGated(t *testing.T) {
 	}
 	if got := call("tools/call", map[string]any{"name": "tachyon_tesseract_get", "arguments": map[string]any{"item_id": "i1"}}, plain); strings.Contains(got, "the full body") {
 		t.Fatalf("token without the verb reached Tesseract: %s", got)
+	}
+}
+
+// Tether's tachyon_plan upstream calls the MCP route, so the X-Tether-* headers must count there
+// exactly as on the HTTP route: lineage is recorded for the pinned proxy, a replacement session
+// gets its predecessor's plan on its first plan_get, and any other caller's headers are ignored.
+func TestAgentMCPRecordsLineageAndCarriesPlanForPinnedProxy(t *testing.T) {
+	_, s, db := setup(t)
+	access := &agentaccess.Store{DB: db}
+	proxyTok, proxy, err := access.Issue(ctx, "", "tether-mcp-proxy", agentaccess.ChatPlan(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = access.PinProxy(ctx, proxyTok.IdentityID); err != nil {
+		t.Fatal(err)
+	}
+	_, direct, err := access.Issue(ctx, "", "Direct agent", agentaccess.ChatPlan(), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := &chatplan.Service{Store: &chatplan.Store{DB: db}, Exists: func(context.Context, string) error { return nil }}
+	known := func(ctx context.Context, ref string) (ChatThread, error) {
+		for _, st := range svc.Store.Sessions(ctx) {
+			if st.Ref == ref {
+				return ChatThread{Ref: ref, AgentID: st.Agent}, nil
+			}
+		}
+		return ChatThread{}, errors.New("none")
+	}
+	plan := &ChatPlan{Service: svc, Thread: known, Threads: func(context.Context) ([]ChatThread, error) { return nil, nil }}
+	handler := NewAgentMCP(s, access, plan)
+	call := func(credential, session, agent, continues, tool, args string) string {
+		t.Helper()
+		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": tool, "arguments": json.RawMessage(args)}})
+		req := httptest.NewRequest("POST", "https://tachyon.test"+AgentMCPPath, strings.NewReader(string(raw)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("Authorization", "Bearer "+credential)
+		for k, v := range map[string]string{SessionHeader: session, LogicalAgentHeader: agent, ContinuesHeader: continues} {
+			if v != "" {
+				req.Header.Set(k, v)
+			}
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatalf("%s: %d: %s", tool, w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+	// row reports the lineage recorded for a session: its agent and the session it continues.
+	row := func(session string) (agent, continues string, ok bool) {
+		t.Helper()
+		var cont sql.NullString
+		err := db.Reader.QueryRowContext(ctx, `SELECT agent_id,continues_id FROM chat_session_lineage WHERE session_id=?`, session).Scan(&agent, &cont)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", false
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return agent, cont.String, true
+	}
+
+	// s1 writes a plan through the proxy before it has a single turn; its lineage row is written.
+	if out := call(proxy, "s1", "worker", "", "tachyon_chat_plan_write", `{"title":"Ship","steps":[{"title":"one"}]}`); strings.Contains(out, "isError") || !strings.Contains(out, `\"revision\":1`) {
+		t.Fatalf("proxied session could not write its plan: %s", out)
+	}
+	if agent, continues, ok := row("s1"); !ok || agent != "worker" || continues != "" {
+		t.Fatalf("s1 lineage = %q continues %q (recorded %v)", agent, continues, ok)
+	}
+
+	// A direct credential forging all three headers gets no session, no lineage row and no plan.
+	if out := call(direct, "s2", "worker", "s1", "tachyon_chat_plan_get", `{}`); !strings.Contains(out, "isError") || strings.Contains(out, "Ship") {
+		t.Fatalf("forged continuation from a non-proxy caller was served: %s", out)
+	}
+	if out := call(direct, "s1", "worker", "", "tachyon_chat_plan_get", `{}`); !strings.Contains(out, "isError") || strings.Contains(out, "Ship") {
+		t.Fatalf("forged session id from a non-proxy caller was served: %s", out)
+	}
+	if _, _, ok := row("s2"); ok {
+		t.Fatal("a non-proxy caller wrote a lineage row")
+	}
+
+	// Lineage is recorded on any proxied request, not only a tool call.
+	raw := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`
+	req := httptest.NewRequest("POST", "https://tachyon.test"+AgentMCPPath, strings.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+proxy)
+	req.Header.Set(SessionHeader, "s0")
+	req.Header.Set(LogicalAgentHeader, "worker")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	if _, _, ok := row("s0"); !ok {
+		t.Fatal("tools/list through the proxy did not record the session")
+	}
+
+	// The replacement session gets the plan on its first plan_get, moved once.
+	out := call(proxy, "s2", "worker", "s1", "tachyon_chat_plan_get", `{}`)
+	if strings.Contains(out, "isError") || !strings.Contains(out, `\"title\":\"Ship\"`) || !strings.Contains(out, `\"revision\":2`) {
+		t.Fatalf("replacement session did not receive the plan: %s", out)
+	}
+	if agent, continues, ok := row("s2"); !ok || agent != "worker" || continues != "s1" {
+		t.Fatalf("s2 lineage = %q continues %q (recorded %v)", agent, continues, ok)
+	}
+	if out := call(proxy, "s1", "worker", "", "tachyon_chat_plan_get", `{}`); !strings.Contains(out, "isError") || strings.Contains(out, "Ship") {
+		t.Fatalf("the old session still holds the plan: %s", out)
 	}
 }
