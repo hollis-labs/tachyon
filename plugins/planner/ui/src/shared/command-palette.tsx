@@ -47,10 +47,11 @@ export function CommandPalette({ open, onOpenChange, title, modes, commands, onR
         ...rows.map((c) => ({
           id: c.id,
           label: (
+            // On the highlighted row (surface-hover) only fg keeps 4.5:1 at caption size, in light and in dark.
             <span className="flex w-full items-center gap-3">
-              {c.group && <span className="w-14 shrink-0 font-mono text-caption text-fg-muted">{c.group}</span>}
+              {c.group && <span className="w-14 shrink-0 font-mono text-caption text-fg-muted [[aria-selected=true]_&]:text-fg">{c.group}</span>}
               <span className="min-w-0 flex-1 truncate">{c.label}</span>
-              {c.hint && <span className="shrink-0 font-mono text-caption text-fg-muted">{c.hint}</span>}
+              {c.hint && <span className="shrink-0 font-mono text-caption text-fg-muted [[aria-selected=true]_&]:text-fg">{c.hint}</span>}
             </span>
           ),
         })),
