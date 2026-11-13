@@ -73,8 +73,16 @@ check "content link out"         403 "$(content "$dir/link-out")"
 check "content traversal"        404 "$(content "$dir/../../../../etc/passwd")"
 check "content /etc/passwd"      404 "$(content /etc/passwd)"
 check "content directory"        400 "$(content "$dir/sub")"
-check "content caster not yet"   501 "$(req GET "$api/content?caster_ref=caster://designer/x")"
-check "content no auth"          401 "$(curl -sS -o /dev/null -w '%{http_code}' "$api/content?path=$dir/main.go")"
+# Caster off: caster_ref is 501. Caster wired (V5): an unknown ref is 404.
+got=$(req GET "$api/content?caster_ref=caster://designer/fileview-matrix-missing")
+if [ "$got" = 404 ]; then check "content caster unknown ref" 404 "$got"; else check "content caster not configured" 501 "$got"; fi
+# Dev posture (TACHYON_ASSURANCE=dev) opens every request by design (the tailnet is the boundary), so the
+# no-auth case can only be proven on a host that is not in dev posture.
+if curl -sS "$base/api/plugins/console/v1/approval-inbox/status" | grep -qF '"dev posture"'; then
+  echo "SKIP content no auth (host is in dev posture)"
+else
+  check "content no auth"          401 "$(curl -sS -o /dev/null -w '%{http_code}' "$api/content?path=$dir/main.go")"
+fi
 
 # frames
 check "frame not html"           400 "$(mint "{\"path\":\"$dir/main.go\"}")" not_html
