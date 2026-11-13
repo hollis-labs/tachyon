@@ -91,10 +91,23 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
     }
   }
   const done = !isOpen(change.state)
+  // Leaving a draft (Keep editing, Close, Esc) cancels it on the server: an open draft blocks the next Review of the
+  // same file with 409 change_open, and nothing in the editor could cancel it afterwards.
+  const dismiss = async () => {
+    if (change.state !== 'draft') return onClose(change)
+    setBusy(true)
+    setError('')
+    try {
+      onClose(await builderApi.cancel(change.change_id))
+    } catch (e) {
+      setError(`The draft could not be discarded. ${errorMessage(e)}`)
+      setBusy(false)
+    }
+  }
 
   return (
     <>
-    <Dialog open onOpenChange={(open) => !open && !busy && onClose(change)}>
+    <Dialog open onOpenChange={(open) => !open && !busy && void dismiss()}>
       <DialogContent
         widthClassName="max-w-3xl"
         className="gap-3 max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[88vh] max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-auto max-sm:rounded-b-none max-sm:rounded-t-lg"
@@ -248,7 +261,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
               size="sm"
               className="max-sm:min-h-10"
               disabled={busy}
-              onClick={() => (change.state === 'draft' ? onClose(change) : run(() => builderApi.cancel(change.change_id)))}
+              onClick={() => (change.state === 'draft' ? void dismiss() : run(() => builderApi.cancel(change.change_id)))}
             >
               {change.state === 'draft' ? 'Keep editing' : 'Cancel change'}
             </Button>
@@ -266,7 +279,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
             </Button>
           )}
           {change.state === 'draft' && inHandoff && (
-            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={() => onClose(change)}>
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" disabled={busy} onClick={() => void dismiss()}>
               Keep editing
             </Button>
           )}
