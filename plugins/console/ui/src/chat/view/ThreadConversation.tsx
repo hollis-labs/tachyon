@@ -1,4 +1,5 @@
 import { sessionThreadId } from '../chatapi'
+import { chatJSON } from '../roster'
 import { useChatThread } from '../hooks'
 import { useBlocks } from '../cards/useBlocks'
 import { applyReplyFilter, hiddenReplies, useReplyFilter, type ReplyFilter } from '../replyFilter'
@@ -41,6 +42,8 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
   const [replyFilter, setReplyFilter] = useReplyFilter()
   const inHeader = useFilterInHeader()
   const shown = applyReplyFilter(messages, replyFilter)
+  // Only a Tether session mid-turn can be interrupted (the app agent answers 501).
+  const stoppable = !!ref && ref.startsWith('tether:') && cap.mode === 'session' && cap.canSend === false
   const note = cap.mode === 'offline' ? 'Agent is offline. This will queue.' : cap.mode === 'mail-only' ? 'Mail only. Reply may take a while.' : null
   return (
     <ConversationView
@@ -53,6 +56,7 @@ export function ThreadConversation({ thread, palette }: { thread: ChatThread; pa
       onLoadOlder={() => void loadOlder()}
       onSend={send}
       canSend={cap.canSend !== false}
+      onStop={stoppable ? async () => { await chatJSON(`/threads/${encodeURIComponent(ref)}/stop`, { method: 'POST' }) } : undefined}
       error={error}
       onRetry={retry}
       role={thread.agent.agentId ?? thread.agent.label}

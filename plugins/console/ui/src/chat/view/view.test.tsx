@@ -200,6 +200,25 @@ describe('ConversationView', () => {
     expect(screen.getByRole('alert').textContent).toContain('nope')
   })
 
+  it('shows Stop in place of Send while the agent is replying, and the reason when the stop fails', async () => {
+    const onStop = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('This session has no running turn Tachyon can interrupt.'))
+    const { rerender } = render(<ConversationView {...base} onSend={vi.fn()} canSend={false} onStop={onStop} />)
+    expect(screen.queryByRole('button', { name: /Send/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await flush()
+    expect(onStop).toHaveBeenCalledTimes(1)
+    // One request per turn: the button waits for the turn to end.
+    fireEvent.click(screen.getByRole('button', { name: 'Stopping' }))
+    expect(onStop).toHaveBeenCalledTimes(1)
+    rerender(<ConversationView {...base} onSend={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /Send/ })).toBeTruthy()
+    rerender(<ConversationView {...base} onSend={vi.fn()} canSend={false} onStop={onStop} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await flush()
+    expect(screen.getByRole('alert').textContent).toContain('no running turn')
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
+  })
+
   it('keeps an unsent draft per thread across switching away and back, and clears it after a send', async () => {
     const onSend = vi.fn().mockResolvedValue(undefined)
     const { unmount } = render(<ConversationView {...base} threadId="a" onSend={onSend} />)

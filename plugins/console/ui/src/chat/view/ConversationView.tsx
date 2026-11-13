@@ -52,16 +52,28 @@ export interface ConversationViewProps {
   role?: string
   /** Agents the @ menu offers. */
   mentions?: string[]
+  /** Interrupt the reply in progress. Present only while the agent is working and the thread can be stopped. */
+  onStop?: () => Promise<void>
   /** The chat API thread ref behind the conversation (workspace, scratchpad, terminal are keyed by it). */
   threadRef?: string
 }
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
-export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, blocksLoaded, commit, runActions, threadRef, onRetry, role, mentions }: ConversationViewProps) {
+export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, blocksLoaded, commit, runActions, threadRef, onRetry, role, mentions, onStop }: ConversationViewProps) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [value, setValueState] = useState(() => getDraft(threadId))
   const setValue = (v: string) => { setValueState(v); setDraft(threadId, v) }
   const [busy, setBusy] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [stopError, setStopError] = useState<string | null>(null)
+  // A stop request ends with the turn it was for.
+  const canStop = !!onStop
+  useEffect(() => { if (!canStop) { setStopping(false); setStopError(null) } }, [canStop])
+  const stop = async () => {
+    if (!onStop || stopping) return
+    setStopping(true); setStopError(null)
+    try { await onStop() } catch (e) { setStopping(false); setStopError(e instanceof Error ? e.message : 'The reply could not be stopped.') }
+  }
   const [drawer, setDrawer] = useState<DrawerMode | null>(null)
   const [size, setSize] = useState<DrawerSize>('half')
   const ws = useWorkspace(threadRef)
@@ -135,6 +147,9 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
         disabled={!canSend}
         note={note}
         sendError={sendError}
+        stopError={stopError}
+        onStop={onStop ? () => void stop() : undefined}
+        stopping={stopping}
         mentions={mentions}
         textareaRef={area}
         onOpenPalette={() => setPaletteOpen(true)}
