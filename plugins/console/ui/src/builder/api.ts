@@ -350,7 +350,7 @@ export const builderApi = {
 
 export function errorMessage(e: unknown): string {
   if (e instanceof BuilderError && (e.status === 401 || e.status === 403)) return 'Operator access is needed to view this.'
-  if (e instanceof BuilderError && e.code === 'change_open') return 'Another change to this agent is already open. Finish or cancel it first.'
+  if (e instanceof BuilderError && e.code === 'change_open') return 'Another change to this item is already open. Finish or cancel it first.'
   if (e instanceof BuilderError && e.code === 'rate_limited') return 'Too many changes in a minute. Wait a moment and try again.'
   if (e instanceof BuilderError && e.code === 'ack_required') return 'Confirm the privileged fields before submitting.'
   return e instanceof Error ? e.message : 'Could not load.'
