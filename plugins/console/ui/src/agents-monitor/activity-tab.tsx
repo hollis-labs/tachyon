@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { SearchInput, Skeleton } from '@hollis-labs/design-components'
 import { Chip } from '@planner/shared'
+import { RefChip } from '../autolink'
 import { agentsGet, useAgentsRead } from './api'
 import { Cite, EventFeed, clock, dayLabel, type Entry } from './session-events'
 import { AGENTS } from './vocabulary'
@@ -28,6 +30,16 @@ const TOPIC_OF: Record<string, BusEvent['type']> = { deploys: 'deploy', restarts
 type TopicState = 'live' | 'off' | 'no_emitter'
 const SOURCE_LABEL: Record<string, string> = { deploy: 'deploys', restart: 'restarts', task: 'tasks', failure: 'failures', host: 'host', workstream: 'workstreams', lifecycle: 'lifecycle', card: 'cards' }
 
+/**
+ * A ref named by a bus event. A task is the shared reference chip (hovercard, opens the task drawer) and a session
+ * links to its modal; a kind with nowhere to go is a plain chip with no arrow, so nothing looks clickable that is not.
+ */
+function BusRefChip({ r }: { r: BusEvent['refs'][number] }) {
+  if (r.kind === 'task') return <RefChip kind="torque.task" canonical={r.ref} raw={r.label} resolve="hover" />
+  if (r.kind === 'session') return <Link to={`/agents/${encodeURIComponent(r.ref)}`} className="rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"><Cite>{r.label} ↗</Cite></Link>
+  return <Cite>{r.label}</Cite>
+}
+
 /** Bus events as rail entries. Failures (and errors) are the only coloured rows; refs are named in text. */
 export function toBusTimeline(events: readonly BusEvent[], now: number): Entry[] {
   return events.map((e) => {
@@ -45,12 +57,12 @@ export function toBusTimeline(events: readonly BusEvent[], now: number): Entry[]
       body: (
         <span>
           {e.subject}
-          {(e.refs ?? []).length > 0 && !card && <span className="ml-1.5 inline-flex gap-1">{(e.refs ?? []).map((r) => <Cite key={r.ref}>{r.label} ↗</Cite>)}</span>}
+          {(e.refs ?? []).length > 0 && !card && <span className="ml-1.5 inline-flex gap-1">{(e.refs ?? []).map((r) => <BusRefChip key={r.ref} r={r} />)}</span>}
           <span className="text-fg-faint"> · {e.app}{e.actor ? ` · ${e.actor}` : ''}</span>
         </span>
       ),
       card,
-      cites: (e.refs ?? []).map((r) => r.label),
+      cites: card ? (e.refs ?? []).map((r) => <BusRefChip key={r.ref} r={r} />) : undefined,
     }
   })
 }
@@ -107,7 +119,7 @@ export function ActivityTab({ busTick, now }: { busTick: number; now: number }) 
     if (events !== null && events.length === 0) return A.empty
     const st = topicState(facet)
     if (visible.length === 0 && st === 'no_emitter') return A.noEmitter
-    if (visible.length === 0 && st === 'off') return A.topicOff(SOURCE_LABEL[TOPIC_OF[facet]] ?? facet)
+    if (visible.length === 0 && st === 'off') return A.topicOff(TOPIC_OF[facet] ?? facet) // the topic name is singular: "No deploy events yet"
     return A.noMatch
   }
 
