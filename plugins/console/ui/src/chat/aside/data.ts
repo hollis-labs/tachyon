@@ -12,7 +12,7 @@ export interface PlanStep { id: string; position: number; title: string; status:
 export interface Plan { id: string; title?: string | null; status: string; revision: number; task_ref?: string | null; steps: PlanStep[] }
 export interface Topic { id: string; title: string; message_ref: string; seq?: number | null; added_by: 'user' | 'agent'; created_at: number }
 export interface Bookmark { id: string; message_ref: string; note: string; created_at: number }
-export interface WorkItem { id: string; kind: 'theme' | 'task' | 'decision'; title: string; status: string; progress?: number | null; needs_user?: boolean; updated_at: number }
+export interface WorkItem { id: string; kind: 'theme' | 'task' | 'decision'; title: string; status: string; progress?: number | null; counts?: { done: number; doing: number; blocked: number; todo: number } | null; needs_user?: boolean; updated_at: number }
 export interface Activity { seq: number; type: string; actor: string; cite?: { kind: string; ref: string; label: string }[]; payload?: { title?: string; summary?: string; body?: string; review_ref?: string; cite?: { label: string }[] } | null; at?: number }
 export interface Rule { id: string; tool: string; effect: string; created_at: number }
 

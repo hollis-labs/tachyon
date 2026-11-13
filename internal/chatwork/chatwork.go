@@ -29,6 +29,14 @@ type Cite struct {
 	Label string `json:"label"`
 }
 
+// Counts is a row's child work by status, for the segmented progress bar.
+type Counts struct {
+	Done    int `json:"done"`
+	Doing   int `json:"doing"`
+	Blocked int `json:"blocked"`
+	Todo    int `json:"todo"`
+}
+
 // Item is one Work panel row (chatapi Work schema).
 type Item struct {
 	ID        string   `json:"id"`
@@ -36,6 +44,7 @@ type Item struct {
 	Title     string   `json:"title"`
 	Status    string   `json:"status"`
 	Progress  *float64 `json:"progress"`
+	Counts    *Counts  `json:"counts,omitempty"`
 	Links     []Cite   `json:"links"`
 	NeedsUser bool     `json:"needs_user"`
 	UpdatedAt int64    `json:"updated_at"`
@@ -119,13 +128,22 @@ func (s *Service) Work(ctx context.Context, ref chatapi.ThreadRef, agent string)
 	if s.Plan != nil {
 		if p, err := s.Plan(ctx, ref); err == nil {
 			done, total := 0, 0
+			var counts Counts
 			for _, st := range p.Steps {
 				if st.Status == "cancelled" || st.Status == "skipped" {
 					continue
 				}
 				total++
-				if st.Status == "done" {
+				switch st.Status {
+				case "done":
 					done++
+					counts.Done++
+				case "doing":
+					counts.Doing++
+				case "blocked":
+					counts.Blocked++
+				default:
+					counts.Todo++
 				}
 			}
 			if p.TaskRef != nil && *p.TaskRef != "" {
@@ -134,6 +152,7 @@ func (s *Service) Work(ctx context.Context, ref chatapi.ThreadRef, agent string)
 				if total > 0 {
 					f := float64(done) / float64(total)
 					it.Progress = &f
+					it.Counts = &counts
 				}
 				add(it)
 			}
