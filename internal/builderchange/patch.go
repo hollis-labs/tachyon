@@ -41,6 +41,7 @@ var agentPaths = map[string][]string{
 	"runtime.abstract": {"abstract"}, "runtime.enabled": {"enabled"},
 	"prompt.system_prompt": {"system_prompt"}, "prompt.agent_prompt": {"agent_prompt"}, "prompt.body": {"body"},
 	"prompt.boot_fragments":    {"boot_fragments"},
+	"runtime.lifecycle_state":  {"spec", "lifecycle_state"},
 	"tools_skills.mcp_servers": {"mcp", "servers"}, "tools_skills.skills": {"skills"},
 	"policy.permission_mode": {"permissions", "permission_mode"}, "policy.network": {"permissions", "network"},
 	"policy.default_sandbox": {"permissions", "default_sandbox"}, "policy.mcp_scopes": {"mcp_scopes"},
