@@ -6,13 +6,22 @@
 //
 // Needs `playwright` and `axe-core` resolvable (npm i -D playwright axe-core, or set PLAYWRIGHT_MODULE / AXE_JS).
 import { createRequire } from 'node:module'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const base = (process.argv[2] ?? 'http://127.0.0.1:5179').replace(/\/$/, '')
 const out = process.argv[3] ?? 'light-audit-out'
 const require = createRequire(import.meta.url)
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright')
+// PLAYWRIGHT_MODULE may be a package name, the package directory, or its entry file.
+function playwrightEntry() {
+  const m = process.env.PLAYWRIGHT_MODULE
+  if (!m || !existsSync(m)) return m ?? 'playwright'
+  return pathToFileURL(statSync(m).isDirectory() ? join(m, 'index.mjs') : m).href
+}
+const pw = await import(playwrightEntry())
+const chromium = pw.chromium ?? pw.default?.chromium
+if (!chromium) throw new Error('PLAYWRIGHT_MODULE does not export chromium: point it at the playwright package directory or its index.mjs')
 const axeSrc = readFileSync(process.env.AXE_JS ?? require.resolve('axe-core/axe.min.js'), 'utf8')
 mkdirSync(out, { recursive: true })
 
