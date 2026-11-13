@@ -266,7 +266,9 @@ export function GeneralSection({ api }: { api: GeneralApi }) {
       <Dialog open={review} onOpenChange={(o) => !saving && setReview(o)}>
         <DialogContent className="flex flex-col gap-3">
           <DialogHeader>
-            <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">Review changes</DialogTitle>
+            <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">
+              Review changes
+            </DialogTitle>
             <DialogDescription>These apply to this Tachyon, not just to you.</DialogDescription>
           </DialogHeader>
           <ul className="flex flex-col gap-2 text-xs">
