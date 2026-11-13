@@ -190,6 +190,8 @@ export interface Change {
   request_id: string
   state: ChangeState
   note?: string
+  /** What the change touches: catalog files (agent, launch, project, skill) or Library parts. */
+  targets?: { kind: string; id: string; path?: string }[]
   diff?: string
   checks?: Check[]
   privileged?: { path: string; field: string }[]

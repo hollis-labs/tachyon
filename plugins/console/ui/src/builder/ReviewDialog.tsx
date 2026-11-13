@@ -74,6 +74,9 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
   const [copied, setCopied] = useState(false)
   const privileged = (change.privileged ?? []).length > 0
   const failChecks = (change.checks ?? []).filter((c) => c.status === 'fail')
+  // A change that touches only Library parts (no catalog file, so no plan) is saved by Tachyon itself the moment it
+  // is submitted: there is no host approval to wait for, and the dialog must not promise one.
+  const partsOnly = !inHandoff && change.plan == null && (change.targets ?? []).length > 0 && (change.targets ?? []).every((t) => t.kind === 'part')
 
   useEffect(() => {
     if (change.state === 'applied') onApplied()
@@ -168,10 +171,10 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
                 ? `${change.effect?.running_sessions?.length} keep${change.effect?.running_sessions?.length === 1 ? 's' : ''} the current config until restarted`
                 : 'none affected'}
             </EffectRow>
-            <EffectRow label="Launches">next launch uses the new config</EffectRow>
+            {!partsOnly && <EffectRow label="Launches">next launch uses the new config</EffectRow>}
             {change.effect?.activation && <EffectRow label="Activation">{change.effect.activation}</EffectRow>}
             {(change.effect?.restart_required ?? []).length > 0 && <EffectRow label="Restart required">{change.effect?.restart_required?.join(', ')}</EffectRow>}
-            <EffectRow label="Approval">needed on the host</EffectRow>
+            <EffectRow label="Approval">{partsOnly ? 'not needed · saved as soon as you confirm' : 'needed on the host'}</EffectRow>
           </div>
         )}
         {inHandoff && change.state !== 'draft' && (
@@ -291,7 +294,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
               disabled={busy || failChecks.length > 0 || (privileged && !ack)}
               onClick={() => run(() => builderApi.submit(change.change_id, ack))}
             >
-              {busy ? (inHandoff ? 'Preparing' : 'Submitting') : inHandoff ? 'Prepare change' : 'Submit for approval'}
+              {busy ? (inHandoff ? 'Preparing' : partsOnly ? 'Saving' : 'Submitting') : inHandoff ? 'Prepare change' : partsOnly ? 'Save' : 'Submit for approval'}
             </Button>
           )}
           {change.state === 'draft' && inHandoff && (
