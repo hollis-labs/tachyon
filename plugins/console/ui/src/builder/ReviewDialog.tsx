@@ -97,7 +97,7 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
     <Dialog open onOpenChange={(open) => !open && !busy && onClose(change)}>
       <DialogContent
         widthClassName="max-w-3xl"
-        className="gap-3 max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[88vh] max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:overflow-auto max-sm:rounded-b-none max-sm:rounded-t-lg"
+        className="gap-3 max-sm:-mx-4 max-sm:-mb-4 max-sm:max-h-[88vh] max-sm:w-[calc(100%+2rem)] max-sm:max-w-none max-sm:self-end max-sm:overflow-auto max-sm:rounded-b-none max-sm:border-b-0"
       >
         <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal">{change.state === 'draft' ? `Review changes${subject ? ` · ${subject}` : ''}` : inHandoff ? 'Hand off to Tether' : 'Change status'}</DialogTitle>
         <DialogDescription className="sr-only">Review the computed change and submit it for approval on the host.</DialogDescription>
