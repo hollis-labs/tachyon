@@ -16,6 +16,7 @@ export const DEMO_WORK: { items: WorkItem[]; source: string } = { source: 'plann
   { id: 'CW-0107', kind: 'theme', title: 'Parallax candidate gate', status: 'todo', progress: 0, updated_at: now },
   { id: 'CW-0108', kind: 'task', title: 'Draft shared UI vocabulary', status: 'doing', updated_at: now },
   { id: 'DEC-0042', kind: 'decision', title: 'Generative UI direction', status: 'blocked', needs_user: true, updated_at: now },
+  { id: 'CW-0109', kind: 'task', title: 'Run the Parallax spike', status: 'todo', updated_at: now },
 ] }
 export const DEMO_ACTIVITY: { activity: Activity[]; has_more: boolean } = { has_more: true, activity: [
   { seq: 12, at: at(14, 2), type: 'card.sent', actor: 'agent:portfolio-manager', cite: [{ kind: 'task', ref: 'DEC-0042', label: 'DEC-…0042' }], payload: { body: 'Waiting on you: pick a path for generative UI.' } },

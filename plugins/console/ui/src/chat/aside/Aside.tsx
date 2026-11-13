@@ -84,7 +84,8 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
     topics: marks.topics.length ? String(marks.topics.length) : undefined,
     bookmarks: marks.bookmarks.length ? String(marks.bookmarks.length) : undefined,
     work: work.items.length ? String(work.items.length) : undefined,
-    approvals: waiting ? String(waiting) : undefined,
+    // The demo queue has one more fixture item than the stream (the golden's fs_write).
+    approvals: waiting + (DEMO ? 1 : 0) ? String(waiting + (DEMO ? 1 : 0)) : undefined,
   }
   const tabs = scratchInAside ? [...PANELS, { id: 'scratch' as const, label: 'Scratch' }] : PANELS
   // Esc closes the full-window doc first.
