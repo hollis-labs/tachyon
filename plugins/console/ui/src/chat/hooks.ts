@@ -60,13 +60,21 @@ export function useChatThread(threadId: string | null) {
       },
       (e) => { if (live) { setLoading(false); dispatch({type:'event', e:{type:'error',message:e instanceof Error ? e.message : 'Could not load conversation'}}) } },
     )
+    // A sync re-emits the newest page oldest-first, so before history lands every agent message in it is
+    // "newer" than the last: coalesce a batch into one markRead, sent after the frames of this tick.
+    let markPending = false
     const off = client.subscribe(threadId, (e) => {
       if (!live) return
       dispatch({ type: 'event', e })
-      // Every sync re-emits the newest page; mark read once per newest agent message, not once per frame.
       if (e.type === 'message' && e.message.from === 'agent' && e.message.at > markedAt.current) {
         markedAt.current = e.message.at
-        void client.markRead(threadId)
+        if (!markPending) {
+          markPending = true
+          setTimeout(() => {
+            markPending = false
+            if (live) void client.markRead(threadId)
+          }, 0)
+        }
       }
     })
     return () => {
