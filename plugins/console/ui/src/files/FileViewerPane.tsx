@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm'
 import type { RefDetailProps } from '../autolink/extensions'
 import { relativeTime } from '../builder/changes'
 import { Segmented } from '../components/segmented'
-import { contentUrl, denyMessage, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame, PREVIEW_HEAD_BYTES } from './api'
+import { applyCaps, type Caps, contentUrl, denyMessage, displayPath, errorMessage, type FileKind, type FileStat, fileApi, formatSize, type Frame, hostRoots, PREVIEW_HEAD_BYTES, type Roots } from './api'
 import { FileAccessDialog } from './FileAccessDialog'
 
 const TEXT_KINDS: readonly FileKind[] = ['text', 'json', 'yaml', 'toml', 'csv', 'code']
@@ -14,7 +14,7 @@ const KIND_WORD: Record<string, string> = { markdown: 'Markdown', html: 'HTML', 
 const LANG: Record<string, string> = { go: 'Go', ts: 'TypeScript', tsx: 'TSX', js: 'JavaScript', py: 'Python', rs: 'Rust', sh: 'Shell', sql: 'SQL', css: 'CSS', json: 'JSON', yaml: 'YAML', toml: 'TOML', md: 'Markdown' }
 const KIND_ICON: Record<string, typeof FileIcon> = { html: PanelsTopLeft, markdown: FileText, code: Code, image: ImageIcon, text: FileText, json: Code, yaml: Code, toml: Code, csv: FileText }
 
-type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; stat: FileStat }
+type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; stat: FileStat; roots: Roots | null }
 
 const CHIP = 'rounded-xs border border-border px-1.5 py-0.5 font-mono text-caption text-fg-secondary'
 const HEAD = 'text-control font-bold text-fg'
@@ -33,7 +33,7 @@ export const chipIconToken = (path: string) => ICON_BY_EXT[extOf(path)] ?? (extO
 
 export function metaLine(stat: FileStat | null, path: string): string {
   if (!stat) return ''
-  if (!stat.exists || !stat.allowed) return stat.deny_reason === 'too_large' ? ['Large', formatSize(stat.size)].filter(Boolean).join(' · ') : 'Blocked'
+  if ((!stat.exists || !stat.allowed) && stat.deny_reason !== 'too_large') return 'Blocked'
   const kind = stat.kind ?? 'binary'
   const word = kind === 'code' ? (LANG[stat.language ?? extOf(path)] ?? 'Code') : (KIND_WORD[kind] ?? kind)
   const when = stat.mtime ? `modified ${relativeTime(new Date(stat.mtime).getTime())}` : ''
@@ -56,6 +56,7 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
   const canOpen = !!stat && stat.exists && stat.allowed && stat.type !== 'dir'
   const kind = stat?.kind ?? 'binary'
   const name = basename(path)
+  const shown = displayPath(stat, load.status === 'ready' ? load.roots : null, path)
 
   const copy = (value: string) => {
     void navigator.clipboard?.writeText(value)
@@ -70,8 +71,8 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
     setText(null)
     setDims('')
     setLoad({ status: 'loading' })
-    fileApi.stat(path).then(
-      (s) => live && setLoad({ status: 'ready', stat: s }),
+    Promise.all([fileApi.stat(path), hostRoots()]).then(
+      ([s, roots]) => live && setLoad({ status: 'ready', stat: applyCaps(s, roots?.caps ?? null), roots }),
       (e) => live && setLoad({ status: 'error', message: errorMessage(e) }),
     )
     return () => {
@@ -97,7 +98,7 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
 
   const blocked = !!stat && (!stat.exists || !stat.allowed)
   const large = blocked && stat?.deny_reason === 'too_large'
-  const Icon = blocked ? Ban : (KIND_ICON[kind] ?? FileIcon)
+  const Icon = blocked && !large ? Ban : (KIND_ICON[kind] ?? FileIcon)
   const textual = canOpen && (kind === 'markdown' || TEXT_KINDS.includes(kind))
   const meta = kind === 'image' && dims ? `${(stat?.language ?? extOf(path)).toUpperCase()} · ${dims} · ${formatSize(stat?.size)}` : metaLine(stat, path)
   const sm = 'h-7 text-label'
@@ -116,18 +117,19 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
         box.select()
       }}
     >
-      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-border-subtle px-4 py-3">
-        <span aria-hidden className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-control bg-surface text-fg-secondary">
+      {/* Actions flow after the title as in the golden: the first fit beside it, the rest wrap left-aligned below. */}
+      <header className="flex flex-wrap items-start gap-x-1.5 gap-y-2 border-b border-border-subtle px-4 py-3">
+        <span aria-hidden className="mt-0.5 mr-1.5 flex size-7 shrink-0 items-center justify-center rounded-control bg-surface text-fg-secondary">
           <Icon className="size-3.5" />
         </span>
-        <div className="min-w-0 flex-1 basis-40">
+        <div className="min-w-0 flex-1 basis-auto">
           <h2 className="truncate font-mono text-control font-bold normal-case tracking-normal text-fg" title={path}>
             {name}
             {line ? `:${line}` : ''}
           </h2>
           <p className="text-label text-fg-muted">{meta || ' '}</p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="contents">
           {canOpen && onExpandedChange && (
             <Button type="button" variant="outline" size="sm" className={sm} onClick={() => onExpandedChange(!expanded)}>
               {expanded ? <Minimize2 aria-hidden className="size-3" /> : <Maximize2 aria-hidden className="size-3" />}
@@ -140,7 +142,7 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
             </Button>
           )}
           {(canOpen || large) && (
-            <Button type="button" variant="outline" size="sm" className={sm} render={<a href={contentUrl(path)} download={name} />}>
+            <Button type="button" variant="outline" size="sm" className={sm} nativeButton={false} render={<a href={contentUrl(path)} download={name} />}>
               Download
             </Button>
           )}
@@ -150,12 +152,12 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
             </Button>
           )}
           {canOpen && kind !== 'html' && kind !== 'markdown' && !TEXT_KINDS.includes(kind) && (
-            <Button type="button" variant="outline" size="sm" className={sm} render={<a href={contentUrl(path)} target="_blank" rel="noopener noreferrer" />}>
+            <Button type="button" variant="outline" size="sm" className={sm} nativeButton={false} render={<a href={contentUrl(path)} target="_blank" rel="noopener noreferrer" />}>
               Open in tab ↗
             </Button>
           )}
           {canOpen && kind === 'html' && (
-            <Button type="button" variant="outline" size="sm" className={sm} render={<a href={contentUrl(path)} target="_blank" rel="noopener noreferrer" />}>
+            <Button type="button" variant="outline" size="sm" className={sm} nativeButton={false} render={<a href={contentUrl(path)} target="_blank" rel="noopener noreferrer" />}>
               Open in tab ↗
             </Button>
           )}
@@ -196,11 +198,11 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
           </div>
         )}
         {load.status === 'ready' && (
-          <Body stat={load.stat} path={path} line={line} tick={tick} expanded={expanded} onText={setText} onDims={setDims} onAccess={() => setAccess(true)} onCopyPath={() => copy(path)} />
+          <Body stat={load.stat} caps={load.roots?.caps} path={path} line={line} tick={tick} expanded={expanded} onText={setText} onDims={setDims} onAccess={() => setAccess(true)} onCopyPath={() => copy(path)} />
         )}
       </div>
       <footer className="truncate border-t border-border-subtle px-4 py-2.5 font-mono text-caption text-fg-muted" title={path}>
-        {path}
+        {shown}
       </footer>
       <FileAccessDialog open={access} onOpenChange={setAccess} />
     </section>
@@ -209,6 +211,7 @@ export function FileViewerPane({ refId, onClose, expanded = false, onExpandedCha
 
 interface BodyProps {
   stat: FileStat
+  caps?: Caps | null
   path: string
   line?: number
   tick: number
@@ -219,22 +222,21 @@ interface BodyProps {
   onCopyPath?: () => void
 }
 
-export function Body({ stat, path, line, tick, expanded = false, onText, onDims, onAccess, onCopyPath }: BodyProps) {
+export function Body({ stat, caps, path, line, tick, expanded = false, onText, onDims, onAccess, onCopyPath }: BodyProps) {
   if (!stat.exists || !stat.allowed) {
     if (stat.deny_reason === 'too_large') {
       const kindOfBig = stat.kind ?? 'binary'
-      if (kindOfBig === 'markdown' || TEXT_KINDS.includes(kindOfBig)) {
-        return (
-          <div className="space-y-2 pt-3">
-            <p className={HEAD}>File is {formatSize(stat.size)}, showing the first 200 KB</p>
-            <TextBody path={path} head tick={tick} expanded={expanded} language={stat.language ?? extOf(path)} onText={onText} />
-          </div>
-        )
-      }
+      const limits = `Previews are limited to ${formatSize(caps?.text_bytes ?? 5 * 1024 * 1024)} for text and ${formatSize(caps?.image_bytes ?? 20 * 1024 * 1024)} for images.`
+      const head = kindOfBig === 'markdown' || TEXT_KINDS.includes(kindOfBig)
       return (
-        <div className="space-y-1 pt-3">
-          <p className={HEAD}>File is {formatSize(stat.size)}, too large to preview</p>
-          <p className={MUTED}>Previews are limited to 5 MB for text and 20 MB for images. Download the file to read it.</p>
+        <div className="space-y-2 pt-3">
+          <div className="space-y-1">
+            <p className={HEAD}>File is {formatSize(stat.size)}, too large to preview</p>
+            <p className={MUTED}>
+              {limits} {head ? 'The first 200 KB are shown below.' : 'Download the file to read it.'}
+            </p>
+          </div>
+          {head && <TextBody path={path} head tick={tick} expanded={expanded} language={stat.language ?? extOf(path)} onText={onText} />}
         </div>
       )
     }
@@ -346,7 +348,9 @@ function Page({ path, tick, expanded, onText }: { path: string; tick: number; ex
             { value: 'source', label: 'Source' },
           ]}
         />
+        {/* No room for a 1440 preview on a phone: the golden hides the width switch at 390. */}
         {view === 'rendered' && (
+          <div className="hidden sm:block">
           <Segmented<'desktop' | 'mobile'>
             bare
             label="Preview width"
@@ -357,6 +361,7 @@ function Page({ path, tick, expanded, onText }: { path: string; tick: number; ex
               { value: 'mobile', label: 'Mobile 390' },
             ]}
           />
+          </div>
         )}
       </div>
       {view === 'source' && <TextBody path={path} tick={tick} expanded={expanded} language="html" onText={onText} />}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RefIcon } from '../autolink/RefIcon'
 import type { RefDetailProps } from '../autolink/extensions'
-import { fileApi, type FileStat } from './api'
+import { displayPath, type FileStat, fileApi, hostRoots, type Roots } from './api'
 import { chipIconToken, metaLine } from './FileViewerPane'
 
 const basename = (p: string) => p.split('/').pop() ?? p
@@ -12,9 +12,11 @@ export function FileHover({ refId }: RefDetailProps) {
   const path = refId.canonical
   const [stat, setStat] = useState<FileStat | null>(null)
   const [failed, setFailed] = useState(false)
+  const [roots, setRoots] = useState<Roots | null>(null)
   useEffect(() => {
     let live = true
     fileApi.stat(path).then((s) => live && setStat(s), () => live && setFailed(true))
+    hostRoots().then((r) => live && setRoots(r))
     return () => {
       live = false
     }
@@ -29,7 +31,7 @@ export function FileHover({ refId }: RefDetailProps) {
       <div className="min-w-0 flex-1">
         <div className="truncate font-mono text-control font-bold text-fg">{basename(path)}</div>
         <div className={`text-caption ${blocked ? 'text-danger' : 'text-fg-muted'}`}>{meta}</div>
-        <div className="mt-1 truncate font-mono text-caption text-fg-muted" title={dirname(path)}>{dirname(path)}</div>
+        <div className="mt-1 truncate font-mono text-caption text-fg-muted" title={dirname(path)}>{`${dirname(displayPath(stat, roots, path))}/`}</div>
         {stat && !blocked ? <div className="mt-2 text-caption text-fg-muted">Click to preview</div> : null}
       </div>
     </div>

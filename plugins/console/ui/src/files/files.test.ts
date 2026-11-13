@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { denyMessage, errorMessage, FileError, formatSize } from './api'
+import { applyCaps, denyMessage, displayPath, errorMessage, FileError, formatSize } from './api'
 
 describe('file viewer helpers', () => {
   it('formats sizes', () => {
@@ -20,6 +20,31 @@ describe('file viewer helpers', () => {
 })
 
 import { casterStat, contentUrl, parseCasterRef, pinCasterRef } from './api'
+
+describe('preview caps', () => {
+  const caps = { text_bytes: 2 * 1024 * 1024, image_bytes: 25 * 1024 * 1024, html_bytes: 2 * 1024 * 1024 }
+  const stat = { path: '/x/a.json', exists: true, allowed: true, type: 'file' as const, kind: 'json' as const, size: 3 * 1024 * 1024 }
+  it('reads an allowed text file over the text cap as too_large', () => {
+    expect(applyCaps(stat, caps)).toMatchObject({ allowed: false, deny_reason: 'too_large', size: stat.size })
+  })
+  it('leaves files under the cap, images under the image cap, denied files and unknown caps alone', () => {
+    expect(applyCaps({ ...stat, size: 1024 }, caps)).toEqual({ ...stat, size: 1024 })
+    expect(applyCaps({ ...stat, kind: 'image' }, caps).allowed).toBe(true)
+    expect(applyCaps({ ...stat, allowed: false, deny_reason: 'secret_pattern' }, caps).deny_reason).toBe('secret_pattern')
+    expect(applyCaps(stat, null).allowed).toBe(true)
+  })
+})
+
+describe('display path', () => {
+  const roots = { roots: [{ id: 'downloads', label: 'Downloads', path_display: '~/Downloads', source: 'default' as const }], caps: { text_bytes: 1, image_bytes: 1, html_bytes: 1 } }
+  it('shows a file under a root as the root display path plus the path inside it', () => {
+    expect(displayPath({ path: '/h/Downloads/a/b.md', exists: true, allowed: true, root_label: 'Downloads', rel_path: 'a/b.md' }, roots, '/h/Downloads/a/b.md')).toBe('~/Downloads/a/b.md')
+  })
+  it('falls back to the absolute path without a matching root or roots', () => {
+    expect(displayPath({ path: '/etc/x', exists: false, allowed: false }, roots, '/etc/x')).toBe('/etc/x')
+    expect(displayPath({ path: '/h/Downloads/b.md', exists: true, allowed: true, root_label: 'Downloads', rel_path: 'b.md' }, null, '/h/Downloads/b.md')).toBe('/h/Downloads/b.md')
+  })
+})
 
 describe('caster refs', () => {
   it('parses only the two allowed shapes', () => {
