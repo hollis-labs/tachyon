@@ -55,10 +55,10 @@ function Field({ path, ctx, children }: { path: string; ctx: EditCtx; children?:
   }
   return (
     <div className="grid gap-0.5 py-[3px] sm:grid-cols-[130px_1fr] sm:gap-3">
-      <label htmlFor={id} className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-[7px]">
-        {def.label}
-      </label>
-      <div className="min-w-0">{editor}</div>
+      <dt className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-[7px]">
+        <label htmlFor={id}>{def.label}</label>
+      </dt>
+      <dd className="min-w-0">{editor}</dd>
     </div>
   )
 }
