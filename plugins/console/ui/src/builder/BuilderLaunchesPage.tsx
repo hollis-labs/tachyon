@@ -178,7 +178,7 @@ export function BuilderLaunchesPage() {
   const options = { agent: [...names.keys()].sort(), provider: uniq((l) => l.provider), project: uniq((l) => l.project), worker: uniq((l) => l.worker) }
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <BuilderShell tab="launches" />
+      <BuilderShell tab="launches" actions={mode !== 'unavailable' ? [{ label: 'New launch', onSelect: () => setCreating(true) }] : []} />
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-2">
         <div className="dash-search-adapter w-full min-w-0 sm:w-[260px] [&_div]:min-w-0">
           <SearchInput value={q} onChange={setQ} placeholder="Search launches" ariaLabel="Search launches" />
