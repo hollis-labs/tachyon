@@ -57,9 +57,14 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
     return (
       <div role="alert" className="space-y-2 p-5">
         <p className="text-control text-fg-secondary">{load.message}</p>
-        <Button type="button" onClick={retry} variant="outline" size="sm">
-          Retry
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onBack} className="sm:hidden">
+            ‹ Projects
+          </Button>
+          <Button type="button" onClick={retry} variant="outline" size="sm">
+            Retry
+          </Button>
+        </div>
       </div>
     )
   const p: Project = saved ?? load.data
