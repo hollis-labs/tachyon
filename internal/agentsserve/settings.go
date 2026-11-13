@@ -26,7 +26,7 @@ type Settings struct {
 // DefaultSettings are used until the operator saves.
 func DefaultSettings() Settings {
 	return Settings{StaleAfterS: 900, HandoffPrompt: "Write a short handoff of your current work to Tesseract, then reply 'done'.", HandoffTimeoutS: 300,
-		NudgePresets: []string{"Run the tests", "Summarise where you are", "Stop and wait for me"}}
+		NudgePresets: []string{"Continue", "Wrap up", "Summarize then clear", "Stop and report"}} // the four presets of the Agents spec (ag-d8)
 }
 
 // Validate is the rule set the PUT enforces.

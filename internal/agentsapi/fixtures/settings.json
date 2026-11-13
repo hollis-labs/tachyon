@@ -3,8 +3,9 @@
  "handoff_prompt": "Write a short handoff of your current work to Tesseract, then reply 'done'.",
  "handoff_timeout_s": 300,
  "nudge_presets": [
-  "Run the tests",
-  "Summarise where you are",
-  "Stop and wait for me"
+  "Continue",
+  "Wrap up",
+  "Summarize then clear",
+  "Stop and report"
  ]
 }
