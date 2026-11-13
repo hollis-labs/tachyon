@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { CornerDownLeft, Paperclip, PenLine, Plus, SquareTerminal, Inbox } from 'lucide-react'
+import { CornerDownLeft, Paperclip, PenLine, Plus, Square, SquareTerminal, Inbox } from 'lucide-react'
 import { cn } from '@hollis-labs/design-components'
 import { CAPTION, Chip, Kbd } from '@planner/shared'
 
@@ -30,6 +30,11 @@ export interface ComposerProps {
   drawerMode?: 'scratch' | 'terminal' | 'workspace' | null
   /** Scratchpad lives in the aside: its icon opens that panel instead of the drawer. */
   scratchInAside?: boolean
+  /** The agent is mid-reply and can be interrupted: Stop takes the place of Send. */
+  onStop?: () => void
+  stopping?: boolean
+  /** Why the last Stop did not go through. */
+  stopError?: string | null
 }
 
 const ACTIVE = 'bg-selection text-fg'
@@ -39,7 +44,7 @@ const ICON_BTN = 'inline-grid size-7 place-items-center rounded-control border b
  * chat.composer: a raised input with an attachment strip, a + menu, mode and shell chips, three drawer icons
  * and an enter-glyph Send, plus the footer disclaimer. Enter sends, Shift+Enter is a newline.
  */
-export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled, note, sendError, textareaRef, onOpenPalette, onDrawer, extra, strip = [], onRemoveStrip, drawerMode, scratchInAside, mentions = [] }: ComposerProps) {
+export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled, note, sendError, textareaRef, onOpenPalette, onDrawer, extra, strip = [], onRemoveStrip, drawerMode, scratchInAside, mentions = [], onStop, stopping, stopError }: ComposerProps) {
   const [menu, setMenu] = useState(false)
   const own = useRef<HTMLTextAreaElement>(null)
   const area = (textareaRef as React.RefObject<HTMLTextAreaElement>) ?? own
@@ -118,9 +123,15 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
           <button type="button" aria-label="Scratchpad" aria-pressed={drawerMode === 'scratch'} title="Scratchpad ⌘J" disabled={!onDrawer} onClick={() => onDrawer?.('scratch')} className={cn(ICON_BTN, drawerMode === 'scratch' && ACTIVE)}><PenLine aria-hidden className="size-3.5" /></button>
           <button type="button" aria-label="Terminal" aria-pressed={drawerMode === 'terminal'} title="Terminal ⌃T" disabled={!onDrawer} onClick={() => onDrawer?.('terminal')} className={cn(ICON_BTN, drawerMode === 'terminal' && ACTIVE)}><SquareTerminal aria-hidden className="size-3.5" /></button>
           <button type="button" aria-label="Workspace" aria-pressed={drawerMode === 'workspace'} title="Workspace ⌘⇧W" disabled={!onDrawer} onClick={() => onDrawer?.('workspace')} className={cn(ICON_BTN, drawerMode === 'workspace' && ACTIVE)}><Inbox aria-hidden className="size-3.5" /></button>
+          {onStop ? (
+            <button type="button" onClick={() => { if (!stopping) onStop() }} aria-disabled={stopping} className="inline-flex h-7 items-center gap-1.5 rounded-control border border-border px-3 text-label font-semibold text-fg hover:bg-surface-hover aria-disabled:cursor-default aria-disabled:opacity-60 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+              <Square aria-hidden className="size-2.5 fill-current" /> {stopping ? 'Stopping' : 'Stop'}
+            </button>
+          ) : (
           <button type="button" onClick={send} aria-disabled={!value.trim() || busy || disabled} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-primary px-3 text-label font-semibold text-primary-fg hover:opacity-90 aria-disabled:cursor-default aria-disabled:hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
             {busy ? 'Sending' : 'Send'} <Kbd className="border-primary-fg/30 text-primary-fg"><CornerDownLeft aria-hidden className="inline size-2.5" /></Kbd>
           </button>
+          )}
         </div>
         {/* KIT-GAP: a menu popover with a keyboard-hint column; hand-rolled here until the kit has one. */}
         {menu && (
@@ -133,6 +144,7 @@ export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled
           </div>
         )}
       </div>
+      {stopError && <p role="alert" className="mx-auto mt-1 max-w-[760px] text-xs text-danger">{stopError}</p>}
       {sendError && <p role="alert" className="mx-auto mt-1 max-w-[760px] text-xs text-danger">{sendError} <span className="text-fg-muted">Your draft is kept.</span> <button type="button" onClick={send} className="underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">Retry</button></p>}
       <p className={cn(CAPTION, 'py-2 text-center text-micro text-fg-muted')}>Agents can be wrong · check anything that matters</p>
     </div>
