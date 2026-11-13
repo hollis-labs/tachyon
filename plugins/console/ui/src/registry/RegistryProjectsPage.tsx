@@ -11,7 +11,7 @@ import { newRequestId, type ReviewRow } from '../builder/changes'
 import { DirtyBar } from '../builder/DirtyBar'
 import { stepId, useKeys } from '../builder/keys'
 import { ModeNote } from '../builder/ModeNote'
-import { ReviewDialog } from '../builder/ReviewDialog'
+import { AppliedNote, ReviewDialog } from '../builder/ReviewDialog'
 import { useDiscardGuard } from '../builder/DiscardGuard'
 import { NOT_REPORTED } from '../builder/vocab'
 import { type Project, type ProjectPatch, type ProjectRow, type ProjectStatus, errorMessage, profilePatch, registryApi } from './api'
@@ -41,6 +41,9 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
   const [mode, recheckMode] = useChangeMode()
   const [servers, setServers] = useState<string[] | null>(null)
   const [review, setReview] = useState<Change | null>(null)
+  const [applied, setApplied] = useState<Change | null>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a different project starts without the note
+  useEffect(() => setApplied(null), [id])
   const [prepared, setPrepared] = useState<string>()
   const [cbusy, setCbusy] = useState(false)
   useEffect(() => {
@@ -178,6 +181,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
           {busy ? 'Saving' : error ? 'Retry' : 'Save'}
         </Button>
       </header>
+      {applied && <AppliedNote change={applied} onDismiss={() => setApplied(null)} />}
       {discardDialog}
       <ConfirmDialog
         open={archiving}
@@ -282,7 +286,9 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
             setReview(null)
             setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
           }}
-          onApplied={() => {
+          onApplied={(c) => {
+            setReview(null)
+            setApplied(c)
             setServers(null)
             setPrepared(undefined)
             retry()

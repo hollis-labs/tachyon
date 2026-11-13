@@ -61,8 +61,35 @@ function Countdown({ expiresAt }: { expiresAt: number }) {
   return <span>{left > 0 ? `Expires in ${minutesAndSeconds(left)}` : 'Expired'}</span>
 }
 
+/** True when a change touches only Library parts: Tachyon saves those itself, with no plan and no host approval. */
+export const isPartsOnly = (c: Change) => c.plan == null && (c.targets ?? []).length > 0 && (c.targets ?? []).every((t) => t.kind === 'part')
+
+/**
+ * The line an editor shows once its change is applied. The editor reloads at that point, which would remount an open
+ * Review dialog on its stale draft, so the editor closes the dialog and shows this instead.
+ */
+export function AppliedNote({ change, onDismiss }: { change: Change; onDismiss: () => void }) {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-3 px-5 py-2 dash-support text-fg-secondary">
+      <span className="mr-auto">
+        {isPartsOnly(change) ? (
+          'Saved.'
+        ) : (
+          <>
+            Applied. Running sessions keep their old configuration; new launches use the update. <span className="text-fg-muted">Check the next launch.</span>
+          </>
+        )}
+        {change.result?.reload_error ? ` Reload reported: ${change.result.reload_error}` : ''}
+      </span>
+      <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
+        Dismiss
+      </Button>
+    </div>
+  )
+}
+
 /** Review a computed change, submit it, and follow it until it is applied or ends. */
-export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, rows }: { initial: Change; onClose: (c: Change) => void; onApplied: () => void; onReload: () => void; subject?: string; rows?: ReviewRow[] }) {
+export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, rows }: { initial: Change; onClose: (c: Change) => void; onApplied: (c: Change) => void; onReload: () => void; subject?: string; rows?: ReviewRow[] }) {
   const [change, setChange] = useChange(initial)
   const [mode] = useChangeMode()
   const [confirmCancel, setConfirmCancel] = useState(false)
@@ -76,10 +103,11 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
   const failChecks = (change.checks ?? []).filter((c) => c.status === 'fail')
   // A change that touches only Library parts (no catalog file, so no plan) is saved by Tachyon itself the moment it
   // is submitted: there is no host approval to wait for, and the dialog must not promise one.
-  const partsOnly = !inHandoff && change.plan == null && (change.targets ?? []).length > 0 && (change.targets ?? []).every((t) => t.kind === 'part')
+  const partsOnly = !inHandoff && isPartsOnly(change)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fires once per applied change, not on every refetch
   useEffect(() => {
-    if (change.state === 'applied') onApplied()
+    if (change.state === 'applied') onApplied(change)
   }, [change.state, onApplied])
 
   const run = async (fn: () => Promise<Change>) => {

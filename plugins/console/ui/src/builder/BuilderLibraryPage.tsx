@@ -14,7 +14,7 @@ import { useChangeMode } from './capabilities'
 import { stepId, useKeys } from './keys'
 import { ModeNote } from './ModeNote'
 import { PartDialog } from './PartDialog'
-import { ReviewDialog } from './ReviewDialog'
+import { AppliedNote, ReviewDialog } from './ReviewDialog'
 import { useLoad } from './useLoad'
 import { LIBRARY_KINDS, NOT_REPORTED } from './vocab'
 
@@ -192,6 +192,7 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Draft>({})
   const [review, setReview] = useState<Change | null>(null)
+  const [saved, setSaved] = useState<Change | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [raw, setRaw] = useState(false)
@@ -201,6 +202,7 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
     setEditing(false)
     setDraft({})
     setReview(null)
+    setSaved(null)
     setError('')
   }, [kind, id])
   const applied = useCallback(() => {
@@ -301,6 +303,7 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
           onApplied={onListChanged}
         />
       )}
+      {saved && <AppliedNote change={saved} onDismiss={() => setSaved(null)} />}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
       {canEdit && mode === 'unavailable' && <ModeNote onCheck={recheckMode} />}
       {!editing && error && (
@@ -399,7 +402,9 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
             setReview(null)
             setPrepared(mode === 'handoff' && ['awaiting_handoff', 'awaiting_approval', 'stale'].includes(c.state) ? c.change_id : undefined)
           }}
-          onApplied={() => {
+          onApplied={(c) => {
+            setReview(null)
+            setSaved(c)
             applied()
             onListChanged()
           }}
