@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Bookmark as BookmarkIcon, ChevronDown, ChevronRight, ClipboardCheck, FileText, ListFilter, MessageSquare, Plus, Search, ShieldCheck, SquareTerminal, Users, X, Zap, ArrowUpDown, ArrowUpRight, Check, Lock } from 'lucide-react'
+import { Bookmark as BookmarkIcon, CalendarDays, ChevronDown, ChevronRight, ClipboardCheck, FileText, ListFilter, MessageSquare, Plus, Search, ShieldCheck, SquareTerminal, Users, X, Zap, ArrowUpDown, ArrowUpRight, Check, Lock } from 'lucide-react'
 import { CAPTION, Chip, Kbd, SegmentedProgress, StateDot } from '@planner/shared'
 import { cn } from '@hollis-labs/design-components'
 import { Act } from '../cards/Block'
@@ -203,7 +203,7 @@ export function ActivityPanel({ events, hasMore, loading, error, comment, more }
             const bad = e.type === 'approval.decided' && /denied/i.test(e.payload?.summary ?? '')
             return (
               <li key={e.seq} className="flex flex-col">
-                {head && <div className="flex items-center gap-2.5 pb-1 pt-3"><i aria-hidden className="grid size-[22px] place-items-center rounded-full border-2 border-bg-elevated bg-surface text-fg-secondary"><Search className="size-2.5" /></i><span className="inline-flex h-5 items-center rounded-full border border-border px-2.5 text-label text-fg-secondary">{head}</span></div>}
+                {head && <div className="flex items-center gap-2.5 pb-1 pt-3"><i aria-hidden className="grid size-[22px] place-items-center rounded-full border-2 border-bg-elevated bg-surface text-fg-secondary"><CalendarDays className="size-2.5" /></i><span className="inline-flex h-5 items-center rounded-full border border-border px-2.5 text-label text-fg-secondary">{head}</span></div>}
                 <div className="relative flex items-start gap-2.5 py-1.5">
                   <i aria-hidden className={cn('z-[1] grid size-[22px] shrink-0 place-items-center rounded-full border-2 border-bg-elevated bg-surface text-fg-secondary', bad && 'text-danger')}><Icon className="size-3" /></i>
                   <div className="min-w-0 pt-0.5 text-xs leading-normal text-fg-secondary">
