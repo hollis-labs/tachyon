@@ -15,10 +15,15 @@ import (
 )
 
 const (
-	ttl       = 60 * time.Second
-	themesDB  = "themes"
-	wsDB      = "workstreams"
-	maxDirect = 100
+	ttl = 60 * time.Second
+	// A task that is in no theme costs a scan of every theme and its workstream roll-ups in Torque, so "no
+	// assignment" is kept longer than a found one.
+	missTTL = 5 * time.Minute
+	// buildBudget bounds one background join; past it the join is abandoned and counts as a miss.
+	buildBudget = 20 * time.Second
+	themesDB    = "themes"
+	wsDB        = "workstreams"
+	maxDirect   = 100
 )
 
 // Assignment is the wire shape (agentsapi Session.assignment).
@@ -49,9 +54,16 @@ type Joiner struct {
 	Planner Planner
 	DB      *localstore.Store
 	Now     func() time.Time
+	// Async makes Assignment answer from the cache at once and run the join in the background, one at a
+	// time. The sessions list calls Assignment for every session on every request, and a join can take many
+	// Torque round trips: run inline it held the whole list (the live /agents/sessions route stopped answering).
+	// A first call therefore returns nil and a later one returns the result.
+	Async bool
 
-	mu    sync.Mutex
-	cache map[string]cached
+	mu       sync.Mutex
+	cache    map[string]cached
+	building map[string]bool
+	slot     chan struct{} // one background join at a time
 }
 
 type cached struct {
@@ -75,19 +87,63 @@ func (j *Joiner) Assignment(ctx context.Context, sessionID, taskRef string) any 
 	key := sessionID + "\x00" + taskRef
 	now := j.now()
 	j.mu.Lock()
-	if c, ok := j.cache[key]; ok && now.Sub(c.at) < ttl {
+	c, ok := j.cache[key]
+	if ok && now.Sub(c.at) < keep(c.a) {
 		j.mu.Unlock()
 		return asAny(c.a)
 	}
+	if j.Async {
+		if !j.building[key] {
+			if j.building == nil {
+				j.building = map[string]bool{}
+			}
+			if j.slot == nil {
+				j.slot = make(chan struct{}, 1)
+			}
+			j.building[key] = true
+			go j.refresh(key, sessionID, taskRef)
+		}
+		j.mu.Unlock()
+		return asAny(c.a) // the last known answer (nil the first time) while the join runs
+	}
 	j.mu.Unlock()
 	a := j.build(ctx, sessionID, taskRef, now)
+	j.store(key, a, now)
+	return asAny(a)
+}
+
+func keep(a *Assignment) time.Duration {
+	if a == nil {
+		return missTTL
+	}
+	return ttl
+}
+
+func (j *Joiner) store(key string, a *Assignment, now time.Time) {
 	j.mu.Lock()
 	if j.cache == nil || len(j.cache) > 2000 {
 		j.cache = map[string]cached{}
 	}
 	j.cache[key] = cached{at: now, a: a}
+	delete(j.building, key)
 	j.mu.Unlock()
-	return asAny(a)
+}
+
+// refresh runs one join outside any request, under its own deadline.
+func (j *Joiner) refresh(key, sessionID, taskRef string) {
+	j.slot <- struct{}{}
+	defer func() { <-j.slot }()
+	ctx, cancel := context.WithTimeout(context.Background(), buildBudget)
+	defer cancel()
+	var a *Assignment
+	func() {
+		defer func() { _ = recover() }() // a failed join is a miss, never a crashed host
+		a = j.build(ctx, sessionID, taskRef, j.now())
+	}()
+	if ctx.Err() != nil {
+		a = nil // ran out of time part way: do not publish a partial answer
+	}
+	j.store(key, a, j.now())
 }
 
 // asAny keeps a nil *Assignment from becoming a non-nil interface (JSON null, not {}).

@@ -87,3 +87,53 @@ func TestCacheExpires(t *testing.T) {
 		t.Fatal("expired entry is rebuilt")
 	}
 }
+
+type slowPlanner struct {
+	*fake
+	gate chan struct{}
+}
+
+func (s slowPlanner) List(ctx context.Context, db string, f map[string]string, sortBy string) ([]planner.Item, error) {
+	select {
+	case <-s.gate:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return s.fake.List(ctx, db, f, sortBy)
+}
+
+// The sessions list asks for every session's assignment on every request. A slow Planner or Torque must
+// not hold it: an async joiner answers at once and fills in when the join lands.
+func TestAsyncJoinNeverBlocksTheCaller(t *testing.T) {
+	f := &fake{themes: []planner.Item{{"id": "t", "tasks": []any{"CW-1"}}}, torque: map[string]string{"CW-1": "doing"}}
+	gate := make(chan struct{})
+	j := &Joiner{Planner: slowPlanner{f, gate}, Async: true}
+	done := make(chan any, 1)
+	go func() { done <- j.Assignment(context.Background(), "s", "CW-1") }()
+	select {
+	case a := <-done:
+		if a != nil {
+			t.Fatalf("nothing is known yet: %v", a)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the caller was held by a slow join")
+	}
+	j.Assignment(context.Background(), "s", "CW-1") // a second ask while the join runs starts no second join
+	close(gate)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if a, _ := j.Assignment(context.Background(), "s", "CW-1").(*Assignment); a != nil {
+			if a.ThemeRef != "planner:theme/t" || a.Count != 1 {
+				t.Fatalf("joined: %+v", a)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the join never landed")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if f.calls != 1 {
+		t.Errorf("one join ran, not one per ask: %d", f.calls)
+	}
+}
