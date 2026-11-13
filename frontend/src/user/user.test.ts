@@ -13,6 +13,10 @@ describe("user helpers", () => {
     expect(minutesLeft(5)).toBe("1 min left")
     expect(minutesLeft(721)).toBe("13 min left")
   })
+  it("names the policy instead of a minute when elevation has no expiry", () => {
+    expect(minutesLeft(0, "dev posture")).toBe("Dev posture")
+    expect(minutesLeft(undefined)).toBe("No time limit")
+  })
   it("formats relative time", () => {
     const now = Date.parse("2026-10-30T12:00:00Z")
     expect(relativeTime("2026-10-30T11:58:00Z", now)).toBe("2m ago")

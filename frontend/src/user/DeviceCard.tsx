@@ -22,7 +22,10 @@ export function DeviceCard() {
         />
       </SetRow>
       <SetRow sub help="Alerts, quiet hours and defaults live in Settings.">
-        <Link to="/settings/appearance" className="text-xs text-fg underline">
+        <Link
+          to="/settings/appearance"
+          className="text-xs text-fg-secondary hover:text-fg hover:underline focus-visible:underline"
+        >
           Open Settings
         </Link>
       </SetRow>
