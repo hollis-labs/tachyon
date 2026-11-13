@@ -31,6 +31,8 @@ type Service struct {
 	Owned   *planner.Owned
 	// TorqueInstance names the Torque instance in external task targets.
 	TorqueInstance string
+	// Tasks, when set, lets Work attach per-status counts to theme rows.
+	Tasks *planner.Tasks
 }
 
 func New(o *objects.Service, torqueInstance string) *Service {

@@ -109,6 +109,36 @@ type WorkItem struct {
 	NeedsUser bool   `json:"needs_user"`
 	UpdatedAt string `json:"updated_at"`
 	Why       string `json:"why"`
+	// Counts is a theme's child tasks by status; nil for other kinds or when Torque is unavailable.
+	Counts *WorkCounts `json:"counts,omitempty"`
+}
+
+// WorkCounts is the segmented-bar rollup: Torque done -> Done; doing, in_progress, review -> Doing; blocked ->
+// Blocked; every other non-excluded status -> Todo. Cancelled, abandoned and archived tasks are left out.
+type WorkCounts struct {
+	Done    int `json:"done"`
+	Doing   int `json:"doing"`
+	Blocked int `json:"blocked"`
+	Todo    int `json:"todo"`
+}
+
+// CountsOf buckets a Progress.Counts (status -> n) into the four segments.
+func CountsOf(byStatus map[string]int) WorkCounts {
+	var c WorkCounts
+	for st, n := range byStatus {
+		switch st {
+		case "cancelled", "abandoned", "archived":
+		case "done":
+			c.Done += n
+		case "doing", "in_progress", "review":
+			c.Doing += n
+		case "blocked":
+			c.Blocked += n
+		default:
+			c.Todo += n
+		}
+	}
+	return c
 }
 
 var workKinds = map[string]string{"themes": "theme", "decisions": "decision"}
@@ -141,7 +171,14 @@ func (s *Service) Work(ctx context.Context, agent string) ([]WorkItem, error) {
 			}
 			row := planner.View(rec)
 			status, _ := row["status"].(string)
-			out = append(out, WorkItem{Kind: workKinds[a.Target.DB], ID: rec.ID, Title: rec.Name, Status: status, Links: []any{}, UpdatedAt: rec.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"), Why: "assigned"})
+			it := WorkItem{Kind: workKinds[a.Target.DB], ID: rec.ID, Title: rec.Name, Status: status, Links: []any{}, UpdatedAt: rec.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"), Why: "assigned"}
+			if it.Kind == "theme" && s.Tasks != nil {
+				if p, err := planner.ThemeProgress(ctx, s.Owned, s.Tasks, row); err == nil && p.Linked {
+					c := CountsOf(p.Counts)
+					it.Counts = &c
+				}
+			}
+			out = append(out, it)
 		}
 	}
 	return out, nil
