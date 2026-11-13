@@ -11,6 +11,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/chatwork"
 	"github.com/hollis-labs/tachyon/internal/objects"
+	"github.com/hollis-labs/tachyon/internal/planner"
 	"github.com/hollis-labs/tachyon/internal/plannerassign"
 	"github.com/hollis-labs/tachyon/internal/torqueread"
 )
@@ -26,6 +27,9 @@ func mountChatWork(s *Server, mux *http.ServeMux, operator *approvals.Bridge) {
 	}
 	torque := strings.TrimRight(strings.TrimSpace(s.cfg.Upstreams.TorqueURL), "/")
 	assign := plannerassign.New(objects.New(s.store), torque)
+	if torque != "" {
+		assign.Tasks = planner.NewTasks(torque, s.cfg.Upstreams.TorqueToken)
+	}
 	svc := &chatwork.Service{
 		Plan: func(ctx context.Context, ref chatapi.ThreadRef) (chatplan.Plan, error) {
 			return s.chatPlan.Get(ctx, ref, "thread")

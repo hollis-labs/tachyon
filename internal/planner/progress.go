@@ -153,3 +153,13 @@ func (ps *progressSource) theme(ctx context.Context, theme Item, workstreams []I
 	}
 	return p, nil
 }
+
+// ThemeProgress is one theme's roll-up by id, for callers outside the board (the chat Work panel). It reads
+// the theme's workstreams from the owned store and their tasks from Torque; any failed read is an error.
+func ThemeProgress(ctx context.Context, o *Owned, tasks *Tasks, theme Item) (Progress, error) {
+	ws, err := o.themeWorkstreams(ctx, theme)
+	if err != nil {
+		return Progress{}, err
+	}
+	return newProgressSource(tasks, time.Now()).theme(ctx, theme, ws)
+}

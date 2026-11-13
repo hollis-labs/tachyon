@@ -116,6 +116,9 @@ func (s *Service) Work(ctx context.Context, ref chatapi.ThreadRef, agent string)
 		if err == nil {
 			for _, r := range rows {
 				it := Item{ID: r.ID, Kind: r.Kind, Title: r.Title, Status: r.Status, Links: []Cite{}, UpdatedAt: ms(r.UpdatedAt), Why: "assigned"}
+				if r.Counts != nil {
+					it.Counts = &Counts{Done: r.Counts.Done, Doing: r.Counts.Doing, Blocked: r.Counts.Blocked, Todo: r.Counts.Todo}
+				}
 				if r.Kind == "task" {
 					enrich(&it)
 				} else if r.Kind == "decision" {
