@@ -421,11 +421,16 @@ func TestContextTokensAndHistory(t *testing.T) {
 		t.Errorf("unmetered tokens must be null, not zero: %v", u)
 	}
 
+	// A launch that never came up (ended at once, did nothing, replaced by nothing) is not history.
+	e.frame("session.ended", "blip1", 6*time.Minute, `{"session_state":"ended","logical_agent_id":"builder"}`)
 	h := decode[struct {
 		Sessions []map[string]any `json:"sessions"`
 	}](t, e.get("/sessions/m1/history"))
 	if len(h.Sessions) != 1 || h.Sessions[0]["session_id"] != "old1" || h.Sessions[0]["end_reason"] != "restart" || h.Sessions[0]["replaced_by"] != "m1" {
 		t.Errorf("history: %v", h.Sessions)
+	}
+	if h.Sessions[0]["tool_calls"] != nil {
+		t.Errorf("no tool calls collected reads null, never 0: %v", h.Sessions[0]["tool_calls"])
 	}
 	if len(decode[struct {
 		Sessions []any `json:"sessions"`

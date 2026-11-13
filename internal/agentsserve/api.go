@@ -709,6 +709,8 @@ func (s *Server) tokens(w http.ResponseWriter, r *http.Request) {
 
 // history lists the other sessions of the same logical agent (or, failing that, the same agent
 // URN). A session that Tether never tied to an agent has no history to show.
+// A session that ended within a second of starting, did nothing and was not replaced (a launch that
+// never came up) is left out: on live twenty of them hid the agent's real previous session.
 func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	_, me, ok := s.one(w, r)
 	if !ok {
@@ -720,7 +722,10 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		col, key = "agent_urn", me.urn
 	}
 	if key != "" {
-		rs, err := s.DB.Reader.QueryContext(r.Context(), `SELECT session_id,started_ns,last_activity_ns,ended_ns,end_reason,replaced_by,tok_in,tok_out,tool_calls FROM agents_sessions WHERE `+col+`=? AND session_id<>? ORDER BY started_ns DESC, session_id LIMIT 20`, key, me.id)
+		rs, err := s.DB.Reader.QueryContext(r.Context(), `SELECT session_id,started_ns,last_activity_ns,ended_ns,end_reason,replaced_by,tok_in,tok_out,tool_calls FROM agents_sessions WHERE `+col+`=? AND session_id<>?
+ AND NOT (tool_calls=0 AND tok_in IS NULL AND tok_out IS NULL AND replaced_by='' AND ended_ns>0
+  AND ended_ns-(CASE WHEN started_ns>0 THEN started_ns ELSE last_activity_ns END)<1000000000)
+ ORDER BY started_ns DESC, session_id LIMIT 20`, key, me.id)
 		if err != nil {
 			internal(w)
 			return
@@ -745,7 +750,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 					stop = s.Now().UnixNano()
 				}
 			}
-			e := map[string]any{"session_id": id, "started_at": begin / int64(time.Millisecond), "ran_ms": 0, "tokens": nil, "tool_calls": calls, "ended_at": nil, "end_reason": nil, "replaced_by": nil}
+			e := map[string]any{"session_id": id, "started_at": begin / int64(time.Millisecond), "ran_ms": 0, "tokens": nil, "tool_calls": countOrNil(calls), "ended_at": nil, "end_reason": nil, "replaced_by": nil}
 			if begin > 0 && stop > begin {
 				e["ran_ms"] = (stop - begin) / int64(time.Millisecond)
 			}
