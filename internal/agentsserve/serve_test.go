@@ -242,7 +242,7 @@ func TestDetailAndNotFound(t *testing.T) {
 
 func TestSettingsDefaultsValidateAndTakeEffect(t *testing.T) {
 	e := seed(t)
-	if s := decode[Settings](t, e.get("/settings")); s.StaleAfterS != 900 || s.HandoffTimeoutS != 300 || len(s.NudgePresets) != 3 {
+	if s := decode[Settings](t, e.get("/settings")); s.StaleAfterS != 900 || s.HandoffTimeoutS != 300 || len(s.NudgePresets) != 4 {
 		t.Errorf("defaults: %+v", s)
 	}
 	if s := decode[Session](t, e.get("/sessions/s_old")); s.State != "stale" {
