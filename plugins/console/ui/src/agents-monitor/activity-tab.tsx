@@ -30,25 +30,29 @@ const SOURCE_LABEL: Record<string, string> = { deploy: 'deploys', restart: 'rest
 
 /** Bus events as rail entries. Failures (and errors) are the only coloured rows; refs are named in text. */
 export function toBusTimeline(events: readonly BusEvent[], now: number): Entry[] {
-  return events.map((e) => ({
-    id: e.id,
-    at: e.at,
-    day: dayLabel(e.at, now),
-    time: clock(e.at),
-    facet: FACET_OF[e.type] ?? 'other',
-    type: e.type,
-    tone: e.type === 'failure' || e.severity === 'error' ? 'blocked' : 'neutral',
-    summary: e.subject,
-    body: (
-      <span>
-        {e.subject}
-        {(e.refs ?? []).length > 0 && !e.card && <span className="ml-1.5 inline-flex gap-1">{(e.refs ?? []).map((r) => <Cite key={r.ref}>{r.label} ↗</Cite>)}</span>}
-        <span className="text-fg-faint"> · {e.app}{e.actor ? ` · ${e.actor}` : ''}</span>
-      </span>
-    ),
-    card: e.card,
-    cites: (e.refs ?? []).map((r) => r.label),
-  }))
+  return events.map((e) => {
+    // A card that only repeats the subject (a task event with no summary) adds nothing: the ref chip says it.
+    const card = e.card && (e.card.summary || e.card.title !== e.subject) ? e.card : null
+    return {
+      id: e.id,
+      at: e.at,
+      day: dayLabel(e.at, now),
+      time: clock(e.at),
+      facet: FACET_OF[e.type] ?? 'other',
+      type: e.type,
+      tone: e.type === 'failure' || e.severity === 'error' ? 'blocked' : 'neutral',
+      summary: e.subject,
+      body: (
+        <span>
+          {e.subject}
+          {(e.refs ?? []).length > 0 && !card && <span className="ml-1.5 inline-flex gap-1">{(e.refs ?? []).map((r) => <Cite key={r.ref}>{r.label} ↗</Cite>)}</span>}
+          <span className="text-fg-faint"> · {e.app}{e.actor ? ` · ${e.actor}` : ''}</span>
+        </span>
+      ),
+      card,
+      cites: (e.refs ?? []).map((r) => r.label),
+    }
+  })
 }
 
 /** The Activity tab: what happened across apps, newest first, with "Show more" paging. */

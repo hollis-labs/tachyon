@@ -17,6 +17,18 @@ describe('Activity', () => {
     expect(rows.map((r) => [r.facet, r.tone])).toEqual([['deploys', 'neutral'], ['failures', 'blocked'], ['other', 'neutral']])
   })
 
+  it('drops a card that only repeats the subject and keeps the ref chip', () => {
+    const refs = [{ kind: 'task', ref: 'CW-1', label: 'CW-1' }]
+    const [same, told] = toBusTimeline([
+      ev({ id: 'a', seq: 2, type: 'task', subject: 'CW-1 done', refs, card: { title: 'CW-1 done', summary: '' } }),
+      ev({ id: 'b', seq: 1, type: 'deploy', refs, card: { title: 'tachyon 1.2', summary: 'Rolled out' } }),
+    ], NOW)
+    expect(same.card).toBeNull()
+    expect(told.card).toEqual({ title: 'tachyon 1.2', summary: 'Rolled out' })
+    render(<>{same.body}</>)
+    expect(screen.getByText(/CW-1 ↗/)).toBeTruthy()
+  })
+
   it('shows the empty state, then pages older events in with Show more', async () => {
     const urls: string[] = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
