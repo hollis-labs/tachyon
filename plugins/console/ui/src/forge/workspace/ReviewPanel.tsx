@@ -52,7 +52,7 @@ export function ReviewPanel({ prLabel, pending, onSubmit, onUnqueue, validate, o
 
   return (
     <Sheet open onOpenChange={(open) => { if (!open && !busy) onClose() }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md" aria-label="Submit review" data-testid="forge-review-panel">
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md" aria-label="Submit review" data-testid="forge-review-panel">
         <header className="flex items-baseline gap-2 border-b border-border px-4 py-3 pr-12">
           <SheetTitle className="font-sans text-control font-semibold normal-case tracking-normal text-fg">Review</SheetTitle>
           <SheetDescription className="font-mono text-caption text-fg-muted">{prLabel}</SheetDescription>
@@ -64,7 +64,7 @@ export function ReviewPanel({ prLabel, pending, onSubmit, onUnqueue, validate, o
               <label key={o.value} className={`flex cursor-pointer items-start gap-3 rounded border border-border px-3 py-2.5 ${verdict === o.value ? 'bg-surface-hover' : 'hover:bg-surface/40'}`}>
                 <input type="radio" name="verdict" value={o.value} checked={verdict === o.value} onChange={() => setVerdict(o.value)} className="mt-1 accent-primary" />
                 <span className="min-w-0">
-                  <span className="block text-control font-medium text-fg">{o.label}</span>
+                  <span className="block text-control font-semibold text-fg">{o.label}</span>
                   <span className="block text-xs text-fg-muted">{o.hint}</span>
                 </span>
               </label>
