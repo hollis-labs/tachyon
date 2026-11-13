@@ -239,6 +239,12 @@ func humanize(sum string) (text string, hidden bool) {
 			return "", true // a no-op transition
 		}
 		return "Session " + to, false
+	case strings.HasPrefix(sum, "session.health_changed: "):
+		from, to, _ := strings.Cut(strings.TrimPrefix(sum, "session.health_changed: "), " -> ")
+		if from == to || to == "" {
+			return "", true
+		}
+		return "Health: " + strings.ReplaceAll(to, "_", " "), false
 	case !strings.Contains(sum, ": "):
 		if i := strings.Index(sum, "."); i > 0 && !strings.Contains(sum, " ") {
 			w := strings.ReplaceAll(strings.TrimPrefix(sum[i+1:], "."), "_", " ")

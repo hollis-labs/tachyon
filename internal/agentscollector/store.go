@@ -117,7 +117,13 @@ func (s *Store) Apply(ctx context.Context, frames []Frame) error {
 			if f.Gap || f.Synchronized {
 				continue
 			}
-			if f.Kind == "session.state_changed" && f.App == "" && f.AgentName == "" && sessionTurn(f) != "" {
+			if f.Kind == "session.health_changed" && f.App == "" && f.SessionID != "" {
+				// A session is fresh when the store has no start for it, or first saw it within the last two minutes.
+				var started int64
+				_ = tx.QueryRowContext(ctx, `SELECT started_ns FROM agents_sessions WHERE session_id=?`, f.SessionID).Scan(&started)
+				f.Fresh = started == 0 || at-started < int64(2*time.Minute)
+			}
+			if (f.Kind == "session.state_changed" || f.Kind == "session.health_changed") && f.App == "" && f.AgentName == "" && sessionTurn(f) != "" {
 				// The feed names the agent, which a state change does not carry; the store may know it.
 				_ = tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(agent_name,''),logical_agent_id,'') FROM agents_sessions WHERE session_id=?`, f.SessionID).Scan(&f.AgentName)
 			}

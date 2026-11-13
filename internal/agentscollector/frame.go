@@ -36,9 +36,11 @@ type Frame struct {
 	CardID, CardType string
 	PendingApproval  *bool
 	PendingQuestion  *bool
-	Tool             string // sanitized tool name only
-	Reason           string // gap or end reason
-	DeliveryState    string // message frames: payload delivery.state (retry_scheduled, dead_letter, expired, ...)
+	// Fresh is set by the store for a frame of a session it first saw moments ago (never read from the wire).
+	Fresh         bool
+	Tool          string // sanitized tool name only
+	Reason        string // gap or end reason
+	DeliveryState string // message frames: payload delivery.state (retry_scheduled, dead_letter, expired, ...)
 
 	Gap          bool // a gap frame: events were missed
 	Synchronized bool // the catch-up is over, live frames follow

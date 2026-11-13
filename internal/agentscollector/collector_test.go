@@ -625,6 +625,25 @@ func TestKilledAndCompletedSessionsEndAndReconcile(t *testing.T) {
 	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions`); n != 4 {
 		t.Errorf("sessions the store never saw are not added from the ended listing: %d", n)
 	}
+	// A new session's first health report lists it as started; an old session's does not.
+	var hs []Frame
+	for _, raw := range []string{
+		frameJSON("e:20", "session.work_state_changed", "s_new", "2026-10-30T03:00:00Z", `{"from":"unknown","to":"processing","agent_name":"new-builder"}`),
+		frameJSON("e:21", "session.health_changed", "s_new", "2026-10-30T03:00:00.002Z", `{"from":"unknown","to":"healthy"}`),
+		frameJSON("e:22", "session.health_changed", "s_live", "2026-10-30T03:00:01Z", `{"from":"unknown","to":"healthy"}`),
+	} {
+		f, _ := ParseFrame([]byte(raw))
+		hs = append(hs, f)
+	}
+	if err := c.Store.Apply(ctx, hs); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM bus_events WHERE type='lifecycle' AND subject LIKE '% started'`); n != 1 {
+		t.Errorf("exactly the new session is listed as started: %d", n)
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM bus_events WHERE subject='new-builder started'`); n != 1 {
+		t.Error("the start names the agent")
+	}
 	// A session that runs again is live again.
 	again, _ := ParseFrame([]byte(frameJSON("e:9", "session.state_changed", "s_killed", "2026-10-30T02:00:00Z", `{"from":"killed","to":"running"}`)))
 	if err := c.Store.Apply(ctx, []Frame{again}); err != nil {
