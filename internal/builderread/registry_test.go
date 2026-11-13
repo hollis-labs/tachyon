@@ -201,3 +201,16 @@ func TestRegistryCreate(t *testing.T) {
 		t.Fatalf("denied: %d", w.Code)
 	}
 }
+
+func TestRegistryReportsDeprecatedAsArchived(t *testing.T) {
+	r, mux, _, _ := fixture(t, nil)
+	r.Projects = fakeProjects{list: []RegProject{{URN: "msg://project/old", DisplayName: "Old", Status: "deprecated"}}}
+	const reg = builderapi.RegistryPrefix + "/projects"
+	list := getAt(t, mux, reg, 200)["projects"].([]any)
+	if len(list) != 1 || list[0].(map[string]any)["status"] != "archived" {
+		t.Fatalf("list status: %v", list)
+	}
+	if st := field(getAt(t, mux, reg+"/old", 200), "identity", "status"); st != "archived" {
+		t.Fatalf("item status: %v", st)
+	}
+}

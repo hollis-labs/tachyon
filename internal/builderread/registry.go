@@ -28,6 +28,14 @@ type RegProject struct {
 
 type ExternalID struct{ Substrate, ID string }
 
+// regStatus reports Tether's soft delete ("deprecated") as "archived", the word the write side accepts.
+func regStatus(s string) string {
+	if s == "deprecated" {
+		return "archived"
+	}
+	return s
+}
+
 // ProjectSource lists registry projects. An error means "unknown": the routes answer 503, never an empty list.
 type ProjectSource interface {
 	Projects(ctx context.Context) ([]RegProject, error)
@@ -255,7 +263,7 @@ func (r *Reader) registryList(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		rows = append(rows, map[string]any{"id": v.id, "display_name": orDefault(v.p.DisplayName, v.id), "description": v.p.Description,
-			"tags": nonNilStrings(v.p.Tags), "status": v.p.Status, "link": linkJSON(v), "counts": counts})
+			"tags": nonNilStrings(v.p.Tags), "status": regStatus(v.p.Status), "link": linkJSON(v), "counts": counts})
 	}
 	out, next := page(req, rows)
 	if out == nil {
@@ -299,7 +307,7 @@ func (r *Reader) registryItem(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	out := map[string]any{"id": v.id,
-		"identity": map[string]any{"display_name": orDefault(v.p.DisplayName, v.id), "description": v.p.Description, "tags": nonNilStrings(v.p.Tags), "status": v.p.Status},
+		"identity": map[string]any{"display_name": orDefault(v.p.DisplayName, v.id), "description": v.p.Description, "tags": nonNilStrings(v.p.Tags), "status": regStatus(v.p.Status)},
 		"guidance": map[string]any{"entry_points": nonNilStrings(v.p.EntryPoints), "guidelines": v.p.Guidelines},
 		"link":     linkJSON(*v), "catalog": nil, "soon": []string{"machines", "services", "repos"},
 		"consumed_by": map[string]any{"agents": nil, "launches": nil, "planner_items": nil, "tether_sessions": nil}}
