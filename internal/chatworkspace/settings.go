@@ -37,17 +37,57 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	return out, nil
 }
 
-func (s *Store) SaveSettings(ctx context.Context, in Settings) error {
-	row := map[string]any{"scratchpad_placement": in.ScratchpadPlacement, "terminal_close_on_complete": in.TerminalCloseOnComplete}
-	if !in.ContinueNewSessions {
-		row["continue_new_sessions"] = false // left out when on, so the Settings page shows it as the default
-	}
-	b, err := json.Marshal(row)
-	if err != nil {
-		return err
-	}
-	return s.DB.Writer.Submit(ctx, "chat_settings", func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingsKey, string(b))
-		return err
+// SettingsPatch is a partial update: a nil field keeps its stored value.
+type SettingsPatch struct {
+	ScratchpadPlacement     *string
+	TerminalCloseOnComplete *bool
+	ContinueNewSessions     *bool
+}
+
+// UpdateSettings applies patch to the stored row in one write transaction and returns the
+// result. It reads the row inside the transaction, so a concurrent save (the Settings registry
+// writes the same row) is never lost, and it only touches the keys the patch names: a field
+// the caller left out stays exactly as stored, including staying unset (the default).
+func (s *Store) UpdateSettings(ctx context.Context, patch SettingsPatch) (Settings, error) {
+	var out Settings
+	err := s.DB.Writer.Submit(ctx, "chat_settings", func(ctx context.Context, tx *sql.Tx) error {
+		row := map[string]any{}
+		var raw string
+		switch err := tx.QueryRowContext(ctx, `SELECT value FROM app_settings WHERE key=?`, settingsKey).Scan(&raw); {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return err
+		default:
+			if json.Unmarshal([]byte(raw), &row) != nil {
+				row = map[string]any{} // an unreadable row reads as no overrides
+			}
+		}
+		if patch.ScratchpadPlacement != nil {
+			row["scratchpad_placement"] = *patch.ScratchpadPlacement
+		}
+		if patch.TerminalCloseOnComplete != nil {
+			row["terminal_close_on_complete"] = *patch.TerminalCloseOnComplete
+		}
+		if patch.ContinueNewSessions != nil {
+			if *patch.ContinueNewSessions {
+				delete(row, "continue_new_sessions") // on is the default: not stored as an override
+			} else {
+				row["continue_new_sessions"] = false
+			}
+		}
+		b, err := json.Marshal(row)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, settingsKey, string(b)); err != nil {
+			return err
+		}
+		out = Settings{ScratchpadPlacement: "drawer", ContinueNewSessions: true}
+		_ = json.Unmarshal(b, &out)
+		if out.ScratchpadPlacement != "drawer" && out.ScratchpadPlacement != "aside" {
+			out.ScratchpadPlacement = "drawer"
+		}
+		return nil
 	})
+	return out, err
 }

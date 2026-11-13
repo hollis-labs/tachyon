@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -517,5 +518,46 @@ func TestWritesAndContentRefusedWithoutOperatorSession(t *testing.T) {
 	elevated = true
 	if c := call("GET", content, "", true); c != 200 {
 		t.Errorf("content when elevated: %d", c)
+	}
+}
+
+// The chat route's PUT and the Settings registry write the same row. A PUT reads and writes
+// inside one transaction and only touches the fields it names, so concurrent PUTs of different
+// fields both land and keys another writer owns survive.
+func TestSettingsPutIsAtomicAndKeepsOtherKeys(t *testing.T) {
+	e := setup(t)
+	if err := e.h.Store.DB.Writer.Submit(context.Background(), "seed", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO app_settings(key,value) VALUES('chat.settings','{"registry_owned":"keep"}')`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		body := `{"scratchpad_placement":"aside"}`
+		if i%2 == 1 {
+			body = `{"terminal_close_on_complete":true}`
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if code, _ := e.json(t, "PUT", "/settings", body); code != 200 {
+				t.Errorf("%s: %d", body, code)
+			}
+		}()
+	}
+	wg.Wait()
+	var raw string
+	_ = e.h.Store.DB.Reader.QueryRow(`SELECT value FROM app_settings WHERE key='chat.settings'`).Scan(&raw)
+	row := map[string]any{}
+	if err := json.Unmarshal([]byte(raw), &row); err != nil {
+		t.Fatal(err)
+	}
+	if row["scratchpad_placement"] != "aside" || row["terminal_close_on_complete"] != true || row["registry_owned"] != "keep" {
+		t.Fatalf("lost an update: %s", raw)
+	}
+	// A field the PUT leaves out is not written as an override.
+	if _, ok := row["continue_new_sessions"]; ok {
+		t.Fatalf("an untouched default was stored: %s", raw)
 	}
 }

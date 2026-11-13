@@ -28,6 +28,9 @@ export interface ChatViewProps {
   /** The open session's Continue flag (see useContinue); null hides the toggle. */
   continueOn?: boolean | null
   onToggleContinue?: () => void
+  /** Why the last Continue change failed; shown as its own dismissible notice under the header. */
+  continueError?: string
+  onDismissContinueError?: () => void
   /**
    * 'page' (default): threads | conversation | details. 'compact': one column for a
    * drawer, showing the thread list or the open conversation with a back button.
@@ -54,7 +57,7 @@ export function ChatView(props: ChatViewProps) {
   )
 }
 
-function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, startOptions, onTogglePin, continueOn, onToggleContinue, variant = 'page', onBack, children }: ChatViewProps) {
+function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, startOptions, onTogglePin, continueOn, onToggleContinue, continueError, onDismissContinueError, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
   const mobile = useMobile()
   const aside = useAside()
@@ -130,6 +133,12 @@ function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, on
           <Header thread={liveCtx && liveCtx.ref === ctxRef ? { ...activeThread, context: { used: liveCtx.used, window: liveCtx.window, model: liveCtx.model ?? activeThread.context?.model ?? null } } : activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} continueOn={continueOn} onToggleContinue={onToggleContinue} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} actions={[{ label: replyFilter === 'mine' ? 'Show all replies' : 'Only show replies to me', onSelect: () => setReplyFilter(replyFilter === 'mine' ? 'all' : 'mine') }, { label: scratchPlacement === 'aside' ? 'Open scratchpad in the drawer' : 'Open scratchpad in the aside', onSelect: () => void setScratchPlacement(scratchPlacement === 'aside' ? 'drawer' : 'aside').catch(() => undefined) }, { label: 'Copy link to this chat', onSelect: () => void navigator.clipboard?.writeText(location.href) }]} />
         ) : (
           <header className="h-12 shrink-0 border-b border-border-subtle" />
+        )}
+        {activeThread && continueError && (
+          <div role="alert" className="flex items-center gap-3 border-b border-danger/30 px-4 py-2 text-xs text-danger">
+            <span>Continue was not changed. {continueError}</span>
+            {onDismissContinueError && <button type="button" onClick={onDismissContinueError} className="ml-auto underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">Dismiss</button>}
+          </div>
         )}
         <ChatFreshness />
         {activeThread ? children : (

@@ -135,6 +135,18 @@ describe('ChatView', () => {
 // jsdom has no layout, so this pins the classes that stop the page scrolling: the message
 // action buttons hold position:absolute sr-only labels, and without a positioned, clipping
 // ancestor they escape the message scroller and stretch the whole page (seen live, 2026-10-24).
+describe('ChatView Continue error', () => {
+  it('shows a failed Continue change as its own dismissible notice, not in the thread list', () => {
+    const onDismiss = vi.fn()
+    render(<ChatView threads={T} activeThread={T[0]} onSelectThread={() => undefined} continueOn continueError="Operator access is needed" onDismissContinueError={onDismiss}><p>x</p></ChatView>)
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain('Continue was not changed. Operator access is needed')
+    expect(within(alert).queryByText(/retry/i)).toBeNull()
+    fireEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
+    expect(onDismiss).toHaveBeenCalledOnce()
+  })
+})
+
 describe('ChatView containment', () => {
   const clipped = (el: Element | null) => !!el && el.classList.contains('relative') && el.classList.contains('overflow-hidden')
   it('is a positioned, clipping container in both variants', () => {

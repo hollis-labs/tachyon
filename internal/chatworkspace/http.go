@@ -438,22 +438,11 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid", "Send scratchpad_placement (drawer or aside), terminal_close_on_complete and/or continue_new_sessions (true or false).")
 		return
 	}
-	// A field left out keeps its saved value.
-	cur, err := h.Store.Settings(r.Context())
+	// A field left out keeps its saved value; the read and the write are one transaction.
+	cur, err := h.Store.UpdateSettings(r.Context(), SettingsPatch{
+		ScratchpadPlacement: in.ScratchpadPlacement, TerminalCloseOnComplete: in.TerminalCloseOnComplete, ContinueNewSessions: in.ContinueNewSessions,
+	})
 	if err != nil {
-		h.problem(w, err)
-		return
-	}
-	if in.ScratchpadPlacement != nil {
-		cur.ScratchpadPlacement = *in.ScratchpadPlacement
-	}
-	if in.TerminalCloseOnComplete != nil {
-		cur.TerminalCloseOnComplete = *in.TerminalCloseOnComplete
-	}
-	if in.ContinueNewSessions != nil {
-		cur.ContinueNewSessions = *in.ContinueNewSessions
-	}
-	if err := h.Store.SaveSettings(r.Context(), cur); err != nil {
 		h.problem(w, err)
 		return
 	}
