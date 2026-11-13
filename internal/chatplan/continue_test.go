@@ -2,6 +2,7 @@ package chatplan
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -78,7 +79,7 @@ func TestContinueDefaultAppliesToNewSessionsOnly(t *testing.T) {
 	ctx := context.Background()
 	def := false
 	s.Store.ContinueDefault = func(context.Context) bool { return def }
-	s.Attach(ctx, "s1", "agent-a", "") // first sight through the proxy
+	s.Attach(ctx, "s1", "agent-a", "")                          // first sight through the proxy
 	if _, err := s.Continue(ctx, tetherRef("s2")); err != nil { // first sight in the chat header
 		t.Fatal(err)
 	}
@@ -125,5 +126,63 @@ func TestContinueHTTP(t *testing.T) {
 	}
 	if code, out := e.do(t, "GET", "/threads/app:t1/continue", ""); code != 409 || out["code"] != "not_continuable" {
 		t.Fatalf("app thread: %d %v", code, out)
+	}
+}
+
+// The header reads a session before Tether reports it (row: agent ”, continues NULL). The later
+// Carry still fills agent and continues, keeps the pinned flag, and carries the ancestor's plan.
+func TestHeaderPinBeforeCarryFillsLineage(t *testing.T) {
+	s, _ := lineageSetup(t)
+	ctx := context.Background()
+	def := false
+	s.Store.ContinueDefault = func(context.Context) bool { return def }
+	row := func(id string) (agent string, cont sql.NullString, on int) {
+		t.Helper()
+		if err := s.Store.DB.Reader.QueryRow(`SELECT agent_id,continues_id,continue_on FROM chat_session_lineage WHERE session_id=?`, id).Scan(&agent, &cont, &on); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	// Ancestor on: s2 pinned by the header (default off at that moment), then Tether reports s2 continues s1.
+	def = true
+	s.Attach(ctx, "s1", "agent-a", "")
+	old := writePlan(t, s, "s1", "Ship")
+	def = false
+	if on, err := s.Continue(ctx, tetherRef("s2")); err != nil || on {
+		t.Fatalf("pin s2: %v %v", on, err)
+	}
+	if agent, cont, _ := row("s2"); agent != "" || cont.Valid {
+		t.Fatalf("pinned row: %q %v", agent, cont)
+	}
+	def = true
+	s.Attach(ctx, "s2", "agent-a", "s1")
+	if agent, cont, on := row("s2"); agent != "agent-a" || cont.String != "s1" || on != 0 {
+		t.Fatalf("s2 after Carry: agent=%q continues=%v continue_on=%d", agent, cont, on)
+	}
+	if p, err := planOf(s, "s2"); err != nil || p.ID != old.ID {
+		t.Fatalf("plan not carried to s2 after a header pin: %+v %v", p, err)
+	}
+
+	// Ancestor off: a1 pinned off by the header before Tether saw it; a2 continues a1 and starts fresh.
+	def = false
+	if _, err := s.Continue(ctx, tetherRef("a1")); err != nil {
+		t.Fatal(err)
+	}
+	def = true
+	s.Attach(ctx, "a1", "agent-a", "")
+	writePlan(t, s, "a1", "Keep")
+	s.Attach(ctx, "a2", "agent-a", "a1")
+	if agent, cont, on := row("a1"); agent != "agent-a" || on != 0 || cont.Valid {
+		t.Fatalf("a1: agent=%q continues=%v continue_on=%d", agent, cont, on)
+	}
+	if _, cont, _ := row("a2"); cont.String != "a1" {
+		t.Fatalf("a2 continues: %v", cont)
+	}
+	if _, err := planOf(s, "a2"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("plan carried past an ancestor whose Continue was pinned off")
+	}
+	if _, err := planOf(s, "a1"); err != nil {
+		t.Fatal("the plan must stay on a1:", err)
 	}
 }
