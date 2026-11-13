@@ -31,7 +31,7 @@ function useChange(initial: Change): [Change, (c: Change) => void] {
 
 export function Diff({ text }: { text: string }) {
   return (
-    <pre aria-label="Changes" className="max-h-56 overflow-auto border border-border bg-surface p-2 font-mono dash-support text-fg">
+    <pre aria-label="Changes" tabIndex={0} className="max-h-56 overflow-auto border border-border bg-surface p-2 font-mono dash-support text-fg">
       {text.split('\n').map((l, i) => (
         <span key={i} className={`block ${l.startsWith('+') ? 'bg-success/10 text-fg' : l.startsWith('-') ? 'bg-danger/10 text-fg' : 'text-fg-faint'}`}>
           {l.startsWith('+') ? '+ ' : l.startsWith('-') ? '− ' : '  '}
