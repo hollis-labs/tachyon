@@ -209,9 +209,9 @@ export function SessionToolbar({
       <span className="ml-auto dash-label text-fg-muted">{count === undefined ? "Searching…" : `${number(count)} sessions`}</span>
       {sheet && (
         <Dialog open onOpenChange={(o) => !o && setSheet(false)}>
-          <DialogContent>
+          <DialogContent className="flex flex-col gap-3">
             <DialogHeader>
-              <DialogTitle>Filters</DialogTitle>
+              <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">Filters</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col items-start gap-3">
               <Controls filter={filter} facets={facets} set={set} />
