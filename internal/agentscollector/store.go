@@ -344,6 +344,20 @@ func (s *Store) MarkEnded(ctx context.Context, ended map[string]string) error {
 	})
 }
 
+// NameLifecycle rewrites feed lines that named a session by its id ("session 1a2b3c4d started") once the
+// agent's name is known. A start arrives before anything says who the agent is; the running listing does.
+func (s *Store) NameLifecycle(ctx context.Context) error {
+	return s.DB.Writer.Submit(ctx, "agents_name_lifecycle", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE bus_events SET subject=(
+   SELECT COALESCE(NULLIF(a.agent_name,''),a.logical_agent_id) FROM agents_sessions a
+   WHERE substr(a.session_id,1,8)=substr(bus_events.subject,9,8) AND COALESCE(NULLIF(a.agent_name,''),a.logical_agent_id,'')<>'' LIMIT 1
+ ) || substr(subject,17)
+ WHERE type='lifecycle' AND subject LIKE 'session ________ %' AND EXISTS (
+   SELECT 1 FROM agents_sessions a WHERE substr(a.session_id,1,8)=substr(bus_events.subject,9,8) AND COALESCE(NULLIF(a.agent_name,''),a.logical_agent_id,'')<>'')`)
+		return err
+	})
+}
+
 // Prune deletes expired rows in batches of 1000, one writer transaction each, and records a receipt.
 func (s *Store) Prune(ctx context.Context) (int64, error) {
 	now := s.now()

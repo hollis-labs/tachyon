@@ -610,8 +610,23 @@ func TestKilledAndCompletedSessionsEndAndReconcile(t *testing.T) {
 		"running":   {{Kind: "session.snapshot", SessionID: "s_live", SessionState: "running", Workroot: "tachyon", At: time.Now()}},
 		"completed": {{Kind: "session.snapshot", SessionID: "s_missed", SessionState: "completed"}, {Kind: "session.snapshot", SessionID: "s_other", SessionState: "completed"}},
 	}}
+	// A start listed before the agent was known is renamed once the listing names it.
+	if err := c.Store.DB.Writer.Submit(ctx, "seed", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO bus_events(tether_seq,tether_event_id,at_ns,type,subject) VALUES(1,'x:1',1,'lifecycle','session abcdef01 started'),(2,'x:2',2,'lifecycle','session 99999999 started')`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	lister := c.Source.(listerSource)
+	lister.by["running"] = append(lister.by["running"], Frame{Kind: "session.snapshot", SessionID: "abcdef01-2222", SessionState: "running", LogicalAgentID: "new-agent", AgentName: "new-agent"})
 	if err := c.reconcile(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM bus_events WHERE subject='new-agent started'`); n != 1 {
+		t.Error("a start is renamed to the agent once known")
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM bus_events WHERE subject='session 99999999 started'`); n != 1 {
+		t.Error("a start whose session is unknown keeps its id")
 	}
 	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id='s_missed' AND session_state='completed' AND ended_ns>0`); n != 1 {
 		t.Error("a session Tether lists as completed is ended")
@@ -622,7 +637,7 @@ func TestKilledAndCompletedSessionsEndAndReconcile(t *testing.T) {
 	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions WHERE session_id='s_live' AND workroot='tachyon' AND last_activity_ns<?`, time.Now().Add(-time.Hour).UnixNano()); n != 1 {
 		t.Error("the running listing fills the project and is not activity")
 	}
-	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions`); n != 4 {
+	if n := count(t, c, `SELECT COUNT(*) FROM agents_sessions`); n != 5 { // the four seeded and the one the running listing added
 		t.Errorf("sessions the store never saw are not added from the ended listing: %d", n)
 	}
 	// A new session's first health report lists it as started; an old session's does not.
@@ -638,7 +653,7 @@ func TestKilledAndCompletedSessionsEndAndReconcile(t *testing.T) {
 	if err := c.Store.Apply(ctx, hs); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, c, `SELECT COUNT(*) FROM bus_events WHERE type='lifecycle' AND subject LIKE '% started'`); n != 1 {
+	if n := count(t, c, `SELECT COUNT(*) FROM bus_events WHERE type='lifecycle' AND subject LIKE '% started' AND tether_event_id NOT LIKE 'x:%'`); n != 1 {
 		t.Errorf("exactly the new session is listed as started: %d", n)
 	}
 	if n := count(t, c, `SELECT COUNT(*) FROM bus_events WHERE subject='new-builder started'`); n != 1 {
