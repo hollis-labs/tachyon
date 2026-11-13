@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
+import { Dialog, DialogContent, DialogDescription, DialogTitle, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
 import { FilterChipGroup } from '@hollis-labs/kit-dashboard/data'
 import { DashboardSearchToolbar, DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { SegmentedProgress } from '@planner/shared'
 import { Btn } from '../agents/ui'
 import { LaunchAgentDialog } from '../fleet/LaunchAgentDialog'
-import { useAgentsMonitor } from './data'
+import { normalizeDetail, useAgentsMonitor } from './data'
 import { useAgentsRead, type AgentsSettings } from './api'
 import { ActivityTab } from './activity-tab'
 import { AgentsErrorBoundary } from './error-boundary'
@@ -16,7 +16,7 @@ import { ageText } from './session-parts'
 import { StaleAfterContext } from './session-rows'
 import { SessionBoard, SessionCards, SessionRows, matchesFilter, matchesQuery, useViewState, type GroupBy, type SessionView } from './sessions-view'
 import { AGENTS, type FilterId } from './vocabulary'
-import type { SessionState } from './types'
+import type { Session, SessionState } from './types'
 
 type Tab = 'sessions' | 'activity' | 'teams'
 const TABS: readonly Tab[] = ['sessions', 'activity', 'teams']
@@ -41,7 +41,11 @@ export function AgentsPage() {
   const navigate = useNavigate()
   const { session: openId } = useParams<{ session?: string }>()
   const openSession = (id: string) => navigate(`/agents/${encodeURIComponent(id)}${params.toString() ? `?${params}` : ''}`)
-  const openRow = data?.sessions.find((x) => x.id === openId)
+  const listed = data?.sessions.find((x) => x.id === openId)
+  // A session that ended leaves the list; its link (and a modal that was open on it) still reads it on its own.
+  const detail = useAgentsRead<Session>(openId && data && !listed ? `/sessions/${encodeURIComponent(openId)}` : null)
+  const openRow = listed ?? (detail.data && detail.data.id === openId ? normalizeDetail(detail.data) : undefined)
+  const closeSession = () => navigate(`/agents${params.toString() ? `?${params}` : ''}`)
   const [launchOpen, setLaunchOpen] = useState(false)
   const now = Date.now()
   const stale = status === 'reconnecting'
@@ -52,6 +56,12 @@ export function AgentsPage() {
       const i = ['1', '2', '3'].indexOf(e.key)
       if (i >= 0) return setTab(TABS[i])
       if (tab !== 'sessions') return
+      // j and k reach the list from anywhere on the page; once a row has focus the list moves it.
+      if ((e.key === 'j' || e.key === 'k') && !(document.activeElement as HTMLElement | null)?.closest('[data-session-row]')) {
+        const first = document.querySelector<HTMLElement>('[data-session-row][tabindex="0"]') ?? document.querySelector<HTMLElement>('[data-session-row]')
+        if (first) (e.preventDefault(), first.focus())
+        return
+      }
       if (e.key === 'r') setView('rows')
       else if (e.key === 'c') setView('cards')
       else if (e.key === 'b') setView('board')
@@ -150,16 +160,25 @@ export function AgentsPage() {
         </>
       )}
       {openRow && (
-        <AgentsErrorBoundary resetKey={openRow.id} onClose={() => navigate(`/agents${params.toString() ? `?${params}` : ''}`)}>
+        <AgentsErrorBoundary resetKey={openRow.id} onClose={closeSession}>
         <SessionModal
           key={openRow.id}
           session={openRow}
           paused={stale}
           now={now}
-          onClose={() => navigate(`/agents${params.toString() ? `?${params}` : ''}`)}
+          onClose={closeSession}
           onRestarted={(next) => (void refetch(), navigate(next ? `/agents/${encodeURIComponent(next)}` : '/agents'))}
         />
         </AgentsErrorBoundary>
+      )}
+      {openId && data && !openRow && detail.error && (
+        <Dialog open onOpenChange={(o) => !o && closeSession()}>
+          <DialogContent widthClassName="max-w-md">
+            <DialogTitle className="sr-only">{AGENTS.sessionGone}</DialogTitle>
+            <DialogDescription className="sr-only">{AGENTS.sessionGoneDetail}</DialogDescription>
+            <EmptyState variant="no-results" title={AGENTS.sessionGone} description={AGENTS.sessionGoneDetail} action={{ label: AGENTS.backToSessions, onClick: closeSession }} />
+          </DialogContent>
+        </Dialog>
       )}
       <LaunchAgentDialog open={launchOpen} onClose={() => setLaunchOpen(false)} onLaunched={() => void refetch()} />
     </div>
