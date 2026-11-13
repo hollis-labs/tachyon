@@ -48,7 +48,7 @@ export function CommandPalette({ open, onOpenChange, title, modes, commands, onR
           id: c.id,
           label: (
             <span className="flex w-full items-center gap-3">
-              {c.group && <span className="w-14 shrink-0 font-mono text-caption text-fg-faint">{c.group}</span>}
+              {c.group && <span className="w-14 shrink-0 font-mono text-caption text-fg-muted">{c.group}</span>}
               <span className="min-w-0 flex-1 truncate">{c.label}</span>
               {c.hint && <span className="shrink-0 font-mono text-caption text-fg-muted">{c.hint}</span>}
             </span>
