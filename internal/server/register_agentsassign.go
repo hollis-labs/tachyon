@@ -26,7 +26,7 @@ func (s *Server) agentsAssigner() agentsserve.Assigner {
 	if s.store == nil || torque == "" {
 		return nil
 	}
-	return &agentsassign.Joiner{DB: s.store, Planner: agentsassign.Live{
+	return &agentsassign.Joiner{DB: s.store, Async: true, Planner: agentsassign.Live{
 		Owned: &planner.Owned{Objects: objects.New(s.store)},
 		Tasks: planner.NewTasks(torque, s.cfg.Upstreams.TorqueToken),
 	}}
