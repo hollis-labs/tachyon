@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@hollis-labs/design-components'
 import { SECTIONS, type SectionId } from './vocab'
 
-/** Anchors for a scrolling form; the section nearest the top is current. */
-export function OutlineNav({ root }: { root: React.RefObject<HTMLElement | null> }) {
+/** Anchors for a scrolling form; the section nearest the top is current. The rail shows from 1024; below it the same sections are a select. */
+export function OutlineNav({ root, variant = 'rail' }: { root: React.RefObject<HTMLElement | null>; variant?: 'rail' | 'select' }) {
   const [current, setCurrent] = useState<SectionId>('identity')
   useEffect(() => {
     const el = root.current
@@ -28,6 +29,23 @@ export function OutlineNav({ root }: { root: React.RefObject<HTMLElement | null>
     root.current?.querySelector(`#section-${id}`)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
     setCurrent(id)
   }
+  if (variant === 'select')
+    return (
+      <div className="shrink-0 border-b border-border-subtle px-4 py-2 lg:hidden">
+        <Select value={current} onValueChange={(v) => v != null && go(String(v) as SectionId)}>
+          <SelectTrigger className="h-7 w-full text-xs" aria-label="Go to section">
+            <SelectValue>{(v: unknown) => SECTIONS.find((s) => s.id === v)?.label ?? 'Section'}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {SECTIONS.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    )
   return (
     <nav aria-label="Agent sections" className="hidden w-[150px] shrink-0 flex-col gap-0.5 border-r border-border-subtle py-3.5 pl-4 pr-2 lg:flex">
       {SECTIONS.map((s) => (

@@ -91,7 +91,7 @@ function LaunchDetail({ l, agentName, options, onChanged }: { l: Launch; agentNa
           {l.env ? `${keys} ${keys === 1 ? 'variable' : 'variables'} · ${secrets} ${secrets === 1 ? 'secret' : 'secrets'}` : NOT_REPORTED}
         </Field>
       </dl>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {mode !== 'unavailable' && (
           <>
             <Button type="button" variant="outline" size="sm" onClick={() => setDialog('edit')}>
@@ -143,6 +143,12 @@ export function BuilderLaunchesPage() {
   const [project, setProject] = useState('')
   const [worker, setWorker] = useState('')
   const [picked, setPicked] = useState<string>()
+  // Below 1024 the detail replaces the table once a row is opened (Back returns); from 1024 it sits beside it.
+  const [open, setOpen] = useState(false)
+  const pick = (id: string) => {
+    setPicked(id)
+    setOpen(true)
+  }
   const [creating, setCreating] = useState(false)
   const [mode] = useChangeMode()
   const [load, retry] = useLoad(() => builderApi.launches({ q, live }), [q, live])
@@ -203,7 +209,7 @@ export function BuilderLaunchesPage() {
         {creating && <EntityDialog kind="launch" mode="create" noun="launch" fields={LAUNCH_FIELDS} initial={{ chat: false, enabled: true }} options={options} onClose={() => setCreating(false)} onApplied={retry} />}
       </div>
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-auto">
+        <div className={`min-w-0 flex-1 overflow-auto ${open && sel ? 'hidden lg:block' : ''}`}>
           {load.status === 'loading' && (
             <div aria-busy="true" className="space-y-2 p-4">
               {[0, 1, 2].map((i) => (
@@ -237,11 +243,11 @@ export function BuilderLaunchesPage() {
                   role="row"
                   tabIndex={0}
                   aria-selected={l.id === sel?.id}
-                  onClick={() => setPicked(l.id)}
+                  onClick={() => pick(l.id)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      setPicked(l.id)
+                      pick(l.id)
                     }
                   }}
                   className={`grid w-full ${COLS} cursor-pointer items-center gap-3 border-t border-border-subtle px-4 py-2.5 text-left text-xs outline-none hover:bg-selection focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring ${l.id === sel?.id ? 'bg-selection' : ''}`}
@@ -274,7 +280,10 @@ export function BuilderLaunchesPage() {
           )}
         </div>
         {sel && (
-          <aside aria-label="Launch" className="hidden w-[360px] shrink-0 overflow-auto border-l border-border-subtle p-3.5 lg:block">
+          <aside aria-label="Launch" className={`${open ? 'flex min-w-0 flex-1' : 'hidden'} flex-col gap-3 overflow-auto p-3.5 lg:block lg:w-[360px] lg:flex-none lg:shrink-0 lg:border-l lg:border-border-subtle`}>
+            <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)} className="self-start lg:hidden">
+              ‹ Launches
+            </Button>
             <LaunchDetail key={sel.id} l={sel} agentName={nameOf(sel)} options={options} onChanged={retry} />
           </aside>
         )}
