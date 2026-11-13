@@ -80,7 +80,7 @@ export function ChatPage() {
   return (
     <ChatView
       threads={threads}
-      threadsError={error ?? openError ?? (cont.error || null)}
+      threadsError={error ?? openError}
       onRetryThreads={retry}
       activeThread={active}
       onSelectThread={select}
@@ -91,6 +91,8 @@ export function ChatPage() {
       onTogglePin={togglePin}
       continueOn={cont.on}
       onToggleContinue={cont.toggle}
+      continueError={cont.error}
+      onDismissContinueError={cont.dismiss}
     >
       {active && (
         <ThreadConversation

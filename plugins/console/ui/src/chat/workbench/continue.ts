@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { chatJSON } from '../roster'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
@@ -13,6 +13,8 @@ export interface ContinueState {
   /** Why the last change failed; the flag is back to its previous value. */
   error: string
   toggle: () => void
+  /** Clears the error notice. */
+  dismiss: () => void
 }
 
 /**
@@ -25,9 +27,13 @@ export function useContinue(ref: string | undefined): ContinueState {
   const [on, setOn] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // The session the hook is showing now: a PUT answer for a session that is no longer open is dropped.
+  const current = useRef(ref)
   useEffect(() => {
+    current.current = ref
     setOn(null)
     setError('')
+    setBusy(false)
     if (!continuable(ref)) return
     let live = true
     chatJSON<{ continue: boolean }>(`/threads/${encodeURIComponent(ref)}/continue`).then(
@@ -42,9 +48,10 @@ export function useContinue(ref: string | undefined): ContinueState {
     setOn(next)
     setBusy(true)
     chatJSON<{ continue: boolean }>(`/threads/${encodeURIComponent(ref)}/continue`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ continue: next }) }).then(
-      (r) => { setOn(r.continue); setError('') },
-      (e) => { setOn(!next); setError(e instanceof Error ? e.message : 'Could not change Continue.') },
-    ).finally(() => setBusy(false))
+      (r) => { if (current.current !== ref) return; setOn(r.continue); setError('') },
+      (e) => { if (current.current !== ref) return; setOn(!next); setError(e instanceof Error ? e.message : 'Could not change Continue.') },
+    ).finally(() => { if (current.current === ref) setBusy(false) })
   }, [ref, on, busy])
-  return { on, busy, error, toggle }
+  const dismiss = useCallback(() => setError(''), [])
+  return { on, busy, error, toggle, dismiss }
 }

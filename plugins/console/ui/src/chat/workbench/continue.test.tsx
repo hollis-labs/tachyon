@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@t
 import type { ChatThread } from '../types'
 
 // The server side of /threads/{ref}/continue: one flag per session, fixed from the default on first read.
-const server = { def: true, rows: new Map<string, boolean>(), failPut: false, calls: [] as { m: string; path: string; b?: string }[] }
+const server = { def: true, rows: new Map<string, boolean>(), failPut: false, gate: null as Promise<void> | null, calls: [] as { m: string; path: string; b?: string }[] }
 vi.mock('../roster', () => ({
   CHAT_BASE: '',
   chatFetch: fetch,
@@ -13,6 +13,7 @@ vi.mock('../roster', () => ({
     server.calls.push({ m, path, b: init?.body as string | undefined })
     const ref = decodeURIComponent(path.split('/')[2])
     if (m === 'PUT') {
+      if (server.gate) await server.gate
       if (server.failPut) throw new Error('Operator access is needed')
       const on = JSON.parse(String(init?.body)).continue as boolean
       server.rows.set(ref, on)
@@ -29,6 +30,7 @@ beforeEach(() => {
   server.def = true
   server.rows.clear()
   server.failPut = false
+  server.gate = null
   server.calls = []
 })
 afterEach(cleanup)
@@ -101,6 +103,44 @@ describe('useContinue', () => {
     await waitFor(() => expect(result.current.busy).toBe(false))
     expect(result.current.on).toBe(true)
     expect(result.current.error).toBe('Operator access is needed')
+  })
+
+  it('drops a toggle answer that arrives after another session was opened', async () => {
+    server.rows.set('tether:b', true)
+    const { result, rerender } = renderHook(({ ref }) => useContinue(ref), { initialProps: { ref: 'tether:a' } })
+    await waitFor(() => expect(result.current.on).toBe(true))
+    let release!: () => void
+    server.gate = new Promise((r) => { release = r })
+    act(() => result.current.toggle()) // A goes off; its PUT is held
+    rerender({ ref: 'tether:b' })
+    await waitFor(() => expect(result.current.on).toBe(true)) // B's own value
+    expect(result.current.busy).toBe(false)
+    await act(async () => { release() })
+    expect(result.current.on).toBe(true) // A's answer (false) did not land on B
+    expect(server.rows.get('tether:a')).toBe(false)
+  })
+
+  it('drops a refusal that arrives after another session was opened, so B shows no error', async () => {
+    const { result, rerender } = renderHook(({ ref }) => useContinue(ref), { initialProps: { ref: 'tether:a' } })
+    await waitFor(() => expect(result.current.on).toBe(true))
+    let release!: () => void
+    server.gate = new Promise((r) => { release = r })
+    server.failPut = true
+    act(() => result.current.toggle())
+    rerender({ ref: 'tether:b' })
+    await waitFor(() => expect(result.current.on).toBe(true))
+    await act(async () => { release() })
+    expect(result.current.error).toBe('')
+  })
+
+  it('clears the error notice on dismiss', async () => {
+    const { result } = renderHook(() => useContinue('tether:s1'))
+    await waitFor(() => expect(result.current.on).toBe(true))
+    server.failPut = true
+    act(() => result.current.toggle())
+    await waitFor(() => expect(result.current.error).toBe('Operator access is needed'))
+    act(() => result.current.dismiss())
+    expect(result.current.error).toBe('')
   })
 
   it('has no toggle for a thread that is not a Tether session', async () => {
