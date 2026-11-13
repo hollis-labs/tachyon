@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Button, OverflowMenu } from '@hollis-labs/design-components'
+import { Button } from '@hollis-labs/design-components'
 import { type Summary, builderApi } from './api'
 import { useChangeMode } from './capabilities'
 import { AGENT_FIELDS, EntityDialog } from './EntityDialog'
@@ -8,8 +8,8 @@ import { type BuilderTab, BUILDER_TITLE, DEFINITIONS_NOTE, TAB_LABEL, TAB_PATH }
 
 const TABS: BuilderTab[] = ['agents', 'launches', 'library']
 
-/** Page header shared by Agents, Launches and Library: title, area tabs with counts, note, New agent. At 390 the page's create actions sit in one overflow menu pinned to the right. */
-export function BuilderShell({ tab, counts, actions = [] }: { tab: BuilderTab; counts?: Summary | null; actions?: { label: string; onSelect: () => void }[] }) {
+/** Page header shared by Agents, Launches and Library: title, area tabs with counts, note, New agent. New agent is not offered at 390 (the golden shows the tabs only). */
+export function BuilderShell({ tab, counts }: { tab: BuilderTab; counts?: Summary | null }) {
   const [own, setOwn] = useState<Summary | null>(null)
   const [mode] = useChangeMode()
   const [creating, setCreating] = useState(false)
@@ -52,11 +52,6 @@ export function BuilderShell({ tab, counts, actions = [] }: { tab: BuilderTab; c
         <Button type="button" size="sm" onClick={() => setCreating(true)} className="hidden sm:inline-flex">
           New agent
         </Button>
-      )}
-      {mode !== 'unavailable' && (
-        <span className="sticky -right-4 shrink-0 border-l border-border-subtle bg-bg px-2 sm:hidden">
-          <OverflowMenu ariaLabel="More actions" actions={[...actions, { label: 'New agent', onSelect: () => setCreating(true) }]} />
-        </span>
       )}
       {creating && (
         <EntityDialog
