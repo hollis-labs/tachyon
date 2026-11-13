@@ -78,8 +78,8 @@ function PolicyLead({ it }: { it: LibraryItem }) {
               ['Permission mode', WORD(val('permission_mode'))],
               ['Network', WORD(val('network'))],
               ['Sandbox', WORD(val('default_sandbox'))],
-              ['Scopes', scopes === null ? (typeof it.scope_count === 'number' ? `${it.scope_count} scopes` : NOT_REPORTED) : scopes.length ? scopes.join(', ') : 'none'],
-              ['Rules', rules === null ? NOT_REPORTED : rules.length ? rules.join(', ') : 'none'],
+              ['Scopes', scopes === null ? (typeof it.scope_count === 'number' ? `${it.scope_count} scopes` : NOT_REPORTED) : <ChipListField key="s" label="Scopes" value={scopes} />],
+              ['Rules', rules === null ? NOT_REPORTED : <ChipListField key="r" label="Rules" value={rules} />],
             ] as const
           ).map(([k, v]) => (
             <div key={k} className={GRID}>
@@ -271,6 +271,8 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
   }
   const archived = it.archived === true
   const SKIP_NOW = partKind === 'prompts' ? SKIP : new Set([...SKIP, 'revision'])
+  // Fields not already shown by the lead block of this kind.
+  const rest = Object.entries(it).filter(([k]) => !SKIP_NOW.has(k) && !(kind === 'policies' && POLICY_LEAD.has(k)) && !(kind === 'skills' && SKILL_LEAD.has(k)))
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-subtle px-4 py-3">
@@ -359,18 +361,16 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
               <Muted>Changing this updates all agents that reference it. Review shows each affected agent.</Muted>
             </section>
           )}
-          {kind === 'policies' && <Cap>Details</Cap>}
+          {kind === 'policies' && rest.length > 0 && <Cap>Details</Cap>}
           <dl>
-            {Object.entries(it)
-              .filter(([k]) => !SKIP_NOW.has(k) && !(kind === 'policies' && POLICY_LEAD.has(k)) && !(kind === 'skills' && SKILL_LEAD.has(k)))
-              .map(([k, v]) => (
+            {rest.map(([k, v]) => (
                 <div key={k} className={GRID}>
                   <dt className="font-mono text-caption uppercase tracking-label text-fg-muted sm:pt-1">{label(k)}</dt>
                   <dd className="min-w-0 text-control text-fg [overflow-wrap:anywhere]">
                     <Value v={v} />
                   </dd>
-                </div>
-              ))}
+              </div>
+            ))}
           </dl>
         </>
       )}
