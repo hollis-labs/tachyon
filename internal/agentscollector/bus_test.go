@@ -67,6 +67,28 @@ func TestNormalizeBusMapsTheCatalogKinds(t *testing.T) {
 	if b, ok := NormalizeBus(f); !ok || b.Type != "lifecycle" || b.Subject != "abcdef0123456789 ended (restart)" || b.Refs[0].Kind != "session" {
 		t.Errorf("lifecycle: %+v", b)
 	}
+	// Tether reports a start or an end as session.state_changed {from,to}; a heartbeat and the second
+	// terminal state of the same end are not events.
+	turn := func(from, to, name string) (BusEvent, bool) {
+		f, _ := ParseFrame([]byte(`{"id":"e:20","kind":"session.state_changed","session_id":"abcdef0123456789","time":"2026-10-30T01:00:11Z","payload":{"from":"` + from + `","to":"` + to + `"}}`))
+		f.AgentName = name
+		return NormalizeBus(f)
+	}
+	for _, c := range []struct{ from, to, name, subj, sev string }{
+		{"launching", "running", "chat-gui-builder", "chat-gui-builder started", "info"},
+		{"running", "completed", "chat-gui-builder", "chat-gui-builder ended", "info"},
+		{"running", "killed", "", "session abcdef01 was killed", "warn"},
+		{"running", "failed", "builder", "builder failed", "error"},
+	} {
+		if b, ok := turn(c.from, c.to, c.name); !ok || b.Type != "lifecycle" || b.Subject != c.subj || b.Severity != c.sev || len(b.Refs) != 1 || b.Refs[0].Kind != "session" {
+			t.Errorf("%s -> %s: %+v", c.from, c.to, b)
+		}
+	}
+	for _, c := range [][2]string{{"running", "running"}, {"killed", "completed"}, {"running", "detached"}, {"detached", "running"}} {
+		if b, ok := turn(c[0], c[1], "x"); ok {
+			t.Errorf("%s -> %s is not a feed event: %+v", c[0], c[1], b)
+		}
+	}
 	for _, kind := range []string{"session.output", "session.work_state_changed", "tool.call.finished", "resource.state_changed"} {
 		f, _ := ParseFrame([]byte(busFrame(12, kind, "x", `{"name":"x"}`)))
 		if _, ok := NormalizeBus(f); ok {
