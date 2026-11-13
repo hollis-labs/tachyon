@@ -1,5 +1,5 @@
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogTitle } from '@hollis-labs/design-components'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { builderApi, type Change, errorMessage } from './api'
 import { isOpen, isWaiting, minutesAndSeconds, type ReviewRow } from './changes'
 import { useChangeMode } from './capabilities'
@@ -91,6 +91,22 @@ export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, r
     }
   }
   const done = !isOpen(change.state)
+  // Cmd/Ctrl+Enter is the primary action of a draft, under the same conditions as the button.
+  const canSubmit = change.state === 'draft' && !busy && failChecks.length === 0 && (!privileged || ack)
+  const submitKey = useRef(() => {})
+  submitKey.current = () => {
+    if (canSubmit) void run(() => builderApi.submit(change.change_id, ack))
+  }
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault()
+        submitKey.current()
+      }
+    }
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [])
   // Leaving a draft (Keep editing, Close, Esc) cancels it on the server: an open draft blocks the next Review of the
   // same file with 409 change_open, and nothing in the editor could cancel it afterwards.
   const dismiss = async () => {

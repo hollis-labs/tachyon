@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseEvent } from './stream'
+import { stepId } from './keys'
 import { type AgentDetail, BuilderError, errorMessage } from './api'
 import { buildOps, buildPartOps, changedPartPaths, changingText, changedPaths, isOpen, minutesAndSeconds, relativeTime } from './changes'
 import { handoffStatus } from './HandoffPanel'
@@ -89,5 +90,17 @@ describe('parseEvent', () => {
     expect(parseEvent('{"type":"change","at":1,"change_id":"c","state":"approved"}')).toMatchObject({ type: 'change', change_id: 'c' })
     expect(parseEvent('{"type":"nope","at":1}')).toBeNull()
     expect(parseEvent('not json')).toBeNull()
+  })
+})
+
+describe('stepId', () => {
+  it('moves through a list and stops at the ends', () => {
+    const ids = ['a', 'b', 'c']
+    expect(stepId(ids, 'a', 1)).toBe('b')
+    expect(stepId(ids, 'c', 1)).toBe('c')
+    expect(stepId(ids, 'a', -1)).toBe('a')
+    expect(stepId(ids, undefined, 1)).toBe('a')
+    expect(stepId(ids, 'gone', -1)).toBe('c')
+    expect(stepId([], 'a', 1)).toBeUndefined()
   })
 })

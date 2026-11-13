@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@hollis-labs/design-components'
+import { useKeys } from './keys'
 import { SECTIONS, type SectionId } from './vocab'
 
 /** Anchors for a scrolling form; the section nearest the top is current. The rail shows from 1024; below it the same sections are a select. */
@@ -29,6 +30,13 @@ export function OutlineNav({ root, variant = 'rail' }: { root: React.RefObject<H
     root.current?.querySelector(`#section-${id}`)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
     setCurrent(id)
   }
+  const stepSection = (by: 1 | -1) => {
+    const i = SECTIONS.findIndex((s) => s.id === current)
+    const next = SECTIONS[Math.min(SECTIONS.length - 1, Math.max(0, i + by))]
+    if (next && next.id !== current) go(next.id)
+  }
+  // One instance owns the keys so [ and ] do not fire twice.
+  useKeys(variant === 'rail' ? { '[': () => stepSection(-1), ']': () => stepSection(1) } : {})
   if (variant === 'select')
     return (
       <div className="shrink-0 border-b border-border-subtle px-4 py-2 lg:hidden">

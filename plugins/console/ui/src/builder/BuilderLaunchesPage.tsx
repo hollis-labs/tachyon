@@ -7,6 +7,7 @@ import { newRequestId } from './changes'
 import { EnvDialog } from './EnvDialog'
 import { EntityDialog, LAUNCH_FIELDS } from './EntityDialog'
 import { useChangeMode } from './capabilities'
+import { stepId, useKeys } from './keys'
 import { Cite, Field, Muted, RailCard } from './parts'
 import { useLoad } from './useLoad'
 import { NOT_REPORTED } from './vocab'
@@ -179,6 +180,11 @@ export function BuilderLaunchesPage() {
   const uniq = (pick: (l: Launch) => string) => [...new Set(all.map(pick).filter(Boolean))].sort()
   const rows = all.filter((l) => (!provider || l.provider === provider) && (!project || l.project === project) && (!worker || l.worker === worker))
   const sel = rows.find((l) => l.id === picked) ?? rows[0]
+  const step = (by: 1 | -1) => {
+    const next = stepId(rows.map((l) => l.id), sel?.id, by)
+    if (next) setPicked(next)
+  }
+  useKeys({ j: () => step(1), k: () => step(-1), Enter: () => sel && pick(sel.id) })
   const nameOf = (l: Launch) => names.get(l.agent) ?? l.agent
   // Known values for the launch dialogs, so a typo such as provider "claude" is not the easy path.
   const options = { agent: [...names.keys()].sort(), provider: uniq((l) => l.provider), project: uniq((l) => l.project), worker: uniq((l) => l.worker) }
