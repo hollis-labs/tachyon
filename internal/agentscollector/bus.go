@@ -78,16 +78,25 @@ func busType(f Frame) string {
 		return "card"
 	case f.App == "" && (k == "session.started" || k == "session.ended" || k == "session.resumed" || k == "session.restarted"):
 		return "lifecycle"
-	case f.App == "" && k == "session.state_changed" && sessionTurn(f) != "":
-		return "lifecycle" // Tether reports a start or an end as a state change, not as its own kind
+	case f.App == "" && (k == "session.state_changed" || k == "session.health_changed") && sessionTurn(f) != "":
+		return "lifecycle" // Tether reports a start or an end as a state or health change, not as its own kind
 	}
 	return ""
 }
 
-// sessionTurn reads a session.state_changed frame as "started", "ended", "killed" or "failed", or ""
+// sessionTurn reads a session.state_changed or session.health_changed frame as "started", "ended", "killed" or "failed", or ""
 // when the change is neither a start nor an end. A second terminal state after a first one
 // (killed, then completed) is the same end and is not reported twice.
 func sessionTurn(f Frame) string {
+	if f.Kind == "session.health_changed" {
+		// A new session's first health report (unknown -> healthy) is the only start signal Tether sends: its
+		// state events begin at running -> running. Fresh keeps a daemon restart, which resets every session's
+		// health, from listing the whole fleet as started.
+		if f.Fresh && f.From == "unknown" && f.WorkState == "healthy" {
+			return "started"
+		}
+		return ""
+	}
 	switch f.SessionState {
 	case "running":
 		if f.From == "launching" || f.From == "ready" || f.From == "created" {
@@ -188,7 +197,7 @@ func NormalizeBus(f Frame) (BusEvent, bool) {
 			b.Refs = append(b.Refs, BusRef{"session", f.SessionID, shortID(f.SessionID)})
 		}
 		what := strings.TrimPrefix(f.Kind, "session.")
-		if f.Kind == "session.state_changed" {
+		if f.Kind == "session.state_changed" || f.Kind == "session.health_changed" {
 			what = sessionTurn(f)
 			// The agent's name when the store knows it (Apply fills it in); a bare id is shortened.
 			if who = okName(f.AgentName); who == "" {

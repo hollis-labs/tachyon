@@ -89,6 +89,15 @@ func TestNormalizeBusMapsTheCatalogKinds(t *testing.T) {
 			t.Errorf("%s -> %s is not a feed event: %+v", c[0], c[1], b)
 		}
 	}
+	// A start is the new session's first health report; the same report for a known session is not one.
+	h, _ := ParseFrame([]byte(`{"id":"e:21","kind":"session.health_changed","session_id":"abcdef0123456789","time":"2026-10-30T01:00:11Z","payload":{"from":"unknown","to":"healthy","reasons":["session_running"]}}`))
+	if _, ok := NormalizeBus(h); ok {
+		t.Error("a health report for a session that is not fresh is not a start")
+	}
+	h.Fresh, h.AgentName = true, "chat-gui-builder"
+	if b, ok := NormalizeBus(h); !ok || b.Type != "lifecycle" || b.Subject != "chat-gui-builder started" || b.Refs[0].Kind != "session" {
+		t.Errorf("start: %+v", b)
+	}
 	for _, kind := range []string{"session.output", "session.work_state_changed", "tool.call.finished", "resource.state_changed"} {
 		f, _ := ParseFrame([]byte(busFrame(12, kind, "x", `{"name":"x"}`)))
 		if _, ok := NormalizeBus(f); ok {
