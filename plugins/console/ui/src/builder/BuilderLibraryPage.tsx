@@ -495,7 +495,7 @@ export function BuilderLibraryPage() {
               </div>
             )}
             {load.status === 'ready' && items.length === 0 && (
-              <p className="p-4 text-control text-fg-faint">{q ? 'No matches.' : `No ${kindLabel.toLowerCase()} in the catalog yet.`}</p>
+              <p className="p-4 text-control text-fg-faint">{q ? 'No matches.' : `No ${kindLabel.toLowerCase()} yet.`}</p>
             )}
             <ul aria-label="Library items">
               {items.map((it) => (
