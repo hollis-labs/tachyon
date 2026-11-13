@@ -120,7 +120,7 @@ func (chatStorage) row(ctx context.Context, q settingsreg.Querier) (map[string]a
 	}
 	m := map[string]any{}
 	if json.Unmarshal([]byte(raw), &m) != nil {
-		return map[string]any{}, nil
+		m = map[string]any{} // an unreadable row reads as no overrides, as rowStorage does
 	}
 	return m, nil
 }
@@ -154,7 +154,7 @@ func (c chatStorage) Save(ctx context.Context, tx *sql.Tx, st settingsreg.Stored
 		m["continue_new_sessions"], _ = v.Value().(bool)
 	}
 	if len(m) == 0 {
-		_, err := tx.ExecContext(ctx, `DELETE FROM app_settings WHERE key = ?`, chatSettingsKey)
+		_, err = tx.ExecContext(ctx, `DELETE FROM app_settings WHERE key = ?`, chatSettingsKey)
 		return err
 	}
 	raw, err := json.Marshal(m)

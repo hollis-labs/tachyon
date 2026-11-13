@@ -394,8 +394,8 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.chatPlan = &chatplan.Service{
 		Store: &chatplan.Store{DB: store, ContinueDefault: func(ctx context.Context) bool {
-			st, err := ws.Settings(ctx)
-			return err != nil || st.ContinueNewSessions
+			st, serr := ws.Settings(ctx)
+			return serr != nil || st.ContinueNewSessions
 		}},
 		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
 		ProjectOf: func(ctx context.Context, ref string) (string, error) {

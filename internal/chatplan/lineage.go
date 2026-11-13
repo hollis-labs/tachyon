@@ -208,9 +208,9 @@ func (s *Store) Continue(ctx context.Context, session string) (bool, error) {
 	def := s.continueDefault(ctx)
 	now := s.now()
 	err = s.DB.Writer.Submit(ctx, "chat_session_continue_pin", func(ctx context.Context, tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on) VALUES(?,'',NULL,0,?,?)
- ON CONFLICT(session_id) DO NOTHING`, session, now.UnixNano(), def); err != nil {
-			return err
+		if _, e := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on) VALUES(?,'',NULL,0,?,?)
+ ON CONFLICT(session_id) DO NOTHING`, session, now.UnixNano(), def); e != nil {
+			return e
 		}
 		return tx.QueryRowContext(ctx, `SELECT continue_on FROM chat_session_lineage WHERE session_id=?`, session).Scan(&on)
 	})
