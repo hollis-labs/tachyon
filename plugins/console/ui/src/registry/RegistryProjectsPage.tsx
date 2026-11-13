@@ -310,7 +310,28 @@ export function RegistryProjectsPage() {
   const [load, retry] = useLoad(() => registryApi.list(q), [q])
   const [activeOnly, setActiveOnly] = useState(true)
   const [unlinkedOnly, setUnlinkedOnly] = useState(false)
-  const all: ProjectRow[] = load.status === 'ready' ? load.data.projects : []
+  // The server pages the list (25 at a time); later pages are appended here and reset whenever the query reloads.
+  const [more, setMore] = useState<ProjectRow[]>([])
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [paging, setPaging] = useState<'idle' | 'busy' | 'error'>('idle')
+  useEffect(() => {
+    setMore([])
+    setPaging('idle')
+    setCursor(load.status === 'ready' ? (load.data.next_cursor ?? null) : null)
+  }, [load])
+  const loadMore = () => {
+    if (!cursor) return
+    setPaging('busy')
+    registryApi.list(q, cursor).then(
+      (page) => {
+        setMore((prev) => [...prev, ...page.projects])
+        setCursor(page.next_cursor ?? null)
+        setPaging('idle')
+      },
+      () => setPaging('error'),
+    )
+  }
+  const all: ProjectRow[] = load.status === 'ready' ? [...load.data.projects, ...more] : []
   const rows = all.filter((r) => (!activeOnly || r.status === 'active') && (!unlinkedOnly || r.link.state !== 'linked'))
   const anyUnlinked = all.some((r) => r.link.state !== 'linked')
   useEffect(() => {
@@ -325,7 +346,10 @@ export function RegistryProjectsPage() {
         <nav aria-label="Registry areas" className="flex shrink-0 gap-0.5">
           <span aria-current="page" className="inline-flex h-7 items-center gap-1.5 rounded-control bg-selection px-3 text-xs font-semibold text-fg">
             Projects
-            {load.status === 'ready' && <small className="font-mono text-caption text-fg-faint">{all.length}</small>}
+            {load.status === 'ready' && <small className="font-mono text-caption text-fg-faint">
+                {all.length}
+                {cursor ? '+' : ''}
+              </small>}
           </span>
           {['Machines', 'Services', 'Repos'].map((n) => (
             <span key={n} aria-disabled="true" className="inline-flex h-7 items-center gap-1.5 rounded-control px-3 text-xs text-fg-muted">
@@ -394,6 +418,18 @@ export function RegistryProjectsPage() {
                 </li>
               ))}
             </ul>
+            {load.status === 'ready' && cursor && (
+              <div className="flex flex-col items-start gap-2 border-t border-border-subtle p-3">
+                {paging === 'error' && (
+                  <p role="alert" className="text-label text-fg-secondary">
+                    Could not load more projects.
+                  </p>
+                )}
+                <Button type="button" variant="outline" size="sm" onClick={loadMore} disabled={paging === 'busy'}>
+                  {paging === 'busy' ? 'Loading' : paging === 'error' ? 'Retry' : 'Load more'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         <div className={`${id ? 'flex' : 'hidden sm:flex'} min-w-0 flex-1 flex-col`}>
