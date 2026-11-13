@@ -26,8 +26,22 @@ const axeSrc = readFileSync(process.env.AXE_JS ?? require.resolve('axe-core/axe.
 mkdirSync(out, { recursive: true })
 
 // Routes that exist in every build; the nav rail adds the rest (discovered from its links).
-const ROUTES = ['/chat', '/planner', '/agents', '/approvals', '/repos', '/dashboards/transcripts', '/builder/agents', '/builder/launches', '/builder/library/prompts', '/registry/projects', '/settings/appearance', '/settings/general', '/settings/alerts', '/user']
+const ROUTES = ['/chat', '/planner', '/planner/themes', '/planner/streams', '/planner/roadmap', '/planner/ideas', '/planner/decisions', '/planner/risks', '/planner/inbox', '/agents', '/approvals', '/repos', '/dashboards/transcripts', '/builder/agents', '/builder/launches', '/builder/library/prompts', '/registry/projects', '/settings/appearance', '/settings/general', '/settings/alerts', '/user']
 const WIDTHS = [1440, 390]
+// States behind a click, audited after the routes: [name, route, steps]. A state whose control is absent (no data,
+// narrow layout) is reported as "skip", not as a failure. Nothing here writes: the chat states use the ?demo=cards fixtures.
+const DEMO = '/chat/app-tachyon?demo=cards'
+const details = async (p) => { const d = p.getByRole('button', { name: 'Details' }).first(); if (await d.isVisible().catch(() => false)) await d.click() }
+const asideTab = (name) => async (p) => { if (!(await p.getByRole('tab', { name: new RegExp('^' + name) }).first().isVisible().catch(() => false))) await details(p); await p.getByRole('tab', { name: new RegExp('^' + name) }).first().click({ timeout: 5000 }) }
+const drawer = (name) => (p) => p.getByRole('button', { name, exact: true }).click({ timeout: 5000 })
+const STATES = [
+  ['chat cards', DEMO, async () => undefined],
+  ...['Plan', 'Topics', 'Bookmarks', 'Work', 'Activity', 'Approvals', 'Files', 'Doc'].map((t) => [`chat aside ${t}`, DEMO, asideTab(t)]),
+  ...['Scratchpad', 'Terminal', 'Workspace'].map((d) => [`chat drawer ${d}`, DEMO, drawer(d)]),
+  ['chat + menu', DEMO, (p) => p.getByRole('button', { name: 'Add', exact: true }).click({ timeout: 5000 })],
+  ['chat palette', DEMO, async (p) => { await p.getByRole('textbox', { name: 'Message', exact: true }).click({ timeout: 5000 }); await p.keyboard.press('/') }],
+  ['alerts tray', '/agents', (p) => p.getByRole('button', { name: /^Alerts/ }).first().click({ timeout: 5000 })],
+]
 const MODES = ['light', 'dark']
 
 const browser = await chromium.launch()
@@ -39,7 +53,9 @@ for (const mode of MODES) for (const width of WIDTHS) {
   await page.goto(base + '/', { waitUntil: 'load' }).catch(() => undefined)
   await page.waitForTimeout(1500)
   const nav = await page.evaluate(() => [...document.querySelectorAll('nav a[href^="/"]')].map((a) => a.getAttribute('href')))
-  for (const route of [...new Set([...ROUTES, ...nav])]) {
+  const targets = [...new Set([...ROUTES, ...nav])].map((route) => ({ tag: route, route, act: null }))
+  for (const [name, route, act] of STATES) targets.push({ tag: `[${name}]`, route, act })
+  for (const { tag: label, route, act } of targets) {
     // A route can hard-navigate once (redirects, session connect): retry until the app document is there.
     for (let attempt = 0; attempt < 3; attempt++) {
       await page.goto(base + route, { waitUntil: 'load' }).catch(() => undefined)
@@ -47,12 +63,17 @@ for (const mode of MODES) for (const width of WIDTHS) {
       if (await page.evaluate(() => !!document.documentElement.lang).catch(() => false)) break
     }
     await page.waitForFunction(() => document.documentElement.lang && document.documentElement.getAttribute('data-mode'), null, { timeout: 15000 }).catch(() => undefined)
+    if (act) {
+      const reached = await act(page).then(() => true, () => false)
+      if (!reached) { console.log(`skip ${mode} ${width} ${label}`); continue }
+      await page.waitForTimeout(700)
+    }
     const resolved = await page.evaluate(() => document.documentElement.getAttribute('data-mode'))
     await page.addScriptTag({ content: axeSrc })
     const violations = await page.evaluate(async () => (await window.axe.run(document, { runOnly: ['wcag2a', 'wcag2aa'] })).violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, first: v.nodes[0].target.join(' ').slice(0, 100), why: (v.nodes[0].any[0]?.message ?? '').slice(0, 140) })))
-    const slug = route.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '') || 'root'
+    const slug = label.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '') || 'root'
     await page.screenshot({ path: join(out, `${slug}-${mode}-${width}.png`) })
-    const tag = `${mode} ${width} ${route}`
+    const tag = `${mode} ${width} ${label}`
     if (resolved !== mode) { failures++; console.log(`FAIL ${tag}: data-mode is ${resolved}, expected ${mode}`) }
     if (violations.length) { failures++; console.log(`FAIL ${tag}`); for (const v of violations) console.log(`  ${v.impact} ${v.id} x${v.nodes} ${v.first}\n    ${v.why}`) }
     else console.log(`ok   ${tag}`)
