@@ -20,6 +20,12 @@
 @source "../../packages/*/src/**/*";
 @source "../../plugins/*/ui/src/**/*";
 
+/* Message and document headings are content: sentence case, not the dashboard's uppercase section captions. */
+[data-chat-prose] :is(h1, h2, h3) {
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+}
+
 /* Reordering and pointer focus remain Planner behavior; the kit owns list geometry. */
 .planner-row-grip {
   position: absolute;

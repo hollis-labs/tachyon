@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { CommandPalette, PaletteHint, type PaletteCommand } from '@planner/shared'
+import { previewLine } from '../preview'
 import type { ChatThread } from '../types'
 
 export interface PaletteActions {
@@ -43,7 +44,7 @@ export function ChatPalette({ open, onOpenChange, a }: { open: boolean; onOpenCh
     }
     if (a.active && a.onDraft) add({ id: 'create-card', mode: 'create', group: 'Card', label: 'Ask the agent to draft a card', text: 'card draft', always: true }, () => undefined)
     for (const o of a.startOptions) add({ id: `start-${o.id}`, mode: 'create', group: 'Chat', label: `Start a chat with ${o.label}`, text: `start new chat ${o.label}` }, o.onSelect)
-    for (const t of a.threads) add({ id: `open-${t.id}`, mode: 'open', group: 'Chat', label: `${t.title}${t.lastPreview ? ` · ${t.lastPreview.slice(0, 50)}` : ''}`, text: `${t.title} ${t.lastPreview ?? ''}` }, () => a.onOpenThread(t.id))
+    for (const t of a.threads) add({ id: `open-${t.id}`, mode: 'open', group: 'Chat', label: `${t.title}${t.lastPreview ? ` · ${previewLine(t.lastPreview).slice(0, 50)}` : ''}`, text: `${t.title} ${t.lastPreview ?? ''}` }, () => a.onOpenThread(t.id))
     return { list, run }
   }, [a])
   return (

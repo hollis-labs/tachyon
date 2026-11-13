@@ -4,6 +4,7 @@ import { useListNavigation } from '@hollis-labs/kit-dashboard/data'
 import { MessageSquare, Mail } from 'lucide-react'
 import { ago } from '@console/lib/agent-activity'
 import { CapabilityBadge } from '../CapabilityBadge'
+import { previewLine } from '../preview'
 import type { ChatThread } from '../types'
 
 export interface ThreadListProps {
@@ -94,7 +95,7 @@ export function ThreadList({ threads, activeId, onSelect, newChatActions = [], e
                     {t.capability.mode === 'session' ? <span /> : <CapabilityBadge capability={t.capability} />}
                     {t.lastAt > 0 && <span className="font-mono dash-caption text-fg-faint">{ago(t.lastAt, now)}</span>}
                   </div>
-                  {t.lastPreview && <p className="mt-1 truncate dash-label text-fg-faint">{t.lastPreview}</p>}
+                  {t.lastPreview && <p className="mt-1 truncate dash-label text-fg-faint">{previewLine(t.lastPreview)}</p>}
                 </button>
               </li>
             )
