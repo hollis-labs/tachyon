@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { AlertOctagon, ChevronDown, ChevronUp, Mail, Plus, Power, RefreshCw, RotateCcw, ShieldCheck, ShieldX, SquareCheck, Terminal, Wrench, type LucideIcon } from 'lucide-react'
+import { AlertOctagon, ChevronDown, ChevronUp, Mail, Plus, Power, RefreshCw, RotateCcw, ShieldCheck, ShieldX, SquareCheck, Terminal, UserRound, Wrench, type LucideIcon } from 'lucide-react'
 import { cn } from '@hollis-labs/design-components'
 import { CAPTION, Chip } from '@planner/shared'
 import { ageText } from './session-parts'
@@ -25,6 +25,8 @@ export interface Entry {
   card?: ApiEvent['card']
   /** Replaces the summary text when the source already has parts (bus events). */
   body?: ReactNode
+  /** A muted second line: Tether's own summary of the event, when it says more than the row. */
+  detail?: string
   /** Chips drawn at the right edge of the mini card: PR and issue refs. */
   cites?: ReactNode
   gap?: string
@@ -67,7 +69,7 @@ export function toTimeline(d: EventsResponse, now: number): Entry[] {
   return [...rows, ...gaps].sort((a, b) => b.at - a.at)
 }
 
-const ICON: Record<string, LucideIcon> = { deploy: RefreshCw, restart: RefreshCw, failure: AlertOctagon, host: Power, workstream: Plus, tool: Wrench, tool_run: Terminal, message: Mail, approval: ShieldCheck, error: AlertOctagon, lifecycle: Power, compaction: RotateCcw, clear: RotateCcw, task: SquareCheck, control: Power }
+const ICON: Record<string, LucideIcon> = { deploy: RefreshCw, restart: RefreshCw, failure: AlertOctagon, host: Power, workstream: Plus, tool: Wrench, tool_run: Terminal, message: Mail, approval: ShieldCheck, error: AlertOctagon, lifecycle: Power, compaction: RotateCcw, clear: RotateCcw, task: SquareCheck, control: Power, seat: UserRound }
 
 function Glyph({ e }: { e: Entry }) {
   const Icon = e.type === 'approval' && /den/i.test(e.summary) ? ShieldX : ICON[e.type] ?? Power
@@ -88,6 +90,7 @@ function Row({ e, now, time }: { e: Entry; now: number; time: 'age' | 'clock' })
               {open ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
             </button>
           )}
+          {e.detail && <div className="text-xs text-fg-muted">{e.detail}</div>}
           {e.card && (
             <div className="mt-2 max-w-sm rounded-panel border border-border bg-bg px-3 py-2 text-xs">
               <div className="flex items-center gap-2"><b className="text-control font-semibold text-fg">{e.card.title}</b><span className="flex-1" />{e.cites}</div>

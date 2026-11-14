@@ -3,14 +3,19 @@
 // tesseract:01M6547NTB3FR4P49GQRP8WC4B, decision E1).
 //
 // Hard rule: raw session output and raw tool arguments are never persisted, logged or returned.
-// A frame's payload is read in memory for allowlisted fields only and then dropped.
+// A frame's payload is read in memory for allowlisted fields only and then dropped. The one piece
+// of text kept is Tether's top-level event summary, which Tether builds from the kind and low-risk
+// fields (never bodies, prompts or tool input); it is redacted again here and bounded (TetherSummary).
 package agentscollector
 
 import (
 	"encoding/json"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hollis-labs/libs/security/redact"
 )
 
 // Frame is one environment event reduced to the fields the collector may keep.
@@ -53,6 +58,13 @@ type Frame struct {
 
 	// Bus fields (app-published events): validated and bounded by NormalizeBus.
 	Name, State, Version, PR, Title, BusActor string
+
+	// TetherSummary is the event's top-level summary (Tether event vocabulary, CW-20261114-0019):
+	// one line, at most 200 characters, redacted by Tether and again here. Empty on events written
+	// before Tether began sending it.
+	TetherSummary string
+	// Cell is the acting seat's team slug (scope.cell on the live stream, cell on GET /events).
+	Cell string
 }
 
 type wireFrame struct {
@@ -62,7 +74,9 @@ type wireFrame struct {
 	Time      string          `json:"time"`
 	At        string          `json:"at"`
 	App       string          `json:"app"`
-	Scope     json.RawMessage `json:"scope"` // an object on the live stream
+	Scope     json.RawMessage `json:"scope"` // an object on the live stream, a string ("daemon", "session") on GET /events
+	Summary   string          `json:"summary"`
+	Cell      string          `json:"cell"` // GET /events; the live stream carries it as scope.cell
 	SessionID string          `json:"session_id"`
 	Reason    string          `json:"reason"`
 	Payload   json.RawMessage `json:"payload"`
@@ -93,6 +107,17 @@ func ParseFrame(raw []byte) (Frame, bool) {
 		w.App = "" // the live stream stamps Tether's own events app=tether; App is for events another app published
 	}
 	f := Frame{Kind: w.Kind, App: w.App, SessionID: w.SessionID, EventID: w.ID, Seq: w.Seq, Reason: w.Reason}
+	f.TetherSummary = EventSummary(w.Summary)
+	cell := w.Cell
+	var scope struct {
+		Cell string `json:"cell"`
+	}
+	if cell == "" && len(w.Scope) > 0 && w.Scope[0] == '{' && json.Unmarshal(w.Scope, &scope) == nil {
+		cell = scope.Cell
+	}
+	if cellRE.MatchString(cell) {
+		f.Cell = cell
+	}
 	if env, n, ok := strings.Cut(w.ID, ":"); ok {
 		f.Env = env
 		if q, err := strconv.ParseInt(n, 10, 64); err == nil && f.Seq == 0 {
@@ -243,6 +268,23 @@ func clean(s string, n int) string {
 		return string(r[:n])
 	}
 	return s
+}
+
+// SummaryMax is the contract's bound on an event summary, in characters.
+const SummaryMax = 200
+
+// cellRE is the catalog's cell slug: lowercase, starting with a letter.
+var cellRE = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+
+// EventSummary cleans a wire summary: one line, redacted, at most SummaryMax characters. Tether
+// already redacts it; this is the second pass, so a producer that sets its own summary, or a Tether
+// that regresses, still cannot put a credential into the store.
+func EventSummary(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if s == "" {
+		return ""
+	}
+	return clean(redact.Text(s), SummaryMax)
 }
 
 // Type maps a Tether kind to the stored event type; "" means the frame is state-only and gets no

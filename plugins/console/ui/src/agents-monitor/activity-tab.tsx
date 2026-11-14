@@ -13,22 +13,26 @@ export interface BusEvent {
   id: string
   seq: number
   at: number
-  type: 'deploy' | 'restart' | 'task' | 'failure' | 'host' | 'workstream' | 'lifecycle' | 'card'
+  type: 'deploy' | 'restart' | 'task' | 'failure' | 'host' | 'workstream' | 'lifecycle' | 'card' | 'message' | 'seat'
   subject: string
   actor: string
   app: string
   severity: 'info' | 'warn' | 'error'
   refs: { kind: string; ref: string; label: string }[]
   card: { title: string; summary: string } | null
+  /** Tether's own one-line summary of the event; empty on events from before Tether sent one. */
+  summary?: string
+  /** The acting seat's team, when it has one. */
+  cell?: string
 }
 interface BusResponse { events: BusEvent[]; next_before: number | null }
 /** The server sends null for an empty list. */
 const norm = (r: BusResponse): BusResponse => ({ ...r, events: r.events ?? [] })
 
-const FACET_OF: Partial<Record<BusEvent['type'], string>> = { deploy: 'deploys', restart: 'restarts', task: 'tasks', failure: 'failures' }
-const TOPIC_OF: Record<string, BusEvent['type']> = { deploys: 'deploy', restarts: 'restart', tasks: 'task', failures: 'failure' }
+const FACET_OF: Partial<Record<BusEvent['type'], string>> = { deploy: 'deploys', restart: 'restarts', task: 'tasks', failure: 'failures', message: 'mail', seat: 'seats' }
+const TOPIC_OF: Record<string, BusEvent['type']> = { deploys: 'deploy', restarts: 'restart', tasks: 'task', failures: 'failure', mail: 'message', seats: 'seat' }
 type TopicState = 'live' | 'off' | 'no_emitter'
-const SOURCE_LABEL: Record<string, string> = { deploy: 'deploys', restart: 'restarts', task: 'tasks', failure: 'failures', host: 'host', workstream: 'workstreams', lifecycle: 'lifecycle', card: 'cards' }
+const SOURCE_LABEL: Record<string, string> = { deploy: 'deploys', restart: 'restarts', task: 'tasks', failure: 'failures', host: 'host', workstream: 'workstreams', lifecycle: 'lifecycle', card: 'cards', message: 'mail', seat: 'seats' }
 
 /**
  * A ref named by a bus event. A task is the shared reference chip (hovercard, opens the task drawer) and a session
@@ -85,6 +89,7 @@ export function toBusTimeline(events: readonly BusEvent[], now: number): Entry[]
       tone: e.type === 'failure' || e.severity === 'error' ? 'blocked' : 'neutral',
       summary: e.subject,
       body: <BusLine e={e} chips={!card} />,
+      detail: e.summary && e.summary !== e.subject ? e.summary : undefined,
       card,
       cites: card ? (e.refs ?? []).map((r) => <BusRefChip key={r.ref} r={r} />) : undefined,
     }
@@ -131,7 +136,7 @@ export function ActivityTab({ busTick, now }: { busTick: number; now: number }) 
   }
 
   const apps = useMemo(() => [...new Set((events ?? []).map((e) => e.app))].sort(), [events])
-  const shown = useMemo(() => (events ?? []).filter((e) => (!app || e.app === app) && (!query.trim() || `${e.subject} ${e.app} ${e.actor}`.toLowerCase().includes(query.trim().toLowerCase()))), [events, app, query])
+  const shown = useMemo(() => (events ?? []).filter((e) => (!app || e.app === app) && (!query.trim() || `${e.subject} ${e.summary ?? ''} ${e.app} ${e.actor}`.toLowerCase().includes(query.trim().toLowerCase()))), [events, app, query])
   const rows = useMemo(() => toBusTimeline(shown, now), [shown, now])
   const topics = collector.data?.bus_topics ?? null
   const topicState = (facet: string): TopicState | null => (topics && TOPIC_OF[facet] ? topics[TOPIC_OF[facet]] ?? null : null)

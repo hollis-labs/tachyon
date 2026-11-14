@@ -42,6 +42,29 @@ describe('Activity', () => {
     expect(text(host.body)).toBe('worker-2 offline')
   })
 
+  it('files mail and seat rows under their own facets', async () => {
+    const rows = toBusTimeline([ev({ id: 'm', seq: 2, type: 'message', subject: '@archie sent request to @photon-tachyon', app: 'tether' }), ev({ id: 's', seq: 1, type: 'seat', severity: 'warn', subject: '@photon-tachyon is waiting on @chrispian', app: 'tether' })], NOW)
+    expect(rows.map((r) => [r.facet, r.tone])).toEqual([['mail', 'neutral'], ['seats', 'neutral']])
+    vi.stubGlobal('fetch', vi.fn(() => page([ev({ id: 'm', seq: 2, type: 'message', subject: '@archie sent request to @photon-tachyon' }), ev({ id: 'd', seq: 1 })], null)))
+    render(<ActivityTab busTick={0} now={NOW} />)
+    expect(await screen.findByText(/@archie sent request/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Mail/ }))
+    await waitFor(() => expect(screen.queryByText(/Deployed tachyon/)).toBeNull())
+    expect(screen.getByText(/@archie sent request/)).toBeTruthy()
+  })
+
+  it("adds Tether's own summary as a second line only when it says more than the row", async () => {
+    const [told, same, none] = toBusTimeline([
+      ev({ id: 'a', seq: 3, subject: 'tachyon deployed', summary: 'tachyon deployed v2 on agent-os', cell: 'ops' }),
+      ev({ id: 'b', seq: 2, subject: 'tachyon deployed', summary: 'tachyon deployed' }),
+      ev({ id: 'c', seq: 1, subject: 'tachyon deployed' }),
+    ], NOW)
+    expect([told.detail, same.detail, none.detail]).toEqual(['tachyon deployed v2 on agent-os', undefined, undefined])
+    vi.stubGlobal('fetch', vi.fn(() => page([ev({ id: 'a', seq: 3, subject: 'tachyon deployed', summary: 'tachyon deployed v2 on agent-os' })], null)))
+    render(<ActivityTab busTick={0} now={NOW} />)
+    expect(await screen.findByText('tachyon deployed v2 on agent-os')).toBeTruthy()
+  })
+
   it('shows the empty state, then pages older events in with Show more', async () => {
     const urls: string[] = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {
