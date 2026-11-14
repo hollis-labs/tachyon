@@ -470,6 +470,17 @@ func (s *Server) Start(ctx context.Context) error {
 				_, _, _ = s.appAgent.Send(ctx, t.ID, text)
 			}
 		},
+		Decided: func(ctx context.Context, thread string, c chatcards.Card) {
+			typ, verb := "card.answered", "Answered"
+			if strings.Contains(c.Kind, "approval") || c.Kind == "card.plan" || c.Kind == "card.dispatch" {
+				typ, verb = "approval.decided", "Decided"
+			}
+			summary := "Expired without an answer"
+			if c.State == "resolved" {
+				summary = fmt.Sprint(c.Result["decision"])
+			}
+			rec.Quiet(ctx, thread, typ, "user", "tachyon", nil, chatactivity.Card(verb+": "+c.Caption, summary, nil))
+		},
 		Changes: approvals.Changes(store),
 	}
 	s.chatThreads.Agg.CardBlocks = s.chatCards.OpenCounts
