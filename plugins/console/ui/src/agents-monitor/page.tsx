@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
-import { DashboardSearchToolbar, DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
+import { DashboardSearchToolbar } from '@hollis-labs/kit-dashboard/layout'
 import { Chip, SegmentedProgress } from '@planner/shared'
 import { Btn } from '../agents/ui'
 import { LaunchAgentDialog } from '../fleet/LaunchAgentDialog'
@@ -100,7 +100,7 @@ export function AgentsPage() {
             {data.collector.collecting ? AGENTS.collecting(data.collector.sessions, data.collector.last_event_at ? ageText(now - data.collector.last_event_at) : AGENTS.na) : AGENTS.notCollecting}
           </span>
         )}
-        <Btn tone="primary" className="shrink-0" onClick={() => setLaunchOpen(true)}>{AGENTS.launch}</Btn>
+        <Btn tone="primary" className="shrink-0 font-sans normal-case tracking-normal" onClick={() => setLaunchOpen(true)}>{AGENTS.launch}</Btn>
       </div>
 
       {tab !== 'teams' && (
@@ -140,7 +140,14 @@ export function AgentsPage() {
               <select id="agents-group" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="rounded-md border border-border bg-panel px-2 py-1 dash-caption text-fg">
                 {GROUPS.map((g) => <option key={g} value={g}>{AGENTS.group[g]}</option>)}
               </select>
-              <DashboardViewTabs variant="segments" label={AGENTS.viewLabel} value={view} onChange={(v) => setView(v as SessionView)} items={(['rows', 'cards', 'board'] as const).map((v) => ({ value: v, label: AGENTS.views[v] }))} />
+              {/* The golden's switch: one bordered group, sentence case, the active view filled. Kit Tabs, as in the page header; the kit-dashboard view tabs are upper-case and take no class. */}
+              <Tabs value={view} onValueChange={(v) => setView(v as SessionView)}>
+                <TabsList aria-label={AGENTS.viewLabel} className="h-auto gap-0 rounded-control border border-border bg-transparent p-0">
+                  {(['rows', 'cards', 'board'] as const).map((v) => (
+                    <TabsTrigger key={v} value={v} className="h-7 rounded-none px-2.5 text-xs font-normal text-fg-muted first:rounded-l-control last:rounded-r-control data-[active]:bg-selection data-[active]:font-semibold data-[active]:text-fg">{AGENTS.views[v]}</TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
             </div>
           </DashboardSearchToolbar>
           <div tabIndex={0} className="min-h-0 flex-1 overflow-auto outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
