@@ -101,6 +101,8 @@ type Report struct {
 	Sequence      []SequenceRow    `json:"sqlite_sequence"`
 	Target        TargetReport     `json:"target"`
 	SourcesStable bool             `json:"source_hashes_unchanged"`
+	// AllowUnchecked records --allow-unchecked-instances: a rehearsal run, never a cutover.
+	AllowUnchecked bool `json:"allow_unchecked_instances"`
 }
 
 // FileEntry is one file in the source directory.
@@ -173,7 +175,7 @@ func Run(ctx context.Context, st *libstore.Store, o Options) (*Report, error) {
 	if now == nil {
 		now = time.Now
 	}
-	r := &Report{Started: now().UTC(), SourceDir: o.Source}
+	r := &Report{Started: now().UTC(), SourceDir: o.Source, AllowUnchecked: o.AllowUnchecked}
 	err := run(ctx, st, o, r)
 	r.Finished = now().UTC()
 	r.DurationMS = r.Finished.Sub(r.Started).Milliseconds()

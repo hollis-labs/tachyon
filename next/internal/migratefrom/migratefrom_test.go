@@ -323,8 +323,8 @@ func TestUncheckedInstancesOnlyWhenAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Schedules) != 1 || !strings.HasPrefix(r.Schedules[0].Instance, "not checked") {
-		t.Fatalf("schedules %+v", r.Schedules)
+	if len(r.Schedules) != 1 || !strings.HasPrefix(r.Schedules[0].Instance, "not checked") || !r.AllowUnchecked {
+		t.Fatalf("schedules %+v, allow_unchecked_instances %v", r.Schedules, r.AllowUnchecked)
 	}
 }
 
