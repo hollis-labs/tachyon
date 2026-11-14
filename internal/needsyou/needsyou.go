@@ -287,9 +287,11 @@ func (a *Aggregator) repliesFrom(ctx context.Context, sender string) (map[string
 	return out, err
 }
 
-// critical: an approval request at urgency high (docs/typed-messages.md "Urgency").
+// critical: an approval request at urgency high (docs/typed-messages.md "Urgency") from a sender Tether verified.
+// Urgency is the sender's own claim; in observe mode any caller can send unverified mail, and that is listed as
+// normal rather than allowed to mark itself critical.
 func critical(kind string, m Message) bool {
-	return kind == "approval_request" && m.Metadata["urgency"] == "high"
+	return kind == "approval_request" && m.Metadata["urgency"] == "high" && m.Metadata["from_verification"] == "verified"
 }
 
 // titleOf is a one-line, redacted title: the subject, else the body's first line.

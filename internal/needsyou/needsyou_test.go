@@ -55,9 +55,12 @@ func msg(id, from, kind, ct string, at time.Duration, payload map[string]any, ov
 	return m
 }
 
-func read(m *Message)        { now := t0; m.ReadAt = &now }
-func archived(m *Message)    { now := t0; m.ArchivedAt = &now }
-func highUrgency(m *Message) { m.Metadata["urgency"] = "high" }
+func read(m *Message)     { now := t0; m.ReadAt = &now }
+func archived(m *Message) { now := t0; m.ArchivedAt = &now }
+func highUrgency(m *Message) {
+	m.Metadata["urgency"] = "high"
+	m.Metadata["from_verification"] = "verified"
+}
 
 var verified = map[string]string{"from_verification": "verified", "from_principal": Operator}
 
@@ -149,6 +152,38 @@ func TestNeedsYouCountsOnlyAVerifiedOperatorReply(t *testing.T) {
 	r := (&Aggregator{Tether: ft}).Read(context.Background())
 	if strings.Join(ids(r), ",") != "mail:faked,mail:principal-mismatch" {
 		t.Fatalf("an unverified or foreign-principal reply must not clear an ask; verified replies from either address must: %v", ids(r))
+	}
+}
+
+// Critical is earned, not claimed: an approval request at urgency high is critical only when Tether verified its
+// sender. Unverified (observe mode) mail at urgency high is still listed, as normal.
+func TestNeedsYouCriticalNeedsAVerifiedSender(t *testing.T) {
+	unverifiedHigh := func(m *Message) { m.Metadata["urgency"] = "high"; m.Metadata["from_verification"] = "unverified" }
+	approval := func(id string, over func(*Message)) Message {
+		return msg(id, builder, "request", envelopeType, -time.Minute, map[string]any{"kind": "approval_request", "body": "Deploy?"}, over)
+	}
+	ft := &fakeTether{
+		pending: []Pending{
+			{MessageID: "typed-verified", From: builder, Kind: "approval_request", Subject: "Deploy?", CreatedAt: t0.Add(-time.Minute)},
+			{MessageID: "typed-unverified", From: builder, Kind: "approval_request", Subject: "Deploy?", CreatedAt: t0.Add(-2 * time.Minute)},
+		},
+		boxes: map[string][]Message{Operator: {
+			approval("typed-verified", highUrgency),
+			approval("typed-unverified", unverifiedHigh),
+			msg("interim-unverified", builder, "request", "application/json", -3*time.Minute, map[string]any{"kind": "approval_request", "subject": "Wipe it?"}, unverifiedHigh),
+			msg("interim-verified", builder, "request", "application/json", -4*time.Minute, map[string]any{"kind": "approval_request", "subject": "Wipe it?"}, highUrgency),
+		}},
+	}
+	r := (&Aggregator{Tether: ft}).Read(context.Background())
+	crit := map[string]bool{}
+	for _, it := range r.Items {
+		crit[it.ID] = it.Critical
+	}
+	want := map[string]bool{"ask:typed-verified": true, "ask:typed-unverified": false, "mail:interim-verified": true, "mail:interim-unverified": false}
+	for id, c := range want {
+		if got, listed := crit[id]; !listed || got != c {
+			t.Errorf("%s: listed=%v critical=%v, want listed and critical=%v", id, listed, got, c)
+		}
 	}
 }
 
