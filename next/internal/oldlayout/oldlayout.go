@@ -49,6 +49,17 @@ func Refuse(dbPath string) error {
 	return nil
 }
 
+// RefuseDir refuses dir when it is the old build's data directory: it holds jobs.db, or a
+// tachyon.db with the old ledger. Every directory this build may create, tighten or write into is
+// checked this way, not only the database's: the data directory, the signing key's and the cache's
+// may each be pointed elsewhere by the override.
+func RefuseDir(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	return Refuse(filepath.Join(dir, "tachyon.db"))
+}
+
 func refusal(dir, why string) error {
 	return fmt.Errorf("%s is a data directory of the old Tachyon build (%s); this build never opens it. "+
 		"Point TACHYON_DATA_DIR (or database.sqlite.path) at a new, empty directory and copy the data with `tachyon migrate-from`", dir, why)

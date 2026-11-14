@@ -128,9 +128,18 @@ func anchorPaths(app *module.App, getenv func(string) string, prepare bool) erro
 	if !prepare {
 		return nil
 	}
-	// The old build's data directory is refused before anything is created or tightened in it.
+	// The old build's data directory is refused before anything is created or tightened in it:
+	// the database file, and every directory this build may write into (the data directory, the
+	// database's, the signing key's, the cache directory and its parent), since the override can
+	// point each one elsewhere.
+	keyFile, _ := id["key_file"].(string)
 	if err = oldlayout.Refuse(dbPath); err != nil {
 		return err
+	}
+	for _, dir := range []string{dirs.Data, filepath.Dir(dbPath), filepath.Dir(keyFile), cacheDir, filepath.Dir(cacheDir)} {
+		if err = oldlayout.RefuseDir(dir); err != nil {
+			return err
+		}
 	}
 	if err = dirs.PrepareDir(); err != nil {
 		return fmt.Errorf("prepare the data directory %s: %w", dirs.Data, err)

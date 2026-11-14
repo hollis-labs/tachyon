@@ -5,11 +5,13 @@
 app: tachyon
 variant: app-host
 profiles: [minimal]
+# Tachyon's own nav items and surfaces (the GUI track owns ui/app.json).
+frontend: { contributions: ui/app.json }
 modules:
   add: [httphost, database, auth, identity, secrets, cli, scheduler, pluginhost]
 config:
   logging: { level: info, format: text }
-  # The live port, on loopback: the HTTPS reverse proxy runs on the same host.
+  # Loopback only: a TLS proxy in front forwards the public name (tachyon.allowed_hosts).
   httphost: { addr: "127.0.0.1:8093" }
   # Relative paths are anchored in the data directory (XDG data home/tachyon-next, or
   # TACHYON_DATA_DIR) by the AfterConfig hook in cmd/tachyon/config.go; an absolute path from the

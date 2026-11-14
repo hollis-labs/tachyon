@@ -37,7 +37,8 @@ allowlist mechanism of section 6, and the route-scope check.
     - `PUT /api/password`
     - `GET|PUT /api/identity/profile`
     - `GET /api/identity/sessions` and `DELETE /api/identity/sessions/{id}`
-    - `/api/identity/keys`
+    - `/api/identity/keys` and the users pages: these need identity's admin scope, `tachyon.admin`, which the owner
+    holds through `*`.
   - Health: `GET /healthz` (`{status, checks}`).
 
 ## 2. Requests
@@ -78,7 +79,7 @@ Every 4xx/5xx from Tachyon's own API is the flat body:
 | 403 | `operator_required` | The action needs a signed-in person holding `tachyon.operator` (section 5), and the caller is not one: a key, or a person without the scope. Answered by the handler (B3 onward). | Same as above. Operator-only controls hide from the profile scopes. |
 | 403 | `route_not_mapped` | An `/api/` path no route declares (guard). | A bug in the SPA or a route not ported yet. |
 | 403 | `setup_offline` | `POST /api/setup`. | No-owner screen (kit-identity). |
-| 403 | (identity CSRF refusal) | A write without `X-Requested-With`/same `Origin`. | A bug: the shared wrapper sends both. |
+| 403 | `csrf` | A cookie write without `X-Requested-With` or a same-origin `Origin` (identity middleware). | A bug: the shared wrapper sends both. |
 | 404 | `not_found` | No such item, or any `/api/plugins/...` path not on the allowlist (section 6). | |
 | 429 | (identity) | Login rate limit; `Retry-After` is set. | kit-identity shows it. |
 | 503 | `auth_unavailable` | The verifier is unavailable (guard). | Retry. |

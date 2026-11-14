@@ -313,34 +313,55 @@ func TestBadSettingsRefuseToStart(t *testing.T) {
 	}
 }
 
-// A data directory of the old build is refused and left exactly as it was: not opened as a
-// database, not tightened, nothing added.
+// A data directory of the old build is refused and left exactly as it was (not opened as a
+// database, not tightened, nothing added), wherever the configuration points into it: as the data
+// directory with the database elsewhere, as the database's directory, as the signing key's, or as
+// the cache's.
 func TestOldDataDirectoryIsRefusedUntouched(t *testing.T) {
-	old := filepath.Join(t.TempDir(), "old")
-	if err := os.MkdirAll(old, 0o755); err != nil { //nolint:gosec // the old build's directory mode, on purpose
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(old, "jobs.db"), []byte("old scheduler"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	env := overrideEnv(t, old, loopbackOverride)
-	for _, args := range [][]string{nil, {"identity", "setup", "--username", "owner"}} {
-		modules, prepare := plan(args)
-		run, err := boot.StartWith(context.Background(), substrateApp, modules, substrateConfigJSON, bootOptions(func(k string) string { return env[k] }, prepare))
-		if err == nil {
-			_ = run.Stop(context.Background())
-			t.Fatalf("%v: started on the old data directory", args)
-		}
-		if !strings.Contains(err.Error(), "old Tachyon build") {
-			t.Errorf("%v: error %v", args, err)
-		}
-	}
-	entries, _ := os.ReadDir(old)
-	if len(entries) != 1 {
-		t.Errorf("the old directory changed: %v", entries)
-	}
-	if fi, _ := os.Stat(old); fi.Mode().Perm() != 0o755 {
-		t.Errorf("the old directory's mode changed to %o", fi.Mode().Perm())
+	for name, layout := range map[string]func(old, elsewhere string) (dataDir, override string){
+		"the data directory": func(old, _ string) (string, string) { return old, loopbackOverride },
+		"the data directory, database elsewhere": func(old, elsewhere string) (string, string) {
+			return old, loopbackOverride + "database:\n  sqlite:\n    path: " + filepath.Join(elsewhere, "tachyon.db") + "\n"
+		},
+		"the database's directory": func(old, elsewhere string) (string, string) {
+			return elsewhere, loopbackOverride + "database:\n  sqlite:\n    path: " + filepath.Join(old, "new.db") + "\n"
+		},
+		"the signing key's directory": func(old, elsewhere string) (string, string) {
+			return elsewhere, loopbackOverride + "identity:\n  key_file: " + filepath.Join(old, "identity-signing.key") + "\n"
+		},
+		"the cache directory's parent": func(old, elsewhere string) (string, string) {
+			return elsewhere, loopbackOverride + "tachyon:\n  cache_dir: " + filepath.Join(old, "cache") + "\n"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			old := filepath.Join(t.TempDir(), "old")
+			if err := os.MkdirAll(old, 0o755); err != nil { //nolint:gosec // the old build's directory mode, on purpose
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(old, "jobs.db"), []byte("old scheduler"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			elsewhere := filepath.Join(t.TempDir(), "new")
+			dataDir, override := layout(old, elsewhere)
+			env := overrideEnv(t, dataDir, override)
+			for _, args := range [][]string{nil, {"identity", "setup", "--username", "owner"}} {
+				modules, prepare := plan(args)
+				run, err := boot.StartWith(context.Background(), substrateApp, modules, substrateConfigJSON, bootOptions(func(k string) string { return env[k] }, prepare))
+				if err == nil {
+					_ = run.Stop(context.Background())
+					t.Fatalf("%v: started", args)
+				}
+				if !strings.Contains(err.Error(), "old Tachyon build") {
+					t.Errorf("%v: error %v", args, err)
+				}
+			}
+			if entries, _ := os.ReadDir(old); len(entries) != 1 {
+				t.Errorf("the old directory changed: %v", entries)
+			}
+			if fi, _ := os.Stat(old); fi.Mode().Perm() != 0o755 {
+				t.Errorf("the old directory's mode changed to %o", fi.Mode().Perm())
+			}
+		})
 	}
 }
 

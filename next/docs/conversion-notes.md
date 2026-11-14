@@ -15,16 +15,20 @@ Open items that need a decision or a change outside this cell:
    - `libs/mcp/plugin-mcp` is newer in the BOM (v0.6.0 against v0.3.0); `next/` takes it through `pluginhost`.
 2. **Identity step-up (Substrate CW-20261114-0095).** There is no re-authentication before a high-risk resolve. The
    operator check is kind user plus `tachyon.operator`. A design note, not blocking.
-3. **Scheduler health.** `/healthz` reports `database` and `plugins`. The plan's live check also names the
+3. **Scheduler health.** `/healthz` reports `database` and `plugins`. The plan's post-cutover check also names the
    scheduler; the slice that ports object sync adds a scheduler check, or files a Substrate gap if the module
    should own it.
 4. **Owner questions** (from the GUI inventory, carried here until answered through the director):
    - Is the preview elevation on `tether/*` accidental? If so, drop the operator check there.
    - Should Cerberus lifecycle POSTs always need the operator check (proposed), or only behind a switch as today?
    - Is `/builder/classic` retired?
-5. **Default data directory.** `XDG_DATA_HOME/tachyon-next` keeps this build away from the live directory. P1
+5. **Default data directory.** `XDG_DATA_HOME/tachyon-next` keeps this build away from the old build's data directory. P1
    decides the final default. The cutover names the directory in the override file in any case.
-6. **`GET` routes that write today** (inventory 12.1). In the port they take a write scope or become POST, decided
+6. **Public hygiene of the old tree (CW-20261114-0121).** The CI scan covers `next/` only: `next/` at the
+   commit is archived into a throwaway repository and scanned with `--no-allowlist`, and any finding fails the
+   job. The old tree's and the history's findings are pinned by an allowlist on `main` (PR #702), the
+   director's ruling. They never apply to `next/`.
+7. **`GET` routes that write today** (inventory 12.1). In the port they take a write scope or become POST, decided
    per slice and recorded in the contract:
    - `access/apps?refresh=1`
    - `chat/threads/{ref}/continue`
@@ -53,7 +57,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_CACHE_POLICY_FILE` | `tachyon.files.cache_policy` |
 | `TACHYON_TERMINAL_POLICY` | `tachyon.files.terminal_policy` |
 | `TACHYON_CARD_DELIVERY_FILE` | `tachyon.files.card_delivery` |
-| `TACHYON_APPROVAL_PRODUCER_CONFIG` | `tachyon.files.approval_producer` (unset: `/api/approvals/v1` answers 503, as on live) |
+| `TACHYON_APPROVAL_PRODUCER_CONFIG` | `tachyon.files.approval_producer` (unset: `/api/approvals/v1` answers 503, as the old build does unconfigured) |
 | `TACHYON_APPROVAL_ASSURANCE_CONFIG` | `tachyon.files.approval_assurance` |
 
 ### Upstreams
@@ -64,14 +68,14 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_TETHER_CONTROL_ADDR`, `TACHYON_TETHER_CONTROL_TOKEN_FILE` | `tachyon.upstreams.tether_control.url` (http(s) or `unix:/path`), `.token` |
 | `TACHYON_TETHER_MESSAGE_TOKEN_FILE` | `tachyon.upstreams.tether_messages.token` (address: `tether.url`) |
 | `HOLLIS_EVENTS_URL`, `HOLLIS_AUTH_TOKEN_FILE_TACHYON` | `tachyon.upstreams.events.url`, `.token` |
-| `TORQUE_URL`, `TORQUE_API_TOKEN` (an inline value on live) | `tachyon.upstreams.torque.url`, `.token`: a reference. The operator writes the token to a file; this cell never handles the value. |
+| `TORQUE_URL`, `TORQUE_API_TOKEN` (a value, not a file reference, in the old build) | `tachyon.upstreams.torque.url`, `.token`: a reference. The operator writes the token to a file; this cell never handles the value. |
 | `TESSERACT_URL`, `TESSERACT_TOKEN_FILE` | `tachyon.upstreams.tesseract.url`, `.token` |
 | `CERBERUS_ADDR`, `CERBERUS_TOKEN_FILE` | `tachyon.upstreams.cerberus.url` (http(s) or `unix:/path`), `.token` |
 | `FRAGMENTS_ENGINE_URL`, `FRAGMENTS_ENGINE_TOKEN_FILE` | `tachyon.upstreams.fragments.url`, `.token` |
 | `TACHYON_ACTIVITY_URL` | `tachyon.upstreams.activity.url` |
 | `CASTER_URL`, `TACHYON_CASTER_TOKEN_FILE` | `tachyon.upstreams.caster.url`, `.token` |
 | `TACHYON_APP_AGENT_CONFIG` (a JSON file: `url`, `token_file`, `label`, `session`) | `tachyon.upstreams.app_agent.url`, `.token`, `.label`. The file's `session` block is decided by the chat slice. |
-| `GITHUB_TOKEN` / `GH_TOKEN` (an inline value on live), `GITHUB_ORG` | `tachyon.upstreams.github.token` (reference), `.org`; `.url` defaults to `https://api.github.com`. The fallback to `gh auth token` is dropped. |
+| `GITHUB_TOKEN` / `GH_TOKEN` (a value, not a file reference, in the old build), `GITHUB_ORG` | `tachyon.upstreams.github.token` (reference), `.org`; `.url` defaults to `https://api.github.com`. The fallback to `gh auth token` is dropped. |
 | `TACHYON_ACTION_HUB_SSH_ADDR`, `_USER`, `_KEY_FILE`, `_KNOWN_HOSTS` | `tachyon.upstreams.action_hub.addr`, `.user`, `.key` (reference), `.known_hosts` |
 | `SSH_AUTH_SOCK` | decided by the action-runs slice (an agent socket is not a config key) |
 | `TACHYON_APPROVAL_QUEUE_URL` | dropped with the Tangent bridge |
