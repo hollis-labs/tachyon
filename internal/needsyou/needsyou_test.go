@@ -59,6 +59,8 @@ func read(m *Message)        { now := t0; m.ReadAt = &now }
 func archived(m *Message)    { now := t0; m.ArchivedAt = &now }
 func highUrgency(m *Message) { m.Metadata["urgency"] = "high" }
 
+var verified = map[string]string{"from_verification": "verified", "from_principal": Operator}
+
 func ids(r Result) []string {
 	var out []string
 	for _, it := range r.Items {
@@ -87,7 +89,7 @@ func TestNeedsYouListsWhatWaitsOnTheOperatorAndNothingElse(t *testing.T) {
 				msg("i-human-read", lead, "notice", "application/json", -4*time.Hour, map[string]any{"attention": "human", "body": "seen"}, read),
 				msg("plain", lead, "notice", "application/json", -time.Hour, map[string]any{"text": "deployed"}, nil),
 			},
-			builder: {{ID: "r1", From: Operator, To: builder, InReplyTo: "i-answered"}},
+			builder: {{ID: "r1", From: Operator, To: builder, InReplyTo: "i-answered", Metadata: verified}},
 		},
 	}
 	st := fakeStatuses{
@@ -126,6 +128,27 @@ func TestNeedsYouListsWhatWaitsOnTheOperatorAndNothingElse(t *testing.T) {
 		if !s.OK || s.Error != "" || s.Truncated {
 			t.Fatalf("source %s: %+v", k, s)
 		}
+	}
+}
+
+// Only Chrispian's verified reply settles an ask. In observe mode any agent can send from=operator, stored
+// unverified: that must not clear the ask. A verified reply from his canonical address (tether#554) does.
+func TestNeedsYouCountsOnlyAVerifiedOperatorReply(t *testing.T) {
+	ask := func(id string) Message {
+		return msg(id, builder, "request", "application/json", -time.Hour, map[string]any{"kind": "decision", "subject": "Ship it?"}, nil)
+	}
+	ft := &fakeTether{boxes: map[string][]Message{
+		Operator: {ask("faked"), ask("principal-mismatch"), ask("canonical"), ask("old-form")},
+		builder: {
+			{ID: "x1", From: Operator, InReplyTo: "faked", Metadata: map[string]string{"from_verification": "unverified", "from_principal": "msg://session/local/s1"}},
+			{ID: "x2", From: Operator, InReplyTo: "principal-mismatch", Metadata: map[string]string{"from_verification": "verified", "from_principal": "msg://agent/agent-mux/agt_builder"}},
+			{ID: "x3", From: OperatorCanonical, InReplyTo: "canonical", Metadata: verified},
+			{ID: "x4", From: Operator, InReplyTo: "old-form", Metadata: verified},
+		},
+	}}
+	r := (&Aggregator{Tether: ft}).Read(context.Background())
+	if strings.Join(ids(r), ",") != "mail:faked,mail:principal-mismatch" {
+		t.Fatalf("an unverified or foreign-principal reply must not clear an ask; verified replies from either address must: %v", ids(r))
 	}
 }
 

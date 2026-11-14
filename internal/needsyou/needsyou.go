@@ -26,12 +26,15 @@ import (
 	"github.com/hollis-labs/tachyon/internal/agentscollector"
 )
 
-// Operator is the address and handle needs-you is for.
+// Operator is the address and handle needs-you is for. Operator is also the operator credential's principal.
 const (
 	Operator       = "msg://user/local/operator"
 	OperatorHandle = "@chrispian"
-	envelopeType   = "application/vnd.tether.envelope.v1+json"
-	mailWindow     = 100 // newest messages of his mailbox read per request
+	// OperatorCanonical is the canonical address tether#554 (CW-20261114-0067) gives Chrispian; the old address is
+	// an alias of it, and his mail may come from either.
+	OperatorCanonical = "msg://user/local/chrispian"
+	envelopeType      = "application/vnd.tether.envelope.v1+json"
+	mailWindow        = 100 // newest messages of his mailbox read per request
 )
 
 // Item is one thing waiting on the operator.
@@ -123,6 +126,16 @@ func payloadOf(m Message) fields {
 
 var askKinds = map[string]bool{"question": true, "decision": true, "approval_request": true}
 
+// operatorForms are every address Chrispian's mail is sent from.
+var operatorForms = map[string]bool{Operator: true, OperatorCanonical: true}
+
+// fromOperator reports whether m was really sent by Chrispian: from one of his addresses, and stamped verified by
+// Tether with the operator credential as the principal. In observe mode any caller may claim from=operator; that
+// claim is stored unverified and is not his reply.
+func fromOperator(m Message) bool {
+	return operatorForms[m.From] && m.Metadata["from_verification"] == "verified" && m.Metadata["from_principal"] == Operator
+}
+
 // Aggregator builds the view.
 type Aggregator struct {
 	Tether   Tether
@@ -145,7 +158,7 @@ func (a *Aggregator) Read(ctx context.Context) Result {
 		}
 	}
 	who := func(urn string) string {
-		if urn == Operator {
+		if operatorForms[urn] {
 			return OperatorHandle
 		}
 		if h := handles[urn]; h != "" {
@@ -192,7 +205,7 @@ func (a *Aggregator) Read(ctx context.Context) Result {
 		state := SourceState{OK: true, Truncated: total > len(box)}
 		replied := map[string]map[string]bool{} // sender -> ids the operator replied to
 		for _, m := range box {
-			if m.CanceledAt != nil || m.ArchivedAt != nil || pendingIDs[m.ID] || m.From == Operator {
+			if m.CanceledAt != nil || m.ArchivedAt != nil || pendingIDs[m.ID] || fromOperator(m) {
 				continue
 			}
 			f := payloadOf(m)
@@ -261,12 +274,13 @@ func (a *Aggregator) statuses(ctx context.Context, now time.Time) ([]agentscolle
 	return a.Statuses.SeatStatuses(ctx, now)
 }
 
-// repliesFrom lists the ids the operator replied to in sender's mailbox (his replies go to the asker).
+// repliesFrom lists the ids the operator replied to in sender's mailbox (his replies go to the asker). Only a
+// verified reply from him counts: an unverified one claiming his address does not clear an ask.
 func (a *Aggregator) repliesFrom(ctx context.Context, sender string) (map[string]bool, error) {
 	out := map[string]bool{}
 	box, _, err := a.Tether.Mailbox(ctx, sender, 200)
 	for _, m := range box {
-		if m.From == Operator && m.InReplyTo != "" {
+		if m.InReplyTo != "" && fromOperator(m) {
 			out[m.InReplyTo] = true
 		}
 	}
