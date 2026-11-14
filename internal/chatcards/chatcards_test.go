@@ -203,3 +203,26 @@ func TestOpenApprovalsListsOnlyOpenApprovalLikeCards(t *testing.T) {
 		t.Fatalf("the list (%d) and the badge count (%d) disagree", len(got), n)
 	}
 }
+
+func TestSettledRecordsDecisionOnce(t *testing.T) {
+	b, _, ctx := setup(t)
+	now := time.Now().UTC()
+	rec := hitl.Record{ItemID: "d1", CallerScope: "t", IdempotencyKey: "kd1", Digest: "dd1", Kind: "card.approval",
+		Request: []byte(`{"kind":"card.approval","title":"Run migration","class":"medium"}`),
+		State:   hitl.StateResolved, Revision: 2, CreatedAt: now, UpdatedAt: now}
+	rec.Outcome = hitl.Resolved{ItemID: "d1", InteractionRevision: 2, Resolution: hitl.ResolutionRecord{Response: hitl.Response{Kind: rec.Kind, Decision: "approved"}, ResolvedAt: now}}
+	b.Get = func(context.Context, string) (hitl.Record, error) { return rec, nil }
+	var got []Card
+	var threads []string
+	b.Decided = func(_ context.Context, thread string, c Card) {
+		threads = append(threads, thread)
+		got = append(got, c)
+	}
+	if err := b.Refs.Bind(ctx, "d1", "app:t1", "", "card.approval"); err != nil {
+		t.Fatal(err)
+	}
+	b.settled(ctx, "d1")
+	if len(got) != 1 || threads[0] != "app:t1" || got[0].State != "resolved" || got[0].Caption != "Run migration" || got[0].Result["decision"] != "approved" {
+		t.Fatalf("decision hook: %v %+v", threads, got)
+	}
+}

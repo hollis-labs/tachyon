@@ -74,7 +74,7 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   from the T1 event log, so the two differ; the event carries the feed `seq` as a field). Payloads are mini-cards `{title<=120,
   summary<=200, review_ref}` (comments: `{body}`), redacted and bounded; `cite` is at most 8 of `{kind: task|pr|file, ref, label}`.
   Written by Tachyon at these seams: `tool.call` (runtime tool end), `plan.changed`, `topic.added`, `bookmark.added`, `file.shared`,
-  `panel.opened`. NOT written yet: `card.sent`, `card.answered`, `approval.decided` (T5), `task.closed`
+  `panel.opened`. `card.answered` and `approval.decided` are written when a card settles from either the thread or the global queue (CW-20261112-0071); NOT written yet: `card.sent`, `task.closed`
   from Torque (phase 2; agents can write `task.closed` and `note` through the verb). Actors: `user`, `agent` (Tachyon saw the
   agent act but not which one), `agent:<credential id>` (verb writes). A feed write that fails never fails the change behind it.
   Agent verbs: `chat.activity.append {thread_ref, type: task.closed|note, title, summary, cite, review_ref}` (preset
