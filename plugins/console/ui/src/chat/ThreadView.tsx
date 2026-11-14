@@ -107,15 +107,24 @@ function Bubble({ m, agentLabel, marks }: { m: ChatMessage; agentLabel: string; 
 
 const renderMessage = (item: ChatItem) => item.kind === 'message' ? item.content : null
 
-/** A short closing line about the mailbox itself ("I marked the message read."), which says nothing about the work. */
-const housekeeping = /^(i('ve| have)? )?marked (the|it|them|both|all)\b.{0,40}\bread\b|^i'm stopping here/i
+/**
+ * Closing lines about the mailbox itself ("I marked the message read."), which say nothing about the work. Only a
+ * whole line that is exactly one of these is skipped (case, outer space and a final period aside): a line that
+ * goes on ("I marked them read; @chief still needs your yes") is an ask and stays.
+ */
+const CLOSERS = new Set(
+  ['i marked', "i've marked", 'i have marked', 'marked'].flatMap((who) =>
+    ['the message', 'the messages', 'the request', 'the notice', 'the mail', 'the reply', 'it', 'them', 'both', 'all of them'].map((what) => `${who} ${what} read`),
+  ).concat(["i'm stopping here", 'i am stopping here']),
+)
+const isCloser = (line: string) => CLOSERS.has(line.toLowerCase().replace(/[.!\s]+$/, '').trim())
 /**
  * A folded row's preview: the reply's last line, without Markdown punctuation, skipping a short mailbox closing
  * line, because an ask usually comes last. Display only: it never decides what folds.
  */
 const lastLine = (body: string) => {
   const lines = body.split('\n').map((l) => l.replace(/^[#>*\-\s`]+/, '').replace(/\*\*|__|`/g, '').trim()).filter(Boolean)
-  const said = lines.filter((l) => !(l.length < 100 && housekeeping.test(l)))
+  const said = lines.filter((l) => !isCloser(l))
   return ((said.length ? said : lines).at(-1) ?? '').slice(0, 160)
 }
 

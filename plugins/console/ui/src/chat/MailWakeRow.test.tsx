@@ -39,6 +39,23 @@ describe('mail-wake folding', () => {
     expect(row.textContent).not.toContain('marked the message read')
   })
 
+  it('skips only an exact closing line: a line that goes on with an ask stays the preview', () => {
+    const preview = (body: string) => {
+      const { unmount } = render(<ThreadView loading={false} hasMore={false} onLoadOlder={() => {}} messages={[msg('w', 1, { wake: 'mail', body: `Earlier line.\n${body}` })]} />)
+      const text = screen.getByRole('button', { name: /handled mail/ }).textContent ?? ''
+      unmount()
+      return text
+    }
+    // Asks that begin like a closer must stay visible (@photon-review on #692).
+    for (const ask of ["I'm stopping here until you approve the migration", 'I marked them read; @chief still needs your yes on the deploy', 'Marked the plan ready; please read and approve it']) {
+      expect(preview(ask)).toContain(ask)
+    }
+    // Exact closers are skipped, whatever their case and final period.
+    for (const closer of ['I marked the message read.', "I've marked the notice read", 'MARKED THEM READ.', "I'm stopping here."]) {
+      expect(preview(closer)).toContain('Earlier line.')
+    }
+  })
+
   it('shows a streaming wake reply as still responding', () => {
     render(<ThreadView loading={false} hasMore={false} onLoadOlder={() => {}} messages={[msg('w', 1, { wake: 'mail', streaming: true, body: '' })]} />)
     expect(screen.getByRole('button', { name: /handled mail/ }).textContent).toContain('Responding')
