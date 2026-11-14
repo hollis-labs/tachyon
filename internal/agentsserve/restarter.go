@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -141,15 +142,21 @@ func (t *TetherRestarter) Relaunch(ctx context.Context, launchID, key string) (s
 	return out.ID, nil
 }
 
+// scopesWindow is how many of Tether's newest events ScopesDropped reads: the event is published during the
+// launch, just before the read.
+const scopesWindow = 300
+
 // ScopesDropped reports the scopes Tether dropped when it launched sessionID (session.scopes_narrowed, published
-// during the launch); nil when it dropped none.
+// during the launch); nil when it dropped none. It reads the newest events in key order and matches the kind here:
+// a kind= filter on Tether's /events is an unindexed scan that ties up the hub.
 func (t *TetherRestarter) ScopesDropped(ctx context.Context, sessionID string) ([]string, error) {
-	b, err := t.do(ctx, http.MethodGet, "/events?kind=session.scopes_narrowed&order=desc&limit=50", nil, 200)
+	b, err := t.do(ctx, http.MethodGet, "/events?order=desc&limit="+strconv.Itoa(scopesWindow), nil, 200)
 	if err != nil {
 		return nil, err
 	}
 	var page struct {
 		Events []struct {
+			Kind      string          `json:"kind"`
 			SessionID string          `json:"session_id"`
 			Payload   json.RawMessage `json:"payload_json"`
 		} `json:"events"`
@@ -158,7 +165,7 @@ func (t *TetherRestarter) ScopesDropped(ctx context.Context, sessionID string) (
 		return nil, err
 	}
 	for _, e := range page.Events {
-		if e.SessionID != sessionID {
+		if e.Kind != "session.scopes_narrowed" || e.SessionID != sessionID {
 			continue
 		}
 		raw := []byte(e.Payload)
