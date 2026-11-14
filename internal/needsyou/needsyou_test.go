@@ -127,8 +127,8 @@ func TestNeedsYouListsWhatWaitsOnTheOperatorAndNothingElse(t *testing.T) {
 	if s := by["status:"+builder]; s.Why != "unblock" || s.Kind != "blocked" || s.Title != "needs the deploy token" || s.Ref != "task:CW-2" {
 		t.Fatalf("status: %+v", s)
 	}
-	for k, s := range r.Sources {
-		if !s.OK || s.Error != "" || s.Truncated {
+	for _, k := range []string{"asks", "mail", "statuses"} {
+		if s := r.Sources[k]; !s.OK || s.Error != "" || s.Truncated {
 			t.Fatalf("source %s: %+v", k, s)
 		}
 	}
@@ -207,5 +207,58 @@ func TestNeedsYouReportsAnUnreadableSource(t *testing.T) {
 	}
 	if s := r.Sources["statuses"]; s.OK || s.Error == "" {
 		t.Fatalf("no status source: %+v", s)
+	}
+}
+
+type fakeChats struct {
+	asks []ChatAsk
+	err  error
+}
+
+func (f fakeChats) OpenAsks(context.Context) ([]ChatAsk, error) { return f.asks, f.err }
+
+type fakeApprovals struct {
+	q   ApprovalQueue
+	err error
+}
+
+func (f fakeApprovals) Waiting(context.Context, time.Time) (ApprovalQueue, error) { return f.q, f.err }
+
+// Inside Tachyon: chat threads with open question or approval turns, one item each with a link to the agent's chat,
+// and the approvals queue as one item, critical when any pending approval is high risk.
+func TestNeedsYouListsOpenChatAsksAndTheApprovalsQueue(t *testing.T) {
+	a := &Aggregator{Tether: &fakeTether{}, Statuses: fakeStatuses{},
+		Chats: fakeChats{asks: []ChatAsk{
+			{Ref: "tether:s1", Title: "Deploy plan", AgentID: "taskops-manager", Agent: "Task Ops Manager", Questions: 1, Approvals: 2, LastAt: t0.Add(-2 * time.Hour)},
+			{Ref: "tether:s2", Title: "", AgentID: "chief", Agent: "Chief", Questions: 3, LastAt: t0.Add(-time.Hour)},
+			{Ref: "tether:s3", Title: "Answered", AgentID: "x", Agent: "X", LastAt: t0},
+		}},
+		Approvals: fakeApprovals{q: ApprovalQueue{Pending: 3, High: 1, Oldest: t0.Add(-30 * time.Minute)}},
+	}
+	r := a.Read(context.Background())
+	if strings.Join(ids(r), ",") != "approvals:queue,chat:tether:s1,chat:tether:s2" {
+		t.Fatalf("items %v", ids(r))
+	}
+	q, c1, c2 := r.Items[0], r.Items[1], r.Items[2]
+	if !q.Critical || q.Link != "/approvals" || q.Title != "3 approvals waiting in the approvals queue" || q.Detail != "1 high risk" || q.Why != "decide" {
+		t.Fatalf("queue: %+v", q)
+	}
+	if c1.Kind != "approval" || c1.Detail != "2 approvals, 1 question" || c1.Title != "Deploy plan" || c1.From != "Task Ops Manager" ||
+		c1.Link != "/chat/chat:%2F%2Ftether%2Flaunch%2Ftaskops-manager" {
+		t.Fatalf("chat with approvals: %+v", c1)
+	}
+	if c2.Kind != "question" || c2.Detail != "3 questions" || c2.Title != "Chief" {
+		t.Fatalf("chat with questions only, untitled: %+v", c2)
+	}
+	for _, k := range []string{"chat", "approvals"} {
+		if !r.Sources[k].OK {
+			t.Fatalf("source %s: %+v", k, r.Sources[k])
+		}
+	}
+	// An empty queue adds nothing; an unreadable local source is reported like a remote one.
+	a.Approvals, a.Chats = fakeApprovals{}, fakeChats{err: errors.New("database is locked")}
+	r = a.Read(context.Background())
+	if len(r.Items) != 0 || r.Sources["chat"].OK || !strings.Contains(r.Sources["chat"].Error, "locked") || !r.Sources["approvals"].OK {
+		t.Fatalf("%v %+v", ids(r), r.Sources)
 	}
 }

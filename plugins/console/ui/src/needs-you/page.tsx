@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, CircleHelp, Mail, RefreshCw, UserRound } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { AlertTriangle, CircleHelp, Mail, MessageSquare, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
 import { Button, Skeleton } from '@hollis-labs/design-components'
 import { Chip } from '@planner/shared'
 import { RefChip } from '../autolink'
@@ -8,15 +9,19 @@ import { consoleJson, type FetchLike } from '../lib/http'
 /** GET needs-you (internal/needsyou): what waits on @chrispian, read live. */
 export interface NeedsYouItem {
   id: string
-  source: 'ask' | 'mail' | 'status'
+  source: 'ask' | 'mail' | 'status' | 'chat' | 'approvals'
   kind: string
-  why: 'reply' | 'read' | 'unblock'
+  why: 'reply' | 'read' | 'unblock' | 'decide'
   title: string
   from: string
   ref?: string
   since: string
   critical: boolean
   message_id?: string
+  /** Counts, for an item that stands for several (a chat thread, the approvals queue). */
+  detail?: string
+  /** Where in Tachyon to act on it. */
+  link?: string
 }
 export interface NeedsYouResult {
   items: NeedsYouItem[]
@@ -26,20 +31,20 @@ export interface NeedsYouResult {
 
 export const NEEDS_YOU = {
   title: 'Needs you',
-  intro: 'Asks waiting on your reply, mail marked for you, and seats blocked on you. Each item leaves the list when its condition ends.',
+  intro: 'Asks waiting on your reply in chat and mail, approvals to decide, mail marked for you, and seats blocked on you. Each item leaves the list when its condition ends.',
   empty: 'Nothing is waiting on you.',
   refresh: 'Refresh',
   loadFailed: 'Could not load the needs-you list',
   checked: (t: string) => `Checked ${t}`,
-  why: { reply: 'Waiting on your reply', read: 'Marked for you, unread', unblock: 'Blocked on you' } as Record<string, string>,
+  why: { reply: 'Waiting on your reply', read: 'Marked for you, unread', unblock: 'Blocked on you', decide: 'Waiting on your decision' } as Record<string, string>,
   critical: 'Critical',
-  source: { asks: 'typed asks', mail: 'your mailbox', statuses: 'seat statuses' } as Record<string, string>,
+  source: { asks: 'typed asks', mail: 'your mailbox', statuses: 'seat statuses', chat: 'chat threads', approvals: 'the approvals queue' } as Record<string, string>,
   incomplete: (names: string[]) => `This list may be incomplete: could not read ${names.join(', ')}.`,
   truncated: (names: string[]) => `Only the newest items of ${names.join(', ')} were checked.`,
   kind: (k: string) => k.replace(/[_-]/g, ' '),
 } as const
 
-const ICON = { ask: CircleHelp, mail: Mail, status: UserRound } as const
+const ICON = { ask: CircleHelp, mail: Mail, status: UserRound, chat: MessageSquare, approvals: ShieldCheck } as const
 const POLL_MS = 30_000
 
 const age = (since: string, now: number) => {
@@ -72,11 +77,15 @@ export function NeedsYouList({ data, now }: { data: NeedsYouResult; now: number 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     {it.critical && <Chip tone="danger">{NEEDS_YOU.critical}</Chip>}
-                    <span className="text-control font-medium text-fg">{it.title || NEEDS_YOU.kind(it.kind)}</span>
+                    {it.link ? (
+                      <Link to={it.link} className="text-control font-medium text-fg underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">{it.title || NEEDS_YOU.kind(it.kind)}</Link>
+                    ) : (
+                      <span className="text-control font-medium text-fg">{it.title || NEEDS_YOU.kind(it.kind)}</span>
+                    )}
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-2 text-label text-fg-muted">
                     <span>{NEEDS_YOU.why[it.why] ?? it.why}</span>
-                    <span>· {NEEDS_YOU.kind(it.kind)}</span>
+                    <span>· {it.detail || NEEDS_YOU.kind(it.kind)}</span>
                     <span>· {it.from}</span>
                     {it.ref && <span>· <Ref r={it.ref} /></span>}
                   </div>

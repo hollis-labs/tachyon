@@ -35,6 +35,21 @@ describe('Needs you', () => {
     expect(String(f.mock.calls[0][0])).toContain('/needs-you')
   })
 
+  it('links chat threads and the approvals queue to where you act on them', async () => {
+    const since = new Date().toISOString()
+    show(fetchOf(result({ items: [
+      { id: 'approvals:queue', source: 'approvals', kind: 'approval', why: 'decide', title: '3 approvals waiting in the approvals queue', from: 'Tachyon', since, critical: true, detail: '1 high risk', link: '/approvals' },
+      { id: 'chat:tether:s1', source: 'chat', kind: 'approval', why: 'reply', title: 'Deploy plan', from: 'Task Ops Manager', since, critical: false, detail: '2 approvals, 1 question', link: '/chat/chat:%2F%2Ftether%2Flaunch%2Ftaskops-manager' },
+    ] })))
+    const queue = await screen.findByRole('link', { name: '3 approvals waiting in the approvals queue' })
+    expect(queue.getAttribute('href')).toBe('/approvals')
+    expect(screen.getByRole('link', { name: 'Deploy plan' }).getAttribute('href')).toBe('/chat/chat:%2F%2Ftether%2Flaunch%2Ftaskops-manager')
+    const rows = within(screen.getByRole('list', { name: 'Needs you' })).getAllByRole('listitem')
+    expect(rows[0].textContent).toContain('Waiting on your decision')
+    expect(rows[0].textContent).toContain('1 high risk')
+    expect(rows[1].textContent).toContain('2 approvals, 1 question')
+  })
+
   it('says nothing waits only when every source was read', async () => {
     show(fetchOf(result({})))
     expect(await screen.findByText('Nothing is waiting on you.')).toBeTruthy()
