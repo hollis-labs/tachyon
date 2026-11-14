@@ -40,6 +40,7 @@ type Restarter interface {
 	Placement(ctx context.Context, sessionID string) (Placement, error)
 	Stop(ctx context.Context, sessionID string) error
 	Resume(ctx context.Context, logicalAgentID, key string) (newSessionID string, err error)
+	// Relaunch returns the created session's id with the error when it was created but could not be started.
 	Relaunch(ctx context.Context, launchID, key string) (newSessionID string, err error)
 	ScopesDropped(ctx context.Context, sessionID string) ([]string, error)
 }
@@ -50,6 +51,17 @@ const (
 	// handoffWait is how long a restart waits for the agent to write its handoff before it proceeds.
 	handoffWait = 60 * time.Second
 )
+
+// restartTimeout bounds a restart's Tether calls (a variable so tests can shorten it).
+var restartTimeout = 5 * time.Minute
+
+// restartContexts returns the context for a restart's Tether calls, bounded by timeout, and the one its status is
+// written with, which outlives that deadline: a restart that times out mid-way still records where it stopped and
+// whether the seat is down, instead of staying at "resuming" forever.
+func restartContexts(timeout time.Duration) (call, persist context.Context, cancel context.CancelFunc) {
+	call, cancel = context.WithTimeout(context.Background(), timeout)
+	return call, context.WithoutCancel(call), cancel
+}
 
 // control is the ControlRequest of the contract.
 type control struct {
@@ -271,8 +283,14 @@ func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "restart_unsupported", restartReason)
 		return
 	}
+	seat := *sess.Agent.LogicalAgentID
+	if _, busy := s.restarting.LoadOrStore(seat, b.RequestID); busy {
+		fail(w, 409, "restart_in_progress", "This agent is already being restarted; follow that restart instead.")
+		return
+	}
 	c := control{RequestID: b.RequestID, Kind: agentsapi.ControlRestart, SessionID: sess.ID, State: "requested", Handoff: b.Handoff}
 	if err := s.saveControl(r.Context(), c, true); err != nil {
+		s.restarting.Delete(seat)
 		internal(w)
 		return
 	}
@@ -288,9 +306,10 @@ func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 // is read first: a restart that could not bring the seat back never stops it (step "preparing").
 func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	defer s.skips.Delete(c.RequestID)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer s.restarting.Delete(*sess.Agent.LogicalAgentID)
+	ctx, persist, cancel := restartContexts(restartTimeout)
 	defer cancel()
-	set := func(state string) { c.State = state; _ = s.saveControl(ctx, c, false) }
+	set := func(state string) { c.State = state; _ = s.saveControl(persist, c, false) }
 	fail := func(step, consequence string, err error) {
 		msg := "Tether could not complete the restart at " + step + ": " + err.Error() + ". " + consequence
 		c.Step, c.Error = &step, &msg
@@ -333,6 +352,12 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	if err == nil && how == "relaunch" {
 		// Right after the stop: Tether hands the relaunch the stopped session's grant (tether#553).
 		id, err = s.Restarter.Relaunch(ctx, place.Launch, key)
+		if err != nil && id != "" {
+			// Created but not started: name it, so a retry launches this session instead of creating another.
+			c.NewSessionID = &id
+			fail("launching", "The old session is stopped; the new session "+id+" was created but not started: launch it (POST /sessions/"+id+"/launch) rather than creating another.", err)
+			return
+		}
 	}
 	if err != nil {
 		fail("resuming", "The old session is stopped and no new one started: relaunch "+place.Launch+" from Tether.", err)

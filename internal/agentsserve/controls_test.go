@@ -99,6 +99,9 @@ type fakeCtl struct {
 	stopErr, launchErr           error
 	resumeErr, relaunchErr       error
 	dropped                      []string
+	createdID                    string        // a relaunch that created this session but failed to start it
+	holdStop                     chan struct{} // Stop waits until it is closed
+	hangRelaunch                 bool          // Relaunch waits for the restart's deadline
 	interrupts                   int
 	intErr                       error
 }
@@ -110,6 +113,9 @@ func (f *fakeCtl) Placement(_ context.Context, id string) (Placement, error) {
 	return Placement{Launch: "launch-" + id, Worker: f.worker}, nil
 }
 func (f *fakeCtl) Stop(_ context.Context, id string) error {
+	if f.holdStop != nil {
+		<-f.holdStop
+	}
 	f.stopped = id
 	f.order = append(f.order, "stop")
 	return f.stopErr
@@ -122,11 +128,15 @@ func (f *fakeCtl) Resume(_ context.Context, la, _ string) (string, error) {
 	}
 	return "s2", nil
 }
-func (f *fakeCtl) Relaunch(_ context.Context, launch, _ string) (string, error) {
+func (f *fakeCtl) Relaunch(ctx context.Context, launch, _ string) (string, error) {
 	f.relaunched = launch
 	f.order = append(f.order, "relaunch")
+	if f.hangRelaunch {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
 	if f.relaunchErr != nil {
-		return "", f.relaunchErr
+		return f.createdID, f.relaunchErr
 	}
 	return "s3", nil
 }
@@ -179,16 +189,19 @@ func TestRestartStopsThenResumesAHubSession(t *testing.T) {
 	}
 }
 
-// restartUntilEnd starts a restart of m1 and waits for it to end.
-func restartUntilEnd(t *testing.T, f *fakeCtl, id string) control {
+// restartEnv is a session m1 of seat la1 whose restarts go to f.
+func restartEnv(t *testing.T, f *fakeCtl) *env {
 	t.Helper()
 	e := controlEnv(t, nil)
 	e.frame("session.work_state_changed", "m1", 56*time.Minute, `{"to":"processing","provider":"claude","agent_urn":"msg://agent/x/builder","logical_agent_id":"la1"}`)
 	e.srv.Restarter = f
-	if w := e.send("POST", "/sessions/m1/restart", `{"request_id":"`+id+`","expected_session_id":"m1"}`); w.Code != 202 {
-		t.Fatalf("%d %s", w.Code, w.Body)
-	}
-	for i := 0; i < 100; i++ {
+	return e
+}
+
+// untilEnd waits for restart id to end.
+func untilEnd(t *testing.T, e *env, id string) control {
+	t.Helper()
+	for i := 0; i < 150; i++ {
 		c := decode[control](t, e.get("/controls/"+id))
 		if c.State == "done" || c.State == "failed" {
 			return c
@@ -197,6 +210,73 @@ func restartUntilEnd(t *testing.T, f *fakeCtl, id string) control {
 	}
 	t.Fatal("restart did not end")
 	return control{}
+}
+
+// restartUntilEnd starts a restart of m1 and waits for it to end.
+func restartUntilEnd(t *testing.T, f *fakeCtl, id string) control {
+	t.Helper()
+	e := restartEnv(t, f)
+	if w := e.send("POST", "/sessions/m1/restart", `{"request_id":"`+id+`","expected_session_id":"m1"}`); w.Code != 202 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	return untilEnd(t, e, id)
+}
+
+// A restart whose Tether calls run out of time still records where it stopped: the status is written outside the
+// deadline, so it never stays at "resuming" with the seat down.
+func TestRestartPastItsDeadlineStillRecordsTheFailure(t *testing.T) {
+	old := restartTimeout
+	restartTimeout = 150 * time.Millisecond
+	defer func() { restartTimeout = old }()
+	c := restartUntilEnd(t, &fakeCtl{worker: "w1", hangRelaunch: true}, "rd1")
+	if c.State != "failed" || c.Step == nil || *c.Step != "resuming" || c.Error == nil || !strings.Contains(*c.Error, "no new one started") {
+		t.Fatalf("%+v", c)
+	}
+}
+
+// The status context survives the deadline of the Tether calls (deterministic; the test above exercises it end to
+// end, where a cancelled write only loses a race).
+func TestRestartStatusContextOutlivesTheCallDeadline(t *testing.T) {
+	call, persist, cancel := restartContexts(time.Millisecond)
+	defer cancel()
+	<-call.Done()
+	if call.Err() == nil || persist.Err() != nil {
+		t.Fatalf("call %v, persist %v", call.Err(), persist.Err())
+	}
+}
+
+// Two tabs restarting the same seat: the second is refused while the first is in flight, and allowed after it ends.
+func TestRestartRefusesASecondRestartOfTheSameSeat(t *testing.T) {
+	f := &fakeCtl{worker: "w1", holdStop: make(chan struct{})}
+	e := restartEnv(t, f)
+	if w := e.send("POST", "/sessions/m1/restart", `{"request_id":"rg1","expected_session_id":"m1"}`); w.Code != 202 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	w := e.send("POST", "/sessions/m1/restart", `{"request_id":"rg2","expected_session_id":"m1"}`)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "restart_in_progress") {
+		t.Fatalf("second tab: %d %s", w.Code, w.Body)
+	}
+	if w := e.send("POST", "/sessions/m1/restart", `{"request_id":"rg1","expected_session_id":"m1"}`); w.Code != 202 {
+		t.Fatalf("a retry of the same request is still answered: %d %s", w.Code, w.Body)
+	}
+	close(f.holdStop)
+	if c := untilEnd(t, e, "rg1"); c.State != "done" {
+		t.Fatalf("%+v", c)
+	}
+	if w := e.send("POST", "/sessions/m1/restart", `{"request_id":"rg3","expected_session_id":"m1"}`); w.Code != 202 {
+		t.Fatalf("after the first ended: %d %s", w.Code, w.Body)
+	}
+	untilEnd(t, e, "rg3")
+}
+
+// A relaunch whose session was created but could not be started names that session, so a retry launches it.
+func TestRestartNamesASessionCreatedButNotStarted(t *testing.T) {
+	f := &fakeCtl{worker: "w1", createdID: "s9", relaunchErr: errors.New("tether /sessions/s9/launch answered 502 (worker_unavailable)")}
+	c := restartUntilEnd(t, f, "rl1")
+	if c.State != "failed" || c.Step == nil || *c.Step != "launching" || c.NewSessionID == nil || *c.NewSessionID != "s9" ||
+		c.Error == nil || !strings.Contains(*c.Error, "s9 was created but not started") || !strings.Contains(*c.Error, "502 (worker_unavailable)") {
+		t.Fatalf("%+v", c)
+	}
 }
 
 // A worker-placed seat (every catalog seat) is relaunched, never resumed: stop first, then the relaunch right after,

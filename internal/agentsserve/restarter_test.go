@@ -65,6 +65,21 @@ func TestTetherRestarterRoutes(t *testing.T) {
 	if strings.Join(calls[:5], ",") != "GET /sessions/old,POST /logical-agents/la1/resume,POST /sessions,POST /sessions/new/launch,GET /events" {
 		t.Fatalf("calls: %v", calls)
 	}
+	// Created but not started: the id comes back with the error.
+	failLaunch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/sessions" {
+			w.WriteHeader(201)
+			fmt.Fprint(w, `{"id":"made"}`)
+			return
+		}
+		w.WriteHeader(502)
+		fmt.Fprint(w, `{"error":{"code":"worker_unavailable","message":"worker w-secret-2 is down"}}`)
+	}))
+	defer failLaunch.Close()
+	made, err := (&TetherRestarter{Base: failLaunch.URL, Client: failLaunch.Client()}).Relaunch(ctx, "chief", "k2")
+	if made != "made" || err == nil || !strings.Contains(err.Error(), "502 (worker_unavailable)") || strings.Contains(err.Error(), "w-secret-2") {
+		t.Fatalf("a launch that fails after the create: %q %v", made, err)
+	}
 	if _, err := r.Placement(ctx, "missing"); err == nil || !strings.Contains(err.Error(), "404") {
 		t.Fatalf("a missing session: %v", err)
 	}

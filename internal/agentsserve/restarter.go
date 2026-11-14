@@ -121,6 +121,7 @@ func (t *TetherRestarter) Resume(ctx context.Context, logicalAgentID, key string
 
 // Relaunch starts a new session of the launch as a continuation of the seat: POST /sessions {launch, continuity:
 // relaunch} creates it (lineage only: no provider conversation is resumed), POST /sessions/{id}/launch starts it.
+// When the create succeeds but the launch fails, it returns the created session id with the error.
 // Called right after the stop: Tether gives the relaunch the previous session's grant once that session has ended
 // or has a stop requested (tether#553); otherwise the grant is bounded by Tachyon's credential (ScopesDropped).
 func (t *TetherRestarter) Relaunch(ctx context.Context, launchID, key string) (string, error) {
@@ -135,7 +136,7 @@ func (t *TetherRestarter) Relaunch(ctx context.Context, launchID, key string) (s
 		return "", fmt.Errorf("tether relaunch returned no session id")
 	}
 	if _, err := t.post(ctx, "/sessions/"+url.PathEscape(out.ID)+"/launch", nil, 200, 201, 202); err != nil {
-		return "", err
+		return out.ID, err // created but not started: the caller names it
 	}
 	return out.ID, nil
 }
