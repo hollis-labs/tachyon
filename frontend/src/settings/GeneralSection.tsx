@@ -24,6 +24,7 @@ import {
   type SettingField,
   type SettingGroup,
 } from "./general"
+import { AgentPanelGrants } from "./AgentPanelGrants"
 import { SetCard, SettingsColumn } from "./parts"
 
 const INTRO = "Defaults for how Tachyon behaves. Each setting shows where its value comes from."
@@ -189,6 +190,7 @@ export function GeneralSection({ api }: { api: GeneralApi }) {
             ))}
           </SetCard>
         ))}
+      <AgentPanelGrants />
       <div className="sticky bottom-0 flex flex-col gap-2 empty:hidden">
         {conflict && (
           <Bar role="alert" tone="danger">
