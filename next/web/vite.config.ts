@@ -31,6 +31,8 @@ export default defineConfig(({ command }) => ({
       },
     },
   ],
+  // The planner keeps its own import root (carried over from plugins/planner/ui unchanged).
+  resolve: { alias: { "@planner": resolve(import.meta.dirname, "src/planner") } },
   esbuild: { jsx: "automatic" },
   // app-shell ships TypeScript source; the dependency optimizer needs the same JSX runtime.
   optimizeDeps: { esbuildOptions: { jsx: "automatic" } },

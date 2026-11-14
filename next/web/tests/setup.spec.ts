@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test"
 import { freshBackend } from "../e2e/env"
+import { expect, test } from "./fixtures"
 import { shot, signedOut } from "./helpers"
 
 // A backend that never gets an owner (second server in playwright.config.ts).

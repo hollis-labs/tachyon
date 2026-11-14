@@ -23,6 +23,7 @@ import { UNAUTHORIZED_EVENT } from "./api/request"
 import { manifest, surfaceRoutes } from "./manifest"
 import { SettingsPage } from "./pages/settings"
 import { StubPage } from "./pages/stub"
+import { PlannerSurface } from "./planner/surface"
 import { KEY_SCOPES } from "./scopes"
 import { LANDING, legacyRedirect, surfacePath } from "./surfaces"
 
@@ -46,7 +47,7 @@ const icons = {
 // Page bodies by surface key. The area pages are stubs until their slice ports them (G2+); each
 // resolves its own deep links from the URL with react-router.
 const pages: Record<string, PageComponent> = {
-  planner: () => <StubPage area="Planner" slice="G2" />,
+  planner: () => <PlannerSurface />,
   agents: () => <StubPage area="Agent Ops" slice="G3" />,
   builder: () => <StubPage area="Builder" slice="G3" />,
   registry: () => <StubPage area="Registry" slice="G3" />,
