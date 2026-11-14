@@ -194,6 +194,7 @@ func TestAcceptance(t *testing.T) {
 		t.Fatalf("plugin path: code %q", code)
 	}
 	c.want(404, "POST", "/api/plugins/console/v1/messages", map[string]string{}, xrw)
+	c.want(404, "GET", "/api/plugins/nope/v1/anything", nil, nil) // an unknown plugin id
 
 	// First-run setup is offline: the owner was created before the server started, so setup is
 	// closed, and over HTTP it is refused outright.
@@ -209,7 +210,12 @@ func TestAcceptance(t *testing.T) {
 	if code := flatCode(t, c.want(403, "GET", "/api/x", nil, nil)); code != "route_not_mapped" {
 		t.Fatalf("GET /api/x signed in: code %q", code)
 	}
+	// No catch-all for the owner either (the director's ruling: the allowlist is the fix for the old
+	// open Torque fallback): an unknown console path, a Torque-shaped write and an unknown plugin id.
 	c.want(404, "GET", "/api/plugins/console/v1/tasks/T-1", nil, nil)
+	c.want(404, "POST", "/api/plugins/console/v1/messages", map[string]string{}, xrw)
+	c.want(404, "DELETE", "/api/plugins/console/v1/anything", nil, xrw)
+	c.want(404, "GET", "/api/plugins/nope/v1/anything", nil, nil)
 
 	// Refusals: a cookie write without the CSRF header, a foreign Host.
 	c.want(403, "POST", "/api/logout", nil, nil)

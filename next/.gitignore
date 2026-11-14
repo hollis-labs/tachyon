@@ -1,0 +1,2 @@
+# Local builds of the binary (go build -o tachyon ./cmd/tachyon from next/).
+/tachyon

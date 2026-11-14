@@ -34,6 +34,10 @@ Open items that need a decision or a change outside this cell:
    - `chat/threads/{ref}/continue`
    - terminal `proposals` and `runs` reads, which expire items
 
+Facts about the running deployment (addresses, paths, the exact upstream spellings the cutover override must
+use) are kept out of this public repository. They are in the program's private Tesseract item
+`01M7DXSRBN6J6P5CFT4KMAP0AJ`.
+
 ## Environment to configuration
 
 The old build read the variables below (the full set found in `cmd`, `internal`, `plugins` and `pkg` on `main`
