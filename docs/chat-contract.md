@@ -122,3 +122,7 @@ The chat sidebar is the **Agent Panel**: a host that shows one *panel* (a named 
 - Which panel a thread shows: the user's stored pick (`localStorage` `console.agentPanel.<thread_ref>`) if it still applies; otherwise the first registered panel whose `appliesTo` names this agent; otherwise the default. When more than one panel applies, a selector in the panel header switches between them.
 - Data model decision: the registry is client-side (plugin-registered) for now. Server-side per-user panel config is a later step; it would feed `registerPanel` and change nothing in the host.
 - `panel` server frames still name a tab id; they apply when that tab is in the open panel.
+
+### Planner panel (Portfolio Manager)
+
+`chat/aside/PlannerPanel.tsx` registers panel `planner` with tabs **Board** (in-flight and cleared themes with segmented progress, next step, blocked and decision chips; `GET /planner/board?scope=themes`) and **Need you** (`GET /planner/need-you` reasons, `GET /planner/decisions?status=proposed`). It applies to agent ids in `PLANNER_AGENTS` (`portfolio-manager`, `planner`, `pm`); add the roster id there if the Portfolio Manager uses another. Read-only; each tab links to the full Planner. Agent control of the panel waits on the agent-control task.
