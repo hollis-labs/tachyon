@@ -82,7 +82,9 @@ func (s *Store) SetDerived(ctx context.Context, id string, d Derived) error {
 			if err != nil {
 				break
 			}
-			if strings.HasPrefix(t.Tool, "mcp__tether__") || t.Verb == "" {
+			// The one-liner carries the short tool name (ToolName strips "mcp__<server>__"), so Tether's own
+			// tools are the ones named tether_*.
+			if strings.HasPrefix(t.Tool, "tether_") || strings.HasPrefix(t.Tool, "mcp__tether__") || t.Verb == "" {
 				continue
 			}
 			line := t.Verb

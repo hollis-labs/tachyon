@@ -757,7 +757,7 @@ func TestTimelineShowsToolCallsReadFromTheStream(t *testing.T) {
 		}
 	}
 	save(20, 500, agentsderive.OneLiner{Verb: "Reading", Target: "appagent/", Tool: "Read"}, agentsderive.OneLiner{Verb: "Running", Target: "git", Tool: "Bash"},
-		agentsderive.OneLiner{Verb: "Using", Target: "message send", Tool: "mcp__tether__tether_message_send"})
+		agentsderive.OneLiner{Verb: "Using", Target: "message send", Tool: agentsderive.ToolName("mcp__tether__tether_message_send")})
 	save(20, 501, agentsderive.OneLiner{Verb: "Reading", Target: "store.go", Tool: "Read"})
 	type page struct {
 		Events []struct {
