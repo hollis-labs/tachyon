@@ -260,11 +260,18 @@ Backend (`@mig-tachyon-builder`):
 - **B-cli**: kept subcommands on cobra.
 - **P1 promotion** (section 1), then the final rehearsal.
 
-GUI (`@mig-tachyon-gui`), against the API contract agreed in B1 (paths unchanged unless a slice says otherwise; flat
-`{code, message, details?}` errors; `X-Requested-With` on writes):
-- **G1** app-shell + BOM kits + `ui/app.json` contributions + `kit-identity` sign-in, empty surfaces.
-- **G2..Gn** surfaces ported from `frontend/` and `plugins/*/ui` (Agent Ops, Task Ops/planner, builder/catalog, chat, approvals,
-  alerts/cards, forge, transcripts, settings), each driven in a real browser against the real `next/` backend on scratch data.
+GUI (`@mig-tachyon-gui`), against the API contract agreed in B1 (paths unchanged unless a slice says otherwise, including
+`/api/plugins/{id}/...`; flat `{code, message, details?}` errors; `X-Requested-With` on writes). The new SPA is `next/web/`:
+- **G0 kit diff** (before any surface): every symbol imported from the review tarballs in `third_party/` and the caret-ranged kits,
+  checked against the BOM-pinned release; each missing or changed symbol gets a replacement or a kit-gap task.
+- **G1 skeleton**: `Root` around app-shell `ManifestShell` (the host owns the path, as in Parallax), `ui/app.json` with every
+  surface stubbed, exact BOM pins, `kit-identity` sign-in/sessions/sign-out and `kit-account` under `nav.footer`, the build and CI
+  (manifest generation, Playwright against a `next/` binary on a scratch data directory).
+- **G2 planner** (the landing surface), then **G3..** one slice per console area: Agent Ops, builder and registry, chat (with the
+  dock tab and the PTY terminal), approvals, transcripts, repos/forge; then alerts tray, settings regions and bespoke-component
+  swaps; then **G-parity**: Playwright over every surface, the deep links and legacy redirects, the narrow layout, an expired
+  session and the no-owner screen.
+Each GUI slice is driven in a real browser against the real `next/` backend on scratch data.
 
 Each slice's PR states the evidence of adopting-substrate section 12 for its scope.
 
@@ -272,7 +279,20 @@ Each slice's PR states the evidence of adopting-substrate section 12 for its sco
 
 - A. Data inventory: every table and file, owning package, rows on the copy, class, migration rule.
 - B. Client inventory: every caller with evidence (path used, credential, how it finds Tachyon).
-- C. GUI inventory: every surface, the kits it uses, what changes.
+- C. GUI inventory (summary; full survey kept by the cell):
+  - Today: an npm workspace of `frontend/` (host), `packages/host-sdk`, `packages/torque-client` and `plugins/{console,planner}/ui`
+    (about 66k LOC, about 112 test files), React 19, react-router 7, Vite 7, Tailwind 4. Plugins are compiled in at build time
+    (runtime loading was never built). Kits are pinned per package, several to unreleased review tarballs in `third_party/`.
+  - Surfaces: `/planner` (default landing; themes and lenses), `/agents`, `/builder/*` (and the legacy `/builder/classic`), `/registry`,
+    `/chat` (dock and PTY over WebSocket), `/approvals` (operator elevation, terminal over WebSocket), `/dashboards/transcripts`,
+    `/repos` and the PR workspace `/pr/:host/:owner/:name/:number`, `/user`, `/settings/:section`. Legacy redirects: `/`, `/tasks*`,
+    `/prs/inbox`, old planner slugs, `/builder`.
+  - Decisions: one SPA on app-shell; plugin UIs become surfaces compiled into it (no runtime plugin model in the UI; host-sdk shrinks
+    to fetch and stream helpers); one surface per top-level area with sub-routes parsed in the page (the Parallax/Tangent pattern),
+    every deep link and redirect kept; the elevate/de-elevate UI is removed and capabilities are read from the identity profile's
+    scopes, the high-risk confirmation dialog stays; `/user` becomes kit-account and `/settings` becomes settings regions with
+    kit-settings; bespoke components stay local unless a BOM kit now has the equivalent.
+  - Main risk: symbols that exist only in the review tarballs (slice G0).
 
 ## 13. Gaps and decisions
 
@@ -287,5 +307,6 @@ silently; BOM and identity questions are coordinated with the Substrate program 
    mesh/core ≥ v0.9.0 and ui-go ≥ v0.4.0, or the port downgrades and loses features; a BOM PR is preferred.
 2. Identity step-up (re-authenticate before a high-risk action) does not exist; follow-up, not blocking (section 4).
 
-For the director (crosses the cell): the descriptor change and its owner; the isolated planner-verification instance (retire or keep);
-the key handover list at cutover.
+For the director (crosses the cell or needs the owner): the descriptor change and its owner; the isolated planner-verification
+instance (retire or keep); the key handover list at cutover; whether `/builder/classic` is retired (ported unless the owner says so);
+the stale sibling worktrees and dev descriptors of earlier Tachyon experiments (not carried by the port).
