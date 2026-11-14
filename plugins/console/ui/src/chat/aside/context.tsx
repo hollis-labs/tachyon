@@ -57,7 +57,7 @@ export function AsideProvider({ children, wide }: { children: ReactNode; wide: b
   const api = useMemo<AsideApi>(() => ({
     ...s,
     rootRef,
-    pick: (panel) => setS((x) => ({ ...x, panel, mode: 'manual', reason: 'you chose', open: true, full: panel === 'doc' })),
+    pick: (panel) => setS((x) => ({ ...x, panel, mode: 'manual', reason: 'you chose', open: true, full: false })),
     auto: (panel, reason) => {
       if (typing()) return
       setS((x) => (x.mode === 'manual' ? x : { ...x, panel, reason, open: x.open || x.mode === 'auto' && wide }))

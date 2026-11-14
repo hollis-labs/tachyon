@@ -17,7 +17,7 @@ export const DEFAULT_PANEL: PanelDef = {
   owner: 'system',
   tabs: [
     { id: 'plan', label: 'Plan' }, { id: 'topics', label: 'Topics' }, { id: 'bookmarks', label: 'Bookmarks' }, { id: 'work', label: 'Work' },
-    { id: 'activity', label: 'Activity' }, { id: 'approvals', label: 'Approvals' }, { id: 'files', label: 'Files' }, { id: 'doc', label: 'Doc' },
+    { id: 'activity', label: 'Activity' }, { id: 'approvals', label: 'Approvals' }, { id: 'files', label: 'Files' }, { id: 'doc', label: 'Artifacts' },
   ],
 }
 

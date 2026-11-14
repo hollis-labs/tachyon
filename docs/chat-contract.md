@@ -126,3 +126,7 @@ The chat sidebar is the **Agent Panel**: a host that shows one *panel* (a named 
 ### Planner panel (Portfolio Manager)
 
 `chat/aside/PlannerPanel.tsx` registers panel `planner` with tabs **Board** (in-flight and cleared themes with segmented progress, next step, blocked and decision chips; `GET /planner/board?scope=themes`) and **Need you** (`GET /planner/need-you` reasons, `GET /planner/decisions?status=proposed`). It applies to agent ids in `PLANNER_AGENTS` (`portfolio-manager`, `planner`, `pm`); add the roster id there if the Portfolio Manager uses another. Read-only; each tab links to the full Planner. Agent control of the panel waits on the agent-control task.
+
+### Artifacts tab
+
+The Doc tab is **Artifacts** (tab id stays `doc`). `chat/aside/ArtifactsPanel.tsx` lists the thread's workspace items not added by the user (`GET /threads/{ref}/workspace`); opening one replaces the list with an inline preview until Close/Esc: html in a script-less sandboxed iframe, images, video and audio from authenticated blob URLs, markdown rendered, text in a block, other types a download link. Host-path refs open in the File viewer. A document opened from Files still shows in the full-window Doc view.
