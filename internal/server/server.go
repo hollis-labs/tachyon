@@ -137,6 +137,7 @@ type pluginState struct {
 type Server struct {
 	cfg              Config
 	inventory        *plugins.Inventory
+	pluginSlots      chan struct{}
 	states           []pluginState
 	instance         string
 	store            *localstore.Store
@@ -184,6 +185,7 @@ func New(cfg Config) *Server {
 		s.states = append(s.states, pluginState{entry: entry, running: true})
 	}
 	s.inventory = plugins.NewInventory(specs)
+	s.pluginSlots = make(chan struct{}, pluginCallSlots)
 	return s
 }
 
@@ -328,6 +330,27 @@ func (s *Server) Start(ctx context.Context) error {
 		_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
 	}}
 	s.chatActivity = &chatactivity.Handler{Rec: rec, Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err }}
+	// The agent's own activity (mail, Torque reads, reminders, waits) comes from its Tether session's tool calls, not from the agent.
+	if s.agentsCollector != nil {
+		th := &chatactivity.Throttle{Window: 30 * time.Second}
+		s.agentsCollector.SetObserver(func(frames []agentscollector.Frame) {
+			for _, f := range frames {
+				if f.Kind != "tool.call.finished" || f.SessionID == "" || f.Tool == "" || time.Since(f.At) > 2*time.Minute {
+					continue
+				}
+				d, ok := chatactivity.Classify(f.Tool)
+				thread := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: f.SessionID}.String()
+				if !ok || !th.Allow(thread, d.Type, f.At) {
+					continue
+				}
+				actor := "agent"
+				if f.AgentName != "" {
+					actor = "agent:" + f.AgentName
+				}
+				rec.Quiet(context.Background(), thread, d.Type, actor, "tether", nil, chatactivity.Card(d.Title, f.Tool, nil))
+			}
+		})
+	}
 	ws := &chatworkspace.Store{DB: store, Dir: filepath.Join(s.cfg.DataDir, "workspace")}
 	s.chatWorkspace = &chatworkspace.Handler{
 		Store:  ws,
@@ -469,6 +492,17 @@ func (s *Server) Start(ctx context.Context) error {
 			if t, err := chatapi.ParseRef(thread); err == nil && t.Source == chatapi.SourceApp && s.appAgent != nil {
 				_, _, _ = s.appAgent.Send(ctx, t.ID, text)
 			}
+		},
+		Decided: func(ctx context.Context, thread string, c chatcards.Card) {
+			typ, verb := "card.answered", "Answered"
+			if strings.Contains(c.Kind, "approval") || c.Kind == "card.plan" || c.Kind == "card.dispatch" {
+				typ, verb = "approval.decided", "Decided"
+			}
+			summary := "Expired without an answer"
+			if c.State == "resolved" {
+				summary = fmt.Sprint(c.Result["decision"])
+			}
+			rec.Quiet(ctx, thread, typ, "user", "tachyon", nil, chatactivity.Card(verb+": "+c.Caption, summary, nil))
 		},
 		Changes: approvals.Changes(store),
 	}
@@ -732,7 +766,7 @@ func (s *Server) Routes() http.Handler {
 	}
 	// Object management uses live reads and server-verified operator mutations.
 	// Keep the whole prefix outside the generic plugin response cache.
-	tetherRoutes := s.inventory.APIRoutes()
+	tetherRoutes := s.pluginRoutes()
 	mux.Handle("/api/plugins/console/v1/tether/", operator.RequireOperator(tetherRoutes))
 	// Plan and agent reads expose hub objects, so unlike the rest of the prefix
 	// they need operator assurance on GET as well.
@@ -790,7 +824,7 @@ func (s *Server) Routes() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})
 	if s.store != nil {
-		outbox := &chatbridge.Outbox{Store: s.store, SourceID: s.cfg.Upstreams.TetherAddr, Identity: func() (string, error) { return apicache.Digest("chat-owner\n" + s.cfg.Upstreams.TetherAddr), nil }, Next: s.inventory.APIRoutes()}
+		outbox := &chatbridge.Outbox{Store: s.store, SourceID: s.cfg.Upstreams.TetherAddr, Identity: func() (string, error) { return apicache.Digest("chat-owner\n" + s.cfg.Upstreams.TetherAddr), nil }, Next: s.pluginRoutes()}
 		handler := http.Handler(outbox)
 		if s.cache != nil {
 			handler = s.cache.Wrap(handler)
@@ -915,7 +949,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
 	// Forge writes the console plugin serves itself. Without these patterns they fall to the unguarded
 	// /api/plugins/ catch-all below, where anyone could post a comment or assign people as Tachyon's GitHub identity.
-	pluginForge := s.inventory.APIRoutes()
+	pluginForge := s.pluginRoutes()
 	forgePulls := forgeapi.Prefix + "/repos/{host}/{owner}/{name}/pulls/{num}"
 	mux.Handle("POST "+forgePulls+"/comments", operator.RequireOperator(s.forgeAudit().Wrap("comment", pluginForge)))
 	mux.Handle("PUT "+forgePulls+"/assignees", operator.RequireOperator(s.forgeAudit().Wrap("assignees", pluginForge)))
@@ -923,9 +957,9 @@ func (s *Server) Routes() http.Handler {
 	if s.cache != nil {
 		mux.HandleFunc(apicache.ImportedTeamsPath, s.cache.ImportedTeamsHandler)
 		mux.HandleFunc("GET /api/cache/policy", s.cache.PolicyHandler)
-		mux.Handle("/api/plugins/", s.cache.Wrap(s.inventory.APIRoutes()))
+		mux.Handle("/api/plugins/", s.cache.Wrap(s.pluginRoutes()))
 	} else {
-		mux.Handle("/api/plugins/", s.inventory.APIRoutes())
+		mux.Handle("/api/plugins/", s.pluginRoutes())
 	}
 	return decodedRoute(mux)
 }

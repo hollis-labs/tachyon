@@ -1,7 +1,7 @@
 import { SessionBanner } from "@tachyon/console-ui"
 import { useEffect, useRef } from "react"
 import { AccessCard } from "./AccessCard"
-import { alertsApi, approvalsApi } from "./approvalsApi"
+import { alertsApi, approvalsApi, needsYouApi } from "./approvalsApi"
 import { DecisionsCard } from "./DecisionsCard"
 import { DeviceCard } from "./DeviceCard"
 import { ProfileCard } from "./ProfileCard"
@@ -13,6 +13,7 @@ export function UserPage() {
   const [inbox] = useRemote(approvalsApi.inbox)
   const [history] = useRemote(approvalsApi.history)
   const [alerts] = useRemote(alertsApi.counts)
+  const [needsYou] = useRemote(needsYouApi.list)
   const [access, reloadAccess] = useRemote(approvalsApi.access)
   useEffect(() => heading.current?.focus(), [])
   return (
@@ -30,7 +31,7 @@ export function UserPage() {
       <SessionBanner />
       <div className="flex min-h-0 flex-1 justify-center overflow-auto p-6 max-sm:p-3.5">
         <div className="flex w-full max-w-[720px] flex-col gap-3.5">
-          <WaitingStrip inbox={inbox} alerts={alerts} />
+          <WaitingStrip inbox={inbox} alerts={alerts} needsYou={needsYou} />
           <ProfileCard elevated={access.status === "ready" && access.data.state === "elevated"} />
           <AccessCard state={access} reload={reloadAccess} />
           <DecisionsCard history={history} />

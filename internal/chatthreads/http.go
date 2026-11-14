@@ -329,13 +329,14 @@ func (h *Handler) tetherGroup(ctx context.Context, ref string) (tgroup, error) {
 }
 
 // inputMeta carries the proven input attribution Tether stamps on a turn output (docs/reply-audience.md):
-// input_classes (who asked) and input_sources (the route it came by, e.g. mail_wake, CW-20261114-0061).
+// input_classes (who asked), input_sources (the route it came by, e.g. mail_wake, CW-20261114-0061) and
+// input_triage (the waking mail's triage class: human, action, fyi or read, CW-20261114-0080).
 // Each is a list in the same order as input_ids; absent means Tether proved nothing, and a reader must not guess.
 func inputMeta(meta map[string]any, src *chatbridge.SourceMessage) {
 	if src == nil {
 		return
 	}
-	for _, k := range []string{"input_classes", "input_sources"} {
+	for _, k := range []string{"input_classes", "input_sources", "input_triage"} {
 		var list []string
 		for _, v := range strings.Split(src.Attribution[k], ",") {
 			if v = strings.TrimSpace(v); v != "" {
