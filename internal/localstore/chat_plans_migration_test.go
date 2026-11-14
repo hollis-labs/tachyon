@@ -50,13 +50,23 @@ func TestChatPlansMigrationIsAdditive(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO app_agent_messages(id,thread_id,seq,role,body,state,created_ns,updated_ns,kind) VALUES('m2','app-tachyon',2,'agent','','complete',1,1,'bogus')`); err == nil {
 		t.Fatal("kind CHECK not enforced")
 	}
-	// One plan per thread and per project.
+	// Several plans per thread since migration 058 (each is plan 1 until ordered); still one per project.
 	ins := `INSERT INTO chat_plans(id,scope,thread_ref,project_id,status,revision,created_by,created_ns,updated_ns) VALUES(?,?,?,?,'proposed',1,'user',1,1)`
 	if _, err = db.Exec(ins, "a", "thread", "app:1", nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(ins, "b", "thread", "app:1", nil); err == nil {
-		t.Fatal("two plans for one thread")
+	if _, err = db.Exec(ins, "b", "thread", "app:1", nil); err != nil {
+		t.Fatal("a thread may hold several plans", err)
+	}
+	var pos int
+	if err = db.QueryRow(`SELECT position FROM chat_plans WHERE id='a'`).Scan(&pos); err != nil || pos != 1 {
+		t.Fatal("an existing plan is plan 1", pos, err)
+	}
+	if _, err = db.Exec(ins, "p1", "project", nil, "PRJ"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(ins, "p2", "project", nil, "PRJ"); err == nil {
+		t.Fatal("two plans for one project")
 	}
 	if _, err = db.Exec(ins, "c", "thread", "app:2", "PRJ"); err == nil {
 		t.Fatal("scope/owner CHECK not enforced")
