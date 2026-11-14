@@ -58,5 +58,14 @@ jobs:
           working-directory: next
       - name: Pins match the Substrate BOM
         run: go tool substrate pins check --app .
-      - name: Public hygiene (the commit's tree)
-        run: go tool substrate scan-public --ref HEAD --repo ..
+      # Scoped to next/ at this commit: the old tree and its history carry findings that predate the
+      # port (owner triage, port plan section 13), and P1 deletes the old tree. The scan runs on a
+      # throwaway repository holding only next/ as committed, so a finding here is the port's own.
+      - name: Public hygiene (next/ at this commit)
+        run: |
+          scan=$(mktemp -d)
+          git -C .. archive HEAD next | tar -x -C "$scan"
+          git -C "$scan" init -q
+          git -C "$scan" add -A
+          git -C "$scan" -c user.name=scan -c user.email=scan@invalid commit -qm "next/ at $GITHUB_SHA"
+          go tool substrate scan-public --repo "$scan" --ref HEAD

@@ -125,6 +125,16 @@ func TestBadValuesAreRefusedByName(t *testing.T) {
 	}
 }
 
+// Every secrets backend's reference form is accepted where a credential is expected.
+func TestSecretReferenceSchemes(t *testing.T) {
+	for _, r := range []string{"file:///run/x", "keychain://tachyon/github", "op://vault/item/field", "helper://name/key", "env://VAR"} {
+		raw := map[string]any{"files": map[string]any{"secret_key": r}}
+		if _, err := Parse(raw); err != nil {
+			t.Errorf("%s refused: %v", r, err)
+		}
+	}
+}
+
 func TestAFullBlockParses(t *testing.T) {
 	raw := map[string]any{
 		"allowed_hosts": []any{"Tachyon.Example.Test"},
@@ -136,7 +146,7 @@ func TestAFullBlockParses(t *testing.T) {
 			"cerberus":        map[string]any{"url": "unix:/run/cerberus.sock"},
 			"activity":        map[string]any{"url": "http://127.0.0.1:8099"},
 			"app_agent":       map[string]any{"url": "http://127.0.0.1:8090", "token": ref("nanite"), "label": "Nanite"},
-			"github":          map[string]any{"url": "https://api.github.com", "org": "example", "token": "keychain://tachyon/github"}, //nolint:gosec // a secrets reference, not a credential,
+			"github":          map[string]any{"url": "https://api.github.com", "org": "example", "token": ref("github")},
 			"action_hub":      map[string]any{"addr": "127.0.0.1:2222", "user": "actions", "key": "file:///run/hub.key", "known_hosts": "/run/known_hosts"},
 		},
 		"features": map[string]any{"object_sync": true},
