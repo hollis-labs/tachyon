@@ -163,6 +163,13 @@ func sample(ctx context.Context, tx *sql.Tx, f Frame, at int64) error {
 		return nil
 	}
 	var in, out, cr, cw, calls int64
+	if Type(f.Kind) == "tool" && f.Usage == nil {
+		var streamed bool
+		_ = tx.QueryRowContext(ctx, `SELECT one_liner_json IS NOT NULL FROM agents_sessions WHERE session_id=?`, f.SessionID).Scan(&streamed)
+		if streamed {
+			return nil // counted from the output stream (SetDerived)
+		}
+	}
 	if f.Usage != nil {
 		in, out, cr, cw = f.Usage[0], f.Usage[1], f.Usage[2], f.Usage[3]
 		if _, err := tx.ExecContext(ctx, `UPDATE agents_sessions SET tok_in=COALESCE(tok_in,0)+?, tok_out=COALESCE(tok_out,0)+?, tok_cr=COALESCE(tok_cr,0)+?, tok_cw=COALESCE(tok_cw,0)+? WHERE session_id=?`, in, out, cr, cw, f.SessionID); err != nil {
@@ -190,6 +197,10 @@ func sample(ctx context.Context, tx *sql.Tx, f Frame, at int64) error {
 	return nil
 }
 
+// A session whose output stream is being read (one_liner_json is set) has every tool call counted from
+// that stream, including the ones Tether also reports as tool.call events; those events then add nothing
+// to the totals or the samples, or each of Tether's own tools would count twice. For a session with no
+// readable stream the events are the only count.
 func upsertSession(ctx context.Context, tx *sql.Tx, f Frame, at, now int64) error {
 	tool := 0
 	if Type(f.Kind) == "tool" && f.Kind == "tool.call.finished" {
@@ -226,7 +237,7 @@ func upsertSession(ctx context.Context, tx *sql.Tx, f Frame, at, now int64) erro
   last_activity_ns=MAX(last_activity_ns,excluded.last_activity_ns),
   ended_ns=CASE WHEN excluded.ended_ns>0 THEN excluded.ended_ns WHEN excluded.session_state IN ('running','launching') THEN 0 ELSE ended_ns END,
   end_reason=CASE WHEN excluded.ended_ns>0 THEN excluded.end_reason WHEN excluded.session_state IN ('running','launching') THEN '' ELSE end_reason END,
-  tool_calls=tool_calls+excluded.tool_calls,
+  tool_calls=tool_calls+CASE WHEN one_liner_json IS NULL THEN excluded.tool_calls ELSE 0 END,
   agent_urn=CASE WHEN excluded.agent_urn<>'' THEN excluded.agent_urn ELSE agent_urn END,
   logical_agent_id=CASE WHEN excluded.logical_agent_id<>'' THEN excluded.logical_agent_id ELSE logical_agent_id END,
   agent_name=CASE WHEN excluded.agent_name<>'' THEN excluded.agent_name ELSE agent_name END,

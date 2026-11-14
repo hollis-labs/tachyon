@@ -725,8 +725,20 @@ func TestSparklineCountsToolCallsReadFromTheStream(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Tether also reports some of those calls as tool.call events. For a session whose stream is read they
+	// are the same calls: they add nothing to the sparkline or the total. For one with no stream they count.
+	e.exec(`UPDATE agents_sessions SET one_liner_json='{}' WHERE session_id='k1'`)
+	e.frame("tool.call.finished", "k1", 59*time.Minute, `{"tool":"tether_message_send"}`)
+	e.frame("session.work_state_changed", "k2", 30*time.Minute, `{"to":"processing","provider":"pty"}`)
+	e.frame("tool.call.finished", "k2", 59*time.Minute, `{"tool":"tether_message_send"}`)
 	s := decode[Session](t, e.get("/sessions/k1"))
 	if n := len(s.Spark); n != 30 || s.Spark[n-3] != 5 || s.Spark[n-2] != 4 {
 		t.Errorf("spark: %v", s.Spark)
+	}
+	if s.ToolCallCount == nil || *s.ToolCallCount != 9 {
+		t.Errorf("each call counts once: %v", s.ToolCallCount)
+	}
+	if u := decode[Session](t, e.get("/sessions/k2")); u.ToolCallCount == nil || *u.ToolCallCount != 1 || u.Spark[len(u.Spark)-2] < 1 {
+		t.Errorf("without a stream, Tether's events are the count: %v %v", u.ToolCallCount, u.Spark)
 	}
 }

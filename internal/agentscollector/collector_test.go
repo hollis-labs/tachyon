@@ -465,7 +465,9 @@ func TestDerivationEndToEndFromOutputAndUsage(t *testing.T) {
 	c := newCollector(t, src)
 	live := &agentsderive.Live{}
 	live.Save = func(ctx context.Context, id string, d agentsderive.Saved) error {
-		return c.Store.SetDerived(ctx, id, Derived{OneLiner: d.OneLiner, CallsInTurn: d.CallsInTurn, At: d.At, CtxUsed: d.Meter.Used, CtxWindow: d.Meter.Window, CtxModel: d.Meter.Model, CtxSeen: d.Meter.Seen})
+		// CallsDelta as in production: the Read below is in the output stream and is also reported by Tether as
+		// tool.call.finished. It is one call and must count once.
+		return c.Store.SetDerived(ctx, id, Derived{OneLiner: d.OneLiner, CallsInTurn: d.CallsInTurn, CallsDelta: d.CallsDelta, At: d.At, CtxUsed: d.Meter.Used, CtxWindow: d.Meter.Window, CtxModel: d.Meter.Model, CtxSeen: d.Meter.Seen})
 	}
 	c.Sink = liveSink{live}
 	runUntil(t, c, func() bool {
