@@ -19,6 +19,12 @@ describe('input attribution', () => {
     expect(wakeOf(mailWake.event.input_sources)).toBe('mail')
     expect(wakeOf(mailWake.message_metadata.input_sources)).toBe('mail')
     expect(wakeOf(' mail_wake ,mail_wake')).toBe('mail')
+    // A wake by human-class mail answers Chrispian: never folded (input_triage, CW-20261114-0080).
+    expect(wakeOf('mail_wake', 'human')).toBeUndefined()
+    expect(wakeOf(['mail_wake'], ['human'])).toBeUndefined()
+    expect(wakeOf('mail_wake', 'action')).toBe('mail')
+    expect(wakeOf('mail_wake', '')).toBe('mail') // unknown triage: folds as before
+    expect(wakeOf('mail_wake,mail_wake', 'action,human')).toBeUndefined()
     for (const other of ['chat_send', 'session_turn', 'mcp_send_turn', 'routing_reply', 'system', 'mail_wake,chat_send', '', undefined]) expect(wakeOf(other)).toBeUndefined()
   })
 
@@ -42,6 +48,8 @@ describe('input attribution', () => {
     expect(wake.audience).toBeUndefined() // no proven class: the filter treats it as unknown
     const asked = toMessage('chatapi:tether:s1', { seq: 2, id: 'a', role: 'agent', text: 'Done.', at: 2, meta: { input_classes: ['agent'], input_sources: ['routing_reply'] } })
     expect([asked.wake, asked.audience]).toEqual([undefined, 'agent'])
+    const human = toMessage('chatapi:tether:s1', { seq: 4, id: 'h', role: 'agent', text: 'Yes, merged.', at: 4, meta: { input_sources: ['mail_wake'], input_triage: ['human'] } })
+    expect(human.wake).toBeUndefined()
     const mine = toMessage('chatapi:tether:s1', { seq: 3, id: 'o', role: 'operator', text: 'hi', at: 3, meta: { input_sources: ['mail_wake'] } })
     expect(mine.wake).toBeUndefined()
   })

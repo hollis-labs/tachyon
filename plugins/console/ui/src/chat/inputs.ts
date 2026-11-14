@@ -17,9 +17,11 @@ export function audienceOf(inputClasses: unknown): ReplyAudience {
 
 /**
  * 'mail' when Tether proved the turn was a mail wake (input_sources, CW-20261114-0061): every bound input arrived
- * by the wake path. A turn with no sources is never folded.
+ * by the wake path. A turn with no sources is never folded, and neither is a wake by human-class mail
+ * (input_triage, CW-20261114-0080): its reply answers Chrispian. Without input_triage a wake folds.
  */
-export function wakeOf(inputSources: unknown): 'mail' | undefined {
+export function wakeOf(inputSources: unknown, inputTriage?: unknown): 'mail' | undefined {
   const sources = list(inputSources)
+  if (list(inputTriage).includes('human')) return undefined
   return sources.length > 0 && sources.every((s) => s === 'mail_wake') ? 'mail' : undefined
 }
