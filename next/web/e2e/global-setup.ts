@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { request } from "@playwright/test"
 import { authState, backend, ownerName, passwordFile } from "./env"
 
@@ -13,7 +13,6 @@ export default async function globalSetup() {
   const state = await (await api.get("/api/setup")).json()
   if (state.setup_required) throw new Error("the owner was not created on the host")
   const password = readFileSync(passwordFile, "utf8").trim()
-  writeFileSync(passwordFile, password, { mode: 0o600 })
   const response = await api.post("/api/login", { data: { username: ownerName, password } })
   if (!response.ok()) throw new Error(`e2e sign-in failed: ${response.status()}`)
   await api.storageState({ path: authState })

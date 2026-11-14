@@ -57,10 +57,14 @@ jobs:
           cache-dependency-path: next/web/package-lock.json
       # The SPA (slice G1) is built first: internal/webui embeds next/web's output, and the binary the
       # browser suite starts must carry it.
-      - name: SPA (install, typecheck, lint, unit tests, build)
+      - name: SPA (install, manifest is current, typecheck, lint, unit tests, build)
         working-directory: next/web
         run: |
           npm ci
+          # The committed manifest is generated from ui/app.json and the module set; regenerate it
+          # and fail if it differs, as for the committed wiring file.
+          go tool substrate frontend -f ../cmd/tachyon/substrate.yaml -o src/generated
+          git diff --exit-code -- src/generated
           npm run typecheck
           npm run lint
           npm test
@@ -98,8 +102,8 @@ jobs:
         env:
           # CI installs the bundled Chromium; the config defaults to the system Chrome channel.
           PLAYWRIGHT_CHANNEL: chromium
-          TACHYON_E2E_PORT: '18093'
-          TACHYON_E2E_DIR: ${{ runner.temp }}/tachyon-e2e
+          # Run directories are made fresh (mkdtemp) under here; nothing is ever wiped.
+          TACHYON_E2E_DIR: ${{ runner.temp }}
         run: npm run test:e2e
       - name: Browser suite screenshots and traces
         if: always()
@@ -107,6 +111,6 @@ jobs:
         with:
           name: next-web-e2e
           path: |
-            ${{ runner.temp }}/tachyon-e2e/shots
-            ${{ runner.temp }}/tachyon-e2e/results
+            ${{ runner.temp }}/tachyon-e2e-*/shots
+            ${{ runner.temp }}/tachyon-e2e-*/results
           if-no-files-found: ignore

@@ -4,10 +4,22 @@ import tailwindcss from "@tailwindcss/vite"
 import { defineConfig } from "vite"
 
 const outDir = resolve(import.meta.dirname, "../internal/webui/dist")
-// The dev proxy target: a next/ binary started for development (next/docs/conversion-notes.md).
-const backend = process.env.TACHYON_DEV_BACKEND ?? "http://127.0.0.1:8093"
+/**
+ * The dev proxy target: a next/ binary you started for development, on its own port and data
+ * directory. There is deliberately no default: a guessed address could be a running Tachyon with
+ * real data. `npm run dev` refuses to start without it; `npm run build` does not need it.
+ */
+function devBackend(): string {
+  const backend = process.env.TACHYON_DEV_BACKEND
+  if (!backend) {
+    throw new Error(
+      "TACHYON_DEV_BACKEND is not set. Start a next/ binary on a scratch port and data directory, then run e.g. TACHYON_DEV_BACKEND=http://127.0.0.1:<port> npm run dev",
+    )
+  }
+  return backend
+}
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base: "/",
   plugins: [
     tailwindcss(),
@@ -34,5 +46,5 @@ export default defineConfig({
       },
     },
   },
-  server: { port: 5179, proxy: { "/api": backend } },
-})
+  server: command === "serve" ? { port: 5179, proxy: { "/api": devBackend() } } : undefined,
+}))
