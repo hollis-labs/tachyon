@@ -48,7 +48,7 @@ export function SessionCards({ sessions, now, onSelect }: { sessions: readonly S
             <span className="flex items-center text-label text-fg-muted">
               <span title={s.runtime_ms > 0 ? undefined : AGENTS.naReason}>{AGENTS.uptime} {s.runtime_ms > 0 ? ageText(s.runtime_ms) : AGENTS.na}</span>
               <span className="flex-1" />
-              <span aria-hidden className="text-fg-secondary opacity-0 group-hover:opacity-100">{AGENTS.open} ⏎</span>
+              <span aria-hidden className="text-fg-secondary">{AGENTS.open} ⏎</span>
             </span>
           </button>
         </li>
