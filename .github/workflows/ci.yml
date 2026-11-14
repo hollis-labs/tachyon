@@ -35,3 +35,28 @@ jobs:
       - run: go build ./...
       - run: go test ./...
       - run: make plugins
+
+  # The Substrate port (docs/substrate-port-plan.md): a separate Go module in next/, built and
+  # checked on its own. The root job above does not descend into it (a nested module).
+  next:
+    name: next (Substrate port)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: next
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: next/go.mod
+          cache-dependency-path: next/go.sum
+      - run: go vet ./...
+      - run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4
+          working-directory: next
+      - name: Pins match the Substrate BOM
+        run: go tool substrate pins check --app .
+      - name: Public hygiene (the commit's tree)
+        run: go tool substrate scan-public --ref HEAD --repo ..
