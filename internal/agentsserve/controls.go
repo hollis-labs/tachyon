@@ -27,10 +27,22 @@ type Interrupter interface {
 	Interrupt(ctx context.Context, sessionID, body string) (string, error)
 }
 
-// Restarter stops a session and resumes its logical agent (Tether session stop, then logical-agent resume).
+// Placement is where a session runs and what it was launched from.
+type Placement struct {
+	Launch string // the launch id a relaunch starts from
+	Worker string // the worker it runs on; "" on the hub
+}
+
+// Restarter stops a session and brings its seat back by relaunching the same launch. A worker-placed seat (every
+// catalog seat) is never resumed: Tether refuses resume on workers. A hub-placed session is resumed, and
+// relaunched if Tether refuses (ErrResumeRefused). The placement is read before anything is stopped.
 type Restarter interface {
+	Placement(ctx context.Context, sessionID string) (Placement, error)
 	Stop(ctx context.Context, sessionID string) error
 	Resume(ctx context.Context, logicalAgentID, key string) (newSessionID string, err error)
+	// Relaunch returns the created session's id with the error when it was created but could not be started.
+	Relaunch(ctx context.Context, launchID, key string) (newSessionID string, err error)
+	ScopesDropped(ctx context.Context, sessionID string) ([]string, error)
 }
 
 const (
@@ -39,6 +51,17 @@ const (
 	// handoffWait is how long a restart waits for the agent to write its handoff before it proceeds.
 	handoffWait = 60 * time.Second
 )
+
+// restartTimeout bounds a restart's Tether calls (a variable so tests can shorten it).
+var restartTimeout = 5 * time.Minute
+
+// restartContexts returns the context for a restart's Tether calls, bounded by timeout, and the one its status is
+// written with, which outlives that deadline: a restart that times out mid-way still records where it stopped and
+// whether the seat is down, instead of staying at "resuming" forever.
+func restartContexts(timeout time.Duration) (call, persist context.Context, cancel context.CancelFunc) {
+	call, cancel = context.WithTimeout(context.Background(), timeout)
+	return call, context.WithoutCancel(call), cancel
+}
 
 // control is the ControlRequest of the contract.
 type control struct {
@@ -54,19 +77,27 @@ type control struct {
 	NewSessionID     *string `json:"new_session_id"`
 	DiscardedPending *int64  `json:"discarded_pending"`
 	WaitEndsAt       *int64  `json:"wait_ends_at"`
-	CreatedAt        int64   `json:"created_at"`
-	UpdatedAt        int64   `json:"updated_at"`
+	// RelaunchedBy is how a done restart brought the seat back: resume, or relaunch when Tether refused the resume.
+	RelaunchedBy *string `json:"relaunched_by"`
+	// ScopesDropped are the scopes Tether did not grant the new session (session.scopes_narrowed): a relaunch is
+	// made with Tachyon's credential, so an admin seat can come back with less.
+	ScopesDropped []string `json:"scopes_dropped"`
+	CreatedAt     int64    `json:"created_at"`
+	UpdatedAt     int64    `json:"updated_at"`
 }
 
-const controlCols = `request_id,kind,session_id,state,step,error,interrupt,message_id,handoff,new_session_id,discarded_pending,wait_ends_at,created_ms,updated_ms FROM agents_controls`
+const controlCols = `request_id,kind,session_id,state,step,error,interrupt,message_id,handoff,new_session_id,discarded_pending,wait_ends_at,created_ms,updated_ms,relaunched_by,scopes_dropped FROM agents_controls`
 
 func scanControl(sc interface{ Scan(...any) error }) (control, error) {
 	var c control
-	var step, errS, intr, mid, nsid sql.NullString
+	var step, errS, intr, mid, nsid, rby, dropped sql.NullString
 	var dp, we sql.NullInt64
 	var hand int
-	if err := sc.Scan(&c.RequestID, &c.Kind, &c.SessionID, &c.State, &step, &errS, &intr, &mid, &hand, &nsid, &dp, &we, &c.CreatedAt, &c.UpdatedAt); err != nil {
+	if err := sc.Scan(&c.RequestID, &c.Kind, &c.SessionID, &c.State, &step, &errS, &intr, &mid, &hand, &nsid, &dp, &we, &c.CreatedAt, &c.UpdatedAt, &rby, &dropped); err != nil {
 		return c, err
+	}
+	if dropped.Valid {
+		_ = json.Unmarshal([]byte(dropped.String), &c.ScopesDropped)
 	}
 	str := func(n sql.NullString) *string {
 		if !n.Valid {
@@ -74,7 +105,7 @@ func scanControl(sc interface{ Scan(...any) error }) (control, error) {
 		}
 		return &n.String
 	}
-	c.Step, c.Error, c.Interrupt, c.MessageID, c.NewSessionID = str(step), str(errS), str(intr), str(mid), str(nsid)
+	c.Step, c.Error, c.Interrupt, c.MessageID, c.NewSessionID, c.RelaunchedBy = str(step), str(errS), str(intr), str(mid), str(nsid), str(rby)
 	c.Handoff = hand != 0
 	if dp.Valid {
 		c.DiscardedPending = &dp.Int64
@@ -88,6 +119,15 @@ func scanControl(sc interface{ Scan(...any) error }) (control, error) {
 func (s *Server) loadControl(ctx context.Context, id string) (control, bool) {
 	c, err := scanControl(s.DB.Reader.QueryRowContext(ctx, `SELECT `+controlCols+` WHERE request_id=?`, id))
 	return c, err == nil
+}
+
+// droppedJSON stores the dropped scopes, or NULL when none were dropped.
+func droppedJSON(scopes []string) any {
+	if len(scopes) == 0 {
+		return nil
+	}
+	b, _ := json.Marshal(scopes)
+	return string(b)
 }
 
 // saveControl writes the row and the matching replayable stream event in one transaction.
@@ -107,8 +147,8 @@ func (s *Server) saveControl(ctx context.Context, c control, insert bool) error 
 				c.RequestID, c.Kind, c.SessionID, c.State, c.Step, c.Error, c.Interrupt, c.MessageID, h, c.NewSessionID, c.DiscardedPending, c.WaitEndsAt, c.CreatedAt, c.UpdatedAt); err != nil {
 				return err
 			}
-		} else if _, err := tx.ExecContext(ctx, `UPDATE agents_controls SET state=?,step=?,error=?,interrupt=?,message_id=?,new_session_id=?,wait_ends_at=?,updated_ms=? WHERE request_id=?`,
-			c.State, c.Step, c.Error, c.Interrupt, c.MessageID, c.NewSessionID, c.WaitEndsAt, c.UpdatedAt, c.RequestID); err != nil {
+		} else if _, err := tx.ExecContext(ctx, `UPDATE agents_controls SET state=?,step=?,error=?,interrupt=?,message_id=?,new_session_id=?,wait_ends_at=?,updated_ms=?,relaunched_by=?,scopes_dropped=? WHERE request_id=?`,
+			c.State, c.Step, c.Error, c.Interrupt, c.MessageID, c.NewSessionID, c.WaitEndsAt, c.UpdatedAt, c.RelaunchedBy, droppedJSON(c.ScopesDropped), c.RequestID); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO agents_stream(type,at_ns,data_json) VALUES('control',?,?)`, s.now().UnixNano(), string(ev))
@@ -243,8 +283,14 @@ func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "restart_unsupported", restartReason)
 		return
 	}
+	seat := *sess.Agent.LogicalAgentID
+	if _, busy := s.restarting.LoadOrStore(seat, b.RequestID); busy {
+		fail(w, 409, "restart_in_progress", "This agent is already being restarted; follow that restart instead.")
+		return
+	}
 	c := control{RequestID: b.RequestID, Kind: agentsapi.ControlRestart, SessionID: sess.ID, State: "requested", Handoff: b.Handoff}
 	if err := s.saveControl(r.Context(), c, true); err != nil {
+		s.restarting.Delete(seat)
 		internal(w)
 		return
 	}
@@ -255,18 +301,24 @@ func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 	reply(w, 202, saved)
 }
 
-// runRestart walks requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done. A failure
-// records the step it stopped at.
+// runRestart walks requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done ("resuming"
+// covers the relaunch). A failure records the step it stopped at and says whether the seat is down. The placement
+// is read first: a restart that could not bring the seat back never stops it (step "preparing").
 func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	defer s.skips.Delete(c.RequestID)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer s.restarting.Delete(*sess.Agent.LogicalAgentID)
+	ctx, persist, cancel := restartContexts(restartTimeout)
 	defer cancel()
-	set := func(state string) { c.State = state; _ = s.saveControl(ctx, c, false) }
-	fail := func(step string, err error) {
-		msg := "Tether could not complete the restart: " + step + "."
+	set := func(state string) { c.State = state; _ = s.saveControl(persist, c, false) }
+	fail := func(step, consequence string, err error) {
+		msg := "Tether could not complete the restart at " + step + ": " + err.Error() + ". " + consequence
 		c.Step, c.Error = &step, &msg
-		_ = err
 		set("failed")
+	}
+	place, err := s.Restarter.Placement(ctx, sess.ID)
+	if err != nil {
+		fail("preparing", "Nothing was stopped; the session is still running.", err)
+		return
 	}
 	if c.Handoff && s.Sender != nil && sess.Agent.URN != nil {
 		if _, err := s.Sender.Send(ctx, *sess.Agent.URN, "Restart: write your handoff", "The operator is restarting this session. Write your handoff to Tesseract now.", map[string]string{"source": "tachyon-agents-restart", "request_id": c.RequestID}); err == nil {
@@ -283,17 +335,38 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	}
 	set("stopping")
 	if err := s.Restarter.Stop(ctx, sess.ID); err != nil {
-		fail("stopping", err)
+		fail("stopping", "The session may still be running; check it before retrying.", err)
 		return
 	}
 	set("stopped")
 	set("resuming")
-	id, err := s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, "tachyon-restart-"+c.RequestID)
+	key := "tachyon-restart-" + c.RequestID
+	how, id := "relaunch", ""
+	if place.Worker == "" {
+		// Only a hub session is resumed; if Tether refuses, it is relaunched like a worker seat.
+		how = "resume"
+		if id, err = s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key); errors.Is(err, ErrResumeRefused) {
+			how, id, err = "relaunch", "", nil
+		}
+	}
+	if err == nil && how == "relaunch" {
+		// Right after the stop: Tether hands the relaunch the stopped session's grant (tether#553).
+		id, err = s.Restarter.Relaunch(ctx, place.Launch, key)
+		if err != nil && id != "" {
+			// Created but not started: name it, so a retry launches this session instead of creating another.
+			c.NewSessionID = &id
+			fail("launching", "The old session is stopped; the new session "+id+" was created but not started: launch it (POST /sessions/"+id+"/launch) rather than creating another.", err)
+			return
+		}
+	}
 	if err != nil {
-		fail("resuming", err)
+		fail("resuming", "The old session is stopped and no new one started: relaunch "+place.Launch+" from Tether.", err)
 		return
 	}
-	c.NewSessionID = &id
+	c.NewSessionID, c.RelaunchedBy = &id, &how
+	if dropped, err := s.Restarter.ScopesDropped(ctx, id); err == nil {
+		c.ScopesDropped = dropped
+	} // an unreadable event says nothing either way; the restart itself is done
 	set("done")
 }
 

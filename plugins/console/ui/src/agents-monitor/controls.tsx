@@ -172,18 +172,22 @@ export function RestartControl({ session, paused, onDone, live = CONTROLS_LIVE }
       try {
         const next = await agentsGet<ControlRequest>(`/controls/${encodeURIComponent(req.request_id)}`)
         setReq(next)
-        if (next.state === 'done') {
-          setOpen(false)
-          setReq(null)
-          requestId.current = newId()
-          onDone(next.new_session_id ?? null)
-        }
+        // A relaunch that lost scopes stays open until the operator has read it.
+        if (next.state === 'done' && !next.scopes_dropped?.length) finish(next)
       } catch {
         /* the next tick tries again; the state shown stays the last known */
       }
     }, 1500)
     return () => clearInterval(t)
   }, [req, onDone])
+
+  function finish(done: ControlRequest) {
+    setOpen(false)
+    setReq(null)
+    requestId.current = newId()
+    onDone(done.new_session_id ?? null)
+  }
+  const narrowed = req?.state === 'done' && req.scopes_dropped?.length ? req.scopes_dropped : null
 
   const confirm = async () => {
     if (inFlight.current) return
@@ -211,7 +215,7 @@ export function RestartControl({ session, paused, onDone, live = CONTROLS_LIVE }
   return (
     <ControlPanel
       open={open}
-      onOpenChange={(o) => !running && setOpen(o)}
+      onOpenChange={(o) => { if (running) return; if (!o && narrowed && req) finish(req); else setOpen(o) }}
       label={R.title}
       trigger={({ onClick, ref }) => <Button ref={ref} size="sm" variant="outline" disabled={why !== null} title={why ?? undefined} className="border-danger/35 text-danger" aria-expanded={open} onClick={onClick}>{AGENTS.modal.restart}</Button>}
     >
@@ -232,10 +236,13 @@ export function RestartControl({ session, paused, onDone, live = CONTROLS_LIVE }
             {req.discarded_pending ? `. ${R.discarded(req.discarded_pending)}` : ''}
           </p>
         )}
+        {req?.state === 'failed' && req.error && <p role="alert" className="text-label text-danger">{req.error}</p>}
+        {narrowed && <p role="alert" className="text-label text-warning">{R.narrowed(narrowed)}</p>}
         {err && <p role="alert" className="text-label text-danger">{err}</p>}
         <div className="flex justify-end gap-2">
           {req?.state === 'waiting' && <Button size="sm" variant="ghost" onClick={() => void skip()}>{R.skip}</Button>}
-          {!running && <Button size="sm" variant="ghost" onClick={() => (setReq(null), setOpen(false))}>{R.cancel}</Button>}
+          {!running && !narrowed && <Button size="sm" variant="ghost" onClick={() => (setReq(null), setOpen(false))}>{R.cancel}</Button>}
+          {narrowed && req && <Button size="sm" variant="outline" onClick={() => finish(req)}>{R.close}</Button>}
           {(req === null || req.state === 'failed') && (
             <Button size="sm" variant="outline" className="border-danger/35 text-danger" disabled={running} onClick={() => (req && (requestId.current = newId(), setReq(null)), void confirm())}>{R.confirm}</Button>
           )}

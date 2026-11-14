@@ -58,6 +58,10 @@ export interface ControlRequest {
   new_session_id?: string | null
   discarded_pending?: number | null
   wait_ends_at?: number | null
+  /** How a done restart brought the seat back: resume, or relaunch when Tether refused the resume. */
+  relaunched_by?: 'resume' | 'relaunch' | null
+  /** Scopes Tether did not grant the new session (session.scopes_narrowed). */
+  scopes_dropped?: string[] | null
 }
 
 export interface AgentsSettings {
