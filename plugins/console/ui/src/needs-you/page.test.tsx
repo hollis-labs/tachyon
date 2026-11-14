@@ -10,7 +10,7 @@ afterEach(() => {
 
 const ok = { ok: true }
 const result = (over: Partial<NeedsYouResult>): NeedsYouResult => ({ items: [], sources: { asks: ok, mail: ok, statuses: ok }, checked_at: new Date().toISOString(), ...over })
-const fetchOf = (body: NeedsYouResult) => vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+const fetchOf = (body: NeedsYouResult) => vi.fn((_url: string) => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })))
 const show = (f: ReturnType<typeof fetchOf>) => render(<MemoryRouter><NeedsYouPage fetch={f} /></MemoryRouter>)
 
 describe('Needs you', () => {
