@@ -345,7 +345,11 @@ func (c *Collector) follow(ctx context.Context, after int64) error {
 				if at.IsZero() {
 					at = c.now()
 				}
-				c.Sink.Output(ctx, f.SessionID, at, f.Payload)
+				if ss, ok := c.Sink.(SeqOutputSink); ok {
+					ss.OutputSeq(ctx, f.SessionID, at, f.Seq, f.Payload)
+				} else {
+					c.Sink.Output(ctx, f.SessionID, at, f.Payload)
+				}
 			}
 			f.Payload = nil
 			if f.SessionID != "" {

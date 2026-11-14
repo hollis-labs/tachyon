@@ -221,6 +221,14 @@ func mcpLine(name string) (string, string) {
 var past = map[string]string{"Reading": "Read", "Writing": "Wrote", "Updating": "Updated", "Removing": "Removed", "Running": "Ran", "Searching": "Searched",
 	"Listing": "Listed", "Editing": "Edited", "Fetching": "Fetched", "Delegating": "Delegated", "Asking": "Asked", "Using": "Used"}
 
+// PastVerb is a one-liner verb in the past tense ("Reading" -> "Read"); an unknown verb is returned as is.
+func PastVerb(verb string) string {
+	if p, ok := past[verb]; ok {
+		return p
+	}
+	return verb
+}
+
 // PastLine is a finished tool call as a timeline line: the one-liner's verb and short target in the past tense
 // ("Read message", "Wrote comment"), never the raw tool name.
 func PastLine(tool string) string {

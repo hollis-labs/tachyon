@@ -225,6 +225,8 @@ func humanize(sum string) (text string, hidden bool) {
 	switch {
 	case strings.HasPrefix(sum, "tool.call.started"):
 		return "", true
+	case strings.HasPrefix(sum, agentscollector.StreamTool):
+		return strings.TrimPrefix(sum, agentscollector.StreamTool), false // already a one-liner: "Reading appagent/"
 	case strings.HasPrefix(sum, "tool.call"):
 		if _, tool, ok := strings.Cut(sum, ": "); ok && tool != "" {
 			return agentsderive.PastLine(tool), false
@@ -265,8 +267,11 @@ func humanize(sum string) (text string, hidden bool) {
 	return sum, false
 }
 
+// toolOf is the word a tool line is counted under in a grouped run: its verb, past tense, lower case
+// ("Reading appagent/" and "Read message" both count as "read").
 func toolOf(text string) string {
-	return strings.ToLower(text)
+	verb, _, _ := strings.Cut(text, " ")
+	return strings.ToLower(agentsderive.PastVerb(verb))
 }
 
 type timelineEvent struct {
@@ -406,8 +411,17 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	var next any
 	if int64(len(rows)) > limit {
-		rows = rows[:limit]
-		next = rows[len(rows)-1].seq
+		// The cursor is a sequence number, and several events can share one (the tool calls of one output
+		// frame). A page never ends inside such a group, or the rest of the group would be skipped.
+		cut := int(limit)
+		for cut > 1 && rows[cut-1].seq == rows[cut].seq {
+			cut--
+		}
+		if rows[cut-1].seq == rows[cut].seq {
+			cut = int(limit) // one group fills the page: keep the page whole rather than return one row at a time
+		}
+		next = rows[cut-1].seq
+		rows = rows[:cut]
 	}
 	evs := make([]timelineEvent, 0, len(rows))
 	for _, e := range rows {
