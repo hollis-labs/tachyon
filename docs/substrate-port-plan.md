@@ -8,14 +8,18 @@ migrated; loss is not acceptable.
 Nothing in this plan touches the running service, its data directory, its unit or its descriptor. Every data step here
 runs on a copy. The cutover itself is run by the program director with the owner, not by the port cell.
 
+The repository is public. Facts about the live machine that the cutover needs (addresses, unit and descriptor, credential
+locations, exact override spellings) are kept outside it, in the program's Tesseract workspace item `01M7DXSRBN6J6P5CFT4KMAP0AJ`
+("live facts" below).
+
 ## 0. Answers first (adopting-substrate section 0)
 
 | Question | Answer |
 |---|---|
-| Migrated data or fresh start? | **Migrated.** In use daily. Three SQLite files: `tachyon.db` (about 125 MiB, 100+ tables, 56 schema migrations plus 11 baseline tables created outside the ledger), `jobs.db` (about 23 MiB, the scheduler: 6 operator-enabled schedules and their fire history) and `plugins/launch-ops/launches.db` (one empty table). Appendix A. |
+| Migrated data or fresh start? | **Migrated.** In use daily. Three SQLite files: `tachyon.db` (about 125 MiB, 96 tables, 56 schema migrations plus 11 baseline tables created outside the ledger), `jobs.db` (about 23 MiB, the scheduler: 6 operator-enabled schedules and their fire history) and `plugins/launch-ops/launches.db` (one empty table). Appendix A. |
 | Binary variant | `app-host` (embedded SPA, same-origin API, SSE streams, one WebSocket, subprocess plugins). |
-| Who issues identity? | Tachyon itself, through the `identity` module: one owner created offline, one API key per machine credential (section 4). Today Tachyon has no accounts: the browser is trusted by a development posture and agents hold Tachyon's own hashed service tokens. |
-| Routes: public, scoped, self-authenticating | Every `/api/` route gets a `tachyon.<verb>` scope or `authenticated`. Public: `/healthz` and the identity module's own sign-in routes. No open mount. |
+| Who issues identity? | Tachyon itself, through the `identity` module: one owner created offline, one API key per machine credential (section 4). Today Tachyon has no accounts of its own: browser sessions come through Tangent and agents hold Tachyon's own hashed service tokens. |
+| Routes: public, scoped, self-authenticating | Every `/api/` route gets a `tachyon.<area>.<verb>` scope or `authenticated` (B1's `next/docs/api-contract.md`). Public: `/healthz` and the identity module's own sign-in routes. No open mount. |
 | Background work that must drain | Object sync (scheduler), chat sync loop, agents collector, catalog index, card delivery and event outbox, card effects, alert sources and sink, transcript snapshotting, action runs. Scheduler-shaped work moves to the `scheduler` module; intrinsic loops stay app goroutines started from `serve` and joined before modules stop. Every outbound loop has a config switch (section 6), which the cutover uses (section 8). |
 | What the UI needs from the framework | app-shell with BOM-pinned kits; Tachyon's nav and surfaces in its own contribution file (`frontend.contributions`); sign-in/sign-out from `kit-identity`. |
 | Libs not in the BOM, or pinned differently | Yes; section 13 lists them. Each is a Substrate BOM change filed as a `substrate-gap` task, not a local `go.mod` exception. |
@@ -81,17 +85,18 @@ profiles: [minimal]
 modules:
   add: [httphost, database, auth, identity, secrets, cli, scheduler, pluginhost]
 config:
-  httphost: { addr: "127.0.0.1:8093" }
+  httphost: { addr: "127.0.0.1:<port>" }   # the live port is set in the private override
   database: { sqlite: { path: tachyon.db } }
   auth: { mode: enforce }
   identity: {}
   tachyon: { }   # app block: upstream URLs, sync intervals, feature switches (section 6)
 ```
 
-The bind address is the live one: the live unit listens on loopback port 8093 and the HTTPS reverse proxy runs on the same
-host, so a loopback bind keeps it working and passes `httphost.Serve`'s bind check under `enforce`. The proxy's host names go
-into the identity/host allowlist in the live override file (not in this repository). The old code's default of all
-interfaces (`:18093`) is not carried.
+The app binds loopback; the operator's HTTPS reverse proxy fronts it, and the bind address and port are the live ones (live
+facts), so the proxy needs no change and `httphost.Serve`'s bind check passes under `enforce`. The proxy's host names go into the
+identity/host allowlist in the private override, together with `identity.trusted_proxy`, so the session cookie is marked Secure.
+Every rehearsal from D1 on checks the real proxy name, not only loopback (an app whose override lacked its allowed host was
+unreachable on its proxy name for two days). The old code's default of all interfaces is not carried.
 
 **MCP.** Agents reach Tachyon through the Tether MCP gateway at `/api/agent/v1/mcp` (streamable HTTP). That stays HTTP, ported
 as app code behind its scope, with the verified principal from the identity middleware. The `mcp` module is not added and
@@ -105,10 +110,10 @@ as app code behind its scope, with the verified principal from the identity midd
 | `cmd/tachyon` env parsing, `host.New` (libs app-host), `net.Listen` | `boot.StartWith`, `httphost.Handler`/`Serve`, manifest config + `SUBSTRATE_CONFIG` override |
 | `internal/localstore` (own open, `serialwrite` queue, `tachyon_migrations` ledger, 56 SQL files plus the baseline DDL in `store.go`) | `database` module store (`database.From(app)`): one writer, `Reader()` pool, `WriteTx`. **One goose migration** (`00001_init.sql`) equal to the old schema at 056 plus the baseline tables, collapsed: no `ALTER` ladder. Kept exactly: columns, types, NOT NULL, defaults, keys, foreign keys, indexes and the `approval_decision_log` append-only triggers (029). Proven by a schema-diff test (B2). Rebuild leftovers are dropped only under the rule of section 5. |
 | `jobs.db` (libs `core/util/scheduler/sqlstore` in a second file) | `scheduler` module, which uses the same `sqlstore` (libs `core/util` v0.6.0 on both sides) inside the main database. One file. |
-| `pkg/pluginkit`, `PluginBinDir`, app-host plugin wiring | `pluginhost` module (`pluginhost.UseSpecs`), forwarding `/api/plugins/{id}/...` under the auth guard; per-plugin and per-route scopes on `auth.ScopeTable`. This also closes today's unguarded `/api/plugins/` catch-all, which forwards to the console plugin's Torque proxy with Tachyon's own Torque token. |
-| Tangent bridge browser session, `TACHYON_ASSURANCE=dev`, `/api/session*` elevation | `identity` module (owner session cookie, `X-Requested-With` + same-origin on writes). The `assurance.Provider` interface stays app code with an identity-backed implementation (section 4). |
+| `pkg/pluginkit`, `PluginBinDir`, app-host plugin wiring | `pluginhost` module (`pluginhost.UseSpecs`), forwarding `/api/plugins/{id}/...` under the auth guard; per-plugin and per-route scopes on `auth.ScopeTable`. Only an explicit allowlist of console paths is forwarded; there is no catch-all. |
+| Tangent bridge browser session, the `TACHYON_ASSURANCE` posture switch, `/api/session*` elevation | `identity` module (owner session cookie, `X-Requested-With` + same-origin on writes). The `assurance.Provider` interface stays app code with an identity-backed implementation (section 4). |
 | `internal/agentaccess` service identities and hashed service tokens | Credentials: identity API keys. Service identities, agent bindings, proxy pin, per-credential grants (verbs and kinds) and the credential-to-identity mapping: app data (section 4). |
-| `libs/security/secrets/tokenfile` for upstream tokens, two inline token values in the env file | `secrets` module resolver (`file://` references) for every upstream credential |
+| `libs/security/secrets/tokenfile` for upstream tokens, credentials passed as environment values | `secrets` module resolver (`file://` references) for every upstream credential |
 | `os.Getenv` for every setting | `config.tachyon` keys, `internal/settings` (section 6) |
 | `/healthz` (app-host) | `health` module `{status, checks}` plus checks for the database, scheduler and plugins |
 | `TACHYON_*_STUBS` switches | Dropped from the production build; tests use fakes |
@@ -118,21 +123,22 @@ as app code behind its scope, with the verified principal from the identity midd
 - **Browser.** The owner signs in with the identity module (offline bootstrap at cutover, section 8). The Tangent session
   bridge and its cookie are removed; Tachyon stops calling Tangent for sessions. That removes a Tachyon→Tangent call only;
   Tangent itself does not change.
-- **Assurance.** Live runs `TACHYON_ASSURANCE=dev` (every request is an elevated operator session). The port keeps the
+- **Assurance.** The old build's posture is set by `TACHYON_ASSURANCE`; the live setting is in the live facts. The port keeps the
   `assurance.Provider` seam and its table (`docs/approvals-assurance.md`), implemented on identity:
   - `browser-session` = a verified principal of kind **user** (a signed-in person, or a token minted from that person's session).
   - `operator-token` = a principal of kind user **and** holding `tachyon.operator`. The owner holds it through `*`.
   - An API key, or a token minted from a key, is never `operator-token` and never `browser-session`, **whatever its scopes**
     (`identity key create` can grant `*`). Test: a key holding `*` is refused every browser-session and operator-token action.
   - `tachyon.operator` is never granted to a key (the `access` command refuses it).
-  This is parity with the live posture and stricter than it (an unauthenticated request is refused). Re-authentication before a
+  No request is treated as elevated without a signed-in person, and an unauthenticated request is refused. Re-authentication before a
   high-risk resolve is not in the identity module; the follow-up points at Substrate CW-20261114-0095 (design note filed by the
   Substrate driver) and CW-20261030-0082 stays open. The confirmation phrase for high and cerberus items is app code, ported
   unchanged. The elevation TTL and its `elevation-ttl` command go away with the elevation step.
 - **Machine credentials: one identity key per active token, with its exact grant.** Today a grant is `{verbs, kinds}`, stored
-  **per token** with the token's own expiry (`internal/agentaccess/store.go`). Live: 22 service identities, 22 tokens, stored as
-  unsalted SHA-256 hashes. The identity module also stores a SHA-256 of the key, but its tables are the module's storage, not an
-  interface, and the program convention is re-issue; importing hashes is not done.
+  **per token** with the token's own expiry (`internal/agentaccess/store.go`); only a hash of each token is stored. Identity's
+  tables are the module's storage, not an interface, and the program convention is re-issue; importing hashes is not done.
+  - Order: the owner is created first (`identity setup`), then `access reissue`. Reissue refuses to run if any identity key
+    already exists, so a second run cannot issue twice. It keys on the service identity's **id**, never its name (names are not unique).
   - At the cutover, `tachyon access reissue --out-dir DIR` creates, for each **active, unexpired** old token, one identity key
     through the identity service (`Service.CreateKey`): name = the service identity's name (a role, not a host), scopes =
     `tachyon.<verb>` for each granted verb, TTL = the token's remaining time (no TTL only where the old token had none). It writes
@@ -181,6 +187,9 @@ Go scanning, so affinity, text/integer, NULL versus empty and blobs are kept as 
 `approval_decision_log` allow this (they block UPDATE and DELETE only). **`sqlite_sequence` is copied** for every AUTOINCREMENT
 table, so ids are never reused below the old high-water mark and cursors keyed on them neither skip nor repeat.
 
+**Storage classes.** Some columns hold values whose storage class differs from the declared type (all 1,461 `chat_events.body`
+values are BLOBs in a TEXT column); the SQL copy keeps them and the `typeof()` checksum proves it.
+
 **jobs.db.** The `gosched_*` tables (6 schedules and options, about 30k fires and fire options) are copied the same way into
 the main database. The libs `core/util` version that owns this schema is v0.6.0 in both the old tree and the BOM; the command
 checks the `sqlstore` schema version on both sides and fails if they differ. The scheduler module's `Migrate` at start is then a
@@ -188,7 +197,9 @@ no-op. The job type `object-sync.v1` is registered under the same name in the ne
 whose job type the new build does not register. The old unit is stopped before the final backup, so no fire is in flight; any
 lease row copied from a crash is past its lease and is reclaimed by the library as it would be after an old-unit restart.
 Next-fire times that passed during the window are handled by each schedule's copied options, exactly as after an old-unit
-restart (verified in the rehearsal by comparing the first fires).
+restart (verified in the rehearsal by comparing the first fires). Schedule ids are a hash of a scope string that includes the
+instance's upstream address; the new build's object-sync source must produce byte-identical scope strings from the cutover
+config (the exact spellings are in the live facts), and `migrate-from` refuses a configured upstream that would change one.
 
 **launches.db** (the launch-ops plugin, one empty table): not copied; left in place with the old data directory.
 
@@ -196,20 +207,22 @@ restart (verified in the rehearsal by comparing the first fires).
 and `console/` are empty, and `plugins/` holds old plugin binaries that the live build does not load (it loads plugins from the
 build tree). None are copied. The cache directory's `planner/` and `console/` are empty and the new cache directory starts empty.
 Old snapshots and `backups/` are not copied. The verification report lists every file in the old data directory with its size,
-mode and sha256 before and after, to prove it was not changed. Configuration (`app-agent.json`, the cache policy, token files, the
-AES key file behind `approval_secrets`, the SSH key for the action hub) is referenced by path from the new config, not copied;
-secret files are never printed or moved (section 6). The AES key file is a **required** setting: the new build refuses to start
+mode and sha256 before and after, to prove it was not changed. Configuration and credential files (the app-agent config, the cache policy, token files, the
+encryption key behind `approval_secrets`, the action hub's SSH key) are referenced by path from the new config, not copied;
+secret files are never printed or moved (section 6). The encryption key file is a **required** setting: the new build refuses to start
 without it, so `approval_secrets` rows stay readable.
 
 **Verification, built into the command and repeated by hand in the rehearsal.**
 1. Before: `PRAGMA integrity_check` = `ok` and `PRAGMA foreign_key_check` empty on each source copy; sha256 of each copy.
 2. Per table, computed **in SQL on both sides**: row count; and a checksum over every column of every row including `typeof()`
-   of each value (concatenated per row in primary-key order, hashed). Source = target or the run fails and leaves the target for
+   of each value (concatenated per row in primary-key order, hashed; every table has an explicit primary key today, and a
+   table without one would be ordered by all its columns). Source = target or the run fails and leaves the target for
    inspection. `sqlite_sequence` is compared the same way.
 3. After: `integrity_check` and `foreign_key_check` on the target; goose version = the expected head; source checksums unchanged.
 4. The report (table, rule, rows, checksum; file list of the old data directory) is written beside the new database; each
    rehearsal attaches it to the Torque task.
-5. Functional check: start the new binary on the migrated copy (scratch home, upstream URLs blanked, outbound features off), sign
+5. Functional check (until the domain API exists, D1 compares by SQL against old-API reads; the rehearsal before P1 repeats it
+   through the new API): start the new binary on the migrated copy (scratch home, upstream URLs blanked, outbound features off), sign
    in, and read one record of each major kind through the API (a planner item, an object with history, a chat thread with turns,
    an approval with its decision log, an alert, a catalog entity, a transcript). Compare with the **old binary started on a second,
    untouched `.backup` copy** (never the migrated one), with the same blanking.
@@ -219,8 +232,7 @@ directory, with `HOME`, the `XDG_*` variables and the data/cache directory varia
 `migrate-from` lands (D1), one before P1, one after P1, and one on the day of the cutover, timed (it sets the window length).
 Every rehearsal records counts, checksums and duration on the task.
 
-**The isolated planner-verification instance** (a second unit on its own port with its own data directory and blanked
-upstreams) is not the live app and is not migrated; it is listed for the director to retire or keep running on the old build.
+**The isolated planner-verification instance** (a separate unit with its own data directory and blanked upstreams) is not the live app and is not migrated; it is listed for the director to retire or keep running on the old build.
 
 ## 6. Configuration
 
@@ -231,8 +243,8 @@ appendix B). Groups:
 - Listen address (`LISTEN_ADDR`, `TACHYON_ADDR`) → `httphost.addr`. Data/cache directories (`TACHYON_DATA_DIR`,
   `TACHYON_CACHE_DIR`) → resolved in `AfterConfig` (the one allowed env override), absolute paths written into `app.Config`.
 - Upstreams (Tether, Tether control socket, Tether messages, Torque, Tesseract, Cerberus, Fragments Engine, activity monitor,
-  events hub, Caster, the Nanite app agent, GitHub org, the SSH action hub) → `tachyon.upstreams.*` addresses plus a `secrets`
-  reference per credential. `TORQUE_API_TOKEN` and `GITHUB_TOKEN`, inline values in the live env file today, become file
+  events hub, Caster, another app's app-agent endpoint, GitHub org, the SSH action hub) → `tachyon.upstreams.*` addresses plus a `secrets`
+  reference per credential. Credentials passed today as environment values (`TORQUE_API_TOKEN`, `GITHUB_TOKEN`) become file
   references (the operator writes the files; this cell never handles the values); the fallback to `gh auth token` is dropped.
   The Tangent approval-queue address is dropped with the bridge.
 - **Outbound features** → booleans under `tachyon.features`, each defaulting to **off**: object-sync scheduler dispatch, chat
@@ -240,7 +252,7 @@ appendix B). Groups:
   transcript snapshotting, action runs. The cutover uses these (section 8). Stub switches are dropped. `TACHYON_ASSURANCE` is
   dropped (section 4).
 - Policy and config files (approval producer and assurance config, cache policy, terminal policy, card delivery, app-agent
-  config, the AES key file) → path keys.
+  config, the encryption key file) → path keys.
 
 The live override file is written for the cutover from the live env file's **names** (values are carried by the operator, never
 by this cell), and dry-run validated with `tachyon validate` against a scratch copy.
@@ -252,15 +264,15 @@ Each caller keeps working unchanged or has a named change and an owner. No other
 
 | Caller | How it reaches Tachyon today | Change at cutover | Owner |
 |---|---|---|---|
-| The owner's browser (the SPA through the HTTPS reverse proxy) | same origin, development posture; Tangent cookie for approvals | signs in with the identity module; same URLs | owner; proxy unchanged (same port, same host) |
+| The owner's browser (the SPA through the HTTPS reverse proxy) | same origin; Tangent cookie for approvals | signs in with the identity module; same URLs | owner; proxy unchanged (same port, same host) |
 | Tether MCP gateway (agents' MCP calls, pinned identity) | bearer service token, `/api/agent/v1/mcp` | new key file for its identity, in the gateway's config | the director, with Tether's owner |
 | Actions agents (catalog, request, await) and portfolio/planner agents | bearer service tokens, via the gateway or `/api/agent/v1/data/*` | one new key file per active token | the director, with each agent's owner |
-| Nanite app agent | bearer service token, `/api/agent/v1/mcp` | new key file | the director, with Nanite's owner |
+| The app-agent client of another Hollis Labs app | bearer service token, `/api/agent/v1/mcp` | new key file | the director, with that app's owner |
 | `tachyon data` (HTTP client CLI) | bearer from a token file, URL flag/env | unchanged CLI; points at a new key file | its users |
 | Operator CLIs that open the database (`access`, `local-data`, `sync-objects`) | the binary on the data directory | cobra subcommands on the same boot and config, through `database.From(app)`; trust = the operator can open the data file, as for `identity setup` | this cell |
 | Dropped CLIs | `import-planner`, `backfill-session-links`, `elevation-ttl`, `cmd/import-chat-history`, `cmd/import-team-cache` | one-shot importers already run, and the elevation TTL is gone; recorded in conversion notes | this cell |
 | Subprocess plugins `console`, `planner` | spawned by Tachyon from the build tree | built and spawned by `pluginhost`; no external change | this cell |
-| Cerberus descriptor and the systemd unit it writes | runs `make all` in the working copy of `main` | a release install with the override file and the new data directory (section 8) | the director (descriptor owner) |
+| The supervisor's descriptor and the unit it writes | builds from `main` (live facts) | a release install with the override file and the new data directory (section 8) | the director (descriptor owner) |
 | Dev frontends, replay and audit scripts | `/api` proxy with a cookie | rebuilt against `next/web` and identity; dev only | this cell |
 
 Upstreams Tachyon calls do not change; only how Tachyon holds their credentials does.
@@ -275,8 +287,10 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
    list (one line per active token: identity, scopes, kinds, remaining TTL), the proxy check.
 4. Every key holder named and ready to swap; **every holder keeps its old token file until acceptance** (the old tokens work
    again if the cutover is rolled back).
-5. The owner accepts, with this plan, the loss window: rows written by the new build between start and acceptance are not
-   carried back on rollback (section 9).
+5. **Open, with the owner through the director:** acceptance of the loss window (rows written through the new build between
+   start and acceptance, including agents' writes after the key handover, are not carried back on rollback, section 9). The
+   director's recommendation is yes, provided acceptance is checked inside the window. Building does not wait on it; the
+   cutover does.
 
 **The window:**
 1. Stop the old unit. Take the final `.backup` of `tachyon.db` and `jobs.db`; `integrity_check` = `ok`; record sha256. Copy the
@@ -286,10 +300,13 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
 3. Offline bootstrap: `tachyon identity setup --username <owner>` (password on stdin), then `tachyon access reissue --out-dir
    <private dir>`.
 4. Apply the descriptor change (release binary, override with outbound features off, the new data directory); start the unit.
+   Check that every Tether hub origin that points at Tachyon is connected again (`tether_gateway_status`); if one is marked failed,
+   the owner reloads the hub (an origin that failed during a restart is not retried until a reload).
 5. Section 10 checks. Hand out the key files; each holder makes one call that succeeds and confirms its old token now gets 401.
 6. **Acceptance** by the director with the owner: every section 10 check passed and every holder confirmed. Only then: switch
    the outbound features on in the override, restart, and check that object sync, chat sync and the agents collector resume
-   from their copied cursors (first sync run reports no full re-pull). Holders may then delete their old token files.
+   from their copied cursors (first sync run reports no full re-pull). Holders may then delete their old token files, and any copies of the old service tokens kept on the host are removed by
+   the owner.
 7. Merge `substrate-port` into `main` (the director's step), so the next routine deploy builds the new app.
 
 The old data directory is never written by the new build and is left in place; the owner decides when to delete it.
@@ -311,10 +328,12 @@ after acceptance, so a rollback never needs a revert there.
 
 `/healthz` ok (database, scheduler, plugins); `GET /api/setup` → `setup_required: false`; sign in through the real proxy URL; one
 write and one read (a planner item edit, then read back); an unknown `Host` refused; an unauthenticated `/api/` call refused,
-including an unknown `/api/plugins/...` path; an API key holding no operator scope refused on an approval resolve; each SSE
+including an unknown `/api/plugins/...` path; an unknown `/api/plugins/...` path refused for the signed-in owner too (only the
+allowlisted console paths are forwarded, B1); an API key holding no operator scope refused on an approval resolve; each SSE
 stream (console events, activity) connects and receives a keepalive; the terminal WebSocket connects; the 6 object-sync schedules
 listed with the same enabled state as before; one approval listed with its decision log; each key holder's one call succeeds and
-its old token gets 401.
+its old token gets 401; the session cookie is `HttpOnly`, `Secure` and `SameSite=Strict` through the proxy; the Tether hub's
+Tachyon origins are connected.
 
 ## 11. Slices (each a PR into `substrate-port`, each a Torque task)
 
@@ -350,7 +369,7 @@ Each slice's PR states the evidence of adopting-substrate section 12 for its sco
 ## 12. Appendices (from the cell's inventories, 2026-11-14; counts from `.backup` copies)
 
 - A. Data inventory:
-  - `tachyon.db`: 100+ tables; integrity ok. Largest: agents_events 46,718; object_sync_runs 36,555; object_revisions 10,699;
+  - `tachyon.db`: 96 tables, 185 indexes, 2 triggers, byte-identical in schema to a fresh database at 056; integrity ok. Largest: agents_events 46,718; object_sync_runs 36,555; object_revisions 10,699;
     agents_samples 9,835; chat_turns 3,708 (with chat_publications and chat_session_links 3,708 each); object_links 3,736;
     objects 2,767; chat_turn_revisions 2,284. Source of truth includes settings, objects and links, service identities and tokens,
     approvals (79 items, 184 decision-log rows), chat (turns, reply intents, thread state, plans, topics, bookmarks, lineage,
@@ -363,11 +382,10 @@ Each slice's PR states the evidence of adopting-substrate section 12 for its sco
     `gosched_fire_options` about 29.7k each, `gosched_pruned` 0. One job type, `object-sync.v1`.
   - `plugins/launch-ops/launches.db`: one table, 0 rows (not copied, left in place).
   - Files: the old data directory holds old snapshots and `backups/` (history, not read by the app), empty `planner/` and
-    `console/`, and old plugin binaries in `plugins/` not loaded by the live build. Config directory: the env file, the app-agent
-    config, the cache policy, the SSH key pair and known hosts for the action hub, and the token files (outbound credentials, the
-    AES key behind `approval_secrets`, and plaintext copies of issued service tokens). Two credentials are inline in the env file.
-- B. Client inventory: summarised in section 7. Auth today: browser by development posture (the Tangent bridge is bypassed on
-  live), agents by bearer service tokens (22), the gateway by a pinned identity with `X-Tether-*` headers. The only WebSocket is
+    `console/`, and old plugin binaries in `plugins/` not loaded by the live build. Configuration and credential files: listed by name and location in the live
+    facts, never here.
+- B. Client inventory: summarised in section 7. Auth today: browser by the Tangent bridge or the posture switch (live setting in the
+  live facts), agents by bearer service tokens, the gateway by a pinned identity with `X-Tether-*` headers. The only WebSocket is
   the terminal. No other Hollis Labs application calls Tachyon. `/api/approvals/v1` is unconfigured on live; the Basalisk trusted
   route is inactive. Outbound dependencies are the upstreams of section 6.
 - C. GUI inventory (summary; full survey kept by the cell):
@@ -400,9 +418,16 @@ coordinated with the Substrate program driver):
    by the Substrate driver; until it lands, `next/` builds on the pinned versions and records any lost feature.
 2. **CW-20261114-0095.** Identity step-up (re-authenticate before a high-risk action): design note, not blocking (section 4).
 
-For the director (crosses the cell or needs the owner): the `main` freeze from P1 to cutover; the descriptor change and its
-owner; the key handover list and each holder's owner (the Tether gateway, Nanite, the agents); the owner's acceptance of the
-pre-acceptance loss window; the isolated planner-verification instance (retire or keep); whether `/builder/classic` is retired
-(ported unless the owner says so); the stale sibling worktrees and dev descriptors of earlier Tachyon experiments (not carried).
-Known today and closed by the port, no live change proposed by this cell: the live app's `/api/plugins/` catch-all is unguarded
-and forwards to Torque with Tachyon's token, under the development posture the owner set.
+Director's rulings (2026-11-14, plan approved at `bea7158`):
+- `main` is frozen from P1 to cutover, fixes only, each tagged parity-carry. The cell gives the director one day's notice before
+  P1 (another team deploys from `main`).
+- The director owns the descriptor change at cutover and names every key holder then; the cell keeps the key list (section 8)
+  current.
+- Pre-acceptance loss window: **open**, with the owner (section 8, before the window, step 5).
+- The isolated planner-verification instance is not migrated; it stays on the old build until the director retires it.
+- `/builder/classic` is ported unless the owner says otherwise (asked).
+- The stale sibling worktrees and dev descriptors of earlier Tachyon experiments are not carried.
+- Live service tokens expiring before the cutover are re-issued on the live app by the director (not the port).
+
+Open, tracked: CW-20261114-0121, triage of the public-hygiene scan findings in the old tree and its history (a whole-repo scan
+reports them; until it is settled, CI scans `next/` only).
