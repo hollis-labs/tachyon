@@ -19,6 +19,7 @@ import (
 // after the database module has created the schema and the scheduler module its tables.
 func (t *tachyon) migrateFromCmd(ctx context.Context) *cobra.Command {
 	var source, report string
+	var allowUnchecked bool
 	cmd := &cobra.Command{
 		Use:   "migrate-from --source DIR",
 		Short: "Copy the old build's data (sqlite3 .backup copies of tachyon.db and jobs.db) into this new data directory, and prove it",
@@ -51,7 +52,8 @@ func (t *tachyon) migrateFromCmd(ctx context.Context) *cobra.Command {
 					"github":   cfg.Upstreams.GitHub.URL,
 					"cerberus": cfg.Upstreams.Cerberus.URL,
 				},
-				Report: report,
+				Report:         report,
+				AllowUnchecked: allowUnchecked,
 			})
 			out := c.OutOrStdout()
 			if r != nil && r.OK {
@@ -67,6 +69,7 @@ func (t *tachyon) migrateFromCmd(ctx context.Context) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&source, "source", "", "directory holding the .backup copies of tachyon.db and jobs.db (never the old data directory)")
+	cmd.Flags().BoolVar(&allowUnchecked, "allow-unchecked-instances", false, "rehearsals only: report a schedule whose upstream is not configured as not checked instead of failing")
 	cmd.Flags().StringVar(&report, "report", "", "report file (default: migrate-from-report.json beside the new database)")
 	return cmd
 }

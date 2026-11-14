@@ -151,4 +151,5 @@ Details: `docs/api-contract.md`.
 - **Upstream addresses must keep their exact form.** Write the Tether, GitHub and Cerberus upstream addresses in
   the override exactly as the old schedules' scopes record them (no trailing slash, the same socket path).
   - Object sync derives schedule ids from those strings.
-  - `migrate-from` refuses a configured upstream that differs and reports each scope.
+  - `migrate-from` refuses an upstream that differs, and one that is not configured at all.
+  - `--allow-unchecked-instances` is for rehearsals with blank upstreams, never for the cutover.

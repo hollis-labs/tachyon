@@ -124,8 +124,11 @@ func target(t *testing.T) *libstore.Store {
 	return st
 }
 
+// instance is the fixture scope's upstream address, configured as the cutover would.
+const instance = "unix:/run/cerberus.sock"
+
 func options(dir string) Options {
-	return Options{Source: dir, JobTypes: []string{objectSync}}
+	return Options{Source: dir, JobTypes: []string{objectSync}, Instances: map[string]string{"cerberus": instance}}
 }
 
 func TestMigratesEveryRowAndProvesIt(t *testing.T) {
@@ -133,7 +136,6 @@ func TestMigratesEveryRowAndProvesIt(t *testing.T) {
 	st := target(t)
 	o := options(dir)
 	o.Report = filepath.Join(t.TempDir(), ReportFile)
-	o.Instances = map[string]string{"cerberus": "unix:/run/cerberus.sock"}
 	r, err := Run(context.Background(), st, o)
 	if err != nil {
 		t.Fatal(err)
@@ -273,6 +275,10 @@ func TestRefusals(t *testing.T) {
 			},
 			want: "is not the configured upstream",
 		},
+		"an upstream that is not configured": {
+			setup: func(_ *testing.T, _ string, _ *libstore.Store, o *Options) { o.Instances = nil },
+			want:  "upstream cerberus is not configured",
+		},
 		"a source with an integrity failure": {
 			edit: func(src, _ *sql.DB) {
 				_, _ = src.Exec(`PRAGMA foreign_keys = OFF; INSERT INTO approval_defers(item_id, until_ns, created_ns) VALUES ('missing', 1, 1)`)
@@ -305,6 +311,20 @@ func TestRefusals(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A rehearsal may run with the upstreams blank, only when it says so; the scope is then reported as
+// not checked.
+func TestUncheckedInstancesOnlyWhenAllowed(t *testing.T) {
+	o := options(fixture(t, nil))
+	o.Instances, o.AllowUnchecked = nil, true
+	r, err := Run(context.Background(), target(t), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Schedules) != 1 || !strings.HasPrefix(r.Schedules[0].Instance, "not checked") {
+		t.Fatalf("schedules %+v", r.Schedules)
 	}
 }
 

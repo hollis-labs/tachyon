@@ -15,8 +15,8 @@
 //     56 migration names this build knows. jobs.db must hold exactly the scheduler tables that the
 //     pinned libs sqlstore creates.
 //  4. Every schedule's job type is one the new build registers, and every schedule id is the hash of
-//     the scope recorded for it. A scope's upstream address is compared with the configured upstream
-//     when one is configured.
+//     the scope recorded for it. Each scope's upstream address must equal the configured upstream
+//     byte for byte; an unconfigured upstream fails too, unless a rehearsal allows it explicitly.
 //  5. The target holds no rows.
 //  6. The copy runs in SQL, never through Go values: both copies are ATTACHed and each table is
 //     copied with INSERT ... SELECT in foreign-key order, in one transaction, foreign keys checked at
@@ -72,8 +72,12 @@ type Options struct {
 	// JobTypes are the scheduler job types the new build registers.
 	JobTypes []string
 	// Instances maps a schedule scope's provider (tether, github, cerberus) to the configured
-	// upstream address; a provider with no entry, or "", is reported as not checked.
+	// upstream address. A schedule whose provider has no configured address fails the run: an
+	// unchecked scope is unknown, and unknown means fail (plan section 5).
 	Instances map[string]string
+	// AllowUnchecked reports such a schedule as not checked instead of failing. For rehearsals,
+	// which run with every upstream blank; never for the cutover.
+	AllowUnchecked bool
 	// Report is the report file. Empty: no file is written (tests).
 	Report string
 	// Now is the clock; nil is time.Now.
@@ -255,7 +259,7 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 	}
 
 	// 4: schedules.
-	if r.Schedules, err = checkSchedules(ctx, src, jobs, o.JobTypes, o.Instances); err != nil {
+	if r.Schedules, err = checkSchedules(ctx, src, jobs, o.JobTypes, o.Instances, o.AllowUnchecked); err != nil {
 		return err
 	}
 
@@ -476,7 +480,7 @@ type scope struct {
 // hash of the scope recorded for it (the old build's sourceID: "object-sync-" + the first 16 bytes
 // of sha256 of the scope JSON, hex). With an upstream configured, the scope's instance must equal it
 // byte for byte, or the new build's sync would compute other ids and orphan the copied schedules.
-func checkSchedules(ctx context.Context, src, jobs *sql.DB, types []string, instances map[string]string) ([]ScheduleReport, error) {
+func checkSchedules(ctx context.Context, src, jobs *sql.DB, types []string, instances map[string]string, allowUnchecked bool) ([]ScheduleReport, error) {
 	rows, err := jobs.QueryContext(ctx, `SELECT id, job_type, enabled FROM gosched_schedules ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -534,6 +538,9 @@ func checkSchedules(ctx context.Context, src, jobs *sql.DB, types []string, inst
 		switch want := instances[parsed.Provider]; want {
 		case "":
 			s.Instance = "not checked: upstream " + parsed.Provider + " not configured"
+			if !allowUnchecked {
+				errs = append(errs, fmt.Errorf("schedule %s: upstream %s is not configured, so its scope instance %q cannot be checked; configure tachyon.upstreams.%s.url exactly as the cutover will (--allow-unchecked-instances is for rehearsals only)", s.ID, parsed.Provider, parsed.Instance, parsed.Provider))
+			}
 		case parsed.Instance:
 			s.Instance = "equal to the configured " + parsed.Provider + " upstream"
 		default:
