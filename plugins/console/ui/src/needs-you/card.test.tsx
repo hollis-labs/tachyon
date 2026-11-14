@@ -29,13 +29,35 @@ describe('typed ask cards (read-only)', () => {
     expect(screen.queryByRole('button', { name: /approve|answer/i })).toBeNull() // read-only: no answer buttons
   })
 
-  it('gives one copyable answer line per option: a reply to the ask with answer.option', () => {
-    const line = answerCall(decision, 'm1', decision.options![1])
-    expect(line.startsWith('tether_message_post ')).toBe(true)
-    expect(JSON.parse(line.slice('tether_message_post '.length))).toEqual({ kind: 'message', to: ['@lead'], in_reply_to: 'm1', answer: { option: 'patch' }, body: 'Patch the kit' })
+  it('gives one copyable answer line per option, built from ids only and single-quoted', () => {
+    const line = answerCall(decision, 'm1', decision.options![1])!
+    expect(line).toBe(`tether_message_post '{"kind":"message","to":["@lead"],"in_reply_to":"m1","answer":{"option":"patch"},"body":"Answer: patch"}'`)
+    expect(line).not.toContain('Patch the kit') // the label is sender text: never copied
     render(<AskCardView card={decision} messageId="m1" />)
     expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(2)
     expect(screen.getByText(/Answering from Tachyon is not available yet/)).toBeTruthy()
+  })
+
+  const HOSTILE = ['$(touch /tmp/pwned)', '`id`', '"', "'", ';', '|', 'a\nb']
+
+  it('never copies sender text: a hostile label is left out, a hostile id gives no line', () => {
+    for (const bad of HOSTILE) {
+      const label = `Keep ${bad} it`
+      const fromLabel = answerCall(decision, 'm1', { id: 'keep', label } as { id: string })!
+      expect(fromLabel).toBe(`tether_message_post '{"kind":"message","to":["@lead"],"in_reply_to":"m1","answer":{"option":"keep"},"body":"Answer: keep"}'`)
+      expect(answerCall(decision, 'm1', { id: `keep${bad}` })).toBeNull()
+      expect(answerCall(decision, `m1${bad}`, { id: 'keep' })).toBeNull()
+      expect(answerCall({ ...decision, reply_to: `@lead${bad}` }, 'm1', { id: 'keep' })).toBeNull()
+    }
+    expect(answerCall({ ...decision, reply_to: undefined }, 'm1', { id: 'keep' })).toBeNull()
+    // The card shows no copy line for a hostile id, and says why.
+    render(<AskCardView card={{ ...decision, options: [{ id: 'x$(id)', label: 'Bad' }, { id: 'keep', label: 'Keep $(id)' }] }} messageId="m1" />)
+    expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(1)
+    expect(screen.getByText(/Bad: No answer line/)).toBeTruthy()
+    for (const code of Array.from(document.querySelectorAll('code'))) {
+      expect(code.textContent).not.toMatch(/[$`|;\n]/)
+      expect((code.textContent ?? '').split("'").length).toBe(3) // exactly the two wrapping quotes
+    }
   })
 
   it('opens from a needs-you row', async () => {

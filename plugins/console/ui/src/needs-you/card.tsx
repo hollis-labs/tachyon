@@ -22,14 +22,26 @@ export const CARD = {
   ifNobody: (label: string, at?: string) => `If nobody answers: ${label}${at ? ` (at ${at})` : ''}`,
   answerWith: 'Answer with',
   answerHelp: 'Answering from Tachyon is not available yet. Send one of these from your own Tether CLI or chat session.',
-  noHandle: 'the sender\'s @handle',
+  noLine: 'No answer line: the sender\'s @handle or an id could not be checked. Reply with tether_message_post, in_reply_to set to this message.',
   copy: 'Copy',
   copied: 'Copied',
 } as const
 
-/** The tether_message_post call that answers the ask with one option, sent as a reply so it settles it. */
-export function answerCall(card: AskCard, messageId: string, option: { id: string; label: string }) {
-  return `tether_message_post ${JSON.stringify({ kind: 'message', to: [card.reply_to || CARD.noHandle], in_reply_to: messageId, answer: { option: option.id }, body: option.label })}`
+/** What may appear in a copied line: ids and a handle, never sender text (labels, bodies), which could run as shell
+ * when pasted. None of these patterns admits a quote, a space, $, `, ;, | or a newline. */
+const SAFE_ID = /^[A-Za-z0-9._:-]+$/
+const SAFE_HANDLE = /^@[a-z][a-z0-9_-]{0,63}$/
+
+/**
+ * The tether_message_post call that answers the ask with one option, as a reply so it settles it. Built from the
+ * message id, the option id and the asker's @handle only, each checked against a strict pattern, and wrapped in
+ * single quotes; null when any of them fails, so no line is offered rather than an unsafe one.
+ */
+export function answerCall(card: AskCard, messageId: string, option: { id: string }): string | null {
+  const to = card.reply_to ?? ''
+  if (!SAFE_ID.test(messageId) || !SAFE_ID.test(option.id) || !SAFE_HANDLE.test(to)) return null
+  const args = { kind: 'message', to: [to], in_reply_to: messageId, answer: { option: option.id }, body: `Answer: ${option.id}` }
+  return `tether_message_post '${JSON.stringify(args)}'`
 }
 
 function CopyLine({ text }: { text: string }) {
@@ -73,7 +85,10 @@ export function AskCardView({ card, messageId }: { card: AskCard; messageId: str
         <div className="flex flex-col gap-1.5 border-t border-border-subtle pt-2">
           <span className="text-label font-medium text-fg-secondary">{CARD.answerWith}</span>
           <p className="text-label text-fg-muted">{CARD.answerHelp}</p>
-          {options.map((o) => <CopyLine key={o.id} text={answerCall(card, messageId, o)} />)}
+          {options.map((o) => {
+            const line = answerCall(card, messageId, o)
+            return line ? <CopyLine key={o.id} text={line} /> : <p key={o.id} className="text-label text-fg-muted">{o.label}: {CARD.noLine}</p>
+          })}
         </div>
       )}
     </div>
