@@ -137,7 +137,7 @@ export function AgentsPage() {
             </div>
             <div className="hidden items-center gap-2 sm:flex">
               <label className="dash-caption text-fg-muted" htmlFor="agents-group">{AGENTS.groupBy}</label>
-              <select id="agents-group" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="rounded-md border border-border bg-panel px-2 py-1 dash-caption text-fg">
+              <select id="agents-group" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="h-6 rounded-full border border-border bg-transparent px-2 text-label text-fg-secondary">{/* KIT-GAP: a chip-styled select, as on Activity's Apps filter; the golden draws a "Workspace" chip. */}
                 {GROUPS.map((g) => <option key={g} value={g}>{AGENTS.group[g]}</option>)}
               </select>
               {/* The golden's switch: one bordered group, sentence case, the active view filled. Kit Tabs, as in the page header; the kit-dashboard view tabs are upper-case and take no class. */}
