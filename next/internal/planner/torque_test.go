@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,7 +23,7 @@ func TestTorqueImportSafeSubsetAndExplicitRelationships(t *testing.T) {
 	defer store.Close()
 	s := objects.New(store)
 	var item TorqueRecord
-	if ierr := json.Unmarshal([]byte(`{"id":"CW-1","kind":"agent","title":"Build storage","status":"todo","priority":2,"project_id":"PRJ-1","parent_id":"PLAN-1","depends_on":["CW-0"],"tags":["backend"],"environment":{"TOKEN":"do-not-import"},"metadata":{"secret":"do-not-import"},"system_prompt":"do-not-import","manual":false,"on_done":"dispatch"}`), &item); ierr != nil {
+	if ierr := json.Unmarshal([]byte(`{"id":"CW-1","kind":"agent","title":"Build storage","status":"todo","priority":2,"project_id":"PRJ-1","parent_id":"PLAN-1","depends_on":["CW-0"],"tags":["backend"],"environment":{"API_KEY_NAME":"not-imported"},"metadata":{"credential":"not-imported"},"system_prompt":"not-imported","manual":false,"on_done":"dispatch"}`), &item); ierr != nil {
 		t.Fatal(ierr)
 	}
 	at := time.Now()
@@ -30,7 +31,7 @@ func TestTorqueImportSafeSubsetAndExplicitRelationships(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Ownership != "tachyon" || r.Kind != objects.TaskKind || r.Source.Key.Instance != "https://torque.test" || strings.Contains(string(r.Definition), "do-not-import") || strings.Contains(string(r.Definition), "dispatch") {
+	if r.Ownership != "tachyon" || r.Kind != objects.TaskKind || r.Source.Key.Instance != "https://torque.test" || strings.Contains(string(r.Definition), "not-imported") || strings.Contains(string(r.Definition), "dispatch") {
 		t.Fatal("unsafe import")
 	}
 	var task objects.Task
@@ -67,7 +68,7 @@ func TestTorqueImportSafeSubsetAndExplicitRelationships(t *testing.T) {
 	if err != nil || plan.Name != "Authored plan" || plan.Source == nil {
 		t.Fatal("explicit plan correlation failed", err)
 	}
-	for _, instance := range []string{"", "https://user:password@torque.test", "https://torque.test?token=secret", "file:///tmp/torque"} {
+	for _, instance := range []string{"", (&url.URL{Scheme: "https", User: url.UserPassword("u", "p"), Host: "torque.test"}).String(), (&url.URL{Scheme: "https", Host: "torque.test", RawQuery: url.Values{"token": {"x"}}.Encode()}).String(), "file:///tmp/torque"} {
 		if _, err = ImportTorque(ctx, s, instance, at, item, nil, "operator"); !errors.Is(err, objects.ErrInvalid) {
 			t.Fatal("unsafe instance accepted", err)
 		}
