@@ -16,7 +16,7 @@ locations, exact override spellings) are kept outside it, in the program's Tesse
 
 | Question | Answer |
 |---|---|
-| Migrated data or fresh start? | **Migrated.** In use daily. Three SQLite files: `tachyon.db` (about 125 MiB, 96 tables, 56 schema migrations plus 11 baseline tables created outside the ledger), `jobs.db` (about 23 MiB, the scheduler: 6 operator-enabled schedules and their fire history) and `plugins/launch-ops/launches.db` (one empty table). Appendix A. |
+| Migrated data or fresh start? | **Migrated.** In use daily. Three SQLite files: `tachyon.db` (about 125 MiB, 96 tables at migration 056, 97 at 058, 56 schema migrations plus 11 baseline tables created outside the ledger), `jobs.db` (about 23 MiB, the scheduler: 6 operator-enabled schedules and their fire history) and `plugins/launch-ops/launches.db` (one empty table). Appendix A. |
 | Binary variant | `app-host` (embedded SPA, same-origin API, SSE streams, one WebSocket, subprocess plugins). |
 | Who issues identity? | Tachyon itself, through the `identity` module: one owner created offline, one API key per machine credential (section 4). Today Tachyon has no accounts of its own: browser sessions come through Tangent and agents hold Tachyon's own hashed service tokens. |
 | Routes: public, scoped, self-authenticating | Every `/api/` route gets a `tachyon.<area>.<verb>` scope or `authenticated` (B1's `next/docs/api-contract.md`). Public: `/healthz` and the identity module's own sign-in routes. No open mount. |
@@ -298,8 +298,11 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
    old binary, the old env file and the old descriptor entry aside (rollback).
 2. `tachyon migrate-from --source <the step-1 backup directory>` into the **new, empty** data directory; report attached; every
    table matches.
+   The cutover command is scripted without `--allow-unchecked-instances` (a rehearsal-only flag), and the report's top-level
+   `allow_unchecked_instances` must read false before going on.
 3. Offline bootstrap: `tachyon identity setup --username <owner>` (password on stdin), then `tachyon access reissue --out-dir
-   <private dir>`.
+   <private dir>`. The key list is the set of tokens active at that moment. If reissue fails part-way, the recovery is a fresh
+   step 2 into a new empty data directory (keys cannot be revoked through identity's Go API yet, CW-20261114-0131).
 4. Apply the descriptor change (release binary, override with outbound features off, the new data directory); start the unit.
    Check that every Tether hub origin that points at Tachyon is connected again (`tether_gateway_status`); if one is marked failed,
    the owner reloads the hub (an origin that failed during a restart is not retried until a reload).
@@ -453,25 +456,28 @@ tables, columns, keys, indexes and the decision-log append-only rule (a trigger 
 through `Dialect().Rebind`. SQLite-only constructs found in the old code are replaced or isolated behind a per-dialect helper:
 `AUTOINCREMENT` (identity columns in Postgres, with the sequence set from the copied high-water mark), `strftime` defaults,
 `INSERT OR IGNORE`/`OR REPLACE`, JSON functions, and values stored with a different class than declared (`chat_events.body` is
-declared TEXT and holds BLOBs: it becomes `bytea` in Postgres, and the copy proves the bytes unchanged). CI runs the `next/`
+declared TEXT and may hold BLOBs: it becomes `bytea` in Postgres, and the copy proves the bytes unchanged). CI runs the `next/`
 tests on SQLite and on Postgres (`SUBSTRATE_TEST_POSTGRES_DSN`, the cell's scratch database); a test that cannot run on one
 dialect says why.
 
 **Table classes.** Every table belongs to one class; a test asserts the mapping covers every table in both migration sets, and no
-foreign key or transaction crosses classes (today none does: the only foreign keys are inside the service-identity group (A) and
-around `objects` (C)). Cursors, watermarks and outboxes live with the data they track.
+foreign key or transaction crosses classes (today none does: every foreign key on the live schema links two tables of the same class). Cursors, watermarks and outboxes live with the data they track.
 
 | Class | Meaning | Store | Tables |
 |---|---|---|---|
-| A (11 app tables + module tables) | small, local, always boots: settings, definitions, credentials | local SQLite, always | `app_settings`, `service_identities`, `service_tokens`, `service_identity_agents`, `service_proxy_pin`, `chat_approval_rules`, `console_item_state`, `library_parts`, `library_part_revisions`, `part_refs`, `tachyon_migrations`; the B3 credential-mapping table; the identity module's tables (so sign-in works when Postgres is down); the scheduler's `gosched_*` tables (schedule definitions; fire history pruning is a follow-up) |
-| B (25) | events, logs, telemetry, caches, replay | Postgres first | `agents_events`, `agents_samples`, `agents_stream`, `agents_gaps`, `agents_sessions`, `agents_collector_state`, `agents_controls`, `bus_events`, `chat_events`, `chat_activity`, `alert_events`, `alert_seq`, `alert_source_cursor`, `object_sync_runs`, `fileview_audit`, `forge_audit`, `planner_events`, `planner_stream`, `planner_ingest_state`, `card_event_outbox`, `card_event_scan`, `catalog_snapshots`, `api_cache`, `provider_roster_cache`, `transcript_snapshot` |
+| A (11 app tables + module tables) | small, local, always boots: settings, definitions, credentials | local SQLite, always | `app_settings`, `service_identities`, `service_tokens`, `service_identity_agents`, `service_proxy_pin`, `chat_approval_rules`, `console_item_state`, `library_parts`, `library_part_revisions`, `part_refs`, `tachyon_migrations`; the B3 credential-mapping table; the identity module's tables (so sign-in works when Postgres is down); the scheduler's definitions and claim/lease state (`gosched_schedules`, `gosched_schedule_options` and whatever the scheduler needs to fire) |
+| B (26 app tables + scheduler history) | events, logs, telemetry, caches, replay | Postgres first | `seat_status` (057), the scheduler's fire history (`gosched_fires`, `gosched_fire_options`, `gosched_pruned`; history writes are best-effort and never block a fire when Postgres is down), `agents_events`, `agents_samples`, `agents_stream`, `agents_gaps`, `agents_sessions`, `agents_collector_state`, `agents_controls`, `bus_events`, `chat_events`, `chat_activity`, `alert_events`, `alert_seq`, `alert_source_cursor`, `object_sync_runs`, `fileview_audit`, `forge_audit`, `planner_events`, `planner_stream`, `planner_ingest_state`, `card_event_outbox`, `card_event_scan`, `catalog_snapshots`, `api_cache`, `provider_roster_cache`, `transcript_snapshot` |
 | C (60) | domain data | Postgres later | `action_runs`, `agent_launch_bindings`, `alerts`, `app_agent_messages`, `app_agent_threads`, `approval_batches`, `approval_decision_log`, `approval_defers`, `approval_item_index`, `approval_items`, `approval_proof_receipts`, `approval_secrets`, `card_deliveries`, `card_effect_runs`, `catalog_change_paths`, `catalog_changes`, `catalog_entities`, `catalog_state`, `chat_bookmarks`, `chat_card_refs`, `chat_context`, `chat_cursors`, `chat_imports`, `chat_message_keys`, `chat_outbox`, `chat_outbox_session_links`, `chat_plan_steps`, `chat_plans`, `chat_publications`, `chat_reply_intents`, `chat_scratchpads`, `chat_session_lineage`, `chat_session_links`, `chat_sync_status`, `chat_thread_state`, `chat_topics`, `chat_turn_revisions`, `chat_turns`, `chat_workspace_items`, `execution_items`, `forge_idempotency`, `forge_index_state`, `forge_pr_index`, `forge_review_drafts`, `object_links`, `object_revisions`, `object_sources`, `object_sync_state`, `object_sync_watermarks`, `objects`, `planner_items`, `planner_promotions`, `planner_relation_index`, `planner_task_meta`, `pr_agent_links`, `provider_actions`, `provider_run_links`, `terminal_proposals`, `terminal_runs`, `terminal_sessions` |
 
+The class mapping is kept current with the old schema: a new old migration (section 1, parity-carry) also gets a class here.
+At migration 058 there are 97 tables: A 11, B 26, C 60 (058 adds a column to `chat_plans`, no table).
+
 **Store topology.** At cutover all three classes are in the one SQLite database, as today. Afterwards A stays in a local SQLite
-store and B, then C, move to Postgres. That needs the `database` module to give an app a second named store and to start when that
-store is unreachable; it is a framework change, coordinated with the program (Substrate driver and the Postgres coordinator).
-Until it exists, code reaches each table through one accessor per class (`stores.A(app)`, `stores.Data(app)`), both returning the
-same store today, so the later split changes wiring, not callers.
+store and B, then C, move to Postgres. That needs the `database` module to give an app a second named store that may be
+unreachable at start: the program's framework change CW-20261114-0151 (Substrate PR #44: `database.stores.<name>`,
+`database.Named(app, name)` with `required: false`, degraded health, `database.Gate` for the 503). `stores.A(app)` is the default
+store and `stores.Data(app)` the named store `data`; until #44 is available both return the default store, so the split changes
+wiring, not callers.
 
 **When Postgres is down.** The app still boots on its A store. `/healthz` reports `degraded` with `database unavailable`; the UI
 shows a banner; every data endpoint answers `503` with code `database_unavailable`; writes are refused, never queued (no durable
@@ -480,7 +486,8 @@ returns; scheduled fires that need data fail and are retried under each schedule
 unreachable Postgres and checks all of this.
 
 **Slices added.** PG1: the Postgres migration set, the dialect helpers and the CI matrix (after B2; it also covers every later
-slice's tables). PG2: the class accessors, the class-mapping test and the outage behaviour (once the framework change exists;
-before it, the accessors and tests land with PG1). PG3, after acceptance and outside this plan: the Postgres copy for B, then C,
+slice's tables; CI uses a postgres:17 service container, local runs the cell's scratch database). PG2: the class accessors, the
+class-mapping test and the outage behaviour on `database.Named` (after CW-20261114-0151 lands; before it, the accessors and
+tests land with PG1). PG3, after acceptance and outside this plan: the Postgres copy for B, then C,
 with its own rehearsal and rollback.
 
