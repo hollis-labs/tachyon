@@ -19,10 +19,10 @@ describe('mail-wake folding', () => {
     const rows = screen.getAllByRole('button', { name: /handled mail/ })
     expect(rows).toHaveLength(2) // the reply between them splits the runs
     expect(rows[0].textContent).toContain('archie handled mail · 2 turns')
-    expect(rows[0].textContent).toContain('Merged #689.') // the newest reply's first line
+    expect(rows[0].textContent).toContain('Deploying.') // the newest reply's last line: an ask usually comes last
     expect(rows[1].textContent).toContain('archie handled mail')
     expect(rows[1].textContent).not.toContain('turns')
-    expect(screen.queryByText('Deploying.')).toBeNull()
+    expect(screen.queryByText('Merged #689.')).toBeNull()
     expect(screen.getByText('Deployed.')).toBeTruthy() // an ordinary reply is never folded
     expect(screen.getByText('Ship it')).toBeTruthy()
     fireEvent.click(rows[0])
@@ -30,6 +30,13 @@ describe('mail-wake folding', () => {
     const opened = rows[0].closest('[data-folded="mail-wake"]')?.textContent ?? ''
     expect(opened).toContain('Read 1 message from')
     expect(opened).toContain('Deploying.')
+  })
+
+  it('previews the last line that says something, skipping a mailbox closing line', () => {
+    render(<ThreadView loading={false} hasMore={false} onLoadOlder={() => {}} messages={[msg('w', 1, { wake: 'mail', body: 'Merged #690.\n\n**Plan cp_1:** it still needs your terminal approval.\n\nI marked the message read.' })]} />)
+    const row = screen.getByRole('button', { name: /handled mail/ })
+    expect(row.textContent).toContain('Plan cp_1: it still needs your terminal approval.')
+    expect(row.textContent).not.toContain('marked the message read')
   })
 
   it('shows a streaming wake reply as still responding', () => {

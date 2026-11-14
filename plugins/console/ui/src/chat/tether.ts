@@ -28,7 +28,7 @@ export interface Turn {
     sequence?: number
     output_id?: string
     /** Routed-message metadata. input_classes and input_sources are comma-joined (or arrays); empty unless Tether proved them. */
-    attribution?: { launch_id?: string; runtime?: string; input_classes?: string | string[]; input_sources?: string | string[]; audience?: string }
+    attribution?: { launch_id?: string; runtime?: string; input_classes?: string | string[]; input_sources?: string | string[]; input_triage?: string | string[]; audience?: string }
   }
   stage_trace?: NonNullable<ChatMessage['info']>['trace']
 }
@@ -136,7 +136,7 @@ export function messagesFor(a: ChatAgent, items: Turn[], sent: Sent[]): ChatMess
       threadId: id,
       from: 'agent',
       audience: replyAudience(t),
-      ...(wakeOf(t.source_message?.attribution?.input_sources) ? { wake: 'mail' as const } : {}),
+      ...(wakeOf(t.source_message?.attribution?.input_sources, t.source_message?.attribution?.input_triage) ? { wake: 'mail' as const } : {}),
       body: t.content,
       at: Date.parse(t.created_at),
       tools: [],

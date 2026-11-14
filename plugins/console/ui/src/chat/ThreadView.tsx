@@ -107,8 +107,17 @@ function Bubble({ m, agentLabel, marks }: { m: ChatMessage; agentLabel: string; 
 
 const renderMessage = (item: ChatItem) => item.kind === 'message' ? item.content : null
 
-/** The first line of a reply, without Markdown punctuation, for a folded row's preview. */
-const firstLine = (body: string) => (body.split('\n').map((l) => l.replace(/^[#>*\-\s`]+/, '').trim()).find(Boolean) ?? '').slice(0, 160)
+/** A short closing line about the mailbox itself ("I marked the message read."), which says nothing about the work. */
+const housekeeping = /^(i('ve| have)? )?marked (the|it|them|both|all)\b.{0,40}\bread\b|^i'm stopping here/i
+/**
+ * A folded row's preview: the reply's last line, without Markdown punctuation, skipping a short mailbox closing
+ * line, because an ask usually comes last. Display only: it never decides what folds.
+ */
+const lastLine = (body: string) => {
+  const lines = body.split('\n').map((l) => l.replace(/^[#>*\-\s`]+/, '').replace(/\*\*|__|`/g, '').trim()).filter(Boolean)
+  const said = lines.filter((l) => !(l.length < 100 && housekeeping.test(l)))
+  return ((said.length ? said : lines).at(-1) ?? '').slice(0, 160)
+}
 
 /**
  * Consecutive replies to mail wakes, folded into one row (CW-20261114-0023b): mail is a record, not a turn, so
@@ -126,7 +135,7 @@ export function MailWakeRow({ messages, agentLabel, marks }: { messages: ChatMes
         <ChevronRight aria-hidden className={`size-3 shrink-0 ${open ? 'rotate-90' : ''}`} />
         <Mail aria-hidden className="size-3 shrink-0" />
         <span className="shrink-0">{label} handled mail{messages.length > 1 ? ` · ${messages.length} turns` : ''}</span>
-        <span className="min-w-0 flex-1 truncate text-fg-muted group-hover:text-fg">{last.streaming ? '● Responding…' : firstLine(last.body)}</span>
+        <span className="min-w-0 flex-1 truncate text-fg-muted group-hover:text-fg">{last.streaming ? '● Responding…' : lastLine(last.body)}</span>
         <span className="shrink-0 text-fg-muted">{time}</span>
       </button>
       {open && <div className="mt-3 flex flex-col gap-4">{messages.map((m) => <Bubble key={m.id} m={m} agentLabel={agentLabel} marks={marks} />)}</div>}
