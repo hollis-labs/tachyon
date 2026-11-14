@@ -328,7 +328,8 @@ after acceptance, so a rollback never needs a revert there.
 
 `/healthz` ok (database, scheduler, plugins); `GET /api/setup` → `setup_required: false`; sign in through the real proxy URL; one
 write and one read (a planner item edit, then read back); an unknown `Host` refused; an unauthenticated `/api/` call refused,
-including an unknown `/api/plugins/...` path; an API key holding no operator scope refused on an approval resolve; each SSE
+including an unknown `/api/plugins/...` path; an unknown `/api/plugins/...` path refused for the signed-in owner too (only the
+allowlisted console paths are forwarded, B1); an API key holding no operator scope refused on an approval resolve; each SSE
 stream (console events, activity) connects and receives a keepalive; the terminal WebSocket connects; the 6 object-sync schedules
 listed with the same enabled state as before; one approval listed with its decision log; each key holder's one call succeeds and
 its old token gets 401; the session cookie is `HttpOnly`, `Secure` and `SameSite=Strict` through the proxy; the Tether hub's
