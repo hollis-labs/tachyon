@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { audienceOf, wakeOf } from './inputs'
 import { toMessage } from './chatapi'
-import mailWake from './fixtures/input-sources/mail_wake.json'
+import mailWake from './fixtures/reply-audience/unknown_mail_wake.json'
 
 const replyAudience = import.meta.glob('./fixtures/reply-audience/*.json', { eager: true, import: 'default' }) as Record<string, { event?: { input_sources?: string[] }; message_metadata?: { input_sources?: string } }>
 
@@ -22,12 +22,17 @@ describe('input attribution', () => {
     for (const other of ['chat_send', 'session_turn', 'mcp_send_turn', 'routing_reply', 'system', 'mail_wake,chat_send', '', undefined]) expect(wakeOf(other)).toBeUndefined()
   })
 
-  it('never folds an output without input_sources: every reply-audience fixture, queued and unknown ones included', () => {
-    const cases = Object.entries(replyAudience).filter(([k]) => !k.endsWith('index.json'))
-    expect(cases.length).toBeGreaterThan(5)
-    for (const [, f] of cases) {
-      expect(wakeOf(f.event?.input_sources)).toBeUndefined()
-      expect(wakeOf(f.message_metadata?.input_sources)).toBeUndefined()
+  it("folds exactly Tether's generated mail-wake cases, in both wire shapes, and never an unproven binding", () => {
+    const folded = Object.entries(replyAudience)
+      .filter(([k]) => !k.endsWith('index.json'))
+      .map(([k, f]) => {
+        expect(wakeOf(f.event?.input_sources)).toBe(wakeOf(f.message_metadata?.input_sources)) // the event and the metadata agree
+        return [k.replace(/^.*\//, '').replace('.json', ''), wakeOf(f.event?.input_sources)] as const
+      })
+    expect(folded.length).toBe(11)
+    expect(folded.filter(([, w]) => w === 'mail').map(([k]) => k).sort()).toEqual(['agent', 'unknown_mail_wake', 'unknown_shared_operator_credential'])
+    for (const unproven of ['unknown_no_input', 'unknown_queued_inputs_present', 'unknown_submission_unsettled', 'unknown_failed_input_ignored']) {
+      expect(folded.find(([k]) => k === unproven)?.[1]).toBeUndefined()
     }
   })
 

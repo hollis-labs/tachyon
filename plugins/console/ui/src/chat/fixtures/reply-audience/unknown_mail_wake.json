@@ -30,5 +30,5 @@
     "session_id": "s1",
     "turn_id": "turn-1"
   },
-  "note": "PROVISIONAL, hand-written from the contract agreed for CW-20261114-0061 (input_sources: proven binding, same order as input_ids, comma-joined in metadata, an array in the event). Replace with Tether's generated reply-audience fixture once 0061 lands."
+  "note": "event is the session.turn_output payload; message_metadata is the audience part of the routed message metadata. Ids are replaced by stable placeholders."
 }
