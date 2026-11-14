@@ -15,6 +15,8 @@ import { TabStrip } from './TabStrip'
 import './PlannerPanel'
 import { DEMO_DOC } from './fixtures'
 import { useActivity, useBookmarks, usePlan, useRules, useThreadEvents, useTopics, useWork } from './data'
+import { ArtifactsPanel } from './ArtifactsPanel'
+import { DEMO_WORKSPACE } from '../drawer/model'
 import { ActivityPanel, ApprovalsPanel, BookmarksPanel, DocPanel, FilesPanel, PlanPanel, TopicsPanel, WorkPanel } from './Panels'
 
 const TEXTY = /^(text\/|application\/(json|xml|x-yaml|yaml))|\.(md|txt|json|ya?ml|ts|tsx|go|css|html)$/i
@@ -116,7 +118,10 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
       case 'activity': return <ActivityPanel events={activity.events} hasMore={activity.hasMore} loading={activity.loading} error={activity.error} comment={activity.comment} more={activity.more} />
       case 'approvals': return <ApprovalsPanel blocks={blocks} commit={conv?.commit} agent={thread.title} rules={rules.rules} revoke={rules.revoke} />
       case 'files': return <FilesPanel threadRef={ref} demo={DEMO} onOpenDoc={(i) => void openDocFor(i)} />
-      case 'doc': return <DocPanel doc={a.doc ?? (DEMO ? DEMO_DOC : null)} onShare={() => void shareDoc()} onClose={() => { a.setFull(false); a.pick('files') }} />
+      case 'doc': {
+        const doc = a.doc ?? (DEMO ? DEMO_DOC : null)
+        return <ArtifactsPanel threadRef={ref} demo={DEMO ? DEMO_WORKSPACE : undefined} doc={doc} docPanel={<DocPanel doc={doc} onShare={() => void shareDoc()} onClose={() => { a.setFull(false); a.openDoc(null); a.pick('doc'); a.setFull(false) }} />} onOpenRef={(i) => void openDocFor(i)} />
+      }
       case 'scratch': return <ScratchPane threadRef={ref} onInsert={(t) => conv?.onInsert(t)} />
       default: return panelSet.tabs.find((t) => t.id === a.panel)?.render?.() ?? null
     }
@@ -148,7 +153,7 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
       <TabStrip label="Panels" activeKey={a.panel}>
         {tabs.map((t) => (
           <button key={t.id} type="button" role="tab" id={`aside-tab-${t.id}`} aria-selected={a.panel === t.id} aria-controls="aside-panel" onClick={() => a.pick(t.id)} className={cn('inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-label text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring', a.panel === t.id && 'border border-border bg-selection text-fg')}>
-            {t.label}{counts[t.id] && <small className="font-mono text-caption text-fg-faint">{counts[t.id]}</small>}{t.id === 'doc' && <small className="font-mono text-caption text-fg-faint">⤢</small>}
+            {t.label}{counts[t.id] && <small className="font-mono text-caption text-fg-faint">{counts[t.id]}</small>}
           </button>
         ))}
       </TabStrip>
