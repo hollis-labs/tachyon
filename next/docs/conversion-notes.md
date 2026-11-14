@@ -7,12 +7,10 @@ its rows. Plan: `docs/substrate-port-plan.md`. Contract: `docs/api-contract.md`.
 
 Open items that need a decision or a change outside this cell:
 
-1. **BOM pins (Substrate CW-20261114-0093).**
-   - The old build uses `libs/mesh/core` v0.9.0 and `libs/ui/ui-go` v0.4.0; the BOM pins v0.6.0 and v0.1.0.
-   - `next/` imports neither in B1, so nothing is lost yet.
-   - The slice that first needs either one (Tether messaging for chat and alerts; the ui-go helpers) must use the BOM
-     version or wait for the pin change, and records any lost feature here.
-   - `libs/mcp/plugin-mcp` is newer in the BOM (v0.6.0 against v0.3.0); `next/` takes it through `pluginhost`.
+1. **BOM pins: closed.** Substrate #43 raised the BOM to `libs/ui/ui-go` v0.4.0 and `libs/mesh/core` v0.10.0
+   (CW-20261114-0093). `next/` is pinned to Substrate 035e0d33 (`pins sync`). Nothing was lost: `next/` uses
+   neither library's older API, and the slices that bring Tether messaging and the ui-go helpers start on the new
+   pins.
 2. **Identity step-up (Substrate CW-20261114-0095).** There is no re-authentication before a high-risk resolve. The
    operator check is kind user plus `tachyon.operator`. A design note, not blocking.
 3. **Scheduler health.** `/healthz` reports `database` and `plugins`. The plan's post-cutover check also names the
