@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
-import { FilterChipGroup } from '@hollis-labs/kit-dashboard/data'
 import { DashboardSearchToolbar, DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
-import { SegmentedProgress } from '@planner/shared'
+import { Chip, SegmentedProgress } from '@planner/shared'
 import { Btn } from '../agents/ui'
 import { LaunchAgentDialog } from '../fleet/LaunchAgentDialog'
 import { normalizeDetail, useAgentsMonitor } from './data'
@@ -72,7 +71,6 @@ export function AgentsPage() {
 
   const all = data?.sessions ?? []
   const filterCount = { all: null, working: all.filter((x) => matchesFilter(x, 'working')).length, needs_you: all.filter((x) => matchesFilter(x, 'needs_you')).length, stale: all.filter((x) => matchesFilter(x, 'stale')).length }
-  const filterLabel = (f: FilterId) => (filterCount[f] === null || !data ? AGENTS.filters[f] : `${AGENTS.filters[f]} ${filterCount[f]}`)
   const visible = useMemo(() => (data?.sessions ?? []).filter((s) => matchesFilter(s, filter) && matchesQuery(s, query)), [data, filter, query])
   const counts = useMemo(() => {
     const c = { working: 0, waiting: 0, idle: 0, stale: 0, unknown: 0, ...data?.summary } as Record<SessionState, number>
@@ -129,7 +127,14 @@ export function AgentsPage() {
         <>
           {stale && <p role="status" className="border-b border-border px-4 py-2 dash-caption text-fg-muted">{AGENTS.reconnecting}</p>}
           <DashboardSearchToolbar value={query} onChange={setQuery} label={AGENTS.searchLabel} placeholder={AGENTS.searchPlaceholder} slashToFocus>
-            <FilterChipGroup ariaLabel={AGENTS.filtersLabel} variant="outline" chips={(Object.keys(AGENTS.filters) as FilterId[]).map((f) => ({ value: f, label: filterLabel(f), activeClassName: f === 'needs_you' ? 'text-danger' : undefined }))} selected={[filter]} onToggle={(v) => setFilter(v as FilterId)} />
+            {/* Pill chips with their counts, as the golden draws them (and as the Activity tab does); Needs you is the one accent. */}
+            <div role="toolbar" aria-label={AGENTS.filtersLabel} className="flex flex-wrap items-center gap-1.5">
+              {(Object.keys(AGENTS.filters) as FilterId[]).map((f) => (
+                <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} className="rounded-full">
+                  <Chip tone={f === 'needs_you' && (filterCount[f] ?? 0) > 0 ? 'danger' : 'neutral'} selected={filter === f} className="h-6 cursor-pointer hover:bg-selection">{AGENTS.filters[f]}{data && filterCount[f] !== null && <span className="font-mono tabular-nums">{filterCount[f]}</span>}</Chip>
+                </button>
+              ))}
+            </div>
             <div className="hidden items-center gap-2 sm:flex">
               <label className="dash-caption text-fg-muted" htmlFor="agents-group">{AGENTS.groupBy}</label>
               <select id="agents-group" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="rounded-md border border-border bg-panel px-2 py-1 dash-caption text-fg">
