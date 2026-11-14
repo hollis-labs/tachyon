@@ -141,5 +141,14 @@ Details: `docs/api-contract.md`.
   `printf '%s\n' "$PASSWORD" | tachyon identity setup --username <owner>`. Setup over HTTP is refused.
 - **Configuration.** One override file, named by `SUBSTRATE_CONFIG`, replaces the env file. Every credential is a
   reference to a file (or keychain entry) that the operator writes.
-- **Data.** A new data directory. The old one is never opened by this build; its data is copied once with
-  `tachyon migrate-from` (D1).
+- **Data.** A new data directory. The old one is never opened by this build; its data is copied once:
+  1. Stop the old unit.
+  2. `sqlite3 <old>/tachyon.db ".backup DIR/tachyon.db"`, and the same for `jobs.db`.
+  3. `TACHYON_DATA_DIR=<new, empty> tachyon migrate-from --source DIR` (exit 0, report beside the new database).
+  4. `tachyon identity setup`.
+
+  `launches.db`, `backups/`, `plugins/` and old snapshots stay with the old directory.
+- **Upstream addresses must keep their exact form.** Write the Tether, GitHub and Cerberus upstream addresses in
+  the override exactly as the old schedules' scopes record them (no trailing slash, the same socket path).
+  - Object sync derives schedule ids from those strings.
+  - `migrate-from` refuses a configured upstream that differs and reports each scope.

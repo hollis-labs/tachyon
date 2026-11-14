@@ -4,7 +4,7 @@ The new Tachyon, built in `next/` on branch `substrate-port` beside the old tree
 last (slice P1). Plan and reasons: `docs/substrate-port-plan.md`. API contract with the GUI track:
 `docs/api-contract.md`. Old-to-new mapping and gaps: `docs/conversion-notes.md`.
 
-Status: **slices B1 (skeleton) and B2 (schema).** It boots, serves health, the identity routes and an empty SPA, and refuses every
+Status: **slices B1 (skeleton), B2 (schema) and D1 (data migration).** It boots, serves health, the identity routes and an empty SPA, and refuses every
 other `/api/` path. Domain code arrives slice by slice (plan section 11).
 
 ## Section 0 answers (adopting-substrate)
@@ -36,6 +36,8 @@ next/
     appdirs/                     the data directory (TACHYON_DATA_DIR or XDG data home/tachyon-next), 0700/0600
     oldlayout/                   refuses the old build's data directory, read-only
     store/                       the schema (one goose migration) and database access
+    schema/                      describes a SQLite schema for exact comparison (store test, migratefrom)
+    migratefrom/                 the one-way data migration from the old build (`tachyon migrate-from`)
     hostguard/                   Host allowlist and forwarding-header hygiene (from Parallax)
     routes/                      Tachyon's own routes: one list feeds the mux and the scope table
     pluginallow/                 the /api/plugins/ allowlist (empty in B1: nothing is forwarded)
@@ -99,6 +101,11 @@ Outermost first:
   - A new old-tree migration arriving from `main` fails the first comparison until the port carries it.
   - The framework's tables sit beside it: `identity_*`, `gosched_*` and `goose_db_version`.
   - Domain code reaches the database through `store.From(app)`, with reads on `Reader()` and writes in `WriteTx`.
+- **Data migration** (`internal/migratefrom`, slice D1). `tachyon migrate-from --source DIR` copies `.backup` copies
+  of the old `tachyon.db` and `jobs.db` into a new, empty data directory, and proves every table equal (package
+  comment for the guarantees). It starts only config, logging, health, database, scheduler and cli. It refuses a
+  non-empty data directory before creating anything there. It writes `migrate-from-report.json` beside the new
+  database.
 - **SQLite only.** The old SQL uses `?` placeholders and SQLite syntax.
 - **Configuration** is the manifest's defaults plus the `SUBSTRATE_CONFIG` override (deep merge).
   - Tachyon's own block is `tachyon:` (`internal/settings`, whose package comment lists every key).
