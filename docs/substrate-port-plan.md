@@ -26,8 +26,9 @@ Ruling from the director (2026-11-14): port code never merges to `main` while th
 deploys build from `main`.
 
 - **Branch.** All port PRs target the long-lived branch **`substrate-port`** (created from `main` at `d123471`, 2026-11-14).
-  Only the cell lead merges into it, under the same rule as `main`: reviewer approve on the head SHA, CI green,
-  `gh pr merge --squash --match-head-commit <sha>`. This plan (docs only) goes to `main`.
+  Merges follow the program's process (2026-11-14): when the cell reviewer approves at the head SHA and CI is green, the cell
+  lead sends the PR URL and the reviewed SHA to the Substrate program driver, who merges (squash, matched to the reviewed head
+  commit). Nobody else merges into the branch. This plan (docs only) goes to `main` the same way.
 - **A parallel tree, not an in-place rewrite.** The new app is built in **`next/`**, a separate Go module
   (`github.com/hollis-labs/tachyon/next`, own `go.mod`) with its own frontend workspace. The old tree (`cmd/`, `internal/`,
   `plugins/`, `frontend/`, `packages/`, `pkg/`) is not edited on `substrate-port`. Reasons:
