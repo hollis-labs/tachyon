@@ -328,11 +328,32 @@ func (h *Handler) tetherGroup(ctx context.Context, ref string) (tgroup, error) {
 	return tgroup{}, ErrNotFound
 }
 
+// inputMeta carries the proven input attribution Tether stamps on a turn output (docs/reply-audience.md):
+// input_classes (who asked) and input_sources (the route it came by, e.g. mail_wake, CW-20261114-0061).
+// Each is a list in the same order as input_ids; absent means Tether proved nothing, and a reader must not guess.
+func inputMeta(meta map[string]any, src *chatbridge.SourceMessage) {
+	if src == nil {
+		return
+	}
+	for _, k := range []string{"input_classes", "input_sources"} {
+		var list []string
+		for _, v := range strings.Split(src.Attribution[k], ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				list = append(list, v)
+			}
+		}
+		if len(list) > 0 {
+			meta[k] = list
+		}
+	}
+}
+
 func tetherMessages(g tgroup) []Message {
 	var out []Message
 	for _, t := range g.turns {
-		out = append(out, Message{Seq: int64(len(out) + 1), ID: t.ID, Role: "agent", Kind: "text", Text: t.Content, At: parseTime(t.Created).UnixMilli(),
-			Meta: map[string]any{"turn_id": t.TurnID, "turn_kind": t.Kind, "state": t.State, "revision": t.Revision, "replyable": t.Replyable && open(t)}})
+		meta := map[string]any{"turn_id": t.TurnID, "turn_kind": t.Kind, "state": t.State, "revision": t.Revision, "replyable": t.Replyable && open(t)}
+		inputMeta(meta, t.Source)
+		out = append(out, Message{Seq: int64(len(out) + 1), ID: t.ID, Role: "agent", Kind: "text", Text: t.Content, At: parseTime(t.Created).UnixMilli(), Meta: meta})
 		if t.Resolution != nil {
 			out = append(out, Message{Seq: int64(len(out) + 1), ID: t.ID + ":reply", Role: "operator", Kind: "text", Text: t.Resolution.Text, At: parseTime(t.Resolution.At).UnixMilli()})
 		}

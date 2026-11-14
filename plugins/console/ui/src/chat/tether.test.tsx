@@ -77,6 +77,13 @@ describe('Tether chat routing', () => {
       sessionId: 'current',
     })
   })
+  it('marks a reply Tether proved was a mail wake, and nothing else', () => {
+    const wake = { ...turn, item_id: 'w', source_message: { origin: 'routed', attribution: { launch_id: 'pm-chat', input_sources: 'mail_wake' } } }
+    const asked = { ...turn, item_id: 'a', source_message: { origin: 'routed', attribution: { launch_id: 'pm-chat', input_sources: 'chat_send', input_classes: 'operator' } } }
+    const by = Object.fromEntries(messagesFor(agent, [wake, asked, turn], []).map((m) => [m.id, m]))
+    expect([by['turn:w'].wake, by['turn:a'].wake, by['turn:t1'].wake]).toEqual(['mail', undefined, undefined])
+    expect(by['turn:a'].audience).toBe('operator')
+  })
   it('keeps distinct initiated messages and turn replies even when their text matches', () => {
     const items = [
       {
