@@ -337,13 +337,15 @@ components:
         id: {type: string}
         seq: {type: integer}
         at: {type: integer}
-        type: {type: string, enum: [deploy, restart, task, failure, host, workstream, lifecycle, card]}
+        type: {type: string, enum: [deploy, restart, task, failure, host, workstream, lifecycle, card, message, seat]}
         subject: {type: string}
         actor: {type: string}
         app: {type: string}
         severity: {type: string, enum: [info, warn, error]}
         refs: {type: array, items: {$ref: '#/components/schemas/Ref'}}
         card: {nullable: true, allOf: [{$ref: '#/components/schemas/MiniCard'}]}
+        summary: {type: string, maxLength: 200, description: "Tether's own one-line, redacted event summary; empty on events from before Tether sent one."}
+        cell: {type: string, description: "The acting seat's team slug; empty when it has none."}
     BusResponse:
       type: object
       required: [events, next_before]

@@ -65,7 +65,7 @@ export const AGENTS = {
   activity: {
     filtersLabel: 'Activity filters',
     streamLabel: 'Events, newest first',
-    facets: { all: 'All', deploys: 'Deploys', restarts: 'Restarts', tasks: 'Tasks', failures: 'Failures' },
+    facets: { all: 'All', deploys: 'Deploys', restarts: 'Restarts', tasks: 'Tasks', failures: 'Failures', mail: 'Mail', seats: 'Seats' },
     appLabel: 'App',
     allApps: 'All apps',
     searchLabel: 'Search activity',

@@ -217,6 +217,7 @@ var filterTypes = map[string][]string{
 type evRow struct {
 	id, seq, atNS    int64
 	typ, actor, text string
+	tetherSummary    string // Tether's own line; text stays the derived key that hides and groups rows
 }
 
 // humanize turns a stored derived summary ("tool.call.finished: Read") into timeline text, and
@@ -372,7 +373,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid", "group_runs must be 0 or 1.")
 		return
 	}
-	sqlq := `SELECT id,tether_seq,at_ns,type,actor,summary FROM agents_events WHERE session_id=? AND summary NOT LIKE 'tool.call.started%'`
+	sqlq := `SELECT id,tether_seq,at_ns,type,actor,summary,tether_summary FROM agents_events WHERE session_id=? AND summary NOT LIKE 'tool.call.started%'`
 	args := []any{id}
 	if before > 0 {
 		sqlq += ` AND tether_seq<?`
@@ -385,8 +386,9 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if t := strings.ToLower(strings.TrimSpace(q.Get("q"))); t != "" {
-		sqlq += ` AND LOWER(summary) LIKE ? ESCAPE '\'`
-		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(t)+"%")
+		like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(t) + "%"
+		sqlq += ` AND (LOWER(summary) LIKE ? ESCAPE '\' OR LOWER(tether_summary) LIKE ? ESCAPE '\')`
+		args = append(args, like, like)
 	}
 	sqlq += ` ORDER BY tether_seq DESC, id DESC LIMIT ?`
 	args = append(args, limit+1)
@@ -399,7 +401,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	var rows []evRow
 	for rs.Next() {
 		var e evRow
-		if rs.Scan(&e.id, &e.seq, &e.atNS, &e.typ, &e.actor, &e.text) != nil {
+		if rs.Scan(&e.id, &e.seq, &e.atNS, &e.typ, &e.actor, &e.text, &e.tetherSummary) != nil {
 			internal(w)
 			return
 		}
@@ -428,6 +430,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		text, hidden := humanize(e.text)
 		if hidden {
 			continue
+		}
+		if e.tetherSummary != "" && e.typ != "tool" {
+			// Tether's line says more ("context compacted (auto), 367003 tokens before"). Tool rows keep
+			// the derived line: run grouping counts tools by parsing it.
+			text = e.tetherSummary
 		}
 		evs = append(evs, timelineEvent{ID: "ev_" + strconv.FormatInt(e.id, 10), Seq: e.seq, SessionID: id, Type: e.typ, At: e.atNS / int64(time.Millisecond),
 			Actor: e.actor, Summary: text, Cite: []any{}})

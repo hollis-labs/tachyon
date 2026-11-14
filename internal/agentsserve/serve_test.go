@@ -789,3 +789,40 @@ func TestTimelineShowsToolCallsReadFromTheStream(t *testing.T) {
 		t.Errorf("the next page holds both calls of the shared sequence: %+v", p2.Events)
 	}
 }
+
+// Tether's own event summary (CW-20261114-0023a) is the timeline text for every row but tools, whose
+// derived line run grouping parses; rows from before Tether sent summaries keep the derived text.
+func TestTimelineShowsTetherSummaryExceptForTools(t *testing.T) {
+	e := newEnv(t)
+	e.now = t0.Add(time.Hour)
+	apply := func(raw string) {
+		t.Helper()
+		f, ok := agentscollector.ParseFrame([]byte(raw))
+		if !ok {
+			t.Fatalf("frame did not parse: %s", raw)
+		}
+		if err := e.store.Apply(context.Background(), []agentscollector.Frame{f}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := func(d time.Duration) string { return t0.Add(d).Format(time.RFC3339Nano) }
+	apply(`{"id":"e:1","kind":"session.compacted","session_id":"s1","time":"` + at(time.Minute) + `","summary":"context compacted (auto), 367003 tokens before","payload":{}}`)
+	apply(`{"id":"e:2","kind":"tool.call.finished","session_id":"s1","time":"` + at(2*time.Minute) + `","summary":"tool Read finished","payload":{"tool":"Read"}}`)
+	apply(`{"id":"e:3","kind":"session.work_state_changed","session_id":"s1","time":"` + at(3*time.Minute) + `","payload":{"from":"processing","to":"idle"}}`)
+	type resp struct {
+		Events []map[string]any `json:"events"`
+	}
+	got := decode[resp](t, e.get("/sessions/s1/events"))
+	if len(got.Events) != 3 {
+		t.Fatalf("events: %v", got.Events)
+	}
+	if got.Events[0]["summary"] != "Went idle" || got.Events[2]["summary"] != "context compacted (auto), 367003 tokens before" {
+		t.Errorf("Tether's line where it exists, the derived line where it does not: %v", got.Events)
+	}
+	if s := got.Events[1]["summary"]; s == "tool Read finished" {
+		t.Errorf("a tool row keeps the derived line: %v", s)
+	}
+	if n := len(decode[resp](t, e.get("/sessions/s1/events?q=367003")).Events); n != 1 {
+		t.Errorf("search matches Tether's summary: %d", n)
+	}
+}

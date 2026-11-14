@@ -41,6 +41,10 @@ type BusEvent struct {
 	Severity string
 	Refs     []BusRef
 	Card     *BusCard
+	// Summary is Tether's own one-line summary (Frame.TetherSummary), shown beside the subject
+	// Tachyon composes; Cell is the acting seat's team. Both may be empty.
+	Summary string
+	Cell    string
 }
 
 var (
@@ -78,6 +82,10 @@ func busType(f Frame) string {
 		return "card"
 	case f.App == "" && (k == "session.started" || k == "session.ended" || k == "session.resumed" || k == "session.restarted"):
 		return "lifecycle"
+	case f.App == "" && k == "message.sent":
+		return "message" // one row per mail; its read and consumed events fold into it (CW-20261114-0023b)
+	case f.App == "" && strings.HasPrefix(k, "seat."):
+		return "seat" // seat.waiting, seat.unblocked, seat.status
 	case f.App == "" && (k == "session.state_changed" || k == "session.health_changed") && sessionTurn(f) != "":
 		return "lifecycle" // Tether reports a start or an end as a state or health change, not as its own kind
 	}
@@ -121,12 +129,25 @@ func NormalizeBus(f Frame) (BusEvent, bool) {
 	if typ == "" || f.EventID == "" {
 		return BusEvent{}, false
 	}
-	b := BusEvent{Seq: f.Seq, EventID: f.EventID, At: f.At, Type: typ, App: okName(f.App), Actor: okName(f.BusActor), Severity: "info", Refs: []BusRef{}}
+	b := BusEvent{Seq: f.Seq, EventID: f.EventID, At: f.At, Type: typ, App: okName(f.App), Actor: okName(f.BusActor), Severity: "info", Refs: []BusRef{},
+		Summary: f.TetherSummary, Cell: f.Cell}
 	if b.Actor == "" {
 		b.Actor = "system"
 	}
 	if b.App == "" {
 		b.App = "tether"
+	}
+	if typ == "message" || typ == "seat" {
+		// Tether's summary is the only line these may show: their payloads carry addresses, and bodies by
+		// reference. An event from before Tether sent summaries says nothing safe and is not published.
+		if f.TetherSummary == "" {
+			return BusEvent{}, false
+		}
+		b.Subject = clean(f.TetherSummary, 160)
+		if f.Kind == "seat.waiting" {
+			b.Severity = "warn"
+		}
+		return b, true
 	}
 	name := okName(f.Name)
 	if typ == "card" && name == "" {
@@ -258,8 +279,8 @@ func insertBus(ctx context.Context, tx *sql.Tx, b BusEvent, now int64) error {
 		cj, _ := json.Marshal(b.Card)
 		card = string(cj)
 	}
-	res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO bus_events(tether_seq,tether_event_id,at_ns,type,subject,actor,app,severity,refs_json,card_json) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		b.Seq, b.EventID, at, b.Type, b.Subject, b.Actor, b.App, b.Severity, string(refs), card)
+	res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO bus_events(tether_seq,tether_event_id,at_ns,type,subject,actor,app,severity,refs_json,card_json,tether_summary,cell) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		b.Seq, b.EventID, at, b.Type, b.Subject, b.Actor, b.App, b.Severity, string(refs), card, b.Summary, b.Cell)
 	if err != nil {
 		return err
 	}
@@ -268,7 +289,7 @@ func insertBus(ctx context.Context, tx *sql.Tx, b BusEvent, now int64) error {
 	}
 	id, _ := res.LastInsertId()
 	ev := map[string]any{"id": "bus_" + strconv.FormatInt(id, 10), "seq": b.Seq, "at": at / int64(time.Millisecond), "type": b.Type, "subject": b.Subject,
-		"actor": b.Actor, "app": b.App, "severity": b.Severity, "refs": json.RawMessage(refs), "card": nil}
+		"actor": b.Actor, "app": b.App, "severity": b.Severity, "refs": json.RawMessage(refs), "card": nil, "summary": b.Summary, "cell": b.Cell}
 	if card != nil {
 		ev["card"] = json.RawMessage(card.(string))
 	}
@@ -285,14 +306,15 @@ type BusQuery struct {
 }
 
 var busTypes = map[string]string{"deploys": "deploy", "restarts": "restart", "tasks": "task", "failures": "failure",
-	"deploy": "deploy", "restart": "restart", "task": "task", "failure": "failure", "host": "host", "workstream": "workstream", "lifecycle": "lifecycle", "card": "card"}
+	"deploy": "deploy", "restart": "restart", "task": "task", "failure": "failure", "host": "host", "workstream": "workstream", "lifecycle": "lifecycle", "card": "card",
+	"messages": "message", "message": "message", "seats": "seat", "seat": "seat"}
 
 // BusEvents returns the feed newest first, and the cursor for the next page (0 = none).
 func (s *Store) BusEvents(ctx context.Context, q BusQuery) ([]map[string]any, int64, error) {
 	if q.Limit <= 0 || q.Limit > 100 {
 		q.Limit = 50
 	}
-	sqlq := `SELECT id,tether_seq,at_ns,type,subject,actor,app,severity,refs_json,card_json FROM bus_events WHERE 1=1`
+	sqlq := `SELECT id,tether_seq,at_ns,type,subject,actor,app,severity,refs_json,card_json,tether_summary,cell FROM bus_events WHERE 1=1`
 	var args []any
 	if q.Before > 0 {
 		sqlq += ` AND tether_seq<?`
@@ -307,8 +329,9 @@ func (s *Store) BusEvents(ctx context.Context, q BusQuery) ([]map[string]any, in
 		args = append(args, q.App)
 	}
 	if q.Q != "" {
-		sqlq += ` AND LOWER(subject) LIKE ? ESCAPE '\'`
-		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(q.Q))+"%")
+		like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(q.Q)) + "%"
+		sqlq += ` AND (LOWER(subject) LIKE ? ESCAPE '\' OR LOWER(tether_summary) LIKE ? ESCAPE '\')`
+		args = append(args, like, like)
 	}
 	sqlq += ` ORDER BY tether_seq DESC, id DESC LIMIT ?`
 	args = append(args, q.Limit+1)
@@ -320,13 +343,13 @@ func (s *Store) BusEvents(ctx context.Context, q BusQuery) ([]map[string]any, in
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, seq, ns int64
-		var typ, subject, actor, app, sev, refs string
+		var typ, subject, actor, app, sev, refs, summary, cell string
 		var card sql.NullString
-		if err := rows.Scan(&id, &seq, &ns, &typ, &subject, &actor, &app, &sev, &refs, &card); err != nil {
+		if err := rows.Scan(&id, &seq, &ns, &typ, &subject, &actor, &app, &sev, &refs, &card, &summary, &cell); err != nil {
 			return nil, 0, err
 		}
 		e := map[string]any{"id": "bus_" + strconv.FormatInt(id, 10), "seq": seq, "at": ns / int64(time.Millisecond), "type": typ, "subject": subject, "actor": actor, "app": app,
-			"severity": sev, "refs": json.RawMessage(refs), "card": nil}
+			"severity": sev, "refs": json.RawMessage(refs), "card": nil, "summary": summary, "cell": cell}
 		if card.Valid {
 			e["card"] = json.RawMessage(card.String)
 		}
@@ -347,7 +370,7 @@ func (s *Store) BusEvents(ctx context.Context, q BusQuery) ([]map[string]any, in
 // in the last 7 days), off (none did, but an emitter may exist behind a disabled export), or
 // no_emitter (nothing in the fleet produces it; design section 6).
 func (s *Store) BusTopics(ctx context.Context) map[string]string {
-	out := map[string]string{"deploy": "off", "restart": "off", "task": "off", "failure": "off", "host": "off", "workstream": "off", "lifecycle": "off", "card": "off"}
+	out := map[string]string{"deploy": "off", "restart": "off", "task": "off", "failure": "off", "host": "off", "workstream": "off", "lifecycle": "off", "card": "off", "message": "off", "seat": "off"}
 	cut := s.now().Add(-EventRetention).UnixNano()
 	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT DISTINCT type FROM bus_events WHERE at_ns>=?`, cut)
 	if err != nil {

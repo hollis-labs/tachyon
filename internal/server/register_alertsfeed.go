@@ -144,11 +144,12 @@ func (f *alertsFeed) publish(id string, seq int64, change string) {
 	}
 }
 
-// busSource reads the collector's bus_events table for the bus adapter.
+// busSource reads the collector's bus_events table for the bus adapter. Mail and seat rows are activity, not
+// alerts: what of them needs the operator is the needs-you view's to decide (CW-20261114-0023c).
 type busSource struct{ db *localstore.Store }
 
 func (b busSource) Events(ctx context.Context, after int64) ([]agentscollector.BusEvent, error) {
-	rows, err := b.db.Reader.QueryContext(ctx, `SELECT tether_seq,tether_event_id,at_ns,type,subject,actor,app,severity,refs_json,card_json FROM bus_events WHERE tether_seq>? ORDER BY tether_seq LIMIT 200`, after)
+	rows, err := b.db.Reader.QueryContext(ctx, `SELECT tether_seq,tether_event_id,at_ns,type,subject,actor,app,severity,refs_json,card_json FROM bus_events WHERE tether_seq>? AND type NOT IN ('message','seat') ORDER BY tether_seq LIMIT 200`, after)
 	if err != nil {
 		return nil, err
 	}
