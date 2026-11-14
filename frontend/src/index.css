@@ -20,10 +20,21 @@
 @source "../../packages/*/src/**/*";
 @source "../../plugins/*/ui/src/**/*";
 
+/* Kit filter chips: an unselected chip's muted label on the hover surface is under 4.5:1 in light and dark, so it goes to fg while hovered. */
+.dash-filter-chip[aria-pressed="false"]:hover {
+  color: var(--color-fg);
+}
+
 /* Message and document headings are content: sentence case, not the dashboard's uppercase section captions. */
 [data-chat-prose] :is(h1, h2, h3) {
   text-transform: none;
   letter-spacing: var(--tracking-normal);
+}
+/* Message table headers: same, and never broken letter by letter (a narrow column made the header row many lines tall). */
+[data-chat-prose] th {
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+  white-space: nowrap;
 }
 
 /* Reordering and pointer focus remain Planner behavior; the kit owns list geometry. */

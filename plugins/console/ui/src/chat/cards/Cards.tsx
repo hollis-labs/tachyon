@@ -153,11 +153,11 @@ export function ToolCallsRow({ block }: { block: Of<'tools'> }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="mx-auto w-full max-w-[760px]">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex h-[30px] w-full items-center gap-2 rounded-control border border-border px-2.5 text-left font-mono text-xs text-fg-secondary hover:bg-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="group flex h-[30px] w-full items-center gap-2 rounded-control border border-border px-2.5 text-left font-mono text-xs text-fg-secondary hover:bg-surface-hover hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
         <ChevronRight aria-hidden className={`size-3 ${open ? 'rotate-90' : ''}`} />
         <span>{block.tools.length} tool call{block.tools.length === 1 ? '' : 's'}</span>
-        <span className="min-w-0 flex-1 truncate text-fg-muted">{block.tools.join(' · ')}</span>
-        <span className={block.state === 'failed' ? 'text-danger' : 'text-fg-muted'}>{block.state}</span>
+        <span className="min-w-0 flex-1 truncate text-fg-muted group-hover:text-fg">{block.tools.join(' · ')}</span>
+        <span className={block.state === 'failed' ? 'text-danger' : 'text-fg-muted group-hover:text-fg'}>{block.state}</span>
       </button>
       {open && <ul aria-label="Tool calls" className="mt-1 flex flex-col gap-0.5 pl-6 font-mono text-xs text-fg-secondary">{block.tools.map((t, i) => <li key={`${t}-${i}`}>{t}</li>)}</ul>}
     </div>
