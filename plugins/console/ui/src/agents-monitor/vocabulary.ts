@@ -119,6 +119,8 @@ export const AGENTS = {
     timelineFilters: 'Timeline filters',
     timelineStream: 'Session events, newest first',
     today: 'Today',
+    now: 'Now',
+    earlierToday: 'Earlier today',
     compaction: 'compaction',
     lastClearLegend: 'last clear',
     kind: 'Kind',
@@ -178,7 +180,6 @@ export const AGENTS = {
     delivered: 'Delivered',
     interrupted: 'Interrupted and delivered',
     failed: 'Could not deliver',
-    cancel: 'Cancel',
   },
   restart: {
     title: 'Restart session?',

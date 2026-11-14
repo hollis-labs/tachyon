@@ -10,8 +10,8 @@ const V = AGENTS.nudge
 const R = AGENTS.restart
 
 /**
- * Backend A6 (Nudge/Restart) is not approved yet: until it is, both controls render disabled with a
- * reason and nothing is sent. Controls are on by default and still follow the backend capability flags; VITE_AGENTS_CONTROLS=0 turns them off.
+ * Nudge and Restart (backend A6) are on by default and follow the backend's per-session capability flags;
+ * VITE_AGENTS_CONTROLS=0 turns both off, disabled with a reason.
  */
 export const CONTROLS_LIVE = (import.meta.env?.VITE_AGENTS_CONTROLS as string | undefined) !== '0'
 
@@ -144,7 +144,7 @@ export function NudgeControl({ session, paused, onSent, live = CONTROLS_LIVE }: 
         <div className="flex items-center gap-2">
           <span className="text-label text-fg-muted">{interrupt ? V.hintInterrupt : V.hint}</span>
           <span className="flex-1" />
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>{V.cancel}</Button>
+          {/* The golden draws no Cancel here: Esc, a click outside or the trigger closes the panel. */}
           <Button size="sm" disabled={busy || !text.trim()} onClick={() => void send(interrupt)}>{busy ? V.sending : <>{V.send} <Kbd className="border-current/30 text-current">⌘↵</Kbd></>}</Button>
         </div>
       </>
