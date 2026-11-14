@@ -682,3 +682,34 @@ func TestPlannerAssignmentShowsOnTheAgentsSession(t *testing.T) {
 		t.Error("no assignment stays null")
 	}
 }
+
+// Most output frames report context use without naming the window. Those samples still plot, against
+// the session's last known window; a session whose window was never seen plots nothing.
+func TestContextSeriesUsesTheSessionWindowForSamplesWithoutOne(t *testing.T) {
+	e := newEnv(t)
+	e.now = t0.Add(time.Hour)
+	e.frame("session.work_state_changed", "w1", 10*time.Minute, `{"to":"processing","provider":"claude"}`)
+	e.frame("session.work_state_changed", "w2", 10*time.Minute, `{"to":"processing","provider":"claude"}`)
+	set := func(id string, used, window int64, min int) {
+		t.Helper()
+		if err := e.store.SetDerived(context.Background(), id, agentscollector.Derived{CtxUsed: used, CtxWindow: window, CtxSeen: true, At: t0.Add(time.Duration(min) * time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set("w1", 100000, 1000000, 20)
+	set("w1", 200000, 0, 30)
+	set("w1", 460000, 0, 40)
+	set("w2", 50000, 0, 20)
+	type series struct {
+		Points []struct {
+			Used, Window int64
+			Pct          int
+		} `json:"points"`
+	}
+	if p := decode[series](t, e.get("/sessions/w1/context-series")).Points; len(p) != 3 || p[2].Used != 460000 || p[2].Window != 1000000 || p[2].Pct != 46 {
+		t.Errorf("every sample plots against the known window: %+v", p)
+	}
+	if p := decode[series](t, e.get("/sessions/w2/context-series")).Points; len(p) != 0 {
+		t.Errorf("no window was ever seen, so no percentage is invented: %+v", p)
+	}
+}
