@@ -68,16 +68,6 @@ type tetherSessions struct {
 // tetherClient builds the read-scope HTTP client for a Tether address (unix:, tcp: or http(s) URL): the same
 // guards as the catalog index (credential never over plain http to a remote host, redirects refused).
 func tetherClient(addr, tokenFile string) (string, *http.Client, error) {
-	return tetherClientWith(addr, tokenFile, 15*time.Second, 20*time.Second)
-}
-
-// NewSlowTetherClient is NewTetherClient for a known-slow read in the background (a filtered event history can
-// take a minute): it waits up to headerTimeout for the response headers and timeout in all.
-func NewSlowTetherClient(addr, tokenFile string, headerTimeout, timeout time.Duration) (string, *http.Client, error) {
-	return tetherClientWith(addr, tokenFile, headerTimeout, timeout)
-}
-
-func tetherClientWith(addr, tokenFile string, headerTimeout, timeout time.Duration) (string, *http.Client, error) {
 	if strings.TrimSpace(addr) == "" {
 		return "", nil, errors.New("Tether address is missing")
 	}
@@ -86,7 +76,7 @@ func tetherClientWith(addr, tokenFile string, headerTimeout, timeout time.Durati
 	}
 	base := strings.TrimRight(addr, "/")
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.ResponseHeaderTimeout = headerTimeout
+	tr.ResponseHeaderTimeout = 15 * time.Second
 	if socket, ok := strings.CutPrefix(addr, "unix:"); ok {
 		tr.Proxy = nil
 		tr.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -100,7 +90,7 @@ func tetherClientWith(addr, tokenFile string, headerTimeout, timeout time.Durati
 	if err != nil {
 		return "", nil, err
 	}
-	return base, &http.Client{Transport: header{rt}, Timeout: timeout,
+	return base, &http.Client{Transport: header{rt}, Timeout: 20 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
 }
 

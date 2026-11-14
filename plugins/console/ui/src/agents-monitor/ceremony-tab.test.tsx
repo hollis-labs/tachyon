@@ -16,7 +16,7 @@ const meter = (over: Partial<CeremonyMeter> = {}): CeremonyMeter => ({
   stalled: [{ id: 'CW-20260919-0017', title: 'Atlas MCP read-only', status: 'blocked', updated_at: '2026-09-19T23:28:12Z' }], stalled_total: 156,
   pending_checkpoints: [{ id: 'c1', task_id: 'CW-20260824-0008', type: 'pr_review', title: 'Merge PR #311', emitted_at: '2026-09-14T18:39:09Z' }], pending_checkpoints_total: 28,
   activity: 56249, done: 92, previous: null, comparison: 'pending',
-  sources: { reviews: { ok: true }, approvals: { ok: true }, checkpoint_history: { ok: true }, asks: { ok: true }, stalled: { ok: true }, pending_checkpoints: { ok: true }, done: { ok: true }, activity: { ok: true } },
+  sources: { reviews: { ok: true }, approvals: { ok: true }, checkpoints: { ok: true }, asks: { ok: true }, stalled: { ok: true }, pending_checkpoints: { ok: true }, done: { ok: true }, activity: { ok: true } },
   ...over,
 })
 const show = (m: CeremonyMeter) => {

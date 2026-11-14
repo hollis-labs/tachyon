@@ -1,6 +1,7 @@
 // Package ceremony is the ceremony meter (CW-20261114-0023f; design v2: "measure ceremony weekly; alert when
 // activity rises and progress doesn't"). Over a rolling 7 days it reports:
-//   - gates: tasks entering review, Tachyon approvals created, Torque checkpoints emitted, typed asks to @chrispian;
+//   - gates: tasks entering review, Tachyon approvals created, Torque approval and pr_review checkpoints emitted,
+//     typed asks to @chrispian;
 //   - median wait: how long gates closed in the window waited (review to its next state, approval created to
 //     decided, checkpoint pending to responded or canceled);
 //   - stalled: Torque tasks in doing, review or blocked with no update for 24h (no-update stands in for
@@ -15,7 +16,6 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -42,23 +42,27 @@ type Checkpoint struct {
 	EmittedAt time.Time `json:"emitted_at"`
 }
 
-// CheckpointEvent is one Torque checkpoint.state_changed from Tether's bus.
-type CheckpointEvent struct {
-	ID    string
-	State string // pending, responded, canceled, ...
-	At    time.Time
+// CheckpointRecord is Torque's own record of a checkpoint (GET /api/v1/checkpoints/{correlation_id}).
+type CheckpointRecord struct {
+	ID          string
+	Type        string
+	Status      string
+	EmittedAt   time.Time
+	RespondedAt *time.Time
 }
 
 type Torque interface {
 	Stalled(ctx context.Context, before time.Time, limit int) ([]Task, int, error)
 	DoneSince(ctx context.Context, since time.Time) (int, error)
 	PendingCheckpoints(ctx context.Context) ([]Checkpoint, error)
+	Checkpoint(ctx context.Context, correlationID string) (CheckpointRecord, error)
 }
 
-// CheckpointHistory is the recent checkpoint transitions (slow upstream, about 2 minutes on agent-os: callers cache it).
-type CheckpointHistory interface {
-	CheckpointEvents(ctx context.Context) ([]CheckpointEvent, error)
-}
+// gateTypes are the checkpoint types that are gates (approval asks a person; pr_review a merge decision).
+var gateTypes = map[string]bool{"approval": true, "pr_review": true}
+
+// maxCheckpointReads bounds the Torque reads per meter read (one per checkpoint seen in the window).
+const maxCheckpointReads = 200
 
 // Asks counts typed asks to the operator created since a time (needs-you's mailbox read).
 type Asks interface {
@@ -104,11 +108,10 @@ type Meter struct {
 }
 
 type Meterer struct {
-	DB      *localstore.Store
-	Torque  Torque
-	History CheckpointHistory
-	Asks    Asks
-	Now     func() time.Time
+	DB     *localstore.Store // the collector's tables: task events, checkpoint events, agent events, approvals
+	Torque Torque
+	Asks   Asks
+	Now    func() time.Time
 }
 
 func (m *Meterer) now() time.Time {
@@ -141,14 +144,6 @@ func (m *Meterer) Read(ctx context.Context) Meter {
 	set(out.Sources, "approvals", err)
 	out.Gates.Approvals, waits = ap, append(waits, w...)
 
-	if m.History != nil {
-		evs, err := m.History.CheckpointEvents(ctx)
-		set(out.Sources, "checkpoint_history", err)
-		n, w := checkpointGates(evs, since)
-		out.Gates.Checkpoints, waits = n, append(waits, w...)
-	} else {
-		set(out.Sources, "checkpoint_history", errUnavailable)
-	}
 	if m.Asks != nil {
 		n, err := m.Asks.AsksSince(ctx, since)
 		set(out.Sources, "asks", err)
@@ -176,6 +171,15 @@ func (m *Meterer) Read(ctx context.Context) Meter {
 		out.StalledTotal = total
 		cps, err := m.Torque.PendingCheckpoints(ctx)
 		set(out.Sources, "pending_checkpoints", err)
+		n, w, cerr := m.checkpointGates(ctx, since, cps)
+		set(out.Sources, "checkpoints", cerr)
+		out.Gates.Checkpoints, waits = n, append(waits, w...)
+		out.Gates.Total += n
+		if med, ok := median(waits); ok {
+			s := int64(med / time.Second)
+			out.MedianWaitSeconds = &s
+		}
+		out.WaitSamples = len(waits)
 		out.PendingTotal = len(cps)
 		sort.Slice(cps, func(i, j int) bool { return cps[i].EmittedAt.Before(cps[j].EmittedAt) })
 		if len(cps) > listLimit {
@@ -188,7 +192,7 @@ func (m *Meterer) Read(ctx context.Context) Meter {
 		set(out.Sources, "done", err)
 		out.Done = done
 	} else {
-		for _, k := range []string{"stalled", "pending_checkpoints", "done"} {
+		for _, k := range []string{"stalled", "pending_checkpoints", "checkpoints", "done"} {
 			set(out.Sources, k, errUnavailable)
 		}
 	}
@@ -321,30 +325,72 @@ func (m *Meterer) approvals(ctx context.Context, since time.Time) (int, []time.D
 	return n, waits, rows.Err()
 }
 
-// checkpointGates counts checkpoints emitted (to pending) in the window, and the wait of each that left pending
-// (responded or canceled) in it.
-func checkpointGates(evs []CheckpointEvent, since time.Time) (int, []time.Duration) {
-	sort.Slice(evs, func(i, j int) bool { return evs[i].At.Before(evs[j].At) })
-	opened := map[string]time.Time{}
-	n := 0
-	var waits []time.Duration
-	for _, e := range evs {
-		switch e.State {
-		case "pending":
-			opened[e.ID] = e.At
-			if !e.At.Before(since) {
-				n++
-			}
-		default:
-			if at, ok := opened[e.ID]; ok {
-				if !e.At.Before(since) {
-					waits = append(waits, e.At.Sub(at))
-				}
-				delete(opened, e.ID)
+// checkpointGates counts the approval and pr_review checkpoints emitted in the window and the wait of each closed
+// in it, from Torque's own records. Which checkpoints to read comes from the collector's checkpoint events (seen
+// on the live stream) and the pending list; no Tether history is queried.
+func (m *Meterer) checkpointGates(ctx context.Context, since time.Time, pending []Checkpoint) (int, []time.Duration, error) {
+	if m.DB == nil {
+		return 0, nil, errUnavailable
+	}
+	closedAt := map[string]time.Time{} // the newest terminal transition seen, for a record with no responded_at
+	ids := map[string]bool{}
+	rows, err := m.DB.Reader.QueryContext(ctx, `SELECT correlation_id, state, at_ns FROM checkpoint_events WHERE at_ns>=? ORDER BY at_ns`, since.UnixNano())
+	if err != nil {
+		return 0, nil, err
+	}
+	for rows.Next() {
+		var id, state string
+		var ns int64
+		if rows.Scan(&id, &state, &ns) == nil {
+			ids[id] = true
+			if state != "pending" {
+				closedAt[id] = time.Unix(0, ns).UTC()
 			}
 		}
 	}
-	return n, waits
+	rows.Close()
+	for _, c := range pending {
+		if !c.EmittedAt.Before(since) {
+			ids[c.ID] = true
+		}
+	}
+	keys := make([]string, 0, len(ids))
+	for id := range ids {
+		keys = append(keys, id)
+	}
+	sort.Strings(keys)
+	if len(keys) > maxCheckpointReads {
+		keys = keys[:maxCheckpointReads]
+	}
+	n := 0
+	var waits []time.Duration
+	var firstErr error
+	for _, id := range keys {
+		rec, err := m.Torque.Checkpoint(ctx, id)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if !gateTypes[rec.Type] {
+			continue
+		}
+		if !rec.EmittedAt.Before(since) {
+			n++
+		}
+		if rec.Status == "pending" {
+			continue
+		}
+		end, ok := closedAt[id]
+		if rec.RespondedAt != nil {
+			end, ok = *rec.RespondedAt, true
+		}
+		if ok && !end.Before(since) && !end.Before(rec.EmittedAt) {
+			waits = append(waits, end.Sub(rec.EmittedAt))
+		}
+	}
+	return n, waits, firstErr
 }
 
 // activity is the agent events collected in the window: session events (turns, tool calls, messages) and mail.
@@ -380,51 +426,4 @@ func (m *Meterer) previous(ctx context.Context, now time.Time) (Snapshot, bool) 
 	s := Snapshot{Day: day(now.Add(-Window))}
 	err := m.DB.Reader.QueryRowContext(ctx, `SELECT activity, done, gates FROM ceremony_daily WHERE day=?`, s.Day).Scan(&s.Activity, &s.Done, &s.Gates)
 	return s, err == nil
-}
-
-// CachedHistory serves a slow CheckpointHistory from a cache refreshed in the background.
-type CachedHistory struct {
-	Source CheckpointHistory
-	Every  time.Duration
-
-	mu   sync.Mutex
-	evs  []CheckpointEvent
-	err  error
-	have bool
-}
-
-// Run refreshes until ctx ends.
-func (c *CachedHistory) Run(ctx context.Context) {
-	every := c.Every
-	if every <= 0 {
-		every = 30 * time.Minute
-	}
-	for {
-		rctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
-		evs, err := c.Source.CheckpointEvents(rctx)
-		cancel()
-		c.mu.Lock()
-		if err == nil {
-			c.evs, c.have = evs, true
-		}
-		c.err = err
-		c.mu.Unlock()
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(every):
-		}
-	}
-}
-
-func (c *CachedHistory) CheckpointEvents(context.Context) ([]CheckpointEvent, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.have {
-		if c.err != nil {
-			return nil, c.err
-		}
-		return nil, errString("checkpoint history not loaded yet")
-	}
-	return append([]CheckpointEvent(nil), c.evs...), nil
 }

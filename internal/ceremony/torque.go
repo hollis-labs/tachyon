@@ -12,7 +12,8 @@ import (
 	"time"
 )
 
-// TorqueHTTP reads Torque's task list and pending checkpoints (GET /api/v1/tasks, GET /api/v1/checkpoints/pending).
+// TorqueHTTP reads Torque's task list and checkpoints (GET /api/v1/tasks, GET /api/v1/checkpoints/pending,
+// GET /api/v1/checkpoints/{correlation_id}).
 type TorqueHTTP struct {
 	Base   string
 	Token  string
@@ -134,6 +135,28 @@ func (t *TorqueHTTP) PendingCheckpoints(ctx context.Context) ([]Checkpoint, erro
 			break
 		}
 		cursor = p.Meta.NextCursor
+	}
+	return out, nil
+}
+
+// Checkpoint reads one checkpoint's record by correlation_id (GET /api/v1/checkpoints/{correlation_id}; about 40ms).
+func (t *TorqueHTTP) Checkpoint(ctx context.Context, correlationID string) (CheckpointRecord, error) {
+	var r struct {
+		CorrelationID string  `json:"correlation_id"`
+		Type          string  `json:"type"`
+		Status        string  `json:"status"`
+		EmittedAt     string  `json:"emitted_at"`
+		RespondedAt   *string `json:"responded_at"`
+	}
+	if err := t.get(ctx, "/api/v1/checkpoints/"+url.PathEscape(correlationID), url.Values{}, &r); err != nil {
+		return CheckpointRecord{}, err
+	}
+	out := CheckpointRecord{ID: r.CorrelationID, Type: r.Type, Status: r.Status}
+	out.EmittedAt, _ = time.Parse(time.RFC3339Nano, r.EmittedAt)
+	if r.RespondedAt != nil {
+		if at, err := time.Parse(time.RFC3339Nano, *r.RespondedAt); err == nil {
+			out.RespondedAt = &at
+		}
 	}
 	return out, nil
 }

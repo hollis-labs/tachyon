@@ -38,12 +38,9 @@ func startCeremony(ctx context.Context, s *Server, store *localstore.Store) {
 	if u := strings.TrimSpace(s.cfg.Upstreams.TorqueURL); u != "" {
 		m.Torque = &ceremony.TorqueHTTP{Base: u, Token: s.cfg.Upstreams.TorqueToken}
 	}
+	// Asks to @chrispian come from his mailbox (a normal, fast read). Checkpoints come from Torque and the
+	// collector's own stream: the meter runs no Tether event-history query (an unindexed scan on the hub).
 	if addr := strings.TrimSpace(s.cfg.Upstreams.TetherAddr); addr != "" && s.cfg.Upstreams.TetherTokenFile != "" {
-		if base, slow, err := builderread.NewSlowTetherClient(addr, s.cfg.Upstreams.TetherTokenFile, 4*time.Minute, 5*time.Minute); err == nil {
-			h := &ceremony.CachedHistory{Source: &ceremony.TetherHistory{Base: base, Client: slow}}
-			go h.Run(ctx)
-			m.History = h
-		}
 		if base, c, err := builderread.NewTetherClient(addr, s.cfg.Upstreams.TetherTokenFile); err == nil {
 			m.Asks = &needsyou.Aggregator{Tether: &needsyou.HTTPTether{Base: base, Client: c}}
 		}

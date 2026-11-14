@@ -57,6 +57,7 @@ type fakeTorque struct {
 	stalled []Task
 	total   int
 	pending []Checkpoint
+	records map[string]CheckpointRecord
 	done    int
 	err     error
 }
@@ -69,9 +70,19 @@ func (f fakeTorque) PendingCheckpoints(context.Context) ([]Checkpoint, error) {
 	return f.pending, f.err
 }
 
-type fakeHistory []CheckpointEvent
+func (f fakeTorque) Checkpoint(_ context.Context, id string) (CheckpointRecord, error) {
+	r, ok := f.records[id]
+	if !ok {
+		return r, fmt.Errorf("torque answered 404")
+	}
+	return r, nil
+}
 
-func (f fakeHistory) CheckpointEvents(context.Context) ([]CheckpointEvent, error) { return f, nil }
+func checkpointEvent(t *testing.T, db *localstore.Store, id, state string, at time.Time) {
+	t.Helper()
+	seq++
+	exec(t, db, `INSERT INTO checkpoint_events(correlation_id,state,at_ns,tether_seq) VALUES(?,?,?,?)`, id, state, at.UnixNano(), seq)
+}
 
 type fakeAsks int
 
@@ -100,10 +111,23 @@ func TestMeterCountsGatesWaitsStallsAndActivity(t *testing.T) {
 	seq++
 	exec(t, db, `INSERT INTO bus_events(tether_seq,tether_event_id,at_ns,type,subject) VALUES(?,?,?,'message','@a sent request to @b')`, seq, fmt.Sprintf("e:%d", seq), now.Add(-h).UnixNano())
 
+	// Checkpoints seen on the collector's stream this week; their types and times come from Torque's records.
+	// c1 approval emitted 3h ago, responded 2h ago; c2 pr_review emitted 30d ago, canceled 1h ago (no responded_at:
+	// the stream's time); c3 approval emitted 1h ago, pending; c4 is a data checkpoint, not a gate.
+	checkpointEvent(t, db, "c1", "pending", now.Add(-3*h))
+	checkpointEvent(t, db, "c1", "responded", now.Add(-2*h))
+	checkpointEvent(t, db, "c2", "canceled", now.Add(-h))
+	checkpointEvent(t, db, "c4", "pending", now.Add(-h))
+	responded := now.Add(-2 * h)
 	m := &Meterer{DB: db, Now: func() time.Time { return now }, Asks: fakeAsks(2),
-		History: fakeHistory{{"c1", "pending", now.Add(-3 * h)}, {"c1", "responded", now.Add(-2 * h)}, {"c2", "pending", now.Add(-30 * 24 * h)}, {"c2", "canceled", now.Add(-h)}, {"c3", "pending", now.Add(-h)}},
 		Torque: fakeTorque{stalled: []Task{{ID: "CW-N", Status: "doing", UpdatedAt: now.Add(-48 * h)}, {ID: "CW-O", Status: "review", UpdatedAt: now.Add(-72 * h)}}, total: 9,
-			pending: []Checkpoint{{ID: "p2", Type: "pr_review", EmittedAt: now.Add(-24 * h)}, {ID: "p1", Type: "approval", EmittedAt: now.Add(-60 * 24 * h)}}, done: 4}}
+			pending: []Checkpoint{{ID: "c3", Type: "approval", EmittedAt: now.Add(-h)}, {ID: "p1", Type: "approval", EmittedAt: now.Add(-60 * 24 * h)}}, done: 4,
+			records: map[string]CheckpointRecord{
+				"c1": {ID: "c1", Type: "approval", Status: "responded", EmittedAt: now.Add(-3 * h), RespondedAt: &responded},
+				"c2": {ID: "c2", Type: "pr_review", Status: "canceled", EmittedAt: now.Add(-30 * 24 * h)},
+				"c3": {ID: "c3", Type: "approval", Status: "pending", EmittedAt: now.Add(-h)},
+				"c4": {ID: "c4", Type: "data", Status: "pending", EmittedAt: now.Add(-h)},
+			}}}
 	r := m.Read(context.Background())
 	if r.Gates != (Gates{Total: 2 + 2 + 2 + 2, Reviews: 2, Approvals: 2, Checkpoints: 2, Asks: 2}) {
 		t.Fatalf("gates: %+v (reviews A and C; approvals a1 and a2; checkpoints c1 and c3; 2 asks)", r.Gates)
@@ -112,7 +136,7 @@ func TestMeterCountsGatesWaitsStallsAndActivity(t *testing.T) {
 	if r.WaitSamples != 5 || r.MedianWaitSeconds == nil || *r.MedianWaitSeconds != int64((2*h)/time.Second) {
 		t.Fatalf("median wait: %v over %d", r.MedianWaitSeconds, r.WaitSamples)
 	}
-	if r.StalledTotal != 9 || r.Stalled[0].ID != "CW-O" || r.PendingTotal != 2 || r.PendingCheckpoints[0].ID != "p1" {
+	if r.StalledTotal != 9 || r.Stalled[0].ID != "CW-O" || r.PendingTotal != 2 || r.PendingCheckpoints[0].ID != "p1" || r.PendingCheckpoints[1].ID != "c3" {
 		t.Fatalf("stalled and pending, oldest first: %+v %+v", r.Stalled, r.PendingCheckpoints)
 	}
 	if r.Activity != 4 || r.Done != 4 || r.Comparison != "pending" || r.Previous != nil {
@@ -155,7 +179,7 @@ func TestMeterKeepsNoSnapshotFromAFailedRead(t *testing.T) {
 	db := openDB(t)
 	m := &Meterer{DB: db, Now: func() time.Time { return now }, Torque: fakeTorque{err: fmt.Errorf("torque unreachable")}}
 	r := m.Read(context.Background())
-	if r.Sources["done"].OK || !strings.Contains(r.Sources["done"].Error, "unreachable") || r.Sources["asks"].OK || r.Sources["checkpoint_history"].OK {
+	if r.Sources["done"].OK || !strings.Contains(r.Sources["done"].Error, "unreachable") || r.Sources["asks"].OK || r.Sources["pending_checkpoints"].OK {
 		t.Fatalf("%+v", r.Sources)
 	}
 	var n int
@@ -179,6 +203,10 @@ func TestTorqueHTTP(t *testing.T) {
 				t.Errorf("stalled query: %v", q)
 			}
 			fmt.Fprintf(w, `{"items":[{"id":"CW-%s","title":"t","status":"%s","updated_at":"2026-11-10T00:00:00Z"}],"meta":{"total":3}}`, q.Get("status"), q.Get("status"))
+		case r.URL.Path == "/api/v1/checkpoints/c%2F1" || r.URL.Path == "/api/v1/checkpoints/c/1":
+			t.Errorf("an id is escaped into one path segment: %s", r.URL.Path)
+		case r.URL.Path == "/api/v1/checkpoints/c9":
+			fmt.Fprint(w, `{"correlation_id":"c9","type":"pr_review","status":"responded","emitted_at":"2026-11-14T10:00:00Z","responded_at":"2026-11-14T11:30:00Z"}`)
 		case r.URL.Path == "/api/v1/checkpoints/pending" && q.Get("cursor") == "":
 			fmt.Fprint(w, `{"items":[{"correlation_id":"c1","task_id":"CW-1","type":"approval","payload_json":"{\"title\":\"Merge?\"}","emitted_at":"2026-09-14T18:39:09Z"}],"meta":{"has_more":true,"next_cursor":"n2"}}`)
 		case r.URL.Path == "/api/v1/checkpoints/pending":
@@ -194,22 +222,12 @@ func TestTorqueHTTP(t *testing.T) {
 	if n, err := tq.DoneSince(context.Background(), now); err != nil || n != 92 {
 		t.Fatal(n, err)
 	}
+	rec, err := tq.Checkpoint(context.Background(), "c9")
+	if err != nil || rec.Type != "pr_review" || rec.Status != "responded" || rec.RespondedAt == nil || rec.RespondedAt.Sub(rec.EmittedAt) != 90*time.Minute {
+		t.Fatal(rec, err)
+	}
 	cps, err := tq.PendingCheckpoints(context.Background())
 	if err != nil || len(cps) != 2 || cps[0].Title != "Merge?" || cps[1].Type != "pr_review" {
 		t.Fatal(cps, err)
-	}
-}
-
-func TestTetherHistoryReadsCheckpointTransitions(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("kind") != "checkpoint.state_changed" {
-			t.Error("kind filter")
-		}
-		fmt.Fprint(w, `{"events":[{"at":"2026-11-14T18:01:00Z","payload_json":"{\"entity\":{\"type\":\"checkpoint\",\"id\":\"c1\"},\"to\":\"responded\",\"trigger\":\"x\"}"},{"at":"bad","payload_json":"{}"}]}`)
-	}))
-	defer srv.Close()
-	evs, err := (&TetherHistory{Base: srv.URL, Client: srv.Client()}).CheckpointEvents(context.Background())
-	if err != nil || len(evs) != 1 || evs[0].ID != "c1" || evs[0].State != "responded" {
-		t.Fatal(evs, err)
 	}
 }

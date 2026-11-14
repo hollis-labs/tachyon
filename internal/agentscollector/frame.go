@@ -68,6 +68,9 @@ type Frame struct {
 	TetherSummary string
 	// Cell is the acting seat's team slug (scope.cell on the live stream, cell on GET /events).
 	Cell string
+	// CheckpointID and CheckpointState are a Torque checkpoint.state_changed's entity id (the correlation_id) and
+	// its new state; empty for every other kind.
+	CheckpointID, CheckpointState string
 	// Seat is a seat.status event's declared status, validated; nil for every other kind.
 	Seat *SeatStatus
 }
@@ -236,6 +239,9 @@ func ParseFrame(raw []byte) (Frame, bool) {
 				f.State = clean(firstNonEmpty(p.State, firstNonEmpty(to, p.Status)), 24)
 				f.Version, f.PR = clean(p.Version, 40), clean(firstNonEmpty(p.PR, p.PullRequest), 140)
 				f.Title, f.BusActor = clean(p.Title, 200), clean(p.Actor, 80)
+			}
+			if f.Kind == "checkpoint.state_changed" && p.Entity.ID != "" && rawString(p.To) != "" {
+				f.CheckpointID, f.CheckpointState = clean(p.Entity.ID, 80), clean(rawString(p.To), 24)
 			}
 			f.CardID, f.CardType = clean(p.CardID, 80), clean(p.CardType, 40)
 			f.AgentURN, f.LogicalAgentID, f.AgentName = clean(p.AgentURN, 200), clean(p.LogicalAgent, 120), clean(p.AgentName, 120)

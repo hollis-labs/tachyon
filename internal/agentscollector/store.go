@@ -127,6 +127,11 @@ func (s *Store) Apply(ctx context.Context, frames []Frame) error {
 				// The feed names the agent, which a state change does not carry; the store may know it.
 				_ = tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(agent_name,''),logical_agent_id,'') FROM agents_sessions WHERE session_id=?`, f.SessionID).Scan(&f.AgentName)
 			}
+			if f.CheckpointID != "" && f.Seq > 0 {
+				if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO checkpoint_events(correlation_id,state,at_ns,tether_seq) VALUES(?,?,?,?)`, f.CheckpointID, f.CheckpointState, at, f.Seq); err != nil {
+					return err
+				}
+			}
 			if f.Seat != nil {
 				if err := upsertSeatStatus(ctx, tx, f.Seat, at); err != nil {
 					return err
@@ -394,6 +399,7 @@ func (s *Store) Prune(ctx context.Context) (int64, error) {
 		{`DELETE FROM agents_events WHERE id IN (SELECT id FROM agents_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
 		{`DELETE FROM agents_stream WHERE id IN (SELECT id FROM agents_stream WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
 		{`DELETE FROM bus_events WHERE id IN (SELECT id FROM bus_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
+		{`DELETE FROM checkpoint_events WHERE id IN (SELECT id FROM checkpoint_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention - 24*time.Hour)},
 		// Task events stored before they named their task read "unknown <state>"; they carry no information.
 		{`DELETE FROM bus_events WHERE id IN (SELECT id FROM bus_events WHERE type='task' AND subject LIKE 'unknown %' AND at_ns<? LIMIT ?)`, now.Add(time.Hour)},
 		{`DELETE FROM agents_gaps WHERE id IN (SELECT id FROM agents_gaps WHERE end_ns<? LIMIT ?)`, now.Add(-GapRetention)},

@@ -241,7 +241,7 @@ export const CEREMONY = {
   noneStalled: 'No task has stalled.',
   idle: (age: string) => `no update for ${age}`,
   cpType: (t: string) => t.replace(/_/g, ' '),
-  source: { reviews: 'task reviews', approvals: 'approvals', checkpoint_history: 'checkpoint history', asks: 'asks', stalled: 'stalled tasks', pending_checkpoints: 'pending checkpoints', done: 'closed tasks', activity: 'activity' } as Record<string, string>,
+  source: { reviews: 'task reviews', approvals: 'approvals', checkpoints: 'checkpoints', asks: 'asks', stalled: 'stalled tasks', pending_checkpoints: 'pending checkpoints', done: 'closed tasks', activity: 'activity' } as Record<string, string>,
   incomplete: (names: string[]) => `Some figures are missing: could not read ${names.join(', ')}.`,
 } as const
 
