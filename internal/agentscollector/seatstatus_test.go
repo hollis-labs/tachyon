@@ -2,7 +2,10 @@ package agentscollector
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -56,5 +59,78 @@ func TestSeatStatusKeepsTheNewestValidStatusPerSeat(t *testing.T) {
 	}
 	if d := by["msg://agent/agent-mux/agt_d"]; d.Owner != "" || d.Ref != "" || d.State != "waiting-decision" {
 		t.Fatalf("an invalid owner and ref are dropped, the status kept: %+v", d)
+	}
+}
+
+func seatFrame(t *testing.T, seq int, at time.Time, urn, state string) Frame {
+	t.Helper()
+	raw := fmt.Sprintf(`{"seq":%d,"kind":"seat.status","at":%q,"payload_json":"{\"agent_urn\":\"%s\",\"handle\":\"@h\",\"state\":\"%s\"}"}`, seq, at.Format(time.RFC3339Nano), urn, state)
+	f, ok := ParseFrame([]byte(raw))
+	if !ok || f.Seat == nil {
+		t.Fatalf("seat frame did not parse: %s", raw)
+	}
+	return f
+}
+
+// The backfill keeps each seat's newest status whatever order Tether lists them in, and never replaces a newer
+// row the live stream already stored.
+func TestSeatStatusBackfillKeepsTheNewest(t *testing.T) {
+	c := newCollector(t, &fakeSource{})
+	now := time.Now().UTC()
+	const a, b = "msg://agent/agent-mux/agt_a", "msg://agent/agent-mux/agt_b"
+	applyRaw(t, c, `{"id":"e:50","kind":"seat.status","time":"`+now.Format(time.RFC3339Nano)+`","payload":{"agent_urn":"`+b+`","state":"blocked"}}`)
+	n, err := c.Store.BackfillSeatStatuses(context.Background(), []Frame{
+		seatFrame(t, 40, now.Add(-time.Minute), a, "working"), // newest first, as Tether lists them
+		seatFrame(t, 30, now.Add(-time.Hour), a, "available"),
+		seatFrame(t, 20, now.Add(-time.Hour), b, "working"), // older than the live row: ignored
+	})
+	if err != nil || n != 3 {
+		t.Fatal(n, err)
+	}
+	got, _ := c.Store.SeatStatuses(context.Background(), now)
+	by := map[string]string{}
+	for _, s := range got {
+		by[s.AgentURN] = s.State
+	}
+	if by[a] != "working" || by[b] != "blocked" || len(got) != 2 {
+		t.Fatalf("%v", by)
+	}
+}
+
+type seatHistorySource struct {
+	*fakeSource
+	mu     sync.Mutex
+	calls  int
+	frames []Frame
+}
+
+func (s *seatHistorySource) SeatStatusHistory(context.Context, int) ([]Frame, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls++
+	if s.calls == 1 {
+		return nil, errors.New("tether answered 503")
+	}
+	return s.frames, nil
+}
+
+// On start the collector backfills seat statuses from Tether's history, in the background, retrying a failure.
+func TestCollectorBackfillsSeatStatusesOnStart(t *testing.T) {
+	old := seatBackfillRetry
+	seatBackfillRetry = 10 * time.Millisecond
+	defer func() { seatBackfillRetry = old }()
+	now := time.Now().UTC()
+	src := &seatHistorySource{fakeSource: &fakeSource{snap: Snapshot{Env: "e", HighWater: 1}},
+		frames: []Frame{seatFrame(t, 9, now.Add(-time.Minute), "msg://agent/agent-mux/agt_gui", "waiting-agent")}}
+	c := newCollector(t, src.fakeSource)
+	c.Source = src
+	runUntil(t, c, func() bool {
+		got, _ := c.Store.SeatStatuses(context.Background(), now)
+		return len(got) == 1 && got[0].State == "waiting-agent"
+	})
+	src.mu.Lock()
+	defer src.mu.Unlock()
+	if src.calls != 2 {
+		t.Fatalf("one failed attempt, then one that stored: %d calls", src.calls)
 	}
 }

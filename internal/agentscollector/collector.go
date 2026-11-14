@@ -98,6 +98,7 @@ func (c *Collector) Run(ctx context.Context) {
 	}
 	wait := lo
 	go c.retention(ctx)
+	go c.backfillSeats(ctx)
 	for ctx.Err() == nil {
 		started := c.now()
 		err := c.pass(ctx)

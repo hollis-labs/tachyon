@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
+	"net/url"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/hollis-labs/libs/security/redact"
@@ -109,4 +112,86 @@ func (s *Store) SeatStatuses(ctx context.Context, now time.Time) ([]SeatStatus, 
 		out = append(out, st)
 	}
 	return out, rows.Err()
+}
+
+// SeatHistory is a source that can list past seat.status events, newest first (Tether GET /events?kind=).
+type SeatHistory interface {
+	SeatStatusHistory(ctx context.Context, limit int) ([]Frame, error)
+}
+
+func (s *httpSource) SeatStatusHistory(ctx context.Context, limit int) ([]Frame, error) {
+	q := url.Values{"kind": {"seat.status"}, "order": {"desc"}, "limit": {strconv.Itoa(limit)}}
+	var w struct {
+		Events []json.RawMessage `json:"events"`
+	}
+	if err := s.get(ctx, "/events", q, 16<<20, &w); err != nil {
+		return nil, err
+	}
+	var out []Frame
+	for _, raw := range w.Events {
+		if f, ok := ParseFrame(raw); ok && f.Seat != nil {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+// BackfillSeatStatuses keeps each seat's newest declared status from frames (any order): a status declared before
+// the collector kept them, or while it was down, would otherwise stay unseen, because Tether emits nothing when a
+// seat re-sets the same status. An older frame never overwrites a newer row.
+func (s *Store) BackfillSeatStatuses(ctx context.Context, frames []Frame) (int, error) {
+	n := 0
+	err := s.DB.Writer.Submit(ctx, "seat_status_backfill", func(ctx context.Context, tx *sql.Tx) error {
+		for _, f := range frames {
+			if f.Seat == nil {
+				continue
+			}
+			at := f.At.UnixNano()
+			if f.At.IsZero() {
+				continue // without a time the card could not say when it was declared
+			}
+			if err := upsertSeatStatus(ctx, tx, f.Seat, at); err != nil {
+				return err
+			}
+			n++
+		}
+		return nil
+	})
+	return n, err
+}
+
+// seatBackfillLimit is how many recent seat.status events the backfill reads (one page; Tether's filtered history
+// answered 200 in about 2s on agent-os, within the source's 20s request bound).
+const seatBackfillLimit = 200
+
+// seatBackfillRetry is the first wait between backfill attempts; it doubles each time (a variable so tests can
+// shorten it). Tether's filtered history answers in about 2s but spikes past the source's bound (48s seen).
+var seatBackfillRetry = time.Minute
+
+// backfillSeats runs once per collector start, in the background: Tether's filtered history can be slow, and the
+// live stream must not wait for it. A failed attempt is retried, up to five attempts, waiting longer each time.
+func (c *Collector) backfillSeats(ctx context.Context) {
+	h, ok := c.Source.(SeatHistory)
+	if !ok {
+		return
+	}
+	wait := seatBackfillRetry
+	for attempt := 1; attempt <= 5; attempt++ {
+		frames, err := h.SeatStatusHistory(ctx, seatBackfillLimit)
+		if err == nil {
+			n, serr := c.Store.BackfillSeatStatuses(ctx, frames)
+			if serr == nil {
+				slog.Info("agents collector: seat statuses backfilled", "events", n)
+				return
+			}
+			err = serr
+		}
+		slog.Warn("agents collector: seat status backfill failed", "attempt", attempt, "err", errText(err))
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		wait *= 2
+	}
 }
