@@ -46,6 +46,7 @@ type Collector struct {
 	dropped  atomic.Int64
 	streamed atomic.Bool
 	resync   atomic.Bool // a gap frame arrived: the next pass re-seeds from the snapshot instead of resuming the old cursor
+	refill   atomic.Bool // a gap frame whose range history still covers: the next pass fills from history instead of re-seeding
 	done     chan struct{}
 }
 
@@ -217,6 +218,11 @@ func (c *Collector) pass(ctx context.Context) (err error) {
 		if cursor, err = c.bootstrap(ctx); err != nil {
 			return err
 		}
+	} else if c.refill.Swap(false) {
+		gap := Gap{Start: c.now(), End: c.now(), Reason: "restart", FromSeq: st.LastSeq}
+		if cursor, err = c.fill(ctx, gap); err != nil {
+			return err
+		}
 	} else if !st.LastEventAt.IsZero() && c.now().Sub(st.LastEventAt) > offlineGap {
 		// Tachyon (or Tether) was away: record the hole, then try to fill it from history.
 		gap := Gap{Start: st.LastEventAt, End: c.now(), Reason: "tachyon_offline", FromSeq: st.LastSeq}
@@ -371,8 +377,16 @@ func (c *Collector) follow(ctx context.Context, after int64) error {
 			return nil
 		case f.Gap:
 			now := c.now()
-			if _, err := c.Store.AddGap(ctx, Gap{Start: now, End: now, Reason: gapReason(f.Reason), FromSeq: after}); err != nil {
+			// History covers the cursor and Tether does not ask for a snapshot: fill from history, no reseed.
+			fillable := !f.GapSnapshotRequired && f.GapEarliest > 0 && f.GapEarliest <= after+1 && f.Reason != "ahead"
+			slog.Info("agents collector: stream gap", "reason", f.Reason, "after_seq", after, "earliest_available", f.GapEarliest,
+				"high_water_seq", f.GapHighWater, "snapshot_required", f.GapSnapshotRequired, "fill_from_history", fillable)
+			if _, err := c.Store.AddGap(ctx, Gap{Start: now, End: now, Reason: gapReason(f.Reason), FromSeq: after, ToSeq: f.GapHighWater}); err != nil {
 				return err
+			}
+			if fillable {
+				c.refill.Store(true)
+				return errors.New("stream reported a gap; filling from history")
 			}
 			c.resync.Store(true)
 			return errors.New("stream reported a gap; resyncing")

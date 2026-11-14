@@ -47,9 +47,12 @@ type Frame struct {
 	Reason        string // gap or end reason
 	DeliveryState string // message frames: payload delivery.state (retry_scheduled, dead_letter, expired, ...)
 
-	Gap          bool // a gap frame: events were missed
-	Synchronized bool // the catch-up is over, live frames follow
-	Output       bool // session.output: counted, never stored
+	Gap bool // a gap frame: events were missed
+	// Gap frame detail from Tether: the first seq still in history, the stream's head, and whether it asks for a snapshot.
+	GapEarliest, GapHighWater int64
+	GapSnapshotRequired       bool
+	Synchronized              bool // the catch-up is over, live frames follow
+	Output                    bool // session.output: counted, never stored
 	// Payload is set ONLY on session.output frames. It is handed to the OutputSink in memory and then
 	// dropped; no code path stores or logs it.
 	Payload []byte
@@ -81,6 +84,9 @@ type wireFrame struct {
 	Cell      string          `json:"cell"` // GET /events; the live stream carries it as scope.cell
 	SessionID string          `json:"session_id"`
 	Reason    string          `json:"reason"`
+	Earliest  int64           `json:"earliest_available"`
+	HighWater int64           `json:"high_water_seq"`
+	SnapReq   bool            `json:"snapshot_required"`
 	Payload   json.RawMessage `json:"payload"`
 	PayloadJS json.RawMessage `json:"payload_json"` // an object, or a JSON string holding one
 }
@@ -140,6 +146,7 @@ func ParseFrame(raw []byte) (Frame, bool) {
 	switch f.Kind {
 	case "gap":
 		f.Gap = true
+		f.GapEarliest, f.GapHighWater, f.GapSnapshotRequired = w.Earliest, w.HighWater, w.SnapReq
 	case "synchronized":
 		f.Synchronized = true
 	case "session.output":
