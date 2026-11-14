@@ -94,7 +94,7 @@ Outermost first:
   including the old ledger `tachyon_migrations`, 185 indexes, the two append-only triggers on
   `approval_decision_log`).
   - `schema_test.go` proves it equal to both references: a database built from the old tree's own source in the
-    same checkout, and the live snapshot's `.schema`. It compares `sqlite_master` text and `table_info`,
+    same checkout, and a schema-only snapshot fixture (`.schema` of a backup copy). It compares `sqlite_master` text and `table_info`,
     `foreign_key_list`, `index_list` and `index_xinfo` per table.
   - A new old-tree migration arriving from `main` fails the first comparison until the port carries it.
   - The framework's tables sit beside it: `identity_*`, `gosched_*` and `goose_db_version`.

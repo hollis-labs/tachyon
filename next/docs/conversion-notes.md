@@ -119,7 +119,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 
 - **The schema is unchanged** (B2): every table, column, declared type, default, key, index and trigger of the old
   build at migration 056.
-  - `chat_events.body` keeps its declared type TEXT, although the live rows hold BLOBs.
+  - `chat_events.body` keeps its declared type TEXT, although existing rows may hold BLOBs.
   - The 14 AUTOINCREMENT tables keep AUTOINCREMENT.
   - The old ledger `tachyon_migrations` is kept as a table, and its rows are copied as history. The new build's
     own version table is `goose_db_version`.
