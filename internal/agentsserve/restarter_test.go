@@ -20,7 +20,7 @@ func TestTetherRestarterRoutes(t *testing.T) {
 		calls = append(calls, r.Method+" "+r.URL.Path)
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/sessions/old":
-			fmt.Fprint(w, `{"id":"old","launch_id":"chief","state":"running"}`)
+			fmt.Fprint(w, `{"id":"old","launch_id":"chief","worker_id":"worker_1","state":"running"}`)
 		case r.URL.Path == "/logical-agents/la1/resume":
 			w.WriteHeader(409)
 			fmt.Fprint(w, `{"error":{"code":"conflict","message":"resume source old is placed on worker w-secret-1; resume on a worker is not enabled"}}`)
@@ -42,10 +42,11 @@ func TestTetherRestarterRoutes(t *testing.T) {
 	defer srv.Close()
 	r := &TetherRestarter{Base: srv.URL, Client: srv.Client()}
 	ctx := context.Background()
-	launch, err := r.LaunchOf(ctx, "old")
-	if err != nil || launch != "chief" {
-		t.Fatal(launch, err)
+	place, err := r.Placement(ctx, "old")
+	if err != nil || place.Launch != "chief" || place.Worker != "worker_1" {
+		t.Fatal(place, err)
 	}
+	launch := place.Launch
 	_, err = r.Resume(ctx, "la1", "k")
 	if !errors.Is(err, ErrResumeRefused) || !strings.Contains(err.Error(), "409 (conflict)") || strings.Contains(err.Error(), "w-secret-1") {
 		t.Fatalf("a refused resume: %v", err)
@@ -64,7 +65,7 @@ func TestTetherRestarterRoutes(t *testing.T) {
 	if strings.Join(calls[:5], ",") != "GET /sessions/old,POST /logical-agents/la1/resume,POST /sessions,POST /sessions/new/launch,GET /events" {
 		t.Fatalf("calls: %v", calls)
 	}
-	if _, err := r.LaunchOf(ctx, "missing"); err == nil || !strings.Contains(err.Error(), "404") {
+	if _, err := r.Placement(ctx, "missing"); err == nil || !strings.Contains(err.Error(), "404") {
 		t.Fatalf("a missing session: %v", err)
 	}
 }

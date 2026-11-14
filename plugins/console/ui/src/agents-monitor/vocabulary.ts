@@ -194,7 +194,7 @@ export const AGENTS = {
     skip: 'Skip and relaunch now',
     steps: { requested: 'Requested', handoff_sent: 'Handoff asked', waiting: 'Waiting for the handoff', stopping: 'Stopping', stopped: 'Stopped', resuming: 'Relaunching', done: 'Done', failed: 'Failed' } as Record<string, string>,
     failedAt: (step: string) => `Failed at: ${step}`,
-    narrowed: (scopes: string[]) => `Relaunched with fewer permissions: ${scopes.join(', ')} not granted. Tachyon relaunched the seat with its own credential; restart it from Tether to restore them.`,
+    narrowed: (scopes: string[]) => `Relaunched with fewer permissions: Tether did not grant ${scopes.join(', ')}. Relaunch the seat from Tether to restore them.`,
     close: 'Close',
     discarded: (n: number) => `${n} pending approvals or questions were lost with the old session`,
     stale: 'This session was replaced; reload to see the current one',

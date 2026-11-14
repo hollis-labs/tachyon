@@ -106,7 +106,7 @@ describe('Restart', () => {
 
   it('keeps a relaunch that lost scopes open until it is read, then hands over the new session', async () => {
     const onDone = restartWith({ state: 'done', new_session_id: 'sess_new', relaunched_by: 'relaunch', scopes_dropped: ['tether.admin', 'tether.terminal'] })
-    expect(await screen.findByText(/fewer permissions: tether.admin, tether.terminal not granted/, {}, { timeout: 4000 })).toBeTruthy()
+    expect(await screen.findByText(/fewer permissions: Tether did not grant tether.admin, tether.terminal/, {}, { timeout: 4000 })).toBeTruthy()
     expect(onDone).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))

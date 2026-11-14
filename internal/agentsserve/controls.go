@@ -27,10 +27,17 @@ type Interrupter interface {
 	Interrupt(ctx context.Context, sessionID, body string) (string, error)
 }
 
-// Restarter stops a session and brings its seat back: a logical-agent resume, or, when Tether refuses that
-// (ErrResumeRefused), a relaunch of the same launch. What a relaunch needs is read before anything is stopped.
+// Placement is where a session runs and what it was launched from.
+type Placement struct {
+	Launch string // the launch id a relaunch starts from
+	Worker string // the worker it runs on; "" on the hub
+}
+
+// Restarter stops a session and brings its seat back by relaunching the same launch. A worker-placed seat (every
+// catalog seat) is never resumed: Tether refuses resume on workers. A hub-placed session is resumed, and
+// relaunched if Tether refuses (ErrResumeRefused). The placement is read before anything is stopped.
 type Restarter interface {
-	LaunchOf(ctx context.Context, sessionID string) (launchID string, err error)
+	Placement(ctx context.Context, sessionID string) (Placement, error)
 	Stop(ctx context.Context, sessionID string) error
 	Resume(ctx context.Context, logicalAgentID, key string) (newSessionID string, err error)
 	Relaunch(ctx context.Context, launchID, key string) (newSessionID string, err error)
@@ -276,9 +283,9 @@ func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 	reply(w, 202, saved)
 }
 
-// runRestart walks requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done. A failure
-// records the step it stopped at and says whether the seat is down. The launch a relaunch needs is read first: a
-// restart that could not bring the seat back never stops it (step "preparing").
+// runRestart walks requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done ("resuming"
+// covers the relaunch). A failure records the step it stopped at and says whether the seat is down. The placement
+// is read first: a restart that could not bring the seat back never stops it (step "preparing").
 func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	defer s.skips.Delete(c.RequestID)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -289,7 +296,7 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 		c.Step, c.Error = &step, &msg
 		set("failed")
 	}
-	launch, err := s.Restarter.LaunchOf(ctx, sess.ID)
+	place, err := s.Restarter.Placement(ctx, sess.ID)
 	if err != nil {
 		fail("preparing", "Nothing was stopped; the session is still running.", err)
 		return
@@ -315,15 +322,20 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	set("stopped")
 	set("resuming")
 	key := "tachyon-restart-" + c.RequestID
-	how := "resume"
-	id, err := s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key)
-	if errors.Is(err, ErrResumeRefused) {
-		// Tether will not resume this seat here (a worker-placed seat while worker_resume is off): relaunch it.
-		how = "relaunch"
-		id, err = s.Restarter.Relaunch(ctx, launch, key)
+	how, id := "relaunch", ""
+	if place.Worker == "" {
+		// Only a hub session is resumed; if Tether refuses, it is relaunched like a worker seat.
+		how = "resume"
+		if id, err = s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key); errors.Is(err, ErrResumeRefused) {
+			how, id, err = "relaunch", "", nil
+		}
+	}
+	if err == nil && how == "relaunch" {
+		// Right after the stop: Tether hands the relaunch the stopped session's grant (tether#553).
+		id, err = s.Restarter.Relaunch(ctx, place.Launch, key)
 	}
 	if err != nil {
-		fail("resuming", "The old session is stopped and no new one started: relaunch "+launch+" from Tether.", err)
+		fail("resuming", "The old session is stopped and no new one started: relaunch "+place.Launch+" from Tether.", err)
 		return
 	}
 	c.NewSessionID, c.RelaunchedBy = &id, &how

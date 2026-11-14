@@ -16,10 +16,10 @@ import (
 // catalog.defaults.worker_resume is off, a detached session, an agent never launched. The restart relaunches.
 var ErrResumeRefused = errors.New("tether refused the resume")
 
-// TetherRestarter restarts a session with Tether's control routes: GET /sessions/{id} (the launch, read before
-// anything stops), POST /sessions/{id}/stop, then POST /logical-agents/{id}/resume, or, when Tether refuses that,
-// POST /sessions {launch, continuity: relaunch} and POST /sessions/{id}/launch. Client carries the control token
-// (builderchange.NewControlClient).
+// TetherRestarter restarts a session with Tether's control routes: GET /sessions/{id} (its launch and placement,
+// read before anything stops), POST /sessions/{id}/stop, then POST /sessions {launch, continuity: relaunch} and
+// POST /sessions/{id}/launch. Only a hub-placed session is resumed instead (POST /logical-agents/{id}/resume),
+// and relaunched if Tether refuses. Client carries the control token (builderchange.NewControlClient).
 type TetherRestarter struct {
 	Base   string
 	Client *http.Client
@@ -79,19 +79,21 @@ func (t *TetherRestarter) do(ctx context.Context, method, path string, body any,
 	return nil, &tetherError{path: route, status: resp.StatusCode, code: strings.TrimSpace(e.Error.Code)}
 }
 
-// LaunchOf reads the session's launch: what a relaunch starts from. It is read before anything is stopped.
-func (t *TetherRestarter) LaunchOf(ctx context.Context, sessionID string) (string, error) {
+// Placement reads the session's launch (what a relaunch starts from) and the worker it runs on ("" on the hub). It
+// is read before anything is stopped.
+func (t *TetherRestarter) Placement(ctx context.Context, sessionID string) (Placement, error) {
 	b, err := t.do(ctx, http.MethodGet, "/sessions/"+url.PathEscape(sessionID), nil, 200)
 	if err != nil {
-		return "", err
+		return Placement{}, err
 	}
 	var out struct {
 		LaunchID string `json:"launch_id"`
+		WorkerID string `json:"worker_id"`
 	}
 	if json.Unmarshal(b, &out) != nil || out.LaunchID == "" {
-		return "", fmt.Errorf("tether names no launch for this session")
+		return Placement{}, fmt.Errorf("tether names no launch for this session")
 	}
-	return out.LaunchID, nil
+	return Placement{Launch: out.LaunchID, Worker: out.WorkerID}, nil
 }
 
 func (t *TetherRestarter) Stop(ctx context.Context, sessionID string) error {
@@ -119,7 +121,8 @@ func (t *TetherRestarter) Resume(ctx context.Context, logicalAgentID, key string
 
 // Relaunch starts a new session of the launch as a continuation of the seat: POST /sessions {launch, continuity:
 // relaunch} creates it (lineage only: no provider conversation is resumed), POST /sessions/{id}/launch starts it.
-// It is made with Tachyon's credential, so Tether may grant fewer scopes than the seat held (ScopesDropped).
+// Called right after the stop: Tether gives the relaunch the previous session's grant once that session has ended
+// or has a stop requested (tether#553); otherwise the grant is bounded by Tachyon's credential (ScopesDropped).
 func (t *TetherRestarter) Relaunch(ctx context.Context, launchID, key string) (string, error) {
 	b, err := t.post(ctx, "/sessions", map[string]string{"launch": launchID, "continuity": "relaunch", "idempotency_key": key}, 200, 201)
 	if err != nil {
