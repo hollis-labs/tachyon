@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/hollis-labs/tachyon/internal/chatapi"
@@ -14,6 +15,8 @@ var Routes = []string{
 	"GET /threads/{ref}/plan", "PUT /threads/{ref}/plan", "DELETE /threads/{ref}/plan",
 	"POST /threads/{ref}/plan/steps", "PATCH /threads/{ref}/plan/steps/{id}", "POST /threads/{ref}/plan/reorder",
 	"GET /threads/{ref}/continue", "PUT /threads/{ref}/continue",
+	"GET /threads/{ref}/plans", "POST /threads/{ref}/plans", "POST /threads/{ref}/plans/reorder", "DELETE /threads/{ref}/plans/{id}",
+	"POST /threads/{ref}/plans/{id}/steps/{step}/move",
 }
 
 type Handler struct{ Service *Service }
@@ -54,6 +57,8 @@ func (h *Handler) Mux() http.Handler {
 		"GET /threads/{ref}/plan": h.get, "PUT /threads/{ref}/plan": h.put, "DELETE /threads/{ref}/plan": h.clear,
 		"POST /threads/{ref}/plan/steps": h.addStep, "PATCH /threads/{ref}/plan/steps/{id}": h.patchStep, "POST /threads/{ref}/plan/reorder": h.reorder,
 		"GET /threads/{ref}/continue": h.getContinue, "PUT /threads/{ref}/continue": h.putContinue,
+		"GET /threads/{ref}/plans": h.plans, "POST /threads/{ref}/plans": h.createPlan, "POST /threads/{ref}/plans/reorder": h.reorderPlans, "DELETE /threads/{ref}/plans/{id}": h.deletePlan,
+		"POST /threads/{ref}/plans/{id}/steps/{step}/move": h.moveStep,
 	}
 	for _, r := range Routes {
 		method, path, _ := strings.Cut(r, " ")
@@ -326,4 +331,105 @@ func (h *Handler) reorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, 200, p)
+}
+
+// Multiple plans per thread (CW-20261112-0067). The single-plan routes above act on the thread's first plan until the
+// agent verbs and the screen have moved to these.
+func (h *Handler) plans(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	ps, err := h.Service.Plans(r.Context(), t)
+	if err != nil {
+		problem(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"plans": ps})
+}
+
+func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		Title *string `json:"title"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	p, err := h.Service.CreatePlan(r.Context(), t, in.Title, "user")
+	if err != nil {
+		problem(w, err)
+		return
+	}
+	reply(w, 201, p)
+}
+
+func (h *Handler) deletePlan(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	exp, err := strconv.ParseInt(r.URL.Query().Get("expected_revision"), 10, 64)
+	if err != nil {
+		fail(w, 400, "invalid", "expected_revision is required.")
+		return
+	}
+	if err := h.Service.DeletePlan(r.Context(), t, r.PathValue("id"), exp, "user"); err != nil {
+		problem(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(204)
+}
+
+func (h *Handler) reorderPlans(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		PlanIDs []string `json:"plan_ids"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.PlanIDs == nil {
+		fail(w, 400, "invalid", "plan_ids is required.")
+		return
+	}
+	ps, err := h.Service.ReorderPlans(r.Context(), t, in.PlanIDs, "user")
+	if err != nil {
+		problem(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"plans": ps})
+}
+
+func (h *Handler) moveStep(w http.ResponseWriter, r *http.Request) {
+	t, ok := ref(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		ToPlan     string `json:"to_plan"`
+		Position   int    `json:"position"`
+		Expected   *int64 `json:"expected_revision"`
+		ToExpected *int64 `json:"to_expected_revision"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.ToPlan == "" || in.Expected == nil || in.ToExpected == nil {
+		fail(w, 400, "invalid", "to_plan, expected_revision and to_expected_revision are required.")
+		return
+	}
+	from, to, st, err := h.Service.MoveStep(r.Context(), t, r.PathValue("id"), in.ToPlan, r.PathValue("step"), in.Position, *in.Expected, *in.ToExpected, "user")
+	if err != nil {
+		problem(w, err)
+		return
+	}
+	reply(w, 200, map[string]any{"from": from, "to": to, "step": st})
 }
