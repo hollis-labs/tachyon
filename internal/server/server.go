@@ -330,6 +330,27 @@ func (s *Server) Start(ctx context.Context) error {
 		_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
 	}}
 	s.chatActivity = &chatactivity.Handler{Rec: rec, Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err }}
+	// The agent's own activity (mail, Torque reads, reminders, waits) comes from its Tether session's tool calls, not from the agent.
+	if s.agentsCollector != nil {
+		th := &chatactivity.Throttle{Window: 30 * time.Second}
+		s.agentsCollector.SetObserver(func(frames []agentscollector.Frame) {
+			for _, f := range frames {
+				if f.Kind != "tool.call.finished" || f.SessionID == "" || f.Tool == "" || time.Since(f.At) > 2*time.Minute {
+					continue
+				}
+				d, ok := chatactivity.Classify(f.Tool)
+				thread := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: f.SessionID}.String()
+				if !ok || !th.Allow(thread, d.Type, f.At) {
+					continue
+				}
+				actor := "agent"
+				if f.AgentName != "" {
+					actor = "agent:" + f.AgentName
+				}
+				rec.Quiet(context.Background(), thread, d.Type, actor, "tether", nil, chatactivity.Card(d.Title, f.Tool, nil))
+			}
+		})
+	}
 	ws := &chatworkspace.Store{DB: store, Dir: filepath.Join(s.cfg.DataDir, "workspace")}
 	s.chatWorkspace = &chatworkspace.Handler{
 		Store:  ws,

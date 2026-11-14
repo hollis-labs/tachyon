@@ -30,6 +30,7 @@ var Types = map[string]bool{
 	"tool.call": true, "card.sent": true, "card.answered": true, "approval.decided": true, "file.shared": true,
 	"plan.changed": true, "plan.carried": true, "task.closed": true, "panel.opened": true, "terminal.run": true,
 	"topic.added": true, "bookmark.added": true, "comment": true, "note": true,
+	TypeMessageSent: true, TypeMessageRead: true, TypeTaskChecked: true, TypeTaskUpdated: true, TypeReminder: true, TypeWait: true,
 }
 
 type Cite struct {
