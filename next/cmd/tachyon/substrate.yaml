@@ -1,0 +1,47 @@
+# Tachyon on Substrate (port plan docs/substrate-port-plan.md, section 2). The manifest is the shell:
+# modules and their defaults. Secure by default: the auth guard enforces, Tachyon is its own identity
+# provider, the owner is created offline, and every outbound integration is off until the operator's
+# override file (SUBSTRATE_CONFIG) turns it on.
+app: tachyon
+variant: app-host
+profiles: [minimal]
+# Tachyon's own nav items and surfaces (the GUI track owns ui/app.json).
+frontend: { contributions: ui/app.json }
+modules:
+  add: [httphost, database, auth, identity, secrets, cli, scheduler, pluginhost]
+config:
+  logging: { level: info, format: text }
+  # Loopback only: a TLS proxy in front forwards the public name (tachyon.allowed_hosts).
+  httphost: { addr: "127.0.0.1:8093" }
+  # Relative paths are anchored in the data directory (XDG data home/tachyon-next, or
+  # TACHYON_DATA_DIR) by the AfterConfig hook in cmd/tachyon/config.go; an absolute path from the
+  # override file is kept.
+  database:
+    sqlite: { path: tachyon.db }
+  auth: { mode: enforce }
+  identity: { key_file: identity-signing.key, session_ttl: 12h, setup: offline }
+  secrets: {}
+  # The engine starts only from serve, and only when tachyon.features.object_sync is on, so a
+  # short-lived command never fires a schedule.
+  scheduler: { autostart: false }
+  # Tachyon's own block (internal/settings). Defaults only: every address and credential reference
+  # is empty and every feature is off.
+  tachyon:
+    allowed_hosts: []
+    cache_dir: cache
+    upstreams:
+      github: { url: "https://api.github.com" }
+    features:
+      object_sync: false
+      chat_sync: false
+      agents_collector: false
+      catalog_index: false
+      card_events: false
+      card_effects_torque: false
+      card_delivery: false
+      alert_sources: false
+      alert_sink: false
+      forge_index: false
+      planner_events: false
+      transcripts: false
+      action_runs: false

@@ -35,3 +35,40 @@ jobs:
       - run: go build ./...
       - run: go test ./...
       - run: make plugins
+
+  # The Substrate port (docs/substrate-port-plan.md): a separate Go module in next/, built and
+  # checked on its own. The root job above does not descend into it (a nested module).
+  next:
+    name: next (Substrate port)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: next
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: next/go.mod
+          cache-dependency-path: next/go.sum
+      - run: go vet ./...
+      - run: go test -race ./...
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4
+          working-directory: next
+      - name: Pins match the Substrate BOM
+        run: go tool substrate pins check --app .
+      # Scoped to next/ at this commit (the director's ruling on CW-20261114-0121): the old tree and its
+      # history are pinned by an allowlist on main (PR #702), which never applies here. next/ as committed
+      # is archived into a throwaway repository and scanned with --no-allowlist, so an allow file under
+      # next/ or merged from main cannot mask a finding. scan-public exits 1 on any finding and 2 when
+      # it cannot run; either fails this step (set -e).
+      - name: Public hygiene (next/ at this commit, no allowlist)
+        run: |
+          set -euo pipefail
+          scan=$(mktemp -d)
+          git -C .. archive HEAD next | tar -x -C "$scan"
+          git -C "$scan" init -q
+          git -C "$scan" add -A
+          git -C "$scan" -c user.name=scan -c user.email=scan@invalid commit -qm "next/ at $GITHUB_SHA"
+          go tool substrate scan-public --repo "$scan" --ref HEAD --no-allowlist
