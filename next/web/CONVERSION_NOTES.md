@@ -65,6 +65,13 @@ npm ci
 npm run manifest            # after editing ../cmd/tachyon/ui/app.json
 npm run typecheck && npm run lint && npm test
 npm run build               # → ../internal/webui/dist (keeps .gitkeep)
-# build the next/ binary, then:
-TACHYON_E2E_BIN=../tachyon PLAYWRIGHT_CHANNEL=chromium npm run test:e2e
+# build the next/ binary (cd .. && go build -o tachyon ./cmd/tachyon), then:
+PLAYWRIGHT_CHANNEL=chromium npm run test:e2e
+# dev server: no default backend on purpose. Point it at a next/ binary you started on a scratch
+# port and its own data directory (never a running Tachyon):
+TACHYON_DEV_BACKEND=http://127.0.0.1:<port> npm run dev
 ```
+
+The browser suite makes a fresh run directory (mkdtemp, marked) under `TACHYON_E2E_DIR` or the OS
+temp dir, starts two backends on 28193/28194 (`TACHYON_E2E_PORT`) through `e2e/serve.sh`, and deletes
+nothing. A busy port fails the run rather than testing whatever answers there.
