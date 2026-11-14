@@ -461,7 +461,24 @@ func (c *ChatPlan) proxyThread(ctx context.Context, raw, session string) (chatap
 }
 
 type chatPlanGet struct {
+	PlanID    string `json:"plan_id,omitempty" desc:"Which of the thread's plans, from chat.plan.list. Omit it for the first plan."`
 	ThreadRef string `json:"thread_ref,omitempty" desc:"Chat thread: app:<id>, or tether:<your session id>. Through Tether, omit it to use your own session's thread; any other thread is denied."`
+}
+type chatPlanList struct {
+	ThreadRef string `json:"thread_ref,omitempty" desc:"Chat thread: app:<id>, or tether:<your session id>. Through Tether, omit it to use your own session's thread; any other thread is denied."`
+}
+type chatPlanCreate struct {
+	ThreadRef string  `json:"thread_ref,omitempty" desc:"Chat thread: app:<id>, or tether:<your session id>. Through Tether, omit it to use your own session's thread; any other thread is denied."`
+	Title     *string `json:"title,omitempty" desc:"Title of the new plan, up to 200 characters. Omit it for a loose todo list."`
+}
+type chatPlanMoveStep struct {
+	ThreadRef  string `json:"thread_ref,omitempty" desc:"Chat thread: app:<id>, or tether:<your session id>. Through Tether, omit it to use your own session's thread; any other thread is denied."`
+	FromPlan   string `json:"from_plan" desc:"Id of the plan the step is in, from chat.plan.list."`
+	ToPlan     string `json:"to_plan" desc:"Id of the plan to move it to; it must differ from from_plan and belong to the same thread."`
+	StepID     string `json:"step_id" desc:"Id of the step to move."`
+	Position   int    `json:"position,omitempty" desc:"1-based place in the target plan. Omit it to append."`
+	FromExpect int64  `json:"from_expected_revision" desc:"The revision of from_plan you last saw."`
+	ToExpect   int64  `json:"to_expected_revision" desc:"The revision of to_plan you last saw."`
 }
 type chatPlanStepIn struct {
 	ID         string  `json:"id,omitempty" desc:"Step id from chat.plan.get. Keep it to update that step; omit it for a new step."`
@@ -471,12 +488,14 @@ type chatPlanStepIn struct {
 	Notes      *string `json:"notes,omitempty" desc:"Free-form working notes for the step."`
 }
 type chatPlanWrite struct {
+	PlanID    string           `json:"plan_id,omitempty" desc:"Which of the thread's plans, from chat.plan.list. Omit it for the first plan."`
 	ThreadRef string           `json:"thread_ref,omitempty" desc:"Chat thread: app:<id>, or tether:<your session id>. Through Tether, omit it to use your own session's thread; any other thread is denied."`
 	Title     *string          `json:"title,omitempty" desc:"Plan title. Omit it for a loose todo list."`
 	Steps     []chatPlanStepIn `json:"steps" desc:"The whole ordered list of steps, at most 100. Steps you leave out are removed."`
 	Expected  int64            `json:"expected_revision,omitempty" desc:"Revision from chat.plan.get when a plan already exists; 0 or omitted when it does not."`
 }
 type chatPlanStep struct {
+	PlanID     string  `json:"plan_id,omitempty" desc:"Which of the thread's plans, from chat.plan.list. Omit it for the first plan."`
 	ThreadRef  string  `json:"thread_ref,omitempty" desc:"Chat thread: app:<id>, or tether:<your session id>. Through Tether, omit it to use your own session's thread; any other thread is denied."`
 	StepID     string  `json:"step_id" desc:"Id of the step to change, from chat.plan.get."`
 	Title      *string `json:"title,omitempty" desc:"New title, up to 200 characters."`
@@ -490,6 +509,12 @@ const planRules = " thread_ref (app:<id> or tether:<id>) is optional: omit it to
 
 func chatPlanVerbs() []Verb {
 	return []Verb{
+		{Name: "chat.plan.list", Description: "List every plan of a chat thread you are in, in the order the operator sees them: id, title, status, position, revision and steps. Use when you resume work, or before choosing which plan to change, add a plan to, or move a step between; a thread can hold several plans." + planRules,
+			InputSchema: inputSchema(reflect.TypeFor[chatPlanList](), []string{})},
+		{Name: "chat.plan.create", Mutates: true, Description: "Add a new, empty plan after the thread's others (at most 20). Use when the work splits into a separate track the operator should see on its own, instead of mixing it into the first plan; then fill it with chat.plan.write and its plan_id. The result is the new plan with its id and revision." + planRules,
+			InputSchema: inputSchema(reflect.TypeFor[chatPlanCreate](), []string{})},
+		{Name: "chat.plan.move_step", Mutates: true, Description: "Move one step from one plan of the thread to another, keeping its id, status and task link. Use when a step belongs in a different plan. Pass the revision you last saw of each plan; a stale revision on either is refused and nothing moves. Moving inside one plan is chat.plan.write." + planRules,
+			InputSchema: inputSchema(reflect.TypeFor[chatPlanMoveStep](), []string{"from_plan", "to_plan", "step_id", "from_expected_revision", "to_expected_revision"})},
 		{Name: "chat.plan.get", Description: "Read the working plan of a chat thread you are in (app: or tether:): its revision and steps with ids. Use when you resume work or before changing a plan you did not just write; the operator may have edited it." + planRules,
 			InputSchema: inputSchema(reflect.TypeFor[chatPlanGet](), []string{})},
 		{Name: "chat.plan.write", Mutates: true, Description: "Use when you start multi-step work, or the plan changes: it is the checklist the operator watches in the Plan panel. Write the whole plan of a chat thread you are in: a title (omit it for a loose todo list) and the ordered steps. Keep each step's id to update it; steps without an id are new; steps you leave out are removed. Pass expected_revision from chat.plan.get when a plan already exists (0 or omitted when it does not); a stale revision is refused. Writing also posts the plan to the chat." + planRules,
@@ -529,11 +554,53 @@ func invokeChatPlan(ctx context.Context, c *ChatPlan, name string, raw json.RawM
 		if err != nil {
 			return nil, err
 		}
-		p, err := c.Service.Get(ctx, t, "thread")
+		p, err := c.Service.PlanOf(ctx, t, q.PlanID)
 		if err != nil {
 			return nil, planError(err)
 		}
 		out = p
+	case "chat.plan.list":
+		var q chatPlanList
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		t, err := threadOf(q.ThreadRef)
+		if err != nil {
+			return nil, err
+		}
+		ps, err := c.Service.Plans(ctx, t)
+		if err != nil {
+			return nil, planError(err)
+		}
+		out = map[string]any{"plans": ps}
+	case "chat.plan.create":
+		var q chatPlanCreate
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		t, err := threadOf(q.ThreadRef)
+		if err != nil {
+			return nil, err
+		}
+		p, err := c.Service.CreatePlan(ctx, t, q.Title, "agent")
+		if err != nil {
+			return nil, planError(err)
+		}
+		out = p
+	case "chat.plan.move_step":
+		var q chatPlanMoveStep
+		if err := decode(raw, &q); err != nil {
+			return nil, err
+		}
+		t, err := threadOf(q.ThreadRef)
+		if err != nil {
+			return nil, err
+		}
+		from, to, st, err := c.Service.MoveStep(ctx, t, q.FromPlan, q.ToPlan, q.StepID, q.Position, q.FromExpect, q.ToExpect, "agent")
+		if err != nil {
+			return nil, planError(err)
+		}
+		out = map[string]any{"from": from, "to": to, "step": st}
 	case "chat.plan.write":
 		var q chatPlanWrite
 		if err := decode(raw, &q); err != nil {
@@ -543,7 +610,7 @@ func invokeChatPlan(ctx context.Context, c *ChatPlan, name string, raw json.RawM
 		if err != nil {
 			return nil, err
 		}
-		in := chatplan.WriteIn{By: "agent", Expected: q.Expected, Title: q.Title, HasTitle: true}
+		in := chatplan.WriteIn{By: "agent", Expected: q.Expected, Title: q.Title, HasTitle: true, PlanID: q.PlanID}
 		for _, s := range q.Steps {
 			title := s.Title
 			in.Steps = append(in.Steps, chatplan.StepIn{ID: s.ID, Title: &title, Status: s.Status, Acceptance: s.Acceptance, Notes: s.Notes})
@@ -562,7 +629,7 @@ func invokeChatPlan(ctx context.Context, c *ChatPlan, name string, raw json.RawM
 		if err != nil {
 			return nil, err
 		}
-		_, st, err := c.Service.PatchStep(ctx, t, "thread", q.StepID, chatplan.StepIn{Title: q.Title, Status: q.Status, Acceptance: q.Acceptance, Notes: q.Notes}, q.Expected, "agent")
+		_, st, err := c.Service.PatchStepOf(ctx, t, "thread", q.PlanID, q.StepID, chatplan.StepIn{Title: q.Title, Status: q.Status, Acceptance: q.Acceptance, Notes: q.Notes}, q.Expected, "agent")
 		if err != nil {
 			return nil, planError(err)
 		}

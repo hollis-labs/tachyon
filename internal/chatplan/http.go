@@ -17,6 +17,7 @@ var Routes = []string{
 	"GET /threads/{ref}/continue", "PUT /threads/{ref}/continue",
 	"GET /threads/{ref}/plans", "POST /threads/{ref}/plans", "POST /threads/{ref}/plans/reorder", "DELETE /threads/{ref}/plans/{id}",
 	"POST /threads/{ref}/plans/{id}/steps/{step}/move",
+	"POST /threads/{ref}/plans/{plan}/steps", "PATCH /threads/{ref}/plans/{plan}/steps/{id}",
 }
 
 type Handler struct{ Service *Service }
@@ -59,6 +60,7 @@ func (h *Handler) Mux() http.Handler {
 		"GET /threads/{ref}/continue": h.getContinue, "PUT /threads/{ref}/continue": h.putContinue,
 		"GET /threads/{ref}/plans": h.plans, "POST /threads/{ref}/plans": h.createPlan, "POST /threads/{ref}/plans/reorder": h.reorderPlans, "DELETE /threads/{ref}/plans/{id}": h.deletePlan,
 		"POST /threads/{ref}/plans/{id}/steps/{step}/move": h.moveStep,
+		"POST /threads/{ref}/plans/{plan}/steps":           h.addStep, "PATCH /threads/{ref}/plans/{plan}/steps/{id}": h.patchStep,
 	}
 	for _, r := range Routes {
 		method, path, _ := strings.Cut(r, " ")
@@ -272,7 +274,7 @@ func (h *Handler) addStep(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid", "expected_revision is required.")
 		return
 	}
-	_, st, err := h.Service.AddStep(r.Context(), t, scope, in.in(), *in.Expected, "user")
+	_, st, err := h.Service.AddStepOf(r.Context(), t, scope, r.PathValue("plan"), in.in(), *in.Expected, "user")
 	if err != nil {
 		problem(w, err)
 		return
@@ -297,7 +299,7 @@ func (h *Handler) patchStep(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid", "expected_revision is required.")
 		return
 	}
-	_, st, err := h.Service.PatchStep(r.Context(), t, scope, r.PathValue("id"), in.in(), *in.Expected, "user")
+	_, st, err := h.Service.PatchStepOf(r.Context(), t, scope, r.PathValue("plan"), r.PathValue("id"), in.in(), *in.Expected, "user")
 	if err != nil {
 		problem(w, err)
 		return
