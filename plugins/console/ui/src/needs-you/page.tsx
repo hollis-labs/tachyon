@@ -5,6 +5,7 @@ import { Button, Skeleton } from '@hollis-labs/design-components'
 import { Chip } from '@planner/shared'
 import { RefChip } from '../autolink'
 import { consoleJson, type FetchLike } from '../lib/http'
+import { AskCardView, type AskCard } from './card'
 
 /** GET needs-you (internal/needsyou): what waits on @chrispian, read live. */
 export interface NeedsYouItem {
@@ -22,6 +23,8 @@ export interface NeedsYouItem {
   detail?: string
   /** Where in Tachyon to act on it. */
   link?: string
+  /** The ask as a read-only card. */
+  card?: AskCard
 }
 export interface NeedsYouResult {
   items: NeedsYouItem[]
@@ -42,6 +45,8 @@ export const NEEDS_YOU = {
   incomplete: (names: string[]) => `This list may be incomplete: could not read ${names.join(', ')}.`,
   truncated: (names: string[]) => `Only the newest items of ${names.join(', ')} were checked.`,
   kind: (k: string) => k.replace(/[_-]/g, ' '),
+  showCard: 'Show the ask',
+  hideCard: 'Hide the ask',
 } as const
 
 const ICON = { ask: CircleHelp, mail: Mail, status: UserRound, chat: MessageSquare, approvals: ShieldCheck } as const
@@ -58,6 +63,39 @@ function Ref({ r }: { r: string }) {
   return <span className="font-mono text-caption text-fg-muted">{r}</span>
 }
 
+function ItemRow({ it, now }: { it: NeedsYouItem; now: number }) {
+  const [open, setOpen] = useState(false)
+  const Icon = ICON[it.source] ?? CircleHelp
+  return (
+    <li data-item={it.id} className="flex flex-col gap-2 px-3 py-2.5">
+      <div className="flex items-start gap-3">
+        <Icon aria-hidden className={`mt-0.5 size-4 shrink-0 ${it.critical ? 'text-danger' : 'text-fg-secondary'}`} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {it.critical && <Chip tone="danger">{NEEDS_YOU.critical}</Chip>}
+            {it.link ? (
+              <Link to={it.link} className="text-control font-medium text-fg underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">{it.title || NEEDS_YOU.kind(it.kind)}</Link>
+            ) : (
+              <span className="text-control font-medium text-fg">{it.title || NEEDS_YOU.kind(it.kind)}</span>
+            )}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-label text-fg-muted">
+            <span>{NEEDS_YOU.why[it.why] ?? it.why}</span>
+            <span>· {it.detail || NEEDS_YOU.kind(it.kind)}</span>
+            <span>· {it.from}</span>
+            {it.ref && <span>· <Ref r={it.ref} /></span>}
+            {it.card && it.message_id && (
+              <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="underline underline-offset-2 hover:text-fg">{open ? NEEDS_YOU.hideCard : NEEDS_YOU.showCard}</button>
+            )}
+          </div>
+        </div>
+        <span className="shrink-0 text-label text-fg-muted" title={new Date(it.since).toLocaleString()}>{age(it.since, now)}</span>
+      </div>
+      {open && it.card && it.message_id && <div className="ml-7"><AskCardView card={it.card} messageId={it.message_id} /></div>}
+    </li>
+  )
+}
+
 export function NeedsYouList({ data, now }: { data: NeedsYouResult; now: number }) {
   const failed = Object.entries(data.sources).filter(([, s]) => !s.ok || s.error).map(([k]) => NEEDS_YOU.source[k] ?? k)
   const truncated = Object.entries(data.sources).filter(([, s]) => s.truncated).map(([k]) => NEEDS_YOU.source[k] ?? k)
@@ -69,31 +107,7 @@ export function NeedsYouList({ data, now }: { data: NeedsYouResult; now: number 
         <p className="py-2 text-control text-fg-muted">{NEEDS_YOU.empty}</p>
       ) : (
         <ul aria-label={NEEDS_YOU.title} className="flex flex-col divide-y divide-border rounded-panel border border-border">
-          {data.items.map((it) => {
-            const Icon = ICON[it.source] ?? CircleHelp
-            return (
-              <li key={it.id} data-item={it.id} className="flex items-start gap-3 px-3 py-2.5">
-                <Icon aria-hidden className={`mt-0.5 size-4 shrink-0 ${it.critical ? 'text-danger' : 'text-fg-secondary'}`} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {it.critical && <Chip tone="danger">{NEEDS_YOU.critical}</Chip>}
-                    {it.link ? (
-                      <Link to={it.link} className="text-control font-medium text-fg underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">{it.title || NEEDS_YOU.kind(it.kind)}</Link>
-                    ) : (
-                      <span className="text-control font-medium text-fg">{it.title || NEEDS_YOU.kind(it.kind)}</span>
-                    )}
-                  </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-label text-fg-muted">
-                    <span>{NEEDS_YOU.why[it.why] ?? it.why}</span>
-                    <span>· {it.detail || NEEDS_YOU.kind(it.kind)}</span>
-                    <span>· {it.from}</span>
-                    {it.ref && <span>· <Ref r={it.ref} /></span>}
-                  </div>
-                </div>
-                <span className="shrink-0 text-label text-fg-muted" title={new Date(it.since).toLocaleString()}>{age(it.since, now)}</span>
-              </li>
-            )
-          })}
+          {data.items.map((it) => <ItemRow key={it.id} it={it} now={now} />)}
         </ul>
       )}
     </div>

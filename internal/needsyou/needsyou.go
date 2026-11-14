@@ -52,6 +52,7 @@ type Item struct {
 	Critical  bool      `json:"critical"`
 	MessageID string    `json:"message_id,omitempty"`
 	Detail    string    `json:"detail,omitempty"` // counts, for an item that stands for several (a chat thread, the approvals queue)
+	Card      *Card     `json:"card,omitempty"`   // the ask as a card: question, decision or approval_request
 	Link      string    `json:"link,omitempty"`   // where in Tachyon to act on it
 }
 
@@ -194,10 +195,19 @@ func (a *Aggregator) Read(ctx context.Context) Result {
 		for _, p := range pending {
 			pendingIDs[p.MessageID] = true
 			m, known := byID[p.MessageID]
+			if mg, ok := a.Tether.(messageGetter); !known && ok {
+				// Outside the mailbox window: read the one message, so the card and its urgency are known.
+				if got, err := mg.Message(ctx, Operator, p.MessageID); err == nil && got.ID == p.MessageID {
+					m, known = got, true
+				}
+			}
 			f := payloadOf(m)
 			it := Item{ID: "ask:" + p.MessageID, Source: "ask", Kind: p.Kind, Why: "reply", Title: titleOf(p.Subject, f.Body, m.Body),
 				From: who(p.From), Ref: f.Re, Since: p.CreatedAt, MessageID: p.MessageID}
 			it.Critical = known && critical(p.Kind, m)
+			if known {
+				it.Card = cardOf(m, p.Kind, it.From)
+			}
 			r.Items = append(r.Items, it)
 		}
 	}
@@ -239,6 +249,7 @@ func (a *Aggregator) Read(ctx context.Context) Result {
 					continue
 				}
 				it.Why = "reply"
+				it.Card = cardOf(m, firstOf(f.Kind, m.Kind), it.From)
 			case f.Attention == "human" && m.ReadAt == nil:
 				it.Why = "read"
 			default:
