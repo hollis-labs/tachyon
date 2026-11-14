@@ -1,0 +1,769 @@
+{
+  "manifest_version": 0,
+  "app": "tachyon",
+  "variant": "app-host",
+  "profiles": [
+    "minimal"
+  ],
+  "modules": [
+    "config",
+    "logging",
+    "health",
+    "secrets",
+    "auth",
+    "database",
+    "httphost",
+    "identity",
+    "cli"
+  ],
+  "contributions": [
+    {
+      "schema_version": 0,
+      "module": "auth",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/api/me",
+          "scope": "authenticated"
+        }
+      ]
+    },
+    {
+      "schema_version": 0,
+      "module": "identity",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/api/setup",
+          "scope": "public"
+        },
+        {
+          "method": "POST",
+          "path": "/api/setup",
+          "scope": "public"
+        },
+        {
+          "method": "POST",
+          "path": "/api/login",
+          "scope": "public"
+        },
+        {
+          "method": "GET",
+          "path": "/api/identity/jwks",
+          "scope": "public"
+        },
+        {
+          "method": "POST",
+          "path": "/api/pair",
+          "scope": "public"
+        },
+        {
+          "method": "POST",
+          "path": "/api/logout",
+          "scope": "authenticated"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/password",
+          "scope": "authenticated"
+        },
+        {
+          "method": "GET",
+          "path": "/api/identity/profile",
+          "scope": "authenticated"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/identity/profile",
+          "scope": "authenticated"
+        },
+        {
+          "method": "POST",
+          "path": "/api/token",
+          "scope": "authenticated"
+        },
+        {
+          "method": "GET",
+          "path": "/api/identity/sessions",
+          "scope": "authenticated"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/identity/sessions/",
+          "scope": "authenticated"
+        },
+        {
+          "method": "GET",
+          "path": "/api/identity/users",
+          "scope": "{app}.admin"
+        },
+        {
+          "method": "POST",
+          "path": "/api/identity/users",
+          "scope": "{app}.admin"
+        },
+        {
+          "method": "PUT",
+          "path": "/api/identity/users/",
+          "scope": "{app}.admin"
+        },
+        {
+          "method": "GET",
+          "path": "/api/identity/keys",
+          "scope": "{app}.admin"
+        },
+        {
+          "method": "POST",
+          "path": "/api/identity/keys",
+          "scope": "{app}.admin"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/identity/keys/",
+          "scope": "{app}.admin"
+        },
+        {
+          "method": "POST",
+          "path": "/api/identity/pairing-codes",
+          "scope": "{app}.admin"
+        },
+        {
+          "method": "POST",
+          "path": "/api/identity/signing-key/rotate",
+          "scope": "{app}.admin"
+        },
+        {
+          "method": "GET",
+          "path": "/api/identity/signing-key",
+          "scope": "{app}.admin"
+        }
+      ]
+    },
+    {
+      "schema_version": 0,
+      "module": "tachyon",
+      "contributions": [
+        {
+          "kind": "nav.item",
+          "key": "planner",
+          "label": "Planner",
+          "icon": "map",
+          "priority": 1,
+          "route": "/planner",
+          "requires": "tachyon.planner.read"
+        },
+        {
+          "kind": "surface",
+          "key": "planner",
+          "label": "Planner",
+          "route": "/planner",
+          "layout": "list",
+          "title": "Planner"
+        },
+        {
+          "kind": "nav.item",
+          "key": "agents",
+          "label": "Agent Ops",
+          "icon": "bot",
+          "priority": 2,
+          "route": "/agents",
+          "requires": "tachyon.agents.read"
+        },
+        {
+          "kind": "surface",
+          "key": "agents",
+          "label": "Agent Ops",
+          "route": "/agents",
+          "layout": "list",
+          "title": "Agent Ops"
+        },
+        {
+          "kind": "nav.item",
+          "key": "builder",
+          "label": "Builder",
+          "icon": "hammer",
+          "priority": 3,
+          "route": "/builder",
+          "requires": "tachyon.builder.read"
+        },
+        {
+          "kind": "surface",
+          "key": "builder",
+          "label": "Builder",
+          "route": "/builder",
+          "layout": "list",
+          "title": "Builder"
+        },
+        {
+          "kind": "nav.item",
+          "key": "registry",
+          "label": "Registry",
+          "icon": "library",
+          "priority": 4,
+          "route": "/registry",
+          "requires": "tachyon.builder.read"
+        },
+        {
+          "kind": "surface",
+          "key": "registry",
+          "label": "Registry",
+          "route": "/registry",
+          "layout": "list",
+          "title": "Registry"
+        },
+        {
+          "kind": "nav.item",
+          "key": "chat",
+          "label": "Chat",
+          "icon": "message-square",
+          "priority": 5,
+          "route": "/chat",
+          "requires": "tachyon.chat.read"
+        },
+        {
+          "kind": "surface",
+          "key": "chat",
+          "label": "Chat",
+          "route": "/chat",
+          "layout": "list",
+          "title": "Chat"
+        },
+        {
+          "kind": "nav.item",
+          "key": "approvals",
+          "label": "Approvals",
+          "icon": "shield-check",
+          "priority": 6,
+          "route": "/approvals",
+          "requires": "tachyon.approvals.read"
+        },
+        {
+          "kind": "surface",
+          "key": "approvals",
+          "label": "Approvals",
+          "route": "/approvals",
+          "layout": "list",
+          "title": "Approvals"
+        },
+        {
+          "kind": "nav.item",
+          "key": "transcripts",
+          "label": "Transcripts",
+          "icon": "scroll-text",
+          "priority": 7,
+          "route": "/dashboards/transcripts",
+          "requires": "tachyon.transcripts.read"
+        },
+        {
+          "kind": "surface",
+          "key": "transcripts",
+          "label": "Transcripts",
+          "route": "/dashboards/transcripts",
+          "layout": "list",
+          "title": "Transcripts"
+        },
+        {
+          "kind": "nav.item",
+          "key": "repos",
+          "label": "Repos",
+          "icon": "git-pull-request",
+          "priority": 8,
+          "route": "/repos",
+          "requires": "tachyon.forge.read"
+        },
+        {
+          "kind": "surface",
+          "key": "repos",
+          "label": "Repos",
+          "route": "/repos",
+          "layout": "list",
+          "title": "Repos"
+        },
+        {
+          "kind": "nav.item",
+          "key": "settings",
+          "label": "Settings",
+          "icon": "settings",
+          "priority": 1,
+          "region": "nav.footer",
+          "route": "/settings"
+        },
+        {
+          "kind": "surface",
+          "key": "settings",
+          "label": "Settings",
+          "route": "/settings",
+          "layout": "settings",
+          "title": "Settings"
+        },
+        {
+          "kind": "nav.item",
+          "key": "user",
+          "label": "Account",
+          "icon": "user",
+          "priority": 2,
+          "region": "nav.footer",
+          "route": "/user"
+        },
+        {
+          "kind": "surface",
+          "key": "user",
+          "label": "Account",
+          "route": "/user",
+          "layout": "form",
+          "title": "Account"
+        },
+        {
+          "kind": "nav.item",
+          "key": "identity-keys",
+          "label": "Access keys",
+          "icon": "key-round",
+          "priority": 3,
+          "region": "nav.footer",
+          "route": "/identity/keys"
+        },
+        {
+          "kind": "surface",
+          "key": "identity-keys",
+          "label": "Access keys",
+          "route": "/identity/keys",
+          "layout": "list",
+          "title": "Access keys"
+        },
+        {
+          "kind": "nav.item",
+          "key": "identity-sessions",
+          "label": "Active sessions",
+          "icon": "monitor",
+          "priority": 4,
+          "region": "nav.footer",
+          "route": "/identity/sessions"
+        },
+        {
+          "kind": "surface",
+          "key": "identity-sessions",
+          "label": "Active sessions",
+          "route": "/identity/sessions",
+          "layout": "list",
+          "title": "Active sessions"
+        },
+        {
+          "kind": "nav.item",
+          "key": "identity-sign-out",
+          "label": "Sign out",
+          "icon": "log-out",
+          "priority": 9,
+          "region": "nav.footer",
+          "route": "/identity/sign-out"
+        },
+        {
+          "kind": "surface",
+          "key": "identity-sign-out",
+          "label": "Sign out",
+          "route": "/identity/sign-out",
+          "layout": "form",
+          "title": "Sign out"
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "kind": "nav.item",
+      "key": "planner",
+      "label": "Planner",
+      "icon": "map",
+      "priority": 1,
+      "route": "/planner",
+      "requires": "tachyon.planner.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "settings",
+      "label": "Settings",
+      "icon": "settings",
+      "priority": 1,
+      "region": "nav.footer",
+      "route": "/settings",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "agents",
+      "label": "Agent Ops",
+      "icon": "bot",
+      "priority": 2,
+      "route": "/agents",
+      "requires": "tachyon.agents.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "user",
+      "label": "Account",
+      "icon": "user",
+      "priority": 2,
+      "region": "nav.footer",
+      "route": "/user",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "builder",
+      "label": "Builder",
+      "icon": "hammer",
+      "priority": 3,
+      "route": "/builder",
+      "requires": "tachyon.builder.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "identity-keys",
+      "label": "Access keys",
+      "icon": "key-round",
+      "priority": 3,
+      "region": "nav.footer",
+      "route": "/identity/keys",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "identity-sessions",
+      "label": "Active sessions",
+      "icon": "monitor",
+      "priority": 4,
+      "region": "nav.footer",
+      "route": "/identity/sessions",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "registry",
+      "label": "Registry",
+      "icon": "library",
+      "priority": 4,
+      "route": "/registry",
+      "requires": "tachyon.builder.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "chat",
+      "label": "Chat",
+      "icon": "message-square",
+      "priority": 5,
+      "route": "/chat",
+      "requires": "tachyon.chat.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "approvals",
+      "label": "Approvals",
+      "icon": "shield-check",
+      "priority": 6,
+      "route": "/approvals",
+      "requires": "tachyon.approvals.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "transcripts",
+      "label": "Transcripts",
+      "icon": "scroll-text",
+      "priority": 7,
+      "route": "/dashboards/transcripts",
+      "requires": "tachyon.transcripts.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "repos",
+      "label": "Repos",
+      "icon": "git-pull-request",
+      "priority": 8,
+      "route": "/repos",
+      "requires": "tachyon.forge.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "identity-sign-out",
+      "label": "Sign out",
+      "icon": "log-out",
+      "priority": 9,
+      "region": "nav.footer",
+      "route": "/identity/sign-out",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "agents",
+      "label": "Agent Ops",
+      "route": "/agents",
+      "layout": "list",
+      "title": "Agent Ops",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "approvals",
+      "label": "Approvals",
+      "route": "/approvals",
+      "layout": "list",
+      "title": "Approvals",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "builder",
+      "label": "Builder",
+      "route": "/builder",
+      "layout": "list",
+      "title": "Builder",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "chat",
+      "label": "Chat",
+      "route": "/chat",
+      "layout": "list",
+      "title": "Chat",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "identity-keys",
+      "label": "Access keys",
+      "route": "/identity/keys",
+      "layout": "list",
+      "title": "Access keys",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "identity-sessions",
+      "label": "Active sessions",
+      "route": "/identity/sessions",
+      "layout": "list",
+      "title": "Active sessions",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "identity-sign-out",
+      "label": "Sign out",
+      "route": "/identity/sign-out",
+      "layout": "form",
+      "title": "Sign out",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "planner",
+      "label": "Planner",
+      "route": "/planner",
+      "layout": "list",
+      "title": "Planner",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "registry",
+      "label": "Registry",
+      "route": "/registry",
+      "layout": "list",
+      "title": "Registry",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "repos",
+      "label": "Repos",
+      "route": "/repos",
+      "layout": "list",
+      "title": "Repos",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "settings",
+      "label": "Settings",
+      "route": "/settings",
+      "layout": "settings",
+      "title": "Settings",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "transcripts",
+      "label": "Transcripts",
+      "route": "/dashboards/transcripts",
+      "layout": "list",
+      "title": "Transcripts",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "user",
+      "label": "Account",
+      "route": "/user",
+      "layout": "form",
+      "title": "Account",
+      "module": "tachyon"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/me",
+      "scope": "authenticated",
+      "module": "auth"
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup",
+      "scope": "public",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup",
+      "scope": "public",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/login",
+      "scope": "public",
+      "module": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/jwks",
+      "scope": "public",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pair",
+      "scope": "public",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logout",
+      "scope": "authenticated",
+      "module": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/password",
+      "scope": "authenticated",
+      "module": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/profile",
+      "scope": "authenticated",
+      "module": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/identity/profile",
+      "scope": "authenticated",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/token",
+      "scope": "authenticated",
+      "module": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/sessions",
+      "scope": "authenticated",
+      "module": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/identity/sessions/",
+      "scope": "authenticated",
+      "module": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/users",
+      "scope": "{app}.admin",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/users",
+      "scope": "{app}.admin",
+      "module": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/identity/users/",
+      "scope": "{app}.admin",
+      "module": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/keys",
+      "scope": "{app}.admin",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/keys",
+      "scope": "{app}.admin",
+      "module": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/identity/keys/",
+      "scope": "{app}.admin",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/pairing-codes",
+      "scope": "{app}.admin",
+      "module": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/signing-key/rotate",
+      "scope": "{app}.admin",
+      "module": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/signing-key",
+      "scope": "{app}.admin",
+      "module": "identity"
+    }
+  ],
+  "regions": [],
+  "kits": [
+    {
+      "name": "@hollis-labs/design-app-runtime",
+      "version": "0.6.0"
+    },
+    {
+      "name": "@hollis-labs/design-components",
+      "version": "0.5.1"
+    },
+    {
+      "name": "@hollis-labs/design-tokens",
+      "version": "0.5.0"
+    }
+  ],
+  "bindings": []
+}

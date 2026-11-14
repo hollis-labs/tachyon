@@ -1,0 +1,4 @@
+node_modules/
+# Playwright output when run without TACHYON_E2E_DIR is under the OS temp dir; these are local leftovers.
+test-results/
+playwright-report/
