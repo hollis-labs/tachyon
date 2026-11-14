@@ -548,6 +548,8 @@ func (s *Server) Start(ctx context.Context) error {
 	// No schedules are created on boot. Operators validate a source with
 	// sync-objects --enable; only those persisted jobs recur across restarts.
 	s.objectJobs.Engine.Start()
+	s.ext.Store(objectJobsKey, s.objectJobs)
+	go s.watchObjectSync(approvalContext)
 	s.chat.Start()
 	started = true
 	return nil
