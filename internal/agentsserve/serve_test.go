@@ -713,3 +713,20 @@ func TestContextSeriesUsesTheSessionWindowForSamplesWithoutOne(t *testing.T) {
 		t.Errorf("no window was ever seen, so no percentage is invented: %+v", p)
 	}
 }
+
+// The sparkline is the session's activity per minute. Tool calls read from the output stream count,
+// not only the events Tether emits for its own tools.
+func TestSparklineCountsToolCallsReadFromTheStream(t *testing.T) {
+	e := newEnv(t)
+	e.now = t0.Add(time.Hour)
+	e.frame("session.work_state_changed", "k1", 30*time.Minute, `{"to":"processing","provider":"claude"}`)
+	for _, c := range []struct{ min, calls int }{{58, 3}, {58, 2}, {59, 4}} {
+		if err := e.store.SetDerived(context.Background(), "k1", agentscollector.Derived{CallsDelta: c.calls, At: t0.Add(time.Duration(c.min) * time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := decode[Session](t, e.get("/sessions/k1"))
+	if n := len(s.Spark); n != 30 || s.Spark[n-3] != 5 || s.Spark[n-2] != 4 {
+		t.Errorf("spark: %v", s.Spark)
+	}
+}

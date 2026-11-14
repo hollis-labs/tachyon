@@ -64,6 +64,19 @@ func (s *Store) SetDerived(ctx context.Context, id string, d Derived) error {
 		if err == nil && d.TokDelta != nil {
 			err = addTokens(ctx, tx, id, d.At, *d.TokDelta)
 		}
+		if err == nil && d.CallsDelta > 0 {
+			// Tool calls read from the output stream are the bulk of a session's activity (Tether's own tool
+			// events cover only its MCP tools), so they count in the per-minute sparkline and the hourly total.
+			for _, ns := range []struct {
+				kind string
+				ns   int64
+			}{{"min", d.At.Truncate(time.Minute).UnixNano()}, {"hour", d.At.Truncate(time.Hour).UnixNano()}} {
+				if _, err = tx.ExecContext(ctx, `INSERT INTO agents_samples(session_id,bucket_ns,bucket_kind,activity,tool_calls) VALUES(?,?,?,?,?)
+ ON CONFLICT(session_id,bucket_kind,bucket_ns) DO UPDATE SET activity=activity+excluded.activity, tool_calls=tool_calls+excluded.tool_calls`, id, ns.ns, ns.kind, d.CallsDelta, d.CallsDelta); err != nil {
+					break
+				}
+			}
+		}
 		if err != nil || !d.CtxSeen {
 			return err
 		}
