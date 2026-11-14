@@ -10,27 +10,16 @@ const next = fileURLToPath(new URL("../", import.meta.url))
 const bin = process.env.TACHYON_E2E_BIN ?? `${next}tachyon`
 
 /**
- * Wipes `where`, writes a config override that puts every data path inside it, optionally creates
- * the owner with the CLI (password on stdin, as in production), then runs the server in the
- * foreground.
+ * Wipes `where`, points the data directory into it (TACHYON_DATA_DIR) with an override that only
+ * moves the listen address, optionally creates the owner with the CLI (password on stdin, as in
+ * production), then runs the server in the foreground.
  */
 function server(where: string, listen: string, withOwner: boolean) {
-  const env = `HOME='${where}/profile' XDG_DATA_HOME='${where}/profile/data' XDG_CONFIG_HOME='${where}/profile/config' XDG_STATE_HOME='${where}/profile/state' SUBSTRATE_CONFIG='${where}/substrate.yaml'`
-  const config = [
-    "httphost:",
-    `  addr: "127.0.0.1:${listen}"`,
-    "database:",
-    "  sqlite:",
-    `    path: "${where}/data/tachyon.db"`,
-    "identity:",
-    `  key_file: "${where}/data/identity-signing.key"`,
-    "secrets:",
-    `  state_dir: "${where}/data/secrets"`,
-  ].join("\\n")
+  const env = `HOME='${where}/profile' XDG_DATA_HOME='${where}/profile/data' XDG_CONFIG_HOME='${where}/profile/config' XDG_STATE_HOME='${where}/profile/state' TACHYON_DATA_DIR='${where}/data' SUBSTRATE_CONFIG='${where}/substrate.yaml'`
   const owner = withOwner
     ? ` && head -c 18 /dev/urandom | base64 | tr '/+' '-_' | tr -d '=\\n' > '${where}/owner-password' && env ${env} '${bin}' identity setup --username owner --display-name '${ownerDisplayName}' < '${where}/owner-password'`
     : ""
-  return `rm -rf '${where}' && mkdir -p '${where}/data' && printf '${config}\\n' > '${where}/substrate.yaml'${owner} && exec env ${env} '${bin}' serve`
+  return `rm -rf '${where}' && mkdir -p '${where}/data' && printf 'httphost:\\n  addr: "127.0.0.1:${listen}"\\n' > '${where}/substrate.yaml'${owner} && exec env ${env} '${bin}' serve`
 }
 
 export default defineConfig({

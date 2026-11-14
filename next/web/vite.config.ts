@@ -22,6 +22,17 @@ export default defineConfig({
   esbuild: { jsx: "automatic" },
   // app-shell ships TypeScript source; the dependency optimizer needs the same JSX runtime.
   optimizeDeps: { esbuildOptions: { jsx: "automatic" } },
-  build: { outDir, emptyOutDir: true },
+  build: {
+    outDir,
+    emptyOutDir: true,
+    rollupOptions: {
+      // React libraries mark modules "use client"; that directive means nothing in a client-only
+      // bundle, and Rollup warns once per module. Every other warning still prints.
+      onwarn(warning, warn) {
+        if (warning.code === "MODULE_LEVEL_DIRECTIVE") return
+        warn(warning)
+      },
+    },
+  },
   server: { port: 5179, proxy: { "/api": backend } },
 })
