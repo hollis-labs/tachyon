@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -95,6 +96,12 @@ func (e *env) seedTurn(t *testing.T, id, session, kind, content, created string,
 		turn.Resolution = &chatbridge.Resolution{ID: "r", Text: "my answer", At: created}
 		turn.State = "resolved"
 	}
+	e.insertTurn(t, turn)
+}
+
+func (e *env) insertTurn(t *testing.T, turn chatbridge.Turn) {
+	t.Helper()
+	id, session, created := turn.ID, turn.SessionID, turn.Created
 	raw, _ := json.Marshal(turn)
 	err := e.db.Writer.Submit(context.Background(), "seed", func(ctx context.Context, tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO chat_turns(id,source,channel,publication_id,launch_id,session_id,created_at,revision,body) VALUES(?,?,?,?,?,?,?,?,?)`,
@@ -546,5 +553,35 @@ func TestMessageAndDeliveryFramesAreReplayable(t *testing.T) {
 	id, ev := s.next(t)
 	if id != itoa(rows[1].ID) || ev["type"] != "delivery" || ev["message_id"] != "m1" || ev["thread_ref"] != ref {
 		t.Fatalf("resumed: %s %v", id, ev)
+	}
+}
+
+// The chat API carries Tether's proven input attribution (docs/reply-audience.md) as lists in meta, so the chat
+// page can fold mail-wake turns (input_sources, CW-20261114-0061) and filter replies to the operator
+// (input_classes). Nothing is derived: a turn without attribution carries neither key.
+func TestTetherMessagesCarryInputAttribution(t *testing.T) {
+	e := setup(t)
+	wake := chatbridge.Turn{ID: "w1", AgentID: "agt_demo", SessionID: "s7", TurnID: "tn-w1", Kind: "terminal", Content: "Read 1 message.", Created: "2020-10-30T10:00:00Z",
+		Revision: 1, State: "presented", Source: &chatbridge.SourceMessage{Origin: "routed", Attribution: map[string]string{"audience": "unknown", "audience_basis": "shared_operator_credential", "input_ids": "in_1", "input_sources": "mail_wake"}}}
+	asked := chatbridge.Turn{ID: "w2", AgentID: "agt_demo", SessionID: "s7", TurnID: "tn-w2", Kind: "terminal", Content: "Done.", Created: "2020-10-30T10:01:00Z",
+		Revision: 1, State: "presented", Source: &chatbridge.SourceMessage{Origin: "routed", Attribution: map[string]string{"audience": "operator", "input_ids": "in_2", "input_classes": "operator", "input_sources": " chat_send "}}}
+	old := chatbridge.Turn{ID: "w3", AgentID: "agt_demo", SessionID: "s7", TurnID: "tn-w3", Kind: "terminal", Content: "Older.", Created: "2020-10-30T10:02:00Z", Revision: 1, State: "presented"}
+	for _, turn := range []chatbridge.Turn{wake, asked, old} {
+		e.insertTurn(t, turn)
+	}
+	_, out := e.do(t, "GET", "/threads/tether:s7/messages", "")
+	ms := out["messages"].([]any)
+	if len(ms) != 3 {
+		t.Fatalf("messages: %v", ms)
+	}
+	meta := func(i int) map[string]any { return ms[i].(map[string]any)["meta"].(map[string]any) }
+	if got := fmt.Sprint(meta(0)["input_sources"]); got != "[mail_wake]" || meta(0)["input_classes"] != nil {
+		t.Fatalf("mail wake: %v", meta(0))
+	}
+	if fmt.Sprint(meta(1)["input_sources"]) != "[chat_send]" || fmt.Sprint(meta(1)["input_classes"]) != "[operator]" {
+		t.Fatalf("operator turn: %v", meta(1))
+	}
+	if _, ok := meta(2)["input_sources"]; ok {
+		t.Fatalf("a turn without attribution carries none: %v", meta(2))
 	}
 }

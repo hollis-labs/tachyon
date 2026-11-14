@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChatStream, type ChatItem } from '@hollis-labs/kit-chat'
 import { OverflowMenu } from '@hollis-labs/design-components'
 import { ForwardDialog } from './ForwardDialog'
-import { Bookmark, Check, Copy, Hash, Link2 } from 'lucide-react'
+import { Bookmark, Check, ChevronRight, Copy, Hash, Link2, Mail } from 'lucide-react'
 import { MessageInfo } from './MessageInfo'
 import { MessageBody } from './MessageBody'
 import { DeliveryBadge, ObservedDeliveryBadge } from '../messaging/DeliveryStatus'
@@ -107,6 +107,33 @@ function Bubble({ m, agentLabel, marks }: { m: ChatMessage; agentLabel: string; 
 
 const renderMessage = (item: ChatItem) => item.kind === 'message' ? item.content : null
 
+/** The first line of a reply, without Markdown punctuation, for a folded row's preview. */
+const firstLine = (body: string) => (body.split('\n').map((l) => l.replace(/^[#>*\-\s`]+/, '').trim()).find(Boolean) ?? '').slice(0, 160)
+
+/**
+ * Consecutive replies to mail wakes, folded into one row (CW-20261114-0023b): mail is a record, not a turn, so
+ * the conversation shows that the agent handled mail, and the replies open on demand. Only replies Tether proved
+ * were mail wakes (ChatMessage.wake) fold; a streaming reply shows that it is still responding.
+ */
+export function MailWakeRow({ messages, agentLabel, marks }: { messages: ChatMessage[]; agentLabel: string; marks?: Marks }) {
+  const [open, setOpen] = useState(false)
+  const last = messages[messages.length - 1]
+  const time = new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  const label = last.info?.agentName || agentLabel
+  return (
+    <div className="mx-auto w-full max-w-[760px]" data-folded="mail-wake">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="group flex h-[30px] w-full items-center gap-2 rounded-control border border-border px-2.5 text-left text-xs text-fg-secondary hover:bg-surface-hover hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+        <ChevronRight aria-hidden className={`size-3 shrink-0 ${open ? 'rotate-90' : ''}`} />
+        <Mail aria-hidden className="size-3 shrink-0" />
+        <span className="shrink-0">{label} handled mail{messages.length > 1 ? ` · ${messages.length} turns` : ''}</span>
+        <span className="min-w-0 flex-1 truncate text-fg-muted group-hover:text-fg">{last.streaming ? '● Responding…' : firstLine(last.body)}</span>
+        <span className="shrink-0 text-fg-muted">{time}</span>
+      </button>
+      {open && <div className="mt-3 flex flex-col gap-4">{messages.map((m) => <Bubble key={m.id} m={m} agentLabel={agentLabel} marks={marks} />)}</div>}
+    </div>
+  )
+}
+
 export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder, empty, blocks = [], commit, onOpenPanel, marks, runActions }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void; empty?: React.ReactNode; blocks?: StreamBlock[]; commit?: Commit; onOpenPanel?: () => void; marks?: Marks; runActions?: RunActions }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -115,10 +142,18 @@ export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, o
   }, [])
   const items = useMemo<ChatItem[]>(() => {
     const all = [
-      ...messages.map((m) => ({ at: m.at, item: { kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant', content: <Bubble m={m} agentLabel={agentLabel} marks={marks} /> } as ChatItem })),
-      ...blocks.map((b) => ({ at: b.at || (b.afterRef ? (messages.find((m) => m.id === b.afterRef)?.at ?? Number.MAX_SAFE_INTEGER) + 1 : Number.MAX_SAFE_INTEGER), item: { kind: 'message', id: `block-${b.id}`, role: 'assistant', content: <BlockView b={b} commit={commit} onOpenPanel={onOpenPanel} runActions={runActions} /> } as ChatItem })),
-    ]
-    return all.sort((a, b) => a.at - b.at).map((x) => x.item)
+      ...messages.map((m) => ({ at: m.at, m, item: { kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant', content: <Bubble m={m} agentLabel={agentLabel} marks={marks} /> } as ChatItem })),
+      ...blocks.map((b) => ({ at: b.at || (b.afterRef ? (messages.find((m) => m.id === b.afterRef)?.at ?? Number.MAX_SAFE_INTEGER) + 1 : Number.MAX_SAFE_INTEGER), m: undefined, item: { kind: 'message', id: `block-${b.id}`, role: 'assistant', content: <BlockView b={b} commit={commit} onOpenPanel={onOpenPanel} runActions={runActions} /> } as ChatItem })),
+    ].sort((a, b) => a.at - b.at)
+    // A run of mail-wake replies with nothing between them becomes one folded row.
+    const out: ChatItem[] = []
+    for (let i = 0; i < all.length; ) {
+      if (all[i].m?.wake !== 'mail') { out.push(all[i].item); i++; continue }
+      const run: ChatMessage[] = []
+      while (i < all.length && all[i].m?.wake === 'mail') run.push(all[i++].m as ChatMessage)
+      out.push({ kind: 'message', id: `mail-wake-${run[0].id}`, role: 'assistant', content: <MailWakeRow messages={run} agentLabel={agentLabel} marks={marks} /> } as ChatItem)
+    }
+    return out
   }, [messages, blocks, commit, onOpenPanel, now, agentLabel, marks, runActions])
   return <ChatStream items={items} renderItem={renderMessage} loading={loading && !messages.length}
     history={{ hasOlder: hasMore, loading: loading && !!messages.length, onLoadOlder }}

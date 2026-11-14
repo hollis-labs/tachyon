@@ -3,6 +3,7 @@ import { operatorFetch } from '../operator/elevation'
 import { markReadQuiet } from './readState'
 import { threadHub } from './live'
 import type { ChatClient, ChatEvent, ChatMessage, HistoryQuery } from './types'
+import { audienceOf, wakeOf } from './inputs'
 
 /** A conversation id for one chat API session thread. Everything else goes to the wrapped client. */
 const PREFIX = 'chatapi:'
@@ -17,6 +18,8 @@ interface ApiMessage {
   kind?: string
   text?: string
   at: number
+  /** Tether turns carry their proven input attribution as lists: input_classes, input_sources. */
+  meta?: { input_classes?: string[]; input_sources?: string[] }
 }
 interface Page {
   messages?: ApiMessage[]
@@ -34,6 +37,9 @@ export function toMessage(threadId: string, m: ApiMessage): ChatMessage {
     at: m.at,
     tools: [],
     ...(m.role === 'operator' ? { delivery: 'delivered' as const } : {}),
+    // Only a Tether turn says who asked; an app agent's reply carries no attribution and stays without an audience.
+    ...(m.role === 'agent' && m.meta?.input_classes ? { audience: audienceOf(m.meta.input_classes) } : {}),
+    ...(m.role === 'agent' && wakeOf(m.meta?.input_sources) ? { wake: 'mail' as const } : {}),
     info: { transport: 'tether-chat', kind: m.kind, sequence: m.seq },
   }
 }
