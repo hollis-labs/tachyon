@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NudgeControl } from './controls'
+import { NudgeControl, RestartControl } from './controls'
 import { toTimeline } from './session-events'
 import type { Session } from './types'
 
@@ -86,5 +86,42 @@ describe('toTimeline', () => {
     )
     expect(rows.map((r) => r.id)).toEqual(['e2', 'gap0', 'r1'])
     expect(rows[2].facet).toBe('tools')
+  })
+})
+
+describe('Restart', () => {
+  const base = { request_id: 'r1', kind: 'restart', session_id: 'sess_work', step: null, error: null, interrupt: null, handoff: false }
+  function restartWith(final: object, onDone = vi.fn()) {
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return json(202, { ...base, state: 'resuming' })
+      if (url.includes('/controls/')) return json(200, { ...base, ...final })
+      return json(200, { stale_after_s: 600, handoff_prompt: 'Write your handoff', handoff_timeout_s: 60, nudge_presets: [] })
+    }))
+    render(<RestartControl session={{ ...session, pending: { known: true, approval: false, question: false } } as unknown as Session} paused={false} live onDone={onDone} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Restart' }))
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restart' }).at(-1)!)
+    return onDone
+  }
+
+  it('keeps a relaunch that lost scopes open until it is read, then hands over the new session', async () => {
+    const onDone = restartWith({ state: 'done', new_session_id: 'sess_new', relaunched_by: 'relaunch', scopes_dropped: ['tether.admin', 'tether.terminal'] })
+    expect(await screen.findByText(/fewer permissions: tether.admin, tether.terminal not granted/, {}, { timeout: 4000 })).toBeTruthy()
+    expect(onDone).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onDone).toHaveBeenCalledWith('sess_new')
+  })
+
+  it('closes on its own when nothing was lost', async () => {
+    const onDone = restartWith({ state: 'done', new_session_id: 'sess_new', relaunched_by: 'resume', scopes_dropped: null })
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('sess_new'), { timeout: 4000 })
+    expect(screen.queryByText(/fewer permissions/)).toBeNull()
+  })
+
+  it("shows Tether's reason when a restart fails, including whether the seat is down", async () => {
+    restartWith({ state: 'failed', step: 'resuming', error: 'Tether could not complete the restart at resuming: tether /sessions answered 403 (forbidden). The old session is stopped and no new one started: relaunch chief from Tether.' })
+    expect(await screen.findByText(/no new one started: relaunch chief from Tether/, {}, { timeout: 4000 })).toBeTruthy()
+    expect(screen.getByText(/Failed at: resuming/)).toBeTruthy()
   })
 })

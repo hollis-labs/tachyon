@@ -3,6 +3,7 @@ package agentsserve
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -92,16 +93,40 @@ func TestCapabilitiesFollowTheSender(t *testing.T) {
 }
 
 type fakeCtl struct {
-	stopped, resumed string
-	stopErr          error
-	interrupts       int
-	intErr           error
+	stopped, resumed, relaunched string
+	stopErr, launchErr           error
+	resumeErr, relaunchErr       error
+	dropped                      []string
+	interrupts                   int
+	intErr                       error
 }
 
+func (f *fakeCtl) LaunchOf(_ context.Context, id string) (string, error) {
+	if f.launchErr != nil {
+		return "", f.launchErr
+	}
+	return "launch-" + id, nil
+}
 func (f *fakeCtl) Stop(_ context.Context, id string) error { f.stopped = id; return f.stopErr }
 func (f *fakeCtl) Resume(_ context.Context, la, _ string) (string, error) {
 	f.resumed = la
+	if f.resumeErr != nil {
+		return "", f.resumeErr
+	}
 	return "s2", nil
+}
+func (f *fakeCtl) Relaunch(_ context.Context, launch, _ string) (string, error) {
+	f.relaunched = launch
+	if f.relaunchErr != nil {
+		return "", f.relaunchErr
+	}
+	return "s3", nil
+}
+func (f *fakeCtl) ScopesDropped(_ context.Context, id string) ([]string, error) {
+	if id == "s3" {
+		return f.dropped, nil
+	}
+	return nil, nil
 }
 func (f *fakeCtl) Interrupt(context.Context, string, string) (string, error) {
 	f.interrupts++
@@ -139,7 +164,64 @@ func TestRestartStopsThenResumesTheLogicalAgent(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if c.State != "done" || c.NewSessionID == nil || *c.NewSessionID != "s2" || f.stopped != "m1" || f.resumed != "la1" {
+	if c.State != "done" || c.NewSessionID == nil || *c.NewSessionID != "s2" || f.stopped != "m1" || f.resumed != "la1" || f.relaunched != "" ||
+		c.RelaunchedBy == nil || *c.RelaunchedBy != "resume" || c.ScopesDropped != nil {
 		t.Fatalf("%+v stopped=%q resumed=%q", c, f.stopped, f.resumed)
+	}
+}
+
+// restartUntilEnd starts a restart of m1 and waits for it to end.
+func restartUntilEnd(t *testing.T, f *fakeCtl, id string) control {
+	t.Helper()
+	e := controlEnv(t, nil)
+	e.frame("session.work_state_changed", "m1", 56*time.Minute, `{"to":"processing","provider":"claude","agent_urn":"msg://agent/x/builder","logical_agent_id":"la1"}`)
+	e.srv.Restarter = f
+	if w := e.send("POST", "/sessions/m1/restart", `{"request_id":"`+id+`","expected_session_id":"m1"}`); w.Code != 202 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	for i := 0; i < 100; i++ {
+		c := decode[control](t, e.get("/controls/"+id))
+		if c.State == "done" || c.State == "failed" {
+			return c
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("restart did not end")
+	return control{}
+}
+
+// A worker-placed seat: Tether refuses the resume (409), so the restart relaunches the session's launch instead of
+// leaving the seat stopped, and reports the scopes the relaunch lost.
+func TestRestartRelaunchesWhenTetherRefusesTheResume(t *testing.T) {
+	f := &fakeCtl{resumeErr: fmt.Errorf("%w: tether /logical-agents/la1/resume answered 409 (conflict)", ErrResumeRefused), dropped: []string{"tether.admin"}}
+	c := restartUntilEnd(t, f, "rs2")
+	if c.State != "done" || f.stopped != "m1" || f.relaunched != "launch-m1" || c.NewSessionID == nil || *c.NewSessionID != "s3" ||
+		c.RelaunchedBy == nil || *c.RelaunchedBy != "relaunch" || fmt.Sprint(c.ScopesDropped) != "[tether.admin]" {
+		t.Fatalf("%+v relaunched=%q", c, f.relaunched)
+	}
+}
+
+// Never stop what cannot be brought back: without the launch a relaunch needs, nothing is stopped.
+func TestRestartStopsNothingWhenTheLaunchCannotBeRead(t *testing.T) {
+	f := &fakeCtl{launchErr: errors.New("tether /sessions/m1 answered 404 (not_found)")}
+	c := restartUntilEnd(t, f, "rs3")
+	if c.State != "failed" || c.Step == nil || *c.Step != "preparing" || f.stopped != "" || c.Error == nil ||
+		!strings.Contains(*c.Error, "Nothing was stopped") || !strings.Contains(*c.Error, "404 (not_found)") {
+		t.Fatalf("%+v stopped=%q", c, f.stopped)
+	}
+}
+
+// A relaunch that fails after the stop says plainly that the seat is down and how to bring it back.
+func TestRestartThatCannotRelaunchSaysTheSeatIsDown(t *testing.T) {
+	f := &fakeCtl{resumeErr: fmt.Errorf("%w: 409", ErrResumeRefused), relaunchErr: errors.New("tether /sessions answered 403 (forbidden)")}
+	c := restartUntilEnd(t, f, "rs4")
+	if c.State != "failed" || c.Step == nil || *c.Step != "resuming" || c.Error == nil || !strings.Contains(*c.Error, "no new one started") ||
+		!strings.Contains(*c.Error, "launch-m1") || !strings.Contains(*c.Error, "403 (forbidden)") || c.RelaunchedBy != nil {
+		t.Fatalf("%+v", c)
+	}
+	// A resume that fails for any other reason is not retried as a relaunch.
+	f = &fakeCtl{resumeErr: errors.New("tether /logical-agents/la1/resume answered 500 (internal_error)")}
+	if c = restartUntilEnd(t, f, "rs5"); c.State != "failed" || f.relaunched != "" {
+		t.Fatalf("%+v relaunched=%q", c, f.relaunched)
 	}
 }
