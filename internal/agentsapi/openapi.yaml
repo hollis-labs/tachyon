@@ -389,7 +389,7 @@ components:
         updated_at: {type: integer}
     Seat:
       type: object
-      required: [agent_urn, handle, name, effective, declared, live]
+      required: [agent_urn, handle, name, effective, declared, live, set_by_other, stale]
       properties:
         agent_urn: {type: string}
         handle: {type: string, description: "as the seat declared it; empty when it never has"}
@@ -403,6 +403,8 @@ components:
           nullable: true
           type: object
           properties: {session_id: {type: string}, state: {type: string}, needs_you: {type: string, nullable: true}, last_activity_at: {type: integer, nullable: true}}
+        set_by_other: {type: boolean, description: "the status was set by someone other than the seat (its address forms or its own sessions) or the operator"}
+        stale: {type: boolean, description: "the declaration no longer describes the seat: no live session (unless it declared offline), or declared more than 4h ago with no session activity since; stale cards sort last"}
     Settings:
       type: object
       required: [stale_after_s, handoff_prompt, handoff_timeout_s, nudge_presets]

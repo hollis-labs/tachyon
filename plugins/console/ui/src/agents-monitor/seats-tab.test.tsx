@@ -42,6 +42,19 @@ describe('Seats', () => {
     expect(cards[2].textContent).toContain('available')
   })
 
+  it('warns when someone else set the status and marks a stale card', async () => {
+    show({ seats: [
+      { ...seats[0], set_by_other: true, declared: { ...seats[0].declared!, set_by: 'msg://agent/agent-mux/agt_other' } },
+      { ...seats[2], stale: true },
+    ] })
+    const cards = within(await screen.findByRole('list', { name: 'Seats' })).getAllByRole('listitem')
+    expect(within(cards[0]).getByRole('note').textContent).toBe('Set by msg://agent/agent-mux/agt_other, not by this seat')
+    expect(cards[0].getAttribute('data-stale')).toBeNull()
+    expect(cards[1].getAttribute('data-stale')).toBe('true')
+    expect(cards[1].textContent).toContain('stale')
+    expect(within(cards[1]).queryByRole('note')).toBeNull()
+  })
+
   it('says when no seat has a status or a session', async () => {
     show({ seats: [] })
     expect(await screen.findByText('No seat has declared a status or has a live session.')).toBeTruthy()

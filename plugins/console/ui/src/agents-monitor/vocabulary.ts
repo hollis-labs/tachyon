@@ -204,7 +204,7 @@ export const AGENTS = {
 /** Seats tab (CW-20261114-0023d): what each seat declared (Tether seat.status) beside its live session. */
 export const SEATS = {
   label: 'Seats',
-  intro: 'What each seat says it is doing, beside what its session shows. Blocked and waiting seats come first.',
+  intro: 'What each seat says it is doing, beside what its session shows. Blocked and waiting seats come first; stale statuses come last.',
   empty: 'No seat has declared a status or has a live session.',
   loadFailed: 'Could not load seats',
   state: (s: string) => ({ undeclared: 'no status set', unknown: 'unknown' } as Record<string, string>)[s] ?? s.replace(/-/g, ' '),
@@ -214,6 +214,8 @@ export const SEATS = {
   needsYou: (reason: string) => `needs you: ${reason}`,
   noSession: 'no live session',
   declaredAgo: (age: string) => `declared ${age}`,
+  stale: 'stale',
+  setByOther: (by: string) => `Set by ${by}, not by this seat`,
 } as const
 
 export type FilterId = keyof typeof AGENTS.filters

@@ -16,6 +16,10 @@ export interface Seat {
   effective: string
   declared: { state: string; reason: string; ref: string; owner: string; expires_at: string | null; set_by: string; at: string } | null
   live: { session_id: string; state: string; needs_you: string | null; last_activity_at: number | null } | null
+  /** Set by someone other than the seat or the operator. */
+  set_by_other?: boolean
+  /** The declaration no longer describes the seat (no live session, or old with no activity since). */
+  stale?: boolean
 }
 
 const TONE: Record<string, 'danger' | 'warning' | 'neutral'> = { blocked: 'danger', 'waiting-decision': 'warning', 'waiting-agent': 'warning' }
@@ -28,15 +32,17 @@ function Ref({ r }: { r: string }) {
 export function SeatCard({ seat, now }: { seat: Seat; now: number }) {
   const d = seat.declared
   return (
-    <li data-seat={seat.agent_urn} className="flex flex-col gap-2 rounded-panel border border-border p-3">
+    <li data-seat={seat.agent_urn} data-stale={seat.stale ? 'true' : undefined} className={`flex flex-col gap-2 rounded-panel border border-border p-3 ${seat.stale ? 'opacity-70' : ''}`}>
       <div className="flex items-center gap-2.5">
         <Avatar name={seat.name} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-control font-medium text-fg">{seat.name}</div>
           {seat.handle && seat.handle !== seat.name && <div className="font-mono text-caption text-fg-muted">{seat.handle}</div>}
         </div>
+        {seat.stale && <Chip>{SEATS.stale}</Chip>}
         <Chip tone={TONE[seat.effective] ?? 'neutral'}>{SEATS.state(seat.effective)}</Chip>
       </div>
+      {d && seat.set_by_other && <p role="note" className="text-label text-warning">{SEATS.setByOther(d.set_by)}</p>}
       {d?.reason && <p className="text-xs text-fg">{d.reason}</p>}
       {d && (d.owner || d.ref || d.expires_at) && (
         <div className="flex flex-wrap items-center gap-2 text-label text-fg-muted">

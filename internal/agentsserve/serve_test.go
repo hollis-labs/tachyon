@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/hollis-labs/tachyon/internal/objects"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -856,9 +857,12 @@ func TestSeatCardsJoinDeclaredStatusWithTheLiveSession(t *testing.T) {
 		order = append(order, s.AgentURN+"="+s.Effective)
 		by[s.AgentURN] = s
 	}
-	want := []string{blocked + "=blocked", idle + "=available", worker + "=undeclared"}
+	want := []string{blocked + "=blocked", worker + "=undeclared", idle + "=available"}
 	if strings.Join(order, ",") != strings.Join(want, ",") {
-		t.Fatalf("seats %v, want %v (an expired declaration with no session is not listed)", order, want)
+		t.Fatalf("seats %v, want %v (an expired declaration with no session is not listed; a stale card sorts last)", order, want)
+	}
+	if by[idle].Stale != true || by[blocked].Stale || by[worker].Stale {
+		t.Fatalf("a declaration with no live session is stale: %+v %+v", by[idle], by[blocked])
 	}
 	b := by[blocked]
 	if b.Handle != "@builder-1" || b.Name != "Builder One" || b.Declared == nil || b.Declared.Owner != "@chrispian" || b.Declared.Reason != "needs the deploy token" ||
@@ -870,5 +874,57 @@ func TestSeatCardsJoinDeclaredStatusWithTheLiveSession(t *testing.T) {
 	}
 	if i := by[idle]; i.Live != nil || i.Name != "@idle" {
 		t.Fatalf("an ended session is not the seat's live one: %+v", i)
+	}
+}
+
+// A session reports its seat as msg://agent/agent-mux/<catalog id>, its own status comes from its registry URN
+// (agt_...): the synced Tether catalog maps one to the other, so a seat gets one card, not two.
+// A status set by someone other than the seat (or its own session, or the operator) is flagged, and a declaration
+// hours old with no session activity since is stale and sorts below current cards.
+func TestSeatCardsJoinAddressFormsFlagForeignSettersAndStaleness(t *testing.T) {
+	e := newEnv(t)
+	e.now = t0.Add(10 * time.Hour)
+	seedAgent := func(catalogID, urn string) {
+		t.Helper()
+		raw, _ := json.Marshal(objects.Agent{Common: objects.Common{Name: catalogID, Properties: map[string]any{"tether": map[string]any{"urn": urn, "catalog_id": catalogID}}}})
+		_, err := objects.New(e.db).UpdateOrCreate(context.Background(), objects.Observation{Key: objects.SourceKey{SourceScope: objects.SourceScope{Provider: "tether",
+			Instance: "https://tether.test", Collection: "catalog/agents", Kind: objects.AgentKind}, ExternalID: catalogID}, ObservedAt: t0, Definition: raw}, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	const tachyonURN, chiefURN, quietURN = "msg://agent/agent-mux/agt_4jfp86a7kp", "msg://agent/agent-mux/agt_cabx0m5b7w", "msg://agent/agent-mux/agt_quiet"
+	seedAgent("photon-tachyon", tachyonURN)
+	seedAgent("chief", chiefURN)
+	seedAgent("quiet", quietURN)
+	// Sessions name their seat by logical id only (no agent_urn), as live sessions do today.
+	e.frame("session.work_state_changed", "s-tachyon", 9*time.Hour+50*time.Minute, `{"from":"idle","to":"processing","logical_agent_id":"photon-tachyon","agent_name":"Photon Tachyon"}`)
+	e.frame("session.work_state_changed", "s-chief", 9*time.Hour+50*time.Minute, `{"from":"idle","to":"processing","logical_agent_id":"chief"}`)
+	e.frame("session.work_state_changed", "s-quiet", time.Hour, `{"from":"idle","to":"processing","logical_agent_id":"quiet"}`)
+	// photon-tachyon set its own status from its session; chief's was set by another seat; quiet declared hours ago.
+	e.frame("seat.status", "", 9*time.Hour+55*time.Minute, `{"agent_urn":"`+tachyonURN+`","handle":"@photon-tachyon","state":"working","set_by":"msg://session/local/s-tachyon"}`)
+	e.frame("seat.status", "", 9*time.Hour+55*time.Minute, `{"agent_urn":"`+chiefURN+`","handle":"@chief","state":"blocked","owner":"@chrispian","set_by":"msg://agent/agent-mux/agt_someoneelse"}`)
+	e.frame("seat.status", "", 2*time.Hour, `{"agent_urn":"`+quietURN+`","handle":"@quiet","state":"working","set_by":"msg://user/local/operator"}`)
+	type resp struct {
+		Seats []Seat `json:"seats"`
+	}
+	got := decode[resp](t, e.get("/seats")).Seats
+	var order []string
+	by := map[string]Seat{}
+	for _, s := range got {
+		order = append(order, s.AgentURN)
+		by[s.AgentURN] = s
+	}
+	if strings.Join(order, ",") != strings.Join([]string{chiefURN, tachyonURN, quietURN}, ",") {
+		t.Fatalf("one card per seat, current before stale: %v", order)
+	}
+	if s := by[tachyonURN]; s.Live == nil || s.Live.SessionID != "s-tachyon" || s.Name != "Photon Tachyon" || s.Effective != "working" || s.SetByOther || s.Stale {
+		t.Fatalf("declared and live joined across address forms, set by its own session: %+v", s)
+	}
+	if s := by[chiefURN]; !s.SetByOther || s.Live == nil {
+		t.Fatalf("a status set by another seat is flagged: %+v", s)
+	}
+	if s := by[quietURN]; !s.Stale || s.SetByOther || s.Live == nil {
+		t.Fatalf("declared 8h ago, nothing since: stale; set by the operator: not flagged: %+v", s)
 	}
 }
