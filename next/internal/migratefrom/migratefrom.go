@@ -240,8 +240,13 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 	}
 
 	// 3: the schema, the ledger and the scheduler tables.
-	// The reference is the old schema at 056 (the init migration). The target holds it, plus any
-	// table a later migration added for the new build, which the old data has no rows for.
+	// The ledger first: a source from an older or newer old build is named as such, before its schema
+	// is compared.
+	if r.Ledger, err = checkLedger(ctx, src); err != nil {
+		return err
+	}
+	// The reference is the old schema (the init migration and the carried old migrations, 001..058).
+	// The target holds it, plus the tables the new build adds, which the old data has no rows for.
 	target, err := initSchema(ctx)
 	if err != nil {
 		return err
@@ -252,7 +257,7 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 	}
 	for name, o := range target {
 		if d := schema.Diff(schema.Schema{name: o}, schema.Schema{name: inTarget[name]}); inTarget[name].Type == "" || len(d) > 0 {
-			return fmt.Errorf("target: %s %s is not the init migration's (%v)", o.Type, name, d)
+			return fmt.Errorf("target: %s %s is not the old schema's (%v)", o.Type, name, d)
 		}
 	}
 	source, err := schema.Describe(ctx, src, func(t string) bool { return t == "sqlite_sequence" })
@@ -264,9 +269,6 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 	}
 	if d := schema.Diff(target, source); len(d) > 0 {
 		return fmt.Errorf("%s: the schema is not the one this build knows (%d difference(s)); nothing was copied:\n%s", TachyonFile, len(d), strings.Join(d, "\n"))
-	}
-	if r.Ledger, err = checkLedger(ctx, src); err != nil {
-		return err
 	}
 	if err = checkJobsSchema(ctx, jobs, st); err != nil {
 		return err
@@ -446,7 +448,7 @@ func checkLedger(ctx context.Context, src *sql.DB) (int, error) {
 		return 0, err
 	}
 	if !slices.Equal(names, ledgerNames) {
-		return 0, fmt.Errorf("%s: tachyon_migrations holds %d name(s), not exactly the %d this build was made for (001_objects.sql .. 056_agents_control_relaunch.sql)", TachyonFile, len(names), len(ledgerNames))
+		return 0, fmt.Errorf("%s: tachyon_migrations holds %d name(s), not exactly the %d this build was made for (%s .. %s); a source from an older or newer old build is refused, never guessed", TachyonFile, len(names), len(ledgerNames), ledgerNames[0], ledgerNames[len(ledgerNames)-1])
 	}
 	return len(names), nil
 }
@@ -938,9 +940,10 @@ func writeReport(path string, r *Report) error {
 	return os.WriteFile(path, append(b, '\n'), 0o600)
 }
 
-// initSchema describes the init migration (the old schema at 056) built in memory.
+// initSchema describes the old schema (store.OldSchemaFiles: the init migration and the carried old
+// migrations) built in memory.
 func initSchema(ctx context.Context) (schema.Schema, error) {
-	body, err := store.InitSQL()
+	body, err := store.OldSchemaSQL()
 	if err != nil {
 		return nil, err
 	}

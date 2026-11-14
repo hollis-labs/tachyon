@@ -93,6 +93,8 @@ func (t *tachyon) serve(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = jobs.Close() }()
+	// The runner is registered whether or not object sync is on: it is the engine that the feature
+	// switch gates (scheduler.Run below), and with the engine stopped nothing is ever dispatched.
 	setRunner(objectsync.JobType, jobs)
 	defer setRunner(objectsync.JobType, nil)
 	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(store.Wrap(db))), objectJob: jobs})

@@ -429,10 +429,9 @@ CREATE TABLE chat_plans (
  task_ref TEXT,
  created_by TEXT NOT NULL,
  created_ns INTEGER NOT NULL,
- updated_ns INTEGER NOT NULL,
+ updated_ns INTEGER NOT NULL, position INTEGER NOT NULL DEFAULT 1,
  CHECK ((scope='thread' AND thread_ref IS NOT NULL AND project_id IS NULL) OR (scope='project' AND project_id IS NOT NULL AND thread_ref IS NULL))
 );
-CREATE UNIQUE INDEX chat_plans_thread ON chat_plans(thread_ref) WHERE scope='thread';
 CREATE UNIQUE INDEX chat_plans_project ON chat_plans(project_id) WHERE scope='project';
 CREATE TABLE chat_plan_steps (
  plan_id TEXT NOT NULL REFERENCES chat_plans(id) ON DELETE CASCADE,
@@ -1055,3 +1054,17 @@ CREATE TABLE IF NOT EXISTS "bus_events" (
 );
 CREATE INDEX bus_events_seq ON bus_events(tether_seq);
 CREATE INDEX bus_events_type ON bus_events(type, tether_seq);
+CREATE TABLE seat_status (
+ agent_urn TEXT PRIMARY KEY,
+ handle TEXT NOT NULL DEFAULT '',
+ state TEXT NOT NULL,
+ reason TEXT NOT NULL DEFAULT '',
+ ref TEXT NOT NULL DEFAULT '',
+ owner TEXT NOT NULL DEFAULT '',
+ expires_at_ns INTEGER,
+ set_by TEXT NOT NULL DEFAULT '',
+ at_ns INTEGER NOT NULL,
+ tether_seq INTEGER NOT NULL
+);
+CREATE INDEX seat_status_owner ON seat_status(owner, state);
+CREATE INDEX chat_plans_thread ON chat_plans(thread_ref, position) WHERE scope='thread';

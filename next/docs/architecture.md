@@ -101,10 +101,14 @@ Outermost first:
 - **Default directory.** It is `XDG_DATA_HOME/tachyon-next` on purpose: `XDG_DATA_HOME/tachyon` is the running old
   build's directory. P1 settles the final default; the cutover sets the directory explicitly in the override
   anyway.
-- **Schema** (`internal/store`, slice B2): one goose migration, `migrations/sqlite/00001_init.sql`. It holds the
-  exact `sqlite_master` text of the old build's schema at migration 056 plus its baseline tables (96 tables,
-  including the old ledger `tachyon_migrations`, 185 indexes, the two append-only triggers on
-  `approval_decision_log`).
+- **Schema** (`internal/store`, slice B2): the old build's schema, byte for byte, in the old-schema migrations
+  (`store.OldSchemaFiles`):
+  - `00001_init.sql`: the exact `sqlite_master` text at old migration 056 plus the baseline tables (96 tables,
+    including the old ledger `tachyon_migrations`, 185 indexes, and the two append-only triggers on
+    `approval_decision_log`);
+  - `00003_old_057_058.sql`: the old 057 and 058, replayed verbatim (parity-carry).
+
+  Tachyon's own tables come in their own migrations (`00002_service_credentials.sql`).
   - `schema_test.go` proves it equal to both references: a database built from the old tree's own source in the
     same checkout, and a schema-only snapshot fixture (`.schema` of a backup copy). It compares `sqlite_master` text and `table_info`,
     `foreign_key_list`, `index_list` and `index_xinfo` per table.

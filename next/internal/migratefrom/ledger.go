@@ -1,9 +1,9 @@
-// The ledger the old build writes, taken from its internal/localstore/migrations at d123471.
+// The ledger the old build writes, taken from its internal/localstore/migrations (001..058, main 2026-11-14).
 // ledger_test.go checks it against the old tree when the checkout has it.
 
 package migratefrom
 
-// ledgerNames are the 56 migration names the old build records in tachyon_migrations at 056. A
+// ledgerNames are the 58 migration names the old build records in tachyon_migrations at 058. A
 // source whose ledger is not exactly this list was made by a build this command does not know.
 var ledgerNames = []string{
 	"001_objects.sql",
@@ -62,4 +62,6 @@ var ledgerNames = []string{
 	"054_chat_session_continue.sql",
 	"055_event_summary.sql",
 	"056_agents_control_relaunch.sql",
+	"057_seat_status.sql",
+	"058_chat_plans_multiple.sql",
 }

@@ -124,8 +124,12 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 
 ## Data
 
-- **The schema is unchanged** (B2): every table, column, declared type, default, key, index and trigger of the old
-  build at migration 056.
+- **The schema is unchanged** (B2, carried to 058): every table, column, declared type, default, key, index and
+  trigger of the old build at its migration 058.
+  - `00001_init.sql` is the old schema at 056. `00003_old_057_058.sql` replays the old 057 (`seat_status`) and 058
+    (`chat_plans.position`, index changed) verbatim.
+  - Each later old migration on `main` is carried the same way, in its own file. `migrate-from` accepts exactly
+    the ledger 001..058.
   - `chat_events.body` keeps its declared type TEXT, although existing rows may hold BLOBs.
   - The 14 AUTOINCREMENT tables keep AUTOINCREMENT.
   - The old ledger `tachyon_migrations` is kept as a table, and its rows are copied as history. The new build's
@@ -155,6 +159,9 @@ Details: `docs/api-contract.md`.
     one, and that the expiry is not later. If any check fails, every key it made is revoked and no file is
     written.
   - Old token rows are kept and marked superseded (`service_credentials.source_token_id`).
+  - A reissue that fails after creating keys revokes their credentials, but the identity module keeps its key
+    rows (no exported revoke, Gaps 7). It therefore refuses to run again on that data directory; the window
+    restarts from `migrate-from` on a new one.
 - **Holders swap their token file for the key file.**
   - The bearer is the same kind of header; the value changes.
   - A key never counts as a person: no key, whatever its scopes, passes an approvals assurance check.

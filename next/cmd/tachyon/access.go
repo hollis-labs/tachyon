@@ -178,12 +178,20 @@ func (t *tachyon) accessCmd(ctx context.Context) *cobra.Command {
 					r.Identity.ID, r.Identity.Name, r.OldTokenID, r.Credential.ID, r.Pairs, r.AllowSetEqual, r.ExpiryKept)
 			}
 			if err != nil {
-				// No key leaves the process: every credential made here is revoked again.
+				if len(done) == 0 {
+					return err // refused before any key was made (no owner, keys exist, an invalid grant)
+				}
+				// No key leaves the process: every credential made here is revoked again. The identity
+				// keys stay in the module (no exported revoke, CW-20261114-0131), so the reissue cannot
+				// simply run again: redo the window from migrate-from on a new data directory.
 				var rerr []error
 				for _, r := range done {
 					rerr = append(rerr, s.Revoke(ctx, r.Credential.ID))
 				}
-				return fmt.Errorf("%w\nno key file was written and every credential above was revoked (%w)", err, errors.Join(rerr...))
+				if revokeErr := errors.Join(rerr...); revokeErr != nil {
+					return fmt.Errorf("%w\nno key file was written; revoking the credentials made also failed: %w", err, revokeErr)
+				}
+				return fmt.Errorf("%w\nno key file was written and the %d credential(s) above were revoked; redo from migrate-from on a new data directory", err, len(done))
 			}
 			for _, r := range done {
 				file := filepath.Join(outDir, r.Identity.ID+"."+r.Credential.ID+".key")

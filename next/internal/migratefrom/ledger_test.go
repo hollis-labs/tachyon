@@ -1,6 +1,8 @@
 package migratefrom
 
 import (
+	"github.com/hollis-labs/tachyon/next/internal/store"
+
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,7 +26,7 @@ func TestLedgerNamesAreTheOldTreesMigrations(t *testing.T) {
 	if !slices.Equal(names, ledgerNames) {
 		t.Fatalf("old tree has %d migrations, the ledger list %d:\n%v\n%v", len(names), len(ledgerNames), names, ledgerNames)
 	}
-	if len(ledgerNames) != 56 {
+	if len(ledgerNames) != store.OldLedger {
 		t.Fatalf("%d names", len(ledgerNames))
 	}
 }

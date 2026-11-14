@@ -34,7 +34,7 @@ func scheduleID(scope string) string {
 // stored it.
 func initSQL(t *testing.T) string {
 	t.Helper()
-	body, err := store.InitSQL()
+	body, err := store.OldSchemaSQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +66,9 @@ func fixture(t *testing.T, edit func(src, jobs *sql.DB)) string {
 	}
 	execAll(t, src,
 		`INSERT INTO app_settings(key, value) VALUES ('account.profile', '{"name":"x"}')`,
+		// The two tables the carried old migrations 057 and 058 touch.
+		`INSERT INTO seat_status(agent_urn, state, at_ns, tether_seq) VALUES ('msg://agent/example/a', 'working', 1, 1)`,
+		`INSERT INTO chat_plans(id, scope, thread_ref, title, status, revision, created_by, created_ns, updated_ns, position) VALUES ('p1', 'thread', 'app:t1', 'Plan', 'active', 1, 'operator', 1, 1, 2)`,
 		// A BLOB in a TEXT-declared column, as existing chat_events rows may be.
 		`INSERT INTO chat_events(thread_ref, type, body, at_ns) VALUES ('t1', 'turn', X'7b2261223a317d', 1), ('t1', 'turn', 'plain text', 2)`,
 		// A deleted top row: the sequence stays above max(seq).
@@ -139,7 +142,7 @@ func TestMigratesEveryRowAndProvesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !r.OK || !r.SourcesStable || r.Ledger != 56 || len(r.Tables) != 96+5 {
+	if !r.OK || !r.SourcesStable || r.Ledger != store.OldLedger || len(r.Tables) != 97+5 {
 		t.Fatalf("report: ok=%v stable=%v ledger=%d tables=%d", r.OK, r.SourcesStable, r.Ledger, len(r.Tables))
 	}
 	rows := map[string]int64{}
@@ -149,7 +152,7 @@ func TestMigratesEveryRowAndProvesIt(t *testing.T) {
 		}
 		rows[tr.Name] = tr.TargetRows
 	}
-	for table, want := range map[string]int64{"tachyon_migrations": 56, "chat_events": 2, "planner_events": 1, "approval_defers": 1, "gosched_schedules": 1, "gosched_schedule_options": 1} {
+	for table, want := range map[string]int64{"tachyon_migrations": int64(store.OldLedger), "seat_status": 1, "chat_plans": 1, "chat_events": 2, "planner_events": 1, "approval_defers": 1, "gosched_schedules": 1, "gosched_schedule_options": 1} {
 		if rows[table] != want {
 			t.Errorf("%s: %d rows, want %d", table, rows[table], want)
 		}
@@ -244,15 +247,15 @@ func TestRefusals(t *testing.T) {
 			},
 			want: "rebuild leftover bus_events_055 holds 1 row(s)",
 		},
-		"a ledger missing a name": {
+		"a ledger at 056 (an older old build)": {
 			edit: func(src, _ *sql.DB) {
-				_, _ = src.Exec(`DELETE FROM tachyon_migrations WHERE name = '056_agents_control_relaunch.sql'`)
+				_, _ = src.Exec(`DELETE FROM tachyon_migrations WHERE name IN ('057_seat_status.sql', '058_chat_plans_multiple.sql')`)
 			},
-			want: "tachyon_migrations holds 55 name(s)",
+			want: "tachyon_migrations holds 56 name(s), not exactly the 58 this build was made for (001_objects.sql .. 058_chat_plans_multiple.sql)",
 		},
 		"a ledger with an unknown name": {
-			edit: func(src, _ *sql.DB) { _, _ = src.Exec(`INSERT INTO tachyon_migrations(name) VALUES ('057_next.sql')`) },
-			want: "tachyon_migrations holds 57 name(s)",
+			edit: func(src, _ *sql.DB) { _, _ = src.Exec(`INSERT INTO tachyon_migrations(name) VALUES ('059_next.sql')`) },
+			want: "tachyon_migrations holds 59 name(s)",
 		},
 		"a scheduler schema mismatch": {
 			edit: func(_, jobs *sql.DB) { _, _ = jobs.Exec(`ALTER TABLE gosched_schedules ADD COLUMN extra TEXT`) },
@@ -423,6 +426,39 @@ func TestVerificationFailsOnAnAlteredTarget(t *testing.T) {
 	var r Report
 	err = verify(ctx, st, src, jobs, []string{"chat_events"}, nil, &r)
 	if err == nil || !strings.Contains(err.Error(), "chat_events") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A real source at old migration 056 (before 057 and 058) is refused for its ledger, with a message
+// that names the old build it came from, before anything else.
+func TestASourceAt056IsRefused(t *testing.T) {
+	dir := t.TempDir()
+	src, err := sql.Open("sqlite", filepath.Join(dir, TachyonFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.SetMaxOpenConns(1)
+	oldInit, err := store.InitSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	execAll(t, src, `PRAGMA journal_mode = DELETE`, oldInit)
+	for _, n := range ledgerNames[:56] {
+		execAll(t, src, `INSERT INTO tachyon_migrations(name) VALUES ('`+n+`')`)
+	}
+	_ = src.Close()
+	jobs, err := sql.Open("sqlite", filepath.Join(dir, JobsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	execAll(t, jobs, `PRAGMA journal_mode = DELETE`)
+	if merr := sqlstore.Migrate(context.Background(), jobs); merr != nil {
+		t.Fatal(merr)
+	}
+	_ = jobs.Close()
+	_, err = Run(context.Background(), target(t), options(dir))
+	if err == nil || !strings.Contains(err.Error(), "holds 56 name(s), not exactly the 58") {
 		t.Fatalf("err = %v", err)
 	}
 }

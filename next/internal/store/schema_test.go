@@ -27,9 +27,9 @@ import (
 // levels up from next/internal/store). Slice P1 deletes it; the snapshot fixture remains.
 var oldTree = filepath.Join("..", "..", "..", "internal", "localstore")
 
-// liveFixture is `sqlite3 <snapshot> .schema` of the live database's backup copy of 2026-11-14:
-// schema only, no rows.
-const liveFixture = "testdata/live-schema-20261114.sql"
+// liveFixture is `sqlite3 <copy> .schema` of a backup copy of the running database at old migration
+// 058 (2026-11-14): schema only, no rows. Refresh it when an old migration is carried.
+const liveFixture = "testdata/schema-snapshot-058.sql"
 
 // frameworkTables are created by the migration machinery, not by Tachyon's schema.
 var frameworkTables = []string{"goose_db_version", "sqlite_sequence"}
@@ -162,26 +162,31 @@ func requireEqual(t *testing.T, ref string, want, got schema.Schema) {
 	}
 }
 
-// initOnly is the migration source holding only the init migration: the old schema at 056. Later
-// migrations add Tachyon's own tables.
-func initOnly(t *testing.T) migrate.Source {
+// oldOnly is the migration source holding only the old schema's migrations (OldSchemaFiles): the old
+// build's schema at its latest carried migration. The other migrations add Tachyon's own tables.
+func oldOnly(t *testing.T) migrate.Source {
 	t.Helper()
-	body, err := fs.ReadFile(Migrations, Root+"/sqlite/"+InitFile)
-	if err != nil {
-		t.Fatal(err)
+	files := fstest.MapFS{}
+	for _, f := range OldSchemaFiles {
+		body, err := fs.ReadFile(Migrations, Root+"/sqlite/"+f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files["migrations/sqlite/"+f] = &fstest.MapFile{Data: body}
 	}
-	return migrate.Source{FS: fstest.MapFS{"migrations/sqlite/" + InitFile: {Data: body}}, Root: Root}
+	return migrate.Source{FS: files, Root: Root}
 }
 
-// The schema equals a database the old build's own source creates at this checkout. When main brings
+// The old schema equals a database the old build's own source creates at this checkout (old migrations
+// 001..058). When main brings
 // a new old-tree migration onto the branch, this fails until the port carries it (plan section 1).
 func TestSchemaEqualsTheOldTree(t *testing.T) {
-	requireEqual(t, "the old tree", describe(t, oldTreeDB(t)), describe(t, migrated(t, initOnly(t))))
+	requireEqual(t, "the old tree", describe(t, oldTreeDB(t)), describe(t, migrated(t, oldOnly(t))))
 }
 
 // The schema equals the live database's schema (its backup copy of 2026-11-14).
 func TestSchemaEqualsTheLiveSnapshot(t *testing.T) {
-	requireEqual(t, "the live snapshot", describe(t, fixtureDB(t)), describe(t, migrated(t, initOnly(t))))
+	requireEqual(t, "the live snapshot", describe(t, fixtureDB(t)), describe(t, migrated(t, oldOnly(t))))
 }
 
 // The comparison sees a one-word change: one column default altered on purpose.
@@ -194,10 +199,12 @@ func TestSchemaDiffSeesAChangedDefault(t *testing.T) {
 	if strings.Count(string(body), from) != 1 {
 		t.Fatalf("the probe text %q is not unique in the migration", from)
 	}
-	changed := fstest.MapFS{"migrations/sqlite/00001_init.sql": {Data: []byte(strings.Replace(string(body), from, to, 1))}}
-	d := schema.Diff(describe(t, fixtureDB(t)), describe(t, migrated(t, migrate.Source{FS: changed, Root: Root})))
-	if len(d) == 0 {
-		t.Fatal("a changed default went unnoticed")
+	src := oldOnly(t)
+	changed := src.FS.(fstest.MapFS)
+	changed["migrations/sqlite/00001_init.sql"] = &fstest.MapFile{Data: []byte(strings.Replace(string(body), from, to, 1))}
+	d := schema.Diff(describe(t, fixtureDB(t)), describe(t, migrated(t, src)))
+	if len(d) != 2 {
+		t.Fatalf("a changed default should be exactly two differences (columns and sql), got %d:\n%s", len(d), strings.Join(d, "\n"))
 	}
 	joined := strings.Join(d, "\n")
 	if !strings.Contains(joined, "approval_defers") || !strings.Contains(joined, "'x'") {
@@ -257,8 +264,8 @@ func TestShapeFacts(t *testing.T) {
 		t.Errorf("chat_events.body declared %q, %v", typ, err)
 	}
 	var tables int
-	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT IN ('goose_db_version', 'sqlite_sequence')`).Scan(&tables); err != nil || tables != 97 {
-		t.Errorf("%d app tables, want 96 old ones plus service_credentials (%v)", tables, err)
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT IN ('goose_db_version', 'sqlite_sequence')`).Scan(&tables); err != nil || tables != 97+len(OwnTables) {
+		t.Errorf("%d app tables, want 97 old ones (056 plus seat_status) plus Tachyon's own (%v)", tables, err)
 	}
 }
 
@@ -268,7 +275,7 @@ func TestInitSQLAndHead(t *testing.T) {
 	if err != nil || strings.Contains(sqlText, "+goose") || !strings.Contains(sqlText, "CREATE TABLE approval_decision_log") {
 		t.Fatalf("InitSQL: %v", err)
 	}
-	if v, err := HeadVersion(); err != nil || v != 2 {
+	if v, err := HeadVersion(); err != nil || v != 3 {
 		t.Fatalf("HeadVersion = %d, %v", v, err)
 	}
 }

@@ -44,11 +44,36 @@ func From(app *module.App) *libstore.Store { return database.From(app) }
 // InitFile is the migration that holds the old build's schema at 056, byte for byte.
 const InitFile = "00001_init.sql"
 
-// InitSQL is that migration's SQL without its goose annotations: the old schema as the old build
-// stored it. The data migration builds its reference from it (later migrations add Tachyon's own
-// tables, which the old data does not have).
-func InitSQL() (string, error) {
-	body, err := fs.ReadFile(Migrations, path.Join(Root, "sqlite", InitFile))
+// OldSchemaFiles are the migrations that describe the old build's schema: the init (056) and the
+// parity-carried old migrations after it, in order. Every other migration adds Tachyon's own tables
+// (OwnTables), which the old data has no rows for.
+var OldSchemaFiles = []string{InitFile, "00003_old_057_058.sql"}
+
+// OwnTables are the tables the new build adds; they are not part of the old schema.
+var OwnTables = []string{"service_credentials"}
+
+// OldLedger is the number of old migrations the old schema files cover (001..058).
+const OldLedger = 58
+
+// InitSQL is the init migration's SQL without its goose annotations.
+func InitSQL() (string, error) { return bodyOf(InitFile) }
+
+// OldSchemaSQL is the old schema as the old build stored it: the SQL of OldSchemaFiles, without goose
+// annotations, in order. The data migration builds its reference from it.
+func OldSchemaSQL() (string, error) {
+	var parts []string
+	for _, f := range OldSchemaFiles {
+		b, err := bodyOf(f)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, b)
+	}
+	return strings.Join(parts, "\n"), nil
+}
+
+func bodyOf(file string) (string, error) {
+	body, err := fs.ReadFile(Migrations, path.Join(Root, "sqlite", file))
 	if err != nil {
 		return "", err
 	}
