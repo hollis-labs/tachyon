@@ -130,3 +130,9 @@ The chat sidebar is the **Agent Panel**: a host that shows one *panel* (a named 
 ### Artifacts tab
 
 The Doc tab is **Artifacts** (tab id stays `doc`). `chat/aside/ArtifactsPanel.tsx` lists the thread's workspace items not added by the user (`GET /threads/{ref}/workspace`); opening one replaces the list with an inline preview until Close/Esc: html in a script-less sandboxed iframe, images, video and audio from authenticated blob URLs, markdown rendered, text in a block, other types a download link. Host-path refs open in the File viewer. A document opened from Files still shows in the full-window Doc view.
+
+### Agent-driven panels (Once | This session | Always)
+
+The aside has no auto/manual mode and no chip. The agent may open a panel at any time (`chat.panel.open`, or the plan/approval signals). If the user changed the view since the agent last did, the agent's next change is held and the aside asks: **Once** (this request), **This session** (until the page closes), **Always** (kept in this browser), or **Not now** (dropped). Grants are scoped to one agent in one thread (`<agent>|<thread>`; `chat/aside/grants.ts`). Settings > General > Agent Panel lists the Always grants with Reset. Typing in an aside input still blocks any switch.
+
+Verb result: `chat.panel.open` returns `{ok:true}` when the hint is sent. That means delivered, not applied: the screen applies, holds (pending) or drops it, and the server does not see which. A held request stays until the user answers or a newer request replaces it. Server-side granted/denied/pending results would need the browser to report back; not built.

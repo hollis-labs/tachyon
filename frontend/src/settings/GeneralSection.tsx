@@ -17,6 +17,7 @@ import {
   Switch,
 } from "@hollis-labs/design-components"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { AgentPanelGrants } from "./AgentPanelGrants"
 import {
   ConflictError,
   type FieldResult,
@@ -189,6 +190,7 @@ export function GeneralSection({ api }: { api: GeneralApi }) {
             ))}
           </SetCard>
         ))}
+      <AgentPanelGrants />
       <div className="sticky bottom-0 flex flex-col gap-2 empty:hidden">
         {conflict && (
           <Bar role="alert" tone="danger">

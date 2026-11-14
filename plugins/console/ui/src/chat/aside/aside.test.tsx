@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AsideProvider, useAside } from './context'
+import { alwaysGrants, resetAllGrants, resetGrant } from './grants'
 import { ActivityPanel, ApprovalsPanel, PlanPanel, TopicsPanel, WorkPanel } from './Panels'
 import { TabStrip } from './TabStrip'
 import { DEMO_ACTIVITY, DEMO_PLAN } from './fixtures'
@@ -10,31 +11,55 @@ afterEach(cleanup)
 let api!: ReturnType<typeof useAside>
 function Harness() {
   api = useAside()
-  return <aside ref={(el) => { api.rootRef.current = el }}><input aria-label="inside" /><span data-testid="p">{api.panel}</span><span data-testid="m">{api.mode}</span></aside>
+  return <aside ref={(el) => { api.rootRef.current = el }}><input aria-label="inside" /><span data-testid="p">{api.panel}</span></aside>
 }
 const mount = () => render(<AsideProvider wide><Harness /></AsideProvider>)
 
-describe('auto aside', () => {
-  it('follows the agent in auto mode', () => {
-    mount()
-    act(() => api.auto('approvals', 'opened by agent'))
+describe('agent-driven aside', () => {
+  const ask = (scope = 'pm|t1') => { act(() => api.setScope(scope)) }
+  it('the agent opens a panel at once when the user has not changed the view', () => {
+    mount(); ask()
+    let r = ''
+    act(() => { r = api.auto('approvals', 'agent') })
+    expect(r).toBe('applied')
     expect(screen.getByTestId('p').textContent).toBe('approvals')
-    expect(api.reason).toBe('opened by agent')
   })
-  it('a manual pick locks until the user returns to auto', () => {
-    mount()
+  it('after a manual change the request is held, and Once applies just that request', () => {
+    resetAllGrants(); mount(); ask()
     act(() => api.pick('work'))
-    act(() => api.auto('plan', 'opened by agent'))
+    let r = ''
+    act(() => { r = api.auto('plan', 'agent') })
+    expect(r).toBe('pending')
     expect(screen.getByTestId('p').textContent).toBe('work')
-    act(() => api.backToAuto())
-    act(() => api.auto('plan', 'opened by agent'))
+    act(() => api.answer('once'))
     expect(screen.getByTestId('p').textContent).toBe('plan')
+    act(() => api.pick('work'))
+    act(() => { r = api.auto('plan', 'agent') })
+    expect(r).toBe('pending')
+  })
+  it('This session and Always stop the question for that agent in that chat only; Not now drops it', () => {
+    resetAllGrants(); mount(); ask('pm|t1')
+    act(() => api.pick('work')); act(() => { api.auto('plan', 'agent') }); act(() => api.answer('deny'))
+    expect(screen.getByTestId('p').textContent).toBe('work')
+    expect(api.pending).toBeNull()
+    act(() => { api.auto('plan', 'agent') }); act(() => api.answer('session'))
+    act(() => api.pick('work'))
+    let r = ''
+    act(() => { r = api.auto('files', 'agent') })
+    expect(r).toBe('applied')
+    ask('pm|t2'); act(() => api.pick('work'))
+    act(() => { r = api.auto('files', 'agent') })
+    expect(r).toBe('pending')
+    act(() => api.answer('always'))
+    expect(alwaysGrants()).toEqual(['pm|t2'])
+    act(() => resetGrant('pm|t2'))
+    expect(alwaysGrants()).toEqual([])
   })
   it('never switches while the user is typing in the aside, and never takes focus', () => {
-    mount()
+    mount(); ask()
     const input = screen.getByLabelText('inside')
     input.focus()
-    act(() => api.auto('approvals', 'opened by agent'))
+    act(() => { api.auto('approvals', 'agent') })
     expect(screen.getByTestId('p').textContent).toBe('plan')
     expect(document.activeElement).toBe(input)
   })
