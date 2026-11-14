@@ -19,7 +19,9 @@ func TestSessionPaginationAtomicFailureAndNoAbsenceDeletion(t *testing.T) {
 	_, c := testStore(t)
 	a := sessionDTO("new", "2026-10-18T10:00:00Z")
 	b := sessionDTO("old", "2026-10-17T10:00:00Z")
-	first := any(map[string]any{"sessions": []any{a}, "next_cursor": a["created_at"]})
+	// Tether's live cursor shape (2026-11): opaque "v1." + base64 of [created_at, id].
+	const cursor = "v1.WyIyMDI2LTEwLTE4VDEwOjAwOjAwWiIsIm5ldyJd"
+	first := any(map[string]any{"sessions": []any{a}, "next_cursor": cursor})
 	second := any(map[string]any{"sessions": []any{b}})
 	failSecond := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,7 @@ func TestSessionPaginationAtomicFailureAndNoAbsenceDeletion(t *testing.T) {
 		if r.URL.Query().Get("cursor") == "" {
 			json.NewEncoder(w).Encode(first)
 		} else {
-			if r.URL.Query().Get("cursor") != a["created_at"] {
+			if r.URL.Query().Get("cursor") != cursor {
 				t.Error("wrong cursor")
 			}
 			if failSecond {
@@ -82,7 +84,7 @@ func TestSessionPaginationAtomicFailureAndNoAbsenceDeletion(t *testing.T) {
 	if get(t, c, s, "new").Revision != completed.Revision {
 		t.Fatal("identical scan created history")
 	}
-	for _, bad := range []any{map[string]any{}, map[string]any{"sessions": nil}, map[string]any{"sessions": []any{a, a}}, map[string]any{"sessions": []any{a}, "next_cursor": "bad"}, map[string]any{"sessions": []any{a}, "next_cursor": nil}, map[string]any{"sessions": []any{a}, "next_cursor": "2026-10-18T09:00:00Z"}, map[string]any{"sessions": []any{}, "more": true}} {
+	for _, bad := range []any{map[string]any{}, map[string]any{"sessions": nil}, map[string]any{"sessions": []any{a, a}}, map[string]any{"sessions": []any{a}, "next_cursor": nil}, map[string]any{"sessions": []any{a}, "next_cursor": 7}, map[string]any{"sessions": []any{}, "next_cursor": cursor}, map[string]any{"sessions": []any{}, "more": true}} {
 		first = bad
 		if _, err = c.Run(ctx, s, ""); err == nil {
 			t.Fatal("invalid page accepted", bad)
@@ -91,7 +93,7 @@ func TestSessionPaginationAtomicFailureAndNoAbsenceDeletion(t *testing.T) {
 			t.Fatal("invalid scan changed history")
 		}
 	}
-	first = map[string]any{"sessions": []any{a}, "next_cursor": a["created_at"]}
+	first = map[string]any{"sessions": []any{a}, "next_cursor": cursor}
 	second = first
 	if _, err = c.Run(ctx, s, ""); err == nil {
 		t.Fatal("repeating cursor accepted")

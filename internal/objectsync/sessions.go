@@ -46,7 +46,7 @@ type tetherSession struct {
 
 func (s *TetherSessions) Scan(ctx context.Context, at time.Time, progress func(Progress) error) (Snapshot, error) {
 	c := collect(s.scope, at)
-	cursor := ""
+	cursor, seen := "", map[string]bool{}
 	for page := 1; page <= 100; page++ {
 		path := "/sessions?limit=1000"
 		if cursor != "" {
@@ -106,36 +106,23 @@ func (s *TetherSessions) Scan(ctx context.Context, at time.Time, progress func(P
 				return Snapshot{}, err
 			}
 		}
+		// The cursor is opaque: Tether replaced its bare created_at cursor with an
+		// encoded keyset (failing every scan since 2026-10-30). Only require that a
+		// continuation follows rows and never repeats; the page cap bounds the rest.
 		if next != "" {
-			// The cursor is the oldest row's created_at, but upstream may render it at a different precision
-			// (whole seconds) than the rows, and rows sharing a second may come in any order. Compare parsed
-			// times at one-second precision against the oldest row on the page, not raw strings.
-			stamp, err := time.Parse(time.RFC3339Nano, next)
-			if err != nil || len(rows) == 0 {
+			if len(rows) == 0 {
 				return Snapshot{}, scanError("invalid session continuation")
 			}
-			oldest := time.Time{}
-			for _, r := range rows {
-				if t, e := time.Parse(time.RFC3339Nano, r.CreatedAt); e == nil && (oldest.IsZero() || t.Before(oldest)) {
-					oldest = t
-				}
+			if seen[next] {
+				return Snapshot{}, scanError("nonadvancing session cursor")
 			}
-			if !stamp.Truncate(time.Second).Equal(oldest.Truncate(time.Second)) {
-				// Timestamps only (no ids or session content), so the status route can say why.
-				return Snapshot{}, scanError("invalid session continuation: cursor " + next + ", oldest row " + oldest.UTC().Format(time.RFC3339Nano))
-			}
-			if cursor != "" {
-				previous, _ := time.Parse(time.RFC3339Nano, cursor)
-				if !stamp.Before(previous) {
-					return Snapshot{}, scanError("nonadvancing session cursor")
-				}
-			}
+			seen[next] = true
 		}
 		if err := progress(Progress{Pages: page, Items: len(c.snapshot.Observations), Checkpoint: "session_inventory_observed"}); err != nil {
 			return Snapshot{}, err
 		}
-		// Pagination is timestamp-only upstream, without an ID tie-break. Even
-		// exhausted pages are not proof of completeness or deletion authority.
+		// Upstream pagination is not snapshot-consistent. Even exhausted pages
+		// are not proof of completeness or deletion authority.
 		if next == "" {
 			return c.snapshot, nil
 		}
