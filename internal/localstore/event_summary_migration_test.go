@@ -9,8 +9,8 @@ import (
 )
 
 // 055 rebuilds bus_events to admit the message and seat types: a database at 054 keeps every bus row
-// with its id (the feed's cursor and the alert feed's bus_ ids depend on it), and the autoincrement
-// continues past the old maximum.
+// with its id (the feed's cursor and the alert feed's bus_ ids depend on it), and the AUTOINCREMENT
+// high-water mark survives, so an id freed by retention is never handed out again.
 func TestEventSummaryMigrationKeepsBusRowsAndAdmitsMailAndSeats(t *testing.T) {
 	ctx := context.Background()
 	db, err := sqlitekit.OpenWriter(ctx, filepath.Join(t.TempDir(), "previous.db"), sqlitekit.OpenOptions{})
@@ -43,14 +43,22 @@ func TestEventSummaryMigrationKeepsBusRowsAndAdmitsMailAndSeats(t *testing.T) {
 	if _, err = db.Exec(`
  INSERT INTO bus_events(id,tether_seq,tether_event_id,at_ns,type,subject,actor,app,severity,refs_json,card_json) VALUES
   (7,70,'e:70',1,'deploy','tachyon deployed','system','cerberus','info','[]',NULL),
-  (9,90,'e:90',2,'task','CW-1 done','archie','torque','info','[{"kind":"task","ref":"CW-1","label":"CW-1"}]','{"title":"CW-1 done"}');
+  (9,90,'e:90',2,'task','CW-1 done','archie','torque','info','[{"kind":"task","ref":"CW-1","label":"CW-1"}]','{"title":"CW-1 done"}'),
+  (20,200,'e:200',3,'deploy','newest, pruned','system','cerberus','info','[]',NULL);
+ DELETE FROM bus_events WHERE id=20; -- retention took the newest row: the high-water mark (20) is above MAX(id) (9)
  INSERT INTO agents_events(session_id,tether_seq,tether_event_id,type,at_ns,actor,summary) VALUES('s1',5,'e:5','tool',1,'tether','tool.call.finished: Read')`); err != nil {
 		t.Fatal(err)
 	}
 	if err = migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	var n int
+	var n, seq int
+	if err = db.QueryRow(`SELECT COUNT(*), MAX(seq) FROM sqlite_sequence WHERE name='bus_events'`).Scan(&n, &seq); err != nil || n != 1 || seq != 20 {
+		t.Fatal("the high-water mark must survive the rebuild as one sqlite_sequence row", n, seq, err)
+	}
+	if err = db.QueryRow(`SELECT COUNT(*) FROM sqlite_sequence WHERE name='bus_events_055'`).Scan(&n); err != nil || n != 0 {
+		t.Fatal("the copy's sequence row must be renamed, not left behind", n, err)
+	}
 	var subject, refs, card, summary, cell string
 	if err = db.QueryRow(`SELECT COUNT(*) FROM bus_events`).Scan(&n); err != nil || n != 2 {
 		t.Fatal("bus rows lost", n, err)
@@ -67,9 +75,9 @@ func TestEventSummaryMigrationKeepsBusRowsAndAdmitsMailAndSeats(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO bus_events(tether_seq,tether_event_id,at_ns,type,subject) VALUES(101,'e:bad',3,'bogus','x')`); err == nil {
 		t.Fatal("the type CHECK must still hold")
 	}
-	var maxID int
-	if err = db.QueryRow(`SELECT MAX(id) FROM bus_events`).Scan(&maxID); err != nil || maxID <= 9 {
-		t.Fatal("ids must continue past the copied rows", maxID, err)
+	var first int
+	if err = db.QueryRow(`SELECT MIN(id) FROM bus_events WHERE type IN ('message','seat')`).Scan(&first); err != nil || first != 21 {
+		t.Fatal("ids must continue past the old high-water mark, not past MAX(id)", first, err)
 	}
 	if err = db.QueryRow(`SELECT summary||'|'||tether_summary||'|'||cell FROM agents_events`).Scan(&summary); err != nil || summary != "tool.call.finished: Read||" {
 		t.Fatal("agents_events must keep its derived summary and gain empty columns", summary, err)
