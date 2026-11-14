@@ -387,8 +387,8 @@ func TestIssueRefusesWildcardsAndOperator(t *testing.T) {
 	}
 }
 
-// The agent route answers mapped keys only, and discovery lists exactly the granted verbs.
-func TestRequireAgentAndDiscovery(t *testing.T) {
+// The agent route answers mapped keys only.
+func TestRequireAgent(t *testing.T) {
 	e := start(t)
 	e.owner(t)
 	ctx := context.Background()
@@ -398,16 +398,18 @@ func TestRequireAgentAndDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	star, _, _ := e.ids.CreateKey(ctx, identity.KeyInput{Name: "star", Scopes: []string{"*"}})
-	h := RequireAgent(e.svc, Discovery())
+	h := RequireAgent(e.svc, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a, _ := FromContext(r.Context())
+		_, _ = w.Write([]byte(a.Identity.Name))
+	}))
 	call := func(p libauth.Principal) (int, string) {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, DiscoveryPattern, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/agent/v1/data/providers", nil)
 		h.ServeHTTP(rec, req.WithContext(libauth.WithPrincipal(req.Context(), p)))
 		return rec.Code, rec.Body.String()
 	}
 	p, _ := e.ids.Verify(ctx, key)
-	code, body := call(p)
-	if code != 200 || !strings.Contains(body, `"actions.request"`) || strings.Contains(body, "planner.list") {
+	if code, body := call(p); code != 200 || body != "actions" {
 		t.Fatalf("mapped key: %d %s", code, body)
 	}
 	sp, _ := e.ids.Verify(ctx, star)

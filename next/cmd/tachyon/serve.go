@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -17,7 +18,10 @@ import (
 	"github.com/hollis-labs/substrate/modules/scheduler"
 
 	"github.com/hollis-labs/tachyon/next/internal/access"
+	"github.com/hollis-labs/tachyon/next/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/next/internal/hostguard"
+	"github.com/hollis-labs/tachyon/next/internal/objects"
+	"github.com/hollis-labs/tachyon/next/internal/objectsync"
 	"github.com/hollis-labs/tachyon/next/internal/pluginallow"
 	"github.com/hollis-labs/tachyon/next/internal/routes"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
@@ -32,13 +36,27 @@ type tachyon struct {
 	ready func(net.Addr)
 }
 
+// deps are what the routes serve.
+type deps struct {
+	access    *access.Service
+	local     *dataverbs.Local
+	objectJob *objectsync.Jobs
+}
+
 // appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
-// theirs here. The agent data API answers only API keys mapped to a service identity
-// (access.RequireAgent); its route scope is "authenticated" and each verb is checked in the
-// handler against the key's verb scope and the credential's kinds.
-func appRoutes(acc *access.Service) []routes.Route {
+// theirs here. The agent data API answers only API keys mapped to a service identity; its route
+// scope is "authenticated" and each verb is checked in the handler against the key's verb scope and
+// the credential's kinds. The console data API answers signed-in people, each verb behind its scope.
+func appRoutes(d deps) []routes.Route {
+	agent := dataverbs.NewAgentHTTP(d.local, d.access)
+	console := dataverbs.NewConsoleHTTP(d.local)
 	return []routes.Route{
-		{Method: http.MethodGet, Pattern: access.DiscoveryPattern, Scope: routes.Authenticated, Handler: access.RequireAgent(acc, access.Discovery())},
+		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
+		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
+		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
+		{Method: http.MethodGet, Pattern: dataverbs.Prefix + "/providers", Scope: routes.Authenticated, Handler: console},
+		{Method: http.MethodGet, Pattern: dataverbs.Prefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: console},
+		{Method: http.MethodGet, Pattern: objectSyncStatusPath, Scope: "tachyon.objects.read", Handler: objectSyncStatus(d.objectJob)},
 	}
 }
 
@@ -69,8 +87,16 @@ func (t *tachyon) serve(ctx context.Context) error {
 	if id == nil || table == nil {
 		return errors.New("the identity and auth modules must be started")
 	}
-	acc := access.New(store.From(app), id, nil)
-	mux, err := routes.Register(table, appRoutes(acc))
+	db := store.From(app)
+	jobs, _, err := objectSync(app, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = jobs.Close() }()
+	setRunner(objectsync.JobType, jobs)
+	defer setRunner(objectsync.JobType, nil)
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(store.Wrap(db))), objectJob: jobs})
+	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err
 	}
@@ -84,7 +110,13 @@ func (t *tachyon) serve(ctx context.Context) error {
 	}
 	// Outermost first: the Host check, then the session cookie becomes the bearer the guard
 	// verifies, then the plugin allowlist, then the host (guard, routes, SPA).
-	handler = hostguard.Handler(cfg.AllowedHosts, id.Middleware(pluginallow.Handler(pluginAllowlist, handler)))
+	// Tachyon's own routes under /api/plugins/ (the console paths) pass the plugin filter; everything
+	// else there must be on the plugin allowlist.
+	allow := slices.Clone(pluginAllowlist)
+	for _, r := range appRts {
+		allow = append(allow, pluginallow.Entry{Method: r.Method, Pattern: r.Pattern})
+	}
+	handler = hostguard.Handler(cfg.AllowedHosts, id.Middleware(pluginallow.Handler(allow, handler)))
 
 	// Outbound work starts only when its switch is on (port plan section 6).
 	if cfg.Features.ObjectSync {

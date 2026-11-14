@@ -12,10 +12,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libsched "github.com/hollis-labs/libs/core/util/scheduler"
+
 	"github.com/hollis-labs/substrate/boot"
 	"github.com/hollis-labs/substrate/modules/cli"
 	"github.com/hollis-labs/substrate/modules/scheduler"
 
+	"github.com/hollis-labs/tachyon/next/internal/objectsync"
 	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
@@ -25,6 +28,7 @@ import (
 func init() {
 	store.Use()
 	scheduler.UseRunner(jobs{})
+	scheduler.UseOptionsFunc(func(libsched.Store) []libsched.Option { return objectsync.EngineOptions() })
 }
 
 func main() {
@@ -60,6 +64,6 @@ func (t *tachyon) root(ctx context.Context, args []string) *cobra.Command {
 	serve := t.serveCmd(ctx)
 	rootCmd.RunE = func(c *cobra.Command, args []string) error { return serve.RunE(c, args) }
 	rootCmd.Args = cobra.NoArgs
-	rootCmd.AddCommand(serve, t.migrateFromCmd(ctx), t.accessCmd(ctx))
+	rootCmd.AddCommand(serve, t.migrateFromCmd(ctx), t.accessCmd(ctx), t.syncObjectsCmd(ctx))
 	return rootCmd
 }

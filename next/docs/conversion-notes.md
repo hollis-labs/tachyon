@@ -169,6 +169,20 @@ Details: `docs/api-contract.md`.
   The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
   TTL are gone. The confirm phrase stays in the approvals code.
 
+## Objects and object sync (slice B4)
+
+- **Same API.** The objects data verbs and the sync status route keep their paths and semantics: the agent API with
+  grants and kinds, and the console API with scopes.
+- **`tachyon sync-objects --status|--enable|--disable [--source NAME] [--interval D]`** behaves as before. It is
+  now a cobra command on the data directory, and `--status` lists every schedule (id, type, enabled, next run),
+  whether or not its source is configured here.
+- **The schedules are the migrated ones.** With the feature on, each due schedule fires once, its missed runs
+  coalesced (`run_once`), under its copied id. A schedule whose source is not configured in this process is
+  skipped and left as it is (the old rule). `tachyon.features.object_sync` gates the engine; with it off nothing
+  fires.
+- **Upstream credentials** are secrets references resolved per request (`upstreamauth`). A rotated secret is picked
+  up without a restart. GitHub's token is no longer a value: `tachyon.upstreams.github.token` is a reference.
+
 ## What the operator does differently
 
 - **First run.** Create the owner offline before the first start:

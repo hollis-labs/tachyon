@@ -187,8 +187,17 @@ and tokens minted from them, that map to an active service identity (`internal/a
 - A call on an object of a kind is also allowed only when the mapping grants that kind.
 
 **Discovery.** `GET /api/agent/v1/data/providers` answers `{version: 1, providers: [{id: "tachyon", verbs:
-[{name, mutates}]}]}` with exactly the verbs the caller may use. Input schemas and descriptions return with the
-slice that ports the verbs.
+[{name, mutates, description, input_schema}]}]}`, listing exactly the verbs this build serves that the caller may
+use. A verb the caller may not use is unknown to it (404), as in the old build.
+
+**Calls.** `GET` (reads, `?input=<json>`) or `POST` (mutations) on
+`/api/agent/v1/data/providers/tachyon/verbs/{verb}`. Served from B4: `objects.list` (it names a kind, which must be
+granted), `objects.get` and `objects.history` (the record's kind must be granted), and `objects.lookup_source`
+(its kind must be granted).
+
+**The console data API**, `/api/plugins/console/v1/data/providers[/tachyon/verbs/{verb}]`, answers signed-in
+people only; a key is refused there whatever its scopes. The four object reads need `tachyon.objects.read`.
+`GET /api/plugins/console/v1/objects/sync/status` (`tachyon.objects.read`) is the old sync status.
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 

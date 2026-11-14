@@ -4,7 +4,7 @@ The new Tachyon, built in `next/` on branch `substrate-port` beside the old tree
 last (slice P1). Plan and reasons: `docs/substrate-port-plan.md`. API contract with the GUI track:
 `docs/api-contract.md`. Old-to-new mapping and gaps: `docs/conversion-notes.md`.
 
-Status: **slices B1 (skeleton), B2 (schema) and D1 (data migration).** It boots, serves health, the identity routes and an empty SPA, and refuses every
+Status: **slices B1 (skeleton), B2 (schema), D1 (data migration), B3 (identity and access) and B4 (objects and object sync).** It boots, serves health, the identity routes and an empty SPA, and refuses every
 other `/api/` path. Domain code arrives slice by slice (plan section 11).
 
 ## Section 0 answers (adopting-substrate)
@@ -40,6 +40,10 @@ next/
     migratefrom/                 the one-way data migration from the old build (`tachyon migrate-from`)
     access/                      service identities and their identity-key credentials, the agent request path
     assurance/                   the approvals assurance check on identity principals
+    objects/                     Tachyon's records (objects, links, revisions, sources), ported (slice B4)
+    objectsync/                  object sync from Tether, Cerberus and GitHub on the scheduler module
+    dataverbs/                   the data verbs over HTTP: the agent API and the console API
+    upstreamauth/                bearer credentials for upstream calls, from secrets references
     hostguard/                   Host allowlist and forwarding-header hygiene (from Parallax)
     routes/                      Tachyon's own routes: one list feeds the mux and the scope table
     pluginallow/                 the /api/plugins/ allowlist (empty in B1: nothing is forwarded)
@@ -112,6 +116,14 @@ Outermost first:
   comment for the guarantees). It starts only config, logging, health, database, scheduler and cli. It refuses a
   non-empty data directory before creating anything there. It writes `migrate-from-report.json` beside the new
   database.
+- **Domain packages on the store.** `store.Wrap(database.From(app))` gives the ported packages the old store's
+  shape: `Reader` is the read pool, and `Writer.Submit` is `WriteTx`, using only its `tx`.
+- **Object sync** runs on the scheduler module, which keeps its tables in the main database (migrate-from copies
+  the old `jobs.db` rows there).
+  - Fires are dispatched to `objectsync.Jobs` through Tachyon's runner, under the old job type `object-sync.v1`
+    and the old engine settings.
+  - The schedule id derivation is unchanged: the hash of the source scope, which carries the upstream address.
+  - The engine starts only under `serve` with `tachyon.features.object_sync` on.
 - **SQLite only.** The old SQL uses `?` placeholders and SQLite syntax.
 - **Configuration** is the manifest's defaults plus the `SUBSTRATE_CONFIG` override (deep merge).
   - Tachyon's own block is `tachyon:` (`internal/settings`, whose package comment lists every key).

@@ -24,7 +24,13 @@ import (
 
 	"github.com/hollis-labs/substrate/modules/identity"
 
+	libsched "github.com/hollis-labs/libs/core/util/scheduler"
+	"github.com/hollis-labs/libs/core/util/scheduler/sqlstore"
+
 	"github.com/hollis-labs/tachyon/next/internal/access"
+	"github.com/hollis-labs/tachyon/next/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/next/internal/objects"
+	"github.com/hollis-labs/tachyon/next/internal/objectsync"
 	"github.com/hollis-labs/tachyon/next/internal/routes"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
 	"github.com/hollis-labs/tachyon/next/internal/store"
@@ -261,14 +267,15 @@ func TestEveryServedRouteHasAScope(t *testing.T) {
 			t.Errorf("module route %s %s: scope %q known %v, want %q", r.Method, r.Path, scope, known, r.Scope)
 		}
 	}
-	acc := access.New(store.From(app), identity.From(app), nil)
-	if len(appRoutes(acc)) == 0 {
+	d := deps{access: access.New(store.From(app), identity.From(app), nil), local: dataverbs.NewLocal(objects.New(store.Wrap(store.From(app))))}
+	rs := appRoutes(d)
+	if len(rs) == 0 {
 		t.Fatal("no app routes: the check would prove less than it says")
 	}
-	if err := routes.Check(appRoutes(acc)); err != nil {
+	if err := routes.Check(rs); err != nil {
 		t.Errorf("app routes: %v", err)
 	}
-	for _, r := range appRoutes(acc) {
+	for _, r := range rs {
 		if scope, known := table.ForRoute(r.Method, r.Pattern); !known || scope != routes.TableScope(r.Scope) {
 			t.Errorf("app route %s %s: scope %q known %v, want %q", r.Method, r.Pattern, scope, known, r.Scope)
 		}
@@ -525,7 +532,7 @@ func TestAgentAPI(t *testing.T) {
 	env := overrideEnv(t, data, loopbackOverride)
 	createOwner(t, env)
 	keyFile := filepath.Join(t.TempDir(), "actions.key")
-	out, err := runCmd(t, env, "", "access", "issue", "--name", "actions-agent", "--preset", "actions-request", "--ttl", "1h", "--out", keyFile)
+	out, err := runCmd(t, env, "", "access", "issue", "--name", "planner-reader", "--preset", "planner-read", "--ttl", "1h", "--out", keyFile)
 	if err != nil {
 		t.Fatalf("access issue: %v\n%s", err, out)
 	}
@@ -553,7 +560,9 @@ func TestAgentAPI(t *testing.T) {
 		return map[string]string{"Authorization": "Bearer " + strings.TrimSpace(k)}
 	}
 	body := c.want(200, "GET", "/api/agent/v1/data/providers", nil, bearer(string(key)))
-	if !bytes.Contains(body, []byte(`"actions.request"`)) || bytes.Contains(body, []byte("planner.list")) {
+	// Discovery lists the verbs this build serves that the credential allows: the object reads,
+	// not planner.list (granted, but its slice is not ported yet).
+	if !bytes.Contains(body, []byte(`"objects.get"`)) || bytes.Contains(body, []byte("planner.list")) {
 		t.Fatalf("discovery = %s", body)
 	}
 	if code := flatCode(t, c.want(403, "GET", "/api/agent/v1/data/providers", nil, bearer(star))); code != "credential_not_mapped" {
@@ -618,5 +627,79 @@ func TestAccessReissueCommand(t *testing.T) {
 	}
 	if out, err := runCmd(t, env, "", "access", "reissue", "--out-dir", filepath.Join(t.TempDir(), "again")); err == nil || !strings.Contains(err.Error(), "already exist") {
 		t.Fatalf("second reissue: %v\n%s", err, out)
+	}
+}
+
+// Object sync runs on the scheduler module: a schedule in the main database under the old
+// derivation's id is not fired while tachyon.features.object_sync is off; with it on, a fire is
+// attempted under that same id and fails cleanly (the GitHub source has no credential, so nothing is
+// fetched), and no schedule is added.
+func TestObjectSyncOnScheduler(t *testing.T) {
+	src, err := objectsync.NewGitHubRepositories("https://api.github.com", "example-org", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := objectsync.SourceID(src)
+	data := filepath.Join(t.TempDir(), "data")
+	gh := "tachyon:\n  upstreams:\n    github:\n      org: example-org\n"
+	off := overrideEnv(t, data, loopbackOverride+gh)
+	createOwner(t, off)
+
+	count := func(t *testing.T, app *module.App, q string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := store.From(app).Reader().QueryRowContext(context.Background(), q, args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	t.Run("feature off", func(t *testing.T) {
+		_, app := serving(t, off)
+		st, _ := scheduler.Store(app).(*sqlstore.Store)
+		err := st.CreateSchedule(context.Background(), libsched.Schedule{ID: id, JobType: objectsync.JobType, Enabled: true, Interval: 5 * time.Minute,
+			NextRun: time.Now().UTC().Add(-time.Minute), Overlap: libsched.OverlapSkip, Misfire: libsched.MisfireRunOnce, KeepLastN: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2500 * time.Millisecond) // more than two ticks of the default cadence
+		if n := count(t, app, `SELECT count(*) FROM gosched_fires`); n != 0 {
+			t.Fatalf("%d fire(s) with object_sync off", n)
+		}
+	})
+	t.Run("feature on", func(t *testing.T) {
+		on := overrideEnv(t, data, loopbackOverride+gh+"  features:\n    object_sync: true\n")
+		_, app := serving(t, on)
+		deadline := time.Now().Add(15 * time.Second)
+		for count(t, app, `SELECT count(*) FROM gosched_fires WHERE schedule_id = ?`, id) == 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("no fire under the schedule's id")
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		for count(t, app, `SELECT count(*) FROM object_sync_state WHERE source_id = ? AND problem <> ''`, id) == 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("the failed scan was not recorded")
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		if n := count(t, app, `SELECT count(*) FROM gosched_schedules`); n != 1 {
+			t.Fatalf("%d schedules, want the one", n)
+		}
+	})
+}
+
+// `sync-objects --status` lists every schedule, configured in this process or not, without
+// fetching; with no source configured the other actions refuse.
+func TestSyncObjectsStatus(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "data")
+	env := overrideEnv(t, data, loopbackOverride)
+	if out, err := runCmd(t, env, "", "sync-objects", "--status"); err != nil || !strings.Contains(out, `"schedules": []`) {
+		t.Fatalf("status on an empty store: %v\n%s", err, out)
+	}
+	if _, err := runCmd(t, env, "", "sync-objects", "--enable"); err == nil || !strings.Contains(err.Error(), "not configured") {
+		t.Fatalf("enable with no source: %v", err)
+	}
+	if _, err := runCmd(t, env, "", "sync-objects", "--status", "--disable"); err == nil {
+		t.Fatal("conflicting options accepted")
 	}
 }

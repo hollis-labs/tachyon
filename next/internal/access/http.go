@@ -42,41 +42,6 @@ func RequireAgent(s *Service, next http.Handler) http.Handler {
 	})
 }
 
-// ContractVersion is the agent data API's version (unchanged from the old build).
-const ContractVersion = 1
-
-// DiscoveryPattern is the agent data API's discovery route.
-const DiscoveryPattern = "/api/agent/v1/data/providers"
-
-type verbView struct {
-	Name    string `json:"name"`
-	Mutates bool   `json:"mutates"`
-}
-
-// Discovery lists the verbs the calling agent may use, under the one provider "tachyon" (the old
-// shape: {version, providers: [{id, verbs}]}). Input schemas and descriptions come with the slice
-// that ports the verbs themselves.
-func Discovery() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		agent, ok := FromContext(r.Context())
-		if !ok {
-			writeError(w, http.StatusForbidden, "agent_required", "This route answers service credentials only.")
-			return
-		}
-		if r.URL.RawQuery != "" {
-			writeError(w, http.StatusBadRequest, "invalid", "Discovery does not accept query parameters.")
-			return
-		}
-		verbs := []verbView{}
-		for _, v := range Verbs() {
-			if agent.Allows(v, "") {
-				verbs = append(verbs, verbView{Name: v, Mutates: Mutates(v)})
-			}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"version": ContractVersion, "providers": []any{map[string]any{"id": "tachyon", "verbs": verbs}}})
-	})
-}
-
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]string{"code": code, "message": message})
 }

@@ -53,6 +53,7 @@ func TestPlan(t *testing.T) {
 		{[]string{"migrate-from", "--source", "/backups"}, pick(withMigrate), true},
 		{[]string{"access", "reissue", "--out-dir", "/keys"}, pick(withIdentity), true},
 		{[]string{"access", "--help"}, pick(readOnly), false},
+		{[]string{"sync-objects", "--status"}, pick(withSync), true},
 		{[]string{"migrate-from", "--help"}, pick(readOnly), false},
 		{[]string{"version"}, pick(readOnly), false},
 		{[]string{"config"}, pick(readOnly), false},

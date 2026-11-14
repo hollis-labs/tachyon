@@ -71,6 +71,8 @@ func plan(args []string) (modules []string, prepare bool) {
 		return pick(withIdentity), true
 	case words[0] == "migrate-from":
 		return pick(withMigrate), true
+	case words[0] == "sync-objects":
+		return pick(withSync), true
 	}
 	return pick(readOnly), false
 }
@@ -86,6 +88,10 @@ var withIdentity = []string{"config", "logging", "health", "auth", "database", "
 // withMigrate is what `migrate-from` needs: the database (goose creates the schema) and the
 // scheduler module (sqlstore creates its tables; its engine does not start: autostart is off).
 var withMigrate = []string{"config", "logging", "health", "database", "scheduler", "cli"}
+
+// withSync is what `sync-objects` needs: the database, the secrets resolver (upstream credentials)
+// and the scheduler module's store (its engine does not start).
+var withSync = []string{"config", "logging", "health", "database", "secrets", "scheduler", "cli"}
 
 // migrating reports a `migrate-from` command line (the same word rule as plan).
 func migrating(args []string) bool {

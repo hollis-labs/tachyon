@@ -102,6 +102,10 @@ linters:
 
     misspell:
       locale: US
+      # "cancelled" is data in Tachyon, not prose: stored status values (tasks, plans, runs), API
+      # error codes and recorded problem text, kept byte for byte from the old build.
+      ignore-rules:
+        - cancelled
 
     revive:
       # Only enable rules that catch real problems. Avoid cosmetic rules that
