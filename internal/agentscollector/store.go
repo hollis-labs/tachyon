@@ -127,6 +127,11 @@ func (s *Store) Apply(ctx context.Context, frames []Frame) error {
 				// The feed names the agent, which a state change does not carry; the store may know it.
 				_ = tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(agent_name,''),logical_agent_id,'') FROM agents_sessions WHERE session_id=?`, f.SessionID).Scan(&f.AgentName)
 			}
+			if f.Seat != nil {
+				if err := upsertSeatStatus(ctx, tx, f.Seat, at); err != nil {
+					return err
+				}
+			}
 			if b, ok := NormalizeBus(f); ok {
 				if err := insertBus(ctx, tx, b, now); err != nil {
 					return err
