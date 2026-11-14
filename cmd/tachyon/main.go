@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -120,6 +122,14 @@ func main() {
 		}
 		return
 	}
+	// The server takes no arguments. Anything left here (--help, a typo) used to start a full server on all
+	// interfaces: a stray `./tachyon --help` ran for days against the prod data dir without the service env and
+	// switched off the Tether object-sync schedules. Print usage and exit instead.
+	if len(os.Args) > 1 {
+		if code := usage(os.Stderr, os.Args[1]); code >= 0 {
+			os.Exit(code)
+		}
+	}
 	srv := server.New(cfg)
 	if err := srv.Start(ctx); err != nil {
 		log.Fatal(err)
@@ -209,4 +219,21 @@ func durationEnv(key string) time.Duration {
 		return 0
 	}
 	return d
+}
+
+const usageText = `usage: tachyon                start the server (LISTEN_ADDR or TACHYON_ADDR, default :18093)
+       tachyon sync-objects   object sync: --status, --enable, --disable (see -h)
+       tachyon import-planner | backfill-session-links | elevation-ttl
+       tachyon access | data | local-data
+`
+
+// usage handles an argument the server does not accept. It returns the exit code, or -1 to start the server.
+func usage(w io.Writer, arg string) int {
+	switch arg {
+	case "-h", "-help", "--help", "help":
+		fmt.Fprint(w, usageText)
+		return 0
+	}
+	fmt.Fprintf(w, "tachyon: unknown command or flag %q\n%s", arg, usageText)
+	return 2
 }
