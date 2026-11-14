@@ -183,3 +183,33 @@ func TestPlansREST(t *testing.T) {
 		t.Fatalf("delete: %d", code)
 	}
 }
+
+func TestPlanScopedStepRoutes(t *testing.T) {
+	s, _ := lineageSetup(t)
+	ctx := context.Background()
+	ref := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: "sr"}
+	writePlan(t, s, "sr", "A")
+	b, _ := s.CreatePlan(ctx, ref, ptr("B"), "user")
+	h := (&Handler{Service: s}).Mux()
+	do := func(method, path, body string) (int, string) {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(method, "/api/plugins/console/v1/chat"+path, strings.NewReader(body)))
+		return w.Code, w.Body.String()
+	}
+	code, body := do("POST", "/threads/tether:sr/plans/"+b.ID+"/steps", `{"title":"in B","expected_revision":1}`)
+	var st Step
+	_ = json.Unmarshal([]byte(body), &st)
+	if code != 201 || st.ID == "" {
+		t.Fatalf("add to plan B: %d %s", code, body)
+	}
+	if code, body = do("PATCH", "/threads/tether:sr/plans/"+b.ID+"/steps/"+st.ID, `{"status":"done","expected_revision":2}`); code != 200 {
+		t.Fatalf("patch in plan B: %d %s", code, body)
+	}
+	plans, _ := s.Plans(ctx, ref)
+	if len(plans[0].Steps) != 1 || len(plans[1].Steps) != 1 || plans[1].Steps[0].Status != "done" {
+		t.Fatalf("the step landed in B, A untouched: %+v", plans)
+	}
+	if code, _ = do("POST", "/threads/tether:sr/plans/pl_nope/steps", `{"title":"x","expected_revision":1}`); code != 404 {
+		t.Fatalf("unknown plan: %d", code)
+	}
+}
