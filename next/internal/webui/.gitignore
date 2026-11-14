@@ -1,0 +1,3 @@
+# Built SPA assets (next/web: npm run build), embedded by Go. dist/ and its .gitkeep stay so `//go:embed` compiles.
+dist/*
+!dist/.gitkeep

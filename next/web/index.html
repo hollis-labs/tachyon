@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tachyon</title>
+    <script>
+      // Set the palette and colour mode synchronously, before first paint and
+      // before the deferred module script runs, so there is no flash. `mode` is
+      // light | dark | system (default system, follows prefers-color-scheme).
+      // Keep in step with src/mode.ts.
+      (() => {
+        const root = document.documentElement;
+        let mode = "system";
+        try {
+          const stored = window.localStorage.getItem("mode");
+          if (stored === "light" || stored === "dark") mode = stored;
+        } catch {}
+        const dark = window.matchMedia("(prefers-color-scheme: dark)");
+        const apply = () => root.setAttribute("data-mode", mode === "system" ? (dark.matches ? "dark" : "light") : mode);
+        root.setAttribute("data-theme", "nanite-default");
+        apply();
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
