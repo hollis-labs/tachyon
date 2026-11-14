@@ -67,7 +67,7 @@ func fixture(t *testing.T, edit func(src, jobs *sql.DB)) string {
 	}
 	execAll(t, src,
 		`INSERT INTO app_settings(key, value) VALUES ('account.profile', '{"name":"x"}')`,
-		// A BLOB in a TEXT-declared column, as the live chat_events rows are.
+		// A BLOB in a TEXT-declared column, as existing chat_events rows may be.
 		`INSERT INTO chat_events(thread_ref, type, body, at_ns) VALUES ('t1', 'turn', X'7b2261223a317d', 1), ('t1', 'turn', 'plain text', 2)`,
 		// A deleted top row: the sequence stays above max(seq).
 		`INSERT INTO planner_events(event_id, at_ms, theme_id, subject_ref, kind, text, refs_json, delta_json, arrow, weight, source, source_event_id)
