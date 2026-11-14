@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -18,7 +17,9 @@ import (
 	"testing/fstest"
 
 	libstore "github.com/hollis-labs/libs/core/store"
+
 	"github.com/hollis-labs/libs/core/store/migrate"
+	"github.com/hollis-labs/tachyon/next/internal/schema"
 	_ "modernc.org/sqlite"
 )
 
@@ -33,113 +34,14 @@ const liveFixture = "testdata/live-schema-20261114.sql"
 // frameworkTables are created by the migration machinery, not by Tachyon's schema.
 var frameworkTables = []string{"goose_db_version", "sqlite_sequence"}
 
-// object is everything the comparison looks at for one sqlite_master entry.
-type object struct {
-	Type, Table, SQL string
-	Columns          []string // pragma table_info rows
-	ForeignKeys      []string // pragma foreign_key_list rows
-	Indexes          []string // pragma index_list rows, each with its index_xinfo
-}
-
 // describe reads the schema of db, leaving out the framework tables.
-func describe(t *testing.T, db *sql.DB) map[string]object {
+func describe(t *testing.T, db *sql.DB) schema.Schema {
 	t.Helper()
-	rows, err := db.Query(`SELECT type, name, tbl_name, coalesce(sql, '') FROM sqlite_master`)
+	s, err := schema.Describe(context.Background(), db, func(table string) bool { return slices.Contains(frameworkTables, table) })
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := map[string]object{}
-	for rows.Next() {
-		var o object
-		var name string
-		if err := rows.Scan(&o.Type, &name, &o.Table, &o.SQL); err != nil {
-			t.Fatal(err)
-		}
-		if slices.Contains(frameworkTables, o.Table) {
-			continue
-		}
-		out[name] = o
-	}
-	if err := rows.Close(); err != nil {
-		t.Fatal(err)
-	}
-	for name, o := range out {
-		if o.Type != "table" {
-			continue
-		}
-		o.Columns = pragma(t, db, "table_info", name)
-		o.ForeignKeys = pragma(t, db, "foreign_key_list", name)
-		for _, ix := range pragma(t, db, "index_list", name) {
-			fields := strings.Split(ix, "|")
-			o.Indexes = append(o.Indexes, ix+" => "+strings.Join(pragma(t, db, "index_xinfo", fields[1]), "; "))
-		}
-		sort.Strings(o.Indexes)
-		out[name] = o
-	}
-	return out
-}
-
-// pragma returns the rows of a table-valued pragma as "|"-joined strings.
-func pragma(t *testing.T, db *sql.DB, name, arg string) []string {
-	t.Helper()
-	rows, err := db.Query(`SELECT * FROM pragma_`+name+`(?)`, arg) //nolint:gosec // name is one of this file's fixed pragma names
-	if err != nil {
-		t.Fatal(err)
-	}
-	cols, _ := rows.Columns()
-	var out []string
-	for rows.Next() {
-		vals := make([]any, len(cols))
-		ptrs := make([]any, len(cols))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		if err := rows.Scan(ptrs...); err != nil {
-			t.Fatal(err)
-		}
-		parts := make([]string, len(vals))
-		for i, v := range vals {
-			parts[i] = fmt.Sprint(v)
-		}
-		out = append(out, strings.Join(parts, "|"))
-	}
-	if err := rows.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-// diff lists every difference between two described schemas.
-func diff(want, got map[string]object) []string {
-	var out []string
-	for name, w := range want {
-		g, ok := got[name]
-		if !ok {
-			out = append(out, fmt.Sprintf("%s %s: missing", w.Type, name))
-			continue
-		}
-		if w.Type != g.Type || w.Table != g.Table {
-			out = append(out, fmt.Sprintf("%s: type/table %s/%s, want %s/%s", name, g.Type, g.Table, w.Type, w.Table))
-		}
-		if w.SQL != g.SQL {
-			out = append(out, fmt.Sprintf("%s %s: sql differs\n  want: %s\n  got:  %s", w.Type, name, w.SQL, g.SQL))
-		}
-		for _, part := range []struct {
-			what string
-			w, g []string
-		}{{"columns", w.Columns, g.Columns}, {"foreign keys", w.ForeignKeys, g.ForeignKeys}, {"indexes", w.Indexes, g.Indexes}} {
-			if !slices.Equal(part.w, part.g) {
-				out = append(out, fmt.Sprintf("table %s: %s differ\n  want: %q\n  got:  %q", name, part.what, part.w, part.g))
-			}
-		}
-	}
-	for name, g := range got {
-		if _, ok := want[name]; !ok {
-			out = append(out, fmt.Sprintf("%s %s: not in the reference", g.Type, name))
-		}
-	}
-	sort.Strings(out)
-	return out
+	return s
 }
 
 func openSQLite(t *testing.T, path string) *sql.DB {
@@ -250,12 +152,12 @@ func fixtureDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func requireEqual(t *testing.T, ref string, want, got map[string]object) {
+func requireEqual(t *testing.T, ref string, want, got schema.Schema) {
 	t.Helper()
 	if len(want) < 280 {
 		t.Fatalf("the %s reference has only %d objects: it was not built", ref, len(want))
 	}
-	if d := diff(want, got); len(d) > 0 {
+	if d := schema.Diff(want, got); len(d) > 0 {
 		t.Fatalf("schema differs from %s in %d place(s):\n%s", ref, len(d), strings.Join(d, "\n"))
 	}
 }
@@ -282,7 +184,7 @@ func TestSchemaDiffSeesAChangedDefault(t *testing.T) {
 		t.Fatalf("the probe text %q is not unique in the migration", from)
 	}
 	changed := fstest.MapFS{"migrations/sqlite/00001_init.sql": {Data: []byte(strings.Replace(string(body), from, to, 1))}}
-	d := diff(describe(t, fixtureDB(t)), describe(t, migrated(t, migrate.Source{FS: changed, Root: Root})))
+	d := schema.Diff(describe(t, fixtureDB(t)), describe(t, migrated(t, migrate.Source{FS: changed, Root: Root})))
 	if len(d) == 0 {
 		t.Fatal("a changed default went unnoticed")
 	}

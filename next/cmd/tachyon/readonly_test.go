@@ -50,6 +50,8 @@ func TestPlan(t *testing.T) {
 		{[]string{"identity", "setup", "--username", "owner"}, pick(withIdentity), true},
 		{[]string{"identity", "key", "create", "--name", "k"}, pick(withIdentity), true},
 		{[]string{"identity", "--help"}, pick(readOnly), false},
+		{[]string{"migrate-from", "--source", "/backups"}, pick(withMigrate), true},
+		{[]string{"migrate-from", "--help"}, pick(readOnly), false},
 		{[]string{"version"}, pick(readOnly), false},
 		{[]string{"config"}, pick(readOnly), false},
 		{[]string{"health"}, pick(readOnly), false},

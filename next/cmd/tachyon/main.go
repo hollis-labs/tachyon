@@ -39,7 +39,11 @@ func main() {
 
 func run(ctx context.Context, getenv func(string) string, args []string) error {
 	modules, prepare := plan(args)
-	started, err := boot.StartWith(ctx, substrateApp, modules, substrateConfigJSON, bootOptions(getenv, prepare))
+	opts := bootOptions(getenv, prepare)
+	if migrating(args) {
+		opts = migrateOptions(getenv, opts)
+	}
+	started, err := boot.StartWith(ctx, substrateApp, modules, substrateConfigJSON, opts)
 	if err != nil {
 		return err
 	}
@@ -56,6 +60,6 @@ func (t *tachyon) root(ctx context.Context, args []string) *cobra.Command {
 	serve := t.serveCmd(ctx)
 	rootCmd.RunE = func(c *cobra.Command, args []string) error { return serve.RunE(c, args) }
 	rootCmd.Args = cobra.NoArgs
-	rootCmd.AddCommand(serve)
+	rootCmd.AddCommand(serve, t.migrateFromCmd(ctx))
 	return rootCmd
 }

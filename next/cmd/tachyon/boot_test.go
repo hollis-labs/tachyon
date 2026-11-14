@@ -435,3 +435,56 @@ func TestSchemaIsAppliedAndRestarts(t *testing.T) {
 		newClient(t, base).want(200, "GET", "/healthz", nil, nil)
 	})
 }
+
+// migrate-from refuses a data directory that already holds anything, before it creates or changes
+// a file there; and with an empty one it needs a source.
+func TestMigrateFromTarget(t *testing.T) {
+	args := []string{"migrate-from", "--source", t.TempDir()}
+	if !migrating(args) || migrating([]string{"serve"}) {
+		t.Fatal("migrating() misreads the command line")
+	}
+	modules, prepare := plan(args)
+
+	used := filepath.Join(t.TempDir(), "data")
+	if err := os.MkdirAll(used, 0o755); err != nil { //nolint:gosec // a mode the refusal must leave alone
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(used, "notes.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := overrideEnv(t, used, loopbackOverride)
+	getenv := func(k string) string { return env[k] }
+	run, err := boot.StartWith(context.Background(), substrateApp, modules, substrateConfigJSON, migrateOptions(getenv, bootOptions(getenv, prepare)))
+	if err == nil {
+		_ = run.Stop(context.Background())
+		t.Fatal("started on a non-empty data directory")
+	}
+	if !strings.Contains(err.Error(), "not empty") {
+		t.Fatalf("err = %v", err)
+	}
+	if entries, _ := os.ReadDir(used); len(entries) != 1 {
+		t.Fatalf("the refused directory changed: %v", entries)
+	}
+	if fi, _ := os.Stat(used); fi.Mode().Perm() != 0o755 {
+		t.Fatalf("the refused directory's mode changed to %o", fi.Mode().Perm())
+	}
+
+	fresh := filepath.Join(t.TempDir(), "data")
+	env = overrideEnv(t, fresh, loopbackOverride)
+	getenv = func(k string) string { return env[k] }
+	run, err = boot.StartWith(context.Background(), substrateApp, modules, substrateConfigJSON, migrateOptions(getenv, bootOptions(getenv, prepare)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = run.Stop(context.Background()) }()
+	root := (&tachyon{app: run.App}).root(context.Background(), []string{"migrate-from"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "--source is required") {
+		t.Fatalf("err = %v\n%s", err, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(fresh, "migrate-from-report.json")); err != nil {
+		t.Fatalf("no report beside the database: %v", err)
+	}
+}
