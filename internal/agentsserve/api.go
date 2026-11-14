@@ -313,6 +313,22 @@ type gapOut struct {
 	Backfilled bool   `json:"backfilled"`
 }
 
+// rawKind reports a line that opens with a dotted event kind (session.turn_output): Tether's
+// fallback summary, never shown as row text.
+func rawKind(line string) bool {
+	word, _, _ := strings.Cut(strings.TrimSpace(line), " ")
+	dot := strings.IndexByte(word, '.')
+	if dot <= 0 || dot == len(word)-1 {
+		return false
+	}
+	for _, r := range word {
+		if !(r >= 'a' && r <= 'z' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
+}
+
 // gapReason maps the collector's reasons onto the contract's enum.
 func gapReason(r string) string {
 	switch r {
@@ -436,9 +452,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		if hidden {
 			continue
 		}
-		if e.tetherSummary != "" && e.typ != "tool" {
+		if e.tetherSummary != "" && e.typ != "tool" && !rawKind(e.tetherSummary) {
 			// Tether's line says more ("context compacted (auto), 367003 tokens before"). Tool rows keep
-			// the derived line: run grouping counts tools by parsing it.
+			// the derived line: run grouping counts tools by parsing it. A line that is only Tether's event
+			// kind ("session.turn_output", "session.work_state_changed idle → processing") says less.
 			text = e.tetherSummary
 		}
 		evs = append(evs, timelineEvent{ID: "ev_" + strconv.FormatInt(e.id, 10), Seq: e.seq, SessionID: id, Type: e.typ, At: e.atNS / int64(time.Millisecond),
