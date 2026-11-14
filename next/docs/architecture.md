@@ -4,14 +4,14 @@ The new Tachyon, built in `next/` on branch `substrate-port` beside the old tree
 last (slice P1). Plan and reasons: `docs/substrate-port-plan.md`. API contract with the GUI track:
 `docs/api-contract.md`. Old-to-new mapping and gaps: `docs/conversion-notes.md`.
 
-Status: **slice B1, the skeleton.** It boots, serves health, the identity routes and an empty SPA, and refuses every
+Status: **slices B1 (skeleton) and B2 (schema).** It boots, serves health, the identity routes and an empty SPA, and refuses every
 other `/api/` path. Domain code arrives slice by slice (plan section 11).
 
 ## Section 0 answers (adopting-substrate)
 
 | Question | Answer |
 |---|---|
-| Migrated data or fresh start? | **Migrated.** The old build's data is copied by `tachyon migrate-from` (slice D1) into a new, empty data directory. This build never opens the old directory: `internal/oldlayout` refuses a directory holding `jobs.db` or a database with the old ledger `tachyon_migrations`, before anything is created or changed there. |
+| Migrated data or fresh start? | **Migrated.** The old build's data is copied by `tachyon migrate-from` (slice D1) into a new, empty data directory. This build never opens the old directory: `internal/oldlayout` refuses a directory holding `jobs.db`, or a database with the old ledger `tachyon_migrations` and no `goose_db_version`, before anything is created or changed there. The new schema keeps the ledger table, so the goose table is what tells the two apart. |
 | Binary variant | `app-host`: embedded SPA, same-origin API, SSE, one WebSocket, subprocess plugins. |
 | Who issues identity? | Tachyon, through the `identity` module. One owner, created offline (`tachyon identity setup`, password on stdin); `identity.setup: offline`, so `POST /api/setup` is always refused. Machine callers hold identity API keys (slice B3 maps each to its service identity and grant). |
 | Public, scoped, self-authenticating routes | Public: `/healthz` and the identity module's setup, login and JWKS routes, nothing of Tachyon's own (`internal/routes` refuses a public app route). Every other `/api/` route has `authenticated` or `tachyon.<area>.<verb>`; an undeclared route is refused (`route_not_mapped`). No open mount. |
@@ -35,6 +35,7 @@ next/
     settings/                    decodes config.tachyon; refuses an unknown or bad key, naming it
     appdirs/                     the data directory (TACHYON_DATA_DIR or XDG data home/tachyon-next), 0700/0600
     oldlayout/                   refuses the old build's data directory, read-only
+    store/                       the schema (one goose migration) and database access
     hostguard/                   Host allowlist and forwarding-header hygiene (from Parallax)
     routes/                      Tachyon's own routes: one list feeds the mux and the scope table
     pluginallow/                 the /api/plugins/ allowlist (empty in B1: nothing is forwarded)
@@ -88,7 +89,16 @@ Outermost first:
 - **Default directory.** It is `XDG_DATA_HOME/tachyon-next` on purpose: `XDG_DATA_HOME/tachyon` is the running old
   build's directory. P1 settles the final default; the cutover sets the directory explicitly in the override
   anyway.
-- **Schema.** B1 has no app schema. Slice B2 adds the goose migration equal to the old schema at 056.
+- **Schema** (`internal/store`, slice B2): one goose migration, `migrations/sqlite/00001_init.sql`. It holds the
+  exact `sqlite_master` text of the old build's schema at migration 056 plus its baseline tables (96 tables,
+  including the old ledger `tachyon_migrations`, 185 indexes, the two append-only triggers on
+  `approval_decision_log`).
+  - `schema_test.go` proves it equal to both references: a database built from the old tree's own source in the
+    same checkout, and the live snapshot's `.schema`. It compares `sqlite_master` text and `table_info`,
+    `foreign_key_list`, `index_list` and `index_xinfo` per table.
+  - A new old-tree migration arriving from `main` fails the first comparison until the port carries it.
+  - The framework's tables sit beside it: `identity_*`, `gosched_*` and `goose_db_version`.
+  - Domain code reaches the database through `store.From(app)`, with reads on `Reader()` and writes in `WriteTx`.
 - **SQLite only.** The old SQL uses `?` placeholders and SQLite syntax.
 - **Configuration** is the manifest's defaults plus the `SUBSTRATE_CONFIG` override (deep merge).
   - Tachyon's own block is `tachyon:` (`internal/settings`, whose package comment lists every key).

@@ -15,7 +15,17 @@ import (
 	"github.com/hollis-labs/substrate/boot"
 	"github.com/hollis-labs/substrate/modules/cli"
 	"github.com/hollis-labs/substrate/modules/scheduler"
+
+	"github.com/hollis-labs/tachyon/next/internal/store"
 )
+
+// Hooks the modules read at start, registered before any boot (tests boot without main):
+// the schema, which the database module applies (internal/store), and the scheduler's dispatcher, so
+// fired jobs go to Tachyon's own handlers, never to a queue module this app does not run.
+func init() {
+	store.Use()
+	scheduler.UseRunner(jobs{})
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -28,8 +38,6 @@ func main() {
 }
 
 func run(ctx context.Context, getenv func(string) string, args []string) error {
-	// Fired jobs go to Tachyon's own dispatcher, never to a queue module this app does not run.
-	scheduler.UseRunner(jobs{})
 	modules, prepare := plan(args)
 	started, err := boot.StartWith(ctx, substrateApp, modules, substrateConfigJSON, bootOptions(getenv, prepare))
 	if err != nil {

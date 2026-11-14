@@ -39,6 +39,13 @@ func TestNewOrEmptyDirectoriesPass(t *testing.T) {
 	if err := Refuse(fresh); err != nil {
 		t.Errorf("a new-layout database: %v", err)
 	}
+	// The new schema keeps the old ledger table (its rows are copied history): with the goose
+	// version table beside it, it is the new layout.
+	migrated := filepath.Join(dir, "migrated.db")
+	makeDB(t, migrated, `CREATE TABLE goose_db_version (id INTEGER PRIMARY KEY); CREATE TABLE tachyon_migrations (name TEXT PRIMARY KEY, applied_at TEXT)`)
+	if err := Refuse(migrated); err != nil {
+		t.Errorf("a migrated new-layout database: %v", err)
+	}
 }
 
 func TestTheOldLedgerIsRefused(t *testing.T) {

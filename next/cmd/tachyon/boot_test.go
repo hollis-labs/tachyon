@@ -21,6 +21,7 @@ import (
 
 	"github.com/hollis-labs/tachyon/next/internal/routes"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
+	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
 // started boots the real stack (every module the manifest selects and the real handler chain) on
@@ -37,7 +38,12 @@ func startedIn(t *testing.T, dataDir, override string) (string, *module.App) {
 	env := overrideEnv(t, dataDir, override)
 	// First-run setup is offline: the owner exists before the server starts.
 	createOwner(t, env)
+	return serving(t, env)
+}
 
+// serving boots and serves on an existing data directory (the owner already created).
+func serving(t *testing.T, env map[string]string) (string, *module.App) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	run, err := boot.StartWith(ctx, substrateApp, substrateModules, substrateConfigJSON, bootOptions(func(k string) string { return env[k] }, true))
 	if err != nil {
@@ -390,4 +396,42 @@ func TestDataPaths(t *testing.T) {
 	if fi, err := os.Stat(data); err != nil || fi.Mode().Perm() != 0o700 {
 		t.Errorf("data directory: %v, %v", err, fi)
 	}
+}
+
+// The database module applies Tachyon's schema beside the framework's own tables, a second start on
+// the same directory finds it current (and is not mistaken for the old layout, whose ledger table
+// the schema keeps), and the store answers on its read pool.
+func TestSchemaIsAppliedAndRestarts(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "data")
+	env := overrideEnv(t, data, loopbackOverride)
+	createOwner(t, env)
+	count := func(t *testing.T, app *module.App) (tables, ledger int) {
+		t.Helper()
+		st := store.From(app)
+		if st == nil {
+			t.Fatal("no store")
+		}
+		q := `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN
+			('objects', 'approval_items', 'approval_decision_log', 'chat_turns', 'app_settings', 'tachyon_migrations', 'identity_users', 'gosched_schedules')`
+		if err := st.Reader().QueryRowContext(context.Background(), q).Scan(&tables); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.Reader().QueryRowContext(context.Background(), `SELECT count(*) FROM tachyon_migrations`).Scan(&ledger); err != nil {
+			t.Fatal(err)
+		}
+		return tables, ledger
+	}
+	t.Run("first start", func(t *testing.T) {
+		_, app := serving(t, env)
+		if tables, ledger := count(t, app); tables != 8 || ledger != 0 {
+			t.Fatalf("%d of 8 tables, %d ledger rows (the new build writes none)", tables, ledger)
+		}
+	})
+	t.Run("second start", func(t *testing.T) {
+		base, app := serving(t, env)
+		if tables, _ := count(t, app); tables != 8 {
+			t.Fatalf("%d of 8 tables", tables)
+		}
+		newClient(t, base).want(200, "GET", "/healthz", nil, nil)
+	})
 }

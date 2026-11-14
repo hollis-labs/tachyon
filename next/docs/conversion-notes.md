@@ -115,6 +115,17 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_*_STUBS` (alerts, forge, planner, chat, agents, builder, fileview, approvals, settings, transcripts) | dropped from the production build |
 | `TACHYON_API_URL`, `TACHYON_API_TOKEN_FILE` | client-side settings of the `tachyon data` command; kept by the CLI slice as flags |
 
+## Data
+
+- **The schema is unchanged** (B2): every table, column, declared type, default, key, index and trigger of the old
+  build at migration 056.
+  - `chat_events.body` keeps its declared type TEXT, although the live rows hold BLOBs.
+  - The 14 AUTOINCREMENT tables keep AUTOINCREMENT.
+  - The old ledger `tachyon_migrations` is kept as a table, and its rows are copied as history. The new build's
+    own version table is `goose_db_version`.
+- **jobs.db is not a separate file.** The scheduler module creates its `gosched_*` tables in the one database; D1
+  carries the six schedules and their history.
+
 ## HTTP
 
 - Paths are unchanged, apart from the removals in the contract's section 1.
