@@ -149,7 +149,8 @@ export function AgentsPage() {
               <EmptyState variant="empty" title={AGENTS.noMatch} description="" action={{ label: AGENTS.clearFilters, onClick: () => (setFilter('all'), setQuery('')) }} />
             ) : (
               <AgentsErrorBoundary resetKey={`${view}${groupBy}`}>
-              <div className={stale ? 'opacity-60' : undefined}>
+              {/* Reconnecting: last data, read-only. Greyed, not dimmed: opacity put every row under 4.5:1. */}
+              <div className={stale ? 'grayscale' : undefined}>
                 {view === 'rows' && <SessionRows sessions={visible} groupBy={groupBy} now={now} selectedId={openId} onSelect={openSession} />}
                 {view === 'cards' && <SessionCards sessions={visible} now={now} onSelect={openSession} />}
                 {view === 'board' && <SessionBoard sessions={visible} now={now} onSelect={openSession} />}
