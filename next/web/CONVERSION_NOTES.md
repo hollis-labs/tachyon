@@ -80,10 +80,15 @@ so a diff against the old tree shows only the port's edits.
   lint (`eslint-config-design`) does, with test files ignored as the old planner lane did.
 - **Parity:** #710 (a lens status change sends the item's current revision) is included. The e2e asserts the PATCH
   body.
+- **Toasts:** `App.tsx` mounts `TooltipProvider` and `<Toaster position="bottom-right" />` as the old
+  `frontend/src/App.tsx` did. Without it every planner toast (write failures, undo, refusals) was dropped.
 - **e2e:** until B5 serves the planner from `next/`, `e2e/planner-stub.ts` answers
   `/api/plugins/console/v1/planner/*` from a seeded in-memory store behind the real binary's identity and shell.
   It enforces `expected_revision`, `X-Requested-With`, flat errors, and 404 `not_found` for unserved paths.
-  `tests/fixtures.ts` installs it for every test. The real-backend run comes before approval.
+  `tests/fixtures.ts` installs it for every test, and records the planner writes each page sends.
+  `TACHYON_E2E_PLANNER=backend` turns the stub off. The binary's own planner (B5) answers instead, seeded through
+  its API with the stub's items (same ids, e2e/global-setup.ts). The stub's status sets are the backend's native
+  ones (what `/schema/<db>` advertises).
 
 ## Gaps
 

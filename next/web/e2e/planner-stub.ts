@@ -4,32 +4,34 @@ import type { Page, Route } from "@playwright/test"
  * A contract stub for the planner API (`/api/plugins/console/v1/planner/*`, B1 contract: paths unchanged) until B5
  * serves it from the next/ binary. Identity, sessions and the shell stay real; only these paths are answered here,
  * from an in-memory store seeded per test. Shapes follow the old backend (internal/planner): schema ids
- * `tachyon/planner/<db>@1`, enums from internal/planner/schema/*.json, writes checked against `expected_revision`
+ * `tachyon/planner/<db>@1`, status enums as the backend advertises them (its native statuses), writes checked against `expected_revision`
  * (409 `conflict` with `details.current` on a mismatch), errors in the flat `{code, message, details?}` body.
  * Paths the stub does not serve answer 404 `not_found`, which the UI treats as a feature that is absent.
  */
 
 export const BASE = "/api/plugins/console/v1/planner"
-const DBS = ["themes", "workstreams", "roadmap", "ideas", "decisions", "risks", "inbox"] as const
-type Db = (typeof DBS)[number]
+export const DBS = [
+  "themes",
+  "workstreams",
+  "roadmap",
+  "ideas",
+  "decisions",
+  "risks",
+  "inbox",
+] as const
+export type Db = (typeof DBS)[number]
 
+// The status sets the backend accepts and advertises (internal/planner nativeStatuses; themes advertise themeStatuses).
 const ENUMS: Record<Db, Record<string, string[]>> = {
   themes: { status: ["proposed", "ready", "approved", "paused", "done", "archived"] },
-  workstreams: {
-    status: ["active", "paused", "planned", "parked", "done", "unreviewed"],
-    phase: ["landing", "adoption", "planning", "maintenance", "unknown"],
-  },
+  workstreams: { status: ["draft", "active", "paused", "closed", "archived"] },
   roadmap: {
     status: ["draft", "planned", "active", "completed", "deferred", "cancelled", "archived"],
-    horizon: ["now", "next", "later", "someday"],
   },
-  ideas: { status: ["new", "discussing", "decided", "parked", "dropped"] },
-  decisions: { status: ["needs-decision", "decided", "deferred", "superseded", "reversed"] },
-  risks: {
-    status: ["open", "mitigating", "accepted", "closed"],
-    severity: ["low", "medium", "high"],
-  },
-  inbox: { status: ["new", "triaged", "promoted", "dismissed"] },
+  ideas: { status: ["draft", "exploring", "accepted", "rejected", "promoted", "archived"] },
+  decisions: { status: ["proposed", "accepted", "rejected", "superseded", "archived"] },
+  risks: { status: ["open", "mitigating", "accepted", "resolved", "archived"] },
+  inbox: { status: ["new", "triaged", "archived"] },
 }
 
 export interface StubItem {
@@ -46,7 +48,8 @@ export const seedId = (db: Db, i: number) =>
 
 const DAY = "2026-11-14"
 
-function seed(): Record<Db, StubItem[]> {
+/** The seed data, shared by the stub and by the backend run (which creates the same items through the API). */
+export function seed(): Record<Db, StubItem[]> {
   const make = (db: Db, rows: [string, string, Record<string, unknown>?][]) =>
     rows.map(([title, status, extra], i) => ({
       id: seedId(db, i + 1),
@@ -64,13 +67,11 @@ function seed(): Record<Db, StubItem[]> {
       ["Retire the old frontend", "ready", { order: 2 }],
       ["Explore offline mode", "proposed"],
     ]),
-    workstreams: make("workstreams", [["Substrate migration", "active", { phase: "landing" }]]),
+    workstreams: make("workstreams", [["Substrate migration", "active"]]),
     roadmap: make("roadmap", [["Planner on Substrate", "active", { horizon: "now" }]]),
-    ideas: make("ideas", [["Keyboard-first triage", "new"]]),
-    decisions: make("decisions", [
-      ["Keep react-router as the host router", "needs-decision", { options: [] }],
-    ]),
-    risks: make("risks", [["Data loss at cutover", "open", { severity: "high", kind: "risk" }]]),
+    ideas: make("ideas", [["Keyboard-first triage", "draft"]]),
+    decisions: make("decisions", [["Keep react-router as the host router", "proposed"]]),
+    risks: make("risks", [["Data loss at cutover", "open"]]),
     inbox: make("inbox", [["Link from a chat thread", "new", { kind: "link" }]]),
   }
 }

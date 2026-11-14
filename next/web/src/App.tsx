@@ -1,4 +1,5 @@
 import { ManifestShell, type PageComponent } from "@hollis-labs/app-shell"
+import { Toaster, TooltipProvider } from "@hollis-labs/design-components"
 import { ApiKeysPage, IDENTITY_PAGES, IdentityGate } from "@hollis-labs/kit-identity"
 import { IdentityProvider, useIdentity } from "@hollis-labs/kit-identity/client"
 import {
@@ -114,9 +115,13 @@ export function App() {
       <IdentityGate appName="tachyon">
         <SessionLossBridge />
         <CapabilitiesProvider>
-          <BrowserRouter>
-            <Shell />
-          </BrowserRouter>
+          {/* As the old frontend/src/App.tsx: surfaces report write failures, undo and refusals as toasts. */}
+          <TooltipProvider>
+            <BrowserRouter>
+              <Shell />
+            </BrowserRouter>
+            <Toaster position="bottom-right" />
+          </TooltipProvider>
         </CapabilitiesProvider>
       </IdentityGate>
     </IdentityProvider>

@@ -1,9 +1,18 @@
-import { seedId } from "../e2e/planner-stub"
+import type { Page } from "@playwright/test"
+import { BASE, seedId } from "../e2e/planner-stub"
 import { expect, test } from "./fixtures"
 import { owner, shot } from "./helpers"
 
-// The planner against the contract stub (e2e/planner-stub.ts) behind the real next/ binary's identity and shell.
+// The planner behind the real next/ binary's identity and shell: against the contract stub (e2e/planner-stub.ts),
+// or with TACHYON_E2E_PLANNER=backend against the binary's own planner, seeded with the same items.
 test.use({ storageState: owner })
+
+/** Reads an item the way the page does (same origin, same session; the stub answers it when it is installed). */
+const readItem = (page: Page, path: string) =>
+  page.evaluate(
+    (url) => fetch(url, { headers: { "X-Requested-With": "tachyon-ui" } }).then((r) => r.json()),
+    `${BASE}/${path}`,
+  )
 
 const LENSES = [
   { slug: "streams", label: "Streams", db: "workstreams", title: "Substrate migration" },
@@ -67,8 +76,10 @@ test("a status change sends the item's current revision (main #710)", async ({ p
   await page.getByRole("menuitem", { name: /Paused/ }).click()
   await expect(focus.getByRole("button", { name: "paused. Move to" })).toBeVisible()
   const patch = planner.writes.find((w) => w.method === "PATCH" && w.path === `/workstreams/${id}`)
-  expect(patch?.body).toEqual({ patch: { status: "paused" }, expected_revision: 1 })
-  expect(planner.store.workstreams[0]).toMatchObject({ status: "paused", rev: 2 })
+  const saved = await readItem(page, `workstreams/${id}`)
+  // The PATCH carried the revision the item had before it (one less than now): the current one, not +1.
+  expect(patch?.body).toEqual({ patch: { status: "paused" }, expected_revision: saved.rev - 1 })
+  expect(saved.status).toBe("paused")
 })
 
 test("create: New makes a theme, which then opens", async ({ page, planner }) => {
@@ -109,4 +120,34 @@ test.describe("narrow", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
     await shot(page, "planner-narrow")
   })
+})
+
+test("a refused write is reported as a toast, and nothing is saved", async ({ page }) => {
+  const id = seedId("workstreams", 1)
+  // The backend refuses this item's edits (registered after the stub, so it answers first).
+  await page.route(`**/api/plugins/console/v1/planner/workstreams/${id}`, (route) =>
+    route.request().method() === "PATCH"
+      ? route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ code: "internal", message: "The planner store is unavailable." }),
+        })
+      : route.fallback(),
+  )
+  await page.goto(`/planner/streams/${id}`)
+  // The title is an inline editor (contenteditable): type as a person does, then commit with Enter.
+  await page
+    .getByRole("region", { name: "Substrate migration" })
+    .getByRole("textbox", { name: "Title" })
+    .click()
+  await page.keyboard.press("ControlOrMeta+a")
+  await page.keyboard.type("Renamed by the browser suite")
+  await page.keyboard.press("Enter")
+  await expect(
+    page.locator("[data-sonner-toast]").filter({ hasText: "The planner store is unavailable." }),
+  ).toBeVisible()
+  // Nothing was saved: the item still has its title (the editor keeps the typed text, as in the old build).
+  const saved = await readItem(page, `workstreams/${id}`)
+  expect(saved.title).toBe("Substrate migration")
+  await shot(page, "planner-write-refused")
 })
