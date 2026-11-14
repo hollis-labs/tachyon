@@ -111,3 +111,14 @@ request carrying an `Authorization` header is refused 403: an agent credential c
 - **Not built** (deferred by the owner): the `stale` read-only state on elevation lapse, an approvals-queue card per proposal
   (`item_id` is always null; the run block is the approval surface), `kind=machine` objects in the picker, ControlMaster.
 
+
+## Agent Panel (multi-panel host)
+
+The chat sidebar is the **Agent Panel**: a host that shows one *panel* (a named set of tabs) per thread. Client-side registry: `plugins/console/ui/src/chat/aside/registry.ts`.
+
+- `PanelDef { id, label, owner: 'system' | 'user', tabs: { id, label, render? }[], appliesTo?: { agents?, roles? } }`.
+- The existing tabs (Plan, Topics, Bookmarks, Work, Activity, Approvals, Files, Doc) are the default panel, id `agent`, always available. The id is reserved.
+- `registerPanel(def)` adds a panel (plugins call it at load; user-defined panels use the same call with `owner: 'user'`). A tab with `render` draws its own body; built-in tab ids are drawn by `Aside`.
+- Which panel a thread shows: the user's stored pick (`localStorage` `console.agentPanel.<thread_ref>`) if it still applies; otherwise the first registered panel whose `appliesTo` names this agent; otherwise the default. When more than one panel applies, a selector in the panel header switches between them.
+- Data model decision: the registry is client-side (plugin-registered) for now. Server-side per-user panel config is a later step; it would feed `registerPanel` and change nothing in the host.
+- `panel` server frames still name a tab id; they apply when that tab is in the open panel.

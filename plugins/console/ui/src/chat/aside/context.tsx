@@ -3,12 +3,11 @@ import type { Commit } from '../cards/Cards'
 import type { StreamBlock } from '../cards/types'
 import type { ChatMessage } from '../types'
 import type { Bookmark, Topic } from './data'
+import { DEFAULT_PANEL } from './registry'
 
-export type PanelId = 'plan' | 'topics' | 'bookmarks' | 'work' | 'activity' | 'approvals' | 'files' | 'doc' | 'scratch'
-export const PANELS: { id: PanelId; label: string }[] = [
-  { id: 'plan', label: 'Plan' }, { id: 'topics', label: 'Topics' }, { id: 'bookmarks', label: 'Bookmarks' }, { id: 'work', label: 'Work' },
-  { id: 'activity', label: 'Activity' }, { id: 'approvals', label: 'Approvals' }, { id: 'files', label: 'Files' }, { id: 'doc', label: 'Doc' },
-]
+/** A tab id: a built-in ('plan', 'topics', ... 'scratch') or one a registered panel brings (see registry.ts). */
+export type PanelId = string
+export const PANELS = DEFAULT_PANEL.tabs
 
 /** What the open conversation registers so the aside can show it without a second fetch. */
 export interface ConversationData { ref?: string; agent?: string; messages: ChatMessage[]; blocks: StreamBlock[]; blocksLoaded?: boolean; commit?: Commit; onInsert: (text: string) => void; marks: Marks }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Maximize2, Minimize2, X } from 'lucide-react'
 import { CAPTION, Chip } from '@planner/shared'
 import { cn } from '@hollis-labs/design-components'
@@ -9,7 +9,8 @@ import type { ChatThread } from '../types'
 import { useNarrow } from '../view/useNarrow'
 import { useAutolink } from '../../autolink/context'
 import { pathRefOf } from '../drawer/model'
-import { useAside, PANELS, type PanelId } from './context'
+import { useAside, type PanelId } from './context'
+import { panelsFor, panelsVersion, resolvePanel, storePanel, storedPanel, subscribePanels } from './registry'
 import { TabStrip } from './TabStrip'
 import { DEMO_DOC } from './fixtures'
 import { useActivity, useBookmarks, usePlan, useRules, useThreadEvents, useTopics, useWork } from './data'
@@ -87,7 +88,15 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
     // The demo queue has one more fixture item than the stream (the golden's fs_write).
     approvals: waiting + (DEMO ? 1 : 0) ? String(waiting + (DEMO ? 1 : 0)) : undefined,
   }
-  const tabs = scratchInAside ? [...PANELS, { id: 'scratch' as const, label: 'Scratch' }] : PANELS
+  // The Agent Panel host: the panel set this thread shows (stored pick, else the agent's own, else the default).
+  useSyncExternalStore(subscribePanels, panelsVersion)
+  const scope = { agentId: thread.agent.agentId }
+  const [pickedSet, setPickedSet] = useState<string | null>(() => storedPanel(ref))
+  const panelSet = resolvePanel(scope, pickedSet)
+  const sets = panelsFor(scope)
+  const choosePanelSet = (id: string) => { setPickedSet(id); storePanel(ref, id); const first = sets.find((s) => s.id === id)?.tabs[0]; if (first) a.pick(first.id) }
+  const builtin = panelSet.id === 'agent'
+  const tabs = builtin && scratchInAside ? [...panelSet.tabs, { id: 'scratch', label: 'Scratch' }] : panelSet.tabs
   // Esc closes the full-window doc first.
   useEffect(() => {
     if (!a.full) return
@@ -108,12 +117,13 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
       case 'files': return <FilesPanel threadRef={ref} demo={DEMO} onOpenDoc={(i) => void openDocFor(i)} />
       case 'doc': return <DocPanel doc={a.doc ?? (DEMO ? DEMO_DOC : null)} onShare={() => void shareDoc()} onClose={() => { a.setFull(false); a.pick('files') }} />
       case 'scratch': return <ScratchPane threadRef={ref} onInsert={(t) => conv?.onInsert(t)} />
+      default: return panelSet.tabs.find((t) => t.id === a.panel)?.render?.() ?? null
     }
   })()
   return (
     <aside
       ref={(el) => { root.current = el; a.rootRef.current = el }}
-      aria-label="Details"
+      aria-label="Agent Panel"
       className={cn(
         'flex min-h-0 w-[360px] shrink-0 flex-col border-l border-border-subtle bg-bg-elevated max-[1100px]:w-[300px]',
         narrow && 'absolute bottom-0 right-0 top-12 z-40 shadow-[-16px_0_40px_rgb(0_0_0/calc(.5*var(--sh)))]',
@@ -122,12 +132,17 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
       )}
     >
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
-        <span className={CAPTION} id="aside-title">Panel</span>
+        <span className={CAPTION} id="aside-title">Agent Panel</span>
+        {sets.length > 1 && (
+          <select aria-label="Panel" value={panelSet.id} onChange={(e) => choosePanelSet(e.target.value)} className="h-[22px] rounded-control border border-border bg-transparent px-1 text-label text-fg-secondary focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+            {sets.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        )}
         <Chip className="ml-1.5">{a.mode === 'auto' ? `auto · ${a.reason || 'follows the agent'}` : 'you chose'}</Chip>
         {a.mode === 'manual' && <button type="button" onClick={a.backToAuto} className="text-label text-fg-secondary underline">Back to auto</button>}
         <span className="flex-1" />
         <button type="button" aria-label={a.full ? 'Exit full window' : 'Full window'} aria-pressed={a.full} title="Full window" onClick={() => { a.setFull(!a.full) }} className="grid size-[22px] place-items-center rounded-control border border-border text-fg-secondary hover:bg-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">{a.full ? <Minimize2 aria-hidden className="size-3" /> : <Maximize2 aria-hidden className="size-3" />}</button>
-        <button type="button" aria-label="Close details" onClick={() => { a.setFull(false); a.setOpen(false) }} className="grid size-[22px] place-items-center text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring lg:hidden"><X aria-hidden className="size-3.5" /></button>
+        <button type="button" aria-label="Close Agent Panel" onClick={() => { a.setFull(false); a.setOpen(false) }} className="grid size-[22px] place-items-center text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring lg:hidden"><X aria-hidden className="size-3.5" /></button>
       </div>
       <TabStrip label="Panels" activeKey={a.panel}>
         {tabs.map((t) => (
