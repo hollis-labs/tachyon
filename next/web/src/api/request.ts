@@ -31,7 +31,8 @@ export class ApiError extends Error {
 /** Fired on a 401: the session ended. The identity gate returns to its sign-in screen. */
 export const UNAUTHORIZED_EVENT = "tachyon:unauthorized"
 
-export const REQUESTED_WITH = "XMLHttpRequest"
+/** The value next/docs/api-contract.md section 2 names; the identity middleware requires the header on writes. */
+export const REQUESTED_WITH = "tachyon-ui"
 export const GENERIC_MESSAGE = "The request could not be completed."
 
 export interface RequestOptions {

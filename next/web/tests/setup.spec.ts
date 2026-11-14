@@ -19,7 +19,7 @@ test("the API reports setup is not offered over HTTP and refuses it", async ({ r
   expect(state.setup_required).toBe(true)
   expect(state.setup_over_http).toBe(false)
   const r = await request.post("/api/setup", {
-    headers: { "X-Requested-With": "tachyon-e2e", Origin: freshBackend },
+    headers: { "X-Requested-With": "tachyon-ui", Origin: freshBackend },
     data: { username: "intruder", display_name: "x", password: "a long enough passphrase" },
   })
   expect(r.status()).toBe(403)

@@ -8,7 +8,7 @@ import { authState, backend, ownerName, passwordFile } from "./env"
 export default async function globalSetup() {
   const api = await request.newContext({
     baseURL: backend,
-    extraHTTPHeaders: { "X-Requested-With": "tachyon-e2e", Origin: backend },
+    extraHTTPHeaders: { "X-Requested-With": "tachyon-ui", Origin: backend },
   })
   const state = await (await api.get("/api/setup")).json()
   if (state.setup_required) throw new Error("the owner was not created on the host")

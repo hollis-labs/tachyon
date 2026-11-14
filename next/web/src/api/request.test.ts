@@ -18,7 +18,7 @@ describe("request", () => {
     expect(init.credentials).toBe("same-origin")
     expect(init.body).toBe('{"a":1}')
     const headers = init.headers as Record<string, string>
-    expect(headers["X-Requested-With"]).toBe("XMLHttpRequest")
+    expect(headers["X-Requested-With"]).toBe("tachyon-ui")
     expect(headers["Content-Type"]).toBe("application/json")
   })
 
@@ -28,7 +28,7 @@ describe("request", () => {
     await request("/api/x")
     const headers = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
       .headers as Record<string, string>
-    expect(headers["X-Requested-With"]).toBe("XMLHttpRequest")
+    expect(headers["X-Requested-With"]).toBe("tachyon-ui")
     expect(headers["Content-Type"]).toBeUndefined()
   })
 
