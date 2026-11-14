@@ -40,6 +40,36 @@ function BusRefChip({ r }: { r: BusEvent['refs'][number] }) {
   return <Cite>{r.label}</Cite>
 }
 
+/**
+ * One feed line in the golden's grammar: "Task <chip> moved to review by @archie", "Task <chip> closed with
+ * <PR chip>", "tachyon deployed <chips>". The actor is named only when it is a person or an agent ("system" is
+ * not news) and the app is not repeated on every line (the Apps filter carries it).
+ */
+function BusLine({ e, chips }: { e: BusEvent; chips: boolean }) {
+  const refs = e.refs ?? []
+  const by = e.actor && e.actor !== 'system' ? <span className="text-fg-secondary"> by <span className="text-fg">@{e.actor}</span></span> : null
+  const task = e.type === 'task' ? refs.find((r) => r.kind === 'task') : undefined
+  if (task && e.subject.startsWith(task.ref)) {
+    const state = e.subject.slice(task.ref.length).trim()
+    const closed = state === 'done' || state === 'closed'
+    const rest = refs.filter((r) => r !== task)
+    return (
+      <span>
+        <span className="text-fg-secondary">Task</span> <BusRefChip r={task} /> <span className="text-fg-secondary">{closed ? 'closed' : state ? `moved to ${state}` : 'changed'}</span>
+        {chips && rest.length > 0 && <span className="text-fg-secondary"> with <span className="inline-flex gap-1">{rest.map((r) => <BusRefChip key={r.ref} r={r} />)}</span></span>}
+        {by}
+      </span>
+    )
+  }
+  return (
+    <span>
+      {e.subject}
+      {chips && refs.length > 0 && <span className="ml-1.5 inline-flex gap-1">{refs.map((r) => <BusRefChip key={r.ref} r={r} />)}</span>}
+      {by}
+    </span>
+  )
+}
+
 /** Bus events as rail entries. Failures (and errors) are the only coloured rows; refs are named in text. */
 export function toBusTimeline(events: readonly BusEvent[], now: number): Entry[] {
   return events.map((e) => {
@@ -54,13 +84,7 @@ export function toBusTimeline(events: readonly BusEvent[], now: number): Entry[]
       type: e.type,
       tone: e.type === 'failure' || e.severity === 'error' ? 'blocked' : 'neutral',
       summary: e.subject,
-      body: (
-        <span>
-          {e.subject}
-          {(e.refs ?? []).length > 0 && !card && <span className="ml-1.5 inline-flex gap-1">{(e.refs ?? []).map((r) => <BusRefChip key={r.ref} r={r} />)}</span>}
-          <span className="text-fg-faint"> · {e.app}{e.actor ? ` · ${e.actor}` : ''}</span>
-        </span>
-      ),
+      body: <BusLine e={e} chips={!card} />,
       card,
       cites: card ? (e.refs ?? []).map((r) => <BusRefChip key={r.ref} r={r} />) : undefined,
     }

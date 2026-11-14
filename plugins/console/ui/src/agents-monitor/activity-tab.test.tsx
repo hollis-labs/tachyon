@@ -29,6 +29,19 @@ describe('Activity', () => {
     expect(document.querySelector('a[data-ref-kind="torque.task"]')?.getAttribute('href')).toBe('/tasks/CW-1') // the shared reference chip, not a dead label
   })
 
+  it('writes a task line as the golden does and names only a real actor', () => {
+    const refs = [{ kind: 'task', ref: 'CW-1', label: 'CW-1' }]
+    const [moved, closed, host] = toBusTimeline([
+      ev({ id: 'a', seq: 3, type: 'task', subject: 'CW-1 review', refs, actor: 'archie', app: 'torque' }),
+      ev({ id: 'b', seq: 2, type: 'task', subject: 'CW-1 done', refs, actor: 'system', app: 'torque' }),
+      ev({ id: 'c', seq: 1, type: 'host', subject: 'worker-2 offline', actor: 'system', app: 'tether' }),
+    ], NOW)
+    const text = (n: React.ReactNode) => { const { container, unmount } = render(<>{n}</>); const t = container.textContent ?? ''; unmount(); return t.replace(/\s+/g, ' ').trim() }
+    expect(text(moved.body)).toBe('Task CW-1 moved to review by @archie')
+    expect(text(closed.body)).toBe('Task CW-1 closed')
+    expect(text(host.body)).toBe('worker-2 offline')
+  })
+
   it('shows the empty state, then pages older events in with Show more', async () => {
     const urls: string[] = []
     vi.stubGlobal('fetch', vi.fn((url: string) => {

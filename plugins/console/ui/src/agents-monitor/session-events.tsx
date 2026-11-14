@@ -39,7 +39,8 @@ export const dayLabel = (at: number, now: number) => {
   const days = Math.floor(now / 86_400_000) - Math.floor(at / 86_400_000)
   return days === 0 ? M.today : days === 1 ? M.yesterday : new Date(at).toLocaleDateString()
 }
-export const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+/** 24-hour clock time, as the golden writes it (12:02, 21:40). */
+export const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 
 const FACET_OF: Record<string, string> = { tool: 'tools', message: 'messages', approval: 'approvals', error: 'errors', lifecycle: 'lifecycle', compaction: 'lifecycle', clear: 'lifecycle', task: 'lifecycle', control: 'lifecycle' }
 
