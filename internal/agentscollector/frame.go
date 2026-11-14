@@ -65,6 +65,8 @@ type Frame struct {
 	TetherSummary string
 	// Cell is the acting seat's team slug (scope.cell on the live stream, cell on GET /events).
 	Cell string
+	// Seat is a seat.status event's declared status, validated; nil for every other kind.
+	Seat *SeatStatus
 }
 
 type wireFrame struct {
@@ -158,6 +160,9 @@ func ParseFrame(raw []byte) (Frame, bool) {
 		if json.Unmarshal(body, &inner) == nil {
 			body = json.RawMessage(inner)
 		}
+	}
+	if f.Kind == "seat.status" && len(body) > 0 && len(body) <= 64<<10 {
+		f.Seat = seatStatusOf(f, body)
 	}
 	if len(body) > 0 && len(body) <= 64<<10 {
 		var p struct {
