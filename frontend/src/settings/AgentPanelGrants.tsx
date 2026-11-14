@@ -1,6 +1,11 @@
+import {
+  alwaysGrants,
+  resetAllGrants,
+  resetGrant,
+  subscribeGrants,
+} from "@console/chat/aside/grants"
 import { Button } from "@hollis-labs/design-components"
 import { useSyncExternalStore } from "react"
-import { alwaysGrants, resetAllGrants, resetGrant, subscribeGrants } from "@console/chat/aside/grants"
 import { SetCard, SetRow } from "./parts"
 
 // useSyncExternalStore needs a stable snapshot: the list as one string.
@@ -28,7 +33,12 @@ export function AgentPanelGrants() {
           const [agent, thread] = scope.split("|")
           return (
             <SetRow key={scope} sub title={agent} help={`in ${thread}`}>
-              <Button type="button" variant="outline" aria-label={`Reset ${agent} in ${thread}`} onClick={() => resetGrant(scope)}>
+              <Button
+                type="button"
+                variant="outline"
+                aria-label={`Reset ${agent} in ${thread}`}
+                onClick={() => resetGrant(scope)}
+              >
                 Reset
               </Button>
             </SetRow>

@@ -17,6 +17,7 @@ import {
   Switch,
 } from "@hollis-labs/design-components"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { AgentPanelGrants } from "./AgentPanelGrants"
 import {
   ConflictError,
   type FieldResult,
@@ -24,7 +25,6 @@ import {
   type SettingField,
   type SettingGroup,
 } from "./general"
-import { AgentPanelGrants } from "./AgentPanelGrants"
 import { SetCard, SettingsColumn } from "./parts"
 
 const INTRO = "Defaults for how Tachyon behaves. Each setting shows where its value comes from."
