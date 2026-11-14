@@ -7,7 +7,7 @@ import type { SessionState } from './types'
 export const AGENTS = {
   inferred: 'inferred',
   title: 'Agents',
-  tabs: { sessions: 'Sessions', activity: 'Activity', teams: 'Teams' },
+  tabs: { sessions: 'Sessions', activity: 'Activity', seats: 'Seats', teams: 'Teams' },
   tabsLabel: 'Agent views',
   launch: 'Launch',
   collecting: (n: number, last: string) => `collecting · ${n} sessions · last event ${last}`,
@@ -199,6 +199,21 @@ export const AGENTS = {
     discarded: (n: number) => `${n} pending approvals or questions were lost with the old session`,
     stale: 'This session was replaced; reload to see the current one',
   },
+} as const
+
+/** Seats tab (CW-20261114-0023d): what each seat declared (Tether seat.status) beside its live session. */
+export const SEATS = {
+  label: 'Seats',
+  intro: 'What each seat says it is doing, beside what its session shows. Blocked and waiting seats come first.',
+  empty: 'No seat has declared a status or has a live session.',
+  loadFailed: 'Could not load seats',
+  state: (s: string) => ({ undeclared: 'no status set', unknown: 'unknown' } as Record<string, string>)[s] ?? s.replace(/-/g, ' '),
+  owner: (h: string) => `waiting on ${h}`,
+  expires: (t: string) => `until ${t}`,
+  session: (state: string) => `session ${state}`,
+  needsYou: (reason: string) => `needs you: ${reason}`,
+  noSession: 'no live session',
+  declaredAgo: (age: string) => `declared ${age}`,
 } as const
 
 export type FilterId = keyof typeof AGENTS.filters

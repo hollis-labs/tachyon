@@ -826,3 +826,49 @@ func TestTimelineShowsTetherSummaryExceptForTools(t *testing.T) {
 		t.Errorf("search matches Tether's summary: %d", n)
 	}
 }
+
+// Seat status cards (CW-20261114-0023d): what each seat declared beside its live session. A seat online without
+// a declaration is "undeclared"; an expired declaration counts as none; ended sessions say nothing; what needs
+// someone sorts first.
+func TestSeatCardsJoinDeclaredStatusWithTheLiveSession(t *testing.T) {
+	e := newEnv(t)
+	e.now = t0.Add(time.Hour)
+	const blocked, worker, idle, gone = "msg://agent/agent-mux/agt_blocked", "msg://agent/agent-mux/agt_worker", "msg://agent/agent-mux/agt_idle", "msg://agent/agent-mux/agt_gone"
+	exp := t0.Add(2 * time.Hour).Format(time.RFC3339)
+	e.frame("seat.status", "", 50*time.Minute, `{"agent_urn":"`+blocked+`","handle":"@builder-1","state":"blocked","owner":"@chrispian","reason":"needs the deploy token","ref":"task:CW-1","expires_at":"`+exp+`"}`)
+	e.frame("seat.status", "", 50*time.Minute, `{"agent_urn":"`+idle+`","handle":"@idle","state":"available"}`)
+	e.frame("seat.status", "", 10*time.Minute, `{"agent_urn":"`+gone+`","handle":"@gone","state":"working","expires_at":"`+t0.Add(20*time.Minute).Format(time.RFC3339)+`"}`)
+	e.frame("session.work_state_changed", "s-blocked", 55*time.Minute, `{"from":"idle","to":"processing","agent_urn":"`+blocked+`","agent_name":"Builder One"}`)
+	e.frame("session.work_state_changed", "s-worker", 55*time.Minute, `{"from":"idle","to":"processing","agent_urn":"`+worker+`","agent_name":"Worker"}`)
+	e.frame("session.work_state_changed", "s-old", 0, `{"from":"idle","to":"processing","agent_urn":"`+idle+`"}`)
+	e.frame("session.ended", "s-old", 5*time.Minute, `{"session_state":"ended","reason":"stopped"}`)
+	type resp struct {
+		Seats []Seat `json:"seats"`
+	}
+	w := e.get("/seats")
+	if w.Code != 200 {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	got := decode[resp](t, w).Seats
+	var order []string
+	by := map[string]Seat{}
+	for _, s := range got {
+		order = append(order, s.AgentURN+"="+s.Effective)
+		by[s.AgentURN] = s
+	}
+	want := []string{blocked + "=blocked", idle + "=available", worker + "=undeclared"}
+	if strings.Join(order, ",") != strings.Join(want, ",") {
+		t.Fatalf("seats %v, want %v (an expired declaration with no session is not listed)", order, want)
+	}
+	b := by[blocked]
+	if b.Handle != "@builder-1" || b.Name != "Builder One" || b.Declared == nil || b.Declared.Owner != "@chrispian" || b.Declared.Reason != "needs the deploy token" ||
+		b.Live == nil || b.Live.SessionID != "s-blocked" {
+		t.Fatalf("declared and live: %+v %+v", b, b.Live)
+	}
+	if wk := by[worker]; wk.Declared != nil || wk.Live == nil || wk.Name != "Worker" {
+		t.Fatalf("undeclared: %+v", wk)
+	}
+	if i := by[idle]; i.Live != nil || i.Name != "@idle" {
+		t.Fatalf("an ended session is not the seat's live one: %+v", i)
+	}
+}

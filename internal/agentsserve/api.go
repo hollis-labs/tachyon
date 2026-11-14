@@ -65,6 +65,7 @@ var Routes = []string{
 	"GET /sessions", "GET /sessions/{id}", "GET /sessions/{id}/events", "GET /sessions/{id}/context-series",
 	"GET /sessions/{id}/tokens", "GET /sessions/{id}/history", "GET /stream", "GET /settings", "PUT /settings",
 	"POST /sessions/{id}/nudge", "POST /sessions/{id}/restart", "GET /controls/{request_id}", "POST /controls/{request_id}/skip",
+	"GET /seats",
 }
 
 // Mount registers each route on the mux under agentsapi.Prefix, wrapped by guard (the server passes
@@ -77,6 +78,7 @@ func (s *Server) Mount(mux *http.ServeMux, guard func(http.Handler) http.Handler
 		"GET /sessions/{id}/history": s.history, "GET /stream": s.stream, "GET /settings": s.getSettings, "PUT /settings": s.putSettings,
 		"POST /sessions/{id}/nudge": s.nudge, "POST /sessions/{id}/restart": s.restart,
 		"GET /controls/{request_id}": s.getControl, "POST /controls/{request_id}/skip": s.skipControl,
+		"GET /seats": s.seats,
 	}
 	for _, r := range Routes {
 		method, path, _ := strings.Cut(r, " ")
