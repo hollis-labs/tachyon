@@ -15,7 +15,7 @@ import (
 
 func TestAgentCatalogLifecycleAndAtomicRegistryFailure(t *testing.T) {
 	_, c := testStore(t)
-	a := map[string]any{"id": "worker", "name": "Worker", "system_prompt": "system.md", "agent_prompt": "agent.md", "roles": []string{"engineer"}, "skills": []string{"go"}, "mcp": map[string]any{"servers": []string{}}, "env": map[string]string{"TOKEN": "secret-env"}, "spec": map[string]string{"key": "secret-spec"}, "provider_overrides": map[string]any{"x": map[string]any{"env": map[string]string{"TOKEN": "secret-override"}}}}
+	a := map[string]any{"id": "worker", "name": "Worker", "system_prompt": "system.md", "agent_prompt": "agent.md", "roles": []string{"engineer"}, "skills": []string{"go"}, "mcp": map[string]any{"servers": []string{}}, "env": map[string]string{"API_KEY_NAME": "not-imported-env"}, "spec": map[string]string{"key": "secret-spec"}, "provider_overrides": map[string]any{"x": map[string]any{"env": map[string]string{"API_KEY_NAME": "not-imported-override"}}}}
 	payload := any(map[string]any{"agents": []any{a}})
 	registry := any(map[string]any{"agents": []any{map[string]string{"urn": "urn:worker", "kind": "agent", "status": "deprecated"}}})
 	registryStatus := 200
@@ -51,7 +51,7 @@ func TestAgentCatalogLifecycleAndAtomicRegistryFailure(t *testing.T) {
 	if !state.Authoritative || !d.Enabled || d.Runtime != "" || d.MachineID != "" || d.Instructions != "system.md" || len(d.Tools) != 0 || len(d.Roles) != 1 || len(d.Skills) != 1 {
 		t.Fatalf("incorrect definition: %+v", d)
 	}
-	if strings.Contains(string(first.Definition), "secret-") || !strings.Contains(string(first.Definition), `"agent_prompt":"agent.md"`) || !strings.Contains(string(first.Definition), `"servers":[]`) {
+	if strings.Contains(string(first.Definition), "not-imported-") || !strings.Contains(string(first.Definition), `"agent_prompt":"agent.md"`) || !strings.Contains(string(first.Definition), `"servers":[]`) {
 		t.Fatal("wrong safe projection or MCP inheritance")
 	}
 	_, err = c.objects.Patch(ctx, first.ID, first.Revision, objects.Patch{Definition: json.RawMessage(`{"name":"My worker"}`), Metadata: json.RawMessage(`{"team":"fabric"}`)}, "operator")
@@ -217,8 +217,8 @@ func TestCerberusUnixInventoryLifecycleAndSafeFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := map[string]any{"name": "worker", "hostname": "worker.example", "tailnet_ip": "192.0.2.1", "tether_environment_id": "env:worker", "declared": map[string]any{"os": "linux", "arch": "amd64"}, "reach": map[string]any{"outpost": map[string]string{"token_file": "secret-path"}}}
-	view := map[string]any{"host": host, "state": "offline", "stale": true, "probed_at": "2026-10-17T00:00:00Z", "checked_at": "2026-10-17T01:00:00Z", "probed": map[string]any{"os": "observed-linux", "cpu": 4, "tools": map[string]bool{"docker": true}, "secret": "secret-probe"}, "reason": "secret-reason"}
+	host := map[string]any{"name": "worker", "hostname": "worker.example", "tailnet_ip": "192.0.2.1", "tether_environment_id": "env:worker", "declared": map[string]any{"os": "linux", "arch": "amd64"}, "reach": map[string]any{"outpost": map[string]string{"credential_ref": "not-imported-path"}}}
+	view := map[string]any{"host": host, "state": "offline", "stale": true, "probed_at": "2026-10-17T00:00:00Z", "checked_at": "2026-10-17T01:00:00Z", "probed": map[string]any{"os": "observed-linux", "cpu": 4, "tools": map[string]bool{"docker": true}, "credential": "not-imported-probe"}, "reason": "secret-reason"}
 	payload := any([]any{view})
 	status := 200
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -238,7 +238,7 @@ func TestCerberusUnixInventoryLifecycleAndSafeFacts(t *testing.T) {
 	}
 	mustRun(t, c, s)
 	first := get(t, c, s, "worker")
-	if first.Deleted() || s.Scope().Instance != "unix:"+socket || strings.Contains(string(first.Definition), "secret-") {
+	if first.Deleted() || s.Scope().Instance != "unix:"+socket || strings.Contains(string(first.Definition), "not-imported-") {
 		t.Fatal("offline host deleted, bad scope, or credential leak")
 	}
 	var d objects.Machine
