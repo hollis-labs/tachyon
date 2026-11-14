@@ -94,7 +94,7 @@ describe('ChatView', () => {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('1280'), addEventListener() {}, removeEventListener() {} }))
     try {
       render(view())
-      const aside = screen.getByRole('complementary', { name: 'Details' })
+      const aside = screen.getByRole('complementary', { name: 'Agent Panel' })
       expect(within(aside).getByRole('tablist', { name: 'Panels' })).toBeTruthy()
       expect(within(aside).getAllByRole('tab').map((t) => t.textContent?.replace(/[^A-Za-z]+$/, ''))).toEqual(['Plan', 'Topics', 'Bookmarks', 'Work', 'Activity', 'Approvals', 'Files', 'Doc'])
     } finally {
