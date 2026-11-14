@@ -143,7 +143,9 @@ export const AGENTS = {
     timelineNoMatch: 'Nothing matches',
     facet: { all: 'All', tools: 'Tools', messages: 'Messages', approvals: 'Approvals', lifecycle: 'Lifecycle', errors: 'Errors' },
     run: (n: number) => `${n} tool calls`,
-    gap: (reason: string) => `Not collected (${reason})`,
+    gap: (reason: string, from: string, to: string, backfilled: boolean) =>
+      `${({ tachyon_offline: 'Tachyon was offline', tether_unreachable: 'Tether was unreachable', purged: 'Tether had purged these events', backfill_limit: 'Too many events to backfill', restart: 'Collection restarted' } as Record<string, string>)[reason] ?? `Not collected (${reason})`} ${from}–${to} · ${backfilled ? 'events in this gap come from Tether history' : 'events in this gap were not collected'}`,
+    resyncs: (n: number, since: string) => `Collection resynced ${n === 1 ? 'once' : `${n} times`} since ${since} · a few events may be missing`,
     showCalls: 'Show calls',
     hideCalls: 'Hide calls',
     contextOverTime: 'Context over the last 24 hours', // the series the tab reads covers 24 hours; the golden titles it by its span

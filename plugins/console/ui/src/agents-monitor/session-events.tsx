@@ -70,8 +70,28 @@ export function toTimeline(d: EventsResponse, now: number): Entry[] {
       card: e.card,
     }
   })
-  const gaps: Entry[] = (d.gaps ?? []).map((g, i) => ({ id: `gap${i}`, at: g.end, day: dayLabel(g.end, now, true), time: clock(g.end), facet: 'lifecycle', type: 'gap', tone: 'neutral', summary: M.gap(g.reason), gap: g.reason }))
+  const gaps: Entry[] = (d.gaps ?? []).filter((g) => !isResync(g)).map((g, i) => ({ id: `gap${i}`, at: g.end, day: dayLabel(g.end, now, true), time: clock(g.end), facet: 'lifecycle', type: 'gap', tone: 'neutral', summary: M.gap(g.reason, clock(g.start), clock(g.end), g.backfilled), gap: g.reason }))
   return [...rows, ...gaps].sort((a, b) => b.at - a.at)
+}
+
+/** A gap with no length: the stream asked for a resync at one moment. Drawn once, summed, under the timeline, never inline. */
+const isResync = (g: Gap) => g.end - g.start < 1000
+
+/** How many zero-length resyncs the page's gaps hold, and the oldest, or null when there are none. */
+export function resyncs(d: EventsResponse): { n: number; since: number } | null {
+  const rs = (d.gaps ?? []).filter(isResync)
+  return rs.length === 0 ? null : { n: rs.length, since: Math.min(...rs.map((g) => g.start)) }
+}
+
+/** The golden's gap line: a mono caption between two dashed rules, indented past the rail. */
+export function GapLine({ children, as: As = 'div' }: { children: ReactNode; as?: 'div' | 'li' }) {
+  return (
+    <As className="my-1.5 ml-9 flex items-center gap-2.5 font-mono text-caption text-fg-muted">
+      <span aria-hidden className="flex-1 border-t border-dashed border-border" />
+      <span>{children}</span>
+      <span aria-hidden className="flex-1 border-t border-dashed border-border" />
+    </As>
+  )
 }
 
 const ICON: Record<string, LucideIcon> = { deploy: RefreshCw, restart: RefreshCw, failure: AlertOctagon, host: Power, workstream: Plus, tool: Wrench, tool_run: Terminal, message: Mail, approval: ShieldCheck, error: AlertOctagon, lifecycle: Power, compaction: RotateCcw, clear: RotateCcw, task: SquareCheck, control: Power, seat: UserRound }
@@ -83,7 +103,7 @@ function Glyph({ e }: { e: Entry }) {
 
 function Row({ e, now, time }: { e: Entry; now: number; time: 'age' | 'clock' }) {
   const [open, setOpen] = useState(false)
-  if (e.gap) return <li className="ml-9 rounded-control border border-dashed border-border px-3 py-1.5 text-xs italic text-fg-muted">{e.summary}</li>
+  if (e.gap) return <GapLine as="li">{e.summary}</GapLine>
   return (
     <li className="flex flex-col">
       <div className="flex items-start gap-3 py-1.5">
