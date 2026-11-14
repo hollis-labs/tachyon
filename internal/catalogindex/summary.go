@@ -71,7 +71,7 @@ func (s Summary) asMap() map[string]any {
 		"open_changes": s.OpenChanges,
 		"catalog":      map[string]any{"observed_at": observed, "source_status": s.State.SourceStatus, "last_plan_id": s.State.LastPlanID},
 		"capabilities": map[string]any{
-			"retired": false, "one_step_save": false, "delegated_approval": false, "tool_server_edit": false,
+			"retired": true, "one_step_save": false, "delegated_approval": false, "tool_server_edit": false,
 			"resolved_by": "tachyon_approx", "read_prompt_bodies_requires_operator": false,
 		},
 	}
