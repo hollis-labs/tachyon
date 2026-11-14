@@ -39,7 +39,7 @@ const asideTab = (name) => async (p) => { if (!(await p.getByRole('tab', { name:
 const drawer = (name) => (p) => p.getByRole('button', { name, exact: true }).click({ timeout: 5000 })
 const STATES = [
   ['chat cards', DEMO, async () => undefined],
-  ...['Plan', 'Topics', 'Bookmarks', 'Work', 'Activity', 'Approvals', 'Files', 'Doc'].map((t) => [`chat aside ${t}`, DEMO, asideTab(t)]),
+  ...['Plan', 'Topics', 'Bookmarks', 'Work', 'Activity', 'Approvals', 'Files', 'Artifacts'].map((t) => [`chat aside ${t}`, DEMO, asideTab(t)]),
   ...['Scratchpad', 'Terminal', 'Workspace'].map((d) => [`chat drawer ${d}`, DEMO, drawer(d)]),
   ['chat + menu', DEMO, (p) => p.getByRole('button', { name: 'Add', exact: true }).click({ timeout: 5000 })],
   ['chat palette', DEMO, async (p) => { await p.getByRole('textbox', { name: 'Message', exact: true }).click({ timeout: 5000 }); await p.keyboard.press('/') }],
