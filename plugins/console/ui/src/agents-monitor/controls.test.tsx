@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NudgeControl, RestartControl } from './controls'
-import { toTimeline } from './session-events'
+import { dayLabel, toTimeline } from './session-events'
 import type { Session } from './types'
 
 afterEach(() => {
@@ -86,6 +86,14 @@ describe('toTimeline', () => {
     )
     expect(rows.map((r) => r.id)).toEqual(['e2', 'gap0', 'r1'])
     expect(rows[2].facet).toBe('tools')
+  })
+
+  it('marks the session timeline Now / Earlier today / Yesterday, as the golden does, and Activity Today', () => {
+    const now = new Date(2026, 9, 30, 12, 0).getTime()
+    expect(dayLabel(now - 4 * 60_000, now, true)).toBe('Now')
+    expect(dayLabel(now - 72 * 60_000, now, true)).toBe('Earlier today')
+    expect(dayLabel(new Date(2026, 9, 29, 23, 0).getTime(), now, true)).toBe('Yesterday')
+    expect(dayLabel(now - 4 * 60_000, now)).toBe('Today')
   })
 })
 
