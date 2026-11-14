@@ -156,7 +156,7 @@ func TestConsoleObjectReads(t *testing.T) {
 			t.Errorf("%s: %d %s", name, code, body)
 		}
 	}
-	if code, _ := call(h, &owner, verbPath(Prefix, "planner.list", map[string]string{})); code != 404 {
+	if code, _ := call(h, &owner, verbPath(Prefix, "chat.plan.get", map[string]string{})); code != 404 {
 		t.Errorf("an unserved verb: %d", code)
 	}
 }

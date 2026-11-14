@@ -7,8 +7,11 @@ variant: app-host
 profiles: [minimal]
 # Tachyon's own nav items and surfaces (the GUI track owns ui/app.json).
 frontend: { contributions: ui/app.json }
+# pluginhost is not selected: it claims all of /api/plugins/, which would shadow Tachyon's own routes
+# under that prefix (the console and planner paths). Substrate gap CW-20261114-0164; Tachyon registers
+# no plugin process today.
 modules:
-  add: [httphost, database, auth, identity, secrets, cli, scheduler, pluginhost]
+  add: [httphost, database, auth, identity, secrets, cli, scheduler]
 config:
   logging: { level: info, format: text }
   # Loopback only: a TLS proxy in front forwards the public name (tachyon.allowed_hosts).

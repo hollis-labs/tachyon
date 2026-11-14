@@ -44,6 +44,7 @@ next/
     objectsync/                  object sync from Tether, Cerberus and GitHub on the scheduler module
     dataverbs/                   the data verbs over HTTP: the agent API and the console API
     upstreamauth/                bearer credentials for upstream calls, from secrets references
+    planner/, plannerapi/, plannerassign/   the planner: portfolio, themes, tasks, timeline, stream, assignments (B5)
     hostguard/                   Host allowlist and forwarding-header hygiene (from Parallax)
     routes/                      Tachyon's own routes: one list feeds the mux and the scope table
     pluginallow/                 the /api/plugins/ allowlist (empty in B1: nothing is forwarded)
@@ -54,7 +55,7 @@ next/
 ## Modules
 
 `config`, `logging`, `health`, `httphost`, `database` (SQLite, one file), `auth` (enforce), `identity`, `secrets`,
-`cli`, `scheduler`, `pluginhost`. Start order is in `substrate_wiring.go`.
+`cli`, `scheduler`. `pluginhost` is not selected since B5 (Substrate gap CW-20261114-0184). Start order is in `substrate_wiring.go`.
 
 Commands start only what they need (`plan` in `cmd/tachyon/config.go`):
 - `serve` (the default) starts everything.

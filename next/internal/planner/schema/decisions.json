@@ -1,0 +1,117 @@
+{
+  "description": "Decision log index. The durable record is Tesseract or an ADR; this is the quick-reference list with pointers.",
+  "fields": {
+    "id": {
+      "type": "string",
+      "description": "stable id, prefix + slug; never reused"
+    },
+    "title": {
+      "type": "string"
+    },
+    "tldr": {
+      "type": "string",
+      "description": "optional: one short paragraph. The central concept and the tension: what pulls different ways, what is at stake or undecided"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": "string"
+    },
+    "links": {
+      "type": "array",
+      "items": "link"
+    },
+    "source": {
+      "type": "string",
+      "description": "where this came from, e.g. session date or message id"
+    },
+    "created": {
+      "type": "string",
+      "format": "date"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "decided_by": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "needs-decision",
+        "decided",
+        "deferred",
+        "superseded",
+        "reversed"
+      ]
+    },
+    "area": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "alternatives": {
+      "type": "array",
+      "items": "string"
+    },
+    "supersedes": {
+      "type": "string"
+    },
+    "superseded_by": {
+      "type": "string"
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "write counter, starts at 1, incremented by the service on every write; missing counts as 0"
+    },
+    "order": {
+      "type": "number",
+      "description": "list order within the database; items without it sort after those with it"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "1 highest, same meaning as Torque"
+    },
+    "author": {
+      "type": "string",
+      "description": "who created the item (set by the service on create)"
+    },
+    "comments": {
+      "type": "array",
+      "items": "comment"
+    },
+    "related_ids": {
+      "type": "array",
+      "description": "generic link to item ids in any database",
+      "items": "string"
+    },
+    "options": {
+      "type": "array",
+      "items": "option"
+    },
+    "selected_option": {
+      "type": "string",
+      "description": "id of the chosen option"
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date"
+    },
+    "defer_note": {
+      "type": "string"
+    }
+  }
+}

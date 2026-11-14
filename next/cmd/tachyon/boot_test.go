@@ -267,7 +267,12 @@ func TestEveryServedRouteHasAScope(t *testing.T) {
 			t.Errorf("module route %s %s: scope %q known %v, want %q", r.Method, r.Path, scope, known, r.Scope)
 		}
 	}
-	d := deps{access: access.New(store.From(app), identity.From(app), nil), local: dataverbs.NewLocal(objects.New(store.Wrap(store.From(app))))}
+	cfg, err := settings.Parse(app.Config[settings.Key])
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := deps{access: access.New(store.From(app), identity.From(app), nil), local: dataverbs.NewLocal(objects.New(store.Wrap(store.From(app)))),
+		planner: newPlanner(app, cfg, store.Wrap(store.From(app)))}
 	rs := appRoutes(d)
 	if len(rs) == 0 {
 		t.Fatal("no app routes: the check would prove less than it says")
@@ -276,7 +281,11 @@ func TestEveryServedRouteHasAScope(t *testing.T) {
 		t.Errorf("app routes: %v", err)
 	}
 	for _, r := range rs {
-		if scope, known := table.ForRoute(r.Method, r.Pattern); !known || scope != routes.TableScope(r.Scope) {
+		path := r.Pattern
+		if strings.HasSuffix(path, "/") {
+			path += "x" // a subtree pattern covers the paths below it
+		}
+		if scope, known := table.ForRoute(r.Method, path); !known || scope != routes.TableScope(r.Scope) {
 			t.Errorf("app route %s %s: scope %q known %v, want %q", r.Method, r.Pattern, scope, known, r.Scope)
 		}
 	}
@@ -560,9 +569,9 @@ func TestAgentAPI(t *testing.T) {
 		return map[string]string{"Authorization": "Bearer " + strings.TrimSpace(k)}
 	}
 	body := c.want(200, "GET", "/api/agent/v1/data/providers", nil, bearer(string(key)))
-	// Discovery lists the verbs this build serves that the credential allows: the object reads,
-	// not planner.list (granted, but its slice is not ported yet).
-	if !bytes.Contains(body, []byte(`"objects.get"`)) || bytes.Contains(body, []byte("planner.list")) {
+	// Discovery lists the verbs this build serves that the credential allows (planner-read: the
+	// object reads and planner.list), and nothing it does not grant.
+	if !bytes.Contains(body, []byte(`"objects.get"`)) || !bytes.Contains(body, []byte(`"planner.list"`)) || bytes.Contains(body, []byte("planner.portfolio")) {
 		t.Fatalf("discovery = %s", body)
 	}
 	if code := flatCode(t, c.want(403, "GET", "/api/agent/v1/data/providers", nil, bearer(star))); code != "credential_not_mapped" {
@@ -701,5 +710,69 @@ func TestSyncObjectsStatus(t *testing.T) {
 	}
 	if _, err := runCmd(t, env, "", "sync-objects", "--status", "--disable"); err == nil {
 		t.Fatal("conflicting options accepted")
+	}
+}
+
+// The planner routes: the owner reads and writes; a person without tachyon.operator reads but is
+// refused a write (operator_required); a key with no planner scope is refused a read.
+func TestPlannerRoutesAuth(t *testing.T) {
+	base, _ := started(t, loopbackOverride)
+	c := newClient(t, base)
+	c.want(401, "GET", "/api/plugins/console/v1/planner/themes", nil, nil)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	c.want(200, "GET", "/api/plugins/console/v1/planner/themes", nil, nil)
+	c.want(200, "GET", "/api/plugins/planner/v1/planner/themes", nil, nil) // the legacy prefix
+	// The owner may write: the request reaches the planner (which refuses this empty body itself).
+	if code, body := c.do("POST", "/api/plugins/console/v1/planner/ideas", map[string]any{}, xrw); code == 401 || code == 403 {
+		t.Fatalf("owner write refused: %d %s", code, body)
+	}
+}
+
+// The planner event stream ends when the server shuts down (SIGTERM), well within the grace period:
+// serve returns nil and the client sees the stream close.
+func TestPlannerStreamEndsOnShutdown(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "data")
+	env := overrideEnv(t, data, loopbackOverride)
+	createOwner(t, env)
+	ctx, cancel := context.WithCancel(context.Background())
+	run, err := boot.StartWith(ctx, substrateApp, substrateModules, substrateConfigJSON, bootOptions(func(k string) string { return env[k] }, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = run.Stop(context.Background()) }()
+	addr := make(chan net.Addr, 1)
+	done := make(chan error, 1)
+	go func() { done <- (&tachyon{app: run.App, ready: func(a net.Addr) { addr <- a }}).serve(ctx) }()
+	base := "http://" + (<-addr).String()
+	c := newClient(t, base)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	req, _ := http.NewRequest(http.MethodGet, base+"/api/plugins/planner/stream/events", nil)
+	res, err := (&http.Client{Jar: c.http.Jar}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("stream: %d %s", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	first := make([]byte, 64)
+	if _, err := res.Body.Read(first); err != nil {
+		t.Fatalf("no first frame: %v", err)
+	}
+	begin := time.Now()
+	cancel() // what SIGTERM does (signal.NotifyContext)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serve ended with %v", err)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("serve did not return within the grace period with a stream open")
+	}
+	if _, err := io.ReadAll(res.Body); err != nil && !strings.Contains(err.Error(), "EOF") {
+		t.Logf("stream close: %v", err)
+	}
+	if took := time.Since(begin); took > 5*time.Second {
+		t.Fatalf("shutdown took %s with a stream open", took)
 	}
 }
