@@ -160,3 +160,27 @@ func TestSessionRelationshipResolutionUsesSourceFactsAndKeepsOverrides(t *testin
 		t.Fatal("ambiguous alias resolved", source)
 	}
 }
+
+// Live failure 2026-11-14: once the session list needed a second page, every scan failed with "invalid session
+// continuation". The cursor names the oldest row's created_at, but at whole-second precision and with rows that
+// share a second in any order; a raw string compare rejected it. Times are compared at one-second precision.
+func TestSessionCursorAtSecondPrecisionAndUnorderedTies(t *testing.T) {
+	_, c := testStore(t)
+	page1 := []any{sessionDTO("a", "2026-11-14T08:13:02.512Z"), sessionDTO("b", "2026-11-14T08:11:58.100Z"), sessionDTO("c", "2026-11-14T08:11:58.900Z")}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			json.NewEncoder(w).Encode(map[string]any{"sessions": page1, "next_cursor": "2026-11-14T08:11:58Z"})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"sessions": []any{sessionDTO("d", "2026-11-13T07:00:00.250Z")}})
+	}))
+	defer server.Close()
+	s, err := NewTetherSessions(server.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := mustRun(t, c, s)
+	if state.Pages != 2 || state.Items != 4 {
+		t.Fatalf("state: %+v", state)
+	}
+}

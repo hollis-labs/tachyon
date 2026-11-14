@@ -107,9 +107,22 @@ func (s *TetherSessions) Scan(ctx context.Context, at time.Time, progress func(P
 			}
 		}
 		if next != "" {
+			// The cursor is the oldest row's created_at, but upstream may render it at a different precision
+			// (whole seconds) than the rows, and rows sharing a second may come in any order. Compare parsed
+			// times at one-second precision against the oldest row on the page, not raw strings.
 			stamp, err := time.Parse(time.RFC3339Nano, next)
-			if err != nil || len(rows) == 0 || next != rows[len(rows)-1].CreatedAt {
+			if err != nil || len(rows) == 0 {
 				return Snapshot{}, scanError("invalid session continuation")
+			}
+			oldest := time.Time{}
+			for _, r := range rows {
+				if t, e := time.Parse(time.RFC3339Nano, r.CreatedAt); e == nil && (oldest.IsZero() || t.Before(oldest)) {
+					oldest = t
+				}
+			}
+			if !stamp.Truncate(time.Second).Equal(oldest.Truncate(time.Second)) {
+				// Timestamps only (no ids or session content), so the status route can say why.
+				return Snapshot{}, scanError("invalid session continuation: cursor " + next + ", oldest row " + oldest.UTC().Format(time.RFC3339Nano))
 			}
 			if cursor != "" {
 				previous, _ := time.Parse(time.RFC3339Nano, cursor)
