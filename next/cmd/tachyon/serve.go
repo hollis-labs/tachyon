@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 
 	"github.com/spf13/cobra"
 
@@ -15,10 +16,12 @@ import (
 	"github.com/hollis-labs/substrate/modules/identity"
 	"github.com/hollis-labs/substrate/modules/scheduler"
 
+	"github.com/hollis-labs/tachyon/next/internal/access"
 	"github.com/hollis-labs/tachyon/next/internal/hostguard"
 	"github.com/hollis-labs/tachyon/next/internal/pluginallow"
 	"github.com/hollis-labs/tachyon/next/internal/routes"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
+	"github.com/hollis-labs/tachyon/next/internal/store"
 	"github.com/hollis-labs/tachyon/next/internal/webui"
 )
 
@@ -29,9 +32,15 @@ type tachyon struct {
 	ready func(net.Addr)
 }
 
-// appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices
-// (B3 onward) add theirs here.
-func appRoutes() []routes.Route { return nil }
+// appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
+// theirs here. The agent data API answers only API keys mapped to a service identity
+// (access.RequireAgent); its route scope is "authenticated" and each verb is checked in the
+// handler against the key's verb scope and the credential's kinds.
+func appRoutes(acc *access.Service) []routes.Route {
+	return []routes.Route{
+		{Method: http.MethodGet, Pattern: access.DiscoveryPattern, Scope: routes.Authenticated, Handler: access.RequireAgent(acc, access.Discovery())},
+	}
+}
 
 // pluginAllowlist are the (method, path) pairs under /api/plugins/ that reach the plugin host
 // (docs/api-contract.md). Empty until the plugin slices add theirs: nothing is forwarded.
@@ -60,7 +69,8 @@ func (t *tachyon) serve(ctx context.Context) error {
 	if id == nil || table == nil {
 		return errors.New("the identity and auth modules must be started")
 	}
-	mux, err := routes.Register(table, appRoutes())
+	acc := access.New(store.From(app), id, nil)
+	mux, err := routes.Register(table, appRoutes(acc))
 	if err != nil {
 		return err
 	}

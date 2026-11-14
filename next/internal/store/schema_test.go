@@ -162,15 +162,26 @@ func requireEqual(t *testing.T, ref string, want, got schema.Schema) {
 	}
 }
 
+// initOnly is the migration source holding only the init migration: the old schema at 056. Later
+// migrations add Tachyon's own tables.
+func initOnly(t *testing.T) migrate.Source {
+	t.Helper()
+	body, err := fs.ReadFile(Migrations, Root+"/sqlite/"+InitFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return migrate.Source{FS: fstest.MapFS{"migrations/sqlite/" + InitFile: {Data: body}}, Root: Root}
+}
+
 // The schema equals a database the old build's own source creates at this checkout. When main brings
 // a new old-tree migration onto the branch, this fails until the port carries it (plan section 1).
 func TestSchemaEqualsTheOldTree(t *testing.T) {
-	requireEqual(t, "the old tree", describe(t, oldTreeDB(t)), describe(t, migrated(t, Source())))
+	requireEqual(t, "the old tree", describe(t, oldTreeDB(t)), describe(t, migrated(t, initOnly(t))))
 }
 
 // The schema equals the live database's schema (its backup copy of 2026-11-14).
 func TestSchemaEqualsTheLiveSnapshot(t *testing.T) {
-	requireEqual(t, "the live snapshot", describe(t, fixtureDB(t)), describe(t, migrated(t, Source())))
+	requireEqual(t, "the live snapshot", describe(t, fixtureDB(t)), describe(t, migrated(t, initOnly(t))))
 }
 
 // The comparison sees a one-word change: one column default altered on purpose.
@@ -246,7 +257,18 @@ func TestShapeFacts(t *testing.T) {
 		t.Errorf("chat_events.body declared %q, %v", typ, err)
 	}
 	var tables int
-	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT IN ('goose_db_version', 'sqlite_sequence')`).Scan(&tables); err != nil || tables != 96 {
-		t.Errorf("%d app tables, want 96 (%v)", tables, err)
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT IN ('goose_db_version', 'sqlite_sequence')`).Scan(&tables); err != nil || tables != 97 {
+		t.Errorf("%d app tables, want 96 old ones plus service_credentials (%v)", tables, err)
+	}
+}
+
+// InitSQL is the init migration without goose annotations, and the head version is the last file's.
+func TestInitSQLAndHead(t *testing.T) {
+	sqlText, err := InitSQL()
+	if err != nil || strings.Contains(sqlText, "+goose") || !strings.Contains(sqlText, "CREATE TABLE approval_decision_log") {
+		t.Fatalf("InitSQL: %v", err)
+	}
+	if v, err := HeadVersion(); err != nil || v != 2 {
+		t.Fatalf("HeadVersion = %d, %v", v, err)
 	}
 }

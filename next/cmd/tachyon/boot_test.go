@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net"
@@ -14,11 +15,16 @@ import (
 	"testing"
 	"time"
 
+	_ "modernc.org/sqlite"
+
 	"github.com/hollis-labs/substrate/boot"
 	"github.com/hollis-labs/substrate/module"
 	"github.com/hollis-labs/substrate/modules/auth"
 	"github.com/hollis-labs/substrate/modules/scheduler"
 
+	"github.com/hollis-labs/substrate/modules/identity"
+
+	"github.com/hollis-labs/tachyon/next/internal/access"
 	"github.com/hollis-labs/tachyon/next/internal/routes"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
 	"github.com/hollis-labs/tachyon/next/internal/store"
@@ -255,10 +261,14 @@ func TestEveryServedRouteHasAScope(t *testing.T) {
 			t.Errorf("module route %s %s: scope %q known %v, want %q", r.Method, r.Path, scope, known, r.Scope)
 		}
 	}
-	if err := routes.Check(appRoutes()); err != nil {
+	acc := access.New(store.From(app), identity.From(app), nil)
+	if len(appRoutes(acc)) == 0 {
+		t.Fatal("no app routes: the check would prove less than it says")
+	}
+	if err := routes.Check(appRoutes(acc)); err != nil {
 		t.Errorf("app routes: %v", err)
 	}
-	for _, r := range appRoutes() {
+	for _, r := range appRoutes(acc) {
 		if scope, known := table.ForRoute(r.Method, r.Pattern); !known || scope != routes.TableScope(r.Scope) {
 			t.Errorf("app route %s %s: scope %q known %v, want %q", r.Method, r.Pattern, scope, known, r.Scope)
 		}
@@ -486,5 +496,127 @@ func TestMigrateFromTarget(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(fresh, "migrate-from-report.json")); err != nil {
 		t.Fatalf("no report beside the database: %v", err)
+	}
+}
+
+// runCmd runs one command line in-process on env's data directory, as the binary would.
+func runCmd(t *testing.T, env map[string]string, stdin string, args ...string) (string, error) {
+	t.Helper()
+	modules, prepare := plan(args)
+	run, err := boot.StartWith(context.Background(), substrateApp, modules, substrateConfigJSON, bootOptions(func(k string) string { return env[k] }, prepare))
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = run.Stop(context.Background()) }()
+	root := (&tachyon{app: run.App}).root(context.Background(), args)
+	var out bytes.Buffer
+	root.SetIn(strings.NewReader(stdin))
+	root.SetOut(&out)
+	root.SetErr(&out)
+	err = root.Execute()
+	return out.String(), err
+}
+
+// The agent data API end to end: only a key mapped to a service identity gets through; the owner's
+// session, an unmapped key holding "*" and an unauthenticated call do not. `access issue` writes
+// the key to a new 0600 file and prints no secret.
+func TestAgentAPI(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "data")
+	env := overrideEnv(t, data, loopbackOverride)
+	createOwner(t, env)
+	keyFile := filepath.Join(t.TempDir(), "actions.key")
+	out, err := runCmd(t, env, "", "access", "issue", "--name", "actions-agent", "--preset", "actions-request", "--ttl", "1h", "--out", keyFile)
+	if err != nil {
+		t.Fatalf("access issue: %v\n%s", err, out)
+	}
+	key, err := os.ReadFile(keyFile) //nolint:gosec // this test's temp file
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(keyFile); fi.Mode().Perm() != 0o600 {
+		t.Errorf("key file mode %o", fi.Mode().Perm())
+	}
+	if strings.Contains(out, strings.TrimSpace(string(key))) {
+		t.Fatal("access issue printed the key")
+	}
+	star, err := runCmd(t, env, "", "identity", "key", "create", "--name", "star", "--scope", "*", "--stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCmd(t, env, "", "access", "issue", "--name", "x", "--verbs", "*", "--out", filepath.Join(t.TempDir(), "x.key")); err == nil {
+		t.Error("access issue granted *")
+	}
+
+	base, _ := serving(t, env)
+	c := newClient(t, base)
+	bearer := func(k string) map[string]string {
+		return map[string]string{"Authorization": "Bearer " + strings.TrimSpace(k)}
+	}
+	body := c.want(200, "GET", "/api/agent/v1/data/providers", nil, bearer(string(key)))
+	if !bytes.Contains(body, []byte(`"actions.request"`)) || bytes.Contains(body, []byte("planner.list")) {
+		t.Fatalf("discovery = %s", body)
+	}
+	if code := flatCode(t, c.want(403, "GET", "/api/agent/v1/data/providers", nil, bearer(star))); code != "credential_not_mapped" {
+		t.Fatalf("unmapped * key: %s", code)
+	}
+	c.want(401, "GET", "/api/agent/v1/data/providers", nil, nil)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	if code := flatCode(t, c.want(403, "GET", "/api/agent/v1/data/providers", nil, nil)); code != "agent_required" {
+		t.Fatalf("owner session: %s", code)
+	}
+}
+
+// `access reissue` refuses before the owner exists, writes one 0600 key file per active old token
+// and prints no secret, and refuses a second run.
+func TestAccessReissueCommand(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "data")
+	env := overrideEnv(t, data, loopbackOverride)
+	keys := filepath.Join(t.TempDir(), "keys")
+	// The schema exists after a first start; old tokens arrive by migrate-from in real use, here by SQL.
+	if out, err := runCmd(t, env, "", "access", "list"); err != nil {
+		t.Fatalf("access list: %v\n%s", err, out)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(data, "tachyon.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().Unix()
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO service_identities(id, name, created_at) VALUES ('11111111-0000-4000-8000-000000000001', 'reader', ?)`, []any{now}},
+		{`INSERT INTO service_tokens(id, identity_id, token_hash, grants, created_at, expires_at) VALUES ('22222222-0000-4000-8000-000000000001', '11111111-0000-4000-8000-000000000001', 'h1', '{"verbs":["planner.list"],"kinds":["task"]}', ?, ?)`, []any{now - 100, now + 86400}},
+		{`INSERT INTO service_tokens(id, identity_id, token_hash, grants, created_at, expires_at) VALUES ('22222222-0000-4000-8000-000000000002', '11111111-0000-4000-8000-000000000001', 'h2', '{"verbs":["planner.list"],"kinds":["task"]}', ?, ?)`, []any{now - 100, now - 10}},
+	} {
+		if _, err = db.Exec(q.sql, q.args...); err != nil {
+			break
+		}
+	}
+	_ = db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, e := runCmd(t, env, "", "access", "reissue", "--out-dir", keys); e == nil || !strings.Contains(e.Error(), "no owner") {
+		t.Fatalf("reissue before the owner: %v\n%s", e, out)
+	}
+	createOwner(t, env)
+	out, err := runCmd(t, env, "", "access", "reissue", "--out-dir", keys)
+	if err != nil {
+		t.Fatalf("reissue: %v\n%s", err, out)
+	}
+	files, _ := filepath.Glob(filepath.Join(keys, "*.key"))
+	if len(files) != 1 || !strings.Contains(out, "reissued 1 credential(s)") || !strings.Contains(out, "allow-set equal true, expiry not extended true") {
+		t.Fatalf("files %v, output:\n%s", files, out)
+	}
+	key, _ := os.ReadFile(files[0]) //nolint:gosec // this test's temp file
+	if strings.Contains(out, strings.TrimSpace(string(key))) || strings.Contains(out, "key_") {
+		t.Fatal("reissue printed a key")
+	}
+	if fi, _ := os.Stat(files[0]); fi.Mode().Perm() != 0o600 {
+		t.Errorf("key file mode %o", fi.Mode().Perm())
+	}
+	if out, err := runCmd(t, env, "", "access", "reissue", "--out-dir", filepath.Join(t.TempDir(), "again")); err == nil || !strings.Contains(err.Error(), "already exist") {
+		t.Fatalf("second reissue: %v\n%s", err, out)
 	}
 }

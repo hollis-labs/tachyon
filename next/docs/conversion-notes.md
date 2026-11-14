@@ -28,7 +28,14 @@ Open items that need a decision or a change outside this cell:
    commit is archived into a throwaway repository and scanned with `--no-allowlist`, and any finding fails the
    job. The old tree's and the history's findings are pinned by an allowlist on `main` (PR #702), the
    director's ruling. They never apply to `next/`.
-7. **`GET` routes that write today** (inventory 12.1). In the port they take a write scope or become POST, decided
+7. **Identity keys cannot be listed or revoked through the module's Go API (Substrate CW-20261114-0131).**
+   - `tachyon access reissue` reads two counts from the identity module's tables, read-only: whether an owner
+     exists, and whether any key does. This is in `internal/access`, `identityCounts`.
+   - `tachyon access revoke` and `disable` act on Tachyon's credential mapping. The agent API checks that mapping
+     on every request, so the key and every token minted from it are refused at once. The identity module's own
+     key row stays live until the module exports a revoke; a revoked key then still works on identity routes
+     only within its own scopes.
+8. **`GET` routes that write today** (inventory 12.1). In the port they take a write scope or become POST, decided
    per slice and recorded in the contract:
    - `access/apps?refresh=1`
    - `chat/threads/{ref}/continue`
@@ -134,6 +141,33 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 - `/api/plugins/` forwards only allowlisted paths.
 
 Details: `docs/api-contract.md`.
+
+## Agents and credentials (slice B3)
+
+- **Old tokens become identity keys.**
+  - `tachyon access reissue --out-dir DIR` runs once, after `tachyon identity setup` and before any identity key
+    exists.
+  - It turns every active old service token into one identity key: keyed on the service identity's id, with
+    exactly the old grant, and a lifetime of the token's remaining time less one second.
+  - It writes each key to its own 0600 file, `<identity id>.<credential id>.key`, and prints only ids and
+    counts.
+  - Before handing anything out, it proves for each key that the old allow-set of (verb, kind) equals the new
+    one, and that the expiry is not later. If any check fails, every key it made is revoked and no file is
+    written.
+  - Old token rows are kept and marked superseded (`service_credentials.source_token_id`).
+- **Holders swap their token file for the key file.**
+  - The bearer is the same kind of header; the value changes.
+  - A key never counts as a person: no key, whatever its scopes, passes an approvals assurance check.
+- **The `tachyon access` commands keep their names, now on identity keys:** `issue` (`--out FILE` replaces
+  `--token-file`), `bind`, `unbind`, `pin-proxy`, `unpin-proxy`, `list`, `revoke` (a credential id), `disable`
+  (an identity id).
+  - `access` never grants `*` or `tachyon.operator`.
+- **Assurance** comes from the signed-in person, with no elevation step:
+  - browser-session: any signed-in user;
+  - operator-token: a signed-in user holding `tachyon.operator` (the owner, through `*`).
+
+  The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
+  TTL are gone. The confirm phrase stays in the approvals code.
 
 ## What the operator does differently
 

@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,11 +34,11 @@ func scheduleID(scope string) string {
 // stored it.
 func initSQL(t *testing.T) string {
 	t.Helper()
-	body, err := fs.ReadFile(store.Migrations, store.Root+"/sqlite/00001_init.sql")
+	body, err := store.InitSQL()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(body)
+	return body
 }
 
 func execAll(t *testing.T, db *sql.DB, stmts ...string) {
@@ -167,7 +166,7 @@ func TestMigratesEveryRowAndProvesIt(t *testing.T) {
 	if s := seq["planner_events"]; s.Source != 2 || s.Target != 2 {
 		t.Errorf("planner_events sequence %+v, want 2 on both sides", s)
 	}
-	if r.Target.Integrity != "ok" || r.Target.GooseVersion != 1 {
+	if head, _ := store.HeadVersion(); r.Target.Integrity != "ok" || r.Target.GooseVersion != head {
 		t.Errorf("target %+v", r.Target)
 	}
 	if len(r.Schedules) != 1 || !r.Schedules[0].IDMatchesScope || r.Schedules[0].Scope != scopeJSON || !strings.HasPrefix(r.Schedules[0].Instance, "equal") {

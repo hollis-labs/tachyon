@@ -38,6 +38,8 @@ next/
     store/                       the schema (one goose migration) and database access
     schema/                      describes a SQLite schema for exact comparison (store test, migratefrom)
     migratefrom/                 the one-way data migration from the old build (`tachyon migrate-from`)
+    access/                      service identities and their identity-key credentials, the agent request path
+    assurance/                   the approvals assurance check on identity principals
     hostguard/                   Host allowlist and forwarding-header hygiene (from Parallax)
     routes/                      Tachyon's own routes: one list feeds the mux and the scope table
     pluginallow/                 the /api/plugins/ allowlist (empty in B1: nothing is forwarded)
@@ -77,7 +79,11 @@ Outermost first:
 - **Route scopes** follow `docs/api-contract.md` section 5.
 - **`tachyon.operator`** is an in-handler assurance check on a signed-in person, never a route scope and never on
   a key (slice B3).
-- **Agent data verbs** keep their per-verb scopes, checked in the data handler (slice B3).
+- **Agent data verbs.** Each verb has a key scope, `tachyon.<verb>`. The data handler checks it together with the
+  credential mapping (`service_credentials`: key → service identity, verbs, kinds, expiry). A key without an
+  active mapping is refused on the agent API whatever its scopes (`internal/access`).
+- **Assurance** is `internal/assurance`: a kind-`user` principal is browser-session, and with `tachyon.operator`
+  operator-token. Keys never qualify.
 
 ## Data and configuration
 

@@ -169,6 +169,27 @@ scope and kind list, not in the route table, so the two naming sets cannot colli
 | `/api/agent/v1/*` (MCP and data) | `authenticated` at the route | | key-to-service-identity mapping plus per-verb scope (plan section 4) |
 | `/api/approvals/v1/*` (producers) | | | Tether workload JWT, off by default (answers 503 unconfigured, as today) |
 
+## 5a. The agent data API (slice B3)
+
+**Who may call it.** `/api/agent/v1/data/*` (and, when ported, `/api/agent/v1/mcp`) answers only identity API keys,
+and tokens minted from them, that map to an active service identity (`internal/access`):
+
+| Status | Code | When |
+|---|---|---|
+| 403 | `agent_required` | The caller is not an API key: a signed-in person, the owner included. |
+| 403 | `credential_not_mapped` | A key that acts for no service identity, whatever its scopes (`*` included). |
+| 403 | `credential_inactive` | The credential is revoked or expired, or its service identity is disabled. |
+
+**Grants.** A credential's grant is the old token's `{verbs, kinds}`, unchanged:
+- The key holds the scope `tachyon.<verb>` for each verb, for example `tachyon.planner.list`. A verb scope is never
+  a route scope.
+- A verb is allowed when the key holds its scope **and** the mapping grants the verb.
+- A call on an object of a kind is also allowed only when the mapping grants that kind.
+
+**Discovery.** `GET /api/agent/v1/data/providers` answers `{version: 1, providers: [{id: "tachyon", verbs:
+[{name, mutates}]}]}` with exactly the verbs the caller may use. Input schemas and descriptions return with the
+slice that ports the verbs.
+
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 
 The plugin host (Substrate `pluginhost`) forwards `/api/plugins/{id}/...` to the subprocess plugins.

@@ -44,7 +44,8 @@ func bootOptions(getenv func(string) string, prepare bool) boot.Options {
 
 // plan decides, from the command line, which framework modules to start and whether the data
 // directory may be created. Only serving (the default), `identity` (the offline owner and API
-// key bootstrap) and `migrate-from` (the one-way data copy) write anything: they need the database and identity modules and create the data
+// key bootstrap), `access` (service identities and their keys) and `migrate-from` (the one-way
+// data copy) write anything: they need the database and identity modules and create the data
 // directory, the database and the signing key, exactly as serving does. Every other command,
 // including version, config, health and help, reads configuration and starts no module that opens
 // a file, so running one without TACHYON_DATA_DIR cannot touch any data directory.
@@ -66,7 +67,7 @@ func plan(args []string) (modules []string, prepare bool) {
 	switch {
 	case len(words) == 0 || words[0] == "serve":
 		return substrateModules, true
-	case words[0] == "identity":
+	case words[0] == "identity" || words[0] == "access":
 		return pick(withIdentity), true
 	case words[0] == "migrate-from":
 		return pick(withMigrate), true

@@ -53,6 +53,7 @@ import (
 	_ "modernc.org/sqlite" // the "sqlite" driver, the one the database module uses
 
 	"github.com/hollis-labs/tachyon/next/internal/schema"
+	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
 // The files of a source directory, and the report's default name.
@@ -239,9 +240,20 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 	}
 
 	// 3: the schema, the ledger and the scheduler tables.
-	target, err := schema.Describe(ctx, st.Reader(), framework)
+	// The reference is the old schema at 056 (the init migration). The target holds it, plus any
+	// table a later migration added for the new build, which the old data has no rows for.
+	target, err := initSchema(ctx)
 	if err != nil {
 		return err
+	}
+	inTarget, err := schema.Describe(ctx, st.Reader(), framework)
+	if err != nil {
+		return err
+	}
+	for name, o := range target {
+		if d := schema.Diff(schema.Schema{name: o}, schema.Schema{name: inTarget[name]}); inTarget[name].Type == "" || len(d) > 0 {
+			return fmt.Errorf("target: %s %s is not the init migration's (%v)", o.Type, name, d)
+		}
 	}
 	source, err := schema.Describe(ctx, src, func(t string) bool { return t == "sqlite_sequence" })
 	if err != nil {
@@ -271,7 +283,7 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 	if err != nil {
 		return err
 	}
-	if err = requireEmpty(ctx, st, append(slices.Clone(tables), jobTables...)); err != nil {
+	if err = requireEmpty(ctx, st, append(inTarget.Tables(), jobTables...)); err != nil {
 		return err
 	}
 
@@ -783,8 +795,12 @@ func verify(ctx context.Context, st *libstore.Store, src, jobs *sql.DB, tables, 
 	if err = errors.Join(err, rows.Close()); err != nil {
 		return err
 	}
-	if r.Target.GooseVersion != 1 {
-		mismatches = append(mismatches, fmt.Sprintf("target: goose version %d, want 1", r.Target.GooseVersion))
+	head, err := store.HeadVersion()
+	if err != nil {
+		return err
+	}
+	if r.Target.GooseVersion != head {
+		mismatches = append(mismatches, fmt.Sprintf("target: goose version %d, want %d", r.Target.GooseVersion, head))
 	}
 	if len(mismatches) > 0 {
 		return fmt.Errorf("verification failed; the target is left as it is for inspection:\n%s", strings.Join(mismatches, "\n"))
@@ -920,6 +936,24 @@ func writeReport(path string, r *Report) error {
 		return err
 	}
 	return os.WriteFile(path, append(b, '\n'), 0o600)
+}
+
+// initSchema describes the init migration (the old schema at 056) built in memory.
+func initSchema(ctx context.Context) (schema.Schema, error) {
+	body, err := store.InitSQL()
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+	if _, err = db.ExecContext(ctx, body); err != nil {
+		return nil, fmt.Errorf("build the reference schema: %w", err)
+	}
+	return schema.Describe(ctx, db, framework)
 }
 
 // CheckTargetDir refuses a data directory that exists and is not empty: migrate-from copies only into

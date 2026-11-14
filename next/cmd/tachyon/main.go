@@ -60,6 +60,6 @@ func (t *tachyon) root(ctx context.Context, args []string) *cobra.Command {
 	serve := t.serveCmd(ctx)
 	rootCmd.RunE = func(c *cobra.Command, args []string) error { return serve.RunE(c, args) }
 	rootCmd.Args = cobra.NoArgs
-	rootCmd.AddCommand(serve, t.migrateFromCmd(ctx))
+	rootCmd.AddCommand(serve, t.migrateFromCmd(ctx), t.accessCmd(ctx))
 	return rootCmd
 }
