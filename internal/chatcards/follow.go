@@ -29,6 +29,9 @@ type Binder struct {
 	Tools interface {
 		Settled(ctx context.Context, rec hitl.Record) bool
 	}
+	// Decided records a settled card (answered, or expired) in the thread's activity. It runs whichever side decided:
+	// the thread's Approvals tab and the global queue write the same item, so this fires once per settled item.
+	Decided func(ctx context.Context, thread string, c Card)
 	// Changes subscribes to the Approvals feed.
 	Changes *approvals.Broker
 }
@@ -110,6 +113,9 @@ func (b *Binder) settled(ctx context.Context, itemID string) {
 	}
 	c := Project(rec, ref, b.Refs.now())
 	b.publish(ctx, ref.ThreadRef, c)
+	if b.Decided != nil && (c.State == "resolved" || c.State == "expired") {
+		b.Decided(ctx, ref.ThreadRef, c)
+	}
 	if b.Tools != nil && b.Tools.Settled(ctx, rec) {
 		return
 	}

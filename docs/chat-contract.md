@@ -74,7 +74,7 @@ snake_case JSON, unix-ms timestamps, errors `{code,message}` (400 invalid, 403 o
   from the T1 event log, so the two differ; the event carries the feed `seq` as a field). Payloads are mini-cards `{title<=120,
   summary<=200, review_ref}` (comments: `{body}`), redacted and bounded; `cite` is at most 8 of `{kind: task|pr|file, ref, label}`.
   Written by Tachyon at these seams: `tool.call` (runtime tool end), `plan.changed`, `topic.added`, `bookmark.added`, `file.shared`,
-  `panel.opened`. NOT written yet: `card.sent`, `card.answered`, `approval.decided` (T5), `task.closed`
+  `panel.opened`. `card.answered` and `approval.decided` are written when a card settles from either the thread or the global queue (CW-20261112-0071); NOT written yet: `card.sent`, `task.closed`
   from Torque (phase 2; agents can write `task.closed` and `note` through the verb). Actors: `user`, `agent` (Tachyon saw the
   agent act but not which one), `agent:<credential id>` (verb writes). A feed write that fails never fails the change behind it.
   Agent verbs: `chat.activity.append {thread_ref, type: task.closed|note, title, summary, cite, review_ref}` (preset
@@ -111,3 +111,36 @@ request carrying an `Authorization` header is refused 403: an agent credential c
 - **Not built** (deferred by the owner): the `stale` read-only state on elevation lapse, an approvals-queue card per proposal
   (`item_id` is always null; the run block is the approval surface), `kind=machine` objects in the picker, ControlMaster.
 
+
+## Agent Panel (multi-panel host)
+
+The chat sidebar is the **Agent Panel**: a host that shows one *panel* (a named set of tabs) per thread. Client-side registry: `plugins/console/ui/src/chat/aside/registry.ts`.
+
+- `PanelDef { id, label, owner: 'system' | 'user', tabs: { id, label, render? }[], appliesTo?: { agents?, roles? } }`.
+- The existing tabs (Plan, Topics, Bookmarks, Work, Activity, Approvals, Files, Doc) are the default panel, id `agent`, always available. The id is reserved.
+- `registerPanel(def)` adds a panel (plugins call it at load; user-defined panels use the same call with `owner: 'user'`). A tab with `render` draws its own body; built-in tab ids are drawn by `Aside`.
+- Which panel a thread shows: the user's stored pick (`localStorage` `console.agentPanel.<thread_ref>`) if it still applies; otherwise the first registered panel whose `appliesTo` names this agent; otherwise the default. When more than one panel applies, a selector in the panel header switches between them.
+- Data model decision: the registry is client-side (plugin-registered) for now. Server-side per-user panel config is a later step; it would feed `registerPanel` and change nothing in the host.
+- `panel` server frames still name a tab id; they apply when that tab is in the open panel.
+
+### Planner panel (Portfolio Manager)
+
+`chat/aside/PlannerPanel.tsx` registers panel `planner` with tabs **Board** (in-flight and cleared themes with segmented progress, next step, blocked and decision chips; `GET /planner/board?scope=themes`) and **Need you** (`GET /planner/need-you` reasons, `GET /planner/decisions?status=proposed`). It applies to agent ids in `PLANNER_AGENTS` (`portfolio-manager`, `planner`, `pm`); add the roster id there if the Portfolio Manager uses another. Read-only; each tab links to the full Planner. Agent control of the panel waits on the agent-control task.
+
+### Artifacts tab
+
+The Doc tab is **Artifacts** (tab id stays `doc`). `chat/aside/ArtifactsPanel.tsx` lists the thread's workspace items not added by the user (`GET /threads/{ref}/workspace`); opening one replaces the list with an inline preview until Close/Esc: html in a script-less sandboxed iframe, images, video and audio from authenticated blob URLs, markdown rendered, text in a block, other types a download link. Host-path refs open in the File viewer. A document opened from Files still shows in the full-window Doc view.
+
+### Agent-driven panels (Once | This session | Always)
+
+The aside has no auto/manual mode and no chip. The agent may open a panel at any time (`chat.panel.open`, or the plan/approval signals). If the user changed the view since the agent last did, the agent's next change is held and the aside asks: **Once** (this request), **This session** (until the page closes), **Always** (kept in this browser), or **Not now** (dropped). Grants are scoped to one agent in one thread (`<agent>|<thread>`; `chat/aside/grants.ts`). Settings > General > Agent Panel lists the Always grants with Reset. Typing in an aside input still blocks any switch.
+
+Verb result: `chat.panel.open` returns `{ok:true}` when the hint is sent. That means delivered, not applied: the screen applies, holds (pending) or drops it, and the server does not see which. A held request stays until the user answers or a newer request replaces it. Server-side granted/denied/pending results would need the browser to report back; not built.
+
+### Derived agent activity (CW-20261112-0069)
+
+For a `tether:<session>` thread the Activity feed also fills from the session's own tool calls, not from the agent. The Agents collector (which follows Tether's environment stream) hands each stored batch of live `tool.call.finished` frames to an observer (`Collector.SetObserver`); `chatactivity.Classify` keeps only the sanitized tool name's meaning and drops the rest as noise: `message.sent` (tether_message send/reply/post/notify, group post), `message.received` (inbox, consume, list, get, thread, group read), `task.checked` (torque get/list/search/facets/progress), `task.updated` (torque comment/update/transition/create), `reminder.set` (CronCreate, ScheduleWakeup), `wait` (Monitor, Sleep). Arguments are never read or stored. A repeat of the same type on a thread inside 30 s is dropped (`Throttle`), so polling is one row. Frames older than two minutes (catch-up after a restart) and backfill are ignored. These types are Tachyon-written: agents still append only `task.closed` and `note`. The Activity tab's Filters chips pick one type. Retention is the feed's own (5000 rows per thread). Pull from Tether history is not used; the live stream is the source.
+
+### Multiple plans per thread (CW-20261112-0067, backend)
+
+A thread may hold up to 20 plans (migration 058 drops the one-per-thread index and adds `position`; every existing plan became plan 1). A plan carries `position`. Routes (operator): `GET /threads/{ref}/plans` → `{plans}` in order; `POST /threads/{ref}/plans {title?}` → 201 a new empty plan after the others; `POST /threads/{ref}/plans/reorder {plan_ids}` (every plan once; revisions do not change); `DELETE /threads/{ref}/plans/{id}?expected_revision=` (409 on a stale revision, 409 `linked_step` if a step is linked to a task); `POST /threads/{ref}/plans/{id}/steps/{step}/move {to_plan, position?, expected_revision, to_expected_revision}` → `{from, to, step}` (keeps the step id, status and `task_ref`; both revisions must match and both advance; 409 `conflict`, 404 unknown step, 400 same plan). Each side of a move, a create, a delete and a reorder publishes `plan` and writes `plan.changed`. Plan carry-over moves every plan of the ancestor thread, in order. Thread progress is the sum over the plans. **Staged:** the single-plan routes (`/plan`, `/plan/steps`, `/plan/reorder`) and the `chat.plan.*` verbs still act on the thread's first plan, and `PUT /plan` takes an optional `plan_id`; the verbs and the accordion/drag screen follow in the next change, which then removes the single-plan routes.

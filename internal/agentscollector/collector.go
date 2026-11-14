@@ -36,6 +36,8 @@ type Collector struct {
 	TurnEnded  func(sessionID string)
 	PruneEvery time.Duration
 
+	observer atomic.Pointer[func([]Frame)]
+
 	mu       sync.Mutex
 	src      SourceStatus
 	outputs  atomic.Int64
@@ -52,6 +54,10 @@ type SourceStatus struct {
 	State  string // streaming | polling | unreachable | off
 	Detail string
 }
+
+// SetObserver registers fn to see each batch of live frames once they are stored (not backfill or snapshots).
+// It runs on the writer goroutine, so it must be quick. Safe to call while the collector runs.
+func (c *Collector) SetObserver(fn func([]Frame)) { c.observer.Store(&fn) }
 
 func (c *Collector) now() time.Time {
 	if c.Now != nil {
@@ -416,6 +422,9 @@ func (c *Collector) write(ctx context.Context, queue <-chan Frame, touch map[str
 		tmu.Unlock()
 		if err := c.Store.Apply(fctx, batch); err != nil {
 			return err
+		}
+		if o := c.observer.Load(); o != nil {
+			(*o)(batch)
 		}
 		batch = batch[:0]
 		return c.Store.Touch(fctx, t, seq)

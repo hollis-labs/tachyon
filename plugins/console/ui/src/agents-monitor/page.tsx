@@ -11,14 +11,15 @@ import { ActivityTab } from './activity-tab'
 import { AgentsErrorBoundary } from './error-boundary'
 import { SessionModal } from './session-modal'
 import { TeamsTab } from './teams-tab'
+import { SeatsTab } from './seats-tab'
 import { ageText } from './session-parts'
 import { StaleAfterContext } from './session-rows'
 import { SessionBoard, SessionCards, SessionRows, matchesFilter, matchesQuery, useViewState, type GroupBy, type SessionView } from './sessions-view'
 import { AGENTS, type FilterId } from './vocabulary'
 import type { Session, SessionState } from './types'
 
-type Tab = 'sessions' | 'activity' | 'teams'
-const TABS: readonly Tab[] = ['sessions', 'activity', 'teams']
+type Tab = 'sessions' | 'activity' | 'seats' | 'teams'
+const TABS: readonly Tab[] = ['sessions', 'activity', 'seats', 'teams']
 const GROUPS: readonly GroupBy[] = ['workroot', 'agent', 'none']
 
 const typing = (t: EventTarget | null) => {
@@ -122,6 +123,7 @@ export function AgentsPage() {
         </div>
       )}
       {tab === 'teams' && <AgentsErrorBoundary><TeamsTab /></AgentsErrorBoundary>}
+      {tab === 'seats' && <AgentsErrorBoundary><SeatsTab busTick={busTick} now={now} /></AgentsErrorBoundary>}
       {tab === 'activity' && <AgentsErrorBoundary><ActivityTab busTick={busTick} now={now} /></AgentsErrorBoundary>}
       {tab === 'sessions' && (
         <>

@@ -226,3 +226,78 @@ func (s *Service) Reorder(ctx context.Context, ref chatapi.ThreadRef, scope stri
 
 // IsNotFound reports a missing plan, step or thread.
 func IsNotFound(err error) bool { return errors.Is(err, ErrNotFound) }
+
+func (s *Service) known(ctx context.Context, ref chatapi.ThreadRef) error {
+	if s.Exists != nil {
+		if err := s.Exists(ctx, ref.String()); err != nil {
+			return ErrNotFound
+		}
+	}
+	return nil
+}
+
+// Plans lists the thread's plans in order; none is an empty list, not an error.
+func (s *Service) Plans(ctx context.Context, ref chatapi.ThreadRef) ([]Plan, error) {
+	if err := s.known(ctx, ref); err != nil {
+		return nil, err
+	}
+	return s.Store.PlansForThread(ctx, ref.String())
+}
+
+// CreatePlan adds an empty plan to the thread.
+func (s *Service) CreatePlan(ctx context.Context, ref chatapi.ThreadRef, title *string, by string) (Plan, error) {
+	if err := s.known(ctx, ref); err != nil {
+		return Plan{}, err
+	}
+	p, err := s.Store.CreatePlan(ctx, ref.String(), title, by)
+	if err != nil {
+		return Plan{}, err
+	}
+	s.after(ctx, ref, p, by, "plan added")
+	return p, nil
+}
+
+// DeletePlan removes one of the thread's plans.
+func (s *Service) DeletePlan(ctx context.Context, ref chatapi.ThreadRef, planID string, expected int64, by string) error {
+	if err := s.known(ctx, ref); err != nil {
+		return err
+	}
+	p, err := s.Store.Get(ctx, planID)
+	if err != nil {
+		return err
+	}
+	if err := s.Store.DeletePlan(ctx, ref.String(), planID, expected); err != nil {
+		return err
+	}
+	s.after(ctx, ref, p, by, "plan removed")
+	return nil
+}
+
+// ReorderPlans sets the order of the thread's plans.
+func (s *Service) ReorderPlans(ctx context.Context, ref chatapi.ThreadRef, ids []string, by string) ([]Plan, error) {
+	if err := s.known(ctx, ref); err != nil {
+		return nil, err
+	}
+	ps, err := s.Store.ReorderPlans(ctx, ref.String(), ids)
+	if err != nil {
+		return nil, err
+	}
+	if len(ps) > 0 {
+		s.after(ctx, ref, ps[0], by, "plans reordered")
+	}
+	return ps, nil
+}
+
+// MoveStep moves a step between two of the thread's plans; each side gets its own plan.changed entry.
+func (s *Service) MoveStep(ctx context.Context, ref chatapi.ThreadRef, from, to, stepID string, pos int, expFrom, expTo int64, by string) (Plan, Plan, Step, error) {
+	if err := s.known(ctx, ref); err != nil {
+		return Plan{}, Plan{}, Step{}, err
+	}
+	src, dst, st, err := s.Store.MoveStep(ctx, ref.String(), from, to, stepID, pos, expFrom, expTo)
+	if err != nil {
+		return Plan{}, Plan{}, Step{}, err
+	}
+	s.after(ctx, ref, src, by, "step moved out")
+	s.after(ctx, ref, dst, by, "step moved in")
+	return src, dst, st, nil
+}

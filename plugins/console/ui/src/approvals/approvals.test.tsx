@@ -461,8 +461,8 @@ describe("card review dialog", () => {
     storeSecret.mockResolvedValue({ secret_ref: "secret://tachyon/abc", expires_at: 1, fingerprint: "sha256:1a2b3c4d" })
     fireEvent.click(screen.getByRole("button", { name: "Enter securely…" }))
     const dlg = await screen.findByRole("dialog")
-    const field = within(dlg).getByLabelText("Secret value") as HTMLInputElement
-    expect(field.type).toBe("password")
+    const field = within(dlg).getByLabelText("Secret value") as HTMLTextAreaElement
+    expect(field.style.getPropertyValue("-webkit-text-security") || (field.style as unknown as Record<string, string>).WebkitTextSecurity).toBe("disc")
     fireEvent.change(field, { target: { value: "hunter2" } })
     fireEvent.click(within(dlg).getByRole("button", { name: "Store secret" }))
     await screen.findByText("1a2b3c4d")

@@ -343,3 +343,10 @@ func TestKindOfAllowList(t *testing.T) {
 		t.Error("mcp-servers must never be read")
 	}
 }
+
+func TestSummaryReportsRetiredAsSettable(t *testing.T) {
+	caps, _ := (Summary{}).asMap()["capabilities"].(map[string]any)
+	if caps["retired"] != true {
+		t.Fatalf("capabilities.retired = %v, want true (a retire change writes enabled:false and lifecycle_state:retired, which the index reads back as retired)", caps["retired"])
+	}
+}

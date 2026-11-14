@@ -73,14 +73,15 @@ export function SecretDialog({ client, itemId, field, label, onStored, onClose }
           {!file && (
             <label className="block dash-control text-fg-muted">
               Secret value
-              <input
-                type="password"
+              <textarea
+                rows={4}
                 autoComplete="off"
                 spellCheck={false}
                 autoCapitalize="off"
                 autoFocus
                 aria-label="Secret value"
-                className="mt-1 w-full border border-border bg-bg p-2 font-mono dash-control text-fg"
+                style={{ WebkitTextSecurity: "disc" } as React.CSSProperties}
+                className="mt-1 w-full resize-y border border-border bg-bg p-2 font-mono dash-control text-fg"
                 disabled={busy}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
