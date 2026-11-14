@@ -144,7 +144,7 @@ export const AGENTS = {
     gap: (reason: string) => `Not collected (${reason})`,
     showCalls: 'Show calls',
     hideCalls: 'Hide calls',
-    contextOverTime: 'Context over time',
+    contextOverTime: 'Context over the last 24 hours', // the series the tab reads covers 24 hours; the golden titles it by its span
     warnLine: (pct: number) => `${pct}% warning`,
     noSeries: 'No context readings for this session',
     tokensTitle: 'Tokens',
@@ -161,7 +161,7 @@ export const AGENTS = {
     ran: 'Ran',
     ended: 'Ended',
     endReason: 'Reason',
-    toolCalls: 'Tool calls',
+    toolCalls: 'Tools', // the History column, as the golden heads it
   },
   nudge: {
     title: 'Nudge',
