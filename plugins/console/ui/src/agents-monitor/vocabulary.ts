@@ -100,7 +100,7 @@ export const AGENTS = {
     never: 'never',
     rightNow: 'Right now',
     since: 'since',
-    callsThisTurn: (n: number) => `${n} calls this turn`,
+    callsThisTurn: (n: number) => `${n} tool call${n === 1 ? '' : 's'} this turn`,
     nothingNow: 'Nothing running right now',
     assigned: 'Assigned',
     taskOf: (i: number, n: number) => `task ${i} of ${n} in this theme`,
@@ -114,7 +114,7 @@ export const AGENTS = {
     pendingQuestion: 'Pending question',
     unknown: 'unknown',
     yes: 'yes',
-    no: 'no',
+    no: 'none', // the golden's word for no pending approval or question
     latest: 'Latest events',
     timelineFilters: 'Timeline filters',
     timelineStream: 'Session events, newest first',
