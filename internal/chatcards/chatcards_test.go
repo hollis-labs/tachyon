@@ -214,7 +214,10 @@ func TestSettledRecordsDecisionOnce(t *testing.T) {
 	b.Get = func(context.Context, string) (hitl.Record, error) { return rec, nil }
 	var got []Card
 	var threads []string
-	b.Decided = func(_ context.Context, thread string, c Card) { threads = append(threads, thread); got = append(got, c) }
+	b.Decided = func(_ context.Context, thread string, c Card) {
+		threads = append(threads, thread)
+		got = append(got, c)
+	}
 	if err := b.Refs.Bind(ctx, "d1", "app:t1", "", "card.approval"); err != nil {
 		t.Fatal(err)
 	}
