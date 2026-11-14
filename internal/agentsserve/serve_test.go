@@ -742,3 +742,50 @@ func TestSparklineCountsToolCallsReadFromTheStream(t *testing.T) {
 		t.Errorf("without a stream, Tether's events are the count: %v %v", u.ToolCallCount, u.Spark)
 	}
 }
+
+// The timeline shows the agent's own tool activity, read from its output stream as one-liners. Calls to
+// Tether's tools are left to Tether's events, runs are counted by verb, and a page never splits the calls
+// that share one sequence number.
+func TestTimelineShowsToolCallsReadFromTheStream(t *testing.T) {
+	e := newEnv(t)
+	e.now = t0.Add(time.Hour)
+	e.frame("session.work_state_changed", "tl", 10*time.Minute, `{"to":"processing","provider":"claude"}`)
+	save := func(min int, seq int64, tools ...agentsderive.OneLiner) {
+		t.Helper()
+		if err := e.store.SetDerived(context.Background(), "tl", agentscollector.Derived{CallsDelta: len(tools), Tools: tools, Seq: seq, At: t0.Add(time.Duration(min) * time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(20, 500, agentsderive.OneLiner{Verb: "Reading", Target: "appagent/", Tool: "Read"}, agentsderive.OneLiner{Verb: "Running", Target: "git", Tool: "Bash"},
+		agentsderive.OneLiner{Verb: "Using", Target: "message send", Tool: "mcp__tether__tether_message_send"})
+	save(20, 501, agentsderive.OneLiner{Verb: "Reading", Target: "store.go", Tool: "Read"})
+	type page struct {
+		Events []struct {
+			Type, Summary string
+			Seq           int64
+			Events        []struct{ Summary string }
+		} `json:"events"`
+		Next *int64 `json:"next_before"`
+	}
+	flat := decode[page](t, e.get("/sessions/tl/events?filter=tools"))
+	var lines []string
+	for _, ev := range flat.Events {
+		lines = append(lines, ev.Summary)
+	}
+	if got := strings.Join(lines, " | "); got != "Reading store.go | Running git | Reading appagent/" && got != "Reading store.go | Reading appagent/ | Running git" {
+		t.Errorf("stream tool lines, newest first, without Tether's own tool: %q", got)
+	}
+	run := decode[page](t, e.get("/sessions/tl/events?filter=tools&group_runs=1"))
+	if len(run.Events) != 1 || run.Events[0].Type != "tool_run" || !strings.Contains(run.Events[0].Summary, "read x2") || !strings.Contains(run.Events[0].Summary, "ran x1") {
+		t.Errorf("a run counts by verb: %+v", run.Events)
+	}
+	// limit 2 would end between the two calls that share seq 500: the page stops before them instead.
+	p1 := decode[page](t, e.get("/sessions/tl/events?filter=tools&limit=2"))
+	if len(p1.Events) != 1 || p1.Next == nil {
+		t.Fatalf("first page stops before the shared sequence: %+v", p1)
+	}
+	p2 := decode[page](t, e.get(fmt.Sprintf("/sessions/tl/events?filter=tools&limit=2&before_seq=%d", *p1.Next)))
+	if len(p2.Events) != 2 {
+		t.Errorf("the next page holds both calls of the shared sequence: %+v", p2.Events)
+	}
+}

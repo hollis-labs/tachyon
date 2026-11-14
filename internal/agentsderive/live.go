@@ -20,10 +20,14 @@ type Live struct {
 type Saved struct {
 	OneLiner    *OneLiner
 	CallsInTurn int
-	CallsDelta  int    // tool calls seen since the last save; the store adds them to the session total
-	TokDelta    *Usage // tokens of the API calls finished since the last save; nil when none were seen
-	Meter       Meter
-	At          time.Time
+	CallsDelta  int // tool calls seen since the last save; the store adds them to the session total
+	// Tools are those calls as one-liners (verb and reduced target, never an input), oldest first and capped,
+	// for the session timeline. Seq is the Tether sequence of the newest output frame they came from (0 = unknown).
+	Tools    []OneLiner
+	Seq      int64
+	TokDelta *Usage // tokens of the API calls finished since the last save; nil when none were seen
+	Meter    Meter
+	At       time.Time
 }
 
 type liveSession struct {
@@ -31,6 +35,8 @@ type liveSession struct {
 	last    *OneLiner
 	calls   int
 	unsaved int
+	pending []OneLiner
+	seq     int64
 	tokens  *Usage
 	savedAt time.Time
 }
@@ -38,7 +44,15 @@ type liveSession struct {
 // maxLive bounds the map: a session idle longest is dropped first when it is exceeded.
 const maxLive = 2000
 
+// maxPending bounds the one-liners held between two saves (saves are at most a second apart).
+const maxPending = 12
+
 func (l *Live) Output(ctx context.Context, id string, at time.Time, payload []byte) {
+	l.OutputSeq(ctx, id, at, 0, payload)
+}
+
+// OutputSeq is Output with the frame's Tether sequence, which orders the timeline events it yields.
+func (l *Live) OutputSeq(ctx context.Context, id string, at time.Time, seq int64, payload []byte) {
 	e := ExtractOutput(payload)
 	if len(e.Tools) == 0 && e.Usage == nil && e.Window == 0 && e.Compact == nil {
 		return
@@ -67,6 +81,9 @@ func (l *Live) Output(ctx context.Context, id string, at time.Time, payload []by
 		s.last = &t
 		s.calls++
 		s.unsaved++
+		if len(s.pending) < maxPending {
+			s.pending = append(s.pending, t)
+		}
 	}
 	if e.Billed != nil {
 		if s.tokens == nil {
@@ -77,13 +94,17 @@ func (l *Live) Output(ctx context.Context, id string, at time.Time, payload []by
 		s.tokens.CacheRead += e.Billed.CacheRead
 		s.tokens.CacheWrite += e.Billed.CacheWrite
 	}
+	if seq > s.seq {
+		s.seq = seq
+	}
 	s.meter.Observe(e, at)
 	if !s.savedAt.IsZero() && at.Sub(s.savedAt) < time.Second { // throttled; the next output saves the newer figures
 		l.mu.Unlock()
 		return
 	}
 	s.savedAt = at
-	snap := Saved{CallsInTurn: s.calls, CallsDelta: s.unsaved, Meter: s.meter, At: at}
+	snap := Saved{CallsInTurn: s.calls, CallsDelta: s.unsaved, Meter: s.meter, At: at, Tools: s.pending, Seq: s.seq}
+	s.pending = nil
 	snap.TokDelta, s.tokens = s.tokens, nil
 	s.unsaved = 0
 	snap.Meter.Compactions = append([]Marker(nil), s.meter.Compactions...)

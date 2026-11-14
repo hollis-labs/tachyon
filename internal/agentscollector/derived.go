@@ -6,8 +6,13 @@ import (
 	"encoding/json"
 	"time"
 
+	"fmt"
 	"github.com/hollis-labs/tachyon/internal/agentsderive"
+	"strings"
 )
+
+// StreamTool prefixes the summary of a timeline event derived from the output stream ("tool.stream: Reading appagent/").
+const StreamTool = "tool.stream: "
 
 // OutputSink receives a session.output payload in memory. It must not keep, store or log the
 // payload; it returns after reducing it. Sinks are called from the stream reader: keep them quick.
@@ -15,11 +20,20 @@ type OutputSink interface {
 	Output(ctx context.Context, sessionID string, at time.Time, payload []byte)
 }
 
+// SeqOutputSink is an OutputSink that also wants the frame's Tether sequence (it orders timeline events).
+type SeqOutputSink interface {
+	OutputSeq(ctx context.Context, sessionID string, at time.Time, seq int64, payload []byte)
+}
+
 // Derived is what the sink saves for a session: derived fields only.
 type Derived struct {
 	OneLiner    *agentsderive.OneLiner
 	CallsInTurn int
 	CallsDelta  int
+	// Tools are the calls behind CallsDelta as one-liners, stored as timeline events at Seq (0 = the
+	// collector's current sequence). Calls to Tether's own tools are left out: Tether reports those itself.
+	Tools       []agentsderive.OneLiner
+	Seq         int64
 	TokDelta    *[4]int64 // tokens to add to the session total and the minute/hour buckets; nil = none seen
 	CtxUsed     int64
 	CtxWindow   int64
@@ -63,6 +77,21 @@ func (s *Store) SetDerived(ctx context.Context, id string, d Derived) error {
 			id, d.At.UnixNano(), d.At.UnixNano(), s.now().UnixNano(), ol, d.CallsInTurn, used, window, model, string(comp), clearNS, clearInf, d.CallsDelta)
 		if err == nil && d.TokDelta != nil {
 			err = addTokens(ctx, tx, id, d.At, *d.TokDelta)
+		}
+		for i, t := range d.Tools {
+			if err != nil {
+				break
+			}
+			if strings.HasPrefix(t.Tool, "mcp__tether__") || t.Verb == "" {
+				continue
+			}
+			line := t.Verb
+			if t.Target != "" {
+				line += " " + t.Target
+			}
+			_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO agents_events(session_id,tether_seq,tether_event_id,type,at_ns,actor,summary)
+ VALUES(?,CASE WHEN ?>0 THEN ? ELSE (SELECT last_seq FROM agents_collector_state WHERE id=1) END,?,'tool',?,'agent',?)`,
+				id, d.Seq, d.Seq, fmt.Sprintf("stream:%s:%d:%d:%d", id, d.At.UnixNano(), d.Seq, i), d.At.UnixNano(), StreamTool+clean(line, 160))
 		}
 		if err == nil && d.CallsDelta > 0 {
 			// Tool calls read from the output stream are the bulk of a session's activity (Tether's own tool
