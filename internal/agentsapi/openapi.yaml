@@ -368,15 +368,17 @@ components:
         state:
           type: string
           enum: [queued, delivered, interrupted_then_delivered, failed, requested, handoff_sent, waiting, stopping, stopped, resuming, done]
-          description: "nudge: queued|delivered|interrupted_then_delivered|failed. restart: requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done | failed(step)"
-        step: {type: string, nullable: true, description: "the step a failed restart stopped at"}
+          description: "nudge: queued|delivered|interrupted_then_delivered|failed. restart: requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done | failed(step). The launch a relaunch needs is read before stopping: failed(preparing) means nothing was stopped."
+        step: {type: string, nullable: true, description: "the step a failed restart stopped at: preparing (nothing stopped), stopping, resuming (the old session is stopped, no new one), launching (the old session is stopped; new_session_id names the session created but not started: launch it rather than create another)"}
         error: {type: string, nullable: true}
         interrupt: {type: string, nullable: true, enum: [cancelled, no_turn_in_progress, turn_superseded, interrupt_unsupported, no_target]}
         message_id: {type: string, nullable: true}
         handoff: {type: boolean}
-        new_session_id: {type: string, nullable: true}
+        new_session_id: {type: string, nullable: true, description: "the relaunched session; on failed(launching), the session created but not started"}
         discarded_pending: {type: integer, nullable: true, description: "pending approvals/questions lost with the old session (they cannot be kept)"}
         wait_ends_at: {type: integer, nullable: true}
+        relaunched_by: {type: string, nullable: true, enum: [resume, relaunch], description: "how a done restart brought the seat back: a logical-agent resume, or a relaunch of the same launch (continuity relaunch) when Tether refused the resume"}
+        scopes_dropped: {type: array, nullable: true, items: {type: string}, description: "scopes Tether did not grant the new session (session.scopes_narrowed); a relaunch is made with Tachyon's credential"}
         created_at: {type: integer}
         updated_at: {type: integer}
     Settings:

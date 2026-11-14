@@ -37,6 +37,9 @@ type Server struct {
 
 	hub   hub
 	skips sync.Map // restart request_id -> chan struct{} closed to skip the handoff wait
+	// restarting holds the seats (logical agent ids) with a restart in flight -> its request_id: two tabs must
+	// not each stop and relaunch the same seat.
+	restarting sync.Map
 }
 
 // Assigner joins a session's task to its Planner theme.
