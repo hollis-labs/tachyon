@@ -127,6 +127,12 @@ paths:
       responses:
         "200": {description: Request, content: {application/json: {schema: {$ref: '#/components/schemas/ControlRequest'}}}}
         "409": {$ref: '#/components/responses/Error'}
+  /seats:
+    get:
+      summary: Seat status cards (CW-20261114-0023d) - each seat's declared status (seat.status) beside its newest live session; what needs someone first
+      responses:
+        "200": {description: Seats, content: {application/json: {schema: {type: object, required: [seats], properties: {seats: {type: array, items: {$ref: '#/components/schemas/Seat'}}}}}}}
+        "503": {$ref: '#/components/responses/Error'}
   /settings:
     get:
       responses:
@@ -381,6 +387,24 @@ components:
         scopes_dropped: {type: array, nullable: true, items: {type: string}, description: "scopes Tether did not grant the new session (session.scopes_narrowed); a relaunch is made with Tachyon's credential"}
         created_at: {type: integer}
         updated_at: {type: integer}
+    Seat:
+      type: object
+      required: [agent_urn, handle, name, effective, declared, live, set_by_other, stale]
+      properties:
+        agent_urn: {type: string}
+        handle: {type: string, description: "as the seat declared it; empty when it never has"}
+        name: {type: string}
+        effective: {type: string, description: "the declared state while unexpired (available, working, waiting-decision, waiting-agent, blocked, paused, offline); undeclared when online without one; unknown otherwise"}
+        declared:
+          nullable: true
+          type: object
+          properties: {agent_urn: {type: string}, handle: {type: string}, state: {type: string}, reason: {type: string}, ref: {type: string}, owner: {type: string}, expires_at: {type: string, nullable: true}, set_by: {type: string}, at: {type: string}}
+        live:
+          nullable: true
+          type: object
+          properties: {session_id: {type: string}, state: {type: string}, needs_you: {type: string, nullable: true}, last_activity_at: {type: integer, nullable: true}}
+        set_by_other: {type: boolean, description: "the status was set by someone other than the seat (its address forms or its own sessions) or the operator"}
+        stale: {type: boolean, description: "the declaration no longer describes the seat: no live session (unless it declared offline), or declared more than 4h ago with no session activity since; stale cards sort last"}
     Settings:
       type: object
       required: [stale_after_s, handoff_prompt, handoff_timeout_s, nudge_presets]

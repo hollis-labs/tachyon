@@ -10,6 +10,8 @@
 //     it) needs him only while unread.
 //   - statuses: seats that declared themselves blocked or waiting-decision with owner @chrispian (seat.status,
 //     kept by the collector).
+//   - chat: chat threads with open question or approval turns (where most asks happen today), one item per thread.
+//   - approvals: Tachyon's approvals queue, one item for what is pending; critical when any is high risk.
 //
 // An approval request at urgency high is critical and sorts first. A source that cannot be read is reported, so
 // a short list is never shown as complete.
@@ -39,16 +41,18 @@ const (
 
 // Item is one thing waiting on the operator.
 type Item struct {
-	ID        string    `json:"id"`     // ask:<message id>, mail:<message id>, status:<agent urn>
-	Source    string    `json:"source"` // ask | mail | status
+	ID        string    `json:"id"`     // ask:<message id>, mail:<message id>, status:<agent urn>, chat:<thread ref>, approvals:queue
+	Source    string    `json:"source"` // ask | mail | status | chat | approvals
 	Kind      string    `json:"kind"`   // the envelope or payload kind (question, decision, approval_request, request, update...) or the status state
-	Why       string    `json:"why"`    // reply | read | unblock
+	Why       string    `json:"why"`    // reply | read | unblock | decide
 	Title     string    `json:"title"`
 	From      string    `json:"from"` // @handle when known, else the sender's address
 	Ref       string    `json:"ref,omitempty"`
 	Since     time.Time `json:"since"`
 	Critical  bool      `json:"critical"`
 	MessageID string    `json:"message_id,omitempty"`
+	Detail    string    `json:"detail,omitempty"` // counts, for an item that stands for several (a chat thread, the approvals queue)
+	Link      string    `json:"link,omitempty"`   // where in Tachyon to act on it
 }
 
 // SourceState says whether a source was read, and whether it was cut short.
@@ -138,9 +142,11 @@ func fromOperator(m Message) bool {
 
 // Aggregator builds the view.
 type Aggregator struct {
-	Tether   Tether
-	Statuses Statuses
-	Now      func() time.Time
+	Tether    Tether
+	Statuses  Statuses
+	Chats     Chats
+	Approvals Approvals
+	Now       func() time.Time
 }
 
 // Read returns what waits on the operator now.
@@ -256,6 +262,8 @@ func (a *Aggregator) Read(ctx context.Context) Result {
 				Title: firstOf(s.Reason, strings.ReplaceAll(s.State, "-", " ")), From: who(s.AgentURN), Ref: s.Ref, Since: s.At})
 		}
 	}
+
+	a.local(ctx, now, &r)
 
 	// Critical first, then whatever has waited longest.
 	sort.SliceStable(r.Items, func(i, j int) bool {
