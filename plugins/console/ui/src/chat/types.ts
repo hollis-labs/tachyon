@@ -78,6 +78,8 @@ export interface ChatMessage {
   from: ChatSender
   /** Agent replies from a Tether turn only; absent means the transport does not say. */
   audience?: ReplyAudience
+  /** 'mail' when Tether proved this reply's turn was a mail wake; the conversation folds such replies into one row. */
+  wake?: 'mail'
   body: string
   at: number
   /** Operator messages only. */
