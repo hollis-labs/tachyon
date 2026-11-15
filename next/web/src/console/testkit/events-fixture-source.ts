@@ -84,7 +84,7 @@ export class FixtureSource implements ConsoleSource {
     switch (n % 8) {
       case 1:
         return { ...base, kind: KINDS.agentState, severity: 'info', subjects: [agentRef], actions: [],
-          payload: { state: this.pick(['busy', 'idle', 'waiting']), provider: 'claude', cwd: '/srv/work/torque' } }
+          payload: { state: this.pick(['busy', 'idle', 'waiting']), provider: 'claude', cwd: '/path/to/torque' } }
       case 2:
         return { ...base, kind: KINDS.taskStateChanged, severity: 'info', subjects: [taskRef], actions: [], threadId: task,
           payload: { from: 'in_progress', to: this.pick(['review', 'done', 'blocked']), title: 'Console foundation' } }

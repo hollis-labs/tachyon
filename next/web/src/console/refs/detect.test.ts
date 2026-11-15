@@ -108,9 +108,9 @@ describe('agents', () => {
 
 describe('paths', () => {
   it('detects absolute, home and repo-relative paths with line numbers', () => {
-    expect(refs('/srv/agentcow/worktrees/x and ~/dev/hollis-labs and apps/gui/src/main.tsx:42:7')).toEqual([
-      ['path', '/srv/agentcow/worktrees/x'],
-      ['path', '~/dev/hollis-labs'],
+    expect(refs('/tmp/example/worktrees/x and ~/projects/example and apps/gui/src/main.tsx:42:7')).toEqual([
+      ['path', '/tmp/example/worktrees/x'],
+      ['path', '~/projects/example'],
       ['path', 'apps/gui/src/main.tsx'],
     ])
     expect(detectRefs('at src/a/b.ts:42:7', reg)[0].meta).toMatchObject({ line: 42, col: 7 })
