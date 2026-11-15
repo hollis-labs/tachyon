@@ -239,6 +239,7 @@ export function createObservationStore(fetchPage = (query: string) => observatio
   let lastPushed = 0
   let pending: ReturnType<typeof setTimeout> | undefined
   /** A pushed change asks for a refresh, coalesced so a busy stream reads no more often than the old poll. */
+  const seen = new Map<string, { state?: string; at?: number }>()
   let dirty: Set<string> | null = new Set() // null: the next pushed refresh reads every session
   /** A pushed change asks for a refresh of the sessions it names (all of them after a gap), coalesced so a busy stream reads no more often than the old poll. */
   const pushed = (id?: string) => {
@@ -267,6 +268,11 @@ export function createObservationStore(fetchPage = (query: string) => observatio
       up: (live) => { poll(!live); if (live) sync() },
       gap: () => pushed(),
       session: (x) => {
+        // The stream re-sends every session constantly (runtime, counters); only new activity or a new state is a change.
+        const prev = seen.get(x.id)
+        const next = { state: x.state ?? prev?.state, at: x.last_activity_at ?? prev?.at }
+        seen.set(x.id, next)
+        if (prev && prev.state === next.state && prev.at === next.at) return
         const w = workStatesFromSessions([x])[x.id]
         if (w && x.id in state.workStates) applyWorkStates({ [x.id]: w }, new Set([x.id]), generation)
         pushed(x.id)

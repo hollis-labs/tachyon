@@ -344,3 +344,23 @@ it('a pushed session change reads only that session; a gap reads them all', asyn
   expect(new Set(src.queries.map(q => new URLSearchParams(q).get('session_id')))).toEqual(new Set(['a', 'b', 'c']))
   off()
 })
+
+it('a session frame that repeats the same state and activity time is not a change', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let on!: Parameters<LiveFeed['open']>[0]
+  const feed: LiveFeed = { open(h) { on = h; return () => undefined } }
+  const src = { ...source({ a: [] }), workStates: async () => ({}) }
+  const store = createObservationStore(async () => ({ events: [] }), src, feed)
+  const off = store.subscribe(() => undefined)
+  on.up(true)
+  on.session({ id: 'a', state: 'idle', last_activity_at: 1 })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  src.queries.length = 0
+  for (let i = 0; i < 10; i++) on.session({ id: 'a', state: 'idle', last_activity_at: 1 })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS * 2)
+  expect(src.queries).toHaveLength(0)
+  on.session({ id: 'a', state: 'working', last_activity_at: 2 })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  expect(src.queries.map(q => new URLSearchParams(q).get('session_id'))).toEqual(['a'])
+  off()
+})
