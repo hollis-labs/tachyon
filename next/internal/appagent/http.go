@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/hollis-labs/substrate/modules/httphost"
 )
 
 // Prefix is where the handler is mounted. It must stay inside the operator
@@ -90,13 +93,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 503, "not_configured", msg)
 		return
 	}
+	handlers := map[string]http.HandlerFunc{
+		"GET /threads": h.threads, "GET /threads/{id}/messages": h.messages, "POST /threads/{id}/messages": h.sendMessage,
+		"POST /threads/{id}/read": h.read, "GET /threads/{id}/events": h.events,
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+Prefix+"/threads", h.threads)
-	mux.HandleFunc("GET "+Prefix+"/threads/{id}/messages", h.messages)
-	mux.HandleFunc("POST "+Prefix+"/threads/{id}/messages", h.sendMessage)
-	mux.HandleFunc("POST "+Prefix+"/threads/{id}/read", h.read)
-	mux.HandleFunc("GET "+Prefix+"/threads/{id}/events", h.events)
+	for _, route := range Routes {
+		method, path, _ := strings.Cut(route, " ")
+		mux.HandleFunc(method+" "+Prefix+path, handlers[route])
+	}
 	mux.ServeHTTP(w, r)
+}
+
+// Routes are the app agent's routes under Prefix; the server mounts each with its scope.
+var Routes = []string{
+	"GET /threads", "GET /threads/{id}/messages", "POST /threads/{id}/messages",
+	"POST /threads/{id}/read", "GET /threads/{id}/events",
 }
 
 func (h *Handler) threads(w http.ResponseWriter, r *http.Request) {
@@ -186,9 +198,14 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
+	stopping := httphost.Stopping(r)
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-stopping:
+			// The server is shutting down: end the stream so Serve can return; the client
+			// reconnects (with Last-Event-ID where the stream has ids).
 			return
 		case <-tick.C:
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil || rc.Flush() != nil {

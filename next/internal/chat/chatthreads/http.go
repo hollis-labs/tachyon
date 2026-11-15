@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hollis-labs/substrate/modules/httphost"
 	"github.com/hollis-labs/tachyon/next/internal/appagent"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatapi"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatbridge"
@@ -567,9 +568,14 @@ func (h *Handler) spine(w http.ResponseWriter, r *http.Request) {
 	defer h.Hub.Unsubscribe(sub)
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
+	stopping := httphost.Stopping(r)
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-stopping:
+			// The server is shutting down: end the stream so Serve can return; the client
+			// reconnects (with Last-Event-ID where the stream has ids).
 			return
 		case <-tick.C:
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil || rc.Flush() != nil {
@@ -633,9 +639,14 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
 	}
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
+	stopping := httphost.Stopping(r)
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+		case <-stopping:
+			// The server is shutting down: end the stream so Serve can return; the client
+			// reconnects (with Last-Event-ID where the stream has ids).
 			return
 		case <-tick.C:
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil || rc.Flush() != nil {

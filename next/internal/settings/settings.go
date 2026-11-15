@@ -7,6 +7,7 @@
 //	  allowed_hosts: []            # extra Host values (besides loopback) served behind a local TLS proxy
 //	  cache_dir: tachyon-cache     # relative: anchored in the data directory (AfterConfig)
 //	  workspace_dir: workspace     # chat workspace files; relative: anchored in the data directory
+//	  chat_sync_interval: 5s       # the Tether chat sync loop (features.chat_sync), 1s to 1h
 //	  upstreams:                   # every address empty by default; each credential is a secrets reference
 //	    tether:          { url: "", token: "" }
 //	    tether_control:  { url: "", token: "" }   # builder changes; url empty = tether.url
@@ -18,7 +19,7 @@
 //	    fragments:       { url: "", token: "" }   # Fragments Engine (transcripts)
 //	    activity:        { url: "" }              # activity monitor, no credential
 //	    caster:          { url: "", token: "" }
-//	    app_agent:       { url: "", token: "", label: "" }   # Nanite app agent
+//	    app_agent:       { url: "", token: "", label: "", session: {} }   # Nanite app agent; session: Nanite's session body (pins, no credentials)
 //	    github:          { url: "https://api.github.com", org: "", token: "" }
 //	    action_hub:      { addr: "", user: "", key: "", known_hosts: "" }   # SSH hub for approved actions
 //	  features:                    # every outbound loop, all off by default (the cutover turns them on)
@@ -36,12 +37,14 @@
 package settings
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	libsecrets "github.com/hollis-labs/libs/security/secrets"
 )
@@ -56,10 +59,12 @@ type Upstream struct {
 	Token string // a secrets reference (file://, keychain://, op://, helper://, env://), never a value
 }
 
-// AppAgent is the Nanite app agent: an upstream plus the label Tachyon shows for it.
+// AppAgent is the Nanite app agent: an upstream, the label Tachyon shows for it, and the session
+// body Tachyon posts to create its sessions (definition and host pins; never credentials).
 type AppAgent struct {
 	Upstream
-	Label string
+	Label   string
+	Session json.RawMessage // nil when not set
 }
 
 // GitHub is the forge upstream.
@@ -133,10 +138,12 @@ type Settings struct {
 	AllowedHosts []string
 	CacheDir     string
 	WorkspaceDir string // chat workspace file bytes (the old build's $TACHYON_DATA_DIR/workspace)
-	Upstreams    Upstreams
-	Features     Features
-	Files        Files
-	Alerts       Alerts
+	// ChatSyncInterval is how often the Tether chat sync loop runs (TACHYON_CHAT_SYNC_INTERVAL).
+	ChatSyncInterval time.Duration
+	Upstreams        Upstreams
+	Features         Features
+	Files            Files
+	Alerts           Alerts
 }
 
 // featureKeys is the one list of feature switches: the config key and the field it sets.
@@ -200,6 +207,9 @@ func Parse(raw any) (Settings, error) {
 		return s, err
 	}
 	if s.WorkspaceDir, err = root.str("workspace_dir"); err != nil {
+		return s, err
+	}
+	if s.ChatSyncInterval, err = root.duration("chat_sync_interval", 5*time.Second, time.Second, time.Hour); err != nil {
 		return s, err
 	}
 	if err = parseUpstreams(root, &s.Upstreams); err != nil {
@@ -303,6 +313,9 @@ func parseUpstreams(root *block, u *Upstreams) error {
 	if u.AppAgent.Label, err = agent.str("label"); err != nil {
 		return err
 	}
+	if u.AppAgent.Session, err = agent.jsonObject("session"); err != nil {
+		return err
+	}
 	if err = agent.done(); err != nil {
 		return err
 	}
@@ -394,6 +407,38 @@ func (b *block) str(k string) (string, error) {
 		return strings.TrimSpace(v), nil
 	default:
 		return "", fmt.Errorf("%s must be a string", b.name(k))
+	}
+}
+
+// duration reads a Go duration string within [lo, hi]; absent is def.
+func (b *block) duration(k string, def, lo, hi time.Duration) (time.Duration, error) {
+	v, err := b.str(k)
+	if err != nil || v == "" {
+		return def, err
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < lo || d > hi {
+		return 0, fmt.Errorf("%s must be a duration from %s to %s", b.name(k), lo, hi)
+	}
+	return d, nil
+}
+
+// jsonObject reads a map and returns it as JSON; absent or empty is nil.
+func (b *block) jsonObject(k string) (json.RawMessage, error) {
+	switch v := b.get(k).(type) {
+	case nil:
+		return nil, nil
+	case map[string]any:
+		if len(v) == 0 {
+			return nil, nil
+		}
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", b.name(k), err)
+		}
+		return raw, nil
+	default:
+		return nil, fmt.Errorf("%s must be a map", b.name(k))
 	}
 }
 

@@ -103,7 +103,13 @@ func (t *tachyon) serve(ctx context.Context) error {
 	pl := newPlanner(app, cfg, domain)
 	stopIngest := startPlannerIngest(ctx, cfg, pl)
 	defer stopIngest()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: newChat(app, cfg, domain)})
+	chat, err := newChat(ctx, app, cfg, domain)
+	if err != nil {
+		return err
+	}
+	stopChat := startChat(cfg, chat)
+	defer stopChat()
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err
