@@ -471,10 +471,11 @@ Carried byte-identical from **main d5db765**, with tests:
     kit-dashboard `DashboardViewTabs variant="pills"`. Where PillTabs took a `className`, a wrapping div keeps it.
   - `MergePanel`: operator access is the profile scope (`tachyon.operator`), as in G4. There is no elevation
     status, and the note no longer promises an operator-key prompt.
-- **Confirmation without step-up:** the old identity seam asked the server for a step-up token (`POST auth/step-up`)
-  before a forge write. The contract removed step-up. `ReposSurface` gives its ConsoleProvider a session
-  confirmation (`sessionIdentity` in `surface.tsx`) that grants without a token. The backend refuses a write the
-  caller may not make (`operator_required`). The carried seam itself is unchanged.
+- **Confirm-gated writes stay refused (parity, lead decision):** PR comment, review and Assign ask the identity seam
+  for a step-up (`POST auth/step-up`). The old server never served that route, so the old app refused all three with
+  "Identity confirmation unavailable: …". The port keeps the carried seam unchanged and serves no step-up either, so
+  the three are refused the same way, before anything reaches the forge. Each has a spec. Merge, which needs no
+  step-up, is unchanged. **Post-adoption improvement (owner's call):** enable the confirm-gated forge writes.
 - **e2e:** `e2e/forge-stub.ts`. It serves the old contract stub's fixtures (`internal/forgeapi/fixtures` at d5db765,
   in `e2e/forge-fixtures`, with a repo name made a placeholder) and the console state store. It gives quiet answers
   to the ConsoleProvider's live sources. `TACHYON_E2E_FORGE=backend` turns it off.
@@ -498,7 +499,7 @@ old written contract, `internal/forgeapi/openapi.yaml` and its fixtures at d5db7
 | `GET` / `PUT` | `console/state`, `console/state/{key}` | `internal/itemstate` (`register_itemstate.go`; GETs open, writes guarded) |
 | `GET` | `tether/events`, `activity/agents`; `GET /api/plugins/console/stream/activity` (SSE) | the ConsoleProvider's live sources (Tether proxy, activity monitor) |
 
-Not called by this SPA: the old `POST auth/step-up` (see above) and `{pr}/assign-agent` (`internal/forgeassign`). Scopes (contract): `forge/*`, `console/state`,
+Not served, as in the old server: `POST auth/step-up`, so comment, review and Assign are refused before they write (see above). Not called by this SPA: `{pr}/assign-agent` (`internal/forgeassign`). Scopes (contract): `forge/*`, `console/state`,
 `console/bulk` take `tachyon.forge.read` / `.write`, with the operator check on merge, reviews, assign, comments,
 assignees and audit reads.
 

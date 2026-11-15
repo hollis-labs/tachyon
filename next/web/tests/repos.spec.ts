@@ -38,31 +38,55 @@ test("a pull request opens in the workspace by deep link, with its files and con
   await expect(page.getByRole("textbox", { name: "Add a comment…" })).toBeVisible()
 })
 
-test("a refused comment shows the backend's message, and the draft stays", async ({
-  page,
-  forge,
-}) => {
-  test.skip(!forge.store, "the stub's refusal")
-  if (!forge.store) return
-  forge.store.refuseComments = true
+// The old server never served the identity seam's step-up (POST auth/step-up), so the confirm-gated writes were
+// refused in the old app. The port keeps that (lead decision, parity): each is refused with the seam's message and
+// nothing is sent to the forge.
+const UNAVAILABLE = /Identity confirmation unavailable/
+const forgeWrites = (page: Page) => {
+  const sent: string[] = []
+  page.on("request", (r) => {
+    if (r.method() !== "GET" && new URL(r.url()).pathname.startsWith(`${FORGE}/repos/`))
+      sent.push(r.url())
+  })
+  return sent
+}
+
+test("parity: a PR comment is refused (no step-up), and the draft stays", async ({ page }) => {
+  const sent = forgeWrites(page)
   await page.goto(PR)
   await page.getByRole("tab", { name: /^Conversation/ }).click()
   const box = page.getByRole("textbox", { name: "Add a comment…" })
   await box.fill("Please split the index change.")
-  const sent = page.waitForRequest(
-    (r) =>
-      r.method() === "POST" &&
-      new URL(r.url()).pathname === `${FORGE}/repos/github/hollis-labs/tachyon/pulls/201/comments`,
-  )
   await page.getByRole("button", { name: "Comment", exact: true }).click()
-  await sent
-  await expect(
-    page
-      .getByText("The pull request moved on since you opened it. Refresh and comment again.")
-      .first(),
-  ).toBeVisible()
+  await expect(page.getByRole("alert").filter({ hasText: UNAVAILABLE })).toBeVisible()
   await expect(box).toHaveValue("Please split the index change.")
+  expect(sent).toEqual([])
   await shot(page, "repos-comment-refused")
+})
+
+test("parity: a review is refused (no step-up)", async ({ page }) => {
+  const sent = forgeWrites(page)
+  await page.goto(PR)
+  await page.getByRole("button", { name: /^Review/ }).click()
+  const review = page.getByRole("dialog", { name: "Review" })
+  await review.getByRole("textbox", { name: "Review summary" }).fill("Looks close; see the note.")
+  await review.getByRole("button", { name: "Submit review" }).click()
+  await expect(page.getByText(UNAVAILABLE).first()).toBeVisible()
+  expect(sent.filter((u) => u.endsWith("/reviews"))).toEqual([])
+})
+
+test("parity: Assign is refused (no step-up)", async ({ page }) => {
+  const sent = forgeWrites(page)
+  await page.goto("/repos")
+  await inbox(page)
+    .getByRole("button", { name: "Assign", exact: true })
+    .first()
+    .click({ force: true })
+  const dialog = page.getByRole("dialog", { name: "Assign to an agent" })
+  await dialog.getByRole("radio", { name: /Builder Reviewer/ }).click()
+  await dialog.getByRole("button", { name: "Assign", exact: true }).click()
+  await expect(page.getByText(UNAVAILABLE).first()).toBeVisible()
+  expect(sent).toEqual([])
 })
 
 test.describe("narrow", () => {

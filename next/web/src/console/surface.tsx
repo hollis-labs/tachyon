@@ -26,7 +26,6 @@ import { OPERATOR_ADDRESS } from "./messaging/operator"
 import { AgentUnreadProvider } from "./messaging/unread"
 import { NeedsYouPage } from "./needs-you/page"
 import { RegistryProjectsPage } from "./registry/RegistryProjectsPage"
-import type { ConfirmRequest, ConfirmResult, IdentityConfirm } from "./seams/identity-confirm"
 import { TranscriptDashboard } from "./transcripts/page"
 
 const consoleSlots = { LinkText: LinkTextSlot }
@@ -172,13 +171,14 @@ export function TranscriptsSurface() {
 /**
  * The Repos surface (`/repos` in ui/app.json): the PR inbox and the PR workspace, from the old console overlay routes.
  * They mount under the old ConsoleProvider (state store, action bus, live event sources) and messaging, as the old
- * ConsoleShell placed them; `/prs/inbox` is the shell's legacy redirect. Writes confirm on the signed-in session
- * (sessionIdentity): the contract has no step-up, and the server checks operator access itself.
+ * ConsoleShell placed them; `/prs/inbox` is the shell's legacy redirect. The confirm-gated forge writes (comment,
+ * review, Assign) ask the carried identity seam for a step-up (`POST auth/step-up`), which neither the old server nor
+ * this one serves: they resolve "unavailable" and are refused, exactly as in the old app (lead decision, parity).
  */
 export function ReposSurface() {
   return (
     <ConsoleBase>
-      <ConsoleProvider identity={sessionIdentity}>
+      <ConsoleProvider>
         <ConsoleMessaging>
           <Routes>
             <Route path={PR_INBOX_PATH} element={<PendingPrInbox />} />
@@ -199,22 +199,4 @@ function ConsoleMessaging({ children }: { children: ReactNode }) {
       {children}
     </MessagingProvider>
   )
-}
-
-/**
- * Identity confirmation for console actions in the port: the old seam asked the server for a step-up token
- * (`POST auth/step-up`), which the contract removed. The signed-in session is the confirmation, so it grants without a
- * token, and the backend refuses a write the caller may not make (`operator_required`).
- */
-const sessionIdentity: IdentityConfirm = {
-  async confirm(req: ConfirmRequest): Promise<ConfirmResult> {
-    return {
-      outcome: "granted",
-      who: req.who ?? { id: "operator" },
-      what: req.what,
-      scope: req.scope,
-      issuedAt: Date.now(),
-      expiresAt: null,
-    }
-  },
 }

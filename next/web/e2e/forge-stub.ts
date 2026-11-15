@@ -5,7 +5,8 @@
  * backend is not built yet; its slice is written against this route list (next/web/CONVERSION_NOTES.md, "Repos").
  * Errors are flat `{code, message}`.
  *
- * `store.refuseComments` makes a new PR comment answer 409 `stale_head`, for the write error path.
+ * The confirm-gated writes (comment, review, Assign) never reach these routes in the port, as in the old app: the
+ * identity seam's step-up is not served, so they are refused first (see tests/repos.spec.ts).
  */
 import { readFileSync } from "node:fs"
 import type { Page, Route } from "@playwright/test"
@@ -18,7 +19,7 @@ export const CONSOLE = "/api/plugins/console/v1"
 export const FORGE = `${CONSOLE}/forge`
 
 export function forgeSeed() {
-  return { refuseComments: false, state: fixture("state") as Record<string, unknown>[] }
+  return { state: fixture("state") as Record<string, unknown>[] }
 }
 
 export async function forgeStub(page: Page) {
@@ -30,7 +31,7 @@ export async function forgeStub(page: Page) {
   const byPr = (name: string, key: string) => (fixture(name) as Record<string, unknown>)[key]
 
   await page.route(
-    /\/api\/plugins\/console\/v1\/(forge\/|console\/state|activity\/agents$|tether\/events$)/,
+    /\/api\/plugins\/console\/v1\/(forge\/|console\/state|activity\/agents$|tether\/events$|catalog\/agents$)/,
     async (route) => {
       const req = route.request()
       const url = new URL(req.url())
@@ -40,6 +41,18 @@ export async function forgeStub(page: Page) {
       // The ConsoleProvider's live sources: nothing new in the stub.
       if (path === "/activity/agents") return json(route, 200, { agents: [] })
       if (path === "/tether/events") return json(route, 200, { events: [], next_cursor: null })
+      // The Assign dialog's agents (the Tether catalog).
+      if (path === "/catalog/agents")
+        return json(route, 200, {
+          agents: [
+            {
+              id: "builder-reviewer",
+              name: "Builder Reviewer",
+              urn: "msg://agent/agent-mux/agt_e2e_reviewer",
+              enabled: true,
+            },
+          ],
+        })
 
       // The console state store (triage state of inbox items).
       if (path === "/console/state" && method === "GET") return json(route, 200, store.state)
@@ -80,16 +93,8 @@ export async function forgeStub(page: Page) {
           if (tail === "/review-draft")
             return json(route, 200, { ...fixture("review_draft"), pr_key: key })
         }
-        if (method === "POST" && tail === "/comments") {
-          if (store.refuseComments)
-            return fail(
-              route,
-              409,
-              "stale_head",
-              "The pull request moved on since you opened it. Refresh and comment again.",
-            )
+        if (method === "POST" && tail === "/comments")
           return json(route, 201, fixture("comment_created"))
-        }
         if (method === "POST" && tail === "/reviews/validate")
           return json(route, 200, fixture("review_validate"))
         if (method === "POST" && tail === "/reviews")
