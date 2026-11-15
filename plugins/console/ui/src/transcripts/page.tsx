@@ -331,9 +331,26 @@ export function TranscriptDashboard() {
           </p>
           <WindowPicker filter={filter} set={set} />
         </div>
-        <InsightPanel title="Session activity" meta={`Last ${chartDays} days · UTC · sessions started`}>
-          <div className="p-4">
+        <InsightPanel
+          title="Session activity"
+          meta={`Last ${chartDays} days · UTC · sessions started`}
+          right={
+            tools.length > 1 && (
+              <span className="flex items-center gap-3">
+                {tools.map((t, i) => (
+                  <span key={t.label} className="inline-flex items-center gap-1.5">
+                    <span aria-hidden className="size-2 rounded-sm" style={{ backgroundColor: colors[i % colors.length] }} />
+                    {t.label}
+                  </span>
+                ))}
+              </span>
+            )
+          }
+        >
+          {/* The golden's chart is bars only: the kit chart's title row, legend and axes are hidden (legend in the header). */}
+          <div className="p-4 [&>div>div:first-child]:hidden [&_.recharts-cartesian-axis]:hidden">
             <TimeSeriesChart
+              showLegend={false}
               items={rows}
               date={(s) => s.started_at}
               days={chartDays}
