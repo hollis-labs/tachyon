@@ -24,7 +24,7 @@ const runOf = (s: Summary | undefined): RunState => {
   if (s.load === 'error') return 'unknown'
   if (!s.latest) return 'idle'
   const st = s.roster?.runs[0]?.run.status
-  return st ? (st === 'active' || st === 'running' ? 'running' : 'idle') : 'unknown'
+  return st ? (st === 'active' || st === 'running' || st === 'working' ? 'running' : 'idle') : 'unknown'
 }
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString() : '')
 
