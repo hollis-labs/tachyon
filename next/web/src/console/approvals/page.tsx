@@ -1,6 +1,6 @@
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SearchInput } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
-import { PillTabs } from "../components/pill-tabs"
+import { DashboardViewTabs } from "@hollis-labs/kit-dashboard/layout"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
@@ -128,7 +128,8 @@ export function ApprovalsPage() {
         </Button>
       </PageHeader>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
-        <PillTabs
+        <DashboardViewTabs
+          variant="pills"
           label="Approvals view"
           value={view}
           onChange={(v) => setView(v as "pending" | "history")}
@@ -136,7 +137,6 @@ export function ApprovalsPage() {
             { value: "pending", label: "Pending", count: pendingCount },
             { value: "history", label: "History", ...(historyCount !== undefined ? { count: historyCount } : {}) },
           ]}
-          className="w-auto"
         />
         <div className="dash-search-adapter w-72 max-w-full">
           <SearchInput ariaLabel="Search approvals" value={search} onChange={setSearch} placeholder="Search requests or agents…" debounceMs={0} />
@@ -144,13 +144,12 @@ export function ApprovalsPage() {
       </div>
       {view === "history" && (
         <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
-          <PillTabs
-            size="sm"
+          <DashboardViewTabs
+            variant="pills"
             label="Filter by decision"
             value={status}
             onChange={setStatus}
             items={STATUSES.map(([v, l]) => ({ value: v, label: l, ...(facetCount(v) !== undefined ? { count: facetCount(v) } : {}) }))}
-            className="w-auto"
           />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Filter by requester" />}>

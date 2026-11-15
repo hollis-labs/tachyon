@@ -3,8 +3,9 @@ import type { Page, Route } from "@playwright/test"
 /**
  * A contract stub for the approvals routes the approvals surface uses (route list in next/web/CONVERSION_NOTES.md;
  * B7 serves them from the next/ binary). Identity, sessions and the shell stay real. Shapes follow the old backend
- * (internal/approvals, docs/approvals-contract.md): items carry `revision` and `presented_projection_revision`, a
- * decision sends both back, high-risk items carry `confirm.phrase` (422 `confirmation_required` when the typed
+ * (internal/approvals, checked by B7's builder on #750): items carry `revision` and `presented_projection_revision`;
+ * present and resolve check both (409 `stale_revision`, the hitl fields under `details`), batch reports a stale item
+ * per result, defer checks `expected_revision` only, present leaves the state as it was; a decision sends both back, high-risk items carry `confirm.phrase` (422 `confirmation_required` when the typed
  * phrase is wrong), and a stored secret answers a reference and a fingerprint, never the value. Errors are the flat
  * `{code, message, details?}` body; writes need X-Requested-With. Paths it does not serve answer 404 `not_found`.
  * `store.refuseOperator` makes every decision answer 403 `operator_required`, as for a person without the scope.
@@ -81,7 +82,15 @@ export async function approvalsStub(page: Page) {
     history: store.history,
     synced_at: AT,
     revision: "r1",
+    server_now_ms: Date.now(),
   })
+  const stale = (route: Route, it: Record<string, unknown>, expected: unknown) =>
+    fail(route, 409, "stale_revision", "This request changed. Refresh and review it again.", {
+      revision_kind: "item",
+      expected_revision: expected,
+      actual_revision: it.revision,
+      current_state: it.state,
+    })
 
   await page.route(`**${APPROVALS}/**`, async (route) => {
     const req = route.request()
@@ -95,7 +104,7 @@ export async function approvalsStub(page: Page) {
       return fail(route, 403, "csrf", "missing X-Requested-With")
 
     if (method === "GET" && path === "/inbox") return json(route, 200, inbox())
-    if (method === "GET" && path === "/history") return json(route, 200, { events: [] })
+    if (method === "GET" && path === "/history") return json(route, 200, { events: [], facets: {} })
     if (method === "POST" && path === "/secrets") {
       if (store.refuseOperator)
         return fail(route, 403, "operator_required", "Storing a secret needs operator access.")
@@ -105,41 +114,60 @@ export async function approvalsStub(page: Page) {
         field: body?.field ?? "form",
         length: data.length,
       })
-      return json(route, 200, {
+      // 201 with a reference and a fingerprint; never the value.
+      return json(route, 201, {
         secret_ref: "secret://e2e/1",
+        created_at: AT,
         expires_at: Date.now() + 600_000,
+        size: data.length,
         fingerprint: "sha256:9f2c41d0",
       })
     }
     if (method === "POST" && path === "/batch/resolve") {
       if (store.refuseOperator)
         return fail(route, 403, "operator_required", "Batch decisions need operator access.")
-      const items = (body?.items ?? []) as { item_id: string }[]
-      for (const { item_id } of items) {
-        const it = find(item_id)
-        if (it) {
-          store.pending.splice(store.pending.indexOf(it), 1)
-          store.history.unshift({ ...it, state: "resolved" })
-        }
-      }
-      return json(route, 200, {
-        batch_id: body?.batch_id,
-        results: items.map((i) => ({ item_id: i.item_id, status: "resolved" })),
-        counts: { resolved: items.length },
+      // Each item is checked on its own; a stale one is a result, not an HTTP error.
+      const items = (body?.items ?? []) as {
+        item_id: string
+        expected_revision: number
+        presented_projection_revision: number
+      }[]
+      const results = items.map((i) => {
+        const it = find(i.item_id)
+        if (
+          !it ||
+          i.expected_revision !== it.revision ||
+          i.presented_projection_revision !== it.presented_projection_revision
+        )
+          return {
+            item_id: i.item_id,
+            status: "stale",
+            error: { code: "stale_revision", message: "This request changed." },
+          }
+        store.pending.splice(store.pending.indexOf(it), 1)
+        store.history.unshift({ ...it, state: "resolved" })
+        return { item_id: i.item_id, status: "resolved" }
       })
+      const counts: Record<string, number> = {}
+      for (const r of results) counts[r.status] = (counts[r.status] ?? 0) + 1
+      return json(route, 200, { batch_id: body?.batch_id, results, counts })
     }
     if (parts[0] === "items" && parts[1]) {
       const it = find(parts[1])
       if (!it) return fail(route, 404, "not_found", "No such request.")
       const sub = parts.slice(2).join("/")
+      const revisionsMatch = () =>
+        body?.expected_revision === it.revision &&
+        body?.presented_projection_revision === it.presented_projection_revision
       if (sub === "" && method === "GET") return json(route, 200, it)
       if (sub === "audit" && method === "GET")
         return json(route, 200, { item_id: it.item_id, events: [] })
-      if (sub === "present" && method === "POST") {
-        Object.assign(it, { state: "presented" })
-        return json(route, 200, it)
-      }
+      // Present records an audit event and answers the item as it was read: the state does not change.
+      if (sub === "present" && method === "POST")
+        return revisionsMatch() ? json(route, 200, it) : stale(route, it, body?.expected_revision)
       if (sub === "defer" && method === "POST") {
+        if (body?.expected_revision !== it.revision)
+          return stale(route, it, body?.expected_revision)
         const until = new Date(Date.parse(AT) + (body?.duration_s ?? 3600) * 1000).toISOString()
         Object.assign(it, { deferred_until: until, revision: Number(it.revision) + 1 })
         return json(route, 200, {
@@ -157,6 +185,7 @@ export async function approvalsStub(page: Page) {
         })
       }
       if (sub === "resolve" && method === "POST") {
+        // The operator check comes before the phrase.
         if (store.refuseOperator)
           return fail(
             route,
@@ -164,18 +193,12 @@ export async function approvalsStub(page: Page) {
             "operator_required",
             "Deciding this request needs operator access.",
           )
-        if (body?.expected_revision !== it.revision)
-          return fail(
-            route,
-            409,
-            "conflict",
-            "This request changed. Refresh and review it again.",
-            { current: it },
-          )
+        if (!revisionsMatch()) return stale(route, it, body?.expected_revision)
         const phrase = (it.confirm as { phrase?: string } | undefined)?.phrase
         if (
           phrase &&
           body?.response?.decision === "approved" &&
+          !body?.response?.alternative_id &&
           body?.response?.confirmation !== phrase
         )
           return fail(route, 422, "confirmation_required", `Type ${phrase} to approve.`)

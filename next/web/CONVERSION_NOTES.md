@@ -241,6 +241,8 @@ the `ApprovalProvider` the old `ConsoleIntegration` placed above every console p
     not `GET /access` (elevation state). Refusals accept `operator_required`, `scope_required` and the old
     `operator_access_required` / `assurance_insufficient`; copy says "operator access", not "elevated".
   - `secret-dialog.tsx`, `batch-panel.tsx`: the same codes and copy.
+  - **Kit wins:** `PillTabs` is kit-dashboard `DashboardViewTabs variant="pills"`; `components/pill-tabs.tsx` is
+    removed (the smaller filter-row size is the kit's gap, CW-20261115-0033).
   - `context.tsx`: **a held decision the server refuses is a toast.** The old code set the queue error, then
     refreshed, and the refresh cleared it at once: an operator refusal of a held (low/medium) approval flashed and
     vanished, worded "Approval queue unavailable". Same code in the old build; the e2e covers it.
@@ -252,26 +254,30 @@ the `ApprovalProvider` the old `ConsoleIntegration` placed above every console p
 
 ### Approvals routes the surface calls (for B7)
 
-All under `/api/plugins/console/v1/approval-inbox`. Errors are the contract's flat body; writes carry
-`X-Requested-With`; every decision is checked against `expected_revision` and `presented_projection_revision`.
+All under `/api/plugins/console/v1/approval-inbox`. Errors are the contract's flat body (the hitl fields
+`revision_kind`, `expected_revision`, `actual_revision`, `current_state`, `terminal_outcome` under `details`); writes
+carry `X-Requested-With` and a same-origin `Origin`. Checked against the old handlers by B7's builder (#750 review);
+the corrections from that check are in. Refusals come from the route guard: 401, then 403 `scope_required`
+(`tachyon.approvals.read` / `.resolve`), then 403 `operator_required` where elevation was needed (medium, high,
+destructive and cerberus resolves, batches, secrets, the `action_run` view); `unsupported_class` (403) stays.
 
 | Method | Path | Request | Response the UI reads |
 |---|---|---|---|
-| `GET` | `/inbox[?pending_before&history_before]` | — | `{pending:[Item], history:[Item], next_pending?, next_history?, synced_at, revision}`. Item: `{item_id, state (submitted\|validated\|staged\|presented\|in_progress\|resolved…), revision, presented_projection_revision, enqueued_at, updated_at, batchable?, batch_blockers?, confirm?:{phrase}, affected_items?, reason_required?, deferred_until?, server_now_ms?, terminal_outcome?, action_run?, request_snapshot:{kind (approval\|attention\|card.*), title, summary, request, class (low\|medium\|high), source:{agent_id, application_id}, impact:{approve, deny}, data?, expires_at?, handoff_url?, approvable?}}` |
+| `GET` | `/inbox[?pending_before&history_before]` | — | `{pending:[Item], history:[Item], next_pending?, next_history?, synced_at, revision, server_now_ms}`. Item: `{item_id, state, revision, presented_projection_revision, enqueued_at, updated_at, approvable, expires_at, batchable?, batch_blockers?, confirm?:{phrase}, affected_*?, alternatives?, run_state?, reason_required?, deferred_until?, terminal_outcome?, action_run?, evidence?, request_snapshot:{kind, title, summary, request, class, source:{agent_id, application_id}, impact:{approve, deny}, data?, expires_at?, handoff_url?}}` |
 | `GET` | `/items/:id` | — | Item (a no-cache read before deciding; `X-Tachyon-Cache` `stale`/`error` is refused) |
-| `POST` | `/items/:id/present` | `{expected_revision, presented_projection_revision, connection_id}` | Item (`state: presented`) |
-| `POST` | `/items/:id/resolve` | `{expected_revision, presented_projection_revision, response:{kind, decision (approved\|denied), note?, confirmation?, alternative_id?, answers?}}` | `{item_id, state, reason?, message?, resolution?:{response, resolved_at, participant}}`; 422 `confirmation_required`; 409 on a stale revision; 403 `operator_required` / `scope_required`; `provider_handoff_required` |
-| `POST` | `/batch/resolve` | `{batch_id, decision, items:[{item_id, expected_revision, presented_projection_revision}]}` | `{batch_id, results:[{item_id, status, error?}], counts}` (status `resolved\|stale\|ineligible\|expired\|conflict\|error`) |
-| `POST` | `/items/:id/defer` | `{duration_s, reason?, expected_revision}` | `{item_id, deferred_until, expires_before_snooze_ends?, revision}` |
-| `DELETE` | `/items/:id/defer` | — | the same |
+| `POST` | `/items/:id/present` | `{expected_revision, presented_projection_revision, connection_id}` | the Item as read, **state unchanged** (records a `presented` audit event once per session and item); 409 `stale_revision` |
+| `POST` | `/items/:id/resolve` | `{expected_revision, presented_projection_revision, response:{kind, decision, note?, confirmation?, alternative_id?, answers?}}` | `{item_id, state, reason?, message?, resolution?}`; 409 `stale_revision`; 403 `operator_required` / `scope_required` (checked before the phrase); 422 `confirmation_required` (only with `confirm.phrase`, an approval, and no `alternative_id`); `provider_handoff_required` |
+| `POST` | `/batch/resolve` | `{batch_id, decision, items:[{item_id, expected_revision, presented_projection_revision}]}` | `{batch_id, results:[{item_id, status, error?}], counts}`; a stale item is `status: "stale"` (`error.code stale_revision`), not an HTTP 409 |
+| `POST` | `/items/:id/defer` | `{duration_s, reason?, expected_revision}` | `{item_id, deferred_until, expires_before_snooze_ends?, revision}`; checks `expected_revision` only |
+| `DELETE` | `/items/:id/defer` | — | `{item_id, deferred_until, revision}` (no revision check; no `expires_before_snooze_ends`) |
 | `GET` | `/items/:id/audit` | — | `{item_id, events:[AuditEvent]}` |
-| `GET` | `/history[?q&status&requester&cursor&limit]` | — | `{events:[HistoryEvent], next_cursor?, facets?}` |
-| `POST` | `/secrets` | JSON `{item_id, field, value}` or multipart with `file` | `{secret_ref, expires_at, fingerprint}`; the value is never echoed; `secrets_unavailable`, `item_not_pending` |
-| `GET` | `/items/:id/evidence/:index/(preview\|reference)` | — | evidence preview (opened from the detail) |
-| `GET` | `/events` | SSE | any frame means the queue changed (the provider refetches) |
+| `GET` | `/history[?q&status&requester&cursor&limit]` | — | `{events:[HistoryEvent], next_cursor?, facets}` (`facets` always present) |
+| `POST` | `/secrets` | JSON `{item_id, field, value}` (≤16 KiB) or multipart `file` (≤64 KiB); optional `Idempotency-Key` | **201** `{secret_ref, created_at, expires_at, size, fingerprint}`, never the value; 409 `item_not_pending` / `secret_field_unknown` / `secret_limit` / `idempotency_key_reuse`; 413 `too_large`; 429 `rate_limited` |
+| `GET` | `/events` | SSE: `id: <n>` + `data:` (no `event:` line), ids and states only | any frame means refetch; resume with `Last-Event-ID` or `?after=`; a `resync {reason:"gap"}` frame means refetch everything |
 
-Not called by the port's SPA: `/session`, `/status`, `/elevate`, `/de-elevate` (removed with elevation), `/access`
-(operator access is the profile scope; B7 may drop it).
+Not called by the port's SPA: `/session`, `/status`, `/elevate`, `/de-elevate`, `/access` (gone with the Tangent
+cookie; operator is the profile scope), and `/items/:id/evidence/...` (does not exist; evidence is the item's
+`evidence` array; the client's unused `evidence()` call is never made).
 
 ## Gaps
 
