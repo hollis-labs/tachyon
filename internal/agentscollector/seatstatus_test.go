@@ -187,3 +187,21 @@ func TestCollectorBackfillsSeatStatusesFromCardsOnStart(t *testing.T) {
 		t.Fatalf("each valid catalog handle is read once, in order: %v", src.asked)
 	}
 }
+
+// The collector keeps Torque checkpoint transitions from its live stream (checkpoint id = correlation_id), so the
+// ceremony meter never queries Tether's event history for them.
+func TestCollectorRecordsCheckpointTransitions(t *testing.T) {
+	c := newCollector(t, &fakeSource{})
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	applyRaw(t, c,
+		`{"id":"e:70","kind":"checkpoint.state_changed","time":"`+now+`","payload":{"entity":{"type":"checkpoint","id":"01M2GKEHVBKP3GEXC1N4B5G7BD"},"to":"responded","trigger":"x"}}`,
+		`{"id":"e:70","kind":"checkpoint.state_changed","time":"`+now+`","payload":{"entity":{"type":"checkpoint","id":"01M2GKEHVBKP3GEXC1N4B5G7BD"},"to":"responded"}}`, // replay
+		`{"id":"e:71","kind":"task.state_changed","time":"`+now+`","payload":{"entity":{"type":"task","id":"CW-1"},"to":"doing"}}`,
+	)
+	if n := count(t, c, `SELECT COUNT(*) FROM checkpoint_events WHERE correlation_id='01M2GKEHVBKP3GEXC1N4B5G7BD' AND state='responded' AND tether_seq=70`); n != 1 {
+		t.Fatalf("checkpoint transitions: %d", n)
+	}
+	if n := count(t, c, `SELECT COUNT(*) FROM checkpoint_events`); n != 1 {
+		t.Fatalf("only checkpoint events are kept: %d", n)
+	}
+}

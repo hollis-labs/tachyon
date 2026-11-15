@@ -7,7 +7,7 @@ import type { SessionState } from './types'
 export const AGENTS = {
   inferred: 'inferred',
   title: 'Agents',
-  tabs: { sessions: 'Sessions', activity: 'Activity', seats: 'Seats', teams: 'Teams' },
+  tabs: { sessions: 'Sessions', activity: 'Activity', seats: 'Seats', ceremony: 'Ceremony', teams: 'Teams' },
   tabsLabel: 'Agent views',
   launch: 'Launch',
   collecting: (n: number, last: string) => `collecting · ${n} sessions · last event ${last}`,
@@ -219,6 +219,30 @@ export const SEATS = {
   declaredAgo: (age: string) => `declared ${age}`,
   stale: 'stale',
   setByOther: (by: string) => `Set by ${by}, not by this seat`,
+} as const
+
+/** Ceremony tab (CW-20261114-0023f): gates, waits, stalls and activity against progress, over the last 7 days. */
+export const CEREMONY = {
+  intro: 'The last 7 days: gates raised (reviews, approvals, checkpoints, asks to you), how long they waited, what stalled, and whether activity turned into closed work.',
+  loadFailed: 'Could not load the ceremony meter',
+  gates: 'Gates this week',
+  gatesDetail: (g: { reviews: number; approvals: number; checkpoints: number; asks: number }) => `${g.reviews} reviews · ${g.approvals} approvals · ${g.checkpoints} checkpoints · ${g.asks} asks`,
+  medianWait: 'Median wait',
+  samples: (n: number) => (n === 0 ? 'no gate closed this week' : `over ${n} closed gates`),
+  stalled: 'Stalled tasks',
+  stalledDetail: 'doing, review or blocked, no update for 24h',
+  activityVsDone: 'Activity / done',
+  versus: (a: number, d: number) => `a week ago: ${a.toLocaleString()} / ${d}`,
+  comparisonPending: 'week-over-week starts after 7 days of snapshots',
+  regression: 'Activity rose 25% or more while closed work did not.',
+  pendingTitle: 'Oldest pending checkpoints',
+  nonePending: 'No checkpoint is pending.',
+  stalledTitle: 'Oldest stalled tasks',
+  noneStalled: 'No task has stalled.',
+  idle: (age: string) => `no update for ${age}`,
+  cpType: (t: string) => t.replace(/_/g, ' '),
+  source: { reviews: 'task reviews', approvals: 'approvals', checkpoints: 'checkpoints', asks: 'asks', stalled: 'stalled tasks', pending_checkpoints: 'pending checkpoints', done: 'closed tasks', activity: 'activity' } as Record<string, string>,
+  incomplete: (names: string[]) => `Some figures are missing: could not read ${names.join(', ')}.`,
 } as const
 
 export type FilterId = keyof typeof AGENTS.filters

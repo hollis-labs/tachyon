@@ -342,3 +342,32 @@ func firstOf(a, b string) string {
 	}
 	return b
 }
+
+// AsksSince counts asks to the operator created since (typed questions, decisions and approval requests, and the
+// ask skill's interim requests), from the newest mailbox window. The ceremony meter counts them as gates.
+func (a *Aggregator) AsksSince(ctx context.Context, since time.Time) (int, error) {
+	if a.Tether == nil {
+		return 0, errNoTether
+	}
+	box, _, err := a.Tether.Mailbox(ctx, Operator, mailWindow)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, m := range box {
+		if m.CreatedAt.Before(since) || fromOperator(m) {
+			continue
+		}
+		f := payloadOf(m)
+		if askKinds[f.Kind] || (!strings.HasPrefix(m.ContentType, envelopeType) && (m.Kind == "request" || f.Awaiting == OperatorHandle)) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+type nsError string
+
+func (e nsError) Error() string { return string(e) }
+
+const errNoTether = nsError("Tether is not configured")
