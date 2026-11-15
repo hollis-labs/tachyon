@@ -361,3 +361,57 @@ func TestChatVerbsServed(t *testing.T) {
 		t.Errorf("%d connections to the upstream", n)
 	}
 }
+
+// Sending to an agent in the served binary (slice B6c). With chat_sync off a send is refused and
+// nothing dials Tether; with it on the owner's send reaches Tether's send endpoint once and the outbox
+// lists it sent; a key, even with the chat write scope, is refused by the operator check.
+func TestChatSendServed(t *testing.T) {
+	sendPath := chatapi.Prefix + "/agents/pm/send"
+	msg := map[string]string{"text": "hello", "idempotency_key": "k1"}
+	t.Run("off", func(t *testing.T) {
+		up := countingListener(t)
+		base, _ := started(t, chatOverride(up.addr, false))
+		owner := newClient(t, base)
+		owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+		if code := flatCode(t, owner.want(503, "POST", sendPath, msg, xrw)); code != "disabled" {
+			t.Errorf("send with chat_sync off: %s", code)
+		}
+		if n := up.conns.Load(); n != 0 {
+			t.Errorf("%d connections to Tether with chat_sync off", n)
+		}
+	})
+	t.Run("on", func(t *testing.T) {
+		var sends atomic.Int64
+		fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/chat/agents/pm/send" {
+				sends.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"session_id":"s9"}`))
+				return
+			}
+			http.NotFound(w, r)
+		}))
+		t.Cleanup(fake.Close)
+		base, app := started(t, chatOverride(fake.URL, true))
+		owner := newClient(t, base)
+		owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+		owner.want(200, "POST", sendPath, msg, xrw)
+		if body := owner.want(200, "POST", sendPath, msg, xrw); !bytes.Contains(body, []byte(`"replayed":true`)) {
+			t.Errorf("repeat: %s", body)
+		}
+		if body := owner.want(200, "GET", chatapi.Prefix+"/outbox?launch_id=pm", nil, xrw); !bytes.Contains(body, []byte(`"status":"sent"`)) {
+			t.Errorf("outbox: %s", body)
+		}
+		if n := sends.Load(); n != 1 {
+			t.Errorf("%d sends reached Tether, want 1", n)
+		}
+		k, _, err := identity.From(app).CreateKey(context.Background(), identity.KeyInput{Name: "send-test", Scopes: []string{"tachyon.chat.read", "tachyon.chat.write"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys := newClient(t, base)
+		if code := flatCode(t, keys.want(403, "POST", sendPath, map[string]string{"text": "x", "idempotency_key": "k2"}, map[string]string{"Authorization": "Bearer " + k})); code != "operator_required" {
+			t.Errorf("key send: %s", code)
+		}
+	})
+}
