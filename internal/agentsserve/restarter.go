@@ -19,8 +19,8 @@ var ErrResumeRefused = errors.New("tether refused the resume")
 
 // TetherRestarter restarts a session with Tether's control routes: GET /sessions/{id} (its launch and placement,
 // read before anything stops), POST /sessions/{id}/stop, then POST /sessions {launch, continuity: relaunch} and
-// POST /sessions/{id}/launch. Only a hub-placed session is resumed instead (POST /logical-agents/{id}/resume),
-// and relaunched if Tether refuses. Client carries the control token (builderchange.NewControlClient).
+// POST /sessions/{id}/launch. Every session is resumed first (POST /logical-agents/{id}/resume; Tether refuses a worker seat while worker resume is off),
+// and relaunched as a continuation if Tether refuses. Client carries the control token (builderchange.NewControlClient).
 type TetherRestarter struct {
 	Base   string
 	Client *http.Client

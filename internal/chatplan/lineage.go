@@ -238,3 +238,35 @@ func (s *Store) SetContinue(ctx context.Context, session string, on bool) error 
 		return err
 	})
 }
+
+// Ancestors returns the sessions whose conversation the session continues, oldest first. It walks
+// the same chain Carry does and stops where Carry would: at a cleared session (the operator's "new
+// conversation"), at a session with Continue off, at an unrecorded or agent-less hop, or at a hop
+// of another logical agent. A cleared or unrecorded session itself has none.
+func (s *Store) Ancestors(ctx context.Context, session string) []string {
+	var agent string
+	var cont sql.NullString
+	var cleared int
+	if err := s.DB.Reader.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared FROM chat_session_lineage WHERE session_id=?`, session).Scan(&agent, &cont, &cleared); err != nil || agent == "" || cleared != 0 {
+		return nil
+	}
+	var chain []string
+	cur := cont.String
+	for hop := 0; hop < MaxLineageHops && cur != "" && cur != session; hop++ {
+		var rowAgent string
+		var next sql.NullString
+		var rowCleared, rowOn int
+		if err := s.DB.Reader.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared,continue_on FROM chat_session_lineage WHERE session_id=?`, cur).Scan(&rowAgent, &next, &rowCleared, &rowOn); err != nil || rowAgent != agent || rowOn == 0 {
+			break
+		}
+		chain = append(chain, cur)
+		if rowCleared != 0 || !next.Valid {
+			break
+		}
+		cur = next.String
+	}
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+	return chain
+}

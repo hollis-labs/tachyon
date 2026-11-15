@@ -461,6 +461,7 @@ func (s *Server) Start(ctx context.Context) error {
 		pr := p.Progress()
 		rec.Quiet(ctx, to, "plan.carried", "tachyon", "tachyon", nil, chatactivity.Card(title+": carried over from "+from, fmt.Sprintf("%d of %d steps done", pr.Done, pr.Total), nil))
 	}
+	s.chatThreads.Ancestors = s.chatPlan.Store.Ancestors
 	s.chatThreads.Agg.Sessions = func(ctx context.Context) []chatthreads.SessionStub {
 		var out []chatthreads.SessionStub
 		for _, st := range s.chatPlan.Store.Sessions(ctx) {
