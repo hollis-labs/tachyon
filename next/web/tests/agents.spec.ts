@@ -1,18 +1,18 @@
 import type { Page } from "@playwright/test"
 import { AGENTS } from "../e2e/agents-stub"
-import { expect, test } from "./fixtures"
+import { agentsBackend, expect, test } from "./fixtures"
 import { owner, shot } from "./helpers"
 
 // Agent Ops and Needs you behind the real next/ binary's identity and shell, against the Agent Ops contract stub
-// (e2e/agents-stub.ts, the old build's fixtures). The agents backend is not built yet; TACHYON_E2E_AGENTS=backend
-// turns the stub off once it is.
+// (e2e/agents-stub.ts, the old build's fixtures), or with TACHYON_E2E_AGENTS=backend against the binary's own agents
+// reads (B8a), seeded by e2e/agents-seed.sql with the same names. Counts and clock times differ between the two.
 test.use({ storageState: owner })
 
 const session = (page: Page) => page.getByRole("dialog", { name: "Chat Backend Builder" })
 
 test("the agents list shows the live sessions, grouped by workspace", async ({ page }) => {
   await page.goto("/agents")
-  await expect(page.getByRole("tab", { name: /^Sessions 10/ })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: /^Sessions \d+/ })).toHaveAttribute(
     "aria-selected",
     "true",
   )
@@ -21,7 +21,11 @@ test("the agents list shows the live sessions, grouped by workspace", async ({ p
     tachyon.getByRole("listitem", { name: "Chat Backend Builder, Working" }),
   ).toBeVisible()
   await expect(tachyon.getByRole("listitem", { name: "Reviewer, Needs approval" })).toBeVisible()
-  await expect(page.getByRole("progressbar", { name: /2 working, 2 waiting/ })).toBeVisible()
+  await expect(
+    page.getByRole("progressbar", {
+      name: agentsBackend ? /1 working, 1 waiting/ : /2 working, 2 waiting/,
+    }),
+  ).toBeVisible()
   await shot(page, "agents-list")
 })
 
@@ -36,7 +40,7 @@ test("a session opens by deep link, and its timeline shows the events by day", a
   ).toBeVisible()
   await expect(
     session(page)
-      .getByText(/Tachyon was offline 00:30–00:35/)
+      .getByText(/Tachyon was offline \d\d:\d\d–\d\d:\d\d/)
       .first(),
   ).toBeVisible()
   await shot(page, "agents-timeline")
@@ -48,14 +52,14 @@ test("seats: each seat's declared status beside its live session", async ({ page
   await page.goto("/agents")
   await page.getByRole("tab", { name: "Seats" }).click()
   const seats = page.getByRole("list", { name: "Seats" })
-  const builder = seats.getByRole("listitem").filter({ hasText: "Builder One" })
+  const builder = seats.getByRole("listitem").filter({ hasText: "@builder-1" })
   await expect(builder).toContainText("needs the deploy token")
-  await expect(builder).toContainText("waiting on @operator")
-  await expect(builder.getByRole("link", { name: "session waiting" })).toHaveAttribute(
+  await expect(builder).toContainText("waiting on @chrispian")
+  await expect(builder.getByRole("link", { name: /^session (working|waiting)$/ })).toHaveAttribute(
     "href",
     "/agents/sess_work",
   )
-  await expect(seats.getByRole("listitem").filter({ hasText: "Reviewer" })).toContainText(
+  await expect(seats.getByRole("listitem").filter({ hasText: "@reviewer" })).toContainText(
     "no live session",
   )
   await shot(page, "agents-seats")
@@ -91,6 +95,8 @@ test("a refused nudge shows the backend's message in the panel, and the text sta
 })
 
 test("ceremony: the week's gates, waits and stalls", async ({ page }) => {
+  // The meter reads Torque, which the backend run does not configure (its source reports not configured).
+  test.skip(agentsBackend, "needs a configured Torque")
   await page.goto("/agents")
   await page.getByRole("tab", { name: "Ceremony" }).click()
   await expect(page.getByText("Port the seats view")).toBeVisible()
@@ -109,10 +115,12 @@ test("needs you: what waits on the operator, each with where to act", async ({ p
   await expect(
     list.getByRole("listitem").filter({ hasText: "needs the deploy token" }),
   ).toContainText("Blocked on you")
-  await expect(list.getByRole("link", { name: "Approvals waiting" })).toHaveAttribute(
-    "href",
-    "/approvals",
-  )
+  // The stub also lists the approvals queue; the backend run seeds no approvals.
+  if (!agentsBackend)
+    await expect(list.getByRole("link", { name: "Approvals waiting" })).toHaveAttribute(
+      "href",
+      "/approvals",
+    )
   await shot(page, "needs-you")
 })
 

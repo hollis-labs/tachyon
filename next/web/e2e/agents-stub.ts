@@ -42,7 +42,7 @@ export function agentsSeed() {
           state: "blocked",
           reason: "needs the deploy token",
           ref: "task:CW-E2E-0001",
-          owner: "@operator",
+          owner: "@chrispian",
           expires_at: null,
           set_by: "msg://agent/agent-mux/agt_e2e_builder",
           at: AT,

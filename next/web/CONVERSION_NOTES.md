@@ -315,7 +315,10 @@ The rest of their import graph was already carried in G3a.
 - **Controls** show a refusal inline (`role="alert"` in the panel), not as a toast. Carried as is.
 - **e2e:** `e2e/agents-stub.ts`, the contract stub. It serves the old contract stub's fixtures
   (`internal/agentsapi/fixtures` at 99c7b88, in `e2e/agents-fixtures`, with two host strings made placeholders).
-  `TACHYON_E2E_AGENTS=backend` turns it off.
+  `TACHYON_E2E_AGENTS=backend` turns it off and runs against the binary's agents reads (B8a). The collector
+  is not started there, so `e2e/serve.sh` applies `e2e/agents-seed.sql` before serving. It holds synthetic sessions,
+  events, a gap and seat statuses, with the stub's names and times relative to the run. In that mode, nudge waits
+  for B8b's controls and ceremony needs a configured Torque, so both are skipped.
 
 **Main moved under the shared layer since 4a76422** (for the pre-P1 sync):
 - `chat/MessageBody.tsx` (+6)

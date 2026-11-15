@@ -4,8 +4,8 @@
 #   E2E_BIN   the binary;  E2E_DIR  a directory to create inside the marked run directory;
 #   E2E_ADDR  host:port to listen on;  E2E_OWNER  "1" to create the owner offline first;
 #   E2E_TETHER  optional URL of the suite's local Tether fake (e2e/tether-fake.ts), with chat sync on;
-#   E2E_APPROVALS_SEED  optional test-only SQL (synthetic approval rows), applied with sqlite3 to this run's
-#     database once the owner setup has created the schema, before serving.
+#   E2E_APPROVALS_SEED, E2E_AGENTS_SEED  optional test-only SQL (synthetic rows), applied with sqlite3 to this
+#     run's database once the owner setup has created the schema, before serving.
 # It only ever creates E2E_DIR (which must not exist yet) and deletes nothing.
 set -eu
 : "${E2E_BIN:?}" "${E2E_DIR:?}" "${E2E_ADDR:?}"
@@ -56,7 +56,7 @@ if [ "${E2E_OWNER:-}" = "1" ]; then
   chmod 600 "$E2E_DIR/owner-password"
   "$E2E_BIN" identity setup --username owner --display-name "E2E Owner" < "$E2E_DIR/owner-password"
 fi
-if [ -n "${E2E_APPROVALS_SEED:-}" ]; then
-  sqlite3 "$E2E_DIR/data/tachyon.db" < "$E2E_APPROVALS_SEED"
-fi
+for seed in "${E2E_APPROVALS_SEED:-}" "${E2E_AGENTS_SEED:-}"; do
+  if [ -n "$seed" ]; then sqlite3 "$E2E_DIR/data/tachyon.db" < "$seed"; fi
+done
 exec "$E2E_BIN" serve
