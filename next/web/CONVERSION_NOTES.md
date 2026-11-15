@@ -138,6 +138,10 @@ aliased), so a diff against the old tree shows only the port's edits.
   - `chat/workbench/Header.tsx`: the title is `h2` (the view test reads level 2).
   - `chat/roster.ts` `chatJSON`: a 204 (plan delete) succeeds. The old build threw "invalid response", so every
     successful plan delete showed an error; same code there. Unit-tested (fails without the fix).
+- **Kit wins (G3 review):** `messaging/QuickActions.tsx` renders through design-components `Popover` and `Dialog`
+  instead of its hand-rolled overlays (focus trap and return, portal, layered Escape). The other overlaps stay app
+  UI until their kit gaps land (CW-20261115-0031 kit-cards, -0032 kit-chat, -0033 design-components); the carried
+  directories and the review are listed in `next/docs/conversion-notes.md`.
 - **Errors:** chat reports failures inline (`role="alert"` by the composer, the plan, the message), as in the old
   build; it raises no toasts. The e2e asserts the backend's own message is shown and the draft kept.
 - **Lint:** Biome skips `src/console` and `src/packages`, as in the old tree; the design lint covers

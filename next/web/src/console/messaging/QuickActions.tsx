@@ -1,64 +1,45 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import {
+  Dialog as KitDialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+  Popover as KitPopover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@hollis-labs/design-components'
 import { MessageComposer, type MessageComposerProps } from './MessageComposer'
 import type { MessageIntent, Recipient } from './types'
 
 const LABEL: Record<MessageIntent, string> = { message: 'Message', nudge: 'Nudge', update_request: 'Request update' }
 const trigger = 'border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-fg-secondary transition-colors hover:border-border hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warning disabled:cursor-not-allowed disabled:opacity-40'
 
-function useDismiss(open: boolean, close: () => void, ref: React.RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    if (!open) return
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && close()
-    const down = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && close()
-    document.addEventListener('keydown', key)
-    document.addEventListener('mousedown', down)
-    return () => {
-      document.removeEventListener('keydown', key)
-      document.removeEventListener('mousedown', down)
-    }
-  }, [open, close, ref])
-}
-
-/** Popover anchored under its trigger. */
+/** Popover anchored under its trigger (the kit's: focus moves in and returns, Escape and outside clicks close). */
 function Popover({ label, disabled, title, children }: { label: string; disabled?: boolean; title?: string; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
   const close = () => setOpen(false)
-  useDismiss(open, close, ref)
   return (
-    <span ref={ref} className="relative inline-block">
-      <button type="button" disabled={disabled} title={title} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={trigger}>{label}</button>
-      {open && (
-        <div role="dialog" aria-label={label} className="absolute left-0 top-full z-40 mt-1 w-[22rem] max-w-[90vw] border border-border bg-bg p-3 shadow-xl">
-          {children(close)}
-        </div>
-      )}
-    </span>
+    <KitPopover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger disabled={disabled} title={title} className={trigger}>{label}</PopoverTrigger>
+      <PopoverContent aria-label={label} align="start" className="w-[22rem] max-w-[90vw] p-3">
+        {children(close)}
+      </PopoverContent>
+    </KitPopover>
   )
 }
 
-/** Centered dialog for the full composer. */
+/** Centered dialog for the full composer (the kit's: focus trap, focus return, layered Escape). */
 function Dialog({ label, disabled, title, children }: { label: string; disabled?: boolean; title?: string; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
   const close = () => setOpen(false)
-  useEffect(() => {
-    if (!open) return
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && close()
-    document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
-  }, [open])
   return (
-    <>
-      <button type="button" disabled={disabled} title={title} aria-haspopup="dialog" onClick={() => setOpen(true)} className={trigger}>{label}</button>
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-bg/60 p-4 pt-[10vh]" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-          <div ref={ref} role="dialog" aria-modal="true" aria-label={label} className="max-h-[80vh] w-full max-w-lg overflow-y-auto border border-border bg-bg p-4 shadow-xl">
-            {children(close)}
-          </div>
-        </div>
-      )}
-    </>
+    <KitDialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger disabled={disabled} title={title} className={trigger}>{label}</DialogTrigger>
+      <DialogContent aria-label={label}>
+        <DialogTitle className="sr-only">{label}</DialogTitle>
+        {children(close)}
+      </DialogContent>
+    </KitDialog>
   )
 }
 
