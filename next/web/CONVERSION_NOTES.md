@@ -346,7 +346,7 @@ same-origin `Origin`. Shapes: the old written contract, `internal/agentsapi/open
 | `GET` | `agents/controls/{request_id}` | — | ControlRequest (polled) | `agentsserve` `s.getControl` |
 | `POST` | `agents/controls/{request_id}/skip` | — | ControlRequest | `agentsserve` `s.skipControl` |
 | `GET` | `ceremony` | — | CeremonyMeter `{checked_at, window_days, gates, median_wait_seconds, stalled, pending_checkpoints, activity, done, previous, comparison, sources}` | `internal/server/register_ceremony.go` |
-| `GET` | `needs-you` | — | `{items:[{id, source, kind, why, title, from, ref?, since, critical, message_id?, detail?, link?}], sources, checked_at}` | `internal/server/register_needsyou.go` (`internal/needsyou`), operator on reads |
+| `GET` | `needs-you` | — | `{items:[{id, source, kind, why, title, from, ref?, since, critical, message_id?, detail?, link?}], sources, checked_at}` | `internal/server/register_needsyou.go` (`internal/needsyou`); its `RequireOperator` passes GETs through, so no operator check on reads |
 | `GET` | `catalog/launches` | — | `{launches:[LaunchProfile]}` (Launch dialog) | `plugins/console/catalog.go`, Tether `/catalog` proxy |
 | `GET` | `tether/workers` | — | `{workers}` | `plugins/console/objects.go`, Tether proxy (operator) |
 | `POST` | `tether/sessions` | `{launch, worker?, prompt_append?, idempotency_key}` | `{id}` | same |
@@ -354,8 +354,8 @@ same-origin `Origin`. Shapes: the old written contract, `internal/agentsapi/open
 | `POST` | `tether/sessions/{id}/launch` | `{}` | (ignored) | same |
 
 The `agents/*` scopes are in the contract (`tachyon.agents.read`, `tachyon.agents.control` with the operator
-check on control). **Not in the contract yet:** `ceremony` and `needs-you`. The old build guarded `needs-you` with
-the operator check on reads. Accepted (B8, CW-20261115-0062): `tachyon.agents.read`, with the old operator check kept on `needs-you` reads. Not called by this SPA: `agents/collector` (the old stub's only).
+check on control). `ceremony` and `needs-you` (B8a, CW-20261115-0062): `tachyon.agents.read`. For parity, there is no operator check on
+`needs-you` reads: the old build mounted it behind `RequireOperator`, which passes GETs through. Not called by this SPA: `agents/collector` (the old stub's only).
 
 ## Gaps
 
