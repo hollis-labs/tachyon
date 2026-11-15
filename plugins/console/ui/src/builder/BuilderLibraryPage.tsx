@@ -277,7 +277,7 @@ function Detail({ kind, id, onListChanged }: { kind: LibraryKind; id: string; on
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-subtle px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-col">
-          <h2 className="truncate font-mono text-base font-semibold normal-case tracking-normal text-fg">{it.name}</h2>
+          <h2 className="truncate font-mono text-control font-semibold normal-case tracking-normal text-fg">{it.name}</h2>
           <span className="text-label text-fg-muted">
             Library · {LIBRARY_KINDS.find((k) => k.id === kind)?.label}
             {archived ? ' · archived' : ''}
