@@ -114,7 +114,7 @@ func (s *Store) List(ctx context.Context, thread string) ([]Item, Limits, error)
 	if err != nil {
 		return nil, Limits{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Item{}
 	lim := Limits{MaxFileBytes: MaxFileBytes, MaxItems: MaxItems, MaxTotalBytes: MaxTotalBytes}
 	for rows.Next() {

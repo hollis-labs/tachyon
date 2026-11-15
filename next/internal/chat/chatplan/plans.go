@@ -25,16 +25,16 @@ func (s *Store) plansOf(ctx context.Context, q querier, thread string) ([]Plan, 
 	for rows.Next() {
 		p, err := scanPlan(rows)
 		if err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return nil, err
 	}
-	rows.Close() // before loadSteps: one connection may not serve two open cursors
+	_ = rows.Close() // before loadSteps: one connection may not serve two open cursors
 	for i := range out {
 		if err := loadSteps(ctx, q, &out[i]); err != nil {
 			return nil, err
@@ -165,13 +165,13 @@ func (s *Store) MoveStep(ctx context.Context, thread, fromID, toID, stepID strin
 	}
 	now := s.now()
 	err = s.DB.Writer.Submit(ctx, "chat_plan_move_step", func(ctx context.Context, tx store.Tx) error {
-		src, err := s.getArgs(ctx, tx, "id=? AND scope='thread' AND thread_ref=?", fromID, thread)
-		if err != nil {
-			return err
+		src, ierr := s.getArgs(ctx, tx, "id=? AND scope='thread' AND thread_ref=?", fromID, thread)
+		if ierr != nil {
+			return ierr
 		}
-		dst, err := s.getArgs(ctx, tx, "id=? AND scope='thread' AND thread_ref=?", toID, thread)
-		if err != nil {
-			return err
+		dst, ierr := s.getArgs(ctx, tx, "id=? AND scope='thread' AND thread_ref=?", toID, thread)
+		if ierr != nil {
+			return ierr
 		}
 		if src.Revision != expFrom || dst.Revision != expTo {
 			return ErrConflict
@@ -199,8 +199,8 @@ func (s *Store) MoveStep(ctx context.Context, thread, fromID, toID, stepID strin
 		for _, p := range []*Plan{&src, &dst} {
 			p.Revision++
 			p.UpdatedAt = now.UnixMilli()
-			if err := saveSteps(ctx, tx, p, now); err != nil {
-				return err
+			if ierr := saveSteps(ctx, tx, p, now); ierr != nil {
+				return ierr
 			}
 		}
 		from, to = src, dst

@@ -216,6 +216,34 @@ The old paths, served by Tachyon:
   - agents: each portfolio database's kind must be granted, and `planner.list` without a kind needs every kind;
   - console: the person needs `tachyon.planner.read` or `tachyon.planner.write`.
 
+## 5c. Chat without threads (slice B6)
+
+The old paths under `/api/plugins/console/v1/chat`, served by Tachyon:
+
+| Path (under `.../chat`) | Read scope | Write scope | Check in handler |
+|---|---|---|---|
+| `threads/{ref}/topics`, `/bookmarks` (+ `/{id}` delete) | `tachyon.chat.read` | `tachyon.chat.write` | writes need the operator check |
+| `threads/{ref}/plan` (single), `/plan/steps`, `/plan/reorder` | `tachyon.chat.read` | `tachyon.chat.write` | writes |
+| `threads/{ref}/plans` (several; #721/#725), `/plans/reorder`, `/plans/{id}`, steps, move | `tachyon.chat.read` | `tachyon.chat.write` | writes |
+| `threads/{ref}/continue` | | `tachyon.chat.write` (GET too: it records lineage) | GET and PUT |
+| `threads/{ref}/workspace` (+ `/{id}`), `/scratchpad`, `settings` | `tachyon.chat.read` | `tachyon.chat.write` | writes |
+| `GET threads/{ref}/workspace/{id}/content` | | `tachyon.chat.write` | yes (file bytes) |
+| `threads/{ref}/activity`, `/activity/comments`, `/context` | `tachyon.chat.read` | `tachyon.chat.write` | writes |
+| `GET threads/{ref}/work` | `tachyon.chat.read` | | |
+
+- Request and response shapes, status codes and error codes are the old build's. The old chat errors were
+  already the flat `{code, message}`.
+- Unknown routes stay unserved until their slice:
+  - threads, messages, send, read, stop and both event streams: B6b;
+  - cards and approval rules: B7;
+  - the outbox and send-to-agent: B7+.
+- A thread "exists" when the local tables know it: app thread rows, synced turns, lineage, thread state, or chat
+  data recorded against it. An unknown thread is `404 not_found` "No such thread.", as before. B6b restores the
+  old check, which also lists live Tether sessions.
+- Until B6b, a new topic's `message_ref` is stored as given and its `seq` is null. The old build resolved the
+  message in the thread and refused one that wasn't in it (`400 invalid`).
+- Change events have no stream until B6b; the activity feed still records them.
+
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 
 The plugin host (Substrate `pluginhost`) forwards `/api/plugins/{id}/...` to the subprocess plugins. **Since B5 the

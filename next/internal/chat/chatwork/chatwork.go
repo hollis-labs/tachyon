@@ -119,9 +119,10 @@ func (s *Service) Work(ctx context.Context, ref chatapi.ThreadRef, agent string)
 				if r.Counts != nil {
 					it.Counts = &Counts{Done: r.Counts.Done, Doing: r.Counts.Doing, Blocked: r.Counts.Blocked, Todo: r.Counts.Todo}
 				}
-				if r.Kind == "task" {
+				switch r.Kind {
+				case "task":
 					enrich(&it)
-				} else if r.Kind == "decision" {
+				case "decision":
 					it.NeedsUser = r.NeedsUser || r.Status == "proposed"
 				}
 				add(it)
@@ -189,7 +190,7 @@ func Handler(s *Service, exists func(ctx context.Context, ref string) error) htt
 			return
 		}
 		if exists != nil {
-			if err := exists(r.Context(), ref.String()); err != nil {
+			if ierr := exists(r.Context(), ref.String()); ierr != nil {
 				reply(w, 404, map[string]string{"code": "not_found", "message": "That chat was not found."})
 				return
 			}

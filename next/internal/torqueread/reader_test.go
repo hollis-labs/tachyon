@@ -37,7 +37,9 @@ func newFake(t *testing.T, handler func(w http.ResponseWriter, r *http.Request))
 	return f
 }
 
-const secret = "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+// secret is shaped like a provider API key so the redaction under test fires; it is built at run
+// time, so the source holds no key-shaped literal.
+var secret = "sk-" + "ant-" + "api03-" + strings.Repeat("A", 64)
 
 func fullTask(id string) map[string]any {
 	return map[string]any{
@@ -100,23 +102,23 @@ func TestIDsAndPathsAreValidatedAndOnlyGETIsUsed(t *testing.T) {
 	f := newFake(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200); w.Write([]byte(`{}`)) })
 	r := New(f.URL, nil)
 	for _, bad := range []string{"", "../x", "a/b", "a b", "-x", strings.Repeat("a", 201), "x?y=1", "x#y"} {
-		if _, err := r.GetTask(context.Background(), bad); err != ErrInvalid {
+		if _, err := r.GetTask(context.Background(), bad); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("id %q accepted: %v", bad, err)
 		}
-		if _, err := r.Comments(context.Background(), bad, 0, ""); err != ErrInvalid {
+		if _, err := r.Comments(context.Background(), bad, 0, ""); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("comments id %q accepted: %v", bad, err)
 		}
 	}
 	if len(f.reqs) != 0 {
 		t.Fatalf("invalid ids reached Torque: %v", f.reqs)
 	}
-	if _, err := r.ListTasks(context.Background(), ListFilter{Filters: map[string]string{"system_prompt": "x"}}); err != ErrInvalid {
+	if _, err := r.ListTasks(context.Background(), ListFilter{Filters: map[string]string{"system_prompt": "x"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unknown filter accepted: %v", err)
 	}
-	if _, err := r.ListTasks(context.Background(), ListFilter{Filters: map[string]string{"status": "todo;drop"}}); err != ErrInvalid {
+	if _, err := r.ListTasks(context.Background(), ListFilter{Filters: map[string]string{"status": "todo;drop"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("odd filter value accepted: %v", err)
 	}
-	if _, err := r.ListTasks(context.Background(), ListFilter{Limit: MaxList + 1}); err != ErrInvalid {
+	if _, err := r.ListTasks(context.Background(), ListFilter{Limit: MaxList + 1}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("limit over max accepted: %v", err)
 	}
 	r.GetTask(context.Background(), "CW-1")
@@ -150,7 +152,7 @@ func TestStatusesMapToTypedErrorsWithoutLeakingTheBody(t *testing.T) {
 }
 
 // Torque's comments endpoint rejects unknown parameters (offset gets a 400), so
-// the fake does too. It honours limit and returns its own cursor.
+// the fake does too. It honors limit and returns its own cursor.
 func TestCommentsUseTorquesCursorAndShrinkToTheSizeBudget(t *testing.T) {
 	big := strings.Repeat("x", CommentBytes+500)
 	var limits []string
@@ -194,10 +196,10 @@ func TestCommentsUseTorquesCursorAndShrinkToTheSizeBudget(t *testing.T) {
 	if !strings.Contains(f.reqs[0], "cursor=start_CUR") || strings.Contains(strings.Join(f.reqs, " "), "offset") {
 		t.Fatalf("requests %v", f.reqs)
 	}
-	if _, err := New(f.URL, nil).Comments(context.Background(), "CW-1", 0, "has space"); err != ErrInvalid {
+	if _, err := New(f.URL, nil).Comments(context.Background(), "CW-1", 0, "has space"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad cursor: %v", err)
 	}
-	if _, err := New(f.URL, nil).Comments(context.Background(), "CW-1", 51, ""); err != ErrInvalid {
+	if _, err := New(f.URL, nil).Comments(context.Background(), "CW-1", 51, ""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("limit over max: %v", err)
 	}
 }

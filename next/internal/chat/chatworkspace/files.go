@@ -97,9 +97,9 @@ func (s *Store) Receive(thread string, r io.Reader) (tmp string, head []byte, si
 	}
 	tmp = f.Name()
 	defer func() {
-		f.Close()
+		_ = f.Close()
 		if err != nil {
-			os.Remove(tmp)
+			_ = os.Remove(tmp)
 			tmp = ""
 		}
 	}()
@@ -138,6 +138,6 @@ func (s *Store) Receive(thread string, r io.Reader) (tmp string, head []byte, si
 
 // validJSON reports whether a .json upload really is JSON; checked on the stored file.
 func validJSON(path string) bool {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // path is the upload's temp file under Store.Dir
 	return err == nil && json.Valid(b)
 }

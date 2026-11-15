@@ -349,8 +349,8 @@ func TestScratchpad(t *testing.T) {
 	if code != 200 || pad["revision"] != 1.0 || pad["body"] != "first" {
 		t.Fatal(code, pad)
 	}
-	if code, out := e.json(t, "PUT", "/threads/app:t1/scratchpad", `{"body":"stale","expected_revision":0}`); code != 409 || out["code"] != "conflict" {
-		t.Fatalf("stale: %d %v", code, out)
+	if got, out := e.json(t, "PUT", "/threads/app:t1/scratchpad", `{"body":"stale","expected_revision":0}`); got != 409 || out["code"] != "conflict" {
+		t.Fatalf("stale: %d %v", got, out)
 	}
 	if code, pad = e.json(t, "PUT", "/threads/app:t1/scratchpad", `{"body":"second","expected_revision":1}`); code != 200 || pad["revision"] != 2.0 {
 		t.Fatal(code, pad)

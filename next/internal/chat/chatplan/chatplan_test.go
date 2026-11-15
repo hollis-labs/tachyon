@@ -92,8 +92,8 @@ func TestPlanLifecycleAndRevisions(t *testing.T) {
 		t.Fatalf("steps: %v", ss)
 	}
 	// Stale and duplicate creates are conflicts.
-	if code, out := e.do(t, "PUT", "/threads/app:t1/plan", `{"scope":"thread","expected_revision":0,"steps":[]}`); code != 409 || out["code"] != "conflict" {
-		t.Fatalf("create over existing: %d %v", code, out)
+	if got, out := e.do(t, "PUT", "/threads/app:t1/plan", `{"scope":"thread","expected_revision":0,"steps":[]}`); got != 409 || out["code"] != "conflict" {
+		t.Fatalf("create over existing: %d %v", got, out)
 	}
 	// Patch one step with the right revision.
 	id1 := ss[0]["id"].(string)
@@ -101,8 +101,8 @@ func TestPlanLifecycleAndRevisions(t *testing.T) {
 	if code != 200 || st["status"] != "done" || st["plan_revision"] != 2.0 {
 		t.Fatal(code, st)
 	}
-	if code, _ := e.do(t, "PATCH", "/threads/app:t1/plan/steps/"+id1, `{"status":"todo","expected_revision":1}`); code != 409 {
-		t.Fatalf("stale step patch: %d", code)
+	if got, _ := e.do(t, "PATCH", "/threads/app:t1/plan/steps/"+id1, `{"status":"todo","expected_revision":1}`); got != 409 {
+		t.Fatalf("stale step patch: %d", got)
 	}
 	// Two writers racing on the same revision: exactly one wins.
 	id2 := ss[1]["id"].(string)
@@ -113,12 +113,13 @@ func TestPlanLifecycleAndRevisions(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			code, _ := e.do(t, "PATCH", "/threads/app:t1/plan/steps/"+id2, fmt.Sprintf(`{"notes":"n%d","expected_revision":2}`, i))
+			got, _ := e.do(t, "PATCH", "/threads/app:t1/plan/steps/"+id2, fmt.Sprintf(`{"notes":"n%d","expected_revision":2}`, i))
 			mu.Lock()
 			defer mu.Unlock()
-			if code == 200 {
+			switch got {
+			case 200:
 				wins++
-			} else if code == 409 {
+			case 409:
 				conflicts++
 			}
 		}(i)
@@ -313,8 +314,8 @@ func TestAgentWritesProposeNeverApprove(t *testing.T) {
 		t.Fatalf("plan message: %v", e.notes)
 	}
 	// The operator approves; a later agent rewrite keeps that status.
-	if _, err := e.svc.Store.SetStatus(ctx, p.ID, "approved", 1); err != nil {
-		t.Fatal(err)
+	if _, ierr := e.svc.Store.SetStatus(ctx, p.ID, "approved", 1); ierr != nil {
+		t.Fatal(ierr)
 	}
 	p2, err := e.svc.Write(ctx, ref, "thread", WriteIn{By: "agent", Expected: 2, Status: "active", Steps: []StepIn{{ID: p.Steps[0].ID}, st("c")}})
 	if err != nil || p2.Status != "approved" {

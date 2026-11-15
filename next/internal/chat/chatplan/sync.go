@@ -38,13 +38,13 @@ func (s *Store) SyncTaskStatuses(ctx context.Context, src TaskStatuses) ([]strin
 	var refs []string
 	for rows.Next() {
 		var r string
-		if err := rows.Scan(&r); err != nil {
-			rows.Close()
-			return nil, err
+		if ierr := rows.Scan(&r); ierr != nil {
+			_ = rows.Close()
+			return nil, ierr
 		}
 		refs = append(refs, r)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if len(refs) == 0 || src == nil {
 		return nil, rows.Err()
 	}
@@ -61,31 +61,31 @@ func (s *Store) SyncTaskStatuses(ctx context.Context, src TaskStatuses) ([]strin
 			if !ok {
 				continue
 			}
-			res, err := tx.QueryContext(ctx, `SELECT plan_id,id FROM chat_plan_steps WHERE task_ref=? AND status<>?`, ref, to)
-			if err != nil {
-				return err
+			res, ierr := tx.QueryContext(ctx, `SELECT plan_id,id FROM chat_plan_steps WHERE task_ref=? AND status<>?`, ref, to)
+			if ierr != nil {
+				return ierr
 			}
 			type key struct{ plan, step string }
 			var ks []key
 			for res.Next() {
 				var k key
-				if err := res.Scan(&k.plan, &k.step); err != nil {
-					res.Close()
-					return err
+				if ierr := res.Scan(&k.plan, &k.step); ierr != nil {
+					_ = res.Close()
+					return ierr
 				}
 				ks = append(ks, k)
 			}
-			res.Close()
+			_ = res.Close()
 			for _, k := range ks {
-				if _, err := tx.ExecContext(ctx, `UPDATE chat_plan_steps SET status=?,updated_ns=? WHERE plan_id=? AND id=?`, to, now.UnixNano(), k.plan, k.step); err != nil {
-					return err
+				if _, ierr := tx.ExecContext(ctx, `UPDATE chat_plan_steps SET status=?,updated_ns=? WHERE plan_id=? AND id=?`, to, now.UnixNano(), k.plan, k.step); ierr != nil {
+					return ierr
 				}
 				touched[k.plan] = true
 			}
 		}
 		for id := range touched {
-			if _, err := tx.ExecContext(ctx, `UPDATE chat_plans SET revision=revision+1,updated_ns=? WHERE id=?`, now.UnixNano(), id); err != nil {
-				return err
+			if _, ierr := tx.ExecContext(ctx, `UPDATE chat_plans SET revision=revision+1,updated_ns=? WHERE id=?`, now.UnixNano(), id); ierr != nil {
+				return ierr
 			}
 			changed = append(changed, id)
 		}

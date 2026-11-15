@@ -60,7 +60,7 @@ func (s *Store) Topics(ctx context.Context, thread string) ([]Topic, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Topic{}
 	for rows.Next() {
 		var t Topic
@@ -127,7 +127,7 @@ func (s *Store) Bookmarks(ctx context.Context, thread string) ([]Bookmark, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Bookmark{}
 	for rows.Next() {
 		var b Bookmark

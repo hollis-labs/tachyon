@@ -161,7 +161,7 @@ func loadSteps(ctx context.Context, q querier, p *Plan) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var st Step
 		var task sql.NullString
@@ -216,7 +216,7 @@ func (s *Store) Progress(ctx context.Context, refs []string) map[string]Progress
 	if err != nil {
 		return out
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var ref string
 		var pr Progress
@@ -229,12 +229,12 @@ func (s *Store) Progress(ctx context.Context, refs []string) map[string]Progress
 	return out
 }
 
-func clean(v *string, max int) (string, bool) {
+func clean(v *string, limit int) (string, bool) {
 	if v == nil {
 		return "", true
 	}
 	t := strings.TrimSpace(*v)
-	return t, len(t) <= max
+	return t, len(t) <= limit
 }
 
 // Write upserts the whole plan of one owner. owner is ("thread", ref) or ("project", id).
@@ -369,7 +369,7 @@ func setStatus(st *Step, to string) error {
 	if !stepStatuses[to] {
 		return ErrInvalid
 	}
-	if st.TaskRef != nil && to != st.Status && !(to == "blocked" || (st.Status == "blocked" && to == "todo")) {
+	if st.TaskRef != nil && to != st.Status && to != "blocked" && (st.Status != "blocked" || to != "todo") {
 		return ErrLinked
 	}
 	st.Status = to

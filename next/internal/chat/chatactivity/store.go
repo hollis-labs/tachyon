@@ -117,9 +117,9 @@ func (s *Store) Append(ctx context.Context, e Entry) (Entry, error) {
 	e.At = at.UnixMilli()
 	err = s.DB.Writer.Submit(ctx, "chat_activity_append", func(ctx context.Context, tx store.Tx) error {
 		// RETURNING, not LastInsertId: the Postgres driver has no last insert id.
-		if err := tx.QueryRowContext(ctx, `INSERT INTO chat_activity(thread_ref,type,actor,cite_json,payload_json,source,at_ns) VALUES(?,?,?,?,?,?,?) RETURNING seq`,
-			e.ThreadRef, e.Type, e.Actor, string(cj), payload, e.Source, at.UnixNano()).Scan(&e.Seq); err != nil {
-			return err
+		if ierr := tx.QueryRowContext(ctx, `INSERT INTO chat_activity(thread_ref,type,actor,cite_json,payload_json,source,at_ns) VALUES(?,?,?,?,?,?,?) RETURNING seq`,
+			e.ThreadRef, e.Type, e.Actor, string(cj), payload, e.Source, at.UnixNano()).Scan(&e.Seq); ierr != nil {
+			return ierr
 		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM chat_activity WHERE thread_ref=? AND seq<=?`, e.ThreadRef, e.Seq-KeepPerThread)
 		return err
@@ -165,7 +165,7 @@ func (s *Store) List(ctx context.Context, thread string, q Query) ([]Entry, bool
 	if err != nil {
 		return nil, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Entry{}
 	for rows.Next() {
 		e := Entry{ThreadRef: thread}

@@ -22,10 +22,11 @@ func TestLocalThreads(t *testing.T) {
 		"turn1", "tether", "c", "", "l", "s-turns", "2026-01-01T00:00:00Z", 1, []byte("{}"))
 	exec(`INSERT INTO chat_session_lineage(session_id, agent_id, seen_ns) VALUES (?, ?, ?)`, "s-lineage", "pm", 1)
 	exec(`INSERT INTO chat_thread_state(thread_ref, updated_ns) VALUES (?, ?)`, "tether:s-state", 1)
+	exec(`INSERT INTO chat_activity(thread_ref, type, actor, cite_json, source, at_ns) VALUES (?, ?, ?, ?, ?, ?)`, "tether:s-activity", "comment", "user", "[]", "tachyon", 1)
 	exists := LocalThreads(db)
 	for ref, want := range map[string]bool{
 		"app:a1": true, "app:nope": false,
-		"tether:s-turns": true, "tether:s-lineage": true, "tether:s-state": true, "tether:nope": false,
+		"tether:s-turns": true, "tether:s-lineage": true, "tether:s-state": true, "tether:s-activity": true, "tether:nope": false,
 		"bogus": false, "app:": false,
 	} {
 		err := exists(ctx, ref)

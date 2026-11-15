@@ -75,7 +75,7 @@ func (r *Reader) get(ctx context.Context, path string, q url.Values) ([]byte, er
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && u.Scheme != "http") {
 		return nil, ErrUnavailable
 	}
-	if err := upstreamauth.Guard(r.Base, r.Token != nil); err != nil {
+	if ierr := upstreamauth.Guard(r.Base, r.Token != nil); ierr != nil {
 		return nil, ErrUnavailable
 	}
 	target := r.Base + path
@@ -98,7 +98,7 @@ func (r *Reader) get(ctx context.Context, path string, q url.Values) ([]byte, er
 	if err != nil {
 		return nil, ErrUnavailable
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	switch {
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, ErrNotFound
@@ -118,7 +118,7 @@ type tags []string
 func (t *tags) UnmarshalJSON(b []byte) error {
 	var items []json.RawMessage
 	if err := json.Unmarshal(b, &items); err != nil {
-		return nil
+		return nil //nolint:nilerr // tolerant on purpose: a tag shape Torque may add later reads as no tags
 	}
 	for _, it := range items {
 		var s string
@@ -185,7 +185,7 @@ type Task struct {
 	ContentTrust         string   `json:"content_trust"`
 }
 
-// Tachyon kind that governs access to a Torque row: plans are task rows with kind=plan.
+// AccessKind is the Tachyon kind that governs access to a Torque row: plans are task rows with kind=plan.
 func AccessKind(torqueKind string) string {
 	if torqueKind == "plan" {
 		return "plan"

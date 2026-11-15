@@ -158,7 +158,9 @@ func (h *Handler) add(w http.ResponseWriter, r *http.Request) {
 	reply(w, 201, saved)
 }
 
-func (h *Handler) parseLink(w http.ResponseWriter, r *http.Request) (Item, error) {
+// parseLink answers a bad request itself and returns the zero Item; its error result matches
+// receiveFile's so the caller treats both the same.
+func (h *Handler) parseLink(w http.ResponseWriter, r *http.Request) (Item, error) { //nolint:unparam // the shape is receiveFile's
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	var in struct {
 		Type   string `json:"type"`
@@ -183,7 +185,7 @@ func (h *Handler) parseLink(w http.ResponseWriter, r *http.Request) (Item, error
 		u, err := url.Parse(in.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || len(in.URL) > 2048 {
 			fail(w, 400, "invalid", "A link needs an http or https URL.")
-			return Item{}, nil
+			return Item{}, nil //nolint:nilerr // answered above; the zero Item stops the caller
 		}
 		it.URL = &in.URL
 	case "ref":
@@ -205,7 +207,7 @@ func (h *Handler) receiveFile(w http.ResponseWriter, r *http.Request, thread str
 	mr, err := r.MultipartReader()
 	if err != nil {
 		fail(w, 400, "invalid", "Malformed multipart body.")
-		return Item{}, nil
+		return Item{}, nil //nolint:nilerr // answered above; the zero Item stops the caller
 	}
 	var it Item
 	var haveFile bool
@@ -261,13 +263,15 @@ func (h *Handler) storeFile(p *multipart.Part, thread string, it *Item) error {
 	if err == nil && mime == "application/json" && !validJSON(tmp) {
 		err = ErrType
 	}
+	// tmp is the file Store.Receive created under Store.Dir; Store.Path is built from a hash of the
+	// thread and a generated id. Neither carries a client-chosen path.
 	if err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp) //nolint:gosec // see above
 		return err
 	}
 	it.ID = firstID("")
-	if err := os.Rename(tmp, h.Store.Path(thread, it.ID)); err != nil {
-		os.Remove(tmp)
+	if err := os.Rename(tmp, h.Store.Path(thread, it.ID)); err != nil { //nolint:gosec // see above
+		_ = os.Remove(tmp) //nolint:gosec // see above
 		return err
 	}
 	it.Type, it.Name, it.Mime, it.SizeBytes, it.SHA256 = typ, name, &mime, &size, &sum
@@ -345,7 +349,7 @@ func (h *Handler) content(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "The file is no longer available.")
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	ctype := "application/octet-stream"
 	if it.Mime != nil {
 		switch *it.Mime {
