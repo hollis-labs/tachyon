@@ -1,6 +1,8 @@
+import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { request } from "@playwright/test"
-import { authState, backend, ownerName, passwordFile } from "./env"
+import { authState, backend, dir, ownerName, passwordFile } from "./env"
 import { BASE, DBS, seed } from "./planner-stub"
 import { SESSION_ID } from "./tether-fake"
 
@@ -98,4 +100,10 @@ async function seedChat(api: Awaited<ReturnType<typeof request.newContext>>) {
       },
     }),
   )
+  // The old build never writes an agent-authored workspace item (uploads only, added_by "user"), so the Artifacts
+  // rendering check gets a fixture row: the uploaded file, marked as the agent's in this run's throwaway database.
+  execFileSync("sqlite3", [
+    join(dir, "data", "tachyon.db"),
+    "UPDATE chat_workspace_items SET added_by = 'agent' WHERE name = 'port-notes.md'",
+  ])
 }

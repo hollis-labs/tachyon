@@ -105,11 +105,8 @@ test("plans tab: the plan and its steps show, and a new step is added against th
 })
 
 test("artifacts tab: the agent's shared file is listed and opens", async ({ page }) => {
-  // B6 adds workspace items from the operator only (added_by "user"); the agent's writes are the chat data verbs.
-  test.fixme(
-    chatBackend,
-    "agent-authored workspace items come with the chat data verbs (B6d, CW-20261115-0039)",
-  )
+  // A rendering check. The old build never writes an agent-authored workspace item; the backend run marks its
+  // uploaded file as the agent's in a fixture row (e2e/global-setup.ts).
   await page.goto(`/chat/${encodeURIComponent(ROW)}`)
   const panel = page.getByRole("complementary", { name: "Agent Panel" })
   await panel.getByRole("button", { name: "Scroll tabs right" }).click()
