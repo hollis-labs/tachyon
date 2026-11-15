@@ -252,11 +252,11 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 		// An upstream that ignores its context must not hold the caller past the timeout: wait for the
 		// handler or the deadline, whichever comes first. A late success still refreshes the saved copy.
 		done := make(chan struct{})
-		go func() {
+		go func(w *capture) {
 			defer close(done)
 			defer func() { _ = recover() }()
-			next.ServeHTTP(out, r.WithContext(ctx))
-		}()
+			next.ServeHTTP(w, r.WithContext(ctx))
+		}(out)
 		select {
 		case <-done:
 		case <-ctx.Done():
