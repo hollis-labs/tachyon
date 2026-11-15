@@ -372,9 +372,9 @@ func pending(w http.ResponseWriter, r *http.Request) {
 	}
 	state := q.Get("state")
 	switch state {
-	case "", "active", "snoozed", "dismissed", "resolved":
+	case "", "active", "snoozed", "dismissed", "resolved", "all":
 	default:
-		fail(w, 400, "invalid_args", "state must be active, snoozed, dismissed or resolved.")
+		fail(w, 400, "invalid_args", "state must be active, snoozed, dismissed, resolved or all.")
 		return
 	}
 	if state == "" {
@@ -412,7 +412,7 @@ func pending(w http.ResponseWriter, r *http.Request) {
 	for _, it := range d.Items {
 		tri, _ := it["triage"].(map[string]any)
 		ts, _ := tri["status"].(string)
-		if state != ts {
+		if state != "all" && state != ts {
 			continue
 		}
 		if v := q.Get("reason"); v != "" && !slices.Contains(anyStrings(it["reasons"]), v) {

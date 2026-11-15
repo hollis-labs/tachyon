@@ -42,7 +42,7 @@ describe('HttpForgeClient reads', () => {
     await client.listComments(ref)
     await client.listPendingPrs()
     const base = '/api/v1/forge/repos/github/hollis-labs/torque/pulls/271'
-    expect([0, 1, 2, 3, 4].map((i) => call(fetch, i).url)).toEqual([base, `${base}/diff`, `${base}/commits`, `${base}/comments`, '/api/v1/forge/pulls/pending'])
+    expect([0, 1, 2, 3, 4].map((i) => call(fetch, i).url)).toEqual([base, `${base}/diff`, `${base}/commits`, `${base}/comments`, '/api/v1/forge/pulls/pending?state=all&limit=100'])
   })
 
   it('does not report an empty degraded pending list as an empty inbox', async () => {
