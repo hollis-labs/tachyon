@@ -1,0 +1,22 @@
+{
+  "direct": {
+    "changes": {
+      "mode": "direct",
+      "handoff": []
+    }
+  },
+  "handoff": {
+    "changes": {
+      "mode": "handoff",
+      "handoff": [
+        "copy"
+      ]
+    }
+  },
+  "unavailable": {
+    "changes": {
+      "mode": "unavailable",
+      "handoff": []
+    }
+  }
+}

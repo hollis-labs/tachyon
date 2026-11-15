@@ -328,6 +328,29 @@ and `checkpoint_events` tables:
 - Needs you reads need no operator, as in the old build (its guard let GETs through).
 - Not yet: the ceremony meter's weekly regression alert (the alerts slice).
 
+## 5f. Builder, registry and catalog (slice B9a, the read side)
+
+Served under `/api/plugins/console/v1`, from the migrated `catalog_*`, `library_*`, `part_refs` and `api_cache` tables:
+
+| Route | Scope |
+|---|---|
+| `GET builder/summary`, `GET builder/stream` (SSE) | `tachyon.builder.read` |
+| `GET builder/agents[/{id}[/used_by\|checks\|history\|resolved]]`, `builder/launches[/{id}]` | `tachyon.builder.read` |
+| `GET builder/library/{kind}[/{id}[/used_by\|history]]` | `tachyon.builder.read` |
+| `GET registry/projects[/{id}]` | `tachyon.builder.read` |
+| `GET catalog/team-policy`, `GET catalog/imported-teams` | `tachyon.catalog.read` |
+
+- Request and response shapes, status codes and error codes are the old build's (`internal/builderapi/openapi.yaml`).
+- The catalog index runs only with `tachyon.features.catalog_index` (and a Tether address); off, the summary and
+  stream serve the migrated index.
+- The agents, launches and registry reads ask a configured Tether for live sessions and the registry on demand,
+  as before; without Tether they report live counts as unknown and the registry answers `503`.
+- `catalog/team-policy` reads Tether's `teams-policy.yaml` through the reviewed proxy (`503 configuration` without
+  Tether). `catalog/imported-teams` serves the snapshot an operator imported into the old API cache, or an empty
+  one.
+- Not yet served (B9b, CW-20261115-0073): builder changes, the launch action, capabilities, registry writes, the
+  console's object writes and the Tether provider verbs (team runs, formations, provider actions).
+
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 
 The plugin host (Substrate `pluginhost`) forwards `/api/plugins/{id}/...` to the subprocess plugins. **Since B5 the
