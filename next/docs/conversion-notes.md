@@ -266,6 +266,57 @@ Details: `docs/api-contract.md`.
   the address and the credential as before, so retained runs stay matched. The console's object writes need
   `tachyon.objects.write` and the operator check; the old build needed the operator check alone.
 
+## Pull requests, the read side (slice B11a)
+
+- **Same tables, same answers.** The pending inbox reads the migrated `forge_pr_index` and `forge_index_state`,
+  with the triage rows of `console_item_state` (`pr-inbox:github:…`) and the open `pr_agent_links`. The audit
+  reads `forge_audit`. The poller's tunables are still the `forge.*` rows of `app_settings`; the default watched
+  org is `tachyon.upstreams.github.org`.
+- **`tachyon.features.forge_index`** (the old `TACHYON_FORGE_INDEX`) gates every GitHub request: the poller and
+  each on-demand read (viewer, PR detail, files, diff, checks, commits, comments, a commit by sha). Off, nothing
+  dials GitHub: those reads answer `503 disabled`, and `pulls/pending`, `status`, `stream`, `audit` and
+  `console/state` are served from the store (`status` reports `degraded` with the switch's note). The old build
+  served the on-demand reads whatever `TACHYON_FORGE_INDEX` said.
+- **`pulls/pending?state=all` is new (lead decision, fixing a carried bug).** The inbox asks for pending rows with
+  no `state` and sorts them into its Active, Snoozed, Dismissed and Resolved tabs itself, but the server answers
+  only `active` rows when `state` is absent, so a dismissed or snoozed PR vanished and its tab stayed at 0. Old
+  main has the same pair, so the live app shows this today. The server now also accepts `state=all` (every row
+  whatever its triage); the default stays `active`, so other callers are unchanged. The UI asks for `state=all`
+  from the G7b backend-run follow-up.
+- **No legacy fallback.** Before the first refresh the old `pulls/pending` fell through to the console plugin,
+  which searched GitHub live (in a different row shape). The port answers the saved index, possibly empty.
+- **The console plugin's PR reads** (`repos/{host}/{owner}/{name}/pulls/{num}`, `…/commits`, `…/comments`) keep
+  their camelCase shapes and share the forge reads' GitHub client and error mapping: a refused token is
+  `401 credential_missing` (the plugin said `unauthorized`), another `403` is `502 unavailable`, a rate limit is
+  `429 rate_limited`, and GitHub's own message is not relayed. Comments answer the error when both lists fail
+  (the plugin answered an empty list).
+- **The plugin's repository and PR-list reads** (`repos/{host}/{owner}/{name}`, `repos/{…}/pulls`, `forge/pulls`)
+  are ported the same way, behind the same switch. Differences from the plugin: `state` must be `open`,
+  `closed`, `merged` or `all`, `author` and `assignee` must be GitHub logins (the org search puts them in the
+  query as qualifiers), `q` is at most 256 characters, and an unknown parameter is `400 invalid_args` (the plugin
+  passed anything through). `forge/pulls` searches `tachyon.upstreams.github.org`; with none set it answers
+  `503 configuration` and sends nothing (the plugin fell back to a built-in org). `cursor` is accepted and
+  ignored and `nextCursor` is `null`, as before (one page, `limit` clamped to 100, default 30).
+- **Errors are flat.** A rate limit carries `details.retry_after_s` (and `Retry-After`); a console state version
+  conflict carries `details.version` (the old body put them inside `error`).
+- **Guards.** Reads need `tachyon.forge.read`; the audit read also needs the operator (the old
+  `RequireOperatorReads`). `PUT console/state/{key}` needs `tachyon.forge.write`, refuses any bearer that is
+  not the browser session's (`403 requester_cannot_approve`, as the old handler refused any `Authorization`), and
+  needs the operator (`403 operator_required`), as the old `RequireOperator` did. The contract
+  (`docs/api-contract.md` section 5) lists no operator check on console state; the port follows the old build,
+  pending the lead.
+- **A secondary rate limit** (`403` with `Retry-After`) now counts as a rate limit, not an error.
+- **`GET console/state` lists item state only.** The old list also carried the alerts' state rows (`al_*` keys,
+  351 on the migrated copy), which the alerts store served on the same path. Until the alerts slice lands, those
+  keys are neither listed nor writable here; that slice carves `console/state/al_*` out of this route.
+- **New `pr.*` alert-feed events are dropped** until the alerts slice: the old poller fed them to the alerts
+  store, which is not ported yet.
+- **`assign-agent` is deferred** (`POST forge/repos/{host}/{owner}/{name}/pulls/{num}/assign-agent`, the old
+  `forgeassign`). Nothing calls it: the old SPA and console UI never did, agents could not (forge writes were
+  browser-session only and refused any `Authorization`), and no data verb, MCP tool or CLI reaches it. Its table
+  `pr_agent_links` is migrated; the inbox still reads the open links as agent assignees, and the merge write
+  (B11b) marks them done as before. It is not served, so the scope table has no row for it.
+
 ## Agents (slices B8a, B8b)
 
 - **Same tables, same answers.** Agent Ops, the ceremony meter and Needs you read the migrated agents tables.
