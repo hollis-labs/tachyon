@@ -301,6 +301,11 @@ Details: `docs/api-contract.md`.
 - **A secondary rate limit** (`403` with `Retry-After`) now counts as a rate limit, not an error.
 - **New `pr.*` alert-feed events are dropped** until the alerts slice: the old poller fed them to the alerts
   store, which is not ported yet.
+- **`assign-agent` is deferred** (`POST forge/repos/{host}/{owner}/{name}/pulls/{num}/assign-agent`, the old
+  `forgeassign`). Nothing calls it: the old SPA and console UI never did, agents could not (forge writes were
+  browser-session only and refused any `Authorization`), and no data verb, MCP tool or CLI reaches it. Its table
+  `pr_agent_links` is migrated; the inbox still reads the open links as agent assignees, and the merge write
+  (B11b) marks them done as before. It is not served, so the scope table has no row for it.
 
 ## Agents (slices B8a, B8b)
 
