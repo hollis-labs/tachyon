@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "kind": "skills",
+      "id": "commit-hygiene",
+      "name": "Commit hygiene",
+      "summary": "Small commits, imperative subjects.",
+      "used_by_count": 2,
+      "layer": "system",
+      "source": "catalog",
+      "path": "skills/commit-hygiene.md",
+      "sha": "50fa96cc2a14af1ae5b242a6720630ebd96e5a4fe440570b36ba0890d814e3b0",
+      "read_only": false,
+      "editable": true
+    },
+    {
+      "kind": "skills",
+      "id": "triage-notes",
+      "name": "Triage notes",
+      "summary": "How to sort an inbox.",
+      "used_by_count": 0,
+      "layer": "system",
+      "source": "catalog",
+      "path": "skills/triage-notes.md",
+      "sha": "536226ea1494170bcf7d4a9bb9bf450b97b66f94dff35e25e59e7fcd6db40157",
+      "read_only": false,
+      "editable": true
+    },
+    {
+      "kind": "skills",
+      "id": "personal-style",
+      "name": "Personal style",
+      "summary": "A user-layer skill.",
+      "used_by_count": 0,
+      "layer": "user",
+      "source": "user",
+      "path": null,
+      "sha": null,
+      "read_only": true,
+      "editable": false
+    }
+  ]
+}

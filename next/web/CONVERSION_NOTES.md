@@ -305,10 +305,8 @@ The rest of their import graph was already carried in G3a.
   - `AgentsSurface` (`/agents`, `/agents/:session`).
   - `NeedsYouSurface` (`/needs-you`): a new nav item and surface in `ui/app.json`, after Agent Ops as on old main. It requires `tachyon.agents.read` (accepted for B8, CW-20261115-0062).
 - **Edits** (scripted, `g5-adapt.py`):
-  - `teams-tab.tsx`: the tab stays where it was and says team runs moved to the Builder surface. G6
-    (CW-20261115-0063) restores team operations before cutover. The old tab ran team
-    operations through the builder domain: `agents/TeamOperations`, owned builder records, provider actions, the
-    agent editor. They arrive with Builder. `teams-tab.test.tsx` goes with it.
+  - `teams-tab.tsx`: G5 made it a note; G6 restores the old file and its test (team operations in the Agent Ops
+    Teams tab, where the old UI had them).
   - `activity-tab.test.tsx`: a host name in a test string is a placeholder.
 - **Kit:** the page header's double `h1` (kit gap CW-20261115-0026), as on the other surfaces. Nothing else in
   the area has a kit equivalent beyond what it already uses (design-components, kit-dashboard layout).
@@ -361,6 +359,100 @@ same-origin `Origin`. Shapes: the old written contract, `internal/agentsapi/open
 The `agents/*` scopes are in the contract (`tachyon.agents.read`, `tachyon.agents.control` with the operator
 check on control). `ceremony` and `needs-you` (B8a, CW-20261115-0062): `tachyon.agents.read`. For parity, there is no operator check on
 `needs-you` reads: the old build mounted it behind `RequireOperator`, which passes GETs through. Not called by this SPA: `agents/collector` (the old stub's only).
+
+## Builder and Registry (G6, CW-20261115-0063)
+
+Carried byte-identical from **main 4b5e397**:
+- `builder/` and `registry/`, with their tests;
+- the `agents/` files they reach that G3a did not carry (agent editor, team formation and operations, owned builder
+  and provider-action clients, plan review);
+- `agents-monitor/teams-tab.tsx` and its test, back as the old file.
+
+- **Surfaces.**
+  - `BuilderSurface` (`/builder` redirects to `/builder/agents`; `/builder/agents[/:id]`, `/builder/teams`,
+    `/builder/launches`, `/builder/library[/:kind[/:id]]`; `/builder/projects` redirects to `/registry/projects`).
+  - `RegistrySurface` (`/registry`, `/registry/projects[/:id]`).
+  - `/builder/classic` is not ported (plan section 13).
+  - **Team operations** are back in the Agent Ops Teams tab, as in the old UI. Builder keeps team definitions
+    (`/builder/teams`), also as before.
+- **Edits** (scripted, `g6-adapt.py`):
+  - Kit wins, as in G4: `Chip` is design-components `Pill` in builder and registry (`faint` becomes `neutral`);
+    `components/chip.tsx` stays removed.
+  - `agents/owned-builder-client.ts` reads the contract's flat `message` first, then the old `{error}` string.
+- **Elevation:** writes go through `operatorFetch`, which has been the host fetch since G3. The old 401
+  `operator_session_required` key prompt and replay are gone, and a 401 goes to sign-in. `StepUpDialog` is the
+  mock identity seam only.
+- **e2e:** `e2e/builder-stub.ts`. It serves the old contract stub's fixtures (`internal/builderapi/fixtures` at
+  4b5e397, in `e2e/builder-fixtures`, with a project name made a placeholder). The data-verb envelopes follow
+  `internal/dataverbs`. `TACHYON_E2E_BUILDER=backend` turns it off.
+
+**Main moved under the carried layer since 99c7b88** (for the pre-P1 sync): `chat/aside/FileTree.tsx`,
+`chat/aside/Panels.tsx` (#767), and `observations/store.ts` again (#770, #771).
+
+### Builder, Registry and team routes the surfaces call (for the builder/catalog backend slice)
+
+All under `/api/plugins/console/v1`. Errors are flat `{code, message}`; writes carry `X-Requested-With`. Shapes: the
+old written contract, `internal/builderapi/openapi.yaml` and its fixtures at 4b5e397.
+
+| Method | Path | Old handler |
+|---|---|---|
+| `GET` | `builder/summary` | `internal/server/server.go` `catalogIndex.SummaryHandler` (operator) |
+| `GET` | `builder/stream` (SSE) | `server.go` `catalogIndex.StreamHandler` (operator) |
+| `GET` | `builder/agents[?q&cursor…]`, `builder/agents/{id}`, `…/used_by`, `…/checks`, `…/history`, `…/resolved` | `internal/builderread/read.go` (`r.agents`, `r.agent`, `r.usedBy`, `r.checks`, `r.history`, `r.resolved`) |
+| `GET` | `builder/launches`, `builder/launches/{id}` | `builderread` `r.launches`, `r.launch` |
+| `GET` | `builder/library/{kind}`, `…/{id}`, `…/{id}/used_by`, `…/{id}/history` | `builderread` `r.libraryList`, `r.libraryItem`, `r.libraryUsedBy`, `r.libraryHistory` |
+| `GET` / `POST` | `builder/changes`, `builder/changes/{id}`; `POST …/{id}/submit`, `…/cancel`, `…/rearm`, `…/check`, `…/mark_planned`; `GET …/{id}/bundle` | `internal/builderchange/http.go` |
+| `POST` | `builder/launches/{id}/launch` | `builderchange` `h.launch` |
+| `GET` | `builder/capabilities` | `builderchange` `h.capabilities` |
+| `GET` | `registry/projects`, `registry/projects/{id}` | `builderread` `r.registryList`, `r.registryItem` (Tether registry, cached 10 s) |
+| `POST` / `PATCH` | `registry/projects`, `registry/projects/{id}`; `POST`/`DELETE` `…/{id}/link` | `internal/builderread/registrywrite.go` (`registryCreate`, `registryPatch`, `registryLink`, `registryUnlink`) |
+| `GET`/`POST` | `data/providers/tachyon/verbs/objects.{list,get,history,create,patch,delete,restore,take_ownership}` (reads take `?input=<json>`) | `internal/dataverbs` (`local.go`), behind the operator check (`server.go` `dataverbs.NewHTTP`) |
+| `GET`/`POST` | `data/providers/tether/verbs/{teams.roster,teams.form,teams.preview,teams.apply,actions.list,actions.get,actions.apply,actions.reconcile,runtime.preview,agents.publish_preview,catalog.apply_preview}` | `internal/dataverbs/actions.go` and `internal/provideractions` |
+| `GET` | `catalog/imported-teams` | `internal/apicache/team_import.go` |
+| `GET` | `catalog/team-policy` | `plugins/console/catalog.go` (Tether `/catalog` proxy) |
+
+The data verbs answer `{version: 1, provider, verb, data}`. Scopes (contract): `builder/*`, `registry/*` take
+`tachyon.builder.read` / `.write`, with the operator check on writes. `catalog/*` takes `tachyon.catalog.read`. The
+data verbs are checked in the data handler (contract, "Agent data verbs").
+
+## Transcripts (G7a, CW-20261115-0081)
+
+Carried byte-identical from **main d5db765**: `transcripts/`, with its tests. The rest of its import graph is
+already carried.
+
+- **Surface:** `TranscriptsSurface` (`/dashboards/transcripts`; the selected session is the `?session=` query, as
+  before).
+- **Edits** (scripted, `g7a-adapt.py`): the contract has no elevation session.
+  - `data.ts`: no `connectSession` (`POST approval-inbox/session`) and no retry after a 401 `session_required`. A
+    401 goes to sign-in.
+  - `page.tsx`: the "Operator access needed / Connect" state is gone. A 403 is "Access denied", with the backend's
+    message.
+  - One unit test asserts the port's behaviour instead (a 403 `scope_required` is denied, and there is no Connect).
+- **Read-only:** the old page has no writes, so there is no write path to test.
+- **e2e:** `e2e/transcripts-stub.ts` serves the old contract stub's fixtures (`internal/transcriptsapi/fixtures` at
+  d5db765, in `e2e/transcripts-fixtures`, with a project name made a placeholder). `TACHYON_E2E_TRANSCRIPTS=backend`
+  turns it off and runs against the binary's transcripts routes (B10). `e2e/fragments-fake.ts` serves the same
+  fixtures as Fragments Engine would, on loopback with a per-run token. `e2e/serve.sh` points
+  `tachyon.upstreams.fragments` at it and turns `features.transcripts` on, and now writes the run's `tachyon` block
+  once, from collected upstreams, features and files. A backend-only check asserts the guard's refusal of a minted
+  token (403 `forbidden`, "Transcripts are for a browser session.").
+
+**Main moved under the carried layer since 4b5e397** (for the pre-P1 sync): `observations/store.ts` again (#772).
+
+### Transcripts routes the surface calls (for the transcripts backend slice)
+
+All under `/api/plugins/console/v1/transcripts`, `GET` only. Errors are flat `{code, message}`. Shapes: the old written
+contract, `internal/transcriptsapi/openapi.yaml` and its fixtures at d5db765.
+
+| Method | Path | Response the UI reads | Old handler |
+|---|---|---|---|
+| `GET` | `snapshot` | `{status, facets, sessions, complete, limit, observed_at, snapshot_meta}` | `internal/transcripts` bridge to Fragments Engine (`transcripts.New(FragmentsURL, …)`), behind `transcriptsGuard` (`internal/server/server.go`: a browser session; an agent bearer is refused) |
+| `GET` | `status` | the search index status | same |
+| `GET` | `search?q&mode&limit=20[&cursor&tool&model&kind&has_error]` | search results | same |
+| `GET` | `sessions/{id}?turn_offset=N` | `{session, turns, turn_total, next_turn?}` | same |
+
+Not called by this SPA: `stats`, `sessions/{id}/find` and `sessions/{id}/errors` (in the old contract). Scope
+(contract): `tachyon.transcripts.read`.
 
 ## Gaps
 

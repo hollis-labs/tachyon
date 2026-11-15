@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "@playwright/test"
 import {
   backend,
   dir,
+  fragments,
+  fragmentsPort,
   freshBackend,
   freshDir,
   freshPort,
@@ -23,6 +26,11 @@ const bin = process.env.TACHYON_E2E_BIN ?? `${next}tachyon`
 const fake = fileURLToPath(new URL("./e2e/tether-fake.ts", import.meta.url))
 /** The chat backend run (TACHYON_E2E_CHAT=backend) points the binary at a local Tether fake, never a real hub. */
 const chatBackend = process.env.TACHYON_E2E_CHAT === "backend"
+/** The transcripts backend run (TACHYON_E2E_TRANSCRIPTS=backend) reads the local Fragments Engine fake. */
+const transcriptsBackend = process.env.TACHYON_E2E_TRANSCRIPTS === "backend"
+const fragmentsFake = fileURLToPath(new URL("./e2e/fragments-fake.ts", import.meta.url))
+/** A throwaway bearer for this run only, shared by the fake and the binary's token file. */
+const fragmentsToken = randomUUID()
 /** The approvals backend run (TACHYON_E2E_APPROVALS=backend) applies e2e/approvals-seed.sql before serving. */
 const approvalsBackend = process.env.TACHYON_E2E_APPROVALS === "backend"
 const approvalsSeed = fileURLToPath(new URL("./e2e/approvals-seed.sql", import.meta.url))
@@ -41,6 +49,8 @@ function server(where: string, listen: string, withOwner: boolean, url: string) 
       E2E_TETHER: withOwner && (chatBackend || agentsBackend) ? tether : "",
       E2E_AGENTS_CONTROLS: withOwner && agentsBackend ? "1" : "",
       E2E_APPROVALS_SEED: withOwner && approvalsBackend ? approvalsSeed : "",
+      E2E_FRAGMENTS: withOwner && transcriptsBackend ? fragments : "",
+      E2E_FRAGMENTS_TOKEN: withOwner && transcriptsBackend ? fragmentsToken : "",
       E2E_AGENTS_SEED: withOwner && agentsBackend ? agentsSeed : "",
     },
     url: `${url}/healthz`,
@@ -71,6 +81,20 @@ export default defineConfig({
             command: `node '${fake}'`,
             env: { E2E_TETHER_ADDR: `127.0.0.1:${tetherPort}` },
             url: `${tether}/healthz`,
+            reuseExistingServer: false,
+            timeout: 30_000,
+          },
+        ]
+      : []),
+    ...(transcriptsBackend
+      ? [
+          {
+            command: `node '${fragmentsFake}'`,
+            env: {
+              E2E_FRAGMENTS_ADDR: `127.0.0.1:${fragmentsPort}`,
+              E2E_FRAGMENTS_TOKEN: fragmentsToken,
+            },
+            port: Number(fragmentsPort),
             reuseExistingServer: false,
             timeout: 30_000,
           },

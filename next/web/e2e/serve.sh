@@ -5,6 +5,8 @@
 #   E2E_ADDR  host:port to listen on;  E2E_OWNER  "1" to create the owner offline first;
 #   E2E_TETHER  optional URL of the suite's local Tether fake (e2e/tether-fake.ts), with chat sync on;
 #     E2E_AGENTS_CONTROLS=1 also turns on the Agent Ops controls against it;
+#   E2E_FRAGMENTS  optional URL of the suite's local Fragments Engine fake (e2e/fragments-fake.ts): transcripts on,
+#     with a throwaway token (E2E_FRAGMENTS_TOKEN) the fake also checks;
 #   E2E_APPROVALS_SEED, E2E_AGENTS_SEED  optional test-only SQL (synthetic rows), applied with sqlite3 to this
 #     run's database once the owner setup has created the schema, before serving.
 # It only ever creates E2E_DIR (which must not exist yet) and deletes nothing.
@@ -22,12 +24,15 @@ fi
 mkdir "$E2E_DIR"
 mkdir "$E2E_DIR/data" "$E2E_DIR/profile"
 printf 'httphost:\n  addr: "%s"\n' "$E2E_ADDR" > "$E2E_DIR/substrate.yaml"
-tachyon=""
+# The run's tachyon block: upstreams, features and files collected here, written once.
+upstreams=""; features=""; files=""; tachyon=""
 if [ -n "${E2E_TETHER:-}" ]; then
   case "$E2E_TETHER" in
     http://127.0.0.1:*) ;;
     *) echo "serve.sh: E2E_TETHER must be a loopback URL: $E2E_TETHER" >&2; exit 2 ;;
   esac
+  tachyon="  chat_sync_interval: 1s
+"
   upstreams="    tether: { url: \"$E2E_TETHER\" }
 "
   features="    chat_sync: true
@@ -40,18 +45,30 @@ if [ -n "${E2E_TETHER:-}" ]; then
     features="$features    agents_controls: true
 "
   fi
-  tachyon="$tachyon  chat_sync_interval: 1s
-  upstreams:
-$upstreams  features:
-$features"
 fi
 if [ -n "${E2E_APPROVALS_SEED:-}" ]; then
   # A throwaway key for approval secrets, made for this run only.
   (umask 077 && head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$E2E_DIR/approvals-secret.key")
-  tachyon="$tachyon  files:
-    secret_key: \"file://$E2E_DIR/approvals-secret.key\"
+  files="    secret_key: \"file://$E2E_DIR/approvals-secret.key\"
 "
 fi
+if [ -n "${E2E_FRAGMENTS:-}" ]; then
+  case "$E2E_FRAGMENTS" in
+    http://127.0.0.1:*) ;;
+    *) echo "serve.sh: E2E_FRAGMENTS must be a loopback URL: $E2E_FRAGMENTS" >&2; exit 2 ;;
+  esac
+  (umask 077 && printf '%s' "${E2E_FRAGMENTS_TOKEN:?}" > "$E2E_DIR/fragments.token")
+  upstreams="$upstreams    fragments: { url: \"$E2E_FRAGMENTS\", token: \"file://$E2E_DIR/fragments.token\" }
+"
+  features="$features    transcripts: true
+"
+fi
+[ -n "$upstreams" ] && tachyon="$tachyon  upstreams:
+$upstreams"
+[ -n "$features" ] && tachyon="$tachyon  features:
+$features"
+[ -n "$files" ] && tachyon="$tachyon  files:
+$files"
 if [ -n "$tachyon" ]; then
   printf 'tachyon:\n%s' "$tachyon" >> "$E2E_DIR/substrate.yaml"
 fi
