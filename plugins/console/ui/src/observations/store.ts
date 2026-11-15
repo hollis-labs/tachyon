@@ -81,8 +81,37 @@ export function eventFromRow(row: EventRow): ConsoleEvent | null {
   })
 }
 
-/** One bounded polling loop shared by chat, mail and the activity feed. */
-export function createObservationStore(fetchPage = (query: string) => observationJSON<Page>('/events' + query), sessions?: SessionSource) {
+/** A push feed of session changes: frames carry a session's state, gaps ask for a full read. */
+export interface LiveFeed {
+  open(on: { session(s: { id: string; state?: string; last_activity_at?: number }): void; gap(): void; up(live: boolean): void }): () => void
+}
+/** Minimum time between refreshes the push feed triggers; a busy fleet cannot read faster than the old poll. */
+export const LIVE_REFRESH_MS = 5000
+
+/** The Agents monitor's stream: session frames as they happen, a gap frame when the server lost some. */
+export const agentsStreamFeed: LiveFeed = {
+  open(on) {
+    if (typeof EventSource === 'undefined') { on.up(false); return () => undefined }
+    const es = new EventSource('/api/plugins/console/v1/agents/stream')
+    const frame = (e: MessageEvent) => {
+      let ev: { type?: string; session?: { id?: string; state?: string; last_activity_at?: number } }
+      try { ev = JSON.parse(e.data) } catch { return }
+      if (ev.type === 'gap') on.gap()
+      else if (ev.type === 'session' && ev.session?.id) on.session(ev.session as { id: string })
+    }
+    es.onopen = () => on.up(true)
+    es.onerror = () => on.up(false)
+    es.onmessage = frame
+    for (const t of ['session', 'gap']) es.addEventListener(t, frame as EventListener)
+    return () => es.close()
+  },
+}
+
+/**
+ * One bounded loop shared by chat, mail and the activity feed. With a live feed it refreshes when sessions change
+ * (at most every LIVE_REFRESH_MS) and polls only while the feed is down; without one it polls every 5s.
+ */
+export function createObservationStore(fetchPage = (query: string) => observationJSON<Page>('/events' + query), sessions?: SessionSource, feed?: LiveFeed) {
   let state: Observations = { events: [], checkedAt: 0, error: null, limited: false, workStates: {} }
   let high = 0
   let snapshotAt = 0
@@ -205,20 +234,47 @@ export function createObservationStore(fetchPage = (query: string) => observatio
     listeners.forEach(f => f())
   }
   const sync = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void refresh() }
+  let closeFeed: (() => void) | undefined
+  let lastPushed = 0
+  let pending: ReturnType<typeof setTimeout> | undefined
+  /** A pushed change asks for a refresh, coalesced so a busy stream reads no more often than the old poll. */
+  const pushed = () => {
+    if (pending) return
+    const wait = Math.max(0, lastPushed + LIVE_REFRESH_MS - Date.now())
+    pending = setTimeout(() => { pending = undefined; lastPushed = Date.now(); sync() }, wait)
+  }
+  const poll = (on: boolean) => {
+    clearInterval(timer)
+    timer = on ? setInterval(sync, 5000) : undefined
+  }
+  const start = () => {
+    sync()
+    if (!feed) return poll(true)
+    poll(true) // until the feed says it is live
+    closeFeed = feed.open({
+      up: (live) => { poll(!live); if (live) sync() },
+      gap: pushed,
+      session: (x) => {
+        const w = workStatesFromSessions([x])[x.id]
+        if (w && x.id in state.workStates) applyWorkStates({ [x.id]: w }, new Set([x.id]), generation)
+        pushed()
+      },
+    })
+  }
+  const stop = () => { poll(false); closeFeed?.(); closeFeed = undefined; clearTimeout(pending); pending = undefined }
   return {
     getSnapshot: () => state,
     refresh,
     subscribe(fn: () => void) {
       listeners.add(fn)
       if (listeners.size === 1) {
-        sync()
-        timer = setInterval(sync, 5000)
+        start()
         window.addEventListener('focus', sync)
         document.addEventListener('visibilitychange', sync)
       }
       return () => {
         listeners.delete(fn)
-        if (!listeners.size) { clearInterval(timer); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
+        if (!listeners.size) { stop(); window.removeEventListener('focus', sync); document.removeEventListener('visibilitychange', sync) }
       }
     },
   }
@@ -246,5 +302,5 @@ function withDeadline<T>(read: (signal: AbortSignal) => Promise<T>, stop: AbortS
     read(ctl.signal).then(resolve, reject).finally(() => { clearTimeout(timer); stop.removeEventListener('abort', cancel) })
   })
 }
-export const observations = createObservationStore(undefined, defaultSessionSource)
+export const observations = createObservationStore(undefined, defaultSessionSource, agentsStreamFeed)
 export function useObservations() { return useSyncExternalStore(observations.subscribe, observations.getSnapshot, observations.getSnapshot) }
