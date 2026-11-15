@@ -282,14 +282,22 @@ Details: `docs/api-contract.md`.
   their camelCase shapes and share the forge reads' GitHub client and error mapping: a refused token is
   `401 credential_missing` (the plugin said `unauthorized`), another `403` is `502 unavailable`, a rate limit is
   `429 rate_limited`, and GitHub's own message is not relayed. Comments answer the error when both lists fail
-  (the plugin answered an empty list). The plugin's other reads (`pulls`, `repos/{…}`, `repos/{…}/pulls`) are
-  not ported.
+  (the plugin answered an empty list).
+- **The plugin's repository and PR-list reads** (`repos/{host}/{owner}/{name}`, `repos/{…}/pulls`, `forge/pulls`)
+  are ported the same way, behind the same switch. Differences from the plugin: `state` must be `open`,
+  `closed`, `merged` or `all`, `author` and `assignee` must be GitHub logins (the org search puts them in the
+  query as qualifiers), `q` is at most 256 characters, and an unknown parameter is `400 invalid_args` (the plugin
+  passed anything through). `forge/pulls` searches `tachyon.upstreams.github.org`; with none set it answers
+  `503 configuration` and sends nothing (the plugin fell back to a built-in org). `cursor` is accepted and
+  ignored and `nextCursor` is `null`, as before (one page, `limit` clamped to 100, default 30).
 - **Errors are flat.** A rate limit carries `details.retry_after_s` (and `Retry-After`); a console state version
   conflict carries `details.version` (the old body put them inside `error`).
 - **Guards.** Reads need `tachyon.forge.read`; the audit read also needs the operator (the old
-  `RequireOperatorReads`). `PUT console/state/{key}` needs `tachyon.forge.write` and refuses any bearer that is
-  not the browser session's (`403 requester_cannot_approve`, as the old handler refused any `Authorization`); it
-  no longer needs the operator (the old `RequireOperator` did), per the contract.
+  `RequireOperatorReads`). `PUT console/state/{key}` needs `tachyon.forge.write`, refuses any bearer that is
+  not the browser session's (`403 requester_cannot_approve`, as the old handler refused any `Authorization`), and
+  needs the operator (`403 operator_required`), as the old `RequireOperator` did. The contract
+  (`docs/api-contract.md` section 5) lists no operator check on console state; the port follows the old build,
+  pending the lead.
 - **A secondary rate limit** (`403` with `Retry-After`) now counts as a rate limit, not an error.
 - **New `pr.*` alert-feed events are dropped** until the alerts slice: the old poller fed them to the alerts
   store, which is not ported yet.

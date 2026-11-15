@@ -42,6 +42,9 @@ const (
 	// forgeAuditAction is the operator check on the audit read (the old RequireOperatorReads). It is
 	// not in the assurance table, so it needs operator-token: an unknown action fails closed.
 	forgeAuditAction assurance.Action = "forge.audit_read"
+	// forgeStateWriteAction is the operator check on PUT console/state/{key} (the old RequireOperator on
+	// writes), likewise outside the assurance table and so operator-token.
+	forgeStateWriteAction assurance.Action = "forge.state_write"
 	// forgeDisabled is the message of every GitHub read while the switch is off.
 	forgeDisabled = "GitHub reads are off (tachyon.features.forge_index); nothing was sent"
 	// githubDefaultURL is the API base when tachyon.upstreams.github.url is empty (the old default).
@@ -70,7 +73,7 @@ func newForge(app *module.App, cfg settings.Settings, domain *store.Store) forge
 	}
 	token := upstreamauth.FromRef(secrets.Resolver(app), gh.Token)
 	client := &forgeindex.GitHub{Base: base}
-	reads := &forgereads.Handler{Base: base, Disabled: forgeDisabled}
+	reads := &forgereads.Handler{Base: base, Disabled: forgeDisabled, Org: gh.Org}
 	x := &forgeindex.Index{DB: domain, GH: client, Bus: forgeindex.NewBroker(nil),
 		Settings: forgeindex.AppSettings{DB: domain, Org: gh.Org},
 		Disabled: "GitHub reads are off (tachyon.features.forge_index); showing the last saved data."}
@@ -188,16 +191,17 @@ func linkedAgents(db *store.Store) func(ctx context.Context) (map[string][]forge
 // The old guards, route by route:
 //   - pulls/pending, status, stream (forgeindex), viewer, files, diff, checks, commits/{sha}
 //     (forgereads): RequireOperator, which let every GET through. Here: the route scope only.
-//   - pulls/{num}, …/commits, …/comments: the console plugin behind the unguarded /api/plugins/
-//     catch-all. Here: the route scope only.
+//   - pulls/{num}, …/commits, …/comments, repos/{…}, repos/{…}/pulls, forge/pulls: the console plugin
+//     behind the unguarded /api/plugins/ catch-all. Here: the route scope only.
 //   - audit: RequireOperatorReads, operator assurance on the read. Here: the route scope plus the
 //     operator check (assurance; an API key never qualifies).
 //   - GET console/state: RequireOperator, which let GETs through. Here: the route scope only.
 //   - PUT console/state/{key}: RequireOperator (operator assurance on writes) and the handler refused
-//     any Authorization header (403 requester_cannot_approve). Here: the write scope and the same
-//     refusal of a bearer that is not the browser session's (stateGuard). The contract puts no
-//     operator check on console state (docs/api-contract.md section 5), so a signed-in person may
-//     triage without holding tachyon.operator.
+//     any Authorization header (403 requester_cannot_approve). Here: the write scope, the same
+//     refusal of a bearer that is not the browser session's (stateGuard), then the operator check
+//     (assurance, forgeStateWriteAction), for parity with the old guard. The contract
+//     (docs/api-contract.md section 5) lists no operator check on console state; the port follows the
+//     old build pending the lead's ruling.
 //
 // None of these routes refused a bearer except the console state PUT, so only it keeps that refusal.
 func forgeRoutes(d forgeDeps) []routes.Route {
@@ -217,7 +221,7 @@ func forgeRoutes(d forgeDeps) []routes.Route {
 		routes.Route{Method: http.MethodGet, Pattern: forgeapi.StatePrefix, Scope: forgeRead, Handler: state},
 		// A subtree: a key is URL-encoded by the client, and a PR key's "/" arrives as a path
 		// separator in the decoded path the guard's scope table matches (one {key} segment would not).
-		routes.Route{Method: http.MethodPut, Pattern: forgeapi.StatePrefix + "/", Scope: forgeWrite, Handler: stateGuard(d.cookie, state)},
+		routes.Route{Method: http.MethodPut, Pattern: forgeapi.StatePrefix + "/", Scope: forgeWrite, Handler: stateGuard(d.cookie, assurance.Middleware(forgeStateWriteAction, state))},
 	)
 }
 

@@ -38,6 +38,9 @@ var Routes = []string{
 	"GET " + forgeapi.Prefix + "/repos/{host}/{owner}/{name}/pulls/{num}",
 	"GET " + forgeapi.Prefix + "/repos/{host}/{owner}/{name}/pulls/{num}/commits",
 	"GET " + forgeapi.Prefix + "/repos/{host}/{owner}/{name}/pulls/{num}/comments",
+	"GET " + forgeapi.Prefix + "/repos/{host}/{owner}/{name}",
+	"GET " + forgeapi.Prefix + "/repos/{host}/{owner}/{name}/pulls",
+	"GET " + forgeapi.Prefix + "/pulls",
 }
 
 const (
@@ -63,6 +66,9 @@ type Handler struct {
 	Now        func() time.Time
 	// Disabled, when set, is the message every route answers with 503 disabled, before anything is sent.
 	Disabled string
+	// Org is the organization GET /pulls searches (tachyon.upstreams.github.org); empty, that route
+	// answers 503 configuration.
+	Org string
 
 	mu    sync.Mutex
 	files map[string]cachedFiles
@@ -83,7 +89,7 @@ func (h *Handler) now() time.Time {
 // Mux serves Routes.
 func (h *Handler) Mux() http.Handler {
 	m := http.NewServeMux()
-	hs := []http.HandlerFunc{h.viewer, h.commit, h.filesList, h.diff, h.checks, h.pull, h.commits, h.comments}
+	hs := []http.HandlerFunc{h.viewer, h.commit, h.filesList, h.diff, h.checks, h.pull, h.commits, h.comments, h.repo, h.repoPulls, h.orgPulls}
 	for i, r := range Routes {
 		m.HandleFunc(r, hs[i])
 	}

@@ -38,6 +38,9 @@ var forgeGitHubReads = []string{
 	"/repos/github/acme/widgets/pulls/1/commits",
 	"/repos/github/acme/widgets/pulls/1/comments",
 	"/repos/github/acme/widgets/commits/" + forgeSHA,
+	"/repos/github/acme/widgets",
+	"/repos/github/acme/widgets/pulls?state=open",
+	"/pulls?state=open&author=dev",
 }
 
 // forgeLocalReads are the forge reads served from the store.
@@ -173,9 +176,10 @@ func TestForgeSwitchOffDialsNothing(t *testing.T) {
 // fakeGitHub answers the GitHub REST reads the forge makes for one PR (acme/widgets#1), refuses PR 9
 // for rate and has no PR 404. It records each request and the Authorization headers it saw.
 type fakeGitHub struct {
-	mu    sync.Mutex
-	reqs  []string
-	auths map[string]bool
+	mu      sync.Mutex
+	reqs    []string
+	queries []string
+	auths   map[string]bool
 }
 
 func (f *fakeGitHub) requests() []string {
@@ -199,6 +203,8 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, string) {
 "repository_url":"https://api.github.example/repos/acme/widgets","html_url":"https://github.example/acme/widgets/pull/1","user":{"login":"dev"}}]}`,
 		repo + "/pulls/1":         pr,
 		repo + "/pulls/1/reviews": `[]`,
+		repo:                      `{"name":"widgets","default_branch":"main","private":false,"stargazers_count":2,"open_issues_count":1,"html_url":"https://github.example/acme/widgets"}`,
+		repo + "/pulls":           "[" + pr + "]",
 		repo + "/commits/" + forgeSHA + "/check-runs": `{"check_runs":[{"id":3,"name":"go","status":"completed","conclusion":"failure",
 "started_at":"2026-11-15T00:00:00Z","completed_at":"2026-11-15T00:01:00Z","html_url":"https://ci.example/3","output":{"summary":"1 failed","annotations_count":1}}]}`,
 		repo + "/commits/" + forgeSHA + "/status": `{"statuses":[{"context":"ci/ok","state":"success"}]}`,
@@ -212,6 +218,9 @@ func newFakeGitHub(t *testing.T) (*fakeGitHub, string) {
 		f.mu.Lock()
 		f.reqs = append(f.reqs, r.Method+" "+r.URL.Path)
 		f.auths[r.Header.Get("Authorization")] = true
+		if q := r.URL.Query().Get("q"); q != "" {
+			f.queries = append(f.queries, q)
+		}
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-RateLimit-Resource", "core")
@@ -301,6 +310,9 @@ func TestForgeWithFakeGitHub(t *testing.T) {
 		"/repos/github/acme/widgets/pulls/1/commits":     `"authoredAt":"2026-11-15T00:00:00Z"`,
 		"/repos/github/acme/widgets/pulls/1/comments":    `"body":"looks good"`,
 		"/repos/github/acme/widgets/commits/" + forgeSHA: `"parents":["p1"]`,
+		"/repos/github/acme/widgets":                     `"defaultBranch":"main"`,
+		"/repos/github/acme/widgets/pulls?state=open":    `"headBranch":"fix"`,
+		"/pulls?state=open&author=dev":                   `"title":"Widget fix CW-20261115-0087"`,
 	}
 	for _, path := range forgeGitHubReads {
 		if got := c.want(200, "GET", p+path, nil, xrw); !bytes.Contains(got, []byte(want[path])) {
@@ -325,6 +337,9 @@ func TestForgeWithFakeGitHub(t *testing.T) {
 	}
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
+	if !strings.Contains(strings.Join(fake.queries, "\n"), "is:pr org:acme is:open author:dev") {
+		t.Errorf("org list search: %v", fake.queries)
+	}
 	if len(fake.auths) != 1 || !fake.auths["Bearer "+value] {
 		t.Errorf("GitHub saw other credentials than the configured one (%d distinct)", len(fake.auths))
 	}
@@ -370,4 +385,26 @@ func TestForgeStreamEndsOnShutdown(t *testing.T) {
 	if took := time.Since(begin); took > 5*time.Second {
 		t.Fatalf("shutdown took %s with the forge stream open", took)
 	}
+}
+
+// The console state write needs the operator, as the old RequireOperator did: a signed-in person with
+// the forge scopes but without tachyon.operator reads the state and is refused the write.
+func TestForgeStateWriteNeedsTheOperator(t *testing.T) {
+	base, _ := started(t, loopbackOverride)
+	owner := newClient(t, base)
+	owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	password := strings.Join([]string{"plain", "member", "pass", "phrase"}, " ")
+	owner.want(201, "POST", "/api/identity/users", map[string]any{"username": "member", "display_name": "Member", "password": password, "scopes": []string{forgeRead, forgeWrite}}, xrw)
+	member := newClient(t, base)
+	member.want(200, "POST", "/api/login", map[string]string{"username": "member", "password": password}, xrw)
+	member.want(200, "GET", forgeapi.StatePrefix, nil, xrw)
+	member.want(200, "GET", forgeapi.Prefix+"/pulls/pending", nil, xrw)
+	put := forgeapi.StatePrefix + "/" + forgeTriageKey
+	if code := flatCode(t, member.want(403, "PUT", put, map[string]any{"type": "dismiss"}, xrw)); code != "operator_required" {
+		t.Errorf("state PUT without the operator: %s", code)
+	}
+	if code := flatCode(t, member.want(403, "GET", forgeapi.Prefix+"/audit", nil, xrw)); code != "operator_required" {
+		t.Errorf("audit without the operator: %s", code)
+	}
+	owner.want(200, "PUT", put, map[string]any{"type": "dismiss"}, xrw)
 }

@@ -143,7 +143,7 @@ func TestDisabledAndCredentialSendNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unreadable := &Handler{Credential: true, HTTP: &http.Client{Transport: rt}, Base: s.URL}
+	unreadable := &Handler{Credential: true, HTTP: &http.Client{Transport: rt}, Base: s.URL, Org: "acme"}
 	for _, r := range Routes {
 		path := strings.TrimPrefix(strings.TrimPrefix(r, "GET "), "/api/plugins/console/v1/forge")
 		path = strings.NewReplacer("{host}", "github", "{owner}", "o", "{name}", "r", "{num}", "5", "{sha}", sha).Replace(path)
