@@ -32,6 +32,7 @@ config:
   tachyon:
     allowed_hosts: []
     cache_dir: cache
+    workspace_dir: workspace
     upstreams:
       github: { url: "https://api.github.com" }
     features:

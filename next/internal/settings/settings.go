@@ -6,6 +6,7 @@
 //	tachyon:
 //	  allowed_hosts: []            # extra Host values (besides loopback) served behind a local TLS proxy
 //	  cache_dir: tachyon-cache     # relative: anchored in the data directory (AfterConfig)
+//	  workspace_dir: workspace     # chat workspace files; relative: anchored in the data directory
 //	  upstreams:                   # every address empty by default; each credential is a secrets reference
 //	    tether:          { url: "", token: "" }
 //	    tether_control:  { url: "", token: "" }   # builder changes; url empty = tether.url
@@ -131,6 +132,7 @@ type Alerts struct {
 type Settings struct {
 	AllowedHosts []string
 	CacheDir     string
+	WorkspaceDir string // chat workspace file bytes (the old build's $TACHYON_DATA_DIR/workspace)
 	Upstreams    Upstreams
 	Features     Features
 	Files        Files
@@ -195,6 +197,9 @@ func Parse(raw any) (Settings, error) {
 		return s, err
 	}
 	if s.CacheDir, err = root.str("cache_dir"); err != nil {
+		return s, err
+	}
+	if s.WorkspaceDir, err = root.str("workspace_dir"); err != nil {
 		return s, err
 	}
 	if err = parseUpstreams(root, &s.Upstreams); err != nil {

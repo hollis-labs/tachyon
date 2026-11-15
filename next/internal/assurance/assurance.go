@@ -51,7 +51,7 @@ const OperatorScope = "tachyon.operator"
 // Action is an action the assurance table knows.
 type Action string
 
-// The table: the old build's, plus planner.write (operator, as before).
+// The table: the old build's, plus planner.write and chat.write (operator, as before).
 var table = map[Action]Level{
 	"read":                    BrowserSession,
 	"present":                 BrowserSession,
@@ -69,6 +69,8 @@ var table = map[Action]Level{
 	"settings.write_operator": OperatorToken,
 	// Planner writes: the old build wrapped them in RequireOperator, outside this table.
 	"planner.write": OperatorToken,
+	// Chat writes and the workspace file content read: RequireOperator / RequireOperatorReads.
+	"chat.write": OperatorToken,
 }
 
 // Actions is every action in the table.

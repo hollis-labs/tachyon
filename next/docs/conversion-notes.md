@@ -243,6 +243,26 @@ Details: `docs/api-contract.md`.
 - **Torque's credential** for the planner is `tachyon.upstreams.torque.token`, a secrets reference resolved per
   request.
 
+## Chat without threads (slice B6)
+
+- **Same API** for topics, bookmarks, plans (several per thread, from `main`'s #725), steps, workspace, scratchpad,
+  settings, continue, activity, context and the Work view (`docs/api-contract.md` section 5c). Compared with the
+  old build's handlers on copies of the same data.
+- **Threads are B6b** (CW-20261115-0025): thread list and detail, messages, send, read, stop and both event streams,
+  over the chat bridge's inbound side and the app agent. Until then:
+  - the thread-existence check reads the local tables (`chat.LocalThreads`);
+  - a topic's `message_ref` is not resolved, so its `seq` is null;
+  - changes are not streamed.
+- **`tachyon.workspace_dir`** (default `workspace`, anchored in the data directory) holds the chat workspace
+  files, the old build's `$TACHYON_DATA_DIR/workspace`. The old layout is refused there too.
+- **Workspace files and migrate-from.** `migrate-from` copies the databases, not the old `workspace/` files. The
+  2026-11-14 snapshot has no workspace items, so nothing is lost today. If files exist at cutover, they must be
+  copied into `tachyon.workspace_dir` (open: raised with the program lead).
+- **Torque reads** (`internal/torqueread`, used by the Work view): the token is a secrets reference resolved per
+  request, as for the planner.
+- **Not ported:** the chat dev stub (`TACHYON_CHAT_STUBS`) with its OpenAPI document and fixtures, as for the
+  planner.
+
 ## What the operator does differently
 
 - **First run.** Create the owner offline before the first start:

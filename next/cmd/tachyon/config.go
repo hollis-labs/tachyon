@@ -162,6 +162,10 @@ func anchorPaths(app *module.App, getenv func(string) string, prepare bool) erro
 	if err != nil {
 		return err
 	}
+	workspaceDir, err := anchor(dirs, own, "workspace_dir", settings.Key+".workspace_dir")
+	if err != nil {
+		return err
+	}
 	// Every command refuses a bad tachyon block, naming the key, before anything is created.
 	if _, err = settings.Parse(own); err != nil {
 		return err
@@ -171,13 +175,13 @@ func anchorPaths(app *module.App, getenv func(string) string, prepare bool) erro
 	}
 	// The old build's data directory is refused before anything is created or tightened in it:
 	// the database file, and every directory this build may write into (the data directory, the
-	// database's, the signing key's, the cache directory and its parent), since the override can
-	// point each one elsewhere.
+	// database's, the signing key's, the cache and workspace directories and their parents), since
+	// the override can point each one elsewhere.
 	keyFile, _ := id["key_file"].(string)
 	if err = oldlayout.Refuse(dbPath); err != nil {
 		return err
 	}
-	for _, dir := range []string{dirs.Data, filepath.Dir(dbPath), filepath.Dir(keyFile), cacheDir, filepath.Dir(cacheDir)} {
+	for _, dir := range []string{dirs.Data, filepath.Dir(dbPath), filepath.Dir(keyFile), cacheDir, filepath.Dir(cacheDir), workspaceDir, filepath.Dir(workspaceDir)} {
 		if err = oldlayout.RefuseDir(dir); err != nil {
 			return err
 		}
@@ -187,6 +191,9 @@ func anchorPaths(app *module.App, getenv func(string) string, prepare bool) erro
 	}
 	if err = appdirs.PrivateDir(cacheDir); err != nil {
 		return fmt.Errorf("prepare the cache directory %s: %w", cacheDir, err)
+	}
+	if err = appdirs.PrivateDir(workspaceDir); err != nil {
+		return fmt.Errorf("prepare the workspace directory %s: %w", workspaceDir, err)
 	}
 	// Create the database file private before the database module opens it, when its directory
 	// exists (an override may name a directory the module is meant to refuse or create itself).
