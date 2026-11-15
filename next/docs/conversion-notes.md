@@ -296,8 +296,16 @@ Details: `docs/api-contract.md`.
   demand, as before.
 - **chat-turns freshness headers** use the old default policy (enabled, 3 s fresh, 60 s revalidate). The old cache
   policy file's overrides come with the API cache slice.
-- **Not run at start:** the old build's move of outbox rows to a new identity, and its backfill of turn-to-session
-  links keyed by the outbox identity. Both belong to outbound delivery (B7+); the migrated links are kept.
+- **Run at start (B6c), as the old build did:** the backfill that links each migrated turn and outbox row of the
+  configured Tether address to its session object. It writes only those links; nothing is fetched, and it is
+  skipped while the address is empty.
+- **Not run at start:** the old build's move of outbox rows from a previous identity to a new one. The cutover
+  keeps the identity by spelling the Tether address as the old build did (the runbook item above).
+- **Sending to an agent (B6c) is behind `tachyon.features.chat_sync`**, with the inbound sync. Off (the default),
+  a send answers `503 disabled` and records nothing, so nothing reaches an agent before acceptance (plan sections
+  6 and 9). On, sends work as before. There is no background delivery: a migrated row that is not `sent` is sent
+  again only when the operator retries it with the same key within a day. Tether is given the same idempotency key
+  each time, which is what keeps a retry after a crash from delivering twice.
 - **`tachyon.workspace_dir`** (default `workspace`, anchored in the data directory) holds the chat workspace
   files, the old build's `$TACHYON_DATA_DIR/workspace`. The old layout is refused there too.
 - **Workspace files and migrate-from.** `migrate-from` copies the old `workspace/` files into
