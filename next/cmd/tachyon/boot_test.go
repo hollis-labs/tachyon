@@ -299,7 +299,7 @@ func TestEveryServedRouteHasAScope(t *testing.T) {
 	}
 	d := deps{access: access.New(store.From(app), identity.From(app), nil), local: dataverbs.NewLocal(objects.New(store.Wrap(store.From(app)))),
 		planner: newPlanner(app, cfg, store.Wrap(store.From(app))), approvals: newApprovals(context.Background(), app, cfg, store.Wrap(store.From(app))),
-		agents: newAgents(app, cfg, store.Wrap(store.From(app)), chatDeps{})}
+		agents: newAgents(app, cfg, store.Wrap(store.From(app)), chatDeps{}), transcripts: newTranscripts(app, cfg, store.Wrap(store.From(app)))}
 	rs := appRoutes(d)
 	if len(rs) == 0 {
 		t.Fatal("no app routes: the check would prove less than it says")
