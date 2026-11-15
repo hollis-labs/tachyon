@@ -310,5 +310,6 @@ Details: `docs/api-contract.md`.
   - `migrate-from` refuses an upstream that differs, and one that is not configured at all.
   - `--allow-unchecked-instances` is for rehearsals with blank upstreams, never for the cutover.
   - The chat history is keyed by the Tether address too: the chat bridge lists only the turns stored under the
-    configured `tachyon.upstreams.tether.url`. With any other spelling the migrated chat history does not show
-    (nothing is lost; it shows again with the old spelling).
+    configured `tachyon.upstreams.tether.url`, and the chat outbox only the rows owned by a digest of it. With any
+    other spelling the migrated chat history and outbox do not show (nothing is lost; they show again with the old
+    spelling).
