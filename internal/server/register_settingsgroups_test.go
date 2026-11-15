@@ -133,3 +133,41 @@ func TestChatGroupContinueDefault(t *testing.T) {
 		t.Fatalf("load: %+v %v", st, err)
 	}
 }
+
+// General keeps the landing page and the elevation lifetime in separate rows; saving one leaves the other.
+func TestGeneralGroupLandingPageRow(t *testing.T) {
+	db, reg := groupStore(t)
+	g, _ := reg.Group("general")
+	ctx := context.Background()
+	save := func(st settingsreg.Stored) error {
+		return db.Writer.Submit(ctx, "t", func(ctx context.Context, tx *sql.Tx) error { return g.Storage.Save(ctx, tx, st) })
+	}
+	if err := save(settingsreg.Stored{Over: map[string]admin.Scalar{"landing_page": sstr("chat"), "elevation_ttl": sstr("7d")}}); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	if err := db.Reader.QueryRow(`SELECT value FROM app_settings WHERE key=?`, LandingPageKey).Scan(&raw); err != nil || raw != "chat" {
+		t.Fatalf("landing row %q %v", raw, err)
+	}
+	back, _ := g.Storage.Load(ctx, db.Reader)
+	if v, _ := scalarString(back.Over["landing_page"]); v != "chat" {
+		t.Fatalf("round trip: %+v", back.Over)
+	}
+	if v, _ := scalarString(back.Over["elevation_ttl"]); v != "7d" {
+		t.Fatalf("elevation lost: %+v", back.Over)
+	}
+	// Resetting the landing page removes only its row.
+	if err := save(settingsreg.Stored{Over: map[string]admin.Scalar{"elevation_ttl": sstr("7d")}}); err != nil {
+		t.Fatal(err)
+	}
+	back, _ = g.Storage.Load(ctx, db.Reader)
+	if _, ok := back.Over["landing_page"]; ok {
+		t.Fatalf("landing page should reset: %+v", back.Over)
+	}
+	if v, _ := scalarString(back.Over["elevation_ttl"]); v != "7d" {
+		t.Fatalf("elevation lost on landing reset: %+v", back.Over)
+	}
+	if err := save(settingsreg.Stored{Over: map[string]admin.Scalar{"landing_page": sstr("nowhere")}}); err == nil {
+		t.Fatal("an unknown landing page must be refused")
+	}
+}

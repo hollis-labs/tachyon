@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -236,27 +238,90 @@ func presetsOK(lines []string) bool {
 	return true
 }
 
-// generalGroup holds the elevation lifetime now (Tangent applies it at its next restart); the cache policy
-// fields join it once the per-scope policy mapping is designed.
+// LandingPageKey holds where Tachyon opens ('/' redirects there); the GUI reads it from the general group.
+const LandingPageKey = "general.landing_page"
+
+// LandingPages are the sections '/' may open, by route id.
+var LandingPages = []string{"planner", "chat", "agents", "approvals", "transcripts", "repos", "builder"}
+
+// generalGroup holds the elevation lifetime (Tangent applies it at its next restart) and the landing page,
+// each in its own row; the cache policy fields join it once the per-scope policy mapping is designed.
 func generalGroup() settingsreg.Group {
 	return settingsreg.Group{ID: "general", Label: "General",
 		Fields: []admin.Field{{Key: "elevation_ttl", Type: admin.StringType, Title: "Operator elevation lasts",
 			Description: "always, never, or a number of days like 7d. Tangent applies it at its next restart.",
 			Default:     strPtr(approvals.DefaultElevationTTL), Pattern: `^(always|never|[1-9][0-9]{0,2}d)$`, Editable: true,
-			RestartRequired: true, ApplyTarget: "tangent"}},
+			RestartRequired: true, ApplyTarget: "tangent"},
+			{Key: "landing_page", Type: admin.StringType, Title: "Landing page", Description: "Where Tachyon opens.",
+				Default: strPtr("planner"), Enum: enumOf(LandingPages...), Editable: true}},
 		Operator: map[string]struct{}{"elevation_ttl": {}},
-		Storage: rowStorage{key: approvals.ElevationTTLKey,
-			decode: func(raw string) map[string]admin.Scalar {
-				v, err := approvals.ParseElevationTTL(raw)
-				if err != nil {
-					return nil
-				}
-				return map[string]admin.Scalar{"elevation_ttl": sstr(v)}
-			},
-			encode: func(o map[string]admin.Scalar) (string, error) {
-				raw, _ := scalarString(o["elevation_ttl"])
-				return approvals.ParseElevationTTL(raw)
-			}}}
+		Storage: splitStorage{
+			{keys: []string{"elevation_ttl"}, row: rowStorage{key: approvals.ElevationTTLKey,
+				decode: func(raw string) map[string]admin.Scalar {
+					v, err := approvals.ParseElevationTTL(raw)
+					if err != nil {
+						return nil
+					}
+					return map[string]admin.Scalar{"elevation_ttl": sstr(v)}
+				},
+				encode: func(o map[string]admin.Scalar) (string, error) {
+					raw, _ := scalarString(o["elevation_ttl"])
+					return approvals.ParseElevationTTL(raw)
+				}}},
+			{keys: []string{"landing_page"}, row: rowStorage{key: LandingPageKey,
+				decode: func(raw string) map[string]admin.Scalar {
+					if !slices.Contains(LandingPages, raw) {
+						return nil
+					}
+					return map[string]admin.Scalar{"landing_page": sstr(raw)}
+				},
+				encode: func(o map[string]admin.Scalar) (string, error) {
+					raw, _ := scalarString(o["landing_page"])
+					if !slices.Contains(LandingPages, raw) {
+						return "", fmt.Errorf("landing_page must be one of %s", strings.Join(LandingPages, ", "))
+					}
+					return raw, nil
+				}}},
+		}}
+}
+
+// splitStorage keeps each part of one group in its own app_settings row, so a group can gather settings
+// that predate it. Each part owns the keys it lists.
+type splitStorage []struct {
+	keys []string
+	row  rowStorage
+}
+
+func (s splitStorage) Load(ctx context.Context, q settingsreg.Querier) (settingsreg.Stored, error) {
+	out := settingsreg.Stored{Over: map[string]admin.Scalar{}, Pending: map[string]bool{}}
+	for _, p := range s {
+		st, err := p.row.Load(ctx, q)
+		if err != nil {
+			return out, err
+		}
+		for k, v := range st.Over {
+			out.Over[k] = v
+		}
+	}
+	return out, nil
+}
+
+func (s splitStorage) Save(ctx context.Context, tx *sql.Tx, st settingsreg.Stored) error {
+	for _, p := range s {
+		part := settingsreg.Stored{Over: map[string]admin.Scalar{}, Pending: map[string]bool{}}
+		for _, k := range p.keys {
+			if v, ok := st.Over[k]; ok {
+				part.Over[k] = v
+			}
+			if v, ok := st.Pending[k]; ok {
+				part.Pending[k] = v
+			}
+		}
+		if err := p.row.Save(ctx, tx, part); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // transcriptsGroup shows the environment-set limit read-only (cmd/tachyon reads it once at start).

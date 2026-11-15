@@ -13,6 +13,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 import { useApi } from "./api/context"
 import { DataStatus } from "./DataStatus"
 import { plugins } from "./plugins"
+import { Landing } from "./settings/Landing"
 import { SettingsPage } from "./settings/SettingsPage"
 import { AvatarMenu } from "./user/AvatarMenu"
 import { UserPage } from "./user/UserPage"
@@ -83,7 +84,7 @@ function Shell() {
         <DataStatus />
         <div className="min-h-0 flex-1 overflow-auto">
           <Routes>
-            <Route path="/" element={<Navigate to={DEFAULT_ROUTE} replace />} />
+            <Route path="/" element={<Landing fallback={DEFAULT_ROUTE} />} />
             {plugins.flatMap((p) =>
               p.routes.map((r) => (
                 <Route
