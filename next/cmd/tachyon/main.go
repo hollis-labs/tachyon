@@ -12,10 +12,24 @@ import (
 
 	"github.com/spf13/cobra"
 
+	libsched "github.com/hollis-labs/libs/core/util/scheduler"
+
 	"github.com/hollis-labs/substrate/boot"
 	"github.com/hollis-labs/substrate/modules/cli"
 	"github.com/hollis-labs/substrate/modules/scheduler"
+
+	"github.com/hollis-labs/tachyon/next/internal/objectsync"
+	"github.com/hollis-labs/tachyon/next/internal/store"
 )
+
+// Hooks the modules read at start, registered before any boot (tests boot without main):
+// the schema, which the database module applies (internal/store), and the scheduler's dispatcher, so
+// fired jobs go to Tachyon's own handlers, never to a queue module this app does not run.
+func init() {
+	store.Use()
+	scheduler.UseRunner(jobs{})
+	scheduler.UseOptionsFunc(func(libsched.Store) []libsched.Option { return objectsync.EngineOptions() })
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -28,10 +42,12 @@ func main() {
 }
 
 func run(ctx context.Context, getenv func(string) string, args []string) error {
-	// Fired jobs go to Tachyon's own dispatcher, never to a queue module this app does not run.
-	scheduler.UseRunner(jobs{})
 	modules, prepare := plan(args)
-	started, err := boot.StartWith(ctx, substrateApp, modules, substrateConfigJSON, bootOptions(getenv, prepare))
+	opts := bootOptions(getenv, prepare)
+	if migrating(args) {
+		opts = migrateOptions(getenv, opts)
+	}
+	started, err := boot.StartWith(ctx, substrateApp, modules, substrateConfigJSON, opts)
 	if err != nil {
 		return err
 	}
@@ -48,6 +64,6 @@ func (t *tachyon) root(ctx context.Context, args []string) *cobra.Command {
 	serve := t.serveCmd(ctx)
 	rootCmd.RunE = func(c *cobra.Command, args []string) error { return serve.RunE(c, args) }
 	rootCmd.Args = cobra.NoArgs
-	rootCmd.AddCommand(serve)
+	rootCmd.AddCommand(serve, t.migrateFromCmd(ctx), t.accessCmd(ctx), t.syncObjectsCmd(ctx))
 	return rootCmd
 }

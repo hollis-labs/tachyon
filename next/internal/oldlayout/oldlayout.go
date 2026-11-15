@@ -6,7 +6,10 @@
 // The old layout is recognized by either sign, checked without writing anything:
 //   - jobs.db beside the database (the old scheduler's file; the new build keeps schedules in its
 //     one database), or
-//   - a database holding the old migration ledger, table tachyon_migrations.
+//   - a database holding the old migration ledger, table tachyon_migrations, without the goose
+//     version table. The new schema keeps tachyon_migrations (its rows are copied history, port plan
+//     section 5), so the ledger alone does not mark the old build; goose_db_version is what this
+//     build adds and the old one never had.
 package oldlayout
 
 import (
@@ -39,12 +42,12 @@ func Refuse(dbPath string) error {
 	if err != nil {
 		return fmt.Errorf("check %s: %w", dbPath, err)
 	}
-	old, err := hasLedger(dbPath)
+	old, err := oldLedger(dbPath)
 	if err != nil {
 		return fmt.Errorf("check %s for the old layout: %w", dbPath, err)
 	}
 	if old {
-		return refusal(dir, "its database holds tachyon_migrations, the old build's schema ledger")
+		return refusal(dir, "its database holds tachyon_migrations, the old build's schema ledger, and no goose version table")
 	}
 	return nil
 }
@@ -65,9 +68,9 @@ func refusal(dir, why string) error {
 		"Point TACHYON_DATA_DIR (or database.sqlite.path) at a new, empty directory and copy the data with `tachyon migrate-from`", dir, why)
 }
 
-// hasLedger opens the file read-only and immutable (no journal, no lock, no write of any kind) and
-// looks for the old ledger table.
-func hasLedger(path string) (bool, error) {
+// oldLedger opens the file read-only and immutable (no journal, no lock, no write of any kind) and
+// reports the old ledger table without the goose version table.
+func oldLedger(path string) (bool, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return false, err
@@ -80,7 +83,10 @@ func hasLedger(path string) (bool, error) {
 	defer func() { _ = db.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var n int
-	err = db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'tachyon_migrations'`).Scan(&n)
-	return n > 0, err
+	var ledger, goose int
+	err = db.QueryRowContext(ctx, `SELECT
+		count(*) FILTER (WHERE name = 'tachyon_migrations'),
+		count(*) FILTER (WHERE name = 'goose_db_version')
+		FROM sqlite_master WHERE type = 'table'`).Scan(&ledger, &goose)
+	return ledger > 0 && goose == 0, err
 }

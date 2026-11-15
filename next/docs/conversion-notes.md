@@ -7,12 +7,10 @@ its rows. Plan: `docs/substrate-port-plan.md`. Contract: `docs/api-contract.md`.
 
 Open items that need a decision or a change outside this cell:
 
-1. **BOM pins (Substrate CW-20261114-0093).**
-   - The old build uses `libs/mesh/core` v0.9.0 and `libs/ui/ui-go` v0.4.0; the BOM pins v0.6.0 and v0.1.0.
-   - `next/` imports neither in B1, so nothing is lost yet.
-   - The slice that first needs either one (Tether messaging for chat and alerts; the ui-go helpers) must use the BOM
-     version or wait for the pin change, and records any lost feature here.
-   - `libs/mcp/plugin-mcp` is newer in the BOM (v0.6.0 against v0.3.0); `next/` takes it through `pluginhost`.
+1. **BOM pins: closed.** Substrate #43 raised the BOM to `libs/ui/ui-go` v0.4.0 and `libs/mesh/core` v0.10.0
+   (CW-20261114-0093). `next/` is pinned to Substrate 035e0d33 (`pins sync`). Nothing was lost: `next/` uses
+   neither library's older API, and the slices that bring Tether messaging and the ui-go helpers start on the new
+   pins.
 2. **Identity step-up (Substrate CW-20261114-0095).** There is no re-authentication before a high-risk resolve. The
    operator check is kind user plus `tachyon.operator`. A design note, not blocking.
 3. **Scheduler health.** `/healthz` reports `database` and `plugins`. The plan's post-cutover check also names the
@@ -28,7 +26,14 @@ Open items that need a decision or a change outside this cell:
    commit is archived into a throwaway repository and scanned with `--no-allowlist`, and any finding fails the
    job. The old tree's and the history's findings are pinned by an allowlist on `main` (PR #702), the
    director's ruling. They never apply to `next/`.
-7. **`GET` routes that write today** (inventory 12.1). In the port they take a write scope or become POST, decided
+7. **Identity keys cannot be listed or revoked through the module's Go API (Substrate CW-20261114-0131).**
+   - `tachyon access reissue` reads two counts from the identity module's tables, read-only: whether an owner
+     exists, and whether any key does. This is in `internal/access`, `identityCounts`.
+   - `tachyon access revoke` and `disable` act on Tachyon's credential mapping. The agent API checks that mapping
+     on every request, so the key and every token minted from it are refused at once. The identity module's own
+     key row stays live until the module exports a revoke; a revoked key then still works on identity routes
+     only within its own scopes.
+8. **`GET` routes that write today** (inventory 12.1). In the port they take a write scope or become POST, decided
    per slice and recorded in the contract:
    - `access/apps?refresh=1`
    - `chat/threads/{ref}/continue`
@@ -115,6 +120,21 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_*_STUBS` (alerts, forge, planner, chat, agents, builder, fileview, approvals, settings, transcripts) | dropped from the production build |
 | `TACHYON_API_URL`, `TACHYON_API_TOKEN_FILE` | client-side settings of the `tachyon data` command; kept by the CLI slice as flags |
 
+## Data
+
+- **The schema is unchanged** (B2, carried to 058): every table, column, declared type, default, key, index and
+  trigger of the old build at its migration 058.
+  - `00001_init.sql` is the old schema at 056. `00003_old_057_058.sql` replays the old 057 (`seat_status`) and 058
+    (`chat_plans.position`, index changed) verbatim.
+  - Each later old migration on `main` is carried the same way, in its own file. `migrate-from` accepts exactly
+    the ledger 001..058.
+  - `chat_events.body` keeps its declared type TEXT, although existing rows may hold BLOBs.
+  - The 14 AUTOINCREMENT tables keep AUTOINCREMENT.
+  - The old ledger `tachyon_migrations` is kept as a table, and its rows are copied as history. The new build's
+    own version table is `goose_db_version`.
+- **jobs.db is not a separate file.** The scheduler module creates its `gosched_*` tables in the one database; D1
+  carries the six schedules and their history.
+
 ## HTTP
 
 - Paths are unchanged, apart from the removals in the contract's section 1.
@@ -124,11 +144,65 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 
 Details: `docs/api-contract.md`.
 
+## Agents and credentials (slice B3)
+
+- **Old tokens become identity keys.**
+  - `tachyon access reissue --out-dir DIR` runs once, after `tachyon identity setup` and before any identity key
+    exists.
+  - It turns every active old service token into one identity key: keyed on the service identity's id, with
+    exactly the old grant, and a lifetime of the token's remaining time less one second.
+  - It writes each key to its own 0600 file, `<identity id>.<credential id>.key`, and prints only ids and
+    counts.
+  - Before handing anything out, it proves for each key that the old allow-set of (verb, kind) equals the new
+    one, and that the expiry is not later. If any check fails, every key it made is revoked and no file is
+    written.
+  - Old token rows are kept and marked superseded (`service_credentials.source_token_id`).
+  - A reissue that fails after creating keys revokes their credentials, but the identity module keeps its key
+    rows (no exported revoke, Gaps 7). It therefore refuses to run again on that data directory; the window
+    restarts from `migrate-from` on a new one.
+- **Holders swap their token file for the key file.**
+  - The bearer is the same kind of header; the value changes.
+  - A key never counts as a person: no key, whatever its scopes, passes an approvals assurance check.
+- **The `tachyon access` commands keep their names, now on identity keys:** `issue` (`--out FILE` replaces
+  `--token-file`), `bind`, `unbind`, `pin-proxy`, `unpin-proxy`, `list`, `revoke` (a credential id), `disable`
+  (an identity id).
+  - `access` never grants `*` or `tachyon.operator`.
+- **Assurance** comes from the signed-in person, with no elevation step:
+  - browser-session: any signed-in user;
+  - operator-token: a signed-in user holding `tachyon.operator` (the owner, through `*`).
+
+  The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
+  TTL are gone. The confirm phrase stays in the approvals code.
+
+## Objects and object sync (slice B4)
+
+- **Same API.** The objects data verbs and the sync status route keep their paths and semantics: the agent API with
+  grants and kinds, and the console API with scopes.
+- **`tachyon sync-objects --status|--enable|--disable [--source NAME] [--interval D]`** behaves as before. It is
+  now a cobra command on the data directory, and `--status` lists every schedule (id, type, enabled, next run),
+  whether or not its source is configured here.
+- **The schedules are the migrated ones.** With the feature on, each due schedule fires once, its missed runs
+  coalesced (`run_once`), under its copied id. A schedule whose source is not configured in this process is
+  skipped and left as it is (the old rule). `tachyon.features.object_sync` gates the engine; with it off nothing
+  fires.
+- **Upstream credentials** are secrets references resolved per request (`upstreamauth`). A rotated secret is picked
+  up without a restart. GitHub's token is no longer a value: `tachyon.upstreams.github.token` is a reference.
+
 ## What the operator does differently
 
 - **First run.** Create the owner offline before the first start:
   `printf '%s\n' "$PASSWORD" | tachyon identity setup --username <owner>`. Setup over HTTP is refused.
 - **Configuration.** One override file, named by `SUBSTRATE_CONFIG`, replaces the env file. Every credential is a
   reference to a file (or keychain entry) that the operator writes.
-- **Data.** A new data directory. The old one is never opened by this build; its data is copied once with
-  `tachyon migrate-from` (D1).
+- **Data.** A new data directory. The old one is never opened by this build; its data is copied once:
+  1. Stop the old unit.
+  2. `sqlite3 <old>/tachyon.db ".backup DIR/tachyon.db"`, and the same for `jobs.db`.
+  3. `TACHYON_DATA_DIR=<new, empty> tachyon migrate-from --source DIR` (exit 0, report beside the new database).
+  4. `tachyon identity setup`.
+
+  `launches.db`, `backups/`, `plugins/` and old snapshots stay with the old directory.
+- **Upstream addresses must keep their exact form.** Write the Tether, GitHub and Cerberus upstream addresses in
+  the override exactly as the old schedules' scopes record them (no trailing slash, the same socket path).
+  - Object sync derives schedule ids from those strings.
+  - `migrate-from` refuses an upstream that differs, and one that is not configured at all.
+  - `--allow-unchecked-instances` is for rehearsals with blank upstreams, never for the cutover.

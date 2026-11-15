@@ -12,6 +12,7 @@ import (
 	"github.com/hollis-labs/substrate/module"
 
 	"github.com/hollis-labs/tachyon/next/internal/appdirs"
+	"github.com/hollis-labs/tachyon/next/internal/migratefrom"
 	"github.com/hollis-labs/tachyon/next/internal/oldlayout"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
 )
@@ -42,8 +43,9 @@ func bootOptions(getenv func(string) string, prepare bool) boot.Options {
 }
 
 // plan decides, from the command line, which framework modules to start and whether the data
-// directory may be created. Only serving (the default) and `identity` (the offline owner and API
-// key bootstrap) write anything: they need the database and identity modules and create the data
+// directory may be created. Only serving (the default), `identity` (the offline owner and API
+// key bootstrap), `access` (service identities and their keys) and `migrate-from` (the one-way
+// data copy) write anything: they need the database and identity modules and create the data
 // directory, the database and the signing key, exactly as serving does. Every other command,
 // including version, config, health and help, reads configuration and starts no module that opens
 // a file, so running one without TACHYON_DATA_DIR cannot touch any data directory.
@@ -65,8 +67,12 @@ func plan(args []string) (modules []string, prepare bool) {
 	switch {
 	case len(words) == 0 || words[0] == "serve":
 		return substrateModules, true
-	case words[0] == "identity":
+	case words[0] == "identity" || words[0] == "access":
 		return pick(withIdentity), true
+	case words[0] == "migrate-from":
+		return pick(withMigrate), true
+	case words[0] == "sync-objects":
+		return pick(withSync), true
 	}
 	return pick(readOnly), false
 }
@@ -78,6 +84,41 @@ var readOnly = []string{"config", "logging", "health", "secrets", "cli"}
 // withIdentity adds what the offline identity commands need: the database and the identity module
 // (the auth module is where identity looks for the guard it serves; it binds no port).
 var withIdentity = []string{"config", "logging", "health", "auth", "database", "identity", "secrets", "cli"}
+
+// withMigrate is what `migrate-from` needs: the database (goose creates the schema) and the
+// scheduler module (sqlstore creates its tables; its engine does not start: autostart is off).
+var withMigrate = []string{"config", "logging", "health", "database", "scheduler", "cli"}
+
+// withSync is what `sync-objects` needs: the database, the secrets resolver (upstream credentials)
+// and the scheduler module's store (its engine does not start).
+var withSync = []string{"config", "logging", "health", "database", "secrets", "scheduler", "cli"}
+
+// migrating reports a `migrate-from` command line (the same word rule as plan).
+func migrating(args []string) bool {
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			return a == "migrate-from"
+		}
+	}
+	return false
+}
+
+// migrateOptions refuses, before the data directory is created or anything is written, a data
+// directory that already holds files: migrate-from copies only into a new, empty one.
+func migrateOptions(getenv func(string) string, opts boot.Options) boot.Options {
+	next := opts.AfterConfig
+	opts.AfterConfig = func(ctx context.Context, app *module.App) error {
+		dirs, err := appdirs.Resolve(getenv)
+		if err != nil {
+			return err
+		}
+		if err := migratefrom.CheckTargetDir(dirs.Data); err != nil {
+			return err
+		}
+		return next(ctx, app)
+	}
+	return opts
+}
 
 // pick keeps the start order of substrateModules.
 func pick(want []string) []string {
