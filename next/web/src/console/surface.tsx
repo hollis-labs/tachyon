@@ -23,6 +23,7 @@ import { OPERATOR_ADDRESS } from "./messaging/operator"
 import { AgentUnreadProvider } from "./messaging/unread"
 import { NeedsYouPage } from "./needs-you/page"
 import { RegistryProjectsPage } from "./registry/RegistryProjectsPage"
+import { TranscriptDashboard } from "./transcripts/page"
 
 const consoleSlots = { LinkText: LinkTextSlot }
 
@@ -148,6 +149,17 @@ export function RegistrySurface() {
         <Route path="/registry" element={<RegistryProjectsPage />} />
         <Route path="/registry/projects" element={<RegistryProjectsPage />} />
         <Route path="/registry/projects/:id" element={<RegistryProjectsPage />} />
+      </Routes>
+    </ConsoleBase>
+  )
+}
+
+/** The Transcripts surface (`/dashboards/transcripts` in ui/app.json): the old console overlay route. */
+export function TranscriptsSurface() {
+  return (
+    <ConsoleBase>
+      <Routes>
+        <Route path="/dashboards/transcripts" element={<TranscriptDashboard />} />
       </Routes>
     </ConsoleBase>
   )
