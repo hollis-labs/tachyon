@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createObservationStore, eventFromRow, SESSION_BUDGET_MS, SESSION_DEADLINE_MS, type SessionSource, workStatesFromSessions } from './store'
+import { createObservationStore, eventFromRow, SESSION_BUDGET_MS, SESSION_DEADLINE_MS, type SessionSource, workStatesFromSessions, type LiveFeed, LIVE_REFRESH_MS } from './store'
 import { activityText, presence, toolLabel, withObservedActivity } from './model'
 import { parseFleetAgents } from '../fleet/lib/fleet-agents'
 import { deliveryEvidence, deliveryFromTrace } from './delivery'
@@ -300,4 +300,27 @@ it('maps monitor session states to work states and leaves stale or unknown ones 
     { id: 'a', state: 'working', last_activity_at: 5 }, { id: 'b', state: 'idle', last_activity_at: 6 }, { id: 'c', state: 'waiting', last_activity_at: 7 },
     { id: 'd', state: 'stale', last_activity_at: 8 }, { id: 'e', state: 'working' },
   ])).toEqual({ a: { working: true, at: 5 }, b: { working: false, at: 6 }, c: { working: false, at: 7 } })
+})
+
+it('with a live feed it reads when sessions change, at most every LIVE_REFRESH_MS, and polls only while the feed is down', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let reads = 0
+  let on!: Parameters<LiveFeed['open']>[0]
+  const feed: LiveFeed = { open(h) { on = h; return () => undefined } }
+  const store = createObservationStore(async () => { reads++; return { events: [] } }, undefined, feed)
+  const off = store.subscribe(() => undefined)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(reads).toBe(1) // first read on subscribe
+  on.up(true)
+  await vi.advanceTimersByTimeAsync(0)
+  const afterUp = reads
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(reads).toBe(afterUp) // live and quiet: no polling
+  for (let i = 0; i < 20; i++) on.session({ id: 's1', state: 'working', last_activity_at: now })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  expect(reads).toBe(afterUp + 1) // a burst of frames is one read
+  on.up(false)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(reads).toBeGreaterThanOrEqual(afterUp + 3) // feed down: the 5s poll is back
+  off()
 })
