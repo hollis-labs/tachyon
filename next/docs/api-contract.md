@@ -195,8 +195,10 @@ use. A verb the caller may not use is unknown to it (404), as in the old build.
 granted), `objects.get` and `objects.history` (the record's kind must be granted), and `objects.lookup_source`
 (its kind must be granted).
 
-**The console data API**, `/api/plugins/console/v1/data/providers[/tachyon/verbs/{verb}]`, answers signed-in
-people only; a key is refused there whatever its scopes. The four object reads need `tachyon.objects.read`.
+**The console data API**, `/api/plugins/console/v1/data/providers[/{tachyon,tether}/verbs/{verb}]`, answers
+signed-in people only; a key is refused there whatever its scopes. The four object reads need `tachyon.objects.read`;
+the object writes and the `tether` provider are in section 5f (B9b-2). Mutations are `POST` and need the operator
+check.
 `GET /api/plugins/console/v1/objects/sync/status` (`tachyon.objects.read`) is the old sync status.
 
 **Chat verbs (slice B6d).** Served on the agent API with the old names, inputs and results, over the chat
@@ -353,8 +355,14 @@ Served under `/api/plugins/console/v1`, from the migrated `catalog_*`, `library_
   `POST registry/projects`, `PATCH …/{id}`, `POST`/`DELETE …/{id}/link` (`tachyon.builder.write`, operator check).
   With `tachyon.features.builder_changes` off the change routes answer `503 changes_unavailable` and the registry writes
   `501 registry_write_unavailable`, as the old build did unconfigured; nothing reaches Tether.
-- Not yet served (B9b-2, CW-20261115-0085): the console's object writes and the Tether provider verbs (team runs,
-  formations, provider actions).
+- **Team operations (slice B9b-2)** are on the console data API, as before: the object writes on the `tachyon`
+  provider (`objects.create`, `objects.patch`, `objects.delete`, `objects.restore`, `objects.take_ownership`) and the
+  `tether` provider's verbs (`teams.*`, `runtime.*`, `bindings.*`, `actions.*`, `agents.definition_preview`,
+  `agents.publish_preview`, `catalog.apply_preview`, `executions.project`), with the old names, inputs and results.
+  Reads need `tachyon.objects.read`; mutations (`POST`) need `tachyon.objects.write` and the operator check. A key is
+  refused whatever its scopes. With `tachyon.features.builder_changes` off every verb that would reach Tether answers
+  `503 unavailable` ("Tether configuration or credential is unavailable.") before dialing, except a roster
+  refresh, which answers the saved roster with the old "not configured" problem; the local reads still answer. Dispatching provider actions from action runs belongs to the action-runs slice.
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 

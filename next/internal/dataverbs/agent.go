@@ -316,12 +316,14 @@ func (p *scoped) resolve(ctx context.Context, id string) (json.RawMessage, error
 }
 
 // ConsoleScope is the route scope a signed-in person needs for a console data verb: reads of the
-// object verbs need tachyon.objects.read (docs/api-contract.md section 5). A verb with no scope here
-// is refused on the console.
+// object verbs need tachyon.objects.read and their writes tachyon.objects.write (docs/api-contract.md
+// section 5). A verb with no scope here is refused on the console.
 func ConsoleScope(verb string) (string, bool) {
 	switch verb {
 	case "objects.list", "objects.get", "objects.history", "objects.lookup_source":
 		return "tachyon.objects.read", true
+	case "objects.create", "objects.patch", "objects.delete", "objects.restore", "objects.take_ownership":
+		return "tachyon.objects.write", true
 	case "planner.list", "planner.portfolio.resolve", "planner.portfolio.list", "planner.portfolio.get", "planner.portfolio.schema":
 		return "tachyon.planner.read", true
 	case "planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate",
