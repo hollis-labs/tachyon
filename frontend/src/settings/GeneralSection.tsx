@@ -22,6 +22,7 @@ import {
   ConflictError,
   type FieldResult,
   type GeneralApi,
+  optionLabel,
   type SettingField,
   type SettingGroup,
 } from "./general"
@@ -281,7 +282,7 @@ export function GeneralSection({ api }: { api: GeneralApi }) {
               >
                 <b className="text-fg">{c.label}</b>
                 <span className="text-fg-muted">
-                  {c.value} to <span className="text-fg">{draft[c.key]}</span>
+                  {shown(c, c.value)} to <span className="text-fg">{shown(c, draft[c.key])}</span>
                 </span>
               </li>
             ))}
@@ -305,8 +306,13 @@ export function GeneralSection({ api }: { api: GeneralApi }) {
   )
 }
 
+/** An enum value as its option label; other kinds as typed. */
+function shown(f: SettingField, v: string) {
+  return f.kind === "enum" ? optionLabel(f.key, v) : v
+}
+
 function describe(f: SettingField, to: string) {
-  return `${f.label}: ${f.value.replace(/ minutes$/, "")} to ${to}`
+  return `${f.label}: ${shown(f, f.value).replace(/ minutes$/, "")} to ${shown(f, to)}`
 }
 
 function Bar({
@@ -372,14 +378,19 @@ function FieldRow({
       </div>
       <div className="flex items-center gap-2">
         {field.kind === "enum" && (
-          <Select value={value} disabled={off} onValueChange={(v) => v && onChange(String(v))}>
+          <Select
+            value={value}
+            items={field.options.map((o) => ({ value: o, label: optionLabel(field.key, o) }))}
+            disabled={off}
+            onValueChange={(v) => v && onChange(String(v))}
+          >
             <SelectTrigger aria-label={field.label} className="h-7 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {field.options.map((o) => (
                 <SelectItem key={o} value={o}>
-                  {o}
+                  {optionLabel(field.key, o)}
                 </SelectItem>
               ))}
             </SelectContent>

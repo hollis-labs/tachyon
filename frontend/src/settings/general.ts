@@ -22,6 +22,25 @@ export interface SettingField {
   restartRequired?: boolean
 }
 
+/** Labels for enum values the registry sends as ids; other values read in sentence case. */
+const OPTION_LABELS: Record<string, Record<string, string>> = {
+  landing_page: {
+    planner: "Planner",
+    chat: "Chat",
+    agents: "Agents",
+    approvals: "Approvals",
+    transcripts: "Transcripts",
+    repos: "Pull requests",
+    builder: "Builder",
+  },
+}
+
+export function optionLabel(key: string, value: string): string {
+  return (
+    OPTION_LABELS[key]?.[value] ?? value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ")
+  )
+}
+
 export interface SettingGroup {
   id: string
   label: string

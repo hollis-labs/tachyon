@@ -20,3 +20,12 @@ describe("landingRoute", () => {
     expect(landingRoute(undefined, "/planner")).toBe("/planner")
   })
 })
+
+describe("optionLabel", () => {
+  it("names landing pages as the nav does and reads other enum values in sentence case", async () => {
+    const { optionLabel } = await import("./general")
+    expect(optionLabel("landing_page", "repos")).toBe("Pull requests")
+    expect(optionLabel("landing_page", "planner")).toBe("Planner")
+    expect(optionLabel("scratchpad_placement", "drawer")).toBe("Drawer")
+  })
+})
