@@ -381,6 +381,26 @@
           "route": "/identity/sign-out",
           "layout": "form",
           "title": "Sign out"
+        },
+        {
+          "kind": "dock.tab",
+          "key": "chat-dock",
+          "label": "Chat",
+          "icon": "message-square",
+          "region": "chat.dock",
+          "view": "chat-dock"
+        },
+        {
+          "kind": "menu.item",
+          "key": "open-chat-dock",
+          "label": "Chat",
+          "icon": "message-square",
+          "region": "toolbar.primary",
+          "action": {
+            "openRegion": "chat.dock",
+            "tab": "chat-dock"
+          },
+          "risk": "low"
         }
       ]
     }
@@ -563,6 +583,15 @@
       "module": "tachyon"
     },
     {
+      "kind": "dock.tab",
+      "key": "chat-dock",
+      "label": "Chat",
+      "icon": "message-square",
+      "region": "chat.dock",
+      "view": "chat-dock",
+      "module": "tachyon"
+    },
+    {
       "kind": "surface",
       "key": "identity-keys",
       "label": "Access keys",
@@ -650,6 +679,19 @@
       "route": "/user",
       "layout": "form",
       "title": "Account",
+      "module": "tachyon"
+    },
+    {
+      "kind": "menu.item",
+      "key": "open-chat-dock",
+      "label": "Chat",
+      "icon": "message-square",
+      "region": "toolbar.primary",
+      "action": {
+        "openRegion": "chat.dock",
+        "tab": "chat-dock"
+      },
+      "risk": "low",
       "module": "tachyon"
     }
   ],
@@ -787,7 +829,26 @@
       "module": "identity"
     }
   ],
-  "regions": [],
+  "regions": [
+    {
+      "name": "header.tools",
+      "docked": false
+    },
+    {
+      "name": "chat.dock",
+      "docked": true,
+      "anchor": "header.tools",
+      "sizes": {
+        "options": [
+          "md",
+          "lg"
+        ],
+        "default": "lg"
+      },
+      "dismiss_key": "Esc",
+      "mobile": "bottom-sheet"
+    }
+  ],
   "kits": [
     {
       "name": "@hollis-labs/design-app-runtime",

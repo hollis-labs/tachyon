@@ -559,13 +559,53 @@ Also served by the old handler but not called by the drawer: `runs`, `runs/{run_
 - **Close:** the client closes the socket on Disconnect, then sends `DELETE sessions/{id}`. When the socket closes,
   the pane goes read-only ("disconnected").
 
+## Chat dock (G8b, CW-20261115-0082)
+
+Carried byte-identical from **main 8560422**: `chat/ChatDock.tsx` and `shell/restore-focus.ts`; `shell/chat-dock.tsx`
+back to the old file (G3 had dropped the dock it rendered); the `ChatDock` / `ChatButton` export in `chat/index.ts`.
+
+- **Placement (lead decision, kit wins):** the old dock was a fixed overlay that `ChatDockProvider` rendered above the
+  whole shell, opened from a chat button in the nav-rail footer (`ConsoleNavExtras` / `ChatDockTrigger`) and from
+  FleetActions' Chat (`openChat(recipient)`). It is now an app-shell `dock.tab`:
+  - `cmd/tachyon/substrate.yaml` `frontend.regions`: the docked region `chat.dock` (sizes md and lg, default lg;
+    `dismiss_key: Esc`; `mobile: bottom-sheet`), anchored under the inline region `header.tools`, which a docked
+    region must name and which holds nothing yet.
+  - `cmd/tachyon/ui/app.json`: the `dock.tab` `chat-dock` (label Chat, view `chat-dock`) and a `toolbar.primary`
+    `menu.item` `open-chat-dock` with `action: {openRegion: chat.dock, tab: chat-dock}`, risk low.
+  - The opener moved from the nav-rail footer to the header toolbar. `ChatDockTrigger` and `ConsoleNavExtras` stay
+    exported, unmounted.
+- **Providers:** `ConsoleShellProviders` (`src/console/surface.tsx`) sits above `ManifestShell` in `src/App.tsx`, as the
+  old ConsoleIntegration did: torque API, messaging, agent unread, chat, chat dock. The chat surface and the Repos
+  surface no longer make their own (one set for every surface and the dock).
+- **Gateway:** `ManifestShell` gets `actions` (`src/shell-config.ts`), local only: no agent functions, so the
+  backend and step-up grant are never reached; the shell's own `openRegion` / `closeRegion` do the work. The gateway
+  lives inside the shell, so every page mounts `ChatDockGateway`, which binds `openChat` / `closeChat` to it. The
+  user's size pick is remembered in localStorage (`dockStorage`), as the old width was.
+- **Edits** (scripted, `g8b-adapt.py`):
+  - `chat/ChatDock.tsx` is the body only: `ResizableChatPanel` (fixed, drag-resized width), the width memory, the
+    Escape listener and the Close button go (the shell's dock has them). The approvals link, focus-in on open and
+    focus return stay.
+  - `shell/chat-dock.tsx`: the provider keeps the recipient and opens the tab through the gateway; `ChatDockTab` is
+    the view and reports whether the dock shows (`open`); a closed dock forgets its recipient, so the toolbar opens
+    the conversation list as the old trigger's `openChat()` did.
+- **Not reachable:** FleetActions' Chat (`FleetMessageActions`) is mounted nowhere in the carried UI; in the old tree
+  only `fleet/fleet-agent-modal.tsx` used it, and that was not reachable either. Its path through the gateway is
+  unit-tested (`src/chat-dock.test.tsx`), not in the browser suite.
+- **Differences the kit imposes** (for the lead): width is the region's size tokens (md 24rem, lg 36rem) instead of a
+  drag between 360 and 960px; the toolbar entry has no unread badge (the old trigger showed "Chat, N unread") and only
+  opens (Esc or Close shut it); the dock body is not given the dock's full height (the shell wraps the view in an
+  unsized, padded scroll container), so a long conversation scrolls with its composer instead of pinning it; the
+  approvals link shows no pending count (ApprovalProvider is still per surface, not above the shell).
+- **e2e:** `tests/dock.spec.ts` opens the dock from the toolbar on the planner, opens a conversation and sends,
+  closes with Esc (focus back on the toolbar), keeps the size pick across a reload, and at 390px opens a bottom sheet.
+
 ## Gaps
 
 - app-shell has no prefix/param surface routes (exact match only, `shell.tsx` surface lookup). Worked
   around host-side (`surfacePath`); nav highlighting follows the area. Not blocking.
 - No `settings.region` yet: depends on the backend registering settings groups (B1+).
 - Planner path links show as text until console's autolink (file viewer chip) is ported.
-- Chat: no dock, no PTY terminal, no app-agent thread source yet (later G slices).
+- Chat: no app-agent thread source yet. The dock's kit differences are listed under G8b.
 - Approvals: no action-run terminal (terminal slice); two h1s under the kit PageHeader (CW-20261115-0026).
 
 ## Parity list (behaviour the port must not copy)

@@ -239,6 +239,26 @@
       "title": "Sign out",
       "route": "/identity/sign-out",
       "layout": "form"
+    },
+    {
+      "kind": "dock.tab",
+      "key": "chat-dock",
+      "label": "Chat",
+      "icon": "message-square",
+      "region": "chat.dock",
+      "view": "chat-dock"
+    },
+    {
+      "kind": "menu.item",
+      "key": "open-chat-dock",
+      "label": "Chat",
+      "icon": "message-square",
+      "region": "toolbar.primary",
+      "action": {
+        "openRegion": "chat.dock",
+        "tab": "chat-dock"
+      },
+      "risk": "low"
     }
   ]
 }

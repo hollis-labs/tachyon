@@ -1,4 +1,4 @@
-import { ManifestShell, type PageComponent } from "@hollis-labs/app-shell"
+import { ManifestShell, type PageComponent, type ViewComponent } from "@hollis-labs/app-shell"
 import { Toaster, TooltipProvider } from "@hollis-labs/design-components"
 import { ApiKeysPage, IDENTITY_PAGES, IdentityGate } from "@hollis-labs/kit-identity"
 import { IdentityProvider, useIdentity } from "@hollis-labs/kit-identity/client"
@@ -18,15 +18,18 @@ import {
   ShieldCheck,
   User,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { type ComponentType, useEffect, useState } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { CapabilitiesProvider } from "./api/capabilities"
 import { UNAUTHORIZED_EVENT } from "./api/request"
+import { ChatDockGateway } from "./console/shell/chat-dock"
 import {
   AgentsSurface,
   ApprovalsSurface,
   BuilderSurface,
+  ChatDockView,
   ChatSurface,
+  ConsoleShellProviders,
   NeedsYouSurface,
   RegistrySurface,
   ReposSurface,
@@ -36,6 +39,7 @@ import { manifest, surfaceRoutes } from "./manifest"
 import { SettingsPage } from "./pages/settings"
 import { PlannerSurface } from "./planner/surface"
 import { KEY_SCOPES } from "./scopes"
+import { actions, dockStorage } from "./shell-config"
 import { LANDING, legacyRedirect, surfacePath } from "./surfaces"
 
 // Kit icon names used by the contributions (next/cmd/tachyon/ui/app.json), resolved by the shell.
@@ -56,24 +60,41 @@ const icons = {
   "log-out": LogOut,
 }
 
-// Page bodies by surface key. The area pages are stubs until their slice ports them (G2+); each
-// resolves its own deep links from the URL with react-router.
-const pages: Record<string, PageComponent> = {
-  planner: () => <PlannerSurface />,
-  agents: () => <AgentsSurface />,
-  builder: () => <BuilderSurface />,
-  registry: () => <RegistrySurface />,
-  chat: () => <ChatSurface />,
-  approvals: () => <ApprovalsSurface />,
-  "needs-you": () => <NeedsYouSurface />,
-  transcripts: () => <TranscriptsSurface />,
-  repos: () => <ReposSurface />,
-  settings: () => <SettingsPage />,
-  user: () => <IDENTITY_PAGES.account />,
+// Page bodies by surface key; each area resolves its own deep links from the URL with react-router.
+const bodies: Record<string, ComponentType> = {
+  planner: PlannerSurface,
+  agents: AgentsSurface,
+  builder: BuilderSurface,
+  registry: RegistrySurface,
+  chat: ChatSurface,
+  approvals: ApprovalsSurface,
+  "needs-you": NeedsYouSurface,
+  transcripts: TranscriptsSurface,
+  repos: ReposSurface,
+  settings: SettingsPage,
+  user: IDENTITY_PAGES.account,
   "identity-keys": () => <ApiKeysPage scopeSuggestions={KEY_SCOPES} />,
-  "identity-sessions": () => <IDENTITY_PAGES.sessions />,
-  "identity-sign-out": () => <IDENTITY_PAGES.signOut />,
+  "identity-sessions": IDENTITY_PAGES.sessions,
+  "identity-sign-out": IDENTITY_PAGES.signOut,
 }
+
+// The action gateway lives inside the shell, so each page also binds the chat dock's openChat to it.
+const pages: Record<string, PageComponent> = Object.fromEntries(
+  Object.entries(bodies).map(([key, Body]) => [
+    key,
+    function Page() {
+      return (
+        <>
+          <ChatDockGateway />
+          <Body />
+        </>
+      )
+    },
+  ]),
+)
+
+// Dock and panel bodies by the manifest's `view` name: the chat dock (dock.tab chat-dock, region chat.dock).
+const views: Record<string, ViewComponent> = { "chat-dock": ChatDockView }
 
 // An explicit sign-out leaves the URL on the sign-out page; signing in again must not land there.
 const SIGN_OUT_PATH = "/identity/sign-out"
@@ -114,6 +135,9 @@ function Shell() {
       path={surfacePath(pathname, surfaceRoutes)}
       onNavigate={(to) => navigate(to)}
       pages={pages}
+      views={views}
+      actions={actions}
+      dockStorage={dockStorage}
       icons={icons}
     />
   )
@@ -130,7 +154,10 @@ export function App() {
           {/* As the old frontend/src/App.tsx: surfaces report write failures, undo and refusals as toasts. */}
           <TooltipProvider>
             <BrowserRouter>
-              <Shell />
+              {/* As the old ConsoleIntegration: chat and the chat dock above every surface. */}
+              <ConsoleShellProviders>
+                <Shell />
+              </ConsoleShellProviders>
             </BrowserRouter>
             <Toaster position="bottom-right" />
           </TooltipProvider>

@@ -6,7 +6,19 @@ app: tachyon
 variant: app-host
 profiles: [minimal]
 # Tachyon's own nav items and surfaces (the GUI track owns ui/app.json).
-frontend: { contributions: ui/app.json }
+frontend:
+  contributions: ui/app.json
+  # The chat dock (G8b): a right-hand dock that opens from the header toolbar (ui/app.json) and from an agent's
+  # Chat action. A docked region names the inline region it is tucked under; header.tools holds no slot today.
+  # Sizes: md (24rem) and lg (36rem, the default; the old drawer opened at 480px), remembered per browser.
+  regions:
+    - { name: header.tools, docked: false }
+    - name: chat.dock
+      docked: true
+      anchor: header.tools
+      sizes: { options: [md, lg], default: lg }
+      dismiss_key: Esc
+      mobile: bottom-sheet
 # pluginhost is not selected: it claims all of /api/plugins/, which would shadow Tachyon's own routes
 # under that prefix (the console and planner paths). Substrate gap CW-20261114-0184; Tachyon registers
 # no plugin process today.
