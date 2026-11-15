@@ -23,7 +23,7 @@ export const AREAS = [
     deep: "/dashboards/transcripts",
     stub: false,
   },
-  { label: "Repos", route: "/repos", deep: "/pr/github.com/hollis-labs/tachyon/693", stub: true },
+  { label: "Repos", route: "/repos", deep: "/pr/github/hollis-labs/tachyon/201", stub: false },
 ] as const
 
 export const signInHeading = (page: Page) => page.getByRole("heading", { name: "Sign in" })
