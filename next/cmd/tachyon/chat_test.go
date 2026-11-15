@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -98,7 +99,7 @@ func TestChatRoutesAuth(t *testing.T) {
 		{"GET", thread + "/topics", nil}, {"GET", thread + "/bookmarks", nil},
 		{"GET", thread + "/plans", nil}, {"GET", thread + "/workspace", nil}, {"GET", thread + "/scratchpad", nil},
 		{"GET", chatapi.Prefix + "/settings", nil}, {"GET", thread + "/activity", nil}, {"GET", thread + "/context", nil},
-		{"GET", thread + "/work", nil},
+		{"GET", thread + "/work", nil}, {"GET", chatapi.Prefix + "/outbox?launch_id=pm", nil},
 	}
 	writes := []call{
 		{"POST", thread + "/read", nil}, {"PATCH", thread, map[string]any{"pinned": true}},
@@ -281,5 +282,39 @@ func TestChatRosterIsTethers(t *testing.T) {
 	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
 	if code := flatCode(t, c.want(503, "GET", chatapi.Prefix+"/agents", nil, xrw)); code != "configuration" {
 		t.Errorf("roster with Tether off: %s", code)
+	}
+}
+
+// The outbox list shows the messages sent to one launch, owned by the configured Tether address's
+// identity (the old build's digest), newest first; another owner's rows and another launch's are not
+// listed.
+func TestChatOutboxList(t *testing.T) {
+	up := countingListener(t)
+	base, app := started(t, chatOverride(up.addr, false))
+	ctx := context.Background()
+	mine, theirs := chatbridge.OutboxIdentity(up.addr), chatbridge.OutboxIdentity("http://elsewhere.test")
+	for _, r := range []struct {
+		identity, id, launch, body string
+		at                         int64
+	}{{mine, "k1", "pm", "first", 1}, {mine, "k2", "pm", "second", 2}, {mine, "k3", "other", "x", 3}, {theirs, "k4", "pm", "not mine", 4}} {
+		if _, err := database.From(app).ExecContext(ctx, `INSERT INTO chat_outbox(identity, id, launch_id, body, created_at, status, error, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			r.identity, r.id, r.launch, r.body, r.at, "sent", "", "s1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := newClient(t, base)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	var got []chatbridge.Sent
+	if err := json.Unmarshal(c.want(200, "GET", chatapi.Prefix+"/outbox?launch_id=pm", nil, xrw), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Key != "k2" || got[1].Key != "k1" || got[0].SessionID != "s1" {
+		t.Fatalf("outbox = %+v", got)
+	}
+	if body := c.want(200, "GET", chatapi.Prefix+"/outbox?launch_id=nobody", nil, xrw); strings.TrimSpace(string(body)) != "[]" {
+		t.Errorf("empty launch: %s", body)
+	}
+	if n := up.conns.Load(); n != 0 {
+		t.Errorf("listing the outbox dialed Tether %d time(s)", n)
 	}
 }

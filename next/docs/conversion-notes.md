@@ -250,7 +250,8 @@ Details: `docs/api-contract.md`.
   settings, continue, activity, context and the Work view (`docs/api-contract.md` section 5c). Compared with the
   old build on copies of the same data.
 - **The Tether address keys the chat history.** The bridge stores each turn under the Tether address it was
-  synced from, and lists only the turns under the configured one. `tachyon.upstreams.tether.url` must be spelled
+  synced from, and lists only the turns under the configured one; the chat outbox rows are owned by a digest of
+  the same address. `tachyon.upstreams.tether.url` must be spelled
   exactly as the old `TETHER_ADDR` was, or the migrated history stops showing (nothing is lost; it reappears with
   the old spelling). A setting to name the history's source apart from the address would be a post-adoption
   improvement.

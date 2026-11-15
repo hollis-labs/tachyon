@@ -43,6 +43,7 @@ type chatDeps struct {
 	threads   *chatthreads.Handler
 	turns     *chatbridge.Owned
 	roster    http.Handler
+	outbox    http.Handler
 	app       *appagent.Service // nil: the app agent is not configured
 	topics    *chattopics.Handler
 	plan      *chatplan.Service
@@ -84,7 +85,9 @@ func newChat(ctx context.Context, app *module.App, cfg settings.Settings, domain
 			return chatDeps{}, fmt.Errorf("app agent: %w", err)
 		}
 	}
-	d := chatDeps{turns: turns, app: agent, roster: chatbridge.NewRoster(tetherURL, upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token))}
+	d := chatDeps{turns: turns, app: agent, roster: chatbridge.NewRoster(tetherURL, upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token)),
+		// The outbox rows are owned by the old build's digest of the Tether address, as the turns are keyed by it.
+		outbox: chatbridge.OutboxList(domain, chatbridge.OutboxIdentity(tetherURL))}
 	d.threads = &chatthreads.Handler{
 		Agg: &chatthreads.Aggregator{App: agent, Chat: turns, State: &chatthreads.StateStore{DB: domain}},
 		Hub: &chatthreads.Hub{DB: domain},
@@ -286,7 +289,9 @@ func chatRoutes(c chatDeps) []routes.Route {
 	method, path, _ := strings.Cut(chatworkspace.ContentRoute, " ")
 	rs = append(rs, routes.Route{Method: method, Pattern: path, Scope: "tachyon.chat.write", Handler: write(c.workspace.Content())})
 	// The Tether chat roster, passed through (the old console plugin's proxy).
-	rs = append(rs, routes.Route{Method: http.MethodGet, Pattern: chatapi.Prefix + chatbridge.RosterPath, Scope: "tachyon.chat.read", Handler: c.roster})
+	rs = append(rs, routes.Route{Method: http.MethodGet, Pattern: chatapi.Prefix + chatbridge.RosterPath, Scope: "tachyon.chat.read", Handler: c.roster},
+		// The messages sent to a launch (the read side of the chat outbox; sending is B6c).
+		routes.Route{Method: http.MethodGet, Pattern: chatapi.Prefix + chatbridge.OutboxPath, Scope: "tachyon.chat.read", Handler: c.outbox})
 	// The Tether chat inbox (chat-turns) and the app agent, each under its own old prefix.
 	rs = append(rs,
 		routes.Route{Method: http.MethodGet, Pattern: chatbridge.Prefix + "/inbox", Scope: "tachyon.chat.read", Handler: c.turns},
