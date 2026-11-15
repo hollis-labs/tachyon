@@ -1068,3 +1068,19 @@ CREATE TABLE seat_status (
 );
 CREATE INDEX seat_status_owner ON seat_status(owner, state);
 CREATE INDEX chat_plans_thread ON chat_plans(thread_ref, position) WHERE scope='thread';
+CREATE TABLE ceremony_daily (
+ day TEXT PRIMARY KEY,          -- YYYY-MM-DD (UTC)
+ activity INTEGER NOT NULL,     -- agent events collected in the 7 days to that day
+ done INTEGER NOT NULL,         -- Torque tasks closed done in those 7 days
+ gates INTEGER NOT NULL,        -- gates raised in those 7 days
+ computed_ns INTEGER NOT NULL
+);
+CREATE TABLE checkpoint_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ correlation_id TEXT NOT NULL,
+ state TEXT NOT NULL,
+ at_ns INTEGER NOT NULL,
+ tether_seq INTEGER NOT NULL,
+ UNIQUE(correlation_id, tether_seq)
+);
+CREATE INDEX checkpoint_events_at ON checkpoint_events(at_ns);

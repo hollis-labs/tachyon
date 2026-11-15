@@ -28,8 +28,8 @@ import (
 var oldTree = filepath.Join("..", "..", "..", "internal", "localstore")
 
 // liveFixture is `sqlite3 <copy> .schema` of a backup copy of the running database at old migration
-// 058 (2026-11-14): schema only, no rows. Refresh it when an old migration is carried.
-const liveFixture = "testdata/schema-snapshot-058.sql"
+// 059 (2026-11-15): schema only, no rows. Refresh it when an old migration is carried.
+const liveFixture = "testdata/schema-snapshot-059.sql"
 
 // frameworkTables are created by the migration machinery, not by Tachyon's schema.
 var frameworkTables = []string{"goose_db_version", "sqlite_sequence"}
@@ -178,13 +178,13 @@ func oldOnly(t *testing.T) migrate.Source {
 }
 
 // The old schema equals a database the old build's own source creates at this checkout (old migrations
-// 001..058). When main brings
+// 001..059). When main brings
 // a new old-tree migration onto the branch, this fails until the port carries it (plan section 1).
 func TestSchemaEqualsTheOldTree(t *testing.T) {
 	requireEqual(t, "the old tree", describe(t, oldTreeDB(t)), describe(t, migrated(t, oldOnly(t))))
 }
 
-// The schema equals the live database's schema (its backup copy of 2026-11-14).
+// The schema equals the live database's schema (its backup copy of 2026-11-15, at 059).
 func TestSchemaEqualsTheLiveSnapshot(t *testing.T) {
 	requireEqual(t, "the live snapshot", describe(t, fixtureDB(t)), describe(t, migrated(t, oldOnly(t))))
 }
@@ -253,7 +253,7 @@ func TestShapeFacts(t *testing.T) {
 	}
 	_ = rows.Close()
 	want := []string{"agents_events", "agents_gaps", "agents_stream", "alert_events", "approval_decision_log", "bus_events",
-		"card_event_outbox", "catalog_snapshots", "chat_activity", "chat_events", "fileview_audit", "forge_audit", "planner_events", "planner_stream"}
+		"card_event_outbox", "catalog_snapshots", "chat_activity", "chat_events", "checkpoint_events", "fileview_audit", "forge_audit", "planner_events", "planner_stream"}
 	if !slices.Equal(auto, want) {
 		t.Errorf("AUTOINCREMENT tables = %v, want %v", auto, want)
 	}
@@ -264,8 +264,8 @@ func TestShapeFacts(t *testing.T) {
 		t.Errorf("chat_events.body declared %q, %v", typ, err)
 	}
 	var tables int
-	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT IN ('goose_db_version', 'sqlite_sequence')`).Scan(&tables); err != nil || tables != 97+len(OwnTables) {
-		t.Errorf("%d app tables, want 97 old ones (056 plus seat_status) plus Tachyon's own (%v)", tables, err)
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT IN ('goose_db_version', 'sqlite_sequence')`).Scan(&tables); err != nil || tables != 99+len(OwnTables) {
+		t.Errorf("%d app tables, want 99 old ones (056, seat_status, ceremony_daily, checkpoint_events) plus Tachyon's own (%v)", tables, err)
 	}
 }
 
@@ -275,7 +275,7 @@ func TestInitSQLAndHead(t *testing.T) {
 	if err != nil || strings.Contains(sqlText, "+goose") || !strings.Contains(sqlText, "CREATE TABLE approval_decision_log") {
 		t.Fatalf("InitSQL: %v", err)
 	}
-	if v, err := HeadVersion(); err != nil || v != 3 {
+	if v, err := HeadVersion(); err != nil || v != 4 {
 		t.Fatalf("HeadVersion = %d, %v", v, err)
 	}
 }
