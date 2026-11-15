@@ -257,8 +257,9 @@ the `ApprovalProvider` the old `ConsoleIntegration` placed above every console p
   Substrate CW-20261115-0026; not worked around (no redesign).
 - **e2e:** `e2e/approvals-stub.ts` stands in for B7; `TACHYON_E2E_APPROVALS=backend` turns it off and runs against the
   binary, with these differences:
-  - `e2e/serve.sh` enqueues `e2e/approvals-seed.json` offline before serving (`approvals enqueue`, from
-    `TACHYON_E2E_SEED_BIN`, default the binary). It also writes a throwaway `tachyon.files.secret_key` for the run.
+  - `e2e/serve.sh` applies `e2e/approvals-seed.sql` with sqlite3, after the owner setup has made the schema
+    and before serving. These are synthetic `approval_items` rows; B7 backfills the index at start, and there is
+    no producer path. It also writes a throwaway `tachyon.files.secret_key` for the run.
   - The specs find items by title. The tests that decide a request run last, because the backend keeps its
     state between tests.
   - The refusal is real. The owner's session mints a token without `*`: the same person, below operator.
