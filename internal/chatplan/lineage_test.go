@@ -250,3 +250,18 @@ func TestAncestorsFollowCarryRules(t *testing.T) {
 		t.Fatalf("another agent's ancestor: %v", got)
 	}
 }
+
+func TestAncestorsStopAtClearedSession(t *testing.T) {
+	s, _ := lineageSetup(t)
+	ctx := context.Background()
+	s.Attach(ctx, "s1", "agent-a", "")
+	s.Attach(ctx, "s2", "agent-a", "s1")
+	s.Attach(ctx, "s3", "agent-a", "s2")
+	if err := s.Store.Clear(ctx, "tether:s2"); err != nil {
+		t.Fatal(err)
+	}
+	got := s.Store.Ancestors(ctx, "s3")
+	if len(got) != 1 || got[0] != "s2" {
+		t.Fatalf("walk should include the cleared session and stop: %v", got)
+	}
+}

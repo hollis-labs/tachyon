@@ -345,7 +345,8 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	// seat while catalog.defaults.worker_resume is on). If Tether refuses, the seat is relaunched as a continuation.
 	how := "resume"
 	id, err := s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key)
-	if errors.Is(err, ErrResumeRefused) {
+	if err != nil {
+		// Any refusal or failure of the resume: the seat is already stopped, so it is relaunched rather than left down.
 		how, id, err = "relaunch", "", nil
 	}
 	if err == nil && how == "relaunch" {
