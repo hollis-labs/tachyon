@@ -1,0 +1,128 @@
+{
+  "prompts/review-etiquette": {
+    "entries": [
+      {
+        "revision": 3,
+        "snapshot_seq": null,
+        "at": 1793147000000,
+        "actor": "chrispian",
+        "plan_id": "plan_7Q3K9",
+        "sha": null,
+        "summary": "Tighten wording"
+      },
+      {
+        "revision": 2,
+        "snapshot_seq": null,
+        "at": 1792700000000,
+        "actor": "chrispian",
+        "plan_id": null,
+        "sha": null,
+        "summary": "Add quoting rule"
+      },
+      {
+        "revision": 1,
+        "snapshot_seq": null,
+        "at": 1792000000000,
+        "actor": "chrispian",
+        "plan_id": null,
+        "sha": null,
+        "summary": "Created"
+      }
+    ],
+    "next_cursor": null
+  },
+  "prompts/handoff-style": {
+    "entries": [
+      {
+        "revision": 1,
+        "snapshot_seq": null,
+        "at": 1792000000000,
+        "actor": "chrispian",
+        "plan_id": null,
+        "sha": null,
+        "summary": "Created"
+      }
+    ],
+    "next_cursor": null
+  },
+  "skills/commit-hygiene": {
+    "entries": [
+      {
+        "revision": null,
+        "snapshot_seq": 4,
+        "at": 1792900000000,
+        "actor": "chrispian",
+        "plan_id": "plan_3E4F5",
+        "sha": "50fa96cc2a14af1ae5b242a6720630ebd96e5a4fe440570b36ba0890d814e3b0",
+        "summary": "skills/commit-hygiene.md changed"
+      },
+      {
+        "revision": null,
+        "snapshot_seq": 3,
+        "at": 1790500000000,
+        "actor": null,
+        "plan_id": null,
+        "sha": "75d73c52902737befe7540ff0b2c10a0d1e6a63f837b78526a92c85646451a9c",
+        "summary": "Observed change (edited outside the Builder)"
+      }
+    ],
+    "next_cursor": null
+  },
+  "skills/personal-style": {
+    "entries": [],
+    "next_cursor": null
+  },
+  "tool_servers/tether": {
+    "entries": [],
+    "next_cursor": null
+  },
+  "tool_servers/github": {
+    "entries": [],
+    "next_cursor": null
+  },
+  "tool_servers/browser": {
+    "entries": [],
+    "next_cursor": null
+  },
+  "policies/standard-ask": {
+    "entries": [
+      {
+        "revision": 2,
+        "snapshot_seq": null,
+        "at": 1793000000000,
+        "actor": "chrispian",
+        "plan_id": "plan_6G7H8",
+        "sha": null,
+        "summary": "Add github:pr scope"
+      },
+      {
+        "revision": 1,
+        "snapshot_seq": null,
+        "at": 1792100000000,
+        "actor": "chrispian",
+        "plan_id": null,
+        "sha": null,
+        "summary": "Created"
+      }
+    ],
+    "next_cursor": null
+  },
+  "policies/autonomous-sandboxed": {
+    "entries": [
+      {
+        "revision": 1,
+        "snapshot_seq": null,
+        "at": 1792500000000,
+        "actor": "chrispian",
+        "plan_id": null,
+        "sha": null,
+        "summary": "Created"
+      }
+    ],
+    "next_cursor": null
+  },
+  "skills/triage-notes": {
+    "entries": [],
+    "next_cursor": null
+  }
+}

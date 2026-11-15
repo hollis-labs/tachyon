@@ -238,6 +238,19 @@ Details: `docs/api-contract.md`.
   The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
   TTL are gone. The confirm phrase stays in the approvals code.
 
+## Builder and catalog (slice B9a, the read side)
+
+- **Same tables, same answers.** The Builder's agents, launches and library, the registry and the catalog summary
+  read the migrated catalog and library tables.
+- **`tachyon.features.catalog_index`** (the old `TACHYON_CATALOG_INDEX`) starts the catalog index. Off, nothing
+  polls Tether; the routes serve the migrated index. The old build mounted the Builder reads only with the index
+  on; the port always serves them.
+- **A fresh database has no catalog state row.** The old migration 030 seeded `catalog_state`; the first write
+  creates it, and until then it reads as the old defaults (`source_status: starting`).
+- **The imported team snapshot** is read from the migrated `api_cache` row with the old defaults (kept a week, the
+  catalog policy's freshness headers). A cache policy file's overrides come with the API cache slice.
+- **Postgres.** The library revision insert is an upsert on its key instead of `INSERT OR REPLACE`.
+
 ## Agents (slices B8a, B8b)
 
 - **Same tables, same answers.** Agent Ops, the ceremony meter and Needs you read the migrated agents tables.
