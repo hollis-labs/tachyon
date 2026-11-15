@@ -5,6 +5,12 @@
 @import "@hollis-labs/design-components/source.css";
 @import "@hollis-labs/kit-account/source.css";
 @import "@hollis-labs/kit-identity/source.css";
+/* Chat (G3): message markdown, chat chrome, card blocks, admin parts, streamed markdown. */
+@import "@hollis-labs/kit-chat/markdown.css";
+@import "@hollis-labs/kit-chat/source.css";
+@import "@hollis-labs/kit-cards/source.css";
+@import "@hollis-labs/kit-admin/source.css";
+@import "streamdown/styles.css";
 /* app-shell ships TypeScript source with Tailwind classes and no source.css of its own. */
 @source "../node_modules/@hollis-labs/app-shell/src";
 
@@ -46,4 +52,22 @@ textarea {
 }
 .form-width {
   max-width: 36rem;
+}
+
+/* Carried from the old frontend/src/index.css. */
+/* Kit filter chips: an unselected chip's muted label on the hover surface is under 4.5:1 in light and dark, so it goes to fg while hovered. */
+.dash-filter-chip[aria-pressed="false"]:hover {
+  color: var(--color-fg);
+}
+
+/* Message and document headings are content: sentence case, not the dashboard's uppercase section captions. */
+[data-chat-prose] :is(h1, h2, h3) {
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+}
+/* Message table headers: same, and never broken letter by letter (a narrow column made the header row many lines tall). */
+[data-chat-prose] th {
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+  white-space: nowrap;
 }

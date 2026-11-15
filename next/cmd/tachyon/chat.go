@@ -38,13 +38,14 @@ import (
 const chatWriteAction assurance.Action = "chat.write"
 
 // chatDeps are the chat services the routes serve: the threads over the inbound Tether chat bridge
-// and the app agent (slice B6b), and the per-thread services (B6). Outbound delivery (the chat outbox,
-// send-to-agent) and cards are later slices.
+// and the app agent (slice B6b), and the per-thread services (B6). Sending to an agent goes through the chat
+// outbox (B6c); cards are a later slice.
 type chatDeps struct {
 	threads   *chatthreads.Handler
 	turns     *chatbridge.Owned
 	roster    http.Handler
 	outbox    http.Handler
+	send      http.Handler // POST agents/{launch}/send (B6c)
 	app       *appagent.Service // nil: the app agent is not configured
 	topics    *chattopics.Handler
 	plan      *chatplan.Service
@@ -89,7 +90,16 @@ func newChat(ctx context.Context, app *module.App, cfg settings.Settings, domain
 	}
 	d := chatDeps{turns: turns, app: agent, roster: chatbridge.NewRoster(tetherURL, upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token)),
 		// The outbox rows are owned by the old build's digest of the Tether address, as the turns are keyed by it.
-		outbox: chatbridge.OutboxList(domain, chatbridge.OutboxIdentity(tetherURL))}
+		outbox: chatbridge.OutboxList(domain, chatbridge.OutboxIdentity(tetherURL)),
+		// Sending is outbound: off unless tachyon.features.chat_sync is on (plan section 6).
+		send: chatbridge.NewSender(domain, tetherURL, upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token), cfg.Features.ChatSync)}
+	// The old server's startup backfill: link every migrated turn and outbox row of this Tether address
+	// to its session object. Local writes only; nothing is fetched.
+	if tetherURL != "" {
+		if _, err := turns.BackfillSessionLinks(ctx, chatbridge.OutboxIdentity(tetherURL)); err != nil {
+			return chatDeps{}, fmt.Errorf("chat session identity backfill: %w", err)
+		}
+	}
 	d.threads = &chatthreads.Handler{
 		Agg: &chatthreads.Aggregator{App: agent, Chat: turns, State: &chatthreads.StateStore{DB: domain}},
 		Hub: &chatthreads.Hub{DB: domain},
@@ -327,8 +337,10 @@ func chatRoutes(c chatDeps) []routes.Route {
 	rs = append(rs, routes.Route{Method: method, Pattern: path, Scope: "tachyon.chat.write", Handler: write(c.workspace.Content())})
 	// The Tether chat roster, passed through (the old console plugin's proxy).
 	rs = append(rs, routes.Route{Method: http.MethodGet, Pattern: chatapi.Prefix + chatbridge.RosterPath, Scope: "tachyon.chat.read", Handler: c.roster},
-		// The messages sent to a launch (the read side of the chat outbox; sending is B6c).
-		routes.Route{Method: http.MethodGet, Pattern: chatapi.Prefix + chatbridge.OutboxPath, Scope: "tachyon.chat.read", Handler: c.outbox})
+		// The messages sent to a launch (the read side of the chat outbox).
+		routes.Route{Method: http.MethodGet, Pattern: chatapi.Prefix + chatbridge.OutboxPath, Scope: "tachyon.chat.read", Handler: c.outbox},
+		// Sending to an agent launch (B6c): a chat write, with the operator check.
+		routes.Route{Method: http.MethodPost, Pattern: chatapi.Prefix + chatbridge.SendPath, Scope: "tachyon.chat.write", Handler: write(c.send)})
 	// The Tether chat inbox (chat-turns) and the app agent, each under its own old prefix.
 	rs = append(rs,
 		routes.Route{Method: http.MethodGet, Pattern: chatbridge.Prefix + "/inbox", Scope: "tachyon.chat.read", Handler: c.turns},

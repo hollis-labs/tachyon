@@ -14,7 +14,7 @@ export const AREAS = [
   { label: "Agent Ops", route: "/agents", deep: "/agents/session-1", stub: true },
   { label: "Builder", route: "/builder", deep: "/builder/library/agent/a1", stub: true },
   { label: "Registry", route: "/registry", deep: "/registry/projects/p1", stub: true },
-  { label: "Chat", route: "/chat", deep: "/chat/thread-9", stub: true },
+  { label: "Chat", route: "/chat", deep: "/chat/thread-9", stub: false },
   { label: "Approvals", route: "/approvals", deep: "/approvals", stub: true },
   {
     label: "Transcripts",

@@ -8,6 +8,9 @@ export const backend = `http://127.0.0.1:${port}`
 /** A second backend that never gets an owner, for the first-run (no owner) screen. */
 export const freshPort = process.env.TACHYON_E2E_FRESH_PORT ?? String(Number(port) + 1)
 export const freshBackend = `http://127.0.0.1:${freshPort}`
+/** The chat backend run's local Tether fake (e2e/tether-fake.ts); the backend's only upstream. */
+export const tetherPort = process.env.TACHYON_E2E_TETHER_PORT ?? String(Number(port) + 2)
+export const tether = `http://127.0.0.1:${tetherPort}`
 export const run = runDir()
 /** The owner's backend data (HOME, XDG and TACHYON_DATA_DIR live inside). */
 export const dir = join(run, "owner")
