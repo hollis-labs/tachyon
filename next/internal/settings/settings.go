@@ -107,7 +107,7 @@ type Features struct {
 	AgentsCollector   bool // the Tether environment stream read model, and the ceremony meter's hourly read
 	AgentsControls    bool // agent controls and launches over Tether: nudge, interrupt, restart, launch
 	CatalogIndex      bool // the Tether catalog poller
-	BuilderChanges    bool // builder changes, the launch action and registry writes over Tether
+	BuilderChanges    bool // builder changes, the launch action, registry writes and team operations over Tether
 	CardEvents        bool // publish card.* events to the events hub
 	CardEffectsTorque bool // approved cards may change Torque
 	CardDelivery      bool // push card outcomes to the asker over Tether messages

@@ -23,6 +23,8 @@ import (
 	"github.com/hollis-labs/tachyon/next/internal/builderchange"
 	"github.com/hollis-labs/tachyon/next/internal/builderread"
 	"github.com/hollis-labs/tachyon/next/internal/catalogindex"
+	"github.com/hollis-labs/tachyon/next/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/next/internal/provideractions"
 	"github.com/hollis-labs/tachyon/next/internal/routes"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
 	"github.com/hollis-labs/tachyon/next/internal/store"
@@ -34,8 +36,9 @@ import (
 // Builder's agents, launches and library reads, the registry's projects, the team policy and the imported
 // team snapshot, from the migrated tables; the catalog index loop runs only with
 // tachyon.features.catalog_index. Writes (slice B9b): builder changes, the launch action and the registry
-// writes, which reach Tether, run only with tachyon.features.builder_changes. Team operations (the Tether
-// provider verbs) are a later slice.
+// writes, which reach Tether, run only with tachyon.features.builder_changes. Team operations (slice B9b-2):
+// the Tether provider's data verbs, served on the console data API; the ones that reach Tether bind to it
+// only with the same switch, and off they answer unavailable as an old build without Tether did.
 
 // builderWriteAction is the assurance action of every Builder and registry write: an operator, as the old
 // RequireOperator required for writes.
@@ -53,6 +56,7 @@ type builderDeps struct {
 	tether  *tetherpass.Proxy
 	db      *store.Store
 	changes *builderchange.Service // nil: builder changes are off (503 changes_unavailable)
+	teams   *dataverbs.Actions     // the Tether provider (team operations) on the console data API
 	start   func(ctx context.Context) (stop func())
 }
 
@@ -63,6 +67,7 @@ func newBuilder(app *module.App, cfg settings.Settings, domain *store.Store) bui
 	token := upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token)
 	idx := &catalogindex.Index{Store: &catalogindex.Store{DB: domain}, Bus: catalogindex.NewBroker(time.Now)}
 	d := builderDeps{index: idx, reader: &builderread.Reader{Index: idx.Store}, tether: tetherpass.New(cfg.Upstreams.Tether.URL, token), db: domain}
+	d.teams = &dataverbs.Actions{Service: &provideractions.Service{Store: domain, Bind: teamsBind(cfg, token)}}
 	if cfg.Upstreams.Tether.URL != "" {
 		if sess, err := builderread.NewTetherSessions(cfg.Upstreams.Tether.URL, token); err == nil {
 			d.reader.Sessions = sess
@@ -106,6 +111,18 @@ func newBuilder(app *module.App, cfg settings.Settings, domain *store.Store) bui
 		}
 	}
 	return d
+}
+
+// errTeamsOff is the binding error with builder changes off; the service answers it as unavailable.
+var errTeamsOff = errors.New("team operations are off (tachyon.features.builder_changes)")
+
+// teamsBind binds the Tether provider to Tether on the read credential, as the old server did, only with
+// tachyon.features.builder_changes on. Off, every verb that would reach Tether fails before dialing.
+func teamsBind(cfg settings.Settings, token upstreamauth.Token) func() (provideractions.Bound, error) {
+	if !cfg.Features.BuilderChanges {
+		return func() (provideractions.Bound, error) { return nil, errTeamsOff }
+	}
+	return provideractions.Tether(cfg.Upstreams.Tether.URL, token)
 }
 
 // controlAddress is where the control credential reaches Tether: tachyon.upstreams.tether_control.url (the
