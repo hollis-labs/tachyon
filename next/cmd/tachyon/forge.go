@@ -234,7 +234,7 @@ func forgeRoutes(d forgeDeps) []routes.Route {
 // exactly the session cookie; any other bearer (an API key, a minted token) is refused as before.
 func stateGuard(cookie string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if h := r.Header.Get("Authorization"); h != "" && !sessionBearer(r, cookie, h) {
+		if h := r.Header.Get("Authorization"); h != "" && !fromSessionCookie(r, cookie, h) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
 			w.WriteHeader(http.StatusForbidden)
@@ -243,12 +243,4 @@ func stateGuard(cookie string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// sessionBearer reports whether the Authorization header is the bearer the identity middleware made
-// from the session cookie (the same check as B10's fromSessionCookie, named apart so the two slices
-// merge cleanly).
-func sessionBearer(r *http.Request, cookie, header string) bool {
-	c, err := r.Cookie(cookie)
-	return err == nil && c.Value != "" && header == "Bearer "+c.Value
 }
