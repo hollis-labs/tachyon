@@ -277,6 +277,12 @@ Details: `docs/api-contract.md`.
   dials GitHub: those reads answer `503 disabled`, and `pulls/pending`, `status`, `stream`, `audit` and
   `console/state` are served from the store (`status` reports `degraded` with the switch's note). The old build
   served the on-demand reads whatever `TACHYON_FORGE_INDEX` said.
+- **`pulls/pending?state=all` is new (lead decision, fixing a carried bug).** The inbox asks for pending rows with
+  no `state` and sorts them into its Active, Snoozed, Dismissed and Resolved tabs itself, but the server answers
+  only `active` rows when `state` is absent, so a dismissed or snoozed PR vanished and its tab stayed at 0. Old
+  main has the same pair, so the live app shows this today. The server now also accepts `state=all` (every row
+  whatever its triage); the default stays `active`, so other callers are unchanged. The UI asks for `state=all`
+  from the G7b backend-run follow-up.
 - **No legacy fallback.** Before the first refresh the old `pulls/pending` fell through to the console plugin,
   which searched GitHub live (in a different row shape). The port answers the saved index, possibly empty.
 - **The console plugin's PR reads** (`repos/{host}/{owner}/{name}/pulls/{num}`, `…/commits`, `…/comments`) keep

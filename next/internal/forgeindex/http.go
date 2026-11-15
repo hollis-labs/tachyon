@@ -78,8 +78,9 @@ func (a *API) pending(w http.ResponseWriter, r *http.Request) {
 	if state == "" {
 		state = "active"
 	}
-	if !slices.Contains([]string{"active", "snoozed", "dismissed", "resolved"}, state) {
-		fail(w, 400, "invalid_args", "state must be active, snoozed, dismissed or resolved.")
+	// "all" (new in the port) returns every triage state, for the inbox's own tabs; the default stays "active".
+	if !slices.Contains([]string{"active", "snoozed", "dismissed", "resolved", "all"}, state) {
+		fail(w, 400, "invalid_args", "state must be active, snoozed, dismissed, resolved or all.")
 		return
 	}
 	limit := forgeapi.PendingPage
@@ -127,7 +128,7 @@ func (a *API) pending(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			t = Triage{Status: "active"}
 		}
-		if t.Status != state {
+		if state != "all" && t.Status != state {
 			continue
 		}
 		if v := q.Get("reason"); v != "" && !slices.Contains(row.Reasons, v) {

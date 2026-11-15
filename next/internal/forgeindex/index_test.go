@@ -377,6 +377,14 @@ func TestPendingStatusAndStream(t *testing.T) {
 	if got := items("/pulls/pending?state=snoozed"); got[0].(map[string]any)["triage"].(map[string]any)["snooze_until"] != float64(1793330000000) {
 		t.Errorf("snoozed: %v", got)
 	}
+	// state=all (new in the port) returns every row whatever its triage state, for the inbox's own tabs.
+	n := 0
+	for _, st := range []string{"active", "snoozed", "dismissed", "resolved"} {
+		n += len(items("/pulls/pending?state=" + st))
+	}
+	if got := items("/pulls/pending?state=all"); n < 3 || len(got) != n {
+		t.Errorf("all: %d rows, want %d (every state)", len(got), n)
+	}
 	if got := items("/pulls/pending?reason=checks_failed"); len(got) != 1 {
 		t.Errorf("reason: %v", got)
 	}
