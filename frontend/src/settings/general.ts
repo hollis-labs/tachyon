@@ -138,34 +138,34 @@ export function realApi(): GeneralApi {
           const fields = Object.entries(g.schema.properties ?? {})
             .filter(([key]) => !ONLY[g.id] || ONLY[g.id].includes(key))
             .map(([key, p]): SettingField => {
-            const meta = g.fields[key]
-            const v = snap.values[key]
-            const reason =
-              v?.read_only_reason ??
-              meta?.read_only_reason ??
-              (v && !v.editable ? "Read only." : undefined)
-            const kind: FieldKind = p.enum
-              ? "enum"
-              : p.type === "integer"
-                ? "integer"
-                : p.type === "boolean"
-                  ? "boolean"
-                  : "string"
-            return {
-              key,
-              label: p.title ?? key,
-              help: p.description ?? "",
-              kind,
-              options: (p.enum ?? []).map(String),
-              min: p.minimum,
-              max: p.maximum,
-              value: v?.value === undefined || v.value === null ? "" : String(v.value),
-              source: v?.source ?? { kind: "default", label: "Built-in default" },
-              readOnlyReason: reason,
-              operatorOnly: !!reason && OPERATOR.test(reason),
-              restartRequired: meta?.restart_required,
-            }
-          })
+              const meta = g.fields[key]
+              const v = snap.values[key]
+              const reason =
+                v?.read_only_reason ??
+                meta?.read_only_reason ??
+                (v && !v.editable ? "Read only." : undefined)
+              const kind: FieldKind = p.enum
+                ? "enum"
+                : p.type === "integer"
+                  ? "integer"
+                  : p.type === "boolean"
+                    ? "boolean"
+                    : "string"
+              return {
+                key,
+                label: p.title ?? key,
+                help: p.description ?? "",
+                kind,
+                options: (p.enum ?? []).map(String),
+                min: p.minimum,
+                max: p.maximum,
+                value: v?.value === undefined || v.value === null ? "" : String(v.value),
+                source: v?.source ?? { kind: "default", label: "Built-in default" },
+                readOnlyReason: reason,
+                operatorOnly: !!reason && OPERATOR.test(reason),
+                restartRequired: meta?.restart_required,
+              }
+            })
           return {
             id: g.id,
             label: g.label,
