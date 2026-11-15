@@ -71,7 +71,7 @@ next/
     migratefrom/                the one-way data migration (section 5)
     <domain packages>           ported from internal/* (section 3)
     webui/                      embeds all:dist (dist/.gitkeep kept)
-  plugins/console, plugins/planner   subprocess plugins, ported, served through pluginhost
+  plugins/console               subprocess plugin, ported later with pluginhost (deselected for now, section 13; planner not ported)
   web/                          the SPA on app-shell (GUI track, section 11)
   docs/architecture.md, docs/conversion-notes.md
 ```
@@ -83,7 +83,7 @@ app: tachyon
 variant: app-host
 profiles: [minimal]
 modules:
-  add: [httphost, database, auth, identity, secrets, cli, scheduler, pluginhost]
+  add: [httphost, database, auth, identity, secrets, cli, scheduler]   # pluginhost returns with the console plugin slice (section 13)
 config:
   httphost: { addr: "127.0.0.1:<port>" }   # the live port is set in the private override
   database: { sqlite: { path: tachyon.db } }
@@ -111,7 +111,7 @@ Either way **there is no stdio `LocalTrust`** in Tachyon; if a later slice adds 
 | `cmd/tachyon` env parsing, `host.New` (libs app-host), `net.Listen` | `boot.StartWith`, `httphost.Handler`/`Serve`, manifest config + `SUBSTRATE_CONFIG` override |
 | `internal/localstore` (own open, `serialwrite` queue, `tachyon_migrations` ledger, 56 SQL files plus the baseline DDL in `store.go`) | `database` module store (`database.From(app)`): one writer, `Reader()` pool, `WriteTx`. **One goose migration** (`00001_init.sql`) equal to the old schema at 056 plus the baseline tables, collapsed: no `ALTER` ladder. Kept exactly: columns, types, NOT NULL, defaults, keys, foreign keys, indexes and the `approval_decision_log` append-only triggers (029). Proven by a schema-diff test (B2). Rebuild leftovers are dropped only under the rule of section 5. |
 | `jobs.db` (libs `core/util/scheduler/sqlstore` in a second file) | `scheduler` module, which uses the same `sqlstore` (libs `core/util` v0.6.0 on both sides) inside the main database. One file. |
-| `pkg/pluginkit`, `PluginBinDir`, app-host plugin wiring | `pluginhost` module (`pluginhost.UseSpecs`), forwarding `/api/plugins/{id}/...` under the auth guard; per-plugin and per-route scopes on `auth.ScopeTable`. Only an explicit allowlist of console paths is forwarded; there is no catch-all. |
+| `pkg/pluginkit`, `PluginBinDir`, app-host plugin wiring | `pluginhost` module (`pluginhost.UseSpecs`), forwarding `/api/plugins/{id}/...` under the auth guard; per-plugin and per-route scopes on `auth.ScopeTable`. Only an explicit allowlist of console paths is forwarded; there is no catch-all. **Deselected for now** (section 13, CW-20261114-0184): the app serves the console data routes itself. |
 | Tangent bridge browser session, the `TACHYON_ASSURANCE` posture switch, `/api/session*` elevation | `identity` module (owner session cookie, `X-Requested-With` + same-origin on writes). The `assurance.Provider` interface stays app code with an identity-backed implementation (section 4). |
 | `internal/agentaccess` service identities and hashed service tokens | Credentials: identity API keys. Service identities, agent bindings, proxy pin, per-credential grants (verbs and kinds) and the credential-to-identity mapping: app data (section 4). |
 | `libs/security/secrets/tokenfile` for upstream tokens, credentials passed as environment values | `secrets` module resolver (`file://` references) for every upstream credential |
@@ -171,8 +171,8 @@ same kind of input: the window's step-1 backups (section 8), never the old data 
 
 **Schema is enforced, not assumed.** Before copying, the command enumerates the source's `sqlite_master` (tables, indexes,
 triggers, views) and `pragma table_info` of every table, and compares them with its built-in mapping. **Any table or column it
-does not know is a failure, never a skip.** It also refuses a source whose `tachyon_migrations` ledger is not exactly the 56 names
-it was built for. Each source table has one of three rules in the mapping:
+does not know is a failure, never a skip.** It also refuses a source whose `tachyon_migrations` ledger is not exactly the names
+it was built for (every old migration up to the live head, each carried by a parity-carry slice; a source at any other head is refused with a message naming the version). Each source table has one of three rules in the mapping:
 - **copy** (the default, for every table that has rows, including caches, cursors, watermarks, read models and history: they
   are copied so sync resumes where it stopped instead of re-pulling or double-delivering);
 - **ledger**: `tachyon_migrations`, replaced by goose's own table;
@@ -204,7 +204,10 @@ config (the exact spellings are in the live facts), and `migrate-from` refuses a
 
 **launches.db** (the launch-ops plugin, one empty table): not copied; left in place with the old data directory.
 
-**Files beside the databases.** Nothing in the old data directory other than the databases is read by the live build: `planner/`
+**Files beside the databases.** The chat workspace store (`workspace/`, the bytes behind `chat_workspace_items`) is the one
+file store the old build writes. No upload has been stored so far, but slice D2 makes
+`migrate-from` copy it whenever it is present: sha256 per file checked against `chat_workspace_items.sha256`, a refusal when a
+row references a missing file, modes 0600/0700, and an idempotent rerun. Apart from that, nothing in the old data directory other than the databases is read by the live build: `planner/`
 and `console/` are empty, and `plugins/` holds old plugin binaries that the live build does not load (it loads plugins from the
 build tree). None are copied. The cache directory's `planner/` and `console/` are empty and the new cache directory starts empty.
 Old snapshots and `backups/` are not copied. The verification report lists every file in the old data directory with its size,
@@ -281,10 +284,14 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
 ## 8. Cutover sequence (run by the director with the owner)
 
 **Before the window** (no downtime):
-1. P1 done, parity-carry list empty, `main` frozen (section 1), CI green, the build artifact chosen (run id recorded).
+1. P1 done, parity-carry list empty, `main` frozen (section 1), CI green, the build artifact chosen (run id recorded). The old
+   `main` commit the live app runs and its `tachyon_migrations` head are recorded; the new build's ledger list must equal that
+   head (`migrate-from` refuses any other).
 2. Rehearsal on that day's copies passes (section 5); duration recorded. The window's maximum length is set from it
    (rehearsal time plus 30 minutes, and never more than 90 minutes).
-3. Prepared, not applied: the override file **with every outbound feature off** (section 6), the new descriptor entry, the key
+3. Prepared, not applied: the override file **with every outbound feature off** (section 6), with `tachyon.upstreams.tether.url`
+   spelled exactly as the old `TETHER_ADDR` (chat history is keyed by that address string; a different spelling hides every
+   thread) and the app-agent endpoint left unconfigured until acceptance, the new descriptor entry, the key
    list (one line per active token: identity, scopes, kinds, remaining TTL), the proxy check.
 4. Every key holder named and ready to swap; **every holder keeps its old token file until acceptance** (the old tokens work
    again if the cutover is rolled back).
@@ -332,9 +339,10 @@ after acceptance, so a rollback never needs a revert there.
 
 `/healthz` ok (database, scheduler, plugins); `GET /api/setup` → `setup_required: false`; sign in through the real proxy URL; one
 write and one read (a planner item edit, then read back); an unknown `Host` refused; an unauthenticated `/api/` call refused,
-including an unknown `/api/plugins/...` path; an unknown `/api/plugins/...` path refused for the signed-in owner too (only the
-allowlisted console paths are forwarded, B1); an API key holding no operator scope refused on an approval resolve; each SSE
-stream (console events, activity) connects and receives a keepalive; the terminal WebSocket connects; the 6 object-sync schedules
+including an unknown `/api/plugins/...` path; an unknown `/api/plugins/...` path refused for the signed-in owner too (the console
+data routes are served by the app itself while `pluginhost` is deselected, section 13); an API key holding no operator scope refused on an approval resolve; each SSE
+stream (console events, activity) connects and receives a keepalive; the chat thread list has the same count as the old build
+recorded before the window; the terminal WebSocket connects; the 6 object-sync schedules
 listed with the same enabled state as before; one approval listed with its decision log; each key holder's one call succeeds and
 its old token gets 401; the session cookie is `HttpOnly`, `Secure` and `SameSite=Strict` through the proxy; the Tether hub's
 Tachyon origins are connected.
@@ -434,6 +442,21 @@ Director's rulings (2026-11-14, plan approved at `bea7158`):
 - The stale sibling worktrees and dev descriptors of earlier Tachyon experiments are not carried.
 - Live service tokens expiring before the cutover are re-issued on the live app by the director (not the port).
 
+Decided in the cell while building (2026-11-15):
+- `pluginhost` is deselected: its `* /api/plugins/` route outranks the app's own `/api/plugins/...` routes, which then answer 404.
+  The app serves the console data routes itself; `pluginhost` returns with the console plugin slice once Substrate gap
+  CW-20261114-0184 lands. The planner plugin process is not ported (the SPA compiles the planner UI in; post-adoption).
+- On Postgres, `store.WriteTx` serialises writes with an advisory lock keyed by schema, keeping SQLite's single-writer behaviour
+  the domain code relies on (PG1). The scheduler module has no Postgres store yet (CW-20261115-0014, after the three ports), so the
+  Postgres step stays after acceptance.
+- Ordering (with the Substrate program driver): the SQLite cutover path (domains, D2, parity, rehearsals, P1) comes before any
+  further Postgres work (PG2, PG3).
+- Carried UI: where a carried component overlaps a BOM kit, the kit wins and differences become kit-gap tasks. Exception: carried
+  components whose kit swap would drop features in use today (chat cards undo and keyboard answers, the approvals decision bar,
+  secret upload from a file, the chat composer, Sheet-over-Dialog stacking) stay as app domain UI against kit gaps
+  CW-20261115-0031, -0032 and -0033, and swap on a pin bump when those ship.
+- Rehearsals run with the app-agent endpoint unconfigured (with it configured, start-up polls migrated `streaming` messages).
+
 Open, tracked: CW-20261114-0121, triage of the public-hygiene scan findings in the old tree and its history (a whole-repo scan
 reports them; until it is settled, CI scans `next/` only).
 
@@ -466,11 +489,12 @@ foreign key or transaction crosses classes (today none does: every foreign key o
 | Class | Meaning | Store | Tables |
 |---|---|---|---|
 | A (11 app tables + module tables) | small, local, always boots: settings, definitions, credentials | local SQLite, always | `app_settings`, `service_identities`, `service_tokens`, `service_identity_agents`, `service_proxy_pin`, `chat_approval_rules`, `console_item_state`, `library_parts`, `library_part_revisions`, `part_refs`, `tachyon_migrations`; the B3 credential-mapping table; the identity module's tables (so sign-in works when Postgres is down); all of the scheduler module's `gosched_*` tables (the module owns them in the default store; fire history is bounded by the library's own pruning with a configured retention, not moved) |
-| B (26) | events, logs, telemetry, caches, replay | Postgres first | `seat_status` (057), `agents_events`, `agents_samples`, `agents_stream`, `agents_gaps`, `agents_sessions`, `agents_collector_state`, `agents_controls`, `bus_events`, `chat_events`, `chat_activity`, `alert_events`, `alert_seq`, `alert_source_cursor`, `object_sync_runs`, `fileview_audit`, `forge_audit`, `planner_events`, `planner_stream`, `planner_ingest_state`, `card_event_outbox`, `card_event_scan`, `catalog_snapshots`, `api_cache`, `provider_roster_cache`, `transcript_snapshot` |
+| B (28) | events, logs, telemetry, caches, replay | Postgres first | `seat_status` (057), `ceremony_daily` (059), `checkpoint_events` (059), `agents_events`, `agents_samples`, `agents_stream`, `agents_gaps`, `agents_sessions`, `agents_collector_state`, `agents_controls`, `bus_events`, `chat_events`, `chat_activity`, `alert_events`, `alert_seq`, `alert_source_cursor`, `object_sync_runs`, `fileview_audit`, `forge_audit`, `planner_events`, `planner_stream`, `planner_ingest_state`, `card_event_outbox`, `card_event_scan`, `catalog_snapshots`, `api_cache`, `provider_roster_cache`, `transcript_snapshot` |
 | C (60) | domain data | Postgres later | `action_runs`, `agent_launch_bindings`, `alerts`, `app_agent_messages`, `app_agent_threads`, `approval_batches`, `approval_decision_log`, `approval_defers`, `approval_item_index`, `approval_items`, `approval_proof_receipts`, `approval_secrets`, `card_deliveries`, `card_effect_runs`, `catalog_change_paths`, `catalog_changes`, `catalog_entities`, `catalog_state`, `chat_bookmarks`, `chat_card_refs`, `chat_context`, `chat_cursors`, `chat_imports`, `chat_message_keys`, `chat_outbox`, `chat_outbox_session_links`, `chat_plan_steps`, `chat_plans`, `chat_publications`, `chat_reply_intents`, `chat_scratchpads`, `chat_session_lineage`, `chat_session_links`, `chat_sync_status`, `chat_thread_state`, `chat_topics`, `chat_turn_revisions`, `chat_turns`, `chat_workspace_items`, `execution_items`, `forge_idempotency`, `forge_index_state`, `forge_pr_index`, `forge_review_drafts`, `object_links`, `object_revisions`, `object_sources`, `object_sync_state`, `object_sync_watermarks`, `objects`, `planner_items`, `planner_promotions`, `planner_relation_index`, `planner_task_meta`, `pr_agent_links`, `provider_actions`, `provider_run_links`, `terminal_proposals`, `terminal_runs`, `terminal_sessions` |
 
 The class mapping is kept current with the old schema: a new old migration (section 1, parity-carry) also gets a class here.
-At migration 058 there are 97 tables: A 11, B 26, C 60 (058 adds a column to `chat_plans`, no table).
+At migration 058 there are 97 tables: A 11, B 26, C 60 (058 adds a column to `chat_plans`, no table). Migration 059 (the ceremony
+meter, live since 2026-11-15) adds two class-B tables: 99 tables, A 11, B 28, C 60; carried by CW-20261115-0037.
 
 **Store topology.** At cutover all three classes are in the one SQLite database, as today. Afterwards A stays in a local SQLite
 store and B, then C, move to Postgres. That needs the `database` module to give an app a second named store that may be
