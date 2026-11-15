@@ -251,6 +251,25 @@ Details: `docs/api-contract.md`.
 - **Postgres.** Upserts name their table on the right-hand side, scalar `MAX`/`MIN` are `CASE`s, the sample
   pruning uses its key instead of `rowid`, and the bus and gap inserts read their id with `RETURNING`.
 
+## Transcripts (slice B10)
+
+- **The same bridge.** `/api/plugins/console/v1/transcripts/*` is the old Fragments Engine bridge with the same
+  routes, validation, error codes and upstream reads. The last good snapshot is kept in the migrated
+  `transcript_snapshot`.
+- **Off by default.** `tachyon.features.transcripts` comes before anything outbound. Off, the snapshot serves the
+  saved row (marked `unavailable`, error `disabled`), every other read is 503 `disabled`, and nothing dials
+  Fragments Engine. On, it reads `tachyon.upstreams.fragments` (URL and token reference).
+- **The old guard, kept.** A bearer that is not the browser session's own cookie gets 403 `forbidden`
+  ("Transcripts are for a browser session."). That covers API keys and tokens minted from a session or key. Then
+  the `transcripts.read` assurance applies (browser session). The scope is `tachyon.transcripts.read` on every
+  route.
+- **No API cache.** The old generic response cache is not ported. Reads go live, and only the snapshot walk is
+  shared between concurrent requests. To keep the list visible when Fragments Engine is down, the snapshot now
+  serves the saved row on any upstream error, an unreachable one included. The old bridge did that only on a
+  mapped failure, and its cache answered (still marked "live") when the connection was refused. Other reads
+  answer the upstream error, where the old cache served a cached copy for up to its window.
+- **The session cap** is 5000 (the old `TACHYON_TRANSCRIPT_MAX_SESSIONS` default), a constant for now.
+
 ## Approvals (slice B7)
 
 - **Same tables, same rows.** The inbox reads and writes the migrated `approval_items`, `approval_item_index`,
