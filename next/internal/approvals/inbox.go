@@ -151,7 +151,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet && path == "/history" {
-		i.history(w, r, participant.PrincipalRef)
+		i.history(w, r, selfRefs(participant))
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -169,7 +169,7 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) == 3 && parts[2] == "audit" && r.Method == http.MethodGet {
-		i.audit(w, r, item.ItemID, participant.PrincipalRef)
+		i.audit(w, r, item.ItemID, selfRefs(participant))
 		return
 	}
 	if len(parts) == 3 && parts[2] == "defer" && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {

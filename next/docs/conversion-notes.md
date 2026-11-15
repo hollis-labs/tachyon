@@ -258,8 +258,9 @@ Details: `docs/api-contract.md`.
   `approval_secrets`. The maintenance loop runs as before: index and decision-log backfill once at start, then the
   secret purge and the expiry sweep every 30 s.
 - **The caller is the signed-in person.** New decisions record the principal id (`tachyon/identity`) as actor and
-  responder. Rows written before the port keep their old `browser-session:` refs, so history and audit label those
-  actors "Operator session", where the old build, whose session ref was the same one, said "You".
+  responder. Rows written before the port keep their old `browser-session:` refs. The old build's operator
+  session ref maps to the owner: history and audit label it "You" to the signed-in owner, and every other old
+  session ref "Operator session", as the old build labeled them. The mapping is at read time; no row changes.
 - **The secret key** is `tachyon.files.secret_key`, a secrets reference to the old key file's content (32 bytes or
   64 hex characters). Point it at the same key so the migrated `approval_secrets` stay readable.
 - **Postgres.** The search filters use `LIKE … ESCAPE` (SQLite's `instr` has no Postgres twin); the in-transaction
@@ -325,8 +326,16 @@ Details: `docs/api-contract.md`.
   demand, as before.
 - **chat-turns freshness headers** use the old default policy (enabled, 3 s fresh, 60 s revalidate). The old cache
   policy file's overrides come with the API cache slice.
-- **Not run at start:** the old build's move of outbox rows to a new identity, and its backfill of turn-to-session
-  links keyed by the outbox identity. Both belong to outbound delivery (B7+); the migrated links are kept.
+- **Run at start (B6c), as the old build did:** the backfill that links each migrated turn and outbox row of the
+  configured Tether address to its session object. It writes only those links; nothing is fetched, and it is
+  skipped while the address is empty.
+- **Not run at start:** the old build's move of outbox rows from a previous identity to a new one. The cutover
+  keeps the identity by spelling the Tether address as the old build did (the runbook item above).
+- **Sending to an agent (B6c) is behind `tachyon.features.chat_sync`**, with the inbound sync. Off (the default),
+  a send answers `503 disabled` and records nothing, so nothing reaches an agent before acceptance (plan sections
+  6 and 9). On, sends work as before. There is no background delivery: a migrated row that is not `sent` is sent
+  again only when the operator retries it with the same key within a day. Tether is given the same idempotency key
+  each time, which is what keeps a retry after a crash from delivering twice.
 - **`tachyon.workspace_dir`** (default `workspace`, anchored in the data directory) holds the chat workspace
   files, the old build's `$TACHYON_DATA_DIR/workspace`. The old layout is refused there too.
 - **Workspace files and migrate-from.** `migrate-from` copies the old `workspace/` files into
@@ -335,6 +344,40 @@ Details: `docs/api-contract.md`.
   request, as for the planner.
 - **Not ported:** the chat dev stub (`TACHYON_CHAT_STUBS`) with its OpenAPI document and fixtures, as for the
   planner.
+
+## Web UI: carried console code (G3a, G3)
+
+The console surfaces' code is carried from the old tree (`plugins/console/ui/src` and `packages/*/src` at main
+4a76422) into `next/web/src/console` and `next/web/src/packages`, unchanged apart from the edits each PR lists
+(`next/web/CONVERSION_NOTES.md`).
+
+**Carried as app domain UI; reviewed against kits in G3.** The rule: where carried code overlaps a BOM kit, the kit
+wins, and each real difference is a kit-gap task rather than a reason to keep the old component.
+
+| Directory | What it is | Kit review (G3) |
+|---|---|---|
+| `src/console/chat` | conversation list, thread view, aside panels, drawer, workbench | already on kit-chat `ChatStream`, `ChatMarkdown`, `ForwardMessageDialog`. Composer and `chat/cards` stay app UI until kit gaps CW-20261115-0032 (kit-chat) and CW-20261115-0031 (kit-cards) land, because swapping now drops live features (undo window, keyboard answers, attachment strip, `/` palette). `RunCard`, `ToolCallsRow`, `MailWakeRow`: no kit equivalent |
+| `src/console/messaging` | mail model, composer, quick actions | **swapped:** `QuickActions` now uses design-components `Popover` and `Dialog` |
+| `src/console/autolink`, `src/console/refs` | reference chips, detection, previews, drawer | `sheet.tsx` stays (Sheet-over-Dialog stacking, CW-20261115-0033) |
+| `src/console/forge`, `events`, `observations`, `builder`, `agents`, `files`, `fleet`, `tesseract` | the preview panes reference chips open | domain views on design-components and kit-dashboard parts; `files` table is rendered file content, not a data table |
+| `src/console/approvals`, `components` (G4) | approvals surface; chip, avatar, keycap, pill tabs | see G4: `PillTabs` swaps to `DashboardViewTabs`. The decision bar and `CardForm`/`SecretDialog` stay app UI until CW-20261115-0031 (undo, snooze, secret upload). `InitialsAvatar` and `Keycap` have no kit equivalent |
+| `src/console/{lib,seams,shell,operator,testkit}` | helpers, seams, test kit | `operator/elevation.ts` is replaced by the port (no step-up) |
+| `src/packages/torque-client`, `src/packages/host-sdk` | API client, host fetch and freshness | `hostFetch` sends `X-Requested-With` and hands a 401 to sign-in |
+
+**Kept until a kit gap ships.** These stay as app domain UI. Each one is swapped for the kit on the pin bump that
+ships its gap, and nothing new is built on them.
+
+| Kept | Kit gap | Swap |
+|---|---|---|
+| `chat/cards` (approval, question, plan, dispatch, notice cards) | CW-20261115-0031 (kit-cards) | swap on pin bump when the gap ships |
+| approvals decision bar (`approvals/detail.tsx`, `batch-panel.tsx`) | CW-20261115-0031 (kit-cards) | swap on pin bump when the gap ships |
+| `CardForm` and `SecretDialog` (to kit-cards `FormCard`) | CW-20261115-0031 (kit-cards) | swap on pin bump when the gap ships |
+| chat `Composer` (`chat/workbench/Composer.tsx`) | CW-20261115-0032 (kit-chat) | swap on pin bump when the gap ships |
+| autolink `sheet.tsx` (Sheet over Dialog); its acceptance test is `autolink/drawerStacking.test.tsx` | CW-20261115-0033 | swap on pin bump when the gap ships |
+| page heading (the shell's and the page's `h1`) | CW-20261115-0026 (app-shell `PageHeader`) | drop the extra heading on pin bump when the gap ships |
+
+Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`). A sync slice
+before P1 picks that up.
 
 ## What the operator does differently
 

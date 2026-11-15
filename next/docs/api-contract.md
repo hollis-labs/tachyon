@@ -244,6 +244,7 @@ The old paths under `/api/plugins/console/v1/chat`, `.../chat-turns` and `.../ap
 | `GET events` (every thread) and `GET threads/{ref}/events` (SSE) | `tachyon.chat.read` | | |
 | `GET agents` (the Tether chat roster, passed through as Tether answers; the query is dropped; `503 configuration` without Tether) | `tachyon.chat.read` | | |
 | `GET outbox?launch_id=` (messages sent to a launch: bare array, newest first, at most 500) | `tachyon.chat.read` | | |
+| `POST agents/{launch}/send` (`{text, idempotency_key}`; B6c) | | `tachyon.chat.write` | yes |
 | `.../chat-turns/inbox`, `.../chat-turns/items/{id}/reply` | `tachyon.chat.read` | `tachyon.chat.write` | the reply |
 | `.../app-agent/threads`, `/threads/{id}/messages` (+ send), `/read`, `/events` (SSE) | `tachyon.chat.read` | `tachyon.chat.write` | writes |
 | `threads/{ref}/topics`, `/bookmarks` (+ `/{id}` delete) | `tachyon.chat.read` | `tachyon.chat.write` | writes need the operator check |
@@ -258,8 +259,12 @@ The old paths under `/api/plugins/console/v1/chat`, `.../chat-turns` and `.../ap
 - Request and response shapes, status codes and error codes are the old build's. The old chat errors were
   already the flat `{code, message}`.
 - Unserved until their slice: chat cards and their thread approval rules (`threads/{ref}/approval-rules`, with the
-  chat cards slice); sending to an agent (`POST agents/{launch}/send`) and
-  outbox delivery (B6c, CW-20261115-0038).
+  chat cards slice).
+- Sending to an agent is the old outbox: the send is recorded `sending`, forwarded to Tether's
+  `/chat/agents/{launch}/send` with the caller's idempotency key, and its result recorded. A repeated key answers
+  `{session_id, replayed: true}` once sent; the same key with other text is `409 conflict`; an unconfirmed send
+  older than a day is `409 delivery_unknown`. Tether's status and body are passed back. With
+  `tachyon.features.chat_sync` off it is `503 disabled` and nothing is recorded or sent.
 - A thread exists when the threads aggregator lists it, as before: the Tether chat bridge's turns, the app agent's
   threads, and sessions known from plan lineage. An unknown thread is `404 not_found` "No such thread.".
 - The streams are unnamed `data:` frames `{type, thread_ref, at, ...}`; `id:` is on the hub frames of the

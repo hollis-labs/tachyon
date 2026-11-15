@@ -16,20 +16,20 @@ import (
 // decidedKinds are what the History timeline shows by default.
 var decidedKinds = []string{"resolved", "batch_resolved", "expired", "withdrawn"}
 
-func actorView(ref, assurance, session string) map[string]any {
+func actorView(ref, assurance string, self []string) map[string]any {
 	label := "Operator session"
-	switch ref {
-	case "":
+	switch {
+	case ref == "":
 		label = "System"
-	case session:
+	case slices.Contains(self, ref):
 		label = "You"
 	}
 	return map[string]any{"ref": ref, "label": label, "assurance": assurance}
 }
 
-func eventView(r TimelineRow, session string) map[string]any {
+func eventView(r TimelineRow, self []string) map[string]any {
 	m := map[string]any{"event_id": r.EventID, "item_id": r.ItemID, "kind": r.Kind, "at": r.TS.Format(time.RFC3339),
-		"actor": actorView(r.ActorRef, r.Assurance, session), "revision": r.Revision}
+		"actor": actorView(r.ActorRef, r.Assurance, self), "revision": r.Revision}
 	opt := func(k, v string) {
 		if v != "" {
 			m[k] = v
@@ -51,7 +51,7 @@ func eventView(r TimelineRow, session string) map[string]any {
 // limit (1..100), cursor (opaque, from next_cursor). Every event carries requester{id,label,kind} (null when the
 // item is not indexed) and the page carries facets{requesters, statuses} counted over the filter without the
 // facet's own part.
-func (i *Inbox) history(w http.ResponseWriter, r *http.Request, session string) {
+func (i *Inbox) history(w http.ResponseWriter, r *http.Request, self []string) {
 	q := r.URL.Query()
 	f := EventFilter{Status: q.Get("status"), Requester: q.Get("requester"), Q: q.Get("q"), Limit: 25, Kinds: decidedKinds}
 	if f.Status != "" && !slices.Contains([]string{"approved", "denied", "answered", "expired", "withdrawn"}, f.Status) {
@@ -98,7 +98,7 @@ func (i *Inbox) history(w http.ResponseWriter, r *http.Request, session string) 
 	}
 	events := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		m := eventView(row, session)
+		m := eventView(row, self)
 		m["mini"] = map[string]any{"title": row.Title, "risk": row.Risk, "group": row.Group}
 		m["requester"] = nil
 		if row.ReqID != "" {
@@ -126,7 +126,7 @@ func (i *Inbox) history(w http.ResponseWriter, r *http.Request, session string) 
 }
 
 // audit serves GET /items/{id}/audit: every logged event of one item, oldest first.
-func (i *Inbox) audit(w http.ResponseWriter, r *http.Request, id, session string) {
+func (i *Inbox) audit(w http.ResponseWriter, r *http.Request, id string, self []string) {
 	rows, err := i.Store.ItemEvents(r.Context(), id)
 	if err != nil {
 		writeHITLError(w, err)
@@ -134,7 +134,7 @@ func (i *Inbox) audit(w http.ResponseWriter, r *http.Request, id, session string
 	}
 	events := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		events = append(events, eventView(row, session))
+		events = append(events, eventView(row, self))
 	}
 	writeValue(w, map[string]any{"item_id": id, "events": events})
 }
