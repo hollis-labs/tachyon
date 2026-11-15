@@ -294,7 +294,7 @@ describe('<PendingPrInbox>', () => {
   it('assigns through the picker, confirms, and shows the assignment on the row', async () => {
     const { messaging } = mount()
     await screen.findAllByTestId(/^pr-row-/)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Assign agent' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Assign' })[0])
     const dialog = await screen.findByRole('dialog')
     await within(dialog).findByText('Team Worker')
     const submit = within(dialog).getByRole('button', { name: 'Assign' })
