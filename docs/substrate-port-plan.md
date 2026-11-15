@@ -252,7 +252,8 @@ appendix B). Groups:
   references (the operator writes the files; this cell never handles the values); the fallback to `gh auth token` is dropped.
   The Tangent approval-queue address is dropped with the bridge.
 - **Outbound features** → booleans under `tachyon.features`, each defaulting to **off**: object-sync scheduler dispatch, chat
-  sync, agents collector, catalog index, card events, card effects on Torque, card delivery, alert sources and the alert sink,
+  sync, agents collector, agents controls (nudge, interrupt, restart and the Tether launches; a switch the old build did not
+  have, added so nothing reaches an agent before acceptance), catalog index, card events, card effects on Torque, card delivery, alert sources and the alert sink,
   transcript snapshotting, action runs. The cutover uses these (section 8). Stub switches are dropped. `TACHYON_ASSURANCE` is
   dropped (section 4).
 - Policy and config files (approval producer and assurance config, cache policy, terminal policy, card delivery, app-agent
@@ -289,7 +290,8 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
    head (`migrate-from` refuses any other).
 2. Rehearsal on that day's copies passes (section 5); duration recorded. The window's maximum length is set from it
    (rehearsal time plus 30 minutes, and never more than 90 minutes).
-3. Prepared, not applied: the override file **with every outbound feature off** (section 6), with `tachyon.upstreams.tether.url`
+3. Prepared, not applied: the sha256 of the key file `tachyon.files.secret_key` will read equals the sha256 of the old
+   build's secret key file (compared offline, values never printed), so migrated `approval_secrets` rows stay readable; the override file **with every outbound feature off** (section 6), with `tachyon.upstreams.tether.url`
    spelled exactly as the old `TETHER_ADDR` (chat history is keyed by that address string; a different spelling hides every
    thread) and the app-agent endpoint left unconfigured until acceptance, the new descriptor entry, the key
    list (one line per active token: identity, scopes, kinds, remaining TTL), the proxy check.
@@ -313,7 +315,8 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
 4. Apply the descriptor change (release binary, override with outbound features off, the new data directory); start the unit.
    Check that every Tether hub origin that points at Tachyon is connected again (`tether_gateway_status`); if one is marked failed,
    the owner reloads the hub (an origin that failed during a restart is not retried until a reload).
-5. Section 10 checks. Hand out the key files; each holder makes one call that succeeds and confirms its old token now gets 401.
+5. Section 10 checks, including the secret-key smoke test: an approval secret write does not answer 503 (it proves a key is
+   set; that it is the old key is proven before the window, step 3). Hand out the key files; each holder makes one call that succeeds and confirms its old token now gets 401.
 6. **Acceptance** by the director with the owner: every section 10 check passed and every holder confirmed. Only then: switch
    the outbound features on in the override, restart, and check that object sync, chat sync and the agents collector resume
    from their copied cursors (first sync run reports no full re-pull). Holders may then delete their old token files, and any copies of the old service tokens kept on the host are removed by
