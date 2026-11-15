@@ -59,7 +59,9 @@ export function DecisionsCard({ history }: { history: Remote<History> }) {
               <div className="flex min-w-0 flex-1 flex-col">
                 <b className="truncate text-fg">{i.mini.title}</b>
                 {/* The golden names who asked ("Release bot"); the group is the fallback. */}
-                <span className="truncate text-xs text-fg-muted">{i.requester?.label || i.mini.group || i.kind}</span>
+                <span className="truncate text-xs text-fg-muted">
+                  {i.requester?.label || i.mini.group || i.kind}
+                </span>
               </div>
               <span className="whitespace-nowrap font-mono text-label text-fg-muted">
                 {relativeTime(i.at)}
