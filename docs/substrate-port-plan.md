@@ -296,7 +296,9 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
    build's secret key file (compared offline, values never printed), so migrated `approval_secrets` rows stay readable; the override file **with every outbound feature off** (section 6), with `tachyon.upstreams.tether.url`
    spelled exactly as the old `TETHER_ADDR` (chat history is keyed by that address string; a different spelling hides every
    thread), the Tether read token unchanged from the old build (team-run bindings digest the address and the credential value;
-   a rotated token orphans retained runs), and the app-agent endpoint left unconfigured until acceptance, the new descriptor entry, the key
+   a rotated token orphans retained runs), `tachyon.files.terminal_policy` pointing at the old build's terminal policy file
+   (without it every agent-proposed command falls back to 'ask'), the proxy forwarding the original Host header (the terminal
+   WebSocket upgrade is refused as origin_denied otherwise), and the app-agent endpoint left unconfigured until acceptance, the new descriptor entry, the key
    list (one line per active token: identity, scopes, kinds, remaining TTL), the proxy check.
 4. Every key holder named and ready to swap; **every holder keeps its old token file until acceptance** (the old tokens work
    again if the cutover is rolled back).
