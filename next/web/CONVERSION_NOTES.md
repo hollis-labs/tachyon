@@ -454,6 +454,54 @@ contract, `internal/transcriptsapi/openapi.yaml` and its fixtures at d5db765.
 Not called by this SPA: `stats`, `sessions/{id}/find` and `sessions/{id}/errors` (in the old contract). Scope
 (contract): `tachyon.transcripts.read`.
 
+## Repos (G7b, CW-20261115-0081)
+
+Carried byte-identical from **main d5db765**, with tests:
+- `forge/inbox/` and `forge/workspace/`;
+- the `alerts/` (mapping, policy, types), `prefs/types`, `events/hooks` and `components/segment-meter` files they
+  reach;
+- `testkit/forge-mock.ts` (their tests use it).
+`components/chip.tsx` and `pill-tabs.tsx` stay removed (G4).
+
+- **Surface:** `ReposSurface`, with the PR inbox at `/repos` and the PR workspace at `/pr/:host/:owner/:name/:number`.
+  `/prs/inbox` is the shell's legacy redirect. The pages mount under the old `ConsoleProvider` (state store, action
+  bus, live event sources) and a messaging provider, as the old ConsoleShell placed them.
+- **Edits** (scripted, `g7b-adapt.py`):
+  - Kit wins, as in G4: `Chip` is design-components `Pill` (`faint` becomes `neutral`), and `PillTabs` is
+    kit-dashboard `DashboardViewTabs variant="pills"`. Where PillTabs took a `className`, a wrapping div keeps it.
+  - `MergePanel`: operator access is the profile scope (`tachyon.operator`), as in G4. There is no elevation
+    status, and the note no longer promises an operator-key prompt.
+- **Confirmation without step-up:** the old identity seam asked the server for a step-up token (`POST auth/step-up`)
+  before a forge write. The contract removed step-up. `ReposSurface` gives its ConsoleProvider a session
+  confirmation (`sessionIdentity` in `surface.tsx`) that grants without a token. The backend refuses a write the
+  caller may not make (`operator_required`). The carried seam itself is unchanged.
+- **e2e:** `e2e/forge-stub.ts`. It serves the old contract stub's fixtures (`internal/forgeapi/fixtures` at d5db765,
+  in `e2e/forge-fixtures`, with a repo name made a placeholder) and the console state store. It gives quiet answers
+  to the ConsoleProvider's live sources. `TACHYON_E2E_FORGE=backend` turns it off.
+- **Main drift:** the forge files were carried at d5db765, so #775 (the inbox follows the forge stream) is in.
+
+### Repos routes the surfaces call (for the forge backend slice)
+
+All under `/api/plugins/console/v1`. Errors are flat `{code, message}`; writes carry `X-Requested-With`. Shapes: the
+old written contract, `internal/forgeapi/openapi.yaml` and its fixtures at d5db765. `{pr}` is
+`forge/repos/{host}/{owner}/{name}/pulls/{num}`.
+
+| Method | Path | Old handler |
+|---|---|---|
+| `GET` | `forge/pulls/pending`, `forge/status`, `forge/stream` (SSE) | `internal/forgeindex/http.go` |
+| `GET` | `forge/audit?limit` | `internal/server/register_forgeaudit.go` (`forgeAudit`, operator on reads) |
+| `GET` | `forge/viewer`, `{pr}/files`, `{pr}/diff`, `{pr}/checks`, `forge/repos/…/commits/{sha}` | `internal/forgereads` |
+| `GET` | `{pr}`, `{pr}/commits`, `{pr}/comments`; `POST {pr}/comments`; `PUT {pr}/assignees` | `plugins/console/forge.go` (the console plugin's GitHub reads and writes) |
+| `POST` | `{pr}/reviews/validate`, `{pr}/reviews`; `GET`/`PUT`/`DELETE` `{pr}/review-draft` | `internal/forgereview/review.go` |
+| `GET` | `{pr}/merge-preflight`; `PUT {pr}/merge` | `internal/forgemerge` |
+| `POST` | `messages` (the inbox's Assign mails the agent, after `PUT {pr}/assignees`) | Torque passthrough (`POST /messages`, as in G3) |
+| `GET` / `PUT` | `console/state`, `console/state/{key}` | `internal/itemstate` (`register_itemstate.go`; GETs open, writes guarded) |
+| `GET` | `tether/events`, `activity/agents`; `GET /api/plugins/console/stream/activity` (SSE) | the ConsoleProvider's live sources (Tether proxy, activity monitor) |
+
+Not called by this SPA: the old `POST auth/step-up` (see above) and `{pr}/assign-agent` (`internal/forgeassign`). Scopes (contract): `forge/*`, `console/state`,
+`console/bulk` take `tachyon.forge.read` / `.write`, with the operator check on merge, reviews, assign, comments,
+assignees and audit reads.
+
 ## Gaps
 
 - app-shell has no prefix/param surface routes (exact match only, `shell.tsx` surface lookup). Worked

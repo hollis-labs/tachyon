@@ -1,9 +1,8 @@
-import { Button, Checkbox, EmptyState, OverflowMenu, type OverflowAction, SearchInput, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@hollis-labs/design-components'
+import { Button, Checkbox, EmptyState, OverflowMenu, type OverflowAction, SearchInput, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Pill } from '@hollis-labs/design-components'
 import { PageHeader } from '@hollis-labs/kit-dashboard'
 import { ChevronRight, GitPullRequest, RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Chip } from '../../components/chip'
-import { PillTabs } from '../../components/pill-tabs'
+import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { InitialsAvatar } from '../../components/initials-avatar'
 import { SegmentMeter } from '../../components/segment-meter'
 import { ago } from '@console/lib/agent-activity'
@@ -142,16 +141,16 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, anySelected, 
           {pr.changedFiles !== undefined && <span className="text-fg-faint">{pr.changedFiles} {pr.changedFiles === 1 ? 'file' : 'files'}</span>}
         </p>
         <p className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          {reasons.map((c) => <Chip key={c} tone={DANGER_CATEGORIES.includes(c) ? 'danger' : c === 'unassigned' ? 'faint' : 'neutral'}>{CATEGORY_LABEL[c]}</Chip>)}
-          {pr.draft && <Chip>Draft</Chip>}
-          {pr.assignees.map((a) => <Chip key={a.login}><InitialsAvatar name={a.login} className="-ml-1 size-4" />{a.login}</Chip>)}
+          {reasons.map((c) => <Pill key={c} tone={DANGER_CATEGORIES.includes(c) ? 'danger' : 'neutral'}>{CATEGORY_LABEL[c]}</Pill>)}
+          {pr.draft && <Pill>Draft</Pill>}
+          {pr.assignees.map((a) => <Pill key={a.login}><InitialsAvatar name={a.login} className="-ml-1 size-4" />{a.login}</Pill>)}
           {item.assignments.map((a) => (
-            <Chip key={a.key}>
+            <Pill key={a.key}>
               <InitialsAvatar name={agentName(a.agentId)} className="-ml-1 size-4" />
               <span title={`message ${a.messageId ?? 'sent'} · ${ago(a.at, now)}`}>{agentName(a.agentId)}: {ASSIGN_TASKS.find((t) => t.id === a.task)?.label.toLowerCase() ?? a.task} · sent</span>
-            </Chip>
+            </Pill>
           ))}
-          {item.status === 'snoozed' && item.triage?.snoozeUntil && <Chip tone="faint">snoozed until {new Date(item.triage.snoozeUntil).toLocaleString()}</Chip>}
+          {item.status === 'snoozed' && item.triage?.snoozeUntil && <Pill tone="neutral">snoozed until {new Date(item.triage.snoozeUntil).toLocaleString()}</Pill>}
         </p>
         {err && <p role="alert" className="mt-2 dash-control text-danger">{err}</p>}
       </div>
@@ -264,8 +263,8 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
     <section data-dashboard-shape="square" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg" onKeyDown={(e) => { if (e.key === 'Escape' && selected.size > 0 && !assigning && !bulkAssigning && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) setSelected(new Set()) }}>
       {/* KIT-GAP: PageHeader has no slot beside the title; the golden puts the "N need attention" chip next to it. */}
       <PageHeader title="Pull requests">
-        <Chip>{views.active} need attention</Chip>
-        {cached && <Chip>Cached</Chip>}
+        <Pill>{views.active} need attention</Pill>
+        {cached && <Pill>Cached</Pill>}
         {refreshedAt && <span className="dash-label text-fg-muted max-md:hidden">Updated {ago(forgeRefreshedAt ?? refreshedAt, now)}</span>}
         <Button variant="outline" size="icon-sm" aria-label="Refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw className="size-3.5" /></Button>
         <OverflowMenu ariaLabel="More" actions={[
@@ -277,7 +276,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
           <div className="min-w-0 flex-1 max-md:basis-full">
-            <PillTabs label="Triage state" value={filter.view} onChange={(view) => set({ view: view as TriageView })} items={VIEWS.map((v) => ({ value: v.id, label: v.label, count: views[v.id] }))} />
+            <DashboardViewTabs variant="pills" label="Triage state" value={filter.view} onChange={(view) => set({ view: view as TriageView })} items={VIEWS.map((v) => ({ value: v.id, label: v.label, count: views[v.id] }))} />
           </div>
           <div className="dash-search-adapter min-w-0 basis-60 max-md:flex-1 md:max-w-xs">
             <SearchInput ariaLabel="Search pull requests" value={filter.search} onChange={(search) => set({ search })} placeholder="Search title, author, #" debounceMs={0} slashToFocus />
@@ -290,14 +289,13 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <PillTabs
-          size="sm"
-          className="border-b border-border px-4 pb-3 pt-2"
+        <div className="border-b border-border px-4 pb-3 pt-2"><DashboardViewTabs
+          variant="pills"
           label="Needs you"
           value={filter.categories[0] ?? ''}
           onChange={(v) => set({ categories: v ? [v as InboxCategory] : [] })}
           items={[{ value: '', label: 'All', count: inView.length }, ...CATEGORY_ORDER.map((c) => ({ value: c, label: CATEGORY_LABEL[c], count: cats[c] }))]}
-        />
+        /></div>
 
         {picked.length > 0 && (
           <div role="toolbar" aria-label="Bulk actions" className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2">

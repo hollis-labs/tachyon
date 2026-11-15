@@ -1,6 +1,6 @@
 import { Button, Callout, Dialog, DialogContent, DialogTitle } from '@hollis-labs/design-components'
 import { useEffect, useRef, useState } from 'react'
-import { operatorElevation } from '../../operator/elevation'
+import { hasScope, OPERATOR_SCOPE, useScopes } from '../../../api/capabilities'
 import type { ForgeClient } from '../client'
 import type { MergeInput, MergeMethod, MergePreflight, PullRequest } from '../types'
 import type { WriteResult } from './useWorkspace'
@@ -63,14 +63,10 @@ export function MergePanel({ pr, fileCount, client, onClose, onSubmit, onBusyCha
     client.getMergePreflight(pr.ref).then((r) => { if (live) { setPf(r); if (r.defaultMethod) setMethod(r.defaultMethod) } }, () => { if (live) setPf(null) })
     return () => { live = false }
   }, [client, pr.ref.repo.host, pr.ref.repo.owner, pr.ref.repo.name, pr.ref.number, pr.headSha])
-  // Decision default (P1): merging uses the operator session. When it is not elevated the dialog says so; Confirm still works and
-  // asks for the operator key (operatorFetch), so nothing is blocked client-side.
-  const [needsAccess, setNeedsAccess] = useState(false)
-  useEffect(() => {
-    let live = true
-    operatorElevation.status().then((st) => { if (live) setNeedsAccess(!st.elevated) }, () => undefined)
-    return () => { live = false }
-  }, [])
+  // Port: operator access is the profile scope (tachyon.operator); there is no elevation step. Without it the dialog
+  // says so; Confirm still sends, and the server refuses it (operator_required), so nothing is blocked client-side.
+  const scopes = useScopes()
+  const needsAccess = scopes !== null && !hasScope(scopes, OPERATOR_SCOPE)
   const checking = pf === undefined || pf?.state === 'pending'
   const hard = pf ? pf.blockers.filter((b) => b.code !== 'checks_pending').map((b) => blockerSentence(b.code, b.message)) : local.hard
   const soft = pf ? pf.blockers.filter((b) => b.code === 'checks_pending').map((b) => blockerSentence(b.code, b.message)) : local.soft
@@ -124,7 +120,7 @@ export function MergePanel({ pr, fileCount, client, onClose, onSubmit, onBusyCha
         </fieldset>
         {needsAccess && (
           <p role="status" className="rounded border border-border p-3 text-control text-fg-muted">
-            Operator access needed. Merging uses your operator session. Confirm merge will ask for your operator key.
+            Operator access needed. Merging needs operator access; without it the server refuses the merge.
           </p>
         )}
         {checking && <p role="status" className="text-xs text-fg-muted">Checking…</p>}

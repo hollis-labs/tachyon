@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { ago } from '@console/lib/agent-activity'
 import { Linkified } from '../../autolink/Linkified'
-import { Button } from '@hollis-labs/design-components'
-import { Chip } from '../../components/chip'
+import { Button, Pill } from '@hollis-labs/design-components'
 import { InitialsAvatar } from '../../components/initials-avatar'
 import type { ForgeComment, ForgeUser, ReviewComment } from '../types'
 import type { Thread } from './diff-utils'
@@ -10,7 +9,7 @@ import type { Thread } from './diff-utils'
 export const LABEL = 'font-mono text-caption uppercase tracking-label text-fg-muted'
 
 export function Badge({ children, danger }: { children: ReactNode; danger?: boolean }) {
-  return <Chip tone={danger ? 'danger' : 'neutral'}>{children}</Chip>
+  return <Pill tone={danger ? 'danger' : 'neutral'}>{children}</Pill>
 }
 
 export function Author({ user }: { user: ForgeUser }) {

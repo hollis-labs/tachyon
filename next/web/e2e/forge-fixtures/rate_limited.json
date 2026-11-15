@@ -1,0 +1,5 @@
+{
+  "code": "rate_limited",
+  "message": "GitHub rate limit reached.",
+  "retry_after_s": 42
+}

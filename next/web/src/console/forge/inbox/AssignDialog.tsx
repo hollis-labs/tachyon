@@ -1,5 +1,4 @@
-import { Button, Dialog, DialogContent, DialogTitle, DialogDescription, Textarea } from '@hollis-labs/design-components'
-import { Chip } from '../../components/chip'
+import { Button, Dialog, DialogContent, DialogTitle, DialogDescription, Textarea, Pill } from '@hollis-labs/design-components'
 import { InitialsAvatar } from '../../components/initials-avatar'
 import { useEffect, useMemo, useState } from 'react'
 import { useAgentsClient } from '../../agents/context'
@@ -102,7 +101,7 @@ export function AssignDialog({ pr, existing, also = [], initialTask, onClose, on
         <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">Assign to an agent</DialogTitle>
         <DialogDescription className="mt-2 flex flex-wrap items-center gap-2 dash-support text-fg-muted">
           <span className="min-w-0 truncate"><span className="font-mono">{title}</span>{targets.length === 1 && <> · {pr.title}</>}</span>
-          {targets.length > 1 && <Chip>{`+ ${targets.length - 1} more selected`}</Chip>}
+          {targets.length > 1 && <Pill>{`+ ${targets.length - 1} more selected`}</Pill>}
         </DialogDescription>
 
         <fieldset className="mt-4">
@@ -132,7 +131,7 @@ export function AssignDialog({ pr, existing, also = [], initialTask, onClose, on
                   <input type="radio" name="pr-assignee" value={a.identity.id} checked={on} onChange={() => setAgentId(a.identity.id)} className="shrink-0 accent-primary" />
                   <InitialsAvatar name={a.identity.name} />
                   <span className="min-w-0 truncate font-medium text-fg">{a.identity.name}</span>
-                  {done && <Chip>assigned</Chip>}
+                  {done && <Pill>assigned</Pill>}
                   <span className="ml-auto shrink-0 text-right dash-support text-fg-muted">{[a.identity.roles.join(', '), a.live?.state ?? 'not running'].filter(Boolean).join(' · ')}</span>
                 </label>
               )

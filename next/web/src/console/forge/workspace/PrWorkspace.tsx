@@ -1,11 +1,10 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ArrowUpRight, ExternalLink, RefreshCw } from 'lucide-react'
-import { Button, buttonVariants, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@hollis-labs/design-components'
+import { Button, buttonVariants, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Pill } from '@hollis-labs/design-components'
 import { ago } from '@console/lib/agent-activity'
 import { SeamsContext } from '../../events/context'
-import { Chip } from '../../components/chip'
 import { InitialsAvatar } from '../../components/initials-avatar'
-import { PillTabs } from '../../components/pill-tabs'
+import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
 import { Segmented } from '../../components/segmented'
 import { SegmentMeter } from '../../components/segment-meter'
 import { AssignDialog } from '../inbox/AssignDialog'
@@ -223,15 +222,15 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
           {sizeText(pr) && <span className="font-mono">{sizeText(pr)}</span>}
         </p>
         <p className="mt-2 flex flex-wrap items-center gap-1.5">
-          {pr.draft && pr.state === 'open' && <Chip>Draft</Chip>}
-          {pr.state !== 'open' && <Chip>{pr.state}</Chip>}
-          <Chip tone={merge.tone === 'danger' ? 'danger' : 'neutral'}>{merge.text}</Chip>
-          <Chip tone={checksTone(checks) === 'danger' ? 'danger' : 'neutral'}>{checksText(checks)}</Chip>
-          <Chip>{reviewText(pr.reviews)}</Chip>
+          {pr.draft && pr.state === 'open' && <Pill>Draft</Pill>}
+          {pr.state !== 'open' && <Pill>{pr.state}</Pill>}
+          <Pill tone={merge.tone === 'danger' ? 'danger' : 'neutral'}>{merge.text}</Pill>
+          <Pill tone={checksTone(checks) === 'danger' ? 'danger' : 'neutral'}>{checksText(checks)}</Pill>
+          <Pill>{reviewText(pr.reviews)}</Pill>
         </p>
-        <PillTabs
+        <div className="mt-3 pb-2"><DashboardViewTabs
+          variant="pills"
           label="Workspace sections"
-          className="mt-3 pb-2"
           value={tab}
           onChange={(v) => setTab(v as Tab)}
           items={[
@@ -239,7 +238,7 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
             { value: 'conversation', label: 'Conversation', count: ready.comments.length },
             { value: 'checks', label: 'Checks', count: pr.checks.length },
           ]}
-        />
+        /></div>
       </header>
 
       {mergeSuccess && <p role="status" className="border-b border-border px-4 py-3 text-control text-fg">{mergeSuccess}</p>}
@@ -309,8 +308,8 @@ export function PrWorkspace({ prRef, client: clientProp, bus: busProp, identity:
                   <span className="absolute -left-9 top-0"><InitialsAvatar name={e.author.name ?? e.author.login} className="size-6 bg-bg" /></span>
                   <p className="text-control text-fg-muted">
                     <Author user={e.author} /> · {ago(Date.parse(e.at), now)}{e.where ? ` · ${e.where}` : ''}
-                    {e.type === 'review' && <span className="ml-2 inline-flex align-middle"><Chip tone={e.review.state === 'changes_requested' ? 'danger' : 'neutral'}>{e.review.state.replace('_', ' ')}</Chip></span>}
-                    {e.type === 'thread' && e.resolved && <span className="ml-2 inline-flex align-middle"><Chip>Resolved</Chip></span>}
+                    {e.type === 'review' && <span className="ml-2 inline-flex align-middle"><Pill tone={e.review.state === 'changes_requested' ? 'danger' : 'neutral'}>{e.review.state.replace('_', ' ')}</Pill></span>}
+                    {e.type === 'thread' && e.resolved && <span className="ml-2 inline-flex align-middle"><Pill>Resolved</Pill></span>}
                   </p>
                   {e.body && <div className="mt-1 text-control leading-relaxed text-fg [overflow-wrap:anywhere]"><Linkified text={e.body} preserveWhitespace /></div>}
                   {e.type === 'thread' && !e.resolved && !readOnly && (

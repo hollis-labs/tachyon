@@ -17,12 +17,16 @@ import { withChatApiSummaries } from "./chat/summaries"
 import { createTetherChatClient } from "./chat/tether"
 import { ChatPage } from "./chat/view/ChatPage"
 import { consoleClient } from "./client"
+import { ConsoleProvider } from "./events/provider"
+import { PR_INBOX_PATH, PendingPrInbox } from "./forge/inbox"
+import { PR_WORKSPACE_ROUTE, PrWorkspacePage } from "./forge/workspace"
 import { createMailMessagingClient } from "./messaging/adapter"
 import { MessagingProvider } from "./messaging/context"
 import { OPERATOR_ADDRESS } from "./messaging/operator"
 import { AgentUnreadProvider } from "./messaging/unread"
 import { NeedsYouPage } from "./needs-you/page"
 import { RegistryProjectsPage } from "./registry/RegistryProjectsPage"
+import type { ConfirmRequest, ConfirmResult, IdentityConfirm } from "./seams/identity-confirm"
 import { TranscriptDashboard } from "./transcripts/page"
 
 const consoleSlots = { LinkText: LinkTextSlot }
@@ -163,4 +167,54 @@ export function TranscriptsSurface() {
       </Routes>
     </ConsoleBase>
   )
+}
+
+/**
+ * The Repos surface (`/repos` in ui/app.json): the PR inbox and the PR workspace, from the old console overlay routes.
+ * They mount under the old ConsoleProvider (state store, action bus, live event sources) and messaging, as the old
+ * ConsoleShell placed them; `/prs/inbox` is the shell's legacy redirect. Writes confirm on the signed-in session
+ * (sessionIdentity): the contract has no step-up, and the server checks operator access itself.
+ */
+export function ReposSurface() {
+  return (
+    <ConsoleBase>
+      <ConsoleProvider identity={sessionIdentity}>
+        <ConsoleMessaging>
+          <Routes>
+            <Route path={PR_INBOX_PATH} element={<PendingPrInbox />} />
+            <Route path={PR_WORKSPACE_ROUTE} element={<PrWorkspacePage />} />
+          </Routes>
+        </ConsoleMessaging>
+      </ConsoleProvider>
+    </ConsoleBase>
+  )
+}
+
+/** The messaging client the old ConsoleIntegration provided (the inbox's assign action sends mail with it). */
+function ConsoleMessaging({ children }: { children: ReactNode }) {
+  const api = useApi()
+  const [messaging] = useState(() => createMailMessagingClient(api, { from: OPERATOR_ADDRESS }))
+  return (
+    <MessagingProvider client={messaging} operator={OPERATOR_ADDRESS}>
+      {children}
+    </MessagingProvider>
+  )
+}
+
+/**
+ * Identity confirmation for console actions in the port: the old seam asked the server for a step-up token
+ * (`POST auth/step-up`), which the contract removed. The signed-in session is the confirmation, so it grants without a
+ * token, and the backend refuses a write the caller may not make (`operator_required`).
+ */
+const sessionIdentity: IdentityConfirm = {
+  async confirm(req: ConfirmRequest): Promise<ConfirmResult> {
+    return {
+      outcome: "granted",
+      who: req.who ?? { id: "operator" },
+      what: req.what,
+      scope: req.scope,
+      issuedAt: Date.now(),
+      expiresAt: null,
+    }
+  },
 }

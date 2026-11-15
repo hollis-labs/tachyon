@@ -1,9 +1,8 @@
-import { Button, buttonVariants, OverflowMenu, Sheet, SheetContent, SheetDescription, SheetTitle, type OverflowAction } from '@hollis-labs/design-components'
+import { Button, buttonVariants, OverflowMenu, Sheet, SheetContent, SheetDescription, SheetTitle, type OverflowAction, Pill } from '@hollis-labs/design-components'
 import { ArrowUpRight, GitPullRequest } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ago } from '@console/lib/agent-activity'
-import { Chip } from '../../components/chip'
 import { InitialsAvatar } from '../../components/initials-avatar'
 import { SegmentMeter } from '../../components/segment-meter'
 import type { ForgeClient } from '../client'
@@ -83,8 +82,8 @@ export function PrPreviewDrawer({ item, forge, actions = [], onClose, onAssign, 
         <header className="flex flex-wrap items-center gap-2 py-3 pl-4 pr-12">
           <GitPullRequest aria-hidden className="size-4 text-fg-muted" />
           <span className="font-mono dash-body text-fg" title={`${summary.ref.repo.owner}/${summary.ref.repo.name}#${summary.ref.number}`}>{label}</span>
-          {item.categories.filter((c) => DANGER.includes(c)).map((c) => <Chip key={c} tone="danger">{CATEGORY_LABEL[c]}</Chip>)}
-          {summary.draft && <Chip>Draft</Chip>}
+          {item.categories.filter((c) => DANGER.includes(c)).map((c) => <Pill key={c} tone="danger">{CATEGORY_LABEL[c]}</Pill>)}
+          {summary.draft && <Pill>Draft</Pill>}
         </header>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-4">
           <div>
