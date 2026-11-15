@@ -17,7 +17,12 @@ interface Page { events: EventRow[]; next_cursor?: number }
 export interface WorkState { working: boolean; at: number; seq: number }
 export interface Observations { events: ConsoleEvent[]; checkedAt: number; error: string | null; limited: boolean; workStates: Record<string, WorkState> }
 /** Per-session reads: a global newest-N list is dominated by chat agents, so each running session is asked for itself. */
-export interface SessionSource { running(signal?: AbortSignal): Promise<string[]>; page(query: string, signal?: AbortSignal): Promise<Page> }
+export interface SessionSource {
+  running(signal?: AbortSignal): Promise<string[]>
+  page(query: string, signal?: AbortSignal): Promise<Page>
+  /** Every session's work state in one read; when it answers, the per-session work-state reads are skipped. */
+  workStates?(signal?: AbortSignal): Promise<Record<string, { working: boolean; at: number }>>
+}
 const MAX_SESSIONS = 60
 const SESSION_CONCURRENCY = 6
 const SESSION_EVENTS = 25
@@ -41,6 +46,24 @@ export const defaultSessionSource: SessionSource = {
     return ids
   },
   page: (query, signal) => observationJSON<Page>('/events' + query, signal),
+  async workStates(signal) {
+    const r = await hostFetch('/api/plugins/console/v1/agents/sessions', { headers: { Accept: 'application/json' }, signal })
+    if (!r.ok) throw new Error(`Sessions unavailable (${r.status})`)
+    const body = await r.json() as { sessions?: { id?: string; state?: string; last_activity_at?: number }[] }
+    if (!Array.isArray(body.sessions)) throw new Error('Invalid session list')
+    return workStatesFromSessions(body.sessions)
+  },
+}
+
+/** The Agents monitor's session states as work states: working is working; waiting and idle are not; the rest are unknown. */
+export function workStatesFromSessions(sessions: { id?: string; state?: string; last_activity_at?: number }[]) {
+  const out: Record<string, { working: boolean; at: number }> = {}
+  for (const x of sessions) {
+    if (!x.id || !Number.isFinite(x.last_activity_at)) continue
+    if (x.state === 'working') out[x.id] = { working: true, at: x.last_activity_at as number }
+    else if (x.state === 'waiting' || x.state === 'idle') out[x.id] = { working: false, at: x.last_activity_at as number }
+  }
+  return out
 }
 
 export function eventFromRow(row: EventRow): ConsoleEvent | null {
@@ -147,17 +170,39 @@ export function createObservationStore(fetchPage = (query: string) => observatio
     listeners.forEach(f => f())
     for (const id of ids) { const own = globalRows.filter(r => r.session_id === id); if (own.length) apply(id, own, mine) }
     const q = (id: string, limit: number, kind?: string) => '?' + new URLSearchParams({ session_id: id, limit: String(limit), ...(kind ? { kind } : {}) })
+    // Work state for every session comes from one read when the source offers it, running beside the window reads
+    // so a stalled window cannot hide whether an agent is working. If it fails, each session is asked for its own.
+    const states = source.workStates
+      ? withDeadline(signal => source.workStates!(signal), stop).then(ws => { applyWorkStates(ws, live, mine); return true }, () => false)
+      : Promise.resolve(false)
+    const perSession = !source.workStates
     // Start each pass at a different session so stuck ones at the front cannot starve the rest every time.
     const start = ids.length ? mine % ids.length : 0
-    const jobs = [...ids.slice(start), ...ids.slice(0, start)].flatMap(id => [{ id, query: q(id, SESSION_EVENTS) }, { id, query: q(id, 1, 'session.work_state_changed') }])
-    await Promise.all(Array.from({ length: Math.min(SESSION_CONCURRENCY, jobs.length) }, async () => {
-      for (let job = jobs.shift(); job && !stop.aborted; job = jobs.shift()) {
+    const order = [...ids.slice(start), ...ids.slice(0, start)]
+    const jobs = order.flatMap(id => [{ id, query: q(id, SESSION_EVENTS) }, ...(perSession ? [{ id, query: q(id, 1, 'session.work_state_changed') }] : [])])
+
+    const drain = (queue: { id: string; query: string }[]) => Promise.all(Array.from({ length: Math.min(SESSION_CONCURRENCY, queue.length) }, async () => {
+      for (let job = queue.shift(); job && !stop.aborted; job = queue.shift()) {
         try {
           const page = await withDeadline(signal => source.page(job.query, signal), stop)
           if (Array.isArray(page.events)) apply(job.id, page.events.map(r => ({ ...r, session_id: job.id })), mine)
         } catch { /* keep this session's last observation */ }
       }
     }))
+    await drain(jobs)
+    // The one read failed: fall back to asking each session for its newest work-state change.
+    if (!perSession && !(await states) && !stop.aborted) await drain(order.map(id => ({ id, query: q(id, 1, 'session.work_state_changed') })))
+  }
+  /** Merge one-read work states for the live sessions; a newer event-derived state for a session is kept. */
+  const applyWorkStates = (ws: Record<string, { working: boolean; at: number }>, live: Set<string>, mine: number) => {
+    if (mine !== generation) return
+    const workStates = { ...state.workStates }
+    for (const [id, w] of Object.entries(ws)) {
+      const old = workStates[id]
+      if (live.has(id) && (!old || w.at >= old.at)) workStates[id] = { ...w, seq: old?.seq ?? 0 }
+    }
+    state = { ...state, workStates }
+    listeners.forEach(f => f())
   }
   const sync = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void refresh() }
   return {
