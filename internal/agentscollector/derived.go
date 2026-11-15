@@ -29,7 +29,9 @@ type SeqOutputSink interface {
 type Derived struct {
 	OneLiner    *agentsderive.OneLiner
 	CallsInTurn int
-	CallsDelta  int
+	// TurnStartedAt is when the current turn's first tool call was seen; zero when unknown.
+	TurnStartedAt time.Time
+	CallsDelta    int
 	// Tools are the calls behind CallsDelta as one-liners, stored as timeline events at Seq (0 = the
 	// collector's current sequence). Calls to Tether's own tools are left out: Tether reports those itself.
 	Tools       []agentsderive.OneLiner
@@ -48,7 +50,11 @@ type Derived struct {
 func (s *Store) SetDerived(ctx context.Context, id string, d Derived) error {
 	var ol any
 	if d.OneLiner != nil {
-		b, _ := json.Marshal(map[string]any{"verb": d.OneLiner.Verb, "target": d.OneLiner.Target, "tool": d.OneLiner.Tool, "at": d.At.UnixMilli(), "calls_this_turn": d.CallsInTurn})
+		m := map[string]any{"verb": d.OneLiner.Verb, "target": d.OneLiner.Target, "tool": d.OneLiner.Tool, "at": d.At.UnixMilli(), "calls_this_turn": d.CallsInTurn}
+		if !d.TurnStartedAt.IsZero() {
+			m["turn_started_at"] = d.TurnStartedAt.UnixMilli()
+		}
+		b, _ := json.Marshal(m)
 		ol = string(b)
 	}
 	comp, _ := json.Marshal(d.Compactions)

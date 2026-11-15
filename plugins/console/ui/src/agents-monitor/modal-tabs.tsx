@@ -68,13 +68,13 @@ export function NowTab({ s, now }: { s: Session; now: number }) {
     <div className="flex flex-col gap-4">
       <KpiStrip s={s} now={now} />
       <div className={cn('grid items-start gap-3.5', hasAssignment && 'lg:grid-cols-[1fr_320px]')}>
-        {/* The golden marks this block with a rule on its left edge and words the second line "<tool> · N tool calls this turn". */}
+        {/* The golden marks this block with a rule on its left edge and words the second line "Started 2m ago · <tool> · N tool calls this turn" (the start only when the collector saw it). */}
         <section aria-labelledby="now-right" className="flex flex-col gap-1.5 border-l border-border pl-3.5">
           <h3 id="now-right" className={caption}>{M.rightNow}</h3>
           {s.one_liner ? (
             <>
               <span className="text-control text-fg">{s.one_liner.verb} <Cite>{s.one_liner.target}</Cite> <span className="text-fg-muted">· {ageText(now - s.one_liner.at)}</span></span>
-              <span className="text-xs text-fg-muted"><Cite>{s.one_liner.tool}</Cite> · {M.callsThisTurn(s.one_liner.calls_this_turn)}</span>
+              <span className="text-xs text-fg-muted">{s.one_liner.turn_started_at ? <>{M.turnStarted(ageText(now - s.one_liner.turn_started_at))} · </> : null}<Cite>{s.one_liner.tool}</Cite> · {M.callsThisTurn(s.one_liner.calls_this_turn)}</span>
             </>
           ) : <p className="text-control text-fg-muted">{M.nothingNow}</p>}
         </section>
