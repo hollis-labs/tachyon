@@ -1,4 +1,5 @@
 import { hostFetch } from "@tachyon/host-sdk"
+import { rememberLanding } from "./Landing"
 
 /** One setting as the admin manifest and its snapshot describe it. Values are held as strings for editing. */
 export type FieldKind = "enum" | "integer" | "string" | "boolean"
@@ -196,6 +197,8 @@ export function realApi(): GeneralApi {
             body: JSON.stringify({ revision: group.revision, set, unset: [] }),
           }),
         )
+        if (group.id === "general" && "landing_page" in changes)
+          rememberLanding(changes.landing_page, "/planner")
         return { results: Object.fromEntries(Object.keys(changes).map((k) => [k, "ok" as const])) }
       } catch (e) {
         if (e instanceof ConflictError) throw e
