@@ -224,6 +224,7 @@ The old paths under `/api/plugins/console/v1/chat`, `.../chat-turns` and `.../ap
 |---|---|---|---|
 | `threads` (list, create), `threads/{ref}` (get, patch), `/messages` (list, send), `/read`, `/stop` | `tachyon.chat.read` | `tachyon.chat.write` | writes need the operator check |
 | `GET events` (every thread) and `GET threads/{ref}/events` (SSE) | `tachyon.chat.read` | | |
+| `GET agents` (the Tether chat roster, passed through as Tether answers; the query is dropped; `503 configuration` without Tether) | `tachyon.chat.read` | | |
 | `.../chat-turns/inbox`, `.../chat-turns/items/{id}/reply` | `tachyon.chat.read` | `tachyon.chat.write` | the reply |
 | `.../app-agent/threads`, `/threads/{id}/messages` (+ send), `/read`, `/events` (SSE) | `tachyon.chat.read` | `tachyon.chat.write` | writes |
 | `threads/{ref}/topics`, `/bookmarks` (+ `/{id}` delete) | `tachyon.chat.read` | `tachyon.chat.write` | writes need the operator check |

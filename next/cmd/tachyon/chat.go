@@ -42,6 +42,7 @@ const chatWriteAction assurance.Action = "chat.write"
 type chatDeps struct {
 	threads   *chatthreads.Handler
 	turns     *chatbridge.Owned
+	roster    http.Handler
 	app       *appagent.Service // nil: the app agent is not configured
 	topics    *chattopics.Handler
 	plan      *chatplan.Service
@@ -83,7 +84,7 @@ func newChat(ctx context.Context, app *module.App, cfg settings.Settings, domain
 			return chatDeps{}, fmt.Errorf("app agent: %w", err)
 		}
 	}
-	d := chatDeps{turns: turns, app: agent}
+	d := chatDeps{turns: turns, app: agent, roster: chatbridge.NewRoster(tetherURL, upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token))}
 	d.threads = &chatthreads.Handler{
 		Agg: &chatthreads.Aggregator{App: agent, Chat: turns, State: &chatthreads.StateStore{DB: domain}},
 		Hub: &chatthreads.Hub{DB: domain},
@@ -284,6 +285,8 @@ func chatRoutes(c chatDeps) []routes.Route {
 	add(chatwork.Routes, c.work)
 	method, path, _ := strings.Cut(chatworkspace.ContentRoute, " ")
 	rs = append(rs, routes.Route{Method: method, Pattern: path, Scope: "tachyon.chat.write", Handler: write(c.workspace.Content())})
+	// The Tether chat roster, passed through (the old console plugin's proxy).
+	rs = append(rs, routes.Route{Method: http.MethodGet, Pattern: chatapi.Prefix + chatbridge.RosterPath, Scope: "tachyon.chat.read", Handler: c.roster})
 	// The Tether chat inbox (chat-turns) and the app agent, each under its own old prefix.
 	rs = append(rs,
 		routes.Route{Method: http.MethodGet, Pattern: chatbridge.Prefix + "/inbox", Scope: "tachyon.chat.read", Handler: c.turns},

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -242,5 +243,43 @@ func TestChatStreamsEndOnShutdown(t *testing.T) {
 	}
 	if took := time.Since(begin); took > 5*time.Second {
 		t.Fatalf("shutdown took %s with the chat streams open", took)
+	}
+}
+
+// The chat roster is Tether's, passed through as Tether answers it (the old console plugin's proxy):
+// the caller's query is dropped. With Tether not configured it is 503 configuration.
+func TestChatRosterIsTethers(t *testing.T) {
+	var gotQuery, gotProtocol atomic.Value
+	tether := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/agents" {
+			http.NotFound(w, r)
+			return
+		}
+		gotQuery.Store(r.URL.RawQuery)
+		gotProtocol.Store(r.Header.Get("Tether-Protocol"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"agents":[{"launch_id":"pm","agent_id":"a1","channel":"c","session":{"id":"s1","state":"idle","at_turn_boundary":true}}],"extra":1}`))
+	}))
+	defer tether.Close()
+	base, _ := started(t, chatOverride(tether.URL, false))
+	c := newClient(t, base)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	body := c.want(200, "GET", chatapi.Prefix+"/agents?include_disabled=1", nil, xrw)
+	if string(body) != `{"agents":[{"launch_id":"pm","agent_id":"a1","channel":"c","session":{"id":"s1","state":"idle","at_turn_boundary":true}}],"extra":1}` {
+		t.Errorf("roster not passed through: %s", body)
+	}
+	if q, _ := gotQuery.Load().(string); q != "" {
+		t.Errorf("the caller's query reached Tether: %q", q)
+	}
+	if p, _ := gotProtocol.Load().(string); p != "1" {
+		t.Errorf("Tether-Protocol %q", p)
+	}
+	newClient(t, base).want(401, "GET", chatapi.Prefix+"/agents", nil, xrw)
+
+	off, _ := started(t, loopbackOverride)
+	c = newClient(t, off)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	if code := flatCode(t, c.want(503, "GET", chatapi.Prefix+"/agents", nil, xrw)); code != "configuration" {
+		t.Errorf("roster with Tether off: %s", code)
 	}
 }

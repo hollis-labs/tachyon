@@ -256,8 +256,9 @@ Details: `docs/api-contract.md`.
   improvement.
 - **Upstreams off by default.** With `tachyon.upstreams.tether.url` empty the bridge serves its stored turns and
   dials nothing; the sync loop needs `tachyon.features.chat_sync` as well. The app agent runs only with
-  `tachyon.upstreams.app_agent.url` and `.session`. An inbox read with `Cache-Control: no-cache`, a send, a reply
-  and a stop still reach a configured Tether on demand, as before.
+  `tachyon.upstreams.app_agent.url` and `.session`. An inbox read with `Cache-Control: no-cache`, the chat roster
+  (`GET .../chat/agents`, passed through as before), a send, a reply and a stop still reach a configured Tether on
+  demand, as before.
 - **chat-turns freshness headers** use the old default policy (enabled, 3 s fresh, 60 s revalidate). The old cache
   policy file's overrides come with the API cache slice.
 - **Not run at start:** the old build's move of outbox rows to a new identity, and its backfill of turn-to-session

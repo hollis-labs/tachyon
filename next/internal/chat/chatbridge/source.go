@@ -110,3 +110,43 @@ func (s *source) Agents(ctx context.Context) ([]Agent, error) {
 	err = json.NewDecoder(io.LimitReader(res.Body, 2<<20)).Decode(&out)
 	return out.Agents, err
 }
+
+// RosterPath is the chat roster route under the chat prefix.
+const RosterPath = "/agents"
+
+// NewRoster serves GET <chat prefix>/agents: Tether's chat roster, passed through as Tether answers it,
+// as the old console plugin's proxy did. The query is dropped, so a caller cannot widen the roster to
+// disabled launches. With Tether not configured (addr empty) it answers 503 configuration and dials
+// nothing.
+func NewRoster(addr string, token upstreamauth.Token) http.Handler {
+	var src *source
+	if strings.TrimSpace(addr) != "" {
+		if s, err := NewSource(addr, token); err == nil {
+			src = s.(*source)
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if src == nil {
+			fail(w, http.StatusServiceUnavailable, "configuration", "Tether chat connection or credential is not configured")
+			return
+		}
+		// s.base is the operator-configured Tether address, not request input.
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, src.base+"/chat/agents", nil) //nolint:gosec // see above
+		if err != nil {
+			fail(w, http.StatusBadGateway, "upstream_unavailable", "Tether chat roster unavailable")
+			return
+		}
+		res, err := src.http.Do(req) //nolint:gosec // the configured Tether address
+		if err != nil {
+			fail(w, http.StatusBadGateway, "upstream_unavailable", "Tether chat roster unavailable")
+			return
+		}
+		defer func() { _ = res.Body.Close() }()
+		if ct := res.Header.Get("Content-Type"); ct != "" {
+			w.Header().Set("Content-Type", ct)
+		}
+		w.WriteHeader(res.StatusCode)
+		_, _ = io.Copy(w, io.LimitReader(res.Body, 2<<20))
+	})
+}
