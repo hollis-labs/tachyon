@@ -65,7 +65,7 @@ func (e Events) Append(ctx context.Context, evs ...Event) (int, error) {
 			if ev.Refs == nil {
 				ev.Refs = []Item{}
 			}
-			res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO planner_events(event_id,at_ms,theme_id,subject_ref,kind,text,refs_json,delta_json,arrow,weight,source,source_event_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			res, err := tx.ExecContext(ctx, `INSERT INTO planner_events(event_id,at_ms,theme_id,subject_ref,kind,text,refs_json,delta_json,arrow,weight,source,source_event_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
 				uuid.NewString(), ev.AtMS, ev.ThemeID, ev.SubjectRef, ev.Kind, ev.Text, string(encode(ev.Refs)), string(encode(ev.Delta)), ev.Arrow, ev.Weight, ev.Source, ev.SourceEventID)
 			if err != nil {
 				return err

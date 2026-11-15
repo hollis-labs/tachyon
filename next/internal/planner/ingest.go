@@ -84,8 +84,9 @@ func (g *Ingest) themesOf(ctx context.Context, themes []Item, db, id string, ite
 // cursor to now. It writes planner.changed and planner.item stream entries and derives events.
 func (g *Ingest) Tail(ctx context.Context) error {
 	kinds := `'strategic_priority','workstream','roadmap_item','idea','decision','risk','inbox_item'`
+	seq := store.RevisionSeq(g.DB.Dialect(), "r")
 	var maxRow int64
-	if err := g.DB.Reader.QueryRowContext(ctx, `SELECT coalesce(max(r.rowid),0) FROM object_revisions r JOIN objects o ON o.id=r.object_id WHERE o.ownership='tachyon' AND o.kind IN (`+kinds+`)`).Scan(&maxRow); err != nil {
+	if err := g.DB.Reader.QueryRowContext(ctx, `SELECT coalesce(max(`+seq+`),0) FROM object_revisions r JOIN objects o ON o.id=r.object_id WHERE o.ownership='tachyon' AND o.kind IN (`+kinds+`)`).Scan(&maxRow); err != nil {
 		return err
 	}
 	cur, ok := stateGet(ctx, g.DB.Reader, stateTail)
@@ -101,19 +102,19 @@ func (g *Ingest) Tail(ctx context.Context) error {
 	if maxRow <= last {
 		return nil
 	}
-	rows, err := g.DB.Reader.QueryContext(ctx, `SELECT r.rowid, r.object_id, r.revision, r.actor, r.recorded_at, r.record_json FROM object_revisions r JOIN objects o ON o.id=r.object_id WHERE r.rowid>? AND r.rowid<=? AND o.ownership='tachyon' AND o.kind IN (`+kinds+`) ORDER BY r.rowid LIMIT 500`, last, maxRow)
+	rows, err := g.DB.Reader.QueryContext(ctx, `SELECT `+seq+`, r.object_id, r.revision, r.actor, r.recorded_at, r.record_json FROM object_revisions r JOIN objects o ON o.id=r.object_id WHERE `+seq+`>? AND `+seq+`<=? AND o.ownership='tachyon' AND o.kind IN (`+kinds+`) ORDER BY `+seq+` LIMIT 500`, last, maxRow)
 	if err != nil {
 		return err
 	}
 	type rev struct {
-		rowid, revision int64
-		id, actor, at   string
-		raw             string
+		seq, revision int64
+		id, actor, at string
+		raw           string
 	}
 	var batch []rev
 	for rows.Next() {
 		var r rev
-		if ierr := rows.Scan(&r.rowid, &r.id, &r.revision, &r.actor, &r.at, &r.raw); ierr != nil {
+		if ierr := rows.Scan(&r.seq, &r.id, &r.revision, &r.actor, &r.at, &r.raw); ierr != nil {
 			_ = rows.Close()
 			return ierr
 		}
@@ -141,7 +142,7 @@ func (g *Ingest) Tail(ctx context.Context) error {
 		at, _ := time.Parse(time.RFC3339Nano, r.at)
 		evs = append(evs, g.revisionEvents(ctx, themes, r.id, r.revision, r.actor, at, cur, prev, hasPrev)...)
 	}
-	last = batch[len(batch)-1].rowid
+	last = batch[len(batch)-1].seq
 	if ierr := g.DB.Writer.Submit(ctx, "planner_tail", func(ctx context.Context, tx store.Tx) error {
 		if ierr := streamAppend(ctx, tx, "planner.changed", Item{"source": "tachyon", "refresh": true}); ierr != nil {
 			return ierr

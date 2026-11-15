@@ -187,8 +187,9 @@ func (s *Service) Promote(ctx context.Context, req PromotionRequest, actor strin
 // Receipt-owned edges are rebuilt alongside definition-owned edges so patches,
 // observation refreshes, ownership changes and tombstones cannot erase provenance.
 func projectPromotionLinks(ctx context.Context, tx store.Tx, id string) error {
-	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO object_links(from_id,relation,slot,to_id)
+	_, err := tx.ExecContext(ctx, `INSERT INTO object_links(from_id,relation,slot,to_id)
  SELECT source_id,'promoted_to','',target_id FROM planner_promotions WHERE source_id=?
- UNION ALL SELECT target_id,'promoted_from','',source_id FROM planner_promotions WHERE target_id=?`, id, id)
+ UNION ALL SELECT target_id,'promoted_from','',source_id FROM planner_promotions WHERE target_id=?
+ ON CONFLICT DO NOTHING`, id, id)
 	return err
 }

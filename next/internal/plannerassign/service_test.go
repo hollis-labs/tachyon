@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hollis-labs/tachyon/next/internal/objects"
 	"github.com/hollis-labs/tachyon/next/internal/planner"
-	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
 type fix struct {
@@ -25,13 +24,11 @@ type fix struct {
 
 func setup(t *testing.T) fix {
 	t.Helper()
+	store := storetest.New(t).Open(t)
+	// The deadline covers the fixture's writes, not opening and migrating the store (a fresh Postgres
+	// schema takes a while under a loaded test server).
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	t.Cleanup(cancel)
-	store, err := store.OpenFile(ctx, filepath.Join(t.TempDir(), "tachyon.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
 	o := objects.New(store)
 	s := New(o, "")
 	a, err := o.Create(ctx, objects.Agent{Common: objects.Common{Name: "Tachyon PM"}, Enabled: true}, nil, "test")

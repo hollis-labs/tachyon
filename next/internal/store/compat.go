@@ -14,7 +14,7 @@ type Tx = libstore.Tx
 // Store is the surface the ported domain packages use (the old build's localstore shape) over the
 // database module's store: Reader is the read pool, Writer.Submit is WriteTx. The store rules hold:
 // read on Reader, write in Submit using only its tx, never write while a cursor is open, and give a
-// Submit callback no side effect but the tx (it is retried on SQLITE_BUSY).
+// Submit callback no side effect but the tx (it is retried on contention: SQLITE_BUSY, or a Postgres serialization failure).
 type Store struct {
 	Reader libstore.Querier
 	Writer Writer
@@ -28,7 +28,7 @@ type Writer struct{ st *libstore.Store }
 // Submit runs fn in one write transaction. name labels the write in errors (the old queue's
 // operation name); it has no other effect.
 func (w Writer) Submit(ctx context.Context, _ string, fn func(context.Context, Tx) error) error {
-	return w.st.WriteTx(ctx, fn)
+	return WriteTx(ctx, w.st, fn)
 }
 
 // Wrap is the Store over the database module's store (database.From(app)).
@@ -39,7 +39,12 @@ func Wrap(st *libstore.Store) *Store {
 // OpenFile opens (and migrates) a database file on its own, for tests and offline tools that run
 // without the module runtime. Close it when done.
 func OpenFile(ctx context.Context, path string) (*Store, error) {
-	st, err := libstore.Open(ctx, libstore.Config{Driver: libstore.DriverSQLite, SQLite: libstore.SQLiteConfig{Path: path}})
+	return Open(ctx, libstore.Config{Driver: libstore.DriverSQLite, SQLite: libstore.SQLiteConfig{Path: path}})
+}
+
+// Open opens (and migrates) a database of either driver on its own, as OpenFile does for a file.
+func Open(ctx context.Context, cfg libstore.Config) (*Store, error) {
+	st, err := libstore.Open(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

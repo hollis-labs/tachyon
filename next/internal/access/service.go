@@ -15,6 +15,7 @@ import (
 	libstore "github.com/hollis-labs/libs/core/store"
 	libauth "github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/substrate/modules/identity"
+	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
 // Errors a request or a command can meet.
@@ -232,7 +233,7 @@ func (s *Service) Issue(ctx context.Context, in IssueInput) (string, Credential,
 		return "", Credential{}, err
 	}
 	c := Credential{ID: cred.ID, IdentityID: in.IdentityID, Grants: in.Grants.normalized(), CreatedAt: now, ExpiresAt: now.Add(in.TTL)}
-	err = s.st.WriteTx(ctx, func(ctx context.Context, tx libstore.Tx) error {
+	err = store.WriteTx(ctx, s.st, func(ctx context.Context, tx libstore.Tx) error {
 		if c.IdentityID == "" {
 			c.IdentityID = newUUID()
 			if _, e := tx.ExecContext(ctx, `INSERT INTO service_identities(id, name, created_at) VALUES (?, ?, ?)`, c.IdentityID, in.Name, now.Unix()); e != nil {
@@ -303,13 +304,13 @@ func (s *Service) Bind(ctx context.Context, identityID string, agents []string) 
 		return errors.New("access: at least one agent is required")
 	}
 	now := s.now().Unix()
-	return s.st.WriteTx(ctx, func(ctx context.Context, tx libstore.Tx) error {
+	return store.WriteTx(ctx, s.st, func(ctx context.Context, tx libstore.Tx) error {
 		for _, a := range agents {
 			k := AgentKey(a)
 			if k == "" || len(k) > 200 {
 				return fmt.Errorf("access: agent %q is not a usable agent reference", a)
 			}
-			if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO service_identity_agents(identity_id, agent_key, created_at) VALUES (?, ?, ?)`, identityID, k, now); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO service_identity_agents(identity_id, agent_key, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, identityID, k, now); err != nil {
 				return err
 			}
 		}
@@ -319,7 +320,7 @@ func (s *Service) Bind(ctx context.Context, identityID string, agents []string) 
 
 // Unbind removes agents from an identity.
 func (s *Service) Unbind(ctx context.Context, identityID string, agents []string) error {
-	return s.st.WriteTx(ctx, func(ctx context.Context, tx libstore.Tx) error {
+	return store.WriteTx(ctx, s.st, func(ctx context.Context, tx libstore.Tx) error {
 		var removed int64
 		for _, a := range agents {
 			res, err := tx.ExecContext(ctx, `DELETE FROM service_identity_agents WHERE identity_id = ? AND agent_key = ?`, identityID, AgentKey(a))
@@ -345,7 +346,7 @@ func (s *Service) PinProxy(ctx context.Context, identityID string) error {
 	if ident.Disabled {
 		return ErrInactive
 	}
-	return s.st.WriteTx(ctx, func(ctx context.Context, tx libstore.Tx) error {
+	return store.WriteTx(ctx, s.st, func(ctx context.Context, tx libstore.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO service_proxy_pin(id, identity_id, pinned_at) VALUES (1, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET identity_id = excluded.identity_id, pinned_at = excluded.pinned_at`, identityID, s.now().Unix())
 		return err
@@ -354,7 +355,7 @@ func (s *Service) PinProxy(ctx context.Context, identityID string) error {
 
 // UnpinProxy removes the pin.
 func (s *Service) UnpinProxy(ctx context.Context) error {
-	return s.st.WriteTx(ctx, func(ctx context.Context, tx libstore.Tx) error {
+	return store.WriteTx(ctx, s.st, func(ctx context.Context, tx libstore.Tx) error {
 		res, err := tx.ExecContext(ctx, `DELETE FROM service_proxy_pin WHERE id = 1`)
 		if err != nil {
 			return err
@@ -379,7 +380,7 @@ func (s *Service) Disable(ctx context.Context, identityID string) error {
 }
 
 func (s *Service) setOnce(ctx context.Context, q, id string) error {
-	return s.st.WriteTx(ctx, func(ctx context.Context, tx libstore.Tx) error {
+	return store.WriteTx(ctx, s.st, func(ctx context.Context, tx libstore.Tx) error {
 		res, err := tx.ExecContext(ctx, q, s.now().Unix(), id)
 		if err != nil {
 			return err

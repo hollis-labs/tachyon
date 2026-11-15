@@ -25,6 +25,7 @@ import (
 	_ "github.com/hollis-labs/substrate/modules/logging"
 
 	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
 func init() { store.Use() }
@@ -45,7 +46,7 @@ func start(t *testing.T) *env {
 	dir := t.TempDir()
 	cfg, _ := json.Marshal(map[string]any{
 		"logging":  map[string]any{"level": "error"},
-		"database": map[string]any{"sqlite": map[string]any{"path": filepath.Join(dir, "tachyon.db")}},
+		"database": storetest.New(t).ModuleConfig(),
 		"auth":     map[string]any{"mode": "enforce"},
 		"identity": map[string]any{"key_file": filepath.Join(dir, "identity-signing.key")},
 	})

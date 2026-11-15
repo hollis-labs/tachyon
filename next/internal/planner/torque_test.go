@@ -5,22 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/hollis-labs/tachyon/next/internal/objects"
-	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
 func TestTorqueImportSafeSubsetAndExplicitRelationships(t *testing.T) {
 	ctx := context.Background()
-	store, err := store.OpenFile(ctx, filepath.Join(t.TempDir(), "tachyon.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := storetest.New(t).Open(t)
 	s := objects.New(store)
 	var item TorqueRecord
 	if ierr := json.Unmarshal([]byte(`{"id":"CW-1","kind":"agent","title":"Build storage","status":"todo","priority":2,"project_id":"PRJ-1","parent_id":"PLAN-1","depends_on":["CW-0"],"tags":["backend"],"environment":{"API_KEY_NAME":"not-imported"},"metadata":{"credential":"not-imported"},"system_prompt":"not-imported","manual":false,"on_done":"dispatch"}`), &item); ierr != nil {

@@ -6,12 +6,10 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
 func TestOrganizationLinksQueriesAndReopen(t *testing.T) {
-	s, _, path := open(t)
+	s, _, testDB := open(t)
 	project := create(t, s, Project{Common: Common{Name: "Fabric"}})
 	stream := create(t, s, Workstream{Common: Common{Name: "Control surface"}, Status: "active", ProjectID: project.ID})
 	epic := create(t, s, Epic{Common: Common{Name: "Own the data"}, Status: "doing", Priority: 2, ProjectID: project.ID, WorkstreamID: stream.ID})
@@ -57,11 +55,7 @@ func TestOrganizationLinksQueriesAndReopen(t *testing.T) {
 	if err != nil || len(rows) != 1 {
 		t.Fatal("deletion cascaded into linked records", err)
 	}
-	reopened, err := store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
+	reopened := testDB.Open(t)
 	page, err := New(reopened).ListCollectionMembers(ctx, collection.ID, 0, 0, 100)
 	if err != nil || len(page.Members) != 2 || page.Members[0].Record.ID != task.ID {
 		t.Fatal("membership lost on reopen", err)

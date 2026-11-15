@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/hollis-labs/tachyon/next/internal/objects"
 	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 	"github.com/hollis-labs/tachyon/next/internal/upstreamauth"
 )
 
@@ -21,11 +21,7 @@ var ctx = context.Background()
 
 func testStore(t *testing.T) (*store.Store, *Coordinator) {
 	t.Helper()
-	s, err := store.OpenFile(ctx, filepath.Join(t.TempDir(), "tachyon.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { s.Close() })
+	s := storetest.New(t).Open(t)
 	return s, New(s)
 }
 func mustRun(t *testing.T, c *Coordinator, s Source) State {

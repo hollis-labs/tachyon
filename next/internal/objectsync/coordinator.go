@@ -88,9 +88,18 @@ func (c *Coordinator) begin(ctx context.Context, source Source, runID, fireID st
 	})
 }
 
+// flag is a bool as the 0 or 1 an integer flag column holds. SQLite stored a bound Go bool that way;
+// Postgres refuses a bool for an integer column.
+func flag(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func (c *Coordinator) progress(ctx context.Context, id, runID, phase string, p Progress, authoritative bool) error {
 	return c.store.Writer.Submit(ctx, "object_sync_progress", func(ctx context.Context, tx store.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE object_sync_state SET phase=?,pages=?,items=?,checkpoint=?,authoritative=? WHERE source_id=? AND run_id=?`, phase, p.Pages, p.Items, p.Checkpoint, authoritative, id, runID)
+		res, err := tx.ExecContext(ctx, `UPDATE object_sync_state SET phase=?,pages=?,items=?,checkpoint=?,authoritative=? WHERE source_id=? AND run_id=?`, phase, p.Pages, p.Items, p.Checkpoint, flag(authoritative), id, runID)
 		if err != nil {
 			return err
 		}
@@ -101,7 +110,7 @@ func (c *Coordinator) progress(ctx context.Context, id, runID, phase string, p P
 		if n != 1 {
 			return ErrBusy
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE object_sync_runs SET phase=?,pages=?,items=?,authoritative=? WHERE id=?`, phase, p.Pages, p.Items, authoritative, runID)
+		_, err = tx.ExecContext(ctx, `UPDATE object_sync_runs SET phase=?,pages=?,items=?,authoritative=? WHERE id=?`, phase, p.Pages, p.Items, flag(authoritative), runID)
 		return err
 	})
 }

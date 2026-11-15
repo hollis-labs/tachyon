@@ -13,6 +13,7 @@ import (
 	"github.com/hollis-labs/libs/core/util/sqlite/sqlitekit"
 	"github.com/hollis-labs/tachyon/next/internal/objects"
 	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
 type fakeSource struct {
@@ -42,17 +43,9 @@ func newFake() *fakeSource {
 }
 
 func TestCoordinatorCrossProcessLeaseCancellationAndRecovery(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "tachyon.db")
-	first, err := store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer first.Close()
-	second, err := store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer second.Close()
+	testDB := storetest.New(t)
+	first := testDB.Open(t)
+	second := testDB.Open(t)
 	a, b := New(first), New(second)
 	s := newFake()
 	entered := make(chan struct{})

@@ -4,25 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
 var ctx = context.Background()
 
-func open(t *testing.T) (*Service, *store.Store, string) {
+func open(t *testing.T) (*Service, *store.Store, storetest.Database) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "tachyon.db")
-	db, err := store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	return New(db), db, path
+	testDB := storetest.New(t)
+	db := testDB.Open(t)
+	return New(db), db, testDB
 }
 func create(t *testing.T, s *Service, d Definition) Record {
 	t.Helper()
@@ -366,12 +362,9 @@ func TestInvalidBatchRollsBackAndReferencesAreTyped(t *testing.T) {
 }
 
 func TestHistoryPersistsAlongsideLegacyData(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "tachyon.db")
-	db, err := store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = db.Writer.Submit(ctx, "seed_legacy", func(ctx context.Context, tx store.Tx) error {
+	testDB := storetest.New(t)
+	db := testDB.Open(t)
+	err := db.Writer.Submit(ctx, "seed_legacy", func(ctx context.Context, tx store.Tx) error {
 		_, ierr := tx.ExecContext(ctx, `INSERT INTO app_settings(key,value) VALUES('legacy','keep'); INSERT INTO api_cache(key,scope,identity,body,content_type,updated_at) VALUES('old','forge','identity','{}','application/json',1)`)
 		return ierr
 	})
@@ -391,11 +384,7 @@ func TestHistoryPersistsAlongsideLegacyData(t *testing.T) {
 	if err = db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err = store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db = testDB.Open(t)
 	s = New(db)
 	got, err := s.Get(ctx, r.ID)
 	if err != nil || got.Name != r.Name {

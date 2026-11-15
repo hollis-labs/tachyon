@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 	"github.com/hollis-labs/tachyon/next/internal/routes"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
 	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
 // started boots the real stack (every module the manifest selects and the real handler chain) on
@@ -90,10 +92,33 @@ func serving(t *testing.T, env map[string]string) (string, *module.App) {
 	return "", nil
 }
 
+// testDBs is each data directory's database, so a test that boots twice on one data directory finds
+// its data again on either dialect.
+var testDBs sync.Map // data directory -> storetest.Database
+
+// databaseFor is the database for a data directory: on SQLite the manifest's file inside it, on
+// Postgres a fresh schema (storetest).
+func databaseFor(t *testing.T, dataDir string) storetest.Database {
+	t.Helper()
+	if d, ok := testDBs.Load(dataDir); ok {
+		return d.(storetest.Database)
+	}
+	d := storetest.NewAt(t, filepath.Join(dataDir, "tachyon.db"))
+	testDBs.Store(dataDir, d)
+	t.Cleanup(func() { testDBs.Delete(dataDir) })
+	return d
+}
+
 // overrideEnv writes the override file and returns the environment the boot hooks read. The config
-// module reads SUBSTRATE_CONFIG from the process environment, so it is set there too.
+// module reads SUBSTRATE_CONFIG from the process environment, so it is set there too. On Postgres the
+// override also points the database module at the data directory's schema, unless the test sets the
+// database itself.
 func overrideEnv(t *testing.T, dataDir, override string) map[string]string {
 	t.Helper()
+	storetest.SkipOnPostgres(t, "the served binary selects the scheduler module, which has no Postgres store yet (Substrate gap CW-20261115-0014)")
+	if !strings.HasPrefix(override, "database:") && !strings.Contains(override, "\ndatabase:") {
+		override += databaseFor(t, dataDir).OverrideYAML()
+	}
 	file := filepath.Join(t.TempDir(), "override.yaml")
 	if err := os.WriteFile(file, []byte(override), 0o600); err != nil {
 		t.Fatal(err)

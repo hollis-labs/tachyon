@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
 func TestOwnedPlannerRecords(t *testing.T) {
-	s, _, path := open(t)
+	s, _, testDB := open(t)
 	project := create(t, s, Project{Common: Common{Name: "Fabric"}})
 	ws := create(t, s, Workstream{Common: Common{Name: "Backend"}, Status: "active"})
 	pc := PlanningContext{ProjectID: project.ID, WorkstreamID: ws.ID}
@@ -63,11 +61,7 @@ func TestOwnedPlannerRecords(t *testing.T) {
 	if err != nil || len(history) != 3 || history[0].Operation != "create" || history[2].Operation != "delete" {
 		t.Fatal("history", err)
 	}
-	reopened, err := store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
+	reopened := testDB.Open(t)
 	stored, err := New(reopened).Get(ctx, risk.ID)
 	if err != nil || !stored.Deleted() || stored.Revision != deleted.Revision {
 		t.Fatal("lost on reopen", err)
