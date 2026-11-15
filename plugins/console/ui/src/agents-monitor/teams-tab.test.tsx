@@ -24,3 +24,12 @@ it('groups teams by run state, shows members, and never guesses a run state it c
   expect(screen.queryByText('Docs')).toBeNull()
   expect(screen.getByText('Delivery')).toBeTruthy()
 })
+
+it("counts a run Tether reports as 'working' (a formed run) as running", async () => {
+  vi.spyOn(ownedBuilderClient, 'cached').mockReturnValue(undefined)
+  vi.spyOn(ownedBuilderClient, 'list').mockResolvedValue({ items: [team('a', 'Delivery', ['lead'])] })
+  vi.spyOn(provider, 'list').mockResolvedValue({ items: [{ id: 'f1', verb: 'teams.form', object_revision: 1, state: 'succeeded', created_at: '2026-10-31T08:00:00Z' }] })
+  vi.spyOn(provider, 'roster').mockResolvedValue({ runs: [{ run: { id: 'r', status: 'working' }, roster_version: 1, members: [{ id: 'm1', slot: 'lead', status: 'active', actor: 'x', kind: 'agent' }] }] })
+  render(<MemoryRouter><TeamsTab /></MemoryRouter>)
+  expect(await screen.findByRole('button', { name: /^Running 1/ })).toBeTruthy()
+})

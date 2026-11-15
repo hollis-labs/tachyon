@@ -19,7 +19,7 @@ paths:
       parameters:
         - {name: reason, in: query, schema: {type: string, enum: [checks_failed, changes_requested, conflicting, review_requested, mentioned, unassigned, stale]}}
         - {name: repo, in: query, description: owner/name, schema: {type: string}}
-        - {name: state, in: query, description: triage state, default active, schema: {type: string, enum: [active, snoozed, dismissed, resolved]}}
+        - {name: state, in: query, description: "triage state, default active; all returns every state", schema: {type: string, enum: [active, snoozed, dismissed, resolved, all]}}
         - {name: q, in: query, schema: {type: string}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
         - {name: cursor, in: query, schema: {type: string}}
