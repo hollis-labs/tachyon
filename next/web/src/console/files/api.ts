@@ -1,0 +1,251 @@
+import { hostFetch } from '@tachyon/host-sdk'
+
+// Read-only file viewer client (docs/fileview-contract.md). Files live on the
+// Tachyon host. Every route needs an operator session, reads included; this
+// client is quiet on 401/403 (no elevation prompt from a hover or a drawer).
+export const FILES_BASE = '/api/plugins/console/v1/files'
+
+export type FileKind = 'html' | 'markdown' | 'text' | 'json' | 'yaml' | 'toml' | 'csv' | 'code' | 'image' | 'binary'
+export type DenyReason = 'secret_pattern' | 'symlink_escape' | 'too_large' | 'not_found_or_hidden'
+
+export interface FileStat {
+  path: string
+  root_label?: string | null
+  rel_path?: string | null
+  exists: boolean
+  type?: 'file' | 'dir' | 'other' | null
+  mime?: string | null
+  kind?: FileKind | null
+  language?: string | null
+  size?: number | null
+  mtime?: number | null
+  allowed: boolean
+  deny_reason?: DenyReason | null
+  etag?: string | null
+}
+
+export interface Frame {
+  frame_url: string
+  expires_at: number
+  etag: string
+  scripts: boolean
+}
+
+/** A failed call, reduced to what the viewer can show. */
+export class FileError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+async function fail(res: Response): Promise<never> {
+  let code = 'error'
+  let message = `Request failed (${res.status})`
+  try {
+    const body = (await res.json()) as { code?: string; message?: string }
+    code = body.code ?? code
+    message = body.message ?? message
+  } catch {
+    // Non-JSON error body: keep the status text.
+  }
+  throw new FileError(res.status, code, message)
+}
+
+// ---- caster artifacts: caster://ns/name or caster://ns/name@N (N >= 1)
+const CASTER = /^caster:\/\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)(?:@([1-9]\d{0,5}))?$/
+
+export const isCasterRef = (ref: string) => ref.startsWith('caster://')
+
+export function parseCasterRef(ref: string): { ns: string; name: string; rev: number | null } | null {
+  const m = CASTER.exec(ref)
+  return m ? { ns: m[1], name: m[2], rev: m[3] ? Number(m[3]) : null } : null
+}
+
+/** The same artifact pinned to one revision. */
+export const pinCasterRef = (ref: string, rev: number) => `${ref.replace(/@\d+$/, '')}@${rev}`
+
+export interface CasterInfo {
+  ref: string
+  namespace: string
+  name: string
+  kind?: FileKind | null
+  mime?: string | null
+  size?: number | null
+  rev: number
+  latest_rev: number
+  floating: boolean
+  sha256?: string
+  title?: string | null
+  revisions: { rev: number; sha256?: string; title?: string | null; at?: number | null }[]
+}
+
+/** What the shared viewer body needs, from a resolved artifact. */
+export const casterStat = (c: CasterInfo, pinned: string): FileStat => ({
+  path: pinned,
+  exists: true,
+  allowed: true,
+  type: 'file',
+  kind: c.kind ?? 'binary',
+  mime: c.mime,
+  size: c.size,
+  mtime: null,
+})
+
+export const contentUrl = (path: string) => (isCasterRef(path) ? `${FILES_BASE}/content?caster_ref=${encodeURIComponent(path)}` : `${FILES_BASE}/content?path=${encodeURIComponent(path)}`)
+
+export interface Caps {
+  text_bytes: number
+  image_bytes: number
+  html_bytes: number
+}
+export interface Root {
+  id: string
+  label: string
+  path_display: string
+  source: 'default' | 'app' | 'user'
+}
+export interface Roots {
+  roots: Root[]
+  caps: Caps
+}
+export interface FileSettings {
+  app: { roots: string[]; caster_namespaces: string[]; run_scripts_allowed?: boolean; allow_user_roots?: boolean }
+  user?: { roots: string[] }
+}
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) return fail(res)
+  return (await res.json()) as T
+}
+
+export interface DirEntry { name: string; kind: 'dir' | 'file'; size?: number; mtime?: number; modified?: boolean }
+export interface DirListing { root: string; path: string; truncated: boolean; entries: DirEntry[] }
+
+export const fileApi = {
+  async roots(): Promise<Roots> {
+    return json(await hostFetch(`${FILES_BASE}/roots`, { headers: { Accept: 'application/json' } }))
+  },
+  /** One directory of an allow-listed root (dirs first). `path` is relative to the root; '' is the root itself. */
+  async list(root: string, path = ''): Promise<DirListing> {
+    return json(await hostFetch(`${FILES_BASE}/list?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`, { headers: { Accept: 'application/json' } }))
+  },
+  async settings(): Promise<FileSettings> {
+    return json(await hostFetch(`${FILES_BASE}/settings`, { headers: { Accept: 'application/json' } }))
+  },
+  async putSettings(app: { roots?: string[]; caster_namespaces?: string[] }): Promise<FileSettings> {
+    return json(
+      await hostFetch(`${FILES_BASE}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ app }),
+      }),
+    )
+  },
+  async stat(path: string): Promise<FileStat> {
+    const res = await hostFetch(`${FILES_BASE}/stat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ paths: [path] }),
+    })
+    if (!res.ok) return fail(res)
+    const body = (await res.json()) as { items: FileStat[] }
+    const item = body.items[0]
+    if (!item) throw new FileError(502, 'invalid_response', 'The file service returned no result.')
+    return item
+  },
+  async resolve(ref: string): Promise<CasterInfo> {
+    const res = await hostFetch(`${FILES_BASE}/resolve?ref=${encodeURIComponent(ref)}`, { headers: { Accept: 'application/json' } })
+    if (!res.ok) return fail(res)
+    return (await res.json()) as CasterInfo
+  },
+  async text(path: string): Promise<{ text: string; etag: string | null }> {
+    const res = await hostFetch(contentUrl(path), { headers: { 'Cache-Control': 'no-store' } })
+    if (!res.ok) return fail(res)
+    return { text: await res.text(), etag: res.headers.get('ETag') }
+  },
+  /** The first `bytes` of a file over the text cap; the host serves Range for text kinds. */
+  async textHead(path: string, bytes: number): Promise<{ text: string; etag: string | null }> {
+    const res = await hostFetch(contentUrl(path), { headers: { Range: `bytes=0-${bytes - 1}`, 'Cache-Control': 'no-store' } })
+    if (!res.ok) return fail(res)
+    return { text: await res.text(), etag: res.headers.get('ETag') }
+  },
+  async frame(path: string): Promise<Frame> {
+    const res = await hostFetch(`${FILES_BASE}/frame`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(isCasterRef(path) ? { caster_ref: path } : { path }),
+    })
+    if (!res.ok) return fail(res)
+    return (await res.json()) as Frame
+  },
+}
+
+export const PREVIEW_HEAD_BYTES = 200 * 1024
+
+let rootsRead: Promise<Roots | null> | null = null
+/** The host's roots and preview caps, read once per page; null when they cannot be read (and asked again next time). */
+export function hostRoots(): Promise<Roots | null> {
+  rootsRead ??= fileApi.roots().catch(() => {
+    rootsRead = null
+    return null
+  })
+  return rootsRead
+}
+
+/** A path as the operator knows it: the root's display path (~/Downloads) plus the path inside it; the absolute path otherwise. */
+export function displayPath(stat: FileStat | null, roots: Roots | null, path: string): string {
+  const root = stat?.root_label ? roots?.roots.find((r) => r.label === stat.root_label) : undefined
+  if (!root || stat?.rel_path == null) return path
+  return stat.rel_path ? `${root.path_display}/${stat.rel_path}` : root.path_display
+}
+
+const CAP_KIND: Partial<Record<FileKind, keyof Caps>> = { image: 'image_bytes', html: 'html_bytes', markdown: 'text_bytes', text: 'text_bytes', json: 'text_bytes', yaml: 'text_bytes', toml: 'text_bytes', csv: 'text_bytes', code: 'text_bytes' }
+/** A stat the host allowed but whose size is over its preview cap reads as too_large, so the viewer never asks for a body the host refuses (413). */
+export function applyCaps(stat: FileStat, caps: Caps | null): FileStat {
+  const cap = caps && stat.kind ? caps[CAP_KIND[stat.kind] as keyof Caps] : undefined
+  if (!stat.exists || !stat.allowed || stat.type === 'dir' || cap == null || stat.size == null || stat.size <= cap) return stat
+  return { ...stat, allowed: false, deny_reason: 'too_large' }
+}
+
+// ---------- pure helpers ----------
+
+export function formatSize(bytes: number | null | undefined): string {
+  if (bytes == null) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Why a file cannot be shown, in words. Never echoes a path; hidden and missing are the same message. */
+export function denyMessage(reason: DenyReason | null | undefined, exists = true): string {
+  switch (reason) {
+    case 'secret_pattern':
+      return 'Not available to view: this looks like a secret file.'
+    case 'symlink_escape':
+      return 'Not available to view: the link leads outside the allowed folders.'
+    case 'too_large':
+      return 'This file is too large to preview.'
+    case 'not_found_or_hidden':
+      return 'Not found, or not in a folder Tachyon can show.'
+    default:
+      return exists ? 'Not available to view.' : 'Not found, or not in a folder Tachyon can show.'
+  }
+}
+
+/** Failure reason for an error response; 401/403 means the operator session is missing. */
+export function errorMessage(e: unknown): string {
+  if (e instanceof FileError) {
+    if (e.status === 401 || e.status === 403) return 'Operator access is needed to view files.'
+    if (e.code === 'caster_unavailable') return 'Caster is not connected on this host.'
+    if (e.code === 'namespace_not_allowed') return 'This caster namespace is not available to view.'
+    if (e.code === 'changed') return 'The artifact changed while loading. Reload to try again.'
+    if (e.status === 413) return 'This file is too large to preview.'
+    if (e.status === 404) return 'Not found, or not in a folder Tachyon can show.'
+    return e.message
+  }
+  return e instanceof Error ? e.message : 'Could not load the file.'
+}
