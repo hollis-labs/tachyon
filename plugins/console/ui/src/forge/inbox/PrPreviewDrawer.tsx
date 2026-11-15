@@ -75,8 +75,11 @@ export function PrPreviewDrawer({ item, forge, actions = [], onClose, onAssign, 
   const changed = files ?? []
   const now = Date.now()
   return (
+    // KIT-GAP: the golden's preview is non-modal (list visible and clickable beside it), but kit SheetContent
+    // always renders its blurred overlay, so it stays modal until the kit can omit the overlay.
+    // The kit caps right sheets with data-[side=right]:sm:max-w-sm; the golden's 480px needs the same variant.
     <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
-      <SheetContent side="right" className="flex !w-full max-w-none flex-col gap-0 p-0 sm:!w-full sm:max-w-lg">
+      <SheetContent side="right" className="flex !w-full max-w-none flex-col gap-0 p-0 sm:!w-full data-[side=right]:sm:max-w-120">
         <header className="flex flex-wrap items-center gap-2 py-3 pl-4 pr-12">
           <GitPullRequest aria-hidden className="size-4 text-fg-muted" />
           <span className="font-mono dash-body text-fg" title={`${summary.ref.repo.owner}/${summary.ref.repo.name}#${summary.ref.number}`}>{label}</span>
@@ -109,7 +112,7 @@ export function PrPreviewDrawer({ item, forge, actions = [], onClose, onAssign, 
                   {listed.map((c) => (
                     <li key={c.id} className="flex items-center gap-2 px-3 py-2 dash-support">
                       <span aria-hidden className={`w-3 text-center ${failed(c) ? 'text-danger' : 'text-fg-muted'}`}>{failed(c) ? '✗' : c.status === 'completed' ? '✓' : '·'}</span>
-                      <span className="min-w-0 truncate font-medium text-fg">{c.name}</span>
+                      <span className="min-w-0 truncate font-semibold text-fg">{c.name}</span>
                       <span className="shrink-0 text-fg-muted">{[outcome(c), duration(c)].filter(Boolean).join(' · ')}</span>
                       {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-fg-muted hover:text-fg">Logs <ArrowUpRight className="size-3" aria-hidden /></a>}
                     </li>
