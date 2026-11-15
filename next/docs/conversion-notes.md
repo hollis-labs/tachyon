@@ -420,6 +420,7 @@ ships its gap, and nothing new is built on them.
 | chat `Composer` (`chat/workbench/Composer.tsx`) | CW-20261115-0032 (kit-chat) | swap on pin bump when the gap ships |
 | autolink `sheet.tsx` (Sheet over Dialog); its acceptance test is `autolink/drawerStacking.test.tsx` | CW-20261115-0033 | swap on pin bump when the gap ships |
 | page heading (the shell's and the page's `h1`) | CW-20261115-0026 (app-shell `PageHeader`) | drop the extra heading on pin bump when the gap ships |
+| chat dock overlay (`chat/ChatDock.tsx`, `shell/chat-dock.tsx`) and its trigger drawn outside the shell (`src/chat-opener.tsx`) | CW-20261115-0093 (app-shell dock view height, resize, opener badge and toggle; nav.footer host slot) | swap to a `dock.tab` (branch `gui/g8b-dock-tab`) and move the trigger into the rail footer on pin bump when the gap ships |
 
 Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`, `observations/store.ts`, `chat/aside/FileTree.tsx`, `chat/aside/Panels.tsx`). A sync slice
 before P1 picks that up.

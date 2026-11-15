@@ -559,13 +559,38 @@ Also served by the old handler but not called by the drawer: `runs`, `runs/{run_
 - **Close:** the client closes the socket on Disconnect, then sends `DELETE sessions/{id}`. When the socket closes,
   the pane goes read-only ("disconnected").
 
+## Chat dock (G8b, CW-20261115-0082)
+
+Carried byte-identical from **main 8560422**: `chat/ChatDock.tsx` and `shell/restore-focus.ts`; `shell/chat-dock.tsx`
+back to the old file (G3 had dropped the dock it rendered); the `ChatDock` / `ChatButton` export in `chat/index.ts`.
+No carried file is edited.
+
+- **Placement (lead decision):** the dock stays the old overlay, a fixed drawer `ChatDockProvider` renders over the
+  whole shell, with its drag-resized width, Escape and Close. An app-shell `dock.tab` was tried and set aside: it
+  cannot yet pin the composer, resize, or badge its opener (kit gap CW-20261115-0093). No `substrate.yaml` change.
+- **Providers:** `ConsoleShellProviders` (`src/console/surface.tsx`) sits above `ManifestShell` in `src/App.tsx`, as the
+  old ConsoleIntegration did: console base, messaging, agent unread, chat, chat dock. The chat and Repos surfaces no
+  longer make their own (one set for every surface and the dock). FleetActions' Chat (`openChat(recipient)`) reaches
+  the dock through it, as before; it is mounted nowhere in the carried UI, as in the old tree.
+- **Opener:** the old opener was `ChatDockTrigger` in the nav-rail footer. app-shell 0.11.0's footer renders only
+  manifest links and Diagnostics (no host slot, added to CW-20261115-0093), so the host draws the same trigger, unread
+  badge included, outside the shell (`src/chat-opener.tsx`): from 1024px in the rail's empty space, right-aligned
+  above the footer group; narrower, at the right above the bottom tab bar. It hides while any `aria-modal` dialog is
+  open, so it never sits over the More sheet. It returns to the rail footer on the pin bump that ships the slot.
+- **Escape:** as in the old drawer, Escape closes the dock unless a modal is on top; a dialog opened from inside the
+  dock (Message details) takes the first Escape and the dock the next.
+- **e2e:** `tests/dock.spec.ts` opens the dock over the planner, opens a conversation and sends, closes with Esc
+  (focus back on the trigger), checks the Escape order with a dialog in the dock, the unread badge and the trigger's
+  toggle and Close, and that the trigger overlaps no control or header at 1440, 1024 (700px high), 1023 and 390px and
+  steps aside for the More sheet.
+
 ## Gaps
 
 - app-shell has no prefix/param surface routes (exact match only, `shell.tsx` surface lookup). Worked
   around host-side (`surfacePath`); nav highlighting follows the area. Not blocking.
 - No `settings.region` yet: depends on the backend registering settings groups (B1+).
 - Planner path links show as text until console's autolink (file viewer chip) is ported.
-- Chat: no dock, no PTY terminal, no app-agent thread source yet (later G slices).
+- Chat: no app-agent thread source yet. The dock opener sits outside the shell until CW-20261115-0093 ships.
 - Approvals: no action-run terminal (terminal slice); two h1s under the kit PageHeader (CW-20261115-0026).
 
 ## Parity list (behaviour the port must not copy)
