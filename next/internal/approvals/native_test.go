@@ -11,6 +11,7 @@ import (
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/libs/mesh/core/hitl/hitltest"
+	"github.com/hollis-labs/tachyon/next/internal/store"
 	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
@@ -164,5 +165,32 @@ func TestNativeRestartAndPaging(t *testing.T) {
 	second, next, err := inbox.Store.Page(ctx, false, cursor, 2)
 	if err != nil || len(second) != 2 || next != "" || second[0].ItemID == first[0].ItemID {
 		t.Fatalf("second page: %v %q %v", second, next, err)
+	}
+}
+
+// A failed index write never costs the decision. The index row is derived and dropped on failure; on
+// Postgres a failed statement aborts the whole transaction, so without bestEffort's savepoint the
+// decision would roll back at commit. Here the index table is gone, so every index write fails.
+func TestDecisionCommitsWhenTheIndexWriteFails(t *testing.T) {
+	ctx := context.Background()
+	db := storetest.New(t).Open(t)
+	inbox := NewInbox(&Store{DB: db}, nil)
+	handle, err := inbox.Service.Enqueue(ctx, requestFixture(t, "index-fails", "low"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Writer.Submit(ctx, "test", func(ctx context.Context, tx store.Tx) error {
+		_, e := tx.ExecContext(ctx, `DROP TABLE approval_item_index`)
+		return e
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = inbox.Service.Respond(ctx, hitl.RespondCommand{ItemID: handle.ItemID, Response: hitl.Response{Kind: "approval", Decision: "approved"}, Participant: hitl.Participant{PrincipalRef: "operator", Assurance: "browser-session"}})
+	if err != nil {
+		t.Fatalf("respond with the index write failing: %v", err)
+	}
+	rec, err := inbox.Store.Get(ctx, handle.ItemID)
+	if err != nil || rec.State != hitl.StateResolved || rec.Outcome == nil {
+		t.Fatalf("the decision did not commit: %+v %v", rec, err)
 	}
 }
