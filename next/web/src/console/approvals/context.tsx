@@ -18,6 +18,7 @@ import {
   type ApprovalResponse,
   handoffItems,
   isHandoffError,
+  decisionError,
 } from "./client"
 import { noteServerNow } from "./clock"
 import { HeldToasts } from "./toasts"
@@ -171,7 +172,7 @@ export function ApprovalProvider({
           if (!keepalive) void refresh(true)
           return
         }
-        toast.error(e instanceof Error ? e.message : "Decision not confirmed. Refresh to check the outcome.")
+        toast.error(decisionError(e))
       }
       if (!keepalive) void refresh(true)
     },

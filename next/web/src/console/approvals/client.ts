@@ -204,6 +204,16 @@ export class ApprovalError extends Error {
 // operator is not offered (or asked to confirm) the same decision twice.
 export const handoffItems = new Set<string>()
 export const isHandoffError = (e: unknown) => e instanceof ApprovalError && e.code === "provider_handoff_required"
+// Refusals for missing operator access, by code: the copy is the app's, whatever the server's wording.
+export const ACCESS_CODES = ["operator_required", "operator_access_required", "scope_required", "assurance_insufficient"]
+export const isAccessError = (e: unknown) => e instanceof ApprovalError && ACCESS_CODES.includes(e.code)
+/** What a failed single decision says: the access refusal in the app's words, otherwise the server's message. */
+export const decisionError = (e: unknown) =>
+  isAccessError(e)
+    ? "Deciding this request needs operator access."
+    : e instanceof Error
+      ? e.message
+      : "Decision not confirmed. Refresh to check the outcome."
 export const isCard = (item: Pick<ApprovalItem["request_snapshot"], "kind">) =>
   item.kind.startsWith("card.")
 // "Approval", "Question", "Form"… for the kind column and search.

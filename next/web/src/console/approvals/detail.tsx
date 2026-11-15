@@ -15,6 +15,7 @@ import {
   handoffItems,
   isHandoffError,
   type Evidence,
+  decisionError,
 } from "./client"
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { noteServerNow, serverNow } from "./clock"
@@ -193,11 +194,7 @@ export function DecisionDetail({
             setTyped("")
         return
       }
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Decision not confirmed. Refresh to check the outcome.",
-      )
+      setError(decisionError(e))
       setReady(false)
         onChanged()
     } finally {

@@ -246,10 +246,22 @@ the `ApprovalProvider` the old `ConsoleIntegration` placed above every console p
   - `context.tsx`: **a held decision the server refuses is a toast.** The old code set the queue error, then
     refreshed, and the refresh cleared it at once: an operator refusal of a held (low/medium) approval flashed and
     vanished, worded "Approval queue unavailable". Same code in the old build; the e2e covers it.
+  - `client.ts` `decisionError`, used by `detail.tsx` and `context.tsx`: **an access refusal of a single decision
+    is worded by the app**, by code (`operator_required`, `scope_required` and the old codes), as batch and
+    secret refusals already were. The old decision bar showed the server's message; B7's is written for API
+    callers ("an API key never qualifies"). Other errors keep the server's message.
+  - **Kit wins:** the approvals `Chip` is design-components `Pill` (kit look; `faint` becomes `neutral`);
+    `components/chip.tsx` is removed.
   - Tests: the two unit tests that asserted the session retry and `/access` now assert the port's behaviour.
 - **Kit gap:** the kit's `PageHeader` always renders an `h1`, so the page has two (the shell's and the kit's).
   Substrate CW-20261115-0026; not worked around (no redesign).
-- **e2e:** `e2e/approvals-stub.ts` until B7 serves approvals; `TACHYON_E2E_APPROVALS=backend` turns it off.
+- **e2e:** `e2e/approvals-stub.ts` stands in for B7; `TACHYON_E2E_APPROVALS=backend` turns it off and runs against the
+  binary, with these differences:
+  - `e2e/serve.sh` enqueues `e2e/approvals-seed.json` offline before serving (`approvals enqueue`, from
+    `TACHYON_E2E_SEED_BIN`, default the binary). It also writes a throwaway `tachyon.files.secret_key` for the run.
+  - The specs find items by title. The tests that decide a request run last, because the backend keeps its
+    state between tests.
+  - The refusal is real. The owner's session mints a token without `*`: the same person, below operator.
   `store.refuseOperator` makes decisions answer 403 `operator_required`.
 
 ### Approvals routes the surface calls (for B7)

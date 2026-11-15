@@ -1,0 +1,61 @@
+[
+  {
+    "contract_version": "1.0",
+    "kind": "approval",
+    "idempotency_key": "e2e-low",
+    "source": {
+      "application_id": "tether",
+      "agent_id": "agt_e2e_reviewer"
+    },
+    "class": "low",
+    "title": "Restart the indexer",
+    "summary": "Restart the indexer (seeded by the e2e harness)",
+    "request": "Restart the indexer.",
+    "impact": {
+      "approve": "The agent may proceed.",
+      "deny": "The agent stays blocked."
+    },
+    "op_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  {
+    "contract_version": "1.0",
+    "kind": "approval",
+    "idempotency_key": "e2e-high",
+    "source": {
+      "application_id": "tether",
+      "agent_id": "agt_e2e_reviewer"
+    },
+    "class": "high",
+    "title": "Drop the staging database",
+    "summary": "Drop the staging database (seeded by the e2e harness)",
+    "request": "Drop the staging database.",
+    "impact": {
+      "approve": "The agent may proceed.",
+      "deny": "The agent stays blocked."
+    },
+    "op_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  {
+    "contract_version": "1.0",
+    "kind": "card.form",
+    "idempotency_key": "e2e-form",
+    "source": {
+      "application_id": "tether",
+      "agent_id": "agt_e2e_reviewer"
+    },
+    "class": "low",
+    "title": "Provide the deploy key",
+    "summary": "Provide the deploy key (seeded by the e2e harness)",
+    "request": "Provide the deploy key.",
+    "data": {
+      "fields": [
+        {
+          "id": "deploy_key",
+          "type": "secret",
+          "label": "Deploy key",
+          "required": true
+        }
+      ]
+    }
+  }
+]

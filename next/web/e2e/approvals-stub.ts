@@ -185,13 +185,13 @@ export async function approvalsStub(page: Page) {
         })
       }
       if (sub === "resolve" && method === "POST") {
-        // The operator check comes before the phrase.
+        // The operator check comes before the phrase. The message is the backend's (B7); the UI shows its own copy.
         if (store.refuseOperator)
           return fail(
             route,
             403,
             "operator_required",
-            "Deciding this request needs operator access.",
+            "This action needs a signed-in person holding tachyon.operator; an API key never qualifies.",
           )
         if (!revisionsMatch()) return stale(route, it, body?.expected_revision)
         const phrase = (it.confirm as { phrase?: string } | undefined)?.phrase

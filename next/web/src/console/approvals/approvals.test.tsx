@@ -12,6 +12,7 @@ import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   ApprovalError,
+  decisionError,
   handoffItems,
   createApprovalClient,
   type ApprovalItem,
@@ -770,5 +771,15 @@ describe("audit trail", () => {
     expect(list.textContent).toContain("Approved by you")
     expect(list.textContent).toContain("Looks right")
     expect(audit).toHaveBeenCalledWith("req-1")
+  })
+})
+
+describe("decision refusals", () => {
+  it("says an operator refusal in the app's words, whatever the server's message; other errors keep theirs", () => {
+    const server = "This action needs a signed-in person holding tachyon.operator; an API key never qualifies."
+    for (const code of ["operator_required", "scope_required"])
+      expect(decisionError(new ApprovalError(403, code, server))).toBe("Deciding this request needs operator access.")
+    expect(decisionError(new ApprovalError(409, "stale_revision", "This request changed."))).toBe("This request changed.")
+    expect(decisionError("nope")).toBe("Decision not confirmed. Refresh to check the outcome.")
   })
 })

@@ -23,6 +23,9 @@ const bin = process.env.TACHYON_E2E_BIN ?? `${next}tachyon`
 const fake = fileURLToPath(new URL("./e2e/tether-fake.ts", import.meta.url))
 /** The chat backend run (TACHYON_E2E_CHAT=backend) points the binary at a local Tether fake, never a real hub. */
 const chatBackend = process.env.TACHYON_E2E_CHAT === "backend"
+/** The approvals backend run (TACHYON_E2E_APPROVALS=backend) enqueues e2e/approvals-seed.json before serving. */
+const approvalsBackend = process.env.TACHYON_E2E_APPROVALS === "backend"
+const approvalsSeed = fileURLToPath(new URL("./e2e/approvals-seed.json", import.meta.url))
 
 function server(where: string, listen: string, withOwner: boolean, url: string) {
   return {
@@ -33,6 +36,8 @@ function server(where: string, listen: string, withOwner: boolean, url: string) 
       E2E_ADDR: `127.0.0.1:${listen}`,
       E2E_OWNER: withOwner ? "1" : "0",
       E2E_TETHER: withOwner && chatBackend ? tether : "",
+      E2E_APPROVALS_SEED: withOwner && approvalsBackend ? approvalsSeed : "",
+      E2E_SEED_BIN: process.env.TACHYON_E2E_SEED_BIN ?? "",
     },
     url: `${url}/healthz`,
     // Never reuse a server: this suite owns the data directory it starts on, and a port already in
