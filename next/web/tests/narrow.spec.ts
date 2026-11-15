@@ -8,10 +8,10 @@ test("390px: three tabs and More; More reaches every other area", async ({ page 
   await page.goto("/planner")
   const tabs = page.locator("[data-nav-tab]")
   await expect(page.getByRole("link", { name: "Planner", exact: true })).toBeVisible()
-  await expect(page.getByRole("button", { name: "More" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible()
   await shot(page, "narrow")
   for (const area of AREAS.slice(3)) {
-    await page.getByRole("button", { name: "More" }).click()
+    await page.getByRole("button", { name: "More", exact: true }).click()
     const sheet = page.getByRole("dialog", { name: "More" })
     await expect(sheet).toBeVisible()
     if (area === AREAS[3]) await shot(page, "narrow-more")
