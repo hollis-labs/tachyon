@@ -44,8 +44,9 @@ export interface GeneralApi {
 }
 
 const ROOT = "/api/plugins/console/v1/admin"
-// Alerts has its own section and Agents stays 'soon'.
-const HIDDEN = new Set(["alerts", "agents"])
+// Alerts has its own section and Agents stays 'soon', except the stale threshold the golden puts on General.
+const HIDDEN = new Set(["alerts"])
+const ONLY: Record<string, readonly string[]> = { agents: ["stale_after_s"] }
 
 interface Wire {
   contract_version?: number
@@ -134,35 +135,37 @@ export function realApi(): GeneralApi {
             headers: { Accept: "application/json" },
           })
           const snap = await json<Snapshot>(res)
-          const fields = Object.entries(g.schema.properties ?? {}).map(([key, p]): SettingField => {
-            const meta = g.fields[key]
-            const v = snap.values[key]
-            const reason =
-              v?.read_only_reason ??
-              meta?.read_only_reason ??
-              (v && !v.editable ? "Read only." : undefined)
-            const kind: FieldKind = p.enum
-              ? "enum"
-              : p.type === "integer"
-                ? "integer"
-                : p.type === "boolean"
-                  ? "boolean"
-                  : "string"
-            return {
-              key,
-              label: p.title ?? key,
-              help: p.description ?? "",
-              kind,
-              options: (p.enum ?? []).map(String),
-              min: p.minimum,
-              max: p.maximum,
-              value: v?.value === undefined || v.value === null ? "" : String(v.value),
-              source: v?.source ?? { kind: "default", label: "Built-in default" },
-              readOnlyReason: reason,
-              operatorOnly: !!reason && OPERATOR.test(reason),
-              restartRequired: meta?.restart_required,
-            }
-          })
+          const fields = Object.entries(g.schema.properties ?? {})
+            .filter(([key]) => !ONLY[g.id] || ONLY[g.id].includes(key))
+            .map(([key, p]): SettingField => {
+              const meta = g.fields[key]
+              const v = snap.values[key]
+              const reason =
+                v?.read_only_reason ??
+                meta?.read_only_reason ??
+                (v && !v.editable ? "Read only." : undefined)
+              const kind: FieldKind = p.enum
+                ? "enum"
+                : p.type === "integer"
+                  ? "integer"
+                  : p.type === "boolean"
+                    ? "boolean"
+                    : "string"
+              return {
+                key,
+                label: p.title ?? key,
+                help: p.description ?? "",
+                kind,
+                options: (p.enum ?? []).map(String),
+                min: p.minimum,
+                max: p.maximum,
+                value: v?.value === undefined || v.value === null ? "" : String(v.value),
+                source: v?.source ?? { kind: "default", label: "Built-in default" },
+                readOnlyReason: reason,
+                operatorOnly: !!reason && OPERATOR.test(reason),
+                restartRequired: meta?.restart_required,
+              }
+            })
           return {
             id: g.id,
             label: g.label,

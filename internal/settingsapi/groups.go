@@ -68,7 +68,7 @@ func Specs() []Spec {
 			}},
 		{ID: GroupAgents, Label: "Agents", Precedence: std,
 			Fields: []admin.Field{
-				{Key: "stale_after_s", Type: admin.IntegerType, Title: "Mark a session stale after (seconds)", Default: ic(900), Minimum: f64(10), Maximum: f64(86400), Editable: true},
+				{Key: "stale_after_s", Type: admin.IntegerType, Title: "Stale agent threshold (seconds)", Description: "Working or waiting agents with no events for this long are marked stale.", Default: ic(900), Minimum: f64(10), Maximum: f64(86400), Editable: true},
 				{Key: "handoff_prompt", Type: admin.StringType, Title: "Handoff prompt", Default: sc("Summarise where you are and what is next."), MaxLength: n(2000), Editable: true},
 				{Key: "handoff_timeout_s", Type: admin.IntegerType, Title: "Handoff timeout (seconds)", Default: ic(120), Minimum: f64(5), Maximum: f64(3600), Editable: true},
 				{Key: "nudge_presets", Type: admin.StringType, Title: "Nudge presets", Description: "One preset per line.", Default: sc("Continue\nPlease summarise"), MaxLength: n(4000), Editable: true},
