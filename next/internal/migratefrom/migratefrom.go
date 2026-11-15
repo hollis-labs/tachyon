@@ -61,6 +61,8 @@ const (
 	TachyonFile = "tachyon.db"
 	JobsFile    = "jobs.db"
 	ReportFile  = "migrate-from-report.json"
+	// FilesReportFile is a --files-only run's report, kept apart from the migration's own.
+	FilesReportFile = "migrate-from-files-report.json"
 )
 
 // Options are one run's inputs.
@@ -79,6 +81,14 @@ type Options struct {
 	// AllowUnchecked reports such a schedule as not checked instead of failing. For rehearsals,
 	// which run with every upstream blank; never for the cutover.
 	AllowUnchecked bool
+	// WorkspaceTarget is where the chat workspace files go (tachyon.workspace_dir). Empty: the file
+	// step is not run (tests of the database copy alone).
+	WorkspaceTarget string
+	// FilesOnly runs only the file step, on a target an earlier run migrated: Migrated must hold that
+	// run's successful report. A rerun over a complete target copies nothing.
+	FilesOnly bool
+	// Migrated is the earlier run's report file, read by FilesOnly (never written).
+	Migrated string
 	// Report is the report file. Empty: no file is written (tests).
 	Report string
 	// Now is the clock; nil is time.Now.
@@ -102,6 +112,10 @@ type Report struct {
 	Sequence      []SequenceRow    `json:"sqlite_sequence"`
 	Target        TargetReport     `json:"target"`
 	SourcesStable bool             `json:"source_hashes_unchanged"`
+	// Files is the file-store step (the chat workspace files).
+	Files *FilesReport `json:"files,omitempty"`
+	// FilesOnly marks a run of the file step alone.
+	FilesOnly bool `json:"files_only,omitempty"`
 	// AllowUnchecked records --allow-unchecked-instances: a rehearsal run, never a cutover.
 	AllowUnchecked bool `json:"allow_unchecked_instances"`
 }
@@ -176,8 +190,13 @@ func Run(ctx context.Context, st *libstore.Store, o Options) (*Report, error) {
 	if now == nil {
 		now = time.Now
 	}
-	r := &Report{Started: now().UTC(), SourceDir: o.Source, AllowUnchecked: o.AllowUnchecked}
-	err := run(ctx, st, o, r)
+	r := &Report{Started: now().UTC(), SourceDir: o.Source, AllowUnchecked: o.AllowUnchecked, FilesOnly: o.FilesOnly}
+	var err error
+	if o.FilesOnly {
+		err = runFiles(ctx, st, o, r)
+	} else {
+		err = run(ctx, st, o, r)
+	}
 	r.Finished = now().UTC()
 	r.DurationMS = r.Finished.Sub(r.Started).Milliseconds()
 	r.OK = err == nil
@@ -279,6 +298,13 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 		return err
 	}
 
+	// 5: the chat workspace files are all there, before a row is copied.
+	if o.WorkspaceTarget != "" {
+		if _, err = CheckWorkspace(ctx, src, filepath.Join(srcDir, WorkspaceDir), o.WorkspaceTarget); err != nil {
+			return err
+		}
+	}
+
 	// 5: the target is empty.
 	tables := copyOrder(target)
 	jobTables, err := jobsTables(ctx, jobs)
@@ -311,7 +337,46 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 	if !stable {
 		return errors.New("a source file changed during the run")
 	}
-	return nil
+
+	// 8: the chat workspace files, checked against the migrated rows.
+	return copyFiles(ctx, st, o, srcDir, r)
+}
+
+// copyFiles runs the file step against the target's rows.
+func copyFiles(ctx context.Context, st *libstore.Store, o Options, srcDir string, r *Report) error {
+	if o.WorkspaceTarget == "" {
+		return nil
+	}
+	fr, err := CopyWorkspace(ctx, st.Reader(), filepath.Join(srcDir, WorkspaceDir), o.WorkspaceTarget)
+	r.Files = &fr
+	return err
+}
+
+// runFiles is the file step alone, on a target an earlier run migrated (its report says so).
+func runFiles(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
+	if st == nil {
+		return errors.New("migrate-from: the database module is not started")
+	}
+	srcDir, err := checkSourceDir(o.Source, o.Refused)
+	if err != nil {
+		return err
+	}
+	r.SourceDir = srcDir
+	if o.Migrated == "" {
+		return errors.New("--files-only needs the report of the run that migrated this target")
+	}
+	b, err := os.ReadFile(o.Migrated)
+	if err != nil {
+		return fmt.Errorf("--files-only runs only on a target migrate-from has migrated; its report %s: %w", o.Migrated, err)
+	}
+	var earlier Report
+	if err = json.Unmarshal(b, &earlier); err != nil || !earlier.OK || earlier.FilesOnly {
+		return fmt.Errorf("--files-only runs only on a target migrate-from has migrated: %s is not a successful migration report", o.Migrated)
+	}
+	if o.WorkspaceTarget == "" {
+		return errors.New("the workspace target directory (tachyon.workspace_dir) is not set")
+	}
+	return copyFiles(ctx, st, o, srcDir, r)
 }
 
 // checkSourceDir resolves the source directory and refuses a refused one.
