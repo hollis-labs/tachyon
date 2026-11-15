@@ -21,15 +21,12 @@ export function ApprovalsPage() {
   const [params, setParams] = useSearchParams()
   const linked = params.get("item")
   const [selectedId, setSelectedId] = useState<string | undefined>(linked ?? undefined)
+  const [retained, setRetained] = useState<ApprovalItem>()
   const [showDetail, setShowDetail] = useState(!!linked)
   useEffect(() => {
     if (!linked) return
     setSelectedId(linked)
     setShowDetail(true)
-    setParams((p) => {
-      p.delete("item")
-      return p
-    }, { replace: true })
   }, [linked, setParams])
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
@@ -42,6 +39,14 @@ export function ApprovalsPage() {
   const [batchNote, setBatchNote] = useState("")
   const [batchResults, setBatchResults] = useState<BatchResult["results"]>()
   const [accessNeeded, setAccessNeeded] = useState(false)
+  useEffect(() => {
+    if (!linked || !queue) return
+    let active = true
+    void queue.client.present(linked).then((item) => {
+      if (active && item.action_run) setRetained(item)
+    }, () => {})
+    return () => { active = false }
+  }, [linked, queue?.client])
   const restoredItem = queue?.restored
   useEffect(() => {
     if (restoredItem) {
@@ -49,6 +54,17 @@ export function ApprovalsPage() {
       setShowDetail(true)
     }
   }, [restoredItem])
+  // A registered action outlives its pending row, including the undo hold.
+  // Retain its identity until the operator deliberately selects another item.
+  useEffect(() => {
+    const items = [...(queue?.inbox?.pending ?? []), ...(queue?.inbox?.history ?? [])]
+    const chosen = items.find((i) => i.item_id === selectedId)
+      ?? (!selectedId && !retained ? orderPending(queue?.inbox?.pending ?? [])[0] : undefined)
+    if (chosen?.action_run) {
+      setRetained(chosen)
+      if (!linked) setParams({ item: chosen.item_id }, { replace: true })
+    }
+  }, [queue?.inbox, selectedId, retained, linked, setParams])
   if (!queue)
     return (
       <div className="flex h-full min-w-0 flex-col">
@@ -68,11 +84,13 @@ export function ApprovalsPage() {
       .toLowerCase()
       .includes(search.toLowerCase()),
   )
-  // After a decision the row leaves the queue and selection moves to the next item.
-  // A held (about to be committed) approval is skipped: selection advances to the next item.
+  // Ordinary decisions advance the queue; registered actions retain their run detail.
   const heldIds = new Set(queue.held.map((h) => h.itemId))
   const live = rows.filter((r) => !heldIds.has(r.item_id))
-  const current = live.find((r) => r.item_id === selectedId) ?? live[0]
+  const continued = retained && (!selectedId || selectedId === retained.item_id)
+    ? [...(queue.inbox?.pending ?? []), ...(queue.inbox?.history ?? [])].find((i) => i.item_id === retained.item_id) ?? retained
+    : undefined
+  const current = continued ?? live.find((r) => r.item_id === selectedId) ?? live[0]
   const restored = queue.restored
   const picked = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => checked.has(i.item_id) && batchEligibility(i).ok).slice(0, MAX_BATCH)
   const lowRisk = (queue.inbox?.pending ?? []).filter((i) => batchEligibility(i).ok && i.request_snapshot.class === "low" && !heldIds.has(i.item_id)).slice(0, MAX_BATCH)
@@ -121,6 +139,8 @@ export function ApprovalsPage() {
     return () => { live = false }
   }, [hasBatch, queue])
   const select = (id: string) => {
+    setParams({ item: id }, { replace: true })
+    setRetained(undefined)
     setSelectedId(id)
     setShowDetail(true)
   }
