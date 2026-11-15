@@ -53,6 +53,11 @@ type chatDeps struct {
 	activity  *chatactivity.Handler
 	work      http.Handler
 	verbs     dataverbs.Chat // the agent data API's chat verbs (B6d)
+	// What the quick terminal (B12) shares with the chat services, as the old server shared it.
+	exists  func(ctx context.Context, ref string) error
+	publish func(ctx context.Context, thread, typ string, fields map[string]any)
+	rec     *chatactivity.Recorder
+	ws      *chatworkspace.Store
 }
 
 // newChat builds the chat services as the old build's server did. Nothing here reaches an upstream
@@ -222,6 +227,7 @@ func newChat(ctx context.Context, app *module.App, cfg settings.Settings, domain
 		assign.Tasks = planner.NewTasks(torque, token)
 		work.Task = torqueread.New(torque, token).GetTask
 	}
+	d.exists, d.publish, d.rec, d.ws = exists, publish, rec, ws
 	d.work = chatwork.Handler(work, exists)
 	d.verbs = chatVerbServices(d, domain, publish, rec, exists)
 	return d, nil

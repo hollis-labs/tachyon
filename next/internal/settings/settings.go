@@ -117,6 +117,7 @@ type Features struct {
 	PlannerEvents     bool // the planner's Torque event ingest
 	Transcripts       bool // Fragments Engine transcript snapshots
 	ActionRuns        bool // run approved actions over the SSH hub
+	Terminal          bool // the chat quick terminal: interactive ssh panes and approved agent commands
 }
 
 // Files are the policy and config files Tachyon reads. Empty means not configured.
@@ -172,6 +173,7 @@ func featureKeys(f *Features) []struct {
 		{"planner_events", &f.PlannerEvents},
 		{"transcripts", &f.Transcripts},
 		{"action_runs", &f.ActionRuns},
+		{"terminal", &f.Terminal},
 	}
 }
 
