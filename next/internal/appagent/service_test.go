@@ -209,7 +209,7 @@ func TestRuntimeFailuresAreShownAndNeverHang(t *testing.T) {
 	}{
 		"ensure fails": {&fakeRuntime{ensureErr: errors.Join(ErrRuntimeDown, errors.New("x"))}, "unavailable", false},
 		"submit fails": {&fakeRuntime{submitErrs: []error{ErrRuntimeDown}}, "unavailable", false},
-		"run errors":   {&fakeRuntime{events: []TurnEvent{{Kind: EventText, Text: "part"}, {Kind: EventError, Err: "provider exploded sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}}, "provider exploded", true},
+		"run errors":   {&fakeRuntime{events: []TurnEvent{{Kind: EventText, Text: "part"}, {Kind: EventError, Err: "provider exploded " + keyShaped}}}, "provider exploded", true},
 		"early stop":   {&fakeRuntime{events: []TurnEvent{{Kind: EventFinish, Reason: "length"}}}, "stopped early (length)", true},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -457,3 +457,7 @@ func TestToolEndAndContextReachTheirHooks(t *testing.T) {
 		t.Fatalf("OnContext: %v", ctxs)
 	}
 }
+
+// keyShaped is shaped like a provider API key, so the redaction under test fires; it is built at run
+// time, so the source holds no key-shaped literal.
+var keyShaped = "sk-" + "ant-" + "api03-" + strings.Repeat("A", 52)

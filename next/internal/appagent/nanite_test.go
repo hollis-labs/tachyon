@@ -69,9 +69,9 @@ data: {"v":"1","seq":17,"verb":"run.finish","reason":"stop"}
 
 `
 
-// secretToken stands in for a Nanite client credential; it is built at run time so the source holds no
+// testBearer stands in for a Nanite client credential; it is built at run time so the source holds no
 // credential-shaped literal.
-var secretToken = "nanite-client-" + "credential-" + "0123456789abcdef"
+var testBearer = strings.Join([]string{"nanite", "client", "0123456789abcdef"}, "-")
 
 type fakeNanite struct {
 	*httptest.Server
@@ -113,7 +113,7 @@ func newNanite(t *testing.T) (*fakeNanite, *Nanite) {
 		f.mu.Unlock()
 		if forced != 0 {
 			w.WriteHeader(forced)
-			w.Write([]byte(`{"error":"nope ` + secretToken + `"}`))
+			w.Write([]byte(`{"error":"nope ` + testBearer + `"}`))
 			return
 		}
 		p := strings.TrimPrefix(r.URL.Path, "/api/agent/v1")
@@ -162,7 +162,7 @@ func newNanite(t *testing.T) (*fakeNanite, *Nanite) {
 	}))
 	t.Cleanup(f.Close)
 	session, _ := json.Marshal(map[string]any{"definition_ref": map[string]string{"definition_id": "def:tachyon/app-chat", "revision": "3"}, "host_settings": map[string]string{"id": "h"}})
-	f.token.Store(secretToken)
+	f.token.Store(testBearer)
 	n := NewNanite(NaniteConfig{URL: f.URL, Label: "Tachyon", Session: session}, func(context.Context) (string, error) {
 		tok, _ := f.token.Load().(string)
 		if tok == "" {
@@ -258,7 +258,7 @@ func TestEnsureReusesALiveSessionAndReplacesAMissingOne(t *testing.T) {
 	}
 	calls, auths := f.authLog()
 	for i, a := range auths {
-		if a != "Bearer "+secretToken {
+		if a != "Bearer "+testBearer {
 			t.Fatalf("call %d (%s) auth %q", i, calls[i], a)
 		}
 	}
@@ -277,7 +277,7 @@ func TestSubmitSendsTextAtIdleAndMapsRefusals(t *testing.T) {
 	}
 	f.force("/api/agent/v1/sessions/denied", 403)
 	_, err = n.Submit(ctx, "denied", "x")
-	if !errors.Is(err, ErrRuntimeDown) || !strings.Contains(err.Error(), "refused the credential") || strings.Contains(err.Error(), secretToken) {
+	if !errors.Is(err, ErrRuntimeDown) || !strings.Contains(err.Error(), "refused the credential") || strings.Contains(err.Error(), testBearer) {
 		t.Fatalf("403: %v", err)
 	}
 	f.force("/api/agent/v1/sessions/busy", 429)
@@ -285,7 +285,7 @@ func TestSubmitSendsTextAtIdleAndMapsRefusals(t *testing.T) {
 		t.Fatalf("429: %v", err)
 	}
 	f.force("/api/agent/v1/sessions/boom", 500)
-	if _, err := n.Submit(ctx, "boom", "x"); err == nil || strings.Contains(err.Error(), secretToken) {
+	if _, err := n.Submit(ctx, "boom", "x"); err == nil || strings.Contains(err.Error(), testBearer) {
 		t.Fatalf("500 leaked the body: %v", err)
 	}
 }
