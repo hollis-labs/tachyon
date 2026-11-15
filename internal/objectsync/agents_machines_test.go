@@ -302,3 +302,79 @@ func TestSourcesIncludeConfiguredCatalogs(t *testing.T) {
 		t.Fatal("configured source missing")
 	}
 }
+
+// CW-20261114-0144: the Cerberus cutover moves the address from the old daemon's unix socket to the new API
+// (http://127.0.0.1:4786/api). The source identity (scope instance) is the address unless CERBERUS_SOURCE_INSTANCE
+// pins it, so with the old unix string pinned, the same host stays the same machine and the schedule keeps its key.
+func TestCerberusSourceInstanceKeepsIdentityAcrossTheCutover(t *testing.T) {
+	_, c := testStore(t)
+	hosts := []any{map[string]any{"host": map[string]any{"name": "worker", "tailnet_ip": "100.64.0.1"}, "state": "online"}}
+	serve := func(prefix string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != prefix+"/hosts" {
+				t.Errorf("unexpected path %s", r.URL.Path)
+			}
+			json.NewEncoder(w).Encode(hosts)
+		})
+	}
+	socket := filepath.Join(t.TempDir(), "cerberus.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := httptest.NewUnstartedServer(serve(""))
+	old.Listener.Close()
+	old.Listener = listener
+	old.Start()
+	defer old.Close()
+	newAPI := httptest.NewServer(serve("/api"))
+	defer newAPI.Close()
+
+	before, err := NewCerberusMachines("unix:"+socket, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, c, before)
+	machine := get(t, c, before, "worker")
+
+	after, err := NewCerberusMachinesAs(newAPI.URL+"/api", "", "unix:"+socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Scope() != before.Scope() || sourceID(after.Scope()) != sourceID(before.Scope()) {
+		t.Fatalf("the pinned instance keeps the scope and schedule key: %+v vs %+v", after.Scope(), before.Scope())
+	}
+	mustRun(t, c, after)
+	if got := get(t, c, after, "worker"); got.ID != machine.ID || got.Deleted() {
+		t.Fatalf("the host must stay the same machine: %s vs %s", got.ID, machine.ID)
+	}
+	rows, err := c.objects.List(ctx, objects.Filter{Kind: objects.MachineKind})
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("one machine, not a duplicate: %d %v", len(rows), err)
+	}
+
+	// Unset, the identity is the address: the new address would be a new source (the duplicate this prevents).
+	unpinned, err := NewCerberusMachinesAs(newAPI.URL+"/api", "", "")
+	if err != nil || unpinned.Scope().Instance != newAPI.URL+"/api" || sourceID(unpinned.Scope()) == sourceID(before.Scope()) {
+		t.Fatalf("unset: the instance is the address: %+v %v", unpinned.Scope(), err)
+	}
+	for _, bad := range []string{"has space", "tab\there", strings.Repeat("x", 301)} {
+		if _, err := NewCerberusMachinesAs(newAPI.URL+"/api", "", bad); err == nil {
+			t.Errorf("accepted instance %q", bad)
+		}
+	}
+	// Wired from the configuration the server and `tachyon sync-objects` share.
+	srcs, err := Sources(catalog.Upstreams{CerberusAddr: newAPI.URL + "/api", CerberusSourceInstance: "unix:" + socket})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range srcs {
+		if s.Name() == "cerberus-machines" {
+			found = s.Scope().Instance == "unix:"+socket
+		}
+	}
+	if !found {
+		t.Fatal("Sources pins the cerberus-machines instance from CerberusSourceInstance")
+	}
+}

@@ -255,7 +255,7 @@ func Sources(u catalog.Upstreams) ([]Source, error) {
 		sources = append(sources, sessions)
 	}
 	if u.CerberusAddr != "" {
-		s, err := NewCerberusMachines(u.CerberusAddr, u.CerberusTokenFile)
+		s, err := NewCerberusMachinesAs(u.CerberusAddr, u.CerberusTokenFile, u.CerberusSourceInstance)
 		if err != nil {
 			return nil, err
 		}
