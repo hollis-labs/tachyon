@@ -5,7 +5,7 @@
 //
 //	tachyon:
 //	  allowed_hosts: []            # extra Host values (besides loopback) served behind a local TLS proxy
-//	  cache_dir: tachyon-cache     # relative: anchored in the data directory (AfterConfig)
+//	  cache_dir: cache             # relative: anchored in the data directory (AfterConfig)
 //	  workspace_dir: workspace     # chat workspace files; relative: anchored in the data directory
 //	  upstreams:                   # every address empty by default; each credential is a secrets reference
 //	    tether:          { url: "", token: "" }

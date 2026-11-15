@@ -140,6 +140,27 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 - **jobs.db is not a separate file.** The scheduler module creates its `gosched_*` tables in the one database; D1
   carries the six schedules and their history.
 
+### The data directory's files (slice D2)
+
+Every path the old build reads or writes under its data directory (`$DATA`: `TACHYON_DATA_DIR`, else
+`$XDG_DATA_HOME/tachyon`) and cache directory (`$CACHE`: `TACHYON_CACHE_DIR`, else `$XDG_CACHE_HOME/tachyon`),
+from the old tree on `main` (the grep is in the D2 PR):
+
+| Old path | Owner (old tree) | Kept? | Why, and where it goes |
+|---|---|---|---|
+| `$DATA/tachyon.db` (+ `-wal`, `-shm`) | `localstore`, `server` | kept | the data; `migrate-from` copies its rows from a `sqlite3 .backup` copy (D1) |
+| `$DATA/jobs.db` (+ `-wal`, `-shm`) | `objectsync` | kept | the schedules; copied into the one database's scheduler tables (D1) |
+| `$DATA/workspace/<hash>/<item id>` | `chatworkspace` | kept | chat uploads (file and image items), each named by a `chat_workspace_items` row with its SHA-256; `migrate-from` copies them into `tachyon.workspace_dir` (D2) |
+| `$DATA/workspace/<hash>/.upload-*` | `chatworkspace` | dropped | an upload still being received; never a stored item (skipped and named in the report) |
+| `$DATA/terminal-policy.json` | `chatterminal` (default when `TACHYON_TERMINAL_POLICY` is empty) | config | operator-written; `tachyon.files.terminal_policy` names it (absolute path) when the terminal slice lands |
+| `$DATA/<plugin id>/`, `$CACHE/<plugin id>/` (`planner`, `console`) | `server` (plugin init) | dropped | created empty for the plugin processes, which never wrote to them; no plugin host in this build |
+| `$DATA/plugins/launch-ops/launches.db` | the external launch-ops plugin | dropped | one empty table (port plan); left with the old directory |
+| `$DATA/plugins/<id>/` binaries, `plugin.yaml` | external plugins | dropped | plugin binaries and their config; no plugin host in this build |
+| `$DATA/backups/*.db`, `$DATA/tachyon-before-*.db` | `scripts/migrate-priorities-to-themes.py`, operator | dropped | pre-migration snapshots kept by hand; left with the old directory |
+
+The new build's own files: `tachyon.db` (with the scheduler tables), `identity-signing.key`, `cache/`,
+`workspace/`, `migrate-from-report.json` and `migrate-from-files-report.json`.
+
 ## Dialects (slice PG1)
 
 The SQLite set (`internal/store/migrations/sqlite`) is the reference and is unchanged. `migrations/postgres` holds the
@@ -255,9 +276,8 @@ Details: `docs/api-contract.md`.
   - changes are not streamed.
 - **`tachyon.workspace_dir`** (default `workspace`, anchored in the data directory) holds the chat workspace
   files, the old build's `$TACHYON_DATA_DIR/workspace`. The old layout is refused there too.
-- **Workspace files and migrate-from.** `migrate-from` copies the databases, not the old `workspace/` files. The
-  2026-11-14 snapshot has no workspace items, so nothing is lost today. If files exist at cutover, they must be
-  copied into `tachyon.workspace_dir` (open: raised with the program lead).
+- **Workspace files and migrate-from.** `migrate-from` copies the old `workspace/` files into
+  `tachyon.workspace_dir` (slice D2; the runbook below).
 - **Torque reads** (`internal/torqueread`, used by the Work view): the token is a secrets reference resolved per
   request, as for the planner.
 - **Not ported:** the chat dev stub (`TACHYON_CHAT_STUBS`) with its OpenAPI document and fixtures, as for the
@@ -272,8 +292,16 @@ Details: `docs/api-contract.md`.
 - **Data.** A new data directory. The old one is never opened by this build; its data is copied once:
   1. Stop the old unit.
   2. `sqlite3 <old>/tachyon.db ".backup DIR/tachyon.db"`, and the same for `jobs.db`.
-  3. `TACHYON_DATA_DIR=<new, empty> tachyon migrate-from --source DIR` (exit 0, report beside the new database).
-  4. `tachyon identity setup`.
+  3. If `<old>/workspace` exists: `cp -a <old>/workspace DIR/workspace` (read-only on the source).
+  4. `TACHYON_DATA_DIR=<new, empty> tachyon migrate-from --source DIR` (exit 0, report beside the new database).
+     It copies the rows, then the workspace files into `tachyon.workspace_dir`, each proved by SHA-256 against
+     its source and its `chat_workspace_items` row. A row whose file is missing stops the run before any row is
+     copied.
+  5. `tachyon identity setup`.
+
+  To copy the workspace files again into a target `migrate-from` has migrated (a file added to `DIR/workspace`
+  later): `tachyon migrate-from --source DIR --files-only`. It copies only what is missing, refuses a target file
+  that differs, and writes `migrate-from-files-report.json`; a rerun over a complete target copies nothing.
 
   `launches.db`, `backups/`, `plugins/` and old snapshots stay with the old directory.
 - **Upstream addresses must keep their exact form.** Write the Tether, GitHub and Cerberus upstream addresses in
@@ -281,3 +309,6 @@ Details: `docs/api-contract.md`.
   - Object sync derives schedule ids from those strings.
   - `migrate-from` refuses an upstream that differs, and one that is not configured at all.
   - `--allow-unchecked-instances` is for rehearsals with blank upstreams, never for the cutover.
+  - The chat history is keyed by the Tether address too: the chat bridge lists only the turns stored under the
+    configured `tachyon.upstreams.tether.url`. With any other spelling the migrated chat history does not show
+    (nothing is lost; it shows again with the old spelling).
