@@ -45,6 +45,7 @@ type deps struct {
 	planner   plannerDeps
 	chat      chatDeps
 	approvals *approvals.Inbox
+	agents    agentsDeps
 }
 
 // appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
@@ -54,7 +55,7 @@ type deps struct {
 func appRoutes(d deps) []routes.Route {
 	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs)
 	console := dataverbs.NewConsoleHTTP(d.local)
-	return append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), []routes.Route{
+	return append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
@@ -114,7 +115,7 @@ func (t *tachyon) serve(ctx context.Context) error {
 	inbox := newApprovals(ctx, app, cfg, domain)
 	stopApprovals := startApprovals(inbox)
 	defer stopApprovals()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox})
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: newAgents(app, cfg, domain, chat)})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err

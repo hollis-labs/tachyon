@@ -71,6 +71,8 @@ var table = map[Action]Level{
 	"planner.write": OperatorToken,
 	// Chat writes and the workspace file content read: RequireOperator / RequireOperatorReads.
 	"chat.write": OperatorToken,
+	// Needs you reads: an operator (lead decision for the port; the old guard let reads through).
+	"agents.needs_you": OperatorToken,
 }
 
 // Actions is every action in the table.
