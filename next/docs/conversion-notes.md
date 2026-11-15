@@ -237,6 +237,18 @@ Details: `docs/api-contract.md`.
   The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
   TTL are gone. The confirm phrase stays in the approvals code.
 
+## Chat data verbs (slice B6d)
+
+- **Same verbs, same grants.** Agents call the chat verbs on the agent data API as before. A credential holds a
+  verb only when its migrated grant names it.
+- **The verb catalog gains `chat.plan.list`, `chat.plan.create` and `chat.plan.move_step`.** Old main added them
+  to its `chat-plan` preset after B3's catalog was taken (#725). They are a parity carry. No migrated grant
+  holds them today; a grant that does is now accepted by `access reissue` instead of refused as unknown.
+- **The pinned proxy stays the pinned proxy.** The pin migrates with `service_proxy_pin` and names a service
+  identity, which `access reissue` keeps. The proxy's `X-Tether-Session-Id` scoping is unchanged.
+- **Activity actors keep their form** `agent:<identity id>`. A reissued credential keeps its service identity, so
+  entries written before and after the cutover attribute to the same id.
+
 ## Objects and object sync (slice B4)
 
 - **Same API.** The objects data verbs and the sync status route keep their paths and semantics: the agent API with

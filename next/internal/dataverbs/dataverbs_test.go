@@ -34,6 +34,7 @@ type fixture struct {
 	ids   *identity.Service
 	local *Local
 	objs  *objects.Service
+	db    *store.Store // the domain store (chat verbs)
 }
 
 func setup(t *testing.T) fixture {
@@ -57,7 +58,7 @@ func setup(t *testing.T) fixture {
 	}
 	db := database.From(run.App)
 	objs := objects.New(store.Wrap(db))
-	return fixture{acc: access.New(db, ids, nil), ids: ids, local: NewLocal(objs), objs: objs}
+	return fixture{acc: access.New(db, ids, nil), ids: ids, local: NewLocal(objs), objs: objs, db: store.Wrap(db)}
 }
 
 // key issues a mapped key and returns the principal a request would carry.
@@ -104,7 +105,7 @@ func TestAgentObjectReadsCheckVerbAndKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := NewAgentHTTP(f.local, f.acc)
+	h := NewAgentHTTP(f.local, f.acc, Chat{})
 	reader := f.key(t, access.Grants{Verbs: []string{"objects.list", "objects.get", "objects.history"}, Kinds: []string{"task"}})
 
 	if code, body := call(h, &reader, AgentPrefix+"/providers"); code != 200 || !strings.Contains(body, `"objects.get"`) || strings.Contains(body, "objects.lookup_source") {

@@ -199,6 +199,24 @@ granted), `objects.get` and `objects.history` (the record's kind must be granted
 people only; a key is refused there whatever its scopes. The four object reads need `tachyon.objects.read`.
 `GET /api/plugins/console/v1/objects/sync/status` (`tachyon.objects.read`) is the old sync status.
 
+**Chat verbs (slice B6d).** Served on the agent API with the old names, inputs and results, over the chat
+services of B6/B6b:
+
+| Family | Verbs |
+|---|---|
+| Workspace | `chat.workspace.list`, `chat.workspace.get` (shared items only; text up to 32 KiB) |
+| Topics | `chat.topic.add`, `chat.topic.list`, `chat.bookmark.list`, `chat.approvals.list` |
+| Plans | `chat.plan.get`, `chat.plan.list`, `chat.plan.create`, `chat.plan.write`, `chat.plan.step`, `chat.plan.move_step` |
+| Activity | `chat.activity.append` (types `task.closed` and `note` only), `chat.panel.open` |
+
+- The thread rule is the old one. A direct caller names an app thread (`app:<id>`); the plan verbs also accept a
+  Tether thread the caller owns (bound with `tachyon access bind`, or named after the thread's agent).
+- The pinned Tether proxy acts for the session in `X-Tether-Session-Id` and only that session's own thread;
+  any other thread is `403`. From any other caller the header is ignored. `X-Tether-Continues-Session-Id` and
+  `X-Tether-Logical-Agent-Id` carry a plan over to a relaunched session, from the proxy only.
+- `chat.approvals.list` reads the open approval cards from the migrated `chat_card_refs` and `approval_items`.
+- Every verb names no object kind. The console data API does not serve them, as before.
+
 ## 5b. Planner (slice B5)
 
 The old paths, served by Tachyon:
