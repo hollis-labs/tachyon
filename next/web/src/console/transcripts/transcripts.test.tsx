@@ -237,11 +237,12 @@ describe("transcript dashboard", () => {
     expect(screen.queryByText("Connect the transcript source to explore sessions.")).toBeNull()
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull()
   })
-  it("asks for operator access when the session is required and shows nothing else", async () => {
-    read.mockRejectedValue(new TranscriptError(401, "session_required", "Connect the approval queue first."))
+  it("a missing scope is access denied with the backend's message; there is no session to connect", async () => {
+    read.mockRejectedValue(new TranscriptError(403, "scope_required", "This needs tachyon.transcripts.read."))
     render(<TranscriptDashboard />)
-    expect(await screen.findByText("Operator access needed")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy()
+    expect(await screen.findByText("Access denied")).toBeTruthy()
+    expect(screen.getByText("This needs tachyon.transcripts.read.")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull()
     expect(screen.queryByText("Waiting for metadata")).toBeNull()
   })
   it("focuses transcript find on Ctrl+F only inside the reader", async () => {

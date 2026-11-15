@@ -415,6 +415,41 @@ The data verbs answer `{version: 1, provider, verb, data}`. Scopes (contract): `
 `tachyon.builder.read` / `.write`, with the operator check on writes. `catalog/*` takes `tachyon.catalog.read`. The
 data verbs are checked in the data handler (contract, "Agent data verbs").
 
+## Transcripts (G7a, CW-20261115-0081)
+
+Carried byte-identical from **main d5db765**: `transcripts/`, with its tests. The rest of its import graph is
+already carried.
+
+- **Surface:** `TranscriptsSurface` (`/dashboards/transcripts`; the selected session is the `?session=` query, as
+  before).
+- **Edits** (scripted, `g7a-adapt.py`): the contract has no elevation session.
+  - `data.ts`: no `connectSession` (`POST approval-inbox/session`) and no retry after a 401 `session_required`. A
+    401 goes to sign-in.
+  - `page.tsx`: the "Operator access needed / Connect" state is gone. A 403 is "Access denied", with the backend's
+    message.
+  - One unit test asserts the port's behaviour instead (a 403 `scope_required` is denied, and there is no Connect).
+- **Read-only:** the old page has no writes, so there is no write path to test.
+- **e2e:** `e2e/transcripts-stub.ts` serves the old contract stub's fixtures (`internal/transcriptsapi/fixtures` at
+  d5db765, in `e2e/transcripts-fixtures`, with a project name made a placeholder). `TACHYON_E2E_TRANSCRIPTS=backend`
+  turns it off.
+
+**Main moved under the carried layer since 4b5e397** (for the pre-P1 sync): `observations/store.ts` again (#772).
+
+### Transcripts routes the surface calls (for the transcripts backend slice)
+
+All under `/api/plugins/console/v1/transcripts`, `GET` only. Errors are flat `{code, message}`. Shapes: the old written
+contract, `internal/transcriptsapi/openapi.yaml` and its fixtures at d5db765.
+
+| Method | Path | Response the UI reads | Old handler |
+|---|---|---|---|
+| `GET` | `snapshot` | `{status, facets, sessions, complete, limit, observed_at, snapshot_meta}` | `internal/transcripts` bridge to Fragments Engine (`transcripts.New(FragmentsURL, …)`), behind `transcriptsGuard` (`internal/server/server.go`: a browser session; an agent bearer is refused) |
+| `GET` | `status` | the search index status | same |
+| `GET` | `search?q&mode&limit=20[&cursor&tool&model&kind&has_error]` | search results | same |
+| `GET` | `sessions/{id}?turn_offset=N` | `{session, turns, turn_total, next_turn?}` | same |
+
+Not called by this SPA: `stats`, `sessions/{id}/find` and `sessions/{id}/errors` (in the old contract). Scope
+(contract): `tachyon.transcripts.read`.
+
 ## Gaps
 
 - app-shell has no prefix/param surface routes (exact match only, `shell.tsx` surface lookup). Worked

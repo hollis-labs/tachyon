@@ -29,6 +29,7 @@ import {
   ChatSurface,
   NeedsYouSurface,
   RegistrySurface,
+  TranscriptsSurface,
 } from "./console/surface"
 import { manifest, surfaceRoutes } from "./manifest"
 import { SettingsPage } from "./pages/settings"
@@ -65,7 +66,7 @@ const pages: Record<string, PageComponent> = {
   chat: () => <ChatSurface />,
   approvals: () => <ApprovalsSurface />,
   "needs-you": () => <NeedsYouSurface />,
-  transcripts: () => <StubPage area="Transcripts" slice="G3" />,
+  transcripts: () => <TranscriptsSurface />,
   repos: () => <StubPage area="Repos" slice="G3" />,
   settings: () => <SettingsPage />,
   user: () => <IDENTITY_PAGES.account />,

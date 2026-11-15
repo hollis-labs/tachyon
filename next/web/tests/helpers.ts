@@ -21,7 +21,7 @@ export const AREAS = [
     label: "Transcripts",
     route: "/dashboards/transcripts",
     deep: "/dashboards/transcripts",
-    stub: true,
+    stub: false,
   },
   { label: "Repos", route: "/repos", deep: "/pr/github.com/hollis-labs/tachyon/693", stub: true },
 ] as const
