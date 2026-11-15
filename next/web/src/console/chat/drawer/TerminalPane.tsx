@@ -19,7 +19,7 @@ interface Machine { machine_id: string; label: string; reachable?: boolean | nul
 interface Proposal { id: string; command: string; reason?: string; requested_by: string; state: string; op_digest?: string }
 
 /** The golden's quick terminal, shown as fixtures on ?demo=cards. */
-const DEMO_MACHINES: Machine[] = [{ machine_id: 'dev-box', label: 'dev-box', reachable: true }]
+const DEMO_MACHINES: Machine[] = [{ machine_id: 'example-box', label: 'example-box', reachable: true }]
 const DEMO_PROPOSAL: Proposal = { id: 'p1', command: 'pnpm test --filter chat', requested_by: 'Portfolio Manager', state: 'pending' }
 
 /**
@@ -29,7 +29,7 @@ const DEMO_PROPOSAL: Proposal = { id: 'p1', command: 'pnpm test --filter chat', 
 export function TerminalPane({ threadRef, demo }: { threadRef: string | undefined; demo?: boolean }) {
   const [machines, setMachines] = useState<Machine[] | null>(demo ? DEMO_MACHINES : null)
   const [unavailable, setUnavailable] = useState('')
-  const [machine, setMachine] = useState(demo ? 'dev-box' : '')
+  const [machine, setMachine] = useState(demo ? 'example-box' : '')
   const [proposals, setProposals] = useState<Proposal[]>(demo ? [DEMO_PROPOSAL] : [])
   const [error, setError] = useState('')
   const [session, setSession] = useState<{ id: string; ws: string } | null>(null)
@@ -43,7 +43,7 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
       setMachines(d.machines ?? []); setMachine(d.machines?.[0]?.machine_id ?? '')
     }, (e: Error & { status?: number }) => {
       if (!live) return
-      setUnavailable(e.status === 404 || e.status === 501 ? 'The terminal is not available on this host yet. Commands the agent proposes will show here once it is.' : e.status === 401 || e.status === 403 ? 'The terminal needs an unlocked operator session. Unlock, then reopen the terminal.' : 'Could not reach the terminal service. Try again in a moment.')
+      setUnavailable(e.status === 404 || e.status === 501 ? 'The terminal is not available on this host yet. Commands the agent proposes will show here once it is.' : e.status === 401 || e.status === 403 ? 'The terminal needs operator access.' : 'Could not reach the terminal service. Try again in a moment.')
     })
     return () => { live = false }
   }, [demo])
@@ -102,7 +102,7 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
       </div>
       {session && <PtyTerminal wsPath={session.ws} onState={setState} />}
       <div role="log" aria-label="Terminal output" className={`${session ? '' : 'flex-1 '}whitespace-pre-wrap rounded-control border border-border-subtle bg-bg-elevated px-2.5 py-2 font-mono text-xs leading-relaxed text-fg-secondary`}>
-        {demo ? <><span className="text-fg-muted">chris@dev-box ~/dev/hollis-labs</span> $ git status -sb{'\n'}<span className="text-fg">## main...origin/main</span>{'\n'} M apps/tachyon/plugins/chat/ui/src/Chat.tsx{'\n'}<span className="text-fg-muted">chris@dev-box ~/dev/hollis-labs</span> $ </> : session ? null : <span className="text-fg-muted">Connect to a machine to open a session. Commands the agent proposes appear below.</span>}
+        {demo ? <><span className="text-fg-muted">operator@example-box ~/projects/example</span> $ git status -sb{'\n'}<span className="text-fg">## main...origin/main</span>{'\n'} M src/app.ts{'\n'}<span className="text-fg-muted">operator@example-box ~/projects/example</span> $ </> : session ? null : <span className="text-fg-muted">Connect to a machine to open a session. Commands the agent proposes appear below.</span>}
         {proposals.map((p) => (
           <div key={p.id} className="mt-2 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-2 font-sans">
             <span className={CAPTION}>{p.requested_by} wants to run</span>

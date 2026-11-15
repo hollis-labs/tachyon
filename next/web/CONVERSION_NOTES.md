@@ -503,6 +503,62 @@ Not served, as in the old server: `POST auth/step-up`, so comment, review and As
 `console/bulk` take `tachyon.forge.read` / `.write`, with the operator check on merge, reviews, assign, comments,
 assignees and audit reads.
 
+## Terminal (G8a, CW-20261115-0082)
+
+Carried byte-identical from **main 8560422** (unchanged there since 4a76422): `chat/drawer/TerminalPane.tsx`,
+`PtyTerminal.tsx` and `terminal.test.tsx`. `chat/view/ConversationView.tsx` is back to the old file: G3 had dropped
+the terminal pane. The chat dock is G8b. The action-run terminal (`approvals/terminal.tsx`) stays out with action
+runs.
+
+- **Dependencies:** `@xterm/xterm` 6.0.0 and `@xterm/addon-fit` 0.11.0, the old build's versions.
+- **Edits** (scripted, `g8a-adapt.py`):
+  - Public repo: the demo prompt's user, machine and home path, and the demo/test machine name, are placeholders.
+  - No elevation: a 401/403 says "The terminal needs operator access." The old copy asked to unlock an operator
+    session; a 401 also goes to sign-in.
+- **e2e:** `e2e/terminal-stub.ts`. It serves the REST routes and a fake PTY WebSocket (`page.routeWebSocket`) that
+  echoes input bytes, records resize frames, and can refuse at create (403) or at upgrade (closes at once).
+  `TACHYON_E2E_TERMINAL=backend` turns it off.
+
+### Terminal contract (for the terminal backend slice)
+
+All under `/api/plugins/console/v1/terminal`. Errors are flat `{code, message}`; writes carry `X-Requested-With`.
+Old handler: `internal/chatterminal/http.go`, mounted behind `RequireOperatorReads`, so the family is
+operator-only, reads included. Contract scope: `tachyon.terminal.control` with the operator check on all.
+
+| Method | Path | Request | Response | Old handler |
+|---|---|---|---|---|
+| `GET` | `machines` | — | `{machines:[{machine_id, label, reachable?}]}`; 404/501 when the host has no terminal | `h.machines` |
+| `POST` | `sessions` | `{machine_id, thread_ref}` | `{id, ws_path}` | `h.openSession` |
+| `DELETE` | `sessions/{id}` | — | `{ok:true}` | `h.closeSession` |
+| `GET` (upgrade) | `sessions/{id}/ws` | WebSocket | see below | `h.ws` |
+| `GET` | `proposals?thread_ref&state=pending` | — | `{proposals:[{id, command, reason?, requested_by, state, op_digest?}]}` | `h.proposals` |
+| `POST` | `proposals/{id}/run` | `{op_digest}` | (ignored) | `h.run` |
+| `POST` | `proposals/{id}/deny` | `{}` | (ignored) | `h.deny` |
+| `POST` | `proposals/{id}/edit` | `{command}` | the new Proposal | `h.edit` |
+
+Also served by the old handler but not called by the drawer: `runs`, `runs/{run_id}`, `runs/{run_id}/output`,
+`POST runs/{run_id}/stop`, `PATCH runs/{run_id}` (the chat's terminal runs, as listed under G3's Later B).
+
+**Auth.**
+- **Bearer:** the old handler refused any request carrying `Authorization` (403 `requester_cannot_approve`, "Use
+  the operator browser session."). The port must keep that against keys and minted tokens; the session's own
+  bearer must pass. See B10's guard for the same problem.
+- **WebSocket upgrade:** same-origin only. The `Origin` host must equal the request host, http(s), no userinfo,
+  and `Sec-Fetch-Site` not `cross-site`; otherwise 403 `origin_denied` "Use the Tachyon browser origin.". An ended
+  session is 409 `conflict` "This session has ended.".
+
+**WebSocket frames.**
+- **Binary, both ways:** PTY bytes. Read limit 64 KiB.
+- **Client → server text:** `{"type":"resize","cols","rows"}` (1–500 each). The client sends it first on open, so
+  ssh starts at that size (100×30 when none arrives within 3 s), and again on every resize.
+- **Server → client:**
+  - on attach, a binary replay of the session's recent output;
+  - text `{"type":"state","state":"open"}` once ready; any other state makes the pane read-only (the old `stale`
+    meant the elevation lapsed);
+  - `{"type":"exit","code"}` when the process ends.
+- **Close:** the client closes the socket on Disconnect, then sends `DELETE sessions/{id}`. When the socket closes,
+  the pane goes read-only ("disconnected").
+
 ## Gaps
 
 - app-shell has no prefix/param surface routes (exact match only, `shell.tsx` surface lookup). Worked

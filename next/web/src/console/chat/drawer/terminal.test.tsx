@@ -6,7 +6,7 @@ vi.mock('../../operator/elevation', () => ({
   operatorFetch: async (url: string, init?: RequestInit) => {
     calls.push({ url, method: init?.method ?? 'GET', body: init?.body as string | undefined })
     const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status })
-    if (url.endsWith('/machines')) return json({ machines: [{ machine_id: 'dev-box', label: 'dev-box' }] })
+    if (url.endsWith('/machines')) return json({ machines: [{ machine_id: 'example-box', label: 'example-box' }] })
     if (url.includes('/proposals?')) return json({ proposals: [{ id: 'p1', command: 'ls', requested_by: 'Agent', state: 'pending', op_digest: 'd1' }] })
     if (url.endsWith('/proposals/p1/edit')) return json({ id: 'p2', command: 'ls -la', requested_by: 'Agent', state: 'pending', op_digest: 'd2' }, 201)
     if (url.endsWith('/proposals/p2/run')) return json({ run_id: 'r' })
