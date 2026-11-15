@@ -1,23 +1,31 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	libsecrets "github.com/hollis-labs/libs/security/secrets"
 	"github.com/hollis-labs/substrate/module"
 	"github.com/hollis-labs/substrate/modules/secrets"
 
 	"github.com/hollis-labs/tachyon/next/internal/agentsapi"
 	"github.com/hollis-labs/tachyon/next/internal/agentsassign"
 	"github.com/hollis-labs/tachyon/next/internal/agentscollector"
+	"github.com/hollis-labs/tachyon/next/internal/agentsderive"
 	"github.com/hollis-labs/tachyon/next/internal/agentsserve"
 	"github.com/hollis-labs/tachyon/next/internal/approvals"
+	"github.com/hollis-labs/tachyon/next/internal/assurance"
 	"github.com/hollis-labs/tachyon/next/internal/ceremony"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatthreads"
 	"github.com/hollis-labs/tachyon/next/internal/needsyou"
@@ -27,14 +35,15 @@ import (
 	"github.com/hollis-labs/tachyon/next/internal/routes"
 	"github.com/hollis-labs/tachyon/next/internal/settings"
 	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/tetherpass"
 	"github.com/hollis-labs/tachyon/next/internal/upstreamauth"
 )
 
-// The agents domain, read side (slice B8a): Agent Ops (sessions, timeline, series, tokens, history,
-// stream, settings, seats, control status, collector status, the bus feed), the ceremony meter and
-// Needs you, all from the migrated tables. The collector is built but not started, so nothing is
-// collected; its loop, the controls (nudge, restart, skip, settings writes) and the Tether launch
-// passthroughs are slice B8b, behind switches that default off.
+// The agents domain. Reads (slice B8a): Agent Ops (sessions, timeline, series, tokens, history, stream,
+// settings, seats, control status, collector status, the bus feed), the ceremony meter and Needs you,
+// from the migrated tables. Writes and outbound (slice B8b): the collector loop and the ceremony meter's
+// hourly read behind tachyon.features.agents_collector; nudge, interrupt, restart and the Tether launches
+// behind tachyon.features.agents_controls; settings writes; the Tether reads the launch dialog uses.
 
 // ceremonyMaxAge is how old a read GET ceremony may serve before it reads again (the old build's value).
 const ceremonyMaxAge = time.Minute
@@ -42,11 +51,30 @@ const ceremonyMaxAge = time.Minute
 // ceremonyPath is GET ceremony, the ceremony meter.
 const ceremonyPath = "/api/plugins/console/v1/ceremony"
 
+// ceremonyCheckEvery is how often the meter is read in the background (the old build's value).
+const ceremonyCheckEvery = time.Hour
+
+// agentsControlAction is the assurance action of every agents write: an operator, as the old
+// RequireOperator required for writes.
+const agentsControlAction assurance.Action = "agents.control"
+
+// The Tether operations the launch dialog uses (the old console plugin's proxy).
+const (
+	tetherPrefix   = "/api/plugins/console/v1/tether"
+	launchesPath   = "/api/plugins/console/v1/catalog/launches"
+	tetherIDFormat = `^[a-zA-Z0-9_-]{1,128}$`
+)
+
 type agentsDeps struct {
 	collector *agentscollector.Collector
 	server    *agentsserve.Server
 	needsYou  http.Handler
 	ceremony  http.Handler
+	meter     *ceremony.Meterer
+	tether    *tetherpass.Proxy
+	// launches is tachyon.features.agents_controls: off, the Tether launches answer 503 disabled.
+	launches bool
+	start    func(ctx context.Context) (stop func())
 }
 
 // newAgents builds the read side as the old server did, without starting anything. Outbound reads
@@ -91,21 +119,111 @@ func newAgents(app *module.App, cfg settings.Settings, domain *store.Store, chat
 	if asks != nil {
 		m.Asks = &needsyou.Aggregator{Tether: asks}
 	}
+	d.meter = m
 	d.ceremony = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(m.Latest(r.Context(), ceremonyMaxAge))
 	})
+	d.tether = tetherpass.New(cfg.Upstreams.Tether.URL, upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token))
+	d.launches = cfg.Features.AgentsControls
+	// Controls: nudges go as Tether mail with the messages credential, restarts use the control
+	// credential, an interrupt replies through the chat bridge. Off, each capability reads unavailable.
+	if cfg.Features.AgentsControls {
+		if cfg.Upstreams.TetherMessages.Token != "" {
+			if base, client, err := tetherReadClient(cfg.Upstreams.Tether.URL, upstreamauth.FromRef(resolver, cfg.Upstreams.TetherMessages.Token)); err == nil {
+				d.server.Sender = &tetherMail{base: base, client: client}
+			}
+		}
+		if cfg.Upstreams.TetherControl.Token != "" {
+			addr := cfg.Upstreams.TetherControl.URL
+			if addr == "" {
+				addr = cfg.Upstreams.Tether.URL
+			}
+			if base, client, err := tetherControlClient(addr, upstreamauth.FromRef(resolver, cfg.Upstreams.TetherControl.Token)); err == nil {
+				d.server.Restarter = &agentsserve.TetherRestarter{Base: base, Client: client}
+			}
+		}
+		if chat.turns != nil && chat.turns.ConfigError == nil {
+			d.server.Interrupter = chat.turns
+		}
+	}
+	d.start = func(ctx context.Context) func() { return startAgents(ctx, cfg, resolver, d) }
 	return d
 }
 
-// agentsReadRoutes are the agents read routes; B8b adds the writes (PUT settings, nudge, restart, skip).
+// startAgents runs the collector and the ceremony meter's hourly read when
+// tachyon.features.agents_collector is on and Tether is configured. It returns a function that stops
+// them. Off, nothing runs and nothing is dialed.
+func startAgents(ctx context.Context, cfg settings.Settings, resolver *libsecrets.Resolver, d agentsDeps) func() {
+	if !cfg.Features.AgentsCollector || strings.TrimSpace(cfg.Upstreams.Tether.URL) == "" {
+		return func() {}
+	}
+	src, err := agentscollector.NewHTTPSource(cfg.Upstreams.Tether.URL, upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token))
+	if err != nil {
+		slog.Warn("agents collector is enabled but not configured; staying off", "err", err)
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	cstore := d.collector.Store
+	// Output payloads are reduced in memory by the derivation sink and never stored.
+	live := &agentsderive.Live{Save: func(ctx context.Context, id string, s agentsderive.Saved) error {
+		return cstore.SetDerived(ctx, id, agentscollector.Derived{OneLiner: s.OneLiner, CallsInTurn: s.CallsInTurn, TurnStartedAt: s.TurnStartedAt,
+			CallsDelta: s.CallsDelta, Tools: s.Tools, Seq: s.Seq, TokDelta: tokDelta(s.TokDelta), At: s.At,
+			CtxUsed: s.Meter.Used, CtxWindow: s.Meter.Window, CtxModel: s.Meter.Model, CtxSeen: s.Meter.Seen, Compactions: s.Meter.Compactions, LastClear: s.Meter.LastClear})
+	}}
+	d.collector.Source, d.collector.Sink, d.collector.TurnEnded = src, live, live.EndTurn
+	d.collector.Start(ctx)
+	var wg sync.WaitGroup
+	// Tether emits no fleet.node.* or workstream.created events; they are polled for the host and workstream topics.
+	if fs, ok := src.(agentscollector.FleetSource); ok {
+		wg.Add(1)
+		go func() { defer wg.Done(); (&agentscollector.FleetEmitter{Source: fs, Store: cstore}).Run(ctx) }()
+	}
+	// The ceremony meter's hourly read keeps today's snapshot. Its regression alert goes to the alerts
+	// slice's store, which is not ported yet.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		t := time.NewTicker(ceremonyCheckEvery)
+		defer t.Stop()
+		for {
+			_ = d.meter.Read(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		d.collector.Wait(context.Background())
+		wg.Wait()
+	}
+}
+
+func tokDelta(u *agentsderive.Usage) *[4]int64 {
+	if u == nil {
+		return nil
+	}
+	return &[4]int64{u.Input, u.Output, u.CacheRead, u.CacheWrite}
+}
+
+// agentsReadRoutes are the agents read routes.
 var agentsReadRoutes = []string{
 	"/sessions", "/sessions/{id}", "/sessions/{id}/events", "/sessions/{id}/context-series", "/sessions/{id}/tokens",
 	"/sessions/{id}/history", "/stream", "/settings", "/seats", "/controls/{request_id}",
 }
 
-// agentsRoutes are the agents routes, each under tachyon.agents.read (docs/api-contract.md, 5e).
+// agentsWriteRoutes are the agents writes: each needs tachyon.agents.control and an operator.
+var agentsWriteRoutes = [][2]string{
+	{http.MethodPut, "/settings"}, {http.MethodPost, "/sessions/{id}/nudge"}, {http.MethodPost, "/sessions/{id}/restart"},
+	{http.MethodPost, "/controls/{request_id}/skip"},
+}
+
+// agentsRoutes are the agents routes: reads under tachyon.agents.read, writes under
+// tachyon.agents.control with the operator check (docs/api-contract.md, 5e).
 func agentsRoutes(d agentsDeps) []routes.Route {
 	if d.server == nil {
 		return nil
@@ -118,6 +236,52 @@ func agentsRoutes(d agentsDeps) []routes.Route {
 	for _, p := range agentsReadRoutes {
 		rs = append(rs, routes.Route{Method: http.MethodGet, Pattern: agentsapi.Prefix + p, Scope: read, Handler: mux})
 	}
+	const control = "tachyon.agents.control"
+	operator := func(h http.Handler) http.Handler { return assurance.Middleware(agentsControlAction, h) }
+	for _, w := range agentsWriteRoutes {
+		rs = append(rs, routes.Route{Method: w[0], Pattern: agentsapi.Prefix + w[1], Scope: control, Handler: operator(mux)})
+	}
+	launch := func(h http.Handler) http.Handler {
+		if d.launches {
+			return operator(h)
+		}
+		return operator(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": "disabled", "message": "Launching agents is off (tachyon.features.agents_controls); nothing was sent"})
+		}))
+	}
+	id := regexp.MustCompile(tetherIDFormat)
+	sessionPath := func(suffix string) func(r *http.Request) (string, url.Values, error) {
+		return func(r *http.Request) (string, url.Values, error) {
+			sid := r.PathValue("id")
+			if !id.MatchString(sid) {
+				return "", nil, tetherpass.ErrUnknown // no reviewed operation matches, as the old proxy answered
+			}
+			return "/sessions/" + sid + suffix, nil, nil
+		}
+	}
+	fixed := func(path string, q url.Values) func(*http.Request) (string, url.Values, error) {
+		return func(*http.Request) (string, url.Values, error) { return path, q, nil }
+	}
+	rs = append(rs,
+		routes.Route{Method: http.MethodGet, Pattern: tetherPrefix + "/workers", Scope: read, Handler: d.tether.Handler(tetherpass.Op{Target: fixed("/workers", nil)})},
+		routes.Route{Method: http.MethodGet, Pattern: tetherPrefix + "/sessions", Scope: read, Handler: d.tether.Handler(tetherpass.Op{Target: func(r *http.Request) (string, url.Values, error) {
+			q := url.Values{"state": {"running"}, "limit": {"1000"}}
+			if c := r.URL.Query().Get("cursor"); c != "" {
+				q.Set("cursor", c)
+			}
+			return "/sessions", q, nil
+		}})},
+		routes.Route{Method: http.MethodGet, Pattern: tetherPrefix + "/sessions/{id}", Scope: read, Handler: d.tether.Handler(tetherpass.Op{Target: sessionPath("")})},
+		routes.Route{Method: http.MethodPost, Pattern: tetherPrefix + "/sessions", Scope: control,
+			Handler: launch(d.tether.Handler(tetherpass.Op{Target: fixed("/sessions", nil), Fields: "launch worker prompt_append idempotency_key"}))},
+		routes.Route{Method: http.MethodPost, Pattern: tetherPrefix + "/sessions/{id}/launch", Scope: control,
+			Handler: launch(d.tether.Handler(tetherpass.Op{Target: sessionPath("/launch"), Fields: tetherpass.Empty}))},
+		routes.Route{Method: http.MethodGet, Pattern: launchesPath, Scope: read, Handler: d.tether.Handler(tetherpass.Op{Target: func(r *http.Request) (string, url.Values, error) {
+			return "/catalog/launches", r.URL.Query(), nil
+		}})},
+	)
 	return append(rs,
 		routes.Route{Method: http.MethodGet, Pattern: agentscollector.Path, Scope: read, Handler: d.collector.Handler()},
 		routes.Route{Method: http.MethodGet, Pattern: agentscollector.BusPath, Scope: read, Handler: d.collector.BusHandler()},
@@ -129,12 +293,22 @@ func agentsRoutes(d agentsDeps) []routes.Route {
 // tetherReadClient is the old builderread client for Tether reads: the configured address (https, a
 // unix: socket, or tcp: host:port), the credential, Tether-Protocol 1, 20 s, no redirects.
 func tetherReadClient(addr string, token upstreamauth.Token) (string, *http.Client, error) {
+	return tetherClient(addr, token, 15*time.Second, 20*time.Second)
+}
+
+// tetherControlClient is the old builderchange control client: the control credential, 30 s for the
+// headers, 60 s overall.
+func tetherControlClient(addr string, token upstreamauth.Token) (string, *http.Client, error) {
+	return tetherClient(addr, token, 30*time.Second, 60*time.Second)
+}
+
+func tetherClient(addr string, token upstreamauth.Token, headerTimeout, timeout time.Duration) (string, *http.Client, error) {
 	if strings.TrimSpace(addr) == "" {
 		return "", nil, errors.New("tether address is missing")
 	}
 	base := strings.TrimRight(addr, "/")
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.ResponseHeaderTimeout = 15 * time.Second
+	tr.ResponseHeaderTimeout = headerTimeout
 	if socket, ok := strings.CutPrefix(addr, "unix:"); ok {
 		tr.Proxy = nil
 		tr.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -148,7 +322,7 @@ func tetherReadClient(addr string, token upstreamauth.Token) (string, *http.Clie
 	if err != nil {
 		return "", nil, err
 	}
-	return base, &http.Client{Transport: tetherProtocol{rt}, Timeout: 20 * time.Second,
+	return base, &http.Client{Transport: tetherProtocol{rt}, Timeout: timeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
 }
 
@@ -158,6 +332,43 @@ func (t tetherProtocol) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
 	r.Header.Set("Tether-Protocol", "1")
 	return t.RoundTripper.RoundTrip(r)
+}
+
+// tetherMail sends a nudge as Tether mail (the old forgeassign.TetherMail).
+type tetherMail struct {
+	base   string
+	client *http.Client
+}
+
+func (t *tetherMail) Send(ctx context.Context, to, subject, body string, meta map[string]string) (string, error) {
+	md := map[string]any{"subject": subject}
+	for k, v := range meta {
+		md[k] = v
+	}
+	b, _ := json.Marshal(map[string]any{"kind": "notice", "to": to, "payload": map[string]any{"subject": subject, "body": body}, "metadata": md})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.base+"/messages", bytes.NewReader(b))
+	if err != nil {
+		return "", errors.New("Tether could not be reached") //nolint:staticcheck // a product name; operator-visible text kept
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := t.client.Do(req) //nolint:gosec // the configured Tether address
+	if err != nil {
+		return "", errors.New("Tether could not be reached") //nolint:staticcheck // a product name; operator-visible text kept
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return "", errors.New("Tether refused the message (HTTP " + http.StatusText(resp.StatusCode) + ")") //nolint:staticcheck // a product name; operator-visible text kept
+	}
+	var out struct {
+		ID        string `json:"id"`
+		MessageID string `json:"message_id"`
+	}
+	_ = json.Unmarshal(raw, &out)
+	if out.ID == "" {
+		out.ID = out.MessageID
+	}
+	return out.ID, nil
 }
 
 // upstreamClient is a plain client that carries the credential for base (refused over http to a

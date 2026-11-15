@@ -23,7 +23,7 @@ test("390px: three tabs and More; More reaches every other area", async ({ page 
   expect(await tabs.count()).toBeGreaterThanOrEqual(3)
 })
 
-for (const path of ["/planner", "/agents/session-1", "/settings", "/user", "/identity/keys"]) {
+for (const path of ["/planner", "/agents/sess_work", "/settings", "/user", "/identity/keys"]) {
   test(`390px wide: ${path} does not overflow horizontally`, async ({ page }) => {
     await page.goto(path)
     await page.waitForLoadState("networkidle")

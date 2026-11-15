@@ -3,6 +3,7 @@ import { Toaster, TooltipProvider } from "@hollis-labs/design-components"
 import { ApiKeysPage, IDENTITY_PAGES, IdentityGate } from "@hollis-labs/kit-identity"
 import { IdentityProvider, useIdentity } from "@hollis-labs/kit-identity/client"
 import {
+  BellRing,
   Bot,
   GitPullRequest,
   Hammer,
@@ -21,7 +22,7 @@ import { useEffect, useState } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { CapabilitiesProvider } from "./api/capabilities"
 import { UNAUTHORIZED_EVENT } from "./api/request"
-import { ApprovalsSurface, ChatSurface } from "./console/surface"
+import { AgentsSurface, ApprovalsSurface, ChatSurface, NeedsYouSurface } from "./console/surface"
 import { manifest, surfaceRoutes } from "./manifest"
 import { SettingsPage } from "./pages/settings"
 import { StubPage } from "./pages/stub"
@@ -37,6 +38,7 @@ const icons = {
   library: Library,
   "message-square": MessageSquare,
   "shield-check": ShieldCheck,
+  "bell-ring": BellRing,
   "scroll-text": ScrollText,
   "git-pull-request": GitPullRequest,
   settings: Settings,
@@ -50,11 +52,12 @@ const icons = {
 // resolves its own deep links from the URL with react-router.
 const pages: Record<string, PageComponent> = {
   planner: () => <PlannerSurface />,
-  agents: () => <StubPage area="Agent Ops" slice="G3" />,
+  agents: () => <AgentsSurface />,
   builder: () => <StubPage area="Builder" slice="G3" />,
   registry: () => <StubPage area="Registry" slice="G3" />,
   chat: () => <ChatSurface />,
   approvals: () => <ApprovalsSurface />,
+  "needs-you": () => <NeedsYouSurface />,
   transcripts: () => <StubPage area="Transcripts" slice="G3" />,
   repos: () => <StubPage area="Repos" slice="G3" />,
   settings: () => <SettingsPage />,

@@ -101,8 +101,10 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 |---|---|
 | object-sync schedules (enabled by `sync-objects --enable`) | `tachyon.features.object_sync` gates the scheduler engine; the schedules themselves are migrated data (D1) |
 | `TACHYON_CHAT_SYNC_INTERVAL` (sync always on) | `tachyon.features.chat_sync` (default off) and `tachyon.chat_sync_interval` (default `5s`, 1s to 1h) |
-| `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` |
+| `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` (also the ceremony meter's hourly read) |
+| agent controls and launches (on when their credentials were set) | `tachyon.features.agents_controls`: nudge, interrupt, restart, the Tether launches (new switch, B8b) |
 | `TACHYON_CATALOG_INDEX` (`0` = off) | `tachyon.features.catalog_index` |
+| builder changes and registry writes (on when a Tether credential was set) | `tachyon.features.builder_changes` (new switch, B9b) |
 | `TACHYON_CARD_EVENTS` | `tachyon.features.card_events` |
 | `TACHYON_CARD_EFFECTS_TORQUE` | `tachyon.features.card_effects_torque` |
 | card delivery (on when the file was set) | `tachyon.features.card_delivery` |
@@ -238,13 +240,51 @@ Details: `docs/api-contract.md`.
   The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
   TTL are gone. The confirm phrase stays in the approvals code.
 
-## Agents (slice B8a, the read side)
+## Builder and catalog (slice B9a, the read side)
+
+- **Same tables, same answers.** The Builder's agents, launches and library, the registry and the catalog summary
+  read the migrated catalog and library tables.
+- **`tachyon.features.catalog_index`** (the old `TACHYON_CATALOG_INDEX`) starts the catalog index. Off, nothing
+  polls Tether; the routes serve the migrated index. The old build mounted the Builder reads only with the index
+  on; the port always serves them.
+- **A fresh database has no catalog state row.** The old migration 030 seeded `catalog_state`; the first write
+  creates it, and until then it reads as the old defaults (`source_status: starting`).
+- **The imported team snapshot** is read from the migrated `api_cache` row with the old defaults (kept a week, the
+  catalog policy's freshness headers). A cache policy file's overrides come with the API cache slice.
+- **Postgres.** The library revision insert is an upsert on its key instead of `INSERT OR REPLACE`.
+- **Builder changes and registry writes (B9b) are behind `tachyon.features.builder_changes`,** a new switch: the
+  old build ran them whenever a Tether credential was set. Off, the change routes answer `503 changes_unavailable`
+  and the registry writes `501`, and nothing reaches Tether. On, the modes are the old ones: direct (plans and
+  applies itself) with `tachyon.upstreams.tether_control.token` (the old `TACHYON_TETHER_CONTROL_TOKEN_FILE`), at
+  `tether_control.url` (the old `TACHYON_TETHER_CONTROL_ADDR`) or the Tether address; otherwise handoff on the read
+  credential, ending at a bundle the operator plans in Tether. Registry writes need the control credential.
+- **A change's operator** is the signed-in person's principal id; the old build recorded a browser-session ref.
+
+## Agents (slices B8a, B8b)
 
 - **Same tables, same answers.** Agent Ops, the ceremony meter and Needs you read the migrated agents tables.
-  Old vs new on a migrated copy is equal apart from the collector's own state, request-time fields and the
-  controls B8b adds.
-- **The collector waits for B8b.** It is built and not started, so the store is not updated and nothing dials
-  Tether for it. `tachyon.features.agents_collector` will start it.
+  Old vs new on a migrated copy is equal apart from the collector's own state and request-time fields.
+- **`tachyon.features.agents_collector`** (the old `TACHYON_AGENTS_COLLECTOR`) starts the collector and the
+  ceremony meter's hourly read. Off (the default), neither runs and nothing dials Tether for them; the routes
+  serve the migrated data and report the collector `off`.
+- **The collector resumes from the migrated cursor.** With `agents_collector_state` copied, it streams from the
+  copied sequence (or first fills the gap since the copy from Tether's history) and never takes the environment
+  snapshot again.
+- **`tachyon.features.agents_controls` is new.** The old build had no switch: nudge, interrupt and restart worked
+  whenever their credentials were set, and so did the launch dialog's `POST tether/sessions` and
+  `…/{id}/launch`. In the port they are off until acceptance (plan sections 6 and 9). Off, a session reports
+  those capabilities unavailable (`409 nudge_unsupported` and the like) and a launch answers `503 disabled`.
+  Nothing reaches an agent. Settings writes (`PUT agents/settings`) are local and need no switch.
+- **The credentials are the old ones.** Nudges go as Tether mail with `tachyon.upstreams.tether_messages.token`.
+  Restarts use `tether_control.url` (default `tether.url`) and `.token`. An interrupt replies through the chat
+  bridge.
+- **The ceremony regression alert waits for the alerts slice.** The old hourly read raised a weekly
+  `ceremony.regression` alert into the alerts store, which is not ported yet; the hourly read keeps the daily
+  snapshot as before.
+- **The launch dialog's Tether reads** (`tether/workers`, `tether/sessions`, `tether/sessions/{id}`,
+  `catalog/launches`) are passed through on demand as the old console plugin did, with its reviewed paths,
+  queries and body fields. Errors are the port's flat `{code, message}`, not the plugin's nested
+  `{error: {code, message}}`.
 - **A fresh database has no collector state row.** The old migration 024 seeded `agents_collector_state`; the
   port's baseline schema holds no rows, and migrate-from copies the old row. On a fresh database the first write
   creates it, and until then it reads as the zero state. The old migrations 030 (`catalog_state`) and 032
@@ -387,6 +427,7 @@ wins, and each real difference is a kit-gap task rather than a reason to keep th
 | `src/console/autolink`, `src/console/refs` | reference chips, detection, previews, drawer | `sheet.tsx` stays (Sheet-over-Dialog stacking, CW-20261115-0033) |
 | `src/console/forge`, `events`, `observations`, `builder`, `agents`, `files`, `fleet`, `tesseract` | the preview panes reference chips open | domain views on design-components and kit-dashboard parts; `files` table is rendered file content, not a data table |
 | `src/console/approvals`, `components` (G4) | approvals surface; chip, avatar, keycap, pill tabs | see G4: `PillTabs` swaps to `DashboardViewTabs`. The decision bar and `CardForm`/`SecretDialog` stay app UI until CW-20261115-0031 (undo, snooze, secret upload). `InitialsAvatar` and `Keycap` have no kit equivalent |
+| `src/console/agents-monitor`, `needs-you`, `fleet` launch (G5, main 99c7b88) | Agent Ops (sessions, timeline, seats, ceremony, controls, launch) and Needs you | domain views on design-components and kit-dashboard layout; no kit equivalent. The Teams tab is a note until G6 (CW-20261115-0063) restores team operations |
 | `src/console/{lib,seams,shell,operator,testkit}` | helpers, seams, test kit | `operator/elevation.ts` is replaced by the port (no step-up) |
 | `src/packages/torque-client`, `src/packages/host-sdk` | API client, host fetch and freshness | `hostFetch` sends `X-Requested-With` and hands a 401 to sign-in |
 
@@ -402,7 +443,7 @@ ships its gap, and nothing new is built on them.
 | autolink `sheet.tsx` (Sheet over Dialog); its acceptance test is `autolink/drawerStacking.test.tsx` | CW-20261115-0033 | swap on pin bump when the gap ships |
 | page heading (the shell's and the page's `h1`) | CW-20261115-0026 (app-shell `PageHeader`) | drop the extra heading on pin bump when the gap ships |
 
-Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`). A sync slice
+Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`, `observations/store.ts`). A sync slice
 before P1 picks that up.
 
 ## What the operator does differently

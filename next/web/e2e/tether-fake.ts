@@ -8,6 +8,7 @@
  *   GET  /routing/capabilities?session=   reply routing for a session
  *   POST /messages/:id/reply              a reply to a publication; the receipt
  *   GET  /messages/:id/delivery           a reply's delivery, always delivered
+ *   POST /messages                        mail (Agent Ops nudges); a payload containing REFUSE answers 503
  *
  * Shapes follow mesh/core tetherclient (ChannelMessage, RoutingCapabilitiesResponse, ReplyReceipt,
  * ReplyDelivery). Environment: E2E_TETHER_ADDR host:port to listen on.
@@ -140,6 +141,13 @@ const server = createServer(async (req, res) => {
       updated_at: r.at,
       settled_at: r.at,
     })
+  }
+  // Mail (Agent Ops nudges, B8b). A body containing REFUSE is refused, for the control error path.
+  if (req.method === "POST" && path === "/messages") {
+    const msg = await body(req)
+    const text = JSON.stringify(msg.payload ?? "")
+    if (text.includes("REFUSE")) return send(res, 503, { error: "mailbox unavailable" })
+    return send(res, 201, { id: `msg-e2e-${Date.now()}` })
   }
   send(res, 404, { error: "not served by the e2e fake" })
 })

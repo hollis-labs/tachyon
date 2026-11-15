@@ -1,0 +1,98 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ActivityTab, toBusTimeline, type BusEvent } from './activity-tab'
+
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
+
+const NOW = Date.parse('2026-10-30T12:00:00Z')
+const ev = (over: Partial<BusEvent> & { id: string; seq: number }): BusEvent => ({ at: NOW - 1000, type: 'deploy', subject: 'Deployed tachyon', actor: 'archie', app: 'tachyon', severity: 'info', refs: [], card: null, ...over })
+const page = (events: BusEvent[], next: number | null) => Promise.resolve(new Response(JSON.stringify({ events, next_before: next }), { status: 200 }))
+
+describe('Activity', () => {
+  it('colours only failures and maps types to facets', () => {
+    const rows = toBusTimeline([ev({ id: 'a', seq: 3 }), ev({ id: 'b', seq: 2, type: 'failure', severity: 'error' }), ev({ id: 'c', seq: 1, type: 'host' })], NOW)
+    expect(rows.map((r) => [r.facet, r.tone])).toEqual([['deploys', 'neutral'], ['failures', 'blocked'], ['other', 'neutral']])
+  })
+
+  it('drops a card that only repeats the subject and keeps the ref chip', () => {
+    const refs = [{ kind: 'task', ref: 'CW-1', label: 'CW-1' }]
+    const [same, told] = toBusTimeline([
+      ev({ id: 'a', seq: 2, type: 'task', subject: 'CW-1 done', refs, card: { title: 'CW-1 done', summary: '' } }),
+      ev({ id: 'b', seq: 1, type: 'deploy', refs, card: { title: 'tachyon 1.2', summary: 'Rolled out' } }),
+    ], NOW)
+    expect(same.card).toBeNull()
+    expect(told.card).toEqual({ title: 'tachyon 1.2', summary: 'Rolled out' })
+    render(<>{same.body}</>)
+    expect(document.querySelector('a[data-ref-kind="torque.task"]')?.getAttribute('href')).toBe('/tasks/CW-1') // the shared reference chip, not a dead label
+  })
+
+  it('writes a task line as the golden does and names only a real actor', () => {
+    const refs = [{ kind: 'task', ref: 'CW-1', label: 'CW-1' }]
+    const [moved, closed, host] = toBusTimeline([
+      ev({ id: 'a', seq: 3, type: 'task', subject: 'CW-1 review', refs, actor: 'archie', app: 'torque' }),
+      ev({ id: 'b', seq: 2, type: 'task', subject: 'CW-1 done', refs, actor: 'system', app: 'torque' }),
+      ev({ id: 'c', seq: 1, type: 'host', subject: 'worker-2 offline', actor: 'system', app: 'tether' }),
+    ], NOW)
+    const text = (n: React.ReactNode) => { const { container, unmount } = render(<>{n}</>); const t = container.textContent ?? ''; unmount(); return t.replace(/\s+/g, ' ').trim() }
+    expect(text(moved.body)).toBe('Task CW-1 moved to review by @archie')
+    expect(text(closed.body)).toBe('Task CW-1 closed')
+    expect(text(host.body)).toBe('worker-2 offline')
+  })
+
+  it('files mail and seat rows under their own facets', async () => {
+    const rows = toBusTimeline([ev({ id: 'm', seq: 2, type: 'message', subject: '@archie sent request to @photon-tachyon', app: 'tether' }), ev({ id: 's', seq: 1, type: 'seat', severity: 'warn', subject: '@photon-tachyon is waiting on @chrispian', app: 'tether' })], NOW)
+    expect(rows.map((r) => [r.facet, r.tone])).toEqual([['mail', 'neutral'], ['seats', 'neutral']])
+    vi.stubGlobal('fetch', vi.fn(() => page([ev({ id: 'm', seq: 2, type: 'message', subject: '@archie sent request to @photon-tachyon' }), ev({ id: 'd', seq: 1 })], null)))
+    render(<ActivityTab busTick={0} now={NOW} />)
+    expect(await screen.findByText(/@archie sent request/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Mail/ }))
+    await waitFor(() => expect(screen.queryByText(/Deployed tachyon/)).toBeNull())
+    expect(screen.getByText(/@archie sent request/)).toBeTruthy()
+  })
+
+  it("adds Tether's own summary as a second line only when it says more than the row", async () => {
+    const [told, same, none] = toBusTimeline([
+      ev({ id: 'a', seq: 3, subject: 'tachyon deployed', summary: 'tachyon deployed v2 on host-a', cell: 'ops' }),
+      ev({ id: 'b', seq: 2, subject: 'tachyon deployed', summary: 'tachyon deployed' }),
+      ev({ id: 'c', seq: 1, subject: 'tachyon deployed' }),
+    ], NOW)
+    expect([told.detail, same.detail, none.detail]).toEqual(['tachyon deployed v2 on host-a', undefined, undefined])
+    vi.stubGlobal('fetch', vi.fn(() => page([ev({ id: 'a', seq: 3, subject: 'tachyon deployed', summary: 'tachyon deployed v2 on host-a' })], null)))
+    render(<ActivityTab busTick={0} now={NOW} />)
+    expect(await screen.findByText('tachyon deployed v2 on host-a')).toBeTruthy()
+  })
+
+  it('shows the empty state, then pages older events in with Show more', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      urls.push(url)
+      return url.includes('before_seq=5') ? page([ev({ id: 'old', seq: 4, subject: 'Older deploy' })], null) : page([ev({ id: 'new', seq: 6, subject: 'Newer deploy' })], 5)
+    }))
+    render(<ActivityTab busTick={0} now={NOW} />)
+    expect(await screen.findByText(/Newer deploy/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show 50 more' }))
+    expect(await screen.findByText(/Older deploy/)).toBeTruthy()
+    expect(urls.some((u) => u.includes('before_seq=5'))).toBe(true)
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Show/ })).toBeNull())
+  })
+
+  it('says collecting when there are no events', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => page([], null)))
+    render(<ActivityTab busTick={0} now={NOW} />)
+    expect(await screen.findByText('No events yet; collecting')).toBeTruthy()
+  })
+
+  it('lists connected and not connected sources and explains an empty source', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.endsWith('/collector')) return Promise.resolve(new Response(JSON.stringify({ bus_topics: { deploy: 'live', restart: 'no_emitter', task: 'off', failure: 'live' } }), { status: 200 }))
+      return page([ev({ id: 'a', seq: 3 })], null)
+    }))
+    render(<ActivityTab busTick={0} now={NOW} />)
+    expect((await screen.findByTestId('activity-sources')).textContent).toMatch(/Connected sources: deploys, failures\. Not connected: restarts, tasks\./)
+    fireEvent.click(screen.getByRole('button', { name: /^Restarts/ }))
+    expect(await screen.findByText('No host events yet - emitter not connected')).toBeTruthy()
+  })
+})

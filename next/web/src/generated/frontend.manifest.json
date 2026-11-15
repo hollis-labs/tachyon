@@ -180,10 +180,27 @@
         },
         {
           "kind": "nav.item",
+          "key": "needs-you",
+          "label": "Needs you",
+          "icon": "bell-ring",
+          "priority": 3,
+          "route": "/needs-you",
+          "requires": "tachyon.agents.read"
+        },
+        {
+          "kind": "surface",
+          "key": "needs-you",
+          "label": "Needs you",
+          "route": "/needs-you",
+          "layout": "list",
+          "title": "Needs you"
+        },
+        {
+          "kind": "nav.item",
           "key": "builder",
           "label": "Builder",
           "icon": "hammer",
-          "priority": 3,
+          "priority": 4,
           "route": "/builder",
           "requires": "tachyon.builder.read"
         },
@@ -200,7 +217,7 @@
           "key": "registry",
           "label": "Registry",
           "icon": "library",
-          "priority": 4,
+          "priority": 5,
           "route": "/registry",
           "requires": "tachyon.builder.read"
         },
@@ -217,7 +234,7 @@
           "key": "chat",
           "label": "Chat",
           "icon": "message-square",
-          "priority": 5,
+          "priority": 6,
           "route": "/chat",
           "requires": "tachyon.chat.read"
         },
@@ -234,7 +251,7 @@
           "key": "approvals",
           "label": "Approvals",
           "icon": "shield-check",
-          "priority": 6,
+          "priority": 7,
           "route": "/approvals",
           "requires": "tachyon.approvals.read"
         },
@@ -251,7 +268,7 @@
           "key": "transcripts",
           "label": "Transcripts",
           "icon": "scroll-text",
-          "priority": 7,
+          "priority": 8,
           "route": "/dashboards/transcripts",
           "requires": "tachyon.transcripts.read"
         },
@@ -268,7 +285,7 @@
           "key": "repos",
           "label": "Repos",
           "icon": "git-pull-request",
-          "priority": 8,
+          "priority": 9,
           "route": "/repos",
           "requires": "tachyon.forge.read"
         },
@@ -411,22 +428,32 @@
     },
     {
       "kind": "nav.item",
-      "key": "builder",
-      "label": "Builder",
-      "icon": "hammer",
-      "priority": 3,
-      "route": "/builder",
-      "requires": "tachyon.builder.read",
-      "module": "tachyon"
-    },
-    {
-      "kind": "nav.item",
       "key": "identity-keys",
       "label": "Access keys",
       "icon": "key-round",
       "priority": 3,
       "region": "nav.footer",
       "route": "/identity/keys",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "needs-you",
+      "label": "Needs you",
+      "icon": "bell-ring",
+      "priority": 3,
+      "route": "/needs-you",
+      "requires": "tachyon.agents.read",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "builder",
+      "label": "Builder",
+      "icon": "hammer",
+      "priority": 4,
+      "route": "/builder",
+      "requires": "tachyon.builder.read",
       "module": "tachyon"
     },
     {
@@ -444,7 +471,7 @@
       "key": "registry",
       "label": "Registry",
       "icon": "library",
-      "priority": 4,
+      "priority": 5,
       "route": "/registry",
       "requires": "tachyon.builder.read",
       "module": "tachyon"
@@ -454,7 +481,7 @@
       "key": "chat",
       "label": "Chat",
       "icon": "message-square",
-      "priority": 5,
+      "priority": 6,
       "route": "/chat",
       "requires": "tachyon.chat.read",
       "module": "tachyon"
@@ -464,7 +491,7 @@
       "key": "approvals",
       "label": "Approvals",
       "icon": "shield-check",
-      "priority": 6,
+      "priority": 7,
       "route": "/approvals",
       "requires": "tachyon.approvals.read",
       "module": "tachyon"
@@ -474,19 +501,9 @@
       "key": "transcripts",
       "label": "Transcripts",
       "icon": "scroll-text",
-      "priority": 7,
+      "priority": 8,
       "route": "/dashboards/transcripts",
       "requires": "tachyon.transcripts.read",
-      "module": "tachyon"
-    },
-    {
-      "kind": "nav.item",
-      "key": "repos",
-      "label": "Repos",
-      "icon": "git-pull-request",
-      "priority": 8,
-      "route": "/repos",
-      "requires": "tachyon.forge.read",
       "module": "tachyon"
     },
     {
@@ -497,6 +514,16 @@
       "priority": 9,
       "region": "nav.footer",
       "route": "/identity/sign-out",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "repos",
+      "label": "Repos",
+      "icon": "git-pull-request",
+      "priority": 9,
+      "route": "/repos",
+      "requires": "tachyon.forge.read",
       "module": "tachyon"
     },
     {
@@ -560,6 +587,15 @@
       "route": "/identity/sign-out",
       "layout": "form",
       "title": "Sign out",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "needs-you",
+      "label": "Needs you",
+      "route": "/needs-you",
+      "layout": "list",
+      "title": "Needs you",
       "module": "tachyon"
     },
     {

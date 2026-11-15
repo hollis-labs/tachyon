@@ -38,11 +38,28 @@
     },
     {
       "kind": "nav.item",
+      "key": "needs-you",
+      "label": "Needs you",
+      "icon": "bell-ring",
+      "route": "/needs-you",
+      "priority": 3,
+      "requires": "tachyon.agents.read"
+    },
+    {
+      "kind": "surface",
+      "key": "needs-you",
+      "label": "Needs you",
+      "title": "Needs you",
+      "route": "/needs-you",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
       "key": "builder",
       "label": "Builder",
       "icon": "hammer",
       "route": "/builder",
-      "priority": 3,
+      "priority": 4,
       "requires": "tachyon.builder.read"
     },
     {
@@ -59,7 +76,7 @@
       "label": "Registry",
       "icon": "library",
       "route": "/registry",
-      "priority": 4,
+      "priority": 5,
       "requires": "tachyon.builder.read"
     },
     {
@@ -76,7 +93,7 @@
       "label": "Chat",
       "icon": "message-square",
       "route": "/chat",
-      "priority": 5,
+      "priority": 6,
       "requires": "tachyon.chat.read"
     },
     {
@@ -93,7 +110,7 @@
       "label": "Approvals",
       "icon": "shield-check",
       "route": "/approvals",
-      "priority": 6,
+      "priority": 7,
       "requires": "tachyon.approvals.read"
     },
     {
@@ -110,7 +127,7 @@
       "label": "Transcripts",
       "icon": "scroll-text",
       "route": "/dashboards/transcripts",
-      "priority": 7,
+      "priority": 8,
       "requires": "tachyon.transcripts.read"
     },
     {
@@ -127,7 +144,7 @@
       "label": "Repos",
       "icon": "git-pull-request",
       "route": "/repos",
-      "priority": 8,
+      "priority": 9,
       "requires": "tachyon.forge.read"
     },
     {

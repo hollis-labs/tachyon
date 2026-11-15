@@ -26,6 +26,9 @@ const chatBackend = process.env.TACHYON_E2E_CHAT === "backend"
 /** The approvals backend run (TACHYON_E2E_APPROVALS=backend) applies e2e/approvals-seed.sql before serving. */
 const approvalsBackend = process.env.TACHYON_E2E_APPROVALS === "backend"
 const approvalsSeed = fileURLToPath(new URL("./e2e/approvals-seed.sql", import.meta.url))
+/** The Agent Ops backend run (TACHYON_E2E_AGENTS=backend) applies e2e/agents-seed.sql before serving. */
+const agentsBackend = process.env.TACHYON_E2E_AGENTS === "backend"
+const agentsSeed = fileURLToPath(new URL("./e2e/agents-seed.sql", import.meta.url))
 
 function server(where: string, listen: string, withOwner: boolean, url: string) {
   return {
@@ -35,8 +38,10 @@ function server(where: string, listen: string, withOwner: boolean, url: string) 
       E2E_DIR: where,
       E2E_ADDR: `127.0.0.1:${listen}`,
       E2E_OWNER: withOwner ? "1" : "0",
-      E2E_TETHER: withOwner && chatBackend ? tether : "",
+      E2E_TETHER: withOwner && (chatBackend || agentsBackend) ? tether : "",
+      E2E_AGENTS_CONTROLS: withOwner && agentsBackend ? "1" : "",
       E2E_APPROVALS_SEED: withOwner && approvalsBackend ? approvalsSeed : "",
+      E2E_AGENTS_SEED: withOwner && agentsBackend ? agentsSeed : "",
     },
     url: `${url}/healthz`,
     // Never reuse a server: this suite owns the data directory it starts on, and a port already in
@@ -60,7 +65,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: [
-    ...(chatBackend
+    ...(chatBackend || agentsBackend
       ? [
           {
             command: `node '${fake}'`,

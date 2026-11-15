@@ -300,7 +300,7 @@ Served under `/api/plugins/console/v1/approval-inbox`, from the migrated `approv
 - Not served: the producer API `/api/approvals/v1` (not ported), the trusted Basalisk API, and the Tangent
   session routes (section 1).
 
-## 5e. Agents, ceremony and Needs you (slice B8a, the read side)
+## 5e. Agents, ceremony and Needs you (slices B8a, B8b)
 
 Served under `/api/plugins/console/v1`, from the migrated `agents_*`, `bus_events`, `seat_status`, `ceremony_daily`
 and `checkpoint_events` tables:
@@ -311,15 +311,50 @@ and `checkpoint_events` tables:
 | `GET agents/stream` (SSE), `agents/settings`, `agents/seats`, `agents/controls/{request_id}`, `agents/collector`, `agents/bus/events` | `tachyon.agents.read` | |
 | `GET ceremony` | `tachyon.agents.read` | |
 | `GET needs-you` | `tachyon.agents.read` | |
+| `PUT agents/settings`, `POST agents/sessions/{id}/nudge`, `…/restart`, `POST agents/controls/{request_id}/skip` | `tachyon.agents.control` | yes |
+| `GET tether/workers`, `tether/sessions`, `tether/sessions/{id}`, `GET catalog/launches` | `tachyon.agents.read` | |
+| `POST tether/sessions`, `POST tether/sessions/{id}/launch` | `tachyon.agents.control` | yes |
 
 - Request and response shapes, status codes and error codes are the old build's (`internal/agentsapi/openapi.yaml`).
-- The collector is not started in B8a: `agents/collector` reports it `off`, and the data is what was migrated.
+- With `tachyon.features.agents_collector` off (the default) the collector is not started: `agents/collector`
+  reports it `off`, and the data is what was migrated.
+- With `tachyon.features.agents_controls` off (the default), nudge, interrupt and restart are unavailable (`409
+  nudge_unsupported`, `interrupt_unsupported`, `restart_unsupported`) and the Tether launches answer `503
+  disabled`; nothing is sent.
+- The Tether reads and launches answer `503 configuration` without `tachyon.upstreams.tether.url`; a malformed id
+  is `404 not_found`; the reviewed body fields are checked before anything is forwarded (`400 invalid_request`).
 - Needs you reads the operator's mailbox from a configured Tether, and the ceremony meter reads a configured
   Torque, on demand, as before. Without them those sources report `not configured`.
 - Needs you reads need no operator, as in the old build (its guard let GETs through).
-- Not yet served (B8b): `PUT agents/settings`, `POST agents/sessions/{id}/nudge` and `/restart`,
-  `POST agents/controls/{request_id}/skip`, the collector loop, the ceremony meter's hourly read and its alert,
-  and the Tether launch passthroughs (`catalog/launches`, `tether/workers`, `tether/sessions*`).
+- Not yet: the ceremony meter's weekly regression alert (the alerts slice).
+
+## 5f. Builder, registry and catalog (slice B9a, the read side)
+
+Served under `/api/plugins/console/v1`, from the migrated `catalog_*`, `library_*`, `part_refs` and `api_cache` tables:
+
+| Route | Scope |
+|---|---|
+| `GET builder/summary`, `GET builder/stream` (SSE) | `tachyon.builder.read` |
+| `GET builder/agents[/{id}[/used_by\|checks\|history\|resolved]]`, `builder/launches[/{id}]` | `tachyon.builder.read` |
+| `GET builder/library/{kind}[/{id}[/used_by\|history]]` | `tachyon.builder.read` |
+| `GET registry/projects[/{id}]` | `tachyon.builder.read` |
+| `GET catalog/team-policy`, `GET catalog/imported-teams` | `tachyon.catalog.read` |
+
+- Request and response shapes, status codes and error codes are the old build's (`internal/builderapi/openapi.yaml`).
+- The catalog index runs only with `tachyon.features.catalog_index` (and a Tether address); off, the summary and
+  stream serve the migrated index.
+- The agents, launches and registry reads ask a configured Tether for live sessions and the registry on demand,
+  as before; without Tether they report live counts as unknown and the registry answers `503`.
+- `catalog/team-policy` reads Tether's `teams-policy.yaml` through the reviewed proxy (`503 configuration` without
+  Tether). `catalog/imported-teams` serves the snapshot an operator imported into the old API cache, or an empty
+  one.
+- **Writes (slice B9b):** `GET builder/capabilities`, `GET builder/changes[/{id}[/bundle]]` (`tachyon.builder.read`);
+  `POST builder/changes` and its `submit`, `cancel`, `rearm`, `mark_planned`, `check`; `POST builder/launches/{id}/launch`;
+  `POST registry/projects`, `PATCH …/{id}`, `POST`/`DELETE …/{id}/link` (`tachyon.builder.write`, operator check).
+  With `tachyon.features.builder_changes` off the change routes answer `503 changes_unavailable` and the registry writes
+  `501 registry_write_unavailable`, as the old build did unconfigured; nothing reaches Tether.
+- Not yet served (B9b-2, CW-20261115-0085): the console's object writes and the Tether provider verbs (team runs,
+  formations, provider actions).
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 

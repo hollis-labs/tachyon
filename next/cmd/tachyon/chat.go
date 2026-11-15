@@ -45,7 +45,7 @@ type chatDeps struct {
 	turns     *chatbridge.Owned
 	roster    http.Handler
 	outbox    http.Handler
-	send      http.Handler // POST agents/{launch}/send (B6c)
+	send      http.Handler      // POST agents/{launch}/send (B6c)
 	app       *appagent.Service // nil: the app agent is not configured
 	topics    *chattopics.Handler
 	plan      *chatplan.Service

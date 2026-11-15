@@ -105,8 +105,10 @@ type Upstreams struct {
 type Features struct {
 	ObjectSync        bool // scheduler dispatch of object-sync jobs (Tether, Cerberus, GitHub reads)
 	ChatSync          bool // the Tether chat sync loop
-	AgentsCollector   bool // the Tether environment stream read model
+	AgentsCollector   bool // the Tether environment stream read model, and the ceremony meter's hourly read
+	AgentsControls    bool // agent controls and launches over Tether: nudge, interrupt, restart, launch
 	CatalogIndex      bool // the Tether catalog poller
+	BuilderChanges    bool // builder changes, the launch action and registry writes over Tether
 	CardEvents        bool // publish card.* events to the events hub
 	CardEffectsTorque bool // approved cards may change Torque
 	CardDelivery      bool // push card outcomes to the asker over Tether messages
@@ -166,7 +168,9 @@ func featureKeys(f *Features) []struct {
 		{"object_sync", &f.ObjectSync},
 		{"chat_sync", &f.ChatSync},
 		{"agents_collector", &f.AgentsCollector},
+		{"agents_controls", &f.AgentsControls},
 		{"catalog_index", &f.CatalogIndex},
+		{"builder_changes", &f.BuilderChanges},
 		{"card_events", &f.CardEvents},
 		{"card_effects_torque", &f.CardEffectsTorque},
 		{"card_delivery", &f.CardDelivery},
