@@ -237,6 +237,20 @@ Details: `docs/api-contract.md`.
   The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
   TTL are gone. The confirm phrase stays in the approvals code.
 
+## Agents (slice B8a, the read side)
+
+- **Same tables, same answers.** Agent Ops, the ceremony meter and Needs you read the migrated agents tables.
+  Old vs new on a migrated copy is equal apart from the collector's own state, request-time fields and the
+  controls B8b adds.
+- **The collector waits for B8b.** It is built and not started, so the store is not updated and nothing dials
+  Tether for it. `tachyon.features.agents_collector` will start it.
+- **A fresh database has no collector state row.** The old migration 024 seeded `agents_collector_state`; the
+  port's baseline schema holds no rows, and migrate-from copies the old row. On a fresh database the first write
+  creates it, and until then it reads as the zero state. The old migrations 030 (`catalog_state`) and 032
+  (`alert_seq`) seed rows the same way, so their slices need the same handling.
+- **Postgres.** Upserts name their table on the right-hand side, scalar `MAX`/`MIN` are `CASE`s, the sample
+  pruning uses its key instead of `rowid`, and the bus and gap inserts read their id with `RETURNING`.
+
 ## Approvals (slice B7)
 
 - **Same tables, same rows.** The inbox reads and writes the migrated `approval_items`, `approval_item_index`,

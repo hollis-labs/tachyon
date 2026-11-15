@@ -1,0 +1,11 @@
+{
+ "stale_after_s": 900,
+ "handoff_prompt": "Write a short handoff of your current work to Tesseract, then reply 'done'.",
+ "handoff_timeout_s": 300,
+ "nudge_presets": [
+  "Continue",
+  "Wrap up",
+  "Summarize then clear",
+  "Stop and report"
+ ]
+}

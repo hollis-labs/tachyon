@@ -1,0 +1,17 @@
+{
+ "sessions": [
+  {
+   "session_id": "sess_prev",
+   "started_at": 1793232000000,
+   "ran_ms": 14400000,
+   "tokens": {
+    "input": 400000,
+    "output": 90000
+   },
+   "tool_calls": 530,
+   "ended_at": 1793246400000,
+   "end_reason": "restart",
+   "replaced_by": "sess_work"
+  }
+ ]
+}

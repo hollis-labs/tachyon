@@ -1,0 +1,113 @@
+[
+ {
+  "id": null,
+  "type": "collector",
+  "data": {
+   "collecting": true,
+   "sessions": 10,
+   "last_event_at": 1793322000000,
+   "sources": {
+    "tether": {
+     "state": "streaming",
+     "detail": ""
+    },
+    "chimera": {
+     "state": "polling",
+     "detail": ""
+    }
+   }
+  }
+ },
+ {
+  "id": null,
+  "type": "session",
+  "data": {
+   "session": {
+    "id": "sess_work",
+    "state": "working",
+    "last_activity_at": 1793322000000,
+    "one_liner": {
+     "verb": "Reading",
+     "target": "internal/appagent/",
+     "tool": "Read",
+     "at": 1793321992000,
+     "calls_this_turn": 7
+    }
+   }
+  }
+ },
+ {
+  "id": 101,
+  "type": "bus",
+  "data": {
+   "event": {
+    "id": "bus_0",
+    "seq": 77000,
+    "at": 1793322000000,
+    "type": "deploy",
+    "subject": "tachyon deployed (v0.31.2)",
+    "actor": "system",
+    "app": "cerberus",
+    "severity": "info",
+    "refs": [],
+    "card": null
+   }
+  }
+ },
+ {
+  "id": null,
+  "type": "summary",
+  "data": {
+   "summary": {
+    "working": 2,
+    "waiting": 2,
+    "idle": 1,
+    "stale": 4,
+    "unknown": 1
+   }
+  }
+ },
+ {
+  "id": 102,
+  "type": "control",
+  "data": {
+   "request_id": "req_nudge_delivered",
+   "state": "delivered"
+  }
+ },
+ {
+  "id": 103,
+  "type": "gap",
+  "data": {
+   "start": 1793320200000,
+   "end": 1793320500000,
+   "reason": "tachyon_offline"
+  }
+ },
+ {
+  "id": 104,
+  "type": "control",
+  "data": {
+   "request_id": "req_restart_waiting",
+   "state": "waiting"
+  }
+ },
+ {
+  "id": 105,
+  "type": "bus",
+  "data": {
+   "event": {
+    "id": "bus_1",
+    "seq": 77001,
+    "at": 1793321880000,
+    "type": "failure",
+    "subject": "Health check failed: nanite",
+    "actor": "system",
+    "app": "cerberus",
+    "severity": "error",
+    "refs": [],
+    "card": null
+   }
+  }
+ }
+]
