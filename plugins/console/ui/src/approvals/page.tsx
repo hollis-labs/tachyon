@@ -22,6 +22,7 @@ export function ApprovalsPage() {
   const linked = params.get("item")
   const [selectedId, setSelectedId] = useState<string | undefined>(linked ?? undefined)
   const [retained, setRetained] = useState<ApprovalItem>()
+  const [loadedLink, setLoadedLink] = useState<string>()
   const [showDetail, setShowDetail] = useState(!!linked)
   useEffect(() => {
     if (!linked) return
@@ -43,8 +44,10 @@ export function ApprovalsPage() {
     if (!linked || !queue) return
     let active = true
     void queue.client.present(linked).then((item) => {
-      if (active && item.action_run) setRetained(item)
-    }, () => {})
+      if (!active) return
+      setLoadedLink(linked)
+      if (item.action_run) setRetained(item)
+    }, () => { if (active) setLoadedLink(linked) })
     return () => { active = false }
   }, [linked, queue?.client])
   const restoredItem = queue?.restored
@@ -57,14 +60,21 @@ export function ApprovalsPage() {
   // A registered action outlives its pending row, including the undo hold.
   // Retain its identity until the operator deliberately selects another item.
   useEffect(() => {
-    const items = [...(queue?.inbox?.pending ?? []), ...(queue?.inbox?.history ?? [])]
-    const chosen = items.find((i) => i.item_id === selectedId)
-      ?? (!selectedId && !retained ? orderPending(queue?.inbox?.pending ?? [])[0] : undefined)
+    if (retained && (!selectedId || selectedId === retained.item_id)) return
+    const items = queue?.inbox?.pending ?? []
+    // Mirror the displayed fallback, including a stale selection whose ordinary
+    // request has just left the queue. Pin that displayed action before its hold.
+    if (linked && loadedLink !== linked && !items.some((i) => i.item_id === linked)) return
+    const held = new Set(queue?.held.map((h) => h.itemId))
+    const live = orderPending(items).filter((item) => !held.has(item.item_id) &&
+      `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`.toLowerCase().includes(search.toLowerCase()))
+    const chosen = live.find((i) => i.item_id === selectedId) ?? live[0]
     if (chosen?.action_run) {
       setRetained(chosen)
-      if (!linked) setParams({ item: chosen.item_id }, { replace: true })
+      setSelectedId(chosen.item_id)
+      if (linked !== chosen.item_id) setParams({ item: chosen.item_id }, { replace: true })
     }
-  }, [queue?.inbox, selectedId, retained, linked, setParams])
+  }, [queue?.inbox, queue?.held, selectedId, retained, linked, loadedLink, search, setParams])
   if (!queue)
     return (
       <div className="flex h-full min-w-0 flex-col">

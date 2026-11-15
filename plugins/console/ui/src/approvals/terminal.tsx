@@ -81,7 +81,9 @@ export function LiveTerminal({ run, onExit }: { run: ActionRun; onExit(): void }
         }
       } catch { /* ignore malformed control frames */ }
     }
-    ws.onclose = () => setStatus((s) => (s === "connected" || s === "connecting" ? "disconnected" : s))
+    // Server state frames describe the run, not the websocket connection. A
+    // running/waiting run still needs a reconnect control after transport loss.
+    ws.onclose = () => setStatus((s) => (["succeeded", "failed", "refused", "denied", "expired", "ended"].includes(s) ? s : "disconnected"))
     const data = t.onData((d) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(d))
     })
