@@ -229,8 +229,8 @@ type evRow struct {
 // reports hidden=true for the first half of a tool pair (the finished event represents the call).
 func humanize(sum string) (text string, hidden bool) {
 	switch {
-	case strings.HasPrefix(sum, "tool.call.started"):
-		return "", true
+	case strings.HasPrefix(sum, "tool.call.started"), sum == "session.turn_output":
+		return "", true // turn_output carries no text of its own; 'Went idle' already marks the turn's end
 	case strings.HasPrefix(sum, agentscollector.StreamTool):
 		return strings.TrimPrefix(sum, agentscollector.StreamTool), false // already a one-liner: "Reading appagent/"
 	case strings.HasPrefix(sum, "tool.call"):
