@@ -115,7 +115,10 @@ func (t *tachyon) serve(ctx context.Context) error {
 	inbox := newApprovals(ctx, app, cfg, domain)
 	stopApprovals := startApprovals(inbox)
 	defer stopApprovals()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: newAgents(app, cfg, domain, chat)})
+	agents := newAgents(app, cfg, domain, chat)
+	stopAgents := agents.start(ctx)
+	defer stopAgents()
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: agents})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err
