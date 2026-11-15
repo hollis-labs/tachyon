@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NudgeControl, RestartControl } from './controls'
-import { toTimeline } from './session-events'
+import { dayLabel, resyncs, toTimeline } from './session-events'
 import type { Session } from './types'
 
 afterEach(() => {
@@ -86,6 +86,31 @@ describe('toTimeline', () => {
     )
     expect(rows.map((r) => r.id)).toEqual(['e2', 'gap0', 'r1'])
     expect(rows[2].facet).toBe('tools')
+  })
+
+  it('keeps zero-length resync gaps off the rail and sums them for one line under it', () => {
+    const now = Date.parse('2026-10-30T12:00:00Z')
+    const d = {
+      events: [{ id: 'e1', type: 'message', at: now - 1000, summary: 'Hello' }],
+      gaps: [
+        { start: now - 30_000, end: now - 30_000, reason: 'restart', backfilled: false },
+        { start: now - 90_000, end: now - 90_000, reason: 'restart', backfilled: false },
+        { start: now - 600_000, end: now - 300_000, reason: 'tachyon_offline', backfilled: true },
+      ],
+      next_before: null,
+    }
+    const rows = toTimeline(d, now)
+    expect(rows.filter((r) => r.gap).map((r) => r.summary)).toEqual([expect.stringMatching(/^Tachyon was offline .* · events in this gap come from Tether history$/)])
+    expect(resyncs(d)).toEqual({ n: 2, since: now - 90_000 })
+    expect(resyncs({ ...d, gaps: [] })).toBeNull()
+  })
+
+  it('marks the session timeline Now / Earlier today / Yesterday, as the golden does, and Activity Today', () => {
+    const now = new Date(2026, 9, 30, 12, 0).getTime()
+    expect(dayLabel(now - 4 * 60_000, now, true)).toBe('Now')
+    expect(dayLabel(now - 72 * 60_000, now, true)).toBe('Earlier today')
+    expect(dayLabel(new Date(2026, 9, 29, 23, 0).getTime(), now, true)).toBe('Yesterday')
+    expect(dayLabel(now - 4 * 60_000, now)).toBe('Today')
   })
 })
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
 import { DashboardSearchToolbar } from '@hollis-labs/kit-dashboard/layout'
 import { Chip, SegmentedProgress } from '@planner/shared'
@@ -12,14 +13,15 @@ import { AgentsErrorBoundary } from './error-boundary'
 import { SessionModal } from './session-modal'
 import { TeamsTab } from './teams-tab'
 import { SeatsTab } from './seats-tab'
+import { CeremonyTab } from './ceremony-tab'
 import { ageText } from './session-parts'
 import { StaleAfterContext } from './session-rows'
 import { SessionBoard, SessionCards, SessionRows, matchesFilter, matchesQuery, useViewState, type GroupBy, type SessionView } from './sessions-view'
 import { AGENTS, type FilterId } from './vocabulary'
 import type { Session, SessionState } from './types'
 
-type Tab = 'sessions' | 'activity' | 'seats' | 'teams'
-const TABS: readonly Tab[] = ['sessions', 'activity', 'seats', 'teams']
+type Tab = 'sessions' | 'activity' | 'seats' | 'ceremony' | 'teams'
+const TABS: readonly Tab[] = ['sessions', 'activity', 'seats', 'ceremony', 'teams']
 const GROUPS: readonly GroupBy[] = ['workroot', 'agent', 'none']
 
 const typing = (t: EventTarget | null) => {
@@ -81,12 +83,12 @@ export function AgentsPage() {
   return (
     <StaleAfterContext.Provider value={settings.data?.stale_after_s ?? 900}>
     <div className="flex h-full min-w-0 flex-col">
-      <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border-subtle px-4">
+      <div className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border-subtle px-3 sm:gap-2.5 sm:px-4">
         <h1 className="sr-only font-mono text-caption font-semibold uppercase sm:not-sr-only leading-none tracking-label text-fg">{AGENTS.title}</h1>
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-w-0 overflow-x-auto [scrollbar-width:none]">
           <TabsList aria-label={AGENTS.tabsLabel} className="h-auto flex-nowrap gap-0.5 bg-transparent p-0">
             {TABS.map((t) => (
-              <TabsTrigger key={t} value={t} className="h-7 gap-1.5 rounded-control px-2 text-xs sm:px-3 font-normal text-fg-muted data-[active]:bg-selection data-[active]:font-semibold data-[active]:text-fg">
+              <TabsTrigger key={t} value={t} className="h-7 gap-1.5 rounded-control px-1.5 text-xs sm:px-3 font-normal text-fg-muted data-[active]:bg-selection data-[active]:font-semibold data-[active]:text-fg">
                 {AGENTS.tabs[t]}
                 {t === 'sessions' && data && <small className="hidden font-mono text-caption text-fg-faint sm:inline">{data.sessions.length}</small>}
                 {t === 'activity' && <small className="hidden font-mono text-caption text-fg-faint sm:inline">{AGENTS.live}</small>}
@@ -101,7 +103,8 @@ export function AgentsPage() {
             {data.collector.collecting ? AGENTS.collecting(data.collector.sessions, data.collector.last_event_at ? ageText(now - data.collector.last_event_at) : AGENTS.na) : AGENTS.notCollecting}
           </span>
         )}
-        <Btn tone="primary" className="shrink-0 font-sans normal-case tracking-normal" onClick={() => setLaunchOpen(true)}>{AGENTS.launch}</Btn>
+        {/* Below 640 Launch is a plus so the four tabs fit on a 360 phone; its name stays 'Launch'. */}
+        <Btn tone="primary" aria-label={AGENTS.launch} className="shrink-0 font-sans normal-case tracking-normal max-sm:px-2" onClick={() => setLaunchOpen(true)}><Plus aria-hidden className="size-3.5 sm:hidden" /><span className="max-sm:sr-only">{AGENTS.launch}</span></Btn>
       </div>
 
       {tab !== 'teams' && (
@@ -124,6 +127,7 @@ export function AgentsPage() {
       )}
       {tab === 'teams' && <AgentsErrorBoundary><TeamsTab /></AgentsErrorBoundary>}
       {tab === 'seats' && <AgentsErrorBoundary><SeatsTab busTick={busTick} now={now} /></AgentsErrorBoundary>}
+      {tab === 'ceremony' && <AgentsErrorBoundary><CeremonyTab now={now} /></AgentsErrorBoundary>}
       {tab === 'activity' && <AgentsErrorBoundary><ActivityTab busTick={busTick} now={now} /></AgentsErrorBoundary>}
       {tab === 'sessions' && (
         <>

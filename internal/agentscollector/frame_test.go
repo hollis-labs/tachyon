@@ -27,3 +27,15 @@ func TestParseFrameTetherAppIsNative(t *testing.T) {
 		t.Fatal(f.App)
 	}
 }
+
+// Tether's message.failed carries "to" as an array; that must not blank the state, reason and sender.
+func TestParseFrameMessageFailedWithRecipientArray(t *testing.T) {
+	raw := `{"seq":5636379,"kind":"message.failed","scope":"daemon","at":"2026-11-15T00:49:01.174Z","payload_json":"{\"delivery\":{\"attempt\":1,\"state\":\"retry_scheduled\"},\"from\":\"msg://agent/agent-mux/agt_a\",\"message_id\":\"m1\",\"reason\":\"lease_expired\",\"to\":[\"msg://agent/agent-mux/agt_b\"]}"}`
+	f, ok := ParseFrame([]byte(raw))
+	if !ok || f.DeliveryState != "retry_scheduled" || f.Reason != "lease_expired" || f.WorkState != "" {
+		t.Fatalf("%v %+v", ok, f)
+	}
+	if g, _ := ParseFrame([]byte(`{"seq":1,"kind":"session.work_state_changed","payload":{"from":"processing","to":"idle"}}`)); g.WorkState != "idle" || g.From != "processing" {
+		t.Fatalf("a string 'to' still reads: %+v", g)
+	}
+}

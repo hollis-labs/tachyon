@@ -4,7 +4,7 @@ import { SearchInput, Skeleton, cn } from '@hollis-labs/design-components'
 import { Chip, SegmentedProgress } from '@planner/shared'
 import { useAgentsRead } from './api'
 import { ContextBar } from './session-rows'
-import { Cite, EventFeed, toTimeline, type Entry, type EventsResponse } from './session-events'
+import { Cite, EventFeed, GapLine, clock, resyncs, toTimeline, type Entry, type EventsResponse } from './session-events'
 import { ageText } from './session-parts'
 import { AGENTS } from './vocabulary'
 import type { Session } from './types'
@@ -135,6 +135,7 @@ export function TimelineTab({ s, now }: { s: Session; now: number }) {
     <Panel read={read}>
       {(d) => {
         const all = toTimeline(d, now)
+        const rs = resyncs(d)
         const callCount = (e: Entry) => (e.type === 'tool_run' ? e.calls ?? 1 : 1)
         const count = (f: string) => all.filter((e) => !e.gap && (f === 'all' || e.facet === f)).reduce((n, e) => n + callCount(e), 0)
         const needle = q.trim().toLowerCase()
@@ -152,6 +153,7 @@ export function TimelineTab({ s, now }: { s: Session; now: number }) {
               </div>
             </div>
             {shown.length === 0 ? <p className="text-xs text-fg-muted">{all.length === 0 ? M.timelineEmpty : M.timelineNoMatch}</p> : <EventFeed entries={shown} now={now} limit={12} label={M.timelineStream} />}
+            {rs && <GapLine>{M.resyncs(rs.n, clock(rs.since))}</GapLine>}
           </div>
         )
       }}

@@ -47,9 +47,12 @@ type Frame struct {
 	Reason        string // gap or end reason
 	DeliveryState string // message frames: payload delivery.state (retry_scheduled, dead_letter, expired, ...)
 
-	Gap          bool // a gap frame: events were missed
-	Synchronized bool // the catch-up is over, live frames follow
-	Output       bool // session.output: counted, never stored
+	Gap bool // a gap frame: events were missed
+	// Gap frame detail from Tether: the first seq still in history, the stream's head, and whether it asks for a snapshot.
+	GapEarliest, GapHighWater int64
+	GapSnapshotRequired       bool
+	Synchronized              bool // the catch-up is over, live frames follow
+	Output                    bool // session.output: counted, never stored
 	// Payload is set ONLY on session.output frames. It is handed to the OutputSink in memory and then
 	// dropped; no code path stores or logs it.
 	Payload []byte
@@ -65,6 +68,9 @@ type Frame struct {
 	TetherSummary string
 	// Cell is the acting seat's team slug (scope.cell on the live stream, cell on GET /events).
 	Cell string
+	// CheckpointID and CheckpointState are a Torque checkpoint.state_changed's entity id (the correlation_id) and
+	// its new state; empty for every other kind.
+	CheckpointID, CheckpointState string
 	// Seat is a seat.status event's declared status, validated; nil for every other kind.
 	Seat *SeatStatus
 }
@@ -81,6 +87,9 @@ type wireFrame struct {
 	Cell      string          `json:"cell"` // GET /events; the live stream carries it as scope.cell
 	SessionID string          `json:"session_id"`
 	Reason    string          `json:"reason"`
+	Earliest  int64           `json:"earliest_available"`
+	HighWater int64           `json:"high_water_seq"`
+	SnapReq   bool            `json:"snapshot_required"`
 	Payload   json.RawMessage `json:"payload"`
 	PayloadJS json.RawMessage `json:"payload_json"` // an object, or a JSON string holding one
 }
@@ -140,6 +149,7 @@ func ParseFrame(raw []byte) (Frame, bool) {
 	switch f.Kind {
 	case "gap":
 		f.Gap = true
+		f.GapEarliest, f.GapHighWater, f.GapSnapshotRequired = w.Earliest, w.HighWater, w.SnapReq
 	case "synchronized":
 		f.Synchronized = true
 	case "session.output":
@@ -166,16 +176,16 @@ func ParseFrame(raw []byte) (Frame, bool) {
 	}
 	if len(body) > 0 && len(body) <= 64<<10 {
 		var p struct {
-			To           string `json:"to"`
-			From         string `json:"from"`
-			State        string `json:"state"`
-			SessionState string `json:"session_state"`
-			WorkState    string `json:"work_state"`
-			Provider     string `json:"provider"`
-			Model        string `json:"model"`
-			Workroot     string `json:"workroot"`
-			WorkingDir   string `json:"working_dir"`
-			TaskID       string `json:"task_id"`
+			To           json.RawMessage `json:"to"` // a state ("idle") on transitions, an array of URNs on message events
+			From         string          `json:"from"`
+			State        string          `json:"state"`
+			SessionState string          `json:"session_state"`
+			WorkState    string          `json:"work_state"`
+			Provider     string          `json:"provider"`
+			Model        string          `json:"model"`
+			Workroot     string          `json:"workroot"`
+			WorkingDir   string          `json:"working_dir"`
+			TaskID       string          `json:"task_id"`
 			Entity       struct {
 				Type string `json:"type"`
 				ID   string `json:"id"`
@@ -211,11 +221,12 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			} `json:"delivery"`
 		}
 		if json.Unmarshal(body, &p) == nil {
-			f.WorkState = clean(firstNonEmpty(p.To, p.WorkState), 40)
+			to := rawString(p.To)
+			f.WorkState = clean(firstNonEmpty(to, p.WorkState), 40)
 			f.From = clean(p.From, 40)
 			f.SessionState = clean(firstNonEmpty(p.SessionState, p.State), 40)
 			if f.Kind == "session.state_changed" && f.SessionState == "" {
-				f.SessionState = clean(p.To, 40) // Tether names the new session state as "to" (running -> killed)
+				f.SessionState = clean(to, 40) // Tether names the new session state as "to" (running -> killed)
 			}
 			f.Provider, f.Model = clean(p.Provider, 60), clean(p.Model, 80)
 			f.Workroot = clean(firstNonEmpty(p.Workroot, p.WorkingDir), 300)
@@ -225,9 +236,12 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			}
 			if w.App != "" || strings.Contains(f.Kind, ".state_changed") || strings.HasPrefix(f.Kind, "alert.") || strings.HasPrefix(f.Kind, "fleet.") || strings.HasPrefix(f.Kind, "card.") || strings.HasPrefix(f.Kind, "workstream.") {
 				f.Name = clean(firstNonEmpty(p.Name, firstNonEmpty(p.Resource, p.Subject)), 80)
-				f.State = clean(firstNonEmpty(p.State, firstNonEmpty(p.To, p.Status)), 24)
+				f.State = clean(firstNonEmpty(p.State, firstNonEmpty(to, p.Status)), 24)
 				f.Version, f.PR = clean(p.Version, 40), clean(firstNonEmpty(p.PR, p.PullRequest), 140)
 				f.Title, f.BusActor = clean(p.Title, 200), clean(p.Actor, 80)
+			}
+			if f.Kind == "checkpoint.state_changed" && p.Entity.ID != "" && rawString(p.To) != "" {
+				f.CheckpointID, f.CheckpointState = clean(p.Entity.ID, 80), clean(rawString(p.To), 24)
 			}
 			f.CardID, f.CardType = clean(p.CardID, 80), clean(p.CardType, 40)
 			f.AgentURN, f.LogicalAgentID, f.AgentName = clean(p.AgentURN, 200), clean(p.LogicalAgent, 120), clean(p.AgentName, 120)
@@ -244,6 +258,16 @@ func ParseFrame(raw []byte) (Frame, bool) {
 		}
 	}
 	return f, true
+}
+
+// rawString is v when it is a JSON string, else "": a key that is an object or array in one event kind must not
+// fail the decode of every other field (message.failed carries "to" as an array of recipients).
+func rawString(v json.RawMessage) string {
+	var s string
+	if json.Unmarshal(v, &s) != nil {
+		return ""
+	}
+	return s
 }
 
 func val(p *int64) int64 {

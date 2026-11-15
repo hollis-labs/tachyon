@@ -5,6 +5,7 @@ import { alwaysGrants, resetAllGrants, resetGrant } from './grants'
 import { ActivityPanel, ApprovalsPanel, PlanPanel, TopicsPanel, WorkPanel } from './Panels'
 import { TabStrip } from './TabStrip'
 import { DEMO_ACTIVITY, DEMO_PLAN } from './fixtures'
+import type { Plan } from './data'
 
 afterEach(cleanup)
 
@@ -68,15 +69,28 @@ describe('agent-driven aside', () => {
 describe('panels', () => {
   it('plan: empty copy with one action, and a step toggles', () => {
     const onAsk = vi.fn()
-    const { rerender } = render(<PlanPanel plan={null} loading={false} error="" setStatus={vi.fn()} addStep={vi.fn()} onAsk={onAsk} />)
+    const p = { plans: [] as Plan[], loading: false, error: '', setStatus: vi.fn(), addStep: vi.fn(), createPlan: vi.fn(), deletePlan: vi.fn(), reorderPlans: vi.fn(), moveStep: vi.fn(), onAsk }
+    const { rerender } = render(<PlanPanel {...p} />)
     expect(screen.getByText(/No plan yet/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Ask the agent to draft one' }))
     expect(onAsk).toHaveBeenCalled()
     const setStatus = vi.fn()
-    rerender(<PlanPanel plan={DEMO_PLAN} loading={false} error="" setStatus={setStatus} addStep={vi.fn()} onAsk={onAsk} />)
+    rerender(<PlanPanel {...p} plans={[DEMO_PLAN]} setStatus={setStatus} />)
     expect(screen.getByRole('progressbar', { name: '5 of 8 done' })).toBeTruthy()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Run the Parallax spike' }))
-    expect(setStatus).toHaveBeenCalledWith(expect.objectContaining({ title: 'Run the Parallax spike' }), 'done')
+    expect(setStatus).toHaveBeenCalledWith(DEMO_PLAN, expect.objectContaining({ title: 'Run the Parallax spike' }), 'done')
+  })
+  it('plan: several plans collapse, reorder with buttons and move a step', () => {
+    const mk = (id: string, title: string, steps: string[]): Plan => ({ ...DEMO_PLAN, id, title, task_ref: null, steps: steps.map((t, i) => ({ ...DEMO_PLAN.steps[0], id: `${id}-${i}`, title: t, status: 'todo' })) } as Plan)
+    const a = mk('a', 'Alpha', ['one']), b = mk('b', 'Beta', ['two'])
+    const reorderPlans = vi.fn(), moveStep = vi.fn()
+    render(<PlanPanel plans={[a, b]} loading={false} error="" setStatus={vi.fn()} addStep={vi.fn()} createPlan={vi.fn()} deletePlan={vi.fn()} reorderPlans={reorderPlans} moveStep={moveStep} onAsk={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Move Alpha down' }))
+    expect(reorderPlans).toHaveBeenCalledWith(['b', 'a'])
+    fireEvent.change(screen.getByLabelText('Move one to another plan'), { target: { value: 'b' } })
+    expect(moveStep).toHaveBeenCalledWith(a, b, 'a-0')
+    fireEvent.click(screen.getByRole('button', { name: /^Alpha/ }))
+    expect(screen.queryByRole('checkbox', { name: 'one' })).toBeNull()
   })
   it('topics and approvals have one-line empty states', () => {
     const { unmount } = render(<TopicsPanel marks={{ bookmarks: [], toggleBookmark: vi.fn(), topics: [], addTopic: vi.fn() }} />)

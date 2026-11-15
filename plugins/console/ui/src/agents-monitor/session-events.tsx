@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { AlertOctagon, ChevronDown, ChevronUp, Mail, Plus, Power, RefreshCw, RotateCcw, ShieldCheck, ShieldX, SquareCheck, Terminal, UserRound, Wrench, type LucideIcon } from 'lucide-react'
+import { AlertOctagon, CalendarDays, ChevronDown, ChevronUp, Mail, Plus, Power, RefreshCw, RotateCcw, ShieldCheck, ShieldX, SquareCheck, Terminal, UserRound, Wrench, type LucideIcon } from 'lucide-react'
 import { cn } from '@hollis-labs/design-components'
 import { CAPTION, Chip } from '@planner/shared'
 import { ageText } from './session-parts'
@@ -37,9 +37,14 @@ export function Cite({ children }: { children: ReactNode }) {
   return <code className="rounded-sm bg-surface px-1.5 py-px font-mono text-caption text-fg">{children}</code>
 }
 
-export const dayLabel = (at: number, now: number) => {
-  const days = Math.floor(now / 86_400_000) - Math.floor(at / 86_400_000)
-  return days === 0 ? M.today : days === 1 ? M.yesterday : new Date(at).toLocaleDateString()
+/** Events this recent sit under the session timeline's 'Now' marker (the stale window). */
+export const NOW_WINDOW_MS = 15 * 60_000
+const localDay = (t: number) => { const d = new Date(t); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000 }
+/** Day marker in the local calendar. `recent` splits today into 'Now' and 'Earlier today', as the golden's session timeline does; Activity keeps 'Today'. */
+export const dayLabel = (at: number, now: number, recent = false) => {
+  const days = localDay(now) - localDay(at)
+  if (days === 0) return !recent ? M.today : now - at < NOW_WINDOW_MS ? M.now : M.earlierToday
+  return days === 1 ? M.yesterday : new Date(at).toLocaleDateString()
 }
 /** 24-hour clock time, as the golden writes it (12:02, 21:40). */
 export const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -54,7 +59,7 @@ export function toTimeline(d: EventsResponse, now: number): Entry[] {
     return {
       id: e.id ?? e.run_id ?? `e${i}`,
       at,
-      day: dayLabel(at, now),
+      day: dayLabel(at, now, true),
       time: clock(at),
       facet: isRun ? 'tools' : FACET_OF[e.type] ?? 'lifecycle',
       type: e.type,
@@ -65,8 +70,28 @@ export function toTimeline(d: EventsResponse, now: number): Entry[] {
       card: e.card,
     }
   })
-  const gaps: Entry[] = (d.gaps ?? []).map((g, i) => ({ id: `gap${i}`, at: g.end, day: dayLabel(g.end, now), time: clock(g.end), facet: 'lifecycle', type: 'gap', tone: 'neutral', summary: M.gap(g.reason), gap: g.reason }))
+  const gaps: Entry[] = (d.gaps ?? []).filter((g) => !isResync(g)).map((g, i) => ({ id: `gap${i}`, at: g.end, day: dayLabel(g.end, now, true), time: clock(g.end), facet: 'lifecycle', type: 'gap', tone: 'neutral', summary: M.gap(g.reason, clock(g.start), clock(g.end), g.backfilled), gap: g.reason }))
   return [...rows, ...gaps].sort((a, b) => b.at - a.at)
+}
+
+/** A gap with no length: the stream asked for a resync at one moment. Drawn once, summed, under the timeline, never inline. */
+const isResync = (g: Gap) => g.end - g.start < 1000
+
+/** How many zero-length resyncs the page's gaps hold, and the oldest, or null when there are none. */
+export function resyncs(d: EventsResponse): { n: number; since: number } | null {
+  const rs = (d.gaps ?? []).filter(isResync)
+  return rs.length === 0 ? null : { n: rs.length, since: Math.min(...rs.map((g) => g.start)) }
+}
+
+/** The golden's gap line: a mono caption between two dashed rules, indented past the rail. */
+export function GapLine({ children, as: As = 'div' }: { children: ReactNode; as?: 'div' | 'li' }) {
+  return (
+    <As className="my-1.5 ml-9 flex items-center gap-2.5 font-mono text-caption text-fg-muted">
+      <span aria-hidden className="flex-1 border-t border-dashed border-border" />
+      <span>{children}</span>
+      <span aria-hidden className="flex-1 border-t border-dashed border-border" />
+    </As>
+  )
 }
 
 const ICON: Record<string, LucideIcon> = { deploy: RefreshCw, restart: RefreshCw, failure: AlertOctagon, host: Power, workstream: Plus, tool: Wrench, tool_run: Terminal, message: Mail, approval: ShieldCheck, error: AlertOctagon, lifecycle: Power, compaction: RotateCcw, clear: RotateCcw, task: SquareCheck, control: Power, seat: UserRound }
@@ -78,7 +103,7 @@ function Glyph({ e }: { e: Entry }) {
 
 function Row({ e, now, time }: { e: Entry; now: number; time: 'age' | 'clock' }) {
   const [open, setOpen] = useState(false)
-  if (e.gap) return <li className="ml-9 rounded-control border border-dashed border-border px-3 py-1.5 text-xs italic text-fg-muted">{e.summary}</li>
+  if (e.gap) return <GapLine as="li">{e.summary}</GapLine>
   return (
     <li className="flex flex-col">
       <div className="flex items-start gap-3 py-1.5">
@@ -123,7 +148,7 @@ export function EventFeed({ entries, now, limit, label, time = 'age', onMore }: 
       <span aria-hidden className="absolute bottom-3 left-3 top-3 border-l border-border" />
       {days.map((d) => (
         <section key={d.day} className="flex flex-col">
-          <h2 className="relative z-10 flex items-center gap-3 py-1.5"><span aria-hidden className="size-6 shrink-0" /><Chip className={cn('h-5 bg-bg-elevated', CAPTION, 'normal-case tracking-normal')}>{d.day}</Chip></h2>
+          <h2 className="relative z-10 flex items-center gap-3 py-1.5"><span aria-hidden className="relative z-10 grid size-6 shrink-0 place-items-center rounded-full border border-border bg-bg-elevated text-fg-secondary"><CalendarDays className="size-3" /></span><Chip className={cn('h-5 bg-bg-elevated', CAPTION, 'normal-case tracking-normal')}>{d.day}</Chip></h2>
           <ul className="flex flex-col">{d.rows.map((e) => <Row key={e.id} e={e} now={now} time={time} />)}</ul>
         </section>
       ))}

@@ -44,7 +44,7 @@ var chatTopicVerbs = []string{"chat.topic.add", "chat.topic.list", "chat.bookmar
 
 // ChatPlanVerbs read and write the working plan of an app chat thread. Only the chat-plan preset
 // grants them; they name no object kinds.
-var chatPlanVerbs = []string{"chat.plan.get", "chat.plan.write", "chat.plan.step"}
+var chatPlanVerbs = []string{"chat.plan.get", "chat.plan.write", "chat.plan.step", "chat.plan.list", "chat.plan.create", "chat.plan.move_step"}
 
 // TerminalVerbs let an agent propose a shell command for the operator to approve and read the run it caused.
 // Only the terminal-propose preset grants them; they name no object kinds.

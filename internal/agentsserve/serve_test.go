@@ -928,3 +928,27 @@ func TestSeatCardsJoinAddressFormsFlagForeignSettersAndStaleness(t *testing.T) {
 		t.Fatalf("declared 8h ago, nothing since: stale; set by the operator: not flagged: %+v", s)
 	}
 }
+
+func TestRawKindIsNotRowText(t *testing.T) {
+	for line, want := range map[string]bool{
+		"session.turn_output":                            true,
+		"session.work_state_changed idle → processing":   true,
+		"context compacted (auto), 367003 tokens before": false,
+		"Sent mail to @designer":                         false,
+		"v1.2 deployed":                                  false,
+		"":                                               false,
+	} {
+		if got := rawKind(line); got != want {
+			t.Errorf("rawKind(%q) = %v, want %v", line, got, want)
+		}
+	}
+}
+
+func TestTurnOutputIsNotATimelineRow(t *testing.T) {
+	if _, hidden := humanize("session.turn_output"); !hidden {
+		t.Fatal("session.turn_output has no text of its own and is not a row")
+	}
+	if text, hidden := humanize("session.work_state_changed: processing -> idle"); hidden || text != "Went idle" {
+		t.Fatalf("idle stays: %q %v", text, hidden)
+	}
+}

@@ -22,10 +22,14 @@ type Upstreams struct {
 	TesseractTokenFile string
 	CerberusAddr       string
 	CerberusTokenFile  string
-	TorqueURL          string
-	TorqueToken        string
-	GitHubToken        string
-	GitHubOrg          string
+	// CerberusSourceInstance, when set, is the object-sync identity of the Cerberus machines source instead of the
+	// address (CW-20261114-0144): it keeps imported machines and their sync schedule stable when the address
+	// changes, e.g. from the old daemon's unix socket to the new Cerberus API.
+	CerberusSourceInstance string
+	TorqueURL              string
+	TorqueToken            string
+	GitHubToken            string
+	GitHubOrg              string
 }
 
 // Stream is a host-owned server-sent-events relay. app-host's plugin route

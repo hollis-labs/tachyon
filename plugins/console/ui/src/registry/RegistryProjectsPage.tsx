@@ -24,7 +24,8 @@ const fieldList = (keys: string[]) => keys.map((k) => FIELD_LABEL[k] ?? k).join(
 const UNSAVED = 'Your edits have not been saved and will be lost.'
 
 /** Inline value: reads as text, edits in place. */
-const BARE = 'h-auto w-full border-0 bg-transparent px-0 py-0 text-control shadow-none focus-visible:ring-0'
+// The kit Input adds dark:bg-input/30 and md:text-sm; a bare in-place field needs both variants overridden.
+const BARE = 'h-auto w-full border-0 bg-transparent px-0 py-0 text-control shadow-none focus-visible:ring-0 dark:bg-transparent md:text-control'
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => void; dirtyRef: { current: number } }) {
@@ -161,7 +162,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
         </Button>
         <Tile name={p.identity.display_name || p.id} large />
         <div className="flex min-w-0 basis-full flex-col sm:flex-1 sm:basis-0">
-          <h2 className="truncate font-sans text-base font-semibold normal-case tracking-normal text-fg">{p.identity.display_name || p.id}</h2>
+          <h2 className="truncate font-sans text-control font-semibold normal-case tracking-normal text-fg">{p.identity.display_name || p.id}</h2>
           <p className="truncate font-mono text-label text-fg-muted">
             {p.id} · {STATUS[p.identity.status]?.toLowerCase() ?? p.identity.status}
           </p>
@@ -222,7 +223,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
               <ChipListField label="Entry points" editable value={val('entry_points', p.guidance.entry_points)} onChange={(next) => set({ entry_points: next })} />
             </Row>
           </dl>
-          <Textarea aria-label="Guidelines" rows={6} maxLength={8000} placeholder="Shared guidelines every agent in this project reads at boot." className="font-mono text-xs" value={val('guidelines', p.guidance.guidelines)} onChange={(e) => set({ guidelines: e.target.value })} />
+          <Textarea aria-label="Guidelines" rows={6} maxLength={8000} placeholder="Shared guidelines every agent in this project reads at boot." className="min-h-30 font-mono text-xs" value={val('guidelines', p.guidance.guidelines)} onChange={(e) => set({ guidelines: e.target.value })} />
         </section>
         <section aria-label="Tool servers" className="flex flex-col gap-2">
           <Cap>Tool servers</Cap>
