@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,6 +99,17 @@ func TestTranscriptsRoutesAuth(t *testing.T) {
 	reader, other, all := key("tachyon.transcripts.read"), key("tachyon.planner.read"), key("*")
 	anon, keys, owner := newClient(t, base), newClient(t, base), newClient(t, base)
 	owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	// The guard tells the browser session's own bearer by the session cookie's name (the identity module's default,
+	// "<app>_session", which substrate does not export). If that name changes, this fails before the guard silently
+	// refuses every browser.
+	u, _ := url.Parse(base)
+	named := false
+	for _, c := range owner.http.Jar.Cookies(u) {
+		named = named || c.Name == app.Name+"_session"
+	}
+	if !named {
+		t.Fatalf("no %s_session cookie after sign-in: the transcripts guard's cookie name is out of date", app.Name)
+	}
 	for _, path := range transcriptPaths() {
 		anon.want(401, "GET", path, nil, xrw)
 		if code := flatCode(t, keys.want(403, "GET", path, nil, other)); code != "scope_required" {

@@ -117,7 +117,8 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 
 | Old | New |
 |---|---|
-| `TACHYON_ACTION_DETACH_GRACE`, `TACHYON_TRANSCRIPT_MAX_SESSIONS`, `TACHYON_CACHE_TIMEOUT_MS` | keys added by the slice that ports each feature |
+| `TACHYON_TRANSCRIPT_MAX_SESSIONS` | `tachyon.transcripts.max_sessions` (200 to 20000, default 5000; B10) |
+| `TACHYON_ACTION_DETACH_GRACE`, `TACHYON_CACHE_TIMEOUT_MS` | keys added by the slice that ports each feature |
 | `TACHYON_CERBERUS_CONTROL` | decided by the Cerberus slice |
 | `TACHYON_CERBERUS_ELEVATION` | dropped: the operator check is fixed in code (owner question, Gaps 4) |
 | `TACHYON_CHAT_CLIENT_CONTEXT` | decided by the chat slice |
@@ -268,7 +269,11 @@ Details: `docs/api-contract.md`.
   serves the saved row on any upstream error, an unreachable one included. The old bridge did that only on a
   mapped failure, and its cache answered (still marked "live") when the connection was refused. Other reads
   answer the upstream error, where the old cache served a cached copy for up to its window.
-- **The session cap** is 5000 (the old `TACHYON_TRANSCRIPT_MAX_SESSIONS` default), a constant for now.
+- **The session cap** is `tachyon.transcripts.max_sessions` (200 to 20000, default 5000), as the old
+  `TACHYON_TRANSCRIPT_MAX_SESSIONS`.
+- **The guard depends on the session cookie's name.** The identity module names it `<app>_session` and does not
+  export the name. A served test fails if sign-in stops setting that cookie, before the guard could refuse every
+  browser.
 
 ## Approvals (slice B7)
 

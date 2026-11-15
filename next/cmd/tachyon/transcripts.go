@@ -30,6 +30,7 @@ func newTranscripts(app *module.App, cfg settings.Settings, domain *store.Store)
 	token := upstreamauth.FromRef(secrets.Resolver(app), cfg.Upstreams.Fragments.Token)
 	b := transcripts.New(cfg.Upstreams.Fragments.URL, token, cfg.Features.Transcripts)
 	b.DB = domain
+	b.MaxSessions = cfg.Transcripts.MaxSessions // tachyon.transcripts.max_sessions (default 5000)
 	return transcriptsGuard(app.Name+"_session", b)
 }
 
