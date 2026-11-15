@@ -42,6 +42,9 @@ func FromTether(f agentscollector.Frame) (Event, bool) {
 		case "retry_scheduled", "wake_deferred":
 			return Event{}, false
 		}
+		if f.Reason == "nacked" {
+			return Event{}, false // a busy session's nack, not a delivery failure
+		}
 		e.Kind = "message.failed"
 	default:
 		return Event{}, false

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, EmptyState, Skeleton } from '@hollis-labs/design-components'
-import { FilterChipGroup } from '@hollis-labs/kit-dashboard/data'
 import { DashboardSearchToolbar } from '@hollis-labs/kit-dashboard/layout'
 import { CAPTION, Chip } from '@planner/shared'
 import { RunOperations } from '../agents/TeamOperations'
@@ -175,7 +174,14 @@ export function TeamsTab() {
   return (
     <section aria-label={TEAMS.listLabel} className="flex min-h-0 flex-1 flex-col">
       <DashboardSearchToolbar value={query} onChange={setQuery} label={TEAMS.searchLabel} placeholder={TEAMS.searchPlaceholder} slashToFocus>
-        <FilterChipGroup ariaLabel={TEAMS.filtersLabel} variant="outline" chips={(Object.keys(TEAMS.filters) as Filter[]).map((f) => ({ value: f, label: f === 'all' ? TEAMS.filters.all : `${TEAMS.filters[f]} ${count(f)}` }))} selected={[filter]} onToggle={(v) => setFilter(v as Filter)} />
+        {/* Pill chips with counts, as on the Sessions and Activity tabs (the golden's filter style). */}
+        <div role="toolbar" aria-label={TEAMS.filtersLabel} className="flex flex-wrap items-center gap-1.5">
+          {(Object.keys(TEAMS.filters) as Filter[]).map((f) => (
+            <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} className="rounded-full">
+              <Chip selected={filter === f} className="h-6 cursor-pointer hover:bg-selection">{TEAMS.filters[f]}{f !== 'all' && <span className="font-mono tabular-nums">{count(f)}</span>}</Chip>
+            </button>
+          ))}
+        </div>
       </DashboardSearchToolbar>
       <div tabIndex={0} className="min-h-0 flex-1 overflow-auto outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
         {teams.error && teams.rows.length === 0 ? (

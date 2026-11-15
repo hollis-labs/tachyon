@@ -1,6 +1,6 @@
 import { Button, Checkbox, EmptyState, OverflowMenu, type OverflowAction, SearchInput, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@hollis-labs/design-components'
 import { PageHeader } from '@hollis-labs/kit-dashboard'
-import { GitPullRequest, RefreshCw } from 'lucide-react'
+import { ChevronRight, GitPullRequest, RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Chip } from '../../components/chip'
 import { PillTabs } from '../../components/pill-tabs'
@@ -65,7 +65,7 @@ function ChecksMeter({ item }: { item: InboxItem }) {
   const r = item.pr.reviewSummary
   const total = c ? c.passed + c.failed + c.pending : 0
   return (
-    <div className="flex w-28 shrink-0 flex-col items-end gap-1 max-md:hidden">
+    <div className="flex w-36 shrink-0 flex-col items-end gap-1 transition-opacity max-md:hidden group-focus-within:opacity-0 group-hover:opacity-0 group-data-[selected]:opacity-0">
       {c && total > 0 && (
         <>
           <SegmentMeter label="Checks" className="w-full" segments={[{ count: c.passed, tone: 'ok', label: 'passed' }, { count: c.failed, tone: 'bad', label: 'failed' }, { count: c.pending, tone: 'pending', label: 'running' }]} />
@@ -124,7 +124,7 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, anySelected, 
   const reasons = [item.primary, ...item.categories.filter((c) => c !== item.primary)].filter((c): c is InboxCategory => c !== 'other')
   const actions = triageActions(active, now, busy, run)
   return (
-    <li onClick={() => onPreview(item)} className={`group flex cursor-pointer items-start gap-3 px-4 py-3 ${selected ? 'bg-surface/50' : 'hover:bg-surface/40'} ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
+    <li onClick={() => onPreview(item)} data-selected={selected || undefined} className={`group relative flex cursor-pointer items-start gap-3 px-4 py-3 ${selected ? 'bg-surface/50' : 'hover:bg-surface/40'} ${active ? '' : 'opacity-70'}`} data-testid={`pr-row-${item.key}`}>
       <span onClick={(e) => e.stopPropagation()} className={`-m-2.5 flex shrink-0 items-center justify-center p-2.5 md:-m-1 md:p-1 ${anySelected ? '' : 'max-md:hidden md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100'}`}>
         <Checkbox aria-label={`Select ${label}`} checked={selected} onCheckedChange={() => onToggle(item)} />
       </span>
@@ -155,8 +155,9 @@ function Row({ item, now, agentName, onAssign, onTriage, selected, anySelected, 
         {err && <p role="alert" className="mt-2 dash-control text-danger">{err}</p>}
       </div>
       <ChecksMeter item={item} />
-      <div className={`flex shrink-0 items-center gap-1.5 transition-opacity max-md:hidden group-focus-within:opacity-100 group-hover:opacity-100 ${selected ? 'opacity-100' : 'opacity-0'}`} onClick={(e) => e.stopPropagation()}>
-        <Button size="sm" variant="outline" type="button" onClick={() => onAssign(item)} disabled={busy}>{item.assignments.length ? 'Assign again' : 'Assign agent'}</Button>
+      {/* The golden lays the row actions over the checks column on hover, so the column stays flush right. */}
+      <div className={`absolute right-4 top-3 flex items-center gap-1.5 transition-opacity max-md:hidden group-focus-within:opacity-100 group-hover:opacity-100 ${selected ? 'opacity-100' : 'pointer-events-none opacity-0 group-focus-within:pointer-events-auto group-hover:pointer-events-auto'}`} onClick={(e) => e.stopPropagation()}>
+        <Button size="sm" type="button" onClick={() => onAssign(item)} disabled={busy}>{item.assignments.length ? 'Assign again' : 'Assign'}<ChevronRight aria-hidden className="size-3.5" /></Button>
         <OverflowMenu ariaLabel={`More actions for ${label}`} actions={actions} />
       </div>
     </li>

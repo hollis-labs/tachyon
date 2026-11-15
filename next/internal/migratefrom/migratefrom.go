@@ -245,7 +245,7 @@ func run(ctx context.Context, st *libstore.Store, o Options, r *Report) error {
 	if r.Ledger, err = checkLedger(ctx, src); err != nil {
 		return err
 	}
-	// The reference is the old schema (the init migration and the carried old migrations, 001..058).
+	// The reference is the old schema (the init migration and the carried old migrations, 001..059).
 	// The target holds it, plus the tables the new build adds, which the old data has no rows for.
 	target, err := initSchema(ctx)
 	if err != nil {

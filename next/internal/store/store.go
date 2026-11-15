@@ -49,13 +49,13 @@ const InitFile = "00001_init.sql"
 // OldSchemaFiles are the migrations that describe the old build's schema: the init (056) and the
 // parity-carried old migrations after it, in order. Every other migration adds Tachyon's own tables
 // (OwnTables), which the old data has no rows for.
-var OldSchemaFiles = []string{InitFile, "00003_old_057_058.sql"}
+var OldSchemaFiles = []string{InitFile, "00003_old_057_058.sql", "00004_old_059.sql"}
 
 // OwnTables are the tables the new build adds; they are not part of the old schema.
 var OwnTables = []string{"service_credentials"}
 
-// OldLedger is the number of old migrations the old schema files cover (001..058).
-const OldLedger = 58
+// OldLedger is the number of old migrations the old schema files cover (001..059).
+const OldLedger = 59
 
 // InitSQL is the init migration's SQL without its goose annotations.
 func InitSQL() (string, error) { return bodyOf(InitFile) }

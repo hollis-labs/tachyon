@@ -89,7 +89,15 @@ function LaunchDetail({ l, agentName, options, onChanged }: { l: Launch; agentNa
           {l.workspace?.mode ?? NOT_REPORTED}
         </Field>
         <Field label="Environment" stacked>
-          {l.env ? `${keys} ${keys === 1 ? 'variable' : 'variables'} · ${secrets} ${secrets === 1 ? 'secret' : 'secrets'}` : NOT_REPORTED}
+          {/* Set variable sits with the value it edits, so the action row stays the golden's Edit · Duplicate · Launch. */}
+          <span className="flex flex-wrap items-center gap-2">
+            {l.env ? `${keys} ${keys === 1 ? 'variable' : 'variables'} · ${secrets} ${secrets === 1 ? 'secret' : 'secrets'}` : NOT_REPORTED}
+            {mode !== 'unavailable' && (
+              <Button type="button" variant="ghost" size="xs" onClick={() => setDialog('env')}>
+                Set variable
+              </Button>
+            )}
+          </span>
         </Field>
       </dl>
       <div className="flex flex-wrap items-center gap-2">
@@ -100,9 +108,6 @@ function LaunchDetail({ l, agentName, options, onChanged }: { l: Launch; agentNa
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setDialog('duplicate')}>
               Duplicate
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => setDialog('env')}>
-              Set variable
             </Button>
           </>
         )}

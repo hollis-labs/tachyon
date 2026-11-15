@@ -1,9 +1,10 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./fixtures"
 import { AREAS, owner, shot } from "./helpers"
 
 test.use({ storageState: owner })
 
-for (const area of AREAS) {
+// The planner has its own spec (planner.spec.ts); the rest are stubs until their slice ports them.
+for (const area of AREAS.filter((a) => a.stub)) {
   test(`${area.label}: reachable from the nav, and its deep link opens it`, async ({ page }) => {
     await page.goto("/planner")
     await page.getByRole("link", { name: area.label, exact: true }).click()
@@ -23,14 +24,15 @@ test("a stub surface, for the PR", async ({ page }) => {
 })
 
 test("old URLs land where they used to", async ({ page }) => {
+  // The planner then opens its themes (planner.spec.ts covers its own old slugs).
   for (const [from, to] of [
-    ["/", "/planner"],
-    ["/tasks", "/planner"],
-    ["/tasks/CW-1", "/planner"],
-    ["/prs/inbox", "/repos"],
-  ]) {
+    ["/", /\/planner\/themes/],
+    ["/tasks", /\/planner\/themes/],
+    ["/tasks/CW-1", /\/planner\/themes/],
+    ["/prs/inbox", /\/repos$/],
+  ] as const) {
     await page.goto(from)
-    await expect(page).toHaveURL(new RegExp(`${to}$`))
+    await expect(page).toHaveURL(to)
   }
 })
 

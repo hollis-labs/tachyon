@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./fixtures"
 import { AREAS, owner, shot } from "./helpers"
 
 // app-shell 0.11.0 at <= 1023px: a bottom tab bar with the first three nav items and More.

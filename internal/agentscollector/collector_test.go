@@ -670,3 +670,20 @@ func TestKilledAndCompletedSessionsEndAndReconcile(t *testing.T) {
 		t.Error("a session that runs again has no end")
 	}
 }
+
+// A gap whose range history still covers, with no snapshot asked for, is filled from history: the
+// snapshot is not fetched and the gap is marked backfilled, with Tether's high water kept in to_seq.
+func TestGapCoveredByHistoryFillsInsteadOfReseeding(t *testing.T) {
+	src := &fakeSource{snapErr: errors.New("the snapshot must not be read"), head: 99,
+		streamFrame: []string{`{"kind":"gap","reason":"restart","earliest_available":3,"high_water_seq":60,"snapshot_required":false}`}}
+	c := newCollector(t, src)
+	if err := c.Store.Seed(context.Background(), "e", 10); err != nil {
+		t.Fatal(err)
+	}
+	runUntil(t, c, func() bool {
+		return count(t, c, `SELECT COUNT(*) FROM agents_gaps WHERE reason='restart' AND to_seq=60 AND backfilled=1`) >= 1
+	})
+	if n := count(t, c, `SELECT COUNT(*) FROM agents_collector_state WHERE strategy='fallback'`); n != 0 {
+		t.Fatalf("no reseed expected, got fallback strategy rows: %d", n)
+	}
+}

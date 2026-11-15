@@ -14,7 +14,14 @@
     "isolatedModules": true,
     "useDefineForClassFields": true,
     "verbatimModuleSyntax": true,
-    "types": ["vite/client", "node"]
+    "types": ["vite/client", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@planner/*": ["src/planner/*"],
+      "@console/*": ["src/console/*"],
+      "@tachyon/torque-client": ["src/packages/torque-client/src/index.ts"],
+      "@tachyon/host-sdk": ["src/packages/host-sdk/src/index.ts"]
+    }
   },
   "include": ["src", "e2e", "tests", "playwright.config.ts", "vite.config.ts", "vitest.config.ts"]
 }

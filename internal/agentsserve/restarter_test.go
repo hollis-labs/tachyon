@@ -31,10 +31,10 @@ func TestTetherRestarterRoutes(t *testing.T) {
 		case r.URL.Path == "/sessions/new/launch":
 			fmt.Fprint(w, `{"id":"new","state":"running"}`)
 		case r.URL.Path == "/events":
-			if r.URL.Query().Get("kind") != "session.scopes_narrowed" {
-				t.Error("events read without the kind filter")
+			if r.URL.Query().Has("kind") {
+				t.Error("a kind= filter on Tether's /events is an unindexed scan")
 			}
-			fmt.Fprint(w, `{"events":[{"session_id":"other","payload_json":"{\"dropped\":[\"x\"]}"},{"session_id":"new","payload_json":"{\"requested\":[\"tether.admin\",\"tether.read\"],\"granted\":[\"tether.read\"],\"dropped\":[\"tether.admin\"],\"basis\":\"launcher\"}"}]}`)
+			fmt.Fprint(w, `{"events":[{"kind":"session.output","session_id":"new","payload_json":"{\"dropped\":[\"y\"]}"},{"kind":"session.scopes_narrowed","session_id":"other","payload_json":"{\"dropped\":[\"x\"]}"},{"kind":"session.scopes_narrowed","session_id":"new","payload_json":"{\"requested\":[\"tether.admin\",\"tether.read\"],\"granted\":[\"tether.read\"],\"dropped\":[\"tether.admin\"],\"basis\":\"launcher\"}"}]}`)
 		default:
 			w.WriteHeader(404)
 		}

@@ -185,8 +185,37 @@ func (s *Service) plan(ctx context.Context, ref chatapi.ThreadRef, scope string)
 	return s.Get(ctx, ref, scope)
 }
 
+// PlanOf returns one of the thread's plans by id; an empty id means the first plan. A plan of another thread is ErrNotFound.
+func (s *Service) PlanOf(ctx context.Context, ref chatapi.ThreadRef, planID string) (Plan, error) {
+	if planID == "" {
+		return s.Get(ctx, ref, "thread")
+	}
+	if err := s.known(ctx, ref); err != nil {
+		return Plan{}, err
+	}
+	p, err := s.Store.Get(ctx, planID)
+	if err != nil {
+		return Plan{}, err
+	}
+	if p.Scope != "thread" || p.ThreadRef == nil || *p.ThreadRef != ref.String() {
+		return Plan{}, ErrNotFound
+	}
+	return p, nil
+}
+
 func (s *Service) PatchStep(ctx context.Context, ref chatapi.ThreadRef, scope, stepID string, in StepIn, expected int64, by string) (Plan, Step, error) {
-	cur, err := s.plan(ctx, ref, scope)
+	return s.PatchStepOf(ctx, ref, scope, "", stepID, in, expected, by)
+}
+
+// PatchStepOf is PatchStep on a named plan of the thread (planID empty: the first plan).
+func (s *Service) PatchStepOf(ctx context.Context, ref chatapi.ThreadRef, scope, planID, stepID string, in StepIn, expected int64, by string) (Plan, Step, error) {
+	var cur Plan
+	var err error
+	if planID != "" && scope != "project" {
+		cur, err = s.PlanOf(ctx, ref, planID)
+	} else {
+		cur, err = s.plan(ctx, ref, scope)
+	}
 	if err != nil {
 		return Plan{}, Step{}, err
 	}
@@ -199,7 +228,18 @@ func (s *Service) PatchStep(ctx context.Context, ref chatapi.ThreadRef, scope, s
 }
 
 func (s *Service) AddStep(ctx context.Context, ref chatapi.ThreadRef, scope string, in StepIn, expected int64, by string) (Plan, Step, error) {
-	cur, err := s.plan(ctx, ref, scope)
+	return s.AddStepOf(ctx, ref, scope, "", in, expected, by)
+}
+
+// AddStepOf is AddStep on a named plan of the thread (planID empty: the first plan).
+func (s *Service) AddStepOf(ctx context.Context, ref chatapi.ThreadRef, scope, planID string, in StepIn, expected int64, by string) (Plan, Step, error) {
+	var cur Plan
+	var err error
+	if planID != "" && scope != "project" {
+		cur, err = s.PlanOf(ctx, ref, planID)
+	} else {
+		cur, err = s.plan(ctx, ref, scope)
+	}
 	if err != nil {
 		return Plan{}, Step{}, err
 	}

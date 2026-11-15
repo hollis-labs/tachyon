@@ -262,3 +262,20 @@ func TestNeedsYouListsOpenChatAsksAndTheApprovalsQueue(t *testing.T) {
 		t.Fatalf("%v %+v", ids(r), r.Sources)
 	}
 }
+
+// The ceremony meter counts asks to the operator in a window: typed asks and interim requests, not other mail and
+// not his own.
+func TestAsksSinceCountsAsksInTheWindow(t *testing.T) {
+	ft := &fakeTether{boxes: map[string][]Message{Operator: {
+		msg("typed", lead, "request", envelopeType, -time.Hour, map[string]any{"kind": "decision"}, nil),
+		msg("interim", builder, "request", "application/json", -2*time.Hour, map[string]any{"kind": "approval_request"}, nil),
+		msg("awaiting", builder, "notice", "application/json", -3*time.Hour, map[string]any{"awaiting": "@chrispian"}, nil),
+		msg("update", lead, "status_update", envelopeType, -time.Hour, map[string]any{"kind": "update"}, nil),
+		msg("notice", lead, "notice", "application/json", -time.Hour, map[string]any{"text": "fyi"}, nil),
+		msg("old", lead, "request", envelopeType, -10*24*time.Hour, map[string]any{"kind": "question"}, nil),
+	}}}
+	n, err := (&Aggregator{Tether: ft}).AsksSince(context.Background(), t0.Add(-7*24*time.Hour))
+	if err != nil || n != 3 {
+		t.Fatal(n, err)
+	}
+}

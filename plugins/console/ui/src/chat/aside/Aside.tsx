@@ -16,7 +16,7 @@ import { panelsFor, panelsVersion, resolvePanel, storePanel, storedPanel, subscr
 import { TabStrip } from './TabStrip'
 import './PlannerPanel'
 import { DEMO_DOC } from './fixtures'
-import { useActivity, useBookmarks, usePlan, useRules, useThreadEvents, useTopics, useWork } from './data'
+import { useActivity, useBookmarks, usePlans, useRules, useThreadEvents, useTopics, useWork } from './data'
 import { ArtifactsPanel } from './ArtifactsPanel'
 import { DEMO_WORKSPACE } from '../drawer/model'
 import { ActivityPanel, ApprovalsPanel, BookmarksPanel, DocPanel, FilesPanel, PlanPanel, TopicsPanel, WorkPanel } from './Panels'
@@ -37,7 +37,7 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
   a.rootRef.current = root.current
   a.setScope(scopeKey(thread.agent.agentId, ref))
 
-  const plan = usePlan(ref, a.tick)
+  const plans = usePlans(ref, a.tick)
   const work = useWork(ref, thread.agent.agentId, a.tick)
   const activity = useActivity(ref, a.tick)
   const rules = useRules(ref, a.tick)
@@ -52,11 +52,11 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
   // Agent wrote a plan -> Plan. Approval pending -> Approvals. (Frames may not arrive on every host; the read model is the fallback.)
   const hadPlan = useRef(false)
   useEffect(() => {
-    const has = !!plan.plan && plan.plan.steps.length > 0
-    if (has && !hadPlan.current && !plan.loading) a.auto('plan', 'opened by agent')
+    const has = plans.plans.some((p) => p.steps.length > 0)
+    if (has && !hadPlan.current && !plans.loading) a.auto('plan', 'opened by agent')
     hadPlan.current = has
     // biome-ignore lint/correctness/useExhaustiveDependencies: a.auto is stable enough; only the plan transition matters
-  }, [plan.plan, plan.loading])
+  }, [plans.plans, plans.loading])
   // Approvals already waiting when the thread opens do not move the aside (the golden rests on Plan); a new one does.
   const lastWaiting = useRef<number | null>(null)
   const loaded = !!conv?.blocksLoaded
@@ -86,8 +86,9 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
   }
 
   const marks = conv?.marks ?? { bookmarks: [], toggleBookmark: () => undefined, topics: [], addTopic: () => undefined }
+  const planSteps = plans.plans.flatMap((p) => p.steps)
   const counts: Partial<Record<PanelId, string>> = {
-    plan: plan.plan?.steps.length ? `${plan.plan.steps.filter((s) => s.status === 'done').length}/${plan.plan.steps.filter((s) => s.status !== 'cancelled').length}` : undefined,
+    plan: planSteps.length ? `${planSteps.filter((s) => s.status === 'done').length}/${planSteps.filter((s) => s.status !== 'cancelled').length}` : undefined,
     topics: marks.topics.length ? String(marks.topics.length) : undefined,
     bookmarks: marks.bookmarks.length ? String(marks.bookmarks.length) : undefined,
     work: work.items.length ? String(work.items.length) : undefined,
@@ -114,7 +115,7 @@ export function Aside({ thread, scratchInAside, sessionRef }: { thread: ChatThre
   if (!a.open && !a.full) return null
   const body = (() => {
     switch (a.panel) {
-      case 'plan': return <PlanPanel plan={plan.plan} loading={plan.loading} error={plan.error} setStatus={plan.setStatus} addStep={plan.addStep} onAsk={() => conv?.onInsert('Draft a plan for this chat.')} />
+      case 'plan': return <PlanPanel plans={plans.plans} loading={plans.loading} error={plans.error} threadRef={ref} setStatus={plans.setStatus} addStep={plans.addStep} createPlan={plans.createPlan} deletePlan={plans.deletePlan} reorderPlans={plans.reorderPlans} moveStep={plans.moveStep} onAsk={() => conv?.onInsert('Draft a plan for this chat.')} />
       case 'topics': return <TopicsPanel marks={marks} />
       case 'bookmarks': return <BookmarksPanel marks={marks} messages={conv?.messages ?? []} agent={thread.title} />
       case 'work': return <WorkPanel items={work.items} source={work.source} loading={work.loading} error={work.error} />

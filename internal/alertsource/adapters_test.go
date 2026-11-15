@@ -119,8 +119,31 @@ func TestFromTetherMessageFailedTerminalOnly(t *testing.T) {
 	if _, ok := FromTether(agentscollector.Frame{Seq: 2, Kind: "message.wake_deferred", At: at}); ok {
 		t.Fatal("wake_deferred kind must not alert")
 	}
+	if _, ok := FromTether(agentscollector.Frame{Seq: 4, Kind: "message.failed", Reason: "nacked", At: at}); ok {
+		t.Fatal("a nacked failure must not alert")
+	}
 	e, ok := FromTether(agentscollector.Frame{Seq: 3, Kind: "message.failed", DeliveryState: "expired", Reason: "ttl", From: "agent-a", At: at})
 	if !ok || e.Kind != "message.failed" || e.Payload["state"] != "expired" || e.Payload["reason"] != "ttl" || e.Payload["from"] != "agent-a" {
 		t.Fatalf("terminal failure stays visible: %v %+v", ok, e)
+	}
+}
+
+// Tether's real message.failed (recipients as an array): a retry is dropped, a terminal failure names its reason
+// and sender. Before the fix the array blanked every field and each retry toasted 'failed: no reason given'.
+func TestFromTetherRealMessageFailedPayload(t *testing.T) {
+	mk := func(state string) agentscollector.Frame {
+		raw := `{"seq":5636379,"kind":"message.failed","scope":"daemon","at":"2026-11-15T00:49:01Z","payload_json":"{\"delivery\":{\"attempt\":1,\"state\":\"` + state + `\"},\"from\":\"msg://agent/agent-mux/agt_a\",\"message_id\":\"m1\",\"reason\":\"lease_expired\",\"to\":[\"msg://agent/agent-mux/agt_b\"]}"}`
+		f, ok := agentscollector.ParseFrame([]byte(raw))
+		if !ok {
+			t.Fatal("unparsed")
+		}
+		return f
+	}
+	if _, ok := FromTether(mk("retry_scheduled")); ok {
+		t.Fatal("a scheduled retry is not alert material")
+	}
+	e, ok := FromTether(mk("dead_letter"))
+	if !ok || e.Payload["reason"] != "lease_expired" || e.Payload["state"] != "dead_letter" || e.Payload["from"] != "msg://agent/agent-mux/agt_a" {
+		t.Fatalf("%v %+v", ok, e)
 	}
 }

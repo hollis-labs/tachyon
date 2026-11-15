@@ -1,5 +1,7 @@
 import { Children, isValidElement, memo, useEffect, useRef, type ReactNode } from 'react'
 import { ChatMarkdown, type StreamdownProps } from '@hollis-labs/kit-chat/markdown'
+import { defaultRemarkPlugins } from 'streamdown'
+import remarkGfm from 'remark-gfm'
 import { RefChip } from '../autolink/RefChip'
 import { linkifiedMarkdownComponents } from '../autolink/markdown'
 import { parseTachHref } from '../refs/tach'
@@ -30,6 +32,9 @@ const components: StreamdownProps['components'] = {
   },
   img: ({ alt }) => <span className="text-fg-muted">{alt ? `[Image: ${alt}]` : '[Image]'}</span>,
 }
+// GFM without single-tilde strikethrough: agents write ~/paths and ~approximations, and one stray
+// pair would strike everything between them. ~~double~~ still strikes.
+const remarkPlugins = [[remarkGfm, { singleTilde: false }], defaultRemarkPlugins.codeMeta] as StreamdownProps['remarkPlugins']
 /** Shared portfolio renderer; raw HTML is excluded and remote images never load. */
 export const MessageBody = memo(function MessageBody({
   body,
@@ -63,6 +68,7 @@ export const MessageBody = memo(function MessageBody({
         streaming={streaming}
         controls={false}
         rehypePlugins={[]}
+        remarkPlugins={remarkPlugins}
         skipHtml
         components={components}
         className="tachyon-chat-prose"

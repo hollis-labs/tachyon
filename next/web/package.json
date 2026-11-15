@@ -17,6 +17,9 @@
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@dnd-kit/utilities": "3.2.2",
     "@hollis-labs/app-shell": "0.11.0",
     "@hollis-labs/design-app-runtime": "0.6.0",
     "@hollis-labs/design-bindings": "0.3.0",
@@ -34,7 +37,12 @@
     "lucide-react": "1.52.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-router-dom": "7.18.4"
+    "react-markdown": "10.1.0",
+    "react-router-dom": "7.18.4",
+    "remark-gfm": "4.0.1",
+    "sonner": "2.0.8",
+    "streamdown": "2.7.0",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

@@ -18,6 +18,7 @@ export interface DecisionEvent {
   status: string
   at: string
   mini: { title: string; risk?: string; group?: string }
+  requester?: { id?: string; kind?: string; label?: string }
 }
 
 export interface History {
@@ -45,6 +46,7 @@ function stub<T>(path: string): T | undefined {
     status,
     at: ago(s),
     mini: { title, group },
+    requester: { label: group === "merge" ? "Pull requests" : "Release bot" },
   })
   if (path === "/access")
     return (
