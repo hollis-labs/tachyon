@@ -101,7 +101,8 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 |---|---|
 | object-sync schedules (enabled by `sync-objects --enable`) | `tachyon.features.object_sync` gates the scheduler engine; the schedules themselves are migrated data (D1) |
 | `TACHYON_CHAT_SYNC_INTERVAL` (sync always on) | `tachyon.features.chat_sync` (default off) and `tachyon.chat_sync_interval` (default `5s`, 1s to 1h) |
-| `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` |
+| `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` (also the ceremony meter's hourly read) |
+| agent controls and launches (on when their credentials were set) | `tachyon.features.agents_controls`: nudge, interrupt, restart, the Tether launches (new switch, B8b) |
 | `TACHYON_CATALOG_INDEX` (`0` = off) | `tachyon.features.catalog_index` |
 | `TACHYON_CARD_EVENTS` | `tachyon.features.card_events` |
 | `TACHYON_CARD_EFFECTS_TORQUE` | `tachyon.features.card_effects_torque` |
@@ -237,13 +238,31 @@ Details: `docs/api-contract.md`.
   The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
   TTL are gone. The confirm phrase stays in the approvals code.
 
-## Agents (slice B8a, the read side)
+## Agents (slices B8a, B8b)
 
 - **Same tables, same answers.** Agent Ops, the ceremony meter and Needs you read the migrated agents tables.
-  Old vs new on a migrated copy is equal apart from the collector's own state, request-time fields and the
-  controls B8b adds.
-- **The collector waits for B8b.** It is built and not started, so the store is not updated and nothing dials
-  Tether for it. `tachyon.features.agents_collector` will start it.
+  Old vs new on a migrated copy is equal apart from the collector's own state and request-time fields.
+- **`tachyon.features.agents_collector`** (the old `TACHYON_AGENTS_COLLECTOR`) starts the collector and the
+  ceremony meter's hourly read. Off (the default), neither runs and nothing dials Tether for them; the routes
+  serve the migrated data and report the collector `off`.
+- **The collector resumes from the migrated cursor.** With `agents_collector_state` copied, it streams from the
+  copied sequence (or first fills the gap since the copy from Tether's history) and never takes the environment
+  snapshot again.
+- **`tachyon.features.agents_controls` is new.** The old build had no switch: nudge, interrupt and restart worked
+  whenever their credentials were set, and so did the launch dialog's `POST tether/sessions` and
+  `…/{id}/launch`. In the port they are off until acceptance (plan sections 6 and 9). Off, a session reports
+  those capabilities unavailable (`409 nudge_unsupported` and the like) and a launch answers `503 disabled`.
+  Nothing reaches an agent. Settings writes (`PUT agents/settings`) are local and need no switch.
+- **The credentials are the old ones.** Nudges go as Tether mail with `tachyon.upstreams.tether_messages.token`.
+  Restarts use `tether_control.url` (default `tether.url`) and `.token`. An interrupt replies through the chat
+  bridge.
+- **The ceremony regression alert waits for the alerts slice.** The old hourly read raised a weekly
+  `ceremony.regression` alert into the alerts store, which is not ported yet; the hourly read keeps the daily
+  snapshot as before.
+- **The launch dialog's Tether reads** (`tether/workers`, `tether/sessions`, `tether/sessions/{id}`,
+  `catalog/launches`) are passed through on demand as the old console plugin did, with its reviewed paths,
+  queries and body fields. Errors are the port's flat `{code, message}`, not the plugin's nested
+  `{error: {code, message}}`.
 - **A fresh database has no collector state row.** The old migration 024 seeded `agents_collector_state`; the
   port's baseline schema holds no rows, and migrate-from copies the old row. On a fresh database the first write
   creates it, and until then it reads as the zero state. The old migrations 030 (`catalog_state`) and 032

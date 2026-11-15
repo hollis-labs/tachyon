@@ -300,7 +300,7 @@ Served under `/api/plugins/console/v1/approval-inbox`, from the migrated `approv
 - Not served: the producer API `/api/approvals/v1` (not ported), the trusted Basalisk API, and the Tangent
   session routes (section 1).
 
-## 5e. Agents, ceremony and Needs you (slice B8a, the read side)
+## 5e. Agents, ceremony and Needs you (slices B8a, B8b)
 
 Served under `/api/plugins/console/v1`, from the migrated `agents_*`, `bus_events`, `seat_status`, `ceremony_daily`
 and `checkpoint_events` tables:
@@ -311,15 +311,22 @@ and `checkpoint_events` tables:
 | `GET agents/stream` (SSE), `agents/settings`, `agents/seats`, `agents/controls/{request_id}`, `agents/collector`, `agents/bus/events` | `tachyon.agents.read` | |
 | `GET ceremony` | `tachyon.agents.read` | |
 | `GET needs-you` | `tachyon.agents.read` | |
+| `PUT agents/settings`, `POST agents/sessions/{id}/nudge`, `…/restart`, `POST agents/controls/{request_id}/skip` | `tachyon.agents.control` | yes |
+| `GET tether/workers`, `tether/sessions`, `tether/sessions/{id}`, `GET catalog/launches` | `tachyon.agents.read` | |
+| `POST tether/sessions`, `POST tether/sessions/{id}/launch` | `tachyon.agents.control` | yes |
 
 - Request and response shapes, status codes and error codes are the old build's (`internal/agentsapi/openapi.yaml`).
-- The collector is not started in B8a: `agents/collector` reports it `off`, and the data is what was migrated.
+- With `tachyon.features.agents_collector` off (the default) the collector is not started: `agents/collector`
+  reports it `off`, and the data is what was migrated.
+- With `tachyon.features.agents_controls` off (the default), nudge, interrupt and restart are unavailable (`409
+  nudge_unsupported`, `interrupt_unsupported`, `restart_unsupported`) and the Tether launches answer `503
+  disabled`; nothing is sent.
+- The Tether reads and launches answer `503 configuration` without `tachyon.upstreams.tether.url`; a malformed id
+  is `404 not_found`; the reviewed body fields are checked before anything is forwarded (`400 invalid_request`).
 - Needs you reads the operator's mailbox from a configured Tether, and the ceremony meter reads a configured
   Torque, on demand, as before. Without them those sources report `not configured`.
 - Needs you reads need no operator, as in the old build (its guard let GETs through).
-- Not yet served (B8b): `PUT agents/settings`, `POST agents/sessions/{id}/nudge` and `/restart`,
-  `POST agents/controls/{request_id}/skip`, the collector loop, the ceremony meter's hourly read and its alert,
-  and the Tether launch passthroughs (`catalog/launches`, `tether/workers`, `tether/sessions*`).
+- Not yet: the ceremony meter's weekly regression alert (the alerts slice).
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 
