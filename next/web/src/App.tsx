@@ -22,11 +22,13 @@ import { useEffect, useState } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { CapabilitiesProvider } from "./api/capabilities"
 import { UNAUTHORIZED_EVENT } from "./api/request"
+import { ChatOpener } from "./chat-opener"
 import {
   AgentsSurface,
   ApprovalsSurface,
   BuilderSurface,
   ChatSurface,
+  ConsoleShellProviders,
   NeedsYouSurface,
   RegistrySurface,
   ReposSurface,
@@ -130,7 +132,11 @@ export function App() {
           {/* As the old frontend/src/App.tsx: surfaces report write failures, undo and refusals as toasts. */}
           <TooltipProvider>
             <BrowserRouter>
-              <Shell />
+              {/* As the old ConsoleIntegration: chat and the chat dock above every surface; the dock opener outside the shell. */}
+              <ConsoleShellProviders>
+                <Shell />
+                <ChatOpener />
+              </ConsoleShellProviders>
             </BrowserRouter>
             <Toaster position="bottom-right" />
           </TooltipProvider>
