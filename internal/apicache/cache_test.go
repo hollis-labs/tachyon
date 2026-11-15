@@ -471,3 +471,35 @@ func TestApprovalsCacheIsParticipantScoped(t *testing.T) {
 		t.Fatal("unexpected cache behavior", calls)
 	}
 }
+
+// An upstream that ignores its context must not hold callers past the timeout, and once one refresh has
+// failed the saved copy is served at once for a while instead of every caller waiting the timeout out.
+func TestSlowUpstreamServesSavedCopyWithoutWaiting(t *testing.T) {
+	db := openTest(t, filepath.Join(t.TempDir(), "app.db"))
+	defer db.Close()
+	cfg := Defaults()
+	p := cfg.Policies["planner"]
+	p.TimeoutSeconds = 1
+	cfg.Policies["planner"] = p
+	now := time.Now()
+	c := New(db, cfg, func(string) (string, error) { return "host", nil })
+	c.now = func() time.Time { return now }
+	live := request(c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { jsonResponse(w, `{"board":"saved"}`) })), "GET", board, false)
+	state(t, live, "live")
+	now = now.Add(time.Minute) // past fresh
+	release := make(chan struct{})
+	defer close(release)
+	slow := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-release })) // ignores its context
+	start := time.Now()
+	w := request(slow, "GET", board, false)
+	state(t, w, "stale")
+	if w.Header().Get("X-Tachyon-Cache-Error") != "timeout" || w.Body.String() != live.Body.String() || time.Since(start) > 5*time.Second {
+		t.Fatalf("slow upstream: %v %q after %v", w.Header(), w.Body.String(), time.Since(start))
+	}
+	start = time.Now()
+	w = request(slow, "GET", board, false)
+	state(t, w, "stale")
+	if time.Since(start) > 300*time.Millisecond {
+		t.Fatalf("the second call waited %v instead of serving the saved copy at once", time.Since(start))
+	}
+}
