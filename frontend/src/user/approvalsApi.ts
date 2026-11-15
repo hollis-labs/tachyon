@@ -88,6 +88,23 @@ export const alertsApi = {
   },
 }
 
+export interface NeedsYouCount {
+  items: { critical: boolean }[]
+}
+
+/** GET needs-you (CW-20261114-0023c): what waits on the operator; the strip shows how many and whether any is critical. */
+export const needsYouApi = {
+  async list(): Promise<NeedsYouCount> {
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("user-stub"))
+      return { items: [{ critical: true }, { critical: false }] }
+    const res = await hostFetch("/api/plugins/console/v1/needs-you", {
+      headers: { Accept: "application/json", "Cache-Control": "no-store" },
+    })
+    if (!res.ok) throw new Error(`needs-you ${res.status}`)
+    return (await res.json()) as NeedsYouCount
+  },
+}
+
 export const approvalsApi = {
   access: () => get<Access>("/access"),
   inbox: () => get<InboxSummary>("/inbox"),

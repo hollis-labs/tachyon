@@ -1,0 +1,227 @@
+{
+  "schema_version": 0,
+  "module": "tachyon",
+  "contributions": [
+    {
+      "kind": "nav.item",
+      "key": "planner",
+      "label": "Planner",
+      "icon": "map",
+      "route": "/planner",
+      "priority": 1,
+      "requires": "tachyon.planner.read"
+    },
+    {
+      "kind": "surface",
+      "key": "planner",
+      "label": "Planner",
+      "title": "Planner",
+      "route": "/planner",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "agents",
+      "label": "Agent Ops",
+      "icon": "bot",
+      "route": "/agents",
+      "priority": 2,
+      "requires": "tachyon.agents.read"
+    },
+    {
+      "kind": "surface",
+      "key": "agents",
+      "label": "Agent Ops",
+      "title": "Agent Ops",
+      "route": "/agents",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "builder",
+      "label": "Builder",
+      "icon": "hammer",
+      "route": "/builder",
+      "priority": 3,
+      "requires": "tachyon.builder.read"
+    },
+    {
+      "kind": "surface",
+      "key": "builder",
+      "label": "Builder",
+      "title": "Builder",
+      "route": "/builder",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "registry",
+      "label": "Registry",
+      "icon": "library",
+      "route": "/registry",
+      "priority": 4,
+      "requires": "tachyon.builder.read"
+    },
+    {
+      "kind": "surface",
+      "key": "registry",
+      "label": "Registry",
+      "title": "Registry",
+      "route": "/registry",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "chat",
+      "label": "Chat",
+      "icon": "message-square",
+      "route": "/chat",
+      "priority": 5,
+      "requires": "tachyon.chat.read"
+    },
+    {
+      "kind": "surface",
+      "key": "chat",
+      "label": "Chat",
+      "title": "Chat",
+      "route": "/chat",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "approvals",
+      "label": "Approvals",
+      "icon": "shield-check",
+      "route": "/approvals",
+      "priority": 6,
+      "requires": "tachyon.approvals.read"
+    },
+    {
+      "kind": "surface",
+      "key": "approvals",
+      "label": "Approvals",
+      "title": "Approvals",
+      "route": "/approvals",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "transcripts",
+      "label": "Transcripts",
+      "icon": "scroll-text",
+      "route": "/dashboards/transcripts",
+      "priority": 7,
+      "requires": "tachyon.transcripts.read"
+    },
+    {
+      "kind": "surface",
+      "key": "transcripts",
+      "label": "Transcripts",
+      "title": "Transcripts",
+      "route": "/dashboards/transcripts",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "repos",
+      "label": "Repos",
+      "icon": "git-pull-request",
+      "route": "/repos",
+      "priority": 8,
+      "requires": "tachyon.forge.read"
+    },
+    {
+      "kind": "surface",
+      "key": "repos",
+      "label": "Repos",
+      "title": "Repos",
+      "route": "/repos",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "settings",
+      "label": "Settings",
+      "icon": "settings",
+      "route": "/settings",
+      "priority": 1,
+      "region": "nav.footer"
+    },
+    {
+      "kind": "surface",
+      "key": "settings",
+      "label": "Settings",
+      "title": "Settings",
+      "route": "/settings",
+      "layout": "settings"
+    },
+    {
+      "kind": "nav.item",
+      "key": "user",
+      "label": "Account",
+      "icon": "user",
+      "route": "/user",
+      "priority": 2,
+      "region": "nav.footer"
+    },
+    {
+      "kind": "surface",
+      "key": "user",
+      "label": "Account",
+      "title": "Account",
+      "route": "/user",
+      "layout": "form"
+    },
+    {
+      "kind": "nav.item",
+      "key": "identity-keys",
+      "label": "Access keys",
+      "icon": "key-round",
+      "route": "/identity/keys",
+      "priority": 3,
+      "region": "nav.footer"
+    },
+    {
+      "kind": "surface",
+      "key": "identity-keys",
+      "label": "Access keys",
+      "title": "Access keys",
+      "route": "/identity/keys",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "identity-sessions",
+      "label": "Active sessions",
+      "icon": "monitor",
+      "route": "/identity/sessions",
+      "priority": 4,
+      "region": "nav.footer"
+    },
+    {
+      "kind": "surface",
+      "key": "identity-sessions",
+      "label": "Active sessions",
+      "title": "Active sessions",
+      "route": "/identity/sessions",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
+      "key": "identity-sign-out",
+      "label": "Sign out",
+      "icon": "log-out",
+      "route": "/identity/sign-out",
+      "priority": 9,
+      "region": "nav.footer"
+    },
+    {
+      "kind": "surface",
+      "key": "identity-sign-out",
+      "label": "Sign out",
+      "title": "Sign out",
+      "route": "/identity/sign-out",
+      "layout": "form"
+    }
+  ]
+}

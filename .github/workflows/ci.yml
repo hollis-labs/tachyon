@@ -50,6 +50,25 @@ jobs:
         with:
           go-version-file: next/go.mod
           cache-dependency-path: next/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: next/web/package-lock.json
+      # The SPA (slice G1) is built first: internal/webui embeds next/web's output, and the binary the
+      # browser suite starts must carry it.
+      - name: SPA (install, manifest is current, typecheck, lint, unit tests, build)
+        working-directory: next/web
+        run: |
+          npm ci
+          # The committed manifest is generated from ui/app.json and the module set; regenerate it
+          # and fail if it differs, as for the committed wiring file.
+          go tool substrate frontend -f ../cmd/tachyon/substrate.yaml -o src/generated
+          git diff --exit-code -- src/generated
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
       - run: go vet ./...
       - run: go test -race ./...
       - uses: golangci/golangci-lint-action@v7
@@ -72,3 +91,26 @@ jobs:
           git -C "$scan" add -A
           git -C "$scan" -c user.name=scan -c user.email=scan@invalid commit -qm "next/ at $GITHUB_SHA"
           go tool substrate scan-public --repo "$scan" --ref HEAD --no-allowlist
+      # The browser proof: the real binary (with the SPA embedded) on a throwaway data directory.
+      - name: Build the binary the browser suite starts
+        run: go build -o tachyon ./cmd/tachyon
+      - name: Install the browser
+        working-directory: next/web
+        run: npx playwright install --with-deps chromium
+      - name: Browser suite
+        working-directory: next/web
+        env:
+          # CI installs the bundled Chromium; the config defaults to the system Chrome channel.
+          PLAYWRIGHT_CHANNEL: chromium
+          # Run directories are made fresh (mkdtemp) under here; nothing is ever wiped.
+          TACHYON_E2E_DIR: ${{ runner.temp }}
+        run: npm run test:e2e
+      - name: Browser suite screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-web-e2e
+          path: |
+            ${{ runner.temp }}/tachyon-e2e-*/shots
+            ${{ runner.temp }}/tachyon-e2e-*/results
+          if-no-files-found: ignore

@@ -54,10 +54,12 @@ type Plan struct {
 	Status    string  `json:"status"`
 	Revision  int64   `json:"revision"`
 	TaskRef   *string `json:"task_ref"`
-	CreatedBy string  `json:"created_by"`
-	CreatedAt int64   `json:"created_at"`
-	UpdatedAt int64   `json:"updated_at"`
-	Steps     []Step  `json:"steps"`
+	// Position orders a thread's plans (1 first). A project plan is always 1.
+	Position  int    `json:"position"`
+	CreatedBy string `json:"created_by"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+	Steps     []Step `json:"steps"`
 }
 
 // Progress counts steps for the thread list: cancelled steps are not part of the total.
@@ -101,6 +103,9 @@ type WriteIn struct {
 	// Expected is the revision the writer last saw; 0 means "there is no plan yet".
 	Expected int64
 	By       string // "user" | "agent"
+	// PlanID names one of the thread's plans to write. Empty means the thread's first plan (or, with Expected 0 and
+	// no plan yet, a new one).
+	PlanID string
 }
 
 type Store struct {
@@ -117,7 +122,7 @@ func (s *Store) now() time.Time {
 	return time.Now().UTC()
 }
 
-const planColumns = `id,scope,thread_ref,project_id,title,status,revision,task_ref,created_by,created_ns,updated_ns`
+const planColumns = `id,scope,thread_ref,project_id,title,status,revision,task_ref,created_by,created_ns,updated_ns,position`
 
 type querier interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
@@ -128,7 +133,7 @@ func scanPlan(row interface{ Scan(...any) error }) (Plan, error) {
 	var p Plan
 	var thread, project, title, task sql.NullString
 	var created, updated int64
-	if err := row.Scan(&p.ID, &p.Scope, &thread, &project, &title, &p.Status, &p.Revision, &task, &p.CreatedBy, &created, &updated); err != nil {
+	if err := row.Scan(&p.ID, &p.Scope, &thread, &project, &title, &p.Status, &p.Revision, &task, &p.CreatedBy, &created, &updated, &p.Position); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Plan{}, ErrNotFound
 		}
@@ -174,7 +179,12 @@ func loadSteps(ctx context.Context, q querier, p *Plan) error {
 }
 
 func (s *Store) get(ctx context.Context, q querier, where string, arg string) (Plan, error) {
-	p, err := scanPlan(q.QueryRowContext(ctx, `SELECT `+planColumns+` FROM chat_plans WHERE `+where, arg))
+	return s.getArgs(ctx, q, where, arg)
+}
+
+// getArgs is get with any number of bound arguments (where holds only ? placeholders, never values).
+func (s *Store) getArgs(ctx context.Context, q querier, where string, args ...any) (Plan, error) {
+	p, err := scanPlan(q.QueryRowContext(ctx, `SELECT `+planColumns+` FROM chat_plans WHERE `+where+` ORDER BY position, created_ns LIMIT 1`, args...))
 	if err != nil {
 		return Plan{}, err
 	}
@@ -211,7 +221,9 @@ func (s *Store) Progress(ctx context.Context, refs []string) map[string]Progress
 		var ref string
 		var pr Progress
 		if rows.Scan(&ref, &pr.Total, &pr.Done) == nil {
-			out[ref] = pr
+			// A thread may hold several plans: its progress is their sum.
+			cur := out[ref]
+			out[ref] = Progress{Done: cur.Done + pr.Done, Total: cur.Total + pr.Total}
 		}
 	}
 	return out
@@ -245,7 +257,13 @@ func (s *Store) Write(ctx context.Context, scope, owner string, in WriteIn) (Pla
 		if scope == "project" {
 			col = "project_id"
 		}
-		cur, err := s.get(ctx, tx, "scope='"+scope+"' AND "+col+"=?", owner)
+		var cur Plan
+		var err error
+		if in.PlanID != "" && scope == "thread" {
+			cur, err = s.getArgs(ctx, tx, "scope='thread' AND id=? AND "+col+"=?", in.PlanID, owner)
+		} else {
+			cur, err = s.get(ctx, tx, "scope='"+scope+"' AND "+col+"=?", owner)
+		}
 		exists := err == nil
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return err
@@ -254,7 +272,7 @@ func (s *Store) Write(ctx context.Context, scope, owner string, in WriteIn) (Pla
 			return ErrConflict
 		}
 		if !exists {
-			cur = Plan{ID: "pl_" + uuid.NewString(), Scope: scope, Status: "proposed", CreatedBy: in.By, CreatedAt: now.UnixMilli()}
+			cur = Plan{ID: "pl_" + uuid.NewString(), Scope: scope, Status: "proposed", CreatedBy: in.By, CreatedAt: now.UnixMilli(), Position: 1}
 			if scope == "thread" {
 				cur.ThreadRef = &owner
 			} else {
@@ -329,8 +347,8 @@ func (s *Store) Write(ctx context.Context, scope, owner string, in WriteIn) (Pla
 			if _, err := tx.ExecContext(ctx, `DELETE FROM chat_plan_steps WHERE plan_id=?`, cur.ID); err != nil {
 				return err
 			}
-		} else if _, err := tx.ExecContext(ctx, `INSERT INTO chat_plans(`+planColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			cur.ID, cur.Scope, cur.ThreadRef, cur.ProjectID, cur.Title, cur.Status, cur.Revision, cur.TaskRef, cur.CreatedBy, now.UnixNano(), now.UnixNano()); err != nil {
+		} else if _, err := tx.ExecContext(ctx, `INSERT INTO chat_plans(`+planColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+			cur.ID, cur.Scope, cur.ThreadRef, cur.ProjectID, cur.Title, cur.Status, cur.Revision, cur.TaskRef, cur.CreatedBy, now.UnixNano(), now.UnixNano(), cur.Position); err != nil {
 			return err
 		}
 		for _, st := range cur.Steps {

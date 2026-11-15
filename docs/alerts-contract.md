@@ -20,9 +20,9 @@ Run the stub with `TACHYON_ALERTS_STUBS=1`; replay the stream with `scripts/aler
   dismiss, `ids` (<=200) or `scope: all_active`, optional `expected_seq`.
 - **No decision path here.** Approve and Deny go through the Approvals endpoints. An approval alert carries
   an `approval` block on `GET /{id}` (`item_id`, `expires_at_ms`, `class`, `risk_display`,
-  `provider_handoff`); the drawer embeds the Approvals component by `item_id`. With `provider_handoff` the
-  drawer shows the neutral read-only card "Approved through the provider". The alert settles itself from
-  the approvals event.
+  `provider_handoff`); the drawer embeds the Approvals component by `item_id`. `provider_handoff` is informational only:
+  there is no read-only "Approved through the provider" card, high-class items are decided in the browser
+  through the same embedded component. The alert settles itself from the approvals event.
 - **Toasting is the server's decision**: every `alert.*` frame has `toast`. Critical always toasts, an
   escalation or a snooze wake re-toasts, a coalesced repeat does not. The client keeps only its local Quiet
   toggle. Use `server_now_ms` for countdowns.

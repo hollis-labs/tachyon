@@ -125,7 +125,7 @@ export function WorkPanel({ items, source, loading, error }: { items: WorkItem[]
   const doing = items.filter((i) => i.kind === 'task' && i.status === 'doing' && !i.counts)
   return (
     <>
-      <div className="flex items-center gap-2"><span className={CAPTION}>Work · assigned to this agent</span><span className="flex-1" /><a href="/planner" className="no-underline"><Chip selected>Mini Planner</Chip></a></div>
+      <div className="flex items-center gap-2"><span className={CAPTION}>Work · assigned to this agent</span><span className="flex-1" /><span className="text-label text-fg-muted">{items.length ? `${items.length} item${items.length === 1 ? '' : 's'}` : null}</span></div>
       <Err>{error}</Err>
       {error ? null : source === 'stub' ? (
         <Empty>Work is not connected for this agent yet. Planner assignments appear here once it is.</Empty>
@@ -147,7 +147,7 @@ export function WorkPanel({ items, source, loading, error }: { items: WorkItem[]
               {doing.map((d) => <div key={d.id} className="flex flex-col gap-0.5 rounded-control border border-border px-2.5 py-2 text-xs"><span className="font-mono text-caption text-fg-muted">{d.id}</span>{d.title}</div>)}
             </section>
           )}
-          <p className="text-xs text-fg-muted">Drag a card onto the chat to attach it · <a href="/planner" className="underline">open the full Planner</a></p>
+          <p className="text-xs text-fg-muted">Drag a card onto the chat to attach it · <a href="/planner" className="underline">Open the full Planner</a></p>
         </>
       )}
     </>
@@ -157,8 +157,8 @@ export function WorkPanel({ items, source, loading, error }: { items: WorkItem[]
 // ---------------------------------------------------------------- Activity
 // KIT-GAP: @planner/shared EventTimeline is a dot-per-row facet feed; the chat golden's activity timeline has a rail,
 // icon circles, day pills, quoted comments and mini cards. Built here until the kit has it.
-const ICON: Record<string, typeof Zap> = { 'tool.call': Zap, 'card.sent': MessageSquare, 'card.answered': Check, 'approval.decided': ShieldCheck, 'file.shared': FileText, 'plan.changed': ClipboardCheck, 'task.closed': Check, 'panel.opened': ArrowUpRight, 'terminal.run': SquareTerminal, 'topic.added': Plus, 'bookmark.added': BookmarkIcon, comment: MessageSquare, note: ArrowUpRight }
-const VERB: Record<string, string> = { 'tool.call': 'ran tools', 'card.sent': 'sent a card', 'card.answered': 'answered a card', 'approval.decided': 'decided an approval', 'file.shared': 'shared', 'plan.changed': 'changed the plan', 'task.closed': 'closed', 'panel.opened': 'opened a panel', 'terminal.run': 'ran a command', 'topic.added': 'added a topic', 'bookmark.added': 'bookmarked', comment: 'commented', note: 'noted' }
+const ICON: Record<string, typeof Zap> = { 'tool.call': Zap, 'card.sent': MessageSquare, 'card.answered': Check, 'approval.decided': ShieldCheck, 'file.shared': FileText, 'plan.changed': ClipboardCheck, 'task.closed': Check, 'panel.opened': ArrowUpRight, 'terminal.run': SquareTerminal, 'topic.added': Plus, 'bookmark.added': BookmarkIcon, comment: MessageSquare, note: ArrowUpRight, 'message.sent': MessageSquare, 'message.received': MessageSquare, 'task.checked': Search, 'task.updated': ClipboardCheck, 'reminder.set': CalendarDays, wait: ArrowUpDown }
+const VERB: Record<string, string> = { 'tool.call': 'ran tools', 'card.sent': 'sent a card', 'card.answered': 'answered a card', 'approval.decided': 'decided an approval', 'file.shared': 'shared', 'plan.changed': 'changed the plan', 'task.closed': 'closed', 'panel.opened': 'opened a panel', 'terminal.run': 'ran a command', 'topic.added': 'added a topic', 'bookmark.added': 'bookmarked', comment: 'commented', note: 'noted', 'message.sent': 'sent a message', 'message.received': 'read messages', 'task.checked': 'checked Torque', 'task.updated': 'updated Torque', 'reminder.set': 'set a reminder', wait: 'waited' }
 const actorName = (a: string) => (a === 'user' ? 'You' : a.replace(/^(agent|rule):/, '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
 const dayOf = (at?: number) => (at && new Date(at).toDateString() === new Date().toDateString() ? 'Today' : 'Earlier')
 const SHOW = 8

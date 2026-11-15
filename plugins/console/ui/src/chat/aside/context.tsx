@@ -3,12 +3,12 @@ import type { Commit } from '../cards/Cards'
 import type { StreamBlock } from '../cards/types'
 import type { ChatMessage } from '../types'
 import type { Bookmark, Topic } from './data'
+import { DEFAULT_PANEL } from './registry'
+import { grant, isGranted, type GrantChoice } from './grants'
 
-export type PanelId = 'plan' | 'topics' | 'bookmarks' | 'work' | 'activity' | 'approvals' | 'files' | 'doc' | 'scratch'
-export const PANELS: { id: PanelId; label: string }[] = [
-  { id: 'plan', label: 'Plan' }, { id: 'topics', label: 'Topics' }, { id: 'bookmarks', label: 'Bookmarks' }, { id: 'work', label: 'Work' },
-  { id: 'activity', label: 'Activity' }, { id: 'approvals', label: 'Approvals' }, { id: 'files', label: 'Files' }, { id: 'doc', label: 'Doc' },
-]
+/** A tab id: a built-in ('plan', 'topics', ... 'scratch') or one a registered panel brings (see registry.ts). */
+export type PanelId = string
+export const PANELS = DEFAULT_PANEL.tabs
 
 /** What the open conversation registers so the aside can show it without a second fetch. */
 export interface ConversationData { ref?: string; agent?: string; messages: ChatMessage[]; blocks: StreamBlock[]; blocksLoaded?: boolean; commit?: Commit; onInsert: (text: string) => void; marks: Marks }
@@ -17,9 +17,10 @@ export interface Marks { bookmarks: Bookmark[]; toggleBookmark: (messageRef: str
 
 export interface AsideState {
   panel: PanelId
-  /** 'auto' follows the agent; a manual pick locks until the user returns to auto. */
-  mode: 'auto' | 'manual'
-  reason: string
+  /** The user changed the view since the agent last did: the agent's next change needs their say-so. */
+  userChanged: boolean
+  /** An agent request held until the user answers. */
+  pending: { panel: PanelId; reason: string } | null
   open: boolean
   full: boolean
   doc: { name: string; text: string; itemId?: string; shared?: boolean } | null
@@ -29,11 +30,14 @@ export interface AsideState {
 }
 
 interface AsideApi extends AsideState {
-  /** The user picked a panel: locks auto. */
+  /** The user picked a panel. */
   pick: (p: PanelId) => void
-  /** The agent or a server frame asks for a panel. Never steals focus and never switches while the user types in the aside or after a manual pick. */
-  auto: (p: PanelId, reason: string) => void
-  backToAuto: () => void
+  /** The agent or a server frame asks for a panel. Applied at once unless the user typed in the aside (dropped) or changed the view since the agent last did and has not granted this agent in this thread (held as `pending`). */
+  auto: (p: PanelId, reason: string) => 'applied' | 'pending' | 'dropped'
+  /** Answer the held request. */
+  answer: (choice: GrantChoice) => void
+  /** The agent and thread the aside is showing; grants are scoped to it. */
+  setScope: (scope: string) => void
   toggle: () => void
   setOpen: (o: boolean) => void
   setFull: (f: boolean) => void
@@ -47,27 +51,39 @@ interface AsideApi extends AsideState {
 const Ctx = createContext<AsideApi | null>(null)
 
 export function AsideProvider({ children, wide }: { children: ReactNode; wide: boolean }) {
-  const [s, setS] = useState<AsideState>({ panel: 'plan', mode: 'auto', reason: '', open: wide, full: false, doc: null, tick: 0, conv: null })
+  const [s, setS] = useState<AsideState>({ panel: 'plan', userChanged: false, pending: null, open: wide, full: false, doc: null, tick: 0, conv: null })
   const rootRef = useRef<HTMLElement | null>(null)
+  const scope = useRef('')
   const typing = () => {
     const a = document.activeElement
     return !!a && !!rootRef.current?.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)
   }
   const register = useCallback((conv: ConversationData | null) => setS((x) => ({ ...x, conv })), [])
   const bump = useCallback(() => setS((x) => ({ ...x, tick: x.tick + 1 })), [])
+  const latest = useRef(s)
+  latest.current = s
   const api = useMemo<AsideApi>(() => ({
     ...s,
     rootRef,
-    pick: (panel) => setS((x) => ({ ...x, panel, mode: 'manual', reason: 'you chose', open: true, full: panel === 'doc' })),
+    pick: (panel) => setS((x) => ({ ...x, panel, userChanged: true, pending: null, open: true, full: false })),
     auto: (panel, reason) => {
-      if (typing()) return
-      setS((x) => (x.mode === 'manual' ? x : { ...x, panel, reason, open: x.open || x.mode === 'auto' && wide }))
+      if (typing()) return 'dropped'
+      if (latest.current.userChanged && !isGranted(scope.current)) { setS((x) => ({ ...x, pending: { panel, reason } })); return 'pending' }
+      setS((x) => ({ ...x, panel, userChanged: false, pending: null, open: x.open || wide }))
+      return 'applied'
     },
-    backToAuto: () => setS((x) => ({ ...x, mode: 'auto', reason: '' })),
+    answer: (choice) => setS((x) => {
+      const p = x.pending
+      if (!p) return x
+      if (choice === 'deny') return { ...x, pending: null }
+      if (choice !== 'once') grant(scope.current, choice)
+      return { ...x, panel: p.panel, userChanged: false, pending: null, open: true }
+    }),
+    setScope: (v) => { scope.current = v },
     toggle: () => setS((x) => ({ ...x, open: !x.open })),
     setOpen: (open) => setS((x) => ({ ...x, open })),
     setFull: (full) => setS((x) => ({ ...x, full })),
-    openDoc: (doc) => setS((x) => ({ ...x, doc, panel: 'doc', mode: 'manual', reason: 'you chose', open: true, full: true })),
+    openDoc: (doc) => setS((x) => ({ ...x, doc, panel: 'doc', userChanged: true, open: true, full: true })),
     bump,
     register,
   }), [s, wide, bump, register])

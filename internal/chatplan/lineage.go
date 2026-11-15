@@ -20,7 +20,8 @@ type Carried struct {
 	Moved bool
 	From  string // thread ref the plan was moved from
 	To    string // thread ref it now lives under
-	Plan  Plan
+	Plan  Plan   // the first plan moved
+	Plans []Plan // every plan moved, in order
 }
 
 // Stub is a Tether session known from the lineage record, whether or not it has inbox turns yet.
@@ -104,19 +105,23 @@ func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Ca
 				return nil // the operator turned Continue off for this session: its replacement starts fresh
 			}
 			from := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: cur}.String()
-			p, perr := s.get(ctx, tx, "scope='thread' AND thread_ref=?", from)
-			if perr == nil {
-				p.Revision++
-				p.UpdatedAt = now.UnixMilli()
-				if _, err := tx.ExecContext(ctx, `UPDATE chat_plans SET thread_ref=?,revision=?,updated_ns=? WHERE id=?`, me, p.Revision, now.UnixNano(), p.ID); err != nil {
-					return err
-				}
-				p.ThreadRef = &me
-				out = Carried{Moved: true, From: from, To: me, Plan: p}
-				return nil
-			}
-			if !errors.Is(perr, ErrNotFound) {
+			plans, perr := s.plansOf(ctx, tx, from)
+			if perr != nil {
 				return perr
+			}
+			if len(plans) > 0 {
+				// All of the ancestor's plans move together, in their order.
+				for i := range plans {
+					p := &plans[i]
+					p.Revision++
+					p.UpdatedAt = now.UnixMilli()
+					if _, err := tx.ExecContext(ctx, `UPDATE chat_plans SET thread_ref=?,revision=?,updated_ns=? WHERE id=?`, me, p.Revision, now.UnixNano(), p.ID); err != nil {
+						return err
+					}
+					p.ThreadRef = &me
+				}
+				out = Carried{Moved: true, From: from, To: me, Plan: plans[0], Plans: plans}
+				return nil
 			}
 			if rowCleared != 0 || !next.Valid {
 				return nil

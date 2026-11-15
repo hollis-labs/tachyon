@@ -236,7 +236,7 @@ export default function LensPage({ db }: { db: PlannerDb }) {
       onCommented={() => void load()}
       mentionable={(items ?? []).map((i) => ({ id: i.id, title: i.title, ref: typeof i.legacy_id === 'string' ? i.legacy_id : undefined }))}
       statusOptions={(schema?.enums.status ?? []).map((s) => ({ value: s, label: sentenceCase(s) }))}
-      onStatus={async (status) => { await authorizing(() => api.plannerUpdate(db, item.id, { status }, item.rev + 1)) }}
+      onStatus={async (status) => { await authorizing(() => api.plannerUpdate(db, item.id, { status }, item.rev)) }}
     />
   )
   const selected = Boolean(item) || db === 'inbox'

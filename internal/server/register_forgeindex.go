@@ -79,7 +79,7 @@ func mountForgeIndex(s *Server, mux *http.ServeMux, _ *approvals.Bridge) {
 		return
 	}
 	x := v.(*forgeindex.Index)
-	var legacy http.Handler = s.inventory.APIRoutes()
+	var legacy http.Handler = s.pluginRoutes()
 	if s.cache != nil {
 		legacy = s.cache.Wrap(legacy)
 	}

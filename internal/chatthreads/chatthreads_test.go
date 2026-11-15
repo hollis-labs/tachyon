@@ -562,7 +562,7 @@ func TestMessageAndDeliveryFramesAreReplayable(t *testing.T) {
 func TestTetherMessagesCarryInputAttribution(t *testing.T) {
 	e := setup(t)
 	wake := chatbridge.Turn{ID: "w1", AgentID: "agt_demo", SessionID: "s7", TurnID: "tn-w1", Kind: "terminal", Content: "Read 1 message.", Created: "2020-10-30T10:00:00Z",
-		Revision: 1, State: "presented", Source: &chatbridge.SourceMessage{Origin: "routed", Attribution: map[string]string{"audience": "unknown", "audience_basis": "shared_operator_credential", "input_ids": "in_1", "input_sources": "mail_wake"}}}
+		Revision: 1, State: "presented", Source: &chatbridge.SourceMessage{Origin: "routed", Attribution: map[string]string{"audience": "unknown", "audience_basis": "shared_operator_credential", "input_ids": "in_1", "input_sources": "mail_wake", "input_triage": "action"}}}
 	asked := chatbridge.Turn{ID: "w2", AgentID: "agt_demo", SessionID: "s7", TurnID: "tn-w2", Kind: "terminal", Content: "Done.", Created: "2020-10-30T10:01:00Z",
 		Revision: 1, State: "presented", Source: &chatbridge.SourceMessage{Origin: "routed", Attribution: map[string]string{"audience": "operator", "input_ids": "in_2", "input_classes": "operator", "input_sources": " chat_send "}}}
 	old := chatbridge.Turn{ID: "w3", AgentID: "agt_demo", SessionID: "s7", TurnID: "tn-w3", Kind: "terminal", Content: "Older.", Created: "2020-10-30T10:02:00Z", Revision: 1, State: "presented"}
@@ -575,7 +575,7 @@ func TestTetherMessagesCarryInputAttribution(t *testing.T) {
 		t.Fatalf("messages: %v", ms)
 	}
 	meta := func(i int) map[string]any { return ms[i].(map[string]any)["meta"].(map[string]any) }
-	if got := fmt.Sprint(meta(0)["input_sources"]); got != "[mail_wake]" || meta(0)["input_classes"] != nil {
+	if got := fmt.Sprint(meta(0)["input_sources"]); got != "[mail_wake]" || fmt.Sprint(meta(0)["input_triage"]) != "[action]" || meta(0)["input_classes"] != nil {
 		t.Fatalf("mail wake: %v", meta(0))
 	}
 	if fmt.Sprint(meta(1)["input_sources"]) != "[chat_send]" || fmt.Sprint(meta(1)["input_classes"]) != "[operator]" {
