@@ -104,6 +104,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` (also the ceremony meter's hourly read) |
 | agent controls and launches (on when their credentials were set) | `tachyon.features.agents_controls`: nudge, interrupt, restart, the Tether launches (new switch, B8b) |
 | `TACHYON_CATALOG_INDEX` (`0` = off) | `tachyon.features.catalog_index` |
+| builder changes and registry writes (on when a Tether credential was set) | `tachyon.features.builder_changes` (new switch, B9b) |
 | `TACHYON_CARD_EVENTS` | `tachyon.features.card_events` |
 | `TACHYON_CARD_EFFECTS_TORQUE` | `tachyon.features.card_effects_torque` |
 | card delivery (on when the file was set) | `tachyon.features.card_delivery` |
@@ -250,6 +251,13 @@ Details: `docs/api-contract.md`.
 - **The imported team snapshot** is read from the migrated `api_cache` row with the old defaults (kept a week, the
   catalog policy's freshness headers). A cache policy file's overrides come with the API cache slice.
 - **Postgres.** The library revision insert is an upsert on its key instead of `INSERT OR REPLACE`.
+- **Builder changes and registry writes (B9b) are behind `tachyon.features.builder_changes`,** a new switch: the
+  old build ran them whenever a Tether credential was set. Off, the change routes answer `503 changes_unavailable`
+  and the registry writes `501`, and nothing reaches Tether. On, the modes are the old ones: direct (plans and
+  applies itself) with `tachyon.upstreams.tether_control.token` (the old `TACHYON_TETHER_CONTROL_TOKEN_FILE`), at
+  `tether_control.url` (the old `TACHYON_TETHER_CONTROL_ADDR`) or the Tether address; otherwise handoff on the read
+  credential, ending at a bundle the operator plans in Tether. Registry writes need the control credential.
+- **A change's operator** is the signed-in person's principal id; the old build recorded a browser-session ref.
 
 ## Agents (slices B8a, B8b)
 

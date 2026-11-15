@@ -348,8 +348,13 @@ Served under `/api/plugins/console/v1`, from the migrated `catalog_*`, `library_
 - `catalog/team-policy` reads Tether's `teams-policy.yaml` through the reviewed proxy (`503 configuration` without
   Tether). `catalog/imported-teams` serves the snapshot an operator imported into the old API cache, or an empty
   one.
-- Not yet served (B9b, CW-20261115-0073): builder changes, the launch action, capabilities, registry writes, the
-  console's object writes and the Tether provider verbs (team runs, formations, provider actions).
+- **Writes (slice B9b):** `GET builder/capabilities`, `GET builder/changes[/{id}[/bundle]]` (`tachyon.builder.read`);
+  `POST builder/changes` and its `submit`, `cancel`, `rearm`, `mark_planned`, `check`; `POST builder/launches/{id}/launch`;
+  `POST registry/projects`, `PATCH …/{id}`, `POST`/`DELETE …/{id}/link` (`tachyon.builder.write`, operator check).
+  With `tachyon.features.builder_changes` off the change routes answer `503 changes_unavailable` and the registry writes
+  `501 registry_write_unavailable`, as the old build did unconfigured; nothing reaches Tether.
+- Not yet served (B9b-2, CW-20261115-0085): the console's object writes and the Tether provider verbs (team runs,
+  formations, provider actions).
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 
