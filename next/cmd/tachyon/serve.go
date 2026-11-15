@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/substrate/modules/scheduler"
 
 	"github.com/hollis-labs/tachyon/next/internal/access"
+	"github.com/hollis-labs/tachyon/next/internal/approvals"
 	"github.com/hollis-labs/tachyon/next/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/next/internal/hostguard"
 	"github.com/hollis-labs/tachyon/next/internal/objects"
@@ -43,6 +44,7 @@ type deps struct {
 	objectJob *objectsync.Jobs
 	planner   plannerDeps
 	chat      chatDeps
+	approvals *approvals.Inbox
 }
 
 // appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
@@ -52,7 +54,7 @@ type deps struct {
 func appRoutes(d deps) []routes.Route {
 	agent := dataverbs.NewAgentHTTP(d.local, d.access)
 	console := dataverbs.NewConsoleHTTP(d.local)
-	return append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), []routes.Route{
+	return append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
@@ -109,7 +111,10 @@ func (t *tachyon) serve(ctx context.Context) error {
 	}
 	stopChat := startChat(cfg, chat)
 	defer stopChat()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat})
+	inbox := newApprovals(ctx, app, cfg, domain)
+	stopApprovals := startApprovals(inbox)
+	defer stopApprovals()
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err
