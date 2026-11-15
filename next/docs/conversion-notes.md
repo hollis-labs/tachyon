@@ -299,6 +299,9 @@ Details: `docs/api-contract.md`.
   (`docs/api-contract.md` section 5) lists no operator check on console state; the port follows the old build,
   pending the lead.
 - **A secondary rate limit** (`403` with `Retry-After`) now counts as a rate limit, not an error.
+- **`GET console/state` lists item state only.** The old list also carried the alerts' state rows (`al_*` keys,
+  351 on the migrated copy), which the alerts store served on the same path. Until the alerts slice lands, those
+  keys are neither listed nor writable here; that slice carves `console/state/al_*` out of this route.
 - **New `pr.*` alert-feed events are dropped** until the alerts slice: the old poller fed them to the alerts
   store, which is not ported yet.
 - **`assign-agent` is deferred** (`POST forge/repos/{host}/{owner}/{name}/pulls/{num}/assign-agent`, the old
