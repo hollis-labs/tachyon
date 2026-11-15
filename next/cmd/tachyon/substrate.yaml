@@ -33,13 +33,16 @@ config:
     allowed_hosts: []
     cache_dir: cache
     workspace_dir: workspace
+    chat_sync_interval: 5s
     upstreams:
       github: { url: "https://api.github.com" }
     features:
       object_sync: false
       chat_sync: false
       agents_collector: false
+      agents_controls: false
       catalog_index: false
+      builder_changes: false
       card_events: false
       card_effects_torque: false
       card_delivery: false

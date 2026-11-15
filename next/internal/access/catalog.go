@@ -22,7 +22,7 @@ var (
 	tesseractVerbs      = []string{"tesseract.recall", "tesseract.get"}
 	chatWorkspaceVerbs  = []string{"chat.workspace.list", "chat.workspace.get"}
 	chatTopicVerbs      = []string{"chat.topic.add", "chat.topic.list", "chat.bookmark.list", "chat.approvals.list"}
-	chatPlanVerbs       = []string{"chat.plan.get", "chat.plan.write", "chat.plan.step"}
+	chatPlanVerbs       = []string{"chat.plan.get", "chat.plan.write", "chat.plan.step", "chat.plan.list", "chat.plan.create", "chat.plan.move_step"}
 	chatActivityVerbs   = []string{"chat.activity.append"}
 	chatPanelVerbs      = []string{"chat.panel.open"}
 	terminalVerbs       = []string{"terminal.machines", "terminal.propose", "terminal.run.get"}
@@ -36,7 +36,7 @@ var (
 	mutating = []string{
 		"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate",
 		"planner.portfolio.reorder", "planner.portfolio.assign", "planner.portfolio.unassign",
-		"actions.request", "card.ask", "card.cancel", "chat.topic.add", "chat.plan.write", "chat.plan.step",
+		"actions.request", "card.ask", "card.cancel", "chat.topic.add", "chat.plan.write", "chat.plan.step", "chat.plan.create", "chat.plan.move_step",
 		"chat.activity.append", "chat.panel.open", "terminal.propose",
 	}
 )

@@ -199,6 +199,24 @@ granted), `objects.get` and `objects.history` (the record's kind must be granted
 people only; a key is refused there whatever its scopes. The four object reads need `tachyon.objects.read`.
 `GET /api/plugins/console/v1/objects/sync/status` (`tachyon.objects.read`) is the old sync status.
 
+**Chat verbs (slice B6d).** Served on the agent API with the old names, inputs and results, over the chat
+services of B6/B6b:
+
+| Family | Verbs |
+|---|---|
+| Workspace | `chat.workspace.list`, `chat.workspace.get` (shared items only; text up to 32 KiB) |
+| Topics | `chat.topic.add`, `chat.topic.list`, `chat.bookmark.list`, `chat.approvals.list` |
+| Plans | `chat.plan.get`, `chat.plan.list`, `chat.plan.create`, `chat.plan.write`, `chat.plan.step`, `chat.plan.move_step` |
+| Activity | `chat.activity.append` (types `task.closed` and `note` only), `chat.panel.open` |
+
+- The thread rule is the old one. A direct caller names an app thread (`app:<id>`); the plan verbs also accept a
+  Tether thread the caller owns (bound with `tachyon access bind`, or named after the thread's agent).
+- The pinned Tether proxy acts for the session in `X-Tether-Session-Id` and only that session's own thread;
+  any other thread is `403`. From any other caller the header is ignored. `X-Tether-Continues-Session-Id` and
+  `X-Tether-Logical-Agent-Id` carry a plan over to a relaunched session, from the proxy only.
+- `chat.approvals.list` reads the open approval cards from the migrated `chat_card_refs` and `approval_items`.
+- Every verb names no object kind. The console data API does not serve them, as before.
+
 ## 5b. Planner (slice B5)
 
 The old paths, served by Tachyon:
@@ -216,12 +234,19 @@ The old paths, served by Tachyon:
   - agents: each portfolio database's kind must be granted, and `planner.list` without a kind needs every kind;
   - console: the person needs `tachyon.planner.read` or `tachyon.planner.write`.
 
-## 5c. Chat without threads (slice B6)
+## 5c. Chat (slices B6, B6b)
 
-The old paths under `/api/plugins/console/v1/chat`, served by Tachyon:
+The old paths under `/api/plugins/console/v1/chat`, `.../chat-turns` and `.../app-agent`, served by Tachyon:
 
-| Path (under `.../chat`) | Read scope | Write scope | Check in handler |
+| Path (under `.../chat` unless shown) | Read scope | Write scope | Check in handler |
 |---|---|---|---|
+| `threads` (list, create), `threads/{ref}` (get, patch), `/messages` (list, send), `/read`, `/stop` | `tachyon.chat.read` | `tachyon.chat.write` | writes need the operator check |
+| `GET events` (every thread) and `GET threads/{ref}/events` (SSE) | `tachyon.chat.read` | | |
+| `GET agents` (the Tether chat roster, passed through as Tether answers; the query is dropped; `503 configuration` without Tether) | `tachyon.chat.read` | | |
+| `GET outbox?launch_id=` (messages sent to a launch: bare array, newest first, at most 500) | `tachyon.chat.read` | | |
+| `POST agents/{launch}/send` (`{text, idempotency_key}`; B6c) | | `tachyon.chat.write` | yes |
+| `.../chat-turns/inbox`, `.../chat-turns/items/{id}/reply` | `tachyon.chat.read` | `tachyon.chat.write` | the reply |
+| `.../app-agent/threads`, `/threads/{id}/messages` (+ send), `/read`, `/events` (SSE) | `tachyon.chat.read` | `tachyon.chat.write` | writes |
 | `threads/{ref}/topics`, `/bookmarks` (+ `/{id}` delete) | `tachyon.chat.read` | `tachyon.chat.write` | writes need the operator check |
 | `threads/{ref}/plan` (single), `/plan/steps`, `/plan/reorder` | `tachyon.chat.read` | `tachyon.chat.write` | writes |
 | `threads/{ref}/plans` (several; #721/#725), `/plans/reorder`, `/plans/{id}`, steps, move | `tachyon.chat.read` | `tachyon.chat.write` | writes |
@@ -233,16 +258,103 @@ The old paths under `/api/plugins/console/v1/chat`, served by Tachyon:
 
 - Request and response shapes, status codes and error codes are the old build's. The old chat errors were
   already the flat `{code, message}`.
-- Unknown routes stay unserved until their slice:
-  - threads, messages, send, read, stop and both event streams: B6b;
-  - cards and approval rules: B7;
-  - the outbox and send-to-agent: B7+.
-- A thread "exists" when the local tables know it: app thread rows, synced turns, lineage, thread state, or chat
-  data recorded against it. An unknown thread is `404 not_found` "No such thread.", as before. B6b restores the
-  old check, which also lists live Tether sessions.
-- Until B6b, a new topic's `message_ref` is stored as given and its `seq` is null. The old build resolved the
-  message in the thread and refused one that wasn't in it (`400 invalid`).
-- Change events have no stream until B6b; the activity feed still records them.
+- Unserved until their slice: chat cards and their thread approval rules (`threads/{ref}/approval-rules`, with the
+  chat cards slice).
+- Sending to an agent is the old outbox: the send is recorded `sending`, forwarded to Tether's
+  `/chat/agents/{launch}/send` with the caller's idempotency key, and its result recorded. A repeated key answers
+  `{session_id, replayed: true}` once sent; the same key with other text is `409 conflict`; an unconfirmed send
+  older than a day is `409 delivery_unknown`. Tether's status and body are passed back. With
+  `tachyon.features.chat_sync` off it is `503 disabled` and nothing is recorded or sent.
+- A thread exists when the threads aggregator lists it, as before: the Tether chat bridge's turns, the app agent's
+  threads, and sessions known from plan lineage. An unknown thread is `404 not_found` "No such thread.".
+- The streams are unnamed `data:` frames `{type, thread_ref, at, ...}`; `id:` is on the hub frames of the
+  per-thread stream, replayable with `Last-Event-ID` (last 500 per thread). Both end when the server shuts down;
+  clients reconnect.
+- With the app agent not configured its routes answer `503 not_configured`; with Tether not configured, send,
+  reply and stop on Tether threads answer with the configuration error, and nothing is dialled.
+
+## 5d. Approvals (slice B7)
+
+Served under `/api/plugins/console/v1/approval-inbox`, from the migrated `approval_*` tables:
+
+| Route | Scope | Operator check (in handler) |
+|---|---|---|
+| `GET inbox`, `GET history`, `GET events`, `GET items/{id}`, `GET items/{id}/audit` | `tachyon.approvals.read` | |
+| `POST items/{id}/present` | `tachyon.approvals.resolve` | |
+| `POST items/{id}/resolve` | `tachyon.approvals.resolve` | medium, high, destructive (the old assurance table) |
+| `POST items/{id}/defer`, `DELETE items/{id}/defer` | `tachyon.approvals.resolve` | |
+| `POST batch/resolve` | `tachyon.approvals.resolve` | yes |
+| `POST secrets` | `tachyon.approvals.resolve` | yes |
+
+- Only a signed-in person uses the inbox. No principal is `401 session_required`; a key, whatever its scopes, is
+  `403 requester_cannot_approve` on every route, reads included, as a bearer requester was in the old build. Below
+  the action's level it is `403 operator_required`.
+- Request and response shapes are the old build's. The hitl errors (stale revision, idempotency and terminal
+  conflicts) are flattened to `{code, message, details}`: `details` carries the old body's other fields
+  (`contract_version`, `operation`, `item_id`, `revision_kind`, `expected_revision`, `actual_revision`,
+  `current_state`, `terminal_outcome`).
+- Secret values are never in a list, detail, history or audit body. Without `tachyon.files.secret_key`, `POST
+  secrets` answers `503 secrets_unavailable` and the rest of the inbox serves.
+- Not yet joined into item bodies: `action_run` and `run_state` (action runs) and `card_receipt` (card delivery).
+  They come back when those slices set the inbox's hooks.
+- Not served: the producer API `/api/approvals/v1` (not ported), the trusted Basalisk API, and the Tangent
+  session routes (section 1).
+
+## 5e. Agents, ceremony and Needs you (slices B8a, B8b)
+
+Served under `/api/plugins/console/v1`, from the migrated `agents_*`, `bus_events`, `seat_status`, `ceremony_daily`
+and `checkpoint_events` tables:
+
+| Route | Scope | Operator check (in handler) |
+|---|---|---|
+| `GET agents/sessions`, `agents/sessions/{id}`, `…/events`, `…/context-series`, `…/tokens`, `…/history` | `tachyon.agents.read` | |
+| `GET agents/stream` (SSE), `agents/settings`, `agents/seats`, `agents/controls/{request_id}`, `agents/collector`, `agents/bus/events` | `tachyon.agents.read` | |
+| `GET ceremony` | `tachyon.agents.read` | |
+| `GET needs-you` | `tachyon.agents.read` | |
+| `PUT agents/settings`, `POST agents/sessions/{id}/nudge`, `…/restart`, `POST agents/controls/{request_id}/skip` | `tachyon.agents.control` | yes |
+| `GET tether/workers`, `tether/sessions`, `tether/sessions/{id}`, `GET catalog/launches` | `tachyon.agents.read` | |
+| `POST tether/sessions`, `POST tether/sessions/{id}/launch` | `tachyon.agents.control` | yes |
+
+- Request and response shapes, status codes and error codes are the old build's (`internal/agentsapi/openapi.yaml`).
+- With `tachyon.features.agents_collector` off (the default) the collector is not started: `agents/collector`
+  reports it `off`, and the data is what was migrated.
+- With `tachyon.features.agents_controls` off (the default), nudge, interrupt and restart are unavailable (`409
+  nudge_unsupported`, `interrupt_unsupported`, `restart_unsupported`) and the Tether launches answer `503
+  disabled`; nothing is sent.
+- The Tether reads and launches answer `503 configuration` without `tachyon.upstreams.tether.url`; a malformed id
+  is `404 not_found`; the reviewed body fields are checked before anything is forwarded (`400 invalid_request`).
+- Needs you reads the operator's mailbox from a configured Tether, and the ceremony meter reads a configured
+  Torque, on demand, as before. Without them those sources report `not configured`.
+- Needs you reads need no operator, as in the old build (its guard let GETs through).
+- Not yet: the ceremony meter's weekly regression alert (the alerts slice).
+
+## 5f. Builder, registry and catalog (slice B9a, the read side)
+
+Served under `/api/plugins/console/v1`, from the migrated `catalog_*`, `library_*`, `part_refs` and `api_cache` tables:
+
+| Route | Scope |
+|---|---|
+| `GET builder/summary`, `GET builder/stream` (SSE) | `tachyon.builder.read` |
+| `GET builder/agents[/{id}[/used_by\|checks\|history\|resolved]]`, `builder/launches[/{id}]` | `tachyon.builder.read` |
+| `GET builder/library/{kind}[/{id}[/used_by\|history]]` | `tachyon.builder.read` |
+| `GET registry/projects[/{id}]` | `tachyon.builder.read` |
+| `GET catalog/team-policy`, `GET catalog/imported-teams` | `tachyon.catalog.read` |
+
+- Request and response shapes, status codes and error codes are the old build's (`internal/builderapi/openapi.yaml`).
+- The catalog index runs only with `tachyon.features.catalog_index` (and a Tether address); off, the summary and
+  stream serve the migrated index.
+- The agents, launches and registry reads ask a configured Tether for live sessions and the registry on demand,
+  as before; without Tether they report live counts as unknown and the registry answers `503`.
+- `catalog/team-policy` reads Tether's `teams-policy.yaml` through the reviewed proxy (`503 configuration` without
+  Tether). `catalog/imported-teams` serves the snapshot an operator imported into the old API cache, or an empty
+  one.
+- **Writes (slice B9b):** `GET builder/capabilities`, `GET builder/changes[/{id}[/bundle]]` (`tachyon.builder.read`);
+  `POST builder/changes` and its `submit`, `cancel`, `rearm`, `mark_planned`, `check`; `POST builder/launches/{id}/launch`;
+  `POST registry/projects`, `PATCH …/{id}`, `POST`/`DELETE …/{id}/link` (`tachyon.builder.write`, operator check).
+  With `tachyon.features.builder_changes` off the change routes answer `503 changes_unavailable` and the registry writes
+  `501 registry_write_unavailable`, as the old build did unconfigured; nothing reaches Tether.
+- Not yet served (B9b-2, CW-20261115-0085): the console's object writes and the Tether provider verbs (team runs,
+  formations, provider actions).
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 

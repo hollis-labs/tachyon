@@ -1,0 +1,97 @@
+package appagent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+)
+
+// Runtime is the port between Tachyon's chat and whatever runs the agent. Nanite
+// is the temporary adapter; an embedded runtime would be a second implementation.
+// Nothing outside the adapter may know a runtime's wire format.
+type Runtime interface {
+	// Ensure returns a usable session, reusing existing when it is still alive.
+	Ensure(ctx context.Context, existing string) (session string, err error)
+	// Submit starts a turn and returns the runtime's id for it. ErrSessionGone
+	// means the session no longer exists: Ensure a new one and submit again.
+	Submit(ctx context.Context, session, text string) (turn string, err error)
+	// Observe streams one turn's events until the turn finishes, fails, or ctx ends.
+	Observe(ctx context.Context, session, turn string, emit func(TurnEvent)) error
+	// Result is the authoritative snapshot of one turn; it survives a lost stream.
+	Result(ctx context.Context, session, turn string) (Result, error)
+}
+
+var (
+	ErrSessionGone   = errors.New("runtime session no longer exists")
+	ErrRuntimeDown   = errors.New("the agent runtime is unavailable")
+	ErrNotConfigured = errors.New("the app agent is not configured")
+)
+
+// TurnEvent kinds.
+const (
+	EventText      = "text"       // Text is the next piece of the reply
+	EventToolStart = "tool_start" // Tool is running
+	EventToolEnd   = "tool_end"   // Tool finished (ok | error)
+	EventFinish    = "finish"     // Reason says why; the turn is over
+	EventError     = "error"      // Err says what failed; the turn is over
+	EventApproval  = "approval"   // Approval is a tool call waiting for the operator (inband, once scope)
+	EventContext   = "context"    // Used, Window and Model are the runtime's context meter (a signal, not the end)
+)
+
+// Approval is a runtime approval.request: the agent wants to run Tool and waits for an allow or deny.
+// Class is what the runtime says about the call ("low" when it is read-only); empty means unknown, which
+// is treated as not low.
+type Approval struct {
+	ID        string
+	CallID    string
+	Tool      string
+	Input     json.RawMessage
+	Reason    string
+	Class     string
+	ExpiresAt time.Time
+}
+
+// Responder is implemented by runtimes that take approval answers back (Nanite: once scope only).
+type Responder interface {
+	Respond(ctx context.Context, session, approvalID string, allow bool) error
+}
+
+type TurnEvent struct {
+	Approval *Approval
+	Kind     string
+	Text     string
+	Tool     Tool
+	Reason   string
+	Err      string
+	// Context meter, for EventContext. Zero means the runtime did not say.
+	Used, Window int64
+	Model        string
+}
+
+// Result is a turn's state as the runtime sees it now.
+type Result struct {
+	State string // submitted | working | completed | failed | canceled | input_required
+	Text  string
+	Tools []Tool
+	Error string
+}
+
+func (r Result) Terminal() bool {
+	switch r.State {
+	case "completed", "failed", "canceled", "input_required":
+		return true
+	}
+	return false
+}
+
+type clientContextKey struct{}
+
+// WithClientContext carries a turn's client_context payload to the runtime adapter. The
+// adapter decides whether to forward it; the server sets it only when enabled.
+func WithClientContext(ctx context.Context, v any) context.Context {
+	return context.WithValue(ctx, clientContextKey{}, v)
+}
+
+// ClientContextFrom returns the payload set by WithClientContext, or nil.
+func ClientContextFrom(ctx context.Context) any { return ctx.Value(clientContextKey{}) }

@@ -40,6 +40,7 @@ next/
     migratefrom/                 the one-way data migration from the old build (`tachyon migrate-from`)
     access/                      service identities and their identity-key credentials, the agent request path
     assurance/                   the approvals assurance check on identity principals
+    approvals/, approvalsapi/, cards/   the approval inbox: items, decisions, defers, batches, secrets (B7)
     objects/                     Tachyon's records (objects, links, revisions, sources), ported (slice B4)
     objectsync/                  object sync from Tether, Cerberus and GitHub on the scheduler module
     dataverbs/                   the data verbs over HTTP: the agent API and the console API

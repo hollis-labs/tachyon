@@ -1,0 +1,471 @@
+package agentscollector
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/hollis-labs/tachyon/next/internal/agentsderive"
+	"github.com/hollis-labs/tachyon/next/internal/store"
+)
+
+// Retention: 7 days of events, 30 days of gaps and ended sessions (design E6, pending confirmation).
+const (
+	EventRetention   = 7 * 24 * time.Hour
+	GapRetention     = 30 * 24 * time.Hour
+	SessionRetention = 30 * 24 * time.Hour
+	// Minute buckets are kept 48 h; hour buckets 30 d (the downsampled history).
+	MinuteSampleRetention = 48 * time.Hour
+	HourSampleRetention   = 30 * 24 * time.Hour
+	pruneBatch            = 1000
+)
+
+type Store struct {
+	DB  *store.Store
+	Now func() time.Time
+}
+
+func (s *Store) now() time.Time {
+	if s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+// State is the cursor and bookkeeping row.
+type State struct {
+	Env           string
+	LastSeq       int64
+	LastEventAt   time.Time
+	Strategy      string
+	RetentionLast time.Time
+	Pruned        int64
+}
+
+func (s *Store) State(ctx context.Context) (State, error) {
+	var st State
+	var last, ret int64
+	err := s.DB.Reader.QueryRowContext(ctx, `SELECT env_id,last_seq,last_event_at_ns,strategy,retention_last_ns,retention_pruned FROM agents_collector_state WHERE id=1`).
+		Scan(&st.Env, &st.LastSeq, &last, &st.Strategy, &ret, &st.Pruned)
+	if errors.Is(err, sql.ErrNoRows) {
+		// No state row yet: a fresh database (the old migration seeded it; a migrated one copies it).
+		return st, nil
+	}
+	if last > 0 {
+		st.LastEventAt = time.Unix(0, last).UTC()
+	}
+	if ret > 0 {
+		st.RetentionLast = time.Unix(0, ret).UTC()
+	}
+	return st, err
+}
+
+// SetStrategy records which bootstrap path is in use and resets the epoch counter.
+func (s *Store) SetStrategy(ctx context.Context, strategy string) error {
+	return s.DB.Writer.Submit(ctx, "agents_strategy", func(ctx context.Context, tx store.Tx) error {
+		if err := ensureState(ctx, tx); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE agents_collector_state SET strategy=?, started_ns=?, epoch=epoch+1 WHERE id=1`, strategy, s.now().UnixNano())
+		return err
+	})
+}
+
+// Seed moves the cursor forward without a frame (a snapshot's high-water mark).
+func (s *Store) Seed(ctx context.Context, env string, seq int64) error {
+	return s.DB.Writer.Submit(ctx, "agents_seed", func(ctx context.Context, tx store.Tx) error {
+		if err := ensureState(ctx, tx); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE agents_collector_state SET env_id=?, last_seq=CASE WHEN last_seq>=? THEN last_seq ELSE ? END WHERE id=1`, env, seq, seq)
+		return err
+	})
+}
+
+// Reseed sets the cursor exactly, also backwards: after a purged or ahead gap the old position means nothing.
+func (s *Store) Reseed(ctx context.Context, env string, seq int64) error {
+	return s.DB.Writer.Submit(ctx, "agents_reseed", func(ctx context.Context, tx store.Tx) error {
+		if err := ensureState(ctx, tx); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE agents_collector_state SET env_id=?, last_seq=? WHERE id=1`, env, seq)
+		return err
+	})
+}
+
+func b2i(p *bool) any {
+	if p == nil {
+		return nil
+	}
+	if *p {
+		return 1
+	}
+	return 0
+}
+
+// Apply stores a batch in one writer transaction: the events, the session facts they carry, and the
+// cursor. A replayed frame (same event id) changes nothing, so a restart or backfill is idempotent.
+func (s *Store) Apply(ctx context.Context, frames []Frame) error {
+	if len(frames) == 0 {
+		return nil
+	}
+	return s.DB.Writer.Submit(ctx, "agents_apply", func(ctx context.Context, tx store.Tx) error {
+		now := s.now().UnixNano()
+		var maxSeq, lastAt int64
+		for _, f := range frames {
+			at := f.At.UnixNano()
+			if f.At.IsZero() {
+				at = now
+				if f.Kind == "session.snapshot" {
+					at = 0 // a listing without a timestamp says nothing about when the session was last active
+				}
+			}
+			if f.Seq > maxSeq {
+				maxSeq = f.Seq
+			}
+			if at > lastAt && f.Kind != "session.snapshot" {
+				lastAt = at
+			}
+			if f.Gap || f.Synchronized {
+				continue
+			}
+			if f.Kind == "session.health_changed" && f.App == "" && f.SessionID != "" {
+				// A session is fresh when the store has no start for it, or first saw it within the last two minutes.
+				var started int64
+				_ = tx.QueryRowContext(ctx, `SELECT started_ns FROM agents_sessions WHERE session_id=?`, f.SessionID).Scan(&started)
+				f.Fresh = started == 0 || at-started < int64(2*time.Minute)
+			}
+			if (f.Kind == "session.state_changed" || f.Kind == "session.health_changed") && f.App == "" && f.AgentName == "" && sessionTurn(f) != "" {
+				// The feed names the agent, which a state change does not carry; the store may know it.
+				_ = tx.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(agent_name,''),logical_agent_id,'') FROM agents_sessions WHERE session_id=?`, f.SessionID).Scan(&f.AgentName)
+			}
+			if f.CheckpointID != "" && f.Seq > 0 {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO checkpoint_events(correlation_id,state,at_ns,tether_seq) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`, f.CheckpointID, f.CheckpointState, at, f.Seq); err != nil {
+					return err
+				}
+			}
+			if f.Seat != nil {
+				if err := upsertSeatStatus(ctx, tx, f.Seat, at); err != nil {
+					return err
+				}
+			}
+			if b, ok := NormalizeBus(f); ok {
+				if err := insertBus(ctx, tx, b, now); err != nil {
+					return err
+				}
+			}
+			if f.SessionID == "" || f.App != "" {
+				continue // an app-published event belongs to the feed, not to a session
+			}
+			if typ := Type(f.Kind); typ != "" && f.EventID != "" && !noopTransition(f.Summary()) {
+				res, err := tx.ExecContext(ctx, `INSERT INTO agents_events(session_id,tether_seq,tether_event_id,type,at_ns,actor,summary,tether_summary,cell) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`,
+					f.SessionID, f.Seq, f.EventID, typ, at, "tether", f.Summary(), f.TetherSummary, f.Cell)
+				if err != nil {
+					return err
+				}
+				if n, _ := res.RowsAffected(); n == 0 {
+					continue // already seen
+				}
+			}
+			if err := upsertSession(ctx, tx, f, at, now); err != nil {
+				return err
+			}
+			if err := sample(ctx, tx, f, at); err != nil {
+				return err
+			}
+		}
+		if err := ensureState(ctx, tx); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE agents_collector_state SET last_seq=CASE WHEN last_seq>=? THEN last_seq ELSE ? END, last_event_at_ns=CASE WHEN last_event_at_ns>=? THEN last_event_at_ns ELSE ? END WHERE id=1`, maxSeq, maxSeq, lastAt, lastAt)
+		return err
+	})
+}
+
+// sample counts one event into the minute and hour buckets, and adds a turn's tokens.
+func sample(ctx context.Context, tx store.Tx, f Frame, at int64) error {
+	if f.Kind == "session.snapshot" || (Type(f.Kind) == "" && f.Usage == nil) {
+		return nil
+	}
+	var in, out, cr, cw, calls int64
+	if Type(f.Kind) == "tool" && f.Usage == nil {
+		var streamed bool
+		_ = tx.QueryRowContext(ctx, `SELECT one_liner_json IS NOT NULL FROM agents_sessions WHERE session_id=?`, f.SessionID).Scan(&streamed)
+		if streamed {
+			return nil // counted from the output stream (SetDerived)
+		}
+	}
+	if f.Usage != nil {
+		in, out, cr, cw = f.Usage[0], f.Usage[1], f.Usage[2], f.Usage[3]
+		if _, err := tx.ExecContext(ctx, `UPDATE agents_sessions SET tok_in=COALESCE(tok_in,0)+?, tok_out=COALESCE(tok_out,0)+?, tok_cr=COALESCE(tok_cr,0)+?, tok_cw=COALESCE(tok_cw,0)+? WHERE session_id=?`, in, out, cr, cw, f.SessionID); err != nil {
+			return err
+		}
+	}
+	if f.Kind == "tool.call.finished" {
+		calls = 1
+	}
+	act := int64(0)
+	if Type(f.Kind) != "" {
+		act = 1
+	}
+	t := time.Unix(0, at).UTC()
+	for _, b := range []struct {
+		kind string
+		ns   int64
+	}{{"min", t.Truncate(time.Minute).UnixNano()}, {"hour", t.Truncate(time.Hour).UnixNano()}} {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO agents_samples(session_id,bucket_ns,bucket_kind,activity,tok_in,tok_out,tok_cr,tok_cw,tool_calls) VALUES(?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(session_id,bucket_kind,bucket_ns) DO UPDATE SET activity=agents_samples.activity+excluded.activity, tok_in=agents_samples.tok_in+excluded.tok_in, tok_out=agents_samples.tok_out+excluded.tok_out, tok_cr=agents_samples.tok_cr+excluded.tok_cr, tok_cw=agents_samples.tok_cw+excluded.tok_cw, tool_calls=agents_samples.tool_calls+excluded.tool_calls`,
+			f.SessionID, b.ns, b.kind, act, in, out, cr, cw, calls); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// A session whose output stream is being read (one_liner_json is set) has every tool call counted from
+// that stream, including the ones Tether also reports as tool.call events; those events then add nothing
+// to the totals or the samples, or each of Tether's own tools would count twice. For a session with no
+// readable stream the events are the only count.
+func upsertSession(ctx context.Context, tx store.Tx, f Frame, at, now int64) error {
+	tool := 0
+	if Type(f.Kind) == "tool" && f.Kind == "tool.call.finished" {
+		tool = 1
+	}
+	work := f.WorkState
+	if f.Kind != "session.work_state_changed" {
+		work = ""
+	}
+	var ended int64
+	var reason string
+	if agentsderive.EndedState(f.SessionState) || f.SessionState == "orphaned" {
+		ended, reason = at, f.SessionState
+		if ended == 0 {
+			ended = now
+		}
+		if f.Reason != "" {
+			reason = f.Reason
+		}
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO agents_sessions(session_id,session_state,work_state,work_known,pending_approval,pending_question,provider,model,workroot,task_ref,started_ns,last_activity_ns,ended_ns,end_reason,tool_calls,updated_ns,agent_urn,logical_agent_id,agent_name,parent_session_id,replaced_by)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(session_id) DO UPDATE SET
+  session_state=CASE WHEN excluded.session_state<>'' THEN excluded.session_state ELSE agents_sessions.session_state END,
+  work_state=CASE WHEN excluded.work_state<>'' THEN excluded.work_state ELSE agents_sessions.work_state END,
+  work_known=CASE WHEN excluded.work_state<>'' THEN 1 ELSE agents_sessions.work_known END,
+  pending_approval=COALESCE(excluded.pending_approval,agents_sessions.pending_approval),
+  pending_question=COALESCE(excluded.pending_question,agents_sessions.pending_question),
+  provider=CASE WHEN excluded.provider<>'' THEN excluded.provider ELSE agents_sessions.provider END,
+  model=CASE WHEN excluded.model<>'' THEN excluded.model ELSE agents_sessions.model END,
+  workroot=CASE WHEN excluded.workroot<>'' THEN excluded.workroot ELSE agents_sessions.workroot END,
+  task_ref=CASE WHEN excluded.task_ref<>'' THEN excluded.task_ref ELSE agents_sessions.task_ref END,
+  started_ns=CASE WHEN excluded.started_ns=0 THEN agents_sessions.started_ns WHEN agents_sessions.started_ns=0 THEN excluded.started_ns ELSE CASE WHEN agents_sessions.started_ns<=excluded.started_ns THEN agents_sessions.started_ns ELSE excluded.started_ns END END,
+  last_activity_ns=CASE WHEN agents_sessions.last_activity_ns>=excluded.last_activity_ns THEN agents_sessions.last_activity_ns ELSE excluded.last_activity_ns END,
+  ended_ns=CASE WHEN excluded.ended_ns>0 THEN excluded.ended_ns WHEN excluded.session_state IN ('running','launching') THEN 0 ELSE agents_sessions.ended_ns END,
+  end_reason=CASE WHEN excluded.ended_ns>0 THEN excluded.end_reason WHEN excluded.session_state IN ('running','launching') THEN '' ELSE agents_sessions.end_reason END,
+  tool_calls=agents_sessions.tool_calls+CASE WHEN agents_sessions.one_liner_json IS NULL THEN excluded.tool_calls ELSE 0 END,
+  agent_urn=CASE WHEN excluded.agent_urn<>'' THEN excluded.agent_urn ELSE agents_sessions.agent_urn END,
+  logical_agent_id=CASE WHEN excluded.logical_agent_id<>'' THEN excluded.logical_agent_id ELSE agents_sessions.logical_agent_id END,
+  agent_name=CASE WHEN excluded.agent_name<>'' THEN excluded.agent_name ELSE agents_sessions.agent_name END,
+  parent_session_id=CASE WHEN excluded.parent_session_id<>'' THEN excluded.parent_session_id ELSE agents_sessions.parent_session_id END,
+  replaced_by=CASE WHEN excluded.replaced_by<>'' THEN excluded.replaced_by ELSE agents_sessions.replaced_by END,
+  updated_ns=excluded.updated_ns`,
+		f.SessionID, f.SessionState, work, b2int(work != ""), b2i(f.PendingApproval), b2i(f.PendingQuestion), f.Provider, f.Model, f.Workroot, f.TaskRef,
+		at, at, ended, reason, tool, now, f.AgentURN, f.LogicalAgentID, f.AgentName, f.ParentSession, f.ReplacedBy)
+	return err
+}
+
+// Touch records activity for a session without storing a row (session.output is counted this way,
+// so a busy session is not marked stale while its output is being discarded).
+func (s *Store) Touch(ctx context.Context, sessions map[string]time.Time, seq int64) error {
+	if len(sessions) == 0 && seq == 0 {
+		return nil
+	}
+	return s.DB.Writer.Submit(ctx, "agents_touch", func(ctx context.Context, tx store.Tx) error {
+		now := s.now().UnixNano()
+		for id, at := range sessions {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO agents_sessions(session_id,started_ns,last_activity_ns,updated_ns) VALUES(?,?,?,?)
+ ON CONFLICT(session_id) DO UPDATE SET last_activity_ns=CASE WHEN agents_sessions.last_activity_ns>=excluded.last_activity_ns THEN agents_sessions.last_activity_ns ELSE excluded.last_activity_ns END, updated_ns=excluded.updated_ns`, id, at.UnixNano(), at.UnixNano(), now); err != nil {
+				return err
+			}
+		}
+		if err := ensureState(ctx, tx); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE agents_collector_state SET last_seq=CASE WHEN last_seq>=? THEN last_seq ELSE ? END WHERE id=1`, seq, seq)
+		return err
+	})
+}
+
+// Gap is a recorded hole in collection. Nothing silently fills one.
+type Gap struct {
+	Start, End     time.Time
+	Reason         string
+	FromSeq, ToSeq int64
+	Backfilled     bool
+}
+
+func (s *Store) AddGap(ctx context.Context, g Gap) (int64, error) {
+	var id int64
+	err := s.DB.Writer.Submit(ctx, "agents_gap", func(ctx context.Context, tx store.Tx) error {
+		// A retried pass must not record the same hole twice.
+		if g.FromSeq > 0 {
+			if err := tx.QueryRowContext(ctx, `SELECT id FROM agents_gaps WHERE backfilled=0 AND from_seq=? AND reason=?`, g.FromSeq, g.Reason).Scan(&id); err == nil {
+				_, err = tx.ExecContext(ctx, `UPDATE agents_gaps SET end_ns=? WHERE id=?`, g.End.UnixNano(), id)
+				return err
+			}
+		}
+		if err := tx.QueryRowContext(ctx, `INSERT INTO agents_gaps(start_ns,end_ns,reason,from_seq,to_seq,backfilled) VALUES(?,?,?,?,?,?) RETURNING id`,
+			g.Start.UnixNano(), g.End.UnixNano(), g.Reason, g.FromSeq, g.ToSeq, b2int(g.Backfilled)).Scan(&id); err != nil {
+			return err
+		}
+		return addStream(ctx, tx, "gap", g.Start.UnixNano(), map[string]any{"start": g.Start.UnixMilli(), "end": g.End.UnixMilli(), "reason": g.Reason,
+			"from_seq": g.FromSeq, "to_seq": g.ToSeq, "backfilled": g.Backfilled})
+	})
+	return id, err
+}
+
+func (s *Store) MarkBackfilled(ctx context.Context, id int64) error {
+	return s.DB.Writer.Submit(ctx, "agents_gap_backfilled", func(ctx context.Context, tx store.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE agents_gaps SET backfilled=1 WHERE id=?`, id)
+		return err
+	})
+}
+
+// OpenGaps counts gaps that were not filled.
+func (s *Store) OpenGaps(ctx context.Context) (n int, err error) {
+	err = s.DB.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents_gaps WHERE backfilled=0`).Scan(&n)
+	return
+}
+
+// SessionCount counts sessions that have not ended.
+func (s *Store) SessionCount(ctx context.Context) (n int, err error) {
+	err = s.DB.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents_sessions WHERE ended_ns=0`).Scan(&n)
+	return
+}
+
+// LiveIDs returns the sessions that have no end recorded.
+func (s *Store) LiveIDs(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT session_id FROM agents_sessions WHERE ended_ns=0`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// MarkEnded records a terminal state (by session id) for sessions that have no end recorded. The
+// end time is the last activity seen, since the listing does not say when the session stopped.
+func (s *Store) MarkEnded(ctx context.Context, ended map[string]string) error {
+	if len(ended) == 0 {
+		return nil
+	}
+	now := s.now().UnixNano()
+	return s.DB.Writer.Submit(ctx, "agents_mark_ended", func(ctx context.Context, tx store.Tx) error {
+		for id, state := range ended {
+			if _, err := tx.ExecContext(ctx, `UPDATE agents_sessions SET session_state=?, end_reason=?, ended_ns=CASE WHEN last_activity_ns>0 THEN last_activity_ns ELSE ? END, updated_ns=? WHERE session_id=? AND ended_ns=0`,
+				state, state, now, now, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// NameLifecycle rewrites feed lines that named a session by its id ("session 1a2b3c4d started") once the
+// agent's name is known. A start arrives before anything says who the agent is; the running listing does.
+func (s *Store) NameLifecycle(ctx context.Context) error {
+	return s.DB.Writer.Submit(ctx, "agents_name_lifecycle", func(ctx context.Context, tx store.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE bus_events SET subject=(
+   SELECT COALESCE(NULLIF(a.agent_name,''),a.logical_agent_id) FROM agents_sessions a
+   WHERE substr(a.session_id,1,8)=substr(bus_events.subject,9,8) AND COALESCE(NULLIF(a.agent_name,''),a.logical_agent_id,'')<>'' LIMIT 1
+ ) || substr(subject,17)
+ WHERE type='lifecycle' AND subject LIKE 'session ________ %' AND EXISTS (
+   SELECT 1 FROM agents_sessions a WHERE substr(a.session_id,1,8)=substr(bus_events.subject,9,8) AND COALESCE(NULLIF(a.agent_name,''),a.logical_agent_id,'')<>'')`)
+		return err
+	})
+}
+
+// Prune deletes expired rows in batches of 1000, one writer transaction each, and records a receipt.
+func (s *Store) Prune(ctx context.Context) (int64, error) {
+	now := s.now()
+	var total int64
+	// Sessions that ended as completed or killed before those states were read as terminal have no
+	// end time; stamp it from their last activity so retention applies to them too.
+	if err := s.DB.Writer.Submit(ctx, "agents_end_backfill", func(ctx context.Context, tx store.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE agents_sessions SET ended_ns=CASE WHEN last_activity_ns>0 THEN last_activity_ns ELSE updated_ns END, end_reason=session_state
+ WHERE ended_ns=0 AND session_state IN ('completed','killed')`)
+		return err
+	}); err != nil {
+		return total, err
+	}
+	for _, job := range []struct {
+		sql string
+		cut time.Time
+	}{
+		{`DELETE FROM agents_events WHERE id IN (SELECT id FROM agents_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
+		{`DELETE FROM agents_stream WHERE id IN (SELECT id FROM agents_stream WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
+		{`DELETE FROM bus_events WHERE id IN (SELECT id FROM bus_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention)},
+		{`DELETE FROM checkpoint_events WHERE id IN (SELECT id FROM checkpoint_events WHERE at_ns<? LIMIT ?)`, now.Add(-EventRetention - 24*time.Hour)},
+		// Task events stored before they named their task read "unknown <state>"; they carry no information.
+		{`DELETE FROM bus_events WHERE id IN (SELECT id FROM bus_events WHERE type='task' AND subject LIKE 'unknown %' AND at_ns<? LIMIT ?)`, now.Add(time.Hour)},
+		{`DELETE FROM agents_gaps WHERE id IN (SELECT id FROM agents_gaps WHERE end_ns<? LIMIT ?)`, now.Add(-GapRetention)},
+		{`DELETE FROM agents_samples WHERE (session_id,bucket_kind,bucket_ns) IN (SELECT session_id,bucket_kind,bucket_ns FROM agents_samples WHERE bucket_kind='min' AND bucket_ns<? LIMIT ?)`, now.Add(-MinuteSampleRetention)},
+		{`DELETE FROM agents_samples WHERE (session_id,bucket_kind,bucket_ns) IN (SELECT session_id,bucket_kind,bucket_ns FROM agents_samples WHERE bucket_kind='hour' AND bucket_ns<? LIMIT ?)`, now.Add(-HourSampleRetention)},
+		{`DELETE FROM agents_sessions WHERE session_id IN (SELECT session_id FROM agents_sessions WHERE ended_ns>0 AND ended_ns<? LIMIT ?)`, now.Add(-SessionRetention)},
+	} {
+		for {
+			var n int64
+			err := s.DB.Writer.Submit(ctx, "agents_prune", func(ctx context.Context, tx store.Tx) error {
+				res, err := tx.ExecContext(ctx, job.sql, job.cut.UnixNano(), pruneBatch)
+				if err != nil {
+					return err
+				}
+				n, _ = res.RowsAffected()
+				return nil
+			})
+			if err != nil {
+				return total, err
+			}
+			total += n
+			if n < pruneBatch {
+				break
+			}
+		}
+	}
+	err := s.DB.Writer.Submit(ctx, "agents_prune_receipt", func(ctx context.Context, tx store.Tx) error {
+		if err := ensureState(ctx, tx); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE agents_collector_state SET retention_last_ns=?, retention_pruned=? WHERE id=1`, now.UnixNano(), total)
+		return err
+	})
+	return total, err
+}
+
+// addStream appends one replayable stream event (bus, control or gap) in the caller's transaction.
+func addStream(ctx context.Context, tx store.Tx, typ string, atNS int64, data map[string]any) error {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO agents_stream(type,at_ns,data_json) VALUES(?,?,?)`, typ, atNS, string(b))
+	return err
+}
+
+// ensureState creates the collector's state row when it is missing. The old build's migration 024
+// seeded it; the port's baseline schema holds no rows, and migrate-from copies the old one, so only a
+// fresh database lacks it.
+func ensureState(ctx context.Context, tx store.Tx) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO agents_collector_state(id) VALUES (1) ON CONFLICT DO NOTHING`)
+	return err
+}

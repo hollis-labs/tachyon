@@ -1,0 +1,53 @@
+{
+  "builder-reviewer": {
+    "agent_id": "builder-reviewer", "launch_id": null, "resolved_by": "tether",
+    "tool_servers": [{"id": "tether", "status": "ok", "tool_count": 48}, {"id": "github", "status": "degraded", "tool_count": 12}],
+    "skills": [{"id": "commit-hygiene", "name": "Commit hygiene"}],
+    "policy": {"permission_mode": "default", "network": "restricted", "default_sandbox": "workspace-write"},
+    "scopes": ["tether:read", "github:pr"],
+    "prompt_parts": [
+      {"label": "base-worker body", "bytes": 46, "tokens_est": 12},
+      {"label": "system_prompt", "bytes": 53, "tokens_est": 14},
+      {"label": "body", "bytes": 148, "tokens_est": 37}
+    ],
+    "prompt_tokens_est": 63, "prompt_tokens_estimated": true,
+    "extends_chain": ["builder-reviewer", "base-worker"],
+    "notes": []
+  },
+  "release-captain": {
+    "agent_id": "release-captain", "launch_id": null, "resolved_by": "tachyon_approx",
+    "tool_servers": [{"id": "tether", "status": "ok", "tool_count": 48}],
+    "skills": [{"id": "commit-hygiene", "name": "Commit hygiene"}, {"id": "release-notes", "name": "Release notes"}],
+    "policy": {"permission_mode": "bypassPermissions", "network": "open", "default_sandbox": "none"},
+    "scopes": ["tether:read", "tether:write", "github:release"],
+    "prompt_parts": [{"label": "system_prompt", "bytes": 30, "tokens_est": 8}, {"label": "body", "bytes": 32, "tokens_est": 8}],
+    "prompt_tokens_est": 16, "prompt_tokens_estimated": true,
+    "extends_chain": ["release-captain"],
+    "notes": ["Approximate: tool servers come from the agent's own list; a launch or project override can change them."]
+  },
+  "base-worker": {
+    "agent_id": "base-worker", "launch_id": null, "resolved_by": "tachyon_approx",
+    "tool_servers": [{"id": "tether", "status": "ok", "tool_count": 48}], "skills": [],
+    "policy": {"permission_mode": "acceptEdits", "network": "restricted", "default_sandbox": "workspace-write"},
+    "scopes": ["tether:read"],
+    "prompt_parts": [{"label": "body", "bytes": 46, "tokens_est": 12}], "prompt_tokens_est": 12, "prompt_tokens_estimated": true,
+    "extends_chain": ["base-worker"], "notes": []
+  },
+  "nightly-triage": {
+    "agent_id": "nightly-triage", "launch_id": null, "resolved_by": "tachyon_approx",
+    "tool_servers": [], "skills": [],
+    "policy": {"permission_mode": "plan", "network": "none", "default_sandbox": "read-only"},
+    "scopes": [],
+    "prompt_parts": [{"label": "base-worker body", "bytes": 46, "tokens_est": 12}, {"label": "agent_prompt", "bytes": 16, "tokens_est": 4}],
+    "prompt_tokens_est": 16, "prompt_tokens_estimated": true,
+    "extends_chain": ["nightly-triage", "base-worker"], "notes": ["Disabled: new launches are blocked."]
+  },
+  "legacy-scribe": {
+    "agent_id": "legacy-scribe", "launch_id": null, "resolved_by": "tachyon_approx",
+    "tool_servers": [], "skills": [],
+    "policy": {"permission_mode": "plan", "network": "none", "default_sandbox": "read-only"},
+    "scopes": [],
+    "prompt_parts": [{"label": "system_prompt", "bytes": 11, "tokens_est": 3}], "prompt_tokens_est": 3, "prompt_tokens_estimated": true,
+    "extends_chain": ["legacy-scribe"], "notes": ["Retired."]
+  }
+}

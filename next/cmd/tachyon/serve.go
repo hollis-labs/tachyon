@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/substrate/modules/scheduler"
 
 	"github.com/hollis-labs/tachyon/next/internal/access"
+	"github.com/hollis-labs/tachyon/next/internal/approvals"
 	"github.com/hollis-labs/tachyon/next/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/next/internal/hostguard"
 	"github.com/hollis-labs/tachyon/next/internal/objects"
@@ -43,6 +44,9 @@ type deps struct {
 	objectJob *objectsync.Jobs
 	planner   plannerDeps
 	chat      chatDeps
+	approvals *approvals.Inbox
+	agents    agentsDeps
+	builder   builderDeps
 }
 
 // appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
@@ -50,9 +54,9 @@ type deps struct {
 // scope is "authenticated" and each verb is checked in the handler against the key's verb scope and
 // the credential's kinds. The console data API answers signed-in people, each verb behind its scope.
 func appRoutes(d deps) []routes.Route {
-	agent := dataverbs.NewAgentHTTP(d.local, d.access)
+	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs)
 	console := dataverbs.NewConsoleHTTP(d.local)
-	return append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), []routes.Route{
+	return append(append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), builderRoutes(d.builder)...), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
@@ -103,7 +107,22 @@ func (t *tachyon) serve(ctx context.Context) error {
 	pl := newPlanner(app, cfg, domain)
 	stopIngest := startPlannerIngest(ctx, cfg, pl)
 	defer stopIngest()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: newChat(app, cfg, domain)})
+	chat, err := newChat(ctx, app, cfg, domain)
+	if err != nil {
+		return err
+	}
+	stopChat := startChat(cfg, chat)
+	defer stopChat()
+	inbox := newApprovals(ctx, app, cfg, domain)
+	stopApprovals := startApprovals(inbox)
+	defer stopApprovals()
+	agents := newAgents(app, cfg, domain, chat)
+	stopAgents := agents.start(ctx)
+	defer stopAgents()
+	builder := newBuilder(app, cfg, domain)
+	stopBuilder := builder.start(ctx)
+	defer stopBuilder()
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: agents, builder: builder})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err
