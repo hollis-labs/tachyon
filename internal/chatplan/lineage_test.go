@@ -228,3 +228,25 @@ func mustExec(t *testing.T, s *Service, q string) {
 		t.Fatal(err)
 	}
 }
+
+func TestAncestorsFollowCarryRules(t *testing.T) {
+	s, _ := lineageSetup(t)
+	ctx := context.Background()
+	s.Attach(ctx, "s1", "agent-a", "")
+	s.Attach(ctx, "s2", "agent-a", "s1")
+	s.Attach(ctx, "s3", "agent-a", "s2")
+	got := s.Store.Ancestors(ctx, "s3")
+	if len(got) != 2 || got[0] != "s1" || got[1] != "s2" {
+		t.Fatalf("chain: %v", got)
+	}
+	if err := s.Store.SetContinue(ctx, "s2", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Store.Ancestors(ctx, "s3"); len(got) != 0 {
+		t.Fatalf("continue off should stop the walk: %v", got)
+	}
+	s.Attach(ctx, "x2", "agent-b", "s1")
+	if got := s.Store.Ancestors(ctx, "x2"); len(got) != 0 {
+		t.Fatalf("another agent's ancestor: %v", got)
+	}
+}

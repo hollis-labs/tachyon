@@ -585,3 +585,32 @@ func TestTetherMessagesCarryInputAttribution(t *testing.T) {
 		t.Fatalf("a turn without attribution carries none: %v", meta(2))
 	}
 }
+
+func TestTetherMessagesCarryContinuedHistory(t *testing.T) {
+	e := setup(t)
+	e.seedTurn(t, "h1", "old", "terminal", "Before the restart.", "2020-10-30T10:00:00Z", false)
+	e.seedTurn(t, "h2", "new", "terminal", "After the restart.", "2020-10-30T11:00:00Z", false)
+	e.h.Ancestors = func(_ context.Context, s string) []string {
+		if s == "new" {
+			return []string{"old"}
+		}
+		return nil
+	}
+	_, out := e.do(t, "GET", "/threads/tether:new/messages", "")
+	ms := out["messages"].([]any)
+	if len(ms) != 2 {
+		t.Fatalf("messages: %v", ms)
+	}
+	first, second := ms[0].(map[string]any), ms[1].(map[string]any)
+	if first["text"] != "Before the restart." || first["seq"] != 1.0 || second["text"] != "After the restart." || second["seq"] != 2.0 {
+		t.Fatalf("order or seq: %v", ms)
+	}
+	if first["meta"].(map[string]any)["continued_from"] != "old" || second["meta"].(map[string]any)["continued_from"] != nil {
+		t.Fatalf("meta: %v", ms)
+	}
+	// The ancestor's own thread is unchanged.
+	_, out = e.do(t, "GET", "/threads/tether:old/messages", "")
+	if len(out["messages"].([]any)) != 1 {
+		t.Fatalf("ancestor thread: %v", out)
+	}
+}

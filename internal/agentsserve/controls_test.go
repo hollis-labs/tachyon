@@ -94,6 +94,7 @@ func TestCapabilitiesFollowTheSender(t *testing.T) {
 
 type fakeCtl struct {
 	worker                       string // the session's worker; "" is a hub session
+	workerResume                 bool   // Tether accepts a resume of a worker seat (catalog.defaults.worker_resume)
 	stopped, resumed, relaunched string
 	order                        []string
 	stopErr, launchErr           error
@@ -125,6 +126,9 @@ func (f *fakeCtl) Resume(_ context.Context, la, _ string) (string, error) {
 	f.order = append(f.order, "resume")
 	if f.resumeErr != nil {
 		return "", f.resumeErr
+	}
+	if f.worker != "" && !f.workerResume {
+		return "", fmt.Errorf("%w: tether /logical-agents/la1/resume answered 409 (conflict)", ErrResumeRefused)
 	}
 	return "s2", nil
 }
@@ -279,13 +283,23 @@ func TestRestartNamesASessionCreatedButNotStarted(t *testing.T) {
 	}
 }
 
-// A worker-placed seat (every catalog seat) is relaunched, never resumed: stop first, then the relaunch right after,
-// so Tether can hand it the stopped session's grant. Scopes it still dropped are reported.
-func TestRestartRelaunchesAWorkerSeatWithoutResuming(t *testing.T) {
+// A worker-placed seat is resumed first like any seat; Tether refuses while worker resume is off, and the seat is then
+// relaunched as a continuation: stop first, then the relaunch right after, so Tether can hand it the stopped
+// session's grant. Scopes it still dropped are reported.
+func TestRestartRelaunchesAWorkerSeatWhenTetherRefusesTheResume(t *testing.T) {
 	f := &fakeCtl{worker: "w1", dropped: []string{"tether.admin"}}
 	c := restartUntilEnd(t, f, "rs2")
-	if c.State != "done" || f.resumed != "" || strings.Join(f.order, ",") != "stop,relaunch" || f.relaunched != "launch-m1" ||
+	if c.State != "done" || f.resumed == "" || strings.Join(f.order, ",") != "stop,resume,relaunch" || f.relaunched != "launch-m1" ||
 		c.NewSessionID == nil || *c.NewSessionID != "s3" || c.RelaunchedBy == nil || *c.RelaunchedBy != "relaunch" || fmt.Sprint(c.ScopesDropped) != "[tether.admin]" {
+		t.Fatalf("%+v order=%v", c, f.order)
+	}
+}
+
+// With worker resume on, a worker seat is resumed: the agent keeps its conversation.
+func TestRestartResumesAWorkerSeatWhenTetherAllowsIt(t *testing.T) {
+	f := &fakeCtl{worker: "w1", workerResume: true}
+	c := restartUntilEnd(t, f, "rs7")
+	if c.State != "done" || f.relaunched != "" || strings.Join(f.order, ",") != "stop,resume" || c.RelaunchedBy == nil || *c.RelaunchedBy != "resume" {
 		t.Fatalf("%+v order=%v", c, f.order)
 	}
 }

@@ -34,6 +34,9 @@ type Handler struct {
 	Agg *Aggregator
 	Hub *Hub
 	Now func() time.Time
+	// Ancestors names the Tether sessions a session continues, oldest first (the plan carry-over
+	// lineage). The thread's messages are read after theirs, so a restart keeps the history. Nil: none.
+	Ancestors func(ctx context.Context, session string) []string
 
 	sendMu sync.Mutex // serializes idempotency check + send
 }
@@ -362,6 +365,41 @@ func tetherMessages(g tgroup) []Message {
 	return out
 }
 
+// withHistory is the thread's messages preceded by those of the sessions it continues, each marked
+// with meta.continued_from, numbered as one sequence. An ancestor with no turns adds nothing.
+func (h *Handler) withHistory(ctx context.Context, session string, g tgroup) []Message {
+	var prior []Message
+	if h.Ancestors != nil {
+		groups, err := h.Agg.tetherGroups(ctx)
+		if err == nil {
+			by := map[string]tgroup{}
+			for _, x := range groups {
+				by[x.ref] = x
+			}
+			for _, a := range h.Ancestors(ctx, session) {
+				ag, ok := by[chatapi.ThreadRef{Source: chatapi.SourceTether, ID: a}.String()]
+				if !ok {
+					continue
+				}
+				for _, m := range tetherMessages(ag) {
+					m.Meta["continued_from"] = a
+					m.Meta["replyable"] = false // a turn of an earlier session cannot be answered here
+					prior = append(prior, m)
+				}
+			}
+		}
+	}
+	own := tetherMessages(g)
+	if len(prior) == 0 {
+		return own
+	}
+	all := append(prior, own...)
+	for i := range all {
+		all[i].Seq = int64(i + 1)
+	}
+	return all
+}
+
 func (h *Handler) messages(w http.ResponseWriter, r *http.Request) {
 	t, ok := ref(w, r)
 	if !ok {
@@ -407,7 +445,7 @@ func (h *Handler) messages(w http.ResponseWriter, r *http.Request) {
 		h.problem(w, err)
 		return
 	}
-	all := tetherMessages(g)
+	all := h.withHistory(r.Context(), t.ID, g)
 	if limit == 0 {
 		limit = 50
 	}

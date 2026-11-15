@@ -341,13 +341,12 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	set("stopped")
 	set("resuming")
 	key := "tachyon-restart-" + c.RequestID
-	how, id := "relaunch", ""
-	if place.Worker == "" {
-		// Only a hub session is resumed; if Tether refuses, it is relaunched like a worker seat.
-		how = "resume"
-		if id, err = s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key); errors.Is(err, ErrResumeRefused) {
-			how, id, err = "relaunch", "", nil
-		}
+	// Every seat is resumed first, so the agent keeps its conversation where Tether can resume it (a worker
+	// seat while catalog.defaults.worker_resume is on). If Tether refuses, the seat is relaunched as a continuation.
+	how := "resume"
+	id, err := s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key)
+	if errors.Is(err, ErrResumeRefused) {
+		how, id, err = "relaunch", "", nil
 	}
 	if err == nil && how == "relaunch" {
 		// Right after the stop: Tether hands the relaunch the stopped session's grant (tether#553).
