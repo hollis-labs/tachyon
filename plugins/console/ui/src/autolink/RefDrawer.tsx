@@ -73,13 +73,14 @@ export function RefDrawer({ target, onClose }: { target: RefIdentity | null; onC
   }
 
   return (
-    <Sheet open={target !== null} onOpenChange={(open: boolean) => !open && onClose()}>
+    <Sheet open={target !== null} modal={raised} onOpenChange={(open: boolean) => !open && onClose()}>
       <SheetContent
         side="right"
         showCloseButton={!own}
         className={`w-full gap-0 border-border p-0 ${own ? `data-[side=right]:w-full ${expanded ? 'data-[side=right]:sm:w-[calc(100vw-3.5rem)] data-[side=right]:sm:max-w-none' : 'data-[side=right]:sm:max-w-[480px]'}` : 'data-[side=right]:sm:max-w-md'}`}
         data-testid="ref-drawer"
         raised={raised}
+        overlay={raised ? 'always' : 'narrow'}
       >
         {own ? (
           <>

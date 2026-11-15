@@ -1,5 +1,6 @@
 // Local Sheet: design-components 0.5.0 builds Sheet but does not export it.
 // Same markup and classes as the sysop-ui Sheet Torque's RefDrawer used.
+// Vendored ahead of the kit: `overlay` mirrors hollis-labs/frontend-support#40 (not yet published).
 import { Dialog as SheetPrimitive } from '@base-ui/react/dialog'
 import { Button, cn } from '@hollis-labs/design-components'
 import { XIcon } from 'lucide-react'
@@ -14,18 +15,24 @@ export function SheetContent({
   side = 'right',
   showCloseButton = true,
   raised = false,
+  overlay = 'always',
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
   /** Opened over a kit Dialog: use the dialog layer (z-60) so DOM order puts this sheet on top of it. */
   raised?: boolean
+  /**
+   * 'narrow': the goldens' side panel sits beside live content, so the backdrop shows only below sm, where the
+   * sheet covers the screen. Pair with <Sheet modal={false}> so the page beside it stays usable.
+   */
+  overlay?: 'always' | 'narrow'
 }) {
   return (
     <SheetPrimitive.Portal data-slot="sheet-portal">
       <SheetPrimitive.Backdrop
         data-slot="sheet-overlay"
-        className={cn('fixed inset-0 bg-bg/10 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs', raised ? 'z-[60]' : 'z-50')}
+        className={cn('fixed inset-0 bg-bg/10 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs', raised ? 'z-[60]' : 'z-50', overlay === 'narrow' && 'sm:hidden')}
       />
       <SheetPrimitive.Popup
         data-slot="sheet-content"

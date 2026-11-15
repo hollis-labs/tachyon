@@ -1,4 +1,5 @@
-import { Button, Sheet, SheetContent, SheetDescription, SheetTitle, Textarea } from '@hollis-labs/design-components'
+import { Button, Textarea } from '@hollis-labs/design-components'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../../autolink/sheet'
 import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { CommentCheck, ReviewValidation, ReviewVerdict } from '../types'
@@ -51,8 +52,9 @@ export function ReviewPanel({ prLabel, pending, onSubmit, onUnqueue, validate, o
   }
 
   return (
-    <Sheet open onOpenChange={(open) => { if (!open && !busy) onClose() }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md" aria-label="Submit review" data-testid="forge-review-panel">
+    // Non-modal as in the golden: the diff stays readable beside the panel; drafts survive closing it.
+    <Sheet open modal={false} onOpenChange={(open) => { if (!open && !busy) onClose() }}>
+      <SheetContent side="right" overlay="narrow" className="flex w-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md" aria-label="Submit review" data-testid="forge-review-panel">
         <header className="flex items-baseline gap-2 border-b border-border px-4 py-3 pr-12">
           <SheetTitle className="font-sans text-control font-semibold normal-case tracking-normal text-fg">Review</SheetTitle>
           <SheetDescription className="font-mono text-caption text-fg-muted">{prLabel}</SheetDescription>

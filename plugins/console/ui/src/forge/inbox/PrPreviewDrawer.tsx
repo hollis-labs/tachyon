@@ -1,4 +1,5 @@
-import { Button, buttonVariants, OverflowMenu, Sheet, SheetContent, SheetDescription, SheetTitle, type OverflowAction } from '@hollis-labs/design-components'
+import { Button, buttonVariants, OverflowMenu, type OverflowAction } from '@hollis-labs/design-components'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '../../autolink/sheet'
 import { ArrowUpRight, GitPullRequest } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -75,11 +76,10 @@ export function PrPreviewDrawer({ item, forge, actions = [], onClose, onAssign, 
   const changed = files ?? []
   const now = Date.now()
   return (
-    // KIT-GAP: the golden's preview is non-modal (list visible and clickable beside it), but kit SheetContent
-    // always renders its blurred overlay, so it stays modal until the kit can omit the overlay.
-    // The kit caps right sheets with data-[side=right]:sm:max-w-sm; the golden's 480px needs the same variant.
-    <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
-      <SheetContent side="right" className="flex !w-full max-w-none flex-col gap-0 p-0 sm:!w-full data-[side=right]:sm:max-w-120">
+    // Non-modal as in the golden: the list stays visible and clickable beside the preview (local sheet, kit #40).
+    // Right sheets are capped with data-[side=right]:sm:max-w-sm; the golden's 480px needs the same variant.
+    <Sheet open modal={false} onOpenChange={(open) => { if (!open) onClose() }}>
+      <SheetContent side="right" overlay="narrow" className="flex !w-full max-w-none flex-col gap-0 p-0 sm:!w-full data-[side=right]:sm:max-w-120">
         <header className="flex flex-wrap items-center gap-2 py-3 pl-4 pr-12">
           <GitPullRequest aria-hidden className="size-4 text-fg-muted" />
           <span className="font-mono dash-body text-fg" title={`${summary.ref.repo.owner}/${summary.ref.repo.name}#${summary.ref.number}`}>{label}</span>
