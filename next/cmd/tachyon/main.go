@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -44,7 +45,8 @@ func main() {
 func run(ctx context.Context, getenv func(string) string, args []string) error {
 	modules, prepare := plan(args)
 	opts := bootOptions(getenv, prepare)
-	if migrating(args) {
+	// A full migration needs a new, empty data directory; --files-only runs on one it migrated.
+	if migrating(args) && !slices.Contains(args, "--files-only") {
 		opts = migrateOptions(getenv, opts)
 	}
 	started, err := boot.StartWith(ctx, substrateApp, modules, substrateConfigJSON, opts)
