@@ -251,6 +251,35 @@ Details: `docs/api-contract.md`.
   catalog policy's freshness headers). A cache policy file's overrides come with the API cache slice.
 - **Postgres.** The library revision insert is an upsert on its key instead of `INSERT OR REPLACE`.
 
+## Pull requests, the read side (slice B11a)
+
+- **Same tables, same answers.** The pending inbox reads the migrated `forge_pr_index` and `forge_index_state`,
+  with the triage rows of `console_item_state` (`pr-inbox:github:…`) and the open `pr_agent_links`. The audit
+  reads `forge_audit`. The poller's tunables are still the `forge.*` rows of `app_settings`; the default watched
+  org is `tachyon.upstreams.github.org`.
+- **`tachyon.features.forge_index`** (the old `TACHYON_FORGE_INDEX`) gates every GitHub request: the poller and
+  each on-demand read (viewer, PR detail, files, diff, checks, commits, comments, a commit by sha). Off, nothing
+  dials GitHub: those reads answer `503 disabled`, and `pulls/pending`, `status`, `stream`, `audit` and
+  `console/state` are served from the store (`status` reports `degraded` with the switch's note). The old build
+  served the on-demand reads whatever `TACHYON_FORGE_INDEX` said.
+- **No legacy fallback.** Before the first refresh the old `pulls/pending` fell through to the console plugin,
+  which searched GitHub live (in a different row shape). The port answers the saved index, possibly empty.
+- **The console plugin's PR reads** (`repos/{host}/{owner}/{name}/pulls/{num}`, `…/commits`, `…/comments`) keep
+  their camelCase shapes and share the forge reads' GitHub client and error mapping: a refused token is
+  `401 credential_missing` (the plugin said `unauthorized`), another `403` is `502 unavailable`, a rate limit is
+  `429 rate_limited`, and GitHub's own message is not relayed. Comments answer the error when both lists fail
+  (the plugin answered an empty list). The plugin's other reads (`pulls`, `repos/{…}`, `repos/{…}/pulls`) are
+  not ported.
+- **Errors are flat.** A rate limit carries `details.retry_after_s` (and `Retry-After`); a console state version
+  conflict carries `details.version` (the old body put them inside `error`).
+- **Guards.** Reads need `tachyon.forge.read`; the audit read also needs the operator (the old
+  `RequireOperatorReads`). `PUT console/state/{key}` needs `tachyon.forge.write` and refuses any bearer that is
+  not the browser session's (`403 requester_cannot_approve`, as the old handler refused any `Authorization`); it
+  no longer needs the operator (the old `RequireOperator` did), per the contract.
+- **A secondary rate limit** (`403` with `Retry-After`) now counts as a rate limit, not an error.
+- **New `pr.*` alert-feed events are dropped** until the alerts slice: the old poller fed them to the alerts
+  store, which is not ported yet.
+
 ## Agents (slices B8a, B8b)
 
 - **Same tables, same answers.** Agent Ops, the ceremony meter and Needs you read the migrated agents tables.
