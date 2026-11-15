@@ -943,3 +943,12 @@ func TestRawKindIsNotRowText(t *testing.T) {
 		}
 	}
 }
+
+func TestTurnOutputIsNotATimelineRow(t *testing.T) {
+	if _, hidden := humanize("session.turn_output"); !hidden {
+		t.Fatal("session.turn_output has no text of its own and is not a row")
+	}
+	if text, hidden := humanize("session.work_state_changed: processing -> idle"); hidden || text != "Went idle" {
+		t.Fatalf("idle stays: %q %v", text, hidden)
+	}
+}
