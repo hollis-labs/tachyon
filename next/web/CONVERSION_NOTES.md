@@ -591,11 +591,12 @@ back to the old file (G3 had dropped the dock it rendered); the `ChatDock` / `Ch
 - **Not reachable:** FleetActions' Chat (`FleetMessageActions`) is mounted nowhere in the carried UI; in the old tree
   only `fleet/fleet-agent-modal.tsx` used it, and that was not reachable either. Its path through the gateway is
   unit-tested (`src/chat-dock.test.tsx`), not in the browser suite.
-- **Differences the kit imposes** (for the lead): width is the region's size tokens (md 24rem, lg 36rem) instead of a
+- **Differences the kit imposes** (kit gap CW-20261115-0093; each swaps on the pin bump that ships it): width is the region's size tokens (md 24rem, lg 36rem) instead of a
   drag between 360 and 960px; the toolbar entry has no unread badge (the old trigger showed "Chat, N unread") and only
   opens (Esc or Close shut it); the dock body is not given the dock's full height (the shell wraps the view in an
   unsized, padded scroll container), so a long conversation scrolls with its composer instead of pinning it; the
-  approvals link shows no pending count (ApprovalProvider is still per surface, not above the shell).
+  approvals link shows no pending count. That last one is not a kit gap: ApprovalProvider is still per surface,
+  not above the shell, because moving it would make its dialog and held-decision toasts global.
 - **e2e:** `tests/dock.spec.ts` opens the dock from the toolbar on the planner, opens a conversation and sends,
   closes with Esc (focus back on the toolbar), keeps the size pick across a reload, and at 390px opens a bottom sheet.
 
