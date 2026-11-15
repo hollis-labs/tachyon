@@ -151,3 +151,33 @@ test("a refused write is reported as a toast, and nothing is saved", async ({ pa
   expect(saved.title).toBe("Substrate migration")
   await shot(page, "planner-write-refused")
 })
+
+test("a stale write shows the backend's own conflict message (flat {code, message} body)", async ({
+  page,
+}) => {
+  const id = seedId("roadmap", 1)
+  await page.goto(`/planner/roadmap/${id}`)
+  const focus = page.getByRole("region", { name: "Planner on Substrate" })
+  await expect(focus).toBeVisible()
+  // Someone else changes the item after the page read it: the page now holds a stale revision.
+  const before = await readItem(page, `roadmap/${id}`)
+  const bumped = await page.evaluate(
+    ([url, rev]) =>
+      fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Requested-With": "tachyon-ui" },
+        body: JSON.stringify({ patch: { tldr: "Changed elsewhere." }, expected_revision: rev }),
+      }).then((r) => r.status),
+    [`${BASE}/roadmap/${id}`, before.rev] as const,
+  )
+  expect(bumped).toBe(200)
+  const refused = page.waitForResponse(
+    (r) => r.request().method() === "PATCH" && r.status() === 409,
+  )
+  await focus.getByRole("button", { name: /Move to/ }).click()
+  await page.getByRole("menuitem", { name: /Planned/ }).click()
+  const body = await (await refused).json()
+  expect(body).toMatchObject({ code: "conflict", message: expect.any(String) })
+  expect(body).not.toHaveProperty("error")
+  await expect(page.locator("[data-sonner-toast]").filter({ hasText: body.message })).toBeVisible()
+})
