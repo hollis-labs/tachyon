@@ -6,6 +6,7 @@
 // Wrap in AutolinkProvider (R1) at the shell so message refs resolve to chips.
 export { ChatProvider, useChat } from './context'
 export { ChatPanel, type ChatPanelProps } from './ChatPanel'
+export { ChatDock, ChatButton } from './ChatDock'
 export { ChatView, type ChatViewProps } from './view/ChatView'
 export { ConversationView, type ConversationViewProps } from './view/ConversationView'
 export { ChatPage } from './view/ChatPage'
