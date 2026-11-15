@@ -33,6 +33,7 @@ config:
     allowed_hosts: []
     cache_dir: cache
     workspace_dir: workspace
+    chat_sync_interval: 5s
     upstreams:
       github: { url: "https://api.github.com" }
     features:

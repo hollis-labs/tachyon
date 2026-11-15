@@ -216,12 +216,18 @@ The old paths, served by Tachyon:
   - agents: each portfolio database's kind must be granted, and `planner.list` without a kind needs every kind;
   - console: the person needs `tachyon.planner.read` or `tachyon.planner.write`.
 
-## 5c. Chat without threads (slice B6)
+## 5c. Chat (slices B6, B6b)
 
-The old paths under `/api/plugins/console/v1/chat`, served by Tachyon:
+The old paths under `/api/plugins/console/v1/chat`, `.../chat-turns` and `.../app-agent`, served by Tachyon:
 
-| Path (under `.../chat`) | Read scope | Write scope | Check in handler |
+| Path (under `.../chat` unless shown) | Read scope | Write scope | Check in handler |
 |---|---|---|---|
+| `threads` (list, create), `threads/{ref}` (get, patch), `/messages` (list, send), `/read`, `/stop` | `tachyon.chat.read` | `tachyon.chat.write` | writes need the operator check |
+| `GET events` (every thread) and `GET threads/{ref}/events` (SSE) | `tachyon.chat.read` | | |
+| `GET agents` (the Tether chat roster, passed through as Tether answers; the query is dropped; `503 configuration` without Tether) | `tachyon.chat.read` | | |
+| `GET outbox?launch_id=` (messages sent to a launch: bare array, newest first, at most 500) | `tachyon.chat.read` | | |
+| `.../chat-turns/inbox`, `.../chat-turns/items/{id}/reply` | `tachyon.chat.read` | `tachyon.chat.write` | the reply |
+| `.../app-agent/threads`, `/threads/{id}/messages` (+ send), `/read`, `/events` (SSE) | `tachyon.chat.read` | `tachyon.chat.write` | writes |
 | `threads/{ref}/topics`, `/bookmarks` (+ `/{id}` delete) | `tachyon.chat.read` | `tachyon.chat.write` | writes need the operator check |
 | `threads/{ref}/plan` (single), `/plan/steps`, `/plan/reorder` | `tachyon.chat.read` | `tachyon.chat.write` | writes |
 | `threads/{ref}/plans` (several; #721/#725), `/plans/reorder`, `/plans/{id}`, steps, move | `tachyon.chat.read` | `tachyon.chat.write` | writes |
@@ -233,16 +239,15 @@ The old paths under `/api/plugins/console/v1/chat`, served by Tachyon:
 
 - Request and response shapes, status codes and error codes are the old build's. The old chat errors were
   already the flat `{code, message}`.
-- Unknown routes stay unserved until their slice:
-  - threads, messages, send, read, stop and both event streams: B6b;
-  - cards and approval rules: B7;
-  - the outbox and send-to-agent: B7+.
-- A thread "exists" when the local tables know it: app thread rows, synced turns, lineage, thread state, or chat
-  data recorded against it. An unknown thread is `404 not_found` "No such thread.", as before. B6b restores the
-  old check, which also lists live Tether sessions.
-- Until B6b, a new topic's `message_ref` is stored as given and its `seq` is null. The old build resolved the
-  message in the thread and refused one that wasn't in it (`400 invalid`).
-- Change events have no stream until B6b; the activity feed still records them.
+- Unserved until their slice: cards and approval rules (B7); sending to an agent (`POST agents/{launch}/send`) and
+  outbox delivery (B6c, CW-20261115-0038).
+- A thread exists when the threads aggregator lists it, as before: the Tether chat bridge's turns, the app agent's
+  threads, and sessions known from plan lineage. An unknown thread is `404 not_found` "No such thread.".
+- The streams are unnamed `data:` frames `{type, thread_ref, at, ...}`; `id:` is on the hub frames of the
+  per-thread stream, replayable with `Last-Event-ID` (last 500 per thread). Both end when the server shuts down;
+  clients reconnect.
+- With the app agent not configured its routes answer `503 not_configured`; with Tether not configured, send,
+  reply and stop on Tether threads answer with the configuration error, and nothing is dialled.
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 

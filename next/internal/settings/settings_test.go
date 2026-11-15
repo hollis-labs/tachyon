@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ref is a secrets reference to a token file: a name, never a credential.
@@ -116,6 +117,9 @@ func TestBadValuesAreRefusedByName(t *testing.T) {
 		"hosts not list":    {map[string]any{"allowed_hosts": "a"}, "tachyon.allowed_hosts"},
 		"public url":        {map[string]any{"alerts": map[string]any{"public_url": "tachyon"}}, "tachyon.alerts.public_url"},
 		"cache dir not str": {map[string]any{"cache_dir": 3.0}, "tachyon.cache_dir"},
+		"sync interval":     {map[string]any{"chat_sync_interval": "soon"}, "tachyon.chat_sync_interval"},
+		"sync too fast":     {map[string]any{"chat_sync_interval": "100ms"}, "tachyon.chat_sync_interval"},
+		"session not map":   {ups("app_agent", map[string]any{"session": "x"}), "tachyon.upstreams.app_agent.session"},
 	}
 	for name, c := range cases {
 		_, err := Parse(c.raw)
@@ -137,15 +141,16 @@ func TestSecretReferenceSchemes(t *testing.T) {
 
 func TestAFullBlockParses(t *testing.T) {
 	raw := map[string]any{
-		"allowed_hosts": []any{"Tachyon.Example.Test"},
-		"cache_dir":     "cache",
+		"allowed_hosts":      []any{"Tachyon.Example.Test"},
+		"cache_dir":          "cache",
+		"chat_sync_interval": "30s",
 		"upstreams": map[string]any{
 			"tether":          map[string]any{"url": "https://tether.example.test", "token": ref("tether")},
 			"tether_control":  map[string]any{"url": "unix:/run/tetherd.sock", "token": ref("control")},
 			"tether_messages": map[string]any{"token": ref("messages")},
 			"cerberus":        map[string]any{"url": "unix:/run/cerberus.sock"},
 			"activity":        map[string]any{"url": "http://127.0.0.1:8099"},
-			"app_agent":       map[string]any{"url": "http://127.0.0.1:8090", "token": ref("nanite"), "label": "Nanite"},
+			"app_agent":       map[string]any{"url": "http://127.0.0.1:8090", "token": ref("nanite"), "label": "Nanite", "session": map[string]any{"host_settings": map[string]any{"id": "h"}}},
 			"github":          map[string]any{"url": "https://api.github.com", "org": "example", "token": ref("github")},
 			"action_hub":      map[string]any{"addr": "127.0.0.1:2222", "user": "actions", "key": "file:///run/hub.key", "known_hosts": "/run/known_hosts"},
 		},
@@ -164,6 +169,12 @@ func TestAFullBlockParses(t *testing.T) {
 	if u.TetherControl.URL != "unix:/run/tetherd.sock" || u.TetherMessages.Token != ref("messages") ||
 		u.AppAgent.Label != "Nanite" || u.GitHub.Org != "example" || u.ActionHub.User != "actions" {
 		t.Errorf("upstreams = %+v", u)
+	}
+	if s.ChatSyncInterval != 30*time.Second || string(u.AppAgent.Session) != `{"host_settings":{"id":"h"}}` {
+		t.Errorf("chat sync interval / app agent session = %s %s", s.ChatSyncInterval, u.AppAgent.Session)
+	}
+	if def, _ := Parse(map[string]any{}); def.ChatSyncInterval != 5*time.Second || def.Upstreams.AppAgent.Session != nil {
+		t.Errorf("defaults = %s %s", def.ChatSyncInterval, def.Upstreams.AppAgent.Session)
 	}
 	if !s.Features.ObjectSync || s.Files.SecretKey != "file:///run/secret.key" || s.Alerts.NotifyTo != "msg://agent/x" {
 		t.Errorf("features/files/alerts = %+v %+v %+v", s.Features, s.Files, s.Alerts)

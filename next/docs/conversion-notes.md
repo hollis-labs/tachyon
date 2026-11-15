@@ -88,7 +88,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `FRAGMENTS_ENGINE_URL`, `FRAGMENTS_ENGINE_TOKEN_FILE` | `tachyon.upstreams.fragments.url`, `.token` |
 | `TACHYON_ACTIVITY_URL` | `tachyon.upstreams.activity.url` |
 | `CASTER_URL`, `TACHYON_CASTER_TOKEN_FILE` | `tachyon.upstreams.caster.url`, `.token` |
-| `TACHYON_APP_AGENT_CONFIG` (a JSON file: `url`, `token_file`, `label`, `session`) | `tachyon.upstreams.app_agent.url`, `.token`, `.label`. The file's `session` block is decided by the chat slice. |
+| `TACHYON_APP_AGENT_CONFIG` (a JSON file: `url`, `token_file`, `label`, `session`) | `tachyon.upstreams.app_agent.url`, `.token`, `.label`, `.session` (the file's `session` object, as is). Read at start: a change needs a restart (the old build re-read the file on every call). |
 | `GITHUB_TOKEN` / `GH_TOKEN` (a value, not a file reference, in the old build), `GITHUB_ORG` | `tachyon.upstreams.github.token` (reference), `.org`; `.url` defaults to `https://api.github.com`. The fallback to `gh auth token` is dropped. |
 | `TACHYON_ACTION_HUB_SSH_ADDR`, `_USER`, `_KEY_FILE`, `_KNOWN_HOSTS` | `tachyon.upstreams.action_hub.addr`, `.user`, `.key` (reference), `.known_hosts` |
 | `SSH_AUTH_SOCK` | decided by the action-runs slice (an agent socket is not a config key) |
@@ -100,7 +100,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | Old | New |
 |---|---|
 | object-sync schedules (enabled by `sync-objects --enable`) | `tachyon.features.object_sync` gates the scheduler engine; the schedules themselves are migrated data (D1) |
-| `TACHYON_CHAT_SYNC_INTERVAL` (sync always on) | `tachyon.features.chat_sync`; the interval key comes with the chat slice |
+| `TACHYON_CHAT_SYNC_INTERVAL` (sync always on) | `tachyon.features.chat_sync` (default off) and `tachyon.chat_sync_interval` (default `5s`, 1s to 1h) |
 | `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` |
 | `TACHYON_CATALOG_INDEX` (`0` = off) | `tachyon.features.catalog_index` |
 | `TACHYON_CARD_EVENTS` | `tachyon.features.card_events` |
@@ -265,16 +265,27 @@ Details: `docs/api-contract.md`.
 - **Torque's credential** for the planner is `tachyon.upstreams.torque.token`, a secrets reference resolved per
   request.
 
-## Chat without threads (slice B6)
+## Chat (slices B6, B6b)
 
-- **Same API** for topics, bookmarks, plans (several per thread, from `main`'s #725), steps, workspace, scratchpad,
+- **Same API** for threads, messages, send, read, stop, both event streams, the chat-turns inbox and reply, the
+  app agent, topics, bookmarks, plans (several per thread, from `main`'s #725), steps, workspace, scratchpad,
   settings, continue, activity, context and the Work view (`docs/api-contract.md` section 5c). Compared with the
-  old build's handlers on copies of the same data.
-- **Threads are B6b** (CW-20261115-0025): thread list and detail, messages, send, read, stop and both event streams,
-  over the chat bridge's inbound side and the app agent. Until then:
-  - the thread-existence check reads the local tables (`chat.LocalThreads`);
-  - a topic's `message_ref` is not resolved, so its `seq` is null;
-  - changes are not streamed.
+  old build on copies of the same data.
+- **The Tether address keys the chat history.** The bridge stores each turn under the Tether address it was
+  synced from, and lists only the turns under the configured one; the chat outbox rows are owned by a digest of
+  the same address. `tachyon.upstreams.tether.url` must be spelled
+  exactly as the old `TETHER_ADDR` was, or the migrated history stops showing (nothing is lost; it reappears with
+  the old spelling). A setting to name the history's source apart from the address would be a post-adoption
+  improvement.
+- **Upstreams off by default.** With `tachyon.upstreams.tether.url` empty the bridge serves its stored turns and
+  dials nothing; the sync loop needs `tachyon.features.chat_sync` as well. The app agent runs only with
+  `tachyon.upstreams.app_agent.url` and `.session`. An inbox read with `Cache-Control: no-cache`, the chat roster
+  (`GET .../chat/agents`, passed through as before), a send, a reply and a stop still reach a configured Tether on
+  demand, as before.
+- **chat-turns freshness headers** use the old default policy (enabled, 3 s fresh, 60 s revalidate). The old cache
+  policy file's overrides come with the API cache slice.
+- **Not run at start:** the old build's move of outbox rows to a new identity, and its backfill of turn-to-session
+  links keyed by the outbox identity. Both belong to outbound delivery (B7+); the migrated links are kept.
 - **`tachyon.workspace_dir`** (default `workspace`, anchored in the data directory) holds the chat workspace
   files, the old build's `$TACHYON_DATA_DIR/workspace`. The old layout is refused there too.
 - **Workspace files and migrate-from.** `migrate-from` copies the old `workspace/` files into
