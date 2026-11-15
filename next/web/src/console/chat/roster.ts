@@ -44,12 +44,15 @@ export async function chatJSON<T>(path: string, init?: RequestInit): Promise<T> 
   if (!res.ok) {
     const detail =
       body?.error?.message ?? body?.message ?? (typeof body?.error === 'string' ? body.error : null)
-    throw new Error(
+    const err = new Error(
       detail ??
         (res.status === 401 || res.status === 403
           ? 'Tether refused chat access. Check the host credential and permissions.'
           : `Chat request failed (${res.status})`),
-    )
+    ) as Error & { code?: string; status?: number }
+    err.code = typeof body?.code === 'string' ? body.code : undefined
+    err.status = res.status
+    throw err
   }
   if (res.status === 204) return undefined as T
   if (!body) throw new Error('Chat source returned an invalid response')

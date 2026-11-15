@@ -232,7 +232,7 @@ export async function chatStub(page: Page) {
           return json(route, 200, { messages, has_more: false })
         if (sub === "messages" && method === "POST") {
           const text = String(body?.text ?? body?.body ?? "")
-          if (!text.trim()) return fail(route, 400, "invalid_args", "A message needs text.")
+          if (!text.trim()) return fail(route, 400, "invalid", "A message needs text.")
           const seq = messages.length + 1
           const id = `m_${ids++}`
           messages.push({
@@ -245,7 +245,13 @@ export async function chatStub(page: Page) {
             meta: null,
           })
           Object.assign(thread, { last_preview: text, last_at: Date.now() })
-          return json(route, 200, { id, seq, state: "sent" })
+          // B6 (old handler): 202 accepted, with the idempotency key echoed.
+          return json(route, 202, {
+            id,
+            seq,
+            idempotency_key: body?.idempotency_key ?? null,
+            state: "accepted",
+          })
         }
         if (sub === "read" && method === "POST") return json(route, 200, { ok: true })
         if (sub === "stop" && method === "POST")
@@ -253,7 +259,20 @@ export async function chatStub(page: Page) {
         if (sub === "plan" && method === "GET")
           return fail(route, 404, "not_found", "No such plan, step or thread.")
         if (sub === "plans" && method === "GET") return json(route, 200, { plans })
+        // Create plan and reorder take no expected_revision and refuse unknown fields (old handler: 400).
+        const only = (allowed: string[]) =>
+          Object.keys(body ?? {}).every((k) => allowed.includes(k))
+        if (sub === "plans/reorder" && method === "POST") {
+          if (!only(["plan_ids"])) return fail(route, 400, "invalid", "Unknown field.")
+          const order = (body?.plan_ids ?? []) as string[]
+          plans.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+          plans.forEach((p, i) => {
+            p.position = i
+          })
+          return json(route, 200, { plans })
+        }
         if (sub === "plans" && method === "POST") {
+          if (!only(["title"])) return fail(route, 400, "invalid", "Unknown field.")
           const plan: Plan = {
             id: `pl_${ids++}`,
             position: plans.length,

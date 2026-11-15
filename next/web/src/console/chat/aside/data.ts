@@ -32,7 +32,7 @@ function useRead<T>(ref: string | undefined, path: string, pick: (d: never) => T
     try { setData(pick(await chatJSON<never>(`/threads/${enc(ref)}${path}`))); setError('') }
     catch (e) {
       // 404 on plan means "no plan yet", not a failure.
-      if (e instanceof Error && /No such plan|not_found|404/.test(e.message)) { setData(empty); setError('') } else setError(msg(e, 'Could not load.'))
+      if (e instanceof Error && ((e as { code?: string }).code === 'not_found' || /No such plan|not_found|404/.test(e.message))) { setData(empty); setError('') } else setError(msg(e, 'Could not load.'))
     } finally { setLoading(false) }
     // biome-ignore lint/correctness/useExhaustiveDependencies: pick and empty are stable by construction
   }, [ref, path, demo])

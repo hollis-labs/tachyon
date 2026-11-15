@@ -17,6 +17,14 @@ describe("chatJSON", () => {
     await expect(chatJSON("/threads/t/plans", { method: "POST", body: "{}" })).rejects.toThrow("The plan changed; reload it.")
   })
 
+  it("an error carries the flat body's code and the status (not_found reads as empty)", async () => {
+    vi.stubGlobal("fetch", answer(404, '{"code":"not_found","message":"No such thread."}'))
+    const err = (await chatJSON("/threads/t/topics").catch((e) => e)) as Error & { code?: string; status?: number }
+    expect(err.message).toBe("No such thread.")
+    expect(err.code).toBe("not_found")
+    expect(err.status).toBe(404)
+  })
+
   it("an empty 200 is still refused as an invalid response", async () => {
     vi.stubGlobal("fetch", answer(200, ""))
     await expect(chatJSON("/threads")).rejects.toThrow("invalid response")
