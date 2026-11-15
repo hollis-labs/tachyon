@@ -42,6 +42,7 @@ type deps struct {
 	local     *dataverbs.Local
 	objectJob *objectsync.Jobs
 	planner   plannerDeps
+	chat      chatDeps
 }
 
 // appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
@@ -51,7 +52,7 @@ type deps struct {
 func appRoutes(d deps) []routes.Route {
 	agent := dataverbs.NewAgentHTTP(d.local, d.access)
 	console := dataverbs.NewConsoleHTTP(d.local)
-	return append(plannerRoutes(d.planner), []routes.Route{
+	return append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
@@ -102,7 +103,7 @@ func (t *tachyon) serve(ctx context.Context) error {
 	pl := newPlanner(app, cfg, domain)
 	stopIngest := startPlannerIngest(ctx, cfg, pl)
 	defer stopIngest()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl})
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: newChat(app, cfg, domain)})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err
