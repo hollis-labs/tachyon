@@ -173,16 +173,16 @@ func ParseFrame(raw []byte) (Frame, bool) {
 	}
 	if len(body) > 0 && len(body) <= 64<<10 {
 		var p struct {
-			To           string `json:"to"`
-			From         string `json:"from"`
-			State        string `json:"state"`
-			SessionState string `json:"session_state"`
-			WorkState    string `json:"work_state"`
-			Provider     string `json:"provider"`
-			Model        string `json:"model"`
-			Workroot     string `json:"workroot"`
-			WorkingDir   string `json:"working_dir"`
-			TaskID       string `json:"task_id"`
+			To           json.RawMessage `json:"to"` // a state ("idle") on transitions, an array of URNs on message events
+			From         string          `json:"from"`
+			State        string          `json:"state"`
+			SessionState string          `json:"session_state"`
+			WorkState    string          `json:"work_state"`
+			Provider     string          `json:"provider"`
+			Model        string          `json:"model"`
+			Workroot     string          `json:"workroot"`
+			WorkingDir   string          `json:"working_dir"`
+			TaskID       string          `json:"task_id"`
 			Entity       struct {
 				Type string `json:"type"`
 				ID   string `json:"id"`
@@ -218,11 +218,12 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			} `json:"delivery"`
 		}
 		if json.Unmarshal(body, &p) == nil {
-			f.WorkState = clean(firstNonEmpty(p.To, p.WorkState), 40)
+			to := rawString(p.To)
+			f.WorkState = clean(firstNonEmpty(to, p.WorkState), 40)
 			f.From = clean(p.From, 40)
 			f.SessionState = clean(firstNonEmpty(p.SessionState, p.State), 40)
 			if f.Kind == "session.state_changed" && f.SessionState == "" {
-				f.SessionState = clean(p.To, 40) // Tether names the new session state as "to" (running -> killed)
+				f.SessionState = clean(to, 40) // Tether names the new session state as "to" (running -> killed)
 			}
 			f.Provider, f.Model = clean(p.Provider, 60), clean(p.Model, 80)
 			f.Workroot = clean(firstNonEmpty(p.Workroot, p.WorkingDir), 300)
@@ -232,7 +233,7 @@ func ParseFrame(raw []byte) (Frame, bool) {
 			}
 			if w.App != "" || strings.Contains(f.Kind, ".state_changed") || strings.HasPrefix(f.Kind, "alert.") || strings.HasPrefix(f.Kind, "fleet.") || strings.HasPrefix(f.Kind, "card.") || strings.HasPrefix(f.Kind, "workstream.") {
 				f.Name = clean(firstNonEmpty(p.Name, firstNonEmpty(p.Resource, p.Subject)), 80)
-				f.State = clean(firstNonEmpty(p.State, firstNonEmpty(p.To, p.Status)), 24)
+				f.State = clean(firstNonEmpty(p.State, firstNonEmpty(to, p.Status)), 24)
 				f.Version, f.PR = clean(p.Version, 40), clean(firstNonEmpty(p.PR, p.PullRequest), 140)
 				f.Title, f.BusActor = clean(p.Title, 200), clean(p.Actor, 80)
 			}
@@ -251,6 +252,16 @@ func ParseFrame(raw []byte) (Frame, bool) {
 		}
 	}
 	return f, true
+}
+
+// rawString is v when it is a JSON string, else "": a key that is an object or array in one event kind must not
+// fail the decode of every other field (message.failed carries "to" as an array of recipients).
+func rawString(v json.RawMessage) string {
+	var s string
+	if json.Unmarshal(v, &s) != nil {
+		return ""
+	}
+	return s
 }
 
 func val(p *int64) int64 {
