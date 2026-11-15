@@ -32,7 +32,18 @@ type Cache struct {
 	locks     [64]sync.Mutex
 	mutation  sync.RWMutex
 	unhealthy atomic.Bool
+	// cooldown remembers, per key, when a refresh last failed and why, so the next callers are served the
+	// saved copy at once instead of each waiting out the upstream timeout again.
+	cooldown sync.Map // key -> refreshFailure
 }
+
+type refreshFailure struct {
+	at   time.Time
+	code string
+}
+
+// failCooldown is how long a failed refresh keeps serving the saved copy before the source is tried again.
+const failCooldown = 30 * time.Second
 
 func New(store *localstore.Store, settings Settings, identity Identity) *Cache {
 	return &Cache{store: store, settings: settings, identity: identity, now: time.Now}
@@ -208,6 +219,12 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 				serveEntry(w, scope, "cached", e, p, "")
 				return true
 			}
+			if f, ok := c.cooldown.Load(key); ok && p.Enabled {
+				if rf := f.(refreshFailure); c.now().Sub(rf.at) < failCooldown && age <= time.Duration(p.FreshSeconds+p.StaleSeconds)*time.Second {
+					serveEntry(w, scope, "stale", e, p, rf.code)
+					return true
+				}
+			}
 			if preferStale && p.RevalidateSeconds > 0 && age < time.Duration(p.FreshSeconds+p.RevalidateSeconds)*time.Second {
 				serveEntry(w, scope, "refreshing", e, p, "")
 				return true
@@ -232,11 +249,28 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(p.TimeoutSeconds)*time.Second)
 		defer cancel()
 		out := newCapture()
-		next.ServeHTTP(out, r.WithContext(ctx))
+		// An upstream that ignores its context must not hold the caller past the timeout: wait for the
+		// handler or the deadline, whichever comes first. A late success still refreshes the saved copy.
+		done := make(chan struct{})
+		go func(w *capture) {
+			defer close(done)
+			defer func() { _ = recover() }()
+			next.ServeHTTP(w, r.WithContext(ctx))
+		}(out)
+		select {
+		case <-done:
+		case <-ctx.Done():
+			if r.Context().Err() != nil {
+				return
+			}
+			late := out
+			out = errorCapture(http.StatusGatewayTimeout, "timeout", "Remote request timed out.")
+			go c.saveLate(done, late, key, scope, identity)
+		}
 		if r.Context().Err() != nil {
 			return
 		}
-		if ctx.Err() != nil {
+		if ctx.Err() != nil && classify(out) == "" {
 			out = errorCapture(http.StatusGatewayTimeout, "timeout", "Remote request timed out.")
 		}
 		after, identityErr := c.identity(scope)
@@ -271,6 +305,7 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 			} else if p.Enabled {
 				storageError = "oversized"
 			}
+			c.cooldown.Delete(key)
 			serveEntry(w, scope, "live", fresh, p, storageError)
 			return
 		}
@@ -281,6 +316,7 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 		// A denied credential never falls back to previously authorized data. A
 		// deleted resource must not reappear from an old successful response either.
 		if exists && p.Enabled && (code == "unreachable" || code == "timeout" || code == "remote" || code == "rate_limited" || code == "invalid_response") && age >= 0 && age <= time.Duration(p.FreshSeconds+p.StaleSeconds)*time.Second {
+			c.cooldown.Store(key, refreshFailure{at: c.now(), code: code})
 			serveEntry(w, scope, "stale", cached, p, code)
 			return
 		}
@@ -313,6 +349,23 @@ func (c *Cache) Wrap(next http.Handler) http.Handler {
 		}
 		out.send(w)
 	})
+}
+
+// saveLate stores a refresh that finished after its caller gave up, when it succeeded and is valid JSON.
+func (c *Cache) saveLate(done <-chan struct{}, out *capture, key, scope, identity string) {
+	<-done
+	if classify(out) != "" || out.status != 200 || out.header.Get("X-Tachyon-Uncacheable") != "" ||
+		!json.Valid(out.body.Bytes()) || !strings.Contains(out.header.Get("Content-Type"), "application/json") {
+		return
+	}
+	if after, err := c.identity(scope); err != nil || after != identity || int64(out.body.Len()) > c.settings.MaxBytes {
+		return
+	}
+	c.mutation.RLock()
+	defer c.mutation.RUnlock()
+	if c.save(context.Background(), key, scope, identity, entry{body: bytes.Clone(out.body.Bytes()), contentType: out.header.Get("Content-Type"), updated: c.now().UnixMilli()}) == nil {
+		c.cooldown.Delete(key)
+	}
 }
 
 func serveEntry(w http.ResponseWriter, scope, state string, e entry, p Policy, problem string) {
