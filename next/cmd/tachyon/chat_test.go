@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 	"github.com/hollis-labs/substrate/modules/database"
 	"github.com/hollis-labs/substrate/modules/identity"
 
+	"github.com/hollis-labs/tachyon/next/internal/access"
 	"github.com/hollis-labs/tachyon/next/internal/appagent"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatapi"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatbridge"
@@ -316,5 +318,46 @@ func TestChatOutboxList(t *testing.T) {
 	}
 	if n := up.conns.Load(); n != 0 {
 		t.Errorf("listing the outbox dialed Tether %d time(s)", n)
+	}
+}
+
+// The chat data verbs in the served binary (slice B6d): an agent key named after the thread's agent
+// writes and lists its plan on a Tether thread through the agent data API; a key without the plan
+// verbs does not see them; and nothing dials the configured upstream.
+func TestChatVerbsServed(t *testing.T) {
+	up := countingListener(t)
+	base, app := started(t, chatOverride(up.addr, false))
+	ctx := context.Background()
+	turn, _ := json.Marshal(chatbridge.Turn{ID: "turn1", AgentID: "pm", SessionID: "s1", Kind: "terminal", Content: "hello", Created: "2026-11-01T10:00:00Z", Revision: 1, State: "resolved"})
+	if _, err := database.From(app).ExecContext(ctx, `INSERT INTO chat_turns(id, source, channel, publication_id, launch_id, session_id, created_at, revision, body) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"turn1", up.addr, "owner-inbox", "", "pm", "s1", "2026-11-01T10:00:00Z", 1, turn); err != nil {
+		t.Fatal(err)
+	}
+	acc := access.New(database.From(app), identity.From(app), nil)
+	issue := func(name string, verbs ...string) map[string]string {
+		k, _, err := acc.Issue(ctx, access.IssueInput{Name: name, Grants: access.Grants{Verbs: verbs}, TTL: time.Hour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return map[string]string{"Authorization": "Bearer " + k}
+	}
+	pm := issue("pm", "chat.plan.write", "chat.plan.list")
+	other := issue("pm", "chat.topic.list")
+	c := newClient(t, base)
+	const verbs = "/api/agent/v1/data/providers/tachyon/verbs/"
+	body := c.want(200, "POST", verbs+"chat.plan.write", map[string]any{"thread_ref": "tether:s1", "title": "Ship", "steps": []map[string]any{{"title": "one"}}}, pm)
+	if !bytes.Contains(body, []byte(`"created_by":"agent"`)) {
+		t.Errorf("plan write: %s", body)
+	}
+	in, _ := json.Marshal(map[string]string{"thread_ref": "tether:s1"})
+	if body = c.want(200, "GET", verbs+"chat.plan.list?input="+url.QueryEscape(string(in)), nil, pm); !bytes.Contains(body, []byte(`"Ship"`)) {
+		t.Errorf("plan list: %s", body)
+	}
+	c.want(404, "GET", verbs+"chat.plan.list?input="+url.QueryEscape(string(in)), nil, other)
+	if body = c.want(200, "GET", "/api/agent/v1/data/providers", nil, other); bytes.Contains(body, []byte("chat.plan")) || !bytes.Contains(body, []byte("chat.topic.list")) {
+		t.Errorf("discovery for a topics-only key: %s", body)
+	}
+	if n := up.conns.Load(); n != 0 {
+		t.Errorf("%d connections to the upstream", n)
 	}
 }
