@@ -234,7 +234,7 @@ export function FilesPanel({ threadRef, demo, onOpenDoc }: { threadRef?: string;
   const items = ws.items.filter((i) => i.name.toLowerCase().includes(filter.toLowerCase()))
   return (
     <>
-      <span className={CAPTION}>Files{demo ? ' · ~/dev/hollis-labs' : ''}</span>
+      <span className={CAPTION}>Files{demo ? ' · ~/projects/example' : ''}</span>
       <label className="flex h-7 items-center gap-2 rounded-control border border-border px-2.5 text-xs text-fg-muted"><input aria-label="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter files" className="min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-xs focus-visible:bg-transparent!" /></label>
       {demo ? (
         <div role="tree" aria-label="Files" className="flex flex-col">
