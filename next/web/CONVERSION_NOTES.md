@@ -292,6 +292,76 @@ Not called by the port's SPA: `/session`, `/status`, `/elevate`, `/de-elevate`, 
 cookie; operator is the profile scope), and `/items/:id/evidence/...` (does not exist; evidence is the item's
 `evidence` array; the client's unused `evidence()` call is never made).
 
+## Agent Ops (G5, CW-20261115-0057)
+
+Carried byte-identical from **main 99c7b88** (not 4a76422 like the shared layer, so the agents timeline
+(#728-#730), seats and needs-you (#718/#719/#726) and the ceremony meter are in):
+- `agents-monitor/`, with its tests and fixtures;
+- `needs-you/`;
+- `fleet/LaunchAgentDialog.tsx`, `fleet/launch-client.ts`, and `fleet/tether-sessions.ts` (its test imports it).
+The rest of their import graph was already carried in G3a.
+
+- **Surfaces.**
+  - `AgentsSurface` (`/agents`, `/agents/:session`).
+  - `NeedsYouSurface` (`/needs-you`): a new nav item and surface in `ui/app.json`, after Agent Ops as on old main. It requires `tachyon.agents.read` (accepted for B8, CW-20261115-0062).
+- **Edits** (scripted, `g5-adapt.py`):
+  - `teams-tab.tsx`: the tab stays where it was and says team runs moved to the Builder surface. G6
+    (CW-20261115-0063) restores team operations before cutover. The old tab ran team
+    operations through the builder domain: `agents/TeamOperations`, owned builder records, provider actions, the
+    agent editor. They arrive with Builder. `teams-tab.test.tsx` goes with it.
+  - `activity-tab.test.tsx`: a host name in a test string is a placeholder.
+- **Kit:** the page header's double `h1` (kit gap CW-20261115-0026), as on the other surfaces. Nothing else in
+  the area has a kit equivalent beyond what it already uses (design-components, kit-dashboard layout).
+- **Controls** show a refusal inline (`role="alert"` in the panel), not as a toast. Carried as is.
+- **e2e:** `e2e/agents-stub.ts`, the contract stub. It serves the old contract stub's fixtures
+  (`internal/agentsapi/fixtures` at 99c7b88, in `e2e/agents-fixtures`, with two host strings made placeholders).
+  `TACHYON_E2E_AGENTS=backend` turns it off and runs against the binary's agents reads (B8a). The collector
+  is not started there, so `e2e/serve.sh` applies `e2e/agents-seed.sql` before serving. It holds synthetic sessions,
+  events, a gap and seat statuses, with the stub's names and times relative to the run. The Tether fake
+  (`e2e/tether-fake.ts`) also starts, with `agents_controls` on and a throwaway messages token, so a nudge goes out as
+  Tether mail (B8b). The fake refuses a message containing REFUSE, and the spec asserts B8b's own refusal. Ceremony
+  needs a configured Torque, so it is skipped there.
+
+**Main moved under the shared layer since 4a76422** (for the pre-P1 sync):
+- `chat/MessageBody.tsx` (+6)
+- `files/FileViewerPane.tsx` (1 line)
+- `observations/store.ts` (+49/-4, #762: one request for every work state)
+The G5 files have no main change after 99c7b88.
+
+### Agent Ops routes the surface calls (for the agents backend slice)
+
+All under `/api/plugins/console/v1`. Errors are flat `{code, message}`; writes carry `X-Requested-With` and a
+same-origin `Origin`. Shapes: the old written contract, `internal/agentsapi/openapi.yaml` and its fixtures at
+99c7b88. The handler column is the old build's.
+
+| Method | Path | Request | Response the UI reads | Old handler |
+|---|---|---|---|---|
+| `GET` | `agents/sessions` | — | `{sessions:[Session], summary, collector}` | `internal/agentsserve/api.go` `s.list` |
+| `GET` | `agents/stream` | SSE | session changes; the list refetches | `agentsserve` `s.stream` |
+| `GET` | `agents/sessions/{id}` | — | Session (a deep link to a session not in the list) | `agentsserve` `s.get` |
+| `GET` | `agents/sessions/{id}/events?group_runs=1&limit=8\|100[&before_seq]` | — | `{events, gaps, next_before}` | `agentsserve` `s.events` |
+| `GET` | `agents/sessions/{id}/context-series` | — | `{points, compactions, clears, warn_pct}` | `agentsserve` `s.contextSeries` |
+| `GET` | `agents/sessions/{id}/tokens` | — | `{metered, hour, session, share, trend}` | `agentsserve` `s.tokens` |
+| `GET` | `agents/sessions/{id}/history` | — | `{sessions}` | `agentsserve` `s.history` |
+| `GET` / `PUT` | `agents/settings` | PUT: settings | `{stale_after_s, handoff_prompt, handoff_timeout_s, nudge_presets}` | `agentsserve` `s.getSettings` / `s.putSettings` |
+| `GET` | `agents/seats` | — | `{seats:[{agent_urn, handle, name, effective, declared, live, stale?, set_by_other?}]}` | `agentsserve` `s.seats` |
+| `GET` | `agents/bus/events?limit=50[&before_seq]` | — | `{events, next_before}` | `internal/agentscollector/bus.go` `BusHandler` |
+| `POST` | `agents/sessions/{id}/nudge` | `{request_id, text, interrupt}` | ControlRequest `{request_id, kind, session_id, state, step, error, interrupt, message_id, created_at, updated_at}` (202); 409 `conflict`, `interrupt_unsupported` | `agentsserve` `s.nudge` |
+| `POST` | `agents/sessions/{id}/restart` | `{request_id, handoff, expected_session_id}` | ControlRequest | `agentsserve` `s.restart` |
+| `GET` | `agents/controls/{request_id}` | — | ControlRequest (polled) | `agentsserve` `s.getControl` |
+| `POST` | `agents/controls/{request_id}/skip` | — | ControlRequest | `agentsserve` `s.skipControl` |
+| `GET` | `ceremony` | — | CeremonyMeter `{checked_at, window_days, gates, median_wait_seconds, stalled, pending_checkpoints, activity, done, previous, comparison, sources}` | `internal/server/register_ceremony.go` |
+| `GET` | `needs-you` | — | `{items:[{id, source, kind, why, title, from, ref?, since, critical, message_id?, detail?, link?}], sources, checked_at}` | `internal/server/register_needsyou.go` (`internal/needsyou`); its `RequireOperator` passes GETs through, so no operator check on reads |
+| `GET` | `catalog/launches` | — | `{launches:[LaunchProfile]}` (Launch dialog) | `plugins/console/catalog.go`, Tether `/catalog` proxy |
+| `GET` | `tether/workers` | — | `{workers}` | `plugins/console/objects.go`, Tether proxy (operator) |
+| `POST` | `tether/sessions` | `{launch, worker?, prompt_append?, idempotency_key}` | `{id}` | same |
+| `GET` | `tether/sessions[?cursor]`, `tether/sessions/{id}` | — | `{sessions, next_cursor?}`, TetherSession | same |
+| `POST` | `tether/sessions/{id}/launch` | `{}` | (ignored) | same |
+
+The `agents/*` scopes are in the contract (`tachyon.agents.read`, `tachyon.agents.control` with the operator
+check on control). `ceremony` and `needs-you` (B8a, CW-20261115-0062): `tachyon.agents.read`. For parity, there is no operator check on
+`needs-you` reads: the old build mounted it behind `RequireOperator`, which passes GETs through. Not called by this SPA: `agents/collector` (the old stub's only).
+
 ## Gaps
 
 - app-shell has no prefix/param surface routes (exact match only, `shell.tsx` surface lookup). Worked
