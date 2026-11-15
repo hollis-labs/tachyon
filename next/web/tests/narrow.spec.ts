@@ -16,7 +16,8 @@ test("390px: three tabs and More; More reaches every other area", async ({ page 
     await expect(sheet).toBeVisible()
     if (area === AREAS[3]) await shot(page, "narrow-more")
     await sheet.getByRole("link", { name: area.label, exact: true }).click()
-    await expect(page.getByRole("heading", { name: area.label, level: 1 })).toBeVisible()
+    // .first(): a carried page with the kit's PageHeader has a second h1 (substrate-gap CW-20261115-0026).
+    await expect(page.getByRole("heading", { name: area.label, level: 1 }).first()).toBeVisible()
     expect(new URL(page.url()).pathname).toBe(area.route)
   }
   expect(await tabs.count()).toBeGreaterThanOrEqual(3)

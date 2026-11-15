@@ -3,7 +3,7 @@ import { AREAS, owner, shot } from "./helpers"
 
 test.use({ storageState: owner })
 
-// The planner and chat have their own specs (planner.spec.ts, chat.spec.ts); the rest are stubs until ported.
+// Planner, chat and approvals have their own specs; the rest are stubs until ported.
 for (const area of AREAS.filter((a) => a.stub)) {
   test(`${area.label}: reachable from the nav, and its deep link opens it`, async ({ page }) => {
     await page.goto("/planner")

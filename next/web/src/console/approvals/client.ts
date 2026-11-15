@@ -204,6 +204,16 @@ export class ApprovalError extends Error {
 // operator is not offered (or asked to confirm) the same decision twice.
 export const handoffItems = new Set<string>()
 export const isHandoffError = (e: unknown) => e instanceof ApprovalError && e.code === "provider_handoff_required"
+// Refusals for missing operator access, by code: the copy is the app's, whatever the server's wording.
+export const ACCESS_CODES = ["operator_required", "operator_access_required", "scope_required", "assurance_insufficient"]
+export const isAccessError = (e: unknown) => e instanceof ApprovalError && ACCESS_CODES.includes(e.code)
+/** What a failed single decision says: the access refusal in the app's words, otherwise the server's message. */
+export const decisionError = (e: unknown) =>
+  isAccessError(e)
+    ? "Deciding this request needs operator access."
+    : e instanceof Error
+      ? e.message
+      : "Decision not confirmed. Refresh to check the outcome."
 export const isCard = (item: Pick<ApprovalItem["request_snapshot"], "kind">) =>
   item.kind.startsWith("card.")
 // "Approval", "Question", "Form"… for the kind column and search.
@@ -220,7 +230,6 @@ export const isExpired = (item: ApprovalItem) =>
   Date.parse(item.request_snapshot.expires_at) <= Date.now()
 
 export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
-  let connecting: Promise<unknown> | undefined
   const presenting = new Map<string, Promise<ApprovalItem>>()
   async function request<T>(
     path: string,
@@ -255,17 +264,9 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       )
     return body as T
   }
+  // The port has no session bridge: a 401 is the session ending, which hostFetch hands to the identity gate.
   async function read<T>(path: string, fresh = false): Promise<T> {
-    try {
-      return await request<T>(path, {}, fresh)
-    } catch (e) {
-      if (!(e instanceof ApprovalError) || e.status !== 401) throw e
-      connecting ??= request("/session", { method: "POST" }).finally(() => {
-        connecting = undefined
-      })
-      await connecting
-      return request<T>(path, {}, fresh)
-    }
+    return request<T>(path, {}, fresh)
   }
   const get = (id: string, fresh = false) =>
     read<ApprovalItem>(`/items/${encodeURIComponent(id)}`, fresh)

@@ -225,14 +225,81 @@ under `/threads/{ref}/plan` (PUT, DELETE, steps, reorder; the SPA reads `GET ...
 `GET /planner/board`, `/planner/need-you`, `/planner/decisions` (B5); `GET /files/roots`, `/files/list` (files);
 `GET /catalog/agents`, `/catalog/launches` (catalog); `POST /messages` (Torque passthrough allowlist).
 
+## Approvals (G4, CW-20261115-0024)
+
+The approvals surface, carried over from `plugins/console/ui/src/approvals` (main f256039; the area is unchanged
+since 4a76422) plus four small shared components (`components/chip`, `initials-avatar`, `keycap`, `pill-tabs`),
+onto the console layer from G3a. `src/console/surface.tsx` mounts it as `/approvals` under the console base with
+the `ApprovalProvider` the old `ConsoleIntegration` placed above every console page.
+
+- **Not carried:** `approvals/terminal.tsx` (the action-run PTY; terminal slice). The detail says so where the run
+  panel was.
+- **Edits (scripted, `g4-adapt`):**
+  - `client.ts`: no session bridge. A 401 is the session ending (hostFetch hands it to the identity gate), not a
+    cue to `POST /approval-inbox/session` and retry; that route is gone (contract section 1).
+  - `page.tsx`: batch "operator access needed" comes from the profile's `tachyon.operator` scope (`useScopes`),
+    not `GET /access` (elevation state). Refusals accept `operator_required`, `scope_required` and the old
+    `operator_access_required` / `assurance_insufficient`; copy says "operator access", not "elevated".
+  - `secret-dialog.tsx`, `batch-panel.tsx`: the same codes and copy.
+  - **Kit wins:** `PillTabs` is kit-dashboard `DashboardViewTabs variant="pills"`; `components/pill-tabs.tsx` is
+    removed (the smaller filter-row size is the kit's gap, CW-20261115-0033).
+  - `context.tsx`: **a held decision the server refuses is a toast.** The old code set the queue error, then
+    refreshed, and the refresh cleared it at once: an operator refusal of a held (low/medium) approval flashed and
+    vanished, worded "Approval queue unavailable". Same code in the old build; the e2e covers it.
+  - `client.ts` `decisionError`, used by `detail.tsx` and `context.tsx`: **an access refusal of a single decision
+    is worded by the app**, by code (`operator_required`, `scope_required` and the old codes), as batch and
+    secret refusals already were. The old decision bar showed the server's message; B7's is written for API
+    callers ("an API key never qualifies"). Other errors keep the server's message.
+  - **Kit wins:** the approvals `Chip` is design-components `Pill` (kit look; `faint` becomes `neutral`);
+    `components/chip.tsx` is removed.
+  - Tests: the two unit tests that asserted the session retry and `/access` now assert the port's behaviour.
+- **Kit gap:** the kit's `PageHeader` always renders an `h1`, so the page has two (the shell's and the kit's).
+  Substrate CW-20261115-0026; not worked around (no redesign).
+- **e2e:** `e2e/approvals-stub.ts` stands in for B7; `TACHYON_E2E_APPROVALS=backend` turns it off and runs against the
+  binary, with these differences:
+  - `e2e/serve.sh` applies `e2e/approvals-seed.sql` with sqlite3, after the owner setup has made the schema
+    and before serving. These are synthetic `approval_items` rows; B7 backfills the index at start, and there is
+    no producer path. It also writes a throwaway `tachyon.files.secret_key` for the run.
+  - The specs find items by title. The tests that decide a request run last, because the backend keeps its
+    state between tests.
+  - The refusal is real. The owner's session mints a token without `*`: the same person, below operator.
+  `store.refuseOperator` makes decisions answer 403 `operator_required`.
+
+### Approvals routes the surface calls (for B7)
+
+All under `/api/plugins/console/v1/approval-inbox`. Errors are the contract's flat body (the hitl fields
+`revision_kind`, `expected_revision`, `actual_revision`, `current_state`, `terminal_outcome` under `details`); writes
+carry `X-Requested-With` and a same-origin `Origin`. Checked against the old handlers by B7's builder (#750 review);
+the corrections from that check are in. Refusals come from the route guard: 401, then 403 `scope_required`
+(`tachyon.approvals.read` / `.resolve`), then 403 `operator_required` where elevation was needed (medium, high,
+destructive and cerberus resolves, batches, secrets, the `action_run` view); `unsupported_class` (403) stays.
+
+| Method | Path | Request | Response the UI reads |
+|---|---|---|---|
+| `GET` | `/inbox[?pending_before&history_before]` | — | `{pending:[Item], history:[Item], next_pending?, next_history?, synced_at, revision, server_now_ms}`. Item: `{item_id, state, revision, presented_projection_revision, enqueued_at, updated_at, approvable, expires_at, batchable?, batch_blockers?, confirm?:{phrase}, affected_*?, alternatives?, run_state?, reason_required?, deferred_until?, terminal_outcome?, action_run?, evidence?, request_snapshot:{kind, title, summary, request, class, source:{agent_id, application_id}, impact:{approve, deny}, data?, expires_at?, handoff_url?}}` |
+| `GET` | `/items/:id` | — | Item (a no-cache read before deciding; `X-Tachyon-Cache` `stale`/`error` is refused) |
+| `POST` | `/items/:id/present` | `{expected_revision, presented_projection_revision, connection_id}` | the Item as read, **state unchanged** (records a `presented` audit event once per session and item); 409 `stale_revision` |
+| `POST` | `/items/:id/resolve` | `{expected_revision, presented_projection_revision, response:{kind, decision, note?, confirmation?, alternative_id?, answers?}}` | `{item_id, state, reason?, message?, resolution?}`; 409 `stale_revision`; 403 `operator_required` / `scope_required` (checked before the phrase); 422 `confirmation_required` (only with `confirm.phrase`, an approval, and no `alternative_id`); `provider_handoff_required` |
+| `POST` | `/batch/resolve` | `{batch_id, decision, items:[{item_id, expected_revision, presented_projection_revision}]}` | `{batch_id, results:[{item_id, status, error?}], counts}`; a stale item is `status: "stale"` (`error.code stale_revision`), not an HTTP 409 |
+| `POST` | `/items/:id/defer` | `{duration_s, reason?, expected_revision}` | `{item_id, deferred_until, expires_before_snooze_ends?, revision}`; checks `expected_revision` only |
+| `DELETE` | `/items/:id/defer` | — | `{item_id, deferred_until, revision}` (no revision check; no `expires_before_snooze_ends`) |
+| `GET` | `/items/:id/audit` | — | `{item_id, events:[AuditEvent]}` |
+| `GET` | `/history[?q&status&requester&cursor&limit]` | — | `{events:[HistoryEvent], next_cursor?, facets}` (`facets` always present) |
+| `POST` | `/secrets` | JSON `{item_id, field, value}` (≤16 KiB) or multipart `file` (≤64 KiB); optional `Idempotency-Key` | **201** `{secret_ref, created_at, expires_at, size, fingerprint}`, never the value; 409 `item_not_pending` / `secret_field_unknown` / `secret_limit` / `idempotency_key_reuse`; 413 `too_large`; 429 `rate_limited` |
+| `GET` | `/events` | SSE: `id: <n>` + `data:` (no `event:` line), ids and states only | any frame means refetch; resume with `Last-Event-ID` or `?after=`; a `resync {reason:"gap"}` frame means refetch everything |
+
+Not called by the port's SPA: `/session`, `/status`, `/elevate`, `/de-elevate`, `/access` (gone with the Tangent
+cookie; operator is the profile scope), and `/items/:id/evidence/...` (does not exist; evidence is the item's
+`evidence` array; the client's unused `evidence()` call is never made).
+
 ## Gaps
 
 - app-shell has no prefix/param surface routes (exact match only, `shell.tsx` surface lookup). Worked
   around host-side (`surfacePath`); nav highlighting follows the area. Not blocking.
 - No `settings.region` yet: depends on the backend registering settings groups (B1+).
 - Planner path links show as text until console's autolink (file viewer chip) is ported.
-- Chat: no dock, no PTY terminal, no app-agent thread source yet (later G slices); card actions that need the
-  approvals inbox wait for the approvals slice.
+- Chat: no dock, no PTY terminal, no app-agent thread source yet (later G slices).
+- Approvals: no action-run terminal (terminal slice); two h1s under the kit PageHeader (CW-20261115-0026).
 
 ## Parity list (behaviour the port must not copy)
 
