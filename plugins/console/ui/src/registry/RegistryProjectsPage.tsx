@@ -162,7 +162,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
         </Button>
         <Tile name={p.identity.display_name || p.id} large />
         <div className="flex min-w-0 basis-full flex-col sm:flex-1 sm:basis-0">
-          <h2 className="truncate font-sans text-base font-semibold normal-case tracking-normal text-fg">{p.identity.display_name || p.id}</h2>
+          <h2 className="truncate font-sans text-control font-semibold normal-case tracking-normal text-fg">{p.identity.display_name || p.id}</h2>
           <p className="truncate font-mono text-label text-fg-muted">
             {p.id} · {STATUS[p.identity.status]?.toLowerCase() ?? p.identity.status}
           </p>
