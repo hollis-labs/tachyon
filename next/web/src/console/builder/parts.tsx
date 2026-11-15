@@ -1,6 +1,6 @@
+import { Pill } from '@hollis-labs/design-components'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Chip } from '../components/chip'
 
 /** Tile initials: first letters of the first two words, one letter for a single word. */
 export function tileInitials(name: string): string {
@@ -79,4 +79,4 @@ export function RailRow({ label, children, tone }: { label?: string; children: R
 export const Muted = ({ children }: { children: ReactNode }) => <span className="text-xs text-fg-muted">{children}</span>
 
 /** Used when a value is not known: say so, never zero. */
-export const NotReported = () => <Chip tone="faint">not reported</Chip>
+export const NotReported = () => <Pill tone="neutral">not reported</Pill>

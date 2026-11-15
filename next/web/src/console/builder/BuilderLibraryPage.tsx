@@ -1,9 +1,8 @@
 import { useDiscardGuard } from './DiscardGuard'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
-import { Button, Input, SearchInput, Textarea } from '@hollis-labs/design-components'
+import { Button, Input, SearchInput, Textarea, Pill } from '@hollis-labs/design-components'
 import Markdown from 'react-markdown'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Chip } from '../components/chip'
 import { ChipListField } from './ChipListField'
 import { DirtyBar } from './DirtyBar'
 import { Cap, Muted } from './parts'
@@ -177,7 +176,7 @@ function UsedBy({ kind, id }: { kind: LibraryKind; id: string }) {
       ))}
       {chips.length > shown.length && (
         <li>
-          <Chip>+{chips.length - shown.length}</Chip>
+          <Pill>+{chips.length - shown.length}</Pill>
         </li>
       )}
     </ul>
@@ -508,7 +507,7 @@ export function BuilderLibraryPage() {
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <b className="truncate font-mono text-control font-semibold text-fg">{it.name}</b>
-                      {it.archived === true && <Chip>archived</Chip>}
+                      {it.archived === true && <Pill>archived</Pill>}
                     </span>
                     <span className="truncate text-label text-fg-muted">
                       {[it.summary, it.used_by_count != null ? `used by ${it.used_by_count} ${it.used_by_count === 1 ? 'agent' : 'agents'}` : ''].filter(Boolean).join(' · ')}

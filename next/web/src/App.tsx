@@ -22,7 +22,14 @@ import { useEffect, useState } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { CapabilitiesProvider } from "./api/capabilities"
 import { UNAUTHORIZED_EVENT } from "./api/request"
-import { AgentsSurface, ApprovalsSurface, ChatSurface, NeedsYouSurface } from "./console/surface"
+import {
+  AgentsSurface,
+  ApprovalsSurface,
+  BuilderSurface,
+  ChatSurface,
+  NeedsYouSurface,
+  RegistrySurface,
+} from "./console/surface"
 import { manifest, surfaceRoutes } from "./manifest"
 import { SettingsPage } from "./pages/settings"
 import { StubPage } from "./pages/stub"
@@ -53,8 +60,8 @@ const icons = {
 const pages: Record<string, PageComponent> = {
   planner: () => <PlannerSurface />,
   agents: () => <AgentsSurface />,
-  builder: () => <StubPage area="Builder" slice="G3" />,
-  registry: () => <StubPage area="Registry" slice="G3" />,
+  builder: () => <BuilderSurface />,
+  registry: () => <RegistrySurface />,
   chat: () => <ChatSurface />,
   approvals: () => <ApprovalsSurface />,
   "needs-you": () => <NeedsYouSurface />,

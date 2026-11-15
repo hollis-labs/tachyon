@@ -1,6 +1,7 @@
 import { test as base, expect } from "@playwright/test"
 import { agentsStub } from "../e2e/agents-stub"
 import { approvalsStub } from "../e2e/approvals-stub"
+import { builderStub } from "../e2e/builder-stub"
 import { chatStub } from "../e2e/chat-stub"
 import { BASE, plannerStub, type StubItem } from "../e2e/planner-stub"
 
@@ -12,6 +13,8 @@ export const chatBackend = process.env.TACHYON_E2E_CHAT === "backend"
 export const approvalsBackend = process.env.TACHYON_E2E_APPROVALS === "backend"
 /** `TACHYON_E2E_AGENTS=backend` runs against the binary's own Agent Ops routes; otherwise the stub (G5) answers. */
 export const agentsBackend = process.env.TACHYON_E2E_AGENTS === "backend"
+/** `TACHYON_E2E_BUILDER=backend` runs against the binary's own builder, registry and team routes; otherwise the stub (G6). */
+export const builderBackend = process.env.TACHYON_E2E_BUILDER === "backend"
 
 export interface PlannerWrite {
   method: string
@@ -29,6 +32,7 @@ export const test = base.extend<{
   chat: { store: ReturnType<typeof import("../e2e/chat-stub").chatSeed> | null }
   approvals: { store: ReturnType<typeof import("../e2e/approvals-stub").approvalsSeed> | null }
   agents: { store: ReturnType<typeof import("../e2e/agents-stub").agentsSeed> | null }
+  builder: { store: ReturnType<typeof import("../e2e/builder-stub").builderSeed> | null }
 }>({
   planner: [
     async ({ page }, use) => {
@@ -63,6 +67,12 @@ export const test = base.extend<{
   agents: [
     async ({ page }, use) => {
       await use({ store: agentsBackend ? null : (await agentsStub(page)).store })
+    },
+    { auto: true },
+  ],
+  builder: [
+    async ({ page }, use) => {
+      await use({ store: builderBackend ? null : (await builderStub(page)).store })
     },
     { auto: true },
   ],

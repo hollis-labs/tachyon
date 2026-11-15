@@ -156,7 +156,7 @@ export function chatSeed() {
 /** Plain browser JavaScript (no transpiling): EventSources for the stubbed streams open and stay quiet. */
 const QUIET_STREAMS = `(() => {
   const Real = window.EventSource;
-  const quiet = /\\/api\\/plugins\\/console\\/(v1\\/chat(\\/threads\\/[^/]+)?\\/events|v1\\/planner\\/events|v1\\/approval-inbox\\/events|v1\\/agents\\/stream|stream\\/events)/;
+  const quiet = /\\/api\\/plugins\\/console\\/(v1\\/chat(\\/threads\\/[^/]+)?\\/events|v1\\/planner\\/events|v1\\/approval-inbox\\/events|v1\\/agents\\/stream|v1\\/builder\\/stream|stream\\/events)/;
   class Quiet extends EventTarget {
     constructor(url) {
       super();

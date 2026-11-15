@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Button, ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogTitle, Input, SearchInput, Textarea } from '@hollis-labs/design-components'
+import { Button, ConfirmDialog, Dialog, DialogContent, DialogDescription, DialogTitle, Input, SearchInput, Textarea, Pill } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Chip } from '../components/chip'
 import { ChipListField } from '../builder/ChipListField'
 import { Cap, Field as Row, Tile } from '../builder/parts'
 import { useLoad } from '../builder/useLoad'
@@ -167,7 +166,7 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
             {p.id} · {STATUS[p.identity.status]?.toLowerCase() ?? p.identity.status}
           </p>
         </div>
-        {p.link.state === 'unlinked' && <Chip>unlinked</Chip>}
+        {p.link.state === 'unlinked' && <Pill>unlinked</Pill>}
         {dirty > 0 && (
           <Button type="button" variant="outline" size="sm" onClick={() => guard(dirty, () => { setDraft({}); setError('') })}>
             Discard
@@ -258,10 +257,10 @@ function ProfileDetail({ id, onBack, dirtyRef }: { id: string; onBack: () => voi
         <section aria-label="Consumed by" className="flex flex-col gap-2">
           <Cap>Consumed by</Cap>
           <ul className="flex flex-wrap gap-1.5">
-            {c?.agents != null && <li><Chip>{plural(c.agents.length, 'agent')}</Chip></li>}
-            {c?.launches != null && <li><Chip>{plural(c.launches.length, 'launch', 'launches')}</Chip></li>}
-            {c?.planner_items != null && <li><Chip>{plural(c.planner_items.open, 'open planner item')}</Chip></li>}
-            {c?.tether_sessions != null && <li><Chip>{c.tether_sessions.live} live {c.tether_sessions.live === 1 ? 'session' : 'sessions'}</Chip></li>}
+            {c?.agents != null && <li><Pill>{plural(c.agents.length, 'agent')}</Pill></li>}
+            {c?.launches != null && <li><Pill>{plural(c.launches.length, 'launch', 'launches')}</Pill></li>}
+            {c?.planner_items != null && <li><Pill>{plural(c.planner_items.open, 'open planner item')}</Pill></li>}
+            {c?.tether_sessions != null && <li><Pill>{c.tether_sessions.live} live {c.tether_sessions.live === 1 ? 'session' : 'sessions'}</Pill></li>}
             {!c?.agents && !c?.launches && <li className="text-xs text-fg-muted">{NOT_REPORTED}</li>}
           </ul>
         </section>
@@ -499,7 +498,7 @@ export function RegistryProjectsPage() {
                       <b className="truncate text-control font-semibold text-fg">{r.display_name || r.id}</b>
                       <span className="truncate font-mono text-label text-fg-muted">{r.id}</span>
                     </span>
-                    {r.link.state !== 'linked' && <Chip>unlinked</Chip>}
+                    {r.link.state !== 'linked' && <Pill>unlinked</Pill>}
                     {r.counts?.agents != null && <span className="shrink-0 font-mono text-label text-fg-muted">{plural(r.counts.agents, 'agent')}</span>}
                   </button>
                 </li>

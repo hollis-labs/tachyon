@@ -1,8 +1,7 @@
 import { useDiscardGuard } from './DiscardGuard'
 import { type ReactNode, useCallback, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, Checkbox, Input, OverflowMenu, Switch, Textarea } from '@hollis-labs/design-components'
-import { Chip } from '../components/chip'
+import { Button, Checkbox, Input, OverflowMenu, Switch, Textarea, Pill } from '@hollis-labs/design-components'
 import { ChipListField } from './ChipListField'
 import { DirtyBar } from './DirtyBar'
 import { AGENT_FIELDS, EntityDialog, LAUNCH_FIELDS } from './EntityDialog'
@@ -106,7 +105,7 @@ function LaunchProfiles({ agentId, launches, canCreate, onChanged }: { agentId: 
           <b className="whitespace-nowrap font-mono">{l.id}</b>
           <span className="text-fg-muted">{l.project} · {l.worker}</span>
           <span className="flex-1" />
-          {l.live_count > 0 && <Chip>{l.live_count} live</Chip>}
+          {l.live_count > 0 && <Pill>{l.live_count} live</Pill>}
           <Link to="/builder/launches" className="whitespace-nowrap text-label text-fg-secondary hover:text-fg">
             Launches ▸
           </Link>
@@ -248,8 +247,8 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
             {a.identity.urn ? ` · ${a.identity.urn}` : ''}
           </p>
         </div>
-        {!a.editable && <Chip>read-only</Chip>}
-        {a.state === 'retired' && <Chip>retired</Chip>}
+        {!a.editable && <Pill>read-only</Pill>}
+        {a.state === 'retired' && <Pill>retired</Pill>}
         <label className="inline-flex items-center gap-2 text-xs text-fg-secondary">
           <Switch size="sm" checked={enabled} disabled={!canEdit} onCheckedChange={(v) => ctx.set('runtime.enabled', v === true)} aria-label="Enabled" />
           Enabled

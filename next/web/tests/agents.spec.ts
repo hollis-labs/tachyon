@@ -105,12 +105,6 @@ test("ceremony: the week's gates, waits and stalls", async ({ page }) => {
   await expect(page.getByText("420 / 6")).toBeVisible()
 })
 
-test("teams: the tab says team runs moved to Builder", async ({ page }) => {
-  await page.goto("/agents")
-  await page.getByRole("tab", { name: "Teams" }).click()
-  await expect(page.getByText("Team runs move to the Builder surface.")).toBeVisible()
-})
-
 test("needs you: what waits on the operator, each with where to act", async ({ page }) => {
   await page.goto("/needs-you")
   const list = page.getByRole("list", { name: "Needs you" })

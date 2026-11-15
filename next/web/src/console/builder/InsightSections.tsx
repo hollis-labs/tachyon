@@ -1,7 +1,6 @@
 import { type ReactNode, useState } from 'react'
-import { Button } from '@hollis-labs/design-components'
+import { Button, Pill } from '@hollis-labs/design-components'
 import { Link } from 'react-router-dom'
-import { Chip } from '../components/chip'
 import { type HistoryEntry, type UsedBy, builderApi, errorMessage } from './api'
 import { relativeTime } from './changes'
 import { Diff } from './ReviewDialog'
@@ -48,9 +47,9 @@ export function ResolvedCard({ id }: { id: string }) {
       title="Resolved · what it will get"
       aside={
         load.status === 'ready' && load.data.resolved_by !== 'tether' ? (
-          <Chip tone="faint">
+          <Pill tone="neutral">
             <span title="Tether did not compute this. Tachyon approximated it from the files.">Estimated</span>
-          </Chip>
+          </Pill>
         ) : undefined
       }
     >
@@ -147,17 +146,17 @@ export function UsedBySection({ load, retry }: { load: Load<UsedBy>; retry: () =
         {(u) => (
           <ul className="flex flex-wrap gap-1.5">
             <li>
-              <Chip>{plural(u.live_sessions?.length ?? 0, 'live session')}</Chip>
+              <Pill>{plural(u.live_sessions?.length ?? 0, 'live session')}</Pill>
             </li>
             <li>
-              <Chip>{plural(u.launches?.length ?? 0, 'launch', 'launches')}</Chip>
+              <Pill>{plural(u.launches?.length ?? 0, 'launch', 'launches')}</Pill>
             </li>
             <li>
-              <Chip>{plural(u.teams?.length ?? 0, 'team')}</Chip>
+              <Pill>{plural(u.teams?.length ?? 0, 'team')}</Pill>
             </li>
             {(u.extended_by?.length ?? 0) > 0 && (
               <li>
-                <Chip>extended by {u.extended_by?.length}</Chip>
+                <Pill>extended by {u.extended_by?.length}</Pill>
               </li>
             )}
           </ul>

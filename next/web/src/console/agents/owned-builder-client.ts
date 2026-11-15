@@ -29,7 +29,7 @@ export function createOwnedBuilderClient(fetcher: typeof fetch = operatorFetch) 
     const body = await res.json()
     if (!res.ok) throw new OwnedBuilderError(res.status === 409
       ? 'This record changed since you opened it. Your draft is preserved; reload before reconciling your changes.'
-      : typeof body.error === 'string' ? body.error : 'The data service could not complete the request.', res.status)
+      : typeof body.message === 'string' ? body.message : typeof body.error === 'string' ? body.error : 'The data service could not complete the request.', res.status)
     if (body.version !== 1 || body.provider !== 'tachyon' || body.verb !== verb) throw new Error('Unexpected owned data contract.')
     return body.data as T
   }

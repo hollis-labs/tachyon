@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, SearchInput, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@hollis-labs/design-components'
+import { Button, SearchInput, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Pill } from '@hollis-labs/design-components'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Chip } from '../components/chip'
 import { AgentDetailPane } from './AgentDetailPane'
 import { type AgentRow, builderApi } from './api'
 import { BuilderShell } from './BuilderShell'
@@ -33,7 +32,7 @@ function Rows({ rows, selected, onSelect }: { rows: AgentRow[]; selected?: strin
                 {r.launch_count} {r.launch_count === 1 ? 'launch' : 'launches'}
               </span>
             </span>
-            {r.state !== 'active' && <Chip>{STATE_LABEL[r.state].toLowerCase()}</Chip>}
+            {r.state !== 'active' && <Pill>{STATE_LABEL[r.state].toLowerCase()}</Pill>}
           </button>
         </li>
       ))}
