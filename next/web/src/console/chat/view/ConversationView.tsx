@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Composer } from '../workbench/Composer'
 import { Drawer } from '../drawer/Drawer'
 import { ScratchPane } from '../drawer/ScratchPane'
+import { TerminalPane } from '../drawer/TerminalPane'
 import { WorkspacePane } from '../drawer/WorkspacePane'
 import { DEMO_WORKSPACE, useScratchPlacement, useWorkspace, type DrawerMode, type DrawerSize } from '../drawer/model'
 import { DEMO } from '../cards/useBlocks'
@@ -133,7 +134,7 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
       {drawer && (
         <Drawer mode={drawer} size={size} onSize={setSize} onClose={() => { setDrawer(null); area.current?.focus() }}>
           {drawer === 'scratch' && <ScratchPane threadRef={threadRef} onInsert={insert} />}
-          {drawer === 'terminal' && <p role="status" className="p-4 text-sm text-fg-muted">The terminal is not part of this build yet.</p>}
+          {drawer === 'terminal' && <TerminalPane threadRef={threadRef} demo={DEMO} />}
           {drawer === 'workspace' && <WorkspacePane ws={ws} />}
         </Drawer>
       )}
