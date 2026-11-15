@@ -105,7 +105,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` (also the ceremony meter's hourly read) |
 | agent controls and launches (on when their credentials were set) | `tachyon.features.agents_controls`: nudge, interrupt, restart, the Tether launches (new switch, B8b) |
 | `TACHYON_CATALOG_INDEX` (`0` = off) | `tachyon.features.catalog_index` |
-| builder changes and registry writes (on when a Tether credential was set) | `tachyon.features.builder_changes` (new switch, B9b) |
+| builder changes, registry writes and team operations (on when a Tether credential was set) | `tachyon.features.builder_changes` (new switch, B9b; team operations B9b-2) |
 | `TACHYON_CARD_EVENTS` | `tachyon.features.card_events` |
 | `TACHYON_CARD_EFFECTS_TORQUE` | `tachyon.features.card_effects_torque` |
 | card delivery (on when the file was set) | `tachyon.features.card_delivery` |
@@ -260,6 +260,12 @@ Details: `docs/api-contract.md`.
   `tether_control.url` (the old `TACHYON_TETHER_CONTROL_ADDR`) or the Tether address; otherwise handoff on the read
   credential, ending at a bundle the operator plans in Tether. Registry writes need the control credential.
 - **A change's operator** is the signed-in person's principal id; the old build recorded a browser-session ref.
+- **Team operations (B9b-2), the Tether provider on the console data API, share `builder_changes`.** The old build
+  bound them to Tether whenever an address was set. Off, every verb that would reach Tether answers `503 unavailable`
+  before dialing, as the old build did without Tether (a roster refresh answers the saved roster with its "not
+  configured" problem); retained actions, runs and bindings still read. On, they bind on the read credential (`tachyon.upstreams.tether.token`), and the binding's identity digests
+  the address and the credential as before, so retained runs stay matched. The console's object writes need
+  `tachyon.objects.write` and the operator check; the old build needed the operator check alone.
 
 ## Agents (slices B8a, B8b)
 
