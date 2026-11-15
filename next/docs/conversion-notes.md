@@ -163,6 +163,14 @@ both files. Domain SQL is written once with `?` placeholders (the libs store reb
 | a Go `bool` bound to an INTEGER column (stored as 0/1) | bind the integer | `objectsync` (`flag`) |
 | one writer: read, then write, in one transaction | write transactions run concurrently, so every write takes one advisory lock (per schema) until commit: one writer at a time, and `row_seq` commits in order | `store.WriteTx` (`Writer.Submit` uses it) |
 
+**Serialized writes are a deliberate choice** (confirmed by the program lead). The domain code reads and then writes in
+one transaction (the next revision, an upsert by source key, a reorder), which SQLite's one writer makes safe. On
+Postgres, `store.WriteTx` keeps that: one writer per schema, and `row_seq` in commit order.
+`TestConcurrentReadThenWriteDoesNotCollide` shows concurrent read-then-write transactions do not collide on either
+dialect, and fails on Postgres without the lock. Tachyon's write rate does not need more. If contention ever shows,
+the later option is per-site row locks (`SELECT ... FOR UPDATE` on the row each write depends on) in place of the
+one lock.
+
 Tests: `internal/store/storetest` gives each test its own database on the suite's dialect, a temp file or, with
 `SUBSTRATE_TEST_POSTGRES_DSN` set, a fresh schema (dropped after). CI runs the suite once each way. SQLite-only
 tests (`migrate-from`, the old-tree schema comparison) run in both passes on their own SQLite files. The Postgres
