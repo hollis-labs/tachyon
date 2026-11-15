@@ -331,9 +331,9 @@ func TestRestartThatCannotRelaunchSaysTheSeatIsDown(t *testing.T) {
 		!strings.Contains(*c.Error, "launch-m1") || !strings.Contains(*c.Error, "403 (forbidden)") || c.RelaunchedBy != nil {
 		t.Fatalf("%+v", c)
 	}
-	// A hub resume that fails for any other reason is not retried as a relaunch.
+	// A resume that fails for any other reason is relaunched too: the old session is already stopped.
 	f = &fakeCtl{resumeErr: errors.New("tether /logical-agents/la1/resume answered 500 (internal_error)")}
-	if c = restartUntilEnd(t, f, "rs5"); c.State != "failed" || f.relaunched != "" {
+	if c = restartUntilEnd(t, f, "rs5"); c.State != "done" || f.relaunched == "" || *c.RelaunchedBy != "relaunch" {
 		t.Fatalf("%+v relaunched=%q", c, f.relaunched)
 	}
 }

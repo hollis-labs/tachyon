@@ -588,6 +588,7 @@ func TestTetherMessagesCarryInputAttribution(t *testing.T) {
 
 func TestTetherMessagesCarryContinuedHistory(t *testing.T) {
 	e := setup(t)
+	e.seedTurn(t, "h0", "old", "question", "Which one?", "2020-10-30T09:00:00Z", true)
 	e.seedTurn(t, "h1", "old", "terminal", "Before the restart.", "2020-10-30T10:00:00Z", false)
 	e.seedTurn(t, "h2", "new", "terminal", "After the restart.", "2020-10-30T11:00:00Z", false)
 	e.h.Ancestors = func(_ context.Context, s string) []string {
@@ -598,19 +599,25 @@ func TestTetherMessagesCarryContinuedHistory(t *testing.T) {
 	}
 	_, out := e.do(t, "GET", "/threads/tether:new/messages", "")
 	ms := out["messages"].([]any)
-	if len(ms) != 2 {
+	if len(ms) != 4 {
 		t.Fatalf("messages: %v", ms)
 	}
-	first, second := ms[0].(map[string]any), ms[1].(map[string]any)
-	if first["text"] != "Before the restart." || first["seq"] != 1.0 || second["text"] != "After the restart." || second["seq"] != 2.0 {
+	q, reply, first, second := ms[0].(map[string]any), ms[1].(map[string]any), ms[2].(map[string]any), ms[3].(map[string]any)
+	if q["text"] != "Which one?" || reply["text"] != "my answer" || first["text"] != "Before the restart." || first["seq"] != 3.0 || second["text"] != "After the restart." || second["seq"] != 4.0 {
 		t.Fatalf("order or seq: %v", ms)
 	}
-	if first["meta"].(map[string]any)["continued_from"] != "old" || second["meta"].(map[string]any)["continued_from"] != nil {
-		t.Fatalf("meta: %v", ms)
+	for _, m := range []map[string]any{q, reply, first} {
+		meta := m["meta"].(map[string]any)
+		if meta["continued_from"] != "old" || meta["replyable"] == true {
+			t.Fatalf("meta: %v", m)
+		}
+	}
+	if second["meta"].(map[string]any)["continued_from"] != nil {
+		t.Fatalf("meta: %v", second)
 	}
 	// The ancestor's own thread is unchanged.
 	_, out = e.do(t, "GET", "/threads/tether:old/messages", "")
-	if len(out["messages"].([]any)) != 1 {
+	if len(out["messages"].([]any)) != 3 {
 		t.Fatalf("ancestor thread: %v", out)
 	}
 }
