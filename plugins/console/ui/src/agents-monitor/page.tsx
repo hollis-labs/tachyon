@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@hollis-labs/design-components'
 import { DashboardSearchToolbar } from '@hollis-labs/kit-dashboard/layout'
 import { Chip, SegmentedProgress } from '@planner/shared'
@@ -101,7 +102,8 @@ export function AgentsPage() {
             {data.collector.collecting ? AGENTS.collecting(data.collector.sessions, data.collector.last_event_at ? ageText(now - data.collector.last_event_at) : AGENTS.na) : AGENTS.notCollecting}
           </span>
         )}
-        <Btn tone="primary" className="shrink-0 font-sans normal-case tracking-normal" onClick={() => setLaunchOpen(true)}>{AGENTS.launch}</Btn>
+        {/* Below 640 Launch is a plus so the four tabs fit on a 360 phone; its name stays 'Launch'. */}
+        <Btn tone="primary" aria-label={AGENTS.launch} className="shrink-0 font-sans normal-case tracking-normal max-sm:px-2" onClick={() => setLaunchOpen(true)}><Plus aria-hidden className="size-3.5 sm:hidden" /><span className="max-sm:sr-only">{AGENTS.launch}</span></Btn>
       </div>
 
       {tab !== 'teams' && (
