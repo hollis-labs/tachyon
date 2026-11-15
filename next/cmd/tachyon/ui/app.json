@@ -106,11 +106,28 @@
     },
     {
       "kind": "nav.item",
+      "key": "needs-you",
+      "label": "Needs you",
+      "icon": "bell-ring",
+      "route": "/needs-you",
+      "priority": 7,
+      "requires": "tachyon.agents.read"
+    },
+    {
+      "kind": "surface",
+      "key": "needs-you",
+      "label": "Needs you",
+      "title": "Needs you",
+      "route": "/needs-you",
+      "layout": "list"
+    },
+    {
+      "kind": "nav.item",
       "key": "transcripts",
       "label": "Transcripts",
       "icon": "scroll-text",
       "route": "/dashboards/transcripts",
-      "priority": 7,
+      "priority": 8,
       "requires": "tachyon.transcripts.read"
     },
     {
@@ -127,7 +144,7 @@
       "label": "Repos",
       "icon": "git-pull-request",
       "route": "/repos",
-      "priority": 8,
+      "priority": 9,
       "requires": "tachyon.forge.read"
     },
     {

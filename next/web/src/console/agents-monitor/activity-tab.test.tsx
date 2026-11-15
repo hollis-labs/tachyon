@@ -55,14 +55,14 @@ describe('Activity', () => {
 
   it("adds Tether's own summary as a second line only when it says more than the row", async () => {
     const [told, same, none] = toBusTimeline([
-      ev({ id: 'a', seq: 3, subject: 'tachyon deployed', summary: 'tachyon deployed v2 on agent-os', cell: 'ops' }),
+      ev({ id: 'a', seq: 3, subject: 'tachyon deployed', summary: 'tachyon deployed v2 on host-a', cell: 'ops' }),
       ev({ id: 'b', seq: 2, subject: 'tachyon deployed', summary: 'tachyon deployed' }),
       ev({ id: 'c', seq: 1, subject: 'tachyon deployed' }),
     ], NOW)
-    expect([told.detail, same.detail, none.detail]).toEqual(['tachyon deployed v2 on agent-os', undefined, undefined])
-    vi.stubGlobal('fetch', vi.fn(() => page([ev({ id: 'a', seq: 3, subject: 'tachyon deployed', summary: 'tachyon deployed v2 on agent-os' })], null)))
+    expect([told.detail, same.detail, none.detail]).toEqual(['tachyon deployed v2 on host-a', undefined, undefined])
+    vi.stubGlobal('fetch', vi.fn(() => page([ev({ id: 'a', seq: 3, subject: 'tachyon deployed', summary: 'tachyon deployed v2 on host-a' })], null)))
     render(<ActivityTab busTick={0} now={NOW} />)
-    expect(await screen.findByText('tachyon deployed v2 on agent-os')).toBeTruthy()
+    expect(await screen.findByText('tachyon deployed v2 on host-a')).toBeTruthy()
   })
 
   it('shows the empty state, then pages older events in with Show more', async () => {

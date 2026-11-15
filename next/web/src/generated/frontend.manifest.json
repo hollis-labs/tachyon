@@ -248,10 +248,27 @@
         },
         {
           "kind": "nav.item",
+          "key": "needs-you",
+          "label": "Needs you",
+          "icon": "bell-ring",
+          "priority": 7,
+          "route": "/needs-you",
+          "requires": "tachyon.agents.read"
+        },
+        {
+          "kind": "surface",
+          "key": "needs-you",
+          "label": "Needs you",
+          "route": "/needs-you",
+          "layout": "list",
+          "title": "Needs you"
+        },
+        {
+          "kind": "nav.item",
           "key": "transcripts",
           "label": "Transcripts",
           "icon": "scroll-text",
-          "priority": 7,
+          "priority": 8,
           "route": "/dashboards/transcripts",
           "requires": "tachyon.transcripts.read"
         },
@@ -268,7 +285,7 @@
           "key": "repos",
           "label": "Repos",
           "icon": "git-pull-request",
-          "priority": 8,
+          "priority": 9,
           "route": "/repos",
           "requires": "tachyon.forge.read"
         },
@@ -471,22 +488,22 @@
     },
     {
       "kind": "nav.item",
-      "key": "transcripts",
-      "label": "Transcripts",
-      "icon": "scroll-text",
+      "key": "needs-you",
+      "label": "Needs you",
+      "icon": "bell-ring",
       "priority": 7,
-      "route": "/dashboards/transcripts",
-      "requires": "tachyon.transcripts.read",
+      "route": "/needs-you",
+      "requires": "tachyon.agents.read",
       "module": "tachyon"
     },
     {
       "kind": "nav.item",
-      "key": "repos",
-      "label": "Repos",
-      "icon": "git-pull-request",
+      "key": "transcripts",
+      "label": "Transcripts",
+      "icon": "scroll-text",
       "priority": 8,
-      "route": "/repos",
-      "requires": "tachyon.forge.read",
+      "route": "/dashboards/transcripts",
+      "requires": "tachyon.transcripts.read",
       "module": "tachyon"
     },
     {
@@ -497,6 +514,16 @@
       "priority": 9,
       "region": "nav.footer",
       "route": "/identity/sign-out",
+      "module": "tachyon"
+    },
+    {
+      "kind": "nav.item",
+      "key": "repos",
+      "label": "Repos",
+      "icon": "git-pull-request",
+      "priority": 9,
+      "route": "/repos",
+      "requires": "tachyon.forge.read",
       "module": "tachyon"
     },
     {
@@ -560,6 +587,15 @@
       "route": "/identity/sign-out",
       "layout": "form",
       "title": "Sign out",
+      "module": "tachyon"
+    },
+    {
+      "kind": "surface",
+      "key": "needs-you",
+      "label": "Needs you",
+      "route": "/needs-you",
+      "layout": "list",
+      "title": "Needs you",
       "module": "tachyon"
     },
     {

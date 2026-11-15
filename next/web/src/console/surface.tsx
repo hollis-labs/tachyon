@@ -2,6 +2,7 @@ import { SlotProvider } from "@tachyon/host-sdk"
 import { ApiProvider, useApi } from "@tachyon/torque-client"
 import { type ReactNode, useState } from "react"
 import { Route, Routes } from "react-router-dom"
+import { AgentsPage } from "./agents-monitor/page"
 import { ApprovalProvider } from "./approvals/context"
 import { ApprovalsPage } from "./approvals/page"
 import { LinkTextSlot, ShellAutolink } from "./autolink/LinkText"
@@ -16,6 +17,7 @@ import { createMailMessagingClient } from "./messaging/adapter"
 import { MessagingProvider } from "./messaging/context"
 import { OPERATOR_ADDRESS } from "./messaging/operator"
 import { AgentUnreadProvider } from "./messaging/unread"
+import { NeedsYouPage } from "./needs-you/page"
 
 const consoleSlots = { LinkText: LinkTextSlot }
 
@@ -84,6 +86,29 @@ export function ApprovalsSurface() {
           <Route path="/approvals" element={<ApprovalsPage />} />
         </Routes>
       </ApprovalProvider>
+    </ConsoleBase>
+  )
+}
+
+/** The Agent Ops surface (`/agents` in ui/app.json): the old console routes, the session id resolved inside the page. */
+export function AgentsSurface() {
+  return (
+    <ConsoleBase>
+      <Routes>
+        <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/agents/:session" element={<AgentsPage />} />
+      </Routes>
+    </ConsoleBase>
+  )
+}
+
+/** The Needs you surface (`/needs-you` in ui/app.json): the old console overlay route. */
+export function NeedsYouSurface() {
+  return (
+    <ConsoleBase>
+      <Routes>
+        <Route path="/needs-you" element={<NeedsYouPage />} />
+      </Routes>
     </ConsoleBase>
   )
 }
