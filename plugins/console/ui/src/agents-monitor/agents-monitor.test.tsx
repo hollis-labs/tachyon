@@ -23,6 +23,12 @@ describe('applyStreamEvent', () => {
     expect(merged.sessions[0].agent.name).toBe('builder')
     expect(applyStreamEvent(merged, { type: 'session', at: 2, session: session({ id: 'b' }) }).sessions).toHaveLength(2)
   })
+  it('takes a session off the list when a snapshot says it ended, and never adds an ended one', () => {
+    const d = data([session({ id: 'a' }), session({ id: 'b' })])
+    const after = applyStreamEvent(d, { type: 'session', at: 1, session: { id: 'a', state: 'ended' } })
+    expect(after.sessions.map((s) => s.id)).toEqual(['b'])
+    expect(applyStreamEvent(after, { type: 'session', at: 2, session: session({ id: 'c', state: 'ended' }) })).toBe(after)
+  })
   it('ignores bus, control and gap here (a gap triggers a refetch in the hook)', () => {
     const d = data([session({ id: 'a' })])
     expect(applyStreamEvent(d, { type: 'bus', at: 1 })).toBe(d)

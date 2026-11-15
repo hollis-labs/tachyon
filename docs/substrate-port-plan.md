@@ -16,7 +16,7 @@ locations, exact override spellings) are kept outside it, in the program's Tesse
 
 | Question | Answer |
 |---|---|
-| Migrated data or fresh start? | **Migrated.** In use daily. Three SQLite files: `tachyon.db` (about 125 MiB, 96 tables, 56 schema migrations plus 11 baseline tables created outside the ledger), `jobs.db` (about 23 MiB, the scheduler: 6 operator-enabled schedules and their fire history) and `plugins/launch-ops/launches.db` (one empty table). Appendix A. |
+| Migrated data or fresh start? | **Migrated.** In use daily. Three SQLite files: `tachyon.db` (about 125 MiB, 96 tables at migration 056, 97 at 058, 56 schema migrations plus 11 baseline tables created outside the ledger), `jobs.db` (about 23 MiB, the scheduler: 6 operator-enabled schedules and their fire history) and `plugins/launch-ops/launches.db` (one empty table). Appendix A. |
 | Binary variant | `app-host` (embedded SPA, same-origin API, SSE streams, one WebSocket, subprocess plugins). |
 | Who issues identity? | Tachyon itself, through the `identity` module: one owner created offline, one API key per machine credential (section 4). Today Tachyon has no accounts of its own: browser sessions come through Tangent and agents hold Tachyon's own hashed service tokens. |
 | Routes: public, scoped, self-authenticating | Every `/api/` route gets a `tachyon.<area>.<verb>` scope or `authenticated` (B1's `next/docs/api-contract.md`). Public: `/healthz` and the identity module's own sign-in routes. No open mount. |
@@ -98,9 +98,10 @@ identity/host allowlist in the private override, together with `identity.trusted
 Every rehearsal from D1 on checks the real proxy name, not only loopback (an app whose override lacked its allowed host was
 unreachable on its proxy name for two days). The old code's default of all interfaces is not carried.
 
-**MCP.** Agents reach Tachyon through the Tether MCP gateway at `/api/agent/v1/mcp` (streamable HTTP). That stays HTTP, ported
-as app code behind its scope, with the verified principal from the identity middleware. The `mcp` module is not added and
-**there is no stdio `LocalTrust`** in Tachyon; if a later slice adds stdio MCP, it must pass `LocalScopes` that leave out
+**MCP.** Agents reach Tachyon through the Tether MCP gateway at `/api/agent/v1/mcp` (streamable HTTP). Adoption first
+(section 13): the MCP slice uses Substrate's `mcp` module over HTTP if the gateway can point at its path (the gateway path is a
+contract with Tether, decided by the director with that slice); otherwise the old route is ported as app code behind its scope.
+Either way **there is no stdio `LocalTrust`** in Tachyon; if a later slice adds stdio MCP, it must pass `LocalScopes` that leave out
 `tachyon.operator` and the approval-resolve scopes (guide section 5.9).
 
 ## 3. Module mapping
@@ -155,7 +156,7 @@ as app code behind its scope, with the verified principal from the identity midd
   - The Tether MCP gateway's pinned identity (`service_proxy_pin`) and its `X-Tether-*` session headers are kept as app data and
     behaviour; the gateway gets a new key like every holder.
 - **Approval producers.** `/api/approvals/v1` (Tether workload JWT, audience `tachyon`) is unconfigured on live (it answers 503).
-  It is ported as code, off by default, so configuring it later is a config change; nobody is re-keyed for it.
+  Adoption first (section 13): it is **not ported**; it becomes a post-adoption improvement. Its tables and rows migrate.
   `/api/approvals/trusted/v1` (Basalisk WebAuthn proofs) is inactive and Basalisk removed its side; **not ported** (strict-mode
   proofs, guide section 5.8), recorded in conversion notes.
 - **Route scopes.** A test asserts every registered route has a scope (and one deliberately broken route fails it).
@@ -297,8 +298,11 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
    old binary, the old env file and the old descriptor entry aside (rollback).
 2. `tachyon migrate-from --source <the step-1 backup directory>` into the **new, empty** data directory; report attached; every
    table matches.
+   The cutover command is scripted without `--allow-unchecked-instances` (a rehearsal-only flag), and the report's top-level
+   `allow_unchecked_instances` must read false before going on.
 3. Offline bootstrap: `tachyon identity setup --username <owner>` (password on stdin), then `tachyon access reissue --out-dir
-   <private dir>`.
+   <private dir>`. The key list is the set of tokens active at that moment. If reissue fails part-way, the recovery is a fresh
+   step 2 into a new empty data directory (keys cannot be revoked through identity's Go API yet, CW-20261114-0131).
 4. Apply the descriptor change (release binary, override with outbound features off, the new data directory); start the unit.
    Check that every Tether hub origin that points at Tachyon is connected again (`tether_gateway_status`); if one is marked failed,
    the owner reloads the hub (an origin that failed during a restart is not retried until a reload).
@@ -413,7 +417,7 @@ stdio LocalTrust; stub switches, one-shot importers, the elevation TTL and the B
 
 Substrate gaps (Torque tasks in project Substrate, tagged `substrate-gap`, `cell:mig-tachyon`; BOM and identity questions are
 coordinated with the Substrate program driver):
-1. **CW-20261114-0093.** BOM pins older than the old tree uses: `libs/mesh/core` (BOM v0.6.0, Tachyon v0.9.0) and `libs/ui/ui-go`
+1. **CW-20261114-0093 (closed by Substrate #43: ui-go v0.4.0, mesh/core v0.10.0).** BOM pins older than the old tree used: `libs/mesh/core` (BOM v0.6.0, Tachyon v0.9.0) and `libs/ui/ui-go`
    (BOM v0.1.0, Tachyon v0.4.0); `libs/mcp/plugin-mcp` is newer in the BOM (v0.6.0 vs v0.3.0, an upgrade the port takes). Taken
    by the Substrate driver; until it lands, `next/` builds on the pinned versions and records any lost feature.
 2. **CW-20261114-0095.** Identity step-up (re-authenticate before a high-risk action): design note, not blocking (section 4).
@@ -425,9 +429,66 @@ Director's rulings (2026-11-14, plan approved at `bea7158`):
   current.
 - Pre-acceptance loss window: **open**, with the owner (section 8, before the window, step 5).
 - The isolated planner-verification instance is not migrated; it stays on the old build until the director retires it.
-- `/builder/classic` is ported unless the owner says otherwise (asked).
+- `/builder/classic` is ported unless the owner says otherwise (asked). Under the adoption-first guidance the cell recommends not
+  porting it now.
 - The stale sibling worktrees and dev descriptors of earlier Tachyon experiments are not carried.
 - Live service tokens expiring before the cutover are re-issued on the live app by the director (not the port).
 
 Open, tracked: CW-20261114-0121, triage of the public-hygiene scan findings in the old tree and its history (a whole-repo scan
 reports them; until it is settled, CI scans `next/` only).
+
+Adoption first (owner guidance via the director, 2026-11-14): where the framework-standard option and an app-specific extra
+compete, the port takes the simplest framework-standard path and lists the extra as a post-adoption improvement in
+`next/docs/conversion-notes.md`. All data still migrates. Applied so far: `/api/approvals/v1` not ported (section 4); MCP on the
+`mcp` module if the gateway can reach it (section 2); GUI surfaces use kit components where they exist and otherwise carry the
+old component unchanged. Not treated as extras: the per-credential kind restriction (dropping it widens agents' grants) and the
+byte-identical schedule scopes (data preservation).
+
+## 14. Postgres readiness (amendment, 2026-11-14)
+
+Program direction from the owner, coordinated across the in-use ports. It does not change the cutover: **the Substrate cutover
+runs on SQLite as sections 5 and 8 say.** Moving data to Postgres is a separate, reversible step after acceptance, with its own
+plan, copy, verification and rollback.
+
+**Dialect-ready code.** All persistence goes through `database.From(app)`. Goose migrations are kept per dialect
+(`migrations/sqlite/`, `migrations/postgres/`, the layout `database.UseMigrationFS` expects) and the Postgres set has the same
+tables, columns, keys, indexes and the decision-log append-only rule (a trigger in each dialect). SQL uses `?` placeholders
+through `Dialect().Rebind`. SQLite-only constructs found in the old code are replaced or isolated behind a per-dialect helper:
+`AUTOINCREMENT` (identity columns in Postgres, with the sequence set from the copied high-water mark), `strftime` defaults,
+`INSERT OR IGNORE`/`OR REPLACE`, JSON functions, and values stored with a different class than declared (`chat_events.body` is
+declared TEXT and may hold BLOBs: it becomes `bytea` in Postgres, and the copy proves the bytes unchanged). CI runs the `next/`
+tests on SQLite and on Postgres (`SUBSTRATE_TEST_POSTGRES_DSN`, the cell's scratch database); a test that cannot run on one
+dialect says why.
+
+**Table classes.** Every table belongs to one class; a test asserts the mapping covers every table in both migration sets, and no
+foreign key or transaction crosses classes (today none does: every foreign key on the live schema links two tables of the same class). Cursors, watermarks and outboxes live with the data they track.
+
+| Class | Meaning | Store | Tables |
+|---|---|---|---|
+| A (11 app tables + module tables) | small, local, always boots: settings, definitions, credentials | local SQLite, always | `app_settings`, `service_identities`, `service_tokens`, `service_identity_agents`, `service_proxy_pin`, `chat_approval_rules`, `console_item_state`, `library_parts`, `library_part_revisions`, `part_refs`, `tachyon_migrations`; the B3 credential-mapping table; the identity module's tables (so sign-in works when Postgres is down); all of the scheduler module's `gosched_*` tables (the module owns them in the default store; fire history is bounded by the library's own pruning with a configured retention, not moved) |
+| B (26) | events, logs, telemetry, caches, replay | Postgres first | `seat_status` (057), `agents_events`, `agents_samples`, `agents_stream`, `agents_gaps`, `agents_sessions`, `agents_collector_state`, `agents_controls`, `bus_events`, `chat_events`, `chat_activity`, `alert_events`, `alert_seq`, `alert_source_cursor`, `object_sync_runs`, `fileview_audit`, `forge_audit`, `planner_events`, `planner_stream`, `planner_ingest_state`, `card_event_outbox`, `card_event_scan`, `catalog_snapshots`, `api_cache`, `provider_roster_cache`, `transcript_snapshot` |
+| C (60) | domain data | Postgres later | `action_runs`, `agent_launch_bindings`, `alerts`, `app_agent_messages`, `app_agent_threads`, `approval_batches`, `approval_decision_log`, `approval_defers`, `approval_item_index`, `approval_items`, `approval_proof_receipts`, `approval_secrets`, `card_deliveries`, `card_effect_runs`, `catalog_change_paths`, `catalog_changes`, `catalog_entities`, `catalog_state`, `chat_bookmarks`, `chat_card_refs`, `chat_context`, `chat_cursors`, `chat_imports`, `chat_message_keys`, `chat_outbox`, `chat_outbox_session_links`, `chat_plan_steps`, `chat_plans`, `chat_publications`, `chat_reply_intents`, `chat_scratchpads`, `chat_session_lineage`, `chat_session_links`, `chat_sync_status`, `chat_thread_state`, `chat_topics`, `chat_turn_revisions`, `chat_turns`, `chat_workspace_items`, `execution_items`, `forge_idempotency`, `forge_index_state`, `forge_pr_index`, `forge_review_drafts`, `object_links`, `object_revisions`, `object_sources`, `object_sync_state`, `object_sync_watermarks`, `objects`, `planner_items`, `planner_promotions`, `planner_relation_index`, `planner_task_meta`, `pr_agent_links`, `provider_actions`, `provider_run_links`, `terminal_proposals`, `terminal_runs`, `terminal_sessions` |
+
+The class mapping is kept current with the old schema: a new old migration (section 1, parity-carry) also gets a class here.
+At migration 058 there are 97 tables: A 11, B 26, C 60 (058 adds a column to `chat_plans`, no table).
+
+**Store topology.** At cutover all three classes are in the one SQLite database, as today. Afterwards A stays in a local SQLite
+store and B, then C, move to Postgres. That needs the `database` module to give an app a second named store that may be
+unreachable at start: the program's framework change CW-20261114-0151 (Substrate PR #44: `database.stores.<name>`,
+`database.Named(app, name)` with `required: false`, degraded health, `database.Gate` for the 503). `stores.A(app)` is the default
+store and `stores.Data(app)` the named store `data`; until #44 is available both return the default store, so the split changes
+wiring, not callers. A Postgres named store does not migrate itself at start (`schema_mode: verify`): its migrations run as a deploy
+step with the migration role, which PG3's runbook includes.
+
+**When Postgres is down.** The app still boots on its A store. `/healthz` reports `degraded` with `database unavailable`; the UI
+shows a banner; every data endpoint answers `503` with code `database_unavailable`; writes are refused, never queued (no durable
+write spool); sign-in, settings and the health and status routes keep working. Outbound loops pause and resume when the store
+returns; scheduled fires that need data fail and are retried under each schedule's own policy. A test runs the app against an
+unreachable Postgres and checks all of this.
+
+**Slices added.** PG1: the Postgres migration set, the dialect helpers and the CI matrix (after B2; it also covers every later
+slice's tables; CI uses a postgres:17 service container, local runs the cell's scratch database). PG2: the class accessors, the
+class-mapping test and the outage behaviour on `database.Named` (after CW-20261114-0151 lands; before it, the accessors and
+tests land with PG1). PG3, after acceptance and outside this plan: the Postgres copy for B, then C,
+with its own rehearsal and rollback.
+

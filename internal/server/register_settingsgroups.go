@@ -169,7 +169,7 @@ func agentsGroup() settingsreg.Group {
 	d := agentsserve.DefaultSettings()
 	return settingsreg.Group{ID: "agents", Label: "Agents",
 		Fields: []admin.Field{
-			{Key: "stale_after_s", Type: admin.IntegerType, Title: "Mark a session stale after (seconds)", Default: intPtr(int64(d.StaleAfterS)), Minimum: fl(60), Maximum: fl(7 * 24 * 3600), Editable: true},
+			{Key: "stale_after_s", Type: admin.IntegerType, Title: "Stale agent threshold (seconds)", Description: "Working or waiting agents with no events for this long are marked stale.", Default: intPtr(int64(d.StaleAfterS)), Minimum: fl(60), Maximum: fl(7 * 24 * 3600), Editable: true},
 			{Key: "handoff_prompt", Type: admin.StringType, Title: "Handoff prompt", Default: strPtr(d.HandoffPrompt), MaxLength: ip(4000), Editable: true},
 			{Key: "handoff_timeout_s", Type: admin.IntegerType, Title: "Handoff timeout (seconds)", Default: intPtr(int64(d.HandoffTimeoutS)), Minimum: fl(10), Maximum: fl(1800), Editable: true},
 			{Key: "nudge_presets", Type: admin.StringType, Title: "Nudge presets", Description: "One preset per line, up to 12, each up to 200 characters.", Default: strPtr(strings.Join(d.NudgePresets, "\n")), MaxLength: ip(2600), Editable: true},

@@ -24,57 +24,8 @@ const Err = ({ children }: { children: string }) => (children ? <p role="alert" 
 const ROW = 'flex items-center gap-2 rounded-control px-1.5 py-[5px] text-xs text-fg-secondary hover:bg-selection'
 
 // ---------------------------------------------------------------- Plan
-export function PlanPanel({ plan, loading, error, setStatus, addStep, onAsk }: { plan: Plan | null; loading: boolean; error: string; setStatus: (s: PlanStep, st: PlanStep['status']) => void; addStep: (t: string) => Promise<void>; onAsk: () => void }) {
-  const [adding, setAdding] = useState(false)
-  const [title, setTitle] = useState('')
-  const submit = async () => { const t = title.trim(); if (!t) return; setTitle(''); await addStep(t) }
-  if (loading) return <p role="status" className="text-xs text-fg-muted">Loading the plan…</p>
-  const steps = plan?.steps.filter((s) => s.status !== 'cancelled') ?? []
-  const count = (st: PlanStep['status']) => steps.filter((s) => s.status === st).length
-  const doing = steps.find((s) => s.status === 'doing')
-  return (
-    <>
-      {steps.length === 0 && !adding ? (
-        <Empty action={<Act onClick={onAsk}>Ask the agent to draft one</Act>}>No plan yet. Ask the agent to draft one.</Empty>
-      ) : (
-        <>
-          <section className="flex flex-col gap-1.5">
-            <span className={CAPTION}>Plan · this session</span>
-            <SegmentedProgress label={`${count('done')} of ${steps.length} done`} items={[{ state: 'done', count: count('done') }, { state: 'doing', count: count('doing') }, { state: 'blocked', count: count('blocked') }, { state: 'todo', count: count('todo') }]} />
-          </section>
-          <ul className="flex flex-col gap-0.5">
-            {steps.map((s) => {
-              const done = s.status === 'done'
-              return (
-                <li key={s.id} className={cn('flex items-center gap-2 py-[3px] text-xs', done ? 'text-fg-muted line-through' : 'text-fg-secondary')}>
-                  <button type="button" role="checkbox" aria-checked={done} aria-label={s.title} onClick={() => setStatus(s, done ? 'todo' : 'done')} className={cn('grid size-3 shrink-0 place-items-center rounded-sm border text-[9px] leading-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring', done ? 'border-fg/60 bg-fg/60 text-bg' : s.status === 'doing' ? 'border-fg bg-fg/20' : 'border-fg-muted')}>{done ? '✓' : ''}</button>
-                  <span className="min-w-0 flex-1 truncate">{s.title}</span>
-                  {s.status === 'doing' && <Chip>doing</Chip>}
-                  {s.status === 'blocked' && <Chip tone="danger">blocked</Chip>}
-                </li>
-              )
-            })}
-          </ul>
-        </>
-      )}
-      {adding ? (
-        <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void submit() }}>
-          <input autoFocus aria-label="New step" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') { setAdding(false); setTitle('') } }} placeholder="Add a step…" className="h-7 min-w-0 flex-1 rounded-control border border-border bg-bg px-2 text-xs focus-visible:bg-bg!" />
-          <Act type="submit" primary>Add</Act>
-        </form>
-      ) : (
-        <button type="button" data-add-step onClick={() => setAdding(true)} className={cn(ROW, 'text-fg-muted')}><Plus aria-hidden className="size-3" />Add a step<Kbd className="ml-auto">A</Kbd></button>
-      )}
-      <Err>{error}</Err>
-      {plan?.task_ref && (
-        <section className="flex flex-col gap-1.5">
-          <span className={CAPTION}>Project</span>
-          <div className={ROW}><Chip square>{plan.task_ref}</Chip><span className="min-w-0 flex-1 truncate">{plan.title ?? 'Linked work'}</span>{doing && <Chip>doing</Chip>}</div>
-        </section>
-      )}
-    </>
-  )
-}
+// The Plan tab lives in PlansPanel.tsx (several plans, accordion, drag).
+export { PlanPanel } from './PlansPanel'
 
 // ---------------------------------------------------------------- Topics
 export function TopicsPanel({ marks }: { marks: Marks }) {

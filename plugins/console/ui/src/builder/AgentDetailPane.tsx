@@ -242,7 +242,7 @@ export function AgentDetailPane({ id, onBack }: { id: string; onBack: () => void
         </Button>
         <Tile name={a.identity.name} large />
         <div className="flex min-w-0 basis-full flex-col sm:flex-1 sm:basis-0">
-          <h2 className="truncate font-sans text-base font-semibold normal-case tracking-normal text-fg">{a.identity.name}</h2>
+          <h2 className="truncate font-sans text-control font-semibold normal-case tracking-normal text-fg">{a.identity.name}</h2>
           <p className="truncate font-mono text-label text-fg-muted">
             {a.identity.id}
             {a.identity.urn ? ` · ${a.identity.urn}` : ''}

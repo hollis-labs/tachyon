@@ -28,6 +28,9 @@ const isFull = (p: Partial<Session> & { id: string }): p is Session => !!p.agent
 export function applyStreamEvent(data: SessionsResponse, ev: StreamEvent): SessionsResponse {
   if (ev.type === 'session' && ev.session) {
     const part = ev.session
+    // An ended session is not on the list (the list route leaves it out): a snapshot that says a session ended
+    // takes it off, and never adds it. Its link still opens it (the page reads it on its own).
+    if (part.state === 'ended') return data.sessions.some((s) => s.id === part.id) ? { ...data, sessions: data.sessions.filter((s) => s.id !== part.id) } : data
     const known = data.sessions.some((s) => s.id === part.id)
     if (!known) return isFull(part) ? { ...data, sessions: [...data.sessions, part] } : data // a partial snapshot of an unknown session is not shown; the hook reads the list again
     return { ...data, sessions: data.sessions.map((s) => (s.id === part.id ? { ...s, ...part } : s)) }

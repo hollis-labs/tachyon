@@ -260,6 +260,36 @@ func TestChatPlanVerbs(t *testing.T) {
 	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"app:t1"}`); err == nil {
 		t.Fatal("get before any plan should be not found")
 	}
+	// Several plans: list, create, write by plan_id, move a step between plans.
+	p.principal.Scopes = append(p.principal.Scopes, "verb:chat.plan.list", "verb:chat.plan.create", "verb:chat.plan.move_step")
+	a, err := chatCall(p, "chat.plan.write", `{"thread_ref":"app:t9","title":"A","steps":[{"title":"s1"}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := chatCall(p, "chat.plan.create", `{"thread_ref":"app:t9","title":"B"}`)
+	if err != nil || b["position"] != 2.0 {
+		t.Fatal(b, err)
+	}
+	lst, err := chatCall(p, "chat.plan.list", `{"thread_ref":"app:t9"}`)
+	if err != nil || len(lst["plans"].([]any)) != 2 {
+		t.Fatal(lst, err)
+	}
+	w, err := chatCall(p, "chat.plan.write", `{"thread_ref":"app:t9","plan_id":"`+b["id"].(string)+`","title":"B2","steps":[{"title":"b1"}],"expected_revision":1}`)
+	if err != nil || w["id"] != b["id"] || w["title"] != "B2" {
+		t.Fatal("write by plan_id must hit that plan:", w, err)
+	}
+	stepID := a["steps"].([]any)[0].(map[string]any)["id"].(string)
+	mv, err := chatCall(p, "chat.plan.move_step", `{"thread_ref":"app:t9","from_plan":"`+a["id"].(string)+`","to_plan":"`+b["id"].(string)+`","step_id":"`+stepID+`","from_expected_revision":1,"to_expected_revision":2}`)
+	if err != nil || len(mv["to"].(map[string]any)["steps"].([]any)) != 2 || len(mv["from"].(map[string]any)["steps"].([]any)) != 0 {
+		t.Fatal(mv, err)
+	}
+	if _, err := chatCall(p, "chat.plan.move_step", `{"thread_ref":"app:t9","from_plan":"`+a["id"].(string)+`","to_plan":"`+b["id"].(string)+`","step_id":"x","from_expected_revision":1,"to_expected_revision":2}`); err == nil {
+		t.Fatal("stale revisions accepted")
+	}
+	if _, err := chatCall(p, "chat.plan.get", `{"thread_ref":"app:t1","plan_id":"`+b["id"].(string)+`"}`); err == nil {
+		t.Fatal("another thread's plan reachable by id")
+	}
+	notes = 0 // the plan message count below is for the single-plan flow only
 	out, err := chatCall(p, "chat.plan.write", `{"thread_ref":"app:t1","title":"Ship","steps":[{"title":"One"},{"title":"Two","status":"doing"}]}`)
 	if err != nil || out["revision"] != 1.0 || out["status"] != "proposed" || out["created_by"] != "agent" {
 		t.Fatal(out, err)
@@ -315,7 +345,7 @@ func TestChatPlanVerbs(t *testing.T) {
 			t.Errorf("%s: expected an error", name)
 		}
 	}
-	if v := p.Verbs(); len(v) != 3 {
+	if v := p.Verbs(); len(v) != 6 { // get, write, step plus list, create, move_step
 		t.Fatalf("verbs: %v", v)
 	}
 	p.principal.Scopes = []string{"verb:chat.plan.get"}

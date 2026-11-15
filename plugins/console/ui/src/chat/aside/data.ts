@@ -9,7 +9,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const msg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback)
 
 export interface PlanStep { id: string; position: number; title: string; status: 'todo' | 'doing' | 'blocked' | 'done' | 'cancelled'; task_ref?: string | null }
-export interface Plan { id: string; title?: string | null; status: string; revision: number; task_ref?: string | null; steps: PlanStep[] }
+export interface Plan { id: string; position?: number; title?: string | null; status: string; revision: number; task_ref?: string | null; steps: PlanStep[] }
 export interface Topic { id: string; title: string; message_ref: string; seq?: number | null; added_by: 'user' | 'agent'; created_at: number }
 export interface Bookmark { id: string; message_ref: string; note: string; created_at: number }
 export interface WorkItem { id: string; kind: 'theme' | 'task' | 'decision'; title: string; status: string; progress?: number | null; counts?: { done: number; doing: number; blocked: number; todo: number } | null; needs_user?: boolean; updated_at: number }
@@ -40,27 +40,51 @@ function useRead<T>(ref: string | undefined, path: string, pick: (d: never) => T
   return { data, loading, error, reload: load, set: setData }
 }
 
-export function usePlan(ref: string | undefined, signal: number) {
-  const r = useRead<Plan | null>(ref, '/plan', (d: Plan) => d, null, DEMO ? DEMO_PLAN : undefined, signal)
+export function usePlans(ref: string | undefined, signal: number) {
+  const r = useRead<Plan[]>(ref, '/plans', (d: { plans: Plan[] }) => d.plans ?? [], [], DEMO ? [DEMO_PLAN] : undefined, signal)
   const [err, setErr] = useState('')
-  const setStatus = async (s: PlanStep, status: PlanStep['status']) => {
-    const plan = r.data
-    if (!plan) return
-    r.set({ ...plan, steps: plan.steps.map((x) => (x.id === s.id ? { ...x, status } : x)) })
+  const base = ref ? `/threads/${enc(ref)}/plans` : ''
+  /** Run a write, show its refusal, then re-read so the screen is what the server holds. */
+  const run = async (fn: () => Promise<unknown>, fallback: string) => {
+    try { await fn(); setErr('') } catch (e) { setErr(msg(e, fallback)) } finally { await r.reload() }
+  }
+  const post = (path: string, method: string, body?: unknown) => chatJSON(`${base}${path}`, { method, headers: JSON_HEADERS, body: body === undefined ? undefined : JSON.stringify(body) })
+  const setStatus = async (plan: Plan, s: PlanStep, status: PlanStep['status']) => {
+    r.set(r.data.map((p) => (p.id === plan.id ? { ...p, steps: p.steps.map((x) => (x.id === s.id ? { ...x, status } : x)) } : p)))
     if (DEMO || !ref) return
-    try { await chatJSON(`/threads/${enc(ref)}/plan/steps/${enc(s.id)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ status, expected_revision: plan.revision }) }); setErr(''); await r.reload() }
-    catch (e) { setErr(msg(e, 'Could not update the step.')); await r.reload() }
+    await run(() => post(`/${enc(plan.id)}/steps/${enc(s.id)}`, 'PATCH', { status, expected_revision: plan.revision }), 'Could not update the step.')
   }
-  const addStep = async (title: string) => {
-    if (DEMO) { const p = r.data; if (p) r.set({ ...p, steps: [...p.steps, { id: `n${p.steps.length}`, position: p.steps.length, title, status: 'todo' }] }); return }
+  const addStep = async (plan: Plan | null, title: string) => {
+    if (DEMO) { if (plan) r.set(r.data.map((p) => (p.id === plan.id ? { ...p, steps: [...p.steps, { id: `n${p.steps.length}`, position: p.steps.length, title, status: 'todo' }] } : p))); return }
     if (!ref) return
-    try {
-      if (!r.data) await chatJSON(`/threads/${enc(ref)}/plan`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ scope: 'thread', title: null, steps: [{ title }], expected_revision: 0 }) })
-      else await chatJSON(`/threads/${enc(ref)}/plan/steps`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ title }) })
-      setErr(''); await r.reload()
-    } catch (e) { setErr(msg(e, 'Could not add the step.')) }
+    await run(async () => {
+      const target = plan ?? (await post('', 'POST', { title: null })) as Plan
+      await post(`/${enc(target.id)}/steps`, 'POST', { title, expected_revision: target.revision })
+    }, 'Could not add the step.')
   }
-  return { plan: r.data, loading: r.loading, error: err || r.error, setStatus, addStep }
+  const createPlan = async (title: string) => {
+    if (DEMO || !ref) return
+    await run(() => post('', 'POST', { title: title || null }), 'Could not add the plan.')
+  }
+  const deletePlan = async (plan: Plan) => {
+    if (DEMO || !ref) return
+    await run(() => post(`/${enc(plan.id)}?expected_revision=${plan.revision}`, 'DELETE'), 'Could not remove the plan.')
+  }
+  const reorderPlans = async (ids: string[]) => {
+    const by = new Map(r.data.map((p) => [p.id, p]))
+    r.set(ids.map((id) => by.get(id)).filter((p): p is Plan => !!p))
+    if (DEMO || !ref) return
+    await run(() => post('/reorder', 'POST', { plan_ids: ids }), 'Could not reorder the plans.')
+  }
+  const moveStep = async (from: Plan, to: Plan, stepId: string, position?: number) => {
+    if (from.id === to.id) return
+    const step = from.steps.find((x) => x.id === stepId)
+    if (!step) return
+    r.set(r.data.map((p) => (p.id === from.id ? { ...p, steps: p.steps.filter((x) => x.id !== stepId) } : p.id === to.id ? { ...p, steps: [...p.steps, step] } : p)))
+    if (DEMO || !ref) return
+    await run(() => post(`/${enc(from.id)}/steps/${enc(stepId)}/move`, 'POST', { to_plan: to.id, position, expected_revision: from.revision, to_expected_revision: to.revision }), 'Could not move the step. Reloaded.')
+  }
+  return { plans: r.data, loading: r.loading, error: err || r.error, setStatus, addStep, createPlan, deletePlan, reorderPlans, moveStep }
 }
 
 export function useTopics(ref: string | undefined, signal: number) {

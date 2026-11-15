@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
+	"net/url"
 	"regexp"
 	"time"
 
@@ -109,4 +111,125 @@ func (s *Store) SeatStatuses(ctx context.Context, now time.Time) ([]SeatStatus, 
 		out = append(out, st)
 	}
 	return out, rows.Err()
+}
+
+// SeatCards is a source that can read one seat's status card (Tether GET /status/{@handle}): a cheap, keyed read
+// on the hub, unlike a kind-filtered event-history scan, which this backfill must never run.
+type SeatCards interface {
+	SeatCard(ctx context.Context, handle string) (*SeatStatus, error)
+}
+
+// seatCardTimeout bounds each card read.
+const seatCardTimeout = 5 * time.Second
+
+func (s *httpSource) SeatCard(ctx context.Context, handle string) (*SeatStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, seatCardTimeout)
+	defer cancel()
+	var card struct {
+		Handle   string `json:"handle"`
+		AgentURN string `json:"agent_urn"`
+		Expired  bool   `json:"expired"`
+		Declared *struct {
+			AgentURN  string    `json:"agent_urn"`
+			State     string    `json:"state"`
+			Reason    string    `json:"reason"`
+			Ref       string    `json:"ref"`
+			Owner     string    `json:"owner"`
+			Since     time.Time `json:"since"`
+			ExpiresAt time.Time `json:"expires_at"`
+			SetBy     string    `json:"set_by"`
+			UpdatedAt time.Time `json:"updated_at"`
+		} `json:"declared"`
+	}
+	if err := s.get(ctx, "/status/"+url.PathEscape(handle), url.Values{}, 64<<10, &card); err != nil {
+		return nil, err
+	}
+	d := card.Declared
+	if d == nil || card.Expired {
+		return nil, nil
+	}
+	// Validated exactly as a live seat.status: the same fields, the same rules.
+	body := map[string]any{"agent_urn": firstNonEmpty(d.AgentURN, card.AgentURN), "handle": card.Handle, "state": d.State, "reason": d.Reason,
+		"ref": d.Ref, "owner": d.Owner, "set_by": d.SetBy}
+	if !d.ExpiresAt.IsZero() {
+		body["expires_at"] = d.ExpiresAt.Format(time.RFC3339Nano)
+	}
+	raw, _ := json.Marshal(body)
+	at := d.UpdatedAt
+	if at.IsZero() {
+		at = d.Since
+	}
+	if at.IsZero() {
+		return nil, nil // without a time the card could not say when it was declared
+	}
+	return seatStatusOf(Frame{At: at.UTC()}, raw), nil
+}
+
+// BackfillSeatStatus stores a status read from a card. It never replaces a row the live stream wrote (seq > 0):
+// it only fills a seat with no row, or refreshes a backfilled row with a newer declaration.
+func (s *Store) BackfillSeatStatus(ctx context.Context, st *SeatStatus) error {
+	var exp any
+	if st.ExpiresAt != nil {
+		exp = st.ExpiresAt.UnixNano()
+	}
+	return s.DB.Writer.Submit(ctx, "seat_status_backfill", func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO seat_status(agent_urn,handle,state,reason,ref,owner,expires_at_ns,set_by,at_ns,tether_seq) VALUES(?,?,?,?,?,?,?,?,?,0)
+ON CONFLICT(agent_urn) DO UPDATE SET handle=excluded.handle,state=excluded.state,reason=excluded.reason,ref=excluded.ref,owner=excluded.owner,
+ expires_at_ns=excluded.expires_at_ns,set_by=excluded.set_by,at_ns=excluded.at_ns WHERE seat_status.tether_seq=0 AND excluded.at_ns>seat_status.at_ns`,
+			st.AgentURN, st.Handle, st.State, st.Reason, st.Ref, st.Owner, exp, st.SetBy, st.At.UnixNano())
+		return err
+	})
+}
+
+// catalogHandles are the default @handles of the synced Tether catalog agents (a seat's handle is its catalog id
+// unless the catalog overrides it; an overridden one is simply not found).
+func (s *Store) catalogHandles(ctx context.Context) ([]string, error) {
+	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT DISTINCT external_id FROM object_sources WHERE provider='tether' AND collection='catalog/agents' AND deleted_at IS NULL ORDER BY external_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil && handleRE.MatchString("@"+id) {
+			out = append(out, "@"+id)
+		}
+	}
+	return out, rows.Err()
+}
+
+// backfillSeats runs once per collector start, in the background: a status declared before Tachyon kept them, or
+// while the collector was down, is otherwise unseen until it changes (Tether emits nothing when a seat re-sets the
+// same status). It reads each catalog seat's card in turn, each bounded by seatCardTimeout.
+func (c *Collector) backfillSeats(ctx context.Context) {
+	cards, ok := c.Source.(SeatCards)
+	if !ok {
+		return
+	}
+	handles, err := c.Store.catalogHandles(ctx)
+	if err != nil {
+		slog.Warn("agents collector: seat backfill could not list seats", "err", errText(err))
+		return
+	}
+	stored, failed := 0, 0
+	for _, h := range handles {
+		if ctx.Err() != nil {
+			return
+		}
+		st, err := cards.SeatCard(ctx, h)
+		if err != nil {
+			failed++
+			continue
+		}
+		if st == nil {
+			continue
+		}
+		if err := c.Store.BackfillSeatStatus(ctx, st); err != nil {
+			failed++
+			continue
+		}
+		stored++
+	}
+	slog.Info("agents collector: seat statuses backfilled from cards", "seats", len(handles), "stored", stored, "failed", failed)
 }
