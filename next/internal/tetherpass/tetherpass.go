@@ -129,7 +129,8 @@ func (p *Proxy) Handler(op Op) http.Handler {
 		}
 		res, err := client.Do(req) //nolint:gosec // the configured Tether address
 		if err != nil {
-			fail(w, http.StatusBadGateway, "upstream_unavailable", "Tether request failed")
+			// The old plugin proxy's answer when the upstream cannot be reached.
+			fail(w, http.StatusBadGateway, "unreachable", "Could not reach the remote service; check its availability and network connection.")
 			return
 		}
 		defer func() { _ = res.Body.Close() }()
