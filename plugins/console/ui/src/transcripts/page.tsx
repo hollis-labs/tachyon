@@ -348,7 +348,7 @@ export function TranscriptDashboard() {
           }
         >
           {/* The golden's chart is bars only: the kit chart's title row, legend and axes are hidden (legend in the header). */}
-          <div className="p-4 [&>div>div:first-child]:hidden [&_.recharts-cartesian-axis]:hidden">
+          <div className="p-4 [&>div>div:first-child]:hidden [&_.recharts-cartesian-axis]:hidden [&_.recharts-cartesian-axis-tick-labels]:hidden">
             <TimeSeriesChart
               showLegend={false}
               items={rows}
