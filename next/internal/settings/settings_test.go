@@ -79,12 +79,13 @@ func TestUnknownKeysAreNamed(t *testing.T) {
 		raw  any
 		want string
 	}{
-		"root":     {map[string]any{"allowed_host": []any{}}, "tachyon.allowed_host"},
-		"feature":  {map[string]any{"features": map[string]any{"object_synk": true}}, "tachyon.features.object_synk"},
-		"upstream": {map[string]any{"upstreams": map[string]any{"torq": map[string]any{}}}, "tachyon.upstreams.torq"},
-		"nested":   {map[string]any{"upstreams": map[string]any{"torque": map[string]any{"addr": "x"}}}, "tachyon.upstreams.torque.addr"},
-		"no url":   {map[string]any{"upstreams": map[string]any{"tether_messages": map[string]any{"url": "https://x.test"}}}, "tachyon.upstreams.tether_messages.url"},
-		"files":    {map[string]any{"files": map[string]any{"secret_key_file": "/k"}}, "tachyon.files.secret_key_file"},
+		"root":        {map[string]any{"allowed_host": []any{}}, "tachyon.allowed_host"},
+		"feature":     {map[string]any{"features": map[string]any{"object_synk": true}}, "tachyon.features.object_synk"},
+		"upstream":    {map[string]any{"upstreams": map[string]any{"torq": map[string]any{}}}, "tachyon.upstreams.torq"},
+		"nested":      {map[string]any{"upstreams": map[string]any{"torque": map[string]any{"addr": "x"}}}, "tachyon.upstreams.torque.addr"},
+		"no url":      {map[string]any{"upstreams": map[string]any{"tether_messages": map[string]any{"url": "https://x.test"}}}, "tachyon.upstreams.tether_messages.url"},
+		"files":       {map[string]any{"files": map[string]any{"secret_key_file": "/k"}}, "tachyon.files.secret_key_file"},
+		"transcripts": {map[string]any{"transcripts": map[string]any{"max_session": 300.0}}, "tachyon.transcripts.max_session"},
 	}
 	for name, c := range cases {
 		_, err := Parse(c.raw)
@@ -120,6 +121,10 @@ func TestBadValuesAreRefusedByName(t *testing.T) {
 		"sync interval":     {map[string]any{"chat_sync_interval": "soon"}, "tachyon.chat_sync_interval"},
 		"sync too fast":     {map[string]any{"chat_sync_interval": "100ms"}, "tachyon.chat_sync_interval"},
 		"session not map":   {ups("app_agent", map[string]any{"session": "x"}), "tachyon.upstreams.app_agent.session"},
+		"sessions too few":  {map[string]any{"transcripts": map[string]any{"max_sessions": 100.0}}, "tachyon.transcripts.max_sessions"},
+		"sessions too many": {map[string]any{"transcripts": map[string]any{"max_sessions": 20001}}, "tachyon.transcripts.max_sessions"},
+		"sessions fraction": {map[string]any{"transcripts": map[string]any{"max_sessions": 300.5}}, "tachyon.transcripts.max_sessions"},
+		"sessions not num":  {map[string]any{"transcripts": map[string]any{"max_sessions": "300"}}, "tachyon.transcripts.max_sessions"},
 	}
 	for name, c := range cases {
 		_, err := Parse(c.raw)
@@ -144,6 +149,7 @@ func TestAFullBlockParses(t *testing.T) {
 		"allowed_hosts":      []any{"Tachyon.Example.Test"},
 		"cache_dir":          "cache",
 		"chat_sync_interval": "30s",
+		"transcripts":        map[string]any{"max_sessions": 800},
 		"upstreams": map[string]any{
 			"tether":          map[string]any{"url": "https://tether.example.test", "token": ref("tether")},
 			"tether_control":  map[string]any{"url": "unix:/run/tetherd.sock", "token": ref("control")},
@@ -170,11 +176,14 @@ func TestAFullBlockParses(t *testing.T) {
 		u.AppAgent.Label != "Nanite" || u.GitHub.Org != "example" || u.ActionHub.User != "actions" {
 		t.Errorf("upstreams = %+v", u)
 	}
+	if s.Transcripts.MaxSessions != 800 {
+		t.Errorf("transcripts max_sessions = %d", s.Transcripts.MaxSessions)
+	}
 	if s.ChatSyncInterval != 30*time.Second || string(u.AppAgent.Session) != `{"host_settings":{"id":"h"}}` {
 		t.Errorf("chat sync interval / app agent session = %s %s", s.ChatSyncInterval, u.AppAgent.Session)
 	}
-	if def, _ := Parse(map[string]any{}); def.ChatSyncInterval != 5*time.Second || def.Upstreams.AppAgent.Session != nil {
-		t.Errorf("defaults = %s %s", def.ChatSyncInterval, def.Upstreams.AppAgent.Session)
+	if def, _ := Parse(map[string]any{}); def.ChatSyncInterval != 5*time.Second || def.Upstreams.AppAgent.Session != nil || def.Transcripts.MaxSessions != 5000 {
+		t.Errorf("defaults = %s %s %d", def.ChatSyncInterval, def.Upstreams.AppAgent.Session, def.Transcripts.MaxSessions)
 	}
 	if !s.Features.ObjectSync || s.Files.SecretKey != "file:///run/secret.key" || s.Alerts.NotifyTo != "msg://agent/x" {
 		t.Errorf("features/files/alerts = %+v %+v %+v", s.Features, s.Files, s.Alerts)

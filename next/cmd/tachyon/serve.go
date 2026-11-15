@@ -47,6 +47,8 @@ type deps struct {
 	approvals *approvals.Inbox
 	agents    agentsDeps
 	builder   builderDeps
+	// transcripts is the guarded transcripts bridge (nil: no transcript routes).
+	transcripts http.Handler
 }
 
 // appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
@@ -56,7 +58,7 @@ type deps struct {
 func appRoutes(d deps) []routes.Route {
 	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs)
 	console := dataverbs.NewConsoleHTTP(d.local, d.builder.teams)
-	return append(append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), builderRoutes(d.builder)...), []routes.Route{
+	return append(append(append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), builderRoutes(d.builder)...), transcriptsRoutes(d.transcripts)...), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
@@ -123,7 +125,7 @@ func (t *tachyon) serve(ctx context.Context) error {
 	builder := newBuilder(app, cfg, domain)
 	stopBuilder := builder.start(ctx)
 	defer stopBuilder()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: agents, builder: builder})
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: agents, builder: builder, transcripts: newTranscripts(app, cfg, domain)})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err
