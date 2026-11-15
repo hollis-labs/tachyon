@@ -58,14 +58,14 @@ func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, db, id string, err e
 	case errors.Is(err, ErrTaskSource):
 		status, code, message = 502, "source_unavailable", err.Error()
 	}
-	body := Item{"error": message, "code": code}
+	body := Item{"message": message, "code": code}
 	var tc ErrTaskConflict
 	switch {
 	case errors.As(err, &tc):
-		send(w, 409, Item{"error": "Task status changed; read and reconcile before retrying.", "code": "conflict", "details": Item{"current": Item{"id": tc.ID, "status": tc.Status}}})
+		send(w, 409, Item{"message": "Task status changed; read and reconcile before retrying.", "code": "conflict", "details": Item{"current": Item{"id": tc.ID, "status": tc.Status}}})
 		return
 	case errors.Is(err, ErrNeedsReason):
-		send(w, 400, Item{"error": "A reason is required to block a task.", "code": "invalid", "details": Item{"field": "reason"}})
+		send(w, 400, Item{"message": "A reason is required to block a task.", "code": "invalid", "details": Item{"field": "reason"}})
 		return
 	}
 	if status == 409 && db != "" && id != "" {
@@ -449,7 +449,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		default:
 			w.Header().Set("Allow", "GET, POST, PUT, PATCH, DELETE")
-			send(w, 405, Item{"code": "method_not_allowed", "error": "Unsupported Planner method/route."})
+			send(w, 405, Item{"code": "method_not_allowed", "message": "Unsupported Planner method/route."})
 			return
 		}
 	}
@@ -482,7 +482,7 @@ func (h *HTTP) Events(w http.ResponseWriter, r *http.Request) {
 	if v := r.Header.Get("Last-Event-ID"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || n < 0 {
-			send(w, 400, Item{"code": "invalid", "error": "Invalid event cursor"})
+			send(w, 400, Item{"code": "invalid", "message": "Invalid event cursor"})
 			return
 		}
 		last, hasLast = n, true

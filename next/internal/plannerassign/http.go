@@ -51,7 +51,7 @@ func fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, objects.ErrNotFound):
 		status, code, msg = 404, "not_found", "Planner item or route not found."
 	}
-	send(w, status, map[string]string{"error": msg, "code": code})
+	send(w, status, map[string]string{"message": msg, "code": code})
 }
 
 func (s *Service) create(w http.ResponseWriter, r *http.Request) {

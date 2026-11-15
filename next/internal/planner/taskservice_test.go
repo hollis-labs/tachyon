@@ -123,10 +123,10 @@ func TestTransitionRulesConflictUndoAndForce(t *testing.T) {
 	if number(delta["doing"]) != -1 || number(delta["review"]) != 1 {
 		t.Fatal(delta)
 	}
-	if code, out = h.do(t, "POST", "/tasks/CW-1/transition", `{"to":"done","expected_status":"doing"}`); code != 409 || object(object(out["details"])["current"])["status"] != "review" {
+	if code, out = h.do(t, "POST", "/tasks/CW-1/transition", `{"to":"done","expected_status":"doing"}`); code != 409 || out["code"] != "conflict" || out["message"] == nil || out["error"] != nil || object(object(out["details"])["current"])["status"] != "review" {
 		t.Fatal("stale expected_status", code, out)
 	}
-	if code, out = h.do(t, "POST", "/tasks/CW-1/transition", `{"to":"blocked"}`); code != 400 || object(out["details"])["field"] != "reason" {
+	if code, out = h.do(t, "POST", "/tasks/CW-1/transition", `{"to":"blocked"}`); code != 400 || out["message"] == nil || object(out["details"])["field"] != "reason" {
 		t.Fatal("blocked needs a reason", code, out)
 	}
 	if code, _ = h.do(t, "POST", "/tasks/CW-1/transition", `{"to":"review"}`); code != 200 || len(f.posts) != 1 {
