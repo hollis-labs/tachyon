@@ -8,16 +8,21 @@ export const signedOut = { cookies: [], origins: [] }
 export const owner = authState
 export { ownerName }
 
-/** The area surfaces, in nav order: label, route, and a deep link the area owns. */
+/** The area surfaces, in nav order: label, route, a deep link the area owns, and whether it is still a stub. */
 export const AREAS = [
-  { label: "Planner", route: "/planner", deep: "/planner/streams/0b6f2c" },
-  { label: "Agent Ops", route: "/agents", deep: "/agents/session-1" },
-  { label: "Builder", route: "/builder", deep: "/builder/library/agent/a1" },
-  { label: "Registry", route: "/registry", deep: "/registry/projects/p1" },
-  { label: "Chat", route: "/chat", deep: "/chat/thread-9" },
-  { label: "Approvals", route: "/approvals", deep: "/approvals" },
-  { label: "Transcripts", route: "/dashboards/transcripts", deep: "/dashboards/transcripts" },
-  { label: "Repos", route: "/repos", deep: "/pr/github.com/hollis-labs/tachyon/693" },
+  { label: "Planner", route: "/planner", deep: "/planner/streams", stub: false },
+  { label: "Agent Ops", route: "/agents", deep: "/agents/session-1", stub: true },
+  { label: "Builder", route: "/builder", deep: "/builder/library/agent/a1", stub: true },
+  { label: "Registry", route: "/registry", deep: "/registry/projects/p1", stub: true },
+  { label: "Chat", route: "/chat", deep: "/chat/thread-9", stub: true },
+  { label: "Approvals", route: "/approvals", deep: "/approvals", stub: true },
+  {
+    label: "Transcripts",
+    route: "/dashboards/transcripts",
+    deep: "/dashboards/transcripts",
+    stub: true,
+  },
+  { label: "Repos", route: "/repos", deep: "/pr/github.com/hollis-labs/tachyon/693", stub: true },
 ] as const
 
 export const signInHeading = (page: Page) => page.getByRole("heading", { name: "Sign in" })

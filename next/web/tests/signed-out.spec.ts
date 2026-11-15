@@ -1,4 +1,5 @@
-import { expect, type Page, test } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fixtures"
 import { ownerName, ownerPassword, shot, signedOut, signIn, signInHeading } from "./helpers"
 
 test.use({ storageState: signedOut })
@@ -54,7 +55,8 @@ test("a signed-out deep link is kept through sign-in; an explicit sign-out goes 
   await page.getByRole("button", { name: "Sign out" }).click()
   await signInFields(page)
   await shellReady(page)
-  expect(new URL(page.url()).pathname).toBe("/planner")
+  // Home is the planner, which opens its themes.
+  await expect(page).toHaveURL(/\/planner\/themes/)
 })
 
 test("an expired session returns to sign-in with the kit's notice", async ({ page }) => {
