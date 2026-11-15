@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures"
+import { chatBackend, expect, test } from "./fixtures"
 import { owner, shot } from "./helpers"
 
 // Chat behind the real next/ binary's identity and shell, against the chat contract stub (e2e/chat-stub.ts), or
@@ -77,9 +77,16 @@ test("a refused send shows the backend's message and keeps the draft", async ({ 
 test("plans tab: the plan and its steps show, and a new step is added against the plan's revision", async ({
   page,
 }) => {
+  const listed = page.waitForResponse(
+    (r) => r.request().method() === "GET" && new URL(r.url()).pathname.endsWith("/plans"),
+  )
   await page.goto(`/chat/${encodeURIComponent(ROW)}`)
   const panel = page.getByRole("complementary", { name: "Agent Panel" })
   await panel.getByRole("tab", { name: /^Plan/ }).click()
+  const { plans } = (await (await listed).json()) as {
+    plans: { title: string; revision: number }[]
+  }
+  const revision = plans.find((p) => p.title === "Port the chat surface")?.revision
   const plan = panel.getByRole("region", { name: "Port the chat surface" })
   await expect(plan.getByText("Carry the chat code")).toBeVisible()
   await expect(plan.getByText("Write the contract stub")).toBeVisible()
@@ -91,12 +98,15 @@ test("plans tab: the plan and its steps show, and a new step is added against th
   await page.keyboard.press("Enter")
   expect((await added).postDataJSON()).toMatchObject({
     title: "Run the real-backend e2e",
-    expected_revision: 1,
+    expected_revision: revision,
   })
+  expect(revision).toBeGreaterThan(0)
   await expect(plan.getByText("Run the real-backend e2e")).toBeVisible()
 })
 
 test("artifacts tab: the agent's shared file is listed and opens", async ({ page }) => {
+  // B6 adds workspace items from the operator only (added_by "user"); nothing writes an agent's artifact yet.
+  test.fixme(chatBackend, "the backend has no agent-authored workspace write to seed an artifact")
   await page.goto(`/chat/${encodeURIComponent(ROW)}`)
   const panel = page.getByRole("complementary", { name: "Agent Panel" })
   await panel.getByRole("button", { name: "Scroll tabs right" }).click()
@@ -119,4 +129,15 @@ test.describe("narrow", () => {
     await page.getByText("Reviewer").first().click()
     await expect(page.getByText("The planner surface is ready for review.")).toBeVisible()
   })
+})
+
+test("an unknown thread's topics are the backend's flat not_found, which the panel reads as empty", async ({
+  page,
+}) => {
+  test.skip(!chatBackend, "the backend's own error body")
+  const r = await page.request.get(
+    `/api/plugins/console/v1/chat/threads/${encodeURIComponent("tether:no-such-session")}/topics`,
+  )
+  expect(r.status()).toBe(404)
+  expect(await r.json()).toEqual({ code: "not_found", message: "No such thread." })
 })
