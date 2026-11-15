@@ -139,6 +139,25 @@ func writeHITLError(w http.ResponseWriter, err error) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
+// legacyOperatorRef is the old build's operator session ref: "browser-session:" and the SHA-256 of its
+// built-in operator cookie value, as the old inbox computed it. It maps to the owner.
+var legacyOperatorRef = func() string {
+	sum := sha256.Sum256([]byte("dev-posture"))
+	return "browser-session:" + hex.EncodeToString(sum[:])
+}()
+
+// selfRefs are the actor refs history and audit label "You" for this caller: the caller's own, and,
+// for the owner (a signed-in operator), the old build's operator session ref (read time only; stored
+// rows keep their refs). Other old browser-session refs stay "Operator session", as the old build
+// labeled every session but the caller's.
+func selfRefs(p hitl.Participant) []string {
+	refs := []string{p.PrincipalRef}
+	if p.Assurance == assurance.OperatorToken.String() {
+		refs = append(refs, legacyOperatorRef)
+	}
+	return refs
+}
+
 // refSuffix is the short, stable part of a principal ref that keys one presentation event per caller
 // and item. The old refs were "browser-session:<sha-256>" and their last 12 characters served; a
 // principal id can be shorter, so this hashes it.

@@ -244,8 +244,9 @@ Details: `docs/api-contract.md`.
   `approval_secrets`. The maintenance loop runs as before: index and decision-log backfill once at start, then the
   secret purge and the expiry sweep every 30 s.
 - **The caller is the signed-in person.** New decisions record the principal id (`tachyon/identity`) as actor and
-  responder. Rows written before the port keep their old `browser-session:` refs, so history and audit label those
-  actors "Operator session", where the old build, whose session ref was the same one, said "You".
+  responder. Rows written before the port keep their old `browser-session:` refs. The old build's operator
+  session ref maps to the owner: history and audit label it "You" to the signed-in owner, and every other old
+  session ref "Operator session", as the old build labeled them. The mapping is at read time; no row changes.
 - **The secret key** is `tachyon.files.secret_key`, a secrets reference to the old key file's content (32 bytes or
   64 hex characters). Point it at the same key so the migrated `approval_secrets` stay readable.
 - **Postgres.** The search filters use `LIKE … ESCAPE` (SQLite's `instr` has no Postgres twin); the in-transaction
