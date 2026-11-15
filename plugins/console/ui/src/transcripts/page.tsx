@@ -1,4 +1,4 @@
-import { PageHeader } from "@hollis-labs/kit-dashboard"
+import { PageHeader } from "../components/page-header"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button, SearchInput, Skeleton } from "@hollis-labs/design-components"
 import { BarMeter, Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
@@ -223,24 +223,27 @@ export function TranscriptDashboard() {
     )
   return (
     <div className="flex h-full min-w-0 flex-col">
-      {/* KIT-GAP: PageHeader has no slot beside the title; the golden puts the Sessions/Insights tabs next to it. */}
-      <PageHeader title="Transcripts">
-        <Segmented<Tab>
-          bare
-          label="Transcript views"
-          value={tab}
-          onChange={setTab}
-          items={[
-            { value: "sessions", label: "Sessions" },
-            { value: "insights", label: "Insights" },
-          ]}
-        />
-        <span role="status" className="ml-auto truncate dash-label text-fg-muted max-md:hidden">
+      <PageHeader
+        title="Transcripts"
+        leading={
+          <Segmented<Tab>
+            bare
+            label="Transcript views"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: "sessions", label: "Sessions" },
+              { value: "insights", label: "Insights" },
+            ]}
+          />
+        }
+      >
+        <span role="status" className="truncate dash-label text-fg-muted max-md:hidden">
           {snapshot
             ? `Updated ${sinceLabel(loadedAt, now)} · ${number(facets?.total ?? snapshot.sessions.length)} sessions${snapshot.complete ? "" : ` · partial snapshot, latest ${number(snapshot.limit)} maximum`}`
             : "Waiting for metadata"}
         </span>
-        <Button variant="outline" size="icon-sm" aria-label="Refresh" className="max-md:ml-auto" onClick={() => reload.current()}>
+        <Button variant="outline" size="icon-sm" aria-label="Refresh" onClick={() => reload.current()}>
           <RefreshCw className="size-3.5" />
         </Button>
       </PageHeader>

@@ -1,5 +1,5 @@
 import { Button, Checkbox, EmptyState, OverflowMenu, type OverflowAction, SearchInput, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@hollis-labs/design-components'
-import { PageHeader } from '@hollis-labs/kit-dashboard'
+import { PageHeader } from '../../components/page-header'
 import { ChevronRight, GitPullRequest, RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Chip } from '../../components/chip'
@@ -262,9 +262,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
 
   return (
     <section data-dashboard-shape="square" aria-label="Pending pull requests" className="flex h-full min-w-0 flex-col bg-bg" onKeyDown={(e) => { if (e.key === 'Escape' && selected.size > 0 && !assigning && !bulkAssigning && !(e.target instanceof HTMLInputElement && e.target.type === 'text')) setSelected(new Set()) }}>
-      {/* KIT-GAP: PageHeader has no slot beside the title; the golden puts the "N need attention" chip next to it. */}
-      <PageHeader title="Pull requests">
-        <Chip>{views.active} need attention</Chip>
+      <PageHeader title="Pull requests" leading={<Chip>{views.active} need attention</Chip>}>
         {cached && <Chip>Cached</Chip>}
         {refreshedAt && <span className="dash-label text-fg-muted max-md:hidden">Updated {ago(forgeRefreshedAt ?? refreshedAt, now)}</span>}
         <Button variant="outline" size="icon-sm" aria-label="Refresh" onClick={() => void refresh()} disabled={loading}><RefreshCw className="size-3.5" /></Button>
