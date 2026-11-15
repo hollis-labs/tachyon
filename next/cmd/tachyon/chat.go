@@ -21,6 +21,7 @@ import (
 	"github.com/hollis-labs/tachyon/next/internal/chat/chattopics"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatwork"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatworkspace"
+	"github.com/hollis-labs/tachyon/next/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/next/internal/objects"
 	"github.com/hollis-labs/tachyon/next/internal/planner"
 	"github.com/hollis-labs/tachyon/next/internal/plannerassign"
@@ -50,6 +51,7 @@ type chatDeps struct {
 	workspace *chatworkspace.Handler
 	activity  *chatactivity.Handler
 	work      http.Handler
+	verbs     dataverbs.Chat // the agent data API's chat verbs (B6d)
 }
 
 // newChat builds the chat services as the old build's server did. Nothing here reaches an upstream
@@ -211,7 +213,42 @@ func newChat(ctx context.Context, app *module.App, cfg settings.Settings, domain
 		work.Task = torqueread.New(torque, token).GetTask
 	}
 	d.work = chatwork.Handler(work, exists)
+	d.verbs = chatVerbServices(d, domain, publish, rec, exists)
 	return d, nil
+}
+
+// chatVerbServices are the chat verbs' services, wired as the old server wired them: the same stores
+// and thread check the routes use. A topic an agent adds is announced on the thread stream and
+// recorded quietly as the agent's; plan ownership reads the thread's agent from the aggregator.
+func chatVerbServices(d chatDeps, domain *store.Store, publish func(context.Context, string, string, map[string]any), rec *chatactivity.Recorder, exists func(context.Context, string) error) dataverbs.Chat {
+	asThread := func(t chatthreads.Summary) dataverbs.ChatThread {
+		return dataverbs.ChatThread{Ref: t.Ref, AgentID: t.Agent.AgentID, Address: t.Agent.Address, LastAt: t.LastAt, Archived: t.Archived}
+	}
+	agg := d.threads.Agg
+	return dataverbs.Chat{
+		Workspace: &dataverbs.ChatWorkspace{Store: d.workspace.Store, Thread: exists},
+		Topics: &dataverbs.ChatTopics{Store: d.topics.Store, Thread: exists, MessageSeq: d.topics.MessageSeq, OpenApprovals: dataverbs.OpenApprovals(domain),
+			Published: func(ctx context.Context, thread, op, id string) {
+				publish(ctx, thread, chatapi.EventTopic, map[string]any{"op": op, "id": id})
+				if op == "add" {
+					rec.Quiet(ctx, thread, "topic.added", "agent", "tachyon", nil, chatactivity.Card("Topic added", "", nil))
+				}
+			}},
+		Plan: &dataverbs.ChatPlan{Service: d.plan,
+			Thread: func(ctx context.Context, ref string) (dataverbs.ChatThread, error) {
+				t, err := agg.Get(ctx, ref)
+				return asThread(t), err
+			},
+			Threads: func(ctx context.Context) ([]dataverbs.ChatThread, error) {
+				ts, err := agg.Summaries(ctx)
+				out := make([]dataverbs.ChatThread, len(ts))
+				for i, t := range ts {
+					out[i] = asThread(t)
+				}
+				return out, err
+			}},
+		Activity: &dataverbs.ChatActivity{Rec: rec, Thread: exists},
+	}
 }
 
 // startChat runs the Tether chat sync loop when tachyon.features.chat_sync is on and Tether is
