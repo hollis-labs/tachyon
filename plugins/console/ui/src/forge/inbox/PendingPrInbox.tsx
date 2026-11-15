@@ -11,6 +11,7 @@ import { useMessaging } from '../../messaging/context'
 import { useConsoleSeams } from '../../events/hooks'
 import type { ForgeClient } from '../client'
 import { getForgeClient } from '../refs/client'
+import { DEFAULT_FORGE_BASE, HttpForgeClient } from '../http'
 import { repoKey } from '../types'
 import { registerInboxActions, type InboxActionDeps } from './actions'
 import { AssignDialog } from './AssignDialog'
@@ -187,7 +188,7 @@ export function PendingPrInbox({ forge: forgeProp, pollMs = 60_000, staleMs = DE
   const agentsClient = useAgentsClient()
   const state = useItemStates()
   const now = useNow()
-  const { prs, loading, error, refresh, refreshedAt, forgeRefreshedAt, cached } = usePendingPrs(forge, { pollMs })
+  const { prs, loading, error, refresh, refreshedAt, forgeRefreshedAt, cached } = usePendingPrs(forge, { pollMs, streamUrl: forge instanceof HttpForgeClient ? `${DEFAULT_FORGE_BASE}/stream` : undefined })
   const [filter, setFilter] = useState<InboxFilter>({ ...DEFAULT_FILTER, ...initialFilter })
   const [groupBy, setGroupBy] = useState<GroupBy>(initialGroupBy)
   const [assigning, setAssigning] = useState<{ item: InboxItem; task?: AssignTask } | null>(null)

@@ -16,9 +16,17 @@ export interface PendingPrsState {
   refresh: () => Promise<void>
 }
 
-/** Loads ForgeClient.listPendingPrs(), optionally polling. Opens no stream. */
-export function usePendingPrs(client: ForgeClient, opts: { pollMs?: number } = {}): PendingPrsState {
-  const { pollMs = 0 } = opts
+/** Events on the forge stream that change the pending list. */
+const LIST_EVENTS = ['pr.updated', 'pr.merged', 'resync'] as const
+/** A burst of stream events is one reload. */
+export const STREAM_RELOAD_MS = 1500
+
+/**
+ * Loads ForgeClient.listPendingPrs(). With `streamUrl` it reloads when the forge stream reports a change and polls
+ * (every `pollMs`) only while the stream is down; without it, it polls every `pollMs` (0 = never).
+ */
+export function usePendingPrs(client: ForgeClient, opts: { pollMs?: number; streamUrl?: string } = {}): PendingPrsState {
+  const { pollMs = 0, streamUrl } = opts
   const [s, setS] = useState<Omit<PendingPrsState, 'refresh'>>({ prs: [], loading: true, error: null, refreshedAt: null, forgeRefreshedAt: null, cached: false })
   const load = useCallback(async () => {
     try {
@@ -32,9 +40,27 @@ export function usePendingPrs(client: ForgeClient, opts: { pollMs?: number } = {
   useEffect(() => {
     void load()
     const off = dataRefreshRegistry('forge').subscribe(() => void load())
-    const t = pollMs > 0 ? setInterval(() => void load(), pollMs) : null
-    return () => { off(); if (t) clearInterval(t) }
-  }, [load, pollMs])
+    let t: ReturnType<typeof setInterval> | null = null
+    const poll = (on: boolean) => {
+      if (t) clearInterval(t)
+      t = on && pollMs > 0 ? setInterval(() => void load(), pollMs) : null
+    }
+    poll(true)
+    let es: EventSource | null = null
+    let pending: ReturnType<typeof setTimeout> | null = null
+    if (streamUrl && typeof EventSource !== 'undefined') {
+      es = new EventSource(streamUrl)
+      const changed = () => {
+        if (pending) return
+        pending = setTimeout(() => { pending = null; void load() }, STREAM_RELOAD_MS)
+      }
+      let wasDown = false
+      es.onopen = () => { poll(false); if (wasDown) void load(); wasDown = false }
+      es.onerror = () => { wasDown = true; poll(true) }
+      for (const type of LIST_EVENTS) es.addEventListener(type, changed)
+    }
+    return () => { off(); poll(false); es?.close(); if (pending) clearTimeout(pending) }
+  }, [load, pollMs, streamUrl])
   return { ...s, refresh: async () => { await refreshPageData(); await load() } }
 }
 
