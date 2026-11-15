@@ -220,7 +220,6 @@ export const isExpired = (item: ApprovalItem) =>
   Date.parse(item.request_snapshot.expires_at) <= Date.now()
 
 export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
-  let connecting: Promise<unknown> | undefined
   const presenting = new Map<string, Promise<ApprovalItem>>()
   async function request<T>(
     path: string,
@@ -255,17 +254,9 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       )
     return body as T
   }
+  // The port has no session bridge: a 401 is the session ending, which hostFetch hands to the identity gate.
   async function read<T>(path: string, fresh = false): Promise<T> {
-    try {
-      return await request<T>(path, {}, fresh)
-    } catch (e) {
-      if (!(e instanceof ApprovalError) || e.status !== 401) throw e
-      connecting ??= request("/session", { method: "POST" }).finally(() => {
-        connecting = undefined
-      })
-      await connecting
-      return request<T>(path, {}, fresh)
-    }
+    return request<T>(path, {}, fresh)
   }
   const get = (id: string, fresh = false) =>
     read<ApprovalItem>(`/items/${encodeURIComponent(id)}`, fresh)

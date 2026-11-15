@@ -1,3 +1,4 @@
+import { toast } from "sonner"
 import {
   createContext,
   useCallback,
@@ -170,7 +171,7 @@ export function ApprovalProvider({
           if (!keepalive) void refresh(true)
           return
         }
-        setError(e instanceof Error ? e.message : "Decision not confirmed. Refresh to check the outcome.")
+        toast.error(e instanceof Error ? e.message : "Decision not confirmed. Refresh to check the outcome.")
       }
       if (!keepalive) void refresh(true)
     },

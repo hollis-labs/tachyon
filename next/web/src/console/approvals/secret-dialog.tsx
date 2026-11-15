@@ -49,7 +49,7 @@ export function SecretDialog({ client, itemId, field, label, onStored, onClose }
       onStored(stored)
     } catch (e) {
       if (!live.current) return
-      if (e instanceof ApprovalError && e.code === "assurance_insufficient") setNeedsAccess(true)
+      if (e instanceof ApprovalError && ["operator_required", "operator_access_required", "scope_required", "assurance_insufficient"].includes(e.code)) setNeedsAccess(true)
       else if (e instanceof ApprovalError && e.code === "secrets_unavailable") setError("This server is not set up to store secrets. Ask an operator to configure it.")
       else if (e instanceof ApprovalError && e.code === "item_not_pending") setError("This request has already ended, so it can no longer take a secret.")
       else setError(e instanceof Error ? e.message : "Could not store the secret.")

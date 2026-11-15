@@ -18,7 +18,6 @@ import {
   type Evidence,
 } from "./client"
 import { CardData, CardForm, CardReceiptView } from "./card-body"
-import { ActionRunPanel } from "./terminal"
 import { noteServerNow, serverNow } from "./clock"
 import { Countdown, RiskChip, ago, timeLeft } from "./parts"
 import { AuditTrail } from "./audit"
@@ -291,7 +290,7 @@ export function DecisionDetail({
             <RunCard
               request={request}
               item={item}
-              run={item?.action_run ? <ActionRunPanel initial={item.action_run} approved={resolution?.response.decision === "approved"} /> : undefined}
+              run={item?.action_run ? <p role="status" className="dash-support text-fg-muted">This request runs a command; its live run view is not part of this build yet.</p> : undefined}
             />
             {request.details_markdown && (
               <section>

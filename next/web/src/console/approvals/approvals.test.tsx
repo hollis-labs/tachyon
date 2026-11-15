@@ -1,3 +1,4 @@
+import { CapabilitiesProvider } from "../../api/capabilities"
 import {
   cleanup,
   act,
@@ -51,11 +52,12 @@ const json = (value: unknown, status = 200, headers = {}) =>
   })
 
 describe("approval decision contract", () => {
-  it("establishes a participant only for reads and carries the reviewed revision and explicit decision", async () => {
+  it("a 401 is not retried through a session bridge; a decision carries the reviewed revision and explicit decision", async () => {
+    // The port (next/web): no POST /approval-inbox/session; a 401 is the session ending (the identity gate shows sign-in).
+    const ended = createApprovalClient(vi.fn().mockResolvedValueOnce(json({ code: "unauthorized", message: "sign in" }, 401)))
+    await expect(ended.inbox()).rejects.toMatchObject({ status: 401 })
     const fetcher = vi
       .fn()
-      .mockResolvedValueOnce(json({ code: "session_required" }, 401))
-      .mockResolvedValueOnce(json({ connected: true }))
       .mockResolvedValueOnce(json({ pending: [item], history: [] }))
       .mockResolvedValueOnce(json(item))
       .mockResolvedValueOnce(json({ item_id: item.item_id, state: "resolved" }))
@@ -66,9 +68,9 @@ describe("approval decision contract", () => {
       decision: "approved",
       note: "One session only",
     })
-    expect(fetcher.mock.calls[1][0]).toMatch(/\/session$/)
-    expect(fetcher.mock.calls[3][1].headers["Cache-Control"]).toBe("no-cache")
-    expect(JSON.parse(fetcher.mock.calls[4][1].body)).toEqual({
+    expect(fetcher.mock.calls.some((c) => /\/session$/.test(String(c[0])))).toBe(false)
+    expect(fetcher.mock.calls[1][1].headers["Cache-Control"]).toBe("no-cache")
+    expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({
       expected_revision: 4,
       presented_projection_revision: 3,
       response: {
@@ -675,13 +677,15 @@ describe("batch approve", () => {
       inbox: vi.fn().mockResolvedValue({ pending: [a], history: [] }),
       ...noAudit,
       present: vi.fn().mockResolvedValue(a),
-      access: vi.fn().mockResolvedValue({ state: "none", can_elevate: true, required_for: { batch: true } }),
     } as unknown as ApprovalClient
-    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    // The port: operator access is the profile's tachyon.operator scope; this person does not hold it.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('{"scopes":["tachyon.approvals.read"]}', { status: 200 })))
+    render(<CapabilitiesProvider><MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter></CapabilitiesProvider>)
     await screen.findByRole("listitem", { name: /Request a/ })
     tick("Select Request a")
     await screen.findByText(/Operator access needed/)
     expect((screen.getByRole("button", { name: "Approve 1" }) as HTMLButtonElement).disabled).toBe(true)
+    vi.unstubAllGlobals()
   })
 })
 

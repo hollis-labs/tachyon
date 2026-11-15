@@ -1,4 +1,5 @@
 import { test as base, expect } from "@playwright/test"
+import { approvalsStub } from "../e2e/approvals-stub"
 import { chatStub } from "../e2e/chat-stub"
 import { BASE, plannerStub, type StubItem } from "../e2e/planner-stub"
 
@@ -6,6 +7,8 @@ import { BASE, plannerStub, type StubItem } from "../e2e/planner-stub"
 export const plannerBackend = process.env.TACHYON_E2E_PLANNER === "backend"
 /** `TACHYON_E2E_CHAT=backend` runs against the binary's own chat (B6); otherwise the chat contract stub answers. */
 export const chatBackend = process.env.TACHYON_E2E_CHAT === "backend"
+/** `TACHYON_E2E_APPROVALS=backend` runs against the binary's own approvals (B7); otherwise the stub answers. */
+export const approvalsBackend = process.env.TACHYON_E2E_APPROVALS === "backend"
 
 export interface PlannerWrite {
   method: string
@@ -21,6 +24,7 @@ export interface PlannerWrite {
 export const test = base.extend<{
   planner: { writes: PlannerWrite[]; store: Record<string, StubItem[]> | null }
   chat: { store: ReturnType<typeof import("../e2e/chat-stub").chatSeed> | null }
+  approvals: { store: ReturnType<typeof import("../e2e/approvals-stub").approvalsSeed> | null }
 }>({
   planner: [
     async ({ page }, use) => {
@@ -43,6 +47,12 @@ export const test = base.extend<{
   chat: [
     async ({ page }, use) => {
       await use({ store: chatBackend ? null : (await chatStub(page)).store })
+    },
+    { auto: true },
+  ],
+  approvals: [
+    async ({ page }, use) => {
+      await use({ store: approvalsBackend ? null : (await approvalsStub(page)).store })
     },
     { auto: true },
   ],

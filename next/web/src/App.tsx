@@ -21,7 +21,7 @@ import { useEffect, useState } from "react"
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom"
 import { CapabilitiesProvider } from "./api/capabilities"
 import { UNAUTHORIZED_EVENT } from "./api/request"
-import { ChatSurface } from "./console/surface"
+import { ApprovalsSurface, ChatSurface } from "./console/surface"
 import { manifest, surfaceRoutes } from "./manifest"
 import { SettingsPage } from "./pages/settings"
 import { StubPage } from "./pages/stub"
@@ -54,7 +54,7 @@ const pages: Record<string, PageComponent> = {
   builder: () => <StubPage area="Builder" slice="G3" />,
   registry: () => <StubPage area="Registry" slice="G3" />,
   chat: () => <ChatSurface />,
-  approvals: () => <StubPage area="Approvals" slice="G4" />,
+  approvals: () => <ApprovalsSurface />,
   transcripts: () => <StubPage area="Transcripts" slice="G3" />,
   repos: () => <StubPage area="Repos" slice="G3" />,
   settings: () => <SettingsPage />,

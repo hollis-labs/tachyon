@@ -47,7 +47,7 @@ export function BatchPanel({ items, confirming, busy, accessNeeded, onConfirm, o
         </header>
         {accessNeeded && (
           <p role="status" className="rounded border border-border p-3 dash-control text-fg-muted">
-            Operator access needed. Batch decisions need elevated access; open each request to decide it on its own.
+            Operator access needed. Batch decisions need operator access; open each request to decide it on its own.
           </p>
         )}
         {n >= MAX_BATCH && <p className="dash-support text-fg-faint">Up to {MAX_BATCH} requests per batch.</p>}

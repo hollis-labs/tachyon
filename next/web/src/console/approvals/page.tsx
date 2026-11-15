@@ -6,7 +6,8 @@ import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
 import { ApprovalError, kindLabel, type ApprovalItem, type BatchResult, type HistoryFacets } from "./client"
 import { Chip } from "../components/chip"
-import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility, batchNeedsAccess, orderPending } from "./batch"
+import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility, orderPending } from "./batch"
+import { hasScope, OPERATOR_SCOPE, useScopes } from "../../api/capabilities"
 import { useApprovals } from "./context"
 import { ApprovalQueue } from "./queue"
 import { DecisionDetail } from "./detail"
@@ -41,7 +42,7 @@ export function ApprovalsPage() {
   const [batchBusy, setBatchBusy] = useState(false)
   const [batchNote, setBatchNote] = useState("")
   const [batchResults, setBatchResults] = useState<BatchResult["results"]>()
-  const [accessNeeded, setAccessNeeded] = useState(false)
+  const scopes = useScopes()
   const restoredItem = queue?.restored
   useEffect(() => {
     if (restoredItem) {
@@ -101,8 +102,8 @@ export function ApprovalsPage() {
       )
     } catch (e) {
       setBatchNote(
-        e instanceof ApprovalError && (e.code === "operator_access_required" || e.code === "assurance_insufficient")
-          ? "Batch decisions need elevated operator access."
+        e instanceof ApprovalError && ["operator_required", "operator_access_required", "scope_required", "assurance_insufficient"].includes(e.code)
+          ? "Batch decisions need operator access."
           : e instanceof Error ? e.message : "The batch did not complete. Nothing was assumed; check the queue.",
       )
     } finally {
@@ -112,14 +113,9 @@ export function ApprovalsPage() {
       void queue!.refresh(true)
     }
   }
-  // Ask once when a batch opens; a failed lookup leaves the buttons on, the server still refuses.
+  // Batch decisions need the operator scope (read from the profile); unknown scopes block nothing, the server still refuses.
   const hasBatch = picked.length > 0
-  useEffect(() => {
-    if (!hasBatch || !queue) return
-    let live = true
-    queue.client.access().then((a) => live && setAccessNeeded(batchNeedsAccess(a)), () => {})
-    return () => { live = false }
-  }, [hasBatch, queue])
+  const accessNeeded = hasBatch && scopes !== null && !hasScope(scopes, OPERATOR_SCOPE)
   const select = (id: string) => {
     setSelectedId(id)
     setShowDetail(true)
