@@ -69,9 +69,15 @@ test("a refused nudge shows the backend's message in the panel, and the text sta
   page,
   agents,
 }) => {
-  test.skip(!agents.store, "the stub's refusal")
-  if (!agents.store) return
-  agents.store.refuseControls = true
+  // Stub: the stub refuses the control. Backend: B8b sends the nudge as Tether mail, and the run's Tether fake
+  // refuses a message containing REFUSE (e2e/tether-fake.ts).
+  if (agents.store) agents.store.refuseControls = true
+  const text = agentsBackend
+    ? "REFUSE: please rebase on the latest main."
+    : "Please rebase on the latest main."
+  const refusal = agentsBackend
+    ? "Tether could not deliver the message."
+    : "The session is not at a turn boundary. Try again when it is."
   await page.goto("/agents/sess_work")
   const sent = page.waitForRequest(
     (r) =>
@@ -81,16 +87,12 @@ test("a refused nudge shows the backend's message in the panel, and the text sta
     .getByRole("button", { name: /^Nudge/ })
     .click()
   const box = page.getByRole("textbox", { name: "Nudge or steer" })
-  await box.fill("Please rebase on the latest main.")
+  await box.fill(text)
   await page.getByRole("button", { name: /^Send/ }).click()
-  expect((await sent).postDataJSON()).toMatchObject({ text: "Please rebase on the latest main." })
+  expect((await sent).postDataJSON()).toMatchObject({ text })
   // The old panel shows a control's refusal inline (role alert), not as a toast; carried as is.
-  await expect(
-    page
-      .getByRole("alert")
-      .filter({ hasText: "The session is not at a turn boundary. Try again when it is." }),
-  ).toBeVisible()
-  await expect(box).toHaveValue("Please rebase on the latest main.")
+  await expect(page.getByRole("alert").filter({ hasText: refusal })).toBeVisible()
+  await expect(box).toHaveValue(text)
   await shot(page, "agents-nudge-refused")
 })
 

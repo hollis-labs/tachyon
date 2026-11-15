@@ -4,6 +4,7 @@
 #   E2E_BIN   the binary;  E2E_DIR  a directory to create inside the marked run directory;
 #   E2E_ADDR  host:port to listen on;  E2E_OWNER  "1" to create the owner offline first;
 #   E2E_TETHER  optional URL of the suite's local Tether fake (e2e/tether-fake.ts), with chat sync on;
+#     E2E_AGENTS_CONTROLS=1 also turns on the Agent Ops controls against it;
 #   E2E_APPROVALS_SEED, E2E_AGENTS_SEED  optional test-only SQL (synthetic rows), applied with sqlite3 to this
 #     run's database once the owner setup has created the schema, before serving.
 # It only ever creates E2E_DIR (which must not exist yet) and deletes nothing.
@@ -27,12 +28,22 @@ if [ -n "${E2E_TETHER:-}" ]; then
     http://127.0.0.1:*) ;;
     *) echo "serve.sh: E2E_TETHER must be a loopback URL: $E2E_TETHER" >&2; exit 2 ;;
   esac
+  upstreams="    tether: { url: \"$E2E_TETHER\" }
+"
+  features="    chat_sync: true
+"
+  if [ "${E2E_AGENTS_CONTROLS:-}" = "1" ]; then
+    # Agent Ops controls (nudge as Tether mail) against the same fake, with a throwaway messages token.
+    (umask 077 && printf 'e2e-messages-token' > "$E2E_DIR/tether-messages.token")
+    upstreams="$upstreams    tether_messages: { token: \"file://$E2E_DIR/tether-messages.token\" }
+"
+    features="$features    agents_controls: true
+"
+  fi
   tachyon="$tachyon  chat_sync_interval: 1s
   upstreams:
-    tether: { url: \"$E2E_TETHER\" }
-  features:
-    chat_sync: true
-"
+$upstreams  features:
+$features"
 fi
 if [ -n "${E2E_APPROVALS_SEED:-}" ]; then
   # A throwaway key for approval secrets, made for this run only.

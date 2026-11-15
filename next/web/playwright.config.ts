@@ -38,7 +38,8 @@ function server(where: string, listen: string, withOwner: boolean, url: string) 
       E2E_DIR: where,
       E2E_ADDR: `127.0.0.1:${listen}`,
       E2E_OWNER: withOwner ? "1" : "0",
-      E2E_TETHER: withOwner && chatBackend ? tether : "",
+      E2E_TETHER: withOwner && (chatBackend || agentsBackend) ? tether : "",
+      E2E_AGENTS_CONTROLS: withOwner && agentsBackend ? "1" : "",
       E2E_APPROVALS_SEED: withOwner && approvalsBackend ? approvalsSeed : "",
       E2E_AGENTS_SEED: withOwner && agentsBackend ? agentsSeed : "",
     },
@@ -64,7 +65,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: [
-    ...(chatBackend
+    ...(chatBackend || agentsBackend
       ? [
           {
             command: `node '${fake}'`,

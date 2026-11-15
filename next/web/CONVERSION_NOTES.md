@@ -317,8 +317,10 @@ The rest of their import graph was already carried in G3a.
   (`internal/agentsapi/fixtures` at 99c7b88, in `e2e/agents-fixtures`, with two host strings made placeholders).
   `TACHYON_E2E_AGENTS=backend` turns it off and runs against the binary's agents reads (B8a). The collector
   is not started there, so `e2e/serve.sh` applies `e2e/agents-seed.sql` before serving. It holds synthetic sessions,
-  events, a gap and seat statuses, with the stub's names and times relative to the run. In that mode, nudge waits
-  for B8b's controls and ceremony needs a configured Torque, so both are skipped.
+  events, a gap and seat statuses, with the stub's names and times relative to the run. The Tether fake
+  (`e2e/tether-fake.ts`) also starts, with `agents_controls` on and a throwaway messages token, so a nudge goes out as
+  Tether mail (B8b). The fake refuses a message containing REFUSE, and the spec asserts B8b's own refusal. Ceremony
+  needs a configured Torque, so it is skipped there.
 
 **Main moved under the shared layer since 4a76422** (for the pre-P1 sync):
 - `chat/MessageBody.tsx` (+6)
