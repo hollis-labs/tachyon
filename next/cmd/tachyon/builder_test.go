@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -165,4 +166,71 @@ func TestBuilderStreamEndsOnShutdown(t *testing.T) {
 	if took := time.Since(begin); took > 5*time.Second {
 		t.Fatalf("shutdown took %s with the builder stream open", took)
 	}
+}
+
+// Builder writes in the served binary (slice B9b). Each write needs tachyon.builder.write and an operator.
+// With builder_changes off nothing reaches Tether: the change routes answer 503 changes_unavailable, and the
+// registry writes 501, as the old build did unconfigured. With it on (and only the read credential) the
+// change service runs in handoff mode and the change routes reach it.
+func TestBuilderWrites(t *testing.T) {
+	writes := [][2]string{{"POST", builderapi.Prefix + "/changes"}, {"POST", builderapi.Prefix + "/changes/c1/submit"}, {"POST", builderapi.Prefix + "/changes/c1/cancel"},
+		{"POST", builderapi.Prefix + "/changes/c1/rearm"}, {"POST", builderapi.Prefix + "/changes/c1/mark_planned"}, {"POST", builderapi.Prefix + "/changes/c1/check"},
+		{"POST", builderapi.Prefix + "/launches/l1/launch"}, {"POST", builderapi.RegistryPrefix + "/projects"}, {"PATCH", builderapi.RegistryPrefix + "/projects/p1"},
+		{"POST", builderapi.RegistryPrefix + "/projects/p1/link"}, {"DELETE", builderapi.RegistryPrefix + "/projects/p1/link"}}
+	t.Run("off", func(t *testing.T) {
+		fake, url := newFakeCatalogTether(t)
+		tok := filepath.Join(t.TempDir(), "tether.token")
+		if err := os.WriteFile(tok, []byte("test-read-credential"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		base, app := started(t, loopbackOverride+fmt.Sprintf("tachyon:\n  upstreams:\n    tether: { url: %q, token: %q }\n", url, "file://"+tok))
+		ids := identity.From(app)
+		key := func(scopes ...string) map[string]string {
+			k, _, err := ids.CreateKey(context.Background(), identity.KeyInput{Name: "builder-write-test", Scopes: scopes})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return map[string]string{"Authorization": "Bearer " + k}
+		}
+		reader, writer := key("tachyon.builder.read"), key("tachyon.builder.read", "tachyon.builder.write")
+		anon, keys, owner := newClient(t, base), newClient(t, base), newClient(t, base)
+		owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+		for _, w := range writes {
+			anon.want(401, w[0], w[1], map[string]any{}, xrw)
+			if code := flatCode(t, keys.want(403, w[0], w[1], map[string]any{}, reader)); code != "scope_required" {
+				t.Errorf("%s %s with the read scope: %s", w[0], w[1], code)
+			}
+			if code := flatCode(t, keys.want(403, w[0], w[1], map[string]any{}, writer)); code != "operator_required" {
+				t.Errorf("%s %s for a key: %s", w[0], w[1], code)
+			}
+		}
+		for _, w := range writes[:7] {
+			if code := flatCode(t, owner.want(503, w[0], w[1], map[string]any{}, xrw)); code != "changes_unavailable" {
+				t.Errorf("%s %s with builder_changes off: %s", w[0], w[1], code)
+			}
+		}
+		owner.want(503, "GET", builderapi.Prefix+"/changes", nil, xrw)
+		owner.want(501, "POST", builderapi.RegistryPrefix+"/projects", map[string]any{"display_name": "x"}, xrw)
+		owner.want(200, "GET", builderapi.Prefix+"/capabilities", nil, xrw)
+		if n := fake.count(); n != 0 {
+			t.Errorf("%d requests to Tether with builder_changes off", n)
+		}
+	})
+	t.Run("on", func(t *testing.T) {
+		_, url := newFakeCatalogTether(t)
+		tok := filepath.Join(t.TempDir(), "tether.token")
+		if err := os.WriteFile(tok, []byte("test-read-credential"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		base, _ := started(t, loopbackOverride+fmt.Sprintf("tachyon:\n  upstreams:\n    tether: { url: %q, token: %q }\n  features: { builder_changes: true }\n", url, "file://"+tok))
+		owner := newClient(t, base)
+		owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+		if body := owner.want(200, "GET", builderapi.Prefix+"/capabilities", nil, xrw); !strings.Contains(string(body), `"handoff"`) {
+			t.Errorf("capabilities in handoff mode: %s", body)
+		}
+		owner.want(200, "GET", builderapi.Prefix+"/changes", nil, xrw)
+		if code, body := owner.do("POST", builderapi.Prefix+"/changes", map[string]any{"request_id": "r1", "note": "n", "ops": []any{}}, xrw); code == 503 {
+			t.Errorf("a change with builder_changes on did not reach the service: %d %s", code, body)
+		}
+	})
 }
