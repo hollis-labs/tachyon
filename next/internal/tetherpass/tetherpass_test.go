@@ -68,6 +68,9 @@ func TestPassthroughEdges(t *testing.T) {
 	if code, _ := serve(empty, "POST", `{"x":1}`); code != 400 {
 		t.Errorf("a field on an empty-only operation: %d", code)
 	}
+	if code, _ := serve(empty, "POST", `{"":1}`); code != 400 {
+		t.Errorf("an empty key on an empty-only operation: %d", code)
+	}
 	// The redirect, the one accepted launch and the empty launch reach Tether; no refused request does.
 	if hits != 3 {
 		t.Errorf("Tether was called %d times, want 3", hits)

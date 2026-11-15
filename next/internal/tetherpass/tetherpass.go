@@ -159,7 +159,8 @@ func checkBody(w http.ResponseWriter, r *http.Request, fields string) ([]byte, b
 		return nil, false
 	}
 	for k, v := range in {
-		if !strings.Contains(" "+fields+" ", " "+k+" ") || bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+		// k != "": with Fields = Empty the padded list holds two spaces, which an empty key would match.
+		if k == "" || !strings.Contains(" "+fields+" ", " "+k+" ") || bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
 			fail(w, http.StatusBadRequest, "invalid_request", "Unsupported or null field: "+k)
 			return nil, false
 		}
