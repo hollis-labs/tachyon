@@ -1,12 +1,13 @@
 import { PageHeader } from "../components/page-header"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button, SearchInput, Skeleton } from "@hollis-labs/design-components"
-import { BarMeter, Kpi, KpiGrid, Panel } from "@hollis-labs/kit-dashboard/widgets"
+import { Kpi, KpiGrid } from "@hollis-labs/kit-dashboard/widgets"
 import { TimeSeriesChart } from "@hollis-labs/kit-dashboard/charts"
 import { dataRefreshRegistry } from "@tachyon/host-sdk"
-import { Activity, BarChart3, Boxes, FileText, RefreshCw } from "lucide-react"
+import { FileText, RefreshCw } from "lucide-react"
 import { Segmented } from "../components/segmented"
 import { TranscriptReader } from "./detail"
+import { BarRows, InsightPanel } from "./insight"
 import { SessionList, SessionToolbar, WindowPicker } from "./sessions"
 import { SearchResults, useSearchStatus } from "./search"
 import {
@@ -61,10 +62,14 @@ function Distribution({
   onSelect(value: string): void
 }) {
   const groups = rank(rows, field).slice(0, 7)
-  return <div className="p-4">
-    <BarMeter rows={groups.map(g => ({ key: g.label, label: field === "project" ? projectName(g.label) : g.label, value: g.value, color: "var(--color-fg-muted)" }))} onSelect={row => onSelect(row.key === "Unspecified" ? "" : row.key)} formatValue={number} showTotal={false} />
-    {!groups.length && <p className="py-8 text-center dash-control text-fg-faint">No sessions in this view.</p>}
-  </div>
+  return (
+    <BarRows
+      rows={groups.map((g) => ({ key: g.label, label: field === "project" ? projectName(g.label) : g.label, value: g.value }))}
+      format={number}
+      onSelect={(row) => onSelect(row.key === "Unspecified" ? "" : row.key)}
+      empty="No sessions in this view."
+    />
+  )
 }
 
 export function TranscriptDashboard() {
@@ -326,15 +331,7 @@ export function TranscriptDashboard() {
           </p>
           <WindowPicker filter={filter} set={set} />
         </div>
-        <Panel
-          title="Session activity"
-          icon={<Activity className="h-4 w-4" />}
-          meta={
-            <span className="dash-caption">
-              Last {chartDays} days · UTC · sessions started
-            </span>
-          }
-        >
+        <InsightPanel title="Session activity" meta={`Last ${chartDays} days · UTC · sessions started`}>
           <div className="p-4">
             <TimeSeriesChart
               items={rows}
@@ -351,41 +348,29 @@ export function TranscriptDashboard() {
               emptyLabel="No dated sessions in this time window."
             />
           </div>
-        </Panel>
+        </InsightPanel>
         <div className="grid gap-4 lg:grid-cols-3">
-          <Panel
-            title="Tools"
-            icon={<Boxes className="h-4 w-4" />}
-            meta="Sessions"
-          >
+          <InsightPanel title="Tools" right="Sessions">
             <Distribution
               rows={rows}
               field="tool"
               onSelect={(tool) => drill({ tool }, tool || "Unspecified tool")}
             />
-          </Panel>
-          <Panel
-            title="Top models"
-            icon={<BarChart3 className="h-4 w-4" />}
-            meta="Sessions"
-          >
+          </InsightPanel>
+          <InsightPanel title="Top models" right="Sessions">
             <Distribution
               rows={rows}
               field="model"
               onSelect={(model) => drill({ model }, model || "Unspecified model")}
             />
-          </Panel>
-          <Panel
-            title="Top project paths"
-            icon={<FileText className="h-4 w-4" />}
-            meta="Sessions"
-          >
+          </InsightPanel>
+          <InsightPanel title="Top project paths" right="Sessions">
             <Distribution
               rows={rows}
               field="project"
               onSelect={(query) => drill({ query }, projectName(query) || "Unspecified project")}
             />
-          </Panel>
+          </InsightPanel>
         </div>
         <p className="dash-support text-fg-muted">Clicking a bar sets that filter on the Sessions tab.</p>
           </>
