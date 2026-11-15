@@ -11,6 +11,9 @@ export const freshBackend = `http://127.0.0.1:${freshPort}`
 /** The chat backend run's local Tether fake (e2e/tether-fake.ts); the backend's only upstream. */
 export const tetherPort = process.env.TACHYON_E2E_TETHER_PORT ?? String(Number(port) + 2)
 export const tether = `http://127.0.0.1:${tetherPort}`
+/** The transcripts backend run's local Fragments Engine fake (e2e/fragments-fake.ts). */
+export const fragmentsPort = process.env.TACHYON_E2E_FRAGMENTS_PORT ?? String(Number(port) + 3)
+export const fragments = `http://127.0.0.1:${fragmentsPort}`
 export const run = runDir()
 /** The owner's backend data (HOME, XDG and TACHYON_DATA_DIR live inside). */
 export const dir = join(run, "owner")

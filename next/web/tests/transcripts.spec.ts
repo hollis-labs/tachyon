@@ -1,4 +1,5 @@
-import { expect, test } from "./fixtures"
+import { TRANSCRIPTS } from "../e2e/transcripts-stub"
+import { expect, test, transcriptsBackend } from "./fixtures"
 import { owner, shot } from "./helpers"
 
 // Transcripts behind the real next/ binary's identity and shell, against the transcripts contract stub
@@ -43,6 +44,25 @@ test("a missing scope shows access denied with the backend's message", async ({
   await expect(page.getByText("Access denied")).toBeVisible()
   await expect(page.getByText("This needs tachyon.transcripts.read.")).toBeVisible()
   await expect(page.getByRole("button", { name: "Connect" })).toHaveCount(0)
+})
+
+test("backend: a bearer that is not the browser session is refused, as the old guard refused any bearer", async ({
+  page,
+}) => {
+  test.skip(!transcriptsBackend, "the backend's own guard")
+  const minted = await page.request.post("/api/token", {
+    headers: { "X-Requested-With": "tachyon-ui" },
+    data: { scopes: ["tachyon.transcripts.read"], ttl_seconds: 600 },
+  })
+  const { token } = (await minted.json()) as { token: string }
+  const refused = await page.request.fetch(`${TRANSCRIPTS}/snapshot`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  expect(refused.status()).toBe(403)
+  expect(await refused.json()).toEqual({
+    code: "forbidden",
+    message: "Transcripts are for a browser session.",
+  })
 })
 
 test.describe("narrow", () => {

@@ -431,7 +431,11 @@ already carried.
 - **Read-only:** the old page has no writes, so there is no write path to test.
 - **e2e:** `e2e/transcripts-stub.ts` serves the old contract stub's fixtures (`internal/transcriptsapi/fixtures` at
   d5db765, in `e2e/transcripts-fixtures`, with a project name made a placeholder). `TACHYON_E2E_TRANSCRIPTS=backend`
-  turns it off.
+  turns it off and runs against the binary's transcripts routes (B10). `e2e/fragments-fake.ts` serves the same
+  fixtures as Fragments Engine would, on loopback with a per-run token. `e2e/serve.sh` points
+  `tachyon.upstreams.fragments` at it and turns `features.transcripts` on, and now writes the run's `tachyon` block
+  once, from collected upstreams, features and files. A backend-only check asserts the guard's refusal of a minted
+  token (403 `forbidden`, "Transcripts are for a browser session.").
 
 **Main moved under the carried layer since 4b5e397** (for the pre-P1 sync): `observations/store.ts` again (#772).
 
