@@ -271,6 +271,8 @@ Details: `docs/api-contract.md`.
   answer the upstream error, where the old cache served a cached copy for up to its window.
 - **The session cap** is `tachyon.transcripts.max_sessions` (200 to 20000, default 5000), as the old
   `TACHYON_TRANSCRIPT_MAX_SESSIONS`.
+- **A small difference from "refuse any bearer" (lead-accepted):** a token the session minted for itself, sent
+  together with that session's cookie, passes, because it is the same person. The old guard refused any bearer.
 - **The guard depends on the session cookie's name.** The identity module names it `<app>_session` and does not
   export the name. A served test fails if sign-in stops setting that cookie, before the guard could refuse every
   browser.
