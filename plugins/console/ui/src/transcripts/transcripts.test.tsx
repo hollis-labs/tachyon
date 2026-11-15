@@ -373,11 +373,8 @@ describe("transcript dashboard", () => {
     render(<TranscriptDashboard />)
     await screen.findByText(/partial snapshot/)
     fireEvent.click(screen.getByRole("tab", { name: "Insights" }))
-    // Skip the filter's <option>; the Tools panel bar is the first other match.
-    const bar = (await screen.findAllByText("claude")).find(
-      (el) => el.tagName !== "OPTION",
-    )!
-    fireEvent.click(bar)
+    const tools = await screen.findByRole("region", { name: "Tools" })
+    fireEvent.click(within(tools).getByText("claude"))
     expect(screen.getByText(/Filtered to claude/)).toBeTruthy()
     expect(screen.queryByRole("button", { name: /Fix routing/ })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Reset filters" }))
