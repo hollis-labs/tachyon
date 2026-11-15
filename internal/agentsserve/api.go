@@ -692,6 +692,19 @@ func max64(a, b int64) int64 {
 
 // ---- tokens ----
 
+// trendOf compares the last 30 minutes (a) with the 30 before (b) with a 20% dead band; nil when both are 0.
+func trendOf(a, b int64) any {
+	switch {
+	case a == 0 && b == 0:
+		return nil
+	case b == 0 || a*10 > b*12:
+		return "up"
+	case a*10 < b*8:
+		return "down"
+	}
+	return "flat"
+}
+
 func (s *Server) tokens(w http.ResponseWriter, r *http.Request) {
 	sess, row, ok := s.one(w, r)
 	if !ok {
@@ -736,18 +749,40 @@ func (s *Server) tokens(w http.ResponseWriter, r *http.Request) {
 		share = float64(hour.in+hour.out) / float64(tot)
 	}
 	// trend: the last 30 minutes against the 30 before, input+output, with a 20% dead band.
-	var trend any
-	a, b := recent.in+recent.out, prior.in+prior.out
-	switch {
-	case a == 0 && b == 0:
-	case b == 0 || a*10 > b*12:
-		trend = "up"
-	case a*10 < b*8:
-		trend = "down"
-	default:
-		trend = "flat"
+	trend := trendOf(recent.in+recent.out, prior.in+prior.out)
+	// by_kind: the same share and trend per token kind, and the kind's tokens per minute over the hour
+	// (60 points, oldest first) for the row's sparkline. A kind no session used this hour has share null.
+	pick := func(x win, k int) int64 { return [4]int64{x.in, x.out, x.cr, x.cw}[k] }
+	series := [4][]int64{make([]int64, 60), make([]int64, 60), make([]int64, 60), make([]int64, 60)}
+	rs, err := s.DB.Reader.QueryContext(r.Context(), `SELECT bucket_ns,COALESCE(tok_in,0),COALESCE(tok_out,0),COALESCE(tok_cr,0),COALESCE(tok_cw,0) FROM agents_samples WHERE bucket_kind='min' AND session_id=? AND bucket_ns>=?`, row.id, ns(59))
+	if err != nil {
+		internal(w)
+		return
 	}
-	reply(w, 200, map[string]any{"metered": true,
+	for rs.Next() {
+		var at int64
+		var v [4]int64
+		if rs.Scan(&at, &v[0], &v[1], &v[2], &v[3]) != nil {
+			rs.Close()
+			internal(w)
+			return
+		}
+		if i := int((at - ns(59)) / int64(time.Minute)); i >= 0 && i < 60 {
+			for k := range v {
+				series[k][i] += v[k]
+			}
+		}
+	}
+	rs.Close()
+	byKind := map[string]any{}
+	for k, name := range []string{"input", "output", "cache_read", "cache_write"} {
+		var ks any
+		if f := pick(fleet, k); f > 0 {
+			ks = float64(pick(hour, k)) / float64(f)
+		}
+		byKind[name] = map[string]any{"share": ks, "trend": trendOf(pick(recent, k), pick(prior, k)), "series": series[k]}
+	}
+	reply(w, 200, map[string]any{"metered": true, "by_kind": byKind,
 		"hour":    map[string]int64{"input": hour.in, "output": hour.out, "cache_read": hour.cr, "cache_write": hour.cw, "tool_calls": hour.calls},
 		"session": map[string]int64{"input": *sess.Tokens.Input, "output": *sess.Tokens.Output, "cache_read": *sess.Tokens.CacheRead, "cache_write": *sess.Tokens.CacheWrite, "tool_calls": orZero(sess.ToolCallCount)},
 		"share":   share, "trend": trend})

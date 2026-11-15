@@ -57,6 +57,22 @@ describe('real payloads', () => {
     expect(screen.queryByText(/Started .* ago/)).toBeNull()
   })
 
+  it('draws the golden tokens table: per-kind share and a trend line, a dash when no agent used that kind', async () => {
+    const series = (v: number) => Array.from({ length: 60 }, (_, i) => (i % 5 === 0 ? v : 0))
+    body.tokens = { metered: true, hour: { input: 100, output: 50, cache_read: 0, cache_write: 7, tool_calls: 3 }, session: { input: 400, output: 200, cache_read: 0, cache_write: 9, tool_calls: 9 }, share: 0.3, trend: 'up',
+      by_kind: { input: { share: 0.26, trend: 'up', series: series(10) }, output: { share: 0.2, trend: 'flat', series: series(5) }, cache_read: { share: null, trend: null, series: series(0) }, cache_write: { share: 0.07, trend: 'down', series: series(1) } } }
+    stubFetch()
+    render(<MemoryRouter><SessionModal session={sessions[0]} paused={false} now={Date.now()} onClose={() => undefined} onRestarted={() => undefined} /></MemoryRouter>)
+    screen.getByRole('tab', { name: 'Context' }).click()
+    expect(await screen.findByText('26%')).toBeTruthy()
+    expect(screen.getByText('20%')).toBeTruthy()
+    expect(screen.getByText('7%')).toBeTruthy()
+    expect(screen.getByText('—')).toBeTruthy()
+    expect(screen.getByText('Trend')).toBeTruthy()
+    expect(screen.queryByText(/Share of all agents/)).toBeNull()
+    body.tokens = { hour: null, metered: false, session: null, share: null, trend: null }
+  })
+
   it('renders Rows, Cards and Board for live sessions without an empty provider chip or a blank group', () => {
     render(<><SessionRows sessions={sessions} groupBy="workroot" now={Date.now()} onSelect={() => undefined} /><SessionCards sessions={sessions} now={Date.now()} onSelect={() => undefined} /><SessionBoard sessions={sessions} now={Date.now()} onSelect={() => undefined} /></>)
     expect(screen.getAllByText('No workspace').length).toBeGreaterThan(0)

@@ -5,7 +5,7 @@ import { Chip, SegmentedProgress } from '@planner/shared'
 import { useAgentsRead } from './api'
 import { ContextBar } from './session-rows'
 import { Cite, EventFeed, GapLine, clock, resyncs, toTimeline, type Entry, type EventsResponse } from './session-events'
-import { ageText } from './session-parts'
+import { Sparkline, ageText } from './session-parts'
 import { AGENTS } from './vocabulary'
 import type { Session } from './types'
 
@@ -164,7 +164,9 @@ export function TimelineTab({ s, now }: { s: Session; now: number }) {
 // ---------- Context ----------
 
 interface Series { points: { at: number; pct: number }[]; compactions: { at: number; before?: number; after?: number; inferred: boolean }[]; clears: { at: number; inferred: boolean }[]; warn_pct: number }
-interface Tokens { metered: boolean; hour: Record<string, number> | null; session: Record<string, number> | null; share: number | null; trend: 'up' | 'down' | 'flat' | null }
+type Trend = 'up' | 'down' | 'flat' | null
+interface KindStats { share: number | null; trend: Trend; series: number[] }
+interface Tokens { metered: boolean; hour: Record<string, number> | null; session: Record<string, number> | null; share: number | null; trend: Trend; by_kind?: Record<'input' | 'output' | 'cache_read' | 'cache_write', KindStats> }
 
 const compact = (n: number | null | undefined) => {
   if (n === null || n === undefined) return M.unknown
@@ -229,14 +231,23 @@ export function ContextTab({ s, now }: { s: Session; now: number }) {
         <Panel read={tokens}>
           {(t) => !t.metered ? <p title={M.unmeteredReason} className="text-xs text-fg-muted">{M.unmetered}</p> : (
             <>
-              {/* KIT-GAP: golden also draws a per-kind share and trend sparkline; the API reports one share and trend for the whole session, so they are shown below, not per row. */}
-              <div className="grid grid-cols-[1.4fr_1fr_1fr] gap-x-2 text-xs text-fg-secondary">
-                {[M.kind, M.thisHour, M.thisSession].map((h) => <div key={h} className={cn('border-b border-border-subtle pb-1', caption)}>{h}</div>)}
-                {([['input', M.input], ['output', M.output], ['cache_read', M.cacheRead], ['cache_write', M.cacheWrite]] as const).map(([k, label]) => (
-                  <div key={k} className="contents"><div className="border-b border-border-subtle py-1.5">{label}</div><div className="border-b border-border-subtle py-1.5 font-mono tabular-nums">{compact(t.hour?.[k])}</div><div className="border-b border-border-subtle py-1.5 font-mono tabular-nums">{compact(t.session?.[k])}</div></div>
-                ))}
+              {/* The golden's five columns: share of every session's tokens of that kind this hour, and the kind's last hour per minute. */}
+              <div className="grid grid-cols-[1.4fr_1fr_1fr_0.8fr_72px] gap-x-2 text-xs text-fg-secondary max-sm:grid-cols-[1.2fr_1fr_1fr_0.8fr]">
+                {[M.kind, M.thisHour, M.thisSession, M.shareTitle, M.trendTitle].map((h, i) => <div key={h} className={cn('border-b border-border-subtle pb-1', caption, i === 4 && 'max-sm:hidden')}>{h}</div>)}
+                {([['input', M.input], ['output', M.output], ['cache_read', M.cacheRead], ['cache_write', M.cacheWrite]] as const).map(([k, label]) => {
+                  const b = t.by_kind?.[k]
+                  return (
+                    <div key={k} className="contents">
+                      <div className="border-b border-border-subtle py-1.5">{label}</div>
+                      <div className="border-b border-border-subtle py-1.5 font-mono tabular-nums">{compact(t.hour?.[k])}</div>
+                      <div className="border-b border-border-subtle py-1.5 font-mono tabular-nums">{compact(t.session?.[k])}</div>
+                      <div title={b?.share == null ? M.shareNone : undefined} className="border-b border-border-subtle py-1.5 font-mono tabular-nums">{b?.share == null ? M.dash : `${Math.round(b.share * 100)}%`}</div>
+                      <div className="flex items-center border-b border-border-subtle py-1.5 max-sm:hidden" title={b?.trend ? M.trend[b.trend] : undefined}>{b ? <Sparkline points={b.series} /> : <span className="text-fg-muted">{M.na}</span>}</div>
+                    </div>
+                  )
+                })}
               </div>
-              <p className="text-xs text-fg-muted">{M.share}: {t.share === null ? M.na : `${Math.round(t.share * 100)}%`}{t.trend ? ` · ${M.trend[t.trend]}` : ''}</p>
+              {!t.by_kind && <p className="text-xs text-fg-muted">{M.share}: {t.share === null ? M.na : `${Math.round(t.share * 100)}%`}{t.trend ? ` · ${M.trend[t.trend]}` : ''}</p>}
             </>
           )}
         </Panel>
