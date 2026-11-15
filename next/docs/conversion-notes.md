@@ -119,7 +119,8 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 
 | Old | New |
 |---|---|
-| `TACHYON_ACTION_DETACH_GRACE`, `TACHYON_TRANSCRIPT_MAX_SESSIONS`, `TACHYON_CACHE_TIMEOUT_MS` | keys added by the slice that ports each feature |
+| `TACHYON_TRANSCRIPT_MAX_SESSIONS` | `tachyon.transcripts.max_sessions` (200 to 20000, default 5000; B10) |
+| `TACHYON_ACTION_DETACH_GRACE`, `TACHYON_CACHE_TIMEOUT_MS` | keys added by the slice that ports each feature |
 | `TACHYON_CERBERUS_CONTROL` | decided by the Cerberus slice |
 | `TACHYON_CERBERUS_ELEVATION` | dropped: the operator check is fixed in code (owner question, Gaps 4) |
 | `TACHYON_CHAT_CLIENT_CONTEXT` | decided by the chat slice |
@@ -341,6 +342,31 @@ Details: `docs/api-contract.md`.
   (`alert_seq`) seed rows the same way, so their slices need the same handling.
 - **Postgres.** Upserts name their table on the right-hand side, scalar `MAX`/`MIN` are `CASE`s, the sample
   pruning uses its key instead of `rowid`, and the bus and gap inserts read their id with `RETURNING`.
+
+## Transcripts (slice B10)
+
+- **The same bridge.** `/api/plugins/console/v1/transcripts/*` is the old Fragments Engine bridge with the same
+  routes, validation, error codes and upstream reads. The last good snapshot is kept in the migrated
+  `transcript_snapshot`.
+- **Off by default.** `tachyon.features.transcripts` comes before anything outbound. Off, the snapshot serves the
+  saved row (marked `unavailable`, error `disabled`), every other read is 503 `disabled`, and nothing dials
+  Fragments Engine. On, it reads `tachyon.upstreams.fragments` (URL and token reference).
+- **The old guard, kept.** A bearer that is not the browser session's own cookie gets 403 `forbidden`
+  ("Transcripts are for a browser session."). That covers API keys and tokens minted from a session or key. Then
+  the `transcripts.read` assurance applies (browser session). The scope is `tachyon.transcripts.read` on every
+  route.
+- **No API cache.** The old generic response cache is not ported. Reads go live, and only the snapshot walk is
+  shared between concurrent requests. To keep the list visible when Fragments Engine is down, the snapshot now
+  serves the saved row on any upstream error, an unreachable one included. The old bridge did that only on a
+  mapped failure, and its cache answered (still marked "live") when the connection was refused. Other reads
+  answer the upstream error, where the old cache served a cached copy for up to its window.
+- **The session cap** is `tachyon.transcripts.max_sessions` (200 to 20000, default 5000), as the old
+  `TACHYON_TRANSCRIPT_MAX_SESSIONS`.
+- **A small difference from "refuse any bearer" (lead-accepted):** a token the session minted for itself, sent
+  together with that session's cookie, passes, because it is the same person. The old guard refused any bearer.
+- **The guard depends on the session cookie's name.** The identity module names it `<app>_session` and does not
+  export the name. A served test fails if sign-in stops setting that cookie, before the guard could refuse every
+  browser.
 
 ## Approvals (slice B7)
 
