@@ -292,3 +292,16 @@ func errMessage(out map[string]any) string {
 	s, _ := out["message"].(string)
 	return s
 }
+
+// trustedSession itself, apart from the thread checks behind it: the header counts only for the
+// pinned proxy, trimmed.
+func TestTrustedSessionOnlyForTheProxy(t *testing.T) {
+	proxy := access.Agent{Identity: access.Identity{ID: "px", Proxy: true}}
+	direct := access.Agent{Identity: access.Identity{ID: "agent"}}
+	if got := trustedSession(proxy, " s1 "); got != "s1" {
+		t.Errorf("proxy: %q", got)
+	}
+	if got := trustedSession(direct, "s1"); got != "" {
+		t.Errorf("a direct caller's header was trusted: %q", got)
+	}
+}
