@@ -237,6 +237,22 @@ Details: `docs/api-contract.md`.
   The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
   TTL are gone. The confirm phrase stays in the approvals code.
 
+## Approvals (slice B7)
+
+- **Same tables, same rows.** The inbox reads and writes the migrated `approval_items`, `approval_item_index`,
+  `approval_decision_log` (append-only on both dialects), `approval_defers`, `approval_batches` and
+  `approval_secrets`. The maintenance loop runs as before: index and decision-log backfill once at start, then the
+  secret purge and the expiry sweep every 30 s.
+- **The caller is the signed-in person.** New decisions record the principal id (`tachyon/identity`) as actor and
+  responder. Rows written before the port keep their old `browser-session:` refs. The old build's operator
+  session ref maps to the owner: history and audit label it "You" to the signed-in owner, and every other old
+  session ref "Operator session", as the old build labeled them. The mapping is at read time; no row changes.
+- **The secret key** is `tachyon.files.secret_key`, a secrets reference to the old key file's content (32 bytes or
+  64 hex characters). Point it at the same key so the migrated `approval_secrets` stay readable.
+- **Postgres.** The search filters use `LIKE … ESCAPE` (SQLite's `instr` has no Postgres twin); the in-transaction
+  writes whose failure is dropped (the derived index row, the defer clears) run in a savepoint, because a failed
+  statement aborts a Postgres transaction.
+
 ## Chat data verbs (slice B6d)
 
 - **Same verbs, same grants.** Agents call the chat verbs on the agent data API as before. A credential holds a

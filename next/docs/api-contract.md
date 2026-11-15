@@ -258,7 +258,8 @@ The old paths under `/api/plugins/console/v1/chat`, `.../chat-turns` and `.../ap
 
 - Request and response shapes, status codes and error codes are the old build's. The old chat errors were
   already the flat `{code, message}`.
-- Unserved until their slice: cards and approval rules (B7).
+- Unserved until their slice: chat cards and their thread approval rules (`threads/{ref}/approval-rules`, with the
+  chat cards slice).
 - Sending to an agent is the old outbox: the send is recorded `sending`, forwarded to Tether's
   `/chat/agents/{launch}/send` with the caller's idempotency key, and its result recorded. A repeated key answers
   `{session_id, replayed: true}` once sent; the same key with other text is `409 conflict`; an unconfirmed send
@@ -271,6 +272,33 @@ The old paths under `/api/plugins/console/v1/chat`, `.../chat-turns` and `.../ap
   clients reconnect.
 - With the app agent not configured its routes answer `503 not_configured`; with Tether not configured, send,
   reply and stop on Tether threads answer with the configuration error, and nothing is dialled.
+
+## 5d. Approvals (slice B7)
+
+Served under `/api/plugins/console/v1/approval-inbox`, from the migrated `approval_*` tables:
+
+| Route | Scope | Operator check (in handler) |
+|---|---|---|
+| `GET inbox`, `GET history`, `GET events`, `GET items/{id}`, `GET items/{id}/audit` | `tachyon.approvals.read` | |
+| `POST items/{id}/present` | `tachyon.approvals.resolve` | |
+| `POST items/{id}/resolve` | `tachyon.approvals.resolve` | medium, high, destructive (the old assurance table) |
+| `POST items/{id}/defer`, `DELETE items/{id}/defer` | `tachyon.approvals.resolve` | |
+| `POST batch/resolve` | `tachyon.approvals.resolve` | yes |
+| `POST secrets` | `tachyon.approvals.resolve` | yes |
+
+- Only a signed-in person uses the inbox. No principal is `401 session_required`; a key, whatever its scopes, is
+  `403 requester_cannot_approve` on every route, reads included, as a bearer requester was in the old build. Below
+  the action's level it is `403 operator_required`.
+- Request and response shapes are the old build's. The hitl errors (stale revision, idempotency and terminal
+  conflicts) are flattened to `{code, message, details}`: `details` carries the old body's other fields
+  (`contract_version`, `operation`, `item_id`, `revision_kind`, `expected_revision`, `actual_revision`,
+  `current_state`, `terminal_outcome`).
+- Secret values are never in a list, detail, history or audit body. Without `tachyon.files.secret_key`, `POST
+  secrets` answers `503 secrets_unavailable` and the rest of the inbox serves.
+- Not yet joined into item bodies: `action_run` and `run_state` (action runs) and `card_receipt` (card delivery).
+  They come back when those slices set the inbox's hooks.
+- Not served: the producer API `/api/approvals/v1` (not ported), the trusted Basalisk API, and the Tangent
+  session routes (section 1).
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 
