@@ -284,7 +284,9 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
 ## 8. Cutover sequence (run by the director with the owner)
 
 **Before the window** (no downtime):
-1. P1 done, parity-carry list empty, `main` frozen (section 1), CI green, the build artifact chosen (run id recorded).
+1. P1 done, parity-carry list empty, `main` frozen (section 1), CI green, the build artifact chosen (run id recorded). The old
+   `main` commit the live app runs and its `tachyon_migrations` head are recorded; the new build's ledger list must equal that
+   head (`migrate-from` refuses any other).
 2. Rehearsal on that day's copies passes (section 5); duration recorded. The window's maximum length is set from it
    (rehearsal time plus 30 minutes, and never more than 90 minutes).
 3. Prepared, not applied: the override file **with every outbound feature off** (section 6), with `tachyon.upstreams.tether.url`
@@ -487,11 +489,12 @@ foreign key or transaction crosses classes (today none does: every foreign key o
 | Class | Meaning | Store | Tables |
 |---|---|---|---|
 | A (11 app tables + module tables) | small, local, always boots: settings, definitions, credentials | local SQLite, always | `app_settings`, `service_identities`, `service_tokens`, `service_identity_agents`, `service_proxy_pin`, `chat_approval_rules`, `console_item_state`, `library_parts`, `library_part_revisions`, `part_refs`, `tachyon_migrations`; the B3 credential-mapping table; the identity module's tables (so sign-in works when Postgres is down); all of the scheduler module's `gosched_*` tables (the module owns them in the default store; fire history is bounded by the library's own pruning with a configured retention, not moved) |
-| B (26) | events, logs, telemetry, caches, replay | Postgres first | `seat_status` (057), `agents_events`, `agents_samples`, `agents_stream`, `agents_gaps`, `agents_sessions`, `agents_collector_state`, `agents_controls`, `bus_events`, `chat_events`, `chat_activity`, `alert_events`, `alert_seq`, `alert_source_cursor`, `object_sync_runs`, `fileview_audit`, `forge_audit`, `planner_events`, `planner_stream`, `planner_ingest_state`, `card_event_outbox`, `card_event_scan`, `catalog_snapshots`, `api_cache`, `provider_roster_cache`, `transcript_snapshot` |
+| B (28) | events, logs, telemetry, caches, replay | Postgres first | `seat_status` (057), `ceremony_daily` (059), `checkpoint_events` (059), `agents_events`, `agents_samples`, `agents_stream`, `agents_gaps`, `agents_sessions`, `agents_collector_state`, `agents_controls`, `bus_events`, `chat_events`, `chat_activity`, `alert_events`, `alert_seq`, `alert_source_cursor`, `object_sync_runs`, `fileview_audit`, `forge_audit`, `planner_events`, `planner_stream`, `planner_ingest_state`, `card_event_outbox`, `card_event_scan`, `catalog_snapshots`, `api_cache`, `provider_roster_cache`, `transcript_snapshot` |
 | C (60) | domain data | Postgres later | `action_runs`, `agent_launch_bindings`, `alerts`, `app_agent_messages`, `app_agent_threads`, `approval_batches`, `approval_decision_log`, `approval_defers`, `approval_item_index`, `approval_items`, `approval_proof_receipts`, `approval_secrets`, `card_deliveries`, `card_effect_runs`, `catalog_change_paths`, `catalog_changes`, `catalog_entities`, `catalog_state`, `chat_bookmarks`, `chat_card_refs`, `chat_context`, `chat_cursors`, `chat_imports`, `chat_message_keys`, `chat_outbox`, `chat_outbox_session_links`, `chat_plan_steps`, `chat_plans`, `chat_publications`, `chat_reply_intents`, `chat_scratchpads`, `chat_session_lineage`, `chat_session_links`, `chat_sync_status`, `chat_thread_state`, `chat_topics`, `chat_turn_revisions`, `chat_turns`, `chat_workspace_items`, `execution_items`, `forge_idempotency`, `forge_index_state`, `forge_pr_index`, `forge_review_drafts`, `object_links`, `object_revisions`, `object_sources`, `object_sync_state`, `object_sync_watermarks`, `objects`, `planner_items`, `planner_promotions`, `planner_relation_index`, `planner_task_meta`, `pr_agent_links`, `provider_actions`, `provider_run_links`, `terminal_proposals`, `terminal_runs`, `terminal_sessions` |
 
 The class mapping is kept current with the old schema: a new old migration (section 1, parity-carry) also gets a class here.
-At migration 058 there are 97 tables: A 11, B 26, C 60 (058 adds a column to `chat_plans`, no table).
+At migration 058 there are 97 tables: A 11, B 26, C 60 (058 adds a column to `chat_plans`, no table). Migration 059 (the ceremony
+meter, live since 2026-11-15) adds two class-B tables: 99 tables, A 11, B 28, C 60; carried by CW-20261115-0037.
 
 **Store topology.** At cutover all three classes are in the one SQLite database, as today. Afterwards A stays in a local SQLite
 store and B, then C, move to Postgres. That needs the `database` module to give an app a second named store that may be
