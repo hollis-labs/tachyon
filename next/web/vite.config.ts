@@ -32,7 +32,17 @@ export default defineConfig(({ command }) => ({
     },
   ],
   // The planner keeps its own import root (carried over from plugins/planner/ui unchanged).
-  resolve: { alias: { "@planner": resolve(import.meta.dirname, "src/planner") } },
+  resolve: {
+    alias: {
+      "@planner": resolve(import.meta.dirname, "src/planner"),
+      "@console": resolve(import.meta.dirname, "src/console"),
+      "@tachyon/torque-client": resolve(
+        import.meta.dirname,
+        "src/packages/torque-client/src/index.ts",
+      ),
+      "@tachyon/host-sdk": resolve(import.meta.dirname, "src/packages/host-sdk/src/index.ts"),
+    },
+  },
   esbuild: { jsx: "automatic" },
   // app-shell ships TypeScript source; the dependency optimizer needs the same JSX runtime.
   optimizeDeps: { esbuildOptions: { jsx: "automatic" } },

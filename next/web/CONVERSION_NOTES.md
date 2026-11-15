@@ -90,6 +90,25 @@ so a diff against the old tree shows only the port's edits.
   its API with the stub's items (same ids, e2e/global-setup.ts). The stub's status sets are the backend's native
   ones (what `/schema/<db>` advertises).
 
+## Console shared layer (G3a, CW-20261115-0009)
+
+`src/console` and `src/packages` hold the old console's shared layer, copied from `plugins/console/ui/src` and
+`packages/{torque-client,host-sdk}/src` at main **4a76422**, unchanged, so later console surfaces (chat first)
+build on it. Diff any file against its source at that SHA; the only edits are below.
+
+- **What:** the files the chat surface's shared dependencies reach that do not themselves need chat-only or
+  uncarried modules: messaging (types, context, adapter, unread), autolink and refs (reference chips, previews,
+  markdown), the preview panes those open (forge, events, observations-free parts, builder, agents, files,
+  tesseract), seams, lib, the torque client and the host SDK, and `chat/MessageBody` (the shared message
+  renderer the Tesseract detail pane uses). Their unit tests and test helpers come along.
+- **Edits:** example strings in `refs/tach.ts`, `refs/tach.test.ts` and `chat/MessageBody.test.tsx` named an
+  internal host; they are placeholders (`example-app`) for the public repo (scan-public). Nothing else.
+- **Not wired:** nothing in the app imports this layer yet; the chat PR (G3) does.
+- **Build:** aliases `@console/*`, `@tachyon/torque-client`, `@tachyon/host-sdk`; dependencies at the old tree's
+  versions (streamdown 2.7.0, react-markdown 10.1.0, remark-gfm 4.0.1, yaml 2.9.1, sonner 2.0.8).
+- **Lint:** as in the old tree, Biome does not check `src/console` or `src/packages`, and the design lint covers
+  `src/console/agents` only (the old builder lane).
+
 ## Gaps
 
 - app-shell has no prefix/param surface routes (exact match only, `shell.tsx` surface lookup). Worked
