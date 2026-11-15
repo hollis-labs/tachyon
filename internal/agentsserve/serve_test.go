@@ -418,6 +418,16 @@ func TestContextTokensAndHistory(t *testing.T) {
 	if tk["trend"] != "up" && tk["trend"] != "down" && tk["trend"] != "flat" {
 		t.Errorf("trend: %v", tk["trend"])
 	}
+	bk, _ := tk["by_kind"].(map[string]any)
+	in, _ := bk["input"].(map[string]any)
+	pts, _ := in["series"].([]any)
+	var sum float64
+	for _, v := range pts {
+		sum += v.(float64)
+	}
+	if len(bk) != 4 || len(pts) != 60 || sum != 210 || in["share"] == nil {
+		t.Errorf("by_kind input: share %v, %d points summing %v (want 60 summing to the hour's 210)", in["share"], len(pts), sum)
+	}
 	if u := decode[map[string]any](t, e.get("/sessions/u1/tokens")); u["metered"] != false || u["hour"] != nil || u["session"] != nil || u["share"] != nil || u["trend"] != nil {
 		t.Errorf("unmetered tokens must be null, not zero: %v", u)
 	}
