@@ -199,9 +199,29 @@ granted), `objects.get` and `objects.history` (the record's kind must be granted
 people only; a key is refused there whatever its scopes. The four object reads need `tachyon.objects.read`.
 `GET /api/plugins/console/v1/objects/sync/status` (`tachyon.objects.read`) is the old sync status.
 
+## 5b. Planner (slice B5)
+
+The old paths, served by Tachyon:
+
+| Path | Read scope | Write scope | Check in handler |
+|---|---|---|---|
+| `/api/plugins/console/v1/planner/...` | `tachyon.planner.read` | `tachyon.planner.write` | writes need the operator check |
+| `/api/plugins/planner/v1/planner/...` (legacy) | `tachyon.planner.read` | `tachyon.planner.write` | writes need the operator check |
+| `GET /api/plugins/planner/stream/events` (SSE) | `tachyon.planner.read` | | |
+| `GET .../tasks/{task}[/comments]` | `tachyon.planner.read` | | |
+| Assignment routes (`/assignments`, `/agents/{id}/work`) | `tachyon.planner.read` | `tachyon.planner.write` | writes need the operator check |
+
+- The planner stream ends with the server (`httphost.Stopping`). Clients reconnect with `Last-Event-ID`.
+- The planner data verbs (`planner.list`, `planner.portfolio.*`) are on the agent and console data APIs:
+  - agents: each portfolio database's kind must be granted, and `planner.list` without a kind needs every kind;
+  - console: the person needs `tachyon.planner.read` or `tachyon.planner.write`.
+
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 
-The plugin host (Substrate `pluginhost`) forwards `/api/plugins/{id}/...` to the subprocess plugins.
+The plugin host (Substrate `pluginhost`) forwards `/api/plugins/{id}/...` to the subprocess plugins. **Since B5 the
+`pluginhost` module is not selected.** It claims all of `/api/plugins/`, which shadows Tachyon's own routes under that
+prefix (Substrate gap CW-20261114-0184). Tachyon registers no plugin process today. The console plugin's slice brings
+it back once the gap is fixed.
 
 - In front of it, `internal/pluginallow` serves only the (method, path) pairs on an explicit allowlist. Every
   other path under `/api/plugins/` answers **404 `not_found`, for every caller, the owner included**, before the

@@ -15,8 +15,7 @@
     "identity",
     "secrets",
     "cli",
-    "scheduler",
-    "pluginhost"
+    "scheduler"
   ],
   "contributions": [
     {
@@ -138,17 +137,6 @@
           "method": "GET",
           "path": "/api/identity/signing-key",
           "scope": "{app}.admin"
-        }
-      ]
-    },
-    {
-      "schema_version": 0,
-      "module": "pluginhost",
-      "routes": [
-        {
-          "method": "*",
-          "path": "/api/plugins/",
-          "scope": "{app}.plugins"
         }
       ]
     },
@@ -761,12 +749,6 @@
       "path": "/api/identity/signing-key",
       "scope": "{app}.admin",
       "module": "identity"
-    },
-    {
-      "method": "*",
-      "path": "/api/plugins/",
-      "scope": "{app}.plugins",
-      "module": "pluginhost"
     }
   ],
   "regions": [],

@@ -13,7 +13,7 @@ Open items that need a decision or a change outside this cell:
    pins.
 2. **Identity step-up (Substrate CW-20261114-0095).** There is no re-authentication before a high-risk resolve. The
    operator check is kind user plus `tachyon.operator`. A design note, not blocking.
-3. **Scheduler health.** `/healthz` reports `database` and `plugins`. The plan's post-cutover check also names the
+3. **Scheduler health.** `/healthz` reports `database` (and `plugins` again once pluginhost returns). The plan's post-cutover check also names the
    scheduler; the slice that ports object sync adds a scheduler check, or files a Substrate gap if the module
    should own it.
 4. **Owner questions** (from the GUI inventory, carried here until answered through the director):
@@ -26,14 +26,16 @@ Open items that need a decision or a change outside this cell:
    commit is archived into a throwaway repository and scanned with `--no-allowlist`, and any finding fails the
    job. The old tree's and the history's findings are pinned by an allowlist on `main` (PR #702), the
    director's ruling. They never apply to `next/`.
-7. **Identity keys cannot be listed or revoked through the module's Go API (Substrate CW-20261114-0131).**
+7. **pluginhost shadows the app's own `/api/plugins/` routes (Substrate CW-20261114-0184).** It is not selected.
+   The console plugin's slice needs the fix first.
+8. **Identity keys cannot be listed or revoked through the module's Go API (Substrate CW-20261114-0131).**
    - `tachyon access reissue` reads two counts from the identity module's tables, read-only: whether an owner
      exists, and whether any key does. This is in `internal/access`, `identityCounts`.
    - `tachyon access revoke` and `disable` act on Tachyon's credential mapping. The agent API checks that mapping
      on every request, so the key and every token minted from it are refused at once. The identity module's own
      key row stays live until the module exports a revoke; a revoked key then still works on identity routes
      only within its own scopes.
-8. **`GET` routes that write today** (inventory 12.1). In the port they take a write scope or become POST, decided
+9. **`GET` routes that write today** (inventory 12.1). In the port they take a write scope or become POST, decided
    per slice and recorded in the contract:
    - `access/apps?refresh=1`
    - `chat/threads/{ref}/continue`
@@ -187,6 +189,20 @@ Details: `docs/api-contract.md`.
   fires.
 - **Upstream credentials** are secrets references resolved per request (`upstreamauth`). A rotated secret is picked
   up without a restart. GitHub's token is no longer a value: `tachyon.upstreams.github.token` is a reference.
+
+## Planner (slice B5)
+
+- **Same API.** The planner API keeps its paths, legacy prefix and semantics, compared with the old build on copies
+  of the same data.
+- **`TACHYON_PLANNER_EVENTS` is now `tachyon.features.planner_events`** (default off). Off means the ingest worker
+  (Torque task moves and merged PRs into the timeline) does not run. Planner object revisions still reach the
+  stream, because the stream tails them locally.
+- **The planner plugin process is not ported.** It only registered the UI's name; the SPA now compiles the planner
+  UI in. Its data was always served by the host. **Post-adoption:** if it comes back, it returns as a
+  `pluginhost` spec once CW-20261114-0184 is fixed. `import-planner` is dropped, as planned.
+- **`pluginhost` is not selected** (contract section 6; Substrate CW-20261114-0184).
+- **Torque's credential** for the planner is `tachyon.upstreams.torque.token`, a secrets reference resolved per
+  request.
 
 ## What the operator does differently
 

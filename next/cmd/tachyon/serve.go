@@ -41,6 +41,7 @@ type deps struct {
 	access    *access.Service
 	local     *dataverbs.Local
 	objectJob *objectsync.Jobs
+	planner   plannerDeps
 }
 
 // appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
@@ -50,14 +51,14 @@ type deps struct {
 func appRoutes(d deps) []routes.Route {
 	agent := dataverbs.NewAgentHTTP(d.local, d.access)
 	console := dataverbs.NewConsoleHTTP(d.local)
-	return []routes.Route{
+	return append(plannerRoutes(d.planner), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.Prefix + "/providers", Scope: routes.Authenticated, Handler: console},
 		{Method: http.MethodGet, Pattern: dataverbs.Prefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: console},
 		{Method: http.MethodGet, Pattern: objectSyncStatusPath, Scope: "tachyon.objects.read", Handler: objectSyncStatus(d.objectJob)},
-	}
+	}...)
 }
 
 // pluginAllowlist are the (method, path) pairs under /api/plugins/ that reach the plugin host
@@ -97,7 +98,11 @@ func (t *tachyon) serve(ctx context.Context) error {
 	// switch gates (scheduler.Run below), and with the engine stopped nothing is ever dispatched.
 	setRunner(objectsync.JobType, jobs)
 	defer setRunner(objectsync.JobType, nil)
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(store.Wrap(db))), objectJob: jobs})
+	domain := store.Wrap(db)
+	pl := newPlanner(app, cfg, domain)
+	stopIngest := startPlannerIngest(ctx, cfg, pl)
+	defer stopIngest()
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err

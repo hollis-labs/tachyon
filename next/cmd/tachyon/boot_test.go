@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,7 +268,12 @@ func TestEveryServedRouteHasAScope(t *testing.T) {
 			t.Errorf("module route %s %s: scope %q known %v, want %q", r.Method, r.Path, scope, known, r.Scope)
 		}
 	}
-	d := deps{access: access.New(store.From(app), identity.From(app), nil), local: dataverbs.NewLocal(objects.New(store.Wrap(store.From(app))))}
+	cfg, err := settings.Parse(app.Config[settings.Key])
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := deps{access: access.New(store.From(app), identity.From(app), nil), local: dataverbs.NewLocal(objects.New(store.Wrap(store.From(app)))),
+		planner: newPlanner(app, cfg, store.Wrap(store.From(app)))}
 	rs := appRoutes(d)
 	if len(rs) == 0 {
 		t.Fatal("no app routes: the check would prove less than it says")
@@ -276,7 +282,11 @@ func TestEveryServedRouteHasAScope(t *testing.T) {
 		t.Errorf("app routes: %v", err)
 	}
 	for _, r := range rs {
-		if scope, known := table.ForRoute(r.Method, r.Pattern); !known || scope != routes.TableScope(r.Scope) {
+		path := r.Pattern
+		if strings.HasSuffix(path, "/") {
+			path += "x" // a subtree pattern covers the paths below it
+		}
+		if scope, known := table.ForRoute(r.Method, path); !known || scope != routes.TableScope(r.Scope) {
 			t.Errorf("app route %s %s: scope %q known %v, want %q", r.Method, r.Pattern, scope, known, r.Scope)
 		}
 	}
@@ -560,9 +570,9 @@ func TestAgentAPI(t *testing.T) {
 		return map[string]string{"Authorization": "Bearer " + strings.TrimSpace(k)}
 	}
 	body := c.want(200, "GET", "/api/agent/v1/data/providers", nil, bearer(string(key)))
-	// Discovery lists the verbs this build serves that the credential allows: the object reads,
-	// not planner.list (granted, but its slice is not ported yet).
-	if !bytes.Contains(body, []byte(`"objects.get"`)) || bytes.Contains(body, []byte("planner.list")) {
+	// Discovery lists the verbs this build serves that the credential allows (planner-read: the
+	// object reads and planner.list), and nothing it does not grant.
+	if !bytes.Contains(body, []byte(`"objects.get"`)) || !bytes.Contains(body, []byte(`"planner.list"`)) || bytes.Contains(body, []byte("planner.portfolio")) {
 		t.Fatalf("discovery = %s", body)
 	}
 	if code := flatCode(t, c.want(403, "GET", "/api/agent/v1/data/providers", nil, bearer(star))); code != "credential_not_mapped" {
@@ -701,5 +711,127 @@ func TestSyncObjectsStatus(t *testing.T) {
 	}
 	if _, err := runCmd(t, env, "", "sync-objects", "--status", "--disable"); err == nil {
 		t.Fatal("conflicting options accepted")
+	}
+}
+
+// The planner routes in the served binary: a signed-in owner reads and writes under both prefixes.
+// A key holding both planner scopes still cannot write (planner writes need tachyon.operator, which a
+// key never has). A read-only key is refused a write by scope, and a key without a planner scope is
+// refused a read. Identity creates no person but the owner, so a signed-in non-operator person
+// cannot be set up here; keys carry the operator refusal.
+func TestPlannerRoutesAuth(t *testing.T) {
+	base, app := started(t, loopbackOverride)
+	ids := identity.From(app)
+	key := func(scopes ...string) map[string]string {
+		k, _, err := ids.CreateKey(context.Background(), identity.KeyInput{Name: "planner-test", Scopes: scopes})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return map[string]string{"Authorization": "Bearer " + k}
+	}
+	readWrite := key("tachyon.planner.read", "tachyon.planner.write")
+	readOnly := key("tachyon.planner.read")
+	noPlanner := key("tachyon.objects.read")
+	const console, legacy = "/api/plugins/console/v1", "/api/plugins/planner/v1"
+	keys := newClient(t, base)
+	refused := func(name string, h map[string]string, method, path, want string) {
+		t.Helper()
+		var body any
+		if method != "GET" {
+			body = map[string]any{}
+		}
+		if code := flatCode(t, keys.want(403, method, path, body, h)); code != want {
+			t.Errorf("%s %s %s: %s, want %s", name, method, path, code, want)
+		}
+	}
+	for _, prefix := range []string{console, legacy} {
+		keys.want(200, "GET", prefix+"/planner/themes", nil, readWrite)
+		keys.want(200, "GET", prefix+"/planner/themes", nil, readOnly)
+		refused("read+write key", readWrite, "POST", prefix+"/planner/ideas", "operator_required")
+		refused("read+write key", readWrite, "PATCH", prefix+"/planner/ideas/x", "operator_required")
+		refused("read-only key", readOnly, "POST", prefix+"/planner/ideas", "scope_required")
+		refused("no-planner key", noPlanner, "GET", prefix+"/planner/themes", "scope_required")
+	}
+	keys.want(200, "GET", console+"/planner/assignments", nil, readOnly)
+	refused("read+write key", readWrite, "POST", console+"/planner/assignments", "operator_required")
+
+	c := newClient(t, base)
+	c.want(401, "GET", console+"/planner/themes", nil, nil)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	c.want(200, "GET", console+"/planner/themes", nil, nil)
+	c.want(200, "GET", legacy+"/planner/themes", nil, nil)
+	// The owner may write: the request reaches the planner (which refuses this empty body itself).
+	if code, body := c.do("POST", console+"/planner/ideas", map[string]any{}, xrw); code == 401 || code == 403 {
+		t.Fatalf("owner write refused: %d %s", code, body)
+	}
+}
+
+// B4's console data routes answer in the served binary (pluginhost, which shadowed /api/plugins/,
+// is not selected): a signed-in owner lists the providers and calls an object verb; a key, even
+// with the objects scope, is refused.
+func TestConsoleDataRoutesServed(t *testing.T) {
+	base, app := started(t, loopbackOverride)
+	k, _, err := identity.From(app).CreateKey(context.Background(), identity.KeyInput{Name: "console-test", Scopes: []string{"tachyon.objects.read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, base)
+	c.want(401, "GET", dataverbs.Prefix+"/providers", nil, nil)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	if body := c.want(200, "GET", dataverbs.Prefix+"/providers", nil, nil); !bytes.Contains(body, []byte(`"objects.list"`)) {
+		t.Fatalf("providers = %s", body)
+	}
+	in, _ := json.Marshal(map[string]string{"kind": "task"})
+	c.want(200, "GET", dataverbs.Prefix+"/providers/tachyon/verbs/objects.list?input="+url.QueryEscape(string(in)), nil, nil)
+	keys := newClient(t, base)
+	keys.want(403, "GET", dataverbs.Prefix+"/providers", nil, map[string]string{"Authorization": "Bearer " + k})
+}
+
+// The planner event stream ends when the server shuts down (SIGTERM), well within the grace period:
+// serve returns nil and the client sees the stream close.
+func TestPlannerStreamEndsOnShutdown(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "data")
+	env := overrideEnv(t, data, loopbackOverride)
+	createOwner(t, env)
+	ctx, cancel := context.WithCancel(context.Background())
+	run, err := boot.StartWith(ctx, substrateApp, substrateModules, substrateConfigJSON, bootOptions(func(k string) string { return env[k] }, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = run.Stop(context.Background()) }()
+	addr := make(chan net.Addr, 1)
+	done := make(chan error, 1)
+	go func() { done <- (&tachyon{app: run.App, ready: func(a net.Addr) { addr <- a }}).serve(ctx) }()
+	base := "http://" + (<-addr).String()
+	c := newClient(t, base)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	req, _ := http.NewRequest(http.MethodGet, base+"/api/plugins/planner/stream/events", nil)
+	res, err := (&http.Client{Jar: c.http.Jar}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("stream: %d %s", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	first := make([]byte, 64)
+	if _, err := res.Body.Read(first); err != nil {
+		t.Fatalf("no first frame: %v", err)
+	}
+	begin := time.Now()
+	cancel() // what SIGTERM does (signal.NotifyContext)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serve ended with %v", err)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("serve did not return within the grace period with a stream open")
+	}
+	if _, err := io.ReadAll(res.Body); err != nil && !strings.Contains(err.Error(), "EOF") {
+		t.Logf("stream close: %v", err)
+	}
+	if took := time.Since(begin); took > 5*time.Second {
+		t.Fatalf("shutdown took %s with a stream open", took)
 	}
 }

@@ -11,7 +11,6 @@ import (
 	_ "github.com/hollis-labs/substrate/modules/httphost"
 	_ "github.com/hollis-labs/substrate/modules/identity"
 	_ "github.com/hollis-labs/substrate/modules/logging"
-	_ "github.com/hollis-labs/substrate/modules/pluginhost"
 	_ "github.com/hollis-labs/substrate/modules/scheduler"
 	_ "github.com/hollis-labs/substrate/modules/secrets"
 )
@@ -22,4 +21,4 @@ const (
 )
 
 // substrateModules is the start order.
-var substrateModules = []string{"config", "logging", "health", "httphost", "database", "auth", "identity", "secrets", "cli", "scheduler", "pluginhost"}
+var substrateModules = []string{"config", "logging", "health", "httphost", "database", "auth", "identity", "secrets", "cli", "scheduler"}

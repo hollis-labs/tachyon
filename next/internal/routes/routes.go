@@ -95,7 +95,7 @@ func Register(table *libauth.ScopeTable, rs []Route) (*http.ServeMux, error) {
 	}
 	mux := http.NewServeMux()
 	for _, r := range rs {
-		table.Route(r.Method, r.Pattern, TableScope(r.Scope))
+		table.Route(r.Method, TablePattern(r.Pattern), TableScope(r.Scope))
 		mux.Handle(r.Method+" "+r.Pattern, r.Handler)
 	}
 	return mux, nil
@@ -107,4 +107,13 @@ func TableScope(scope string) string {
 		return ""
 	}
 	return scope
+}
+
+// TablePattern is the pattern as the auth table matches it: a subtree pattern ("/api/x/") covers
+// the rest of the path ("/api/x/*"), as net/http's mux does.
+func TablePattern(pattern string) string {
+	if strings.HasSuffix(pattern, "/") {
+		return pattern + "*"
+	}
+	return pattern
 }
