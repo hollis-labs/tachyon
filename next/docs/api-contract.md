@@ -310,14 +310,13 @@ and `checkpoint_events` tables:
 | `GET agents/sessions`, `agents/sessions/{id}`, `…/events`, `…/context-series`, `…/tokens`, `…/history` | `tachyon.agents.read` | |
 | `GET agents/stream` (SSE), `agents/settings`, `agents/seats`, `agents/controls/{request_id}`, `agents/collector`, `agents/bus/events` | `tachyon.agents.read` | |
 | `GET ceremony` | `tachyon.agents.read` | |
-| `GET needs-you` | `tachyon.agents.read` | yes |
+| `GET needs-you` | `tachyon.agents.read` | |
 
 - Request and response shapes, status codes and error codes are the old build's (`internal/agentsapi/openapi.yaml`).
 - The collector is not started in B8a: `agents/collector` reports it `off`, and the data is what was migrated.
 - Needs you reads the operator's mailbox from a configured Tether, and the ceremony meter reads a configured
   Torque, on demand, as before. Without them those sources report `not configured`.
-- The old guard let Needs you reads through; the port requires an operator for them (lead decision). A key is
-  `403 operator_required`.
+- Needs you reads need no operator, as in the old build (its guard let GETs through).
 - Not yet served (B8b): `PUT agents/settings`, `POST agents/sessions/{id}/nudge` and `/restart`,
   `POST agents/controls/{request_id}/skip`, the collector loop, the ceremony meter's hourly read and its alert,
   and the Tether launch passthroughs (`catalog/launches`, `tether/workers`, `tether/sessions*`).

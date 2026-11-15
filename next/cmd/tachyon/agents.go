@@ -18,7 +18,6 @@ import (
 	"github.com/hollis-labs/tachyon/next/internal/agentscollector"
 	"github.com/hollis-labs/tachyon/next/internal/agentsserve"
 	"github.com/hollis-labs/tachyon/next/internal/approvals"
-	"github.com/hollis-labs/tachyon/next/internal/assurance"
 	"github.com/hollis-labs/tachyon/next/internal/ceremony"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatthreads"
 	"github.com/hollis-labs/tachyon/next/internal/needsyou"
@@ -36,9 +35,6 @@ import (
 // Needs you, all from the migrated tables. The collector is built but not started, so nothing is
 // collected; its loop, the controls (nudge, restart, skip, settings writes) and the Tether launch
 // passthroughs are slice B8b, behind switches that default off.
-
-// needsYouAction is the assurance action of GET needs-you: an operator (lead decision for the port).
-const needsYouAction assurance.Action = "agents.needs_you"
 
 // ceremonyMaxAge is how old a read GET ceremony may serve before it reads again (the old build's value).
 const ceremonyMaxAge = time.Minute
@@ -82,7 +78,8 @@ func newAgents(app *module.App, cfg settings.Settings, domain *store.Store, chat
 	if chat.threads != nil && chat.threads.Agg != nil {
 		ny.Chats = chatAsks{chat.threads.Agg}
 	}
-	d.needsYou = assurance.Middleware(needsYouAction, ny.Handler())
+	// Reads need no operator, as the old RequireOperator let GETs through.
+	d.needsYou = ny.Handler()
 	// The ceremony meter: Torque for tasks closed, the mailbox for asks. Its hourly background read and
 	// regression alert come with B8b; a GET reads again when the last read is over a minute old.
 	m := &ceremony.Meterer{DB: domain}
@@ -108,8 +105,7 @@ var agentsReadRoutes = []string{
 	"/sessions/{id}/history", "/stream", "/settings", "/seats", "/controls/{request_id}",
 }
 
-// agentsRoutes are the agents routes, each under tachyon.agents.read (docs/api-contract.md, 5e). Needs
-// you also makes the operator check.
+// agentsRoutes are the agents routes, each under tachyon.agents.read (docs/api-contract.md, 5e).
 func agentsRoutes(d agentsDeps) []routes.Route {
 	if d.server == nil {
 		return nil

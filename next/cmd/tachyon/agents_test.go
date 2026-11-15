@@ -16,9 +16,9 @@ import (
 )
 
 // The agents read routes in the served binary (slice B8a). Anonymous is 401; a key without
-// tachyon.agents.read is refused by scope; a key with it reads Agent Ops, the ceremony meter and the
-// bus feed, but Needs you also needs an operator, which a key never is. The owner reads all of them.
-// The writes are B8b's and are not served.
+// tachyon.agents.read is refused by scope; a key with it reads Agent Ops, the ceremony meter, the bus
+// feed and Needs you (the old guard let reads through), as does the owner. The writes are B8b's and are
+// not served.
 func TestAgentsRoutesAuth(t *testing.T) {
 	base, app := started(t, loopbackOverride)
 	ids := identity.From(app)
@@ -32,10 +32,10 @@ func TestAgentsRoutesAuth(t *testing.T) {
 	reader, other := key("tachyon.agents.read"), key("tachyon.planner.read")
 	p := agentsapi.Prefix
 	reads := []string{p + "/sessions", p + "/sessions?include_ended=1", p + "/settings", p + "/seats", p + "/collector", p + "/bus/events",
-		"/api/plugins/console/v1/ceremony"}
+		"/api/plugins/console/v1/ceremony", "/api/plugins/console/v1/needs-you"}
 	anon, keys, owner := newClient(t, base), newClient(t, base), newClient(t, base)
 	owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
-	for _, path := range append(reads, "/api/plugins/console/v1/needs-you", p+"/sessions/nope") {
+	for _, path := range append(reads, p+"/sessions/nope") {
 		anon.want(401, "GET", path, nil, xrw)
 		if code := flatCode(t, keys.want(403, "GET", path, nil, other)); code != "scope_required" {
 			t.Errorf("%s without the scope: %s", path, code)
@@ -45,10 +45,6 @@ func TestAgentsRoutesAuth(t *testing.T) {
 		keys.want(200, "GET", path, nil, reader)
 		owner.want(200, "GET", path, nil, xrw)
 	}
-	if code := flatCode(t, keys.want(403, "GET", "/api/plugins/console/v1/needs-you", nil, reader)); code != "operator_required" {
-		t.Errorf("needs-you for a key: %s", code)
-	}
-	owner.want(200, "GET", "/api/plugins/console/v1/needs-you", nil, xrw)
 	if code := flatCode(t, owner.want(404, "GET", p+"/sessions/nope", nil, xrw)); code != "not_found" {
 		t.Errorf("unknown session: %s", code)
 	}
