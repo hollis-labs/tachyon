@@ -33,7 +33,7 @@ export function TopicsPanel({ marks }: { marks: Marks }) {
   return (
     <>
       <span className={CAPTION}>Topics in this thread</span>
-      <ol className="flex flex-col">
+      <ol className="flex flex-col gap-2.5">
         {marks.topics.map((t, i) => (
           <li key={t.id}><button type="button" onClick={() => jump(t.message_ref)} className={cn(ROW, 'w-full text-left', i === 0 && 'bg-selection text-fg')}><span className="font-mono text-caption text-fg-muted">{t.seq ?? i + 1}</span><span className="min-w-0 flex-1 truncate">{t.title}</span><span className="text-label text-fg-muted">{time(t.created_at)}</span></button></li>
         ))}
@@ -88,14 +88,14 @@ export function WorkPanel({ items, source, loading, error }: { items: WorkItem[]
             <div className="flex h-7 items-center gap-2 rounded-control border border-border px-2.5 text-xs text-fg-secondary"><StateDot state="blocked" />Need you · {need.length}<Chip square>decide {need.filter((n) => n.kind === 'decision').length}</Chip><Chip square>review {need.filter((n) => n.kind !== 'decision').length}</Chip></div>
           )}
           {themes.map((t, i) => (
-            <div key={t.id} className={cn('flex flex-col gap-1 rounded-control px-2.5 py-2', i === 0 && 'bg-selection')}>
+            <div key={t.id} aria-current={i === 0 || undefined} className={cn('flex flex-col gap-1 rounded-control border-l-2 border-transparent py-2 pl-2.5 pr-2', i === 0 && 'border-primary bg-selection')}>
               <div className="flex items-center gap-2 text-control font-medium"><span className="min-w-0 flex-1 truncate">{t.title}</span>{t.needs_user && <StateDot state="blocked" />}</div>
               <SegmentedProgress size="sm" className="h-[3px]" label={`${t.title}: ${Math.round((t.progress ?? 0) * 100)}% done`} items={t.counts ? [{ state: 'done', count: t.counts.done }, { state: 'doing', count: t.counts.doing }, { state: 'blocked', count: t.counts.blocked }, { state: 'todo', count: t.counts.todo }] : [{ state: 'done', count: Math.round((t.progress ?? 0) * 100) }, { state: 'todo', count: 100 - Math.round((t.progress ?? 0) * 100) }]} />
             </div>
           ))}
           {doing.length > 0 && (
             <section className="flex flex-col gap-1.5"><span className={CAPTION}>Doing</span>
-              {doing.map((d) => <div key={d.id} className="flex flex-col gap-0.5 rounded-control border border-border px-2.5 py-2 text-xs"><span className="font-mono text-caption text-fg-muted">{d.id}</span>{d.title}</div>)}
+              {doing.map((d) => <div key={d.id} className="flex flex-col gap-0.5 rounded-control border border-border px-2.5 py-2 font-mono text-xs text-fg-secondary"><span className="text-fg-muted">{d.id}</span>{d.title}</div>)}
             </section>
           )}
           <p className="text-xs text-fg-muted">Drag a card onto the chat to attach it · <a href="/planner" className="underline">Open the full Planner</a></p>
@@ -237,7 +237,7 @@ export function FilesPanel({ threadRef, demo, onOpenDoc }: { threadRef?: string;
       <span className={CAPTION}>Files{demo ? ' · ~/dev/hollis-labs' : ''}</span>
       <label className="flex h-7 items-center gap-2 rounded-control border border-border px-2.5 text-xs text-fg-muted"><input aria-label="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter files" className="min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-xs focus-visible:bg-transparent!" /></label>
       {demo ? (
-        <div role="tree" aria-label="Files" className="flex flex-col">
+        <div role="tree" aria-label="Files" className="flex flex-col gap-2.5">
           {DEMO_TREE.filter((n) => n.name.toLowerCase().includes(filter.toLowerCase())).map((n) => (
             <div key={n.name} role="treeitem" aria-selected={!!n.hl} style={{ paddingLeft: 6 + n.depth * 16 }} className={cn(ROW, n.hl && 'bg-selection text-fg')}>{n.open === undefined ? null : n.open ? <ChevronDown aria-hidden className="size-3" /> : <ChevronRight aria-hidden className="size-3" />}<span className="flex-1">{n.name}</span>{n.flag && <Chip square>{n.flag}</Chip>}</div>
           ))}
@@ -247,7 +247,7 @@ export function FilesPanel({ threadRef, demo, onOpenDoc }: { threadRef?: string;
           <FileTree filter={filter} />
           {(ws.loading || items.length > 0) && <span className={CAPTION}>Shared in this chat</span>}
           {ws.loading ? <p role="status" className="text-xs text-fg-muted">Loading files…</p> : items.length > 0 && (
-            <ul className="flex flex-col">{items.map((i) => <li key={i.id}><button type="button" onClick={() => onOpenDoc(i)} className={cn(ROW, 'w-full text-left')}><FileText aria-hidden className="size-3 text-fg-muted" /><span className="min-w-0 flex-1 truncate">{i.name}</span>{i.shared && <Chip square>shared</Chip>}</button></li>)}</ul>
+            <ul className="flex flex-col gap-2.5">{items.map((i) => <li key={i.id}><button type="button" onClick={() => onOpenDoc(i)} className={cn(ROW, 'w-full text-left')}><FileText aria-hidden className="size-3 text-fg-muted" /><span className="min-w-0 flex-1 truncate">{i.name}</span>{i.shared && <Chip square>shared</Chip>}</button></li>)}</ul>
           )}
         </>
       )}
