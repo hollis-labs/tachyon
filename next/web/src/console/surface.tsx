@@ -1,9 +1,13 @@
 import { SlotProvider } from "@tachyon/host-sdk"
 import { ApiProvider, useApi } from "@tachyon/torque-client"
 import { type ReactNode, useState } from "react"
-import { Route, Routes } from "react-router-dom"
+import { Navigate, Route, Routes } from "react-router-dom"
 import { AgentsPage } from "./agents-monitor/page"
 import { ApprovalProvider } from "./approvals/context"
+import { BuilderAgentsPage } from "./builder/BuilderAgentsPage"
+import { BuilderLaunchesPage } from "./builder/BuilderLaunchesPage"
+import { BuilderLibraryPage } from "./builder/BuilderLibraryPage"
+import { BuilderTeamsPage } from "./builder/BuilderTeamsPage"
 import { ApprovalsPage } from "./approvals/page"
 import { LinkTextSlot, ShellAutolink } from "./autolink/LinkText"
 import { withChatApiMessages } from "./chat/chatapi"
@@ -18,6 +22,8 @@ import { MessagingProvider } from "./messaging/context"
 import { OPERATOR_ADDRESS } from "./messaging/operator"
 import { AgentUnreadProvider } from "./messaging/unread"
 import { NeedsYouPage } from "./needs-you/page"
+import { RegistryProjectsPage } from "./registry/RegistryProjectsPage"
+import { TranscriptDashboard } from "./transcripts/page"
 
 const consoleSlots = { LinkText: LinkTextSlot }
 
@@ -108,6 +114,52 @@ export function NeedsYouSurface() {
     <ConsoleBase>
       <Routes>
         <Route path="/needs-you" element={<NeedsYouPage />} />
+      </Routes>
+    </ConsoleBase>
+  )
+}
+
+/**
+ * The Builder surface (`/builder` in ui/app.json): the old console routes. `/builder/classic` is not ported (plan
+ * section 13); `/builder/projects` goes to the registry, as it did.
+ */
+export function BuilderSurface() {
+  return (
+    <ConsoleBase>
+      <Routes>
+        <Route path="/builder" element={<Navigate to="/builder/agents" replace />} />
+        <Route path="/builder/agents" element={<BuilderAgentsPage />} />
+        <Route path="/builder/agents/:id" element={<BuilderAgentsPage />} />
+        <Route path="/builder/projects" element={<Navigate to="/registry/projects" replace />} />
+        <Route path="/builder/teams" element={<BuilderTeamsPage />} />
+        <Route path="/builder/launches" element={<BuilderLaunchesPage />} />
+        <Route path="/builder/library" element={<BuilderLibraryPage />} />
+        <Route path="/builder/library/:kind" element={<BuilderLibraryPage />} />
+        <Route path="/builder/library/:kind/:id" element={<BuilderLibraryPage />} />
+      </Routes>
+    </ConsoleBase>
+  )
+}
+
+/** The Registry surface (`/registry` in ui/app.json): the old console routes. */
+export function RegistrySurface() {
+  return (
+    <ConsoleBase>
+      <Routes>
+        <Route path="/registry" element={<RegistryProjectsPage />} />
+        <Route path="/registry/projects" element={<RegistryProjectsPage />} />
+        <Route path="/registry/projects/:id" element={<RegistryProjectsPage />} />
+      </Routes>
+    </ConsoleBase>
+  )
+}
+
+/** The Transcripts surface (`/dashboards/transcripts` in ui/app.json): the old console overlay route. */
+export function TranscriptsSurface() {
+  return (
+    <ConsoleBase>
+      <Routes>
+        <Route path="/dashboards/transcripts" element={<TranscriptDashboard />} />
       </Routes>
     </ConsoleBase>
   )
