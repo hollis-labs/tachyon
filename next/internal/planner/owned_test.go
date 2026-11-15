@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hollis-labs/tachyon/next/internal/objects"
 	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
 func TestOwnedChangeStreamObservesServiceWrites(t *testing.T) {
@@ -54,11 +54,7 @@ func TestOwnedChangeStreamObservesServiceWrites(t *testing.T) {
 
 func ownedFixture(t *testing.T) (*Owned, *store.Store) {
 	t.Helper()
-	store, err := store.OpenFile(context.Background(), filepath.Join(t.TempDir(), "tachyon.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
+	store := storetest.New(t).Open(t)
 	return &Owned{Objects: objects.New(store)}, store
 }
 func revision(row Item) int64 { return int64(number(row["rev"])) }

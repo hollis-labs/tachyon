@@ -8,12 +8,10 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
 func TestPlannerCRUDQueriesAssignmentsAndHistory(t *testing.T) {
-	s, db, path := open(t)
+	s, db, testDB := open(t)
 	project := create(t, s, Project{Common: Common{Name: "Fabric"}})
 	workflow := create(t, s, Workflow{Common: Common{Name: "Build"}})
 	plan := create(t, s, Plan{Common: Common{Name: "Control plane"}, Status: "draft", Priority: 2, ProjectID: project.ID, WorkflowID: workflow.ID, AcceptanceCriteria: []string{"Local writes survive restart"}})
@@ -94,11 +92,7 @@ func TestPlannerCRUDQueriesAssignmentsAndHistory(t *testing.T) {
 	if err != nil || len(history) != 4 || history[1].Record.Revision != updated.Revision || history[3].Operation != "restore" {
 		t.Fatal("history lost", err)
 	}
-	reopened, err := store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
+	reopened := testDB.Open(t)
 	recovered := New(reopened)
 	rows, err = recovered.ListPlanner(ctx, PlannerFilter{AssignedTo: team.ID})
 	if err != nil || len(rows) != 1 || rows[0].ID != plan.ID {

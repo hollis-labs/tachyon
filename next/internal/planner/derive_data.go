@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tachyon/next/internal/plannerapi"
+	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
 // themeSignals counts the events momentum is derived from for one theme.
@@ -312,7 +313,7 @@ func (h *HTTP) themeSeries(ctx context.Context, theme Item, days int) []Item {
 			end = now
 		}
 		var later sql.NullInt64
-		_ = h.Store.Reader.QueryRowContext(ctx, `SELECT coalesce(sum(json_extract(delta_json,'$.done')),0) FROM planner_events WHERE theme_id=? AND kind='task' AND at_ms>=?`, id, end.UnixMilli()).Scan(&later)
+		_ = h.Store.Reader.QueryRowContext(ctx, `SELECT coalesce(sum(`+store.JSONInt(h.Store.Dialect(), "delta_json", "done")+`),0) FROM planner_events WHERE theme_id=? AND kind='task' AND at_ms>=?`, id, end.UnixMilli()).Scan(&later)
 		d := done - int(later.Int64)
 		if d < 0 {
 			d = 0

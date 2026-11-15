@@ -38,6 +38,40 @@ jobs:
 
   # The Substrate port (docs/substrate-port-plan.md): a separate Go module in next/, built and
   # checked on its own. The root job above does not descend into it (a nested module).
+  # The same Go suite on Postgres (port plan section 14, slice PG1). Every test that opens a database
+  # gets a fresh schema on this service; a test that cannot run on Postgres skips with its reason, and
+  # SUBSTRATE_REQUIRE_POSTGRES=1 makes a Postgres-only test fail rather than skip if the DSN is lost.
+  # The container trusts local connections, so the DSN carries no password.
+  next-postgres:
+    name: next (Substrate port, Postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: next
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: tachyon_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SUBSTRATE_TEST_POSTGRES_DSN: postgres://postgres@localhost:5432/tachyon_test?sslmode=disable
+      SUBSTRATE_REQUIRE_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: next/go.mod
+          cache-dependency-path: next/go.sum
+      - run: go test -race ./...
+
   next:
     name: next (Substrate port)
     runs-on: ubuntu-latest

@@ -10,6 +10,7 @@ import (
 
 	libstore "github.com/hollis-labs/libs/core/store"
 	"github.com/hollis-labs/substrate/modules/identity"
+	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
 // Reissued is one old token turned into an identity key. Key is the secret; it is never logged,
@@ -80,7 +81,7 @@ func (s *Service) Reissue(ctx context.Context) ([]Reissued, error) {
 		}
 		cred := Credential{ID: kc.ID, IdentityID: c.identity.ID, Grants: c.token.Grants.normalized(), SourceTokenID: c.token.ID,
 			CreatedAt: now, ExpiresAt: deadline}
-		if err := s.st.WriteTx(ctx, func(ctx context.Context, tx libstore.Tx) error { return insertCredential(ctx, tx, cred) }); err != nil {
+		if err := store.WriteTx(ctx, s.st, func(ctx context.Context, tx libstore.Tx) error { return insertCredential(ctx, tx, cred) }); err != nil {
 			return out, fmt.Errorf("access: map key %s to identity %s: %w", kc.ID, c.identity.ID, err)
 		}
 		out = append(out, Reissued{Identity: c.identity, OldTokenID: c.token.ID, OldExpiresAt: c.token.ExpiresAt, Credential: cred, Key: key})

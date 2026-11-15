@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hollis-labs/tachyon/next/internal/store"
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
 )
 
 func capture(t *testing.T, s *Service) Record {
@@ -21,7 +22,7 @@ func promotion(source Record, kind Kind) PromotionRequest {
 }
 
 func TestPromotionPreservesHistoryAndSurvivesRetry(t *testing.T) {
-	s, _, path := open(t)
+	s, _, testDB := open(t)
 	source := capture(t, s)
 	source, err := s.Patch(ctx, source.ID, source.Revision, Patch{Definition: json.RawMessage(`{"properties":{"large_integer":9007199254740993}}`)}, "operator")
 	if err != nil {
@@ -80,11 +81,7 @@ func TestPromotionPreservesHistoryAndSurvivesRetry(t *testing.T) {
 	}
 	checkLinks(s, source.ID, target.ID, "promoted_to")
 	checkLinks(s, target.ID, source.ID, "promoted_from")
-	reopened, err := store.OpenFile(ctx, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
+	reopened := testDB.Open(t)
 	recovered := New(reopened)
 	// Different whitespace/key order is the same canonical request.
 	req.Overrides = json.RawMessage(`{ "hypothesis": "Local data stays available", "name": "Explore ownership" }`)
@@ -218,8 +215,18 @@ func TestPromotionRollsBackAfterTargetAndReceiptWrites(t *testing.T) {
 	source := capture(t, s)
 	req := promotion(source, TaskKind)
 	// Force failure late in the transaction, after target, revision and receipt.
+	trigger := `CREATE TRIGGER fail_promotion BEFORE INSERT ON object_revisions WHEN NEW.operation='promote' BEGIN SELECT RAISE(ABORT,'injected failure'); END`
+	if storetest.Postgres() {
+		trigger = `CREATE FUNCTION fail_promotion() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.operation = 'promote' THEN RAISE EXCEPTION 'injected failure'; END IF;
+ RETURN NEW;
+END
+$$;
+CREATE TRIGGER fail_promotion BEFORE INSERT ON object_revisions FOR EACH ROW EXECUTE FUNCTION fail_promotion()`
+	}
 	err := db.Writer.Submit(ctx, "test_failure", func(ctx context.Context, tx store.Tx) error {
-		_, err := tx.ExecContext(ctx, `CREATE TRIGGER fail_promotion BEFORE INSERT ON object_revisions WHEN NEW.operation='promote' BEGIN SELECT RAISE(ABORT,'injected failure'); END`)
+		_, err := tx.ExecContext(ctx, trigger)
 		return err
 	})
 	if err != nil {
@@ -242,8 +249,12 @@ func TestPromotionRollsBackAfterTargetAndReceiptWrites(t *testing.T) {
 	if err != nil || len(links) != 0 {
 		t.Fatal("links leaked", err)
 	}
+	drop := `DROP TRIGGER fail_promotion`
+	if storetest.Postgres() {
+		drop = `DROP TRIGGER fail_promotion ON object_revisions`
+	}
 	err = db.Writer.Submit(ctx, "remove_failure", func(ctx context.Context, tx store.Tx) error {
-		_, ierr := tx.ExecContext(ctx, `DROP TRIGGER fail_promotion`)
+		_, ierr := tx.ExecContext(ctx, drop)
 		return ierr
 	})
 	if err != nil {

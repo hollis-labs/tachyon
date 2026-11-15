@@ -252,7 +252,7 @@ func persist(ctx context.Context, tx store.Tx, r *Record, operation, actor strin
 		return err
 	}
 	for _, l := range links {
-		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO object_links(from_id,relation,slot,to_id) VALUES(?,?,?,?)`, r.ID, l.Relation, l.Slot, l.ToID); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO object_links(from_id,relation,slot,to_id) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`, r.ID, l.Relation, l.Slot, l.ToID); err != nil {
 			return err
 		}
 	}

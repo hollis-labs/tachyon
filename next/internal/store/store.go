@@ -1,8 +1,10 @@
 // Package store is Tachyon's schema and its access to the database module's store.
 //
-// The schema is one goose migration, migrations/sqlite/00001_init.sql: the old build's schema at migration
-// 056 plus its baseline tables, byte for byte (port plan section 3). Register it with Use before
-// boot; the database module applies it on start.
+// The schema is the goose migrations in migrations/sqlite: 00001_init.sql is the old build's schema at
+// migration 056 plus its baseline tables, byte for byte (port plan section 3). migrations/postgres
+// holds the same versions for Postgres, describing the same tables, columns, keys and indexes (port
+// plan section 14; the parity test proves it). The SQLite set is the reference. Register both with
+// Use before boot; the database module applies the set for its driver on start.
 //
 // Domain packages reach the database through From, and keep the store's rules (adopting-substrate
 // section 4): reads on Reader(), writes in WriteTx using only the tx they are given, never a write
@@ -29,7 +31,7 @@ const Root = "migrations"
 
 // Migrations are the embedded goose migrations.
 //
-//go:embed migrations/sqlite/*.sql
+//go:embed migrations/sqlite/*.sql migrations/postgres/*.sql
 var Migrations embed.FS
 
 // Source is the migration source, for the database module and for tests.

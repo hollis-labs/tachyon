@@ -63,7 +63,7 @@ func projectRelations(ctx context.Context, tx store.Tx, r Record) error {
 		if rel.Kind == "" || rel.To.ID == "" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO planner_relation_index(from_id,kind,to_id,from_db,to_db) VALUES(?,?,?,?,?)`, r.ID, rel.Kind, rel.To.ID, from, rel.To.DB); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO planner_relation_index(from_id,kind,to_id,from_db,to_db) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING`, r.ID, rel.Kind, rel.To.ID, from, rel.To.DB); err != nil {
 			return err
 		}
 	}
