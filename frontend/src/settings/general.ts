@@ -44,8 +44,9 @@ export interface GeneralApi {
 }
 
 const ROOT = "/api/plugins/console/v1/admin"
-// Alerts has its own section and Agents stays 'soon'.
-const HIDDEN = new Set(["alerts", "agents"])
+// Alerts has its own section and Agents stays 'soon', except the stale threshold the golden puts on General.
+const HIDDEN = new Set(["alerts"])
+const ONLY: Record<string, readonly string[]> = { agents: ["stale_after_s"] }
 
 interface Wire {
   contract_version?: number
@@ -134,7 +135,9 @@ export function realApi(): GeneralApi {
             headers: { Accept: "application/json" },
           })
           const snap = await json<Snapshot>(res)
-          const fields = Object.entries(g.schema.properties ?? {}).map(([key, p]): SettingField => {
+          const fields = Object.entries(g.schema.properties ?? {})
+            .filter(([key]) => !ONLY[g.id] || ONLY[g.id].includes(key))
+            .map(([key, p]): SettingField => {
             const meta = g.fields[key]
             const v = snap.values[key]
             const reason =
