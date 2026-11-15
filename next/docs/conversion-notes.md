@@ -198,7 +198,8 @@ Details: `docs/api-contract.md`.
   (Torque task moves and merged PRs into the timeline) does not run. Planner object revisions still reach the
   stream, because the stream tails them locally.
 - **The planner plugin process is not ported.** It only registered the UI's name; the SPA now compiles the planner
-  UI in. Its data was always served by the host. `import-planner` is dropped, as planned.
+  UI in. Its data was always served by the host. **Post-adoption:** if it comes back, it returns as a
+  `pluginhost` spec once CW-20261114-0184 is fixed. `import-planner` is dropped, as planned.
 - **`pluginhost` is not selected** (contract section 6; Substrate CW-20261114-0184).
 - **Torque's credential** for the planner is `tachyon.upstreams.torque.token`, a secrets reference resolved per
   request.

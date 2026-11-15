@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -713,19 +714,77 @@ func TestSyncObjectsStatus(t *testing.T) {
 	}
 }
 
-// The planner routes: the owner reads and writes; a person without tachyon.operator reads but is
-// refused a write (operator_required); a key with no planner scope is refused a read.
+// The planner routes in the served binary: a signed-in owner reads and writes under both prefixes.
+// A key holding both planner scopes still cannot write (planner writes need tachyon.operator, which a
+// key never has). A read-only key is refused a write by scope, and a key without a planner scope is
+// refused a read. Identity creates no person but the owner, so a signed-in non-operator person
+// cannot be set up here; keys carry the operator refusal.
 func TestPlannerRoutesAuth(t *testing.T) {
-	base, _ := started(t, loopbackOverride)
+	base, app := started(t, loopbackOverride)
+	ids := identity.From(app)
+	key := func(scopes ...string) map[string]string {
+		k, _, err := ids.CreateKey(context.Background(), identity.KeyInput{Name: "planner-test", Scopes: scopes})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return map[string]string{"Authorization": "Bearer " + k}
+	}
+	readWrite := key("tachyon.planner.read", "tachyon.planner.write")
+	readOnly := key("tachyon.planner.read")
+	noPlanner := key("tachyon.objects.read")
+	const console, legacy = "/api/plugins/console/v1", "/api/plugins/planner/v1"
+	keys := newClient(t, base)
+	refused := func(name string, h map[string]string, method, path, want string) {
+		t.Helper()
+		var body any
+		if method != "GET" {
+			body = map[string]any{}
+		}
+		if code := flatCode(t, keys.want(403, method, path, body, h)); code != want {
+			t.Errorf("%s %s %s: %s, want %s", name, method, path, code, want)
+		}
+	}
+	for _, prefix := range []string{console, legacy} {
+		keys.want(200, "GET", prefix+"/planner/themes", nil, readWrite)
+		keys.want(200, "GET", prefix+"/planner/themes", nil, readOnly)
+		refused("read+write key", readWrite, "POST", prefix+"/planner/ideas", "operator_required")
+		refused("read+write key", readWrite, "PATCH", prefix+"/planner/ideas/x", "operator_required")
+		refused("read-only key", readOnly, "POST", prefix+"/planner/ideas", "scope_required")
+		refused("no-planner key", noPlanner, "GET", prefix+"/planner/themes", "scope_required")
+	}
+	keys.want(200, "GET", console+"/planner/assignments", nil, readOnly)
+	refused("read+write key", readWrite, "POST", console+"/planner/assignments", "operator_required")
+
 	c := newClient(t, base)
-	c.want(401, "GET", "/api/plugins/console/v1/planner/themes", nil, nil)
+	c.want(401, "GET", console+"/planner/themes", nil, nil)
 	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
-	c.want(200, "GET", "/api/plugins/console/v1/planner/themes", nil, nil)
-	c.want(200, "GET", "/api/plugins/planner/v1/planner/themes", nil, nil) // the legacy prefix
+	c.want(200, "GET", console+"/planner/themes", nil, nil)
+	c.want(200, "GET", legacy+"/planner/themes", nil, nil)
 	// The owner may write: the request reaches the planner (which refuses this empty body itself).
-	if code, body := c.do("POST", "/api/plugins/console/v1/planner/ideas", map[string]any{}, xrw); code == 401 || code == 403 {
+	if code, body := c.do("POST", console+"/planner/ideas", map[string]any{}, xrw); code == 401 || code == 403 {
 		t.Fatalf("owner write refused: %d %s", code, body)
 	}
+}
+
+// B4's console data routes answer in the served binary (pluginhost, which shadowed /api/plugins/,
+// is not selected): a signed-in owner lists the providers and calls an object verb; a key, even
+// with the objects scope, is refused.
+func TestConsoleDataRoutesServed(t *testing.T) {
+	base, app := started(t, loopbackOverride)
+	k, _, err := identity.From(app).CreateKey(context.Background(), identity.KeyInput{Name: "console-test", Scopes: []string{"tachyon.objects.read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, base)
+	c.want(401, "GET", dataverbs.Prefix+"/providers", nil, nil)
+	c.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	if body := c.want(200, "GET", dataverbs.Prefix+"/providers", nil, nil); !bytes.Contains(body, []byte(`"objects.list"`)) {
+		t.Fatalf("providers = %s", body)
+	}
+	in, _ := json.Marshal(map[string]string{"kind": "task"})
+	c.want(200, "GET", dataverbs.Prefix+"/providers/tachyon/verbs/objects.list?input="+url.QueryEscape(string(in)), nil, nil)
+	keys := newClient(t, base)
+	keys.want(403, "GET", dataverbs.Prefix+"/providers", nil, map[string]string{"Authorization": "Bearer " + k})
 }
 
 // The planner event stream ends when the server shuts down (SIGTERM), well within the grace period:
