@@ -252,7 +252,8 @@ appendix B). Groups:
   references (the operator writes the files; this cell never handles the values); the fallback to `gh auth token` is dropped.
   The Tangent approval-queue address is dropped with the bridge.
 - **Outbound features** → booleans under `tachyon.features`, each defaulting to **off**: object-sync scheduler dispatch, chat
-  sync, agents collector, catalog index, card events, card effects on Torque, card delivery, alert sources and the alert sink,
+  sync, agents collector, agents controls (nudge, interrupt, restart and the Tether launches; a switch the old build did not
+  have, added so nothing reaches an agent before acceptance), catalog index, card events, card effects on Torque, card delivery, alert sources and the alert sink,
   transcript snapshotting, action runs. The cutover uses these (section 8). Stub switches are dropped. `TACHYON_ASSURANCE` is
   dropped (section 4).
 - Policy and config files (approval producer and assurance config, cache policy, terminal policy, card delivery, app-agent
@@ -313,7 +314,8 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
 4. Apply the descriptor change (release binary, override with outbound features off, the new data directory); start the unit.
    Check that every Tether hub origin that points at Tachyon is connected again (`tether_gateway_status`); if one is marked failed,
    the owner reloads the hub (an origin that failed during a restart is not retried until a reload).
-5. Section 10 checks. Hand out the key files; each holder makes one call that succeeds and confirms its old token now gets 401.
+5. Section 10 checks, including that `tachyon.files.secret_key` is the same key file the old build read (an approval secret
+   write does not answer 503, so migrated `approval_secrets` rows stay readable). Hand out the key files; each holder makes one call that succeeds and confirms its old token now gets 401.
 6. **Acceptance** by the director with the owner: every section 10 check passed and every holder confirmed. Only then: switch
    the outbound features on in the override, restart, and check that object sync, chat sync and the agents collector resume
    from their copied cursors (first sync run reports no full re-pull). Holders may then delete their old token files, and any copies of the old service tokens kept on the host are removed by
