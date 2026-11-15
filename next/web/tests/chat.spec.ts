@@ -105,8 +105,8 @@ test("plans tab: the plan and its steps show, and a new step is added against th
 })
 
 test("artifacts tab: the agent's shared file is listed and opens", async ({ page }) => {
-  // B6 adds workspace items from the operator only (added_by "user"); nothing writes an agent's artifact yet.
-  test.fixme(chatBackend, "the backend has no agent-authored workspace write to seed an artifact")
+  // B6 adds workspace items from the operator only (added_by "user"); the agent's writes are the chat data verbs.
+  test.fixme(chatBackend, "agent-authored workspace items come with the chat data verbs (B6d, CW-20261115-0039)")
   await page.goto(`/chat/${encodeURIComponent(ROW)}`)
   const panel = page.getByRole("complementary", { name: "Agent Panel" })
   await panel.getByRole("button", { name: "Scroll tabs right" }).click()
