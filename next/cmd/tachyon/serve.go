@@ -55,13 +55,14 @@ type deps struct {
 // the credential's kinds. The console data API answers signed-in people, each verb behind its scope.
 func appRoutes(d deps) []routes.Route {
 	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs)
-	console := dataverbs.NewConsoleHTTP(d.local)
+	console := dataverbs.NewConsoleHTTP(d.local, d.builder.teams)
 	return append(append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), builderRoutes(d.builder)...), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.Prefix + "/providers", Scope: routes.Authenticated, Handler: console},
 		{Method: http.MethodGet, Pattern: dataverbs.Prefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: console},
+		{Method: http.MethodPost, Pattern: dataverbs.Prefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: console},
 		{Method: http.MethodGet, Pattern: objectSyncStatusPath, Scope: "tachyon.objects.read", Handler: objectSyncStatus(d.objectJob)},
 	}...)
 }

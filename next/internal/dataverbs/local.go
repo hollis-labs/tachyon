@@ -40,6 +40,32 @@ func NewLocal(s *objects.Service) *Local {
 	})
 	register(p, "objects.get", false, "Read a local record, including a tombstone.", []string{"id"}, func(ctx context.Context, q IDRequest, _ string) (any, error) { return s.Get(ctx, q.ID) })
 	register(p, "objects.lookup_source", false, "Resolve an exact provider-qualified source identity.", []string{"provider", "instance", "collection", "kind", "external_id"}, func(ctx context.Context, q objects.SourceKey, _ string) (any, error) { return s.LookupSource(ctx, q) })
+	register(p, "objects.create", true, "Create with a caller-retained UUID; reuse with different initial content conflicts.", []string{"id", "kind", "definition"}, func(ctx context.Context, q CreateRequest, actor string) (any, error) {
+		return s.CreateWithID(ctx, q.ID, jsonDefinition{kind: q.Kind, raw: q.Definition}, q.Metadata, actor)
+	})
+	register(p, "objects.patch", true, "Merge authored fields/metadata using the expected revision; null releases local fields.", []string{"id", "expected_revision"}, func(ctx context.Context, q PatchRequest, actor string) (any, error) {
+		if err := revision(q.RevisionRequest); err != nil {
+			return nil, err
+		}
+		return s.Patch(ctx, q.ID, q.ExpectedRevision, objects.Patch{Definition: q.Definition, Metadata: q.Metadata}, actor)
+	})
+	for _, action := range []struct {
+		name    string
+		deleted bool
+	}{{"delete", true}, {"restore", false}} {
+		register(p, "objects."+action.name, true, "Set the local tombstone with a revision check; never deletes history or writes upstream.", []string{"id", "expected_revision"}, func(ctx context.Context, q RevisionRequest, actor string) (any, error) {
+			if err := revision(q); err != nil {
+				return nil, err
+			}
+			return s.SetDeleted(ctx, q.ID, q.ExpectedRevision, action.deleted, actor)
+		})
+	}
+	register(p, "objects.take_ownership", true, "Explicitly adopt effective source data as a local master; retain provider provenance.", []string{"id", "expected_revision"}, func(ctx context.Context, q RevisionRequest, actor string) (any, error) {
+		if err := revision(q); err != nil {
+			return nil, err
+		}
+		return s.TakeOwnership(ctx, q.ID, q.ExpectedRevision, actor)
+	})
 	register(p, "objects.history", false, "Read immutable revisions in ascending order.", []string{"id"}, func(ctx context.Context, q HistoryRequest, _ string) (any, error) {
 		if q.AfterRevision < 0 {
 			return nil, invalid("after_revision must be nonnegative.")
@@ -123,6 +149,12 @@ func (p *Local) Invoke(ctx context.Context, name string, input json.RawMessage, 
 	raw, err := json.Marshal(result)
 	return raw, serviceError(err)
 }
+func revision(q RevisionRequest) error {
+	if q.ExpectedRevision < 1 {
+		return invalid("expected_revision must be positive.")
+	}
+	return nil
+}
 func effectiveLimit(limit int) int {
 	if limit == 0 {
 		return 100
@@ -160,3 +192,12 @@ func serviceError(err error) error {
 		return svcerr.Wrap(err, svcerr.CodeInternal, "Local data operation failed.")
 	}
 }
+
+// jsonDefinition is a create's definition as the caller sent it; the service validates it for its kind.
+type jsonDefinition struct {
+	kind objects.Kind
+	raw  json.RawMessage
+}
+
+func (d jsonDefinition) ObjectKind() objects.Kind     { return d.kind }
+func (d jsonDefinition) MarshalJSON() ([]byte, error) { return d.raw, nil }

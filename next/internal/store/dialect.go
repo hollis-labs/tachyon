@@ -39,6 +39,16 @@ func JSONInt(d libstore.Dialect, column string, path ...string) string {
 	return expr
 }
 
+// JSONText renders a text read of a JSON column at path (keys), for either dialect. It panics on an
+// invalid column or path: both are literals in the calling code.
+func JSONText(d libstore.Dialect, column string, path ...string) string {
+	expr, err := d.JSONText(column, path...)
+	if err != nil {
+		panic(fmt.Sprintf("store.JSONText(%q, %q): %v", column, path, err))
+	}
+	return expr
+}
+
 // writeLock is the first key of the Postgres advisory lock every Tachyon write transaction holds;
 // the second is the hash of the current schema. Advisory locks are per database, so the schema key
 // keeps two Tachyon schemas in one database (or two tests) from serializing each other.
