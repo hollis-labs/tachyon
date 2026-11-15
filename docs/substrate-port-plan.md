@@ -172,7 +172,7 @@ same kind of input: the window's step-1 backups (section 8), never the old data 
 **Schema is enforced, not assumed.** Before copying, the command enumerates the source's `sqlite_master` (tables, indexes,
 triggers, views) and `pragma table_info` of every table, and compares them with its built-in mapping. **Any table or column it
 does not know is a failure, never a skip.** It also refuses a source whose `tachyon_migrations` ledger is not exactly the names
-it was built for (001 to 058 since the parity-carry of 057 and 058; a source at 056 is refused with a message naming the version). Each source table has one of three rules in the mapping:
+it was built for (every old migration up to the live head, each carried by a parity-carry slice; a source at any other head is refused with a message naming the version). Each source table has one of three rules in the mapping:
 - **copy** (the default, for every table that has rows, including caches, cursors, watermarks, read models and history: they
   are copied so sync resumes where it stopped instead of re-pulling or double-delivering);
 - **ledger**: `tachyon_migrations`, replaced by goose's own table;
@@ -342,7 +342,7 @@ write and one read (a planner item edit, then read back); an unknown `Host` refu
 including an unknown `/api/plugins/...` path; an unknown `/api/plugins/...` path refused for the signed-in owner too (the console
 data routes are served by the app itself while `pluginhost` is deselected, section 13); an API key holding no operator scope refused on an approval resolve; each SSE
 stream (console events, activity) connects and receives a keepalive; the chat thread list has the same count as the old build
-reported before the window (139 at the 2026-11-15 rehearsal); the terminal WebSocket connects; the 6 object-sync schedules
+recorded before the window; the terminal WebSocket connects; the 6 object-sync schedules
 listed with the same enabled state as before; one approval listed with its decision log; each key holder's one call succeeds and
 its old token gets 401; the session cookie is `HttpOnly`, `Secure` and `SameSite=Strict` through the proxy; the Tether hub's
 Tachyon origins are connected.
