@@ -303,10 +303,10 @@ The rest of their import graph was already carried in G3a.
 
 - **Surfaces.**
   - `AgentsSurface` (`/agents`, `/agents/:session`).
-  - `NeedsYouSurface` (`/needs-you`): a new nav item and surface in `ui/app.json`, placed after Approvals (old main
-    had it after Agents). It requires `tachyon.agents.read` for now; see the scope note below.
+  - `NeedsYouSurface` (`/needs-you`): a new nav item and surface in `ui/app.json`, after Agent Ops as on old main. It requires `tachyon.agents.read` (accepted for B8, CW-20261115-0062).
 - **Edits** (scripted, `g5-adapt.py`):
-  - `teams-tab.tsx`: the tab stays and says team runs moved to the Builder surface. The old tab ran team
+  - `teams-tab.tsx`: the tab stays where it was and says team runs moved to the Builder surface. G6
+    (CW-20261115-0063) restores team operations before cutover. The old tab ran team
     operations through the builder domain: `agents/TeamOperations`, owned builder records, provider actions, the
     agent editor. They arrive with Builder. `teams-tab.test.tsx` goes with it.
   - `activity-tab.test.tsx`: a host name in a test string is a placeholder.
@@ -355,8 +355,7 @@ same-origin `Origin`. Shapes: the old written contract, `internal/agentsapi/open
 
 The `agents/*` scopes are in the contract (`tachyon.agents.read`, `tachyon.agents.control` with the operator
 check on control). **Not in the contract yet:** `ceremony` and `needs-you`. The old build guarded `needs-you` with
-the operator check on reads. Proposed: `tachyon.agents.read`, with the operator check on `needs-you` kept. The
-backend slice decides. Not called by this SPA: `agents/collector` (the old stub's only).
+the operator check on reads. Accepted (B8, CW-20261115-0062): `tachyon.agents.read`, with the old operator check kept on `needs-you` reads. Not called by this SPA: `agents/collector` (the old stub's only).
 
 ## Gaps
 
