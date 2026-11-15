@@ -121,7 +121,8 @@ export function createObservationStore(fetchPage = (query: string) => observatio
   let generation = 0 // a read that returns after a newer refresh began is dropped
   let timer: ReturnType<typeof setInterval> | undefined
   const listeners = new Set<() => void>()
-  const refresh = (): Promise<void> => {
+  /** A full refresh reads every running session; `only` limits the per-session window reads to those sessions. */
+  const refresh = (only?: ReadonlySet<string>): Promise<void> => {
     if (running) return latest
     const mine = ++generation
     pass?.abort() // supersede: the previous session pass is cancelled and its remaining jobs discarded
@@ -163,7 +164,7 @@ export function createObservationStore(fetchPage = (query: string) => observatio
       } finally { running = null; publish() }
     })()
     running = globalPass.then(() => undefined)
-    const sessionPass = globalPass.then(rows => rows && sessions ? observeSessions(sessions, rows, mine, ctl) : undefined)
+    const sessionPass = globalPass.then(rows => rows && sessions ? observeSessions(sessions, rows, mine, ctl, only) : undefined)
     return latest = Promise.all([running, sessionPass]).then(() => undefined)
   }
   /** Merge rows from one session read into the shared state, newest-first and capped, and notify at once. */
@@ -185,11 +186,11 @@ export function createObservationStore(fetchPage = (query: string) => observatio
    * total, each under its own deadline, publishing every result as it lands. A slow or failed read affects only
    * that session: it keeps its last state, and the refresh ends by the deadline.
    */
-  async function observeSessions(source: SessionSource, globalRows: EventRow[], mine: number, ctl: AbortController) {
+  async function observeSessions(source: SessionSource, globalRows: EventRow[], mine: number, ctl: AbortController, only?: ReadonlySet<string>) {
     const budget = setTimeout(() => ctl.abort(), SESSION_BUDGET_MS)
-    try { await observeWithin(source, globalRows, mine, ctl.signal) } finally { clearTimeout(budget) }
+    try { await observeWithin(source, globalRows, mine, ctl.signal, only) } finally { clearTimeout(budget) }
   }
-  async function observeWithin(source: SessionSource, globalRows: EventRow[], mine: number, stop: AbortSignal) {
+  async function observeWithin(source: SessionSource, globalRows: EventRow[], mine: number, stop: AbortSignal, only?: ReadonlySet<string>) {
     let ids: string[]
     try { ids = (await withDeadline(signal => source.running(signal), stop)).slice(0, MAX_SESSIONS) } catch { return }
     if (mine !== generation || stop.aborted) return
@@ -207,7 +208,7 @@ export function createObservationStore(fetchPage = (query: string) => observatio
     const perSession = !source.workStates
     // Start each pass at a different session so stuck ones at the front cannot starve the rest every time.
     const start = ids.length ? mine % ids.length : 0
-    const order = [...ids.slice(start), ...ids.slice(0, start)]
+    const order = [...ids.slice(start), ...ids.slice(0, start)].filter(id => !only || only.has(id))
     const jobs = order.flatMap(id => [{ id, query: q(id, SESSION_EVENTS) }, ...(perSession ? [{ id, query: q(id, 1, 'session.work_state_changed') }] : [])])
 
     const drain = (queue: { id: string; query: string }[]) => Promise.all(Array.from({ length: Math.min(SESSION_CONCURRENCY, queue.length) }, async () => {
@@ -238,10 +239,21 @@ export function createObservationStore(fetchPage = (query: string) => observatio
   let lastPushed = 0
   let pending: ReturnType<typeof setTimeout> | undefined
   /** A pushed change asks for a refresh, coalesced so a busy stream reads no more often than the old poll. */
-  const pushed = () => {
+  let dirty: Set<string> | null = new Set() // null: the next pushed refresh reads every session
+  /** A pushed change asks for a refresh of the sessions it names (all of them after a gap), coalesced so a busy stream reads no more often than the old poll. */
+  const pushed = (id?: string) => {
+    if (dirty && id) dirty.add(id)
+    else dirty = null
     if (pending) return
     const wait = Math.max(0, lastPushed + LIVE_REFRESH_MS - Date.now())
-    pending = setTimeout(() => { pending = undefined; lastPushed = Date.now(); sync() }, wait)
+    pending = setTimeout(() => {
+      pending = undefined
+      lastPushed = Date.now()
+      const only = dirty
+      dirty = new Set()
+      // Queue behind the pass in flight, so a targeted read never cancels a full one (passes end by their budget).
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void latest.then(() => refresh(only ?? undefined))
+    }, wait)
   }
   const poll = (on: boolean) => {
     clearInterval(timer)
@@ -253,11 +265,11 @@ export function createObservationStore(fetchPage = (query: string) => observatio
     poll(true) // until the feed says it is live
     closeFeed = feed.open({
       up: (live) => { poll(!live); if (live) sync() },
-      gap: pushed,
+      gap: () => pushed(),
       session: (x) => {
         const w = workStatesFromSessions([x])[x.id]
         if (w && x.id in state.workStates) applyWorkStates({ [x.id]: w }, new Set([x.id]), generation)
-        pushed()
+        pushed(x.id)
       },
     })
   }

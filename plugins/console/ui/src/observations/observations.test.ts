@@ -324,3 +324,23 @@ it('with a live feed it reads when sessions change, at most every LIVE_REFRESH_M
   expect(reads).toBeGreaterThanOrEqual(afterUp + 3) // feed down: the 5s poll is back
   off()
 })
+
+it('a pushed session change reads only that session; a gap reads them all', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let on!: Parameters<LiveFeed['open']>[0]
+  const feed: LiveFeed = { open(h) { on = h; return () => undefined } }
+  const src = { ...source({ a: [], b: [], c: [] }), workStates: async () => ({}) }
+  const store = createObservationStore(async () => ({ events: [] }), src, feed)
+  const off = store.subscribe(() => undefined)
+  on.up(true)
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  src.queries.length = 0
+  on.session({ id: 'b' })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  expect(src.queries.map(q => new URLSearchParams(q).get('session_id'))).toEqual(['b'])
+  src.queries.length = 0
+  on.gap()
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  expect(new Set(src.queries.map(q => new URLSearchParams(q).get('session_id')))).toEqual(new Set(['a', 'b', 'c']))
+  off()
+})
