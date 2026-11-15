@@ -102,3 +102,10 @@ it('renders a card link as a chip that opens the review dialog route for that it
   expect(chip?.textContent).toBe('Card: apply 2 status changes')
   expect(chip?.getAttribute('href')).toBe(`/approvals?item=${id}`)
 })
+
+it('keeps ~/paths as text: a single tilde never strikes, a double one still does', () => {
+  const { container } = render(<MessageBody body={'Look under ~/dev/apps (about ~5 files) and ~/dev/libs.\n\n~~gone~~'} />)
+  const struck = [...container.querySelectorAll('del')].map((d) => d.textContent)
+  expect(struck).toEqual(['gone'])
+  expect(container.textContent).toContain('(about ~5 files) and')
+})
