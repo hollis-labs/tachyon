@@ -1,6 +1,7 @@
 package agentsderive
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"strings"
@@ -226,5 +227,29 @@ func TestOneLinerNeverShowsRawToolNamesOrShellKeywords(t *testing.T) {
 		if o := Describe(c.tool, in); o.Verb != c.verb || o.Target != c.target {
 			t.Errorf("%s %q: got %q %q", c.tool, c.cmd, o.Verb, o.Target)
 		}
+	}
+}
+
+// A turn's start is the first tool call after a seen turn end; before any turn end it is unknown (a
+// restarted collector joins mid-turn and must not guess).
+func TestLiveTurnStartedAt(t *testing.T) {
+	var got []Saved
+	l := &Live{Save: func(_ context.Context, _ string, d Saved) error { got = append(got, d); return nil }}
+	call := []byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/w/a.go"}}]}}`)
+	t0 := time.Date(2026, 11, 15, 1, 0, 0, 0, time.UTC)
+	l.Output(context.Background(), "s", t0, call)
+	if !got[len(got)-1].TurnStartedAt.IsZero() {
+		t.Fatal("no turn end seen yet: the start is unknown")
+	}
+	l.EndTurn("s")
+	l.Output(context.Background(), "s", t0.Add(10*time.Second), call)
+	l.Output(context.Background(), "s", t0.Add(20*time.Second), call)
+	if d := got[len(got)-1]; !d.TurnStartedAt.Equal(t0.Add(10*time.Second)) || d.CallsInTurn != 2 {
+		t.Fatalf("turn start is the first call after the end: %+v", d)
+	}
+	l.EndTurn("fresh") // a session that ended a turn before its first output
+	l.Output(context.Background(), "fresh", t0.Add(30*time.Second), call)
+	if d := got[len(got)-1]; !d.TurnStartedAt.Equal(t0.Add(30 * time.Second)) {
+		t.Fatalf("fresh: %+v", d)
 	}
 }

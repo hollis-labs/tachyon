@@ -100,6 +100,7 @@ export const AGENTS = {
     never: 'never',
     rightNow: 'Right now',
     since: 'since',
+    turnStarted: (age: string) => `Started ${age} ago`,
     callsThisTurn: (n: number) => `${n} tool call${n === 1 ? '' : 's'} this turn`,
     nothingNow: 'Nothing running right now',
     assigned: 'Assigned',

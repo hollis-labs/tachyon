@@ -3,7 +3,7 @@
 export type SessionState = 'working' | 'waiting' | 'idle' | 'stale' | 'unknown' | 'ended'
 export type StaleReason = 'no_events' | 'not_alive' | 'worker_offline'
 
-export interface OneLinerData { verb: string; target: string; tool: string; at: number; calls_this_turn: number }
+export interface OneLinerData { verb: string; target: string; tool: string; at: number; calls_this_turn: number; /** First tool call of this turn; absent when the turn's start was not seen. */ turn_started_at?: number }
 export interface ContextData { used: number | null; window: number | null; pct: number | null; source: 'stream' | 'unknown'; breakdown: unknown }
 export interface TokensData { metered: boolean; input: number | null; output: number | null; cache_read: number | null; cache_write: number | null }
 

@@ -44,6 +44,19 @@ describe('real payloads', () => {
     }
   })
 
+  it('words Right now as the golden: started age, tool and calls this turn; no start when it was not seen', async () => {
+    stubFetch()
+    const now = Date.parse('2026-11-15T02:00:00Z')
+    const base = { ...sessions[0], state: 'working' as const, one_liner: { verb: 'Running', target: 'go test', tool: 'Bash', at: now - 5000, calls_this_turn: 14 } }
+    const { unmount } = render(<MemoryRouter><SessionModal session={{ ...base, one_liner: { ...base.one_liner, turn_started_at: now - 120_000 } }} paused={false} now={now} onClose={() => undefined} onRestarted={() => undefined} /></MemoryRouter>)
+    expect(await screen.findByText(/Started 2m ago ·/)).toBeTruthy()
+    expect(screen.getByText(/14 tool calls this turn/)).toBeTruthy()
+    unmount()
+    render(<MemoryRouter><SessionModal session={base} paused={false} now={now} onClose={() => undefined} onRestarted={() => undefined} /></MemoryRouter>)
+    expect(await screen.findByText(/14 tool calls this turn/)).toBeTruthy()
+    expect(screen.queryByText(/Started .* ago/)).toBeNull()
+  })
+
   it('renders Rows, Cards and Board for live sessions without an empty provider chip or a blank group', () => {
     render(<><SessionRows sessions={sessions} groupBy="workroot" now={Date.now()} onSelect={() => undefined} /><SessionCards sessions={sessions} now={Date.now()} onSelect={() => undefined} /><SessionBoard sessions={sessions} now={Date.now()} onSelect={() => undefined} /></>)
     expect(screen.getAllByText('No workspace').length).toBeGreaterThan(0)

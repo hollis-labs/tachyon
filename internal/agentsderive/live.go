@@ -20,7 +20,10 @@ type Live struct {
 type Saved struct {
 	OneLiner    *OneLiner
 	CallsInTurn int
-	CallsDelta  int // tool calls seen since the last save; the store adds them to the session total
+	// TurnStartedAt is the first tool call of the current turn; zero when the turn's start was not seen
+	// (the session's last turn end predates this process), so a restart never guesses one.
+	TurnStartedAt time.Time
+	CallsDelta    int // tool calls seen since the last save; the store adds them to the session total
 	// Tools are those calls as one-liners (verb and reduced target, never an input), oldest first and capped,
 	// for the session timeline. Seq is the Tether sequence of the newest output frame they came from (0 = unknown).
 	Tools    []OneLiner
@@ -39,6 +42,9 @@ type liveSession struct {
 	seq     int64
 	tokens  *Usage
 	savedAt time.Time
+	// turnAt is the first tool call after a seen turn end; turnKnown is set by EndTurn.
+	turnAt    time.Time
+	turnKnown bool
 }
 
 // maxLive bounds the map: a session idle longest is dropped first when it is exceeded.
@@ -78,6 +84,9 @@ func (l *Live) OutputSeq(ctx context.Context, id string, at time.Time, seq int64
 	}
 	for i := range e.Tools {
 		t := e.Tools[i]
+		if s.calls == 0 && s.turnKnown {
+			s.turnAt = at
+		}
 		s.last = &t
 		s.calls++
 		s.unsaved++
@@ -103,7 +112,7 @@ func (l *Live) OutputSeq(ctx context.Context, id string, at time.Time, seq int64
 		return
 	}
 	s.savedAt = at
-	snap := Saved{CallsInTurn: s.calls, CallsDelta: s.unsaved, Meter: s.meter, At: at, Tools: s.pending, Seq: s.seq}
+	snap := Saved{CallsInTurn: s.calls, TurnStartedAt: s.turnAt, CallsDelta: s.unsaved, Meter: s.meter, At: at, Tools: s.pending, Seq: s.seq}
 	s.pending = nil
 	snap.TokDelta, s.tokens = s.tokens, nil
 	s.unsaved = 0
@@ -121,8 +130,18 @@ func (l *Live) OutputSeq(ctx context.Context, id string, at time.Time, seq int64
 // EndTurn resets the per-turn call counter (the collector calls it on a work_state change to idle).
 func (l *Live) EndTurn(id string) {
 	l.mu.Lock()
-	if s := l.sessions[id]; s != nil {
-		s.calls = 0
+	s := l.sessions[id]
+	if s == nil {
+		if len(l.sessions) >= maxLive {
+			l.mu.Unlock()
+			return // full: this session's next turn start stays unknown rather than evicting a busy one
+		}
+		if l.sessions == nil {
+			l.sessions = map[string]*liveSession{}
+		}
+		s = &liveSession{} // the next turn's start is now known even before this session's first output
+		l.sessions[id] = s
 	}
+	s.calls, s.turnAt, s.turnKnown = 0, time.Time{}, true
 	l.mu.Unlock()
 }
