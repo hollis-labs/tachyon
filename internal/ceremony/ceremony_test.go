@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -229,5 +230,63 @@ func TestTorqueHTTP(t *testing.T) {
 	cps, err := tq.PendingCheckpoints(context.Background())
 	if err != nil || len(cps) != 2 || cps[0].Title != "Merge?" || cps[1].Type != "pr_review" {
 		t.Fatal(cps, err)
+	}
+}
+
+// slowTorque counts checkpoint reads; each fails after a delay, or blocks until the context ends when hang is set.
+type slowTorque struct {
+	fakeTorque
+	hang  bool
+	calls atomic.Int64
+}
+
+func (f *slowTorque) Checkpoint(ctx context.Context, _ string) (CheckpointRecord, error) {
+	f.calls.Add(1)
+	if f.hang {
+		<-ctx.Done()
+		return CheckpointRecord{}, ctx.Err()
+	}
+	time.Sleep(20 * time.Millisecond)
+	return CheckpointRecord{}, fmt.Errorf("torque answered 502")
+}
+
+// A failing or hung Torque costs one read and at most the Torque budget, not one client timeout per checkpoint.
+func TestMeterStopsAtTheFirstTorqueFailureAndKeepsToItsBudget(t *testing.T) {
+	db := openDB(t)
+	for i := range 300 {
+		checkpointEvent(t, db, fmt.Sprintf("cp-%03d", i), "pending", now.Add(-time.Hour))
+	}
+	failing := &slowTorque{}
+	r := (&Meterer{DB: db, Now: func() time.Time { return now }, Torque: failing}).Read(context.Background())
+	if failing.calls.Load() != 1 || r.Sources["checkpoints"].OK || !strings.Contains(r.Sources["checkpoints"].Error, "502") {
+		t.Fatalf("failing Torque: %d reads, %+v", failing.calls.Load(), r.Sources["checkpoints"])
+	}
+
+	defer func(b time.Duration) { TorqueBudget = b }(TorqueBudget)
+	TorqueBudget = 100 * time.Millisecond
+	hung := &slowTorque{hang: true}
+	start := time.Now()
+	r = (&Meterer{DB: db, Now: func() time.Time { return now }, Torque: hung}).Read(context.Background())
+	if el := time.Since(start); el > 2*time.Second || hung.calls.Load() != 1 || r.Sources["checkpoints"].OK {
+		t.Fatalf("hung Torque: %s, %d reads, %+v", el, hung.calls.Load(), r.Sources)
+	}
+}
+
+// GET ceremony serves the last read while it is fresh, so a page view does not call Torque again.
+func TestLatestReusesAFreshRead(t *testing.T) {
+	db := openDB(t)
+	checkpointEvent(t, db, "cp-1", "pending", now.Add(-time.Hour))
+	clock := now
+	tq := &slowTorque{}
+	m := &Meterer{DB: db, Now: func() time.Time { return clock }, Torque: tq}
+	m.Latest(context.Background(), time.Minute)
+	m.Latest(context.Background(), time.Minute)
+	if tq.calls.Load() != 1 {
+		t.Fatalf("a fresh read was not reused: %d reads", tq.calls.Load())
+	}
+	clock = now.Add(2 * time.Minute)
+	m.Latest(context.Background(), time.Minute)
+	if tq.calls.Load() != 2 {
+		t.Fatalf("a stale read was served: %d reads", tq.calls.Load())
 	}
 }

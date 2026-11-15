@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -63,6 +64,10 @@ var gateTypes = map[string]bool{"approval": true, "pr_review": true}
 
 // maxCheckpointReads bounds the Torque reads per meter read (one per checkpoint seen in the window).
 const maxCheckpointReads = 200
+
+// TorqueBudget bounds all of a meter read's Torque calls together, so a slow or hung Torque costs a page load
+// seconds, not one client timeout per checkpoint.
+var TorqueBudget = 10 * time.Second
 
 // Asks counts typed asks to the operator created since a time (needs-you's mailbox read).
 type Asks interface {
@@ -112,6 +117,33 @@ type Meterer struct {
 	Torque Torque
 	Asks   Asks
 	Now    func() time.Time
+
+	readMu sync.Mutex // one read at a time: concurrent page loads wait for it instead of fanning out
+	mu     sync.Mutex
+	last   *Meter
+}
+
+// Latest returns the last read if it is younger than maxAge, otherwise reads now. GET ceremony serves this, so a
+// page view reuses the background read rather than calling Torque again and rewriting the snapshot.
+func (m *Meterer) Latest(ctx context.Context, maxAge time.Duration) Meter {
+	if v, ok := m.cached(maxAge); ok {
+		return v
+	}
+	m.readMu.Lock()
+	defer m.readMu.Unlock()
+	if v, ok := m.cached(maxAge); ok { // read by whoever held the lock
+		return v
+	}
+	return m.Read(ctx)
+}
+
+func (m *Meterer) cached(maxAge time.Duration) (Meter, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.last != nil && m.now().Sub(m.last.CheckedAt) < maxAge {
+		return *m.last, true
+	}
+	return Meter{}, false
 }
 
 func (m *Meterer) now() time.Time {
@@ -159,7 +191,9 @@ func (m *Meterer) Read(ctx context.Context) Meter {
 	out.WaitSamples = len(waits)
 
 	if m.Torque != nil {
-		st, total, err := m.Torque.Stalled(ctx, now.Add(-StalledAfter), listLimit)
+		tctx, cancel := context.WithTimeout(ctx, TorqueBudget)
+		defer cancel()
+		st, total, err := m.Torque.Stalled(tctx, now.Add(-StalledAfter), listLimit)
 		set(out.Sources, "stalled", err)
 		sort.Slice(st, func(i, j int) bool { return st[i].UpdatedAt.Before(st[j].UpdatedAt) })
 		if len(st) > listLimit {
@@ -169,9 +203,13 @@ func (m *Meterer) Read(ctx context.Context) Meter {
 			out.Stalled = st
 		}
 		out.StalledTotal = total
-		cps, err := m.Torque.PendingCheckpoints(ctx)
+		// Done first: the snapshot keeps it, so the checkpoint reads below must not use up its share of the budget.
+		done, err := m.Torque.DoneSince(tctx, since)
+		set(out.Sources, "done", err)
+		out.Done = done
+		cps, err := m.Torque.PendingCheckpoints(tctx)
 		set(out.Sources, "pending_checkpoints", err)
-		n, w, cerr := m.checkpointGates(ctx, since, cps)
+		n, w, cerr := m.checkpointGates(tctx, since, cps)
 		set(out.Sources, "checkpoints", cerr)
 		out.Gates.Checkpoints, waits = n, append(waits, w...)
 		out.Gates.Total += n
@@ -188,9 +226,6 @@ func (m *Meterer) Read(ctx context.Context) Meter {
 		if cps != nil {
 			out.PendingCheckpoints = cps
 		}
-		done, err := m.Torque.DoneSince(ctx, since)
-		set(out.Sources, "done", err)
-		out.Done = done
 	} else {
 		for _, k := range []string{"stalled", "pending_checkpoints", "checkpoints", "done"} {
 			set(out.Sources, k, errUnavailable)
@@ -210,6 +245,9 @@ func (m *Meterer) Read(ctx context.Context) Meter {
 		out.Previous = &prev
 		out.Comparison = Compare(prev, Snapshot{Activity: out.Activity, Done: out.Done})
 	}
+	m.mu.Lock()
+	m.last = &out
+	m.mu.Unlock()
 	return out
 }
 
@@ -364,14 +402,12 @@ func (m *Meterer) checkpointGates(ctx context.Context, since time.Time, pending 
 	}
 	n := 0
 	var waits []time.Duration
-	var firstErr error
 	for _, id := range keys {
 		rec, err := m.Torque.Checkpoint(ctx, id)
 		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
+			// Stop at the first failure: Torque is down or slow, and the rest would fail the same way. The source
+			// reads as failed, so the counts so far are not taken as whole.
+			return n, waits, err
 		}
 		if !gateTypes[rec.Type] {
 			continue
@@ -390,7 +426,7 @@ func (m *Meterer) checkpointGates(ctx context.Context, since time.Time, pending 
 			waits = append(waits, end.Sub(rec.EmittedAt))
 		}
 	}
-	return n, waits, firstErr
+	return n, waits, nil
 }
 
 // activity is the agent events collected in the window: session events (turns, tool calls, messages) and mail.

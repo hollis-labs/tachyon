@@ -28,6 +28,9 @@ const ceremonyKey = "ceremony.meter"
 // raises the regression alert.
 var ceremonyCheckEvery = time.Hour
 
+// ceremonyMaxAge is how old a read GET ceremony may serve before it reads again.
+const ceremonyMaxAge = time.Minute
+
 func init() {
 	registerStart(startCeremony)
 	registerServerMount(mountCeremony)
@@ -58,7 +61,7 @@ func mountCeremony(s *Server, mux *http.ServeMux, operator *approvals.Bridge) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(v.(*ceremony.Meterer).Read(r.Context()))
+		_ = json.NewEncoder(w).Encode(v.(*ceremony.Meterer).Latest(r.Context(), ceremonyMaxAge))
 	})))
 }
 
