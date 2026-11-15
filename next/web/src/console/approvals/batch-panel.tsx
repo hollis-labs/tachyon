@@ -1,6 +1,5 @@
 import { useEffect } from "react"
-import { Button } from "@hollis-labs/design-components"
-import { Chip } from "../components/chip"
+import { Button, Pill } from "@hollis-labs/design-components"
 import { InitialsAvatar } from "../components/initials-avatar"
 import { Keycap } from "../components/keycap"
 import type { ApprovalItem } from "./client"
@@ -72,7 +71,7 @@ export function BatchPanel({ items, confirming, busy, accessNeeded, onConfirm, o
         </section>
         <section>
           <h3 className={label}>Rules</h3>
-          <div className="mt-2 flex flex-wrap gap-2"><Chip tone="faint">{risks.join(", ")} risk only</Chip><Chip tone="faint">Same decision for each</Chip></div>
+          <div className="mt-2 flex flex-wrap gap-2"><Pill tone="neutral">{risks.join(", ")} risk only</Pill><Pill tone="neutral">Same decision for each</Pill></div>
         </section>
       </div>
       <div role="toolbar" aria-label="Batch decision" className="space-y-3 border-t border-border bg-bg p-4">

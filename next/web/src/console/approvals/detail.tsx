@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Textarea } from "@hollis-labs/design-components"
 import { FileText, GitCompare, Paperclip } from "lucide-react"
-import { Chip } from "../components/chip"
 import { Keycap } from "../components/keycap"
 import { MessageBody } from "../chat/MessageBody"
 import { Linkified } from "../autolink/Linkified"

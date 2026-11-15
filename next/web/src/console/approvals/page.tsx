@@ -1,11 +1,10 @@
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SearchInput } from "@hollis-labs/design-components"
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SearchInput, Pill } from "@hollis-labs/design-components"
 import { PageHeader } from "@hollis-labs/kit-dashboard"
 import { DashboardViewTabs } from "@hollis-labs/kit-dashboard/layout"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
 import { ApprovalError, kindLabel, type ApprovalItem, type BatchResult, type HistoryFacets } from "./client"
-import { Chip } from "../components/chip"
 import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility, orderPending } from "./batch"
 import { hasScope, OPERATOR_SCOPE, useScopes } from "../../api/capabilities"
 import { useApprovals } from "./context"
@@ -203,7 +202,7 @@ export function ApprovalsPage() {
               {batchResults.map((r) => (
                 <li key={r.item_id} className="flex items-center gap-3 px-4 py-2">
                   <span className="min-w-0 flex-1 truncate dash-control text-fg">{queue.inbox?.pending.find((i) => i.item_id === r.item_id)?.request_snapshot.title ?? r.item_id}</span>
-                  <Chip tone="danger">{BATCH_STATUS_COPY[r.status]}</Chip>
+                  <Pill tone="danger">{BATCH_STATUS_COPY[r.status]}</Pill>
                 </li>
               ))}
             </ul>

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
-import { Button } from "@hollis-labs/design-components"
+import { Button, Pill } from "@hollis-labs/design-components"
 import { Check, CircleDot, Clock, X } from "lucide-react"
 import type { ApprovalClient, HistoryEvent, HistoryFacets } from "./client"
-import { Chip } from "../components/chip"
 import { AuditTrail } from "./audit"
 import { ago } from "./parts"
 
@@ -91,7 +90,7 @@ export function HistoryTimeline({ client, search, status, requester, onOpen, onF
                 <li key={e.event_id} className="relative">
                   <Marker e={e} />
                   <button type="button" onClick={() => onOpen(e.item_id)} className="block w-full text-left">
-                    <span className="flex flex-wrap items-center gap-2 dash-body text-fg"><span className="font-medium">{verb(e)}</span><Chip>{e.mini?.title ?? e.item_id}</Chip></span>
+                    <span className="flex flex-wrap items-center gap-2 dash-body text-fg"><span className="font-medium">{verb(e)}</span><Pill>{e.mini?.title ?? e.item_id}</Pill></span>
                     <span className="block font-mono dash-caption text-fg-faint" title={new Date(e.at).toLocaleString()}>{e.actor.label} · {ago(e.at)}</span>
                   </button>
                   {reasonText(e) && (

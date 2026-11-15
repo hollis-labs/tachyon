@@ -1,12 +1,12 @@
+import { Pill } from "@hollis-labs/design-components"
 import { serverNow } from "./clock"
 import { useEffect, useState } from "react"
-import { Chip } from "../components/chip"
 import type { ApprovalItem } from "./client"
 
 // Risk is always text; danger is the only colour.
 export function RiskChip({ risk }: { risk?: ApprovalItem["request_snapshot"]["class"] }) {
   const r = risk ?? "medium"
-  return <Chip tone={r === "high" ? "danger" : r === "low" ? "faint" : "neutral"}>{r === "high" ? "High" : r === "low" ? "Low" : "Medium"} risk</Chip>
+  return <Pill tone={r === "high" ? "danger" : "neutral"}>{r === "high" ? "High" : r === "low" ? "Low" : "Medium"} risk</Pill>
 }
 
 const URGENT_MS = 5 * 60000

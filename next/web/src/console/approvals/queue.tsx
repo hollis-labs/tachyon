@@ -1,6 +1,5 @@
-import { Checkbox } from "@hollis-labs/design-components"
+import { Checkbox, Pill } from "@hollis-labs/design-components"
 import type { KeyboardEvent } from "react"
-import { Chip } from "../components/chip"
 import { kindLabel, type ApprovalItem } from "./client"
 import { InitialsAvatar } from "../components/initials-avatar"
 import { serverNow } from "./clock"
@@ -71,10 +70,10 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history, hel
                 <div className="truncate dash-support text-fg-muted">{who(i)} · {kindLabel(r.kind).toLowerCase()}</div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                   {history
-                    ? <Chip>{i.terminal_outcome?.resolution?.response.decision ?? i.state}</Chip>
-                    : held?.has(i.item_id) ? <Chip>Approving…</Chip> : <RiskChip risk={r.class} />}
+                    ? <Pill>{i.terminal_outcome?.resolution?.response.decision ?? i.state}</Pill>
+                    : held?.has(i.item_id) ? <Pill>Approving…</Pill> : <RiskChip risk={r.class} />}
                   {!history && (i.deferred_until && Date.parse(i.deferred_until) > serverNow()
-                    ? <Chip tone="faint">Snoozed</Chip>
+                    ? <Pill tone="neutral">Snoozed</Pill>
                     : <Countdown expiresAt={r.expires_at} />)}
                 </div>
               </div>
