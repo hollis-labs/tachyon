@@ -283,6 +283,18 @@ wins, and each real difference is a kit-gap task rather than a reason to keep th
 | `src/console/{lib,seams,shell,operator,testkit}` | helpers, seams, test kit | `operator/elevation.ts` is replaced by the port (no step-up) |
 | `src/packages/torque-client`, `src/packages/host-sdk` | API client, host fetch and freshness | `hostFetch` sends `X-Requested-With` and hands a 401 to sign-in |
 
+**Kept until a kit gap ships.** These stay as app domain UI. Each one is swapped for the kit on the pin bump that
+ships its gap, and nothing new is built on them.
+
+| Kept | Kit gap | Swap |
+|---|---|---|
+| `chat/cards` (approval, question, plan, dispatch, notice cards) | CW-20261115-0031 (kit-cards) | swap on pin bump when the gap ships |
+| approvals decision bar (`approvals/detail.tsx`, `batch-panel.tsx`) | CW-20261115-0031 (kit-cards) | swap on pin bump when the gap ships |
+| `CardForm` and `SecretDialog` (to kit-cards `FormCard`) | CW-20261115-0031 (kit-cards) | swap on pin bump when the gap ships |
+| chat `Composer` (`chat/workbench/Composer.tsx`) | CW-20261115-0032 (kit-chat) | swap on pin bump when the gap ships |
+| autolink `sheet.tsx` (Sheet over Dialog); its acceptance test is `autolink/drawerStacking.test.tsx` | CW-20261115-0033 | swap on pin bump when the gap ships |
+| page heading (the shell's and the page's `h1`) | CW-20261115-0026 (app-shell `PageHeader`) | drop the extra heading on pin bump when the gap ships |
+
 Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`). A sync slice
 before P1 picks that up.
 
