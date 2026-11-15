@@ -140,6 +140,20 @@ export function DecisionDetail({
   useEffect(() => {
     void refresh()
   }, [refresh])
+  // Held decisions are committed by the provider. Refresh the retained detail
+  // independently of queue membership so the decision bar cannot offer a replay.
+  const actionRunId = item?.action_run?.run_id
+  const pendingAction = !!actionRunId && !!item && isPending(item)
+  useEffect(() => {
+    if (!pendingAction) return
+    let active = true
+    const timer = window.setInterval(() => {
+      void client.present(id).then((next) => {
+        if (active) setItem(next)
+      }, () => {})
+    }, 1500)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [client, id, pendingAction])
   async function defer(seconds: number) {
     if (!item || busy) return
     setBusy(true)

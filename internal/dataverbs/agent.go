@@ -246,7 +246,24 @@ func (p *scopedLocal) Invoke(ctx context.Context, name string, raw json.RawMessa
 		return nil, denied()
 	}
 	if agentaccess.ActionVerb(name) {
-		return invokeAction(ctx, p.actions, name, raw, "service:"+p.principal.ID)
+		who := actionrun.Requester{Label: p.principal.Display}
+		if agentaccess.IsTetherProxy(p.principal) {
+			who.Agent = lineageOf(ctx).agent
+		} else {
+			for _, scope := range p.principal.Scopes {
+				if strings.HasPrefix(scope, "agent:") {
+					if who.Agent != "" {
+						who.Agent = ""
+						break
+					}
+					who.Agent = strings.TrimPrefix(scope, "agent:")
+				}
+			}
+		}
+		if who.Agent != "" {
+			who.Label = "@" + agentaccess.AgentKey(who.Agent)
+		}
+		return invokeAction(ctx, p.actions, name, raw, "service:"+p.principal.ID, who)
 	}
 	if agentaccess.TesseractVerb(name) {
 		return invokeTesseract(ctx, p.tesseract, name, raw, p.principal)

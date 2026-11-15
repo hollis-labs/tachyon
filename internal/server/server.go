@@ -1096,7 +1096,7 @@ func (s *Server) startActions(ctx context.Context, store *localstore.Store) {
 	if err := manager.Recover(ctx); err != nil {
 		slog.Warn("action runs not recovered", "err", err)
 	}
-	s.actions = &actionrun.Service{Store: runs, Manager: manager, Approval: s.approvalInbox.Service}
+	s.actions = &actionrun.Service{Store: runs, Manager: manager, Approval: s.approvalInbox.Service, Notify: s.actionResultNotifier()}
 	go s.actions.Watch(ctx, 0)
 	go s.fileviewAudit.RunRetention(ctx, 24*time.Hour)
 }

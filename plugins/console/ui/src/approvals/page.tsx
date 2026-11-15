@@ -21,15 +21,13 @@ export function ApprovalsPage() {
   const [params, setParams] = useSearchParams()
   const linked = params.get("item")
   const [selectedId, setSelectedId] = useState<string | undefined>(linked ?? undefined)
+  const [retained, setRetained] = useState<ApprovalItem>()
+  const [loadedLink, setLoadedLink] = useState<string>()
   const [showDetail, setShowDetail] = useState(!!linked)
   useEffect(() => {
     if (!linked) return
     setSelectedId(linked)
     setShowDetail(true)
-    setParams((p) => {
-      p.delete("item")
-      return p
-    }, { replace: true })
   }, [linked, setParams])
   const [view, setView] = useState<"pending" | "history">("pending")
   const [search, setSearch] = useState("")
@@ -42,6 +40,16 @@ export function ApprovalsPage() {
   const [batchNote, setBatchNote] = useState("")
   const [batchResults, setBatchResults] = useState<BatchResult["results"]>()
   const [accessNeeded, setAccessNeeded] = useState(false)
+  useEffect(() => {
+    if (!linked || !queue) return
+    let active = true
+    void queue.client.present(linked).then((item) => {
+      if (!active) return
+      setLoadedLink(linked)
+      if (item.action_run) setRetained(item)
+    }, () => { if (active) setLoadedLink(linked) })
+    return () => { active = false }
+  }, [linked, queue?.client])
   const restoredItem = queue?.restored
   useEffect(() => {
     if (restoredItem) {
@@ -49,6 +57,24 @@ export function ApprovalsPage() {
       setShowDetail(true)
     }
   }, [restoredItem])
+  // A registered action outlives its pending row, including the undo hold.
+  // Retain its identity until the operator deliberately selects another item.
+  useEffect(() => {
+    if (retained && (!selectedId || selectedId === retained.item_id)) return
+    const items = queue?.inbox?.pending ?? []
+    // Mirror the displayed fallback, including a stale selection whose ordinary
+    // request has just left the queue. Pin that displayed action before its hold.
+    if (linked && loadedLink !== linked && !items.some((i) => i.item_id === linked)) return
+    const held = new Set(queue?.held.map((h) => h.itemId))
+    const live = orderPending(items).filter((item) => !held.has(item.item_id) &&
+      `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`.toLowerCase().includes(search.toLowerCase()))
+    const chosen = live.find((i) => i.item_id === selectedId) ?? live[0]
+    if (chosen?.action_run) {
+      setRetained(chosen)
+      setSelectedId(chosen.item_id)
+      if (linked !== chosen.item_id) setParams({ item: chosen.item_id }, { replace: true })
+    }
+  }, [queue?.inbox, queue?.held, selectedId, retained, linked, loadedLink, search, setParams])
   if (!queue)
     return (
       <div className="flex h-full min-w-0 flex-col">
@@ -68,11 +94,13 @@ export function ApprovalsPage() {
       .toLowerCase()
       .includes(search.toLowerCase()),
   )
-  // After a decision the row leaves the queue and selection moves to the next item.
-  // A held (about to be committed) approval is skipped: selection advances to the next item.
+  // Ordinary decisions advance the queue; registered actions retain their run detail.
   const heldIds = new Set(queue.held.map((h) => h.itemId))
   const live = rows.filter((r) => !heldIds.has(r.item_id))
-  const current = live.find((r) => r.item_id === selectedId) ?? live[0]
+  const continued = retained && (!selectedId || selectedId === retained.item_id)
+    ? [...(queue.inbox?.pending ?? []), ...(queue.inbox?.history ?? [])].find((i) => i.item_id === retained.item_id) ?? retained
+    : undefined
+  const current = continued ?? live.find((r) => r.item_id === selectedId) ?? live[0]
   const restored = queue.restored
   const picked = (queue.inbox?.pending ?? []).filter((i: ApprovalItem) => checked.has(i.item_id) && batchEligibility(i).ok).slice(0, MAX_BATCH)
   const lowRisk = (queue.inbox?.pending ?? []).filter((i) => batchEligibility(i).ok && i.request_snapshot.class === "low" && !heldIds.has(i.item_id)).slice(0, MAX_BATCH)
@@ -121,6 +149,8 @@ export function ApprovalsPage() {
     return () => { live = false }
   }, [hasBatch, queue])
   const select = (id: string) => {
+    setParams({ item: id }, { replace: true })
+    setRetained(undefined)
     setSelectedId(id)
     setShowDetail(true)
   }

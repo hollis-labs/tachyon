@@ -66,11 +66,12 @@ func (f *fakeSession) done() chan struct{} {
 }
 
 type fakeTransport struct {
-	mu       sync.Mutex
-	started  [][]string
-	sessions []*fakeSession
-	script   func(*fakeSession)
-	labels   string
+	mu           sync.Mutex
+	started      [][]string
+	sessions     []*fakeSession
+	script       func(*fakeSession)
+	labels       string
+	catalogState string
 }
 
 func (t *fakeTransport) Start(_ context.Context, argv []string, _, _ uint16) (Session, error) {
@@ -82,7 +83,14 @@ func (t *fakeTransport) Start(_ context.Context, argv []string, _, _ uint16) (Se
 	go t.script(s)
 	return s, nil
 }
-func (t *fakeTransport) Output(context.Context, []string) ([]byte, error) {
+func (t *fakeTransport) Output(_ context.Context, argv []string) ([]byte, error) {
+	if len(argv) == 4 && argv[0] == "tether" {
+		state := t.catalogState
+		if state == "" {
+			state = "planned"
+		}
+		return []byte("plan " + argv[3] + "  \"fixture\"  state=" + state + "  expires 12:00:00 (ttl 900s)\n"), nil
+	}
 	return []byte(t.labels), nil
 }
 
@@ -424,4 +432,31 @@ func TestLabelsAreRecheckedAtStartAndFailClosed(t *testing.T) {
 			t.Fatalf("%+v", run)
 		}
 	})
+}
+
+func TestCatalogApprovalDoesNotReplayAnExternallyApprovedPlan(t *testing.T) {
+	for _, state := range []string{"approved", "applied", "invalid"} {
+		t.Run(state, func(t *testing.T) {
+			r := newRig(t, func(*fakeSession) { t.Error("external catalog state must not launch a command") })
+			h, err := r.svc.Request(context.Background(), RequestInput{Machine: "hub", Action: "tether.catalog.approve", Params: map[string]string{"plan_id": "cp_1"}, Reason: "review"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.decide(t, h.ItemID, "approved")
+			if err := r.svc.Sync(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			r.tr.catalogState = state
+			run, err := r.svc.Manager.Start(context.Background(), h.RunID, 80, 24)
+			if err == nil {
+				t.Fatal("expected refusal")
+			}
+			if run.State != StateRefused || run.StartedAt != nil || run.ExitCode != nil || r.tr.count() != 0 {
+				t.Fatalf("external approval was treated as execution: %+v", run)
+			}
+			if !strings.Contains(run.Error, "external catalog state") {
+				t.Fatalf("missing provenance: %+v", run)
+			}
+		})
+	}
 }

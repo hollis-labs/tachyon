@@ -2,6 +2,7 @@ import { Checkbox } from "@hollis-labs/design-components"
 import type { KeyboardEvent } from "react"
 import { Chip } from "../components/chip"
 import { kindLabel, type ApprovalItem } from "./client"
+import { Linkified } from "../autolink/Linkified"
 import { InitialsAvatar } from "../components/initials-avatar"
 import { serverNow } from "./clock"
 import { batchEligibility } from "./batch"
@@ -69,6 +70,7 @@ export function ApprovalQueue({ items, selectedId, onSelect, empty, history, hel
               <div className="min-w-0 flex-1">
                 <div className={`truncate dash-body text-fg ${selected ? "font-medium" : ""}`}>{r.title}</div>
                 <div className="truncate dash-support text-fg-muted">{who(i)} · {kindLabel(r.kind).toLowerCase()}</div>
+                {i.action_run?.requester?.task && <div className="dash-support text-fg-muted">Task: <Linkified text={i.action_run.requester.task} /></div>}
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                   {history
                     ? <Chip>{i.terminal_outcome?.resolution?.response.decision ?? i.state}</Chip>
