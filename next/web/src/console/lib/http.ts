@@ -64,10 +64,11 @@ export async function consoleJson<T>(path: string, init: ConsoleRequestInit = {}
     }
   }
   if (!res.ok) {
+    const flat = (parsed ?? {}) as { code?: unknown; message?: unknown }
     const e = (parsed as { error?: unknown } | undefined)?.error
-    const code = typeof e === 'object' && e && 'code' in e ? String((e as { code: unknown }).code) : codeFor(res.status)
+    const code = typeof flat.code === 'string' ? flat.code : typeof e === 'object' && e && 'code' in e ? String((e as { code: unknown }).code) : codeFor(res.status)
     const message =
-      typeof e === 'string' ? e : typeof e === 'object' && e && 'message' in e ? String((e as { message: unknown }).message) : `${res.status} ${res.statusText || 'request failed'}`.trim()
+      typeof flat.message === 'string' && flat.message ? flat.message : typeof e === 'string' ? e : typeof e === 'object' && e && 'message' in e ? String((e as { message: unknown }).message) : `${res.status} ${res.statusText || 'request failed'}`.trim()
     throw new ConsoleHttpError(res.status, code, message)
   }
   if (text && !isJson) throw new ConsoleHttpError(res.status, 'unavailable', 'Endpoint not available (non-JSON response)')

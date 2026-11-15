@@ -1,0 +1,153 @@
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { CornerDownLeft, Paperclip, PenLine, Plus, Square, SquareTerminal, Inbox } from 'lucide-react'
+import { cn } from '@hollis-labs/design-components'
+import { CAPTION, Chip, Kbd } from '@planner/shared'
+
+export interface ComposerProps {
+  value: string
+  onChange: (v: string) => void
+  onSubmit: (v: string) => void
+  agentLabel: string
+  busy?: boolean
+  disabled?: boolean
+  /** Reachability caption shown on the toolbar, e.g. 'Mail only. Reply may take a while.' */
+  note?: string | null
+  /** Inline error from the last send; the draft is kept. */
+  sendError?: string | null
+  textareaRef?: React.Ref<HTMLTextAreaElement>
+  /** '/' typed into an empty composer, or the Slash command item. */
+  onOpenPalette: () => void
+  /** Drawer icons and the + menu items that open a drawer mode (the drawer lands in the next slice). */
+  onDrawer?: (mode: 'scratch' | 'terminal' | 'workspace') => void
+  /** Extra toolbar control after the chips (the reply filter). */
+  extra?: React.ReactNode
+  /** Attachments shared from the Workspace (strip above the input). */
+  strip?: { id: string; label: string }[]
+  onRemoveStrip?: (id: string) => void
+  /** Agent names the @ menu offers. */
+  mentions?: string[]
+  /** Open drawer mode, shown pressed on its icon. */
+  drawerMode?: 'scratch' | 'terminal' | 'workspace' | null
+  /** Scratchpad lives in the aside: its icon opens that panel instead of the drawer. */
+  scratchInAside?: boolean
+  /** The agent is mid-reply and can be interrupted: Stop takes the place of Send. */
+  onStop?: () => void
+  stopping?: boolean
+  /** Why the last Stop did not go through. */
+  stopError?: string | null
+}
+
+const ACTIVE = 'bg-selection text-fg'
+const ICON_BTN = 'inline-grid size-7 place-items-center rounded-control border border-border text-fg-secondary hover:bg-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring disabled:opacity-40'
+
+/**
+ * chat.composer: a raised input with an attachment strip, a + menu, mode and shell chips, three drawer icons
+ * and an enter-glyph Send, plus the footer disclaimer. Enter sends, Shift+Enter is a newline.
+ */
+export function Composer({ value, onChange, onSubmit, agentLabel, busy, disabled, note, sendError, textareaRef, onOpenPalette, onDrawer, extra, strip = [], onRemoveStrip, drawerMode, scratchInAside, mentions = [], onStop, stopping, stopError }: ComposerProps) {
+  const [menu, setMenu] = useState(false)
+  const own = useRef<HTMLTextAreaElement>(null)
+  const area = (textareaRef as React.RefObject<HTMLTextAreaElement>) ?? own
+  const wrap = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!menu) return
+    const off = (e: MouseEvent) => { if (!wrap.current?.contains(e.target as Node)) setMenu(false) }
+    document.addEventListener('mousedown', off)
+    return () => document.removeEventListener('mousedown', off)
+  }, [menu])
+  useEffect(() => {
+    const el = area.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [value, area])
+
+  const at = /(^|\s)@([\w-]*)$/.exec(value)
+  const options = at ? [...new Set(mentions)].filter((m) => m.toLowerCase().startsWith(at[2].toLowerCase())).slice(0, 6) : []
+  const [mi, setMi] = useState(0)
+  useEffect(() => setMi(0), [at?.[2]])
+  const pickMention = (name: string) => { onChange(value.replace(/@[\w-]*$/, `@${name} `)); area.current?.focus() }
+  // While the agent is mid-reply the draft can be written but not sent.
+  const send = () => { if (value.trim() && !busy && !disabled && !onStop) onSubmit(value) }
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (options.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMi((i) => (i + 1) % options.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMi((i) => (i + options.length - 1) % options.length); return }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); pickMention(options[mi] ?? options[0]); return }
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() }
+    else if (e.key === '/' && value === '' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); onOpenPalette() }
+    else if (e.key === 'Escape') setMenu(false)
+  }
+  const item = 'flex h-7 w-full items-center gap-2 rounded-sm px-2 text-left text-control text-fg-secondary hover:bg-selection hover:text-fg focus-visible:bg-selection focus-visible:outline-none'
+  return (
+    <div className="relative z-10 shrink-0 px-6 max-sm:px-2">
+      <div ref={wrap} className="relative mx-auto w-full max-w-[760px] rounded-panel border border-surface-hover bg-bg-elevated shadow-[0_10px_28px_rgb(0_0_0/calc(.45*var(--sh)))]">
+        {strip.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 pt-2">
+            {strip.map((s) => (
+              <Chip key={s.id} square>
+                {s.label}
+                <button type="button" aria-label={`Remove ${s.label}`} onClick={() => onRemoveStrip?.(s.id)} className="ml-1 text-fg-muted hover:text-fg">✕</button>
+              </Chip>
+            ))}
+            {strip.length > 0 && <Chip className="bg-selection">{strip.length} shared from Workspace</Chip>}
+          </div>
+        )}
+        {options.length > 0 && (
+          <div role="listbox" aria-label="Mention an agent" className="absolute bottom-full left-2 z-20 mb-1 min-w-[200px] rounded-panel border border-surface-hover bg-bg-elevated p-1 shadow-lg">
+            {options.map((o, i) => <button key={o} type="button" role="option" aria-selected={i === mi} onMouseDown={(e) => { e.preventDefault(); pickMention(o) }} className={cn('flex h-7 w-full items-center rounded-sm px-2 text-left text-control text-fg-secondary', i === mi && 'bg-selection text-fg')}>@{o}</button>)}
+          </div>
+        )}
+        <textarea
+          ref={area}
+          value={value}
+          rows={1}
+          disabled={disabled}
+          aria-label="Message"
+          placeholder={disabled ? 'This agent cannot receive messages right now' : `Message ${agentLabel}… (/ commands, @ reference)`}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          // The kit paints a focused textarea grey (background-color on :focus-visible, unlayered); the golden input stays flat.
+          className="block min-h-[54px] w-full resize-none rounded-none border-0 bg-transparent px-3 py-2.5 text-control text-fg placeholder:text-fg-muted focus-visible:bg-transparent! disabled:opacity-60"
+        />
+        <div className="flex items-center gap-2 border-t border-border-subtle px-2 py-1.5">
+          <button type="button" aria-label="Add" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)} className={ICON_BTN}>
+            <Plus aria-hidden className="size-3.5" />
+          </button>
+          <Chip square>NORM</Chip>
+          <span className="max-sm:hidden"><Chip square>Shell: ask</Chip></span>
+          <span className="max-sm:hidden">{extra}</span>
+          {note && <span className="min-w-0 truncate text-label text-fg-muted max-sm:hidden">{note}</span>}
+          <span className="flex-1" />
+          {/* The drawer opens from these in slice C-C; until then they stay visible and inert. */}
+          <button type="button" aria-label="Scratchpad" aria-pressed={drawerMode === 'scratch'} title="Scratchpad ⌘J" disabled={!onDrawer} onClick={() => onDrawer?.('scratch')} className={cn(ICON_BTN, drawerMode === 'scratch' && ACTIVE)}><PenLine aria-hidden className="size-3.5" /></button>
+          <button type="button" aria-label="Terminal" aria-pressed={drawerMode === 'terminal'} title="Terminal ⌃T" disabled={!onDrawer} onClick={() => onDrawer?.('terminal')} className={cn(ICON_BTN, drawerMode === 'terminal' && ACTIVE)}><SquareTerminal aria-hidden className="size-3.5" /></button>
+          <button type="button" aria-label="Workspace" aria-pressed={drawerMode === 'workspace'} title="Workspace ⌘⇧W" disabled={!onDrawer} onClick={() => onDrawer?.('workspace')} className={cn(ICON_BTN, drawerMode === 'workspace' && ACTIVE)}><Inbox aria-hidden className="size-3.5" /></button>
+          {onStop ? (
+            <button type="button" onClick={() => { if (!stopping) onStop() }} aria-disabled={stopping} className="inline-flex h-7 items-center gap-1.5 rounded-control border border-border px-3 text-label font-semibold text-fg hover:bg-surface-hover aria-disabled:cursor-default aria-disabled:opacity-60 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+              <Square aria-hidden className="size-2.5 fill-current" /> {stopping ? 'Stopping' : 'Stop'}
+            </button>
+          ) : (
+          <button type="button" onClick={send} aria-disabled={!value.trim() || busy || disabled} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-primary px-3 text-label font-semibold text-primary-fg hover:opacity-90 aria-disabled:cursor-default aria-disabled:hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+            {busy ? 'Sending' : 'Send'} <Kbd className="border-primary-fg/30 text-primary-fg"><CornerDownLeft aria-hidden className="inline size-2.5" /></Kbd>
+          </button>
+          )}
+        </div>
+        {/* KIT-GAP: a menu popover with a keyboard-hint column; hand-rolled here until the kit has one. */}
+        {menu && (
+          <div role="menu" aria-label="Add to message" className="absolute bottom-[46px] left-2 z-20 min-w-[220px] rounded-panel border border-surface-hover bg-bg-elevated p-1 shadow-lg">
+            <button type="button" role="menuitem" className={cn(item, 'bg-selection text-fg')} onClick={() => setMenu(false)}><Paperclip aria-hidden className="size-3.5" />Attach<Kbd className="ml-auto">⌘U</Kbd></button>
+            <button type="button" role="menuitem" className={item} onClick={() => { setMenu(false); onOpenPalette() }}>/ Slash command<Kbd className="ml-auto">/</Kbd></button>
+            <button type="button" role="menuitem" className={item} onClick={() => { setMenu(false); onChange(`${value}@`); area.current?.focus() }}>@ Mention<Kbd className="ml-auto">@</Kbd></button>
+            <button type="button" role="menuitem" className={item} onClick={() => { setMenu(false); onDrawer?.('workspace') }}><Inbox aria-hidden className="size-3.5" />Add from Workspace<Kbd className="ml-auto">⌘K W</Kbd></button>
+            <button type="button" role="menuitem" className={item} onClick={() => { setMenu(false); onDrawer?.('terminal') }}><SquareTerminal aria-hidden className="size-3.5" />Run in Terminal<Kbd className="ml-auto">⌃T</Kbd></button>
+          </div>
+        )}
+      </div>
+      {stopError && <p role="alert" className="mx-auto mt-1 max-w-[760px] text-xs text-danger">{stopError}</p>}
+      {sendError && <p role="alert" className="mx-auto mt-1 max-w-[760px] text-xs text-danger">{sendError} <span className="text-fg-muted">Your draft is kept.</span> <button type="button" onClick={send} className="underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">Retry</button></p>}
+      <p className={cn(CAPTION, 'py-2 text-center text-micro text-fg-muted')}>Agents can be wrong · check anything that matters</p>
+    </div>
+  )
+}

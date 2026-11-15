@@ -1,8 +1,11 @@
 import { test as base, expect } from "@playwright/test"
+import { chatStub } from "../e2e/chat-stub"
 import { BASE, plannerStub, type StubItem } from "../e2e/planner-stub"
 
 /** `TACHYON_E2E_PLANNER=backend` runs against the binary's own planner (B5); otherwise the contract stub answers. */
 export const plannerBackend = process.env.TACHYON_E2E_PLANNER === "backend"
+/** `TACHYON_E2E_CHAT=backend` runs against the binary's own chat (B6); otherwise the chat contract stub answers. */
+export const chatBackend = process.env.TACHYON_E2E_CHAT === "backend"
 
 export interface PlannerWrite {
   method: string
@@ -17,6 +20,7 @@ export interface PlannerWrite {
  */
 export const test = base.extend<{
   planner: { writes: PlannerWrite[]; store: Record<string, StubItem[]> | null }
+  chat: { store: ReturnType<typeof import("../e2e/chat-stub").chatSeed> | null }
 }>({
   planner: [
     async ({ page }, use) => {
@@ -33,6 +37,12 @@ export const test = base.extend<{
       })
       const store = plannerBackend ? null : (await plannerStub(page)).store
       await use({ writes, store })
+    },
+    { auto: true },
+  ],
+  chat: [
+    async ({ page }, use) => {
+      await use({ store: chatBackend ? null : (await chatStub(page)).store })
     },
     { auto: true },
   ],

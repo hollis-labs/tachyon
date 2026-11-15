@@ -1,3 +1,4 @@
+import { REQUESTED_WITH, UNAUTHORIZED_EVENT } from "../../../api/request"
 import { createRefreshRegistry, type RefreshRegistry } from "@hollis-labs/design-app-runtime"
 import { useSyncExternalStore } from "react"
 
@@ -161,6 +162,8 @@ export const hostFetch: typeof fetch = async (input, init) => {
   const page = typeof window === "undefined" ? "" : window.location.pathname
   const method = init?.method ?? (input instanceof Request ? input.method : "GET")
   const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+  // API contract section 2: every request carries X-Requested-With (the identity middleware requires it on writes).
+  if (!headers.has("X-Requested-With")) headers.set("X-Requested-With", REQUESTED_WITH)
   const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
   const read = method === "GET" && eligibleURL(url) && !headers.has("Authorization") && !headers.get("Cache-Control")?.includes("no-store")
   const force = headers.get("Cache-Control")?.includes("no-cache") ?? false
@@ -186,7 +189,8 @@ export const hostFetch: typeof fetch = async (input, init) => {
   try {
     const res = read
       ? await abortable(network(url, { ...init, headers }, force), signal)
-      : await globalThis.fetch(input, init)
+      : await globalThis.fetch(input, { ...init, headers })
+    if (res.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
     const metadata = notifyResponse(res, url, page)
     if (read && metadata?.state === "refreshing") void revalidate(url, page, init)
     if (method !== "GET" && method !== "HEAD" && res.ok) {
