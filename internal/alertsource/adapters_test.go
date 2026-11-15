@@ -119,6 +119,9 @@ func TestFromTetherMessageFailedTerminalOnly(t *testing.T) {
 	if _, ok := FromTether(agentscollector.Frame{Seq: 2, Kind: "message.wake_deferred", At: at}); ok {
 		t.Fatal("wake_deferred kind must not alert")
 	}
+	if _, ok := FromTether(agentscollector.Frame{Seq: 4, Kind: "message.failed", Reason: "nacked", At: at}); ok {
+		t.Fatal("a nacked failure must not alert")
+	}
 	e, ok := FromTether(agentscollector.Frame{Seq: 3, Kind: "message.failed", DeliveryState: "expired", Reason: "ttl", From: "agent-a", At: at})
 	if !ok || e.Kind != "message.failed" || e.Payload["state"] != "expired" || e.Payload["reason"] != "ttl" || e.Payload["from"] != "agent-a" {
 		t.Fatalf("terminal failure stays visible: %v %+v", ok, e)
