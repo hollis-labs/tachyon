@@ -13,8 +13,8 @@ export const AREAS = [
   { label: "Planner", route: "/planner", deep: "/planner/streams", stub: false },
   { label: "Agent Ops", route: "/agents", deep: "/agents/sess_work", stub: false },
   { label: "Needs you", route: "/needs-you", deep: "/needs-you", stub: false },
-  { label: "Builder", route: "/builder", deep: "/builder/library/agent/a1", stub: true },
-  { label: "Registry", route: "/registry", deep: "/registry/projects/p1", stub: true },
+  { label: "Builder", route: "/builder", deep: "/builder/agents/builder-reviewer", stub: false },
+  { label: "Registry", route: "/registry", deep: "/registry/projects/tachyon", stub: false },
   { label: "Chat", route: "/chat", deep: "/chat/thread-9", stub: false },
   { label: "Approvals", route: "/approvals", deep: "/approvals", stub: false },
   {

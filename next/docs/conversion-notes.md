@@ -433,7 +433,8 @@ wins, and each real difference is a kit-gap task rather than a reason to keep th
 | `src/console/autolink`, `src/console/refs` | reference chips, detection, previews, drawer | `sheet.tsx` stays (Sheet-over-Dialog stacking, CW-20261115-0033) |
 | `src/console/forge`, `events`, `observations`, `builder`, `agents`, `files`, `fleet`, `tesseract` | the preview panes reference chips open | domain views on design-components and kit-dashboard parts; `files` table is rendered file content, not a data table |
 | `src/console/approvals`, `components` (G4) | approvals surface; chip, avatar, keycap, pill tabs | see G4: `PillTabs` swaps to `DashboardViewTabs`. The decision bar and `CardForm`/`SecretDialog` stay app UI until CW-20261115-0031 (undo, snooze, secret upload). `InitialsAvatar` and `Keycap` have no kit equivalent |
-| `src/console/agents-monitor`, `needs-you`, `fleet` launch (G5, main 99c7b88) | Agent Ops (sessions, timeline, seats, ceremony, controls, launch) and Needs you | domain views on design-components and kit-dashboard layout; no kit equivalent. The Teams tab is a note until G6 (CW-20261115-0063) restores team operations |
+| `src/console/agents-monitor`, `needs-you`, `fleet` launch (G5, main 99c7b88) | Agent Ops (sessions, timeline, seats, ceremony, Teams, controls, launch) and Needs you | domain views on design-components and kit-dashboard layout; no kit equivalent |
+| `src/console/builder`, `registry`, the rest of `agents` (G6, main 4b5e397) | Builder (agents, launches, library, team definitions), Registry, and team operations in the Agent Ops Teams tab | **swapped:** `Chip` to design-components `Pill`. Editors and forms are builder domain views on design-components; `/builder/classic` not ported |
 | `src/console/{lib,seams,shell,operator,testkit}` | helpers, seams, test kit | `operator/elevation.ts` is replaced by the port (no step-up) |
 | `src/packages/torque-client`, `src/packages/host-sdk` | API client, host fetch and freshness | `hostFetch` sends `X-Requested-With` and hands a 401 to sign-in |
 
@@ -449,7 +450,7 @@ ships its gap, and nothing new is built on them.
 | autolink `sheet.tsx` (Sheet over Dialog); its acceptance test is `autolink/drawerStacking.test.tsx` | CW-20261115-0033 | swap on pin bump when the gap ships |
 | page heading (the shell's and the page's `h1`) | CW-20261115-0026 (app-shell `PageHeader`) | drop the extra heading on pin bump when the gap ships |
 
-Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`, `observations/store.ts`). A sync slice
+Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`, `observations/store.ts`, `chat/aside/FileTree.tsx`, `chat/aside/Panels.tsx`). A sync slice
 before P1 picks that up.
 
 ## What the operator does differently

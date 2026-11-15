@@ -1,0 +1,378 @@
+import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogTitle } from '@hollis-labs/design-components'
+import { useEffect, useRef, useState } from 'react'
+import { BUILDER_BASE, builderApi, type Change, errorMessage } from './api'
+import { isOpen, isWaiting, minutesAndSeconds, type ReviewRow } from './changes'
+import { useChangeMode } from './capabilities'
+import { HandoffPanel } from './HandoffPanel'
+import { useBuilderStream } from './stream'
+
+const CHECK_WORD = { ok: 'Passed', warn: 'Warning', fail: 'Failed' } as const
+
+/** Follow an open change: the stream says when it moves; a slow poll is the safety net (fast when the stream is down). */
+function useChange(initial: Change): [Change, (c: Change) => void] {
+  const [change, setChange] = useState(initial)
+  const refetch = () => builderApi.change(change.change_id).then(setChange, () => undefined)
+  const live = useBuilderStream((e) => {
+    if (e.type === 'change' && e.change_id === change.change_id) void refetch()
+  })
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch is rebuilt each render from change_id
+  useEffect(() => {
+    if (!isWaiting(change.state)) return
+    const t = setInterval(
+      () => {
+        if (!document.hidden) void refetch()
+      },
+      live ? 30000 : 3000,
+    )
+    return () => clearInterval(t)
+  }, [change.change_id, change.state, live])
+  return [change, setChange]
+}
+
+export function Diff({ text }: { text: string }) {
+  return (
+    <pre aria-label="Changes" tabIndex={0} className="max-h-56 overflow-auto border border-border bg-surface p-2 font-mono dash-support text-fg">
+      {text.split('\n').map((l, i) => (
+        <span key={i} className={`block ${l.startsWith('+') ? 'bg-success/10 text-fg' : l.startsWith('-') ? 'bg-danger/10 text-fg' : 'text-fg-faint'}`}>
+          {l.startsWith('+') ? '+ ' : l.startsWith('-') ? '− ' : '  '}
+          {l.slice(1) || ' '}
+        </span>
+      ))}
+    </pre>
+  )
+}
+
+function EffectRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span>{label}</span>
+      <b className="text-right font-medium text-fg">{children}</b>
+    </div>
+  )
+}
+
+function Countdown({ expiresAt }: { expiresAt: number }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const left = expiresAt - now
+  return <span>{left > 0 ? `Expires in ${minutesAndSeconds(left)}` : 'Expired'}</span>
+}
+
+/** True when a change touches only Library parts: Tachyon saves those itself, with no plan and no host approval. */
+export const isPartsOnly = (c: Change) => c.plan == null && (c.targets ?? []).length > 0 && (c.targets ?? []).every((t) => t.kind === 'part')
+
+/**
+ * The line an editor shows once its change is applied. The editor reloads at that point, which would remount an open
+ * Review dialog on its stale draft, so the editor closes the dialog and shows this instead.
+ */
+export function AppliedNote({ change, onDismiss }: { change: Change; onDismiss: () => void }) {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-3 px-5 py-2 dash-support text-fg-secondary">
+      <span className="mr-auto">
+        {isPartsOnly(change) ? (
+          'Saved.'
+        ) : (
+          <>
+            Applied. Running sessions keep their old configuration; new launches use the update. <span className="text-fg-muted">Check the next launch.</span>
+          </>
+        )}
+        {change.result?.reload_error ? ` Reload reported: ${change.result.reload_error}` : ''}
+      </span>
+      <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
+        Dismiss
+      </Button>
+    </div>
+  )
+}
+
+/** Review a computed change, submit it, and follow it until it is applied or ends. */
+export function ReviewDialog({ initial, onClose, onApplied, onReload, subject, rows }: { initial: Change; onClose: (c: Change) => void; onApplied: (c: Change) => void; onReload: () => void; subject?: string; rows?: ReviewRow[] }) {
+  const [change, setChange] = useChange(initial)
+  const [mode] = useChangeMode()
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  // Hand-off mode: Tachyon holds no catalog.write, so a change ends in commands the operator runs in Tether.
+  const inHandoff = change.handoff != null || change.state === 'awaiting_handoff' || mode === 'handoff'
+  const [ack, setAck] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+  const privileged = (change.privileged ?? []).length > 0
+  const failChecks = (change.checks ?? []).filter((c) => c.status === 'fail')
+  // A change that touches only Library parts (no catalog file, so no plan) is saved by Tachyon itself the moment it
+  // is submitted: there is no host approval to wait for, and the dialog must not promise one.
+  const partsOnly = !inHandoff && isPartsOnly(change)
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fires once per applied change, not on every refetch
+  useEffect(() => {
+    if (change.state === 'applied') onApplied(change)
+  }, [change.state, onApplied])
+
+  const run = async (fn: () => Promise<Change>) => {
+    setBusy(true)
+    setError('')
+    try {
+      setChange(await fn())
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const done = !isOpen(change.state)
+  // Cmd/Ctrl+Enter is the primary action of a draft, under the same conditions as the button.
+  const canSubmit = change.state === 'draft' && !busy && failChecks.length === 0 && (!privileged || ack)
+  const submitKey = useRef(() => {})
+  submitKey.current = () => {
+    if (canSubmit) void run(() => builderApi.submit(change.change_id, ack))
+  }
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault()
+        submitKey.current()
+      }
+    }
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [])
+  // Leaving a draft (Keep editing, Close, Esc) cancels it on the server: an open draft blocks the next Review of the
+  // same file with 409 change_open, and nothing in the editor could cancel it afterwards.
+  // Closing or reloading the tab with a draft open would leave it on the server too: cancel it on the way out.
+  const leaving = useRef(change)
+  leaving.current = change
+  useEffect(() => {
+    const leave = () => {
+      const c = leaving.current
+      if (c.state === 'draft') navigator.sendBeacon?.(`${BUILDER_BASE}/changes/${encodeURIComponent(c.change_id)}/cancel`, new Blob(['{}'], { type: 'application/json' }))
+    }
+    window.addEventListener('pagehide', leave)
+    return () => window.removeEventListener('pagehide', leave)
+  }, [])
+  const dismiss = async () => {
+    if (change.state !== 'draft') return onClose(change)
+    setBusy(true)
+    setError('')
+    try {
+      onClose(await builderApi.cancel(change.change_id))
+    } catch (e) {
+      setError(`The draft could not be discarded. ${errorMessage(e)}`)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+    <Dialog open onOpenChange={(open) => !open && !busy && void dismiss()}>
+      <DialogContent
+        widthClassName="max-w-3xl"
+        className="gap-3 max-sm:-mx-4 max-sm:-mb-4 max-sm:max-h-[88vh] max-sm:w-[calc(100%+2rem)] max-sm:max-w-none max-sm:self-end max-sm:overflow-auto max-sm:rounded-b-none max-sm:border-b-0"
+      >
+        <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal">{change.state === 'draft' ? `Review changes${subject ? ` · ${subject}` : ''}` : inHandoff ? 'Hand off to Tether' : 'Change status'}</DialogTitle>
+        <DialogDescription className="sr-only">Review the computed change and submit it for approval on the host.</DialogDescription>
+        {rows && rows.length > 0 && change.state === 'draft' ? (
+          <dl aria-label="Changes">
+            {rows.map((r) => (
+              <div key={r.label} className="grid gap-1 border-t border-border-subtle py-1.5 text-xs sm:grid-cols-[140px_1fr_1fr] sm:gap-2.5">
+                <dt className="font-mono text-caption uppercase tracking-label text-fg-muted">{r.label}</dt>
+                <dd className="text-fg-muted line-through">
+                  <span className="sr-only">Was: </span>
+                  {r.from}
+                </dd>
+                <dd className="text-fg">
+                  <span className="sr-only">Now: </span>
+                  {r.to}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          change.diff && <Diff text={change.diff} />
+        )}
+        {(change.checks ?? []).some((c) => c.status !== 'ok') && (
+          <ul aria-label="Checks" className="space-y-1">
+            {change.checks?.filter((c) => c.status !== 'ok').map((c) => (
+              <li key={c.name + (c.entity ?? '')} className="dash-support text-fg-secondary">
+                <span className={c.status === 'fail' ? 'text-danger' : ''}>{CHECK_WORD[c.status]}</span> {c.message}
+                {c.remedy ? ` ${c.remedy}` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+        {privileged && <p className="dash-support text-fg-secondary">Privileged: {change.privileged?.map((p) => p.field || p.path).join(', ')}</p>}
+        {!inHandoff && (
+          <div className="flex flex-col gap-2 rounded-panel border border-border p-3 text-xs text-fg-secondary">
+            <p className="font-mono text-caption uppercase tracking-label text-fg-muted">Effect</p>
+            <EffectRow label="Running sessions">
+              {(change.effect?.running_sessions ?? []).length > 0
+                ? `${change.effect?.running_sessions?.length} keep${change.effect?.running_sessions?.length === 1 ? 's' : ''} the current config until restarted`
+                : 'none affected'}
+            </EffectRow>
+            {!partsOnly && <EffectRow label="Launches">next launch uses the new config</EffectRow>}
+            {change.effect?.activation && <EffectRow label="Activation">{change.effect.activation}</EffectRow>}
+            {(change.effect?.restart_required ?? []).length > 0 && <EffectRow label="Restart required">{change.effect?.restart_required?.join(', ')}</EffectRow>}
+            <EffectRow label="Approval">{partsOnly ? 'not needed · saved as soon as you confirm' : 'needed on the host'}</EffectRow>
+          </div>
+        )}
+        {inHandoff && change.state !== 'draft' && (
+          <HandoffPanel change={change} onChange={setChange} onReload={onReload} />
+        )}
+        {!inHandoff && (<>
+
+        {change.state === 'awaiting_approval' && change.plan && (
+          <div className="space-y-2 border border-border p-3" role="status">
+            <p className="dash-body text-fg">Awaiting approval. Run this on the host:</p>
+            <p className="dash-support text-fg-muted">Nothing changes until it is approved on the host.</p>
+            <code className="block break-all bg-surface p-2 font-mono dash-support text-fg">{change.plan.approve_command}</code>
+            <div className="flex items-center gap-3 dash-support text-fg-muted">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="max-sm:min-h-10"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(change.plan?.approve_command ?? '')
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 1500)
+                }}
+              >
+                {copied ? 'Copied' : 'Copy command'}
+              </Button>
+              <Countdown expiresAt={change.plan.expires_at} />
+              {change.plan.expires_at <= Date.now() && (
+                <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" disabled={busy} onClick={() => run(() => builderApi.rearm(change.change_id))}>
+                  Re-arm
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+        {(change.state === 'approved' || change.state === 'applying') && (
+          <p role="status" className="dash-body text-fg">
+            Applying…
+          </p>
+        )}
+        {change.state === 'applied' && (
+          <p role="status" className="dash-body text-fg">
+            Saved. {change.result?.activation}
+            {change.result?.reload_error ? ` Reload reported: ${change.result.reload_error}` : ''}
+          </p>
+        )}
+        {change.state === 'failed' && (
+          <p role="alert" className="dash-body text-danger">
+            Failed at {change.failure?.step}: {change.failure?.message}. Your draft is kept.
+          </p>
+        )}
+        {change.state === 'expired' && (
+          <p role="alert" className="dash-body text-danger">
+            The approval window ended. Your draft is kept.
+          </p>
+        )}
+        {change.state === 'rolled_back' && (
+          <p role="alert" className="dash-body text-danger">
+            The change was rolled back.
+          </p>
+        )}
+        {change.state === 'cancelled' && (
+          <p role="status" className="dash-body text-fg">
+            Change cancelled.
+          </p>
+        )}
+        {change.state === 'stale' && (
+          <div role="alert" className="space-y-2 border border-border p-3">
+            <p className="dash-body text-fg">Changed elsewhere: {change.stale?.changed_paths.join(', ')}.</p>
+            {change.stale?.theirs_diff && <Diff text={change.stale.theirs_diff} />}
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={onReload}>
+              Reload theirs
+            </Button>
+          </div>
+        )}
+        </>)}
+        {error && (
+          <p role="alert" className="dash-support text-danger">
+            {error}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {change.state === 'draft' && privileged && (
+            <label className="mr-auto flex items-center gap-2 dash-support text-fg-secondary">
+              <Checkbox checked={ack} onCheckedChange={(v) => setAck(v === true)} /> I understand these fields are privileged
+            </label>
+          )}
+          {inHandoff && change.state === 'failed' && (
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={() => onClose(change)}>
+              Try again
+            </Button>
+          )}
+          {inHandoff && change.state !== 'draft' && (change.state === 'awaiting_handoff' || change.state === 'awaiting_approval' || change.state === 'stale') && (
+            <Button type="button" variant="ghost" size="sm" className="max-sm:min-h-10" disabled={busy} onClick={() => setConfirmCancel(true)}>
+              Cancel change
+            </Button>
+          )}
+          {!inHandoff && (change.state === 'draft' || change.state === 'awaiting_approval' || change.state === 'stale') && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="max-sm:min-h-10"
+              disabled={busy}
+              onClick={() => (change.state === 'draft' ? void dismiss() : run(() => builderApi.cancel(change.change_id)))}
+            >
+              {change.state === 'draft' ? 'Keep editing' : 'Cancel change'}
+            </Button>
+          )}
+          {change.state === 'draft' && (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="max-sm:min-h-10"
+              disabled={busy || failChecks.length > 0 || (privileged && !ack)}
+              onClick={() => run(() => builderApi.submit(change.change_id, ack))}
+            >
+              {busy ? (inHandoff ? 'Preparing' : partsOnly ? 'Saving' : 'Submitting') : inHandoff ? 'Prepare change' : partsOnly ? 'Save' : 'Submit for approval'}
+            </Button>
+          )}
+          {change.state === 'draft' && inHandoff && (
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" disabled={busy} onClick={() => void dismiss()}>
+              Keep editing
+            </Button>
+          )}
+          {(done || inHandoff) && change.state !== 'draft' && (
+            <Button type="button" variant="outline" size="sm" className="max-sm:min-h-10" onClick={() => onClose(change)}>
+              Close
+            </Button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+    {confirmCancel && (
+      <Dialog open onOpenChange={(o) => !o && setConfirmCancel(false)}>
+        <DialogContent widthClassName="max-w-sm">
+          <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">Cancel this prepared change?</DialogTitle>
+          <DialogDescription>Your edits stay in the editor. Nothing was applied.</DialogDescription>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end [&>button]:w-full sm:[&>button]:w-auto">
+            <Button type="button" variant="outline" size="sm" onClick={() => setConfirmCancel(false)}>
+              Keep it
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setConfirmCancel(false)
+                void run(() => builderApi.cancel(change.change_id))
+              }}
+            >
+              Cancel change
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
+  )
+}
