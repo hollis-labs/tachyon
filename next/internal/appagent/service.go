@@ -309,7 +309,7 @@ func (s *Service) run(ctx context.Context, th Thread, l *live, text string) {
 		return
 	}
 	if sess != th.RuntimeSession {
-		if err := s.Store.SetSession(ctx, th.ID, sess); err != nil {
+		if ierr := s.Store.SetSession(ctx, th.ID, sess); ierr != nil {
 			s.fail(l.agent, l.operator, "Tachyon could not save the session.")
 			return
 		}
@@ -332,7 +332,7 @@ func (s *Service) run(ctx context.Context, th Thread, l *live, text string) {
 		return
 	}
 	l.agent.RuntimeTurn = turn
-	if err := s.Store.SaveAgent(ctx, l.agent.ID, "", nil, StateStreaming, "", turn, s.now()); err != nil {
+	if ierr := s.Store.SaveAgent(ctx, l.agent.ID, "", nil, StateStreaming, "", turn, s.now()); ierr != nil {
 		s.fail(l.agent, l.operator, "Tachyon could not record the turn.")
 		return
 	}
@@ -495,12 +495,13 @@ func (s *Service) poll(ctx context.Context, l *live, session, turn string) {
 			u := ui(m, "")
 			s.publish(l.agent.ThreadID, Event{Type: "message", Message: &u})
 			s.mu.Unlock()
-			if res.State == "completed" {
+			switch res.State {
+			case "completed":
 				s.finish(l, StateComplete, "")
-			} else if res.State == "input_required" {
+			case "input_required":
 				// The agent is waiting on the operator: a blocker, not a failure.
 				s.finish(l, StateBlocked, "")
-			} else {
+			default:
 				s.finish(l, StateFailed, redact.Text(firstNonEmpty(res.Error, "The agent run "+res.State+".")))
 			}
 			return

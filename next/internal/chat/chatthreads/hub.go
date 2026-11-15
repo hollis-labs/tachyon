@@ -85,11 +85,11 @@ func (h *Hub) Publish(ctx context.Context, ref, typ string, fields map[string]an
 	if chatapi.IDed(typ) {
 		err = h.DB.Writer.Submit(ctx, "chat_event", func(ctx context.Context, tx store.Tx) error {
 			// RETURNING, not LastInsertId: the Postgres driver has no last insert id.
-			if err := tx.QueryRowContext(ctx, `INSERT INTO chat_events(thread_ref,type,body,at_ns) VALUES(?,?,?,?) RETURNING seq`, ref, typ, body, at.UnixNano()).Scan(&seq); err != nil {
-				return err
+			if ierr := tx.QueryRowContext(ctx, `INSERT INTO chat_events(thread_ref,type,body,at_ns) VALUES(?,?,?,?) RETURNING seq`, ref, typ, body, at.UnixNano()).Scan(&seq); ierr != nil {
+				return ierr
 			}
-			_, err := tx.ExecContext(ctx, `DELETE FROM chat_events WHERE thread_ref=? AND seq<=?`, ref, seq-keepEvents)
-			return err
+			_, ierr := tx.ExecContext(ctx, `DELETE FROM chat_events WHERE thread_ref=? AND seq<=?`, ref, seq-keepEvents)
+			return ierr
 		})
 		if err != nil {
 			return 0, err
@@ -98,7 +98,7 @@ func (h *Hub) Publish(ctx context.Context, ref, typ string, fields map[string]an
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for s := range h.subs {
-		if s.ref != ref && !(s.ref == "" && typ == chatapi.EventThread) {
+		if s.ref != ref && (s.ref != "" || typ != chatapi.EventThread) {
 			continue
 		}
 		select {
@@ -117,7 +117,7 @@ func (h *Hub) Replay(ctx context.Context, ref string, after int64) ([]Frame, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Frame
 	for rows.Next() {
 		var f Frame

@@ -27,7 +27,7 @@ func call(t *testing.T, srv *httptest.Server, method, path, body string) (int, m
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out map[string]any
 	json.NewDecoder(resp.Body).Decode(&out)
 	return resp.StatusCode, out
@@ -41,17 +41,17 @@ func TestHandlerRoutesAndErrors(t *testing.T) {
 		t.Fatalf("threads: %d %v", code, out)
 	}
 	th := threads[0].(map[string]any)
-	cap := th["capability"].(map[string]any)
+	capab := th["capability"].(map[string]any)
 	ag := th["agent"].(map[string]any)
-	if th["id"] != DefaultThread || cap["mode"] != "live" || cap["canSend"] != true || ag["kind"] != "agent" || th["owner"] != "tachyon" {
+	if th["id"] != DefaultThread || capab["mode"] != "live" || capab["canSend"] != true || ag["kind"] != "agent" || th["owner"] != "tachyon" {
 		t.Fatalf("thread shape: %v", th)
 	}
-	if code, _ := call(t, srv, "POST", Prefix+"/threads/nope/messages", `{"body":"x"}`); code != 404 {
-		t.Fatalf("unknown thread: %d", code)
+	if got, _ := call(t, srv, "POST", Prefix+"/threads/nope/messages", `{"body":"x"}`); got != 404 {
+		t.Fatalf("unknown thread: %d", got)
 	}
 	for _, body := range []string{``, `{}`, `{"body":""}`, `{"body":"x","extra":1}`, `not json`} {
-		if code, _ := call(t, srv, "POST", Prefix+"/threads/"+DefaultThread+"/messages", body); code != 400 {
-			t.Fatalf("body %q: %d", body, code)
+		if got, _ := call(t, srv, "POST", Prefix+"/threads/"+DefaultThread+"/messages", body); got != 400 {
+			t.Fatalf("body %q: %d", body, got)
 		}
 	}
 	code, out = call(t, srv, "POST", Prefix+"/threads/"+DefaultThread+"/messages", `{"body":"hello"}`)
@@ -132,7 +132,7 @@ func TestEventsStreamStartsWithTheInFlightSnapshotThenDeltas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") || resp.Header.Get("X-Accel-Buffering") != "no" {
 		t.Fatalf("headers: %d %v", resp.StatusCode, resp.Header)
 	}

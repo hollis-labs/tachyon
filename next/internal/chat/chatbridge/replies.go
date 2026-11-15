@@ -29,7 +29,7 @@ func (o *Owned) Reply(ctx context.Context, id string, revision int64, text strin
 	}
 	var key, oldBody, receipt, state string
 	err = o.Store.Reader.QueryRowContext(ctx, "SELECT request_key,body,reply_id,state FROM chat_reply_intents WHERE turn_id=?", id).Scan(&key, &oldBody, &receipt, &state)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return t, err
 	}
 	if err == nil {
@@ -45,7 +45,7 @@ func (o *Owned) Reply(ctx context.Context, id string, revision int64, text strin
 		}
 		key = "tachyon-reply-" + uuid.NewString()
 	}
-	if !t.Replyable || t.Source == nil || t.Source.Origin != "routed" || t.Source.MessageID == "" || t.Source.Sender != "msg://session/local/"+t.SessionID || !(t.Kind == "terminal" || t.Kind == "question" || t.Kind == "failure") {
+	if !t.Replyable || t.Source == nil || t.Source.Origin != "routed" || t.Source.MessageID == "" || t.Source.Sender != "msg://session/local/"+t.SessionID || !(t.Kind == "terminal" || t.Kind == "question" || t.Kind == "failure") { //nolint:staticcheck // the old build's eligibility rule, kept as written
 		return t, ErrNotReplyable
 	}
 	if o.Source == nil {
@@ -138,13 +138,13 @@ func (o *Owned) pollDeliveries(ctx context.Context) error {
 	for rows.Next() {
 		var p pending
 		if err = rows.Scan(&p.id, &p.reply, &p.state); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		pendingItems = append(pendingItems, p)
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}
@@ -166,9 +166,9 @@ func (o *Owned) pollDeliveries(ctx context.Context) error {
 		t.Delivery = delivery(string(d.State))
 		t.Revision++
 		e = o.Store.Writer.Submit(ctx, "chat_reply_observed", func(ctx context.Context, tx store.Tx) error {
-			_, e := tx.ExecContext(ctx, "UPDATE chat_reply_intents SET state=?,error=? WHERE turn_id=?", string(d.State), d.Reason, p.id)
-			if e != nil {
-				return e
+			_, ie := tx.ExecContext(ctx, "UPDATE chat_reply_intents SET state=?,error=? WHERE turn_id=?", string(d.State), d.Reason, p.id)
+			if ie != nil {
+				return ie
 			}
 			return o.updateTurn(ctx, tx, t)
 		})
@@ -225,21 +225,21 @@ func (o *Owned) Import(ctx context.Context, raw []byte) (int, error) {
 					if len(old.Trace) == 0 {
 						old.Trace = t.Trace
 					}
-					b, e := json.Marshal(old)
-					if e != nil {
-						return e
+					b, ie := json.Marshal(old)
+					if ie != nil {
+						return ie
 					}
-					_, e = tx.ExecContext(ctx, "UPDATE chat_turns SET body=?,revision=?,imported=1 WHERE id=?", b, old.Revision, id)
-					if e != nil {
-						return e
+					_, ie = tx.ExecContext(ctx, "UPDATE chat_turns SET body=?,revision=?,imported=1 WHERE id=?", b, old.Revision, id)
+					if ie != nil {
+						return ie
 					}
-					if e = linkTurnSession(ctx, tx, o.SourceID, id); e != nil {
-						return e
+					if ie = linkTurnSession(ctx, tx, o.SourceID, id); ie != nil {
+						return ie
 					}
 					count++
 					continue
 				}
-				if e != sql.ErrNoRows {
+				if !errors.Is(e, sql.ErrNoRows) {
 					return e
 				}
 			}

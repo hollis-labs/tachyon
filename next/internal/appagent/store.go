@@ -126,7 +126,7 @@ func (s *Store) Threads(ctx context.Context) ([]Thread, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Thread{}
 	for rows.Next() {
 		t, err := scanThread(rows)
@@ -181,32 +181,32 @@ func (s *Store) AppendTurn(ctx context.Context, threadID, body string, now time.
 	agent = Message{ID: uuid.NewString(), ThreadID: threadID, Role: RoleAgent, State: StateStreaming, Tools: []Tool{}, CreatedAt: now, UpdatedAt: now}
 	err = s.DB.Writer.Submit(ctx, "app_agent_append_turn", func(ctx context.Context, tx store.Tx) error {
 		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM app_agent_threads WHERE id=?`, threadID).Scan(&exists); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+		if ierr := tx.QueryRowContext(ctx, `SELECT 1 FROM app_agent_threads WHERE id=?`, threadID).Scan(&exists); ierr != nil {
+			if errors.Is(ierr, sql.ErrNoRows) {
 				return ErrNotFound
 			}
-			return err
+			return ierr
 		}
 		var busy int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM app_agent_messages WHERE thread_id=? AND state='streaming'`, threadID).Scan(&busy); err != nil {
-			return err
+		if ierr := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM app_agent_messages WHERE thread_id=? AND state='streaming'`, threadID).Scan(&busy); ierr != nil {
+			return ierr
 		}
 		if busy > 0 {
 			return ErrBusy
 		}
 		var seq int64
-		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM app_agent_messages WHERE thread_id=?`, threadID).Scan(&seq); err != nil {
-			return err
+		if ierr := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0) FROM app_agent_messages WHERE thread_id=?`, threadID).Scan(&seq); ierr != nil {
+			return ierr
 		}
 		operator.Seq, agent.Seq = seq+1, seq+2
 		for _, m := range []Message{operator, agent} {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO app_agent_messages(id,thread_id,seq,role,body,state,error,runtime_turn,tools,created_ns,updated_ns) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-				m.ID, m.ThreadID, m.Seq, m.Role, m.Body, m.State, m.Error, m.RuntimeTurn, "[]", ns(m.CreatedAt), ns(m.UpdatedAt)); err != nil {
-				return err
+			if _, ierr := tx.ExecContext(ctx, `INSERT INTO app_agent_messages(id,thread_id,seq,role,body,state,error,runtime_turn,tools,created_ns,updated_ns) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+				m.ID, m.ThreadID, m.Seq, m.Role, m.Body, m.State, m.Error, m.RuntimeTurn, "[]", ns(m.CreatedAt), ns(m.UpdatedAt)); ierr != nil {
+				return ierr
 			}
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE app_agent_threads SET updated_ns=? WHERE id=?`, ns(now), threadID)
-		return err
+		_, ierr := tx.ExecContext(ctx, `UPDATE app_agent_threads SET updated_ns=? WHERE id=?`, ns(now), threadID)
+		return ierr
 	})
 	return operator, agent, err
 }
@@ -250,7 +250,7 @@ func (s *Store) Messages(ctx context.Context, threadID string, beforeSeq int64, 
 	if err != nil {
 		return nil, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Message{}
 	for rows.Next() {
 		m, err := scanMessage(rows)
@@ -278,7 +278,7 @@ func (s *Store) Streaming(ctx context.Context) ([]Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Message{}
 	for rows.Next() {
 		m, err := scanMessage(rows)
@@ -312,7 +312,7 @@ func (s *Store) ThreadsWithText(ctx context.Context, text string, limit int) (ma
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]bool{}
 	for rows.Next() {
 		var id string
@@ -347,21 +347,21 @@ func (s *Store) AppendNote(ctx context.Context, threadID, kind, body string, met
 	m := Message{ID: uuid.NewString(), ThreadID: threadID, Role: RoleAgent, Body: body, State: StateComplete, Tools: []Tool{}, Kind: kind, Meta: meta, CreatedAt: now, UpdatedAt: now}
 	err = s.DB.Writer.Submit(ctx, "app_agent_note", func(ctx context.Context, tx store.Tx) error {
 		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM app_agent_threads WHERE id=?`, threadID).Scan(&exists); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+		if ierr := tx.QueryRowContext(ctx, `SELECT 1 FROM app_agent_threads WHERE id=?`, threadID).Scan(&exists); ierr != nil {
+			if errors.Is(ierr, sql.ErrNoRows) {
 				return ErrNotFound
 			}
-			return err
+			return ierr
 		}
-		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM app_agent_messages WHERE thread_id=?`, threadID).Scan(&m.Seq); err != nil {
-			return err
+		if ierr := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM app_agent_messages WHERE thread_id=?`, threadID).Scan(&m.Seq); ierr != nil {
+			return ierr
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO app_agent_messages(id,thread_id,seq,role,body,state,error,runtime_turn,tools,created_ns,updated_ns,kind,meta_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			m.ID, threadID, m.Seq, m.Role, m.Body, m.State, "", "", "[]", ns(now), ns(now), kind, string(raw)); err != nil {
-			return err
+		if _, ierr := tx.ExecContext(ctx, `INSERT INTO app_agent_messages(id,thread_id,seq,role,body,state,error,runtime_turn,tools,created_ns,updated_ns,kind,meta_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			m.ID, threadID, m.Seq, m.Role, m.Body, m.State, "", "", "[]", ns(now), ns(now), kind, string(raw)); ierr != nil {
+			return ierr
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE app_agent_threads SET updated_ns=? WHERE id=?`, ns(now), threadID)
-		return err
+		_, ierr := tx.ExecContext(ctx, `UPDATE app_agent_threads SET updated_ns=? WHERE id=?`, ns(now), threadID)
+		return ierr
 	})
 	return m, err
 }

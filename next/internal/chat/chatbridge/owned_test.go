@@ -114,8 +114,8 @@ func TestOwnedHistoryPersistsCursorAndReplaysWithoutLosingReply(t *testing.T) {
 	}
 	// Replayed publications cannot replace a locally owned resolution.
 	e = o.Store.Writer.Submit(ctx, "test_replay", func(ctx context.Context, tx store.Tx) error {
-		_, e := tx.ExecContext(ctx, "DELETE FROM chat_cursors; DELETE FROM api_cache")
-		return e
+		_, ie := tx.ExecContext(ctx, "DELETE FROM chat_cursors; DELETE FROM api_cache")
+		return ie
 	})
 	if e != nil {
 		t.Fatal(e)
@@ -186,8 +186,8 @@ func TestImportThenIndependentIngestionPreservesHistoryAcrossRestart(t *testing.
 	o := &Owned{Store: db, Source: f, SourceID: "tether-test"}
 	var e error
 	raw := []byte(`{"pending":[],"history":[{"item_id":"old-tangent-id","agent_id":"pm","session_id":"s1","turn_id":"t1","kind":"terminal","content":"old original","created_at":"2026-10-17T10:00:00Z","revision":4,"queue_sequence":1,"state":"resolved","delivery_state":"acknowledged","replyable":true,"annotations":[{"kept":"in original snapshot"}],"resolution":{"resolution_id":"old-resolution","response_text":"historical user reply","resolved_at":"2026-10-17T10:01:00Z"},"source_message":{"origin":"routed","channel":"owner-inbox","message_id":"pub1","sequence":1,"sender_urn":"msg://session/local/s1","attribution":{"launch_id":"pm"}}}]}`)
-	if n, e := o.Import(ctx, raw); e != nil || n != 1 {
-		t.Fatal(n, e)
+	if n, ie := o.Import(ctx, raw); ie != nil || n != 1 {
+		t.Fatal(n, ie)
 	}
 	if _, e = o.Import(ctx, raw); e != nil {
 		t.Fatal(e)

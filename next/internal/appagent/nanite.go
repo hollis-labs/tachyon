@@ -43,7 +43,7 @@ func (c NaniteConfig) Check(authenticated bool) error {
 		return fmt.Errorf("%w: url, token and session are required", ErrNotConfigured)
 	}
 	if err := upstreamauth.Guard(c.URL, authenticated); err != nil {
-		return fmt.Errorf("%w: %v", ErrNotConfigured, err)
+		return fmt.Errorf("%w: %w", ErrNotConfigured, err)
 	}
 	return nil
 }
@@ -192,12 +192,12 @@ func (n *Nanite) Ensure(ctx context.Context, existing string) (string, error) {
 	}
 	pin := pinOf(cfg.Session)
 	if oldPin, oldID := splitSession(existing); existing != "" && oldPin == pin {
-		resp, cancel, err := n.do(ctx, cfg, http.MethodGet, "/sessions/"+url.PathEscape(oldID), nil, "application/json", 15*time.Second)
-		if err != nil {
-			return "", err
+		resp, cancel, ierr := n.do(ctx, cfg, http.MethodGet, "/sessions/"+url.PathEscape(oldID), nil, "application/json", 15*time.Second)
+		if ierr != nil {
+			return "", ierr
 		}
 		defer cancel()
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusOK {
 			var s struct {
 				State  string `json:"state"`
@@ -217,7 +217,7 @@ func (n *Nanite) Ensure(ctx context.Context, existing string) (string, error) {
 		return "", err
 	}
 	defer cancel()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == 404 {
 			return "", fmt.Errorf("%w: Nanite does not know the configured definition or host settings (reinstalled? update the app agent config)", ErrRuntimeDown)
@@ -248,7 +248,7 @@ func (n *Nanite) Submit(ctx context.Context, session, text string) (string, erro
 		return "", err
 	}
 	defer cancel()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return "", statusErr(resp)
 	}
@@ -333,7 +333,7 @@ func (n *Nanite) Observe(ctx context.Context, session, turn string, emit func(Tu
 		return err
 	}
 	defer cancel()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return statusErr(resp)
 	}
@@ -389,7 +389,7 @@ func (n *Nanite) Observe(ctx context.Context, session, turn string, emit func(Tu
 		return fmt.Errorf("%w: the reply stream stalled", ErrRuntimeDown)
 	}
 	if err := sc.Err(); err != nil {
-		return fmt.Errorf("%w: %s", ErrRuntimeDown, err)
+		return fmt.Errorf("%w: %w", ErrRuntimeDown, err)
 	}
 	return fmt.Errorf("%w: the reply stream ended early", ErrRuntimeDown)
 }
@@ -428,7 +428,7 @@ func (n *Nanite) Result(ctx context.Context, session, turn string) (Result, erro
 		return Result{}, err
 	}
 	defer cancel()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return Result{}, statusErr(resp)
 	}
@@ -529,7 +529,7 @@ func (n *Nanite) Respond(ctx context.Context, session, approvalID string, allow 
 		return err
 	}
 	defer cancel()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
 		return statusErr(resp)
 	}

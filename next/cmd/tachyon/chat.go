@@ -60,7 +60,7 @@ func newChat(ctx context.Context, app *module.App, cfg settings.Settings, domain
 	// build keyed them: tachyon.upstreams.tether.url must be spelled as the old TETHER_ADDR was.
 	tetherURL := cfg.Upstreams.Tether.URL
 	var source chatbridge.Source = unconfiguredTether{}
-	var sourceErr error = errTetherOff
+	sourceErr := errTetherOff
 	if tetherURL != "" {
 		if src, err := chatbridge.NewSource(tetherURL, upstreamauth.FromRef(resolver, cfg.Upstreams.Tether.Token)); err != nil {
 			sourceErr = err

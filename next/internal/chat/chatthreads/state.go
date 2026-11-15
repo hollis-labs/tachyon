@@ -46,7 +46,7 @@ func (s *StateStore) All(ctx context.Context) (map[string]State, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]State{}
 	for rows.Next() {
 		st, err := scanState(rows)

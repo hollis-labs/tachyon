@@ -15,26 +15,26 @@ func TestStoreThreadsMessagesPagingAndUnread(t *testing.T) {
 	if err != nil || th.ID != "t1" || th.Owner != "tachyon" || th.Runtime != "nanite" {
 		t.Fatalf("thread: %+v %v", th, err)
 	}
-	if again, err := st.CreateThread(ctx, "t1", "tachyon", "Renamed?", now); err != nil || again.Title != "Tachyon" {
-		t.Fatalf("create is idempotent: %+v %v", again, err)
+	if again, ierr := st.CreateThread(ctx, "t1", "tachyon", "Renamed?", now); ierr != nil || again.Title != "Tachyon" {
+		t.Fatalf("create is idempotent: %+v %v", again, ierr)
 	}
-	if _, err := st.Thread(ctx, "missing"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing thread: %v", err)
+	if _, ierr := st.Thread(ctx, "missing"); !errors.Is(ierr, ErrNotFound) {
+		t.Fatalf("missing thread: %v", ierr)
 	}
 	for i := 0; i < 3; i++ {
-		op, ag, err := st.AppendTurn(ctx, "t1", "q", now.Add(time.Duration(i)*time.Second))
-		if err != nil || op.Seq != int64(2*i+1) || ag.Seq != int64(2*i+2) || ag.State != StateStreaming {
-			t.Fatalf("turn %d: %+v %+v %v", i, op, ag, err)
+		op, ag, ierr := st.AppendTurn(ctx, "t1", "q", now.Add(time.Duration(i)*time.Second))
+		if ierr != nil || op.Seq != int64(2*i+1) || ag.Seq != int64(2*i+2) || ag.State != StateStreaming {
+			t.Fatalf("turn %d: %+v %+v %v", i, op, ag, ierr)
 		}
-		if _, _, err := st.AppendTurn(ctx, "t1", "again", now); !errors.Is(err, ErrBusy) {
-			t.Fatalf("append while streaming: %v", err)
+		if _, _, ierr := st.AppendTurn(ctx, "t1", "again", now); !errors.Is(ierr, ErrBusy) {
+			t.Fatalf("append while streaming: %v", ierr)
 		}
-		if err := st.SaveAgent(ctx, ag.ID, "answer", []Tool{{ID: "c", Name: "n", Status: "ok"}}, StateComplete, "", "turn", now); err != nil {
-			t.Fatal(err)
+		if ierr := st.SaveAgent(ctx, ag.ID, "answer", []Tool{{ID: "c", Name: "n", Status: "ok"}}, StateComplete, "", "turn", now); ierr != nil {
+			t.Fatal(ierr)
 		}
 	}
-	if _, _, err := st.AppendTurn(ctx, "nope", "x", now); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("append to missing thread: %v", err)
+	if _, _, ierr := st.AppendTurn(ctx, "nope", "x", now); !errors.Is(ierr, ErrNotFound) {
+		t.Fatalf("append to missing thread: %v", ierr)
 	}
 	page, more, err := st.Messages(ctx, "t1", 0, 4)
 	if err != nil || !more || len(page) != 4 || page[0].Seq != 3 || page[3].Seq != 6 {

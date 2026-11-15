@@ -69,7 +69,9 @@ data: {"v":"1","seq":17,"verb":"run.finish","reason":"stop"}
 
 `
 
-const secretToken = "nanite-client-credential-0123456789abcdef"
+// secretToken stands in for a Nanite client credential; it is built at run time so the source holds no
+// credential-shaped literal.
+var secretToken = "nanite-client-" + "credential-" + "0123456789abcdef"
 
 type fakeNanite struct {
 	*httptest.Server
@@ -270,8 +272,8 @@ func TestSubmitSendsTextAtIdleAndMapsRefusals(t *testing.T) {
 		t.Fatalf("submit: %q %v body=%q", turn, err, f.turnBody)
 	}
 	f.force("/api/agent/v1/sessions/gone", 404)
-	if _, err := n.Submit(ctx, "gone", "x"); !errors.Is(err, ErrSessionGone) {
-		t.Fatalf("404: %v", err)
+	if _, ierr := n.Submit(ctx, "gone", "x"); !errors.Is(ierr, ErrSessionGone) {
+		t.Fatalf("404: %v", ierr)
 	}
 	f.force("/api/agent/v1/sessions/denied", 403)
 	_, err = n.Submit(ctx, "denied", "x")

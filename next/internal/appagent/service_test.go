@@ -42,7 +42,7 @@ func (f *fakeRuntime) Ensure(_ context.Context, existing string) (string, error)
 	if existing != "" {
 		return existing, nil
 	}
-	return "sess-" + string(rune('a'+len(f.ensured))), nil
+	return "sess-" + string(rune('a'+len(f.ensured))), nil //nolint:gosec // a handful of test sessions
 }
 func (f *fakeRuntime) Submit(_ context.Context, session, text string) (string, error) {
 	f.mu.Lock()
@@ -363,12 +363,12 @@ func TestAReplyAlwaysSortsAfterTheMessageItAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !(reply.At > op.At) {
+	if reply.At <= op.At {
 		t.Fatalf("live: reply at %d must be after operator at %d", reply.At, op.At)
 	}
 	drain(t, ch, isEnd)
 	msgs, _, _ := s.Messages(context.Background(), DefaultThread, 0, 10)
-	if len(msgs) != 2 || !(msgs[1].At > msgs[0].At) || msgs[0].From != "operator" {
+	if len(msgs) != 2 || msgs[1].At <= msgs[0].At || msgs[0].From != "operator" {
 		t.Fatalf("history: %+v", msgs)
 	}
 	// Existing rows stored with identical timestamps are corrected on read.

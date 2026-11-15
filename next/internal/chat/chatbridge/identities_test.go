@@ -97,21 +97,21 @@ INSERT INTO chat_outbox VALUES('legacy','sent','launch','legacy original',1,'sen
 	}
 	snapshot := func() string {
 		var result string
-		rows, err := o.Store.Reader.QueryContext(context.Background(), "SELECT id,body,revision,session_id FROM chat_turns ORDER BY id")
-		if err != nil {
-			t.Fatal(err)
+		rows, ierr := o.Store.Reader.QueryContext(context.Background(), "SELECT id,body,revision,session_id FROM chat_turns ORDER BY id")
+		if ierr != nil {
+			t.Fatal(ierr)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var id, body, session string
 			var rev int
-			if err = rows.Scan(&id, &body, &rev, &session); err != nil {
-				t.Fatal(err)
+			if ierr = rows.Scan(&id, &body, &rev, &session); ierr != nil {
+				t.Fatal(ierr)
 			}
 			result += fmt.Sprintf("%s:%s:%d:%s\n", id, body, rev, session)
 		}
-		if err = rows.Err(); err != nil {
-			t.Fatal(err)
+		if ierr = rows.Err(); ierr != nil {
+			t.Fatal(ierr)
 		}
 		return result
 	}

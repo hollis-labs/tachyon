@@ -92,13 +92,13 @@ func (o *Owned) BackfillSessionLinks(ctx context.Context, outboxIdentity string)
 				for rows.Next() {
 					var id string
 					if err = rows.Scan(&id); err != nil {
-						rows.Close()
+						_ = rows.Close()
 						return err
 					}
 					ids = append(ids, id)
 				}
 				err = rows.Err()
-				rows.Close()
+				_ = rows.Close()
 				if err != nil {
 					return err
 				}
@@ -141,7 +141,7 @@ func (o *Owned) SessionTurns(ctx context.Context, localID, afterID string, limit
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []Turn{}
 	for rows.Next() {
 		t, err := scanLinkedTurn(rows)

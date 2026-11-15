@@ -36,13 +36,13 @@ type Context struct {
 	Source string  `json:"source"`
 }
 
-// Summary is one row of the unified thread list (openapi ThreadSummary + Thread).
 // Breakdown is what a blocked thread is waiting for.
 type Breakdown struct {
 	Approvals int `json:"approvals"`
 	Questions int `json:"questions"`
 }
 
+// Summary is one row of the unified thread list (the old OpenAPI ThreadSummary plus Thread).
 type Summary struct {
 	Ref           string     `json:"thread_ref"`
 	Source        string     `json:"source"`

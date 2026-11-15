@@ -183,7 +183,7 @@ func (o *Owned) sync(ctx context.Context) error {
 	for channel := range channels {
 		var cursor int64
 		err = o.Store.Reader.QueryRowContext(ctx, "SELECT cursor FROM chat_cursors WHERE source=? AND channel=?", o.SourceID, channel).Scan(&cursor)
-		if err != nil && err != sql.ErrNoRows {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		for page := 0; page < 100; page++ {
@@ -207,9 +207,9 @@ func (o *Owned) sync(ctx context.Context) error {
 					return errors.New("invalid_response: publication sequence")
 				}
 				previous = m.Seq
-				t, e := publication(o.SourceID, channel, m)
-				if e != nil {
-					return e
+				t, ie := publication(o.SourceID, channel, m)
+				if ie != nil {
+					return ie
 				}
 				if t != nil {
 					turns = append(turns, *t)
@@ -217,21 +217,21 @@ func (o *Owned) sync(ctx context.Context) error {
 			}
 			e = o.Store.Writer.Submit(ctx, "chat_ingest", func(ctx context.Context, tx store.Tx) error {
 				for _, m := range batch.Messages {
-					raw, e := json.Marshal(m)
-					if e != nil {
-						return e
+					raw, ie := json.Marshal(m)
+					if ie != nil {
+						return ie
 					}
-					if _, e = tx.ExecContext(ctx, "INSERT INTO chat_publications(source,channel,publication_id,sequence,envelope) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", o.SourceID, channel, m.ID, m.Seq, raw); e != nil {
-						return e
+					if _, ie = tx.ExecContext(ctx, "INSERT INTO chat_publications(source,channel,publication_id,sequence,envelope) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", o.SourceID, channel, m.ID, m.Seq, raw); ie != nil {
+						return ie
 					}
 				}
 				for _, t := range turns {
-					if e := o.saveTurn(ctx, tx, t, false); e != nil {
-						return e
+					if ie := o.saveTurn(ctx, tx, t, false); ie != nil {
+						return ie
 					}
 				}
-				_, e := tx.ExecContext(ctx, `INSERT INTO chat_cursors(source,channel,cursor) VALUES(?,?,?) ON CONFLICT(source,channel) DO UPDATE SET cursor=excluded.cursor`, o.SourceID, channel, batch.NextSince)
-				return e
+				_, ie := tx.ExecContext(ctx, `INSERT INTO chat_cursors(source,channel,cursor) VALUES(?,?,?) ON CONFLICT(source,channel) DO UPDATE SET cursor=excluded.cursor`, o.SourceID, channel, batch.NextSince)
+				return ie
 			})
 			if e != nil {
 				return e
@@ -322,11 +322,11 @@ func (o *Owned) Inbox(ctx context.Context) (Inbox, error) {
 	if err != nil {
 		return out, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		t, err := scanLinkedTurn(rows)
-		if err != nil {
-			return out, err
+		t, ierr := scanLinkedTurn(rows)
+		if ierr != nil {
+			return out, ierr
 		}
 		if t.Resolution == nil && t.State == "presented" {
 			out.Pending = append(out.Pending, t)
@@ -338,7 +338,7 @@ func (o *Owned) Inbox(ctx context.Context) (Inbox, error) {
 		return out, err
 	}
 	err = o.Store.Reader.QueryRowContext(ctx, "SELECT updated_at,problem FROM chat_sync_status WHERE source=?", o.SourceID).Scan(&out.SyncedAt, &out.Problem)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		out.Problem = "connecting"
 		err = nil
 	}

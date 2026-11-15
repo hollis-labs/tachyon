@@ -150,7 +150,7 @@ func TestChatRoutesAuth(t *testing.T) {
 	if code := flatCode(t, owner.want(404, "GET", chatapi.Prefix+"/threads/tether:nope/topics", nil, xrw)); code != "not_found" {
 		t.Errorf("unknown thread: %s", code)
 	}
-	// With chat_sync off, none of the reads above dialled the configured Tether or app agent.
+	// With chat_sync off, none of the reads above dialed the configured Tether or app agent.
 	if n := up.conns.Load(); n != 0 {
 		t.Errorf("%d connections to the upstream with chat_sync off", n)
 	}
@@ -190,7 +190,7 @@ func TestChatNoOutboundWithSwitchesOff(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if on.conns.Load() == 0 {
-		t.Fatal("chat_sync on never dialled Tether: the control failed")
+		t.Fatal("chat_sync on never dialed Tether: the control failed")
 	}
 }
 

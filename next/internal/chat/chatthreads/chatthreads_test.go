@@ -76,7 +76,7 @@ func (e *env) do(t *testing.T, method, path, body string, hdr ...string) (int, m
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	var out map[string]any
 	_ = json.NewDecoder(res.Body).Decode(&out)
 	return res.StatusCode, out
@@ -414,7 +414,7 @@ func TestAppLiveFramesAndSpine(t *testing.T) {
 	spine := e.stream(t, "/events")
 	e.do(t, "POST", "/threads/app:app-tachyon/messages", `{"text":"hi","idempotency_key":"k"}`)
 	seen := map[string]bool{}
-	for i := 0; i < 12 && !(seen["message"] && seen["end"]); i++ {
+	for i := 0; i < 12 && (!seen["message"] || !seen["end"]); i++ {
 		_, ev := thread.next(t)
 		if ev["thread_ref"] != "app:app-tachyon" {
 			t.Fatalf("envelope: %v", ev)

@@ -178,8 +178,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	tr := chatapi.ThreadRef{Source: chatapi.SourceApp, ID: th.ID}.String()
 	if in.ProjectID != "" {
-		if _, err := h.Agg.State.Apply(r.Context(), tr, Patch{SetProject: true, ProjectID: in.ProjectID}, h.now()); err != nil {
-			h.problem(w, err)
+		if _, ierr := h.Agg.State.Apply(r.Context(), tr, Patch{SetProject: true, ProjectID: in.ProjectID}, h.now()); ierr != nil {
+			h.problem(w, ierr)
 			return
 		}
 	}

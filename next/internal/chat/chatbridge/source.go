@@ -54,7 +54,7 @@ func (t protocolTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // secrets reference resolved per request; nil sends no credential.
 func NewSource(addr string, token upstreamauth.Token) (Source, error) {
 	if strings.TrimSpace(addr) == "" {
-		return nil, errors.New("Tether address is missing")
+		return nil, errors.New("Tether address is missing") //nolint:staticcheck // a product name; operator-visible text kept
 	}
 	base := strings.TrimRight(addr, "/")
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -91,15 +91,16 @@ func NewNotifier(addr string, token upstreamauth.Token) (*tether.Client, error) 
 	return s.(*source).Client, nil
 }
 func (s *source) Agents(ctx context.Context) ([]Agent, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", s.base+"/chat/agents", nil)
+	// s.base is the operator-configured Tether address, not request input.
+	req, err := http.NewRequestWithContext(ctx, "GET", s.base+"/chat/agents", nil) //nolint:gosec // see above
 	if err != nil {
 		return nil, err
 	}
-	res, err := s.http.Do(req)
+	res, err := s.http.Do(req) //nolint:gosec // the configured Tether address
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != 200 {
 		return nil, &tether.APIError{StatusCode: res.StatusCode, Code: "roster_unavailable", Message: "Tether chat roster unavailable"}
 	}
