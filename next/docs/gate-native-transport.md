@@ -178,14 +178,14 @@ tachyon:
     producer_identity: "<mapped-service-identity-id>"
     caller_scope: "<producer-application-id>"
     callback_url: "https://gatecrasher.example/api/gate/v1/authorize-response"
-    callback_token: "env://TACHYON_GATE_CALLBACK_KEY"
     allow_loopback_http: false
 ```
 
 Place these overrides in the file selected by `SUBSTRATE_CONFIG`. The
-`secrets.env` opt-in permits the illustrated environment reference; it does not
-contain the key itself. Supply the separately provisioned direct key through
-that reference, or use another supported secrets backend.
+`secrets.env` opt-in permits environment secret references. This disabled example
+omits `tachyon.native_gate.callback_token`; before enabling, set that required
+field to a reference such as `env://TACHYON_GATE_CALLBACK_KEY`, backed by the
+separately provisioned direct key, or use another supported secrets backend.
 
 The integration requires a compatible Gatecrasher host and separately provisioned
 credentials in both directions. Validate the paired host and intended native
