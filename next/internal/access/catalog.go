@@ -27,6 +27,7 @@ var (
 	chatPanelVerbs      = []string{"chat.panel.open"}
 	terminalVerbs       = []string{"terminal.machines", "terminal.propose", "terminal.run.get"}
 	actionVerbs         = []string{"actions.catalog", "actions.request", "actions.await"}
+	gateVerbs           = []string{"gate.enqueue", "gate.get", "gate.await", "gate.withdraw", "gate.assess-response"}
 	cardVerbs           = []string{"card.ask", "card.get", "card.await", "card.cancel"}
 
 	plannerKinds   = []string{"plan", "task", "epic", "sprint", "collection", "workstream", "inbox_item", "idea", "decision", "risk", "roadmap_item", "strategic_priority"}
@@ -36,7 +37,7 @@ var (
 	mutating = []string{
 		"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate",
 		"planner.portfolio.reorder", "planner.portfolio.assign", "planner.portfolio.unassign",
-		"actions.request", "card.ask", "card.cancel", "chat.topic.add", "chat.plan.write", "chat.plan.step", "chat.plan.create", "chat.plan.move_step",
+		"gate.enqueue", "gate.withdraw", "actions.request", "card.ask", "card.cancel", "chat.topic.add", "chat.plan.write", "chat.plan.step", "chat.plan.create", "chat.plan.move_step",
 		"chat.activity.append", "chat.panel.open", "terminal.propose",
 	}
 )
@@ -45,7 +46,7 @@ var (
 func Verbs() []string {
 	var out []string
 	for _, g := range [][]string{readVerbs, portfolioReadVerbs, portfolioWriteVerbs, torqueVerbs, tesseractVerbs, chatWorkspaceVerbs,
-		chatTopicVerbs, chatPlanVerbs, chatActivityVerbs, chatPanelVerbs, terminalVerbs, actionVerbs, cardVerbs} {
+		chatTopicVerbs, chatPlanVerbs, chatActivityVerbs, chatPanelVerbs, terminalVerbs, actionVerbs, cardVerbs, gateVerbs} {
 		out = append(out, g...)
 	}
 	return out
@@ -59,7 +60,7 @@ func Mutates(verb string) bool { return slices.Contains(mutating, verb) }
 
 // kindless are the verbs that name no object kind: a grant holding only these needs no kinds.
 func kindless(v string) bool {
-	for _, g := range [][]string{actionVerbs, cardVerbs, tesseractVerbs, chatWorkspaceVerbs, chatTopicVerbs, chatPlanVerbs, chatActivityVerbs, chatPanelVerbs, terminalVerbs} {
+	for _, g := range [][]string{actionVerbs, cardVerbs, gateVerbs, tesseractVerbs, chatWorkspaceVerbs, chatTopicVerbs, chatPlanVerbs, chatActivityVerbs, chatPanelVerbs, terminalVerbs} {
 		if slices.Contains(g, v) {
 			return true
 		}

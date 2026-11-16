@@ -142,8 +142,17 @@ type Alerts struct {
 	PublicURL string // the URL put in alert messages
 }
 
+// NativeGate is opt-in and independent of the old card and outbound defaults.
+// CallbackToken is a Gatecrasher-issued credential secrets reference.
+type NativeGate struct {
+	Enabled                                                             bool
+	OwnerRef, ProducerIdentity, CallerScope, CallbackURL, CallbackToken string
+	AllowLoopbackHTTP                                                   bool
+}
+
 // Settings are the parsed block.
 type Settings struct {
+	NativeGate   NativeGate
 	AllowedHosts []string
 	CacheDir     string
 	WorkspaceDir string // chat workspace file bytes (the old build's $TACHYON_DATA_DIR/workspace)
@@ -285,6 +294,36 @@ func Parse(raw any) (Settings, error) {
 	}
 	if err = tr.done(); err != nil {
 		return s, err
+	}
+	ng, err := root.child("native_gate")
+	if err != nil {
+		return s, err
+	}
+	if s.NativeGate.Enabled, err = ng.boolean("enabled"); err != nil {
+		return s, err
+	}
+	if s.NativeGate.AllowLoopbackHTTP, err = ng.boolean("allow_loopback_http"); err != nil {
+		return s, err
+	}
+	for _, v := range []struct {
+		key string
+		dst *string
+	}{{"owner_ref", &s.NativeGate.OwnerRef}, {"producer_identity", &s.NativeGate.ProducerIdentity}, {"caller_scope", &s.NativeGate.CallerScope}} {
+		if *v.dst, err = ng.str(v.key); err != nil {
+			return s, err
+		}
+	}
+	if s.NativeGate.CallbackURL, err = ng.httpURL("callback_url"); err != nil {
+		return s, err
+	}
+	if s.NativeGate.CallbackToken, err = ng.secretRef("callback_token"); err != nil {
+		return s, err
+	}
+	if err = ng.done(); err != nil {
+		return s, err
+	}
+	if s.NativeGate.Enabled && (s.NativeGate.OwnerRef == "" || s.NativeGate.ProducerIdentity == "" || s.NativeGate.CallerScope == "" || s.NativeGate.CallbackURL == "" || s.NativeGate.CallbackToken == "") {
+		return s, fmt.Errorf("tachyon.native_gate requires explicit owner, producer, namespace and callback configuration")
 	}
 	return s, root.done()
 }

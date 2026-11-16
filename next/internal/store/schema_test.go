@@ -275,7 +275,7 @@ func TestInitSQLAndHead(t *testing.T) {
 	if err != nil || strings.Contains(sqlText, "+goose") || !strings.Contains(sqlText, "CREATE TABLE approval_decision_log") {
 		t.Fatalf("InitSQL: %v", err)
 	}
-	if v, err := HeadVersion(); err != nil || v != 4 {
+	if v, err := HeadVersion(); err != nil || v != 5 {
 		t.Fatalf("HeadVersion = %d, %v", v, err)
 	}
 }

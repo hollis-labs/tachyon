@@ -57,7 +57,7 @@ type deps struct {
 // scope is "authenticated" and each verb is checked in the handler against the key's verb scope and
 // the credential's kinds. The console data API answers signed-in people, each verb behind its scope.
 func appRoutes(d deps) []routes.Route {
-	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs)
+	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs, d.approvals)
 	console := dataverbs.NewConsoleHTTP(d.local, d.builder.teams)
 	return append(append(append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), append(builderRoutes(d.builder), forgeRoutes(d.forge)...)...), transcriptsRoutes(d.transcripts)...), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
