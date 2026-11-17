@@ -150,6 +150,7 @@ func TestChatStubRoutesRequireOperator(t *testing.T) {
 	off := New(Config{PluginBinDir: t.TempDir(), ApprovalQueueURL: upstream.URL}).Routes()
 	cases := []struct{ method, path string }{
 		{"POST", "/api/plugins/console/v1/chat/threads"},
+		{"POST", "/api/plugins/console/v1/chat/continuations"},
 		{"PUT", "/api/plugins/console/v1/chat/threads/app:t_01/scratchpad"},
 		{"DELETE", "/api/plugins/console/v1/chat/threads/app:t_01/topics/x"},
 		{"GET", "/api/plugins/console/v1/chat/threads/app:t_01/workspace/x/content"},
@@ -159,6 +160,7 @@ func TestChatStubRoutesRequireOperator(t *testing.T) {
 	for _, c := range cases {
 		r := httptest.NewRequest(c.method, "https://tachyon.test"+c.path, nil)
 		r.Header.Set("Origin", "https://tachyon.test")
+		r.Header.Set("Authorization", "Bearer unrelated")
 		w := httptest.NewRecorder()
 		on.ServeHTTP(w, r)
 		if (w.Code != 401 && w.Code != 403) || w.Header().Get("X-Tachyon-Chat-Stub") != "" {

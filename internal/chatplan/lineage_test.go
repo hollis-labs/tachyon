@@ -55,6 +55,10 @@ func TestCarryMovesPlanToReplacement(t *testing.T) {
 	if _, err := planOf(s, "s1"); !errors.Is(err, ErrNotFound) {
 		t.Fatal("old thread still holds the plan: one live plan expected")
 	}
+	var nativeReceipts int
+	if err := s.Store.DB.Reader.QueryRowContext(ctx, `SELECT count(*) FROM chat_continuation_associations`).Scan(&nativeReceipts); err != nil || nativeReceipts != 0 {
+		t.Fatalf("legacy checkpoint/proxy carry must not claim native admission: %d %v", nativeReceipts, err)
+	}
 	n := 0
 	for _, e := range *events {
 		if e == "carried tether:s1 tether:s2" {
@@ -68,6 +72,110 @@ func TestCarryMovesPlanToReplacement(t *testing.T) {
 	s.Attach(ctx, "s2", "agent-a", "s1")
 	if again, _ := planOf(s, "s2"); again.Revision != got.Revision {
 		t.Fatal("repeat attach bumped the revision")
+	}
+}
+
+func TestAssociateContinuationBeforeProxyAndAcrossGenerations(t *testing.T) {
+	s, events := lineageSetup(t)
+	ctx := context.Background()
+	old := writePlan(t, s, "s1", "Ship") // no source proxy call
+	a, err := s.AssociateContinuation(ctx, "s1", "s2", "agent-a")
+	if err != nil || a.Replayed || !a.Carried.Moved {
+		t.Fatalf("first association: %+v %v", a, err)
+	}
+	got, err := planOf(s, "s2")
+	if err != nil || got.ID != old.ID || got.Revision != old.Revision+1 {
+		t.Fatalf("immediate plan: %+v %v", got, err)
+	}
+	if ancestors := s.Store.Ancestors(ctx, "s2"); len(ancestors) != 1 || ancestors[0] != "s1" {
+		t.Fatalf("immediate history ancestry: %v", ancestors)
+	}
+	before := len(*events)
+	again, err := s.AssociateContinuation(ctx, "s1", "s2", "agent-a")
+	if err != nil || !again.Replayed || again.Carried.Moved || len(*events) != before {
+		t.Fatalf("replay must have no side effects: %+v %v events=%v", again, err, *events)
+	}
+	s.Attach(ctx, "s1", "agent-a", "")   // late source proxy
+	s.Attach(ctx, "s2", "agent-a", "s1") // late replacement proxy
+	if p, _ := planOf(s, "s2"); p.Revision != got.Revision {
+		t.Fatal("late proxy repeated move")
+	}
+	third, err := s.AssociateContinuation(ctx, "s2", "s3", "agent-a")
+	if err != nil || !third.Carried.Moved {
+		t.Fatalf("A->B->C: %+v %v", third, err)
+	}
+	if ancestors := s.Store.Ancestors(ctx, "s3"); len(ancestors) != 2 || ancestors[0] != "s1" || ancestors[1] != "s2" {
+		t.Fatalf("three-session history: %v", ancestors)
+	}
+	if p, _ := planOf(s, "s3"); p.Revision != got.Revision+1 {
+		t.Fatalf("third generation plan: %+v", p)
+	}
+}
+
+func TestAssociateContinuationReconcilesMatchingLazyRow(t *testing.T) {
+	s, _ := lineageSetup(t)
+	ctx := context.Background()
+	old := writePlan(t, s, "s1", "Existing")
+	s.Attach(ctx, "s2", "agent-a", "s1") // old source was never seen, so no move
+	if _, err := planOf(s, "s2"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unexpected lazy move: %v", err)
+	}
+	out, err := s.AssociateContinuation(ctx, "s1", "s2", "agent-a")
+	if err != nil || out.Replayed || !out.PlanMoved {
+		t.Fatalf("reconcile: %+v %v", out, err)
+	}
+	if got, err := planOf(s, "s2"); err != nil || got.ID != old.ID || got.Revision != old.Revision+1 {
+		t.Fatalf("reconciled plan: %+v %v", got, err)
+	}
+	if again, err := s.AssociateContinuation(ctx, "s1", "s2", "agent-a"); err != nil || !again.Replayed || !again.PlanMoved {
+		t.Fatalf("receipt replay: %+v %v", again, err)
+	}
+}
+
+func TestAssociateContinuationFences(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name, setup           string
+		wantPlan, wantHistory bool
+	}{
+		{"continue_off", "off", false, false},
+		{"cleared", "clear", false, true},
+		{"ordinary", "", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := lineageSetup(t)
+			writePlan(t, s, "s1", "Private")
+			switch tc.setup {
+			case "off":
+				if err := s.Store.SetContinue(ctx, "s1", false); err != nil {
+					t.Fatal(err)
+				}
+			case "clear":
+				if err := s.Store.Clear(ctx, "tether:s1"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := s.AssociateContinuation(ctx, "s1", "s2", "agent-a"); err != nil {
+				t.Fatal(err)
+			}
+			_, err := planOf(s, "s2")
+			if tc.wantPlan && err != nil || !tc.wantPlan && !errors.Is(err, ErrNotFound) {
+				t.Fatalf("plan fence: %v", err)
+			}
+			if got := len(s.Store.Ancestors(ctx, "s2")) > 0; got != tc.wantHistory {
+				t.Fatalf("history fence: got=%v want=%v", got, tc.wantHistory)
+			}
+		})
+	}
+	s, _ := lineageSetup(t)
+	if _, err := s.AssociateContinuation(ctx, "s1", "s2", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AssociateContinuation(ctx, "other", "s2", "agent-a"); !errors.Is(err, ErrAssociationConflict) {
+		t.Fatalf("parent changed: %v", err)
+	}
+	if _, err := s.AssociateContinuation(ctx, "s1", "s2", "agent-b"); !errors.Is(err, ErrAssociationConflict) {
+		t.Fatalf("agent changed: %v", err)
 	}
 }
 

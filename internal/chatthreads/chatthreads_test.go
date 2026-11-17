@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 )
 
@@ -619,5 +620,34 @@ func TestTetherMessagesCarryContinuedHistory(t *testing.T) {
 	_, out = e.do(t, "GET", "/threads/tether:old/messages", "")
 	if len(out["messages"].([]any)) != 3 {
 		t.Fatalf("ancestor thread: %v", out)
+	}
+}
+
+func TestImmediateHistoryAfterEagerAssociationWithoutProxyCall(t *testing.T) {
+	e := setup(t)
+	e.seedTurn(t, "old-question", "old", "question", "Before", "2020-10-30T09:00:00Z", true)
+	e.seedTurn(t, "new-answer", "new", "terminal", "After", "2020-10-30T10:00:00Z", false)
+	store := &chatplan.Store{DB: e.db}
+	if _, err := store.AssociateContinuation(context.Background(), "old", "new", "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	e.h.Ancestors = store.Ancestors
+	code, out := e.do(t, "GET", "/threads/tether:new/messages", "")
+	if code != 200 {
+		t.Fatalf("GET immediately after association: %d %v", code, out)
+	}
+	ms := out["messages"].([]any)
+	if len(ms) != 3 || ms[0].(map[string]any)["id"] != "old-question" || ms[1].(map[string]any)["id"] != "old-question:reply" || ms[2].(map[string]any)["id"] != "new-answer" {
+		t.Fatalf("immediate ordered history: %v", ms)
+	}
+	for i := 0; i < 2; i++ {
+		meta := ms[i].(map[string]any)["meta"].(map[string]any)
+		if meta["continued_from"] != "old" || meta["replyable"] != false {
+			t.Fatalf("ancestor metadata: %v", meta)
+		}
+	}
+	_, again := e.do(t, "GET", "/threads/tether:new/messages", "")
+	if fmt.Sprint(again["messages"]) != fmt.Sprint(ms) {
+		t.Fatalf("unstable history: %v then %v", ms, again["messages"])
 	}
 }

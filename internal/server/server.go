@@ -851,7 +851,11 @@ func (s *Server) Routes() http.Handler {
 		}
 	}
 	if s.chatPlan != nil {
-		real := (&chatplan.Handler{Service: s.chatPlan}).Mux()
+		h := &chatplan.Handler{Service: s.chatPlan}
+		if verifier := s.chatContinuationVerifier(); verifier != nil {
+			h.VerifyContinuation = verifier.Verify
+		}
+		real := h.Mux()
 		for _, route := range chatplan.Routes {
 			method, path, _ := strings.Cut(route, " ")
 			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))

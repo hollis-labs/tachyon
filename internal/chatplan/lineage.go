@@ -15,6 +15,18 @@ const MaxLineageHops = 16
 // ErrAgentMismatch refuses a carry-over whose ancestor belongs to a different logical agent.
 var ErrAgentMismatch = errors.New("plan carry-over refused: the ancestor session belongs to another agent")
 
+// ErrAssociationConflict means a session was already bound to a different parent or agent.
+var ErrAssociationConflict = errors.New("continuation association conflicts with an existing session")
+
+// Association is the durable result of associating one exact replacement with its parent.
+// Replayed reports an already committed pair; a replay never moves a plan again.
+type Association struct {
+	Source, Replacement, Agent string
+	Replayed                   bool
+	PlanMoved                  bool
+	Carried                    Carried
+}
+
 // Carried is the outcome of Carry. Moved is false when there was nothing to carry.
 type Carried struct {
 	Moved bool
@@ -132,6 +144,112 @@ func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Ca
 	})
 	if err != nil {
 		return Carried{}, err
+	}
+	return out, nil
+}
+
+// AssociateContinuation commits an externally verified, exact native continuation.
+// The caller must verify both Tether session rows and native admission before calling.
+// A replacement has one immutable parent and agent, but it may later be a source.
+// Source seeding, replacement binding and plan movement share one transaction.
+func (s *Store) AssociateContinuation(ctx context.Context, source, replacement, agent string) (Association, error) {
+	out := Association{Source: source, Replacement: replacement, Agent: agent}
+	if source == "" || replacement == "" || source == replacement || agent == "" {
+		return Association{}, ErrInvalid
+	}
+	now := s.now()
+	on := s.continueDefault(ctx)
+	err := s.DB.Writer.Submit(ctx, "chat_continuation_associate", func(ctx context.Context, tx *sql.Tx) error {
+		out.Carried = Carried{}
+		out.Replayed = false
+		out.PlanMoved = false
+		var receiptSource, receiptAgent string
+		var receiptMoved int
+		receiptErr := tx.QueryRowContext(ctx, `SELECT source_session_id,agent_id,plan_moved FROM chat_continuation_associations WHERE replacement_session_id=?`, replacement).Scan(&receiptSource, &receiptAgent, &receiptMoved)
+		if receiptErr == nil {
+			if receiptSource != source || receiptAgent != agent {
+				return ErrAssociationConflict
+			}
+			out.Replayed, out.PlanMoved = true, receiptMoved != 0
+			return nil
+		}
+		if !errors.Is(receiptErr, sql.ErrNoRows) {
+			return receiptErr
+		}
+		// Preserve an operator's Continue choice or clear marker, including a
+		// marker that was written before the first proxied request.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on)
+ VALUES(?,?,NULL,0,?,?) ON CONFLICT(session_id) DO NOTHING`, source, agent, now.UnixNano(), on); err != nil {
+			return err
+		}
+		var sourceAgent string
+		if err := tx.QueryRowContext(ctx, `SELECT agent_id FROM chat_session_lineage WHERE session_id=?`, source).Scan(&sourceAgent); err != nil {
+			return err
+		}
+		if sourceAgent != "" && sourceAgent != agent {
+			return ErrAgentMismatch
+		}
+		if sourceAgent == "" {
+			if _, err := tx.ExecContext(ctx, `UPDATE chat_session_lineage SET agent_id=? WHERE session_id=?`, agent, source); err != nil {
+				return err
+			}
+		}
+		var rowAgent string
+		var rowParent sql.NullString
+		var cleared int
+		err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared FROM chat_session_lineage WHERE session_id=?`, replacement).Scan(&rowAgent, &rowParent, &cleared)
+		if err == nil {
+			if cleared != 0 || rowAgent != "" && rowAgent != agent || rowParent.Valid && rowParent.String != source {
+				return ErrAssociationConflict
+			}
+			if rowAgent == agent && rowParent.Valid && rowParent.String == source {
+				// A proxy may have recorded the same pair before this eager receipt.
+			} else if rowAgent != "" || rowParent.Valid {
+				return ErrAssociationConflict
+			} else {
+				// A Continue preference pinned an agent-less row first.
+				_, err = tx.ExecContext(ctx, `UPDATE chat_session_lineage SET agent_id=?,continues_id=? WHERE session_id=?`, agent, source, replacement)
+			}
+		} else if errors.Is(err, sql.ErrNoRows) {
+			_, err = tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on)
+ VALUES(?,?,?,0,?,?)`, replacement, agent, source, now.UnixNano(), on)
+		}
+		if err != nil {
+			return err
+		}
+		var sourceCleared, sourceOn int
+		if err := tx.QueryRowContext(ctx, `SELECT cleared,continue_on FROM chat_session_lineage WHERE session_id=?`, source).Scan(&sourceCleared, &sourceOn); err != nil {
+			return err
+		}
+		if sourceCleared == 0 && sourceOn != 0 {
+			me := "tether:" + replacement
+			plans, err := s.plansOf(ctx, tx, "tether:"+source)
+			if err != nil {
+				return err
+			}
+			for i := range plans {
+				p := &plans[i]
+				p.Revision++
+				p.UpdatedAt = now.UnixMilli()
+				if _, err := tx.ExecContext(ctx, `UPDATE chat_plans SET thread_ref=?,revision=?,updated_ns=? WHERE id=?`, me, p.Revision, now.UnixNano(), p.ID); err != nil {
+					return err
+				}
+				p.ThreadRef = &me
+			}
+			if len(plans) > 0 {
+				out.Carried = Carried{Moved: true, From: "tether:" + source, To: me, Plan: plans[0], Plans: plans}
+				out.PlanMoved = true
+			}
+		}
+		moved := 0
+		if out.PlanMoved {
+			moved = 1
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO chat_continuation_associations(replacement_session_id,source_session_id,agent_id,plan_moved,committed_ns) VALUES(?,?,?,?,?)`, replacement, source, agent, moved, now.UnixNano())
+		return err
+	})
+	if err != nil {
+		return Association{}, err
 	}
 	return out, nil
 }

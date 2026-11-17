@@ -1,11 +1,15 @@
 package chatplan
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 )
@@ -15,12 +19,18 @@ var Routes = []string{
 	"GET /threads/{ref}/plan", "PUT /threads/{ref}/plan", "DELETE /threads/{ref}/plan",
 	"POST /threads/{ref}/plan/steps", "PATCH /threads/{ref}/plan/steps/{id}", "POST /threads/{ref}/plan/reorder",
 	"GET /threads/{ref}/continue", "PUT /threads/{ref}/continue",
+	"POST /continuations",
 	"GET /threads/{ref}/plans", "POST /threads/{ref}/plans", "POST /threads/{ref}/plans/reorder", "DELETE /threads/{ref}/plans/{id}",
 	"POST /threads/{ref}/plans/{id}/steps/{step}/move",
 	"POST /threads/{ref}/plans/{plan}/steps", "PATCH /threads/{ref}/plans/{plan}/steps/{id}",
 }
 
-type Handler struct{ Service *Service }
+type Handler struct {
+	Service *Service
+	// VerifyContinuation reads server-owned Tether evidence for the exact pair,
+	// same agent, explicit parent, and successful native admission. Nil fails closed.
+	VerifyContinuation func(ctx context.Context, source, replacement, agent string) error
+}
 
 func reply(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -58,6 +68,7 @@ func (h *Handler) Mux() http.Handler {
 		"GET /threads/{ref}/plan": h.get, "PUT /threads/{ref}/plan": h.put, "DELETE /threads/{ref}/plan": h.clear,
 		"POST /threads/{ref}/plan/steps": h.addStep, "PATCH /threads/{ref}/plan/steps/{id}": h.patchStep, "POST /threads/{ref}/plan/reorder": h.reorder,
 		"GET /threads/{ref}/continue": h.getContinue, "PUT /threads/{ref}/continue": h.putContinue,
+		"POST /continuations":      h.associateContinuation,
 		"GET /threads/{ref}/plans": h.plans, "POST /threads/{ref}/plans": h.createPlan, "POST /threads/{ref}/plans/reorder": h.reorderPlans, "DELETE /threads/{ref}/plans/{id}": h.deletePlan,
 		"POST /threads/{ref}/plans/{id}/steps/{step}/move": h.moveStep,
 		"POST /threads/{ref}/plans/{plan}/steps":           h.addStep, "PATCH /threads/{ref}/plans/{plan}/steps/{id}": h.patchStep,
@@ -67,6 +78,49 @@ func (h *Handler) Mux() http.Handler {
 		m.HandleFunc(method+" "+chatapi.Prefix+path, hs[r])
 	}
 	return m
+}
+
+// associateContinuation is the supported eager association API for a Restart
+// completion or the non-UI Agent Ops caller. The server never trusts client
+// claims of readiness; VerifyContinuation must supply Tether-owned proof.
+func (h *Handler) associateContinuation(w http.ResponseWriter, r *http.Request) {
+	if h.Service == nil || h.VerifyContinuation == nil {
+		fail(w, 503, "native_proof_unavailable", "Native admission verification is not configured.")
+		return
+	}
+	var in struct {
+		Source      string `json:"source_session_id"`
+		Replacement string `json:"new_session_id"`
+		Agent       string `json:"logical_agent_id"`
+		Key         string `json:"idempotency_key"`
+	}
+	dec := json.NewDecoder(io.LimitReader(r.Body, 4097))
+	dec.DisallowUnknownFields()
+	if dec.Decode(&in) != nil || dec.Decode(new(any)) != io.EOF {
+		fail(w, 400, "invalid", "Expected one continuation JSON object.")
+		return
+	}
+	source, errS := uuid.Parse(in.Source)
+	replacement, errR := uuid.Parse(in.Replacement)
+	if errS != nil || errR != nil || source.String() != in.Source || replacement.String() != in.Replacement || source == replacement || in.Agent == "" || in.Key != "continuation:"+in.Source+":"+in.Replacement {
+		fail(w, 400, "invalid", "Exact canonical session UUIDs, agent and pair key are required.")
+		return
+	}
+	if err := h.VerifyContinuation(r.Context(), in.Source, in.Replacement, in.Agent); err != nil {
+		fail(w, 409, "native_continuation_unverified", "Tether did not verify this exact native continuation.")
+		return
+	}
+	out, err := h.Service.AssociateContinuation(r.Context(), in.Source, in.Replacement, in.Agent)
+	if err != nil {
+		if errors.Is(err, ErrAssociationConflict) || errors.Is(err, ErrAgentMismatch) {
+			fail(w, 409, "association_conflict", "The replacement or source is bound to another continuation.")
+		} else {
+			fail(w, 503, "association_unavailable", "The continuation association could not be committed; retry the same exact pair.")
+		}
+		return
+	}
+	reply(w, 200, map[string]any{"source_session_id": out.Source, "new_session_id": out.Replacement, "logical_agent_id": out.Agent,
+		"idempotency_key": in.Key, "replayed": out.Replayed, "plan_moved": out.PlanMoved})
 }
 
 func ref(w http.ResponseWriter, r *http.Request) (chatapi.ThreadRef, bool) {
