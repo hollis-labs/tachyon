@@ -38,6 +38,21 @@ func (s *Service) Attach(ctx context.Context, session, agent, continues string) 
 		slog.Warn("chat plan carry-over not applied", "session", session, "continues", continues, "err", err)
 		return
 	}
+	s.publishCarry(ctx, res)
+}
+
+// AssociateContinuation records a verified exact pair before the replacement
+// makes any proxied request. Validation of Tether's native admission is the
+// responsibility of the caller; this operation commits local chat state only.
+func (s *Service) AssociateContinuation(ctx context.Context, source, replacement, agent string) (Association, error) {
+	out, err := s.Store.AssociateContinuation(ctx, source, replacement, agent)
+	if err == nil {
+		s.publishCarry(ctx, out.Carried)
+	}
+	return out, err
+}
+
+func (s *Service) publishCarry(ctx context.Context, res Carried) {
 	if !res.Moved {
 		return
 	}

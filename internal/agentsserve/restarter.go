@@ -13,14 +13,14 @@ import (
 	"strings"
 )
 
-// ErrResumeRefused is Tether refusing a logical-agent resume (409): a worker-placed seat while
-// catalog.defaults.worker_resume is off, a detached session, an agent never launched. The restart relaunches.
+// ErrResumeRefused is Tether refusing a logical-agent resume (409). A
+// preserve-context Restart never treats this as permission to relaunch fresh.
 var ErrResumeRefused = errors.New("tether refused the resume")
 
-// TetherRestarter restarts a session with Tether's control routes: GET /sessions/{id} (its launch and placement,
-// read before anything stops), POST /sessions/{id}/stop, then POST /sessions {launch, continuity: relaunch} and
-// POST /sessions/{id}/launch. Only a hub-placed session is resumed instead (POST /logical-agents/{id}/resume),
-// and relaunched if Tether refuses. Client carries the control token (builderchange.NewControlClient).
+// TetherRestarter exposes Tether control routes. The Restart control reads
+// GET /sessions/{id} before Stop and uses POST /logical-agents/{id}/resume only
+// for hub sessions. Its Relaunch method remains for separately explicit flows;
+// Restart does not call it. Client carries the existing sessions control token.
 type TetherRestarter struct {
 	Base   string
 	Client *http.Client

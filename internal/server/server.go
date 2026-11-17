@@ -461,6 +461,7 @@ func (s *Server) Start(ctx context.Context) error {
 		pr := p.Progress()
 		rec.Quiet(ctx, to, "plan.carried", "tachyon", "tachyon", nil, chatactivity.Card(title+": carried over from "+from, fmt.Sprintf("%d of %d steps done", pr.Done, pr.Total), nil))
 	}
+	s.chatThreads.Ancestors = s.chatPlan.Store.Ancestors
 	s.chatThreads.Agg.Sessions = func(ctx context.Context) []chatthreads.SessionStub {
 		var out []chatthreads.SessionStub
 		for _, st := range s.chatPlan.Store.Sessions(ctx) {
@@ -850,7 +851,11 @@ func (s *Server) Routes() http.Handler {
 		}
 	}
 	if s.chatPlan != nil {
-		real := (&chatplan.Handler{Service: s.chatPlan}).Mux()
+		h := &chatplan.Handler{Service: s.chatPlan}
+		if verifier := s.chatContinuationVerifier(); verifier != nil {
+			h.VerifyContinuation = verifier.Verify
+		}
+		real := h.Mux()
 		for _, route := range chatplan.Routes {
 			method, path, _ := strings.Cut(route, " ")
 			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))

@@ -33,9 +33,10 @@ type Placement struct {
 	Worker string // the worker it runs on; "" on the hub
 }
 
-// Restarter stops a session and brings its seat back by relaunching the same launch. A worker-placed seat (every
-// catalog seat) is never resumed: Tether refuses resume on workers. A hub-placed session is resumed, and
-// relaunched if Tether refuses (ErrResumeRefused). The placement is read before anything is stopped.
+// Restarter reads placement before any stop, then uses the existing hub resume
+// path. Worker preserve-context Restart refuses before Stop until the caller
+// has native generation/policy authority. Relaunch remains a separate primitive
+// and is never an implicit fallback for preserve-context Restart.
 type Restarter interface {
 	Placement(ctx context.Context, sessionID string) (Placement, error)
 	Stop(ctx context.Context, sessionID string) error
@@ -77,8 +78,11 @@ type control struct {
 	NewSessionID     *string `json:"new_session_id"`
 	DiscardedPending *int64  `json:"discarded_pending"`
 	WaitEndsAt       *int64  `json:"wait_ends_at"`
-	// RelaunchedBy is how a done restart brought the seat back: resume, or relaunch when Tether refused the resume.
+	// RelaunchedBy is the Tether operation used by a completed restart.
 	RelaunchedBy *string `json:"relaunched_by"`
+	// ContinuityMode distinguishes the established hub checkpoint/prompt resume
+	// from a verified native continuation. It is derived from RelaunchedBy.
+	ContinuityMode *string `json:"continuity_mode,omitempty"`
 	// ScopesDropped are the scopes Tether did not grant the new session (session.scopes_narrowed): a relaunch is
 	// made with Tachyon's credential, so an admin seat can come back with less.
 	ScopesDropped []string `json:"scopes_dropped"`
@@ -106,6 +110,18 @@ func scanControl(sc interface{ Scan(...any) error }) (control, error) {
 		return &n.String
 	}
 	c.Step, c.Error, c.Interrupt, c.MessageID, c.NewSessionID, c.RelaunchedBy = str(step), str(errS), str(intr), str(mid), str(nsid), str(rby)
+	if c.Kind == agentsapi.ControlRestart && c.State == "done" && c.RelaunchedBy != nil {
+		mode := ""
+		switch *c.RelaunchedBy {
+		case "resume":
+			mode = "checkpoint"
+		case "relaunch":
+			mode = "lineage"
+		}
+		if mode != "" {
+			c.ContinuityMode = &mode
+		}
+	}
 	c.Handoff = hand != 0
 	if dp.Valid {
 		c.DiscardedPending = &dp.Int64
@@ -301,8 +317,8 @@ func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 	reply(w, 202, saved)
 }
 
-// runRestart walks requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done ("resuming"
-// covers the relaunch). A failure records the step it stopped at and says whether the seat is down. The placement
+// runRestart walks requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done. A failure
+// records the step it stopped at and says whether the seat is down. The placement
 // is read first: a restart that could not bring the seat back never stops it (step "preparing").
 func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	defer s.skips.Delete(c.RequestID)
@@ -318,6 +334,13 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	place, err := s.Restarter.Placement(ctx, sess.ID)
 	if err != nil {
 		fail("preparing", "Nothing was stopped; the session is still running.", err)
+		return
+	}
+	if place.Worker != "" {
+		// This control client cannot supply PR610's exact generation and policy
+		// authorization. Refuse before Stop; Agent Ops can perform the separately
+		// authorized native continuation and use the chat association API.
+		fail("preparing", "Nothing was stopped or created; source session "+sess.ID+" remains available.", errors.New("worker preserve-context restart needs native continuation authority"))
 		return
 	}
 	if c.Handoff && s.Sender != nil && sess.Agent.URN != nil {
@@ -341,29 +364,27 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	set("stopped")
 	set("resuming")
 	key := "tachyon-restart-" + c.RequestID
-	how, id := "relaunch", ""
-	if place.Worker == "" {
-		// Only a hub session is resumed; if Tether refuses, it is relaunched like a worker seat.
-		how = "resume"
-		if id, err = s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key); errors.Is(err, ErrResumeRefused) {
-			how, id, err = "relaunch", "", nil
-		}
-	}
-	if err == nil && how == "relaunch" {
-		// Right after the stop: Tether hands the relaunch the stopped session's grant (tether#553).
+	// The existing hub-only checkpoint resume path is retained. Only Tether's
+	// typed refusal keeps the older, non-native hub relaunch behavior. Worker
+	// preserve-context requests were already refused before Stop.
+	id, err := s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key)
+	how := "resume"
+	mode := "checkpoint"
+	if errors.Is(err, ErrResumeRefused) {
+		how, mode = "relaunch", "lineage"
 		id, err = s.Restarter.Relaunch(ctx, place.Launch, key)
 		if err != nil && id != "" {
-			// Created but not started: name it, so a retry launches this session instead of creating another.
 			c.NewSessionID = &id
-			fail("launching", "The old session is stopped; the new session "+id+" was created but not started: launch it (POST /sessions/"+id+"/launch) rather than creating another.", err)
+			fail("launching", "The old hub session is stopped; replacement "+id+" was created but not started: launch it rather than creating another.", err)
 			return
 		}
 	}
 	if err != nil {
-		fail("resuming", "The old session is stopped and no new one started: relaunch "+place.Launch+" from Tether.", err)
+		fail("resuming", "The old session "+sess.ID+" is stopped; no replacement started.", err)
 		return
 	}
 	c.NewSessionID, c.RelaunchedBy = &id, &how
+	c.ContinuityMode = &mode
 	if dropped, err := s.Restarter.ScopesDropped(ctx, id); err == nil {
 		c.ScopesDropped = dropped
 	} // an unreadable event says nothing either way; the restart itself is done
