@@ -626,18 +626,24 @@ func TestTetherMessagesCarryContinuedHistory(t *testing.T) {
 func TestImmediateHistoryAfterEagerAssociationWithoutProxyCall(t *testing.T) {
 	e := setup(t)
 	e.seedTurn(t, "old-question", "old", "question", "Before", "2020-10-30T09:00:00Z", true)
-	e.seedTurn(t, "new-answer", "new", "terminal", "After", "2020-10-30T10:00:00Z", false)
 	store := &chatplan.Store{DB: e.db}
 	if _, err := store.AssociateContinuation(context.Background(), "old", "new", "agent-a"); err != nil {
 		t.Fatal(err)
 	}
 	e.h.Ancestors = store.Ancestors
+	e.h.Agg.Sessions = func(ctx context.Context) []SessionStub {
+		var out []SessionStub
+		for _, st := range store.Sessions(ctx) {
+			out = append(out, SessionStub{Ref: st.Ref, Agent: st.Agent, SeenNS: st.SeenNS, HasPlan: st.HasPlan})
+		}
+		return out
+	}
 	code, out := e.do(t, "GET", "/threads/tether:new/messages", "")
 	if code != 200 {
 		t.Fatalf("GET immediately after association: %d %v", code, out)
 	}
 	ms := out["messages"].([]any)
-	if len(ms) != 3 || ms[0].(map[string]any)["id"] != "old-question" || ms[1].(map[string]any)["id"] != "old-question:reply" || ms[2].(map[string]any)["id"] != "new-answer" {
+	if len(ms) != 2 || ms[0].(map[string]any)["id"] != "old-question" || ms[1].(map[string]any)["id"] != "old-question:reply" {
 		t.Fatalf("immediate ordered history: %v", ms)
 	}
 	for i := 0; i < 2; i++ {
@@ -649,5 +655,10 @@ func TestImmediateHistoryAfterEagerAssociationWithoutProxyCall(t *testing.T) {
 	_, again := e.do(t, "GET", "/threads/tether:new/messages", "")
 	if fmt.Sprint(again["messages"]) != fmt.Sprint(ms) {
 		t.Fatalf("unstable history: %v then %v", ms, again["messages"])
+	}
+	e.seedTurn(t, "new-answer", "new", "terminal", "After", "2020-10-30T10:00:00Z", false)
+	code, out = e.do(t, "GET", "/threads/tether:new/messages", "")
+	if code != 200 || len(out["messages"].([]any)) != 3 || out["messages"].([]any)[2].(map[string]any)["id"] != "new-answer" {
+		t.Fatalf("new turn appended: %d %v", code, out)
 	}
 }

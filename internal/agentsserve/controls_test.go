@@ -234,7 +234,7 @@ func TestRestartPastItsDeadlineStillRecordsTheFailure(t *testing.T) {
 	restartTimeout = 150 * time.Millisecond
 	defer func() { restartTimeout = old }()
 	c := restartUntilEnd(t, &fakeCtl{hangResume: true}, "rd1")
-	if c.State != "failed" || c.Step == nil || *c.Step != "resuming" || c.Error == nil || !strings.Contains(*c.Error, "no fresh start") {
+	if c.State != "failed" || c.Step == nil || *c.Step != "resuming" || c.Error == nil || !strings.Contains(*c.Error, "no replacement started") {
 		t.Fatalf("%+v", c)
 	}
 }
@@ -285,11 +285,13 @@ func TestRestartRefusesWorkerBeforeStopOrCreate(t *testing.T) {
 	}
 }
 
-// A hub resume refusal never silently turns into a fresh relaunch.
-func TestRestartHubRefusalDoesNotRelaunch(t *testing.T) {
+// The established hub checkpoint path retains its typed refusal fallback.
+// The worker preserve-context path is refused before it can reach this branch.
+func TestRestartHubTypedRefusalRetainsLegacyRelaunch(t *testing.T) {
 	f := &fakeCtl{resumeErr: fmt.Errorf("%w: tether /logical-agents/la1/resume answered 409 (conflict)", ErrResumeRefused)}
 	c := restartUntilEnd(t, f, "rs6")
-	if c.State != "failed" || strings.Join(f.order, ",") != "stop,resume" || f.relaunched != "" || c.RelaunchedBy != nil || c.Error == nil || !strings.Contains(*c.Error, "no fresh start") {
+	if c.State != "done" || strings.Join(f.order, ",") != "stop,resume,relaunch" || f.relaunched != "launch-m1" ||
+		c.RelaunchedBy == nil || *c.RelaunchedBy != "relaunch" || c.ContinuityMode == nil || *c.ContinuityMode != "lineage" {
 		t.Fatalf("%+v order=%v", c, f.order)
 	}
 }
@@ -308,7 +310,7 @@ func TestRestartStopsNothingWhenTheLaunchCannotBeRead(t *testing.T) {
 func TestRestartResumeFailureDoesNotRelaunch(t *testing.T) {
 	f := &fakeCtl{resumeErr: errors.New("tether /logical-agents/la1/resume answered 500 (internal_error)")}
 	c := restartUntilEnd(t, f, "rs4")
-	if c.State != "failed" || c.Step == nil || *c.Step != "resuming" || c.Error == nil || !strings.Contains(*c.Error, "no fresh start") ||
+	if c.State != "failed" || c.Step == nil || *c.Step != "resuming" || c.Error == nil || !strings.Contains(*c.Error, "no replacement started") ||
 		f.relaunched != "" || c.RelaunchedBy != nil {
 		t.Fatalf("%+v", c)
 	}

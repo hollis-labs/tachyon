@@ -110,9 +110,17 @@ func scanControl(sc interface{ Scan(...any) error }) (control, error) {
 		return &n.String
 	}
 	c.Step, c.Error, c.Interrupt, c.MessageID, c.NewSessionID, c.RelaunchedBy = str(step), str(errS), str(intr), str(mid), str(nsid), str(rby)
-	if c.Kind == agentsapi.ControlRestart && c.State == "done" && c.RelaunchedBy != nil && *c.RelaunchedBy == "resume" {
-		mode := "checkpoint"
-		c.ContinuityMode = &mode
+	if c.Kind == agentsapi.ControlRestart && c.State == "done" && c.RelaunchedBy != nil {
+		mode := ""
+		switch *c.RelaunchedBy {
+		case "resume":
+			mode = "checkpoint"
+		case "relaunch":
+			mode = "lineage"
+		}
+		if mode != "" {
+			c.ContinuityMode = &mode
+		}
 	}
 	c.Handoff = hand != 0
 	if dp.Valid {
@@ -356,16 +364,26 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	set("stopped")
 	set("resuming")
 	key := "tachyon-restart-" + c.RequestID
-	// The existing hub-only Tether resume path is retained. Refusal is terminal
-	// for this Restart request; it is never silently turned into a fresh launch.
+	// The existing hub-only checkpoint resume path is retained. Only Tether's
+	// typed refusal keeps the older, non-native hub relaunch behavior. Worker
+	// preserve-context requests were already refused before Stop.
 	id, err := s.Restarter.Resume(ctx, *sess.Agent.LogicalAgentID, key)
+	how := "resume"
+	mode := "checkpoint"
+	if errors.Is(err, ErrResumeRefused) {
+		how, mode = "relaunch", "lineage"
+		id, err = s.Restarter.Relaunch(ctx, place.Launch, key)
+		if err != nil && id != "" {
+			c.NewSessionID = &id
+			fail("launching", "The old hub session is stopped; replacement "+id+" was created but not started: launch it rather than creating another.", err)
+			return
+		}
+	}
 	if err != nil {
-		fail("resuming", "The old session "+sess.ID+" is stopped; Tether refused to continue it and no fresh start was attempted.", err)
+		fail("resuming", "The old session "+sess.ID+" is stopped; no replacement started.", err)
 		return
 	}
-	how := "resume"
 	c.NewSessionID, c.RelaunchedBy = &id, &how
-	mode := "checkpoint"
 	c.ContinuityMode = &mode
 	if dropped, err := s.Restarter.ScopesDropped(ctx, id); err == nil {
 		c.ScopesDropped = dropped

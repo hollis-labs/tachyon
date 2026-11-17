@@ -132,6 +132,25 @@ func TestAssociateContinuationReconcilesMatchingLazyRow(t *testing.T) {
 	}
 }
 
+func TestAssociateContinuationCarriesNearestPlanThroughPlanlessSource(t *testing.T) {
+	s, _ := lineageSetup(t)
+	ctx := context.Background()
+	s.Attach(ctx, "s0", "agent-a", "")
+	s.Attach(ctx, "s1", "agent-a", "s0")
+	old := writePlan(t, s, "s0", "Ancestor plan")
+	out, err := s.AssociateContinuation(ctx, "s1", "s2", "agent-a")
+	if err != nil || !out.PlanMoved || out.Carried.From != "tether:s0" {
+		t.Fatalf("nearest ancestor carry: %+v %v", out, err)
+	}
+	if got, err := planOf(s, "s2"); err != nil || got.ID != old.ID || got.Revision != old.Revision+1 {
+		t.Fatalf("eager ancestor plan: %+v %v", got, err)
+	}
+	s.Attach(ctx, "s2", "agent-a", "s1")
+	if got, _ := planOf(s, "s2"); got.Revision != old.Revision+1 {
+		t.Fatalf("late proxy repeated carry: %+v", got)
+	}
+}
+
 func TestAssociateContinuationFences(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range []struct {

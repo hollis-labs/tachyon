@@ -454,8 +454,22 @@ func (h *Handler) messages(w http.ResponseWriter, r *http.Request) {
 	}
 	g, ok := groupOf(groups, t.String())
 	if !ok {
-		h.problem(w, ErrNotFound)
-		return
+		// A verified continuation can have lineage before its first inbox turn.
+		// The lineage-backed session stub makes the empty own group addressable.
+		known := false
+		if h.Agg.Sessions != nil {
+			for _, st := range h.Agg.Sessions(r.Context()) {
+				if st.Ref == t.String() {
+					known = true
+					break
+				}
+			}
+		}
+		if !known {
+			h.problem(w, ErrNotFound)
+			return
+		}
+		g = tgroup{ref: t.String()}
 	}
 	all := h.withHistory(r.Context(), t.ID, g, groups)
 	if limit == 0 {

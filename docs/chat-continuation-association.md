@@ -41,7 +41,10 @@ Its operation result reports `continuity_mode: "checkpoint"`. The established
 plan carry still occurs when the replacement first uses the pinned proxy; this
 legacy path has no immediate history/plan guarantee. Its generic response is
 not a Codex worker native-admission receipt, and the native association API
-rejects it. Eager hub association and history remain open work on 0084.
+rejects it. A typed Tether checkpoint-resume refusal retains the legacy hub
+lineage relaunch and reports `continuity_mode: "lineage"`; other resume failures
+do not trigger a fresh relaunch. Eager hub association and history remain open
+work on 0084.
 
 After success, the replacement's inherited plan and messages, when allowed by
 the source's Continue choice and clear marker, are available immediately through

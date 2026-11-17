@@ -217,28 +217,56 @@ func (s *Store) AssociateContinuation(ctx context.Context, source, replacement, 
 		if err != nil {
 			return err
 		}
-		var sourceCleared, sourceOn int
-		if err := tx.QueryRowContext(ctx, `SELECT cleared,continue_on FROM chat_session_lineage WHERE session_id=?`, source).Scan(&sourceCleared, &sourceOn); err != nil {
+		me := "tether:" + replacement
+		if _, err := s.get(ctx, tx, "scope='thread' AND thread_ref=?", me); err != nil && !errors.Is(err, ErrNotFound) {
 			return err
-		}
-		if sourceCleared == 0 && sourceOn != 0 {
-			me := "tether:" + replacement
-			plans, err := s.plansOf(ctx, tx, "tether:"+source)
-			if err != nil {
-				return err
-			}
-			for i := range plans {
-				p := &plans[i]
-				p.Revision++
-				p.UpdatedAt = now.UnixMilli()
-				if _, err := tx.ExecContext(ctx, `UPDATE chat_plans SET thread_ref=?,revision=?,updated_ns=? WHERE id=?`, me, p.Revision, now.UnixNano(), p.ID); err != nil {
+		} else if errors.Is(err, ErrNotFound) {
+			// Match Carry: the nearest eligible, same-agent ancestor owns the plan.
+			// A planless immediate source must not permanently receipt a no-move.
+			cur := source
+			for hop := 0; hop < MaxLineageHops && cur != ""; hop++ {
+				var rowAgent string
+				var next sql.NullString
+				var rowCleared, rowOn int
+				err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared,continue_on FROM chat_session_lineage WHERE session_id=?`, cur).Scan(&rowAgent, &next, &rowCleared, &rowOn)
+				if errors.Is(err, sql.ErrNoRows) {
+					break
+				}
+				if err != nil {
 					return err
 				}
-				p.ThreadRef = &me
-			}
-			if len(plans) > 0 {
-				out.Carried = Carried{Moved: true, From: "tether:" + source, To: me, Plan: plans[0], Plans: plans}
-				out.PlanMoved = true
+				if rowAgent == "" || rowOn == 0 {
+					break
+				}
+				if rowAgent != agent {
+					return ErrAgentMismatch
+				}
+				if cur == source && rowCleared != 0 {
+					break // preserve the source clear fence
+				}
+				from := "tether:" + cur
+				plans, err := s.plansOf(ctx, tx, from)
+				if err != nil {
+					return err
+				}
+				if len(plans) > 0 {
+					for i := range plans {
+						p := &plans[i]
+						p.Revision++
+						p.UpdatedAt = now.UnixMilli()
+						if _, err := tx.ExecContext(ctx, `UPDATE chat_plans SET thread_ref=?,revision=?,updated_ns=? WHERE id=?`, me, p.Revision, now.UnixNano(), p.ID); err != nil {
+							return err
+						}
+						p.ThreadRef = &me
+					}
+					out.Carried = Carried{Moved: true, From: from, To: me, Plan: plans[0], Plans: plans}
+					out.PlanMoved = true
+					break
+				}
+				if rowCleared != 0 || !next.Valid {
+					break
+				}
+				cur = next.String
 			}
 		}
 		moved := 0
