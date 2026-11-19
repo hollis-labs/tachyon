@@ -253,7 +253,9 @@ appendix B). Groups:
   The Tangent approval-queue address is dropped with the bridge.
 - **Outbound features** → booleans under `tachyon.features`, each defaulting to **off**: object-sync scheduler dispatch, chat
   sync, agents collector, agents controls (nudge, interrupt, restart and the Tether launches; a switch the old build did not
-  have, added so nothing reaches an agent before acceptance), catalog index, card events, card effects on Torque, card delivery, alert sources and the alert sink,
+  have, added so nothing reaches an agent before acceptance), builder changes (direct-mode change apply and team operations through
+  Tether), terminal (the PTY sessions and agent-proposed runs, which ssh to operator machines; off means the terminal routes are
+  not mounted), catalog index, card events, card effects on Torque, card delivery, alert sources and the alert sink,
   transcript snapshotting, action runs. The cutover uses these (section 8). Stub switches are dropped. `TACHYON_ASSURANCE` is
   dropped (section 4).
 - Policy and config files (approval producer and assurance config, cache policy, terminal policy, card delivery, app-agent
@@ -293,7 +295,10 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
 3. Prepared, not applied: the sha256 of the key file `tachyon.files.secret_key` will read equals the sha256 of the old
    build's secret key file (compared offline, values never printed), so migrated `approval_secrets` rows stay readable; the override file **with every outbound feature off** (section 6), with `tachyon.upstreams.tether.url`
    spelled exactly as the old `TETHER_ADDR` (chat history is keyed by that address string; a different spelling hides every
-   thread) and the app-agent endpoint left unconfigured until acceptance, the new descriptor entry, the key
+   thread), the Tether read token unchanged from the old build (team-run bindings digest the address and the credential value;
+   a rotated token orphans retained runs), `tachyon.files.terminal_policy` pointing at the old build's terminal policy file
+   (without it every agent-proposed command falls back to 'ask'), the proxy forwarding the original Host header (the terminal
+   WebSocket upgrade is refused as origin_denied otherwise), and the app-agent endpoint left unconfigured until acceptance, the new descriptor entry, the key
    list (one line per active token: identity, scopes, kinds, remaining TTL), the proxy check.
 4. Every key holder named and ready to swap; **every holder keeps its old token file until acceptance** (the old tokens work
    again if the cutover is rolled back).
@@ -319,7 +324,9 @@ Upstreams Tachyon calls do not change; only how Tachyon holds their credentials 
    set; that it is the old key is proven before the window, step 3). Hand out the key files; each holder makes one call that succeeds and confirms its old token now gets 401.
 6. **Acceptance** by the director with the owner: every section 10 check passed and every holder confirmed. Only then: switch
    the outbound features on in the override, restart, and check that object sync, chat sync and the agents collector resume
-   from their copied cursors (first sync run reports no full re-pull). Holders may then delete their old token files, and any copies of the old service tokens kept on the host are removed by
+   from their copied cursors (first sync run reports no full re-pull). Then the checks that need a switch on: the terminal
+   WebSocket connects (terminal on), and one builder change in direct mode goes end to end with the real control credential
+   (builder changes on; tested only against a fake before). Holders may then delete their old token files, and any copies of the old service tokens kept on the host are removed by
    the owner.
 7. Merge `substrate-port` into `main` (the director's step), so the next routine deploy builds the new app.
 
@@ -345,7 +352,7 @@ write and one read (a planner item edit, then read back); an unknown `Host` refu
 including an unknown `/api/plugins/...` path; an unknown `/api/plugins/...` path refused for the signed-in owner too (the console
 data routes are served by the app itself while `pluginhost` is deselected, section 13); an API key holding no operator scope refused on an approval resolve; each SSE
 stream (console events, activity) connects and receives a keepalive; the chat thread list has the same count as the old build
-recorded before the window; the terminal WebSocket connects; the 6 object-sync schedules
+recorded before the window; the 6 object-sync schedules
 listed with the same enabled state as before; one approval listed with its decision log; each key holder's one call succeeds and
 its old token gets 401; the session cookie is `HttpOnly`, `Secure` and `SameSite=Strict` through the proxy; the Tether hub's
 Tachyon origins are connected.
