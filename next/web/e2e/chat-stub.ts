@@ -197,6 +197,10 @@ export async function chatStub(page: Page) {
       const path = url.pathname.replace("/api/plugins/console/v1", "")
       const parts = path.split("/").filter(Boolean).map(decodeURIComponent)
       const body = req.postData() ? JSON.parse(req.postData() as string) : undefined
+      // The Builder's two catalog reads belong to the builder area: its stub (registered later, so it answers
+      // first) or, with TACHYON_E2E_BUILDER=backend, the binary.
+      if (path === "/catalog/imported-teams" || path === "/catalog/team-policy")
+        return route.fallback()
       if (method !== "GET" && !req.headers()["x-requested-with"])
         return fail(route, 403, "csrf", "missing X-Requested-With")
 

@@ -5,10 +5,14 @@
 #   E2E_ADDR  host:port to listen on;  E2E_OWNER  "1" to create the owner offline first;
 #   E2E_TETHER  optional URL of the suite's local Tether fake (e2e/tether-fake.ts), with chat sync on;
 #     E2E_AGENTS_CONTROLS=1 also turns on the Agent Ops controls against it;
+#     E2E_BUILDER_CHANGES=1 also turns on the catalog index and builder changes (team operations) against it;
 #   E2E_FRAGMENTS  optional URL of the suite's local Fragments Engine fake (e2e/fragments-fake.ts): transcripts on,
 #     with a throwaway token (E2E_FRAGMENTS_TOKEN) the fake also checks;
 #   E2E_APPROVALS_SEED, E2E_AGENTS_SEED  optional test-only SQL (synthetic rows), applied with sqlite3 to this
-#     run's database once the owner setup has created the schema, before serving.
+#     run's database once the owner setup has created the schema, before serving;
+#   E2E_BUILDER_SEED  the same, with E2E_TETHER: its @TETHER_TARGET@ and @TETHER_IDENTITY@ placeholders become the
+#     fake's URL and the team binding's identity (sha256 of the URL and an empty credential, as provideractions
+#     derives it), so the seeded formation belongs to this run's binding.
 # It only ever creates E2E_DIR (which must not exist yet) and deletes nothing.
 set -eu
 : "${E2E_BIN:?}" "${E2E_DIR:?}" "${E2E_ADDR:?}"
@@ -43,6 +47,13 @@ if [ -n "${E2E_TETHER:-}" ]; then
     upstreams="$upstreams    tether_messages: { token: \"file://$E2E_DIR/tether-messages.token\" }
 "
     features="$features    agents_controls: true
+"
+  fi
+  if [ "${E2E_BUILDER_CHANGES:-}" = "1" ]; then
+    # The catalog index reads the fake's catalog; builder changes bind the team operations to the fake. No
+    # credential: the fake is loopback, and builder change plans stay off without one.
+    features="$features    catalog_index: true
+    builder_changes: true
 "
   fi
 fi
@@ -87,4 +98,10 @@ fi
 for seed in "${E2E_APPROVALS_SEED:-}" "${E2E_AGENTS_SEED:-}"; do
   if [ -n "$seed" ]; then sqlite3 "$E2E_DIR/data/tachyon.db" < "$seed"; fi
 done
+if [ -n "${E2E_BUILDER_SEED:-}" ]; then
+  : "${E2E_TETHER:?E2E_BUILDER_SEED needs E2E_TETHER}"
+  identity="sha256:$(printf '%s\n' "$E2E_TETHER" | sha256sum | cut -d' ' -f1)"
+  sed -e "s|@TETHER_TARGET@|$E2E_TETHER|g" -e "s|@TETHER_IDENTITY@|$identity|g" "$E2E_BUILDER_SEED" > "$E2E_DIR/builder-seed.sql"
+  sqlite3 "$E2E_DIR/data/tachyon.db" < "$E2E_DIR/builder-seed.sql"
+fi
 exec "$E2E_BIN" serve

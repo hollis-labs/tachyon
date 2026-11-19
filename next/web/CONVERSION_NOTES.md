@@ -384,7 +384,17 @@ Carried byte-identical from **main 4b5e397**:
   mock identity seam only.
 - **e2e:** `e2e/builder-stub.ts`. It serves the old contract stub's fixtures (`internal/builderapi/fixtures` at
   4b5e397, in `e2e/builder-fixtures`, with a project name made a placeholder). The data-verb envelopes follow
-  `internal/dataverbs`. `TACHYON_E2E_BUILDER=backend` turns it off.
+  `internal/dataverbs`. `TACHYON_E2E_BUILDER=backend` turns it off and runs against the binary's builder, registry
+  and team routes (B9a, B9b, B9b-2) with `tachyon.features.builder_changes` and `catalog_index` on, against the
+  suite's local Tether fake (`e2e/tether-fake.ts`: catalog files and history, registry projects, sessions,
+  `teams/form`, `teams/roster` and the team verbs; a body containing `REFUSE` gets a 503). `e2e/builder-seed.sql`
+  adds the Delivery and Docs teams, a confirmed `teams.form` receipt and a saved roster. In that mode the Teams
+  spec asserts the real receipts: preview prepared at the saved revision, apply succeeded, and a refusal left
+  unconfirmed with "Retry same request".
+- **Fixed on purpose (G6b, lead decision):** the Teams tab counts a run Tether reports as `working` (mesh
+  `TaskWorking`, the status of every formed run) as running. The carried `runOf` counted only `active` and
+  `running`, so a formed team showed as not running; old main has the same display bug. Scripted edit
+  (`g6b-adapt.py`), unit-tested in `teams-tab.test.tsx`.
 
 **Main moved under the carried layer since 99c7b88** (for the pre-P1 sync): `chat/aside/FileTree.tsx`,
 `chat/aside/Panels.tsx` (#767), and `observations/store.ts` again (#770, #771).
