@@ -17,6 +17,7 @@ import (
 
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
 	"github.com/hollis-labs/tachyon/internal/chatplan"
 	"github.com/hollis-labs/tachyon/internal/localstore"
@@ -660,5 +661,76 @@ func TestImmediateHistoryAfterEagerAssociationWithoutProxyCall(t *testing.T) {
 	code, out = e.do(t, "GET", "/threads/tether:new/messages", "")
 	if code != 200 || len(out["messages"].([]any)) != 3 || out["messages"].([]any)[2].(map[string]any)["id"] != "new-answer" {
 		t.Fatalf("new turn appended: %d %v", code, out)
+	}
+}
+
+func TestNonUIRestartChainReconcilesBeforeFirstHistoryRead(t *testing.T) {
+	for _, orphan := range []bool{false, true} {
+		for _, priorPair := range []bool{false, true} {
+			t.Run(fmt.Sprint(orphan, priorPair), func(t *testing.T) {
+				e := setup(t)
+				e.seedTurn(t, "old-question", "old", "question", "Keep the original history", "2020-10-30T09:00:00Z", true)
+				plans := &chatplan.Service{Store: &chatplan.Store{DB: e.db}}
+				title := "Original plan"
+				original, err := plans.Write(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceTether, ID: "old"}, "thread", chatplan.WriteIn{By: "agent", Title: &title, HasTitle: true, Steps: []chatplan.StepIn{{Title: &title}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if priorPair {
+					if _, err := plans.Store.AssociateContinuation(context.Background(), "middle", "new", "agent-a"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				rows := map[string]map[string]any{
+					"old":    {"id": "old", "logical_agent_id": "agent-a", "intent": "fresh", "state": "killed"},
+					"middle": {"id": "middle", "logical_agent_id": "agent-a", "intent": "resume", "parent_session_id": "old", "state": "killed"},
+					"new":    {"id": "new", "logical_agent_id": "agent-a", "intent": "resume", "parent_session_id": "middle", "state": "running"},
+				}
+				if orphan {
+					rows["old"]["state"], rows["middle"]["state"] = "orphaned", "orphaned"
+					for _, pair := range [][2]string{{"old", "middle"}, {"middle", "new"}} {
+						rows[pair[1]]["hub_resume_lineage"] = map[string]any{"kind": "hub_resume_v1", "source_session_id": pair[0], "replacement_session_id": pair[1], "logical_agent_id": "agent-a"}
+					}
+				}
+				tether := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if row := rows[strings.TrimPrefix(r.URL.Path, "/sessions/")]; row != nil {
+						_ = json.NewEncoder(w).Encode(row)
+					} else {
+						http.NotFound(w, r)
+					}
+				}))
+				defer tether.Close()
+				reconciler := &chatplan.ReadReconciler{Service: plans, Verifier: &chatplan.TetherContinuationVerifier{Base: tether.URL, Client: tether.Client()}}
+				e.h.Ancestors = plans.Store.Ancestors
+				e.h.Agg.Sessions = func(ctx context.Context) []SessionStub {
+					var out []SessionStub
+					for _, st := range plans.Store.Sessions(ctx) {
+						out = append(out, SessionStub{Ref: st.Ref, Agent: st.Agent, SeenNS: st.SeenNS, HasPlan: st.HasPlan})
+					}
+					return out
+				}
+				srv := httptest.NewServer(reconciler.Wrap(e.h.Mux()))
+				defer srv.Close()
+				e.srv = srv
+				code, out := e.do(t, "GET", "/threads/tether:new/messages", "")
+				if code != 200 {
+					t.Fatalf("first history read: %d %v", code, out)
+				}
+				messages := out["messages"].([]any)
+				if len(messages) != 2 || messages[0].(map[string]any)["id"] != "old-question" || messages[1].(map[string]any)["id"] != "old-question:reply" {
+					t.Fatalf("inherited operator reply: %v", messages)
+				}
+				for _, message := range messages {
+					meta := message.(map[string]any)["meta"].(map[string]any)
+					if meta["continued_from"] != "old" || meta["replyable"] != false {
+						t.Fatalf("history metadata: %v", meta)
+					}
+				}
+				got, err := plans.Store.ForThread(context.Background(), "tether:new")
+				if err != nil || got.ID != original.ID || got.Revision != original.Revision+2 {
+					t.Fatalf("immediate plan after history read: %+v %v", got, err)
+				}
+			})
+		}
 	}
 }

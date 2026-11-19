@@ -843,8 +843,12 @@ func (s *Server) Routes() http.Handler {
 	// Real chat thread routes, mounted one by one: each is more specific than the stub's
 	// prefix below, so with TACHYON_CHAT_STUBS=1 these win and the stub serves the rest.
 	// RequireOperator lets GETs through and guards every write.
+	readContinuity := s.chatReadReconciler()
 	if s.chatThreads != nil {
 		real := s.chatThreads.Mux()
+		if readContinuity != nil {
+			real = readContinuity.Wrap(real)
+		}
 		for _, route := range chatthreads.Routes {
 			method, path, _ := strings.Cut(route, " ")
 			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
@@ -856,6 +860,9 @@ func (s *Server) Routes() http.Handler {
 			h.VerifyContinuation = verifier.Verify
 		}
 		real := h.Mux()
+		if readContinuity != nil {
+			real = readContinuity.Wrap(real)
+		}
 		for _, route := range chatplan.Routes {
 			method, path, _ := strings.Cut(route, " ")
 			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))

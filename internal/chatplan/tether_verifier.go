@@ -23,12 +23,41 @@ type TetherContinuationVerifier struct {
 }
 
 type tetherContinuationSession struct {
+	HubResumeLineage *struct {
+		Kind                 string `json:"kind"`
+		SourceSessionID      string `json:"source_session_id"`
+		ReplacementSessionID string `json:"replacement_session_id"`
+		LogicalAgentID       string `json:"logical_agent_id"`
+	} `json:"hub_resume_lineage"`
 	ID              string `json:"id"`
 	LogicalAgentID  string `json:"logical_agent_id"`
 	ParentSessionID string `json:"parent_session_id"`
 	Intent          string `json:"intent"`
 	State           string `json:"state"`
 	WorkerID        string `json:"worker_id"`
+	WorkerLineage   *struct {
+		Kind                 string `json:"kind"`
+		SourceSessionID      string `json:"source_session_id"`
+		ReplacementSessionID string `json:"replacement_session_id"`
+		LogicalAgentID       string `json:"logical_agent_id"`
+		SourceWorkerID       string `json:"source_worker_id"`
+		WorkerID             string `json:"worker_id"`
+		CommandID            string `json:"command_id"`
+		AcknowledgedAt       string `json:"acknowledged_at"`
+	} `json:"worker_lineage"`
+	ReplacementLineage *struct {
+		SourceActorURI       string `json:"source_actor_uri"`
+		ReplacementActorURI  string `json:"replacement_actor_uri"`
+		CommittedAt          string `json:"committed_at"`
+		Kind                 string `json:"kind"`
+		SourceSessionID      string `json:"source_session_id"`
+		ReplacementSessionID string `json:"replacement_session_id"`
+		LogicalAgentID       string `json:"logical_agent_id"`
+		ActorURI             string `json:"actor_uri"`
+		IntentKey            string `json:"intent_key"`
+		BindingID            string `json:"binding_id"`
+		BindingGeneration    int64  `json:"binding_generation"`
+	} `json:"replacement_lineage"`
 	NativeAdmission *struct {
 		Kind                  string `json:"kind"`
 		SourceSessionID       string `json:"source_session_id"`

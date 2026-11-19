@@ -1,7 +1,7 @@
 # Exact chat continuation association
 
 The supported operator API is `POST /api/plugins/console/v1/chat/continuations`.
-It is for a Tachyon Restart completion or an Agent Ops caller that has already
+It is for an Agent Ops caller that has already
 obtained a replacement session from Tether. The caller sends the exact source
 and replacement session UUIDs, the logical agent ID, and the deterministic key
 `continuation:<source UUID>:<replacement UUID>`. The route uses Tachyon's
@@ -27,9 +27,7 @@ and a server-owned successful **native admission** receipt before committing
 the association. A client assertion, generic `intent=resume`, or `state=running`
 is insufficient. Missing proof returns `native_proof_unavailable` or
 `native_continuation_unverified`, and no plan or history link is committed.
-The receipt field is being added to the Tether native continuation contract;
-the verifier rejects older Tether rows with no receipt. The field shape remains
-subject to final exact-head contract confirmation before activation.
+The verifier rejects older Tether rows with no native receipt.
 
 Worker UI Restart with preserved context is **not delivered** by this slice:
 Tachyon lacks the exact source generation, current policy digest and independent
@@ -59,3 +57,48 @@ the ordinary thread GET routes before any replacement agent tool call. Agent Ops
 must use this API after native readiness; it must not
 relink a production database directly. A refused or uncertain native launch
 does not authorize a fresh relaunch or a chat association.
+
+## Restarts outside the UI
+
+With the existing Tether control client configured, ordinary thread, history and
+plan GETs reconcile a running replacement before returning its contents. The
+thread list discovers candidates through Tether's canonical paginated sessions
+API; it does not wait for agent output or a proxied tool call. Only explicit
+`intent=resume` rows are candidates. A fresh spawned child may have a parent, but
+that parent is not a continuation.
+
+The reconciler verifies every missing edge, up to 16 hops, before committing the
+whole chain in one SQLite transaction. It requires exact session IDs, explicit
+parents and the same logical agent throughout. Ordinary hub edges require a
+terminal source. Retained-team recovery additionally supports orphaned sources
+through Tether's committed `replacement_lineage` receipt. Tether verifies its
+actor against the original fenced replacement transaction, the exact stored
+source-plan hash and the destination recovery actor. All three projected actor
+fields must agree; the receipt also includes its intent key and commit time.
+Worker edges require either the native
+admission receipt or the separate `worker_lineage` receipt from an authenticated
+successful launch acknowledgement (`acknowledged_at`). A running worker row
+alone is insufficient.
+
+Ordinary hub crash/boot recovery can leave its positively gone source orphaned.
+That edge requires `hub_resume_lineage` (`hub_resume_v1`): Tether verifies exact
+same-agent local rows and stored non-team resume plans, and refuses retained
+source shim custody. A generic orphan row is insufficient. Historical orphan
+intermediates are accepted only when their outgoing edge has the corresponding
+team or ordinary-hub proof; the current chain tip must still be running.
+
+A one-pair receipt does not prove that older ancestors were observed. Only a
+completed chain reconciliation creates the separate local completion marker.
+For example, if an unseen A-to-B restart is followed by a recorded B-to-C UI
+restart, the first read repairs A-to-B and carries through the existing B-to-C
+pair. Public one-pair retries retain their usual no-op behavior.
+
+The transaction preserves Continue choices, clear markers, existing destination
+plans and immutable association pairs. Concurrent reads and retries cannot move
+a plan twice. Original history and reply IDs remain unchanged. Missing or
+unavailable proof returns 409 or 503 instead of a successful empty replacement;
+a later read retries. Already associated and historical threads remain readable.
+
+These receipts establish UI history lineage only. They do not grant native
+context, custody or execution authority, and never bypass the native receipt
+required by the public `POST /continuations` route, including on replay.
