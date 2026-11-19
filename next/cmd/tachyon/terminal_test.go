@@ -83,7 +83,42 @@ func dialTerminal(ctx context.Context, base, wsPath string, cookie *http.Cookie,
 	return websocket.Dial(ctx, "ws"+strings.TrimPrefix(base, "http")+wsPath, &websocket.DialOptions{HTTPHeader: h})
 }
 
-// Off, the terminal is the old build with no terminal service: nothing is mounted and nothing runs.
+// A minted token cannot acquire browser-session authority by being copied into a cookie.
+func TestTerminalRejectsMintedTokenInCookie(t *testing.T) {
+	base, _, _ := terminalHost(t, true)
+	owner := newClient(t, base)
+	owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
+	var minted struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(owner.want(200, "POST", "/api/token", map[string]any{"scopes": []string{"tachyon.terminal.control", "tachyon.operator"}}, xrw), &minted); err != nil || minted.Token == "" {
+		t.Fatalf("mint token: %v", err)
+	}
+	cookie := sessionCookie(t, owner)
+	// Minted tokens retain the owner's session lineage. Neither a cookie alone
+	// nor a matching cookie and bearer may turn one into a browser session.
+	for _, explicitBearer := range []bool{false, true} {
+		t.Run(fmt.Sprintf("explicit_bearer_%v", explicitBearer), func(t *testing.T) {
+			caller := newClient(t, base)
+			headers := map[string]string{"Cookie": cookie.Name + "=" + minted.Token, "X-Requested-With": "XMLHttpRequest"}
+			if explicitBearer {
+				headers["Authorization"] = "Bearer " + minted.Token
+			}
+			for _, route := range [][2]string{{"GET", "/machines"}, {"POST", "/sessions"}, {"GET", "/sessions/missing/ws"}, {"POST", "/proposals/missing/run"}, {"POST", "/proposals/missing/edit"}, {"POST", "/runs/missing/stop"}} {
+				wantStatus, wantCode := 401, "unauthorized"
+				if explicitBearer {
+					wantStatus, wantCode = 403, "requester_cannot_approve"
+				}
+				if code := flatCode(t, caller.want(wantStatus, route[0], chatapi.TerminalPrefix+route[1], map[string]string{"machine_id": "hub"}, headers)); code != wantCode {
+					t.Errorf("%s %s: %s", route[0], route[1], code)
+				}
+			}
+		})
+	}
+	owner.want(200, "GET", chatapi.TerminalPrefix+"/machines", nil, xrw)
+}
+
+// Off, no terminal route is mounted and no terminal process runs.
 func TestTerminalOff(t *testing.T) {
 	base, _, pids := terminalHost(t, false)
 	owner := newClient(t, base)

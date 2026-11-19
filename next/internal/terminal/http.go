@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
+	libauth "github.com/hollis-labs/libs/security/auth"
 
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatapi"
 )
@@ -29,7 +31,7 @@ type Handler struct {
 	Svc *Service
 	// Cookie is the session cookie's name. The identity middleware turns the cookie into
 	// "Authorization: Bearer <cookie value>", so a bearer is the browser session's only when it is exactly
-	// that cookie. Empty refuses every bearer.
+	// that cookie and the verified principal is a real session. Empty refuses every bearer.
 	Cookie string
 }
 
@@ -101,13 +103,21 @@ func (h *Handler) Mux() http.Handler {
 }
 
 // fromSessionCookie reports whether the Authorization header is the bearer the identity middleware made
-// from the session cookie.
+// from a real session cookie. Matching client-controlled strings alone does not
+// establish credential provenance: a minted token can also be copied into a cookie.
 func fromSessionCookie(r *http.Request, cookie, header string) bool {
 	if cookie == "" {
 		return false
 	}
 	c, err := r.Cookie(cookie)
-	return err == nil && c.Value != "" && header == "Bearer "+c.Value
+	if err != nil || !strings.HasPrefix(c.Value, "ses_") || header != "Bearer "+c.Value {
+		return false
+	}
+	// The pinned identity verifier resolves ses_ credentials against its session
+	// store. JWTs may carry SessionID lineage, so require the raw session format
+	// as well as a verified user session without token provenance.
+	p, ok := libauth.FromContext(r.Context())
+	return ok && p.Verified && p.Kind == "user" && p.SessionID != "" && p.TokenID == "" && p.Parent == ""
 }
 
 func (h *Handler) machines(w http.ResponseWriter, _ *http.Request) {

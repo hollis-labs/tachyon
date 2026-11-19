@@ -533,9 +533,10 @@ before P1 picks that up.
   - The old handler refused any `Authorization` header. Here the identity middleware turns the session cookie into a
     bearer, so the one bearer let through is exactly that cookie.
   - An API key, or a token the session minted, is refused as before (`requester_cannot_approve`).
-  - **A small widening, recorded as for transcripts (B10):** a session-minted token sent both as the session cookie
-    and as the bearer passes the bearer check. It is still a person's token, and it still needs
-    `tachyon.terminal.control` and the operator scope.
+  - The cookie must contain the pinned identity module's `ses_` credential and the verified principal must be a
+    user session without token provenance. Session lineage alone is insufficient: a minted token copied into
+    the cookie is refused, with or without an explicit matching bearer. Served regression tests cover reads,
+    session creation, the WebSocket route, and proposal/run mutations.
 - **The operator check covers reads,** as `RequireOperatorReads` did: `tachyon.terminal.control` plus an operator
   token on every route and on the WebSocket.
 - **Shutdown kills and reaps every pty process group.** The old build relied on its context killing them.
