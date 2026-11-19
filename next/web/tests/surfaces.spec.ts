@@ -1,10 +1,9 @@
 import { expect, test } from "./fixtures"
-import { AREAS, owner, shot } from "./helpers"
+import { AREAS, owner } from "./helpers"
 
 test.use({ storageState: owner })
 
-// Planner, Agent Ops, Needs you, Builder, Registry, chat, approvals and transcripts have their own specs; the rest
-// are stubs until ported.
+// Every area has its own spec now; this loop covers any area still marked a stub (none).
 for (const area of AREAS.filter((a) => a.stub)) {
   test(`${area.label}: reachable from the nav, and its deep link opens it`, async ({ page }) => {
     await page.goto("/planner")
@@ -17,12 +16,6 @@ for (const area of AREAS.filter((a) => a.stub)) {
     expect(new URL(page.url()).pathname).toBe(area.deep)
   })
 }
-
-test("a stub surface, for the PR", async ({ page }) => {
-  await page.goto("/repos")
-  await expect(page.locator("[data-stub]")).toBeVisible()
-  await shot(page, "stub-surface")
-})
 
 test("old URLs land where they used to", async ({ page }) => {
   // The planner then opens its themes (planner.spec.ts covers its own old slugs).

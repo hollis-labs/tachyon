@@ -54,7 +54,7 @@ func eventView(r TimelineRow, self []string) map[string]any {
 func (i *Inbox) history(w http.ResponseWriter, r *http.Request, self []string) {
 	q := r.URL.Query()
 	f := EventFilter{Status: q.Get("status"), Requester: q.Get("requester"), Q: q.Get("q"), Limit: 25, Kinds: decidedKinds}
-	if f.Status != "" && !slices.Contains([]string{"approved", "denied", "answered", "expired", "withdrawn"}, f.Status) {
+	if f.Status != "" && !slices.Contains([]string{"approved", "denied", "answered", "expired", "withdrawn", "native_allow", "native_deny", "native_cancel"}, f.Status) {
 		writeHITLError(w, hitl.ErrInvalidRequest)
 		return
 	}

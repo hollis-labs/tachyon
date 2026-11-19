@@ -12,12 +12,14 @@ package ceremony
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/hollis-labs/tachyon/next/internal/approvals"
 	"github.com/hollis-labs/tachyon/next/internal/store"
 )
 
@@ -343,20 +345,36 @@ func (m *Meterer) approvals(ctx context.Context, since time.Time) (int, []time.D
 	if m.DB == nil {
 		return 0, nil, errUnavailable
 	}
-	var n int
-	if err := m.DB.Reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM approval_item_index WHERE created_ns>=?`, since.UnixNano()).Scan(&n); err != nil {
+	unavailable, err := (&approvals.Store{DB: m.DB}).NativeUnavailable(ctx)
+	if err != nil {
 		return 0, nil, err
 	}
-	rows, err := m.DB.Reader.QueryContext(ctx, `SELECT created_ns, decided_ns FROM approval_item_index WHERE decided_ns IS NOT NULL AND decided_ns>=?`, since.UnixNano())
+	quarantined := map[string]bool{}
+	for _, id := range unavailable {
+		quarantined[id] = true
+	}
+	rows, err := m.DB.Reader.QueryContext(ctx, `SELECT item_id,created_ns,decided_ns FROM approval_item_index WHERE created_ns>=? OR decided_ns>=?`, since.UnixNano(), since.UnixNano())
 	if err != nil {
 		return 0, nil, err
 	}
 	defer func() { _ = rows.Close() }()
+	n := 0
 	var waits []time.Duration
 	for rows.Next() {
-		var c, d int64
-		if rows.Scan(&c, &d) == nil && d >= c {
-			waits = append(waits, time.Duration(d-c))
+		var id string
+		var c int64
+		var d sql.NullInt64
+		if err = rows.Scan(&id, &c, &d); err != nil {
+			return 0, nil, err
+		}
+		if quarantined[id] {
+			continue
+		}
+		if c >= since.UnixNano() {
+			n++
+		}
+		if d.Valid && d.Int64 >= since.UnixNano() && d.Int64 >= c {
+			waits = append(waits, time.Duration(d.Int64-c))
 		}
 	}
 	return n, waits, rows.Err()

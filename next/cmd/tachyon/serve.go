@@ -48,6 +48,7 @@ type deps struct {
 	agents    agentsDeps
 	builder   builderDeps
 	terminal  terminalDeps
+	forge     forgeDeps
 	// transcripts is the guarded transcripts bridge (nil: no transcript routes).
 	transcripts http.Handler
 }
@@ -57,9 +58,9 @@ type deps struct {
 // scope is "authenticated" and each verb is checked in the handler against the key's verb scope and
 // the credential's kinds. The console data API answers signed-in people, each verb behind its scope.
 func appRoutes(d deps) []routes.Route {
-	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs)
+	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs, d.approvals)
 	console := dataverbs.NewConsoleHTTP(d.local, d.builder.teams)
-	return append(append(append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), builderRoutes(d.builder)...), transcriptsRoutes(d.transcripts)...), append(terminalRoutes(d.terminal), []routes.Route{
+	return append(append(append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), append(builderRoutes(d.builder), forgeRoutes(d.forge)...)...), transcriptsRoutes(d.transcripts)...), append(terminalRoutes(d.terminal), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
@@ -133,7 +134,10 @@ func (t *tachyon) serve(ctx context.Context) error {
 	chat.verbs.Terminal = terminalVerbs(term)
 	stopTerminal := term.start(ctx)
 	defer stopTerminal()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: agents, builder: builder, terminal: term, transcripts: newTranscripts(app, cfg, domain)})
+	forge := newForge(app, cfg, domain)
+	stopForge := forge.start(ctx)
+	defer stopForge()
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: agents, builder: builder, terminal: term, forge: forge, transcripts: newTranscripts(app, cfg, domain)})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err

@@ -84,7 +84,7 @@ func transcriptPaths() []string {
 // session. Anonymous is 401 (the framework guard). A key without tachyon.transcripts.read is refused by
 // the route scope first (scope_required, the framework); a key holding it passes the scope and is then
 // refused by the transcripts guard (403 forbidden, as the old guard refused any bearer), and so is the
-// owner's own browser sending a key. The signed-in owner reaches the bridge.
+// owner's own browser sending a key or a token its session minted. The signed-in owner reaches the bridge.
 func TestTranscriptsRoutesAuth(t *testing.T) {
 	fe := newFakeFragments(t)
 	base, app := started(t, transcriptsOverride(t, fe.URL, true))
@@ -131,14 +131,30 @@ func TestTranscriptsRoutesAuth(t *testing.T) {
 	if err := json.Unmarshal(owner.want(200, "POST", "/api/token", map[string]any{"scopes": []string{"tachyon.transcripts.read"}}, xrw), &minted); err != nil || minted.Token == "" {
 		t.Fatalf("mint a token: %v", err)
 	}
+	// The identity middleware sets the bearer from the session cookie only when a request brings no
+	// Authorization header; it never replaces one. So the minted token is refused alone and also when the
+	// owner's browser sends it together with its session cookie: the header stays the minted token, which is
+	// not the cookie's value. The one bearer that passes is the session cookie's own value, the credential the
+	// middleware would have set itself.
+	var session string
+	for _, c := range owner.http.Jar.Cookies(u) {
+		if c.Name == app.Name+"_session" {
+			session = c.Value
+		}
+	}
 	for _, path := range transcriptPaths() {
 		if code := flatCode(t, keys.want(403, "GET", path, nil, map[string]string{"Authorization": "Bearer " + minted.Token})); code != "forbidden" {
 			t.Errorf("minted token %s: %s", path, code)
+		}
+		if code := flatCode(t, owner.want(403, "GET", path, nil, map[string]string{"Authorization": "Bearer " + minted.Token})); code != "forbidden" {
+			t.Errorf("minted token with the session cookie %s: %s", path, code)
 		}
 	}
 	if n := fe.reads.Load(); n != 0 {
 		t.Fatalf("a refused request reached Fragments Engine (%d reads)", n)
 	}
+	// The session cookie's own value as the bearer, sent with the cookie: the credential the middleware sets.
+	owner.want(200, "GET", transcripts.Prefix+"/status", nil, map[string]string{"Authorization": "Bearer " + session})
 	owner.want(200, "GET", transcripts.Prefix+"/status", nil, nil)
 	owner.want(200, "GET", transcripts.Prefix+"/snapshot", nil, nil)
 	if code := flatCode(t, owner.want(404, "GET", transcripts.Prefix+"/sessions/not-an-id", nil, nil)); code != "not_found" {

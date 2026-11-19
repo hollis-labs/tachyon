@@ -3,6 +3,7 @@ import { agentsStub } from "../e2e/agents-stub"
 import { approvalsStub } from "../e2e/approvals-stub"
 import { builderStub } from "../e2e/builder-stub"
 import { chatStub } from "../e2e/chat-stub"
+import { forgeStub } from "../e2e/forge-stub"
 import { BASE, plannerStub, type StubItem } from "../e2e/planner-stub"
 import { transcriptsStub } from "../e2e/transcripts-stub"
 
@@ -18,6 +19,8 @@ export const agentsBackend = process.env.TACHYON_E2E_AGENTS === "backend"
 export const builderBackend = process.env.TACHYON_E2E_BUILDER === "backend"
 /** `TACHYON_E2E_TRANSCRIPTS=backend` runs against the binary's own transcripts routes; otherwise the stub (G7a). */
 export const transcriptsBackend = process.env.TACHYON_E2E_TRANSCRIPTS === "backend"
+/** `TACHYON_E2E_FORGE=backend` runs against the binary's own forge and console state routes; otherwise the stub (G7b). */
+export const forgeBackend = process.env.TACHYON_E2E_FORGE === "backend"
 
 export interface PlannerWrite {
   method: string
@@ -39,6 +42,7 @@ export const test = base.extend<{
   transcripts: {
     store: ReturnType<typeof import("../e2e/transcripts-stub").transcriptsSeed> | null
   }
+  forge: { store: ReturnType<typeof import("../e2e/forge-stub").forgeSeed> | null }
 }>({
   planner: [
     async ({ page }, use) => {
@@ -85,6 +89,12 @@ export const test = base.extend<{
   transcripts: [
     async ({ page }, use) => {
       await use({ store: transcriptsBackend ? null : (await transcriptsStub(page)).store })
+    },
+    { auto: true },
+  ],
+  forge: [
+    async ({ page }, use) => {
+      await use({ store: forgeBackend ? null : (await forgeStub(page)).store })
     },
     { auto: true },
   ],

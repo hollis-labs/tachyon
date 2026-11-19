@@ -11,6 +11,7 @@ import (
 	"github.com/hollis-labs/libs/core/util/svcerr"
 
 	"github.com/hollis-labs/tachyon/next/internal/access"
+	"github.com/hollis-labs/tachyon/next/internal/approvals"
 	"github.com/hollis-labs/tachyon/next/internal/chat/chatapi"
 	"github.com/hollis-labs/tachyon/next/internal/objects"
 	"github.com/hollis-labs/tachyon/next/internal/planner"
@@ -45,14 +46,25 @@ type Chat struct {
 // verbs it lists and accepts are the ones its credential allows (the key's tachyon.<verb> scope and
 // the mapping's verbs), and every call that touches an object checks the object's kind against the
 // credential's kinds. The mutation actor is "service:<identity id>", never a request field.
-func NewAgentHTTP(local *Local, acc *access.Service, chat Chat) http.Handler {
-	return access.RequireAgent(acc, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func NewAgentHTTP(local *Local, acc *access.Service, chat Chat, native ...*approvals.Inbox) http.Handler {
+	var inbox *approvals.Inbox
+	if len(native) > 0 {
+		inbox = native[0]
+	}
+	h := access.RequireAgent(acc, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		agent, _ := access.FromContext(r.Context())
-		p := &scoped{local: local, agent: agent, chat: chat, session: trustedSession(agent, r.Header.Get(SessionHeader))}
+		p := &scoped{local: local, agent: agent, chat: chat, gate: inbox, session: trustedSession(agent, r.Header.Get(SessionHeader))}
 		ctx := withLineage(r.Context(), agent, r.Header)
 		p.recordLineage(ctx)
 		newHTTP(AgentPrefix, []Provider{p}, func(next http.Handler) http.Handler { return next }).ServeHTTP(w, r.WithContext(ctx))
 	}))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, AgentPrefix+"/providers/tachyon/verbs/gate.") {
+			nativeGateHTTP(inbox, acc, w, r)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // trustedSession returns the X-Tether-Session-Id value only when the agent is the pinned Tether
@@ -106,6 +118,7 @@ func (p *scoped) recordLineage(ctx context.Context) {
 // scoped is the local provider narrowed to one agent's grant.
 type scoped struct {
 	local *Local
+	gate  *approvals.Inbox
 	agent access.Agent
 	chat  Chat
 	// session is the Tether session id the pinned proxy is acting for (SessionHeader); empty unless
@@ -137,6 +150,13 @@ func (p *scoped) Verbs() []Verb {
 			continue
 		}
 		for _, v := range family.verbs {
+			if p.agent.Allows(v.Name, "") {
+				out = append(out, v)
+			}
+		}
+	}
+	if p.gate != nil && p.gate.Native != nil && p.agent.Identity.ID == p.gate.Native.ProducerIdentity {
+		for _, v := range gateVerbs() {
 			if p.agent.Allows(v.Name, "") {
 				out = append(out, v)
 			}
@@ -174,6 +194,9 @@ func denied() error {
 func (p *scoped) Invoke(ctx context.Context, name string, raw json.RawMessage, _ string) (json.RawMessage, error) {
 	if !slices.Contains(access.Verbs(), name) || !p.agent.Allows(name, "") {
 		return nil, denied()
+	}
+	if strings.HasPrefix(name, "gate.") {
+		return gateInvoke(ctx, p.gate, p.agent, name, raw)
 	}
 	if out, ok, err := p.invokeChat(ctx, name, raw); ok {
 		return out, err

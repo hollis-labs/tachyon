@@ -1,0 +1,9 @@
+{
+  "merged": true,
+  "sha": "1b7a867c692932f990cfa105b150d4ce07ce3cd2",
+  "message": "Pull Request successfully merged",
+  "method": "squash",
+  "audit_class": "lifecycle",
+  "settled": true,
+  "links_done": 0
+}

@@ -4,7 +4,7 @@ import { DashboardViewTabs } from "@hollis-labs/kit-dashboard/layout"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react"
-import { ApprovalError, kindLabel, type ApprovalItem, type BatchResult, type HistoryFacets } from "./client"
+import { ApprovalError, displayTitle, kindLabel, type ApprovalItem, type BatchResult, type HistoryFacets } from "./client"
 import { BATCH_STATUS_COPY, MAX_BATCH, batchEligibility, orderPending } from "./batch"
 import { hasScope, OPERATOR_SCOPE, useScopes } from "../../api/capabilities"
 import { useApprovals } from "./context"
@@ -64,7 +64,7 @@ export function ApprovalsPage() {
   const facetCount = (v: string) => (v ? facets?.statuses.find((x) => x.status === v)?.count : historyCount)
   const ordered = view === "pending" ? orderPending(queue.inbox?.pending ?? []) : (queue.inbox?.[view] ?? [])
   const rows = ordered.filter((item) =>
-    `${item.request_snapshot.title} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
+    `${displayTitle(item)} ${kindLabel(item.request_snapshot.kind)} ${item.request_snapshot.source.agent_id} ${item.request_snapshot.source.application_id}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   )
@@ -162,6 +162,7 @@ export function ApprovalsPage() {
           {(status || requester) && <Button type="button" variant="ghost" size="sm" onClick={() => { setStatus(""); setRequester("") }}>Clear filters</Button>}
         </div>
       )}
+      {Boolean(queue.inbox?.native_unavailable?.length) && <p role="alert" className="px-4 pt-2 dash-support text-danger">{queue.inbox?.native_unavailable?.length} native response(s) require reconciliation. No approval evidence is available; do not submit another choice.</p>}
       {queue.stream === "down" && !queue.error && queue.inbox && <p role="status" className="px-4 pt-2 dash-support text-fg-faint">Updates every 10 s</p>}
       {queue.error && (
         <p role="alert" className="mx-4 mt-2 rounded border border-danger/30 p-3 dash-control text-danger">

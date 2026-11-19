@@ -17,6 +17,9 @@ import { withChatApiSummaries } from "./chat/summaries"
 import { createTetherChatClient } from "./chat/tether"
 import { ChatPage } from "./chat/view/ChatPage"
 import { consoleClient } from "./client"
+import { ConsoleProvider } from "./events/provider"
+import { PR_INBOX_PATH, PendingPrInbox } from "./forge/inbox"
+import { PR_WORKSPACE_ROUTE, PrWorkspacePage } from "./forge/workspace"
 import { createMailMessagingClient } from "./messaging/adapter"
 import { MessagingProvider } from "./messaging/context"
 import { OPERATOR_ADDRESS } from "./messaging/operator"
@@ -162,5 +165,38 @@ export function TranscriptsSurface() {
         <Route path="/dashboards/transcripts" element={<TranscriptDashboard />} />
       </Routes>
     </ConsoleBase>
+  )
+}
+
+/**
+ * The Repos surface (`/repos` in ui/app.json): the PR inbox and the PR workspace, from the old console overlay routes.
+ * They mount under the old ConsoleProvider (state store, action bus, live event sources) and messaging, as the old
+ * ConsoleShell placed them; `/prs/inbox` is the shell's legacy redirect. The confirm-gated forge writes (comment,
+ * review, Assign) ask the carried identity seam for a step-up (`POST auth/step-up`), which neither the old server nor
+ * this one serves: they resolve "unavailable" and are refused, exactly as in the old app (lead decision, parity).
+ */
+export function ReposSurface() {
+  return (
+    <ConsoleBase>
+      <ConsoleProvider>
+        <ConsoleMessaging>
+          <Routes>
+            <Route path={PR_INBOX_PATH} element={<PendingPrInbox />} />
+            <Route path={PR_WORKSPACE_ROUTE} element={<PrWorkspacePage />} />
+          </Routes>
+        </ConsoleMessaging>
+      </ConsoleProvider>
+    </ConsoleBase>
+  )
+}
+
+/** The messaging client the old ConsoleIntegration provided (the inbox's assign action sends mail with it). */
+function ConsoleMessaging({ children }: { children: ReactNode }) {
+  const api = useApi()
+  const [messaging] = useState(() => createMailMessagingClient(api, { from: OPERATOR_ADDRESS }))
+  return (
+    <MessagingProvider client={messaging} operator={OPERATOR_ADDRESS}>
+      {children}
+    </MessagingProvider>
   )
 }
