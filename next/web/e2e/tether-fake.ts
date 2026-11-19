@@ -10,9 +10,22 @@
  *   GET  /messages/:id/delivery           a reply's delivery, always delivered
  *   POST /messages                        mail (Agent Ops nudges); a payload containing REFUSE answers 503
  *
+ * For the builder backend run (TACHYON_E2E_BUILDER=backend), the reads and team operations the binary makes:
+ *   GET  /catalog/files[?path=]           the catalog listing {files:[...]}, or one file {content}
+ *   GET  /catalog/history                 no catalog plans yet {plans:[]}
+ *   GET  /registry/projects               the registry {projects:[...]}
+ *   GET  /sessions                        no running sessions {sessions:[]}
+ *   POST /teams/form                      a formation receipt {run, members}
+ *   GET  /teams/roster?run_id=            the run's roster {runs:[{run, roster_version, members}]}
+ *   POST /teams/{assign,address,member_add,member_remove,cancel,dissolve}
+ *                                          a body containing REFUSE answers 503, for the refusal path
+ * Team shapes follow mesh/core teams (TeamRun, Member) as internal/provideractions parses them; the run seeded
+ * by e2e/builder-seed.sql (TEAM_RUN) is "working", as Tether reports a formed run.
+ *
  * Shapes follow mesh/core tetherclient (ChannelMessage, RoutingCapabilitiesResponse, ReplyReceipt,
  * ReplyDelivery). Environment: E2E_TETHER_ADDR host:port to listen on.
  */
+import { createHash } from "node:crypto"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { pathToFileURL } from "node:url"
 
@@ -60,6 +73,102 @@ function publication(seq: number, kind: string, text: string, at: number) {
   }
 }
 
+/** The run e2e/builder-seed.sql records as formed: the same ids, so a roster refresh matches its receipt. */
+export const TEAM_RUN = {
+  id: "run-e2e-1",
+  team_id: "tachyon-e2e00000-0000-4000-8000-0000000000d1-e2e00000-0000-4000-8000-0000000000f1",
+  team_version: 1,
+  channel: "team/run-e2e-1",
+  status: "working",
+}
+const teamMembers = [
+  { id: "mem-e2e-lead", slot: "lead", actor: "agt_e2e_lead", status: "active", kind: "agent" },
+  {
+    id: "mem-e2e-reviewer",
+    slot: "reviewer",
+    actor: "agt_e2e_reviewer",
+    status: "active",
+    kind: "agent",
+  },
+]
+let rosterVersion = 1
+
+/** The catalog files the binary's catalog index reads: names follow e2e/builder-fixtures. */
+const catalogFiles: Record<string, string> = {
+  "agents/builder-reviewer.yaml": [
+    "id: builder-reviewer",
+    "name: Builder Reviewer",
+    "provider: claude",
+    "model: claude-sonnet-5-5",
+    "skills: [review-etiquette]",
+  ].join("\n"),
+  "agents/release-captain.yaml": [
+    "id: release-captain",
+    "name: Release Captain",
+    "provider: claude",
+    "model: claude-opus-5-5",
+  ].join("\n"),
+  "launches/builder-reviewer-tachyon.yaml": [
+    "id: builder-reviewer-tachyon",
+    "agent: builder-reviewer",
+    "project: tachyon",
+    "worker: hub",
+  ].join("\n"),
+  "launches/release-captain-tachyon.yaml": [
+    "id: release-captain-tachyon",
+    "agent: release-captain",
+    "project: tachyon",
+    "worker: hub",
+  ].join("\n"),
+  "projects/tachyon.yaml": ["id: tachyon", "name: Tachyon"].join("\n"),
+  "projects/example-app.yaml": ["id: example-app", "name: Example App"].join("\n"),
+  "skills/review-etiquette.md": [
+    "---",
+    "name: review-etiquette",
+    "description: How to word review comments.",
+    "---",
+    "Be specific and kind.",
+  ].join("\n"),
+  "teams-policy.yaml": [
+    "version: 1",
+    "launches:",
+    "  - launch: builder-reviewer-tachyon",
+    "    runtime: claude",
+    "    definition:",
+    "      id: builder-reviewer",
+    '      revision: "1"',
+    `      digest: sha256:${"a".repeat(64)}`,
+  ].join("\n"),
+}
+const registryProjects = [
+  {
+    urn: "urn:tether:project:tachyon",
+    kind: "project",
+    display_name: "Tachyon",
+    description: "The operator console.",
+    status: "active",
+    tags: ["app", "go"],
+    props: { id: "tachyon" },
+  },
+  {
+    urn: "urn:tether:project:example-app",
+    kind: "project",
+    display_name: "Example App",
+    description: "Agent runtime and workspaces.",
+    status: "active",
+    tags: ["runtime"],
+    props: { id: "example-app" },
+  },
+]
+const teamVerbs = new Set([
+  "assign",
+  "address",
+  "member_add",
+  "member_remove",
+  "cancel",
+  "dissolve",
+])
+
 const messages = [
   publication(1, "question", "Shall I start on the chat port?", T0),
   publication(2, "final", "The planner surface is ready for review.", T0 + 60_000),
@@ -71,10 +180,115 @@ function send(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body))
 }
 
-async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function text(req: IncomingMessage): Promise<string> {
   let raw = ""
   for await (const chunk of req) raw += chunk
+  return raw
+}
+
+async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const raw = await text(req)
   return raw ? JSON.parse(raw) : {}
+}
+
+/** The builder run's catalog, registry and team endpoints; false when the path is not one of them. */
+async function builder(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  const path = url.pathname
+  if (req.method === "GET" && path === "/catalog/files") {
+    const one = url.searchParams.get("path")
+    if (one === null) {
+      const files = Object.entries(catalogFiles).map(([p, content]) => ({
+        path: p,
+        layer: "system",
+        sha256: createHash("sha256").update(content).digest("hex"),
+      }))
+      send(res, 200, { files })
+    } else if (one in catalogFiles) send(res, 200, { path: one, content: catalogFiles[one] })
+    else send(res, 404, { error: "no such catalog file" })
+    return true
+  }
+  if (req.method === "GET" && path === "/catalog/history") {
+    send(res, 200, { plans: [] })
+    return true
+  }
+  if (req.method === "GET" && path === "/registry/projects") {
+    send(res, 200, { projects: registryProjects })
+    return true
+  }
+  if (req.method === "GET" && path === "/sessions") {
+    send(res, 200, { sessions: [], next_cursor: null })
+    return true
+  }
+  if (!path.startsWith("/teams/")) return false
+  // Tether's team routes require the protocol header provideractions sends.
+  if (req.headers["tether-protocol"] !== "1") {
+    send(res, 400, { error: "Tether-Protocol: 1 required" })
+    return true
+  }
+  if (req.method === "GET" && path === "/teams/roster") {
+    if (url.searchParams.get("run_id") !== TEAM_RUN.id) send(res, 200, { runs: [] })
+    else
+      send(res, 200, {
+        runs: [{ run: TEAM_RUN, roster_version: rosterVersion, members: teamMembers }],
+      })
+    return true
+  }
+  if (req.method !== "POST") return false
+  const raw = await text(req)
+  if (!req.headers["idempotency-key"]) {
+    send(res, 400, { error: "Idempotency-Key required" })
+    return true
+  }
+  if (raw.includes("REFUSE")) {
+    send(res, 503, { error: "team host unavailable" })
+    return true
+  }
+  const input = raw ? JSON.parse(raw) : {}
+  if (path === "/teams/form") {
+    const team = input.team ?? {}
+    send(res, 200, {
+      run: {
+        ...TEAM_RUN,
+        id: `run-e2e-${Date.now()}`,
+        team_id: team.id,
+        team_version: team.version,
+      },
+      members: [],
+    })
+    return true
+  }
+  const verb = path.slice("/teams/".length)
+  if (!teamVerbs.has(verb)) return false
+  if (input.run_id !== TEAM_RUN.id) {
+    send(res, 404, { error: "no such run" })
+    return true
+  }
+  if (verb === "address" || verb === "assign") {
+    const slot = typeof input.address === "string" ? input.address.replace(/^@/, "") : ""
+    const recipients = slot === "all" ? teamMembers : teamMembers.filter((m) => m.slot === slot)
+    send(res, 200, {
+      run: TEAM_RUN,
+      recipients,
+      delivery_keys: recipients.map((m) => `delivery-e2e-${m.id}`),
+    })
+    return true
+  }
+  if (verb === "member_add") {
+    rosterVersion++
+    send(res, 200, {
+      run: TEAM_RUN,
+      member: {
+        id: `mem-e2e-${rosterVersion}`,
+        slot: input.slot,
+        actor: "",
+        status: "starting",
+        kind: "agent",
+      },
+    })
+    return true
+  }
+  send(res, 200, { run: TEAM_RUN })
+  return true
 }
 
 const server = createServer(async (req, res) => {
@@ -149,6 +363,7 @@ const server = createServer(async (req, res) => {
     if (text.includes("REFUSE")) return send(res, 503, { error: "mailbox unavailable" })
     return send(res, 201, { id: `msg-e2e-${Date.now()}` })
   }
+  if (await builder(req, res, url)) return
   send(res, 404, { error: "not served by the e2e fake" })
 })
 
