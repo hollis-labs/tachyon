@@ -496,6 +496,7 @@ wins, and each real difference is a kit-gap task rather than a reason to keep th
 | `src/console/builder`, `registry`, the rest of `agents` (G6, main 4b5e397) | Builder (agents, launches, library, team definitions), Registry, and team operations in the Agent Ops Teams tab | **swapped:** `Chip` to design-components `Pill`. Editors and forms are builder domain views on design-components; `/builder/classic` not ported |
 | `src/console/transcripts` (G7a, main d5db765) | the transcript list and reader (read-only) | domain view on design-components; no kit equivalent. The operator-session Connect step is gone (no elevation) |
 | `src/console/forge` inbox and workspace (G7b, main d5db765) | Repos: the PR inbox and the PR workspace (diff, conversation, review, merge, assign) | **swapped:** `Chip` to `Pill`, `PillTabs` to `DashboardViewTabs`. Comment, review and Assign stay refused as in the old app (no step-up served); enabling them is post-adoption |
+| `src/console/chat/drawer` terminal (G8a, main 8560422) | the chat drawer's PTY terminal (xterm over a WebSocket) and agent-proposed commands | domain view on design-components and xterm; no kit equivalent. The WebSocket contract is in `next/web/CONVERSION_NOTES.md` |
 | `src/console/{lib,seams,shell,operator,testkit}` | helpers, seams, test kit | `operator/elevation.ts` is replaced by the port (no step-up) |
 | `src/packages/torque-client`, `src/packages/host-sdk` | API client, host fetch and freshness | `hostFetch` sends `X-Requested-With` and hands a 401 to sign-in |
 

@@ -196,6 +196,8 @@ export async function chatStub(page: Page) {
       const method = req.method()
       const path = url.pathname.replace("/api/plugins/console/v1", "")
       const parts = path.split("/").filter(Boolean).map(decodeURIComponent)
+      if (parts[0] === "terminal" && process.env.TACHYON_E2E_TERMINAL === "backend")
+        return route.fallback()
       const body = req.postData() ? JSON.parse(req.postData() as string) : undefined
       // The Builder's two catalog reads belong to the builder area: its stub (registered later, so it answers
       // first) or, with TACHYON_E2E_BUILDER=backend, the binary.

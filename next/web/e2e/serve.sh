@@ -74,6 +74,18 @@ if [ -n "${E2E_FRAGMENTS:-}" ]; then
   features="$features    transcripts: true
 "
 fi
+# Only this run's terminal backend uses the fake ssh. No real host, key or agent is contacted.
+if [ -n "${E2E_TERMINAL_SSH:-}" ]; then
+  mkdir "$E2E_DIR/bin"
+  cp "$E2E_TERMINAL_SSH" "$E2E_DIR/bin/ssh"
+  chmod 700 "$E2E_DIR/bin/ssh"
+  export PATH="$E2E_DIR/bin:$PATH"
+  printf '%s\n' '{"machines":[{"id":"example-box","label":"example-box","host":"example-box"}],"rules":[]}' > "$E2E_DIR/terminal-policy.json"
+  features="$features    terminal: true
+"
+  files="$files    terminal_policy: \"$E2E_DIR/terminal-policy.json\"
+"
+fi
 [ -n "$upstreams" ] && tachyon="$tachyon  upstreams:
 $upstreams"
 [ -n "$features" ] && tachyon="$tachyon  features:

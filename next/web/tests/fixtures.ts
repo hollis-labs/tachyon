@@ -5,6 +5,7 @@ import { builderStub } from "../e2e/builder-stub"
 import { chatStub } from "../e2e/chat-stub"
 import { forgeStub } from "../e2e/forge-stub"
 import { BASE, plannerStub, type StubItem } from "../e2e/planner-stub"
+import { terminalStub } from "../e2e/terminal-stub"
 import { transcriptsStub } from "../e2e/transcripts-stub"
 
 /** `TACHYON_E2E_PLANNER=backend` runs against the binary's own planner (B5); otherwise the contract stub answers. */
@@ -21,6 +22,8 @@ export const builderBackend = process.env.TACHYON_E2E_BUILDER === "backend"
 export const transcriptsBackend = process.env.TACHYON_E2E_TRANSCRIPTS === "backend"
 /** `TACHYON_E2E_FORGE=backend` runs against the binary's own forge and console state routes; otherwise the stub (G7b). */
 export const forgeBackend = process.env.TACHYON_E2E_FORGE === "backend"
+/** `TACHYON_E2E_TERMINAL=backend` runs against the binary's own terminal routes; otherwise the stub (G8a). */
+export const terminalBackend = process.env.TACHYON_E2E_TERMINAL === "backend"
 
 export interface PlannerWrite {
   method: string
@@ -43,6 +46,7 @@ export const test = base.extend<{
     store: ReturnType<typeof import("../e2e/transcripts-stub").transcriptsSeed> | null
   }
   forge: { store: ReturnType<typeof import("../e2e/forge-stub").forgeSeed> | null }
+  terminal: { store: ReturnType<typeof import("../e2e/terminal-stub").terminalSeed> | null }
 }>({
   planner: [
     async ({ page }, use) => {
@@ -95,6 +99,12 @@ export const test = base.extend<{
   forge: [
     async ({ page }, use) => {
       await use({ store: forgeBackend ? null : (await forgeStub(page)).store })
+    },
+    { auto: true },
+  ],
+  terminal: [
+    async ({ page }, use) => {
+      await use({ store: terminalBackend ? null : (await terminalStub(page)).store })
     },
     { auto: true },
   ],
