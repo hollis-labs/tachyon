@@ -39,6 +39,7 @@ type Chat struct {
 	Topics    *ChatTopics
 	Plan      *ChatPlan
 	Activity  *ChatActivity
+	Terminal  *ChatTerminal // the quick terminal's verbs (slice B12); nil while tachyon.features.terminal is off
 }
 
 // NewAgentHTTP serves the data verbs to agents. Every request is resolved to its agent first; the
@@ -143,6 +144,7 @@ func (p *scoped) Verbs() []Verb {
 		{p.chat.Topics != nil, chatTopicVerbs()},
 		{p.chat.Plan != nil, chatPlanVerbs()},
 		{p.chat.Activity != nil, chatActivityVerbs()},
+		{p.chat.Terminal != nil, terminalVerbs()},
 	} {
 		if !family.on {
 			continue
@@ -176,6 +178,8 @@ func (p *scoped) invokeChat(ctx context.Context, name string, raw json.RawMessag
 		out, err = invokeChatPlan(ctx, p.chat.Plan, name, raw, p.agent, p.session)
 	case "chat.activity.append", "chat.panel.open":
 		out, err = invokeChatActivity(ctx, p.chat.Activity, name, raw, p.agent, p.session)
+	case "terminal.machines", "terminal.propose", "terminal.run.get":
+		out, err = invokeTerminal(ctx, p.chat.Terminal, name, raw, p.agent)
 	default:
 		return nil, false, nil
 	}

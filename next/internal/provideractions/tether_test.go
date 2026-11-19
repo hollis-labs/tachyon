@@ -22,7 +22,7 @@ func TestTetherPinsCredentialAndChecksReceipt(t *testing.T) {
 		if r.Method != "POST" || r.URL.Path != "/teams/form" || r.Header.Get("Tether-Protocol") != "1" || r.Header.Get("Idempotency-Key") != "stable-key" || r.Header.Get("Authorization") != "Bearer first-token" {
 			t.Error("request contract changed", r.Method, r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"run":{"id":"run-1","team_id":"delivery","team_version":1,"status":"running"},"`+unretained+`":"do-not-retain"}`))
+		_, _ = w.Write([]byte(`{"run":{"id":"run-1","team_id":"delivery","team_version":1,"status":"running"},"` + unretained + `":"do-not-retain"}`))
 	}))
 	defer upstream.Close()
 	path := filepath.Join(t.TempDir(), "token")

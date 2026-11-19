@@ -364,6 +364,48 @@ Served under `/api/plugins/console/v1`, from the migrated `catalog_*`, `library_
   `503 unavailable` ("Tether configuration or credential is unavailable.") before dialing, except a roster
   refresh, which answers the saved roster with the old "not configured" problem; the local reads still answer. Dispatching provider actions from action runs belongs to the action-runs slice.
 
+## 5g. The quick terminal (slice B12)
+
+The old routes under `/api/plugins/console/v1/terminal`, served by Tachyon with `tachyon.features.terminal` on (off:
+none is mounted, 404, as on an old host without the terminal):
+
+| Route | Old handler |
+|---|---|
+| `GET machines` | `machines` |
+| `POST sessions` `{machine_id, thread_ref?}` → `201 {id, ws_path, ...}`; `DELETE sessions/{id}` | `openSession`, `closeSession` |
+| `GET sessions/{id}/ws` (WebSocket upgrade) | `ws` |
+| `GET proposals[?thread_ref&state]`; `POST proposals/{id}/run` `{op_digest?}`, `…/deny`, `…/edit` `{command}` | `proposals`, `run`, `deny`, `edit` |
+| `GET runs[?thread_ref&state&closed&limit]`, `GET runs/{run_id}[/output?after_seq&limit]`, `POST runs/{run_id}/stop`, `PATCH runs/{run_id}` | `runs`, `getRun`, `output`, `stop`, `patch` |
+
+**Guards**, each the old one:
+- Every route needs `tachyon.terminal.control` and the operator check (assurance `terminal.control`, operator
+  token), reads and the upgrade included. This is the old `RequireOperatorReads`.
+- A bearer that is not the browser session's own is `403 requester_cannot_approve`: an API key or a token the
+  session minted. The old handler refused any `Authorization` header. The identity middleware now turns the
+  session cookie into a bearer, so the one let through is exactly that cookie, as for transcripts (B10).
+- The upgrade is same-origin only: the `Origin` host is the request host and `Sec-Fetch-Site` is not
+  `cross-site`, otherwise `403 origin_denied`. A missing `Origin` is refused. An ended session is `409 conflict`.
+
+**Frames and lifecycle:**
+- The frames are the old ones: binary PTY bytes both ways (64 KiB read limit), and a text
+  `{"type":"resize","cols","rows"}` first and on resize.
+  - If the first frame does not arrive within 3 s the socket is closed. As before, the pane sends it on open.
+  - On attach the server sends the replay, then `{"type":"state","state":"open"}`, and finally `{"type":"exit","code"}`.
+- The `GET proposals` and `GET runs` reads expire overdue proposals, as before (gap 9). They need the control scope,
+  so a read cannot be made by a caller that may not write.
+- **Shutdown:** stopping the server kills every pane's and run's process group and waits until each is reaped.
+- **Startup:** startup closes the sessions a restart left open and fails the runs it left running, whether or not
+  the terminal is on.
+
+**Agent verbs:**
+- `terminal.machines`, `terminal.propose` and `terminal.run.get` are on the agent data API with the old names,
+  inputs and results.
+  - `terminal.propose` takes app threads only. A policy `allow` starts the run at once, `deny` is refused, and
+    anything else waits for the operator.
+  - `terminal.run.get` shows a run only to the service identity that proposed it.
+- They are listed only while the terminal is on. Off, they are unknown verbs (404), as on an old host without the
+  terminal.
+
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 
 The plugin host (Substrate `pluginhost`) forwards `/api/plugins/{id}/...` to the subprocess plugins. **Since B5 the

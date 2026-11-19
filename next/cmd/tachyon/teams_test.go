@@ -36,7 +36,9 @@ func TestTeamOperations(t *testing.T) {
 			bearer := map[string]string{"Authorization": "Bearer " + k}
 			anon, keys, owner := newClient(t, base), newClient(t, base), newClient(t, base)
 			owner.want(200, "POST", "/api/login", map[string]string{"username": "owner", "password": ownerPassword}, xrw)
-			verb := func(provider, name string) string { return dataverbs.Prefix + "/providers/" + provider + "/verbs/" + name }
+			verb := func(provider, name string) string {
+				return dataverbs.Prefix + "/providers/" + provider + "/verbs/" + name
+			}
 
 			var preview any
 			if err := json.Unmarshal([]byte(teamPreview), &preview); err != nil {

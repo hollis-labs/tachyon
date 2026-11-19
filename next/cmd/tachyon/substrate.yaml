@@ -53,3 +53,4 @@ config:
       planner_events: false
       transcripts: false
       action_runs: false
+      terminal: false

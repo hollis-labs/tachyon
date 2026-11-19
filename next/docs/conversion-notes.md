@@ -39,7 +39,8 @@ Open items that need a decision or a change outside this cell:
    per slice and recorded in the contract:
    - `access/apps?refresh=1`
    - `chat/threads/{ref}/continue`
-   - terminal `proposals` and `runs` reads, which expire items
+   - terminal `proposals` and `runs` reads, which expire items. B12 keeps them `GET` behind `tachyon.terminal.control`
+     and the operator check, the one scope of the whole terminal family.
 10. **The scheduler module has no Postgres store (Substrate CW-20261115-0014).** On Postgres the served binary does
    not start: libs ships a SQLite scheduler store only. In the Postgres CI pass the full-binary tests
    (`cmd/tachyon`) skip and cite the gap; the package tests run. The cutover is SQLite to SQLite and is unaffected.
@@ -69,7 +70,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_PLUGIN_DIR` | dropped: plugins are the reviewed specs `pluginhost` starts (plugin slices) |
 | `TACHYON_SECRET_KEY_FILE` | `tachyon.files.secret_key` (secrets reference) |
 | `TACHYON_CACHE_POLICY_FILE` | `tachyon.files.cache_policy` |
-| `TACHYON_TERMINAL_POLICY` | `tachyon.files.terminal_policy` |
+| `TACHYON_TERMINAL_POLICY` | `tachyon.files.terminal_policy` (an absolute path; empty: no policy file, see the terminal notes) |
 | `TACHYON_CARD_DELIVERY_FILE` | `tachyon.files.card_delivery` |
 | `TACHYON_APPROVAL_PRODUCER_CONFIG` | `tachyon.files.approval_producer` (unset: `/api/approvals/v1` answers 503, as the old build does unconfigured) |
 | `TACHYON_APPROVAL_ASSURANCE_CONFIG` | `tachyon.files.approval_assurance` |
@@ -114,6 +115,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_PLANNER_EVENTS` | `tachyon.features.planner_events` |
 | transcript snapshots | `tachyon.features.transcripts` |
 | action runs (on when the hub was set) | `tachyon.features.action_runs` |
+| the quick terminal (always on) | `tachyon.features.terminal`: ssh panes and approved agent commands (new switch, B12) |
 
 ### Tuning, posture, stubs
 
@@ -511,6 +513,37 @@ ships its gap, and nothing new is built on them.
 
 Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`, `observations/store.ts`, `chat/aside/FileTree.tsx`, `chat/aside/Panels.tsx`). A sync slice
 before P1 picks that up.
+
+## Terminal (slice B12)
+
+- **The quick terminal is behind `tachyon.features.terminal`,** a new switch, default off. The old build served it
+  whenever it ran. Every pane and every approved agent command starts `ssh`.
+  - Off: the routes are not mounted (404), and the agent verbs are not listed (404), as on an old host without
+    the terminal.
+  - On: the old behaviour.
+  - Either way, startup closes the sessions a restart left open and fails the runs it left running.
+- **The policy file:**
+  - `tachyon.files.terminal_policy` names it as an absolute path. Empty means no policy file: no listed machines
+    beyond `~/.ssh/config`, and every agent command asks.
+  - The old build defaulted to `$DATA/terminal-policy.json`, so set the setting to that file's path to keep its
+    machines and rules.
+  - The file's format and its decisions are unchanged. The same decision table passes on both builds
+    (`policy_parity_test.go`).
+- **The bearer refusal:**
+  - The old handler refused any `Authorization` header. Here the identity middleware turns the session cookie into a
+    bearer, so the one bearer let through is exactly that cookie.
+  - An API key, or a token the session minted, is refused as before (`requester_cannot_approve`).
+  - The cookie must contain the pinned identity module's `ses_` credential and the verified principal must be a
+    user session without token provenance. Session lineage alone is insufficient: a minted token copied into
+    the cookie is refused, with or without an explicit matching bearer. Served regression tests cover reads,
+    session creation, the WebSocket route, and proposal/run mutations.
+- **The operator check covers reads,** as `RequireOperatorReads` did: `tachyon.terminal.control` plus an operator
+  token on every route and on the WebSocket.
+- **Shutdown kills and reaps every pty process group.** The old build relied on its context killing them.
+- **Output redaction is unchanged.** The old `actionrun.Redact` is carried in the terminal package until the
+  action-run slice lands.
+- **An agent's `requested_by`** is its service identity id, which is what the old principal id was, so
+  `terminal.run.get` keeps finding migrated runs.
 
 ## What the operator does differently
 
