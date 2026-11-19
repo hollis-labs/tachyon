@@ -1,7 +1,8 @@
 /**
  * The terminal contract stub (G8a): the REST routes the chat drawer's terminal calls and a fake PTY WebSocket, in the
- * old build's shapes (internal/chatterminal). The terminal backend is not built yet; its slice is written against this
- * contract (next/web/CONVERSION_NOTES.md, "Terminal"). Errors are flat `{code, message}`.
+ * old build's shapes (internal/chatterminal). This deterministic UI lane runs alongside the real-backend lane
+ * (`TACHYON_E2E_TERMINAL=backend`), which uses real handlers and a local PTY process. The contract is documented in
+ * next/web/CONVERSION_NOTES.md, "Terminal". Errors are flat `{code, message}`.
  *
  * WebSocket (`ws_path` from POST sessions): PTY bytes both ways as binary frames; the client sends a text frame
  * `{"type":"resize","cols","rows"}`; the server sends text control frames `{"type":"state","state"}` and

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { MessageSquare } from 'lucide-react'
 import type { Recipient } from '../messaging'
+import { ChatDock } from '../chat/ChatDock'
 import { useChatUnread } from '../chat/hooks'
 
 interface ChatDockApi {
@@ -21,7 +22,7 @@ export function ChatDockProvider({ children }: { children: ReactNode }) {
   return (
     <ChatDockContext.Provider value={api}>
       {children}
-      {/* The dock (ChatDock) is not part of this build yet. */}
+      <ChatDock open={state.open} onClose={closeChat} agent={state.agent} />
     </ChatDockContext.Provider>
   )
 }

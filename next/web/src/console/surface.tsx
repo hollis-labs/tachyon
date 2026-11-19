@@ -26,15 +26,16 @@ import { OPERATOR_ADDRESS } from "./messaging/operator"
 import { AgentUnreadProvider } from "./messaging/unread"
 import { NeedsYouPage } from "./needs-you/page"
 import { RegistryProjectsPage } from "./registry/RegistryProjectsPage"
+import { ChatDockProvider } from "./shell/chat-dock"
 import { TranscriptDashboard } from "./transcripts/page"
 
 const consoleSlots = { LinkText: LinkTextSlot }
 
 /**
  * The providers chat needs, from the old console layer (plugins/console/ui shell.tsx and
- * shell/ConsoleIntegration.tsx), in the same order. Not carried in G3: the alert host, the card runtime,
- * HITL and workflow clients, approvals, the operator prompt (no elevation), the chat dock and the app-agent
- * thread source (its client is not part of this build yet).
+ * shell/ConsoleIntegration.tsx), in the same order, ending with the chat dock's. Not carried: the alert host, the
+ * card runtime, HITL and workflow clients, approvals, the operator prompt (no elevation) and the app-agent thread
+ * source (its client is not part of this build yet).
  */
 function ConsoleChatProviders({ children }: { children: ReactNode }) {
   const api = useApi()
@@ -51,7 +52,7 @@ function ConsoleChatProviders({ children }: { children: ReactNode }) {
     <MessagingProvider client={messaging} operator={OPERATOR_ADDRESS}>
       <AgentUnreadProvider>
         <ChatProvider client={chat} operator={OPERATOR_ADDRESS}>
-          {children}
+          <ChatDockProvider>{children}</ChatDockProvider>
         </ChatProvider>
       </AgentUnreadProvider>
     </MessagingProvider>
@@ -69,16 +70,26 @@ function ConsoleBase({ children }: { children: ReactNode }) {
   )
 }
 
+/**
+ * Above ManifestShell (src/App.tsx), as the old ConsoleIntegration sat above every console page: the console base, then
+ * messaging, agent unread, chat and the chat dock, whose drawer renders over the shell. One set for every surface.
+ */
+export function ConsoleShellProviders({ children }: { children: ReactNode }) {
+  return (
+    <ConsoleBase>
+      <ConsoleChatProviders>{children}</ConsoleChatProviders>
+    </ConsoleBase>
+  )
+}
+
 /** The chat surface (`/chat` in ui/app.json): the old console routes, resolved inside the page. */
 export function ChatSurface() {
   return (
     <ConsoleBase>
-      <ConsoleChatProviders>
-        <Routes>
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/chat/:threadId" element={<ChatPage />} />
-        </Routes>
-      </ConsoleChatProviders>
+      <Routes>
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat/:threadId" element={<ChatPage />} />
+      </Routes>
     </ConsoleBase>
   )
 }
@@ -170,8 +181,8 @@ export function TranscriptsSurface() {
 
 /**
  * The Repos surface (`/repos` in ui/app.json): the PR inbox and the PR workspace, from the old console overlay routes.
- * They mount under the old ConsoleProvider (state store, action bus, live event sources) and messaging, as the old
- * ConsoleShell placed them; `/prs/inbox` is the shell's legacy redirect. The confirm-gated forge writes (comment,
+ * They mount under the old ConsoleProvider (state store, action bus, live event sources), with messaging from
+ * ConsoleShellProviders, as the old ConsoleShell placed them; `/prs/inbox` is the shell's legacy redirect. The confirm-gated forge writes (comment,
  * review, Assign) ask the carried identity seam for a step-up (`POST auth/step-up`), which neither the old server nor
  * this one serves: they resolve "unavailable" and are refused, exactly as in the old app (lead decision, parity).
  */
@@ -179,24 +190,11 @@ export function ReposSurface() {
   return (
     <ConsoleBase>
       <ConsoleProvider>
-        <ConsoleMessaging>
-          <Routes>
-            <Route path={PR_INBOX_PATH} element={<PendingPrInbox />} />
-            <Route path={PR_WORKSPACE_ROUTE} element={<PrWorkspacePage />} />
-          </Routes>
-        </ConsoleMessaging>
+        <Routes>
+          <Route path={PR_INBOX_PATH} element={<PendingPrInbox />} />
+          <Route path={PR_WORKSPACE_ROUTE} element={<PrWorkspacePage />} />
+        </Routes>
       </ConsoleProvider>
     </ConsoleBase>
-  )
-}
-
-/** The messaging client the old ConsoleIntegration provided (the inbox's assign action sends mail with it). */
-function ConsoleMessaging({ children }: { children: ReactNode }) {
-  const api = useApi()
-  const [messaging] = useState(() => createMailMessagingClient(api, { from: OPERATOR_ADDRESS }))
-  return (
-    <MessagingProvider client={messaging} operator={OPERATOR_ADDRESS}>
-      {children}
-    </MessagingProvider>
   )
 }
