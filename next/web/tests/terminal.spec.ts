@@ -32,6 +32,7 @@ test("connect, type and see the echo, resize, then disconnect", async ({ page, t
   await page.getByRole("button", { name: "Connect", exact: true }).click()
   await expect(status(page)).toHaveText("ssh · saved key · open")
   const term = page.getByRole("group", { name: "Terminal session" })
+  if (terminalBackend) await expect(term.locator(".xterm-rows")).toContainText("fake-ssh-ready")
   await term.locator("textarea").focus() // xterm's input element
   await page.keyboard.type("echo port-ok")
   await page.keyboard.press("Enter")
@@ -135,6 +136,30 @@ test("backend: operator and bearer guards apply to reads and writes", async ({
           operator ? "requester_cannot_approve" : "operator_required",
         )
       }
+      if (operator) {
+        const cookie = (await page.context().cookies()).find((c) => c.name.endsWith("_session"))
+        expect(cookie).toBeTruthy()
+        for (const bearer of [false, true]) {
+          for (const method of ["GET", "POST"]) {
+            const response = await outsider.fetch(
+              `${TERMINAL}/${method === "GET" ? "machines" : "sessions"}`,
+              {
+                method,
+                headers: {
+                  ...headers,
+                  Cookie: `${cookie?.name}=${token}`,
+                  ...(bearer ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                ...(method === "POST" ? { data: { machine_id: "example-box" } } : {}),
+              },
+            )
+            expect(response.status()).toBe(bearer ? 403 : 401)
+            expect((await response.json()).code).toBe(
+              bearer ? "requester_cannot_approve" : "unauthorized",
+            )
+          }
+        }
+      }
     }
   } finally {
     await outsider.dispose()
@@ -177,6 +202,7 @@ test("backend: origin refusal, binary replay, exit and ended-session conflict", 
           ws.binaryType = "arraybuffer"
           let output = ""
           let state = false
+          let sent = false
           const timer = setTimeout(() => {
             ws.close()
             reject(new Error("terminal frame timeout"))
@@ -200,12 +226,16 @@ test("backend: origin refusal, binary replay, exit and ended-session conflict", 
               }
               if (frame.type === "state") {
                 state = frame.state === "open"
-                ws.send(new TextEncoder().encode(exit ? "exit-terminal\n" : "replay-proof\n"))
               }
             } else {
               output += new TextDecoder().decode(event.data)
             }
-            if (!exit && state && output.includes("replay-proof")) done()
+            // Wait for the child to disable PTY echo, so the proof must come from the child.
+            if (state && output.includes("fake-ssh-ready") && !sent) {
+              sent = true
+              ws.send(new TextEncoder().encode(exit ? "exit-terminal\n" : "replay-proof\n"))
+            }
+            if (!exit && state && sent && output.includes("replay-proof")) done()
           }
         })
       const first = await connect(false)
