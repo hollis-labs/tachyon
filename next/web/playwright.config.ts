@@ -37,6 +37,9 @@ const approvalsSeed = fileURLToPath(new URL("./e2e/approvals-seed.sql", import.m
 /** The Agent Ops backend run (TACHYON_E2E_AGENTS=backend) applies e2e/agents-seed.sql before serving. */
 const agentsBackend = process.env.TACHYON_E2E_AGENTS === "backend"
 const agentsSeed = fileURLToPath(new URL("./e2e/agents-seed.sql", import.meta.url))
+/** Real terminal handlers and PTY, with a local fake ssh and a synthetic policy. */
+const terminalBackend = process.env.TACHYON_E2E_TERMINAL === "backend"
+const terminalSSH = fileURLToPath(new URL("./e2e/terminal-ssh.sh", import.meta.url))
 /**
  * The builder backend run (TACHYON_E2E_BUILDER=backend) points the binary at the local Tether fake with the catalog
  * index and builder changes on (team operations reach the fake), and applies e2e/builder-seed.sql before serving.
@@ -52,6 +55,7 @@ function server(where: string, listen: string, withOwner: boolean, url: string) 
       E2E_DIR: where,
       E2E_ADDR: `127.0.0.1:${listen}`,
       E2E_OWNER: withOwner ? "1" : "0",
+      E2E_TERMINAL_SSH: withOwner && terminalBackend ? terminalSSH : "",
       E2E_TETHER: withOwner && (chatBackend || agentsBackend || builderBackend) ? tether : "",
       E2E_AGENTS_CONTROLS: withOwner && agentsBackend ? "1" : "",
       E2E_APPROVALS_SEED: withOwner && approvalsBackend ? approvalsSeed : "",
