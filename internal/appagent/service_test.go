@@ -382,3 +382,83 @@ func TestAReplyAlwaysSortsAfterTheMessageItAnswers(t *testing.T) {
 		t.Fatalf("test premise: rows should share a timestamp: %v %v", stored[0].CreatedAt, stored[1].CreatedAt)
 	}
 }
+
+func TestInputRequiredBecomesBlockedNotFailed(t *testing.T) {
+	rt := &fakeRuntime{observeErr: errors.New("stream lost"), result: Result{State: "input_required", Text: "Which project?"}}
+	changed := make(chan string, 4)
+	s, st := newService(t, rt)
+	s.OnChange = func(id string) { changed <- id }
+	ch, cancel := s.Subscribe(DefaultThread)
+	defer cancel()
+	if _, err := s.Threads(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Send(context.Background(), DefaultThread, "plan it"); err != nil {
+		t.Fatal(err)
+	}
+	events := drain(t, ch, isEnd)
+	if end := events[len(events)-1]; end.State != StateBlocked || end.Error != "" {
+		t.Fatalf("end event: %+v", end)
+	}
+	select {
+	case id := <-changed:
+		if id != DefaultThread {
+			t.Fatal(id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnChange not called")
+	}
+	th, err := st.Thread(context.Background(), DefaultThread)
+	if err != nil || !th.Blocked || th.Unread != 1 {
+		t.Fatalf("thread: %+v %v", th, err)
+	}
+	msgs, _, _ := st.Messages(context.Background(), DefaultThread, 0, 10)
+	if got := msgs[len(msgs)-1]; got.State != StateBlocked || got.Body != "Which project?" {
+		t.Fatalf("reply: %+v", got)
+	}
+	// A later operator turn clears the blocker.
+	rt.result = Result{State: "completed", Text: "ok"}
+	if _, _, err := s.Send(context.Background(), DefaultThread, "Tachyon"); err != nil {
+		t.Fatal(err)
+	}
+	th, _ = st.Thread(context.Background(), DefaultThread)
+	if th.Blocked {
+		t.Fatal("still blocked after the operator answered")
+	}
+}
+
+func TestToolEndAndContextReachTheirHooks(t *testing.T) {
+	rt := &fakeRuntime{events: []TurnEvent{
+		{Kind: EventToolStart, Tool: Tool{ID: "c1", Name: "tesseract_get", Status: "running"}},
+		{Kind: EventContext, Used: 48210, Window: 200000, Model: "m"},
+		{Kind: EventToolEnd, Tool: Tool{ID: "c1", Name: "tesseract_get", Status: "ok"}},
+		{Kind: EventText, Text: "ok"}, {Kind: EventFinish, Reason: "stop"},
+	}}
+	s, _ := newService(t, rt)
+	if _, err := s.Threads(context.Background()); err != nil { // creates the default thread
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var tools []Tool
+	var ctxs [][3]any
+	s.OnTool = func(id string, tl Tool) { mu.Lock(); tools = append(tools, tl); mu.Unlock() }
+	s.OnContext = func(id string, used, window int64, model string) {
+		mu.Lock()
+		ctxs = append(ctxs, [3]any{used, window, model})
+		mu.Unlock()
+	}
+	ch, cancel := s.Subscribe(DefaultThread)
+	defer cancel()
+	if _, _, err := s.Send(context.Background(), DefaultThread, "go"); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, ch, isEnd)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(tools) != 1 || tools[0].Name != "tesseract_get" || tools[0].Status != "ok" {
+		t.Fatalf("OnTool must fire once, at the end of the call: %+v", tools)
+	}
+	if len(ctxs) != 1 || ctxs[0] != [3]any{int64(48210), int64(200000), "m"} {
+		t.Fatalf("OnContext: %v", ctxs)
+	}
+}

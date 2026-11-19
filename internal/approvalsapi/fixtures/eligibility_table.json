@@ -1,0 +1,555 @@
+{
+  "whitelist": [
+    "create",
+    "restart",
+    "update"
+  ],
+  "order": [
+    "not_pending",
+    "kind_not_batchable",
+    "risk_not_low",
+    "interactive",
+    "has_secret",
+    "command_exec",
+    "destructive",
+    "no_effects_declared",
+    "irreversible_effect",
+    "expired",
+    "deferred",
+    "needs_operator_access"
+  ],
+  "cases": [
+    {
+      "name": "low update with effects",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": true,
+      "blockers": []
+    },
+    {
+      "name": "low create",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "create"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": true,
+      "blockers": []
+    },
+    {
+      "name": "low restart and update",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "restart",
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": true,
+      "blockers": []
+    },
+    {
+      "name": "plain approval kind",
+      "subject": {
+        "kind": "approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": true,
+      "blockers": []
+    },
+    {
+      "name": "no declared effects",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "no_effects_declared"
+      ]
+    },
+    {
+      "name": "delete effect",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "delete"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "irreversible_effect"
+      ]
+    },
+    {
+      "name": "archive effect",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "archive"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "irreversible_effect"
+      ]
+    },
+    {
+      "name": "mixed with one delete",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update",
+          "delete"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "irreversible_effect"
+      ]
+    },
+    {
+      "name": "run effect is not batchable",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "run"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "irreversible_effect"
+      ]
+    },
+    {
+      "name": "medium risk",
+      "subject": {
+        "kind": "card.approval",
+        "class": "medium",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "risk_not_low"
+      ]
+    },
+    {
+      "name": "high risk",
+      "subject": {
+        "kind": "card.approval",
+        "class": "high",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "risk_not_low"
+      ]
+    },
+    {
+      "name": "interactive",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": true,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "interactive"
+      ]
+    },
+    {
+      "name": "secret field",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": true,
+        "has_secret": true,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "interactive",
+        "has_secret"
+      ]
+    },
+    {
+      "name": "command",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": true,
+        "destructive": false,
+        "effect_ops": [
+          "run"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "command_exec",
+        "irreversible_effect"
+      ]
+    },
+    {
+      "name": "destructive flag with update op",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": true,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "destructive"
+      ]
+    },
+    {
+      "name": "destructive medium delete",
+      "subject": {
+        "kind": "card.approval",
+        "class": "medium",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": true,
+        "effect_ops": [
+          "delete"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "risk_not_low",
+        "destructive",
+        "irreversible_effect"
+      ]
+    },
+    {
+      "name": "attention notice",
+      "subject": {
+        "kind": "attention",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "kind_not_batchable",
+        "no_effects_declared"
+      ]
+    },
+    {
+      "name": "card.ask question",
+      "subject": {
+        "kind": "card.ask",
+        "class": "low",
+        "interactive": true,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "kind_not_batchable",
+        "interactive",
+        "no_effects_declared"
+      ]
+    },
+    {
+      "name": "expired",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": true,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "expired"
+      ]
+    },
+    {
+      "name": "deferred",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": true,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "deferred"
+      ]
+    },
+    {
+      "name": "no operator access",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "presented",
+        "expired": false,
+        "deferred": false,
+        "operator_access": false
+      },
+      "batchable": false,
+      "blockers": [
+        "needs_operator_access"
+      ]
+    },
+    {
+      "name": "already resolved",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "resolved",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "not_pending"
+      ]
+    },
+    {
+      "name": "expired state",
+      "subject": {
+        "kind": "card.approval",
+        "class": "low",
+        "interactive": false,
+        "has_secret": false,
+        "command_exec": false,
+        "destructive": false,
+        "effect_ops": [
+          "update"
+        ],
+        "state": "expired",
+        "expired": false,
+        "deferred": false,
+        "operator_access": true
+      },
+      "batchable": false,
+      "blockers": [
+        "not_pending"
+      ]
+    },
+    {
+      "name": "everything wrong",
+      "subject": {
+        "kind": "attention",
+        "class": "high",
+        "interactive": true,
+        "has_secret": true,
+        "command_exec": true,
+        "destructive": true,
+        "effect_ops": [
+          "purge"
+        ],
+        "state": "presented",
+        "expired": true,
+        "deferred": true,
+        "operator_access": false
+      },
+      "batchable": false,
+      "blockers": [
+        "kind_not_batchable",
+        "risk_not_low",
+        "interactive",
+        "has_secret",
+        "command_exec",
+        "destructive",
+        "irreversible_effect",
+        "expired",
+        "deferred",
+        "needs_operator_access"
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   buildPreviewCard, createRefResolverClient, getRefRegistry,
@@ -30,6 +30,14 @@ export function AutolinkProvider({ registry, resolvers, client, navigate, childr
   const reg = useMemo(() => registry ?? getRefRegistry(), [registry])
   const owned = useMemo(() => client ?? createRefResolverClient({ resolvers: resolvers ?? {} }), [client, resolvers])
   const [drawerRef, setDrawerRef] = useState<RefIdentity | null>(null)
+
+  // Dev only: `?open-ref=path:/some/file` opens the drawer, so a state can be reviewed without a chip on the page.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const v = new URLSearchParams(window.location.search).get('open-ref')
+    const i = v ? v.indexOf(':') : -1
+    if (v && i > 0) setDrawerRef({ kind: v.slice(0, i), canonical: v.slice(i + 1) })
+  }, [])
 
   const activate = useCallback(
     (ref: RefIdentity, ev: ActivateEvent) => {

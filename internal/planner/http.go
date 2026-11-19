@@ -1,19 +1,21 @@
 package planner
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
+	"github.com/hollis-labs/tachyon/internal/plannerapi"
 )
 
 const Prefix = "/api/plugins/console/v1/planner"
@@ -39,22 +41,50 @@ func (h *HTTP) fail(w http.ResponseWriter, r *http.Request, db, id string, err e
 	switch {
 	case errors.Is(err, ErrOperatorRequired):
 		status, code, message = 403, "operator_required", err.Error()
+	case errors.Is(err, ErrCycle):
+		status, code, message = 422, "cycle", "That link would make a cycle."
+	case errors.Is(err, ErrRule):
+		status, code, message = 422, "invalid", err.Error()
 	case errors.Is(err, objects.ErrInvalid):
 		status, code, message = 400, "invalid", err.Error()
 	case errors.Is(err, objects.ErrConflict):
 		status, code, message = 409, "conflict", "Record changed; read and reconcile before retrying."
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/pin") {
+			code = "revision_conflict"
+		}
 	case errors.Is(err, objects.ErrNotFound):
 		status, code, message = 404, "not_found", "Planner item or route not found."
 	case errors.Is(err, ErrTaskSource):
 		status, code, message = 502, "source_unavailable", err.Error()
 	}
 	body := Item{"error": message, "code": code}
+	var tc ErrTaskConflict
+	switch {
+	case errors.As(err, &tc):
+		send(w, 409, Item{"error": "Task status changed; read and reconcile before retrying.", "code": "conflict", "details": Item{"current": Item{"id": tc.ID, "status": tc.Status}}})
+		return
+	case errors.Is(err, ErrNeedsReason):
+		send(w, 400, Item{"error": "A reason is required to block a task.", "code": "invalid", "details": Item{"field": "reason"}})
+		return
+	}
 	if status == 409 && db != "" && id != "" {
 		if v, e := h.Owned.Get(r.Context(), db, id); e == nil {
 			body["details"] = Item{"current": v}
 		}
 	}
 	send(w, status, body)
+}
+
+var actorSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// requestActor names who made a browser write. The browser may send X-Planner-Actor (its
+// operator profile slug); anything else, or no header, is the shared "operator:browser". The
+// prefix is fixed, so a header cannot turn an actor into anything but an operator label.
+func requestActor(r *http.Request) string {
+	if v := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Planner-Actor"))); actorSlug.MatchString(v) {
+		return "operator:" + v
+	}
+	return "operator:browser"
 }
 func readBody(w http.ResponseWriter, r *http.Request, allowed ...string) (Item, error) {
 	r.Body = http.MaxBytesReader(w, r.Body, 3<<20)
@@ -194,32 +224,68 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "events":
 			h.Events(w, r)
 			return
+		case "need-you":
+			out, err = h.NeedYou(ctx)
+		case "momentum":
+			out, err = h.Momentum(ctx)
+		case "task-context":
+			out, err = h.TaskContext(ctx, r.URL.Query().Get("task"))
 		default:
 			switch {
 			case len(parts) == 2 && db == "schema":
 				out, err = Schema(id)
+			case len(parts) == 3 && parts[2] == "links" && db != "schema":
+				out, err = h.Owned.Links(ctx, db, id)
+			case len(parts) == 3 && (db == "priorities" || db == "workstreams") && parts[2] == "timeline":
+				out, err = h.Timeline(ctx, db, id, r.URL.Query())
+			case len(parts) == 3 && db == "priorities" && parts[2] == "tasks":
+				out, err = h.ThemeTasks(ctx, id)
 			case len(parts) == 3 && db == "workstreams" && parts[2] == "tasks":
 				var row Item
 				row, err = h.Owned.Get(ctx, db, id)
 				if err == nil {
-					out, err = h.Tasks.ForWorkstream(ctx, row)
+					var wt WorkstreamTasks
+					if wt, err = h.Tasks.ForWorkstream(ctx, row); err == nil {
+						var all []TaskBrief
+						if all, _, err = h.Tasks.scopeTasks(ctx, []Item{row}); err == nil {
+							wt.Lanes, wt.LaneCounts, err = h.lanes(ctx, all)
+						}
+						out = wt
+					}
 				}
 			case len(parts) == 1:
 				filters := map[string]string{}
 				for k, v := range r.URL.Query() {
-					if k != "sort" && len(v) > 0 {
+					if k != "sort" && k != "need_you" && len(v) > 0 {
 						filters[k] = v[0]
 					}
 				}
-				out, err = h.Owned.List(ctx, db, filters, r.URL.Query().Get("sort"))
+				need := r.URL.Query().Get("need_you")
+				if need != "" && need != "any" && !slices.Contains(plannerapi.NeedYouReasons, need) {
+					err = objects.ErrInvalid
+					break
+				}
+				var list []Item
+				if list, err = h.Owned.List(ctx, db, filters, r.URL.Query().Get("sort")); err == nil {
+					out, err = h.enrich(ctx, db, list, need)
+				}
 			case len(parts) == 2:
-				out, err = h.Owned.Get(ctx, db, id)
+				var row Item
+				if row, err = h.Owned.Get(ctx, db, id); err == nil {
+					out = row
+					if db == "priorities" || db == "decisions" {
+						var one []Item
+						if one, err = h.enrich(ctx, db, []Item{row}, ""); err == nil {
+							out = one[0]
+						}
+					}
+				}
 			default:
 				err = objects.ErrNotFound
 			}
 		}
 	} else {
-		actor := "operator:browser"
+		actor := requestActor(r)
 		switch {
 		case (r.Method == http.MethodPost || r.Method == http.MethodDelete) && path == "relate":
 			var b Item
@@ -230,6 +296,63 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if err == nil {
 					from, to := object(b["from"]), object(b["to"])
 					out, err = h.Owned.Relate(ctx, RelationRequest{From: PortfolioRef{textField(from, "db"), textField(from, "id")}, To: PortfolioRef{textField(to, "db"), textField(to, "id")}, ExpectedRevision: rev, Field: textField(b, "field"), Add: r.Method == http.MethodPost}, actor)
+				}
+			}
+		case r.Method == http.MethodPost && len(parts) == 3 && parts[0] == "tasks" && parts[2] == "transition":
+			var b Item
+			b, err = readBody(w, r, "to", "expected_status", "reason", "summary", "pr")
+			if err == nil {
+				out, err = h.Transition(ctx, parts[1], b, actor)
+			}
+		case r.Method == http.MethodPost && len(parts) == 3 && db == "priorities" && parts[2] == "tasks":
+			var b Item
+			b, err = readBody(w, r, "title", "expected_revision")
+			if err == nil {
+				out, err = h.CreateThemeTask(ctx, id, b, actor)
+				status = 201
+			}
+		case r.Method == http.MethodPut && len(parts) == 3 && parts[0] == "tasks" && parts[2] == "meta":
+			var b Item
+			b, err = readBody(w, r, "done_summary", "pr_cites")
+			if err == nil {
+				out, err = h.PutMeta(ctx, parts[1], b, actor)
+			}
+		case r.Method == http.MethodPut && len(parts) == 3 && parts[2] == "pin":
+			var b Item
+			b, err = readBody(w, r, "pinned", "expected_revision")
+			if err == nil {
+				pinned, isBool := b["pinned"].(bool)
+				var rev int64
+				if rev, err = expected(b); err == nil && !isBool {
+					err = fmt.Errorf("%w: pinned (boolean) is required", objects.ErrInvalid)
+				}
+				if err == nil {
+					var row Item
+					if row, err = h.Owned.Pin(ctx, db, id, rev, pinned, actor); err == nil {
+						out = Item{"item": Item{"id": row["id"], "db": PublicDB(db), "rev": row["rev"], "pinned": row["pinned"] == true, "pinned_at": row["pinned_at"]}}
+					}
+				}
+			}
+		case (r.Method == http.MethodPost || r.Method == http.MethodDelete) && len(parts) == 3 && parts[2] == "relations":
+			var b Item
+			b, err = readBody(w, r, "kind", "to", "expected_revision")
+			if err == nil {
+				var rev int64
+				if rev, err = expected(b); err == nil {
+					to := object(b["to"])
+					from, target := PortfolioRef{DB: db, ID: id}, PortfolioRef{DB: textField(to, "db"), ID: textField(to, "id")}
+					var row Item
+					if r.Method == http.MethodPost {
+						row, err = h.Owned.AddRelation(ctx, from, textField(b, "kind"), target, rev, actor)
+					} else {
+						row, err = h.Owned.RemoveRelation(ctx, from, textField(b, "kind"), target, rev, actor)
+					}
+					if err == nil {
+						var view Item
+						if view, err = h.Owned.Links(ctx, db, id); err == nil {
+							out = Item{"item": Item{"id": row["id"], "db": PublicDB(db), "rev": row["rev"], "relations_count": row["relations_count"]}, "links_view": view}
+						}
+					}
 				}
 			}
 		case r.Method == http.MethodPost && len(parts) == 1:
@@ -271,7 +394,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			allowed := []string{"expected_revision"}
 			switch action {
 			case "comments":
-				allowed = append(allowed, "text", "kind")
+				allowed = append(allowed, "text", "kind", "status", "pin")
 			case "links":
 				if r.Method == http.MethodPost {
 					allowed = append(allowed, "link")
@@ -307,11 +430,16 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					rev, err = expected(b)
 					if err == nil {
 						if action == "promote" {
-							if db != "inbox" {
-								err = objects.ErrInvalid
-							} else {
+							switch db {
+							case "inbox":
 								out, err = h.Owned.Promote(ctx, id, rev, textField(b, "to_db"), textField(b, "target_id"), object(b["fields"]), actor)
+							case "ideas":
+								out, err = h.Owned.PromoteIdea(ctx, id, rev, textField(b, "to_db"), textField(b, "target_id"), object(b["fields"]), actor)
+							default:
+								err = objects.ErrInvalid
 							}
+						} else if action == "comments" {
+							out, err = h.Owned.CommentWithStatus(ctx, db, id, rev, b, actor)
 						} else {
 							out, err = h.Owned.Action(ctx, db, id, rev, action, b, actor)
 						}
@@ -319,7 +447,7 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		default:
-			w.Header().Set("Allow", "GET, POST, PATCH, DELETE")
+			w.Header().Set("Allow", "GET, POST, PUT, PATCH, DELETE")
 			send(w, 405, Item{"code": "method_not_allowed", "error": "Unsupported Planner method/route."})
 			return
 		}
@@ -331,28 +459,34 @@ func (h *HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	send(w, status, out)
 }
 
-// Events is a durable invalidation cursor over owned object revisions. Polling
-// observes writes made by the CLI and other transports, not just this handler.
+// ingest builds the ingest over the handler's current services.
+func (h *HTTP) ingest() *Ingest {
+	return &Ingest{Owned: h.Owned, Tasks: h.Tasks, Events: Events{DB: h.Store}, DB: h.Store}
+}
+
+// Events is the planner SSE stream. Every entry has a monotonic id from planner_stream, so a client
+// that reconnects with Last-Event-ID gets exactly what it missed; an id outside the retained ring
+// (or from before this stream existed) gets a resync event and then the live stream. Each connection
+// also tails new object revisions, so writes made by the CLI and other transports are seen even
+// when the ingest worker is not running.
 func (h *HTTP) Events(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		send(w, 405, Item{"code": "method_not_allowed"})
 		return
 	}
-	last := int64(-1)
+	ev := Events{DB: h.Store}
+	ing := h.ingest()
+	_ = ing.Tail(r.Context())
+	last, hasLast := int64(0), false
 	if v := r.Header.Get("Last-Event-ID"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || n < 0 {
 			send(w, 400, Item{"code": "invalid", "error": "Invalid event cursor"})
 			return
 		}
-		last = n
+		last, hasLast = n, true
 	}
-	current := func(ctx context.Context) (int64, error) {
-		var n int64
-		err := h.Store.Reader.QueryRowContext(ctx, `SELECT coalesce(max(r.rowid),0) FROM object_revisions r JOIN objects o ON o.id=r.object_id WHERE o.ownership='tachyon' AND o.kind IN ('strategic_priority','workstream','roadmap_item','idea','decision','risk','inbox_item')`).Scan(&n)
-		return n, err
-	}
-	n, err := current(r.Context())
+	lo, hi, err := ev.streamBounds(r.Context())
 	if err != nil {
 		h.fail(w, r, "", "", err)
 		return
@@ -361,24 +495,41 @@ func (h *HTTP) Events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
 	controller := http.NewResponseController(w)
-	emit := func(n int64) error {
+	frame := func(id int64, event, data string) error {
 		_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		_, err := fmt.Fprintf(w, "id: %d\nevent: planner.changed\ndata: {\"source\":\"tachyon\",\"refresh\":true}\n\n", n)
+		_, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", id, event, data)
 		if err == nil {
 			err = controller.Flush()
 		}
 		return err
 	}
-	if n != last {
-		if emit(n) != nil {
+	switch {
+	case !hasLast:
+		if frame(hi, "planner.changed", `{"source":"tachyon","refresh":true}`) != nil {
 			return
 		}
-		last = n
-	} else {
-		_, _ = io.WriteString(w, ": connected\n\n")
-		if controller.Flush() != nil {
+		last = hi
+	case last > hi || (lo > 0 && last < lo-1):
+		if frame(hi, "resync", `{"reason":"beyond_ring"}`) != nil {
 			return
 		}
+		last = hi
+	}
+	replay := func() bool {
+		rows, err := ev.streamAfter(r.Context(), last)
+		if err != nil {
+			return false
+		}
+		for _, row := range rows {
+			if frame(row.Seq, row.Event, row.Data) != nil {
+				return false
+			}
+			last = row.Seq
+		}
+		return true
+	}
+	if !replay() {
+		return
 	}
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -389,15 +540,9 @@ func (h *HTTP) Events(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-tick.C:
-			n, err := current(r.Context())
-			if err != nil {
+			_ = ing.Tail(r.Context())
+			if !replay() {
 				return
-			}
-			if n != last {
-				if emit(n) != nil {
-					return
-				}
-				last = n
 			}
 		case <-heartbeat.C:
 			_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))

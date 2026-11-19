@@ -1,0 +1,446 @@
+{
+  "github:hollis-labs/tachyon#201": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "tachyon"
+      },
+      "number": 201
+    },
+    "title": "approvals: A1 queue index",
+    "body": "Body of approvals: A1 queue index.\n\nUntrusted text: <b>not html</b>.",
+    "state": "open",
+    "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.example/octo-dev.png"
+    },
+    "assignees": [],
+    "reviewers": [],
+    "labels": [
+      "backend"
+    ],
+    "baseBranch": "main",
+    "headBranch": "feat/201",
+    "headSha": "0da8631e75cfa86e2506e6b076cceaa4a56f4aa3",
+    "mergeable": "conflicting",
+    "checks": [
+      {
+        "id": "2010",
+        "name": "go",
+        "status": "completed",
+        "startedAt": "2026-10-30T01:01:00Z",
+        "url": "https://github.example/hollis-labs/tachyon/runs/2010",
+        "conclusion": "failure",
+        "completedAt": "2026-10-30T01:05:00Z"
+      },
+      {
+        "id": "2011",
+        "name": "lint",
+        "status": "completed",
+        "startedAt": "2026-10-30T01:01:00Z",
+        "url": "https://github.example/hollis-labs/tachyon/runs/2011",
+        "conclusion": "success",
+        "completedAt": "2026-10-30T01:05:00Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": "r2010",
+        "author": {
+          "login": "alice-rev",
+          "avatarUrl": "https://avatars.example/alice-rev.png"
+        },
+        "state": "changes_requested",
+        "body": "",
+        "submittedAt": "2026-10-30T01:10:00Z",
+        "commitSha": "0da8631e75cfa86e2506e6b076cceaa4a56f4aa3"
+      }
+    ],
+    "additions": 420,
+    "deletions": 31,
+    "changedFiles": 9,
+    "commentCount": 4,
+    "createdAt": "2026-10-30T00:00:00Z",
+    "updatedAt": "2026-10-30T01:00:00Z",
+    "url": "https://github.example/hollis-labs/tachyon/pull/201"
+  },
+  "github:hollis-labs/tachyon#202": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "tachyon"
+      },
+      "number": 202
+    },
+    "title": "fileview: V1 file reads",
+    "body": "Body of fileview: V1 file reads.\n\nUntrusted text: <b>not html</b>.",
+    "state": "open",
+    "author": {
+      "login": "builder-reviewer",
+      "avatarUrl": "https://avatars.example/builder-reviewer.png",
+      "isAgent": true
+    },
+    "assignees": [
+      {
+        "login": "chrispian",
+        "avatarUrl": "https://avatars.example/chrispian.png"
+      }
+    ],
+    "reviewers": [],
+    "labels": [],
+    "baseBranch": "main",
+    "headBranch": "feat/202",
+    "headSha": "b9bde5dfabfb122d47d9d8b15ed443be34836f3a",
+    "mergeable": "mergeable",
+    "checks": [
+      {
+        "id": "2020",
+        "name": "go",
+        "status": "completed",
+        "startedAt": "2026-10-30T02:01:00Z",
+        "url": "https://github.example/hollis-labs/tachyon/runs/2020",
+        "conclusion": "success",
+        "completedAt": "2026-10-30T02:05:00Z"
+      },
+      {
+        "id": "2021",
+        "name": "lint",
+        "status": "completed",
+        "startedAt": "2026-10-30T02:01:00Z",
+        "url": "https://github.example/hollis-labs/tachyon/runs/2021",
+        "conclusion": "success",
+        "completedAt": "2026-10-30T02:05:00Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": "r2020",
+        "author": {
+          "login": "chrispian",
+          "avatarUrl": "https://avatars.example/chrispian.png"
+        },
+        "state": "approved",
+        "body": "",
+        "submittedAt": "2026-10-30T02:10:00Z",
+        "commitSha": "b9bde5dfabfb122d47d9d8b15ed443be34836f3a"
+      }
+    ],
+    "additions": 210,
+    "deletions": 12,
+    "changedFiles": 5,
+    "commentCount": 1,
+    "createdAt": "2026-10-30T01:00:00Z",
+    "updatedAt": "2026-10-30T02:00:00Z",
+    "url": "https://github.example/hollis-labs/tachyon/pull/202"
+  },
+  "github:hollis-labs/cerberus#55": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "cerberus"
+      },
+      "number": 55
+    },
+    "title": "docs: forge plugin notes",
+    "body": "Body of docs: forge plugin notes.\n\nUntrusted text: <b>not html</b>.",
+    "state": "open",
+    "draft": true,
+    "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.example/octo-dev.png"
+    },
+    "assignees": [],
+    "reviewers": [],
+    "labels": [
+      "docs"
+    ],
+    "baseBranch": "main",
+    "headBranch": "feat/55",
+    "headSha": "0789f6e56615fac323414c311549c5ffe106435d",
+    "mergeable": "unknown",
+    "checks": [],
+    "reviews": [],
+    "additions": 40,
+    "deletions": 2,
+    "changedFiles": 1,
+    "commentCount": 0,
+    "createdAt": "2026-10-21T02:00:00Z",
+    "updatedAt": "2026-10-21T03:00:00Z",
+    "url": "https://github.example/hollis-labs/cerberus/pull/55"
+  },
+  "github:hollis-labs/tachyon#203": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "tachyon"
+      },
+      "number": 203
+    },
+    "title": "agents: A3 sessions API",
+    "body": "Body of agents: A3 sessions API.\n\nUntrusted text: <b>not html</b>.",
+    "state": "open",
+    "author": {
+      "login": "planner",
+      "avatarUrl": "https://avatars.example/planner.png",
+      "isAgent": true
+    },
+    "assignees": [
+      {
+        "login": "builder-reviewer",
+        "avatarUrl": "https://avatars.example/builder-reviewer.png",
+        "isAgent": true
+      }
+    ],
+    "reviewers": [],
+    "labels": [
+      "backend"
+    ],
+    "baseBranch": "main",
+    "headBranch": "feat/203",
+    "headSha": "a134175223ed0061d7904adeef1792798e377011",
+    "mergeable": "mergeable",
+    "checks": [
+      {
+        "id": "2030",
+        "name": "go",
+        "status": "in_progress",
+        "startedAt": "2026-10-30T02:31:00Z",
+        "url": "https://github.example/hollis-labs/tachyon/runs/2030"
+      },
+      {
+        "id": "2031",
+        "name": "lint",
+        "status": "completed",
+        "startedAt": "2026-10-30T02:31:00Z",
+        "url": "https://github.example/hollis-labs/tachyon/runs/2031",
+        "conclusion": "success",
+        "completedAt": "2026-10-30T02:35:00Z"
+      }
+    ],
+    "reviews": [],
+    "additions": 900,
+    "deletions": 60,
+    "changedFiles": 14,
+    "commentCount": 2,
+    "createdAt": "2026-10-30T01:30:00Z",
+    "updatedAt": "2026-10-30T02:30:00Z",
+    "url": "https://github.example/hollis-labs/tachyon/pull/203"
+  },
+  "github:hollis-labs/tachyon#204": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "tachyon"
+      },
+      "number": 204
+    },
+    "title": "builder: B1 catalog index",
+    "body": "Body of builder: B1 catalog index.\n\nUntrusted text: <b>not html</b>.",
+    "state": "open",
+    "author": {
+      "login": "planner",
+      "avatarUrl": "https://avatars.example/planner.png",
+      "isAgent": true
+    },
+    "assignees": [
+      {
+        "login": "builder-reviewer",
+        "avatarUrl": "https://avatars.example/builder-reviewer.png",
+        "isAgent": true
+      }
+    ],
+    "reviewers": [],
+    "labels": [],
+    "baseBranch": "main",
+    "headBranch": "feat/204",
+    "headSha": "36f0ddbe5ebb0702f92398b3a4289583b6a93a57",
+    "mergeable": "mergeable",
+    "checks": [
+      {
+        "id": "2040",
+        "name": "go",
+        "status": "completed",
+        "startedAt": "2026-10-30T01:31:00Z",
+        "url": "https://github.example/hollis-labs/tachyon/runs/2040",
+        "conclusion": "failure",
+        "completedAt": "2026-10-30T01:35:00Z"
+      }
+    ],
+    "reviews": [],
+    "additions": 300,
+    "deletions": 5,
+    "changedFiles": 6,
+    "commentCount": 0,
+    "createdAt": "2026-10-30T00:30:00Z",
+    "updatedAt": "2026-10-30T01:30:00Z",
+    "url": "https://github.example/hollis-labs/tachyon/pull/204"
+  },
+  "github:hollis-labs/agent-os#9": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "agent-os"
+      },
+      "number": 9
+    },
+    "title": "workers: heartbeat",
+    "body": "Body of workers: heartbeat.\n\nUntrusted text: <b>not html</b>.",
+    "state": "open",
+    "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.example/octo-dev.png"
+    },
+    "assignees": [],
+    "reviewers": [],
+    "labels": [],
+    "baseBranch": "main",
+    "headBranch": "feat/9",
+    "headSha": "476a1ba094e4dc83ffb3b240302759276ad4e7aa",
+    "mergeable": "unknown",
+    "checks": [
+      {
+        "id": "90",
+        "name": "ci",
+        "status": "completed",
+        "startedAt": "2026-10-29T03:01:00Z",
+        "url": "https://github.example/hollis-labs/agent-os/runs/90",
+        "conclusion": "success",
+        "completedAt": "2026-10-29T03:05:00Z"
+      }
+    ],
+    "reviews": [],
+    "additions": 18,
+    "deletions": 3,
+    "changedFiles": 2,
+    "commentCount": 3,
+    "createdAt": "2026-10-29T02:00:00Z",
+    "updatedAt": "2026-10-29T03:00:00Z",
+    "url": "https://github.example/hollis-labs/agent-os/pull/9"
+  },
+  "github:hollis-labs/agent-os#10": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "agent-os"
+      },
+      "number": 10
+    },
+    "title": "deploy: protected branch change",
+    "body": "Body of deploy: protected branch change.\n\nUntrusted text: <b>not html</b>.",
+    "state": "open",
+    "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.example/octo-dev.png"
+    },
+    "assignees": [],
+    "reviewers": [],
+    "labels": [],
+    "baseBranch": "main",
+    "headBranch": "feat/10",
+    "headSha": "ce2379282a92d3cefa2655500a2afa0273f0a51c",
+    "mergeable": "mergeable",
+    "checks": [
+      {
+        "id": "100",
+        "name": "ci",
+        "status": "completed",
+        "startedAt": "2026-10-29T23:01:00Z",
+        "url": "https://github.example/hollis-labs/agent-os/runs/100",
+        "conclusion": "success",
+        "completedAt": "2026-10-29T23:05:00Z"
+      }
+    ],
+    "reviews": [],
+    "additions": 5,
+    "deletions": 5,
+    "changedFiles": 1,
+    "commentCount": 0,
+    "createdAt": "2026-10-29T22:00:00Z",
+    "updatedAt": "2026-10-29T23:00:00Z",
+    "url": "https://github.example/hollis-labs/agent-os/pull/10"
+  },
+  "github:hollis-labs/tachyon#150": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "tachyon"
+      },
+      "number": 150
+    },
+    "title": "old: closed without merge",
+    "body": "Body of old: closed without merge.\n\nUntrusted text: <b>not html</b>.",
+    "state": "closed",
+    "author": {
+      "login": "octo-dev",
+      "avatarUrl": "https://avatars.example/octo-dev.png"
+    },
+    "assignees": [],
+    "reviewers": [],
+    "labels": [],
+    "baseBranch": "main",
+    "headBranch": "feat/150",
+    "headSha": "a47e041aac935c964fcf2b31e46b2c0da701df07",
+    "mergeable": "unknown",
+    "checks": [],
+    "reviews": [],
+    "additions": 1,
+    "deletions": 1,
+    "changedFiles": 1,
+    "commentCount": 0,
+    "createdAt": "2026-09-30T02:00:00Z",
+    "updatedAt": "2026-09-30T03:00:00Z",
+    "url": "https://github.example/hollis-labs/tachyon/pull/150"
+  },
+  "github:hollis-labs/tachyon#205": {
+    "ref": {
+      "repo": {
+        "host": "github",
+        "owner": "hollis-labs",
+        "name": "tachyon"
+      },
+      "number": 205
+    },
+    "title": "planner: behind base",
+    "body": "Body of planner: behind base.\n\nUntrusted text: <b>not html</b>.",
+    "state": "open",
+    "author": {
+      "login": "planner",
+      "avatarUrl": "https://avatars.example/planner.png",
+      "isAgent": true
+    },
+    "assignees": [],
+    "reviewers": [],
+    "labels": [],
+    "baseBranch": "main",
+    "headBranch": "feat/205",
+    "headSha": "5ddd419d803edaa32db4c8f49d9bed9b867f705c",
+    "mergeable": "mergeable",
+    "checks": [
+      {
+        "id": "2050",
+        "name": "go",
+        "status": "completed",
+        "startedAt": "2026-10-29T03:01:00Z",
+        "url": "https://github.example/hollis-labs/tachyon/runs/2050",
+        "conclusion": "success",
+        "completedAt": "2026-10-29T03:05:00Z"
+      }
+    ],
+    "reviews": [],
+    "additions": 77,
+    "deletions": 0,
+    "changedFiles": 3,
+    "commentCount": 0,
+    "createdAt": "2026-10-29T02:00:00Z",
+    "updatedAt": "2026-10-29T03:00:00Z",
+    "url": "https://github.example/hollis-labs/tachyon/pull/205"
+  }
+}

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createObservationStore, eventFromRow, SESSION_BUDGET_MS, SESSION_DEADLINE_MS, type SessionSource } from './store'
+import { createObservationStore, eventFromRow, SESSION_BUDGET_MS, SESSION_DEADLINE_MS, type SessionSource, workStatesFromSessions, type LiveFeed, LIVE_REFRESH_MS } from './store'
 import { activityText, presence, toolLabel, withObservedActivity } from './model'
 import { parseFleetAgents } from '../fleet/lib/fleet-agents'
 import { deliveryEvidence, deliveryFromTrace } from './delivery'
@@ -270,4 +270,97 @@ it('a healthy session keeps updating across polls while another stays stuck', as
   const store = createObservationStore(async () => ({ events: [] }), src)
   for (let poll = 0; poll < 3; poll++) { void store.refresh(); await vi.advanceTimersByTimeAsync(5001) }
   expect(store.getSnapshot().events.length).toBeGreaterThanOrEqual(3)
+})
+
+it('takes every work state from one sessions read and asks each session only for its event window', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  const src = { ...source({ a: [], b: [] }), workStates: async () => ({ a: { working: true, at: now }, b: { working: false, at: now }, gone: { working: true, at: now } }) }
+  const store = createObservationStore(async () => ({ events: [] }), src)
+  await store.refresh()
+  const snap = store.getSnapshot()
+  expect(snap.workStates.a).toMatchObject({ working: true })
+  expect(snap.workStates.b).toMatchObject({ working: false })
+  expect(snap.workStates.gone).toBeUndefined() // only running sessions
+  expect(src.queries).toHaveLength(2)
+  expect(src.queries.some(q => new URLSearchParams(q).get('kind'))).toBe(false)
+})
+
+it('falls back to per-session work-state reads when the one sessions read fails', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  const base = source({ w: [sessionRow(4, 'w', 'session.work_state_changed', { to: 'processing' })] })
+  const src = { ...base, workStates: async () => { throw new Error('down') } }
+  const store = createObservationStore(async () => ({ events: [] }), src)
+  await store.refresh()
+  expect(store.getSnapshot().workStates.w).toMatchObject({ working: true })
+  expect(base.queries.filter(q => new URLSearchParams(q).get('kind') === 'session.work_state_changed')).toHaveLength(1)
+})
+
+it('maps monitor session states to work states and leaves stale or unknown ones out', () => {
+  expect(workStatesFromSessions([
+    { id: 'a', state: 'working', last_activity_at: 5 }, { id: 'b', state: 'idle', last_activity_at: 6 }, { id: 'c', state: 'waiting', last_activity_at: 7 },
+    { id: 'd', state: 'stale', last_activity_at: 8 }, { id: 'e', state: 'working' },
+  ])).toEqual({ a: { working: true, at: 5 }, b: { working: false, at: 6 }, c: { working: false, at: 7 } })
+})
+
+it('with a live feed it reads when sessions change, at most every LIVE_REFRESH_MS, and polls only while the feed is down', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let reads = 0
+  let on!: Parameters<LiveFeed['open']>[0]
+  const feed: LiveFeed = { open(h) { on = h; return () => undefined } }
+  const store = createObservationStore(async () => { reads++; return { events: [] } }, undefined, feed)
+  const off = store.subscribe(() => undefined)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(reads).toBe(1) // first read on subscribe
+  on.up(true)
+  await vi.advanceTimersByTimeAsync(0)
+  const afterUp = reads
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(reads).toBe(afterUp) // live and quiet: no polling
+  for (let i = 0; i < 20; i++) on.session({ id: 's1', state: 'working', last_activity_at: now })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  expect(reads).toBe(afterUp + 1) // a burst of frames is one read
+  on.up(false)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(reads).toBeGreaterThanOrEqual(afterUp + 3) // feed down: the 5s poll is back
+  off()
+})
+
+it('a pushed session change reads only that session; a gap reads them all', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let on!: Parameters<LiveFeed['open']>[0]
+  const feed: LiveFeed = { open(h) { on = h; return () => undefined } }
+  const src = { ...source({ a: [], b: [], c: [] }), workStates: async () => ({}) }
+  const store = createObservationStore(async () => ({ events: [] }), src, feed)
+  const off = store.subscribe(() => undefined)
+  on.up(true)
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  src.queries.length = 0
+  on.session({ id: 'b' })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  expect(src.queries.map(q => new URLSearchParams(q).get('session_id'))).toEqual(['b'])
+  src.queries.length = 0
+  on.gap()
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  expect(new Set(src.queries.map(q => new URLSearchParams(q).get('session_id')))).toEqual(new Set(['a', 'b', 'c']))
+  off()
+})
+
+it('a session frame that repeats the same state and activity time is not a change', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(now)
+  let on!: Parameters<LiveFeed['open']>[0]
+  const feed: LiveFeed = { open(h) { on = h; return () => undefined } }
+  const src = { ...source({ a: [] }), workStates: async () => ({}) }
+  const store = createObservationStore(async () => ({ events: [] }), src, feed)
+  const off = store.subscribe(() => undefined)
+  on.up(true)
+  on.session({ id: 'a', state: 'idle', last_activity_at: 1 })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  src.queries.length = 0
+  for (let i = 0; i < 10; i++) on.session({ id: 'a', state: 'idle', last_activity_at: 1 })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS * 2)
+  expect(src.queries).toHaveLength(0)
+  on.session({ id: 'a', state: 'working', last_activity_at: 2 })
+  await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS)
+  expect(src.queries.map(q => new URLSearchParams(q).get('session_id'))).toEqual(['a'])
+  off()
 })

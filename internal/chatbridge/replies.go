@@ -174,6 +174,9 @@ func (o *Owned) pollDeliveries(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
+		if o.Changed != nil {
+			o.Changed(ctx, "delivery", t)
+		}
 	}
 	return nil
 }

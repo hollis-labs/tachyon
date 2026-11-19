@@ -4,9 +4,9 @@ import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { ACTION_RUNS_BASE, type ActionRun } from "./client"
+import { Linkified } from "../autolink/Linkified"
 import { operatorFetch } from "../operator/elevation"
 
-const label = "font-mono dash-caption uppercase tracking-widest text-fg-faint"
 
 export const RUN_STATE_COPY: Record<ActionRun["state"], string> = {
   pending_approval: "Waiting for your approval",
@@ -15,7 +15,7 @@ export const RUN_STATE_COPY: Record<ActionRun["state"], string> = {
   running: "Running",
   succeeded: "Succeeded",
   failed: "Failed",
-  refused: "Refused: the request that would run is not the request that was approved",
+  refused: "Refused: command did not start",
   denied: "Denied",
   expired: "Expired before a decision",
 }
@@ -38,6 +38,7 @@ export function LiveTerminal({ run, onExit }: { run: ActionRun; onExit(): void }
   const host = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
   const [status, setStatus] = useState("connecting")
+  const [connection, setConnection] = useState(0)
   useEffect(() => {
     if (!host.current) return
     const t = new Terminal({
@@ -80,7 +81,9 @@ export function LiveTerminal({ run, onExit }: { run: ActionRun; onExit(): void }
         }
       } catch { /* ignore malformed control frames */ }
     }
-    ws.onclose = () => setStatus((s) => (s === "connected" || s === "connecting" ? "disconnected" : s))
+    // Server state frames describe the run, not the websocket connection. A
+    // running/waiting run still needs a reconnect control after transport loss.
+    ws.onclose = () => setStatus((s) => (["succeeded", "failed", "refused", "denied", "expired", "ended"].includes(s) ? s : "disconnected"))
     const data = t.onData((d) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(d))
     })
@@ -99,7 +102,7 @@ export function LiveTerminal({ run, onExit }: { run: ActionRun; onExit(): void }
       t.dispose()
       term.current = null
     }
-  }, [run.run_id, onExit])
+  }, [run.run_id, onExit, connection])
   const copy = useCallback(() => {
     const t = term.current
     if (!t) return
@@ -114,10 +117,11 @@ export function LiveTerminal({ run, onExit }: { run: ActionRun; onExit(): void }
         ref={host}
         role="group"
         aria-label={`Terminal for ${run.command}`}
-        className="h-72 w-full overflow-hidden rounded border border-border bg-black p-1"
+        className="h-72 w-full overflow-hidden rounded border border-border bg-bg p-1"
       />
       <div className="mt-2 flex items-center justify-between dash-support text-fg-faint">
         <span role="status">Terminal: {status}. Typed input is sent to the process and is not recorded.</span>
+        {status === "disconnected" && <Button variant="outline" size="sm" onClick={() => setConnection((n) => n + 1)}>Reconnect terminal</Button>}
         <Button variant="outline" size="sm" className="font-mono dash-label" onClick={copy}>
           Copy output
         </Button>
@@ -156,7 +160,7 @@ export function ActionRunPanel({
       setError(e instanceof Error ? e.message : "Could not read the action run.")
     }
   }, [fetcher, initial.run_id])
-  const active = approved && !run.terminal
+  const active = !run.terminal
   useEffect(() => {
     if (!active) return
     void reload()
@@ -173,28 +177,23 @@ export function ActionRunPanel({
   const onExit = useCallback(() => void reload(), [reload])
   const tone = run.state === "succeeded" ? "text-success" : run.terminal ? "text-danger" : "text-warning"
   return (
-    <section aria-label="Action run" className="rounded border border-border bg-surface/40 p-4">
-      <h3 className={label}>Runs on {run.machine}</h3>
-      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded bg-bg p-2 font-mono dash-support text-fg">{run.command}</pre>
-      <dl className="mt-3 grid grid-cols-2 gap-3 dash-support text-fg-muted">
-        <div>
-          <dt className={label}>Action</dt>
-          <dd className="font-mono">{run.action}</dd>
-        </div>
-        <div>
-          <dt className={label}>Class</dt>
-          <dd>{run.class}{run.labels ? ` · ${run.labels}` : ""}</dd>
-        </div>
-        <div className="col-span-2">
-          <dt className={label}>op_digest</dt>
-          <dd className="break-all font-mono">{run.op_digest}</dd>
-        </div>
-      </dl>
-      <p role="status" className={`mt-3 font-mono dash-caption uppercase tracking-widest ${tone}`}>
-        {RUN_STATE_COPY[run.state]}
-        {run.exit_code !== undefined ? ` · exit ${run.exit_code}` : ""}
-        {run.started_at ? ` · ${elapsed(run, now)}` : ""}
-      </p>
+    <section aria-label="Action run" className="overflow-hidden rounded border border-border bg-surface/40">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 dash-control">
+        <span className="font-mono text-fg">▸ {run.machine}</span>
+        <span role="status" className={`dash-support ${tone}`}>
+          {RUN_STATE_COPY[run.state]}
+          {run.exit_code !== undefined ? ` · exit ${run.exit_code}` : ""}
+          {run.started_at ? ` · ${elapsed(run, now)}` : ""}
+        </span>
+      </div>
+      <p className="px-3 py-2 dash-support text-fg-muted">Requested by {run.requester?.label || run.requester?.agent || "Unknown requester"}{run.requester?.task && <> · Task (requester supplied): <Linkified text={run.requester.task} /></>}</p>
+      <p className="px-3 py-2 dash-support text-fg-muted">Approval {run.item_id} · Run {run.run_id}{run.params?.plan_id ? ` · Catalog plan ${run.params.plan_id}` : ""}</p>
+      {!run.started_at && run.action === "tether.catalog.approve" && <p className="px-3 dash-support text-fg-muted">This run has not started. A catalog plan approved elsewhere is a separate event; this run has no command result yet. Do not replay an already approved plan.</p>}
+      <pre className="overflow-x-auto whitespace-pre-wrap break-all px-3 py-4 font-mono dash-support text-fg"><span className="text-fg-faint">{run.machine} $ </span>{run.command}</pre>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-bg/40 px-3 py-2 dash-support text-fg-muted">
+        <span>{run.action} · {run.class}{run.labels ? ` · ${run.labels}` : ""}</span>
+        <span className="font-mono">Bound command is exactly what runs · digest {run.op_digest.replace(/^sha256:/, "").slice(0, 8)}…<span className="sr-only">{run.op_digest}</span></span>
+      </div>
       {run.error && <p className="mt-1 dash-support text-danger">{run.error}</p>}
       {run.terminal && run.note && <p className="mt-1 dash-support text-fg-muted">{run.note}</p>}
       {error && <p role="alert" className="mt-1 dash-support text-danger">{error}</p>}

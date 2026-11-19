@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/hollis-labs/libs/app/app-host/plugins"
@@ -21,18 +23,37 @@ import (
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/capability"
 	"github.com/hollis-labs/libs/mcp/plugin-mcp/plugin-sdk/subprocess"
 
+	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/libs/security/secrets/tokenfile"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
+	"github.com/hollis-labs/tachyon/internal/agentsapi"
+	"github.com/hollis-labs/tachyon/internal/agentscollector"
+	"github.com/hollis-labs/tachyon/internal/agentsderive"
+	"github.com/hollis-labs/tachyon/internal/agentsserve"
 	"github.com/hollis-labs/tachyon/internal/apicache"
 	"github.com/hollis-labs/tachyon/internal/appagent"
 	"github.com/hollis-labs/tachyon/internal/approvals"
+	"github.com/hollis-labs/tachyon/internal/approvals/assurance"
+	"github.com/hollis-labs/tachyon/internal/builderapi"
 	"github.com/hollis-labs/tachyon/internal/carddelivery"
 	"github.com/hollis-labs/tachyon/internal/cardevents"
 	"github.com/hollis-labs/tachyon/internal/cardfx"
 	"github.com/hollis-labs/tachyon/internal/catalog"
+	"github.com/hollis-labs/tachyon/internal/catalogindex"
+	"github.com/hollis-labs/tachyon/internal/chatactivity"
+	"github.com/hollis-labs/tachyon/internal/chatapi"
 	"github.com/hollis-labs/tachyon/internal/chatbridge"
+	"github.com/hollis-labs/tachyon/internal/chatcards"
+	"github.com/hollis-labs/tachyon/internal/chatplan"
+	"github.com/hollis-labs/tachyon/internal/chatterminal"
+	"github.com/hollis-labs/tachyon/internal/chatthreads"
+	"github.com/hollis-labs/tachyon/internal/chattopics"
+	"github.com/hollis-labs/tachyon/internal/chatworkspace"
 	"github.com/hollis-labs/tachyon/internal/dataverbs"
+	"github.com/hollis-labs/tachyon/internal/fileview"
+	"github.com/hollis-labs/tachyon/internal/fileviewapi"
+	"github.com/hollis-labs/tachyon/internal/forgeapi"
 	"github.com/hollis-labs/tachyon/internal/localstore"
 	"github.com/hollis-labs/tachyon/internal/objects"
 	"github.com/hollis-labs/tachyon/internal/objectsync"
@@ -55,6 +76,26 @@ type Config struct {
 	CacheDir         string
 	CachePolicyFile  string
 	ChatSyncInterval time.Duration
+	// FileviewStubs mounts the fixture-backed file viewer contract (TACHYON_FILEVIEW_STUBS=1) for GUI development.
+	FileviewStubs bool
+	// BuilderStubs mounts the fixture-backed Builder and Registry contract (TACHYON_BUILDER_STUBS=1) for GUI development.
+	BuilderStubs bool
+	// AgentsStubs mounts the fixture-backed Agents monitor contract (TACHYON_AGENTS_STUBS=1) for GUI development.
+	AgentsStubs bool
+	// AgentsCollector runs the always-on Agents collector (TACHYON_AGENTS_COLLECTOR=0 turns it off for debugging).
+	// It needs a Tether address; the read-scope token is the usual TETHER_TOKEN_FILE.
+	AgentsCollector bool
+	// CatalogIndex runs the Builder's catalog index (TACHYON_CATALOG_INDEX=0 turns it off). It needs a Tether
+	// address; the read-scope token is the usual TETHER_TOKEN_FILE.
+	CatalogIndex bool
+	// TerminalPolicyFile is the operator-edited JSON of terminal machines and command rules. Empty uses
+	// terminal-policy.json in the data dir; a missing file means no extra machines and every command asks.
+	TerminalPolicyFile string
+	// ChatStubs mounts the fixture-backed chat contract (TACHYON_CHAT_STUBS=1) for GUI development.
+	ChatStubs bool
+	// ChatClientContext sends shared workspace items to the app agent as client_context on each
+	// turn (TACHYON_CHAT_CLIENT_CONTEXT=1). Off until Nanite confirms the field.
+	ChatClientContext bool
 	// AppAgentConfigFile enables the in-app agent chat (see appagent.NaniteConfig). Empty disables it.
 	AppAgentConfigFile          string
 	ApprovalQueueURL            string
@@ -96,18 +137,30 @@ type pluginState struct {
 type Server struct {
 	cfg              Config
 	inventory        *plugins.Inventory
+	pluginSlots      chan struct{}
 	states           []pluginState
 	instance         string
 	store            *localstore.Store
+	fileviewAudit    *fileview.Auditor
 	objects          *objects.Service
 	objectJobs       *objectsync.Jobs
 	cache            *apicache.Cache
 	chat             *chatbridge.Owned
 	appAgent         *appagent.Service
+	chatThreads      *chatthreads.Handler
+	chatWorkspace    *chatworkspace.Handler
+	chatTopics       *chattopics.Handler
+	chatPlan         *chatplan.Service
+	chatCards        *chatcards.Binder
+	chatActivity     *chatactivity.Handler
+	chatTerminal     *chatterminal.Service
 	approvalProducer *approvals.Producer
 	approvalInbox    *approvals.Inbox
 	approvalTrusted  *approvals.TrustedAPI
 	approvalCancel   context.CancelFunc
+	agentsCollector  *agentscollector.Collector
+	catalogIndex     *catalogindex.Index
+	ext              sync.Map // per-feature state set by startHooks, read by serverMounts (features.go)
 	actions          *actionrun.Service
 	cardFx           *cardfx.Store
 }
@@ -132,6 +185,7 @@ func New(cfg Config) *Server {
 		s.states = append(s.states, pluginState{entry: entry, running: true})
 	}
 	s.inventory = plugins.NewInventory(specs)
+	s.pluginSlots = make(chan struct{}, pluginCallSlots)
 	return s
 }
 
@@ -177,6 +231,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("cache policy: %w", err)
 	}
 	s.store = store
+	s.fileviewAudit = &fileview.Auditor{DB: store}
 	s.objects = objects.New(store)
 	s.cache = apicache.New(store, settings, s.cacheIdentity)
 	started := false
@@ -214,6 +269,9 @@ func (s *Server) Start(ctx context.Context) error {
 		}()
 	}
 
+	// Backfill the queue index, then materialize expired items every 30 s so History fills without a reader.
+	go s.approvalInbox.Maintain(approvalContext, 30*time.Second, slog.Default().Info)
+
 	if s.cfg.AppAgentConfigFile != "" {
 		// The adapter re-reads this file on every call, so reinstalling the agent
 		// (a new definition revision gets a new host row) needs no restart.
@@ -225,6 +283,11 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startActions(approvalContext, store)
 	s.startCardEffects(approvalContext, store)
 	s.startCardEvents(approvalContext, store)
+	s.startAgentsCollector(approvalContext, store)
+	s.startCatalogIndex(approvalContext, store)
+	for _, hook := range startHooks {
+		hook(approvalContext, s, store)
+	}
 	s.startCardDelivery(approvalContext, store)
 
 	assuranceConfig, err := approvals.LoadAssuranceConfig(s.cfg.ApprovalAssuranceConfigFile)
@@ -241,6 +304,255 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	source, sourceErr := chatbridge.NewSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
 	s.chat = &chatbridge.Owned{Store: store, Source: source, SourceID: s.cfg.Upstreams.TetherAddr, ConfigError: sourceErr, Interval: s.cfg.ChatSyncInterval}
+	// The unified chat thread list and per-thread stream (both sources).
+	s.chatThreads = &chatthreads.Handler{
+		Agg: &chatthreads.Aggregator{App: s.appAgent, Chat: s.chat, State: &chatthreads.StateStore{DB: store}},
+		Hub: &chatthreads.Hub{DB: store},
+	}
+	// A Tether turn arriving or a reply changing delivery state is announced on the thread stream, so the
+	// focused thread fetches it instead of polling.
+	s.chat.Changed = func(ctx context.Context, kind string, t chatbridge.Turn) {
+		id := t.SessionID
+		if id == "" {
+			id = t.LocalSessionID
+		}
+		if id == "" {
+			return
+		}
+		ref := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: id}.String()
+		fields := map[string]any{"message_id": t.ID, "state": t.State, "delivery_state": t.Delivery, "kind": t.Kind}
+		_, _ = s.chatThreads.Hub.Publish(context.WithoutCancel(ctx), ref, kind, fields)
+		s.chatThreads.Notify(ctx, ref)
+	}
+	// Activity feed and context meter. The service seams below record into it; a failed record
+	// never fails the change that caused it.
+	rec := &chatactivity.Recorder{Store: &chatactivity.Store{DB: store}, Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+		_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+	}}
+	s.chatActivity = &chatactivity.Handler{Rec: rec, Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err }}
+	// The agent's own activity (mail, Torque reads, reminders, waits) comes from its Tether session's tool calls, not from the agent.
+	if s.agentsCollector != nil {
+		th := &chatactivity.Throttle{Window: 30 * time.Second}
+		s.agentsCollector.SetObserver(func(frames []agentscollector.Frame) {
+			for _, f := range frames {
+				if f.Kind != "tool.call.finished" || f.SessionID == "" || f.Tool == "" || time.Since(f.At) > 2*time.Minute {
+					continue
+				}
+				d, ok := chatactivity.Classify(f.Tool)
+				thread := chatapi.ThreadRef{Source: chatapi.SourceTether, ID: f.SessionID}.String()
+				if !ok || !th.Allow(thread, d.Type, f.At) {
+					continue
+				}
+				actor := "agent"
+				if f.AgentName != "" {
+					actor = "agent:" + f.AgentName
+				}
+				rec.Quiet(context.Background(), thread, d.Type, actor, "tether", nil, chatactivity.Card(d.Title, f.Tool, nil))
+			}
+		})
+	}
+	ws := &chatworkspace.Store{DB: store, Dir: filepath.Join(s.cfg.DataDir, "workspace")}
+	s.chatWorkspace = &chatworkspace.Handler{
+		Store:  ws,
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		Published: func(ctx context.Context, thread, op, id string) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventWorkspace, map[string]any{"op": op, "id": id})
+			if op == "share" {
+				name := id
+				if it, err := ws.Get(ctx, thread, id); err == nil {
+					name = it.Name
+				}
+				rec.Quiet(ctx, thread, "file.shared", "user", "tachyon", []chatactivity.Cite{{Kind: "file", Ref: id, Label: name}}, chatactivity.Card("Shared "+name, "Shared with the agent", nil))
+			}
+		},
+	}
+	// Quick terminal: ssh through the host user's own ssh-agent and config. Machines come from the policy
+	// file and ~/.ssh/config aliases; the client only ever names a machine id.
+	policyFile := s.cfg.TerminalPolicyFile
+	if policyFile == "" {
+		policyFile = filepath.Join(s.cfg.DataDir, "terminal-policy.json")
+	}
+	termStore := &chatterminal.Store{DB: store}
+	if err := termStore.CloseStaleSessions(ctx); err != nil {
+		return fmt.Errorf("terminal startup sweep: %w", err)
+	}
+	termPublish := func(ctx context.Context, thread, typ string, fields map[string]any) {
+		_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+	}
+	termCfg := &chatterminal.Config{PolicyFile: policyFile, SSHConfig: chatterminal.DefaultSSHConfig()}
+	termMgr := &chatterminal.Manager{Store: termStore, Config: termCfg, Base: ctx, Publish: termPublish,
+		Ended: func(ctx context.Context, r chatterminal.Run) {
+			title := "Ran " + r.Command
+			summary := r.State
+			if r.ExitCode != nil {
+				summary = fmt.Sprintf("%s, exit %d", r.State, *r.ExitCode)
+			}
+			rec.Quiet(ctx, r.ThreadRef, "terminal.run", r.RequestedBy, "tachyon", nil, chatactivity.Card(title, summary, nil))
+		}}
+	s.chatTerminal = &chatterminal.Service{Store: termStore, Mgr: termMgr, Config: termCfg, Publish: termPublish,
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		CloseOnComplete: func(ctx context.Context) bool {
+			st, err := ws.Settings(ctx)
+			return err == nil && st.TerminalCloseOnComplete
+		},
+		Message: func(ctx context.Context, thread, runID string) (string, error) {
+			t, err := chatapi.ParseRef(thread)
+			if err != nil || t.Source != chatapi.SourceApp || s.appAgent == nil {
+				return "", nil
+			}
+			m, err := s.appAgent.AppendNote(ctx, t.ID, "run", "", map[string]any{"run_id": runID})
+			return m.ID, err
+		}}
+	go s.chatTerminal.Sweep(ctx)
+	s.chatTopics = &chattopics.Handler{
+		Store:      &chattopics.Store{DB: store},
+		Exists:     func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		MessageSeq: s.chatThreads.MessageSeq,
+		Published: func(ctx context.Context, thread, typ, op, id string) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, map[string]any{"op": op, "id": id})
+			if op == "add" {
+				rec.Quiet(ctx, thread, typ+".added", "user", "tachyon", nil, chatactivity.Card(strings.ToUpper(typ[:1])+typ[1:]+" added", "", nil))
+			}
+		},
+	}
+	s.chatPlan = &chatplan.Service{
+		Store: &chatplan.Store{DB: store, ContinueDefault: func(ctx context.Context) bool {
+			st, serr := ws.Settings(ctx)
+			return serr != nil || st.ContinueNewSessions
+		}},
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		ProjectOf: func(ctx context.Context, ref string) (string, error) {
+			st, err := s.chatThreads.Agg.State.Get(ctx, ref)
+			return st.ProjectID, err
+		},
+		Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+		},
+		Note: func(ctx context.Context, thread string, p chatplan.Plan) {
+			t, err := chatapi.ParseRef(thread)
+			if err != nil || t.Source != chatapi.SourceApp || s.appAgent == nil {
+				return
+			}
+			title := "Plan"
+			if p.Title != nil && *p.Title != "" {
+				title = *p.Title
+			}
+			_, _ = s.appAgent.AppendNote(ctx, t.ID, "plan", title, map[string]any{"plan_id": p.ID})
+		},
+		Notify: s.chatThreads.Notify,
+		Activity: func(ctx context.Context, thread, by, reason string, p chatplan.Plan) {
+			actor := "user"
+			if by == "agent" {
+				actor = "agent"
+			}
+			pr := p.Progress()
+			title := "Plan"
+			if p.Title != nil && *p.Title != "" {
+				title = *p.Title
+			}
+			rec.Quiet(ctx, thread, "plan.changed", actor, "tachyon", nil, chatactivity.Card(title+": "+reason, fmt.Sprintf("%d of %d steps done", pr.Done, pr.Total), nil))
+		},
+	}
+	s.chatPlan.Carried = func(ctx context.Context, from, to string, p chatplan.Plan) {
+		title := "Plan"
+		if p.Title != nil && *p.Title != "" {
+			title = *p.Title
+		}
+		pr := p.Progress()
+		rec.Quiet(ctx, to, "plan.carried", "tachyon", "tachyon", nil, chatactivity.Card(title+": carried over from "+from, fmt.Sprintf("%d of %d steps done", pr.Done, pr.Total), nil))
+	}
+	s.chatThreads.Ancestors = s.chatPlan.Store.Ancestors
+	s.chatThreads.Agg.Sessions = func(ctx context.Context) []chatthreads.SessionStub {
+		var out []chatthreads.SessionStub
+		for _, st := range s.chatPlan.Store.Sessions(ctx) {
+			out = append(out, chatthreads.SessionStub{Ref: st.Ref, Agent: st.Agent, SeenNS: st.SeenNS, HasPlan: st.HasPlan})
+		}
+		return out
+	}
+	s.chatThreads.Agg.PlanProgress = func(ctx context.Context, refs []string) map[string]chatthreads.Progress {
+		out := map[string]chatthreads.Progress{}
+		for ref, pr := range s.chatPlan.Store.Progress(ctx, refs) {
+			out[ref] = chatthreads.Progress{Done: pr.Done, Total: pr.Total}
+		}
+		return out
+	}
+	cardRefs := &chatcards.Store{DB: store}
+	s.chatCards = &chatcards.Binder{
+		Refs:   cardRefs,
+		Get:    (&approvals.Store{DB: store}).Get,
+		Exists: func(ctx context.Context, ref string) error { _, err := s.chatThreads.Agg.Get(ctx, ref); return err },
+		Publish: func(ctx context.Context, thread, typ string, fields map[string]any) {
+			_, _ = s.chatThreads.Hub.Publish(ctx, thread, typ, fields)
+		},
+		Note: func(ctx context.Context, thread, itemID, caption string, _ chatcards.Card) {
+			if t, err := chatapi.ParseRef(thread); err == nil && t.Source == chatapi.SourceApp && s.appAgent != nil {
+				_, _ = s.appAgent.AppendNote(ctx, t.ID, "card", caption, map[string]any{"item_id": itemID})
+			}
+		},
+		Answer: func(ctx context.Context, thread, text string) {
+			if t, err := chatapi.ParseRef(thread); err == nil && t.Source == chatapi.SourceApp && s.appAgent != nil {
+				_, _, _ = s.appAgent.Send(ctx, t.ID, text)
+			}
+		},
+		Decided: func(ctx context.Context, thread string, c chatcards.Card) {
+			typ, verb := "card.answered", "Answered"
+			if strings.Contains(c.Kind, "approval") || c.Kind == "card.plan" || c.Kind == "card.dispatch" {
+				typ, verb = "approval.decided", "Decided"
+			}
+			summary := "Expired without an answer"
+			if c.State == "resolved" {
+				summary = fmt.Sprint(c.Result["decision"])
+			}
+			rec.Quiet(ctx, thread, typ, "user", "tachyon", nil, chatactivity.Card(verb+": "+c.Caption, summary, nil))
+		},
+		Changes: approvals.Changes(store),
+	}
+	s.chatThreads.Agg.CardBlocks = s.chatCards.OpenCounts
+	s.chatThreads.Agg.CardApprovals = s.chatCards.OpenApprovalCounts
+	if s.appAgent != nil {
+		// Runtime tool approvals (approval.request) become cards; the answer goes back to the runtime, once scope.
+		rt := &chatcards.Runtime{B: s.chatCards, Registry: approvals.CardRegistry, Source: "tachyon-chat",
+			Enqueue: func(ctx context.Context, req hitl.EnqueueRequest) (string, error) {
+				h, err := s.approvalInbox.Service.Enqueue(ctx, req)
+				return h.ItemID, err
+			},
+			Respond: func(ctx context.Context, thread, approvalID string, allow bool) error {
+				t, err := chatapi.ParseRef(thread)
+				if err != nil || t.Source != chatapi.SourceApp {
+					return errors.New("not an app thread")
+				}
+				return s.appAgent.RespondApproval(ctx, t.ID, approvalID, allow)
+			}}
+		s.chatCards.Tools = rt
+		s.appAgent.OnApproval = func(threadID string, a appagent.Approval) {
+			rt.OnApproval(chatapi.ThreadRef{Source: chatapi.SourceApp, ID: threadID}.String(), a)
+		}
+	}
+	go s.chatCards.Follow(approvalContext)
+	if s.appAgent != nil && s.cfg.ChatClientContext {
+		s.appAgent.ClientContext = func(ctx context.Context, id string) any {
+			cc, err := ws.ClientContextFor(ctx, chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
+			if err != nil || cc == nil {
+				return nil
+			}
+			return cc
+		}
+	}
+	if s.appAgent != nil {
+		s.appAgent.OnTool = func(id string, t appagent.Tool) {
+			status := t.Status
+			if status != "ok" && status != "error" {
+				return
+			}
+			rec.Quiet(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String(), "tool.call", "agent", "runtime", nil, chatactivity.Card(t.Name, status, nil))
+		}
+		s.appAgent.OnContext = func(id string, used, window int64, model string) {
+			rec.SetContext(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String(), used, window, model)
+		}
+		s.appAgent.OnChange = func(id string) {
+			s.chatThreads.Notify(context.Background(), chatapi.ThreadRef{Source: chatapi.SourceApp, ID: id}.String())
+		}
+	}
 	s.chat.FreshSeconds = settings.Policies["chat-turns"].FreshSeconds
 	s.chat.RevalidateSeconds = settings.Policies["chat-turns"].RevalidateSeconds
 	s.chat.CacheEnabled = settings.Policies["chat-turns"].Enabled
@@ -271,6 +583,8 @@ func (s *Server) Start(ctx context.Context) error {
 	// No schedules are created on boot. Operators validate a source with
 	// sync-objects --enable; only those persisted jobs recur across restarts.
 	s.objectJobs.Engine.Start()
+	s.ext.Store(objectJobsKey, s.objectJobs)
+	go s.watchObjectSync(approvalContext)
 	s.chat.Start()
 	started = true
 	return nil
@@ -280,6 +594,12 @@ func (s *Server) Start(ctx context.Context) error {
 func (s *Server) Stop(ctx context.Context) error {
 	if s.approvalCancel != nil {
 		s.approvalCancel()
+	}
+	if s.agentsCollector != nil {
+		s.agentsCollector.Wait(ctx) // its last batch must land before the store closes
+	}
+	if s.catalogIndex != nil {
+		s.catalogIndex.Wait(ctx)
 	}
 	var jobErr error
 	if s.objectJobs != nil {
@@ -342,12 +662,20 @@ func (s *Server) cacheIdentity(scope string) (string, error) {
 // Routes returns the handler mounted by app-host at /api/.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
-	transcriptHandler := http.Handler(transcripts.New(s.cfg.FragmentsURL, s.cfg.FragmentsTokenFile, s.cfg.TranscriptMaxSessions))
+	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	bridge := transcripts.New(s.cfg.FragmentsURL, s.cfg.FragmentsTokenFile, s.cfg.TranscriptMaxSessions)
+	bridge.DB = s.store
+	transcriptHandler := http.Handler(bridge)
 	if s.cache != nil {
 		transcriptHandler = s.cache.Wrap(transcriptHandler)
 	}
-	mux.Handle(transcripts.Prefix+"/", transcriptHandler)
-	operator := approvals.New(s.cfg.ApprovalQueueURL)
+	mux.Handle(transcripts.Prefix+"/", transcriptsGuard(&approvals.TangentProvider{Bridge: operator}, transcriptHandler))
+	for _, mount := range featureMounts {
+		mount(mux, operator)
+	}
+	for _, mount := range serverMounts {
+		mount(s, mux, operator)
+	}
 	if s.objects != nil {
 		// Local data is live and host-owned, independent of subprocess admission.
 		providers := []dataverbs.Provider{dataverbs.NewLocal(s.objects)}
@@ -362,6 +690,12 @@ func (s *Server) Routes() http.Handler {
 			var cardTools *dataverbs.Cards
 			if s.approvalInbox != nil {
 				cardTools = &dataverbs.Cards{Service: s.approvalInbox.Service, Registry: approvals.CardRegistry, Receipt: s.cardReceiptView}
+				if s.chatCards != nil {
+					cardTools.Bind = s.chatCards.Bind
+				}
+			}
+			if cardTools != nil {
+				mountCardSeed(mux, operator, cardTools)
 			}
 			// Read-only Tesseract search and read for agents; nil (feature off) when no address is set.
 			tesseractReader, err := tesseractread.New(s.cfg.Upstreams.TesseractURL, s.cfg.Upstreams.TesseractTokenFile)
@@ -369,8 +703,56 @@ func (s *Server) Routes() http.Handler {
 				slog.Warn("tesseract reads for agents disabled", "error", err)
 				tesseractReader = nil
 			}
-			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader))
-			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader))
+			var chatTools *dataverbs.ChatWorkspace
+			if s.chatWorkspace != nil {
+				chatTools = &dataverbs.ChatWorkspace{Store: s.chatWorkspace.Store, Thread: s.chatWorkspace.Exists}
+			}
+			var topicTools *dataverbs.ChatTopics
+			if s.chatTopics != nil {
+				topicTools = &dataverbs.ChatTopics{Store: s.chatTopics.Store, Thread: s.chatTopics.Exists, MessageSeq: s.chatTopics.MessageSeq,
+					OpenApprovals: func(ctx context.Context, thread string) ([]chatcards.OpenApproval, error) {
+						if s.chatCards == nil {
+							return []chatcards.OpenApproval{}, nil
+						}
+						return s.chatCards.Refs.OpenApprovals(ctx, thread)
+					},
+					Published: func(ctx context.Context, thread, op, id string) {
+						_, _ = s.chatThreads.Hub.Publish(ctx, thread, chatapi.EventTopic, map[string]any{"op": op, "id": id})
+						if op == "add" && s.chatActivity != nil {
+							s.chatActivity.Rec.Quiet(ctx, thread, "topic.added", "agent", "tachyon", nil, chatactivity.Card("Topic added", "", nil))
+						}
+					}}
+			}
+			var activityTools *dataverbs.ChatActivity
+			if s.chatActivity != nil {
+				activityTools = &dataverbs.ChatActivity{Rec: s.chatActivity.Rec, Thread: s.chatActivity.Exists}
+			}
+			var planTools *dataverbs.ChatPlan
+			if s.chatPlan != nil {
+				agg := s.chatThreads.Agg
+				asThread := func(t chatthreads.Summary) dataverbs.ChatThread {
+					return dataverbs.ChatThread{Ref: t.Ref, AgentID: t.Agent.AgentID, Address: t.Agent.Address, LastAt: t.LastAt, Archived: t.Archived}
+				}
+				planTools = &dataverbs.ChatPlan{Service: s.chatPlan,
+					Thread: func(ctx context.Context, ref string) (dataverbs.ChatThread, error) {
+						t, err := agg.Get(ctx, ref)
+						return asThread(t), err
+					},
+					Threads: func(ctx context.Context) ([]dataverbs.ChatThread, error) {
+						ts, err := agg.Summaries(ctx)
+						out := make([]dataverbs.ChatThread, len(ts))
+						for i, t := range ts {
+							out[i] = asThread(t)
+						}
+						return out, err
+					}}
+			}
+			var termTools *dataverbs.ChatTerminal
+			if s.chatTerminal != nil {
+				termTools = &dataverbs.ChatTerminal{Service: s.chatTerminal}
+			}
+			mux.Handle(dataverbs.AgentPrefix+"/", dataverbs.NewAgentHTTP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools, termTools))
+			mux.Handle(dataverbs.AgentMCPPath, dataverbs.NewAgentMCP(s.objects, &agentaccess.Store{DB: s.store}, s.actions, cardTools, torqueread.New(s.cfg.Upstreams.TorqueURL, s.cfg.Upstreams.TorqueToken), tesseractReader, chatTools, topicTools, planTools, activityTools, termTools))
 		}
 	}
 	if s.store != nil {
@@ -385,7 +767,7 @@ func (s *Server) Routes() http.Handler {
 	}
 	// Object management uses live reads and server-verified operator mutations.
 	// Keep the whole prefix outside the generic plugin response cache.
-	tetherRoutes := s.inventory.APIRoutes()
+	tetherRoutes := s.pluginRoutes()
 	mux.Handle("/api/plugins/console/v1/tether/", operator.RequireOperator(tetherRoutes))
 	// Plan and agent reads expose hub objects, so unlike the rest of the prefix
 	// they need operator assurance on GET as well.
@@ -416,6 +798,7 @@ func (s *Server) Routes() http.Handler {
 		}
 		if inbox == s.approvalInbox {
 			inbox.CardReceipt = s.cardReceiptView
+			inbox.RunState = s.itemRunState
 		}
 		if s.actions != nil {
 			mux.Handle(actionrun.Prefix+"/", operator.RequireOperatorReads(&actionrun.Handler{Service: s.actions}))
@@ -442,7 +825,7 @@ func (s *Server) Routes() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 	})
 	if s.store != nil {
-		outbox := &chatbridge.Outbox{Store: s.store, SourceID: s.cfg.Upstreams.TetherAddr, Identity: func() (string, error) { return apicache.Digest("chat-owner\n" + s.cfg.Upstreams.TetherAddr), nil }, Next: s.inventory.APIRoutes()}
+		outbox := &chatbridge.Outbox{Store: s.store, SourceID: s.cfg.Upstreams.TetherAddr, Identity: func() (string, error) { return apicache.Digest("chat-owner\n" + s.cfg.Upstreams.TetherAddr), nil }, Next: s.pluginRoutes()}
 		handler := http.Handler(outbox)
 		if s.cache != nil {
 			handler = s.cache.Wrap(handler)
@@ -457,14 +840,131 @@ func (s *Server) Routes() http.Handler {
 	// read); sends need operator assurance. Without a config file the routes answer
 	// 503 and say why. Tightening reads is a one-word change to RequireOperatorReads.
 	mux.Handle(appagent.Prefix+"/", operator.RequireOperator(&appagent.Handler{Service: s.appAgent, Disabled: "The app agent is not configured on this Tachyon (set TACHYON_APP_AGENT_CONFIG)."}))
+	// Real chat thread routes, mounted one by one: each is more specific than the stub's
+	// prefix below, so with TACHYON_CHAT_STUBS=1 these win and the stub serves the rest.
+	// RequireOperator lets GETs through and guards every write.
+	if s.chatThreads != nil {
+		real := s.chatThreads.Mux()
+		for _, route := range chatthreads.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatPlan != nil {
+		h := &chatplan.Handler{Service: s.chatPlan}
+		if verifier := s.chatContinuationVerifier(); verifier != nil {
+			h.VerifyContinuation = verifier.Verify
+		}
+		real := h.Mux()
+		for _, route := range chatplan.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatActivity != nil {
+		real := s.chatActivity.Mux()
+		for _, route := range chatactivity.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatTopics != nil {
+		real := s.chatTopics.Mux()
+		for _, route := range chattopics.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+	}
+	if s.chatWorkspace != nil {
+		real := s.chatWorkspace.Mux()
+		for _, route := range chatworkspace.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.Prefix+path, operator.RequireOperator(real))
+		}
+		// File bytes need operator assurance on reads too.
+		mux.Handle(chatworkspace.ContentRoute, operator.RequireOperatorReads(s.chatWorkspace.Content()))
+	}
+	if s.chatTerminal != nil {
+		real := (&chatterminal.Handler{Svc: s.chatTerminal}).Mux()
+		for _, route := range chatterminal.Routes {
+			method, path, _ := strings.Cut(route, " ")
+			mux.Handle(method+" "+chatapi.TerminalPrefix+path, operator.RequireOperatorReads(real))
+		}
+	}
+	// Chat contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. Writes need an operator session; workspace content and the terminal family
+	// need it on reads too. Real slices replace these mounts route by route.
+	if s.cfg.ChatStubs {
+		stub := chatapi.Stub{}
+		if s.chatWorkspace == nil {
+			mux.Handle("GET "+chatapi.WorkspaceContentPath, operator.RequireOperatorReads(stub.WorkspaceContent()))
+		}
+		mux.Handle(chatapi.Prefix+"/", operator.RequireOperator(stub.Chat()))
+		mux.Handle(chatapi.TerminalPrefix+"/", operator.RequireOperatorReads(stub.Terminal()))
+	}
+	// File viewer contract stub (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. Every route needs an operator session, reads included, except the frame documents: a
+	// sandboxed iframe has an opaque origin and no cookie, so the single-use 256-bit id is the capability.
+	if s.cfg.FileviewStubs {
+		mux.Handle("GET "+fileviewapi.FramesPrefix, fileviewapi.Stub{}.FrameHandler())
+		mux.Handle(fileviewapi.Prefix+"/", operator.RequireOperatorReads(fileviewapi.Stub{}.Handler()))
+	}
+	// File viewer settings and roots (real, V1). One pattern each, so they win over the stub's subtree when
+	// the stub is on. Reads need an operator session; the PUT needs an elevated one.
+	if s.store != nil {
+		if home, err := os.UserHomeDir(); err == nil {
+			(&fileview.Service{DB: s.store, Home: home}).Mount(mux, operator.RequireOperatorReads, operator.RequireOperator)
+		}
+	}
+	// File viewer audit log (real, V6): reading it is an operator act. One pattern, so it wins over the stub.
+	if s.fileviewAudit != nil {
+		s.fileviewAudit.MountAudit(mux, operator.RequireOperatorReads)
+	}
+	// Builder + Registry contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below
+	// is unguarded. GETs are open; every write (changes, launch action, registry project patch) needs an operator session.
+	if s.cfg.BuilderStubs {
+		stub := operator.RequireOperator(builderapi.Stub{}.Handler())
+		mux.Handle(builderapi.Prefix+"/", stub)
+		mux.Handle(builderapi.RegistryPrefix+"/projects", stub)
+		mux.Handle(builderapi.RegistryPrefix+"/projects/", stub)
+	}
+	// Agents contract stubs (dev only). Mounted explicitly: the /api/plugins/ catch-all below is
+	// unguarded. GETs are open; every write (nudge, restart, skip, settings) needs an operator session.
+	if s.agentsCollector != nil {
+		mux.Handle("GET "+agentscollector.Path, operator.RequireOperator(s.agentsCollector.Handler()))
+		mux.Handle("GET "+agentscollector.BusPath, operator.RequireOperator(s.agentsCollector.BusHandler()))
+		// Sessions, timeline, series, tokens, history, stream and settings. Controls (nudge, restart) are not here.
+		agentsSrv := &agentsserve.Server{DB: s.store, Collector: s.agentsCollector, Assigner: s.agentsAssigner(), Worker: s.agentsWorker(), Sender: s.agentsSender(), Restarter: s.agentsRestarter(), AssociateRestart: s.associateHubRestart()}
+		if s.chat != nil {
+			agentsSrv.Interrupter = s.chat
+		}
+		agentsSrv.Mount(mux, operator.RequireOperator)
+	}
+	s.mountAccount(mux, operator)
+	if s.cfg.AgentsStubs {
+		mux.Handle(agentsapi.Prefix+"/", operator.RequireOperator(agentsapi.Stub{}.Handler()))
+	}
+	// Builder catalog index (B1): the real summary and stream. With BuilderStubs on the stub owns the
+	// whole prefix instead. GETs are open like every Builder read; there are no writes here.
+	if s.catalogIndex != nil && !s.cfg.BuilderStubs {
+		mux.Handle("GET "+builderapi.Prefix+"/summary", operator.RequireOperator(s.catalogIndex.SummaryHandler()))
+		mux.Handle("GET "+builderapi.Prefix+"/stream", operator.RequireOperator(s.catalogIndex.StreamHandler()))
+		s.mountBuilderRead(mux, operator.RequireOperator)
+	}
 	mux.HandleFunc("GET /api/plugins", s.listPlugins)
+	// Forge writes the console plugin serves itself. Without these patterns they fall to the unguarded
+	// /api/plugins/ catch-all below, where anyone could post a comment or assign people as Tachyon's GitHub identity.
+	pluginForge := s.pluginRoutes()
+	forgePulls := forgeapi.Prefix + "/repos/{host}/{owner}/{name}/pulls/{num}"
+	mux.Handle("POST "+forgePulls+"/comments", operator.RequireOperator(s.forgeAudit().Wrap("comment", pluginForge)))
+	mux.Handle("PUT "+forgePulls+"/assignees", operator.RequireOperator(s.forgeAudit().Wrap("assignees", pluginForge)))
 	mux.HandleFunc("GET /api/plugins/{id}/stream/{name}", s.stream)
 	if s.cache != nil {
 		mux.HandleFunc(apicache.ImportedTeamsPath, s.cache.ImportedTeamsHandler)
 		mux.HandleFunc("GET /api/cache/policy", s.cache.PolicyHandler)
-		mux.Handle("/api/plugins/", s.cache.Wrap(s.inventory.APIRoutes()))
+		mux.Handle("/api/plugins/", s.cache.Wrap(s.pluginRoutes()))
 	} else {
-		mux.Handle("/api/plugins/", s.inventory.APIRoutes())
+		mux.Handle("/api/plugins/", s.pluginRoutes())
 	}
 	return decodedRoute(mux)
 }
@@ -601,8 +1101,9 @@ func (s *Server) startActions(ctx context.Context, store *localstore.Store) {
 	if err := manager.Recover(ctx); err != nil {
 		slog.Warn("action runs not recovered", "err", err)
 	}
-	s.actions = &actionrun.Service{Store: runs, Manager: manager, Approval: s.approvalInbox.Service}
+	s.actions = &actionrun.Service{Store: runs, Manager: manager, Approval: s.approvalInbox.Service, Notify: s.actionResultNotifier()}
 	go s.actions.Watch(ctx, 0)
+	go s.fileviewAudit.RunRetention(ctx, 24*time.Hour)
 }
 
 // startCardEffects runs the effects of approved cards. The Torque target is off
@@ -619,6 +1120,47 @@ func (s *Server) startCardEffects(ctx context.Context, store *localstore.Store) 
 		slog.Warn("card effects not recovered", "err", err)
 	}
 	go ex.Watch(ctx, 0)
+}
+
+// startAgentsCollector follows Tether's environment stream into the Agents read model. It stays off
+// without a Tether address or when the credential would travel over plain http to a remote host.
+func (s *Server) startAgentsCollector(ctx context.Context, store *localstore.Store) {
+	if !s.cfg.AgentsCollector || strings.TrimSpace(s.cfg.Upstreams.TetherAddr) == "" {
+		return
+	}
+	src, err := agentscollector.NewHTTPSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
+	if err != nil {
+		slog.Warn("agents collector is enabled but not configured; staying off", "err", err)
+		return
+	}
+	cstore := &agentscollector.Store{DB: store}
+	// Output payloads are reduced in memory by the derivation sink and never stored.
+	live := &agentsderive.Live{Save: func(ctx context.Context, id string, d agentsderive.Saved) error {
+		return cstore.SetDerived(ctx, id, agentscollector.Derived{OneLiner: d.OneLiner, CallsInTurn: d.CallsInTurn, TurnStartedAt: d.TurnStartedAt, CallsDelta: d.CallsDelta, Tools: d.Tools, Seq: d.Seq, TokDelta: tokDelta(d.TokDelta), At: d.At,
+			CtxUsed: d.Meter.Used, CtxWindow: d.Meter.Window, CtxModel: d.Meter.Model, CtxSeen: d.Meter.Seen, Compactions: d.Meter.Compactions, LastClear: d.Meter.LastClear})
+	}}
+	s.agentsCollector = &agentscollector.Collector{Source: src, Store: cstore, Sink: live, TurnEnded: live.EndTurn}
+	s.agentsCollector.Start(ctx)
+	// Tether emits no fleet.node.* or workstream.created events; poll them so the host and workstream topics have data.
+	if fs, ok := src.(agentscollector.FleetSource); ok {
+		go (&agentscollector.FleetEmitter{Source: fs, Store: cstore}).Run(ctx)
+	}
+}
+
+// startCatalogIndex follows the Tether catalog into the Builder's read model (B1). Like the Agents
+// collector it stays off without a Tether address or when the credential would travel over plain
+// http to a remote host. It needs only the read-scope token.
+func (s *Server) startCatalogIndex(ctx context.Context, store *localstore.Store) {
+	if !s.cfg.CatalogIndex || strings.TrimSpace(s.cfg.Upstreams.TetherAddr) == "" {
+		return
+	}
+	src, err := catalogindex.NewHTTPSource(s.cfg.Upstreams.TetherAddr, s.cfg.Upstreams.TetherTokenFile)
+	if err != nil {
+		slog.Warn("catalog index is enabled but not configured; staying off", "err", err)
+		return
+	}
+	s.catalogIndex = &catalogindex.Index{Source: src, Store: &catalogindex.Store{DB: store}, Bus: catalogindex.NewBroker(time.Now)}
+	s.catalogIndex.Start(ctx)
 }
 
 // startCardEvents publishes card.* events to the hub. It is off unless
@@ -680,4 +1222,77 @@ func (s *Server) actionRunView(ctx context.Context, itemID string) any {
 		return nil
 	}
 	return run
+}
+
+// transcriptsGuard lets a browser session read transcripts (assurance.ActionTranscriptsRead). An agent bearer token
+// has no transcript surface, and a refusal never reaches the cache.
+func transcriptsGuard(p assurance.Provider, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(403)
+			_, _ = w.Write([]byte(`{"code":"forbidden","message":"Transcripts are for a browser session."}`))
+			return
+		}
+		if _, e := assurance.RequireOn(p, r, assurance.ActionTranscriptsRead); e != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(e.Status)
+			if e.Body != "" {
+				_, _ = w.Write([]byte(e.Body))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": e.Code, "message": e.Message})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// itemRunState maps an item's action run or card receipt onto the inbox run_state vocabulary. Only the state
+// leaves here, so browser sessions can see it without the command or output.
+func (s *Server) itemRunState(ctx context.Context, itemID string) string {
+	if s.actions != nil {
+		if run, err := s.actions.Store.ByItem(ctx, itemID); err == nil {
+			switch run.State {
+			case actionrun.StatePending:
+				return "waiting"
+			case actionrun.StateWaitingInput, actionrun.StateApproved:
+				return "starting"
+			case actionrun.StateRunning:
+				return "running"
+			case actionrun.StateSucceeded:
+				return "succeeded"
+			case actionrun.StateFailed:
+				return "failed"
+			case actionrun.StateRefused, actionrun.StateDenied:
+				return "refused"
+			case actionrun.StateExpired:
+				return "expired"
+			}
+		}
+	}
+	if s.cardFx != nil {
+		if r, err := s.cardFx.Get(ctx, itemID); err == nil && r != nil {
+			switch r.State {
+			case cardfx.StateRunning:
+				return "running"
+			case cardfx.StateCompleted:
+				return "succeeded"
+			case cardfx.StateFailed:
+				return "failed"
+			case cardfx.StateRefused:
+				return "refused"
+			}
+		}
+	}
+	return ""
+}
+
+func tokDelta(u *agentsderive.Usage) *[4]int64 {
+	if u == nil {
+		return nil
+	}
+	return &[4]int64{u.Input, u.Output, u.CacheRead, u.CacheWrite}
 }

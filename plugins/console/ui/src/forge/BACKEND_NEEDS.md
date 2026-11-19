@@ -1,5 +1,12 @@
 # Forge contract: interim status and backend needs (feeds G1, CW-20261016-0110)
 
+> **Status update (PR backend slices PR3 to PR7).** The backend now serves the pending inbox, reads (files, diff, checks, viewer,
+> commit), **merge preflight and merge**, review validate / atomic review / drafts, and a single **assign-agent** operation (one
+> idempotent call replacing the two-effect orchestration below). The live contract and a route matrix are in
+> `docs/forge-contract.md`. The sections below record the original needs and are kept for history: where they say merge or an
+> assign operation does not exist, they are superseded. Still not built: thread resolve, comment edit/delete, reactions and
+> multi-line ranges, audit and step-up (CW-20261030-0082).
+
 The GUI codes to `ForgeClient` (`client.ts`) and the types in `types.ts`.
 `MockForgeClient` (`mock.ts`) is the only implementation today. Everything here
 is INTERIM until G1 adds a typed HTTP client and the backend exposes forge

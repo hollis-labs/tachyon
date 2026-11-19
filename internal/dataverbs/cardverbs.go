@@ -26,6 +26,9 @@ type Cards struct {
 	// Receipt, when set, returns the effects receipt of an approved card (nil
 	// when there is none). It is called with the card's item id.
 	Receipt func(ctx context.Context, itemID string) any
+	// Bind, when set, ties a freshly asked card to the chat thread named by
+	// thread_ref (and message_ref) so it shows in that thread. An error fails the ask.
+	Bind func(ctx context.Context, itemID, kind, threadRef, messageRef string) error
 }
 
 type cardAsk struct {
@@ -36,9 +39,18 @@ type cardAsk struct {
 	Completion string           `json:"completion,omitempty"`
 	Class      string           `json:"class,omitempty"`
 	Effects    []map[string]any `json:"effects,omitempty"`
+	// AffectedItems, Destructive and Alternatives describe a destructive request (digest-covered; the
+	// server may raise destructive, never clear it).
+	AffectedItems []map[string]any `json:"affected_items,omitempty"`
+	Destructive   any              `json:"destructive,omitempty"`
+	Alternatives  []map[string]any `json:"alternatives,omitempty"`
+	// Evidence are refs the operator can open before deciding: [{ref,label,kind,note?}], at most 16.
+	Evidence   []map[string]any `json:"evidence,omitempty"`
 	TTLSeconds int              `json:"ttl_seconds,omitempty"`
 	Key        string           `json:"key,omitempty"`
 	Context    string           `json:"context,omitempty"`
+	ThreadRef  string           `json:"thread_ref,omitempty"`
+	MessageRef string           `json:"message_ref,omitempty"`
 	Audience   []string         `json:"audience,omitempty"`
 }
 type cardRef struct {
@@ -62,7 +74,7 @@ const cardRules = "Use a card when a person should see something, answer a quest
 	"kind is card.approval, card.question, card.form, card.notice or card.info. " +
 	"completion=wait means you will call card.await; async means you will check back with card.get; notify shows the card and collects nothing. " +
 	"card.question data is {question, options?}; card.form data is {fields:[{id,type,label,required,options}]} with types text, textarea, number, bool, enum, multi, date, secret. " +
-	"card.approval may list effects [{target, op?, summary?}] that describe what approval will do. " +
+	"card.approval may list effects [{target, op?, summary?}] that describe what approval will do; a destructive request (delete, purge, drop, force_* ops) also lists affected_items [{ref,label,kind}] and may offer up to 3 alternatives [{id,label,effects}] such as archive instead; the server sets and keeps the destructive flag. Any request may list up to 16 evidence refs [{ref,label,kind,note?}] (kind path, caster, torque, tesseract, url or chat) the person can open before deciding. " +
 	"Never put secrets in data; a form secret field returns a secret_ref, never a value. " +
 	"The risk class is set by Tachyon: you may raise it to medium, never lower it; high is reserved for provider-console handoffs and is refused here. Retry the same key to get the same card, not a duplicate. " +
 	"If the card is denied, expired or canceled, do not re-ask the same thing without new information."
@@ -205,6 +217,18 @@ func invokeCard(ctx context.Context, c *Cards, name string, raw json.RawMessage,
 		if len(q.Effects) > 0 {
 			set("effects", q.Effects)
 		}
+		if len(q.AffectedItems) > 0 {
+			set("affected_items", q.AffectedItems)
+		}
+		if q.Destructive != nil {
+			set("destructive", q.Destructive)
+		}
+		if len(q.Alternatives) > 0 {
+			set("alternatives", q.Alternatives)
+		}
+		if len(q.Evidence) > 0 {
+			set("evidence", q.Evidence)
+		}
 		if len(q.Audience) > 0 {
 			set("audience", q.Audience)
 		}
@@ -220,6 +244,11 @@ func invokeCard(ctx context.Context, c *Cards, name string, raw json.RawMessage,
 		}
 		if err != nil {
 			return nil, cardError(err)
+		}
+		if q.ThreadRef != "" && c.Bind != nil {
+			if err := c.Bind(ctx, h.ItemID, q.Kind, q.ThreadRef, q.MessageRef); err != nil {
+				return nil, invalid("thread_ref: " + err.Error())
+			}
 		}
 		res, err := c.Service.Get(ctx, hitl.GetCommand{ContractVersion: hitl.ContractVersion, ItemID: h.ItemID, Caller: caller})
 		if err != nil {

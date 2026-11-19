@@ -145,6 +145,10 @@
       "type": "string",
       "format": "date-time",
       "description": "when someone last confirmed this record matches reality; drives the age badge on the board"
+    },
+    "release": {
+      "type": "object",
+      "description": "optional release signal shown as a timeline milestone: {label, note?, task_id? (Torque task; reached when done), released_at? (date-time; reached when set)}"
     }
   }
 }

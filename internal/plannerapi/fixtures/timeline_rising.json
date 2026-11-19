@@ -1,0 +1,13 @@
+{"milestones":[{"key":"approved","state":"reached","at":"2026-10-27T10:00:00Z"},{"key":"first_done","state":"reached","at":"2026-10-27T15:00:00Z"},{"key":"half_done","state":"next"}],
+"momentum":{"label":"rising","score":0.72,"text":"Rising: 3 done and 1 PR merged in 24h, 1 blocker weighs against.","signals":[{"kind":"done_tasks","count":3,"window":"24h","weight":1.0,"effect":"up"},{"kind":"prs_merged","count":1,"window":"24h","weight":0.8,"effect":"up"},{"kind":"blockers","count":1,"window":"now","weight":-0.5,"effect":"down"}],
+ "series":[{"at":"2026-10-28T00:00:00Z","done":2,"total":11},{"at":"2026-10-29T00:00:00Z","done":4,"total":11},{"at":"2026-10-30T00:00:00Z","done":6,"total":11}]},
+"events":[
+{"seq":412,"at":"2026-10-30T05:20:00Z","kind":"task","text":"CW-20261030-0202 moved to Review","refs":[{"kind":"torque","ref":"CW-20261030-0202"}],"delta":{"done":0,"doing":-1,"review":1,"blocked":0},"arrow":"up"},
+{"seq":411,"at":"2026-10-30T04:50:00Z","kind":"pr","text":"PR #229 merged","refs":[{"kind":"pr","ref":"hollis-labs/tachyon#229"}],"delta":{"done":0,"doing":0,"review":0,"blocked":0},"arrow":"up"},
+{"seq":409,"at":"2026-10-30T03:10:00Z","kind":"blocker","text":"Blocked: Registry link rule","refs":[{"kind":"torque","ref":"CW-20261030-0900"}],"delta":{"done":0,"doing":-1,"review":0,"blocked":1},"arrow":"down"},
+{"seq":405,"at":"2026-10-30T02:10:00Z","kind":"decision","text":"Decision opened: Where does the work panel live","refs":[{"kind":"planner","ref":"decisions/dec-0042"}],"delta":{"done":0,"doing":0,"review":0,"blocked":0},"arrow":"flat"},
+{"seq":401,"at":"2026-10-29T20:00:00Z","kind":"comment","text":"operator: Looks good to me.","refs":[],"delta":{"done":0,"doing":0,"review":0,"blocked":0},"arrow":"flat"},
+{"seq":398,"at":"2026-10-29T18:00:00Z","kind":"workstream","text":"Workstream Library closed: history with diffs","refs":[{"kind":"planner","ref":"workstreams/ws-library"}],"delta":{"done":0,"doing":0,"review":0,"blocked":0},"arrow":"up"},
+{"seq":390,"at":"2026-10-28T10:00:00Z","kind":"link","text":"Linked: needs Forge GUI","refs":[{"kind":"planner","ref":"themes/theme-forge-gui"}],"delta":{"done":0,"doing":0,"review":0,"blocked":0},"arrow":"flat"},
+{"seq":380,"at":"2026-10-27T10:00:00Z","kind":"lifecycle","text":"Approved","refs":[],"delta":{"done":0,"doing":0,"review":0,"blocked":0},"arrow":"up"}],
+"next_before_seq":null}

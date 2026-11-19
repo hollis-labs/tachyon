@@ -1,0 +1,6 @@
+{"messages":[
+{"seq":1,"id":"m_1","role":"operator","kind":"text","text":"Plan the chat backend.","at":1793300100000,"meta":null},
+{"seq":2,"id":"m_2","role":"agent","kind":"plan","text":"Proposed a 5 step plan.","at":1793300200000,"meta":{"plan_id":"pl_1"}},
+{"seq":3,"id":"m_3","role":"agent","kind":"card","text":"Which project should this plan live under?","at":1793300300000,"meta":{"item_id":"apv_01"}},
+{"seq":4,"id":"m_4","role":"operator","kind":"text","text":"Tachyon.","at":1793300400000,"meta":{"card_answer":{"item_id":"apv_01","decision":"submitted","answers":{"project":"PRJ-20260917-0001"}}}}
+],"has_more":false}

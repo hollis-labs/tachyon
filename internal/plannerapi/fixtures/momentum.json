@@ -1,0 +1,1 @@
+{"label":"steady","score":0.44,"text":"Steady across 4 themes: 5 done and 2 PRs merged in 24h.","by_label":{"rising":1,"steady":1,"cooling":1,"stalled":1},"ingest":{"degraded":false,"last_event_at":"2026-10-30T05:30:00Z","sources":{"revisions":"ok","torque":"ok","forge":"ok"}}}

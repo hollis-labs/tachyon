@@ -1,0 +1,33 @@
+{
+ "status": {
+  "available": true,
+  "enabled": true,
+  "semantic": true,
+  "modes": [
+   "text",
+   "summary",
+   "semantic",
+   "hybrid"
+  ]
+ },
+ "facets": {
+  "total": 0,
+  "enriched": 0,
+  "project_count": 0,
+  "tools": [],
+  "models": []
+ },
+ "sessions": [],
+ "complete": true,
+ "limit": 5000,
+ "observed_at": "2026-10-30T03:00:00Z",
+ "snapshot_meta": {
+  "source_state": "live",
+  "observed_at": 1761800000000,
+  "fetched_at": 1761800001500,
+  "complete": true,
+  "limit": 5000,
+  "total_available": 0,
+  "omitted_count": 0
+ }
+}

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import type { ChatMessage } from './types'
 
 /** 'all' shows every reply; 'mine' hides replies Tether says were written for other agents or the system. */
@@ -10,15 +10,25 @@ function read(): ReplyFilter {
   try { return localStorage.getItem(KEY) === 'mine' ? 'mine' : 'all' } catch { return 'all' }
 }
 
+// One shared value so the header menu and the conversation agree.
+const subs = new Set<() => void>()
+let current: ReplyFilter | null = null
+const get = (): ReplyFilter => (current ??= read())
+const set = (next: ReplyFilter) => {
+  current = next
+  try { localStorage.setItem(KEY, next) } catch { /* storage is optional */ }
+  subs.forEach((f) => f())
+}
+const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f) } }
+
 /** The reply filter and its persisted preference. Defaults to all. */
 export function useReplyFilter(): [ReplyFilter, (next: ReplyFilter) => void] {
-  const [filter, set] = useState<ReplyFilter>(read)
-  const update = useCallback((next: ReplyFilter) => {
-    set(next)
-    try { localStorage.setItem(KEY, next) } catch { /* storage is optional */ }
-  }, [])
-  return [filter, update]
+  const v = useSyncExternalStore(subscribe, get, () => 'all' as ReplyFilter)
+  return [v, set]
 }
+
+/** Test seam: forget the cached value so the next read comes from storage. */
+export const resetReplyFilterForTest = () => { current = null }
 
 /**
  * Operator messages (and anything that is not an agent reply) always stay.

@@ -1,0 +1,175 @@
+{
+ "refs": [
+  {
+   "ref": "caster://designer/tachyon-builder-golden-page",
+   "namespace": "designer",
+   "name": "tachyon-builder-golden-page",
+   "kind": "html",
+   "mime": "text/html",
+   "size": 253,
+   "rev": 3,
+   "latest_rev": 3,
+   "floating": true,
+   "sha256": "9bf43f2b43e349d27ee69fa3ebe27e914f8a4708f8d7e7114f638eea2c6b859e",
+   "title": "Golden page",
+   "tags": [
+    "golden",
+    "builder"
+   ],
+   "revisions": [
+    {
+     "rev": 1,
+     "sha256": "46df0c7c893d6c9edd1b2f6eeb28db849a7ca6c8b69acddbd62456d6ef59f1e7",
+     "size": 233,
+     "at": 1793059200000,
+     "title": "Golden page v1"
+    },
+    {
+     "rev": 2,
+     "sha256": "734c88b994d3faafb1b2ce18dfa2431d47bff9f723c59e512f2eb824c4dea162",
+     "size": 245,
+     "at": 1793145600000,
+     "title": "Golden page v2"
+    },
+    {
+     "rev": 3,
+     "sha256": "9bf43f2b43e349d27ee69fa3ebe27e914f8a4708f8d7e7114f638eea2c6b859e",
+     "size": 253,
+     "at": 1793232000000,
+     "title": "Golden page"
+    }
+   ],
+   "content": "report.html",
+   "allowed": true
+  },
+  {
+   "ref": "caster://designer/tachyon-builder-golden-page@1",
+   "namespace": "designer",
+   "name": "tachyon-builder-golden-page",
+   "kind": "html",
+   "mime": "text/html",
+   "size": 233,
+   "rev": 1,
+   "latest_rev": 3,
+   "floating": false,
+   "sha256": "46df0c7c893d6c9edd1b2f6eeb28db849a7ca6c8b69acddbd62456d6ef59f1e7",
+   "title": "Golden page v1",
+   "tags": [
+    "golden",
+    "builder"
+   ],
+   "revisions": [
+    {
+     "rev": 1,
+     "sha256": "46df0c7c893d6c9edd1b2f6eeb28db849a7ca6c8b69acddbd62456d6ef59f1e7",
+     "size": 233,
+     "at": 1793059200000,
+     "title": "Golden page v1"
+    },
+    {
+     "rev": 2,
+     "sha256": "734c88b994d3faafb1b2ce18dfa2431d47bff9f723c59e512f2eb824c4dea162",
+     "size": 245,
+     "at": 1793145600000,
+     "title": "Golden page v2"
+    },
+    {
+     "rev": 3,
+     "sha256": "9bf43f2b43e349d27ee69fa3ebe27e914f8a4708f8d7e7114f638eea2c6b859e",
+     "size": 253,
+     "at": 1793232000000,
+     "title": "Golden page"
+    }
+   ],
+   "content": "report.html",
+   "allowed": true
+  },
+  {
+   "ref": "caster://designer/tachyon-builder-golden-page@2",
+   "namespace": "designer",
+   "name": "tachyon-builder-golden-page",
+   "kind": "html",
+   "mime": "text/html",
+   "size": 245,
+   "rev": 2,
+   "latest_rev": 3,
+   "floating": false,
+   "sha256": "734c88b994d3faafb1b2ce18dfa2431d47bff9f723c59e512f2eb824c4dea162",
+   "title": "Golden page v2",
+   "tags": [
+    "golden",
+    "builder"
+   ],
+   "revisions": [
+    {
+     "rev": 1,
+     "sha256": "46df0c7c893d6c9edd1b2f6eeb28db849a7ca6c8b69acddbd62456d6ef59f1e7",
+     "size": 233,
+     "at": 1793059200000,
+     "title": "Golden page v1"
+    },
+    {
+     "rev": 2,
+     "sha256": "734c88b994d3faafb1b2ce18dfa2431d47bff9f723c59e512f2eb824c4dea162",
+     "size": 245,
+     "at": 1793145600000,
+     "title": "Golden page v2"
+    },
+    {
+     "rev": 3,
+     "sha256": "9bf43f2b43e349d27ee69fa3ebe27e914f8a4708f8d7e7114f638eea2c6b859e",
+     "size": 253,
+     "at": 1793232000000,
+     "title": "Golden page"
+    }
+   ],
+   "content": "report.html",
+   "allowed": true
+  },
+  {
+   "ref": "caster://designer/tachyon-builder-golden-page@3",
+   "namespace": "designer",
+   "name": "tachyon-builder-golden-page",
+   "kind": "html",
+   "mime": "text/html",
+   "size": 253,
+   "rev": 3,
+   "latest_rev": 3,
+   "floating": false,
+   "sha256": "9bf43f2b43e349d27ee69fa3ebe27e914f8a4708f8d7e7114f638eea2c6b859e",
+   "title": "Golden page",
+   "tags": [
+    "golden",
+    "builder"
+   ],
+   "revisions": [
+    {
+     "rev": 1,
+     "sha256": "46df0c7c893d6c9edd1b2f6eeb28db849a7ca6c8b69acddbd62456d6ef59f1e7",
+     "size": 233,
+     "at": 1793059200000,
+     "title": "Golden page v1"
+    },
+    {
+     "rev": 2,
+     "sha256": "734c88b994d3faafb1b2ce18dfa2431d47bff9f723c59e512f2eb824c4dea162",
+     "size": 245,
+     "at": 1793145600000,
+     "title": "Golden page v2"
+    },
+    {
+     "rev": 3,
+     "sha256": "9bf43f2b43e349d27ee69fa3ebe27e914f8a4708f8d7e7114f638eea2c6b859e",
+     "size": 253,
+     "at": 1793232000000,
+     "title": "Golden page"
+    }
+   ],
+   "content": "report.html",
+   "allowed": true
+  }
+ ],
+ "denied_namespaces": [
+  "private"
+ ]
+}

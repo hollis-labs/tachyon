@@ -37,6 +37,7 @@ func (Sprint) ObjectKind() Kind { return SprintKind }
 
 type Workstream struct {
 	Common
+	Pin
 	Status    string `json:"status"`
 	ProjectID string `json:"project_id,omitempty"`
 	// WorkflowID is an explicit local mapping. Provider workflow IDs belong in

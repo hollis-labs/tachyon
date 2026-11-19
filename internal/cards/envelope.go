@@ -94,7 +94,7 @@ func ToEnvelope(req hitl.EnqueueRequest) envelopes.Envelope {
 		env.Presentation = envelopes.Presentation(s)
 	}
 	_ = json.Unmarshal(req.Extra["data"], &env.Data)
-	for _, key := range []string{"summary", "completion", "class", "op_digest", "effects", "audience", "source_ref", "fallback"} {
+	for _, key := range []string{"summary", "completion", "class", "op_digest", "effects", "affected_items", "destructive", "alternatives", "audience", "source_ref", "fallback"} {
 		if raw, ok := req.Extra[key]; ok {
 			var v any
 			if json.Unmarshal(raw, &v) == nil {

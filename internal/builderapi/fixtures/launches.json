@@ -1,0 +1,9 @@
+{
+  "launches": [
+    {"id": "builder-reviewer-tachyon", "agent": "builder-reviewer", "provider": "claude", "model": "claude-sonnet-5-5", "project": "tachyon", "worker": "hub", "workspace": {"mode": "worktree", "base": "main"}, "env": {"keys": ["TACHYON_ENV", "GITHUB_TOKEN"], "secret_like_count": 1}, "route": "default", "chat": true, "enabled": true, "live_count": 1, "sha": "a565be509da049617126effe3c2dbe80f0f178c3b7b276e04b9e6b4c86444e0f"},
+    {"id": "builder-reviewer-agent-os", "agent": "builder-reviewer", "provider": "claude", "model": "claude-sonnet-5-5", "project": "agent-os", "worker": "hub", "workspace": {"mode": "shared"}, "env": {"keys": [], "secret_like_count": 0}, "route": "default", "chat": true, "enabled": true, "live_count": 1, "sha": "3d1e625171440a4e4f558689de37086754795f44b04088bedf9f86557d0f121a"},
+    {"id": "release-captain-tachyon", "agent": "release-captain", "provider": "claude", "model": "claude-opus-5-5", "project": "tachyon", "worker": "hub", "workspace": {"mode": "worktree", "base": "main"}, "env": {"keys": ["RELEASE_CHANNEL", "NPM_AUTH_TOKEN", "SIGNING_KEY_ID"], "secret_like_count": 2}, "route": "default", "chat": false, "enabled": true, "live_count": 0, "sha": "8b4bd4ac79b81530bf75a0ba4e8f8b483abcce03b996f24620d380c511d2e65f"},
+    {"id": "nightly-triage-agent-os", "agent": "nightly-triage", "provider": "codex", "model": "gpt-5-codex", "project": "agent-os", "worker": "edge-2", "workspace": {"mode": "shared"}, "env": {"keys": [], "secret_like_count": 0}, "route": null, "chat": false, "enabled": false, "live_count": 0, "sha": "51a93fc77d1567472103a50f8990fdaa8fa0f8e8f131e303ce3b19b5da60f480"}
+  ],
+  "next_cursor": null
+}

@@ -1241,13 +1241,29 @@ id** and parameters. Day one: `cerberus.resource.{apply,deploy,reload,remove,sto
   admin=self` becomes a class-`medium` approval (operator elevation required);
   prod, `admin=owner`, unlabeled or unknown targets are refused at request time
   because they need the Cerberus passkey path. The labels are read again when the run
-  starts (approval can wait up to 30 minutes); a target relabelled non-dev since, or whose
+  starts (approval can wait up to 24 hours); a target relabelled non-dev since, or whose
   labels cannot be read, is `refused` (fail closed).
 - **Lifecycle.** `pending_approval` → `approved`/`waiting_input` → `running` →
   `succeeded`/`failed`; also `denied`, `expired`, `refused`. Actions that need no input start
   on approval; interactive ones (`tether catalog approve`: digest prefix, hidden
   passphrase) wait for the owner to attach a terminal. A restart fails runs that
   were mid-flight.
+- **Continuation and attribution.** The approval page retains registered-action details through
+  the undo hold and queue refresh. Its item deep link survives reload; the terminal can reconnect
+  to the same run. The requesting seat comes from a single authenticated agent binding or the
+  pinned Tether proxy's logical agent; credential identity still controls `actions.await` access.
+  Optional `task` is a requester-supplied Torque correlation, displayed as such.
+- **Result delivery.** Terminal results persist as an outbox on the run. With the existing Tether
+  message credential configured, Tachyon resolves the requesting agent's catalog URN and sends
+  a durable result with a stable `tether.message_id` key. Receiver deduplication covers a crash
+  after send but before receipt persistence. Failures retry; unavailable or ambiguous seat
+  identity is never guessed, and old runs are not backfilled. Messages contain status, IDs and
+  an actual exit code if present, with no terminal text or input. They grant no catalog apply
+  authorization.
+- **Catalog reconciliation.** Before starting `tether.catalog.approve`, the target transport
+  runs read-only `tether catalog show <plan_id>`. Only a `planned` status permits a start;
+  externally approved/applied plans and unreadable status are refused without an exit code.
+  The reader uses the CLI status header and fails closed if that format changes.
 - **Transcript.** Unattended actions record output only: ANSI-stripped, secret-shaped strings
   redacted, 64 KiB tail. Interactive actions (`tether catalog approve`) record **no terminal
   output at all**: it exists only on the attached operator websocket, because the echo of typed
@@ -1297,7 +1313,7 @@ the producer API, so no producer enrollment is involved. Issue a credential with
 holds only these three verbs and no object kinds.
 
 1. `actions.catalog` lists machine ids, actions, parameters and the rules below.
-2. `actions.request {machine, action, params, reason}` validates against the registry
+2. `actions.request {machine, action, params, reason, task?}` validates against the registry
    (errors list the allowed machines and actions), computes the argv and `op_digest`
    server-side, and enqueues an approval. It returns `run_id`, the exact `command`,
    `op_digest`, class and a `[Approval: …](tach:approval/<item_id>)` link. Nothing runs.

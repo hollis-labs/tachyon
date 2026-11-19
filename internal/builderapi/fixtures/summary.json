@@ -1,0 +1,16 @@
+{
+  "agents": {"total": 6, "active": 4, "disabled": 1, "retired": 1},
+  "launches": {"total": 4, "live": 2},
+  "library": {"prompts": 2, "skills": 3, "tool_servers": 3, "policies": 2},
+  "projects": {"total": 3},
+  "open_changes": 3,
+  "catalog": {"observed_at": 1793320800000, "source_status": "ok", "last_plan_id": "plan_7Q3K9"},
+  "capabilities": {
+    "retired": false,
+    "one_step_save": false,
+    "delegated_approval": false,
+    "tool_server_edit": false,
+    "resolved_by": "tachyon_approx",
+    "read_prompt_bodies_requires_operator": false
+  }
+}

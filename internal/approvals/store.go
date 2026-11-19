@@ -93,15 +93,25 @@ func (s *Store) Create(ctx context.Context, rec hitl.Record) (hitl.Record, bool,
 		if err == nil {
 			out, err = readRecord(tx.QueryRowContext(ctx, "SELECT record FROM approval_items WHERE id=?", rec.ItemID))
 			created = err == nil
+			if created {
+				indexTx(ctx, tx, out)
+			}
 		}
 		return err
 	})
+	if err == nil && created {
+		s.publish(out, true)
+	}
 	return out, created, err
 }
 func (s *Store) Swap(ctx context.Context, id string, expected int64, next hitl.Record) error {
-	return s.DB.Writer.Submit(ctx, "approval_transition", func(ctx context.Context, tx *sql.Tx) error {
+	err := s.DB.Writer.Submit(ctx, "approval_transition", func(ctx context.Context, tx *sql.Tx) error {
 		return swapRecord(ctx, tx, id, expected, next)
 	})
+	if err == nil {
+		s.publish(next, false)
+	}
+	return err
 }
 
 func swapRecord(ctx context.Context, tx *sql.Tx, id string, expected int64, next hitl.Record) error {
@@ -117,6 +127,10 @@ func swapRecord(ctx context.Context, tx *sql.Tx, id string, expected int64, next
 		return err
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE approval_items SET state=?,revision=?,terminal=?,record=? WHERE id=?", next.State, next.Revision, next.State.IsTerminal(), raw, id)
+	if err == nil {
+		indexTx(ctx, tx, next)
+		logTerminalTx(ctx, tx, next)
+	}
 	return err
 }
 func (s *Store) DueForExpiry(ctx context.Context, now time.Time, limit int) ([]hitl.Record, error) {

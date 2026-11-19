@@ -1,0 +1,12 @@
+{"outbound":[
+ {"kind":"needs","to":{"db":"themes","id":"theme-forge-gui"},"title":"Forge GUI","status":"in_progress"},
+ {"kind":"delivers","to":{"db":"roadmap","id":"rm-agents-v1"},"title":"Agents v1","status":"planned"},
+ {"kind":"mitigates","to":{"db":"risks","id":"risk-session-drift"},"title":"Session drift","status":"open"},
+ {"kind":"relates","to":{"db":"decisions","id":"dec-0042"},"title":"Where does the work panel live","status":"open"}],
+"inbound":[{"kind":"needs","from":{"db":"themes","id":"theme-transcripts"},"title":"Transcripts","status":"in_progress"}],
+"external":[
+ {"kind":"pr","ref":"hollis-labs/tachyon#229","label":"B6 usage index","pr":{"host":"github.com","owner":"hollis-labs","repo":"tachyon","number":229}},
+ {"kind":"torque","ref":"CW-20261030-0114","label":"PL0 contracts"},
+ {"kind":"tesseract","ref":"01M65GX3HM5BGPSMFM0A6TSTMC","label":"Planner design"},
+ {"kind":"url","ref":"https://example.com/spec","label":"Spec"}],
+"legacy_mapped":[{"array":"depends_on","as":"needs"},{"array":"roadmap_ids","as":"delivers"}]}

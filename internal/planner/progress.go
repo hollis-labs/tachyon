@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"sync"
@@ -22,6 +23,22 @@ type Progress struct {
 	Missing  int            `json:"missing,omitempty"` // direct task ids Torque did not return
 	AsOf     string         `json:"as_of"`
 	statuses map[string]string
+}
+
+// MarshalJSON sends null (not 0) for the counts of a theme with no linked tasks: nothing was collected, which
+// is not the same as nothing being done.
+func (p Progress) MarshalJSON() ([]byte, error) {
+	type plain Progress
+	if p.Linked {
+		return json.Marshal(plain(p))
+	}
+	return json.Marshal(struct {
+		plain
+		Done   *int           `json:"done"`
+		Total  *int           `json:"total"`
+		Open   *int           `json:"open"`
+		Counts map[string]int `json:"counts"`
+	}{plain: plain(p)})
 }
 
 const doneStatus = "done"
@@ -135,4 +152,14 @@ func (ps *progressSource) theme(ctx context.Context, theme Item, workstreams []I
 		}
 	}
 	return p, nil
+}
+
+// ThemeProgress is one theme's roll-up by id, for callers outside the board (the chat Work panel). It reads
+// the theme's workstreams from the owned store and their tasks from Torque; any failed read is an error.
+func ThemeProgress(ctx context.Context, o *Owned, tasks *Tasks, theme Item) (Progress, error) {
+	ws, err := o.themeWorkstreams(ctx, theme)
+	if err != nil {
+		return Progress{}, err
+	}
+	return newProgressSource(tasks, time.Now()).theme(ctx, theme, ws)
 }

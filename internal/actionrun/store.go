@@ -31,8 +31,16 @@ func terminalState(s string) bool {
 	return false
 }
 
+// Requester is trusted seat attribution plus an optional caller-supplied task correlation.
+type Requester struct {
+	Label string `json:"label,omitempty"`
+	Agent string `json:"agent,omitempty"`
+	Task  string `json:"task,omitempty"`
+}
+
 // Run is the persisted record of one requested action.
 type Run struct {
+	Requester   Requester         `json:"requester"`
 	ID          string            `json:"run_id"`
 	ItemID      string            `json:"item_id"`
 	Machine     string            `json:"machine"`
@@ -61,14 +69,14 @@ type Run struct {
 // Store persists runs through Tachyon's one SQLite writer.
 type Store struct{ DB *localstore.Store }
 
-const runColumns = "id,item_id,machine,action,params,argv,op_digest,class,labels,requested_by,reason,state,run_user,exit_code,output,error,created_ns,started_ns,ended_ns"
+const runColumns = "id,item_id,machine,action,params,argv,op_digest,class,labels,requested_by,reason,state,run_user,exit_code,output,error,created_ns,started_ns,ended_ns,requester"
 
 func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	var r Run
-	var params, argv string
+	var params, argv, requester string
 	var exit, started, ended sql.NullInt64
 	var created int64
-	if err := row.Scan(&r.ID, &r.ItemID, &r.Machine, &r.Action, &params, &argv, &r.OpDigest, &r.Class, &r.Labels, &r.RequestedBy, &r.Reason, &r.State, &r.User, &exit, &r.Output, &r.Error, &created, &started, &ended); err != nil {
+	if err := row.Scan(&r.ID, &r.ItemID, &r.Machine, &r.Action, &params, &argv, &r.OpDigest, &r.Class, &r.Labels, &r.RequestedBy, &r.Reason, &r.State, &r.User, &exit, &r.Output, &r.Error, &created, &started, &ended, &requester); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Run{}, ErrNotFound
 		}
@@ -80,6 +88,7 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	if err := json.Unmarshal([]byte(argv), &r.Argv); err != nil {
 		return Run{}, err
 	}
+	_ = json.Unmarshal([]byte(requester), &r.Requester)
 	spec := Spec{Argv: r.Argv}
 	r.Command = spec.Command()
 	if act, ok := ActionByID(r.Action); ok {
@@ -121,9 +130,10 @@ func (s *Store) ByItem(ctx context.Context, itemID string) (Run, error) {
 func (s *Store) Insert(ctx context.Context, r Run) error {
 	params, _ := json.Marshal(r.Params)
 	argv, _ := json.Marshal(r.Argv)
+	requester, _ := json.Marshal(r.Requester)
 	return s.DB.Writer.Submit(ctx, "action_run_insert", func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "INSERT INTO action_runs("+runColumns+") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,NULL,NULL)",
-			r.ID, r.ItemID, r.Machine, r.Action, string(params), string(argv), r.OpDigest, r.Class, r.Labels, r.RequestedBy, r.Reason, r.State, r.User, "", "", r.CreatedAt.UnixNano())
+		_, err := tx.ExecContext(ctx, "INSERT INTO action_runs("+runColumns+") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?,NULL,NULL,?)",
+			r.ID, r.ItemID, r.Machine, r.Action, string(params), string(argv), r.OpDigest, r.Class, r.Labels, r.RequestedBy, r.Reason, r.State, r.User, "", "", r.CreatedAt.UnixNano(), string(requester))
 		return err
 	})
 }

@@ -118,7 +118,7 @@ func (t *transport) CloseIdleConnections() {
 // validToken accepts the printable, space-free values a bearer header can
 // carry, with the 256-byte cap go-tether-client applies.
 func validToken(s string) bool {
-	if s == "" || len(s) > 256 {
+	if s == "" || len(s) > 4096 {
 		return false
 	}
 	for i := 0; i < len(s); i++ {

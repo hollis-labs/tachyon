@@ -4,12 +4,38 @@
 @import "@hollis-labs/kit-cards/source.css";
 @import "streamdown/styles.css";
 @import "@hollis-labs/kit-dashboard/theme.css";
+@import "@hollis-labs/design-tokens/themes.css";
 @import "@hollis-labs/kit-admin/source.css";
 @import "@hollis-labs/design-app-runtime/shell-reset.css";
+
+/* Shadow strength: full in dark, softer in light (shadows are `rgb(0 0 0 / calc(a * var(--sh)))`, never a literal alpha). */
+:root {
+  --sh: 1;
+}
+[data-mode="light"] {
+  --sh: 0.28;
+}
 
 /* Tailwind does not scan node_modules or sibling workspaces on its own. */
 @source "../../packages/*/src/**/*";
 @source "../../plugins/*/ui/src/**/*";
+
+/* Kit filter chips: an unselected chip's muted label on the hover surface is under 4.5:1 in light and dark, so it goes to fg while hovered. */
+.dash-filter-chip[aria-pressed="false"]:hover {
+  color: var(--color-fg);
+}
+
+/* Message and document headings are content: sentence case, not the dashboard's uppercase section captions. */
+[data-chat-prose] :is(h1, h2, h3) {
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+}
+/* Message table headers: same, and never broken letter by letter (a narrow column made the header row many lines tall). */
+[data-chat-prose] th {
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+  white-space: nowrap;
+}
 
 /* Reordering and pointer focus remain Planner behavior; the kit owns list geometry. */
 .planner-row-grip {
@@ -28,4 +54,11 @@
 .planner-page[data-row-focus="pointer"] .planner-row-trigger:focus {
   outline: none;
   box-shadow: none;
+}
+
+/* Shell controls (rail, skip link, footer menus) show a ring for keyboard focus only. */
+.tachyon-shell nav button:focus-visible,
+.tachyon-shell > button:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
 }

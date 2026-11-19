@@ -14,7 +14,8 @@ export function AlertTrayTrigger() {
     <button
       type="button"
       data-alert-trigger=""
-      aria-label={c.unread > 0 ? `Alerts, ${c.unread} unread` : 'Alerts'}
+      // The badge reads "9+" above nine, so the name carries that text too (WCAG 2.5.3 label in name).
+      aria-label={c.unread > 9 ? `Alerts, 9+ unread (${c.unread})` : c.unread > 0 ? `Alerts, ${c.unread} unread` : 'Alerts'}
       aria-haspopup="dialog"
       aria-expanded={c.open}
       onClick={() => c.setOpen(!c.open)}
@@ -22,7 +23,7 @@ export function AlertTrayTrigger() {
       className={`relative flex h-9 w-9 items-center justify-center text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${c.open ? 'bg-surface-hover text-fg' : ''}`}
     >
       <Icon aria-hidden="true" className="h-4 w-4" />
-      <AlertBadge count={c.unread} severity={c.topUnread ?? 'info'} className="absolute -right-0.5 -top-0.5" />
+      <AlertBadge count={c.unread} className="absolute -right-0.5 -top-0.5" />
     </button>
   )
 }

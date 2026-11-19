@@ -1,9 +1,12 @@
-import { AgentPresence } from '../../observations/AgentPresence'
-import { CapabilityBadge } from '../CapabilityBadge'
+import { sessionThreadId } from '../chatapi'
+import { chatJSON } from '../roster'
 import { useChatThread } from '../hooks'
+import { useBlocks } from '../cards/useBlocks'
 import { applyReplyFilter, hiddenReplies, useReplyFilter, type ReplyFilter } from '../replyFilter'
 import { ReplyFilterToggle } from '../ReplyFilterToggle'
 import type { ChatMessage, ChatThread } from '../types'
+import type { PaletteActions } from '../workbench/Palette'
+import { useFilterInHeader } from './headerFilter'
 import { ConversationView } from './ConversationView'
 
 /** Shown when the reply filter hides everything that has loaded so far. */
@@ -29,15 +32,23 @@ function FilteredEmpty({ messages, filter, hasMore, onShowAll, onLoadOlder }: { 
  * One thread's live conversation: history, streaming, send, reply filter, reachability.
  * Used by the /chat page and the dock. Key it on the thread id so state starts fresh.
  */
-export function ThreadConversation({ thread }: { thread: ChatThread }) {
-  const { messages, capability, loading, hasMore, loadOlder, send, sendError, error } = useChatThread(thread.id)
+export function ThreadConversation({ thread, palette }: { thread: ChatThread; palette?: PaletteActions }) {
+  // The agent's newest chat API session (or the one picked in the details) is the conversation when there is one.
+  const ref = thread.sessionRef ?? thread.sessions?.[0]?.ref
+  const convId = ref ? sessionThreadId(ref) : thread.id
+  const { messages, capability, loading, hasMore, loadOlder, send, sendError, error, retry } = useChatThread(convId)
+  const { blocks, commit, runActions, loaded: blocksLoaded } = useBlocks(ref)
   const cap = capability ?? thread.capability
   const [replyFilter, setReplyFilter] = useReplyFilter()
+  const inHeader = useFilterInHeader()
   const shown = applyReplyFilter(messages, replyFilter)
-  const note = cap.mode === 'offline' ? 'Agent is offline. This will queue.' : cap.mode === 'mail-only' ? 'Mail only. Reply may take a while.' : null
+  // Only a Tether session mid-turn can be interrupted (the app agent answers 501).
+  const stoppable = !!ref && ref.startsWith('tether:') && cap.mode === 'session' && cap.canSend === false
+  const note = stoppable ? 'Working on a turn. Your draft is kept.' : cap.mode === 'offline' ? 'Agent is offline. This will queue.' : cap.mode === 'mail-only' ? 'Mail only. Reply may take a while.' : null
   return (
     <ConversationView
-      threadId={thread.id}
+      threadId={convId}
+      threadRef={ref}
       messages={shown}
       agentLabel={thread.title}
       loading={loading}
@@ -45,16 +56,19 @@ export function ThreadConversation({ thread }: { thread: ChatThread }) {
       onLoadOlder={() => void loadOlder()}
       onSend={send}
       canSend={cap.canSend !== false}
+      onStop={stoppable ? async () => { await chatJSON(`/threads/${encodeURIComponent(ref)}/stop`, { method: 'POST' }) } : undefined}
       error={error}
+      onRetry={retry}
+      role={thread.agent.agentId ?? thread.agent.label}
+      mentions={palette?.threads.map((t) => t.agent.agentId ?? t.agent.label)}
       sendError={sendError}
       note={note}
-      status={
-        <div className="space-y-1 border-b border-border px-3 py-2">
-          <CapabilityBadge capability={cap} withHint />
-          <AgentPresence sessionId={cap.sessionId} address={thread.agent.address} />
-        </div>
-      }
-      toolbarStart={<ReplyFilterToggle value={replyFilter} onChange={setReplyFilter} />}
+      palette={palette}
+      blocks={blocks}
+      blocksLoaded={blocksLoaded}
+      commit={commit}
+      runActions={runActions}
+      toolbarStart={inHeader ? undefined : <ReplyFilterToggle value={replyFilter} onChange={setReplyFilter} />}
       empty={messages.length > 0 ? <FilteredEmpty messages={messages} filter={replyFilter} hasMore={hasMore} onShowAll={() => setReplyFilter('all')} onLoadOlder={() => void loadOlder()} /> : undefined}
     />
   )

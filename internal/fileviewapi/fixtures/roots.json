@@ -1,0 +1,45 @@
+{
+ "roots": [
+  {
+   "id": "downloads",
+   "label": "Downloads",
+   "path_display": "~/Downloads",
+   "source": "default",
+   "writable": false
+  },
+  {
+   "id": "dev",
+   "label": "dev",
+   "path_display": "~/dev",
+   "source": "default",
+   "writable": false
+  },
+  {
+   "id": "tmp",
+   "label": "tmp",
+   "path_display": "/tmp",
+   "source": "default",
+   "writable": false,
+   "owner_only": true
+  },
+  {
+   "id": "workspaces",
+   "label": "Workspaces",
+   "path_display": "~/dev/agent-os/workspaces",
+   "source": "default",
+   "writable": false
+  },
+  {
+   "id": "notes",
+   "label": "Notes",
+   "path_display": "~/notes",
+   "source": "app",
+   "writable": false
+  }
+ ],
+ "caps": {
+  "text_bytes": 2097152,
+  "image_bytes": 26214400,
+  "html_bytes": 2097152
+ }
+}

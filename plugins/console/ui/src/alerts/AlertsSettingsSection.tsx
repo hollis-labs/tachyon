@@ -1,0 +1,37 @@
+import type { ComponentType, ReactNode } from 'react'
+import { ConsolePrefsPanel } from '../prefs/ConsolePrefsPanel'
+import { useOptionalAlertsController } from './context'
+
+/** Settings > Alerts. Mounted by the shell's Settings page; edits apply immediately, like the tray. */
+export function AlertsSettingsSection({
+  card: Card,
+  bodyOnly = false,
+}: {
+  /** The shell's Settings card, so the section matches its siblings. */
+  card?: ComponentType<{ title: string; description?: string; children: ReactNode }>
+  /** Only the controls: the host page renders the heading and intro (Settings uses its shared column header). */
+  bodyOnly?: boolean
+}) {
+  const c = useOptionalAlertsController()
+  if (bodyOnly)
+    return c ? <ConsolePrefsPanel prefs={c.prefs} onChange={c.setPrefs} /> : <p className="text-sm text-text-subtle">Alerts are not enabled.</p>
+  return (
+    <section aria-labelledby="settings-alerts-h" className="space-y-4">
+      <h2 id="settings-alerts-h" tabIndex={-1} className={Card ? 'sr-only' : 'font-sans text-lg font-semibold normal-case tracking-normal text-fg'}>
+        Alerts
+      </h2>
+      {!Card && <p className="-mt-2 dash-control text-fg-muted">Choose what reaches you and how loudly.</p>}
+      {c ? (
+        Card ? (
+          <Card title="Alerts" description="What reaches the bell and toasts. Changes apply immediately.">
+            <ConsolePrefsPanel prefs={c.prefs} onChange={c.setPrefs} />
+          </Card>
+        ) : (
+          <ConsolePrefsPanel prefs={c.prefs} onChange={c.setPrefs} />
+        )
+      ) : (
+        <p className="text-sm text-text-subtle">Alerts are not enabled.</p>
+      )}
+    </section>
+  )
+}

@@ -1,5 +1,6 @@
 import type {
   MergeInput,
+  MergePreflight,
   MergeResult,
   AddCommentInput,
   AssignInput,
@@ -14,6 +15,10 @@ import type {
   Repo,
   RepoRef,
   Review,
+  AuditEntry,
+  ForgeStatus,
+  ReviewDraft,
+  ReviewValidation,
   ReviewInput,
 } from './types'
 
@@ -39,10 +44,24 @@ export interface ForgeClient {
   addComment(ref: PrRef, input: AddCommentInput): Promise<ForgeComment>
   /** effect: write, ack */
   reviewPr(ref: PrRef, input: ReviewInput): Promise<Review>
+  /** effect: read. Optional: clients without a preflight route fall back to local checks. */
+  getMergePreflight?(ref: PrRef): Promise<MergePreflight>
+  /** effect: read. Optional: absent when the forge has no validate route. */
+  validateReview?(ref: PrRef, input: { headSha: string; comments: NonNullable<ReviewInput['comments']> }): Promise<ReviewValidation>
+  /** effect: read. Optional draft persistence; null when none is saved. */
+  getReviewDraft?(ref: PrRef): Promise<ReviewDraft | null>
+  /** effect: write */
+  saveReviewDraft?(ref: PrRef, draft: ReviewDraft): Promise<void>
+  /** effect: write */
+  deleteReviewDraft?(ref: PrRef): Promise<void>
   /** effect: write, ack */
   mergePr(ref: PrRef, input: MergeInput): Promise<MergeResult>
   /** effect: write */
   assign(ref: PrRef, input: AssignInput): Promise<PullRequest>
+  /** effect: read. Optional: the forge write audit (operator-gated), newest first. */
+  listAudit?(limit?: number): Promise<AuditEntry[]>
+  /** effect: read. Optional freshness signal. */
+  getStatus?(): Promise<ForgeStatus>
   /** effect: read */
   listPendingPrs(): Promise<PendingPrSummary[]>
 }

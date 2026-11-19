@@ -66,7 +66,7 @@ func checkFields(data json.RawMessage) (secret bool, err error) {
 // responseExtras are the only members a card response may carry beyond
 // kind and decision. assurance_evidence is written by the trusted path.
 var responseExtras = map[string]bool{
-	"note": true, "reply": true, "answers": true, "decisions": true, "payload": true, "assurance_evidence": true,
+	"note": true, "reply": true, "answers": true, "decisions": true, "payload": true, "assurance_evidence": true, "alternative_id": true,
 }
 
 // ValidateResponse is the hitl.Options.ValidateResponse check for card kinds.
@@ -213,4 +213,22 @@ func optionIn(options []any, want string) bool {
 		}
 	}
 	return false
+}
+
+// SecretFields lists the ids of the secret fields of a card request's form; none for other kinds.
+func SecretFields(req hitl.EnqueueRequest) []string {
+	if !IsCard(req.Kind) || len(req.Extra["data"]) == 0 {
+		return nil
+	}
+	fields, err := formFields(req.Extra["data"])
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, f := range fields {
+		if f.Type == "secret" {
+			out = append(out, f.ID)
+		}
+	}
+	return out
 }

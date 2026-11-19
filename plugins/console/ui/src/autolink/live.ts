@@ -1,3 +1,4 @@
+import { registerFileRefs } from '../files/register'
 import { hostFetch } from '@tachyon/host-sdk'
 import { createPlannerResolver, createTorqueContainerResolver, epicEntity, previewRead, projectEntity, sprintEntity, torquePlanEntity, createTetherAgentResolver, createTetherPlanResolver, createTorqueTaskResolver, PLANNER_ENTITIES, TESSERACT_ITEM_KIND, TESSERACT_KEY_KIND, type KindResolver } from '../refs'
 import type { Epic, PlanDetail, Project, Sprint, TorqueApiClient } from '@tachyon/torque-client'
@@ -20,6 +21,7 @@ export function createLiveResolvers(api: Pick<TorqueApiClient, 'plannerTaskTitle
   // Forge kinds (G2): registers pr/commit/repo (idempotent) and resolves through the ForgeClient (mock by default).
   const forge = registerForgeRefs().resolvers
   registerTaskRefs()
+  registerFileRefs()
   const planner = createPlannerResolver((ref, signal) => api.plannerResolve(ref, signal))
   const resolvers: Record<string, KindResolver> = {
     ...forge,

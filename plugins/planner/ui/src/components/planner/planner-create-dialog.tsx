@@ -7,7 +7,7 @@ import { usePlannerApi as useApi } from '@planner/api/context'
 import { usePlannerSchema } from '@planner/hooks/use-planner-schema'
 import { PlannerApiError as ApiError } from '@planner/api/errors'
 import { buildNewItem, createDraft, createSpecs, missingRequired, plannerMeta, validationErrors, type Draft, type FieldError } from '@planner/lib/planner'
-import { notifyError, notifySuccess } from '@planner/api/notifications'
+import { authorizing, notifyError, notifySuccess } from '@planner/api/notifications'
 import type { PlannerDb, PlannerItem } from '@planner/api/types'
 
 interface PlannerCreateDialogProps {
@@ -16,10 +16,12 @@ interface PlannerCreateDialogProps {
   onOpenChange: (open: boolean) => void
   /** The rank a new priority starts at. */
   nextRank?: number
+  /** Prefills the title, e.g. what was typed in the palette. */
+  initialTitle?: string
   onCreated: (item: PlannerItem) => void
 }
 
-export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCreated }: PlannerCreateDialogProps) {
+export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, initialTitle, onCreated }: PlannerCreateDialogProps) {
   const api = useApi()
   const schema = usePlannerSchema(db)
   const meta = plannerMeta(db)
@@ -32,7 +34,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
 
   useEffect(() => {
     if (open && schema) {
-      setDraft(createDraft(db, specs, nextRank))
+      setDraft({ ...createDraft(db, specs, nextRank), ...(initialTitle ? { title: initialTitle } : {}) })
       setErrors([])
       setWriteError(null)
       retainedId.current = createPlannerId()
@@ -47,7 +49,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
     setSubmitting(true)
     setErrors([])
     try {
-      const created = await api.plannerCreate(db, buildNewItem(specs, draft), retainedId.current)
+      const created = await authorizing(() => api.plannerCreate(db, buildNewItem(specs, draft), retainedId.current))
       notifySuccess(`Created ${created.id}`)
       onOpenChange(false)
       onCreated(created)
@@ -64,7 +66,7 @@ export function PlannerCreateDialog({ db, open, onOpenChange, nextRank = 1, onCr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="dash-detail-dialog max-h-[85vh] overflow-auto" widthClassName="max-w-lg">
         <DialogHeader>
-          <DialogTitle>New {meta.singular}</DialogTitle>
+          <DialogTitle className="font-sans text-base font-semibold normal-case tracking-normal text-fg">New {meta.singular}</DialogTitle>
           <DialogDescription>Fill in the essentials. Everything else can be edited once it exists.</DialogDescription>
         </DialogHeader>
         <PlannerWriteError error={writeError} />

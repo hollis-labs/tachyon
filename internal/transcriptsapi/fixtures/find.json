@@ -1,0 +1,51 @@
+{
+ "total": 3,
+ "matches": [
+  {
+   "turn_offset": 3,
+   "seq": 3,
+   "role": "assistant",
+   "snippet": "\u2026ran the forge tests\u2026",
+   "highlight": {
+    "format": "ranges",
+    "ranges": [
+     {
+      "start": 13,
+      "end": 18
+     }
+    ]
+   }
+  },
+  {
+   "turn_offset": 9,
+   "seq": 9,
+   "role": "assistant",
+   "snippet": "\u2026forge push rejected\u2026",
+   "highlight": {
+    "format": "ranges",
+    "ranges": [
+     {
+      "start": 1,
+      "end": 6
+     }
+    ]
+   }
+  },
+  {
+   "turn_offset": 21,
+   "seq": 21,
+   "role": "user",
+   "snippet": "\u2026and the forge docs\u2026",
+   "highlight": {
+    "format": "ranges",
+    "ranges": [
+     {
+      "start": 8,
+      "end": 13
+     }
+    ]
+   }
+  }
+ ],
+ "truncated": false
+}

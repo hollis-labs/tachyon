@@ -458,6 +458,8 @@ export class MockForgeClient implements ForgeClient {
         updatedAt: pr.updatedAt,
         additions: pr.additions,
         deletions: pr.deletions,
+        draft: pr.draft,
+        changedFiles: pr.changedFiles,
         url: pr.url,
       })
     }

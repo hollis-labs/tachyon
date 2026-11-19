@@ -1,0 +1,11 @@
+{
+  "code": "already_resolved",
+  "message": "This item was already decided.",
+  "terminal_outcome": {
+    "type": "resolved",
+    "decision": "approved",
+    "resolution_id": "res_01",
+    "resolved_at": "2026-10-30T02:55:00Z"
+  },
+  "revision": 3
+}

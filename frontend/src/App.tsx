@@ -1,5 +1,5 @@
 import { EmptyState, Toaster, TooltipProvider } from "@hollis-labs/design-components"
-import { NavRail, type NavRailItem, ThemeSwitcher } from "@hollis-labs/kit-dashboard"
+import { NavRail, type NavRailItem } from "@hollis-labs/kit-dashboard"
 import {
   type HostPluginInfo,
   HostPluginsProvider,
@@ -13,6 +13,10 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 import { useApi } from "./api/context"
 import { DataStatus } from "./DataStatus"
 import { plugins } from "./plugins"
+import { Landing } from "./settings/Landing"
+import { SettingsPage } from "./settings/SettingsPage"
+import { AvatarMenu } from "./user/AvatarMenu"
+import { UserPage } from "./user/UserPage"
 
 const DEFAULT_ROUTE = "/planner"
 
@@ -54,6 +58,13 @@ function Shell() {
 
   return (
     <div className="tachyon-shell flex h-full w-full overflow-hidden bg-bg text-foreground">
+      <button
+        type="button"
+        onClick={() => document.getElementById("main")?.focus()}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:border focus:border-border focus:bg-bg focus:px-3 focus:py-2 focus:text-sm focus:text-foreground"
+      >
+        Skip to content
+      </button>
       <NavRail
         items={items}
         logo={<Atom className="h-5 w-5" />}
@@ -61,15 +72,19 @@ function Shell() {
         footerExtra={
           <>
             {extras}
-            <ThemeSwitcher />
+            <AvatarMenu />
           </>
         }
       />
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg">
+      <main
+        id="main"
+        tabIndex={-1}
+        className="flex min-w-0 flex-1 flex-col overflow-hidden bg-bg outline-none"
+      >
         <DataStatus />
         <div className="min-h-0 flex-1 overflow-auto">
           <Routes>
-            <Route path="/" element={<Navigate to={DEFAULT_ROUTE} replace />} />
+            <Route path="/" element={<Landing fallback={DEFAULT_ROUTE} />} />
             {plugins.flatMap((p) =>
               p.routes.map((r) => (
                 <Route
@@ -79,6 +94,13 @@ function Shell() {
                 />
               )),
             )}
+            {/* Tasks are a Planner lens, not a destination (Interaction Designer, CW-20261030-0170). */}
+            <Route path="/tasks" element={<Navigate to={DEFAULT_ROUTE} replace />} />
+            <Route path="/tasks/:id" element={<Navigate to={DEFAULT_ROUTE} replace />} />
+            <Route path="/settings" element={<Navigate to="/settings/appearance" replace />} />
+            <Route path="/settings/account" element={<Navigate to="/user" replace />} />
+            <Route path="/user" element={<UserPage />} />
+            <Route path="/settings/:section" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to={DEFAULT_ROUTE} replace />} />
           </Routes>
         </div>

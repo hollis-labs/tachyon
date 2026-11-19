@@ -34,6 +34,8 @@ export interface WriteResult {
 export interface Workspace {
   load: WorkspaceLoad
   reload(): void
+  /** When the data last arrived (ms). */
+  loadedAt: number
   /** Optimistic placeholders currently being posted. */
   posting: ForgeComment[]
   /** Review comments queued for the next review submission. */
@@ -53,6 +55,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
   const key = prKey(ref)
   const [state, setState] = useState<{ key: string; load: WorkspaceLoad }>({ key, load: { status: 'loading' } })
   const [version, setVersion] = useState(0)
+  const [loadedAt, setLoadedAt] = useState(() => Date.now())
   const [posting, setPosting] = useState<ForgeComment[]>([])
   const [pending, setPending] = useState<PendingComment[]>([])
   const { host, owner, name } = ref.repo
@@ -63,7 +66,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
     let live = true
     const epoch = readEpoch.current
     Promise.all([client.getPr(stable), client.getDiff(stable), client.listCommits(stable), client.listComments(stable)]).then(
-      ([pr, files, commits, comments]) => live && epoch === readEpoch.current && setState({ key, load: { status: 'ready', data: { pr, files, commits, comments } } }),
+      ([pr, files, commits, comments]) => { if (live && epoch === readEpoch.current) { setState({ key, load: { status: 'ready', data: { pr, files, commits, comments } } }); setLoadedAt(Date.now()) } },
       (e: unknown) =>
         live && epoch === readEpoch.current && setState({ key, load: { status: 'error', message: e instanceof Error ? e.message : String(e), code: (e as { code?: string })?.code } }),
     )
@@ -73,6 +76,39 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
   }, [client, key, version, stable])
 
   useEffect(() => dataRefreshRegistry('forge').subscribe(() => setVersion(v => v + 1)), [])
+
+  // Queued review comments survive a reload: restore the saved draft once per PR, then mirror changes (debounced).
+  const draftReady = useRef<string | null>(null)
+  /** A draft exists server-side (restored or saved), so an empty queue should delete it; otherwise no write is sent. */
+  const draftExists = useRef(false)
+  useEffect(() => {
+    if (!client.getReviewDraft) return
+    let live = true
+    draftReady.current = null
+    draftExists.current = false
+    client.getReviewDraft(stable).then((d) => {
+      if (!live) return
+      draftExists.current = !!d
+      if (d && d.comments.length) setPending((p) => (p.length ? p : d.comments.map((c, i) => ({ ...c, id: `d-${i}-${++tmp}` }))))
+      draftReady.current = key
+    }, () => { if (live) draftReady.current = key })
+    return () => { live = false }
+  }, [client, key, stable])
+  const headForDraft = state.key === key && state.load.status === 'ready' ? state.load.data.pr.headSha : undefined
+  useEffect(() => {
+    if (!client.saveReviewDraft || draftReady.current !== key || !headForDraft) return
+    const t = setTimeout(() => {
+      const comments = pending.map((c) => ({ body: c.body, path: c.path, line: c.line, side: c.side }))
+      if (comments.length) {
+        draftExists.current = true
+        void client.saveReviewDraft!(stable, { headSha: headForDraft, comments }).catch(() => undefined)
+      } else if (draftExists.current) {
+        draftExists.current = false
+        void client.deleteReviewDraft?.(stable)?.catch(() => undefined)
+      }
+    }, 800)
+    return () => clearTimeout(t)
+  }, [client, key, stable, pending, headForDraft])
 
   // Reset transient state when the PR changes.
   const [seenKey, setSeenKey] = useState(key)
@@ -110,7 +146,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
   const submitReview = useCallback(
     async (input: Omit<ReviewInput, 'comments'>): Promise<WriteResult> => {
       const comments = pending.map((c) => ({ body: c.body, path: c.path, line: c.line, side: c.side }))
-      const res = await bus.dispatch(reviewAction(stable, { ...input, ...(comments.length ? { comments } : {}) }))
+      const res = await bus.dispatch(reviewAction(stable, { ...input, headSha: input.headSha ?? (state.key === key && state.load.status === 'ready' ? state.load.data.pr.headSha : undefined), ...(comments.length ? { comments } : {}) }))
       if (res.status === 'ok') {
         setPending([])
         // Reviews add comments server-side; refetch for the true state.
@@ -119,7 +155,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
       }
       return { ok: false, message: res.message ?? `Review not submitted (${res.status})` }
     },
-    [bus, pending, stable],
+    [bus, pending, stable, state, key],
   )
 
   const mergePr = useCallback(async (input: MergeInput): Promise<WriteResult> => {
@@ -137,6 +173,7 @@ export function useWorkspace(client: ForgeClient, bus: ActionBus, ref: PrRef, ac
   return {
     mergePr,
     load,
+    loadedAt,
     reload: () => { void refreshPageData().then(() => setVersion((v) => v + 1)) },
     posting,
     pending,

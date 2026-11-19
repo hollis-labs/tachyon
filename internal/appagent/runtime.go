@@ -2,7 +2,9 @@ package appagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"time"
 )
 
 // Runtime is the port between Tachyon's chat and whatever runs the agent. Nanite
@@ -33,14 +35,38 @@ const (
 	EventToolEnd   = "tool_end"   // Tool finished (ok | error)
 	EventFinish    = "finish"     // Reason says why; the turn is over
 	EventError     = "error"      // Err says what failed; the turn is over
+	EventApproval  = "approval"   // Approval is a tool call waiting for the operator (inband, once scope)
+	EventContext   = "context"    // Used, Window and Model are the runtime's context meter (a signal, not the end)
 )
 
+// Approval is a runtime approval.request: the agent wants to run Tool and waits for an allow or deny.
+// Class is what the runtime says about the call ("low" when it is read-only); empty means unknown, which
+// is treated as not low.
+type Approval struct {
+	ID        string
+	CallID    string
+	Tool      string
+	Input     json.RawMessage
+	Reason    string
+	Class     string
+	ExpiresAt time.Time
+}
+
+// Responder is implemented by runtimes that take approval answers back (Nanite: once scope only).
+type Responder interface {
+	Respond(ctx context.Context, session, approvalID string, allow bool) error
+}
+
 type TurnEvent struct {
-	Kind   string
-	Text   string
-	Tool   Tool
-	Reason string
-	Err    string
+	Approval *Approval
+	Kind     string
+	Text     string
+	Tool     Tool
+	Reason   string
+	Err      string
+	// Context meter, for EventContext. Zero means the runtime did not say.
+	Used, Window int64
+	Model        string
 }
 
 // Result is a turn's state as the runtime sees it now.
@@ -58,3 +84,14 @@ func (r Result) Terminal() bool {
 	}
 	return false
 }
+
+type clientContextKey struct{}
+
+// WithClientContext carries a turn's client_context payload to the runtime adapter. The
+// adapter decides whether to forward it; the server sets it only when enabled.
+func WithClientContext(ctx context.Context, v any) context.Context {
+	return context.WithValue(ctx, clientContextKey{}, v)
+}
+
+// ClientContextFrom returns the payload set by WithClientContext, or nil.
+func ClientContextFrom(ctx context.Context) any { return ctx.Value(clientContextKey{}) }

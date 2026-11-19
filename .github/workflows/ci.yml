@@ -3,8 +3,9 @@ name: ci
 on:
   push:
     branches: [main]
+  # Every pull request, including ones stacked on another branch: a base filter of
+  # main left stacked PRs with no checks at all.
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -26,6 +27,7 @@ jobs:
           npm ci
           npm run typecheck
           npm run lint
+          npm run lint:planner
           npm test
           npm run build
       - run: go mod tidy

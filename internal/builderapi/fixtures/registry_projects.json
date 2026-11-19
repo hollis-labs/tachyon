@@ -1,0 +1,5 @@
+{"projects": [
+  {"id": "tachyon", "display_name": "Tachyon", "description": "The operator console.", "tags": ["app", "go"], "status": "active", "link": {"state": "linked", "catalog_id": "tachyon", "reason": null}, "counts": {"agents": 2, "launches": 3, "planner_items": 41, "tether_sessions": 2}},
+  {"id": "agent-os", "display_name": "Agent OS", "description": "Agent runtime and workspaces.", "tags": ["runtime"], "status": "active", "link": {"state": "linked", "catalog_id": "agent-os", "reason": null}, "counts": {"agents": 2, "launches": 2, "planner_items": 17, "tether_sessions": 1}},
+  {"id": "scratch-notes", "display_name": "Scratch notes", "description": "", "tags": [], "status": "paused", "link": {"state": "unlinked", "catalog_id": null, "reason": "No catalog project matches this registry id."}, "counts": {"agents": null, "launches": null, "planner_items": 3, "tether_sessions": null}}
+], "next_cursor": null}

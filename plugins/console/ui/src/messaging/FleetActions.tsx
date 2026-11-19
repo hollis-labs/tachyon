@@ -8,7 +8,7 @@ import { NudgeButton, RequestUpdateButton } from './QuickActions'
 import type { Recipient } from './types'
 import { fleetAgentAddress } from './unread-store'
 
-const BTN = 'border border-zinc-700 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40'
+const BTN = 'border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-fg-secondary transition-colors hover:border-border hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warning disabled:cursor-not-allowed disabled:opacity-40'
 
 /**
  * Nudge / request update / chat for one fleet agent, for the agent modal. Renders nothing
@@ -34,7 +34,7 @@ export function FleetMessageActions({ agent, onBeforeChat }: { agent: { id: stri
   if (!enabled) return null
   return (
     <section aria-label="Message this agent" className="mt-3">
-      <h3 className="mb-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">Message</h3>
+      <h3 className="mb-1 font-mono text-[10px] uppercase tracking-widest text-fg-muted">Message</h3>
       <div className="flex flex-wrap items-center gap-2">
         {!agent.chat && <><NudgeButton recipient={recipient} /><RequestUpdateButton recipient={recipient} /></>}
         <button

@@ -1,0 +1,83 @@
+{
+ "entries": [
+  {
+   "id": 6,
+   "ts_ms": 1793318760000,
+   "principal": "bs_3f9a1c",
+   "kind": "open",
+   "source": "host",
+   "path_or_ref": "/home/operator/.ssh/id_ed25519",
+   "resolved_root": null,
+   "outcome": "denied",
+   "deny_reason": "secret_pattern",
+   "bytes_served": null,
+   "etag": null
+  },
+  {
+   "id": 5,
+   "ts_ms": 1793318700000,
+   "principal": "bs_3f9a1c",
+   "kind": "caster",
+   "source": "caster",
+   "path_or_ref": "caster://designer/tachyon-builder-golden-page@2",
+   "resolved_root": null,
+   "outcome": "ok",
+   "deny_reason": null,
+   "bytes_served": 253,
+   "etag": "734c88b994d3faafb1b2ce18dfa2431d47bff9f723c59e512f2eb824c4dea162"
+  },
+  {
+   "id": 4,
+   "ts_ms": 1793318640000,
+   "principal": "bs_3f9a1c",
+   "kind": "frame",
+   "source": "host",
+   "path_or_ref": "/home/operator/dev/site/report.html",
+   "resolved_root": "dev",
+   "outcome": "ok",
+   "deny_reason": null,
+   "bytes_served": 253,
+   "etag": null
+  },
+  {
+   "id": 3,
+   "ts_ms": 1793318580000,
+   "principal": "bs_3f9a1c",
+   "kind": "open",
+   "source": "host",
+   "path_or_ref": "/home/operator/Downloads/build.log",
+   "resolved_root": "dev",
+   "outcome": "error",
+   "deny_reason": "too_large",
+   "bytes_served": null,
+   "etag": null
+  },
+  {
+   "id": 2,
+   "ts_ms": 1793318520000,
+   "principal": "bs_3f9a1c",
+   "kind": "stat",
+   "source": "host",
+   "path_or_ref": "(batch of 12)",
+   "resolved_root": "dev",
+   "outcome": "ok",
+   "deny_reason": null,
+   "bytes_served": null,
+   "etag": null
+  },
+  {
+   "id": 1,
+   "ts_ms": 1793318460000,
+   "principal": "bs_3f9a1c",
+   "kind": "open",
+   "source": "host",
+   "path_or_ref": "/home/operator/dev/README.md",
+   "resolved_root": "dev",
+   "outcome": "ok",
+   "deny_reason": null,
+   "bytes_served": 87,
+   "etag": null
+  }
+ ],
+ "next_since": null
+}

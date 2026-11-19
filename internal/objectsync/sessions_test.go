@@ -19,7 +19,9 @@ func TestSessionPaginationAtomicFailureAndNoAbsenceDeletion(t *testing.T) {
 	_, c := testStore(t)
 	a := sessionDTO("new", "2026-10-18T10:00:00Z")
 	b := sessionDTO("old", "2026-10-17T10:00:00Z")
-	first := any(map[string]any{"sessions": []any{a}, "next_cursor": a["created_at"]})
+	// Tether's live cursor shape (2026-11): opaque "v1." + base64 of [created_at, id].
+	const cursor = "v1.WyIyMDI2LTEwLTE4VDEwOjAwOjAwWiIsIm5ldyJd"
+	first := any(map[string]any{"sessions": []any{a}, "next_cursor": cursor})
 	second := any(map[string]any{"sessions": []any{b}})
 	failSecond := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,7 @@ func TestSessionPaginationAtomicFailureAndNoAbsenceDeletion(t *testing.T) {
 		if r.URL.Query().Get("cursor") == "" {
 			json.NewEncoder(w).Encode(first)
 		} else {
-			if r.URL.Query().Get("cursor") != a["created_at"] {
+			if r.URL.Query().Get("cursor") != cursor {
 				t.Error("wrong cursor")
 			}
 			if failSecond {
@@ -82,7 +84,7 @@ func TestSessionPaginationAtomicFailureAndNoAbsenceDeletion(t *testing.T) {
 	if get(t, c, s, "new").Revision != completed.Revision {
 		t.Fatal("identical scan created history")
 	}
-	for _, bad := range []any{map[string]any{}, map[string]any{"sessions": nil}, map[string]any{"sessions": []any{a, a}}, map[string]any{"sessions": []any{a}, "next_cursor": "bad"}, map[string]any{"sessions": []any{a}, "next_cursor": nil}, map[string]any{"sessions": []any{a}, "next_cursor": "2026-10-18T09:00:00Z"}, map[string]any{"sessions": []any{}, "more": true}} {
+	for _, bad := range []any{map[string]any{}, map[string]any{"sessions": nil}, map[string]any{"sessions": []any{a, a}}, map[string]any{"sessions": []any{a}, "next_cursor": nil}, map[string]any{"sessions": []any{a}, "next_cursor": 7}, map[string]any{"sessions": []any{}, "next_cursor": cursor}, map[string]any{"sessions": []any{}, "more": true}} {
 		first = bad
 		if _, err = c.Run(ctx, s, ""); err == nil {
 			t.Fatal("invalid page accepted", bad)
@@ -91,7 +93,7 @@ func TestSessionPaginationAtomicFailureAndNoAbsenceDeletion(t *testing.T) {
 			t.Fatal("invalid scan changed history")
 		}
 	}
-	first = map[string]any{"sessions": []any{a}, "next_cursor": a["created_at"]}
+	first = map[string]any{"sessions": []any{a}, "next_cursor": cursor}
 	second = first
 	if _, err = c.Run(ctx, s, ""); err == nil {
 		t.Fatal("repeating cursor accepted")
@@ -158,5 +160,29 @@ func TestSessionRelationshipResolutionUsesSourceFactsAndKeepsOverrides(t *testin
 	json.Unmarshal(observed.Source.Definition, &source)
 	if source.ProjectID != "" || source.Properties["tether"].(map[string]any)["project_resolution"] != "ambiguous" {
 		t.Fatal("ambiguous alias resolved", source)
+	}
+}
+
+// Live failure 2026-11-14: once the session list needed a second page, every scan failed with "invalid session
+// continuation". The cursor names the oldest row's created_at, but at whole-second precision and with rows that
+// share a second in any order; a raw string compare rejected it. Times are compared at one-second precision.
+func TestSessionCursorAtSecondPrecisionAndUnorderedTies(t *testing.T) {
+	_, c := testStore(t)
+	page1 := []any{sessionDTO("a", "2026-11-14T08:13:02.512Z"), sessionDTO("b", "2026-11-14T08:11:58.100Z"), sessionDTO("c", "2026-11-14T08:11:58.900Z")}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cursor") == "" {
+			json.NewEncoder(w).Encode(map[string]any{"sessions": page1, "next_cursor": "2026-11-14T08:11:58Z"})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"sessions": []any{sessionDTO("d", "2026-11-13T07:00:00.250Z")}})
+	}))
+	defer server.Close()
+	s, err := NewTetherSessions(server.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := mustRun(t, c, s)
+	if state.Pages != 2 || state.Items != 4 {
+		t.Fatalf("state: %+v", state)
 	}
 }

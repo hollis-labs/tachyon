@@ -1,0 +1,277 @@
+{
+  "al_approval_01": {
+    "timeline": [
+      {
+        "at_ms": 1793332620000,
+        "label": "Approval requested by Builder 2",
+        "ref": {
+          "kind": "approval",
+          "ref": "apr_station_restart",
+          "label": "Restart station"
+        }
+      },
+      {
+        "at_ms": 1793332560000,
+        "label": "Builder 2 asked to restart station",
+        "ref": {
+          "kind": "agent",
+          "ref": "agent-builder-2",
+          "label": "Builder 2"
+        }
+      }
+    ],
+    "linked": [
+      {
+        "kind": "approval",
+        "ref": "apr_station_restart",
+        "label": "Restart station"
+      },
+      {
+        "kind": "agent",
+        "ref": "agent-builder-2",
+        "label": "Builder 2"
+      }
+    ],
+    "technical": {
+      "fields": [
+        {
+          "label": "item_id",
+          "value": "apr_station_restart"
+        },
+        {
+          "label": "class",
+          "value": "medium"
+        }
+      ]
+    },
+    "actions": [
+      {
+        "id": "approval",
+        "label": "Decide",
+        "kind": "approval"
+      },
+      {
+        "id": "open",
+        "label": "Open in Approvals",
+        "kind": "link"
+      }
+    ],
+    "approval": {
+      "item_id": "apr_station_restart",
+      "expires_at_ms": 1793333640000,
+      "class": "medium",
+      "risk_display": "Restarts a running service",
+      "provider_handoff": false
+    }
+  },
+  "al_handoff_01": {
+    "timeline": [
+      {
+        "at_ms": 1793330700000,
+        "label": "Approval requested by Cerberus",
+        "ref": null
+      }
+    ],
+    "linked": [
+      {
+        "kind": "approval",
+        "ref": "apr_provider_rotate",
+        "label": "Rotate the hub signing key"
+      }
+    ],
+    "technical": {
+      "fields": [
+        {
+          "label": "item_id",
+          "value": "apr_provider_rotate"
+        },
+        {
+          "label": "class",
+          "value": "high"
+        }
+      ]
+    },
+    "actions": [
+      {
+        "id": "open",
+        "label": "Open in Approvals",
+        "kind": "link"
+      }
+    ],
+    "approval": {
+      "item_id": "apr_provider_rotate",
+      "expires_at_ms": 1793354400000,
+      "class": "high",
+      "risk_display": "Rotates a credential",
+      "provider_handoff": true
+    }
+  },
+  "al_approval_done_01": {
+    "timeline": [
+      {
+        "at_ms": 1793160000000,
+        "label": "Approval requested by Cerberus",
+        "ref": null
+      },
+      {
+        "at_ms": 1793163600000,
+        "label": "Approved by operator session",
+        "ref": null
+      }
+    ],
+    "linked": [
+      {
+        "kind": "approval",
+        "ref": "apr_sweep",
+        "label": "Run the nightly sweep"
+      }
+    ],
+    "technical": {
+      "fields": [
+        {
+          "label": "item_id",
+          "value": "apr_sweep"
+        }
+      ]
+    },
+    "actions": [
+      {
+        "id": "open",
+        "label": "Open in Approvals",
+        "kind": "link"
+      }
+    ],
+    "approval": {
+      "item_id": "apr_sweep",
+      "expires_at_ms": 1793167200000,
+      "class": "medium",
+      "risk_display": "Runs a scheduled job",
+      "provider_handoff": false
+    }
+  },
+  "al_task_failed_01": {
+    "timeline": [
+      {
+        "at_ms": 1793329800000,
+        "label": "Fix flaky build failed",
+        "ref": {
+          "kind": "task",
+          "ref": "CW-20261030-0031",
+          "label": "Fix flaky build"
+        }
+      },
+      {
+        "at_ms": 1793330940000,
+        "label": "Fix flaky build failed again",
+        "ref": null
+      },
+      {
+        "at_ms": 1793331720000,
+        "label": "Fix flaky build failed again",
+        "ref": null
+      },
+      {
+        "at_ms": 1793332260000,
+        "label": "Fix flaky build failed again",
+        "ref": null
+      }
+    ],
+    "linked": [
+      {
+        "kind": "task",
+        "ref": "CW-20261030-0031",
+        "label": "Fix flaky build"
+      },
+      {
+        "kind": "agent",
+        "ref": "agent-builder-1",
+        "label": "Builder 1"
+      }
+    ],
+    "technical": {
+      "fields": [
+        {
+          "label": "to",
+          "value": "failed"
+        },
+        {
+          "label": "runs",
+          "value": "4"
+        }
+      ]
+    },
+    "actions": [
+      {
+        "id": "open",
+        "label": "Open task",
+        "kind": "link"
+      }
+    ],
+    "approval": null
+  },
+  "al_agent_wait_01": {
+    "timeline": [
+      {
+        "at_ms": 1793331300000,
+        "label": "Planner agent started waiting",
+        "ref": {
+          "kind": "agent",
+          "ref": "agent-planner",
+          "label": "Planner agent"
+        }
+      },
+      {
+        "at_ms": 1793331900000,
+        "label": "Escalated to error after 10 minutes unread",
+        "ref": null
+      }
+    ],
+    "linked": [
+      {
+        "kind": "agent",
+        "ref": "agent-planner",
+        "label": "Planner agent"
+      }
+    ],
+    "technical": {
+      "fields": [
+        {
+          "label": "state",
+          "value": "waiting"
+        }
+      ]
+    },
+    "actions": [
+      {
+        "id": "open",
+        "label": "View agents",
+        "kind": "link"
+      }
+    ],
+    "approval": null
+  },
+  "al_suppressed_01": {
+    "timeline": [],
+    "linked": [
+      {
+        "kind": "source",
+        "ref": "torque",
+        "label": "torque"
+      }
+    ],
+    "technical": {
+      "fields": [
+        {
+          "label": "dropped",
+          "value": "42"
+        },
+        {
+          "label": "window",
+          "value": "60s"
+        }
+      ]
+    },
+    "actions": [],
+    "approval": null
+  }
+}

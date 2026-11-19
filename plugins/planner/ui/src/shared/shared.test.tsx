@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { EventTimeline, OptionCompare, SegmentedProgress, SpineList, TriageStack } from '@planner/shared'
+import { EventTimeline, LaneBoard, OptionCompare, SegmentedProgress, SpineList, TriageStack } from '@planner/shared'
 
 afterEach(cleanup)
 
@@ -17,7 +17,7 @@ describe('SpineList', () => {
   it('moves focus with J/K and opens with Enter', () => {
     const onSelect = vi.fn()
     render(<SpineList label="Items" onSelect={onSelect} selectedId="a" groups={[{ id: 'g', title: 'Group', items: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }]} />)
-    const [a, b] = screen.getAllByRole('option')
+    const [a, b] = screen.getAllByRole('button')
     a.focus()
     fireEvent.keyDown(a, { key: 'j' })
     expect(document.activeElement).toBe(b)
@@ -43,11 +43,11 @@ describe('EventTimeline', () => {
 describe('TriageStack', () => {
   it('routes with its key and says so when everything is triaged', () => {
     const onRoute = vi.fn()
-    const labels = { count: (n: number) => `${n} left`, allTriaged: 'All triaged', routeHeading: 'Into', dismiss: 'Dismiss', next: (t: string) => t }
-    const { container, rerender } = render(<TriageStack card={<b>Card</b>} remaining={1} routes={[{ id: 'a', label: 'A', key: 'a' }]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
+    const labels = { heading: (n: number) => `${n} left`, position: (i: number, n: number) => `${i} of ${n}`, allTriaged: 'All triaged', routeHeading: 'Into', dismiss: 'Dismiss' }
+    const { container, rerender } = render(<TriageStack card={<b>Card</b>} index={0} remaining={1} routes={[{ id: 'a', label: 'A', key: 'a' }]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
     fireEvent.keyDown(container.firstElementChild!, { key: 'a' })
     expect(onRoute).toHaveBeenCalledWith('a')
-    rerender(<TriageStack card={null} remaining={0} routes={[]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
+    rerender(<TriageStack card={null} index={0} remaining={0} routes={[]} onRoute={onRoute} onDismiss={vi.fn()} labels={labels} />)
     expect(screen.getByText('All triaged')).toBeTruthy()
   })
 })
@@ -58,5 +58,23 @@ describe('OptionCompare', () => {
     render(<OptionCompare options={[{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }]} chosenId="a" onChoose={vi.fn()} labels={labels} />)
     expect(screen.queryByRole('button', { name: /Choose/ })).toBeNull()
     expect(screen.getByText('Chosen')).toBeTruthy()
+  })
+})
+
+describe('LaneBoard', () => {
+  const labels = { lane: (t: string, n: number) => `${t}, ${n} tasks`, empty: (t: string) => `Drop here for ${t}`, pickedUp: () => '', movedOver: () => '', dropped: () => '', cancelled: () => '', pending: 'Saving', dragHint: 'drag', more: (n: number) => `+${n} more`, collapsed: (t: string, n: number) => `${t} ${n} collapsed` }
+  const card = (id: string) => ({ id, content: <span>{id}</span> })
+  const lanes = [
+    { id: 'todo', title: 'To do', cards: ['a', 'b', 'c', 'd', 'e', 'f'].map(card) },
+    { id: 'done', title: 'Done', collapsed: true, cards: [card('z')] },
+  ]
+  it('folds long lanes into "+N more" and opens a collapsed lane from its toggle line', () => {
+    render(<LaneBoard lanes={lanes} labels={labels} cardTitle={(id) => id} onMove={vi.fn()} />)
+    expect(screen.getByRole('list', { name: 'To do, 6 tasks' }).children).toHaveLength(3)
+    fireEvent.click(screen.getByRole('button', { name: '+3 more' }))
+    expect(screen.getByRole('list', { name: 'To do, 6 tasks' }).children).toHaveLength(6)
+    expect(screen.queryByRole('list', { name: 'Done, 1 tasks' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Done 1 collapsed' }))
+    expect(screen.getByRole('list', { name: 'Done, 1 tasks' })).toBeTruthy()
   })
 })

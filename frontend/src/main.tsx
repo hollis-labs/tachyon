@@ -1,12 +1,15 @@
-import { applyTheme, getInitialTheme } from "@hollis-labs/kit-dashboard"
+import { applyTheme } from "@hollis-labs/kit-dashboard"
 import React from "react"
 import ReactDOM from "react-dom/client"
 import { App } from "./App"
 import { ApiProvider } from "./api/context"
+import { initMode, NANITE_DEFAULT } from "./mode"
 import "./index.css"
 
-// Apply the persisted dashboard palette before first paint.
-applyTheme(getInitialTheme())
+// One palette; colour mode is the user choice. index.html set both before first paint.
+// The kit's ThemeName union predates nanite-default; the value is valid at runtime.
+applyTheme(NANITE_DEFAULT as Parameters<typeof applyTheme>[0])
+initMode()
 
 const root = document.getElementById("root")
 if (!root) {

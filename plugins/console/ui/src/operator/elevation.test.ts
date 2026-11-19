@@ -160,4 +160,23 @@ describe("elevation lifetime copy and revoke", () => {
       createOperatorElevation(vi.fn().mockResolvedValueOnce(json({}, 403))).revoke(),
     ).rejects.toThrow()
   })
+
+  it("carries the step-up summary into the prompt and estimates a lockout on 429", async () => {
+    const stepUp = { action: "merge", risk: "high", summary: "Merge #507 into main" }
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(json({ code: "assurance_insufficient", step_up: stepUp }, 403))
+      .mockResolvedValueOnce(json(locked))
+      .mockResolvedValueOnce(json({ code: "locked" }, 429))
+    const auth = createOperatorElevation(fetcher)
+    void auth.fetch("/merge", { method: "POST" })
+    await vi.waitFor(() => expect(auth.snapshot().open).toBe(true))
+    expect(auth.snapshot().stepUp).toEqual(stepUp)
+    await auth.submit("bad")
+    const s = auth.snapshot()
+    expect(s.open).toBe(true)
+    expect(s.stepUp).toEqual(stepUp)
+    expect(s.lockedUntil).toBeGreaterThan(Date.now())
+    auth.cancel()
+  })
 })

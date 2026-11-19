@@ -1,0 +1,2 @@
+{"total":4,"by_reason":{"review":1,"decide":1,"blocked":1,"stale":1},"by_lens":{"themes":3,"decisions":1},
+"items":[{"db":"themes","id":"theme-agents-console","reasons":["review","decide"]},{"db":"themes","id":"theme-transcripts","reasons":["stale"]},{"db":"themes","id":"theme-settings-center","reasons":["blocked"]},{"db":"decisions","id":"dec-0042","reasons":["decide"]}],"stale_days":7}

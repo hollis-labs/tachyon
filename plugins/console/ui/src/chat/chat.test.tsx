@@ -78,7 +78,7 @@ it('streams a reply with a tool chip and linkifies refs', async () => {
   expect(document.querySelector('[data-streaming="true"]')).toBeTruthy()
   await tick(5000)
   expect(document.querySelector('[data-streaming="true"]')).toBeNull()
-  expect(screen.getByLabelText('Tool calls')).toBeTruthy()
+  expect(screen.getByRole('button', { name: /tool call/ })).toBeTruthy()
   expect(document.querySelectorAll('[data-ref-kind="torque.task"]').length).toBeGreaterThan(0)
   expect(document.querySelector('[data-state="read"]')).toBeTruthy()
 })
@@ -114,7 +114,7 @@ it('shows send errors and keeps the draft', async () => {
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'hi' } })
   fireEvent.click(screen.getByText('Send'))
   await flush()
-  expect(screen.getByRole('alert').textContent).toBe('boom')
+  expect(screen.getByRole('alert').textContent).toContain('boom')
   expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('hi')
 })
 

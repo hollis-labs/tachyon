@@ -1,11 +1,17 @@
-import { useState, type ReactNode } from 'react'
-import { Button, EmptyState, OverlaySidebar, type OverflowAction } from '@hollis-labs/design-components'
-import { PanelLeft, PanelLeftClose, PanelRight, PanelRightClose } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { EmptyState, type OverflowAction } from '@hollis-labs/design-components'
+import { Aside } from '../aside/Aside'
+import { AsideProvider, useAside } from '../aside/context'
+import { setScratchPlacement, useScratchPlacement } from '../drawer/model'
 import { ChatFreshness } from '../ChatFreshness'
 import type { ChatThread } from '../types'
-import { ThreadDetails } from './ThreadDetails'
 import { ThreadList } from './ThreadList'
-import { useNarrow } from './useNarrow'
+import { Header } from '../workbench/Header'
+import { Spine, type StartOption } from '../workbench/Spine'
+import { useMobile, useNarrow } from './useNarrow'
+import { HeaderFilterContext } from './headerFilter'
+import { useThreadFrames } from '../live'
+import { useReplyFilter } from '../replyFilter'
 
 export interface ChatViewProps {
   threads: ChatThread[] | null
@@ -13,13 +19,24 @@ export interface ChatViewProps {
   onRetryThreads?: () => void
   activeThread: ChatThread | null
   onSelectThread: (id: string) => void
+  /** Open one of the agent's other sessions in the conversation. */
+  onSelectSession?: (ref: string) => void
   newChatActions?: OverflowAction[]
+  /** Agents a chat can start with (the Start menu, ⌘N). */
+  startOptions?: StartOption[]
+  onTogglePin?: () => void
+  /** The open session's Continue flag (see useContinue); null hides the toggle. */
+  continueOn?: boolean | null
+  onToggleContinue?: () => void
+  /** Why the last Continue change failed; shown as its own dismissible notice under the header. */
+  continueError?: string
+  onDismissContinueError?: () => void
   /**
    * 'page' (default): threads | conversation | details. 'compact': one column for a
    * drawer, showing the thread list or the open conversation with a back button.
    */
   variant?: 'page' | 'compact'
-  /** Compact only: return from the conversation to the thread list. */
+  /** Compact, and the page below 1024px: return from the conversation to the thread list. */
   onBack?: () => void
   /** The conversation for `activeThread`. Rendered in the centre column. */
   children?: ReactNode
@@ -27,15 +44,45 @@ export interface ChatViewProps {
 
 /**
  * Three columns: threads, conversation, details. The host owns the data, the
- * selected thread and the conversation (children). Below 1024px the side
- * columns open as overlays; the details column starts collapsed.
+ * selected thread and the conversation (children). Below 1024px the list is
+ * the home screen (a conversation opens full width with a back control) and the details open as a bottom
+ * sheet; the details column starts open from 1280px up.
  */
-export function ChatView({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, newChatActions, variant = 'page', onBack, children }: ChatViewProps) {
+export function ChatView(props: ChatViewProps) {
+  const wide = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches
+  return (
+    <AsideProvider wide={wide}>
+      <ChatViewInner {...props} />
+    </AsideProvider>
+  )
+}
+
+function ChatViewInner({ threads, threadsError, onRetryThreads, activeThread, onSelectThread, onSelectSession, newChatActions, startOptions, onTogglePin, continueOn, onToggleContinue, continueError, onDismissContinueError, variant = 'page', onBack, children }: ChatViewProps) {
   const narrow = useNarrow()
-  const [threadsOpen, setThreadsOpen] = useState(true)
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [threadsOverlay, setThreadsOverlay] = useState(false)
-  const [detailsOverlay, setDetailsOverlay] = useState(false)
+  const mobile = useMobile()
+  const aside = useAside()
+  // A `context` frame carries the live window use; it updates the header meter without waiting for a list refresh.
+  const [liveCtx, setLiveCtx] = useState<{ ref: string; used: number | null; window: number | null; model: string | null } | null>(null)
+  const ctxRef = activeThread ? (activeThread.sessionRef ?? activeThread.sessions?.[0]?.ref) : undefined
+  useThreadFrames(ctxRef, (f) => {
+    if (f.type === 'context' && ctxRef) setLiveCtx({ ref: ctxRef, used: typeof f.used === 'number' ? f.used : null, window: typeof f.window === 'number' ? f.window : null, model: typeof f.model === 'string' ? f.model : null })
+  })
+  const [replyFilter, setReplyFilter] = useReplyFilter()
+  const scratchPlacement = useScratchPlacement()
+  const detailsOverlay = aside.open
+
+  // Esc returns to the list on a narrow screen, unless it is meant for a field or an open sheet.
+  const inThread = mobile && !!activeThread && !!onBack
+  useEffect(() => {
+    if (!inThread) return
+    const on = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key !== 'Escape' || e.defaultPrevented || detailsOverlay || t?.closest('input, textarea, [contenteditable], [role=dialog]')) return
+      onBack?.()
+    }
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [inThread, onBack, detailsOverlay])
 
   const list = (afterSelect?: () => void) => (
     <ThreadList
@@ -48,6 +95,9 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
     />
   )
 
+  const spine = (
+    <Spine threads={threads} activeId={activeThread?.id ?? null} onSelect={onSelectThread} startOptions={startOptions} error={threadsError} onRetry={onRetryThreads} />
+  )
   if (variant === 'compact') {
     return (
       // relative + overflow-hidden is load-bearing: the message action buttons contain
@@ -64,63 +114,41 @@ export function ChatView({ threads, threadsError, onRetryThreads, activeThread, 
     )
   }
 
-  const iconBtn = 'shrink-0 text-fg-muted'
-  const threadsToggle = narrow ? (
-    <OverlaySidebar
-      open={threadsOverlay}
-      onOpenChange={setThreadsOverlay}
-      side="left"
-      title="Conversations"
-      trigger={<Button type="button" variant="ghost" size="sm" aria-label="Show conversations" className={iconBtn}><PanelLeft className="size-4" aria-hidden="true" /></Button>}
-    >
-      {list(() => setThreadsOverlay(false))}
-    </OverlaySidebar>
-  ) : (
-    <Button type="button" variant="ghost" size="sm" aria-label={threadsOpen ? 'Hide conversations' : 'Show conversations'} aria-expanded={threadsOpen} onClick={() => setThreadsOpen((o) => !o)} className={iconBtn}>
-      {threadsOpen ? <PanelLeftClose className="size-4" aria-hidden="true" /> : <PanelLeft className="size-4" aria-hidden="true" />}
-    </Button>
-  )
-  const detailsToggle = narrow ? (
-    <OverlaySidebar
-      open={detailsOverlay}
-      onOpenChange={setDetailsOverlay}
-      side="right"
-      title="Thread details"
-      trigger={<Button type="button" variant="ghost" size="sm" aria-label="Show thread details" className={iconBtn}><PanelRight className="size-4" aria-hidden="true" /></Button>}
-    >
-      <ThreadDetails thread={activeThread} />
-    </OverlaySidebar>
-  ) : (
-    <Button type="button" variant="ghost" size="sm" aria-label={detailsOpen ? 'Hide thread details' : 'Show thread details'} aria-expanded={detailsOpen} onClick={() => setDetailsOpen((o) => !o)} className={iconBtn}>
-      {detailsOpen ? <PanelRightClose className="size-4" aria-hidden="true" /> : <PanelRight className="size-4" aria-hidden="true" />}
-    </Button>
-  )
+  // Below 1024px the conversation list is the home screen: no empty pane, no hidden toggle to find.
+  if (mobile && !activeThread) {
+    return (
+      <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-bg">
+        <ChatFreshness />
+        {spine}
+      </div>
+    )
+  }
 
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-bg">
-      {!narrow && threadsOpen && (
-        <aside aria-label="Conversations" className="flex w-72 shrink-0 flex-col border-r border-border">
-          {list()}
-        </aside>
-      )}
-      <section aria-label="Chat" className="flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          {threadsToggle}
-          <h1 className="min-w-0 flex-1 truncate text-control font-normal normal-case tracking-normal text-fg">{activeThread?.title ?? 'Chat'}</h1>
-          {detailsToggle}
-        </header>
+      {!mobile && <div className={`flex shrink-0 border-r border-border-subtle ${narrow ? 'w-60' : 'w-72'}`}>{spine}</div>}
+      <HeaderFilterContext.Provider value={true}>
+      <main aria-label="Conversation" className="flex min-w-0 flex-1 flex-col">
+        {activeThread ? (
+          <Header thread={liveCtx && liveCtx.ref === ctxRef ? { ...activeThread, context: { used: liveCtx.used, window: liveCtx.window, model: liveCtx.model ?? activeThread.context?.model ?? null } } : activeThread} onSelectSession={onSelectSession} onTogglePin={onTogglePin} continueOn={continueOn} onToggleContinue={onToggleContinue} onBack={mobile ? onBack : undefined} onDetails={narrow ? aside.toggle : undefined} detailsOpen={detailsOverlay} actions={[{ label: replyFilter === 'mine' ? 'Show all replies' : 'Only show replies to me', onSelect: () => setReplyFilter(replyFilter === 'mine' ? 'all' : 'mine') }, { label: scratchPlacement === 'aside' ? 'Open scratchpad in the drawer' : 'Open scratchpad in the aside', onSelect: () => void setScratchPlacement(scratchPlacement === 'aside' ? 'drawer' : 'aside').catch(() => undefined) }, { label: 'Copy link to this chat', onSelect: () => void navigator.clipboard?.writeText(location.href) }]} />
+        ) : (
+          <header className="h-12 shrink-0 border-b border-border-subtle" />
+        )}
+        {activeThread && continueError && (
+          <div role="alert" className="flex items-center gap-3 border-b border-danger/30 px-4 py-2 text-xs text-danger">
+            <span>Continue was not changed. {continueError}</span>
+            {onDismissContinueError && <button type="button" onClick={onDismissContinueError} className="ml-auto underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">Dismiss</button>}
+          </div>
+        )}
         <ChatFreshness />
         {activeThread ? children : (
           <div className="flex min-h-0 flex-1 items-center justify-center">
-            <EmptyState variant="empty" title="Select a conversation" description="Pick one from the list, or start a new chat with an agent." />
+            <EmptyState variant="empty" title="Select a chat" description="Pick one from the list, or start a chat with an agent." />
           </div>
         )}
-      </section>
-      {!narrow && detailsOpen && (
-        <aside aria-label="Thread details" className="w-96 shrink-0 overflow-y-auto border-l border-border">
-          <ThreadDetails thread={activeThread} />
-        </aside>
-      )}
+      </main>
+      </HeaderFilterContext.Provider>
+      {activeThread && <Aside thread={activeThread} scratchInAside={scratchPlacement === 'aside'} sessionRef={activeThread.sessionRef ?? activeThread.sessions?.[0]?.ref} />}
     </div>
   )
 }

@@ -2,6 +2,7 @@ package objectsync
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -14,13 +15,28 @@ type CerberusMachines struct {
 }
 
 func NewCerberusMachines(addr, tokenFile string) (*CerberusMachines, error) {
+	return NewCerberusMachinesAs(addr, tokenFile, "")
+}
+
+// NewCerberusMachinesAs is NewCerberusMachines with an explicit source identity. The scope's instance, which keys
+// every imported machine and the sync schedule, is instance when set, else the address (the unix: string, or the
+// http base). Pinning it keeps the identity when the address changes (CW-20261114-0144: the Cerberus cutover moves
+// from unix:~/.cerberus/cerberus.sock to http://127.0.0.1:4786/api), so machines are not imported twice and the
+// schedule is not orphaned.
+func NewCerberusMachinesAs(addr, tokenFile, instance string) (*CerberusMachines, error) {
 	r, err := newRemote(addr, tokenFile, false)
 	if err != nil {
 		return nil, err
 	}
-	instance := r.base
-	if strings.HasPrefix(addr, "unix:") {
-		instance = addr
+	instance = strings.TrimSpace(instance)
+	if instance != "" && (len(instance) > 300 || strings.ContainsFunc(instance, func(c rune) bool { return c <= ' ' || c == 0x7f })) {
+		return nil, errors.New("invalid Cerberus source instance")
+	}
+	if instance == "" {
+		instance = r.base
+		if strings.HasPrefix(addr, "unix:") {
+			instance = addr
+		}
 	}
 	return &CerberusMachines{remote: r, scope: objects.SourceScope{Provider: "cerberus", Instance: instance, Collection: "hosts", Kind: objects.MachineKind}}, nil
 }

@@ -28,12 +28,12 @@ function Row({ agent, rank, score, leader, entries, now, onOpen }: { agent: Flee
         type="button"
         onClick={onOpen}
         aria-label={`Open ${name}`}
-        className={`group flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none ${waiting ? 'bg-amber-950/20' : ''} ${agent.state === 'unknown' ? 'opacity-70' : ''}`}
+        className={`group flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none ${waiting ? 'bg-warning/10' : ''} ${agent.state === 'unknown' ? 'opacity-70' : ''}`}
       >
-        <span className={`w-8 shrink-0 text-center font-mono text-xs ${top ? 'text-amber-300' : 'text-zinc-500'}`}>
+        <span className={`w-8 shrink-0 text-center font-mono text-xs ${top ? 'text-warning' : 'text-fg-muted'}`}>
           {top ? <Crown className="mx-auto h-4 w-4" aria-label="Top of the leaderboard" /> : `#${rank}`}
         </span>
-        <span className="shrink-0 border-2 border-zinc-700 bg-zinc-950 p-1 group-hover:border-zinc-500">
+        <span className="shrink-0 border-2 border-border bg-bg p-1 group-hover:border-border">
           <PixelRobot id={agent.id} size={40} state={s.avatar} />
         </span>
         <span className="min-w-0 flex-1 basis-48">
@@ -42,13 +42,13 @@ function Row({ agent, rank, score, leader, entries, now, onOpen }: { agent: Flee
             <ModelTag agent={agent} />
           </span>
           <span className="mt-0.5 block truncate text-[12px] text-muted-foreground" title={agent.cwd}>
-            {waiting && agent.waitingFor ? <span className="text-amber-200">{agent.waitingFor}</span> : whatNow(agent, now)}
-            <span className="text-zinc-600"> · {cwdTail(agent.cwd)}</span>
+            {waiting && agent.waitingFor ? <span className="text-warning">{agent.waitingFor}</span> : whatNow(agent, now)}
+            <span className="text-fg-faint"> · {cwdTail(agent.cwd)}</span>
           </span>
           <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] tracking-widest ${s.text}`}>
             <span className={`h-1.5 w-1.5 ${s.dot} ${agent.state === 'busy' ? 'agent-pulse-bar' : ''}`} />
             {agent.chat && agent.chat.session?.state !== 'running' ? 'ready to start' : s.label}
-            {agent.stateConfidence && <span className="text-zinc-500">· {agent.stateConfidence}</span>}
+            {agent.stateConfidence && <span className="text-fg-muted">· {agent.stateConfidence}</span>}
           </span>
         </span>
         <span className="hidden gap-4 sm:flex">
@@ -61,10 +61,10 @@ function Row({ agent, rank, score, leader, entries, now, onOpen }: { agent: Flee
         </span>
         <MailBadge count={agent.messages} agent={agent} />
         <span className="w-20 shrink-0 text-right">
-          <span className="block text-sm text-amber-200">
+          <span className="block text-sm text-warning">
             <Score value={score} />
           </span>
-          <span className="block font-mono text-[9px] uppercase tracking-widest text-zinc-500">score</span>
+          <span className="block font-mono text-[9px] uppercase tracking-widest text-fg-muted">score</span>
         </span>
       </button>
     </li>
@@ -112,7 +112,7 @@ export function FleetAgentsView({ agents, history, error, now, live, focus, onFo
     return error ? (
       <div className="p-4"><EmptyState variant="error" title="Activity source unavailable" description={error} /></div>
     ) : (
-      <div className="p-4 font-mono text-xs text-zinc-500">Loading agents…</div>
+      <div className="p-4 font-mono text-xs text-fg-muted">Loading agents…</div>
     )
   }
   const c = fleetCounts(agents)
@@ -122,13 +122,13 @@ export function FleetAgentsView({ agents, history, error, now, live, focus, onFo
     <div ref={ref} className="agent-arcade">
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <p className="text-[13px] text-muted-foreground">Agents in the field: booted Tether sessions and live CLI/manual sessions.</p>
-        <span className="ml-auto inline-flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-widest text-zinc-400">
-          <span className={c.waiting ? 'text-amber-300' : ''}>{c.waiting} waiting</span>
-          <span className="inline-flex items-center gap-1.5"><Zap className="h-3 w-3 text-emerald-400" />{c.busy}/{agents.length} working</span>
+        <span className="ml-auto inline-flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-widest text-fg-secondary">
+          <span className={c.waiting ? 'text-warning' : ''}>{c.waiting} waiting</span>
+          <span className="inline-flex items-center gap-1.5"><Zap className="h-3 w-3 text-success" />{c.busy}/{agents.length} working</span>
           <span>{c.idle} idle</span>
           <span>{c.unknown} unknown</span>
-          <span className={live ? 'text-emerald-300' : 'text-zinc-600'}>{live ? '● stream connected' : '○ resyncing'}</span>
-          {error && <span className="text-red-300">stale: {error}</span>}
+          <span className={live ? 'text-success' : 'text-fg-faint'}>{live ? '● stream connected' : '○ resyncing'}</span>
+          {error && <span className="text-danger">stale: {error}</span>}
         </span>
       </div>
       {groups.length === 0 && (
@@ -136,11 +136,11 @@ export function FleetAgentsView({ agents, history, error, now, live, focus, onFo
       )}
       {groups.map((g) => (
         <section key={g.workstreamId ?? `dir:${g.name}`} aria-label={g.name} data-flip={`group:${g.name}`}>
-          <h2 className="flex items-center gap-3 border-y border-border bg-zinc-950/60 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-zinc-300">
+          <h2 className="flex items-center gap-3 border-y border-border bg-surface px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-fg-secondary">
             {g.name}
-            {g.workstreamId && <span className="normal-case tracking-normal text-zinc-500" title="Workstream id">{g.workstreamId}</span>}
-            <span className="text-zinc-600">{g.agents.length} agent{g.agents.length === 1 ? '' : 's'}</span>
-            <span className="ml-auto text-amber-200/80"><Score value={g.score} /></span>
+            {g.workstreamId && <span className="normal-case tracking-normal text-fg-muted" title="Workstream id">{g.workstreamId}</span>}
+            <span className="text-fg-faint">{g.agents.length} agent{g.agents.length === 1 ? '' : 's'}</span>
+            <span className="ml-auto text-warning"><Score value={g.score} /></span>
           </h2>
           <ul aria-label={`${g.name} agents`}>
             {g.agents.map((a) => (

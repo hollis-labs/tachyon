@@ -84,31 +84,50 @@ describe('ThreadList', () => {
   })
 })
 
+
 describe('ChatView', () => {
   const view = (active: ChatThread | null = T[0]) => (
     <ChatView threads={T} activeThread={active} onSelectThread={() => undefined}><p>conversation body</p></ChatView>
   )
 
-  it('starts with the details column collapsed and toggles it', () => {
-    render(view())
-    expect(screen.queryByRole('complementary', { name: 'Thread details' })).toBeNull()
-    fireEvent.click(screen.getByLabelText('Show thread details'))
-    const aside = screen.getByRole('complementary', { name: 'Thread details' })
-    expect(within(aside).getAllByText('Alpha').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByLabelText('Hide thread details'))
-    expect(screen.queryByRole('complementary', { name: 'Thread details' })).toBeNull()
+  it('opens the aside on a wide screen with the panel strip and an honest empty plan', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('1280'), addEventListener() {}, removeEventListener() {} }))
+    try {
+      render(view())
+      const aside = screen.getByRole('complementary', { name: 'Agent Panel' })
+      expect(within(aside).getByRole('tablist', { name: 'Panels' })).toBeTruthy()
+      expect(within(aside).getAllByRole('tab').map((t) => t.textContent?.replace(/[^A-Za-z]+$/, ''))).toEqual(['Plan', 'Topics', 'Bookmarks', 'Work', 'Activity', 'Approvals', 'Files', 'Artifacts'])
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
-  it('collapses the thread column', () => {
+  it('on a narrow screen shows the list as home, then the thread with a back control', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width: 640'), addEventListener() {}, removeEventListener() {} }))
+    const onBack = vi.fn()
+    try {
+      const { rerender } = render(<ChatView threads={T} activeThread={null} onSelectThread={() => undefined} onBack={onBack} />)
+      expect(screen.getByRole('group', { name: 'Chats' })).toBeTruthy()
+      expect(screen.queryByText('Select a chat')).toBeNull()
+      rerender(<ChatView threads={T} activeThread={T[0]} onSelectThread={() => undefined} onBack={onBack}><p>conversation body</p></ChatView>)
+      fireEvent.click(screen.getByLabelText('Back to chats'))
+      expect(onBack).toHaveBeenCalledTimes(1)
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+      expect(onBack).toHaveBeenCalledTimes(2)
+      expect(screen.getByText('conversation body')).toBeTruthy()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('shows the chats spine on a wide screen', () => {
     render(view())
-    expect(screen.getByRole('complementary', { name: 'Conversations' })).toBeTruthy()
-    fireEvent.click(screen.getByLabelText('Hide conversations'))
-    expect(screen.queryByRole('complementary', { name: 'Conversations' })).toBeNull()
+    expect(screen.getByRole('navigation', { name: 'Chats' })).toBeTruthy()
   })
 
   it('asks for a selection when no thread is open', () => {
     render(view(null))
-    expect(screen.getByText('Select a conversation')).toBeTruthy()
+    expect(screen.getByText('Select a chat')).toBeTruthy()
     expect(screen.queryByText('conversation body')).toBeNull()
   })
 })
@@ -116,6 +135,18 @@ describe('ChatView', () => {
 // jsdom has no layout, so this pins the classes that stop the page scrolling: the message
 // action buttons hold position:absolute sr-only labels, and without a positioned, clipping
 // ancestor they escape the message scroller and stretch the whole page (seen live, 2026-10-24).
+describe('ChatView Continue error', () => {
+  it('shows a failed Continue change as its own dismissible notice, not in the thread list', () => {
+    const onDismiss = vi.fn()
+    render(<ChatView threads={T} activeThread={T[0]} onSelectThread={() => undefined} continueOn continueError="Operator access is needed" onDismissContinueError={onDismiss}><p>x</p></ChatView>)
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain('Continue was not changed. Operator access is needed')
+    expect(within(alert).queryByText(/retry/i)).toBeNull()
+    fireEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
+    expect(onDismiss).toHaveBeenCalledOnce()
+  })
+})
+
 describe('ChatView containment', () => {
   const clipped = (el: Element | null) => !!el && el.classList.contains('relative') && el.classList.contains('overflow-hidden')
   it('is a positioned, clipping container in both variants', () => {
@@ -123,6 +154,18 @@ describe('ChatView containment', () => {
     expect(clipped(container.firstElementChild)).toBe(true)
     rerender(<ChatView variant="compact" threads={T} activeThread={T[0]} onSelectThread={() => undefined}><p>x</p></ChatView>)
     expect(clipped(container.firstElementChild)).toBe(true)
+  })
+})
+
+describe('ChatView live context frame', () => {
+  it('a context frame updates the header meter', async () => {
+    const sources: { onmessage: ((m: { data: string }) => void) | null }[] = []
+    vi.stubGlobal('EventSource', class { onmessage: ((m: { data: string }) => void) | null = null; onopen = null; onerror = null; constructor() { sources.push(this) } close() {} })
+    try {
+      render(<ChatView threads={T} activeThread={{ ...T[0], sessions: [{ ref: 'tether:s1', title: 's', lastAt: 1, unread: 0 }] }} onSelectThread={() => undefined}><p>body</p></ChatView>)
+      await act(async () => { for (const s of sources) s.onmessage?.({ data: JSON.stringify({ type: 'context', used: 32000, window: 160000, model: 'opus-5-5' }) }) })
+      expect(screen.getByText(/32K of 160K tokens|32,000 of 160,000 tokens|32000 of 160000 tokens/)).toBeTruthy()
+    } finally { vi.unstubAllGlobals() }
   })
 })
 
@@ -166,7 +209,34 @@ describe('ConversationView', () => {
     await flush()
     expect(box.value).toBe('draft')
     rerender(<ConversationView {...base} onSend={onSend} sendError="nope" />)
-    expect(screen.getByRole('alert').textContent).toBe('nope')
+    expect(screen.getByRole('alert').textContent).toContain('nope')
+  })
+
+  it('shows Stop in place of Send while the agent is replying, and the reason when the stop fails', async () => {
+    const onStop = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('This session has no running turn Tachyon can interrupt.'))
+    const onSend = vi.fn()
+    const { rerender } = render(<ConversationView {...base} onSend={onSend} canSend={false} onStop={onStop} />)
+    expect(screen.queryByRole('button', { name: /Send/ })).toBeNull()
+    // The draft can be written while the agent works; Enter does not send it.
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement
+    expect(box.disabled).toBe(false)
+    fireEvent.change(box, { target: { value: 'next thing' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(box.value).toBe('next thing')
+    expect(onSend).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await flush()
+    expect(onStop).toHaveBeenCalledTimes(1)
+    // One request per turn: the button waits for the turn to end.
+    fireEvent.click(screen.getByRole('button', { name: 'Stopping' }))
+    expect(onStop).toHaveBeenCalledTimes(1)
+    rerender(<ConversationView {...base} onSend={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /Send/ })).toBeTruthy()
+    rerender(<ConversationView {...base} onSend={vi.fn()} canSend={false} onStop={onStop} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await flush()
+    expect(screen.getByRole('alert').textContent).toContain('no running turn')
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
   })
 
   it('keeps an unsent draft per thread across switching away and back, and clears it after a send', async () => {
@@ -218,8 +288,8 @@ describe('ChatPage', () => {
   it('lists real threads, opens one into the URL, and shows its conversation', async () => {
     setup()
     await flush()
-    expect(screen.getByText('Select a conversation')).toBeTruthy()
-    const list = screen.getByRole('list', { name: 'Threads' })
+    expect(screen.getByText('Select a chat')).toBeTruthy()
+    const list = screen.getByRole('group', { name: 'Chats' })
     fireEvent.click(within(list).getByText(MOCK_CHAT_AGENTS[1].agent.label))
     await flush()
     expect(screen.getByTestId('where').textContent).toMatch(/^\/chat\/.+/)
@@ -227,10 +297,22 @@ describe('ChatPage', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(MOCK_CHAT_AGENTS[1].agent.label)
   })
 
+  it('opens the most recent conversation on a wide screen', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('1024'), addEventListener() {}, removeEventListener() {} }))
+    try {
+      setup()
+      await flush()
+      expect(screen.getByTestId('where').textContent).toMatch(/^\/chat\/.+/)
+      expect(screen.getByLabelText('Message')).toBeTruthy()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('sends through the client from the composer', async () => {
     const client = setup()
     await flush()
-    fireEvent.click(within(screen.getByRole('list', { name: 'Threads' })).getByText(MOCK_CHAT_AGENTS[0].agent.label))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Chats' })).getByText(MOCK_CHAT_AGENTS[0].agent.label))
     await flush()
     const box = screen.getByLabelText('Message')
     fireEvent.change(box, { target: { value: 'status?' } })

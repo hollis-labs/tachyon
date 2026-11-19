@@ -21,7 +21,7 @@ import (
 // Existing credentials retain their exact grants; adding support never expands them.
 var readVerbs = []string{"planner.list", "objects.list", "objects.get", "objects.history", "objects.lookup_source"}
 var portfolioReadVerbs = []string{"planner.portfolio.list", "planner.portfolio.get", "planner.portfolio.schema", "planner.portfolio.resolve"}
-var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate", "planner.portfolio.reorder"}
+var portfolioWriteVerbs = []string{"planner.portfolio.create", "planner.portfolio.patch", "planner.portfolio.action", "planner.portfolio.relate", "planner.portfolio.reorder", "planner.portfolio.assign", "planner.portfolio.unassign"}
 
 // TorqueVerbs read Torque's tasks and comments through Tachyon. They are NOT in
 // readVerbs on purpose: existing planner-read credentials keep their exact grants.
@@ -32,6 +32,28 @@ var torqueVerbs = []string{"torque.task.get", "torque.task.comments", "torque.ta
 // Torque verbs they are not in readVerbs: only the presets below grant them. They name
 // no object kinds, so a credential holding only these needs none.
 var tesseractVerbs = []string{"tesseract.recall", "tesseract.get"}
+
+// ChatWorkspaceVerbs read the items an operator shared in an app chat thread. Only the
+// chat-workspace-read preset grants them; they name no object kinds.
+var chatWorkspaceVerbs = []string{"chat.workspace.list", "chat.workspace.get"}
+
+// ChatTopicVerbs let an agent add a topic (a named jump point) to a chat thread and read what the
+// operator sees in the Topics, Bookmarks and Approvals panels. Only the chat-topic-add preset grants
+// them; they name no object kinds.
+var chatTopicVerbs = []string{"chat.topic.add", "chat.topic.list", "chat.bookmark.list", "chat.approvals.list"}
+
+// ChatPlanVerbs read and write the working plan of an app chat thread. Only the chat-plan preset
+// grants them; they name no object kinds.
+var chatPlanVerbs = []string{"chat.plan.get", "chat.plan.write", "chat.plan.step", "chat.plan.list", "chat.plan.create", "chat.plan.move_step"}
+
+// TerminalVerbs let an agent propose a shell command for the operator to approve and read the run it caused.
+// Only the terminal-propose preset grants them; they name no object kinds.
+var terminalVerbs = []string{"terminal.machines", "terminal.propose", "terminal.run.get"}
+
+// ChatActivityVerbs let an agent add to the activity feed of an app chat thread; ChatPanelVerbs let
+// it ask the GUI to open a built-in panel. Each is its own preset and names no object kinds.
+var chatActivityVerbs = []string{"chat.activity.append"}
+var chatPanelVerbs = []string{"chat.panel.open"}
 
 // ActionVerbs are the registered-action tools (request, then await the result).
 // They name no object kinds: a credential holding only these needs none.
@@ -82,8 +104,27 @@ func PortfolioWrite() Grants {
 	g.Verbs = append(g.Verbs, portfolioWriteVerbs...)
 	return g
 }
-func ActionRequest() Grants    { return Grants{Verbs: append([]string(nil), actionVerbs...)} }
-func TorqueVerb(v string) bool { return contains(torqueVerbs, v) }
+
+// ChatWorkspaceRead grants only the chat workspace read verbs.
+func ChatWorkspaceRead() Grants       { return Grants{Verbs: append([]string(nil), chatWorkspaceVerbs...)} }
+func ChatWorkspaceVerb(v string) bool { return contains(chatWorkspaceVerbs, v) }
+
+// ChatTopicAdd grants only chat.topic.add.
+func ChatTopicAdd() Grants        { return Grants{Verbs: append([]string(nil), chatTopicVerbs...)} }
+func ChatTopicVerb(v string) bool { return contains(chatTopicVerbs, v) }
+
+// ChatPlan grants only the chat plan verbs.
+func ChatActivityAppend() Grants { return Grants{Verbs: append([]string(nil), chatActivityVerbs...)} }
+func ChatPanelOpen() Grants      { return Grants{Verbs: append([]string(nil), chatPanelVerbs...)} }
+func ChatActivityVerb(v string) bool {
+	return contains(chatActivityVerbs, v) || contains(chatPanelVerbs, v)
+}
+func TerminalPropose() Grants    { return Grants{Verbs: append([]string(nil), terminalVerbs...)} }
+func TerminalVerb(v string) bool { return contains(terminalVerbs, v) }
+func ChatPlan() Grants           { return Grants{Verbs: append([]string(nil), chatPlanVerbs...)} }
+func ChatPlanVerb(v string) bool { return contains(chatPlanVerbs, v) || ChatActivityVerb(v) }
+func ActionRequest() Grants      { return Grants{Verbs: append([]string(nil), actionVerbs...)} }
+func TorqueVerb(v string) bool   { return contains(torqueVerbs, v) }
 func TesseractVerb(v string) bool {
 	return contains(tesseractVerbs, v)
 }
@@ -93,7 +134,7 @@ func CardVerb(v string) bool   { return contains(cardVerbs, v) }
 func PlannerKinds() []string   { return append([]string(nil), plannerKinds...) }
 func ReadVerb(v string) bool   { return contains(readVerbs, v) || contains(portfolioReadVerbs, v) }
 func SupportedVerb(v string) bool {
-	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v) || contains(torqueVerbs, v) || contains(tesseractVerbs, v)
+	return ReadVerb(v) || contains(portfolioWriteVerbs, v) || contains(actionVerbs, v) || contains(cardVerbs, v) || contains(torqueVerbs, v) || contains(tesseractVerbs, v) || contains(chatWorkspaceVerbs, v) || contains(chatTopicVerbs, v) || contains(chatPlanVerbs, v) || ChatActivityVerb(v) || contains(terminalVerbs, v)
 }
 func contains(xs []string, x string) bool {
 	for _, s := range xs {
@@ -106,7 +147,7 @@ func contains(xs []string, x string) bool {
 func (g Grants) Validate() error {
 	onlyActions := len(g.Verbs) > 0
 	for _, v := range g.Verbs {
-		onlyActions = onlyActions && (contains(actionVerbs, v) || contains(cardVerbs, v) || contains(tesseractVerbs, v))
+		onlyActions = onlyActions && (contains(actionVerbs, v) || contains(cardVerbs, v) || contains(tesseractVerbs, v) || contains(chatWorkspaceVerbs, v) || contains(chatTopicVerbs, v) || contains(chatPlanVerbs, v) || ChatActivityVerb(v) || contains(terminalVerbs, v))
 	}
 	if len(g.Verbs) == 0 || (len(g.Kinds) == 0 && !onlyActions) {
 		return errors.New("explicit verbs and kinds are required")
@@ -141,11 +182,14 @@ type Token struct {
 	ID         string     `json:"id"`
 	IdentityID string     `json:"identity_id"`
 	Name       string     `json:"name"`
+	Agents     []string   `json:"agents,omitempty"`
 	Grants     Grants     `json:"grants"`
 	CreatedAt  time.Time  `json:"created_at"`
 	ExpiresAt  time.Time  `json:"expires_at"`
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 	DisabledAt *time.Time `json:"disabled_at,omitempty"`
+	// Proxy is true when this token's identity is the pinned Tether proxy.
+	Proxy bool `json:"proxy,omitempty"`
 }
 type Store struct{ DB *localstore.Store }
 
@@ -196,6 +240,144 @@ func (s *Store) Issue(ctx context.Context, identityID, name string, grants Grant
 	}
 	return t, secret, nil
 }
+
+// AgentKey reduces an agent id or address to its bare lowercase id: "tether://agent/x",
+// "msg://agent/agent-mux/x" and "x" all become "x" ("agent-mux/x" keeps its last path element).
+func AgentKey(v string) string {
+	v = strings.TrimSpace(v)
+	if i := strings.Index(v, "://"); i >= 0 {
+		v = v[i+3:]
+		v = strings.TrimPrefix(v, "agent/")
+	}
+	if i := strings.LastIndex(v, "/"); i >= 0 {
+		v = v[i+1:]
+	}
+	return strings.ToLower(strings.TrimSpace(v))
+}
+
+// AgentScope is the principal scope an agent binding becomes: "agent:<key>".
+const AgentScope = "agent"
+
+// Bind records that an identity may act for the given agents (chat plan verbs check it).
+// It adds to any existing bindings, applies to tokens already issued (Verify reads it on every
+// call), and is idempotent. The identity must exist and be active.
+func (s *Store) Bind(ctx context.Context, identityID string, agents []string) ([]string, error) {
+	if _, err := uuid.Parse(identityID); err != nil {
+		return nil, errors.New("identity must be a UUID")
+	}
+	keys := []string{}
+	for _, a := range agents {
+		k := AgentKey(a)
+		if k == "" || len(k) > 200 {
+			return nil, errors.New("agent is required (maximum 200 bytes)")
+		}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("at least one agent is required")
+	}
+	now := time.Now().Unix()
+	err := s.DB.Writer.Submit(ctx, "service-identity.bind", func(ctx context.Context, tx *sql.Tx) error {
+		var one int
+		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM service_identities WHERE id=? AND disabled_at IS NULL", identityID).Scan(&one); err != nil {
+			return errors.New("active service identity not found")
+		}
+		for _, k := range keys {
+			if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO service_identity_agents(identity_id,agent_key,created_at) VALUES(?,?,?)", identityID, k, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.Agents(ctx, identityID)
+}
+
+// Unbind removes one agent from an identity. It reports an error when nothing was bound.
+func (s *Store) Unbind(ctx context.Context, identityID, agent string) error {
+	k := AgentKey(agent)
+	return s.DB.Writer.Submit(ctx, "service-identity.unbind", func(ctx context.Context, tx *sql.Tx) error {
+		r, err := tx.ExecContext(ctx, "DELETE FROM service_identity_agents WHERE identity_id=? AND agent_key=?", identityID, k)
+		if err != nil {
+			return err
+		}
+		if n, err := r.RowsAffected(); err == nil && n == 0 {
+			return errors.New("binding not found")
+		}
+		return nil
+	})
+}
+
+// Agents lists the agents an identity is bound to, sorted.
+func (s *Store) Agents(ctx context.Context, identityID string) ([]string, error) {
+	rows, err := s.DB.Reader.QueryContext(ctx, "SELECT agent_key FROM service_identity_agents WHERE identity_id=? ORDER BY agent_key", identityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+// ProxyScope is the principal scope carried only by the pinned Tether proxy identity: "proxy:tether".
+// Handlers accept X-Tether-* actor headers when, and only when, the authenticated principal has it.
+const (
+	ProxyScope  = "proxy"
+	ProxyTether = "tether"
+)
+
+// IsTetherProxy reports whether the verified principal is the pinned Tether proxy.
+func IsTetherProxy(p auth.Principal) bool { return Allows(p, ProxyScope, ProxyTether) }
+
+// PinProxy makes one active identity the trusted Tether proxy, replacing any previous pin.
+// Like bindings it applies to the identity's existing tokens at once (Verify reads it on every call).
+func (s *Store) PinProxy(ctx context.Context, identityID string) error {
+	if _, err := uuid.Parse(identityID); err != nil {
+		return errors.New("identity must be a UUID")
+	}
+	return s.DB.Writer.Submit(ctx, "service-proxy.pin", func(ctx context.Context, tx *sql.Tx) error {
+		var one int
+		if err := tx.QueryRowContext(ctx, "SELECT 1 FROM service_identities WHERE id=? AND disabled_at IS NULL", identityID).Scan(&one); err != nil {
+			return errors.New("active service identity not found")
+		}
+		_, err := tx.ExecContext(ctx, "INSERT INTO service_proxy_pin(id,identity_id,pinned_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET identity_id=excluded.identity_id, pinned_at=excluded.pinned_at", identityID, time.Now().Unix())
+		return err
+	})
+}
+
+// UnpinProxy removes the pin; it reports an error when nothing was pinned.
+func (s *Store) UnpinProxy(ctx context.Context) error {
+	return s.DB.Writer.Submit(ctx, "service-proxy.unpin", func(ctx context.Context, tx *sql.Tx) error {
+		r, err := tx.ExecContext(ctx, "DELETE FROM service_proxy_pin WHERE id=1")
+		if err != nil {
+			return err
+		}
+		if n, err := r.RowsAffected(); err == nil && n == 0 {
+			return errors.New("no proxy identity is pinned")
+		}
+		return nil
+	})
+}
+
+// ProxyIdentity returns the pinned identity id, or "" when none.
+func (s *Store) ProxyIdentity(ctx context.Context) (string, error) {
+	var id string
+	err := s.DB.Reader.QueryRowContext(ctx, "SELECT identity_id FROM service_proxy_pin WHERE id=1").Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}
+
 func (s *Store) Verify(ctx context.Context, secret string) (auth.Principal, error) {
 	if !tokenfile.ValidHex(secret) {
 		return auth.Principal{}, auth.ErrInvalidToken
@@ -216,7 +398,22 @@ func (s *Store) Verify(ctx context.Context, secret string) (auth.Principal, erro
 	if json.Unmarshal([]byte(grants), &g) != nil || g.Validate() != nil {
 		return auth.Principal{}, auth.ErrInvalidToken
 	}
-	return auth.Principal{Verified: true, ID: identity, Kind: "service", Display: name, TokenID: id, Scopes: g.scopes(), ExpiresAt: time.Unix(expiry, 0).UTC()}, nil
+	agents, err := s.Agents(ctx, identity)
+	if err != nil {
+		return auth.Principal{}, auth.ErrUnavailable
+	}
+	scopes := g.scopes()
+	for _, a := range agents {
+		scopes = append(scopes, AgentScope+":"+a)
+	}
+	pinned, err := s.ProxyIdentity(ctx)
+	if err != nil {
+		return auth.Principal{}, auth.ErrUnavailable
+	}
+	if pinned != "" && pinned == identity {
+		scopes = append(scopes, ProxyScope+":"+ProxyTether)
+	}
+	return auth.Principal{Verified: true, ID: identity, Kind: "service", Display: name, TokenID: id, Scopes: scopes, ExpiresAt: time.Unix(expiry, 0).UTC()}, nil
 }
 func (s *Store) Revoke(ctx context.Context, id string, identity bool) error {
 	table, field := "service_tokens", "revoked_at"
@@ -265,5 +462,18 @@ func (s *Store) List(ctx context.Context) ([]Token, error) {
 		}
 		out = append(out, t)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	pinned, err := s.ProxyIdentity(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].Agents, err = s.Agents(ctx, out[i].IdentityID); err != nil {
+			return nil, err
+		}
+		out[i].Proxy = pinned != "" && pinned == out[i].IdentityID
+	}
+	return out, nil
 }

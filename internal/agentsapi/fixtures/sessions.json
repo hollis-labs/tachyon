@@ -1,0 +1,1064 @@
+{
+ "sessions": [
+  {
+   "id": "sess_work",
+   "agent": {
+    "urn": "msg://agent/agent-mux/tachyon-chat-backend-builder",
+    "name": "Chat Backend Builder",
+    "logical_agent_id": "tachyon-chat-backend-builder"
+   },
+   "kind": "chat",
+   "provider": "claude",
+   "model": "claude-sonnet-5-5",
+   "workroot": "/work/tachyon",
+   "state": "working",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1793321992000,
+   "runtime_ms": 5400000,
+   "one_liner": {
+    "verb": "Reading",
+    "target": "internal/appagent/",
+    "tool": "Read",
+    "at": 1793321992000,
+    "calls_this_turn": 7
+   },
+   "context": {
+    "used": 620000,
+    "window": 1000000,
+    "pct": 62,
+    "source": "stream",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": null,
+   "compactions": [
+    {
+     "at": 1793319600000,
+     "before": 910000,
+     "after": 140000,
+     "inferred": false
+    }
+   ],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": {
+    "theme_ref": "planner:theme/chat-gui",
+    "task_ref": "CW-20261030-0003",
+    "index": 3,
+    "count": 8,
+    "stats": {
+     "done": 2,
+     "time_on_task_ms": 3000000,
+     "events": 188
+    }
+   },
+   "spark": [
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": true,
+     "reason": null
+    },
+    "restart": true
+   }
+  },
+  {
+   "id": "sess_approval",
+   "agent": {
+    "urn": "msg://agent/agent-mux/planner-gui-builder",
+    "name": "Planner GUI Builder",
+    "logical_agent_id": "planner-gui-builder"
+   },
+   "kind": "chat",
+   "provider": "claude",
+   "model": "claude-sonnet-5-5",
+   "workroot": "/work/tachyon",
+   "state": "waiting",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": "approval",
+    "since": 1793321760000
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1793321760000,
+   "runtime_ms": 5400000,
+   "one_liner": {
+    "verb": "Running",
+    "target": "gh",
+    "tool": "Bash",
+    "at": 1793321760000,
+    "calls_this_turn": 2
+   },
+   "context": {
+    "used": 310000,
+    "window": 1000000,
+    "pct": 31,
+    "source": "stream",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": true,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": true,
+     "reason": null
+    },
+    "restart": true
+   }
+  },
+  {
+   "id": "sess_question",
+   "agent": {
+    "urn": "msg://agent/agent-mux/interaction-designer",
+    "name": "Interaction Designer",
+    "logical_agent_id": "interaction-designer"
+   },
+   "kind": "chat",
+   "provider": "claude",
+   "model": "claude-opus-5-5",
+   "workroot": "/work/design",
+   "state": "waiting",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": "question",
+    "since": 1793321460000
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1793321460000,
+   "runtime_ms": 5400000,
+   "one_liner": {
+    "verb": "Asking",
+    "target": "you",
+    "tool": "AskUserQuestion",
+    "at": 1793321460000,
+    "calls_this_turn": 0
+   },
+   "context": {
+    "used": 905000,
+    "window": 1000000,
+    "pct": 90,
+    "source": "stream",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": {
+    "at": 1793318400000,
+    "inferred": true
+   },
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": true,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": true,
+     "reason": null
+    },
+    "restart": true
+   }
+  },
+  {
+   "id": "sess_idle",
+   "agent": {
+    "urn": "msg://agent/agent-mux/nanite-architect",
+    "name": "Nanite Architect",
+    "logical_agent_id": "nanite-architect"
+   },
+   "kind": "chat",
+   "provider": "claude",
+   "model": "claude-sonnet-5-5",
+   "workroot": "/work/nanite",
+   "state": "idle",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1792803600000,
+   "last_activity_at": 1792890000000,
+   "runtime_ms": 518400000,
+   "one_liner": null,
+   "context": {
+    "used": 120000,
+    "window": 1000000,
+    "pct": 12,
+    "source": "stream",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": true,
+     "reason": null
+    },
+    "restart": true
+   }
+  },
+  {
+   "id": "sess_stale_events",
+   "agent": {
+    "urn": "msg://agent/agent-mux/portfolio-manager",
+    "name": "Portfolio Manager",
+    "logical_agent_id": "portfolio-manager"
+   },
+   "kind": "chat",
+   "provider": "claude",
+   "model": "claude-sonnet-5-5",
+   "workroot": "/work/portfolio",
+   "state": "stale",
+   "stale_reason": "no_events",
+   "stale_since": 1793321040000,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1793321040000,
+   "runtime_ms": 5400000,
+   "one_liner": {
+    "verb": "Editing",
+    "target": "docs/",
+    "tool": "Edit",
+    "at": 1793321040000,
+    "calls_this_turn": 3
+   },
+   "context": {
+    "used": 620000,
+    "window": 1000000,
+    "pct": 62,
+    "source": "stream",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": true,
+     "reason": null
+    },
+    "restart": true
+   }
+  },
+  {
+   "id": "sess_stale_waiting",
+   "agent": {
+    "urn": "msg://agent/agent-mux/reviewer",
+    "name": "Reviewer",
+    "logical_agent_id": "reviewer"
+   },
+   "kind": "chat",
+   "provider": "claude",
+   "model": "claude-sonnet-5-5",
+   "workroot": "/work/tachyon",
+   "state": "stale",
+   "stale_reason": "no_events",
+   "stale_since": 1793320800000,
+   "needs_you": {
+    "reason": "approval",
+    "since": 1793320800000
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1793320800000,
+   "runtime_ms": 5400000,
+   "one_liner": {
+    "verb": "Reading",
+    "target": "internal/appagent/",
+    "tool": "Read",
+    "at": 1793321992000,
+    "calls_this_turn": 7
+   },
+   "context": {
+    "used": 620000,
+    "window": 1000000,
+    "pct": 62,
+    "source": "stream",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": true,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": true,
+     "reason": null
+    },
+    "restart": true
+   }
+  },
+  {
+   "id": "sess_stale_dead",
+   "agent": {
+    "urn": "msg://agent/agent-mux/taskops-worker",
+    "name": "Taskops Worker",
+    "logical_agent_id": "taskops-worker"
+   },
+   "kind": "process",
+   "provider": "claude",
+   "model": "claude-sonnet-5-5",
+   "workroot": "/work/ops",
+   "state": "stale",
+   "stale_reason": "not_alive",
+   "stale_since": 1792890000000,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1792890000000,
+   "runtime_ms": 5400000,
+   "one_liner": null,
+   "context": {
+    "used": 620000,
+    "window": 1000000,
+    "pct": 62,
+    "source": "stream",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": false,
+     "reason": "session is not alive"
+    },
+    "restart": false
+   }
+  },
+  {
+   "id": "sess_stale_worker",
+   "agent": {
+    "urn": "msg://agent/agent-mux/remote-builder",
+    "name": "Remote Builder",
+    "logical_agent_id": "remote-builder"
+   },
+   "kind": "chat",
+   "provider": "claude",
+   "model": "claude-sonnet-5-5",
+   "workroot": "/work/remote",
+   "state": "stale",
+   "stale_reason": "worker_offline",
+   "stale_since": 1793320200000,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1793320200000,
+   "runtime_ms": 5400000,
+   "one_liner": {
+    "verb": "Reading",
+    "target": "internal/appagent/",
+    "tool": "Read",
+    "at": 1793321992000,
+    "calls_this_turn": 7
+   },
+   "context": {
+    "used": 620000,
+    "window": 1000000,
+    "pct": 62,
+    "source": "stream",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": false,
+     "reason": "worker is offline"
+    },
+    "restart": false
+   }
+  },
+  {
+   "id": "sess_unknown",
+   "agent": {
+    "urn": "msg://agent/agent-mux/hub-agent",
+    "name": "Hub Agent",
+    "logical_agent_id": "hub-agent"
+   },
+   "kind": "chat",
+   "provider": "claude",
+   "model": "claude-sonnet-5-5",
+   "workroot": "/work/hub",
+   "state": "unknown",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1793321992000,
+   "runtime_ms": 5400000,
+   "one_liner": null,
+   "context": {
+    "used": null,
+    "window": null,
+    "pct": null,
+    "source": "unknown",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": true,
+    "input": 184000,
+    "output": 41000,
+    "cache_read": 9200000,
+    "cache_write": 310000,
+    "hour": {
+     "input": 52000,
+     "output": 12000,
+     "cache_read": 2100000,
+     "cache_write": 80000
+    }
+   },
+   "tool_call_count": 212,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": false
+   },
+   "assignment": null,
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "tether"
+   ],
+   "capabilities": {
+    "nudge": true,
+    "interrupt": {
+     "available": true,
+     "reason": null
+    },
+    "restart": true
+   }
+  },
+  {
+   "id": "sess_pty",
+   "agent": {
+    "urn": null,
+    "name": "Codex CLI",
+    "logical_agent_id": null
+   },
+   "kind": "process",
+   "provider": "codex-pty",
+   "model": null,
+   "workroot": "/home/dev/scratch",
+   "state": "working",
+   "stale_reason": null,
+   "stale_since": null,
+   "needs_you": {
+    "reason": null,
+    "since": null
+   },
+   "started_at": 1793316600000,
+   "last_activity_at": 1793321992000,
+   "runtime_ms": 5400000,
+   "one_liner": null,
+   "context": {
+    "used": null,
+    "window": null,
+    "pct": null,
+    "source": "unknown",
+    "breakdown": null
+   },
+   "tokens": {
+    "metered": false,
+    "input": null,
+    "output": null,
+    "cache_read": null,
+    "cache_write": null,
+    "hour": null
+   },
+   "tool_call_count": null,
+   "last_clear_at": null,
+   "compactions": [],
+   "pending": {
+    "approval": false,
+    "question": false,
+    "known": true
+   },
+   "assignment": null,
+   "spark": [
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    7,
+    3,
+    6
+   ],
+   "parent_session_id": null,
+   "replaced_by": null,
+   "observed_by": [
+    "chimera"
+   ],
+   "capabilities": {
+    "nudge": false,
+    "interrupt": {
+     "available": false,
+     "reason": "PTY sessions have no turn control"
+    },
+    "restart": false
+   }
+  }
+ ],
+ "summary": {
+  "working": 2,
+  "waiting": 2,
+  "idle": 1,
+  "stale": 4,
+  "unknown": 1
+ },
+ "collector": {
+  "collecting": true,
+  "sessions": 10,
+  "last_event_at": 1793321998000,
+  "strategy": "snapshot",
+  "sources": {
+   "tether": {
+    "state": "streaming",
+    "detail": ""
+   },
+   "chimera": {
+    "state": "polling",
+    "detail": ""
+   }
+  },
+  "dropped_output_frames": 0,
+  "open_gaps": 0,
+  "retention": {
+   "last_run_at": 1793321700000,
+   "rows_pruned": 1000
+  },
+  "bus_topics": {
+   "deploy": "off",
+   "restart": "off",
+   "task": "off",
+   "failure": "off",
+   "host": "no_emitter",
+   "workstream": "no_emitter",
+   "lifecycle": "live",
+   "card": "off"
+  }
+ }
+}

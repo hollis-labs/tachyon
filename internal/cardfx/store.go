@@ -35,18 +35,20 @@ type EffectResult struct {
 
 // Receipt is what happened after approval, including who approved and the note.
 type Receipt struct {
-	ItemID     string         `json:"item_id"`
-	State      string         `json:"state"`
-	OpDigest   string         `json:"op_digest,omitempty"`
-	Decision   string         `json:"decision,omitempty"`
-	Approver   string         `json:"approver,omitempty"`
-	Assurance  string         `json:"assurance,omitempty"`
-	Note       string         `json:"note,omitempty"`
-	ApprovedAt *time.Time     `json:"approved_at,omitempty"`
-	Reason     string         `json:"reason,omitempty"`
-	Effects    []EffectResult `json:"effects,omitempty"`
-	StartedAt  time.Time      `json:"started_at"`
-	EndedAt    *time.Time     `json:"ended_at,omitempty"`
+	ItemID   string `json:"item_id"`
+	State    string `json:"state"`
+	OpDigest string `json:"op_digest,omitempty"`
+	Decision string `json:"decision,omitempty"`
+	// Alternative is the id of the alternative the operator chose instead of the main effects.
+	Alternative string         `json:"alternative_id,omitempty"`
+	Approver    string         `json:"approver,omitempty"`
+	Assurance   string         `json:"assurance,omitempty"`
+	Note        string         `json:"note,omitempty"`
+	ApprovedAt  *time.Time     `json:"approved_at,omitempty"`
+	Reason      string         `json:"reason,omitempty"`
+	Effects     []EffectResult `json:"effects,omitempty"`
+	StartedAt   time.Time      `json:"started_at"`
+	EndedAt     *time.Time     `json:"ended_at,omitempty"`
 }
 
 // Store persists effect runs through Tachyon's one SQLite writer.

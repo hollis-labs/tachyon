@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { isInternalHref, safeHref } from './policy'
 import type { AlertLink } from './types'
 
-const CLS = `${buttonVariants({ variant: 'outline', size: 'xs' })} font-mono uppercase tracking-label`
+const CLS = `${buttonVariants({ variant: 'outline', size: 'xs' })} normal-case tracking-normal font-sans`
 
 /** The alert's primary action in phase 1: a validated link. */
 export function AlertLinkButton({ link, onFollow }: { link: AlertLink; onFollow?: () => void }) {

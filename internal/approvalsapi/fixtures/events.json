@@ -1,0 +1,71 @@
+[
+  {
+    "id": 1,
+    "type": "inbox.changed",
+    "data": {
+      "revision": "inbox-r41"
+    }
+  },
+  {
+    "id": 2,
+    "type": "item.created",
+    "data": {
+      "item_id": "ap_change_c",
+      "revision": 1,
+      "state": "presented"
+    }
+  },
+  {
+    "id": 3,
+    "type": "item.updated",
+    "data": {
+      "item_id": "ap_change_b",
+      "revision": 4,
+      "state": "presented"
+    }
+  },
+  {
+    "id": 4,
+    "type": "item.deferred",
+    "data": {
+      "item_id": "ap_deferred",
+      "revision": 2,
+      "state": "presented",
+      "deferred_until": "2026-10-30T03:30:00Z"
+    }
+  },
+  {
+    "id": 5,
+    "type": "item.undeferred",
+    "data": {
+      "item_id": "ap_deferred",
+      "revision": 2,
+      "state": "presented"
+    }
+  },
+  {
+    "id": 6,
+    "type": "item.resolved",
+    "data": {
+      "item_id": "ap_h_approved",
+      "revision": 3,
+      "state": "resolved"
+    }
+  },
+  {
+    "id": 7,
+    "type": "item.expired",
+    "data": {
+      "item_id": "ap_h_expired",
+      "revision": 2,
+      "state": "expired"
+    }
+  },
+  {
+    "id": 8,
+    "type": "inbox.changed",
+    "data": {
+      "revision": "inbox-r42"
+    }
+  }
+]

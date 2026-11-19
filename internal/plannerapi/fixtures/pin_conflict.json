@@ -1,0 +1,1 @@
+{"error":"Record changed; read and reconcile before retrying.","code":"revision_conflict","details":{"current":{"id":"theme-agents-console","db":"themes","title":"Agents console","status":"in_progress","rev":15,"pinned":true,"pinned_at":"2026-10-29T09:00:00Z"}}}

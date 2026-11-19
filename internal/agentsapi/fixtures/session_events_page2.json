@@ -1,0 +1,18 @@
+{
+ "events": [
+  {
+   "id": "ev_-1",
+   "seq": 1905999,
+   "session_id": "sess_work",
+   "type": "lifecycle",
+   "at": 1793316500000,
+   "actor": "tether",
+   "summary": "Resumed from sess_prev",
+   "cite": [],
+   "card": null,
+   "payload": null
+  }
+ ],
+ "gaps": [],
+ "next_before": null
+}

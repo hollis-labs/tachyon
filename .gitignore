@@ -38,3 +38,4 @@ Thumbs.db
 
 # Root workspace deps
 /node_modules/
+plugins/console/ui/node_modules/

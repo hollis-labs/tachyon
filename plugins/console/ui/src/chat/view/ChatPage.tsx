@@ -7,6 +7,9 @@ import { chatRecipient, useChatRoster } from '../roster'
 import type { ChatThread } from '../types'
 import { ChatView } from './ChatView'
 import { ThreadConversation } from './ThreadConversation'
+import { useContinue } from '../workbench/continue'
+import { consoleJson, type FetchLike } from '../../lib/http'
+import { operatorFetch } from '../../operator/elevation'
 
 /** /chat and /chat/:threadId. Wires the mail ChatClient into ChatView. */
 export function ChatPage() {
@@ -23,10 +26,21 @@ export function ChatPage() {
   // A refresh of the list that briefly lacks the open thread must not unmount its conversation.
   const lastActive = useRef<ChatThread | null>(null)
   if (found) lastActive.current = found
-  const active = found ?? (threadId && lastActive.current?.id === threadId ? lastActive.current : null)
+  const base = found ?? (threadId && lastActive.current?.id === threadId ? lastActive.current : null)
+
+  const [picked, setPicked] = useState<{ thread: string; ref: string } | null>(null)
+  const sessionRef = picked && base && picked.thread === base.id && base.sessions?.some((s) => s.ref === picked.ref) ? picked.ref : undefined
+  const active = useMemo(() => (base && sessionRef ? { ...base, sessionRef } : base), [base, sessionRef])
 
   // A thread the list does not know yet (deep link, or just created) is looked up once it loads.
   useEffect(() => { if (opened && threads?.some((t) => t.id === opened.id)) setOpened(null) }, [threads, opened])
+
+  // On a wide screen /chat opens the most recent conversation; below that the list stays the landing view.
+  useEffect(() => {
+    if (threadId || !threads?.length) return
+    if (typeof window.matchMedia !== 'function' || !window.matchMedia('(min-width: 1024px)').matches) return
+    navigate(`/chat/${encodeURIComponent(threads[0].id)}`, { replace: true })
+  }, [threadId, threads, navigate])
 
   const newChatActions = useMemo<OverflowAction[]>(
     () => (agents ?? []).map((a) => ({
@@ -42,6 +56,27 @@ export function ChatPage() {
     [agents, client, select],
   )
 
+  const startOptions = useMemo(
+    () => (agents ?? []).map((a) => ({
+      id: a.launch_id,
+      label: a.display_name,
+      onSelect: () => {
+        setOpenError(null)
+        client.openThread(chatRecipient(a)).then(
+          (t) => { setOpened(t); select(t.id) },
+          (e) => setOpenError(e instanceof Error ? e.message : 'Could not open conversation'),
+        )
+      },
+    })),
+    [agents, client, select],
+  )
+  const cont = useContinue(active ? (active.sessionRef ?? active.sessions?.[0]?.ref) : undefined)
+  const togglePin = useCallback(() => {
+    const ref = active?.sessionRef ?? active?.sessions?.[0]?.ref
+    if (!active || !ref) return
+    consoleJson(`/chat/threads/${encodeURIComponent(ref)}`, { method: 'PATCH', body: { pinned: !active.pinned }, fetch: operatorFetch as FetchLike }).then(retry, (e) => setOpenError(e instanceof Error ? e.message : 'Could not pin'))
+  }, [active, retry])
+
   return (
     <ChatView
       threads={threads}
@@ -49,9 +84,23 @@ export function ChatPage() {
       onRetryThreads={retry}
       activeThread={active}
       onSelectThread={select}
+      onSelectSession={(ref) => active && setPicked({ thread: active.id, ref })}
+      onBack={() => navigate('/chat')}
       newChatActions={newChatActions}
+      startOptions={startOptions}
+      onTogglePin={togglePin}
+      continueOn={cont.on}
+      onToggleContinue={cont.toggle}
+      continueError={cont.error}
+      onDismissContinueError={cont.dismiss}
     >
-      {active && <ThreadConversation key={active.id} thread={active} />}
+      {active && (
+        <ThreadConversation
+          key={`${active.id}|${active.sessionRef ?? ''}`}
+          thread={active}
+          palette={{ threads: threads ?? [], active, onOpenThread: select, startOptions, onTogglePin: togglePin, onCopyLink: () => void navigator.clipboard?.writeText(location.href) }}
+        />
+      )}
     </ChatView>
   )
 }

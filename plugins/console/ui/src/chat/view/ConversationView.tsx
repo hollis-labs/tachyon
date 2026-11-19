@@ -1,8 +1,22 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChatInput } from '@hollis-labs/kit-chat'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Composer } from '../workbench/Composer'
+import { Drawer } from '../drawer/Drawer'
+import { ScratchPane } from '../drawer/ScratchPane'
+import { TerminalPane } from '../drawer/TerminalPane'
+import { WorkspacePane } from '../drawer/WorkspacePane'
+import { DEMO_WORKSPACE, useScratchPlacement, useWorkspace, type DrawerMode, type DrawerSize } from '../drawer/model'
+import { DEMO } from '../cards/useBlocks'
+import { useThreadFrames } from '../live'
+import { NewThread } from '../workbench/NewThread'
+import { useChatKeys } from '../workbench/keys'
+import { useAsideOptional, useRegisterConversation, type Marks } from '../aside/context'
+import { useBookmarks, useTopics } from '../aside/data'
+import { ChatPalette, type PaletteActions } from '../workbench/Palette'
 import { getDraft, setDraft } from '../drafts'
 import { ThreadView } from '../ThreadView'
 import type { ChatMessage } from '../types'
+import type { Commit } from '../cards/Cards'
+import type { StreamBlock } from '../cards/types'
 
 export interface ConversationViewProps {
   /** Changing this focuses the composer (a thread switch). */
@@ -25,15 +39,74 @@ export interface ConversationViewProps {
   toolbarStart?: ReactNode
   /** Short caption beside the send button, e.g. 'Mail only'. */
   note?: string | null
+  /** Palette sources; the palette is the '/' command surface of the composer. */
+  palette?: PaletteActions
+  /** Cards, tool-call rows and run cards between the messages. */
+  blocks?: StreamBlock[]
+  commit?: Commit
+  runActions?: import('../cards/useBlocks').RunActions
+  blocksLoaded?: boolean
+  /** Reload after a load or stream failure. */
+  onRetry?: () => void
+  /** The agent's role chip, for the new-thread summary. */
+  role?: string
+  /** Agents the @ menu offers. */
+  mentions?: string[]
+  /** Interrupt the reply in progress. Present only while the agent is working and the thread can be stopped. */
+  onStop?: () => Promise<void>
+  /** The chat API thread ref behind the conversation (workspace, scratchpad, terminal are keyed by it). */
+  threadRef?: string
 }
 
 /** Messages plus composer for one thread. Transport-free: the host owns the state and the send. */
-export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note }: ConversationViewProps) {
+export function ConversationView({ threadId, messages, agentLabel, loading, hasMore, onLoadOlder, onSend, canSend = true, error, sendError, empty, status, toolbarStart, note, palette, blocks, blocksLoaded, commit, runActions, threadRef, onRetry, role, mentions, onStop }: ConversationViewProps) {
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [value, setValueState] = useState(() => getDraft(threadId))
   const setValue = (v: string) => { setValueState(v); setDraft(threadId, v) }
   const [busy, setBusy] = useState(false)
+  const [stopping, setStopping] = useState(false)
+  const [stopError, setStopError] = useState<string | null>(null)
+  // A stop request ends with the turn it was for.
+  const canStop = !!onStop
+  useEffect(() => { if (!canStop) { setStopping(false); setStopError(null) } }, [canStop])
+  const stop = async () => {
+    if (!onStop || stopping) return
+    setStopping(true); setStopError(null)
+    try { await onStop() } catch (e) { setStopping(false); setStopError(e instanceof Error ? e.message : 'The reply could not be stopped.') }
+  }
+  const [drawer, setDrawer] = useState<DrawerMode | null>(null)
+  const [size, setSize] = useState<DrawerSize>('half')
+  const ws = useWorkspace(DEMO ? undefined : threadRef, DEMO ? DEMO_WORKSPACE : undefined)
+  const placement = useScratchPlacement()
+  const aside = useAsideOptional()
+  const [offline, setOffline] = useState(false)
+  useThreadFrames(threadRef, (f) => { if (f.type === 'dropped') setOffline(true); else if (f.type === 'reconnected') setOffline(false) }, !DEMO)
+  const bms = useBookmarks(threadRef, aside?.tick ?? 0)
+  const tps = useTopics(threadRef, aside?.tick ?? 0)
+  const marks = useMemo<Marks>(() => ({ bookmarks: bms.bookmarks, toggleBookmark: (r) => void bms.toggle(r), topics: tps.topics, addTopic: (t, r) => void tps.add(t, r) }), [bms.bookmarks, bms.toggle, tps.topics, tps.add])
+  // Opening the open mode again closes it (the composer icons and the keys toggle). The scratchpad opens in the aside when the setting says so.
+  const openDrawer = (m: DrawerMode) => {
+    if (m === 'scratch' && placement === 'aside' && aside) { aside.pick('scratch'); return }
+    setDrawer((cur) => (cur === m ? null : m))
+  }
+  const insert = (text: string) => { setValue(value ? `${value}\n${text}` : text); setDrawer(null); area.current?.focus() }
   const area = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { area.current?.focus() }, [threadId])
+  useChatKeys({ pick: (p) => aside?.pick(p), panel: aside?.panel ?? 'plan', open: !!aside?.open, toggleBookmark: marks.toggleBookmark })
+  useRegisterConversation({ ref: threadRef, agent: agentLabel, messages, blocks: blocks ?? [], blocksLoaded, commit, onInsert: insert, marks })
+  useEffect(() => { setDrawer(null) }, [threadId])
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase()
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && k === 'j') { e.preventDefault(); openDrawer('scratch') }
+      else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && k === '.' && aside) { e.preventDefault(); aside.pick('plan') }
+      else if (e.ctrlKey && !e.metaKey && !e.shiftKey && k === 't') { e.preventDefault(); openDrawer('terminal') }
+      else if ((e.metaKey || e.ctrlKey) && e.shiftKey && k === 'w') { e.preventDefault(); openDrawer('workspace') }
+      else if (e.key === 'Escape' && drawer && !e.defaultPrevented && !(e.target instanceof Element && e.target.closest('[role=dialog], [role=menu]'))) { setDrawer(null); area.current?.focus() }
+    }
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [drawer, placement, aside])
   const submit = async (text: string) => {
     const body = text.trim()
     if (!body || busy) return
@@ -50,23 +123,44 @@ export function ConversationView({ threadId, messages, agentLabel, loading, hasM
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {status}
-      {error && <p role="alert" className="border-b border-danger/30 px-4 py-2 text-xs text-danger">{error}</p>}
-      <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty} />
-      <div className="shrink-0 space-y-1 px-3 pb-3 pt-2">
-        {sendError && <p role="alert" className="text-xs text-danger">{sendError}</p>}
-        <ChatInput
-          value={value}
-          onValueChange={setValue}
-          onSubmit={(v) => void submit(v)}
-          busy={busy}
-          disabled={!canSend || !!error}
-          textareaRef={area}
-          aria-label="Message"
-          toolbarStart={toolbarStart}
-          toolbarEnd={note ? <span className="truncate dash-caption text-fg-faint">{note}</span> : undefined}
-          placeholder={canSend ? 'Message. Enter to send, Shift+Enter for a new line' : 'This agent cannot receive messages right now'}
-        />
-      </div>
+      {offline && <p role="status" className="border-b border-border-subtle px-4 py-1.5 text-xs text-fg-muted">Reconnecting… You can keep typing; a send that fails keeps your draft and can be retried.</p>}
+      {error && (
+        <div role="alert" className="flex items-center gap-3 border-b border-danger/30 px-4 py-2 text-xs text-danger">
+          <span>{error} Your draft is kept.</span>
+          {onRetry && <button type="button" onClick={onRetry} className="underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">Retry</button>}
+        </div>
+      )}
+      <ThreadView messages={messages} agentLabel={agentLabel} loading={loading} hasMore={hasMore} onLoadOlder={onLoadOlder} empty={empty ?? (messages.length === 0 && !loading ? <NewThread agent={agentLabel} role={role} onPick={insert} /> : undefined)} blocks={blocks} commit={commit} runActions={runActions} marks={marks} onOpenPanel={aside ? () => aside.pick('plan') : undefined} />
+      {drawer && (
+        <Drawer mode={drawer} size={size} onSize={setSize} onClose={() => { setDrawer(null); area.current?.focus() }}>
+          {drawer === 'scratch' && <ScratchPane threadRef={threadRef} onInsert={insert} />}
+          {drawer === 'terminal' && <TerminalPane threadRef={threadRef} demo={DEMO} />}
+          {drawer === 'workspace' && <WorkspacePane ws={ws} />}
+        </Drawer>
+      )}
+      <Composer
+        value={value}
+        onChange={setValue}
+        onSubmit={(v) => void submit(v)}
+        agentLabel={agentLabel}
+        busy={busy}
+        disabled={!canSend && !onStop}
+        note={note}
+        sendError={sendError}
+        stopError={stopError}
+        onStop={onStop ? () => void stop() : undefined}
+        stopping={stopping}
+        mentions={mentions}
+        textareaRef={area}
+        onOpenPalette={() => setPaletteOpen(true)}
+        onDrawer={openDrawer}
+        drawerMode={drawer}
+        scratchInAside={placement === 'aside'}
+        strip={ws.items.filter((i) => i.shared).map((i) => ({ id: i.id, label: i.name }))}
+        onRemoveStrip={(id) => ws.share(id, false)}
+        extra={toolbarStart}
+      />
+      {palette && <ChatPalette open={paletteOpen} onOpenChange={setPaletteOpen} a={{ ...palette, onDrawer: openDrawer, onDraft: (t) => { setValue(t); area.current?.focus() }, onPanel: aside ? (p) => aside.pick(p) : undefined }} />}
     </div>
   )
 }

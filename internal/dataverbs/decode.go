@@ -122,7 +122,11 @@ func shape(t reflect.Type) map[string]any {
 			if name == "" {
 				name = field.Name
 			}
-			properties[name] = shape(field.Type)
+			prop := shape(field.Type)
+			if d := field.Tag.Get("desc"); d != "" {
+				prop["description"] = d
+			}
+			properties[name] = prop
 		}
 		return map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
 	case reflect.Slice:

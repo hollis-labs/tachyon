@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -69,6 +71,14 @@ func main() {
 		DataDir:                     env("TACHYON_DATA_DIR", xdg("XDG_DATA_HOME", ".local/share")),
 		CacheDir:                    env("TACHYON_CACHE_DIR", xdg("XDG_CACHE_HOME", ".cache")),
 		ActionDetachGrace:           durationEnv("TACHYON_ACTION_DETACH_GRACE"),
+		AgentsCollector:             os.Getenv("TACHYON_AGENTS_COLLECTOR") != "0",
+		CatalogIndex:                os.Getenv("TACHYON_CATALOG_INDEX") != "0",
+		AgentsStubs:                 os.Getenv("TACHYON_AGENTS_STUBS") == "1",
+		ChatClientContext:           os.Getenv("TACHYON_CHAT_CLIENT_CONTEXT") == "1",
+		TerminalPolicyFile:          os.Getenv("TACHYON_TERMINAL_POLICY"),
+		ChatStubs:                   os.Getenv("TACHYON_CHAT_STUBS") == "1",
+		FileviewStubs:               os.Getenv("TACHYON_FILEVIEW_STUBS") == "1",
+		BuilderStubs:                os.Getenv("TACHYON_BUILDER_STUBS") == "1",
 		CardEffectsTorque:           os.Getenv("TACHYON_CARD_EFFECTS_TORQUE") == "1",
 		CardDeliveryFile:            os.Getenv("TACHYON_CARD_DELIVERY_FILE"),
 		ActionHub: actionrun.SSH{
@@ -78,17 +88,18 @@ func main() {
 			KnownHostsFile: os.Getenv("TACHYON_ACTION_HUB_SSH_KNOWN_HOSTS"),
 		},
 		Upstreams: catalog.Upstreams{
-			ActivityURL:        env("TACHYON_ACTIVITY_URL", "http://127.0.0.1:8099"),
-			TetherAddr:         os.Getenv("TETHER_ADDR"),
-			TetherTokenFile:    os.Getenv("TETHER_TOKEN_FILE"),
-			TesseractURL:       os.Getenv("TESSERACT_URL"),
-			TesseractTokenFile: os.Getenv("TESSERACT_TOKEN_FILE"),
-			CerberusAddr:       os.Getenv("CERBERUS_ADDR"),
-			CerberusTokenFile:  upstreamauth.TokenFile(nil, "", "CERBERUS_TOKEN_FILE"),
-			TorqueURL:          env("TORQUE_URL", "http://127.0.0.1:8990"),
-			TorqueToken:        os.Getenv("TORQUE_API_TOKEN"),
-			GitHubToken:        githubToken(ctx),
-			GitHubOrg:          env("GITHUB_ORG", "hollis-labs"),
+			ActivityURL:            env("TACHYON_ACTIVITY_URL", "http://127.0.0.1:8099"),
+			TetherAddr:             os.Getenv("TETHER_ADDR"),
+			TetherTokenFile:        os.Getenv("TETHER_TOKEN_FILE"),
+			TesseractURL:           os.Getenv("TESSERACT_URL"),
+			TesseractTokenFile:     os.Getenv("TESSERACT_TOKEN_FILE"),
+			CerberusAddr:           os.Getenv("CERBERUS_ADDR"),
+			CerberusTokenFile:      upstreamauth.TokenFile(nil, "", "CERBERUS_TOKEN_FILE"),
+			CerberusSourceInstance: os.Getenv("CERBERUS_SOURCE_INSTANCE"),
+			TorqueURL:              env("TORQUE_URL", "http://127.0.0.1:8990"),
+			TorqueToken:            os.Getenv("TORQUE_API_TOKEN"),
+			GitHubToken:            githubToken(ctx),
+			GitHubOrg:              env("GITHUB_ORG", "hollis-labs"),
 		},
 	}
 	cfg.CardEvents.Enabled = os.Getenv("TACHYON_CARD_EVENTS") == "1"
@@ -111,6 +122,14 @@ func main() {
 			log.Fatal(err)
 		}
 		return
+	}
+	// The server takes no arguments. Anything left here (--help, a typo) used to start a full server on all
+	// interfaces: a stray `./tachyon --help` ran for days against the prod data dir without the service env and
+	// switched off the Tether object-sync schedules. Print usage and exit instead.
+	if len(os.Args) > 1 {
+		if code := usage(os.Stderr, os.Args[1]); code >= 0 {
+			os.Exit(code)
+		}
 	}
 	srv := server.New(cfg)
 	if err := srv.Start(ctx); err != nil {
@@ -201,4 +220,21 @@ func durationEnv(key string) time.Duration {
 		return 0
 	}
 	return d
+}
+
+const usageText = `usage: tachyon                start the server (LISTEN_ADDR or TACHYON_ADDR, default :18093)
+       tachyon sync-objects   object sync: --status, --enable, --disable (see -h)
+       tachyon import-planner | backfill-session-links | elevation-ttl
+       tachyon access | data | local-data
+`
+
+// usage handles an argument the server does not accept. It returns the exit code, or -1 to start the server.
+func usage(w io.Writer, arg string) int {
+	switch arg {
+	case "-h", "-help", "--help", "help":
+		fmt.Fprint(w, usageText)
+		return 0
+	}
+	fmt.Fprintf(w, "tachyon: unknown command or flag %q\n%s", arg, usageText)
+	return 2
 }

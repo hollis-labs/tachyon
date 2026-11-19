@@ -292,3 +292,31 @@ func TestJobsCloseCancelsActiveProviderRead(t *testing.T) {
 		t.Fatalf("shutdown state: %+v %v", state, err)
 	}
 }
+
+func TestEnqueueSkipsButKeepsScheduleForSourceNotConfiguredHere(t *testing.T) {
+	_, c := testStore(t)
+	s := newFake()
+	jobs, err := OpenJobs(ctx, filepath.Join(t.TempDir(), "jobs.db"), c, []Source{s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	mustRun(t, c, s)
+	if err = jobs.Enable(ctx, s, 5*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	id := sourceID(s.Scope())
+	delete(jobs.sources, id) // the source is no longer configured in this process
+	err = jobs.Enqueue(ctx, scheduler.Job{JobType: jobType, ScheduleID: id, FireID: "f1"})
+	if !errors.Is(err, scheduler.ErrDuplicateJob) {
+		t.Fatalf("orphan fire must be skipped, got %v", err)
+	}
+	sch, ok, err := jobs.Store.GetSchedule(ctx, id)
+	// jobs.db is shared: another process (the service, with its env) may own this source. Never disable it here.
+	if err != nil || !ok || !sch.Enabled {
+		t.Fatalf("a source missing from this process must keep its schedule enabled: %+v %v", sch, err)
+	}
+	if s.calls.Load() != 1 {
+		t.Fatalf("source must not be scanned for an orphan: %d", s.calls.Load())
+	}
+}

@@ -1,0 +1,297 @@
+{
+  "github:hollis-labs/tachyon#201": {
+    "head_sha": "0da8631e75cfa86e2506e6b076cceaa4a56f4aa3",
+    "base_ref": "main",
+    "state": "blocked",
+    "blockers": [
+      {
+        "code": "conflicts",
+        "message": "The branch has conflicts with main."
+      },
+      {
+        "code": "checks_failing",
+        "message": "1 required check is failing."
+      },
+      {
+        "code": "changes_requested",
+        "message": "alice-rev requested changes."
+      }
+    ],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "approvals: A1 queue index (#201)",
+    "commit_message": "",
+    "behind_by": 0,
+    "required_checks": {
+      "passed": 1,
+      "failed": 1,
+      "pending": 0
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  },
+  "github:hollis-labs/tachyon#202": {
+    "head_sha": "b9bde5dfabfb122d47d9d8b15ed443be34836f3a",
+    "base_ref": "main",
+    "state": "ready",
+    "blockers": [],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "fileview: V1 file reads (#202)",
+    "commit_message": "",
+    "behind_by": 0,
+    "required_checks": {
+      "passed": 2,
+      "failed": 0,
+      "pending": 0
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  },
+  "github:hollis-labs/tachyon#203": {
+    "head_sha": "a134175223ed0061d7904adeef1792798e377011",
+    "base_ref": "main",
+    "state": "blocked",
+    "blockers": [
+      {
+        "code": "checks_pending",
+        "message": "1 check is still running."
+      }
+    ],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "agents: A3 sessions API (#203)",
+    "commit_message": "",
+    "behind_by": 0,
+    "required_checks": {
+      "passed": 1,
+      "failed": 0,
+      "pending": 1
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  },
+  "github:hollis-labs/tachyon#204": {
+    "head_sha": "36f0ddbe5ebb0702f92398b3a4289583b6a93a57",
+    "base_ref": "main",
+    "state": "blocked",
+    "blockers": [
+      {
+        "code": "checks_failing",
+        "message": "1 required check is failing."
+      }
+    ],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "builder: B1 catalog index (#204)",
+    "commit_message": "",
+    "behind_by": 0,
+    "required_checks": {
+      "passed": 0,
+      "failed": 1,
+      "pending": 0
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  },
+  "github:hollis-labs/tachyon#205": {
+    "head_sha": "5ddd419d803edaa32db4c8f49d9bed9b867f705c",
+    "base_ref": "main",
+    "state": "blocked",
+    "blockers": [
+      {
+        "code": "behind_base",
+        "message": "The branch is 6 commits behind main."
+      },
+      {
+        "code": "review_required",
+        "message": "An approving review is required."
+      }
+    ],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "planner: behind base (#205)",
+    "commit_message": "",
+    "behind_by": 6,
+    "required_checks": {
+      "passed": 1,
+      "failed": 0,
+      "pending": 0
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  },
+  "github:hollis-labs/cerberus#55": {
+    "head_sha": "0789f6e56615fac323414c311549c5ffe106435d",
+    "base_ref": "main",
+    "state": "blocked",
+    "blockers": [
+      {
+        "code": "draft",
+        "message": "This is a draft pull request."
+      }
+    ],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "docs: forge plugin notes (#55)",
+    "commit_message": "",
+    "behind_by": 0,
+    "required_checks": {
+      "passed": 0,
+      "failed": 0,
+      "pending": 0
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  },
+  "github:hollis-labs/tachyon#150": {
+    "head_sha": "a47e041aac935c964fcf2b31e46b2c0da701df07",
+    "base_ref": "main",
+    "state": "blocked",
+    "blockers": [
+      {
+        "code": "closed",
+        "message": "This pull request is closed."
+      }
+    ],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "old: closed without merge (#150)",
+    "commit_message": "",
+    "behind_by": 0,
+    "required_checks": {
+      "passed": 0,
+      "failed": 0,
+      "pending": 0
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  },
+  "github:hollis-labs/agent-os#10": {
+    "head_sha": "ce2379282a92d3cefa2655500a2afa0273f0a51c",
+    "base_ref": "main",
+    "state": "blocked",
+    "blockers": [
+      {
+        "code": "branch_protection",
+        "message": "GitHub reports the branch is protected; the exact rule is not readable with this token."
+      }
+    ],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "deploy: protected branch change (#10)",
+    "commit_message": "",
+    "behind_by": 0,
+    "required_checks": {
+      "passed": 1,
+      "failed": 0,
+      "pending": 0
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  },
+  "github:hollis-labs/agent-os#9": {
+    "head_sha": "476a1ba094e4dc83ffb3b240302759276ad4e7aa",
+    "base_ref": "main",
+    "state": "unknown",
+    "blockers": [
+      {
+        "code": "unknown_mergeable",
+        "message": "GitHub has not computed mergeability yet."
+      }
+    ],
+    "methods_allowed": [
+      "merge",
+      "squash",
+      "rebase"
+    ],
+    "default_method": "squash",
+    "commit_title": "workers: heartbeat (#9)",
+    "commit_message": "",
+    "behind_by": 0,
+    "required_checks": {
+      "passed": 1,
+      "failed": 0,
+      "pending": 0
+    },
+    "delete_branch_default": false,
+    "will_run": [
+      "Merge into main with the chosen method",
+      "Refresh the pull request list",
+      "Settle the triage entry",
+      "Mark agent assignments done"
+    ]
+  }
+}

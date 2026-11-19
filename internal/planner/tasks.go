@@ -175,6 +175,9 @@ type WorkstreamTasks struct {
 	Open         []TaskBrief    `json:"open"`
 	OpenTotal    int            `json:"open_total"`
 	Note         string         `json:"note,omitempty"`
+	// Lanes and LaneCounts add the theme-board view of the same tasks (PL3).
+	Lanes      Item           `json:"lanes,omitempty"`
+	LaneCounts map[string]int `json:"lane_counts,omitempty"`
 	// Statuses maps each distinct task id to its status. Themes union these
 	// across workstreams, so a shared task is counted once per theme.
 	Statuses map[string]string `json:"-"`

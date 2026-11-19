@@ -41,6 +41,8 @@ export function useChatThread(threadId: string | null) {
   const [hasMore, setHasMore] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const oldest = useRef<number | undefined>(undefined)
+  const markedAt = useRef(0)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     // State starts fresh per thread: callers key the component on threadId.
@@ -53,20 +55,33 @@ export function useChatThread(threadId: string | null) {
         setHasMore(p.hasMore)
         oldest.current = p.messages[0]?.at
         setLoading(false)
+        markedAt.current = Math.max(markedAt.current, ...p.messages.map((m) => m.at))
         void client.markRead(threadId)
       },
       (e) => { if (live) { setLoading(false); dispatch({type:'event', e:{type:'error',message:e instanceof Error ? e.message : 'Could not load conversation'}}) } },
     )
+    // A sync re-emits the newest page oldest-first, so before history lands every agent message in it is
+    // "newer" than the last: coalesce a batch into one markRead, sent after the frames of this tick.
+    let markPending = false
     const off = client.subscribe(threadId, (e) => {
       if (!live) return
       dispatch({ type: 'event', e })
-      if (e.type === 'message' && e.message.from === 'agent') void client.markRead(threadId)
+      if (e.type === 'message' && e.message.from === 'agent' && e.message.at > markedAt.current) {
+        markedAt.current = e.message.at
+        if (!markPending) {
+          markPending = true
+          setTimeout(() => {
+            markPending = false
+            if (live) void client.markRead(threadId)
+          }, 0)
+        }
+      }
     })
     return () => {
       live = false
       off()
     }
-  }, [client, threadId])
+  }, [client, threadId, attempt])
 
   const loadOlder = useCallback(async () => {
     if (!threadId || loading || !hasMore) return
@@ -98,5 +113,6 @@ export function useChatThread(threadId: string | null) {
     [client, threadId],
   )
 
-  return { messages: state.messages, capability: state.capability, loading, hasMore, loadOlder, send, sendError, error: state.error }
+  const retry = useCallback(() => { setLoading(true); dispatch({ type: 'event', e: { type: 'error', message: null } }); setAttempt((n) => n + 1) }, [])
+  return { messages: state.messages, capability: state.capability, loading, hasMore, loadOlder, send, sendError, error: state.error, retry }
 }

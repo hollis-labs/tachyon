@@ -1,0 +1,19 @@
+{
+ "total": 2,
+ "items": [
+  {
+   "turn_offset": 3,
+   "seq": 3,
+   "tool": "Bash",
+   "target": "go test ./internal/forgeapi",
+   "error_excerpt": "FAIL github.com/hollis-labs/tachyon/internal/forgeapi 0.04s\n  stub_test.go:95: \"github:../x#1\" parsed"
+  },
+  {
+   "turn_offset": 9,
+   "seq": 9,
+   "tool": "Bash",
+   "target": "git push origin feat/x",
+   "error_excerpt": "! [rejected] feat/x -> feat/x (non-fast-forward)"
+  }
+ ]
+}

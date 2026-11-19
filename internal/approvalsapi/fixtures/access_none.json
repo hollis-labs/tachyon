@@ -1,0 +1,11 @@
+{
+  "state": "none",
+  "expires_in_s": 0,
+  "can_elevate": true,
+  "ttl_policy": "30m",
+  "required_for": {
+    "batch": true,
+    "medium": true,
+    "destructive": true
+  }
+}

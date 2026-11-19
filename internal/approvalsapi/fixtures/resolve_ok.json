@@ -1,0 +1,12 @@
+{
+  "item_id": "ap_change_a",
+  "state": "resolved",
+  "revision": 2,
+  "terminal_outcome": {
+    "type": "resolved",
+    "decision": "approved",
+    "resolution_id": "res_r1",
+    "resolved_at": "2026-10-30T03:00:00Z"
+  },
+  "run_state": "none"
+}

@@ -42,7 +42,12 @@ describe('HttpForgeClient reads', () => {
     await client.listComments(ref)
     await client.listPendingPrs()
     const base = '/api/v1/forge/repos/github/hollis-labs/torque/pulls/271'
-    expect([0, 1, 2, 3, 4].map((i) => call(fetch, i).url)).toEqual([base, `${base}/diff`, `${base}/commits`, `${base}/comments`, '/api/v1/forge/pulls/pending'])
+    expect([0, 1, 2, 3, 4].map((i) => call(fetch, i).url)).toEqual([base, `${base}/diff`, `${base}/commits`, `${base}/comments`, '/api/v1/forge/pulls/pending?state=all&limit=100'])
+  })
+
+  it('does not report an empty degraded pending list as an empty inbox', async () => {
+    const { client } = mk({ data: { items: [], degraded: true, cached: true } })
+    await expect(client.listPendingPrs()).rejects.toMatchObject({ code: 'unavailable' })
   })
 
   it('does not send identity headers on reads', async () => {
@@ -61,7 +66,7 @@ describe('HttpForgeClient writes', () => {
     const { url, init } = call(fetch)
     expect(url).toMatch(/\/pulls\/271\/comments$/)
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual({ body: 'hi' })
+    expect(JSON.parse(init.body as string)).toEqual({ body: 'hi\n\n_Posted from Tachyon._' })
     expect(init.headers).toMatchObject({ 'X-Identity-Confirm': 'tok', 'Idempotency-Key': 'k1', 'Content-Type': 'application/json' })
     expect(c.id).toBe('1')
   })
@@ -120,7 +125,57 @@ it('merges the confirmed head using the selected method and confirmation token',
   expect(await client.mergePr(ref, { method: 'squash', headSha: 'head-sha' })).toMatchObject({ merged: true })
   expect(call(fetch).url).toMatch(/\/pulls\/271\/merge$/)
   expect(call(fetch).init).toMatchObject({ method: 'PUT', headers: { 'X-Identity-Confirm': 'confirmed' } })
-  expect(JSON.parse(call(fetch).init.body as string)).toEqual({ method: 'squash', headSha: 'head-sha' })
+  expect(JSON.parse(call(fetch).init.body as string)).toEqual({ method: 'squash', head_sha: 'head-sha' })
+  expect((call(fetch).init.headers as Record<string, string>)['Idempotency-Key']).toBeTruthy()
   const rejected = mk({ data: { merged: false, message: 'Branch rules prevent merging' } })
   await expect(rejected.client.mergePr(ref, { method: 'merge', headSha: 'head' })).rejects.toThrow('Branch rules prevent merging')
+})
+
+describe('HttpForgeClient merge preflight', () => {
+  it('maps the wire answer and drops unknown methods', async () => {
+    const { fetch, client } = mk({ state: 'blocked', head_sha: 'abc', base_ref: 'main', blockers: [{ code: 'conflicts', message: 'x' }], methods_allowed: ['squash', 'octopus'], default_method: 'squash', behind_by: 2 })
+    const pf = await client.getMergePreflight(ref)
+    expect(call(fetch).url).toBe('/api/v1/forge/repos/github/hollis-labs/torque/pulls/271/merge-preflight')
+    expect(pf).toEqual({ state: 'blocked', headSha: 'abc', baseRef: 'main', blockers: [{ code: 'conflicts', message: 'x' }], methodsAllowed: ['squash'], defaultMethod: 'squash', behindBy: 2 })
+  })
+})
+
+it('sends the review with the pinned head_sha in snake_case', async () => {
+  const { client, fetch } = mk({ data: { review_id: 1, comment_ids: [], state: 'COMMENTED' } }, {}, { idempotencyKey: () => 'k9' })
+  await client.reviewPr(ref, { verdict: 'comment', body: 'hi', headSha: 'abc', comments: [{ body: 'x', path: 'a.go', line: 3, side: 'left' }] })
+  expect(call(fetch).url).toMatch(/\/pulls\/271\/reviews$/)
+  expect(JSON.parse(call(fetch).init.body as string)).toMatchObject({ verdict: 'comment', head_sha: 'abc', comments: [{ side: 'LEFT' }] })
+  expect(call(fetch).init.headers).toMatchObject({ 'Idempotency-Key': 'k9' })
+})
+
+it('validateReview maps per-comment statuses and head_moved', async () => {
+  const { client, fetch } = mk({ data: { head_sha_current: 'n', head_moved: true, comments: [{ index: 1, status: 'invalid_line' }, { index: 0, status: 'outdated' }] } })
+  const r = await client.validateReview(ref, { headSha: 'o', comments: [{ body: 'a', path: 'a.go', line: 1, side: 'right' }, { body: 'b', path: 'b.go', line: 2, side: 'left' }, { body: 'c', path: 'c.go', line: 3 }] })
+  expect(call(fetch).url).toMatch(/\/pulls\/271\/reviews\/validate$/)
+  expect(r).toEqual({ headMoved: true, statuses: ['outdated', 'invalid_line', 'ok'] })
+})
+
+describe('HttpForgeClient review draft', () => {
+  it('reads a draft, treats 404 as none, and saves in the wire shape', async () => {
+    const got = mk({ data: { pr_key: 'k', head_sha: 'h1', updated_ms: 1, draft: { comments: [{ body: 'x', path: 'a.go', line: 2, side: 'LEFT' }] } } })
+    expect(await got.client.getReviewDraft(ref)).toEqual({ headSha: 'h1', comments: [{ body: 'x', path: 'a.go', line: 2, side: 'left' }] })
+    const none = mk({ error: { code: 'not_found', message: 'No saved review draft.' } }, { status: 404 })
+    expect(await none.client.getReviewDraft(ref)).toBeNull()
+    const put = mk({ data: {} })
+    await put.client.saveReviewDraft(ref, { headSha: 'h2', comments: [{ body: 'y', path: 'b.go', line: 1, side: 'right' }] })
+    expect(call(put.fetch).init.method).toBe('PUT')
+    expect(JSON.parse(call(put.fetch).init.body as string)).toEqual({ head_sha: 'h2', draft: { comments: [{ body: 'y', path: 'b.go', line: 1, side: 'RIGHT' }] } })
+  })
+})
+
+it('getStatus maps last refresh and degraded', async () => {
+  const { client, fetch } = mk({ data: { last_refresh_ms: 1700000000000, degraded: true } })
+  expect(await client.getStatus()).toEqual({ lastRefreshMs: 1700000000000, degraded: true })
+  expect(call(fetch).url).toMatch(/\/status$/)
+})
+
+it('listAudit maps entries', async () => {
+  const { client, fetch } = mk({ entries: [{ id: 3, ts_ms: 1700000000000, op: 'merge', pr_key: 'github:o/r#1', actor_ref: 'operator', outcome: 'ok', github_ref: 'abc' }] })
+  expect(await client.listAudit(50)).toEqual([{ id: 3, at: 1700000000000, op: 'merge', prKey: 'github:o/r#1', actor: 'operator', outcome: 'ok', errorCode: undefined, githubRef: 'abc' }])
+  expect(call(fetch).url).toMatch(/\/audit\?limit=50$/)
 })

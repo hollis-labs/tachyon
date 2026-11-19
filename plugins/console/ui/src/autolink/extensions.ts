@@ -86,7 +86,22 @@ export function refActions(ref: RefIdentity, card: PreviewCard): RefAction[] {
 export interface RefDetailProps {
   refId: RefIdentity
   card: PreviewCard
+  /** Only for kinds that own their drawer chrome (see registerRefChrome). */
+  onClose?: () => void
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
 }
+
+const ownChrome = new Set<string>()
+
+/** The kind draws its own drawer header, actions and footer; the host drawer adds none. */
+export function registerRefChrome(kind: string): () => void {
+  ownChrome.add(kind)
+  return () => {
+    ownChrome.delete(kind)
+  }
+}
+export const refOwnsChrome = (kind: string) => ownChrome.has(kind)
 
 const detailRenderers = new Map<string, ComponentType<RefDetailProps>>()
 
@@ -147,3 +162,27 @@ export function registerRefCard(kind: string, component: ComponentType<RefCardPr
 export function refCardEnricher(kind: string): ComponentType<RefCardProps> | undefined {
   return cardEnrichers.get(kind)
 }
+
+// ---------- chip icon and own hover card ----------
+
+const chipIcons = new Map<string, (ref: RefIdentity) => string>()
+
+/** A kind may pick the chip's icon token from the reference itself (a file chip shows its type). */
+export function registerRefChipIcon(kind: string, pick: (ref: RefIdentity) => string): () => void {
+  chipIcons.set(kind, pick)
+  return () => {
+    if (chipIcons.get(kind) === pick) chipIcons.delete(kind)
+  }
+}
+export const refChipIcon = (kind: string) => chipIcons.get(kind)
+
+const ownHover = new Map<string, ComponentType<RefDetailProps>>()
+
+/** The kind draws the whole hovercard body itself, with no standard header or footer. */
+export function registerRefOwnHover(kind: string, component: ComponentType<RefDetailProps>): () => void {
+  ownHover.set(kind, component)
+  return () => {
+    if (ownHover.get(kind) === component) ownHover.delete(kind)
+  }
+}
+export const refOwnHover = (kind: string) => ownHover.get(kind)

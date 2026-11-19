@@ -1,0 +1,5 @@
+{"id":"pl_1","scope":"thread","thread_ref":"app:t_01","project_id":null,"title":"Chat backend","status":"approved","revision":4,"task_ref":null,"created_by":"agent:tachyon","created_at":1793300200000,"updated_at":1793310000000,"steps":[
+{"id":"st_1","position":1,"title":"Contracts and stubs","status":"done","acceptance":"GUI builds against stubs","task_ref":"CW-20261030-0001","notes":"","updated_at":1793305000000},
+{"id":"st_2","position":2,"title":"Threads","status":"doing","acceptance":"Aggregator list with blocked_on_user","task_ref":"CW-20261030-0002","notes":"","updated_at":1793310000000},
+{"id":"st_3","position":3,"title":"Workspace","status":"todo","acceptance":"","task_ref":null,"notes":"","updated_at":1793300200000}
+]}

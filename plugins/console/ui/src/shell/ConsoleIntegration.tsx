@@ -2,11 +2,13 @@ import { OperatorPrompt } from '../operator/OperatorPrompt'
 import { useState, type ReactNode } from 'react'
 import { ApprovalProvider } from '../approvals/context'
 import { useApi } from '@tachyon/torque-client'
-import { AlertHost } from '../alerts/AlertHost'
+import { ServerAlertHost } from '../alerts/server/ServerAlertHost'
 import { CardRuntimeProvider } from '../cards/surfaces'
 import { createDefaultCardRegistry } from '../cards/kinds'
 import { createAppAgentChatClient } from '../chat/appagent'
 import { createCompositeChatClient } from '../chat/composite'
+import { withChatApiMessages } from '../chat/chatapi'
+import { withChatApiSummaries } from '../chat/summaries'
 import { createTetherChatClient } from '../chat/tether'
 import { createMailChatClient } from '../chat/mail'
 import { ChatProvider } from '../chat/context'
@@ -18,7 +20,6 @@ import { createMailMessagingClient } from '../messaging/adapter'
 import { MessagingProvider } from '../messaging/context'
 import { OPERATOR_ADDRESS } from '../messaging/operator'
 import { AgentUnreadProvider } from '../messaging/unread'
-import { DEFAULT_RULE_PACK } from '../rules/default-pack'
 import { HttpWorkflowClient } from '../workflow/client'
 import { registerWorkflowKinds } from '../workflow/kinds'
 import { WorkflowProvider } from '../workflow/provider'
@@ -38,7 +39,7 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
     const messaging = createMailMessagingClient(api, { from: OPERATOR_ADDRESS })
     // Tether chat plus Tachyon's own app agent, as ordinary threads in one list.
     const chat = createCompositeChatClient(
-      createTetherChatClient(createMailChatClient(messaging, { operator: OPERATOR_ADDRESS, agents: [] })),
+      withChatApiMessages(withChatApiSummaries(createTetherChatClient(createMailChatClient(messaging, { operator: OPERATOR_ADDRESS, agents: [] })))),
       createAppAgentChatClient(),
     )
     // Card kinds only: no toast/modal surface (AlertHost owns those).
@@ -48,16 +49,15 @@ export function ConsoleIntegration({ children }: { children: ReactNode }) {
     registerWorkflowKinds(registry)
     return { messaging, chat, registry, hitl: new HttpHitlClient(), workflow: new HttpWorkflowClient() }
   })
+  const body = <><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></>
   return (
     <MessagingProvider client={messaging} operator={OPERATOR_ADDRESS}>
       <AgentUnreadProvider>
         <ChatProvider client={chat} operator={OPERATOR_ADDRESS}>
           <CardRuntimeProvider registry={registry} mountSurfaces={false}>
             <HitlProvider client={hitl} present={false}>
-              <WorkflowProvider client={workflow}>
-                <AlertHost rules={DEFAULT_RULE_PACK}>
-                  <ApprovalProvider><OperatorPrompt /><ChatDockProvider>{children}</ChatDockProvider></ApprovalProvider>
-                </AlertHost>
+              <WorkflowProvider client={workflow} present={false}>
+                <ApprovalProvider><ServerAlertHost>{body}</ServerAlertHost></ApprovalProvider>
               </WorkflowProvider>
             </HitlProvider>
           </CardRuntimeProvider>

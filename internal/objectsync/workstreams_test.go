@@ -17,7 +17,7 @@ func TestWorkstreamsBoundedLifecycleAndLocalLinks(t *testing.T) {
 	payload := any(map[string]any{"workstreams": []any{w}})
 	status := http.StatusOK
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/workstreams" || r.URL.RawQuery != "" || r.Header.Get("Tether-Protocol") != "1" {
+		if r.Method != "GET" || r.URL.Path != "/workstreams" || r.URL.Query().Get("limit") != "1000" || r.Header.Get("Tether-Protocol") != "1" {
 			t.Error("wrong inventory request")
 		}
 		rw.WriteHeader(status)
@@ -97,5 +97,48 @@ func TestWorkstreamsBoundedLifecycleAndLocalLinks(t *testing.T) {
 	mustRun(t, c, s)
 	if get(t, c, s, "ws-1").ID != first.ID {
 		t.Fatal("reopening changed identity")
+	}
+}
+
+// Tether's list is paginated (the shape that failed every scan since 2026-10-19): the scan follows next_cursor
+// to the end, accepts the pagination keys, still rejects unknown ones, and stays non-authoritative.
+func TestWorkstreamsFollowTetherPagination(t *testing.T) {
+	_, c := testStore(t)
+	var cursors []string
+	extra := ""
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		cur := r.URL.Query().Get("cursor")
+		cursors = append(cursors, cur)
+		body := map[string]any{"limit": 1000, "complete": false, "has_more": true, "next_cursor": "p2",
+			"workstreams": []any{map[string]string{"id": "ws-a", "name": "A", "status": "active", "updated_at": "v1"}}}
+		if cur == "p2" {
+			body = map[string]any{"limit": 1000, "complete": true, "has_more": false, "next_cursor": "",
+				"workstreams": []any{map[string]string{"id": "ws-b", "name": "B", "status": "closed", "updated_at": "v1"}}}
+		}
+		if extra != "" {
+			body[extra] = true
+		}
+		json.NewEncoder(rw).Encode(body)
+	}))
+	defer server.Close()
+	s, err := NewTetherWorkstreams(server.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := mustRun(t, c, s)
+	if state.Authoritative || state.Pages != 2 || state.Items != 2 {
+		t.Fatalf("state: %+v", state)
+	}
+	if len(cursors) != 2 || cursors[0] != "" || cursors[1] != "p2" {
+		t.Fatalf("cursors followed: %q", cursors)
+	}
+	for _, id := range []string{"ws-a", "ws-b"} {
+		if get(t, c, s, id).ID == "" {
+			t.Fatalf("%s missing", id)
+		}
+	}
+	extra = "surprise"
+	if _, err = c.Run(ctx, s, ""); err == nil {
+		t.Fatal("an unknown envelope key was accepted")
 	}
 }

@@ -363,3 +363,49 @@ func TestEnsureStartsANewSessionWhenThePinsChange(t *testing.T) {
 		t.Fatal("pin depends on key order")
 	}
 }
+
+func TestObserveReadsTheContextMeterFromUsage(t *testing.T) {
+	f, n := newNanite(t)
+	f.setSSE(`data: {"v":"1","seq":1,"verb":"usage","usage":{"scope":"turn","used":48210,"window":200000,"model":"claude-sonnet-5-5","window_source":"catalog"}}
+
+data: {"v":"1","seq":2,"verb":"run.finish","reason":"stop","usage":{"scope":"final","total":7137,"used":50000,"window":200000,"model":"claude-sonnet-5-5"}}
+
+`)
+	evs, err := collect(t, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var meters []TurnEvent
+	for _, e := range evs {
+		if e.Kind == EventContext {
+			meters = append(meters, e)
+		}
+	}
+	if len(meters) != 2 || meters[0].Used != 48210 || meters[0].Window != 200000 || meters[1].Used != 50000 || meters[1].Model != "claude-sonnet-5-5" || evs[len(evs)-1].Kind != EventFinish {
+		t.Fatalf("%+v", evs)
+	}
+	// An older build (scope/total only) reports no meter.
+	f.setSSE(sseOldFinish)
+	evs, _ = collect(t, n)
+	for _, e := range evs {
+		if e.Kind == EventContext {
+			t.Fatalf("no meter was reported: %+v", e)
+		}
+	}
+}
+
+const sseOldFinish = `data: {"v":"1","seq":10,"verb":"run.finish","reason":"stop","usage":{"scope":"final","total":7137}}
+
+`
+
+func TestApprovalOfReadsTheFrame(t *testing.T) {
+	var f frame
+	raw := `{"verb":"approval.request","approval_id":"ap1","call_id":"c1","reason":"writes a file","descriptor":{"tool":"write_file","input":{"path":"/a"},"class":"low"},"expires_at":"2026-10-30T09:00:00Z"}`
+	if err := json.Unmarshal([]byte(raw), &f); err != nil {
+		t.Fatal(err)
+	}
+	a := approvalOf(f)
+	if a.ID != "ap1" || a.CallID != "c1" || a.Tool != "write_file" || a.Class != "low" || string(a.Input) != `{"path":"/a"}` || a.ExpiresAt.IsZero() {
+		t.Fatalf("%+v", a)
+	}
+}

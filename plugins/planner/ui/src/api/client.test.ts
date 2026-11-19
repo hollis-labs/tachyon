@@ -13,6 +13,15 @@ function installFetch(fetcher: ReturnType<typeof vi.fn>) {
 }
 
 describe('Tachyon Planner host contract', () => {
+  it('creates a Torque task under a theme with the title and optional revision', async () => {
+    const fetcher = vi.fn().mockResolvedValue(json({ task: { id: 'CW-1', title: 'x', status: 'todo' } }, 201))
+    installFetch(fetcher)
+    const res = await new TachyonPlannerClient().plannerThemeTaskCreate(id, 'x', 4)
+    expect(res.task.id).toBe('CW-1')
+    expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/${id}/tasks`)
+    expect(fetcher.mock.calls[0][1].method).toBe('POST')
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ title: 'x', expected_revision: 4 })
+  })
   it('resolves a UUID reference through the host without guessing its database', async () => {
     const fetcher = vi.fn().mockResolvedValue(json({ db: 'risks', id: target, item: { id: target, rev: 1 } }))
     installFetch(fetcher)
@@ -128,4 +137,54 @@ it('preserves backend error details from the native error envelope', async () =>
   const fetcher = vi.fn().mockResolvedValue(json({ error: 'Invalid typed reference', code: 'invalid' }, 400))
   installFetch(fetcher)
   await expect(new TachyonPlannerClient().plannerUpdate('ideas', id, {}, 7)).rejects.toMatchObject({ message: 'Invalid typed reference', code: 'invalid' })
+})
+
+it('sends pin with a comment only when asked', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => json({ id, rev: 3 }))
+  installFetch(fetcher)
+  const api = new TachyonPlannerClient()
+  await api.plannerComment('themes', id, 'plain', 2)
+  await api.plannerComment('themes', id, 'pinned', 2, undefined, { pin: true })
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).not.toHaveProperty('pin')
+  expect(JSON.parse(fetcher.mock.calls[1][1].body)).toMatchObject({ text: 'pinned', pin: true, expected_revision: 2 })
+})
+
+it('pins as item state with the revision, no comment', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => json({ id: 'theme-a', rev: 5, pinned: true }))
+  installFetch(fetcher)
+  await new TachyonPlannerClient().plannerPin('themes', 'theme-a', true, 4)
+  expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/theme-a/pin`)
+  expect(fetcher.mock.calls[0][1].method).toBe('PUT')
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ pinned: true, expected_revision: 4 })
+})
+
+it('writes a typed relation on the source item and removes it with the same body', async () => {
+  const fetcher = vi.fn().mockImplementation(async () => json({ item: { id, db: 'themes', revision: 9 }, links_view: { outbound: [], inbound: [], external: [] } }))
+  installFetch(fetcher)
+  const api = new TachyonPlannerClient()
+  await api.plannerRelationAdd('themes', 'theme-a', 'needs', { db: 'themes', id: 'theme-b' }, 8)
+  await api.plannerRelationRemove('themes', 'theme-a', 'needs', { db: 'themes', id: 'theme-b' }, 9)
+  expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/theme-a/relations`)
+  expect(fetcher.mock.calls[0][1].method).toBe('POST')
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ kind: 'needs', to: { db: 'themes', id: 'theme-b' }, expected_revision: 8 })
+  expect(fetcher.mock.calls[1][1].method).toBe('DELETE')
+})
+
+it('reads the links view and surfaces a cycle as its own code', async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(json({ outbound: [], inbound: [], external: [] })).mockResolvedValueOnce(json({ error: 'That link would make a cycle.', code: 'cycle' }, 422))
+  installFetch(fetcher)
+  const api = new TachyonPlannerClient()
+  await api.plannerLinks('themes', 'theme-a')
+  expect(fetcher.mock.calls[0][0]).toBe(`${PLANNER_BASE}/themes/theme-a/links`)
+  await expect(api.plannerRelationAdd('themes', 'theme-a', 'needs', { db: 'themes', id: 'theme-b' }, 2)).rejects.toMatchObject({ status: 422, code: 'cycle' })
+})
+
+it('reads the item after the real comment receipt', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(json({ comment: { id: 'c1', text: 'hi' }, item: { id, db: 'themes', rev: 3, status: 'active' }, applied: {} }))
+    .mockResolvedValueOnce(json({ id, rev: 3, title: 'Theme', comments: [{ id: 'c1' }] }))
+  installFetch(fetcher)
+  const item = await new TachyonPlannerClient().plannerComment('themes', id, 'hi', 2)
+  expect(fetcher).toHaveBeenCalledTimes(2)
+  expect(item).toMatchObject({ id, rev: 3, title: 'Theme' })
 })

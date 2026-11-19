@@ -1,0 +1,152 @@
+# Settings, Account and Assurance contract (ST0)
+
+Design: `design_tachyon_settings_account_assurance_backend_20261030` (Tesseract 01M65GDQC0KC87CMT6CJZTFFD2).
+Code: `internal/settingsapi` (contract types, group declarations, in-memory stub, `openapi.yaml`). Dev flag:
+`TACHYON_SETTINGS_STUBS=1`, mounted by `internal/server/register_settings.go` one explicit pattern at a time.
+
+## Three parts
+
+1. **Settings (admin manifest).** The stub is the libs `adminhttp` handler (ui-go v0.4.0, already in `go.mod`) over an
+   in-memory layered `GroupBackend`, so the manifest, snapshot, validate, update and reset shapes, ETag handling and
+   the 409 `manifest_changed`, 412 `value_conflict`, 422 `validation_failed` and 428 `precondition_required` errors
+   are the library's own, not a copy. Routes under `/api/plugins/console/v1/admin`:
+   `GET manifest`, and per group `GET settings/{id}`, `POST settings/{id}/validate|update|reset`.
+   Update and reset need `If-Match` with the ETag of the last read. The renderer sends intent only
+   (`{revision, set, unset}` or `{revision, keys}`); the host owns ETags and conflict handling.
+2. **Account.** `GET /account` (whoami) and `PUT /account/profile`.
+3. **Assurance extension.** `/access` gains `methods`, `session`, `lockout`, `step_up`; a refused write carries a
+   `step_up` hint; `/access/challenge` and `/access/verify` are specified and scripted in the stub.
+
+## Verified facts
+
+- adminhttp's path layout is `<BasePath>/admin/manifest` and `<BasePath>/admin/settings/{id}[/validate|update|reset]`
+  (read from `adminhttp/handler.go`, `matchesMount`). With `BasePath = /api/plugins/console/v1` it matches the paths
+  `plugins/console/ui/src/prefs/manifest.ts` already assumes (`/admin/settings/<group>/...`).
+  `TestManifestIsLibraryValidAndMatchesAdminLayout` decodes the stub manifest into the library's `admin.Manifest`
+  and compares every declared endpoint with `AdminRoutes`.
+- Field types are flat (string, boolean, integer, number): list-like values are comma or multi-line strings.
+- Scope is `app` only (the library supports nothing else). The Alerts group the UI declares as `scope: user` is
+  served app-wide: it applies to everyone using this Tachyon.
+
+## Groups declared in the stub
+
+`general` (cache policy fields, `elevation_ttl`), `chat`, `agents`, `transcripts` (read-only, env), `alerts`.
+Together they cover every source kind (`override`, `env`, `file`, `default`) and both read-only and `pending_restart`
+apply states. `elevation_ttl` needs operator access and is `pending_restart` with target `tangent`. Later designs
+(fileview, forge, approvals batch ops) must register their settings as groups here (ST1 registry) rather than
+adding private routes; keep the setting behind a small interface in the owning package until then.
+
+## Step-up refusal
+
+A write that needs more assurance than the session has is refused with 403 `operator_access_required` (the code the
+assurance package already uses; the design called it `assurance_insufficient`) plus what is being confirmed:
+
+```json
+{"code":"operator_access_required","message":"…","step_up":{"action":"settings.write","risk":"medium","summary":"…","ref":"general.elevation_ttl"},"methods":[{"id":"operator_token","available":true},…]}
+```
+
+On admin routes the same object sits under `error` (the library's envelope). The client retries with the same
+`Idempotency-Key`; drafts are never cleared by the dialog.
+
+## Access contract (stub path `/settings-stub/access`)
+
+The real route is the existing approval-inbox `GET /access`; ST4 extends it additively. The stub uses its own prefix so
+both can run side by side. `Access` embeds `assurance.Access`, so ST4 cannot drift from what approvals serve.
+
+- `methods[{id: operator_token|password|passkey, available}]` (only `operator_token` is available today)
+- `session{state: active|expired|none, expires_at?}`, `lockout{locked, retry_after_s?, attempts_left?}`, `step_up{supported}`
+- `POST /access/challenge {action, ref?, digest?}` returns `{challenge_id, methods, expires_at, display{action,risk,summary?}}`.
+  Plain sign-in is a challenge with action `elevate`.
+- `POST /access/verify {challenge_id, method, credential}` returns `{ok, assurance, grant{scope, expires_at, remember_s?}}` or
+  `invalid_credentials` (403, no `attempts_left` yet), `locked` (429, `retry_after_s`), `challenge_expired` (410),
+  `method_unavailable` (400). Credentials are never logged; responses are `no-store`.
+
+Stub script: credential `stub-operator-token` signs in (30 min); anything else fails; the fifth failure locks for a
+minute; challenge id `ch_expired` and unknown ids read as expired; `password` and `passkey` read as unavailable.
+`X-Stub-Scenario` on `/access` and `/account`: `expired`, `locked`, `elevated`, `no_step_up`, and `unknown`,
+`identified`, `verified` (account). `X-Stub-Status` forces 401, 403, 500 or 503. `POST /access/reset` clears the stub.
+
+## Account
+
+`GET /account` returns `{identity{state: identified|unknown, display_name?, email?, source: local-profile|session,
+assurance: local|verified, verified_by?}, access, profile_updated_at?, can_set_profile}`. `verified` means the operator
+token is in use on this session, never that the profile name was checked. `PUT /account/profile {display_name 1-80,
+email? syntactic, 254}` is a same-origin session write; errors use the admin error shape with JSON pointers.
+The profile is one local profile for the operator (decision S1), stored later in `app_settings` as `account.profile`.
+It is never an authorization input.
+
+## Stub behaviour and limits
+
+- Nothing is durable. Writes need a same-origin browser request and `Authorization` headers are refused. The mount
+  does not use `RequireOperator` (same precedent as the Alerts stub: it holds no real data, and a wrapper would hide
+  the step-up refusal the stub exists to show).
+- The operator flag is process-wide in the stub (single operator); the real implementation resolves it per request.
+- Unverified against a live Tangent: lockout `retry_after_s` is an estimate (Tangent sends no `Retry-After`, request R1).
+- Not in this slice: the real registry and `app_settings` backend (ST1, review-gated), group registration (ST2),
+  the account store (ST3), the real `/access` fields and `Provider.Challenge/Verify` (ST4).
+
+## ST3: account and profile (real)
+
+`internal/account` serves `GET /account` and `PUT /account/profile` at the paths above, mounted by
+`internal/server/register_account.go` (one added line in `server.go`) when the local store is open. With
+`TACHYON_SETTINGS_STUBS=1` the stub owns those routes and the real mount stands down.
+
+- Profile: one JSON row, `app_settings` key `account.profile` `{display_name, email?, updated_at}`. A damaged row reads as
+  no profile and the next save replaces it.
+- Reads need a browser session through the assurance Provider (401 `session_required` otherwise). The PUT also needs a
+  same-origin browser request and the new action `account.write` (`assurance.ActionAccountWrite`, browser-session level;
+  it does not change `/access` `required_for`).
+- `identity.assurance` is `verified` (with `verified_by: operator_token`) only while the session is elevated.
+- `access` is built by `settingsapi.AccessFor`: methods list only the operator token; `session` is `active` or `none`;
+  `lockout` and `step_up.supported` stay empty/false until ST4 supplies them. `session.state: expired` needs the
+  provider to report a past elevation expiry, which `TangentProvider.Status` does not yet.
+- No audit row: a profile change is not a security event; add one if Chrispian wants it.
+
+## ST4: assurance contract extension (real)
+
+Additive only; no new guard, level or enforcement. Existing clients keep reading the same fields.
+
+- `GET /approval-inbox/access` now returns `settingsapi.Access`: the unchanged `assurance.Access` fields plus
+  `methods`, `session`, `lockout`, `step_up`. `methods` lists the operator token only. `step_up.supported` is false.
+  `session.state` is `expired` when Tangent's `/api/session` still reports a past `elevation_expires_at` for a session
+  that is no longer elevated (UNVERIFIED whether Tangent keeps reporting it); otherwise `active`.
+- `lockout`: Tachyon marks a one-minute lockout when the elevate proxy sees a 429 from Tangent
+  (`approvals.lockoutEstimate`). It is an estimate: Tangent sends no `Retry-After` and no attempts left (request R1), so
+  `attempts_left` is omitted. It is in-process and resets on restart.
+- Refusals from the requirements table (`assurance.RequireOn`) keep `{code: operator_access_required, message}` and add
+  `step_up{action, risk, summary?, ref?}` and `methods`. The text lives in `assurance.Refusal`; the account routes and
+  anything else that calls `Provider.Require` pick it up. Other places that write their own 403 are unchanged.
+- `assurance.Stepper` is an optional interface (`Supported`, `Challenge`, `Verify`) beside `Provider`, so existing
+  Provider implementations keep compiling. `TangentProvider` implements it as unsupported. `POST /access/challenge`
+  and `POST /access/verify` exist on the approval inbox (same-origin and session checked like the other writes) and
+  answer 501 `unsupported` until a Provider runs the exchange.
+- `Status` gained `LockedUntil` and `ExpiredAt`; `Error` gained `Action`.
+
+## ST1: settings registry (real)
+
+`internal/settingsreg` serves the admin manifest and group routes from a registry of groups, through the same libs
+`adminhttp` handler the stub uses. Mounted by `internal/server/register_settingsreg.go` (explicit `GET manifest`,
+`GET settings/{id}`, `POST settings/{id}/validate|update|reset`); under `TACHYON_SETTINGS_STUBS=1` the stub owns them.
+With no group registered the manifest is empty; ST2 registers the real groups.
+
+- **Registering.** A feature calls `settingsRegistry(s).Register(settingsreg.Group{...})` from its start hook instead of adding
+  a private route (file viewer roots, forge `agent_logins`, approvals batch settings, alerts, transcripts all follow this).
+  `Group` is the library fields plus: `Precedence` (default override, env, file, default), `Operator` (keys that need an
+  operator-token session), `Layers` (current env and file values with their labels), `Storage`, `Validate` (cross-field) and
+  `Applied` (called after a committed change). A bad id, key or declaration fails at registration.
+- **Layers and provenance.** Resolution follows the group's precedence; every value reports its `source`, `has_override`,
+  `editable` and `apply_state`. Only the override layer is written. The default `Storage` is one JSON row
+  `settings.<group>` in `app_settings`; a group may supply a `Storage` that maps a legacy row onto the same fields (ST2).
+  Env and file layers are read, never written back.
+- **Versions.** The manifest `revision` is a hash of all declarations; a group's ETag is a hash of the resolved values,
+  sources, permissions and apply state, so an env or file edit also invalidates it. Update and reset need `If-Match`
+  (428 without, 412 stale) and the current `revision` (409 `manifest_changed`).
+- **Writes** run in the serialized writer: the current row is read inside the transaction, the library's validation runs
+  on the staged candidate, and the row is saved only if it passes. A restart-required field whose value changes is
+  `pending_restart` (with its `apply_targets`) until the owner clears it.
+- **Guards.** Every request needs a browser session (401), refuses an `Authorization` header (403), and writes also need a
+  same-origin request. Writes use the new requirements-table action `settings.write` (browser-session). A field in a
+  group's `Operator` set reads as not editable below an operator session, and a write to it is refused with 403
+  `operator_access_required` plus the `step_up` hint (action `settings.write_operator`, operator-token). Those two rows
+  in `assurance.Requirements` are the only assurance change: no new guard, audit row or rate limit (CW-20261030-0082).
+- **Not here.** Secret fields, server-side drafts, an audit endpoint, and the groups themselves (ST2).

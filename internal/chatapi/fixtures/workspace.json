@@ -1,0 +1,4 @@
+{"items":[
+{"id":"ws_1","thread_ref":"app:t_01","type":"file","name":"design.md","mime":"text/markdown","size_bytes":18211,"sha256":"3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e","url":null,"ref":null,"shared":true,"added_by":"user","created_at":1793300500000,"updated_at":1793300500000},
+{"id":"ws_2","thread_ref":"app:t_01","type":"ref","name":"CW-20261030-0001","mime":null,"size_bytes":null,"sha256":null,"url":null,"ref":"torque:task/CW-20261030-0001","shared":false,"added_by":"agent","created_at":1793301500000,"updated_at":1793301500000}
+],"limits":{"max_file_bytes":26214400,"max_items":100,"max_total_bytes":262144000,"used_items":2,"used_bytes":18211}}

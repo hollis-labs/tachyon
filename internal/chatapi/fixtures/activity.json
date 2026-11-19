@@ -1,0 +1,4 @@
+{"activity":[
+{"seq":12,"thread_ref":"app:t_01","type":"card.answered","actor":"user","cite":[{"kind":"task","ref":"CW-20261030-0001","label":"T0"}],"payload":{"title":"Project chosen","summary":"Tachyon","review_ref":null},"source":"tachyon","at":1793300400000},
+{"seq":11,"thread_ref":"app:t_01","type":"plan.changed","actor":"agent:tachyon","cite":[],"payload":{"title":"Plan written","summary":"5 steps","review_ref":null},"source":"tachyon","at":1793300200000}
+],"has_more":false}

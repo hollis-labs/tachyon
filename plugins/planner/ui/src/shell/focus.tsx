@@ -1,142 +1,137 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { toast } from 'sonner'
-import { Button, Input } from '@hollis-labs/design-components'
-import { DashboardViewTabs } from '@hollis-labs/kit-dashboard/layout'
-import { StatusBadge } from '@hollis-labs/kit-dashboard'
-import { statusToneKey, themeOwners, themeRowActions } from '@planner/lib/planner'
-import { FACETS, LANES, TEXT, type LaneId } from '@planner/lib/vocabulary'
+import { useState } from 'react'
+import { ChevronDown, Pin } from 'lucide-react'
+import { OverflowMenu, cn } from '@hollis-labs/design-components'
+import { themeRowActions } from '@planner/lib/planner'
+import { THEME_SECTIONS } from '@planner/lib/planner'
+import { TEXT } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
-import { fixtureEvents, fixtureMilestones, fixtureMomentum, fixtureTasks } from '@planner/fixtures/themes'
-import { EventTimeline, LaneBoard, SegmentedProgress, StatusMenu, type Lane } from '@planner/shared'
+import { CAPTION, Chip, InlineEdit, SegmentedProgress, SegmentedSwitch, StateDot, StatusMenu, type DotState } from '@planner/shared'
+import { ThemeTimelineView, useThemeTimeline } from '@planner/shell/timeline'
+import { TaskBoard } from '@planner/shell/task-board'
 import { themeSegments } from '@planner/shell/spine'
 import type { ThemeAction, ThemeBoard, ThemeRow } from '@planner/api/types'
 
+const ACCESS_NOTE = 'planner-access-note'
+const NOW = '\u0000current'
+const SECTION_DOT: Record<string, DotState> = { in_flight: 'doing', cleared: 'review', queued: 'review', proposed: 'todo', parked: 'todo', landed: 'done' }
+
 interface FocusProps {
+  /** Changes when the Planner stream says something changed: the board and timeline refetch. */
+  tick?: number
   /** Writes are disabled while the connection is down. */
   paused?: boolean
+  /** The server refused a write for lack of operator access: controls are off and say why. */
+  needsAccess?: boolean
+  onRetryAccess?: () => void
+  onNeedsAccess?: () => void
   row: ThemeRow
   board: ThemeBoard
   view: 'board' | 'timeline'
   onView: (v: 'board' | 'timeline') => void
   onAction: (row: ThemeRow, action: ThemeAction, args?: { position?: number }) => Promise<void>
-  onBack: () => void
-  onDetails: () => void
+  pinned: boolean
+  onTogglePin: () => void
+  onEdit: (row: ThemeRow, patch: Record<string, unknown>) => Promise<void>
+  onLink: () => void
 }
 
-export function Focus({ paused, row, board, view, onView, onAction, onBack, onDetails }: FocusProps) {
+/** The open theme: header, progress block with momentum, then the Board or Timeline. */
+export function Focus({ tick, paused, needsAccess, onRetryAccess, onNeedsAccess, row, board, view, onView, onAction, pinned, onTogglePin, onEdit, onLink }: FocusProps) {
   const seg = themeSegments(row)
   const panels = useContributions('planner.focus.panel')
   const approved = (board.totals.in_flight ?? 0) + (board.totals.cleared ?? 0)
   const actions = themeRowActions(row.section, row.rank, approved)
-  const owners = themeOwners(row)
+  const timeline = useThemeTimeline(row.id, tick)
+  const momentum = timeline.data?.momentum
+  const [why, setWhy] = useState(false)
+  const locked = Boolean(paused || needsAccess)
+  const section = THEME_SECTIONS.find((s) => s.key === row.section)
+  const counts = row.progress.counts ?? {}
+  const done = row.progress.done ?? counts.done ?? 0
+  const doing = counts.doing ?? counts.in_progress ?? 0
+  const review = counts.review ?? 0
+  const total = row.progress.total ?? 0
+  const todo = Math.max(0, total - done - doing - review - row.blocked_count)
+  const stat = (label: string, n: number, tone?: string) => (
+    <div className="flex flex-col gap-1">
+      <span className={CAPTION}>{label}</span>
+      <b className={cn('font-mono text-xl font-semibold leading-none tabular-nums', tone ?? 'text-fg-secondary')}>{n}</b>
+    </div>
+  )
   return (
-    <section aria-labelledby="focus-title" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-      <header className="flex flex-col gap-3 border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={onBack} className="dash-caption text-fg-muted hover:text-fg lg:hidden">← {TEXT.back}</button>
-          <span className="rounded-md border border-border px-1.5 font-mono dash-caption text-fg-muted">{row.id}</span>
+    <section aria-labelledby="focus-title" className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5 max-sm:px-4 max-sm:py-4">
+      <header className="flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Chip square title={row.id}>{row.id.length > 12 ? row.id.slice(0, 8) : row.id}</Chip>
+          <span className={CAPTION}>{TEXT.themeRank(row.rank, approved)}</span>
           <span className="flex-1" />
-          <button type="button" onClick={onDetails} className="dash-caption text-fg-muted hover:text-fg xl:hidden">{TEXT.detailsLabel}</button>
+          <SegmentedSwitch label={TEXT.viewLabel} value={view} onChange={(v) => onView(v === 'timeline' ? 'timeline' : 'board')} items={[{ value: 'board', label: TEXT.board }, { value: 'timeline', label: TEXT.timeline }]} />
+          <button type="button" aria-pressed={pinned} onClick={onTogglePin} disabled={locked} className="rounded-full">
+            <Chip selected={pinned} className="h-6 cursor-pointer hover:bg-selection"><Pin className="size-3" />{TEXT.pin}</Chip>
+          </button>
+          <OverflowMenu ariaLabel={TEXT.moreActions} actions={[{ label: TEXT.linkTo, onSelect: onLink, disabled: locked }, { label: TEXT.copyLink, onSelect: () => void navigator.clipboard?.writeText(`${location.origin}/planner/themes/${encodeURIComponent(row.id)}`) }]} />
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 id="focus-title" className="min-w-0 flex-1 text-lg font-medium text-fg">{row.title}</h1>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <InlineEdit as="h1" id="focus-title" label={TEXT.titleLabel} value={row.title} disabled={locked} onCommit={(title) => void onEdit(row, { title })} className="min-w-0 font-sans text-xl font-semibold normal-case leading-tight tracking-normal text-fg" />
           <StatusMenu
-            trigger={<StatusBadge status={row.status} tone={statusToneKey(row.status)} />}
-            triggerLabel={`${row.status}. ${TEXT.moveTo}`}
+            trigger={
+              <Chip tone="strong" className="h-6 cursor-pointer">
+                <StateDot state={SECTION_DOT[row.section] ?? 'todo'} />
+                {section?.title ?? row.status}
+                <ChevronDown className="size-3" />
+              </Chip>
+            }
+            triggerLabel={`${section?.title ?? row.status}. ${TEXT.moveTo}`}
             heading={TEXT.moveTo}
-            current=""
-            options={actions.map((a) => ({ value: a.label, label: a.label }))}
+            current={NOW}
+            options={[{ value: NOW, label: section?.title ?? row.status }, ...actions.map((a) => ({ value: a.label, label: a.action === 'finish' ? TEXT.finish : a.label }))]}
             onSelect={(label) => {
-              const a = actions.find((x) => x.label === label)
+              const a = actions.find((x) => (x.action === 'finish' ? TEXT.finish : x.label) === label)
               if (a) void onAction(row, a.action, a.position === undefined ? undefined : { position: a.position })
             }}
-            disabled={actions.length === 0 || paused}
+            disabled={actions.length === 0 || locked}
+            disabledReasonId={needsAccess ? ACCESS_NOTE : undefined}
           />
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-fg-muted">
+            {row.accountable && <>{TEXT.accountable} <Mention>{row.accountable}</Mention></>}
+            {row.executing_owner && <>{row.accountable && '·'} {TEXT.exec} <Mention>{row.executing_owner}</Mention></>}
+          </span>
         </div>
-        {owners && <p className="dash-support text-fg-muted">{owners}</p>}
-        {row.tldr && <p className="dash-support text-fg">{row.tldr}</p>}
-        <div className="flex flex-col gap-1.5">
-          <SegmentedProgress items={seg.items} label={seg.label} />
-          <p className="flex flex-wrap gap-x-4 dash-caption text-fg-muted">
-            <span>{seg.label}</span>
-            <span title={fixtureMomentum.detail}>{TEXT.momentum}: {fixtureMomentum.label}</span>
-            <span className="text-fg-faint">{TEXT.fixtureNote}</span>
-          </p>
-        </div>
+        {row.tldr && <InlineEdit as="p" multiline label={TEXT.descriptionLabel} value={row.tldr} disabled={locked} onCommit={(tldr) => void onEdit(row, { tldr })} className="max-w-prose text-control text-fg-muted" />}
         {panels.map((p) => <div key={p.id}>{p.render?.({ id: row.id })}</div>)}
-        <DashboardViewTabs variant="segments" label={TEXT.viewLabel} value={view} onChange={(v) => onView(v === 'timeline' ? 'timeline' : 'board')} items={[{ value: 'board', label: TEXT.board }, { value: 'timeline', label: TEXT.timeline }]} />
       </header>
-      <div className="min-w-0 flex-1 p-4">
-        {view === 'board' ? <TaskBoard themeId={row.id} /> : <ThemeTimeline />}
+      {needsAccess && (
+        <p id={ACCESS_NOTE} role="status" className="text-xs text-fg-muted">
+          {TEXT.needsAccess}. {TEXT.needsAccessHint} <button type="button" className="underline" onClick={onRetryAccess}>{TEXT.retry}</button>
+        </p>
+      )}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
+          {stat(TEXT.statDone, done, 'text-fg')}
+          {stat(TEXT.statDoing, doing, 'text-fg')}
+          {review > 0 && stat(TEXT.statReview, review, 'text-fg')}
+          {stat(TEXT.statBlocked, row.blocked_count, row.blocked_count > 0 ? 'text-danger' : undefined)}
+          {stat(TEXT.statTodo, todo)}
+          {stat(TEXT.statOf, total, 'text-fg-muted')}
+          {momentum && (
+            <div className="ml-auto flex flex-col items-end gap-1 text-right">
+              <span className={CAPTION}>{TEXT.momentum}</span>
+              <button type="button" aria-expanded={why} onClick={() => setWhy((v) => !v)} className="text-control font-semibold text-fg">
+                <span aria-hidden>{TEXT.momentumGlyph[momentum.label]}</span> {TEXT.momentumLabels[momentum.label]}
+              </button>
+            </div>
+          )}
+        </div>
+        <SegmentedProgress size="lg" items={seg.items} label={seg.label} />
+        {why && momentum && <p className="text-xs text-fg-muted">{momentum.text}</p>}
+        <p className="sr-only">{seg.label}{momentum ? `. ${TEXT.momentum}: ${TEXT.momentumLabels[momentum.label]}. ${momentum.text}` : ''}</p>
       </div>
+      {view === 'board' ? <TaskBoard themeId={row.id} tick={tick} paused={locked} onNeedsAccess={onNeedsAccess} accessNoteId={needsAccess ? ACCESS_NOTE : undefined} /> : <ThemeTimelineView state={timeline} progress={{ done, total }} />}
     </section>
   )
 }
 
-function TaskBoard({ themeId }: { themeId: string }) {
-  const [tasks, setTasks] = useState(() => fixtureTasks(themeId))
-  const [shipped, setShipped] = useState<string | null>(null)
-  const [summary, setSummary] = useState('')
-  const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
-  const lanes: Lane[] = LANES.map((l) => ({
-    id: l.id,
-    title: l.title,
-    collapsed: l.id === 'done',
-    cards: tasks.filter((t) => t.lane === l.id).map((t) => ({ id: t.id, content: <span className="dash-support text-fg">{t.title}{t.pr ? <span className="ml-2 font-mono dash-caption text-fg-muted">PR {t.pr}</span> : null}</span> })),
-  }))
-  // Optimistic: the card moves at once, the write settles after, Undo for 8s.
-  // The sample board has no write behind it yet, so nothing is left pending.
-  const move = (id: string, from: string, to: string) => {
-    const t = byId.get(id)
-    if (!t) return
-    setTasks((all) => all.map((x) => (x.id === id ? { ...x, lane: to as LaneId } : x)))
-    // Dropping on Done saves at once; the summary is optional and attached after.
-    if (to === 'done') { setShipped(id); setSummary('') }
-    toast(TEXT.moved(t.title, LANES.find((l) => l.id === to)?.title ?? to), {
-      duration: 8000,
-      action: { label: TEXT.undo, onClick: () => setTasks((all) => all.map((x) => (x.id === id ? { ...x, lane: from as LaneId } : x))) },
-    })
-  }
-  const endPrompt = (add: boolean) => {
-    if (add && shipped && summary.trim()) setTasks((all) => all.map((x) => (x.id === shipped ? { ...x, summary: summary.trim() } : x)))
-    setShipped(null)
-  }
-  const onSubmit = (e: FormEvent) => { e.preventDefault(); endPrompt(true) }
-  return (
-    <>
-      {shipped && (
-        <form onSubmit={onSubmit} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); endPrompt(false) } }} className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
-          <label htmlFor="shipped" className="dash-caption text-fg-muted">{TEXT.doneSummaryLabel}</label>
-          <Input id="shipped" autoFocus value={summary} onChange={(e) => setSummary(e.target.value)} className="min-w-0 flex-1" />
-          <Button type="submit" size="sm">{TEXT.doneSummaryAdd}</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => endPrompt(false)}>{TEXT.doneSummarySkip}</Button>
-          <span className="w-full dash-caption text-fg-faint">{TEXT.doneSummaryHint}</span>
-        </form>
-      )}
-      <LaneBoard
-        lanes={lanes}
-        cardTitle={(id) => byId.get(id)?.title ?? id}
-        onMove={move}
-        labels={{ lane: TEXT.lane, empty: TEXT.laneEmpty, pickedUp: TEXT.pickedUp, movedOver: TEXT.movedOver, dropped: TEXT.dropped, cancelled: TEXT.cancelled, pending: TEXT.saving, dragHint: TEXT.dragHint }}
-      />
-    </>
-  )
-}
-
-function ThemeTimeline() {
-  const sources = useContributions('planner.focus.timeline.source')
-  const events = [...fixtureEvents, ...sources.flatMap((s) => (Array.isArray(s.data) ? s.data : []))]
-  const facets = FACETS.map((f) => ({ id: f.id, label: f.label, count: f.id === 'all' ? events.length : events.filter((e) => e.facet === f.id).length }))
-  return (
-    <div className="flex flex-col gap-4">
-      <ol aria-label={TEXT.milestones} className="flex flex-wrap gap-x-6 gap-y-1">
-        {fixtureMilestones.map((m) => (
-          <li key={m.id} className="dash-caption text-fg-muted">
-            <span className="text-fg">{m.label}</span> · {m.state}
-          </li>
-        ))}
-      </ol>
-      <EventTimeline events={events} facets={facets} allFacet="all" facetsLabel={TEXT.timelineFacets} streamLabel={TEXT.timelineStream} emptyLabel={TEXT.timelineEmpty} filteredEmptyLabel={TEXT.timelineFilteredEmpty} />
-    </div>
-  )
+function Mention({ children }: { children: string }) {
+  const text = children.startsWith('@') ? children : `@${children}`
+  return <span className="max-w-60 truncate rounded-sm bg-info/12 px-1 text-fg" title={children}>{text}</span>
 }

@@ -10,6 +10,7 @@ export function sanitizePrefs(raw: unknown): ConsolePrefs {
   const win = typeof o.coalesceWindowSec === 'number' && Number.isFinite(o.coalesceWindowSec) ? Math.round(o.coalesceWindowSec) : D.coalesceWindowSec
   return {
     quiet: typeof o.quiet === 'boolean' ? o.quiet : D.quiet,
+    toastsEnabled: typeof o.toastsEnabled === 'boolean' ? o.toastsEnabled : D.toastsEnabled,
     toastMinSeverity: SEVERITY_ORDER.includes(o.toastMinSeverity as ConsolePrefs['toastMinSeverity']) ? (o.toastMinSeverity as ConsolePrefs['toastMinSeverity']) : D.toastMinSeverity,
     bellMinSeverity: SEVERITY_ORDER.includes(o.bellMinSeverity as ConsolePrefs['bellMinSeverity']) ? (o.bellMinSeverity as ConsolePrefs['bellMinSeverity']) : D.bellMinSeverity,
     quietHoursEnabled: typeof o.quietHoursEnabled === 'boolean' ? o.quietHoursEnabled : D.quietHoursEnabled,

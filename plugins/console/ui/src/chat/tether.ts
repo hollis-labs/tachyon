@@ -1,8 +1,9 @@
-import { operatorFetch } from '../operator/elevation'
+import { spineHub } from './live'
 import { dataRefreshRegistry } from '@tachyon/host-sdk'
 import type { Recipient } from '../messaging'
-import { chatJSON, chatRecipient, fetchChatAgents, type ChatAgent } from './roster'
+import { chatFetch, chatJSON, chatRecipient, fetchChatAgents, type ChatAgent } from './roster'
 import type { ChatCapability, ChatClient, ChatEvent, ChatMessage, ChatThread, HistoryQuery, ReplyAudience } from './types'
+import { audienceOf, wakeOf } from './inputs'
 
 const TURNS = '/api/plugins/console/v1/chat-turns'
 export interface Turn {
@@ -26,8 +27,8 @@ export interface Turn {
     message_id?: string
     sequence?: number
     output_id?: string
-    /** Routed-message metadata. input_classes is comma-joined (or an array); empty unless Tether proved who asked. */
-    attribution?: { launch_id?: string; runtime?: string; input_classes?: string | string[]; audience?: string }
+    /** Routed-message metadata. input_classes and input_sources are comma-joined (or arrays); empty unless Tether proved them. */
+    attribution?: { launch_id?: string; runtime?: string; input_classes?: string | string[]; input_sources?: string | string[]; input_triage?: string | string[]; audience?: string }
   }
   stage_trace?: NonNullable<ChatMessage['info']>['trace']
 }
@@ -45,7 +46,7 @@ export interface Sent {
   session_id?: string
 }
 async function turns<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await operatorFetch(TURNS + path, {
+  const res = await chatFetch(TURNS + path, {
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
   })
@@ -67,11 +68,7 @@ async function turns<T>(path: string, init?: RequestInit): Promise<T> {
  * with no classes (older, queued, shared-credential) is 'unknown'.
  */
 export function replyAudience(t: Turn): ReplyAudience {
-  const raw = t.source_message?.attribution?.input_classes
-  const classes = (Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : []).map((c) => c.trim())
-  if (classes.includes('operator')) return 'operator'
-  const known = classes.filter((c): c is 'agent' | 'system' => c === 'agent' || c === 'system')
-  return known.length === 1 && classes.length === 1 ? known[0] : 'unknown'
+  return audienceOf(t.source_message?.attribution?.input_classes)
 }
 export function belongsTo(t: Turn, a: ChatAgent): boolean {
   const launch = t.source_message?.attribution?.launch_id
@@ -139,6 +136,7 @@ export function messagesFor(a: ChatAgent, items: Turn[], sent: Sent[]): ChatMess
       threadId: id,
       from: 'agent',
       audience: replyAudience(t),
+      ...(wakeOf(t.source_message?.attribution?.input_sources, t.source_message?.attribution?.input_triage) ? { wake: 'mail' as const } : {}),
       body: t.content,
       at: Date.parse(t.created_at),
       tools: [],
@@ -368,14 +366,15 @@ export function createTetherChatClient(mail: ChatClient): ChatClient {
         }
       }
       void sync()
-      const timer = setInterval(() => void sync(), 5000)
+      // No interval: refresh on the spine stream, the data-refresh signal and focus.
+      const offSpine = spineHub().subscribe((f) => { if (f.type === 'thread' || f.type === 'reconnected') void sync() })
       const offs = ['chat', 'chat-turns'].map((scope) =>
         dataRefreshRegistry(scope).subscribe(() => void sync()),
       )
       window.addEventListener('focus', sync)
       return () => {
         live = false
-        clearInterval(timer)
+        offSpine()
         offs.forEach((off) => off())
         window.removeEventListener('focus', sync)
         set.delete(listener)
@@ -383,21 +382,19 @@ export function createTetherChatClient(mail: ChatClient): ChatClient {
     },
     subscribeThreads(listener, onError) {
       let live = true
-      const timer = setInterval(() => {
-        void client.listThreads().then(
-          (t) => {
-            if (live) listener(t)
-          },
-          (e) => {
-            if (live) onError?.(e instanceof Error ? e.message : 'Chat roster unavailable')
-          },
-        )
-      }, 5000)
-      const off = mail.subscribeThreads(() => void client.listThreads().then(listener, () => undefined))
+      const relist = () => void client.listThreads().then(
+        (t) => { if (live) listener(t) },
+        (e) => { if (live) onError?.(e instanceof Error ? e.message : 'Chat roster unavailable') },
+      )
+      // No interval: the spine stream says when a row changed, a reconnect or a refresh signal re-lists.
+      const offSpine = spineHub().subscribe((f) => { if (f.type === 'thread' || f.type === 'reconnected') relist() })
+      const offMail = mail.subscribeThreads(() => void client.listThreads().then(listener, () => undefined))
+      const offRefresh = dataRefreshRegistry('chat').subscribe(relist)
       return () => {
         live = false
-        clearInterval(timer)
-        off()
+        offSpine()
+        offMail()
+        offRefresh()
       }
     },
   }

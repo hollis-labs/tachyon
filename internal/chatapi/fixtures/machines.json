@@ -1,0 +1,1 @@
+{"machines":[{"machine_id":"agent-os","label":"agent-os","source":"objects","ssh_user":"chrispian","reachable":true},{"machine_id":"hub","label":"hub","source":"ssh_config","ssh_user":"chrispian","reachable":null}]}

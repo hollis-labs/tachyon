@@ -18,7 +18,8 @@ const AgentMCPPath = "/api/agent/v1/mcp"
 // requests reauthenticate and rediscover grants each time; an MCP session cannot
 // retain a revoked credential or borrow another caller's tool set.
 func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) http.Handler {
-	svc, cardSvc, torque, tess := agentServices(services)
+	svc, cardSvc, torque, tess, chat, topics, plan, activity := agentServices(services)
+	terminal := terminalServices(services)
 	guard, err := auth.New(auth.Config{Mode: auth.ModeEnforce, Verifier: verifier, OpenPath: func(string) bool { return false }})
 	if err != nil {
 		panic(err)
@@ -28,7 +29,10 @@ func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) ht
 		if !ok || !principal.Verified {
 			return nil
 		}
-		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess}
+		p := &scopedLocal{local: NewLocal(s), principal: principal, actions: svc, cards: cardSvc, torque: torque, tesseract: tess, chat: chat, topics: topics, plan: plan, activity: activity, terminal: terminal, session: trustedSession(principal, r.Header.Get(SessionHeader))}
+		// The X-Tether-* headers count only from the pinned proxy, as on the HTTP route. Lineage is
+		// recorded before any tool runs, so a replacement session's first plan call finds its plan.
+		p.recordLineage(withLineage(r.Context(), principal, r.Header))
 		server := mcpserver.NewServer("tachyon-planner", "1.0.0")
 		for _, v := range p.Verbs() {
 			server.RegisterTool(mcpserver.Tool{
@@ -36,6 +40,8 @@ func NewAgentMCP(s *objects.Service, verifier auth.Verifier, services ...any) ht
 				Description: v.Description, InputSchema: v.InputSchema,
 				ReadOnlyHint: !v.Mutates, DestructiveHint: v.Mutates, IdempotentHint: !v.Mutates,
 				Handler: func(ctx context.Context, args map[string]any) (any, error) {
+					// The SDK's tool ctx is not guaranteed to descend from the request's.
+					ctx = withLineage(ctx, principal, r.Header)
 					raw, err := json.Marshal(args)
 					if err != nil {
 						return nil, err

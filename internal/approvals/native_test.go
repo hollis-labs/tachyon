@@ -111,10 +111,17 @@ func TestNativeBrowserDecisionAuthority(t *testing.T) {
 				w = serveJSON(inbox, "POST", path, cmd, "", "session")
 			}
 			if class == "high" {
-				if w.Code != 403 {
-					t.Fatalf("high decision: %d %s", w.Code, w.Body)
+				// A3a: decided here with the server-derived phrase.
+				if w.Code != 422 {
+					t.Fatalf("high decision without the phrase: %d %s", w.Code, w.Body)
 				}
-				return
+				g := serveJSON(inbox, "GET", Prefix+"/items/"+handle.ItemID, nil, "", "session")
+				var item struct {
+					Confirm struct{ Phrase string } `json:"confirm"`
+				}
+				_ = json.Unmarshal(g.Body.Bytes(), &item)
+				cmd["response"] = map[string]string{"kind": "approval", "decision": "approved", "confirmation": " " + item.Confirm.Phrase + " "}
+				w = serveJSON(inbox, "POST", path, cmd, "", "session")
 			}
 			if w.Code != 200 {
 				t.Fatalf("authorized decision: %d %s", w.Code, w.Body)

@@ -3,7 +3,7 @@ import { PreviewCard } from '@base-ui/react/preview-card'
 import { buildPreviewCard, type RefIdentity, type RefMeta } from '../refs'
 import { useAutolink, useRefState } from './context'
 import { RefIcon } from './RefIcon'
-import { refCardEnricher, refHover, type RefCardProps } from './extensions'
+import { refCardEnricher, refChipIcon, refHover, refOwnHover, refOwnsChrome, type RefCardProps } from './extensions'
 import { PreviewCardView } from './PreviewCardView'
 import { truncateLabel, useRefLabelMax } from './labelPrefs'
 
@@ -51,6 +51,7 @@ export function RefChip({ kind, canonical, raw, fallbackLabel, meta, className =
   const mode = def?.resolveOn === 'hover' ? 'hover' : resolve
   const card = buildPreviewCard(registry, ref, state)
   const Hover = refHover(kind)
+  const OwnHover = refOwnHover(kind)
   const Header = refCardEnricher(kind) ?? Passthrough
   const labelMax = useRefLabelMax()
   // A resolved reference reads as "Type: Title"; until then the author's label, else the kind's short form of the id.
@@ -68,7 +69,7 @@ export function RefChip({ kind, canonical, raw, fallbackLabel, meta, className =
 
   const href = card.open.type === 'route' ? card.open.to : card.open.type === 'external' ? card.open.href : undefined
   const interactive = hosted || href !== undefined
-  const style = `${CHIP} ${STATE_STYLE[state.status] ?? STATE_STYLE.default} ${className}`
+  const style = `${CHIP} ${STATE_STYLE[refOwnsChrome(kind) && state.status !== 'not-found' && state.status !== 'error' ? 'found' : state.status] ?? STATE_STYLE.default} ${className}`
   const onClick = (e: MouseEvent) => {
     const modified = e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0
     if (activate(ref, { modified })) e.preventDefault()
@@ -84,7 +85,7 @@ export function RefChip({ kind, canonical, raw, fallbackLabel, meta, className =
   }
   const body = (
     <>
-      <RefIcon token={card.icon} className="h-3 w-3 shrink-0 translate-y-[2px] opacity-70" />
+      <RefIcon token={refChipIcon(kind)?.(ref) ?? card.icon} className="h-3 w-3 shrink-0 translate-y-[2px] opacity-70" />
       <span className="min-w-0 truncate">{label}</span>
     </>
   )
@@ -104,13 +105,13 @@ export function RefChip({ kind, canonical, raw, fallbackLabel, meta, className =
             data-testid="ref-hovercard"
             className="w-80 max-w-[calc(100vw-1.5rem)] border border-border bg-popover p-3 text-fg shadow-xl transition-opacity duration-100 data-ending-style:opacity-0 data-starting-style:opacity-0"
           >
-            <Header refId={ref} card={card}>
+            {OwnHover ? createElement(OwnHover, { refId: ref, card }) : <Header refId={ref} card={card}>
               {(c) => (
                 <PreviewCardView card={c} onRetry={() => client.invalidate(kind, canonical)}>
                   {Hover && c.phase !== 'not-found' && c.phase !== 'unresolved' ? createElement(Hover, { refId: ref, card: c }) : undefined}
                 </PreviewCardView>
               )}
-            </Header>
+            </Header>}
           </PreviewCard.Popup>
         </PreviewCard.Positioner>
       </PreviewCard.Portal>

@@ -1,5 +1,13 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, cn } from '@hollis-labs/design-components'
+import {
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@hollis-labs/design-components"
+import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react"
 
 export interface StatusMenuOption {
   value: string
@@ -22,6 +30,8 @@ export interface StatusMenuProps {
   options: readonly StatusMenuOption[]
   onSelect: (value: string) => void
   disabled?: boolean
+  /** When disabled, keep the trigger focusable (aria-disabled) and point it at the element that says why. */
+  disabledReasonId?: string
   className?: string
 }
 
@@ -30,7 +40,18 @@ export interface StatusMenuProps {
  * one-key shortcuts; arrows and Enter work as in any menu, Esc closes and
  * returns focus to the trigger.
  */
-export function StatusMenu({ trigger, triggerLabel, heading, current, options, onSelect, disabled, className }: StatusMenuProps) {
+export function StatusMenu({
+  trigger,
+  triggerLabel,
+  heading,
+  current,
+  options,
+  onSelect,
+  disabled,
+  disabledReasonId,
+  className,
+}: StatusMenuProps) {
+  const soft = Boolean(disabled && disabledReasonId)
   const [open, setOpen] = useState(false)
   useEffect(() => {
     if (disabled) setOpen(false)
@@ -49,20 +70,35 @@ export function StatusMenu({ trigger, triggerLabel, heading, current, options, o
     }
   }
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger disabled={disabled} aria-label={triggerLabel} className={cn('inline-flex items-center rounded-md focus-visible:outline-2 disabled:opacity-60', className)}>
+    <DropdownMenu open={open} onOpenChange={(o) => !soft && setOpen(o)}>
+      <DropdownMenuTrigger
+        disabled={disabled && !soft}
+        aria-disabled={soft || undefined}
+        aria-describedby={soft ? disabledReasonId : undefined}
+        aria-label={triggerLabel}
+        className={cn(
+          "inline-flex items-center rounded-md focus-visible:outline-2 disabled:opacity-60 aria-disabled:opacity-60",
+          className,
+        )}
+      >
         {trigger}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" onKeyDown={onKeyDown}>
-        <DropdownMenuLabel>{heading}</DropdownMenuLabel>
-        {options.map((o, i) => (
-          <DropdownMenuItem key={o.value} onClick={() => choose(o.value)} aria-current={o.value === current ? 'true' : undefined}>
-            <span aria-hidden className={cn('size-1.5 rounded-full bg-fg-faint', o.dotClass)} />
-            <span className="flex-1">{o.label}</span>
-            {o.value === current && <span className="dash-caption text-fg-faint">✓</span>}
-            <kbd className="font-mono dash-caption text-fg-faint">{o.key ?? i + 1}</kbd>
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{heading}</DropdownMenuLabel>
+          {options.map((o, i) => (
+            <DropdownMenuItem
+              key={o.value}
+              onClick={() => choose(o.value)}
+              aria-current={o.value === current ? "true" : undefined}
+            >
+              <span aria-hidden className={cn("size-1.5 rounded-full bg-fg-faint", o.dotClass)} />
+              <span className="flex-1">{o.label}</span>
+              {o.value === current && <span className="dash-caption text-fg-faint">✓</span>}
+              <kbd className="font-mono dash-caption text-fg-faint">{o.key ?? i + 1}</kbd>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

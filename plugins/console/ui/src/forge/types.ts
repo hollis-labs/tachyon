@@ -198,6 +198,9 @@ export interface PendingPrSummary {
   updatedAt: string
   additions?: number
   deletions?: number
+  /** Draft PRs show a Draft chip in the inbox. */
+  draft?: boolean
+  changedFiles?: number
   url?: string
 }
 
@@ -230,8 +233,23 @@ export interface AddCommentInput {
 export interface ReviewInput {
   verdict: ReviewVerdict
   body?: string
+  /** Head commit the reviewer saw; the forge refuses with head_moved when it changed. */
+  headSha?: string
   comments?: Omit<AddCommentInput, 'inReplyTo'>[]
 }
+
+export type CommentCheck = 'ok' | 'outdated' | 'invalid_line'
+/** POST reviews/validate: whether queued inline comments still land on the current head. */
+export interface ReviewValidation { headMoved: boolean; statuses: CommentCheck[] }
+
+/** Saved review in progress: the queued inline comments, pinned to the head they were written on. */
+export interface ReviewDraft { headSha: string; comments: NonNullable<ReviewInput['comments']> }
+
+/** GET status: when the forge cache last refreshed and whether the answer is degraded (served from cache). */
+export interface ForgeStatus { lastRefreshMs: number | null; degraded: boolean }
+
+/** One forge write recorded server-side (GET /audit). Never carries a body. */
+export interface AuditEntry { id: number; at: number; op: string; prKey: string; actor: string; outcome: string; errorCode?: string; githubRef?: string }
 
 export interface AssignInput {
   /** Full replacement set of assignee logins. */
@@ -288,4 +306,16 @@ export const FORGE_OP_EFFECTS = {
 
 export type MergeMethod = 'merge' | 'squash' | 'rebase'
 export interface MergeInput { method: MergeMethod; headSha: string }
+export type MergeBlockerCode = 'draft' | 'closed' | 'conflicts' | 'checks_failing' | 'checks_pending' | 'changes_requested' | 'review_required' | 'behind_base' | 'branch_protection' | 'head_moved' | 'unknown_mergeable'
+export interface MergeBlocker { code: MergeBlockerCode | (string & {}); message: string }
+/** GET merge-preflight: what a merge would do right now and what blocks it. */
+export interface MergePreflight {
+  state: 'ready' | 'blocked' | 'pending' | 'unknown'
+  headSha: string
+  baseRef: string
+  blockers: MergeBlocker[]
+  methodsAllowed: MergeMethod[]
+  defaultMethod?: MergeMethod
+  behindBy: number
+}
 export interface MergeResult { merged: true; sha: string; message: string }

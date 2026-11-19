@@ -1,105 +1,136 @@
-import { useState } from 'react'
-import { SEVERITY_ORDER } from '../events/types'
-import { SEVERITY_STYLE } from '../alerts/severity-style'
-import { PREF_FIELD_KEYS, consolePrefsSettingsGroup } from './manifest'
+import { useState, type ReactNode } from 'react'
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Switch } from '@hollis-labs/design-components'
+import { X } from 'lucide-react'
+import { Chip } from '../components/chip'
+import { Segmented } from '../components/segmented'
+import { levelOf, levelPatch, NOTIFY_LEVELS, previewLine, seeLine } from './levels'
+import { consolePrefsSettingsGroup } from './manifest'
 import type { ConsolePrefs } from './types'
 
-const LABEL = 'font-mono text-[10px] uppercase tracking-widest text-zinc-400'
 const INPUT =
-  'border border-zinc-700 bg-zinc-950 px-1.5 py-1 font-mono text-xs text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300 disabled:opacity-50'
+  'border border-border bg-bg px-1.5 py-1 dash-control text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50'
+const WINDOWS = [[0, 'Off'], [30, '30 seconds'], [120, '2 minutes'], [600, '10 minutes']] as const
 
 export interface ConsolePrefsPanelProps {
   prefs: ConsolePrefs
   onChange: (patch: Partial<ConsolePrefs>) => void
 }
 
+function Row({ title, help, children }: { title: string; help: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border-subtle px-4 py-3.5 last:border-b-0">
+      <div className="min-w-0 flex-1 basis-40">
+        <p className="font-bold text-fg">{title}</p>
+        <p className="text-xs leading-normal text-fg-muted">{help}</p>
+      </div>
+      {/* min-w-0 + max-w-full: at 390 a wide control (the notify segmented) scrolls inside the card instead of overflowing it. */}
+      <div className="flex min-w-0 max-w-full items-center gap-2">{children}</div>
+    </div>
+  )
+}
+
 /**
- * In-app preferences form, built on plain controls. Field titles and help text
- * come from the manifest group (consolePrefsSettingsGroup), so swapping this for
- * kit-settings' <SettingsRenderer> changes the chrome, not the data. Edits apply
- * immediately (no draft/save step) because the store is local; see BACKEND_NEEDS.md.
+ * In-app preferences, one card row per setting. Help text for the stored fields comes from the
+ * manifest group (consolePrefsSettingsGroup), so swapping this for kit-settings' <SettingsRenderer>
+ * changes the chrome, not the data. Edits apply immediately (no draft/save step).
  */
 export function ConsolePrefsPanel({ prefs, onChange }: ConsolePrefsPanelProps) {
   const props = consolePrefsSettingsGroup().schema.properties
-  const help = (field: keyof typeof PREF_FIELD_KEYS) => String(props[field]?.description ?? '')
-  // Muted sources edit as free text; commit on blur so typing a comma is not eaten by normalising.
-  const [mutedDraft, setMuted] = useState<string | null>(null)
-  const muted = mutedDraft ?? prefs.mutedSources.join(', ')
+  const help = (field: string) => String(props[field]?.description ?? '')
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+  const addSource = () => {
+    if (draft.trim()) onChange({ mutedSources: [...prefs.mutedSources, draft] })
+    setDraft('')
+    setAdding(false)
+  }
+  const window = WINDOWS.find(([s]) => s === prefs.coalesceWindowSec)?.[1] ?? `${prefs.coalesceWindowSec} seconds`
 
   return (
-    <form aria-label="Alert preferences" className="max-h-72 space-y-3 overflow-y-auto border-b border-zinc-800 px-4 py-3" onSubmit={(e) => e.preventDefault()}>
-      <div>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={prefs.quiet} onChange={(e) => onChange({ quiet: e.target.checked })} className="h-3 w-3 accent-amber-300" />
-          <span className={LABEL}>Quiet mode</span>
-        </label>
-        <p className="mt-1 text-[11px] leading-snug text-zinc-500">{help('quiet')}</p>
+    <form aria-label="Alert preferences" className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+      <div className="rounded-panel border border-border">
+        <Row title="Notify me about" help="Sets what appears in the bell, the list and toasts.">
+          <div className="min-w-0 max-w-full overflow-x-auto">
+          <Segmented
+            label="Notify me about"
+            value={levelOf(prefs)}
+            onChange={(id) => onChange(levelPatch(id))}
+            bare
+            items={NOTIFY_LEVELS.map((l) => ({ value: l.id, label: l.label }))}
+          />
+          </div>
+        </Row>
+        <p className="sr-only" aria-live="polite">{previewLine(levelOf(prefs), prefs.quiet)}</p>
+        <Row title="Pop-up toasts" help="Critical alerts always pop up.">
+          <Switch aria-label="Pop-up toasts" checked={prefs.toastsEnabled} onCheckedChange={(v) => onChange({ toastsEnabled: v })} />
+        </Row>
       </div>
-
-      <div>
-        <label className="flex items-center gap-2">
-          <span className={LABEL}>Toast threshold</span>
-          <select
-            aria-label="Toast threshold"
-            value={prefs.toastMinSeverity}
-            onChange={(e) => onChange({ toastMinSeverity: e.target.value as ConsolePrefs['toastMinSeverity'] })}
-            className={INPUT}
-          >
-            {SEVERITY_ORDER.slice(1).map((s) => (
-              <option key={s} value={s}>
-                {SEVERITY_STYLE[s].label.toLowerCase()}+
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <fieldset className="space-y-1.5">
-        <legend className="sr-only">Quiet hours</legend>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={prefs.quietHoursEnabled} onChange={(e) => onChange({ quietHoursEnabled: e.target.checked })} className="h-3 w-3 accent-amber-300" />
-          <span className={LABEL}>Quiet hours</span>
-        </label>
-        <div className="flex items-center gap-2">
+      {/* Golden: quiet hours is its own card. */}
+      <div className="rounded-panel border border-border">
+        <Row title="Quiet hours" help="Repeats every day in your timezone.">
+          <Switch aria-label="Quiet hours" checked={prefs.quietHoursEnabled} onCheckedChange={(v) => onChange({ quietHoursEnabled: v })} />
           <input type="time" aria-label="Quiet hours start" value={prefs.quietHoursStart} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursStart: e.target.value })} className={INPUT} />
-          <span className={LABEL}>to</span>
+          <span className="dash-control text-fg-muted">to</span>
           <input type="time" aria-label="Quiet hours end" value={prefs.quietHoursEnd} disabled={!prefs.quietHoursEnabled} onChange={(e) => e.target.value && onChange({ quietHoursEnd: e.target.value })} className={INPUT} />
+        </Row>
+      </div>
+
+      <details className="group">
+        <summary className="cursor-pointer font-mono text-caption uppercase tracking-label text-fg-muted">More alert settings</summary>
+        <div className="mt-3 space-y-4">
+        <div className="rounded-panel border border-border">
+        <Row title="Quiet" help={help('quiet')}>
+          <Switch aria-label="Quiet mode" checked={prefs.quiet} onCheckedChange={(v) => onChange({ quiet: v })} />
+        </Row>
         </div>
-        <p className="text-[11px] leading-snug text-zinc-500">{help('quiet_hours_enabled')}</p>
-      </fieldset>
 
-      <div>
-        <label className="block">
-          <span className={LABEL}>Muted sources</span>
-          <input
-            type="text"
-            value={muted}
-            placeholder="agent-bravo, laptop"
-            onChange={(e) => setMuted(e.target.value)}
-            onBlur={() => {
-              if (mutedDraft !== null) onChange({ mutedSources: mutedDraft.split(',') })
-              setMuted(null)
-            }}
-            className={`${INPUT} mt-1 w-full`}
-          />
-        </label>
-        <p className="mt-1 text-[11px] leading-snug text-zinc-500">{help('muted_sources')}</p>
+      <div className="rounded-panel border border-border">
+        <Row title="Muted sources" help="Agents or machines that never raise a toast. Critical still does.">
+          <ul aria-label="Muted sources" className="flex flex-wrap items-center justify-end gap-1.5">
+            {prefs.mutedSources.map((s) => (
+              <li key={s}>
+                <Chip className="gap-1.5 py-0.5">
+                  {s}
+                  <button type="button" aria-label={`Unmute ${s}`} onClick={() => onChange({ mutedSources: prefs.mutedSources.filter((m) => m !== s) })} className="text-fg-muted hover:text-fg">
+                    <X aria-hidden className="size-3" />
+                  </button>
+                </Chip>
+              </li>
+            ))}
+            <li>
+              {adding ? (
+                <input
+                  autoFocus
+                  aria-label="Source to mute"
+                  placeholder="agent-bravo"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={addSource}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSource() } if (e.key === 'Escape') { setDraft(''); setAdding(false) } }}
+                  className={`${INPUT} w-36`}
+                />
+              ) : (
+                <Button type="button" variant="outline" size="xs" onClick={() => setAdding(true)}>+ Add source</Button>
+              )}
+            </li>
+          </ul>
+        </Row>
+        <Row title="Group repeats" help="Same alert within this window becomes one entry (×4).">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button type="button" variant="outline" size="sm" aria-label="Group repeats window" />}>{window} ▾</DropdownMenuTrigger>
+            <DropdownMenuContent aria-label="Group repeats window" align="end" data-dashboard-shape="square" className="w-40">
+              {WINDOWS.map(([s, l]) => <DropdownMenuItem key={s} onClick={() => onChange({ coalesceWindowSec: s })}>{l}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </Row>
       </div>
 
-      <div>
-        <label className="flex items-center gap-2">
-          <span className={LABEL}>Coalesce window (s)</span>
-          <input
-            type="number"
-            min={0}
-            max={3600}
-            value={prefs.coalesceWindowSec}
-            onChange={(e) => onChange({ coalesceWindowSec: e.target.valueAsNumber })}
-            className={`${INPUT} w-20`}
-          />
-        </label>
-        <p className="mt-1 text-[11px] leading-snug text-zinc-500">{help('coalesce_window_sec')}</p>
+      <div className="rounded-panel border border-dashed border-border px-4 py-3">
+        <p className="font-mono dash-caption uppercase tracking-label text-fg-faint">What you will see</p>
+        <p className="mt-1 dash-control text-fg-muted" aria-live="polite">{seeLine(prefs)}</p>
       </div>
+        </div>
+      </details>
     </form>
   )
 }

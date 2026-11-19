@@ -1,0 +1,34 @@
+{
+  "builder-reviewer": {
+    "live_sessions": [{"session_id": "sess_work", "launch_id": "builder-reviewer-tachyon", "state": "working"}, {"session_id": "sess_wait", "launch_id": "builder-reviewer-agent-os", "state": "waiting"}],
+    "launches": [{"id": "builder-reviewer-tachyon", "project": "tachyon", "enabled": true}, {"id": "builder-reviewer-agent-os", "project": "agent-os", "enabled": true}],
+    "teams": [{"id": "team-build", "name": "Build crew", "launch_id": "builder-reviewer-tachyon"}],
+    "assigned_items": null,
+    "counts": {"live_sessions": 2, "launches": 2, "teams": 1}
+  },
+  "release-captain": {
+    "live_sessions": [],
+    "launches": [{"id": "release-captain-tachyon", "project": "tachyon", "enabled": true}],
+    "teams": [], "assigned_items": null,
+    "counts": {"live_sessions": 0, "launches": 1, "teams": 0}
+  },
+  "base-worker": {
+    "live_sessions": [], "launches": [], "teams": [], "assigned_items": null,
+    "counts": {"live_sessions": 0, "launches": 0, "teams": 0},
+    "extended_by": ["builder-reviewer", "nightly-triage"]
+  },
+  "nightly-triage": {
+    "live_sessions": [],
+    "launches": [{"id": "nightly-triage-agent-os", "project": "agent-os", "enabled": false}],
+    "teams": [], "assigned_items": null,
+    "counts": {"live_sessions": 0, "launches": 1, "teams": 0}
+  },
+  "legacy-scribe": {
+    "live_sessions": [], "launches": [], "teams": [], "assigned_items": null,
+    "counts": {"live_sessions": 0, "launches": 0, "teams": 0}
+  },
+  "tachyon-9f3c2a1e": {
+    "live_sessions": [], "launches": [], "teams": [{"id": "team-triage", "name": "Triage squad", "launch_id": null}], "assigned_items": null,
+    "counts": {"live_sessions": 0, "launches": 0, "teams": 1}
+  }
+}

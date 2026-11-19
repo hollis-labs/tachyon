@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@hollis-labs/design-components'
 import { X } from 'lucide-react'
-import { ago } from '@console/lib/agent-activity'
 import { AlertIcon } from './AlertIcon'
 import { AlertLinkButton } from './AlertLinkButton'
 import { TOAST_EXPIRE_MS } from './policy'
-import { SEVERITY_STYLE } from './severity-style'
 import type { Alert } from './types'
 import { LinkText } from '../autolink/LinkText'
 
@@ -22,7 +20,7 @@ export interface AlertToastProps {
 
 /** Compact toast card. Expires per severity; hover or focus pauses the clock; Escape closes. */
 export function AlertToast({ alert, now, durationMs, onClose, onRead, onExpand }: AlertToastProps) {
-  const sev = SEVERITY_STYLE[alert.severity]
+  const title = alert.count && alert.count > 1 ? `${alert.title} ×${alert.count}` : alert.title
   const total = durationMs === undefined ? TOAST_EXPIRE_MS[alert.severity] : durationMs
   const [paused, setPaused] = useState(false)
   const remaining = useRef(total)
@@ -47,7 +45,6 @@ export function AlertToast({ alert, now, durationMs, onClose, onRead, onExpand }
     <div
       role={urgent ? 'alert' : 'status'}
       data-testid="alert-toast"
-      data-dashboard-accent="yellow"
       data-severity={alert.severity}
       tabIndex={0}
       onKeyDown={(e) => {
@@ -57,33 +54,37 @@ export function AlertToast({ alert, now, durationMs, onClose, onRead, onExpand }
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className="pointer-events-auto relative flex gap-3 border border-border bg-bg-elevated py-2.5 pl-4 pr-2 shadow-lg shadow-black/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="pointer-events-auto relative flex gap-3 overflow-hidden border border-border bg-bg-elevated px-3 py-2.5 shadow-[0_8px_24px_rgb(0_0_0/calc(.3*var(--sh)))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-0.5 ${sev.bar}`} />
+      {total !== null && (
+        // Hairline countdown; pauses with the timer and is dropped under reduced motion.
+        <>
+          <style>{'@keyframes alert-countdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}@media (prefers-reduced-motion:reduce){.alert-countdown{display:none}}'}</style>
+          <span aria-hidden="true" data-testid="alert-countdown" className="alert-countdown absolute inset-x-0 bottom-0 h-px origin-left bg-fg-faint" style={{ animation: `alert-countdown ${total}ms linear forwards`, animationPlayState: paused ? 'paused' : 'running' }} />
+        </>
+      )}
       <span className="pt-0.5">
         <AlertIcon icon={alert.icon} severity={alert.severity} />
       </span>
       <div className="min-w-0 flex-1">
         {onExpand ? (
-          <button type="button" onClick={() => { onRead?.(); onClose(); onExpand() }} aria-label={`Open details: ${alert.title}`} className="block w-full truncate text-left font-mono text-xs font-semibold text-fg hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{alert.title}</button>
+          <button type="button" onClick={() => { onRead?.(); onClose(); onExpand() }} aria-label={`Open details: ${alert.title}`} className="block w-full truncate text-left dash-control font-semibold text-fg hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{title}</button>
         ) : (
-          <p className="truncate font-mono text-xs font-semibold text-fg">{alert.title}</p>
+          <p className="truncate dash-control font-semibold text-fg">{title}</p>
         )}
-        {alert.detail && <p className="truncate font-mono text-xs text-fg-secondary"><LinkText surface="alerts" text={alert.detail} /></p>}
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-label uppercase tracking-label text-fg-muted">
-          <span className={sev.text}>{sev.label}</span>
-          <span className="normal-case tracking-normal">{alert.source}</span>
-          <span className="normal-case tracking-normal">{ago(alert.ts, now)}</span>
-        </p>
-        {alert.primary && (
-          <div className="mt-1.5">
-            <AlertLinkButton
-              link={alert.primary}
-              onFollow={() => {
-                onRead?.()
-                onClose()
-              }}
-            />
+        {alert.detail && <p className="truncate dash-support text-fg-muted"><LinkText surface="alerts" text={alert.detail} /></p>}
+        {(alert.primary || total === null) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            {alert.primary && (
+              <AlertLinkButton
+                link={alert.primary}
+                onFollow={() => {
+                  onRead?.()
+                  onClose()
+                }}
+              />
+            )}
+            {total === null && <span className="dash-support text-fg-faint">Stays until you dismiss it</span>}
           </div>
         )}
       </div>

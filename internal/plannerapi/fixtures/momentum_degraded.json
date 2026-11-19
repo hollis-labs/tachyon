@@ -1,0 +1,1 @@
+{"label":"steady","score":0.44,"text":"Steady (derived from partial data).","by_label":{"rising":1,"steady":1,"cooling":1,"stalled":1},"ingest":{"degraded":true,"last_event_at":"2026-10-30T01:00:00Z","sources":{"revisions":"ok","torque":"error","forge":"ok"}}}

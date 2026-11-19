@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from 'react'
-import { Button, cn } from '@hollis-labs/design-components'
+import { cn } from '@hollis-labs/design-components'
+import { CAPTION, Kbd } from './primitives'
 
 export interface TriageRoute {
   id: string
@@ -9,24 +10,28 @@ export interface TriageRoute {
 }
 
 export interface TriageStackLabels {
-  /** "{n} left" */
-  count: (n: number) => string
+  /** "INBOX · {n} to triage": the pane's heading. */
+  heading: (n: number) => string
+  /** "{i} of {n}" */
+  position: (i: number, n: number) => string
   allTriaged: string
   routeHeading: string
   dismiss: string
-  /** "Next: {title}" */
-  next: (title: string) => string
 }
 
-/** One card at a time with keyed routing. The host owns the data and moves to the next card when a write settles. */
-export function TriageStack({ card, remaining, nextTitle, routes, dismissKey = 'x', onRoute, onDismiss, busy, labels, className }: { card: ReactNode | null; remaining: number; nextTitle?: string; routes: readonly TriageRoute[]; dismissKey?: string; onRoute: (id: string) => void; onDismiss: () => void; busy?: boolean; labels: TriageStackLabels; className?: string }) {
+/**
+ * One card at a time over a stack, with keyed routing. The host owns the data and moves to the next card
+ * when a write settles; `index` is the card's place among `remaining`, and the pager's J / K are the host's.
+ */
+export function TriageStack({ card, index, remaining, routes, dismissKey = 'x', onRoute, onDismiss, busy, labels, className }: { card: ReactNode | null; index: number; remaining: number; routes: readonly TriageRoute[]; dismissKey?: string; onRoute: (id: string) => void; onDismiss: () => void; busy?: boolean; labels: TriageStackLabels; className?: string }) {
   const root = useRef<HTMLDivElement>(null)
-  if (card === null) return <p className={cn('py-6 dash-support text-fg-muted', className)}>{labels.allTriaged}</p>
+  if (card === null) return <p className={cn('py-6 text-control text-fg-muted', className)}>{labels.allTriaged}</p>
+  const button = 'flex h-9 items-center justify-between rounded-panel border border-border px-3 text-control text-fg hover:bg-surface-hover disabled:opacity-50'
   return (
     <div
       ref={root}
       tabIndex={0}
-      className={cn('flex flex-col gap-3 outline-none', className)}
+      className={cn('flex flex-col gap-5 outline-none', className)}
       onKeyDown={(e) => {
         if (busy || e.metaKey || e.ctrlKey || e.altKey) return
         const t = e.target as HTMLElement
@@ -39,20 +44,33 @@ export function TriageStack({ card, remaining, nextTitle, routes, dismissKey = '
         }
       }}
     >
-      <p className="dash-caption text-fg-faint">{labels.count(remaining)}</p>
-      <div className="rounded-md border border-border p-3">{card}</div>
-      <div role="group" aria-label={labels.routeHeading} className="flex flex-wrap items-center gap-2">
-        <span className="dash-caption text-fg-muted">{labels.routeHeading}</span>
-        {routes.map((r) => (
-          <Button key={r.id} size="sm" variant="outline" disabled={busy} onClick={() => onRoute(r.id)}>
-            {r.label} <kbd className="ml-1 font-mono dash-caption text-fg-faint">{r.key}</kbd>
-          </Button>
-        ))}
-        <Button size="sm" variant="ghost" disabled={busy} onClick={onDismiss}>
-          {labels.dismiss} <kbd className="ml-1 font-mono dash-caption text-fg-faint">{dismissKey}</kbd>
-        </Button>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className={CAPTION}>{labels.heading(remaining)}</h2>
+        <span className="flex items-center gap-1.5 text-control text-fg-muted">
+          {labels.position(index + 1, remaining)}
+          <Kbd>J</Kbd>
+          <Kbd>K</Kbd>
+        </span>
       </div>
-      {nextTitle && <p className="dash-caption text-fg-faint">{labels.next(nextTitle)}</p>}
+      <div className="relative">
+        <div className="rounded-panel border border-border bg-bg-elevated p-4">{card}</div>
+        {remaining > 1 && <div aria-hidden className="mx-3 h-2 rounded-b-panel border border-t-0 border-border bg-bg-elevated" />}
+      </div>
+      <section aria-label={labels.routeHeading} className="flex flex-col gap-2">
+        <h2 className={CAPTION}>{labels.routeHeading}</h2>
+        <div role="group" aria-label={labels.routeHeading} className="grid grid-cols-3 gap-2 max-sm:grid-cols-1">
+          {routes.map((r) => (
+            <button key={r.id} type="button" disabled={busy} aria-label={r.label} onClick={() => onRoute(r.id)} className={button}>
+              {r.label}
+              <Kbd>{r.key}</Kbd>
+            </button>
+          ))}
+          <button type="button" disabled={busy} aria-label={labels.dismiss} onClick={onDismiss} className={button}>
+            {labels.dismiss}
+            <Kbd>{dismissKey.toUpperCase()}</Kbd>
+          </button>
+        </div>
+      </section>
     </div>
   )
 }

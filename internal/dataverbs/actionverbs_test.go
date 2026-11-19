@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/libs/mesh/core/hitl"
+	"github.com/hollis-labs/libs/security/auth"
 	"github.com/hollis-labs/tachyon/internal/actionrun"
 	"github.com/hollis-labs/tachyon/internal/agentaccess"
 	"github.com/hollis-labs/tachyon/internal/approvals"
@@ -30,7 +31,10 @@ func (f fakeMachine) Start(_ context.Context, argv []string, _, _ uint16) (actio
 	f.ran <- argv
 	return oneShot{strings.NewReader("reloaded\r\n")}, nil
 }
-func (fakeMachine) Output(context.Context, []string) ([]byte, error) {
+func (fakeMachine) Output(_ context.Context, argv []string) ([]byte, error) {
+	if len(argv) == 4 && argv[0] == "tether" {
+		return []byte("plan " + argv[3] + "  \"fixture\"  state=planned  expires 12:00:00\n"), nil
+	}
 	return []byte(`[{"id":"hub-tether","env":"dev","owner":"self","admin":"self"},{"id":"prod-db","env":"prod","owner":"self","admin":"owner"}]`), nil
 }
 
@@ -202,5 +206,40 @@ func TestAgentAwaitOfInteractiveRunReturnsNoOutput(t *testing.T) {
 	h.ServeHTTP(w, r2)
 	if w.Code != 200 || strings.Contains(w.Body.String(), "reloaded") || !strings.Contains(w.Body.String(), "not recorded") || !strings.Contains(w.Body.String(), `"exit_code":0`) {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestActionAttributionUsesBoundSeatAndKeepsCredentialOwnership(t *testing.T) {
+	_, objects, db := setup(t)
+	items := &approvals.Store{DB: db}
+	inbox := approvals.NewInbox(items, nil)
+	mgr := &actionrun.Manager{Store: &actionrun.Store{DB: db}, Items: items, Transports: map[string]actionrun.Transport{"hub": fakeMachine{ran: make(chan []string, 1)}}}
+	svc := &actionrun.Service{Store: mgr.Store, Manager: mgr, Approval: inbox.Service}
+	p := &scopedLocal{local: NewLocal(objects), actions: svc, principal: auth.Principal{ID: "credential", Display: "Deployment credential", Verified: true, Scopes: []string{"verb:actions.request", "agent:chief"}}}
+	raw, err := p.Invoke(context.Background(), "actions.request", json.RawMessage(`{"machine":"hub","action":"tether.catalog.approve","params":{"plan_id":"cp_1"},"reason":"test","task":"CW-20261115-0125"}`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var handle struct {
+		RunID string `json:"run_id"`
+	}
+	_ = json.Unmarshal(raw, &handle)
+	run, err := svc.Store.Get(context.Background(), handle.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.RequestedBy != "service:credential" || run.Requester.Agent != "chief" || run.Requester.Label != "@chief" || run.Requester.Task != "CW-20261115-0125" {
+		t.Fatalf("wrong attribution: %+v", run)
+	}
+	rec, err := items.Get(context.Background(), run.ItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request hitl.EnqueueRequest
+	if err := json.Unmarshal(rec.Request, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Source.AgentLabel != "@chief" {
+		t.Fatalf("missing queue label: %+v", request.Source)
 	}
 }

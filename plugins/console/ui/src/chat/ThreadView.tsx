@@ -1,15 +1,31 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChatStream, MessageAction, MessageActions, type ChatItem } from '@hollis-labs/kit-chat'
+import { ChatStream, type ChatItem } from '@hollis-labs/kit-chat'
+import { OverflowMenu } from '@hollis-labs/design-components'
 import { ForwardDialog } from './ForwardDialog'
-import { Copy, Download, Info, Check, Forward } from 'lucide-react'
+import { Bookmark, Check, ChevronRight, Copy, Hash, Link2, Mail } from 'lucide-react'
 import { MessageInfo } from './MessageInfo'
-import { ago } from '@console/lib/agent-activity'
 import { MessageBody } from './MessageBody'
 import { DeliveryBadge, ObservedDeliveryBadge } from '../messaging/DeliveryStatus'
 import { ToolChips } from './ToolChips'
 import type { ChatMessage } from './types'
+import { ApprovalCard, DecisionCard, DispatchCard, PlanCard, ToolCallsRow, type Commit } from './cards/Cards'
+import { RunCard } from './cards/RunCard'
+import type { StreamBlock } from './cards/types'
+import type { RunActions } from './cards/useBlocks'
+import type { Marks } from './aside/context'
 
-function Bubble({ m, now, agentLabel }: { m: ChatMessage; now: number; agentLabel: string }) {
+function BlockView({ b, commit, onOpenPanel, runActions }: { b: StreamBlock; commit?: Commit; onOpenPanel?: () => void; runActions?: RunActions }) {
+  switch (b.kind) {
+    case 'decision': return <DecisionCard block={b} commit={commit} />
+    case 'plan': return <PlanCard block={b} onOpenPanel={onOpenPanel} />
+    case 'approval': return <ApprovalCard block={b} commit={commit} />
+    case 'dispatch': return <DispatchCard block={b} commit={commit} />
+    case 'tools': return <ToolCallsRow block={b} />
+    case 'run': return <RunCard run={b.run} onStop={runActions ? () => void runActions.stop(b.run.runId) : undefined} onClose={runActions ? () => void runActions.close(b.run.runId) : undefined} onCloseOnComplete={runActions ? (v) => void runActions.setCloseOnComplete(b.run.runId, v) : undefined} />
+  }
+}
+
+function Bubble({ m, agentLabel, marks }: { m: ChatMessage; agentLabel: string; marks?: Marks }) {
   const mine = m.from === 'operator'
   const [info, setInfo] = useState(false)
   const [forward, setForward] = useState(false)
@@ -28,26 +44,61 @@ function Bubble({ m, now, agentLabel }: { m: ChatMessage; now: number; agentLabe
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
+  const [localBm, setLocalBm] = useState(false)
+  const bookmarked = marks ? marks.bookmarks.some((b) => b.message_ref === m.id) : localBm
+  const setBookmarked = (f: (v: boolean) => boolean) => (marks ? marks.toggleBookmark(m.id) : setLocalBm(f))
+  const topic = !!marks?.topics.some((t) => t.message_ref === m.id)
+  const setTopic = () => { if (!topic) marks?.addTopic(m.body.replace(/\s+/g, ' ').slice(0, 60), m.id) }
+  const [linked, setLinked] = useState(false)
+  const link = async () => {
+    try { await navigator.clipboard.writeText(`${location.origin}${location.pathname}#${m.id}`); setLinked(true); setActionError('') }
+    catch { setActionError('Could not copy the link. Check clipboard permissions.') }
+  }
+  const label = mine ? 'You' : m.from === 'system' ? 'System' : m.info?.agentName || agentLabel
+  const time = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  const sending = mine && m.delivery === 'queued'
+  // Bookmark and topic are local until the chat API's bookmark/topic writes are wired (C-D); the toolbar is the golden's.
+  const tb = 'grid h-[22px] w-6 place-items-center rounded-sm text-fg-muted hover:bg-selection hover:text-fg focus-visible:bg-selection focus-visible:outline-none'
+  const toolbar = (
+    <div role="toolbar" aria-label="Message actions" className="absolute -top-1.5 right-0 z-10 hidden gap-0.5 rounded-control border border-border bg-bg-elevated p-0.5 group-focus-within:flex group-hover:flex">
+      <button type="button" className={tb} aria-pressed={bookmarked} aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark'} title="Bookmark (B)" onClick={() => setBookmarked((v) => !v)}><Bookmark className="size-3" /></button>
+      <button type="button" className={tb} aria-pressed={topic} aria-label="Add topic" title="Add topic" onClick={() => setTopic()}><Hash className="size-3" /></button>
+      <button type="button" className={tb} aria-label={linked ? 'Link copied' : 'Copy link'} title="Copy link" onClick={() => void link()}>{linked ? <Check className="size-3" /> : <Link2 className="size-3" />}</button>
+      <button type="button" className={tb} aria-label={copied ? 'Message copied' : 'Copy message'} title="Copy message" onClick={() => void copy()}>{copied ? <Check className="size-3" /> : <Copy className="size-3" />}</button>
+      <OverflowMenu ariaLabel="More message actions" align="end" actions={[
+        { label: 'Forward to agent', onSelect: () => setForward(true), disabled: !m.body.trim() || m.streaming },
+        { label: 'Download Markdown', onSelect: download },
+        { label: 'Message details', onSelect: () => setInfo(true) },
+      ]} />
+    </div>
+  )
   return (
-    <article data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} className={`min-w-0 border-b border-border/70 px-1 pb-5 ${mine ? 'rounded-panel bg-surface p-3' : ''}`}>
-      <div className="flex items-center justify-between gap-3 font-mono dash-caption uppercase tracking-widest text-fg-muted">
-        <span>{mine ? 'you' : m.from === 'system' ? 'system' : 'agent'} · {ago(m.at, now)}</span>
-        {mine && m.delivery && (m.info?.transport === 'mail' ? <ObservedDeliveryBadge messageId={m.id} state={m.delivery} /> : <DeliveryBadge state={m.delivery} detail="Last known chat transport status. Delivered does not mean read." />)}
-        <MessageActions className="ml-auto text-fg-muted">
-          <MessageAction label={copied ? 'Message copied' : 'Copy message'} tooltip="Copy message" onClick={() => void copy()}>{copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}</MessageAction>
-          <MessageAction label="Forward to agent" tooltip={m.streaming ? 'Wait for the response to finish' : 'Forward to agent'} disabled={!m.body.trim() || m.streaming} onClick={() => setForward(true)}><Forward className="size-3.5" /></MessageAction>
-          <MessageAction label="Download message" tooltip="Download Markdown" onClick={download}><Download className="size-3.5" /></MessageAction>
-          <MessageAction label="Message details" tooltip="Message details" onClick={() => setInfo(true)}><Info className="size-3.5" /></MessageAction>
-        </MessageActions>
-        {m.streaming && <span className="animate-pulse text-warning">STREAMING</span>}
-      </div>
-      {m.body && (
-        <MessageBody body={m.body} streaming={m.streaming} />
+    <article id={m.id} data-from={m.from} data-streaming={m.streaming ? 'true' : undefined} tabIndex={-1} className={`group relative mx-auto w-full min-w-0 max-w-[760px] focus-visible:outline-none ${mine ? 'flex flex-col items-end' : ''}`}>
+      {bookmarked && <Bookmark aria-label="Bookmarked" className="absolute -left-[18px] top-[3px] size-3 text-fg-secondary max-sm:hidden" />}
+      {mine ? (
+        <div className={`max-w-[70%] rounded-panel bg-surface px-3 py-2 text-control ${sending ? 'opacity-60' : ''}`}>
+          {m.body && <MessageBody body={m.body} streaming={m.streaming} />}
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-caption uppercase tracking-label text-fg-muted">{label}</span>
+            <span className="text-label text-fg-muted">· {time}</span>
+            {m.streaming && <span className="text-label text-fg-muted">● Responding…</span>}
+          </div>
+          {toolbar}
+          {m.body && <MessageBody body={m.body} streaming={m.streaming} />}
+        </>
       )}
-      <ToolChips tools={m.tools} />
+      {mine && <div className="relative">{toolbar}</div>}
+      <div className="flex items-center gap-2 text-label text-fg-muted">
+        {mine && <span>{sending ? 'Sending' : m.delivery === 'failed' ? 'Not sent' : ''}</span>}
+        {mine && m.delivery && m.delivery !== 'queued' && m.delivery !== 'failed' && (m.info?.transport === 'mail' ? <ObservedDeliveryBadge messageId={m.id} state={m.delivery} /> : <DeliveryBadge state={m.delivery} detail="Last known chat transport status. Delivered does not mean read." />)}
+      </div>
+      {m.tools.length > 0 && <div className="mt-2"><ToolCallsRow block={{ id: `tools-${m.id}`, at: m.at, kind: 'tools', tools: m.tools.map((t) => t.name), state: m.tools.some((t) => t.status === 'running') ? 'running' : m.tools.some((t) => t.status === 'error') ? 'failed' : 'done' }} /></div>}
       {actionError && <p role="alert" className="mt-1 font-mono text-xs text-danger">{actionError}</p>}
       {forwarded && <p role="status" className="mt-2 text-caption text-success">Forwarded to {forwarded}</p>}
-      {forward && <ForwardDialog message={m} sourceLabel={mine ? 'You' : m.from === 'system' ? 'System' : m.info?.agentName || agentLabel} onClose={() => setForward(false)} onSent={setForwarded} />}
+      {forward && <ForwardDialog message={m} sourceLabel={label} onClose={() => setForward(false)} onSent={setForwarded} />}
       {info && <MessageInfo message={m} onClose={() => setInfo(false)} />}
       {m.error && <p role="alert" className="mt-1 font-mono text-xs text-danger">{m.error}</p>}
     </article>
@@ -56,17 +107,73 @@ function Bubble({ m, now, agentLabel }: { m: ChatMessage; now: number; agentLabe
 
 const renderMessage = (item: ChatItem) => item.kind === 'message' ? item.content : null
 
-export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder, empty }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void; empty?: React.ReactNode }) {
+/**
+ * Closing lines about the mailbox itself ("I marked the message read."), which say nothing about the work. Only a
+ * whole line that is exactly one of these is skipped (case, outer space and a final period aside): a line that
+ * goes on ("I marked them read; @chief still needs your yes") is an ask and stays.
+ */
+const CLOSERS = new Set(
+  ['i marked', "i've marked", 'i have marked', 'marked'].flatMap((who) =>
+    ['the message', 'the messages', 'the request', 'the notice', 'the mail', 'the reply', 'it', 'them', 'both', 'all of them'].map((what) => `${who} ${what} read`),
+  ).concat(["i'm stopping here", 'i am stopping here']),
+)
+const isCloser = (line: string) => CLOSERS.has(line.toLowerCase().replace(/[.!\s]+$/, '').trim())
+/**
+ * A folded row's preview: the reply's last line, without Markdown punctuation, skipping a short mailbox closing
+ * line, because an ask usually comes last. Display only: it never decides what folds.
+ */
+const lastLine = (body: string) => {
+  const lines = body.split('\n').map((l) => l.replace(/^[#>*\-\s`]+/, '').replace(/\*\*|__|`/g, '').trim()).filter(Boolean)
+  const said = lines.filter((l) => !isCloser(l))
+  return ((said.length ? said : lines).at(-1) ?? '').slice(0, 160)
+}
+
+/**
+ * Consecutive replies to mail wakes, folded into one row (CW-20261114-0023b): mail is a record, not a turn, so
+ * the conversation shows that the agent handled mail, and the replies open on demand. Only replies Tether proved
+ * were mail wakes (ChatMessage.wake) fold; a streaming reply shows that it is still responding.
+ */
+export function MailWakeRow({ messages, agentLabel, marks }: { messages: ChatMessage[]; agentLabel: string; marks?: Marks }) {
+  const [open, setOpen] = useState(false)
+  const last = messages[messages.length - 1]
+  const time = new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  const label = last.info?.agentName || agentLabel
+  return (
+    <div className="mx-auto w-full max-w-[760px]" data-folded="mail-wake">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="group flex h-[30px] w-full items-center gap-2 rounded-control border border-border px-2.5 text-left text-xs text-fg-secondary hover:bg-surface-hover hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring">
+        <ChevronRight aria-hidden className={`size-3 shrink-0 ${open ? 'rotate-90' : ''}`} />
+        <Mail aria-hidden className="size-3 shrink-0" />
+        <span className="shrink-0">{label} handled mail{messages.length > 1 ? ` · ${messages.length} turns` : ''}</span>
+        <span className="min-w-0 flex-1 truncate text-fg-muted group-hover:text-fg">{last.streaming ? '● Responding…' : lastLine(last.body)}</span>
+        <span className="shrink-0 text-fg-muted">{time}</span>
+      </button>
+      {open && <div className="mt-3 flex flex-col gap-4">{messages.map((m) => <Bubble key={m.id} m={m} agentLabel={agentLabel} marks={marks} />)}</div>}
+    </div>
+  )
+}
+
+export function ThreadView({ messages, agentLabel = 'Agent', loading, hasMore, onLoadOlder, empty, blocks = [], commit, onOpenPanel, marks, runActions }: { messages: ChatMessage[]; agentLabel?: string; loading: boolean; hasMore: boolean; onLoadOlder: () => void; empty?: React.ReactNode; blocks?: StreamBlock[]; commit?: Commit; onOpenPanel?: () => void; marks?: Marks; runActions?: RunActions }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000)
     return () => clearInterval(timer)
   }, [])
-  const items = useMemo<ChatItem[]>(() => messages.map(m => ({
-    kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant',
-    content: <Bubble m={m} now={now} agentLabel={agentLabel} />,
-  })), [messages, now, agentLabel])
+  const items = useMemo<ChatItem[]>(() => {
+    const all = [
+      ...messages.map((m) => ({ at: m.at, m, item: { kind: 'message', id: m.id, role: m.from === 'operator' ? 'user' : m.from === 'system' ? 'system' : 'assistant', content: <Bubble m={m} agentLabel={agentLabel} marks={marks} /> } as ChatItem })),
+      ...blocks.map((b) => ({ at: b.at || (b.afterRef ? (messages.find((m) => m.id === b.afterRef)?.at ?? Number.MAX_SAFE_INTEGER) + 1 : Number.MAX_SAFE_INTEGER), m: undefined, item: { kind: 'message', id: `block-${b.id}`, role: 'assistant', content: <BlockView b={b} commit={commit} onOpenPanel={onOpenPanel} runActions={runActions} /> } as ChatItem })),
+    ].sort((a, b) => a.at - b.at)
+    // A run of mail-wake replies with nothing between them becomes one folded row.
+    const out: ChatItem[] = []
+    for (let i = 0; i < all.length; ) {
+      if (all[i].m?.wake !== 'mail') { out.push(all[i].item); i++; continue }
+      const run: ChatMessage[] = []
+      while (i < all.length && all[i].m?.wake === 'mail') run.push(all[i++].m as ChatMessage)
+      out.push({ kind: 'message', id: `mail-wake-${run[0].id}`, role: 'assistant', content: <MailWakeRow messages={run} agentLabel={agentLabel} marks={marks} /> } as ChatItem)
+    }
+    return out
+  }, [messages, blocks, commit, onOpenPanel, now, agentLabel, marks, runActions])
   return <ChatStream items={items} renderItem={renderMessage} loading={loading && !messages.length}
     history={{ hasOlder: hasMore, loading: loading && !!messages.length, onLoadOlder }}
-    viewportClassName="px-4 py-4" empty={empty ?? <p className="text-control text-fg-muted">No messages yet. Say something.</p>} />
+    viewportClassName="flex flex-col gap-4 px-6 pb-3 pt-5 max-sm:px-3" empty={empty ?? <p className="text-control text-fg-muted">No messages yet. Say something.</p>} />
 }

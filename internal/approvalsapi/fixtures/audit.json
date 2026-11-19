@@ -1,0 +1,108 @@
+{
+  "ap_h_approved": [
+    {
+      "event_id": "evt_0001",
+      "ts": "2026-10-30T02:45:20Z",
+      "item_id": "ap_h_approved",
+      "kind": "presented",
+      "actor": {
+        "ref": "browser-session:ab12",
+        "label": "You",
+        "assurance": "operator-token"
+      }
+    },
+    {
+      "event_id": "evt_0002",
+      "ts": "2026-10-30T02:55:00Z",
+      "item_id": "ap_h_approved",
+      "kind": "resolved",
+      "actor": {
+        "ref": "browser-session:ab12",
+        "label": "You",
+        "assurance": "operator-token"
+      },
+      "decision": "approved",
+      "note": "Looks right",
+      "revision": 3
+    }
+  ],
+  "ap_h_denied": [
+    {
+      "event_id": "evt_0003",
+      "ts": "2026-10-30T02:21:40Z",
+      "item_id": "ap_h_denied",
+      "kind": "presented",
+      "actor": {
+        "ref": "browser-session:ab12",
+        "label": "You",
+        "assurance": "operator-token"
+      }
+    },
+    {
+      "event_id": "evt_0004",
+      "ts": "2026-10-30T02:40:00Z",
+      "item_id": "ap_h_denied",
+      "kind": "resolved",
+      "actor": {
+        "ref": "browser-session:ab12",
+        "label": "You",
+        "assurance": "operator-token"
+      },
+      "decision": "denied",
+      "note": "Wrong target",
+      "reason_code": "wrong_target",
+      "revision": 3
+    }
+  ],
+  "ap_destructive_med": [
+    {
+      "event_id": "evt_0005",
+      "ts": "2026-10-30T02:51:40Z",
+      "item_id": "ap_destructive_med",
+      "kind": "presented",
+      "actor": {
+        "ref": "browser-session:ab12",
+        "label": "You",
+        "assurance": "operator-token"
+      }
+    },
+    {
+      "event_id": "evt_0006",
+      "ts": "2026-10-30T02:53:20Z",
+      "item_id": "ap_destructive_med",
+      "kind": "confirmation_failed",
+      "actor": {
+        "ref": "browser-session:ab12",
+        "label": "You",
+        "assurance": "operator-token"
+      },
+      "reason_code": "confirmation_mismatch"
+    }
+  ],
+  "ap_deferred": [
+    {
+      "event_id": "evt_0007",
+      "ts": "2026-10-30T02:48:20Z",
+      "item_id": "ap_deferred",
+      "kind": "presented",
+      "actor": {
+        "ref": "browser-session:ab12",
+        "label": "You",
+        "assurance": "operator-token"
+      }
+    },
+    {
+      "event_id": "evt_0008",
+      "ts": "2026-10-30T02:58:20Z",
+      "item_id": "ap_deferred",
+      "kind": "deferred",
+      "actor": {
+        "ref": "browser-session:ab12",
+        "label": "You",
+        "assurance": "operator-token"
+      },
+      "note": "Waiting on worker-b",
+      "until": "2026-10-30T03:30:00Z"
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+ "events": [
+  {
+   "id": "bus_0",
+   "seq": 77000,
+   "at": 1793322000000,
+   "type": "deploy",
+   "subject": "tachyon deployed (v0.31.2)",
+   "actor": "system",
+   "app": "cerberus",
+   "severity": "info",
+   "refs": [
+    {
+     "kind": "pr",
+     "ref": "hollis-labs/tachyon#166",
+     "label": "#166"
+    }
+   ],
+   "card": {
+    "title": "Deploy succeeded",
+    "cite": [
+     {
+      "kind": "pr",
+      "ref": "hollis-labs/tachyon#166",
+      "label": "#166"
+     }
+    ],
+    "summary": "tachyon v0.31.2 on agent-os",
+    "review_ref": null
+   }
+  },
+  {
+   "id": "bus_1",
+   "seq": 77001,
+   "at": 1793321880000,
+   "type": "failure",
+   "subject": "Health check failed: nanite",
+   "actor": "system",
+   "app": "cerberus",
+   "severity": "error",
+   "refs": [],
+   "card": {
+    "title": "nanite health check failed",
+    "cite": [],
+    "summary": "3 consecutive failures",
+    "review_ref": null
+   }
+  },
+  {
+   "id": "bus_2",
+   "seq": 77002,
+   "at": 1793321760000,
+   "type": "task",
+   "subject": "CW-20261030-0002 closed",
+   "actor": "system",
+   "app": "torque",
+   "severity": "info",
+   "refs": [
+    {
+     "kind": "task",
+     "ref": "CW-20261030-0002",
+     "label": "T1"
+    }
+   ],
+   "card": {
+    "title": "T1 closed",
+    "cite": [
+     {
+      "kind": "pr",
+      "ref": "hollis-labs/tachyon#171",
+      "label": "#171"
+     }
+    ],
+    "summary": "Threads",
+    "review_ref": "hollis-labs/tachyon#171"
+   }
+  },
+  {
+   "id": "bus_3",
+   "seq": 77003,
+   "at": 1793321640000,
+   "type": "restart",
+   "subject": "hub-agent restarted",
+   "actor": "operator",
+   "app": "cerberus",
+   "severity": "warn",
+   "refs": [],
+   "card": null
+  },
+  {
+   "id": "bus_4",
+   "seq": 77004,
+   "at": 1793321520000,
+   "type": "lifecycle",
+   "subject": "sess_prev ended (restart)",
+   "actor": "system",
+   "app": "tether",
+   "severity": "info",
+   "refs": [],
+   "card": null
+  },
+  {
+   "id": "bus_5",
+   "seq": 77005,
+   "at": 1793321400000,
+   "type": "card",
+   "subject": "Card answered: Which project?",
+   "actor": "system",
+   "app": "tachyon",
+   "severity": "info",
+   "refs": [],
+   "card": null
+  }
+ ],
+ "next_before": null
+}

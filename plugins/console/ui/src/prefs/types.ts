@@ -12,6 +12,8 @@ export interface ConsolePrefs {
   toastMinSeverity: ConsoleSeverity
   /** Lowest severity counted by the bell and shown in the active/history lists. */
   bellMinSeverity: ConsoleSeverity
+  /** Pop-up toasts on or off. Critical alerts always pop up. */
+  toastsEnabled: boolean
   /** Scheduled quiet mode, evaluated in the viewer's local time. */
   quietHoursEnabled: boolean
   /** "HH:MM" 24h. A window that wraps midnight (22:00 -> 07:00) is supported. */
@@ -25,6 +27,7 @@ export interface ConsolePrefs {
 
 export const DEFAULT_CONSOLE_PREFS: ConsolePrefs = {
   quiet: false,
+  toastsEnabled: true,
   toastMinSeverity: 'notice',
   bellMinSeverity: 'debug',
   quietHoursEnabled: false,

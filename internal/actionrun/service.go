@@ -18,7 +18,7 @@ import (
 const ApplicationID = "tachyon-actions"
 
 // ApprovalTTL is how long a request waits for the owner.
-const ApprovalTTL = 30 * time.Minute
+const ApprovalTTL = 24 * time.Hour
 
 func extraString(req hitl.EnqueueRequest, key string) string {
 	var value string
@@ -48,6 +48,7 @@ type Service struct {
 	Manager  *Manager
 	Approval *hitl.Service
 	Clock    func() time.Time
+	Notify   func(context.Context, Run) error
 }
 
 func (s *Service) now() time.Time {
@@ -69,7 +70,8 @@ type RequestInput struct {
 	Params  map[string]string `json:"params,omitempty"`
 	Reason  string            `json:"reason"`
 	// AgentID is the server-derived requester, never taken from agent JSON.
-	AgentID string `json:"-"`
+	AgentID   string    `json:"-"`
+	Requester Requester `json:"-"`
 }
 
 // Handle is returned to the agent.
@@ -141,9 +143,10 @@ func (s *Service) Request(ctx context.Context, in RequestInput) (Handle, error) 
 	}
 	req := hitl.EnqueueRequest{
 		ContractVersion: hitl.ContractVersion, Kind: "approval", IdempotencyKey: newID("act_"),
-		Source:    hitl.SourceAssertion{ApplicationID: ApplicationID, ApplicationLabel: "Registered actions", AgentID: in.AgentID},
+		Source:    hitl.SourceAssertion{ApplicationID: ApplicationID, ApplicationLabel: "Registered actions", AgentID: in.AgentID, AgentLabel: in.Requester.Label},
 		ExpiresAt: &expires, Extra: map[string]json.RawMessage{},
 	}
+	req.Correlations, _ = json.Marshal(map[string]string{"task": in.Requester.Task, "requester_agent": in.Requester.Agent})
 	for k, v := range extra {
 		raw, _ := json.Marshal(v)
 		req.Extra[k] = raw
@@ -153,7 +156,7 @@ func (s *Service) Request(ctx context.Context, in RequestInput) (Handle, error) 
 		return Handle{}, err
 	}
 	run := Run{
-		ID: newID("run_"), ItemID: handle.ItemID, Machine: spec.Machine, Action: spec.Action, Params: spec.Params, Argv: spec.Argv,
+		Requester: in.Requester, ID: newID("run_"), ItemID: handle.ItemID, Machine: spec.Machine, Action: spec.Action, Params: spec.Params, Argv: spec.Argv,
 		OpDigest: digest, Class: class, Labels: labelText, RequestedBy: in.AgentID, Reason: in.Reason, State: StatePending, CreatedAt: now,
 	}
 	if err := s.Store.Insert(ctx, run); err != nil {
@@ -211,6 +214,11 @@ func (s *Service) Sync(ctx context.Context) error {
 			}
 		default:
 			_ = s.Store.Finish(ctx, r.ID, StatePending, StateExpired, nil, "", "the approval ended without a decision", s.now())
+		}
+	}
+	if s.Notify != nil {
+		if err := s.notifyResults(ctx); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)

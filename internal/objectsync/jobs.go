@@ -82,7 +82,13 @@ func (j *Jobs) Enqueue(ctx context.Context, job scheduler.Job) error {
 	}
 	s, ok := j.sources[job.ScheduleID]
 	if !ok {
-		return errors.New("sync source is not configured in this process")
+		// The source is not configured in THIS process. jobs.db is shared by every tachyon process on the data
+		// dir, so this does not mean the schedule is orphaned: a process started without the service env
+		// (TETHER_ADDR unset) sees none of the Tether sources. Disabling here (08d4d79) switched off five
+		// schedules on 2026-10-30 and stalled the sync for two weeks. Skip the fire, leave the schedule as it
+		// is, and let the status route and the stall alert show a schedule nobody is running.
+		slog.Warn("object sync: skipping a fire for a source not configured in this process", "schedule", job.ScheduleID)
+		return scheduler.ErrDuplicateJob
 	}
 	sch, exists, err := j.Store.GetSchedule(ctx, job.ScheduleID)
 	if err != nil {

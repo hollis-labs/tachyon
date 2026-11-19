@@ -80,6 +80,11 @@ async function openDetail(title: RegExp | string) {
   return screen.getByRole('dialog', { name: /^Alert:/ })
 }
 
+const more = async (d: HTMLElement, name: string) => {
+  await act(async () => fireEvent.click(within(d).getByRole('button', { name: 'More actions' })))
+  await act(async () => {})
+  await act(async () => fireEvent.click(screen.getByRole('menuitem', { name })))
+}
 const click = (el: HTMLElement) => act(async () => void fireEvent.click(el))
 
 describe('action declaration', () => {
@@ -119,7 +124,7 @@ describe('AlertDetail modal', () => {
   it('dismiss closes the alert; restore reopens it', async () => {
     const { store } = await setup()
     const d = await openDetail('Apply policy change')
-    await click(within(d).getByRole('button', { name: 'Dismiss' }))
+    await more(d, 'Dismiss')
     expect((await store.load()).find((s) => s.key === 'e-appr')?.status).toBe('dismissed')
     expect(screen.queryByTestId('alert-detail')).toBeNull()
   })
@@ -127,7 +132,7 @@ describe('AlertDetail modal', () => {
   it('snooze preset sets an absolute time and shows it', async () => {
     const { store } = await setup()
     const d = await openDetail('Apply policy change')
-    await click(within(d).getByRole('button', { name: 'Snooze' }))
+    await more(d, 'Snooze')
     await click(within(d).getByRole('button', { name: '1 hour' }))
     const s = (await store.load()).find((x) => x.key === 'e-appr')!
     expect(s.status).toBe('snoozed')
@@ -139,7 +144,7 @@ describe('AlertDetail modal', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
     const { store } = await setup({ events: [approval] })
     const d = await openDetail('Apply policy change')
-    await click(within(d).getByRole('button', { name: 'Snooze' }))
+    await more(d, 'Snooze')
     await click(within(d).getByRole('button', { name: '15 min' }))
     expect((await store.load())[0].status).toBe('snoozed')
     await act(async () => fireEvent.keyDown(d, { key: 'Escape' }))
@@ -152,7 +157,7 @@ describe('AlertDetail modal', () => {
   it('defer to a context records the wake condition; defer to a time snoozes to it', async () => {
     const { store } = await setup()
     const d = await openDetail('Apply policy change')
-    await click(within(d).getByRole('button', { name: 'Defer' }))
+    await more(d, 'Defer')
     await click(within(d).getByRole('tab', { name: /context/i }))
     await click(within(d).getByRole('button', { name: 'When the agent is idle' }))
     const s = (await store.load()).find((x) => x.key === 'e-appr')!
@@ -163,7 +168,7 @@ describe('AlertDetail modal', () => {
   it('settle resolves with a note', async () => {
     const { store } = await setup()
     const d = await openDetail('Need a decision')
-    await click(within(d).getByRole('button', { name: 'Settle' }))
+    await more(d, 'Settle')
     fireEvent.change(within(d).getByLabelText('Note'), { target: { value: 'handled by phone' } })
     await click(within(within(d).getByRole('region', { name: 'Settle with note' })).getByRole('button', { name: 'Settle' }))
     const s = (await store.load()).find((x) => x.key === 'e-msg')!
@@ -222,7 +227,7 @@ describe('AlertDetail modal', () => {
     vi.spyOn(store, 'apply').mockRejectedValue(new Error('server unavailable'))
     await setup({ store })
     const d = await openDetail('Apply policy change')
-    await click(within(d).getByRole('button', { name: 'Snooze' }))
+    await more(d, 'Snooze')
     await click(within(d).getByRole('button', { name: '15 min' }))
     expect(within(d).getByRole('alert').textContent).toBe('server unavailable')
     expect(d.getAttribute('data-status')).toBe('unread')

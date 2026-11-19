@@ -1,0 +1,47 @@
+{
+ "totals": {
+  "sessions": 5,
+  "turns": 81,
+  "tokens": 1177100,
+  "tool_calls": 45,
+  "errors": 3
+ },
+ "by_day": [
+  {
+   "day": "2026-10-30",
+   "sessions": 1,
+   "errors": 2
+  },
+  {
+   "day": "2026-10-29",
+   "sessions": 1,
+   "errors": 1
+  }
+ ],
+ "by_tool": [
+  {
+   "tool": "Bash",
+   "calls": 14,
+   "errors": 2
+  },
+  {
+   "tool": "Read",
+   "calls": 13,
+   "errors": 0
+  }
+ ],
+ "by_model": [
+  {
+   "model": "claude-sonnet-5-5",
+   "sessions": 1,
+   "tokens": 1177100
+  }
+ ],
+ "by_project": [
+  {
+   "project": "tachyon",
+   "sessions": 2
+  }
+ ],
+ "source": "database"
+}

@@ -1,0 +1,8 @@
+{"theme_id":"theme-agents-console","counts":{"todo":2,"doing":2,"review":1,"blocked":1,"done":5,"total":11},
+"lanes":{
+"todo":[{"id":"CW-20261030-0201","title":"Agent card empty states","status":"todo","priority":"medium","updated_at":"2026-10-29T12:00:00Z","assignees":[],"pr_cites":[]}],
+"doing":[{"id":"CW-20261030-0202","title":"Launch history pager","status":"doing","priority":"high","updated_at":"2026-10-30T03:00:00Z","assignees":[{"assignment_id":"asg-0003","agent_id":"tachyon_backend_builder_2","state":"active"}],"pr_cites":[]}],
+"review":[{"id":"CW-20261030-0203","title":"Usage index","status":"review","priority":"high","updated_at":"2026-10-30T04:00:00Z","assignees":[],"pr_cites":[{"host":"github.com","owner":"hollis-labs","repo":"tachyon","number":229,"source":"detected"}]}],
+"blocked":[{"id":"CW-20261030-0900","title":"Registry link rule","status":"blocked","priority":"medium","updated_at":"2026-10-28T09:00:00Z","assignees":[],"pr_cites":[],"blocked_reason":"Waiting on Tether registry id scheme."}],
+"done":[{"id":"CW-20261029-0105","title":"Library history","status":"done","priority":"medium","updated_at":"2026-10-29T18:00:00Z","assignees":[],"pr_cites":[{"host":"github.com","owner":"hollis-labs","repo":"tachyon","number":224,"source":"manual"}],"done_summary":"History list with diff per version."}]},
+"source":{"torque":"live"}}

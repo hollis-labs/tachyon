@@ -1,10 +1,15 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { ActionRun } from "./client"
+import { MemoryRouter } from "react-router-dom"
+import { ApprovalProvider, HOLD_MS } from "./context"
+import { ApprovalsPage } from "./page"
+import type { ApprovalClient, ApprovalItem, ActionRun } from "./client"
 import { ActionRunPanel, RUN_STATE_COPY, terminalURL } from "./terminal"
 
 // xterm needs a real canvas and layout; the panel's own behaviour is what is
 // under test, so the terminal and its fit addon are replaced.
+vi.mock("../operator/elevation", () => ({ operatorFetch: (...args: Parameters<typeof fetch>) => fetch(...args) }))
+
 const terminals: { data?: (d: string) => void; written: Uint8Array[] }[] = []
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
@@ -70,6 +75,7 @@ class FakeObserver {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   terminals.length = 0
   vi.unstubAllGlobals()
 })
@@ -78,7 +84,7 @@ describe("action run panel", () => {
   it("shows machine, exact command and digest before approval, and no terminal", () => {
     vi.stubGlobal("WebSocket", FakeSocket)
     render(<ActionRunPanel initial={base} approved={false} fetcher={vi.fn()} />)
-    expect(screen.getByText("Runs on hub")).toBeTruthy()
+    expect(screen.getByText("▸ hub")).toBeTruthy()
     expect(screen.getByText("tether catalog approve plan-1")).toBeTruthy()
     expect(screen.getByText(base.op_digest)).toBeTruthy()
     expect(screen.getByText(RUN_STATE_COPY.pending_approval)).toBeTruthy()
@@ -126,4 +132,112 @@ describe("action run panel", () => {
     expect(terminalURL("run_1", { protocol: "https:", host: "tachyon.example" })).toBe("wss://tachyon.example/api/plugins/console/v1/action-runs/run_1/terminal")
     expect(terminalURL("run_1", { protocol: "http:", host: "127.0.0.1:8080" })).toMatch(/^ws:\/\/127\.0\.0\.1:8080\//)
   })
+})
+
+// Exercise the actual provider, undo hold, queue selection and run panel together.
+// Only the browser terminal transport/layout is replaced above.
+
+describe("queue to interactive run continuation", () => {
+  it.each([false, true])("retains the action through hold and queue refresh (another pending item: %s)", async (another) => {
+    vi.stubGlobal("WebSocket", FakeSocket)
+    vi.stubGlobal("ResizeObserver", FakeObserver)
+    let run: ActionRun = { ...base, params: { plan_id: "plan-1" }, requester: { label: "@chief", task: "CW-20261115-0125" } }
+    const request: ApprovalItem = {
+      item_id: base.item_id, revision: 1, state: "presented", enqueued_at: base.created_at, updated_at: base.created_at,
+      action_run: run,
+      request_snapshot: { kind: "approval", class: "medium", title: "Approve catalog plan", source: { agent_id: "service:credential", agent_label: "@chief", application_id: "tachyon-actions" } },
+    }
+    const other = { ...request, item_id: "other", action_run: undefined, request_snapshot: { ...request.request_snapshot, title: "Other request" }, enqueued_at: "2026-10-24T00:00:00Z" }
+    let approved = false
+    const client = {
+      inbox: vi.fn(async () => ({ pending: approved ? (another ? [other] : []) : [request, ...(another ? [other] : [])], history: [] })),
+      present: vi.fn(async () => approved ? { ...request, state: "resolved", action_run: run } : request),
+      audit: vi.fn(async () => ({ item_id: request.item_id, events: [] })),
+      decide: vi.fn(async () => { approved = true; run = { ...run, state: "waiting_input" }; return { item_id: request.item_id, state: "resolved" } }),
+    } as unknown as ApprovalClient
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(run), { status: 200 })))
+    render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    const approve = await screen.findByRole("button", { name: "Approve and run" })
+    await waitFor(() => expect((approve as HTMLButtonElement).disabled).toBe(false))
+    vi.useFakeTimers()
+    fireEvent.click(approve)
+    expect(screen.getByRole("region", { name: "Action run" })).toBeTruthy()
+    expect(client.decide).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(HOLD_MS + 1600) })
+    vi.useRealTimers()
+    await waitFor(() => expect(screen.getByRole("group", { name: /Terminal for/ })).toBeTruthy(), { timeout: 3000 })
+    expect(client.decide).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(/Run run_1/)).toBeTruthy()
+    expect(screen.getAllByText("CW-20261115-0125").length).toBeGreaterThan(0)
+    expect(screen.getByText(/Catalog plan plan-1/)).toBeTruthy()
+    // Reconnection attaches the same authorized run; it never sends another decision.
+    act(() => FakeSocket.last.onmessage?.({ data: JSON.stringify({ type: "state", state: "running" }) }))
+    act(() => FakeSocket.last.onclose?.())
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect terminal" }))
+    expect(FakeSocket.last.url).toContain("run_1/terminal")
+    const connected = FakeSocket.last
+    fireEvent.click(screen.getByRole("button", { name: "Refresh approvals" }))
+    fireEvent.click(screen.getByRole("button", { name: "Refresh approvals" }))
+    await act(async () => {})
+    expect(FakeSocket.last).toBe(connected)
+    expect(client.decide).toHaveBeenCalledTimes(1)
+    run = { ...run, state: "failed", terminal: true, exit_code: 2, ended_at: "2026-10-23T00:01:00Z" }
+    await act(async () => FakeSocket.last.onmessage?.({ data: JSON.stringify({ type: "exit", state: "failed", code: 2 }) }))
+    await screen.findByText(/Failed · exit 2/)
+    expect(client.decide).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("group", { name: /Terminal for/ })).toBeNull()
+  })
+})
+
+describe("action history reload", () => {
+  it.each(["waiting_input", "denied", "expired"] as const)("reopens a linked run outside the inbox page in state %s", async (state) => {
+    vi.stubGlobal("WebSocket", FakeSocket)
+    vi.stubGlobal("ResizeObserver", FakeObserver)
+    const run = { ...base, state, terminal: state !== "waiting_input" }
+    const request: ApprovalItem = {
+      item_id: base.item_id, revision: 2, state: "resolved", enqueued_at: base.created_at, updated_at: base.created_at,
+      action_run: run,
+      request_snapshot: { kind: "approval", title: "Historical catalog action", source: { agent_id: "chief", application_id: "tachyon-actions" } },
+    }
+    const client = { inbox: vi.fn(async () => ({ pending: [], history: [] })), present: vi.fn(async () => request), audit: vi.fn(async () => ({ item_id: request.item_id, events: [] })), decide: vi.fn() } as unknown as ApprovalClient
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(run))))
+    render(<MemoryRouter initialEntries={["/approvals?item=item_1"]}><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+    await screen.findByRole("region", { name: "Action run" })
+    if (state === "waiting_input") await screen.findByRole("group", { name: /Terminal for/ })
+    else expect(screen.queryByRole("group", { name: /Terminal for/ })).toBeNull()
+    expect(client.decide).not.toHaveBeenCalled()
+  })
+})
+
+it("retains the action reached after an explicitly selected ordinary request", async () => {
+  vi.stubGlobal("WebSocket", FakeSocket)
+  vi.stubGlobal("ResizeObserver", FakeObserver)
+  let run: ActionRun = { ...base }
+  const request: ApprovalItem = { item_id: base.item_id, revision: 1, state: "presented", enqueued_at: base.created_at, updated_at: base.created_at, action_run: run, request_snapshot: { kind: "approval", class: "medium", title: "Action second", source: { agent_id: "chief", application_id: "tachyon-actions" } } }
+  const other: ApprovalItem = { ...request, item_id: "other", action_run: undefined, request_snapshot: { ...request.request_snapshot, title: "Ordinary first" } }
+  let otherDone = false
+  let actionDone = false
+  const client = {
+    inbox: vi.fn(async () => ({ pending: [...(otherDone ? [] : [other]), ...(actionDone ? [] : [request])], history: [] })),
+    present: vi.fn(async (id: string) => id === "other" ? { ...other, state: otherDone ? "resolved" : "presented" } : { ...request, action_run: run, state: actionDone ? "resolved" : "presented" }),
+    audit: vi.fn(async () => ({ item_id: "other", events: [] })),
+    decide: vi.fn(async (item: ApprovalItem) => { if(item.item_id === "other") otherDone = true; else {actionDone=true; run={...run,state:"waiting_input"}}; return { item_id: item.item_id, state: "resolved" } }),
+  } as unknown as ApprovalClient
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(run))))
+  render(<MemoryRouter initialEntries={["/approvals?item=other"]}><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+  const approveOther = await screen.findByRole("button", { name: "Approve" })
+  await waitFor(() => expect((approveOther as HTMLButtonElement).disabled).toBe(false))
+  vi.useFakeTimers()
+  fireEvent.click(approveOther)
+  await act(async () => { await vi.advanceTimersByTimeAsync(HOLD_MS + 1600) })
+  // Keep one clock across both holds: the fallback panel mounts during the
+  // first hold, and its polling interval must survive into the second.
+  const approveAction = screen.getByRole("button", { name: "Approve and run" })
+  expect((approveAction as HTMLButtonElement).disabled).toBe(false)
+  fireEvent.click(approveAction)
+  expect(screen.queryByRole("region", { name: "Action run" })).not.toBeNull()
+  await act(async () => { await vi.advanceTimersByTimeAsync(HOLD_MS + 1600) })
+  vi.useRealTimers()
+  expect(screen.queryByRole("group", { name: /Terminal for/ })).not.toBeNull()
+  expect(client.decide).toHaveBeenCalledTimes(2)
 })

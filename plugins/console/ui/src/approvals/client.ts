@@ -1,3 +1,4 @@
+import type { Access } from "./batch"
 import { operatorFetch } from "../operator/elevation"
 
 // Tachyon-owned HITL v1 browser projection. Decisions retain the producer's contract;
@@ -13,6 +14,10 @@ export interface ApprovalResponse {
   note?: string
   reply?: string
   answers?: CardAnswer[]
+  // The server's typed phrase, for an approval that carries `confirm`.
+  confirmation?: string
+  // Approve one of the item's `alternatives` instead of the original request.
+  alternative_id?: string
 }
 export interface ApprovalOutcome {
   item_id: string
@@ -47,6 +52,8 @@ export type ActionRunState =
   | "expired"
 // A registered action bound to an approval (see README "Registered actions").
 export interface ActionRun {
+  params?: Record<string, string>
+  requester?: { label?: string; agent?: string; task?: string }
   run_id: string
   item_id: string
   machine: string
@@ -85,9 +92,26 @@ export interface ApprovalItem {
   enqueued_at: string
   updated_at: string
   terminal_outcome?: ApprovalOutcome
+  // Set while the item is snoozed; it sorts last in the queue until then.
+  deferred_until?: string | null
+  // Server-side batch eligibility; blockers are why an item must be reviewed one by one.
+  batchable?: boolean
+  batch_blockers?: string[]
+  // Server projection (docs/approvals-contract.md). Every high-class and every destructive item carries `confirm`.
+  confirm?: { phrase: string }
+  affected_items?: { ref: string; label: string; kind?: string; note?: string }[]
+  affected_total?: number
+  destructive?: { irreversible?: boolean; summary?: string }
+  alternatives?: { id: string; label: string }[]
+  // A reason (the note) is required to deny.
+  reason_required?: boolean
+  evidence?: Evidence[]
+  server_now_ms?: number
   request_snapshot: {
     kind: "approval" | "attention" | CardKind
     class?: "low" | "medium" | "high"
+    // false when the backend says this item cannot be decided in the browser.
+    approvable?: boolean
     // card.* requests carry their body in data and may list effects.
     data?: Record<string, unknown>
     effects?: { target: string; [key: string]: unknown }[]
@@ -119,16 +143,69 @@ export interface ApprovalInbox {
   synced_at: string
   revision: string
 }
+export interface DeferResult {
+  item_id: string
+  deferred_until: string | null
+  expires_before_snooze_ends?: boolean
+  revision: number
+}
+export type BatchStatus = "resolved" | "stale" | "ineligible" | "expired" | "conflict" | "error"
+export interface BatchResult {
+  batch_id: string
+  results: { item_id: string; status: BatchStatus; error?: { code: string; message: string } }[]
+  counts: Partial<Record<BatchStatus, number>>
+}
+export interface SecretStored {
+  secret_ref: string
+  expires_at: number
+  fingerprint: string
+}
 export const APPROVAL_BASE = "/api/plugins/console/v1/approval-inbox"
+export interface HistoryEvent {
+  event_id: string
+  item_id: string
+  kind: string
+  at: string
+  actor: { ref: string; label: string; assurance?: string }
+  decision?: string
+  status?: string
+  note?: string
+  reason?: string
+  mini?: { title: string; risk?: string; group?: string }
+}
+export interface AuditEvent {
+  event_id: string
+  at: string
+  kind: string
+  actor: { ref: string; label: string; assurance?: string }
+  decision?: string
+  note?: string
+  reason?: string
+}
+export interface HistoryFacets {
+  requesters: { id: string; label: string; count: number }[]
+  statuses: { status: string; count: number }[]
+}
+export interface HistoryPage {
+  events: HistoryEvent[]
+  next_cursor?: string
+  // Computed over the current filter except each facet's own, so a menu still lists the other choices.
+  facets?: HistoryFacets
+}
 export class ApprovalError extends Error {
   constructor(
     public status: number,
     public code: string,
     message: string,
+    public stepUp?: { action?: string },
   ) {
     super(message)
   }
 }
+// Items the server refused with provider_handoff_required, remembered for the session so the
+// operator is not offered (or asked to confirm) the same decision twice.
+export const handoffItems = new Set<string>()
+export const isHandoffError = (e: unknown) => e instanceof ApprovalError && e.code === "provider_handoff_required"
 export const isCard = (item: Pick<ApprovalItem["request_snapshot"], "kind">) =>
   item.kind.startsWith("card.")
 // "Approval", "Question", "Form"… for the kind column and search.
@@ -156,7 +233,7 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       ...init,
       headers: {
         Accept: "application/json",
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(typeof init.body === "string" ? { "Content-Type": "application/json" } : {}),
         ...(fresh ? { "Cache-Control": "no-cache" } : {}),
         ...init.headers,
       },
@@ -167,6 +244,7 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
         res.status,
         body.code ?? "unavailable",
         body.message ?? "The approval queue is unavailable.",
+        body.step_up,
       )
     if (
       fresh &&
@@ -199,6 +277,13 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       return read<ApprovalInbox>(`/inbox${query.size ? `?${query}` : ""}`, fresh)
     },
     get,
+    audit(id: string) {
+      return read<{ item_id: string; events: AuditEvent[] }>(`/items/${encodeURIComponent(id)}/audit`, true)
+    },
+    history(opts: { q?: string; status?: string; requester?: string; cursor?: string; limit?: number } = {}) {
+      const query = new URLSearchParams(Object.entries(opts).filter((e): e is [string, string | number] => !!e[1]).map(([k, v]) => [k, String(v)]))
+      return read<HistoryPage>(`/history${query.size ? `?${query}` : ""}`, true)
+    },
     present(id: string) {
       const existing = presenting.get(id)
       if (existing) return existing
@@ -220,7 +305,56 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
       presenting.set(id, pending)
       return pending
     },
-    async decide(item: ApprovalItem, response: ApprovalResponse) {
+    // Snooze: the item stays pending but drops to the end of the queue until the time passes.
+    defer(item: ApprovalItem, durationS: number, reason?: string) {
+      return request<DeferResult>(`/items/${encodeURIComponent(item.item_id)}/defer`, {
+        method: "POST",
+        body: JSON.stringify({
+          expected_revision: item.revision,
+          duration_s: durationS,
+          ...(reason ? { reason } : {}),
+        }),
+      })
+    },
+    // Whether this operator may decide in bulk. The route needs the inbox grant, like the rest.
+    access() {
+      return request<Access>("/access")
+    },
+    undefer(id: string) {
+      return request<DeferResult>(`/items/${encodeURIComponent(id)}/defer`, { method: "DELETE" })
+    },
+    // Each item is resolved on its own server-side: one failure never stops the next. The batch_id
+    // makes a retry of the same request return the same result.
+    batchResolve(items: ApprovalItem[], decision: "approved" | "denied", batchId: string = crypto.randomUUID()) {
+      return request<BatchResult>("/batch/resolve", {
+        method: "POST",
+        body: JSON.stringify({
+          batch_id: batchId,
+          decision,
+          items: items.map((i) => ({
+            item_id: i.item_id,
+            expected_revision: i.revision,
+            presented_projection_revision: i.presented_projection_revision ?? i.revision,
+          })),
+        }),
+      })
+    },
+    async decide(item: ApprovalItem, response: ApprovalResponse, opts: { keepalive?: boolean } = {}) {
+      // A keepalive decision is sent while the page is closing: no time for the pre-check, so the
+      // server's expected_revision check is the guard.
+      if (opts.keepalive)
+        return request<ApprovalOutcome>(
+          `/items/${encodeURIComponent(item.item_id)}/resolve`,
+          {
+            method: "POST",
+            keepalive: true,
+            body: JSON.stringify({
+              expected_revision: item.revision,
+              presented_projection_revision: item.presented_projection_revision,
+              response,
+            }),
+          },
+        )
       // Compare to the exact projection the person reviewed; never silently
       // re-present newer content and carry their old decision onto it.
       const current = await get(item.item_id, true)
@@ -248,6 +382,23 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
           }),
         },
       )
+    },
+    // Stores a secret for one field of one item and returns only a reference. The value is never
+    // returned or kept; the same idempotencyKey on a retry returns the same reference.
+    storeSecret(input: { itemId: string; field: string; value?: string; file?: File; idempotencyKey: string }) {
+      const headers = { "Idempotency-Key": input.idempotencyKey }
+      if (input.file) {
+        const form = new FormData()
+        form.append("item_id", input.itemId)
+        form.append("field", input.field)
+        form.append("file", input.file)
+        return request<SecretStored>("/secrets", { method: "POST", headers, body: form })
+      }
+      return request<SecretStored>("/secrets", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ item_id: input.itemId, field: input.field, value: input.value }),
+      })
     },
     evidence: (id: string, index: number, type: string) =>
       request<Record<string, unknown>>(

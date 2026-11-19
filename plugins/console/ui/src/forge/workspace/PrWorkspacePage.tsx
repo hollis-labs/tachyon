@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { PrWorkspace } from './PrWorkspace'
+import { PR_INBOX_PATH } from '../inbox/href'
 import { prRefFromParams } from './route'
 
 /** Route element for PR_WORKSPACE_ROUTE. `?file=` deep-links a file; `?readonly=1` hides writes. */
@@ -14,18 +15,22 @@ export default function PrWorkspacePage() {
   if (!prRef) {
     return (
       <div className="p-6" role="alert">
-        <h1 className="font-mono text-sm uppercase tracking-widest text-red-300">Invalid pull request link</h1>
+        <h1 className="font-mono text-sm uppercase tracking-widest text-danger">Invalid pull request link</h1>
       </div>
     )
   }
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-zinc-800/80 px-4 py-1.5">
-        <Link to="/planner" onClick={canGoBack ? (e) => { e.preventDefault(); navigate(-1) } : undefined} className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-300">
-          <ChevronLeft className="h-3 w-3" /> Back
+    <PrWorkspace
+      key={`${prRef.repo.host}/${prRef.repo.owner}/${prRef.repo.name}/${prRef.number}`}
+      className="h-full"
+      prRef={prRef}
+      initialFile={search.get('file') ?? undefined}
+      readOnly={search.get('readonly') === '1'}
+      leading={
+        <Link to={PR_INBOX_PATH} onClick={canGoBack ? (e) => { e.preventDefault(); navigate(-1) } : undefined} className="inline-flex items-center gap-1 text-fg-muted hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          <ChevronLeft className="size-3" /> Pull requests
         </Link>
-      </div>
-      <PrWorkspace key={`${prRef.repo.host}/${prRef.repo.owner}/${prRef.repo.name}/${prRef.number}`} className="min-h-0 flex-1" prRef={prRef} initialFile={search.get('file') ?? undefined} readOnly={search.get('readonly') === '1'} />
-    </div>
+      }
+    />
   )
 }

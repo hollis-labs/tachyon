@@ -26,6 +26,29 @@ export interface ChatThread {
   unread: number
   lastAt: number
   lastPreview?: string
+  /** Any of this agent's sessions is blocked on the operator (chat API `blocked_on_user`). */
+  needsYou?: boolean
+  /** The agent's sessions, newest first (chat API threads). Absent when the chat API has none. */
+  sessions?: ThreadSession[]
+  /** Any of this agent's sessions is pinned. */
+  pinned?: boolean
+  /** Count of open cards and questions waiting on the operator, summed over the agent's sessions. */
+  blocked?: number
+  /** `blocked` split by what the operator must do: approve (approval turns and cards) or answer (the rest). */
+  blockedBreakdown?: { approvals: number; questions: number }
+  /** Plan progress of the newest session that has a plan. */
+  plan?: { done: number; total: number }
+  /** Context window use of the newest session (chat API `context`). */
+  context?: { used: number | null; window: number | null; model: string | null }
+  /** The session shown in the conversation (a `sessions` ref). Absent: the agent's own thread. */
+  sessionRef?: string
+}
+
+export interface ThreadSession {
+  ref: string
+  title: string
+  lastAt: number
+  unread: number
 }
 
 export type ToolChipStatus = 'running' | 'ok' | 'error'
@@ -55,6 +78,8 @@ export interface ChatMessage {
   from: ChatSender
   /** Agent replies from a Tether turn only; absent means the transport does not say. */
   audience?: ReplyAudience
+  /** 'mail' when Tether proved this reply's turn was a mail wake; the conversation folds such replies into one row. */
+  wake?: 'mail'
   body: string
   at: number
   /** Operator messages only. */
