@@ -55,9 +55,9 @@ func TestCarryMovesPlanToReplacement(t *testing.T) {
 	if _, err := planOf(s, "s1"); !errors.Is(err, ErrNotFound) {
 		t.Fatal("old thread still holds the plan: one live plan expected")
 	}
-	var nativeReceipts int
-	if err := s.Store.DB.Reader.QueryRowContext(ctx, `SELECT count(*) FROM chat_continuation_associations`).Scan(&nativeReceipts); err != nil || nativeReceipts != 0 {
-		t.Fatalf("legacy checkpoint/proxy carry must not claim native admission: %d %v", nativeReceipts, err)
+	var associationReceipts int
+	if err := s.Store.DB.Reader.QueryRowContext(ctx, `SELECT count(*) FROM chat_continuation_associations`).Scan(&associationReceipts); err != nil || associationReceipts != 0 {
+		t.Fatalf("lazy proxy carry must not create eager association receipts: %d %v", associationReceipts, err)
 	}
 	n := 0
 	for _, e := range *events {
