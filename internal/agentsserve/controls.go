@@ -292,6 +292,25 @@ func (s *Server) restart(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "conflict", "That request_id belongs to another request.")
 			return
 		}
+		// Retry only local association for the already-created exact pair.
+		// Never stop/resume/relaunch again after this partial success.
+		if old.State == "failed" && old.Step != nil && *old.Step == "associating" && old.NewSessionID != nil && sess.Agent.LogicalAgentID != nil && s.AssociateRestart != nil {
+			seat := *sess.Agent.LogicalAgentID
+			if _, busy := s.restarting.LoadOrStore(seat, b.RequestID); !busy {
+				old.State, old.Step, old.Error = "associating", nil, nil
+				if err := s.saveControl(r.Context(), old, false); err != nil {
+					s.restarting.Delete(seat)
+					internal(w)
+					return
+				}
+				go func() {
+					defer s.restarting.Delete(seat)
+					ctx, persist, cancel := restartContexts(restartTimeout)
+					defer cancel()
+					s.finishRestartAssociation(ctx, persist, old, seat)
+				}()
+			}
+		}
 		reply(w, 202, old)
 		return
 	}
@@ -343,6 +362,10 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 		fail("preparing", "Nothing was stopped or created; source session "+sess.ID+" remains available.", errors.New("worker preserve-context restart needs native continuation authority"))
 		return
 	}
+	if s.AssociateRestart == nil {
+		fail("preparing", "Nothing was stopped or created.", errors.New("chat continuity association is unavailable"))
+		return
+	}
 	if c.Handoff && s.Sender != nil && sess.Agent.URN != nil {
 		if _, err := s.Sender.Send(ctx, *sess.Agent.URN, "Restart: write your handoff", "The operator is restarting this session. Write your handoff to Tesseract now.", map[string]string{"source": "tachyon-agents-restart", "request_id": c.RequestID}); err == nil {
 			set("handoff_sent")
@@ -385,10 +408,24 @@ func (s *Server) runRestart(c control, sess Session, skip chan struct{}) {
 	}
 	c.NewSessionID, c.RelaunchedBy = &id, &how
 	c.ContinuityMode = &mode
-	if dropped, err := s.Restarter.ScopesDropped(ctx, id); err == nil {
-		c.ScopesDropped = dropped
-	} // an unreadable event says nothing either way; the restart itself is done
-	set("done")
+	s.finishRestartAssociation(ctx, persist, c, *sess.Agent.LogicalAgentID)
+}
+
+func (s *Server) finishRestartAssociation(ctx, persist context.Context, c control, agent string) {
+	c.State = "associating"
+	_ = s.saveControl(persist, c, false)
+	id := *c.NewSessionID
+	if err := s.AssociateRestart(ctx, c.SessionID, id, agent); err != nil {
+		step := "associating"
+		message := "Replacement " + id + " started, but its chat plan and history association failed: " + err.Error() + ". Retry this same request_id to repair the association without restarting again."
+		c.State, c.Step, c.Error = "failed", &step, &message
+	} else {
+		if dropped, err := s.Restarter.ScopesDropped(ctx, id); err == nil {
+			c.ScopesDropped = dropped
+		}
+		c.State, c.Step, c.Error = "done", nil, nil
+	}
+	_ = s.saveControl(persist, c, false)
 }
 
 func (s *Server) getControl(w http.ResponseWriter, r *http.Request) {

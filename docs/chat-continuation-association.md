@@ -37,14 +37,21 @@ catalog authority required by Tether's worker native-only resume. It refuses
 before stopping or creating anything, with no fresh fallback and no grant
 widening. An explicitly chosen clean start remains a separate Tether launch.
 The existing hub logical-agent resume call is retained when Tether accepts it.
-Its operation result reports `continuity_mode: "checkpoint"`. The established
-plan carry still occurs when the replacement first uses the pinned proxy; this
-legacy path has no immediate history/plan guarantee. Its generic response is
-not a Codex worker native-admission receipt, and the native association API
-rejects it. A typed Tether checkpoint-resume refusal retains the legacy hub
-lineage relaunch and reports `continuity_mode: "lineage"`; other resume failures
-do not trigger a fresh relaunch. Eager hub association and history remain open
-work on 0084.
+Its operation result reports `continuity_mode: "checkpoint"`. A typed Tether
+checkpoint-resume refusal retains the legacy hub lineage relaunch with
+`continuity=relaunch` and reports `continuity_mode: "lineage"`; other resume
+failures do not trigger a fresh relaunch.
+
+Hub Restart now verifies the exact source/replacement IDs, matching logical
+agent, terminal source, running replacement, explicit resume parent, and hub
+placement on both rows before committing local plan/history association. This
+internal completion path proves UI lineage, not native model context; the
+public native association API still rejects hub rows without native proof.
+Restart reports `done` only after association commits. If association fails,
+the control reports `failed` at `associating` and retains the replacement ID.
+Retry the same Restart request ID to retry only association of that exact pair;
+no second stop, resume or relaunch occurs. Missing association configuration
+refuses Restart before stopping the source.
 
 After success, the replacement's inherited plan and messages, when allowed by
 the source's Continue choice and clear marker, are available immediately through

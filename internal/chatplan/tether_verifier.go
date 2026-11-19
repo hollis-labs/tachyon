@@ -87,3 +87,27 @@ func (v *TetherContinuationVerifier) Verify(ctx context.Context, source, replace
 	}
 	return nil
 }
+
+// VerifyHubLineage verifies UI lineage after a hub Restart. It makes no claim
+// about native model context and cannot authorize a worker association. The
+// public native-continuation endpoint deliberately continues to use Verify.
+func (v *TetherContinuationVerifier) VerifyHubLineage(ctx context.Context, source, replacement, agent string) error {
+	if source == "" || replacement == "" || source == replacement || agent == "" {
+		return ErrNativeAdmissionUnverified
+	}
+	old, err := v.session(ctx, source)
+	if err != nil {
+		return err
+	}
+	next, err := v.session(ctx, replacement)
+	if err != nil {
+		return err
+	}
+	if old.ID != source || next.ID != replacement || old.LogicalAgentID != agent || next.LogicalAgentID != agent ||
+		old.WorkerID != "" || next.WorkerID != "" ||
+		(old.State != "completed" && old.State != "failed" && old.State != "killed") ||
+		next.ParentSessionID != source || next.Intent != "resume" || next.State != "running" {
+		return errors.New("hub restart lineage is unverified")
+	}
+	return nil
+}

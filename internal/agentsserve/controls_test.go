@@ -28,6 +28,7 @@ func controlEnv(t *testing.T, snd Sender) *env {
 	e.now = t0.Add(time.Hour)
 	e.frame("session.work_state_changed", "m1", 55*time.Minute, `{"to":"processing","provider":"claude","agent_urn":"msg://agent/x/builder"}`)
 	e.frame("session.work_state_changed", "noaddr", 55*time.Minute, `{"to":"processing","provider":"claude"}`)
+	e.srv.AssociateRestart = func(context.Context, string, string, string) error { return nil }
 	e.srv.Sender = snd
 	return e
 }
@@ -313,5 +314,59 @@ func TestRestartResumeFailureDoesNotRelaunch(t *testing.T) {
 	if c.State != "failed" || c.Step == nil || *c.Step != "resuming" || c.Error == nil || !strings.Contains(*c.Error, "no replacement started") ||
 		f.relaunched != "" || c.RelaunchedBy != nil {
 		t.Fatalf("%+v", c)
+	}
+}
+
+func TestRestartAssociationRunsBeforeDoneAndRetriesWithoutRestart(t *testing.T) {
+	for _, refused := range []bool{false, true} {
+		t.Run(fmt.Sprint(refused), func(t *testing.T) {
+			f := &fakeCtl{}
+			if refused {
+				f.resumeErr = ErrResumeRefused
+			}
+			e := restartEnv(t, f)
+			calls := 0
+			e.srv.AssociateRestart = func(_ context.Context, source, replacement, agent string) error {
+				calls++
+				want := "s2"
+				if refused {
+					want = "s3"
+				}
+				if source != "m1" || replacement != want || agent != "la1" {
+					t.Errorf("wrong tuple: %s %s %s", source, replacement, agent)
+				}
+				if calls == 1 {
+					return errors.New("temporary association failure")
+				}
+				return nil
+			}
+			body := `{"request_id":"assoc","expected_session_id":"m1"}`
+			if w := e.send("POST", "/sessions/m1/restart", body); w.Code != 202 {
+				t.Fatal(w.Code)
+			}
+			c := untilEnd(t, e, "assoc")
+			if c.State != "failed" || c.Step == nil || *c.Step != "associating" || c.NewSessionID == nil {
+				t.Fatalf("%+v", c)
+			}
+			before := strings.Join(f.order, ",")
+			if w := e.send("POST", "/sessions/m1/restart", body); w.Code != 202 {
+				t.Fatal(w.Code)
+			}
+			c = untilEnd(t, e, "assoc")
+			if c.State != "done" || calls != 2 || strings.Join(f.order, ",") != before {
+				t.Fatalf("%+v calls=%d order=%v", c, calls, f.order)
+			}
+		})
+	}
+}
+
+func TestRestartMissingAssociationRefusesBeforeStop(t *testing.T) {
+	f := &fakeCtl{}
+	e := restartEnv(t, f)
+	e.srv.AssociateRestart = nil
+	e.send("POST", "/sessions/m1/restart", `{"request_id":"no-assoc","expected_session_id":"m1"}`)
+	c := untilEnd(t, e, "no-assoc")
+	if c.State != "failed" || c.Step == nil || *c.Step != "preparing" || len(f.order) != 0 {
+		t.Fatalf("%+v order=%v", c, f.order)
 	}
 }

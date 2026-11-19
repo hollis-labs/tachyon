@@ -148,8 +148,8 @@ func (s *Store) Carry(ctx context.Context, session, agent, continues string) (Ca
 	return out, nil
 }
 
-// AssociateContinuation commits an externally verified, exact native continuation.
-// The caller must verify both Tether session rows and native admission before calling.
+// AssociateContinuation commits an externally verified, exact continuation.
+// The caller must verify Tether session rows and, for workers, native admission.
 // A replacement has one immutable parent and agent, but it may later be a source.
 // Source seeding, replacement binding and plan movement share one transaction.
 func (s *Store) AssociateContinuation(ctx context.Context, source, replacement, agent string) (Association, error) {

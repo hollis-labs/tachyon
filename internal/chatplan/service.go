@@ -42,7 +42,7 @@ func (s *Service) Attach(ctx context.Context, session, agent, continues string) 
 }
 
 // AssociateContinuation records a verified exact pair before the replacement
-// makes any proxied request. Validation of Tether's native admission is the
+// makes any proxied request. Validation of Tether's hub lineage or worker native admission is the
 // responsibility of the caller; this operation commits local chat state only.
 func (s *Service) AssociateContinuation(ctx context.Context, source, replacement, agent string) (Association, error) {
 	out, err := s.Store.AssociateContinuation(ctx, source, replacement, agent)
