@@ -576,7 +576,7 @@ terminal switch, installs a synthetic policy and substitutes only the external s
 `e2e/terminal-ssh.sh` in the run directory. REST, identity, WebSocket handlers, PTY and session storage
 are real; no remote host or user SSH credentials are used. The chat stub falls through for terminal
 paths. Tests cover xterm input/output, first and later resize frames, binary bytes, disconnect/DELETE,
-operator and minted-bearer refusal, missing/foreign/cross-site origins, replay, exit and ended-session
+operator and minted-bearer refusal (including a token copied into the session cookie), missing/foreign/cross-site origins, replay, exit and ended-session
 conflict. Stub refusal tests remain separate and skip in backend mode. CI runs both modes.
 
 ## Chat dock (G8b, CW-20261115-0082)
