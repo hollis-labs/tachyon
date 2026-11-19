@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { PlannerApiError } from '@planner/api/errors'
 import { PlannerApiProvider } from '@planner/api/context'
 import type { ThemeRow } from '@planner/api/types'
 import { Context } from './context'
@@ -34,4 +35,26 @@ describe('comment composer pin', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(api.plannerComment).toHaveBeenCalledWith('themes', 't1', 'keep this up', 4, undefined, { pin: true }))
   })
+})
+
+
+it('preserves a refused comment and uses the displayed revision on explicit retry', async () => {
+  const api = { provider: 'tachyon', subscribeEvents: () => () => {}, plannerComment: vi.fn().mockRejectedValueOnce(new PlannerApiError(409, 'Changed', 'conflict')).mockResolvedValue({}) }
+  const onCommented = vi.fn()
+  const view = (rev: number) => <PlannerApiProvider client={api as never}><Context db="ideas" id="idea-1" rev={rev} pinned={false} comments={[]} onCommented={onCommented} mentionable={[]} links={[]} /></PlannerApiProvider>
+  const mounted = render(view(7))
+  const box = screen.getByRole('textbox') as HTMLTextAreaElement
+  fireEvent.change(box, { target: { value: 'Keep this draft' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() => expect(api.plannerComment).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(false))
+  expect(box.value).toBe('Keep this draft')
+  expect(onCommented).not.toHaveBeenCalled()
+  mounted.rerender(view(8))
+  expect(api.plannerComment).toHaveBeenCalledTimes(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() => expect(api.plannerComment).toHaveBeenLastCalledWith('ideas', 'idea-1', 'Keep this draft', 8, undefined, undefined))
+  expect(api.plannerComment.mock.calls[0][3]).toBe(7)
+  await waitFor(() => expect(box.value).toBe(''))
+  expect(onCommented).toHaveBeenCalledTimes(1)
 })
