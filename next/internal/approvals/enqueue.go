@@ -46,6 +46,10 @@ func extraString(req hitl.EnqueueRequest, key string) string {
 // registry, which fixes class, digest and source on the server; the older
 // approval and attention kinds keep their own checks.
 func prepareRequest(req *hitl.EnqueueRequest, policy ProducerPolicy) error {
+	if req.Kind == NativeKind {
+		_, err := NativeRequest(*req)
+		return err
+	}
 	if !cards.IsCard(req.Kind) {
 		return validateInboxRequest(*req, policy)
 	}

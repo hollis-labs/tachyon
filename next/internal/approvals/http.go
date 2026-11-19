@@ -108,6 +108,9 @@ func writeValue(w http.ResponseWriter, value any) {
 func writeHITLError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, ErrNativeUnconfirmed):
+		fail(w, 503, "unavailable", "Native response needs reconciliation; no approval evidence is available.")
+		return
 	case errors.Is(err, hitl.ErrInvalidRequest):
 		status = 400
 	case errors.Is(err, hitl.ErrNotFound):

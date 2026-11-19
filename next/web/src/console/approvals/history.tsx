@@ -6,6 +6,9 @@ import { AuditTrail } from "./audit"
 import { ago } from "./parts"
 
 const VERB: Record<string, string> = {
+  native_allow: "Native allow recorded",
+  native_deny: "Native deny recorded",
+  native_cancel: "Native cancel recorded",
   approved: "Approved",
   denied: "Denied",
   answered: "Answered",

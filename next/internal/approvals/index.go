@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"slices"
 	"sort"
 	"strings"
@@ -77,6 +78,15 @@ func factsOf(rec hitl.Record) Facts {
 	f := Facts{Kind: rec.Kind, Title: rawString(req.Extra, "title"), Summary: rawString(req.Extra, "summary"), Recommend: rawString(req.Extra, "recommendation"), ReasonReq: rawBool(req.Extra, "reason_required")}
 	if f.Kind == "" {
 		f.Kind = req.Kind
+	}
+	if req.Kind == NativeKind {
+		f.Risk, f.Group, f.Interactive = "native", "command", true
+		f.ReqID, f.ReqLabel, f.ReqKind = req.Source.AgentID, req.Source.AgentID, "agent"
+		if n, err := NativeRequest(req); err == nil {
+			f.Title = clip(n.OperationClass+": "+n.OperationID, 256)
+			f.Summary = "Exact native choice · Once"
+		}
+		return f
 	}
 	f.Risk = rawString(req.Extra, "class")
 	if f.Risk != "low" && f.Risk != "medium" && f.Risk != "high" {
@@ -170,6 +180,18 @@ func statusOf(rec hitl.Record) string {
 	case nil:
 		return "pending"
 	case hitl.Resolved:
+		if rec.Kind == NativeKind {
+			var req hitl.EnqueueRequest
+			_ = json.Unmarshal(rec.Request, &req)
+			if n, err := NativeRequest(req); err == nil {
+				for _, option := range n.Options {
+					if option.ID == o.Resolution.Response.Decision {
+						return "native_" + string(option.Kind)
+					}
+				}
+			}
+			return "failed"
+		}
 		switch o.Resolution.Response.Decision {
 		case "approved", "denied":
 			return o.Resolution.Response.Decision
@@ -314,42 +336,109 @@ func indexTx(ctx context.Context, tx store.Tx, rec hitl.Record) {
 		flag(f.Interactive), flag(f.HasSecret), flag(f.CommandExec), flag(f.Destructive), string(ops), search)
 }
 
-// Reindex adds or refreshes every index row that is missing or behind its record.
-// Safe to run any time; it is the backfill for items that predate the index.
+// quarantineIndexTx retains an operational unknown status without a decision.
+func quarantineIndexTx(ctx context.Context, tx store.Tx, rec hitl.Record) {
+	rec.Outcome = nil
+	indexTx(ctx, tx, rec)
+	bestEffort(ctx, tx, `UPDATE approval_item_index SET state='unavailable',terminal=1,status='unavailable',decided_ns=NULL WHERE item_id=?`, rec.ItemID)
+}
+
+// Reindex repairs missing/behind rows and same-revision native confirmation
+// projections. A and B share a revision, so revision equality is not freshness.
+// Each pass advances over raw owner rows, including unchanged quarantines.
 func (s *Store) Reindex(ctx context.Context) (int, error) {
 	total := 0
+	var cursorNS int64
+	cursorID := ""
 	for {
-		rows, err := s.DB.Reader.QueryContext(ctx, `SELECT i.record FROM approval_items i LEFT JOIN approval_item_index x ON x.item_id=i.id WHERE x.item_id IS NULL OR x.revision<>i.revision ORDER BY i.created_ns LIMIT 200`)
+		query := `SELECT i.record FROM approval_items i LEFT JOIN approval_item_index x ON x.item_id=i.id WHERE (x.item_id IS NULL OR x.revision<>i.revision OR (x.kind=? AND i.state='resolved'))`
+		args := []any{NativeKind}
+		if cursorID != "" {
+			query += ` AND (i.created_ns,i.id)>(?,?)`
+			args = append(args, cursorNS, cursorID)
+		}
+		query += ` ORDER BY i.created_ns,i.id LIMIT 200`
+		rows, err := s.DB.Reader.QueryContext(ctx, query, args...)
 		if err != nil {
 			return total, err
 		}
-		var recs []hitl.Record
+		var ids []string
 		for rows.Next() {
-			rec, ierr := readRecord(rows)
-			if ierr != nil {
+			rec, _, _, readErr := readStoredRecord(rows)
+			if readErr != nil {
 				_ = rows.Close()
-				return total, ierr
+				return total, readErr
 			}
-			recs = append(recs, rec)
+			ids = append(ids, rec.ItemID)
+			cursorNS, cursorID = rec.CreatedAt.UnixNano(), rec.ItemID
 		}
+		readErr := rows.Err()
 		_ = rows.Close()
-		if len(recs) == 0 {
+		if readErr != nil {
+			return total, readErr
+		}
+		if len(ids) == 0 {
 			return total, nil
 		}
+		refreshed := 0
 		err = s.DB.Writer.Submit(ctx, "approval_reindex", func(ctx context.Context, tx store.Tx) error {
-			for _, rec := range recs {
-				indexTx(ctx, tx, rec)
+			refreshed = 0
+			for _, id := range ids {
+				rec, raw, evidence, readErr := readStoredRecord(tx.QueryRowContext(ctx, "SELECT record FROM approval_items WHERE id=?", id))
+				if readErr != nil {
+					return readErr
+				}
+				unconfirmed := errors.Is(validateNativeCommit(rec, raw, evidence), ErrNativeUnconfirmed)
+				if rec.Kind == NativeKind && rec.State == hitl.StateResolved {
+					current, indexErr := nativeIndexMatches(ctx, tx, rec, unconfirmed)
+					if indexErr != nil {
+						return indexErr
+					}
+					if current {
+						continue
+					}
+				}
+				if unconfirmed {
+					quarantineIndexTx(ctx, tx, rec)
+				} else {
+					indexTx(ctx, tx, rec)
+				}
+				refreshed++
 			}
 			return nil
 		})
 		if err != nil {
 			return total, err
 		}
-		total += len(recs)
-		if len(recs) < 200 || total >= 100000 { // the cap stops a row that never indexes from looping forever
+		total += refreshed
+		if len(ids) < 200 {
 			return total, nil
 		}
 	}
+}
+
+// This is a derived-cache comparison, never an authority test: the full owner
+// witness is checked first, inside the SAME writer transaction. A persisted
+// unavailable row cannot hide B merely because its revision already matches.
+func nativeIndexMatches(ctx context.Context, tx store.Tx, rec hitl.Record, unconfirmed bool) (bool, error) {
+	var revision, terminal int64
+	var state, status, kind string
+	var decided sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT revision,state,terminal,status,kind,decided_ns FROM approval_item_index WHERE item_id=?`, rec.ItemID).Scan(&revision, &state, &terminal, &status, &kind, &decided)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	wantState, wantStatus := string(rec.State), statusOf(rec)
+	wantDecided := sql.NullInt64{}
+	if unconfirmed {
+		wantState, wantStatus = "unavailable", "unavailable"
+	} else if rec.Outcome != nil {
+		wantDecided = sql.NullInt64{Int64: rec.Outcome.OutcomeTime().UnixNano(), Valid: true}
+	}
+	return revision == rec.Revision && terminal == int64(flag(rec.State.IsTerminal())) && state == wantState && status == wantStatus && kind == rec.Kind && decided == wantDecided, nil
 }
 
 // Filter selects queue rows. Zero values mean no filter.

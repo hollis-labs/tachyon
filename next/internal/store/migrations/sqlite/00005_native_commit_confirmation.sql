@@ -1,0 +1,11 @@
+-- Native outcomes need an exact witness of observed on-time phase-one commit.
+-- Existing native resolutions remain unconfirmed: no timestamp can reconstruct
+-- a committing process's lost observation. Legacy records are unchanged.
+-- Applied version 5 is also the old-binary startup fence. Upgrade exclusively
+-- after stopping/draining ALL owners; mixed versions are unsupported. Rollback
+-- restores a pre-upgrade backup, never the ledger or confirmation metadata.
+-- The private evidence lives in the existing record JSON envelope. This
+-- migration deliberately changes the reader protocol, not the baseline table
+-- shape needed by migrate-from. Its durable ledger entry fences older readers.
+-- +goose Up
+SELECT 1;

@@ -18,10 +18,12 @@ var _ hitl.Store = (*Store)(nil)
 
 type diskRecord struct {
 	hitl.Record
-	Outcome json.RawMessage
+	Outcome      json.RawMessage
+	NativeCommit json.RawMessage `json:"native_commit,omitempty"`
 }
 
-func recordBytes(rec hitl.Record) ([]byte, error) {
+func recordBytes(rec hitl.Record) ([]byte, error) { return recordBytesWithEvidence(rec, nil) }
+func recordBytesWithEvidence(rec hitl.Record, evidence []byte) ([]byte, error) {
 	var outcome json.RawMessage
 	if rec.Outcome != nil {
 		raw, err := json.Marshal(rec.Outcome)
@@ -30,31 +32,45 @@ func recordBytes(rec hitl.Record) ([]byte, error) {
 		}
 		outcome = raw
 	}
-	return json.Marshal(diskRecord{Record: rec, Outcome: outcome})
+	return json.Marshal(diskRecord{Record: rec, Outcome: outcome, NativeCommit: evidence})
 }
 
 type rowScanner interface{ Scan(...any) error }
 
-func readRecord(row rowScanner) (hitl.Record, error) {
+func readStoredRecord(row rowScanner) (hitl.Record, []byte, []byte, error) {
 	var raw []byte
 	if err := row.Scan(&raw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return hitl.Record{}, hitl.ErrNotFound
+			return hitl.Record{}, nil, nil, hitl.ErrNotFound
 		}
-		return hitl.Record{}, err
+		return hitl.Record{}, nil, nil, err
 	}
 	var saved diskRecord
 	if err := json.Unmarshal(raw, &saved); err != nil {
-		return hitl.Record{}, err
+		return hitl.Record{}, nil, nil, err
 	}
 	if len(saved.Outcome) > 0 && string(saved.Outcome) != "null" {
 		outcome, err := hitl.UnmarshalOutcome(saved.Outcome)
 		if err != nil {
-			return hitl.Record{}, err
+			return hitl.Record{}, nil, nil, err
 		}
 		saved.Record.Outcome = outcome
 	}
-	return saved.Record, nil
+	canonical, err := recordBytes(saved.Record)
+	if err != nil {
+		return hitl.Record{}, nil, nil, err
+	}
+	return saved.Record, canonical, saved.NativeCommit, nil
+}
+func readRecord(row rowScanner) (hitl.Record, error) {
+	rec, raw, evidence, err := readStoredRecord(row)
+	if err != nil {
+		return hitl.Record{}, err
+	}
+	if err = validateNativeCommit(rec, raw, evidence); err != nil {
+		return hitl.Record{}, err
+	}
+	return rec, nil
 }
 func (s *Store) Get(ctx context.Context, id string) (hitl.Record, error) {
 	return readRecord(s.DB.Reader.QueryRowContext(ctx, "SELECT record FROM approval_items WHERE id=?", id))
@@ -105,13 +121,36 @@ func (s *Store) Create(ctx context.Context, rec hitl.Record) (hitl.Record, bool,
 	return out, created, err
 }
 func (s *Store) Swap(ctx context.Context, id string, expected int64, next hitl.Record) error {
+	if next.Kind == NativeKind && next.State == hitl.StateResolved {
+		return s.swapNative(ctx, id, expected, next)
+	}
 	err := s.DB.Writer.Submit(ctx, "approval_transition", func(ctx context.Context, tx store.Tx) error {
-		return swapRecord(ctx, tx, id, expected, next)
+		// A native response's context is bounded by its callback authorization.
+		// Recheck after acquiring the writer, and before committing its changes.
+		if err := checkWriteDeadline(ctx); err != nil {
+			return err
+		}
+		if err := swapRecord(ctx, tx, id, expected, next); err != nil {
+			return err
+		}
+		return checkWriteDeadline(ctx)
 	})
 	if err == nil {
 		s.publish(next, false)
 	}
 	return err
+}
+
+func checkWriteDeadline(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// The timer that cancels a context can be delayed by scheduling. Compare the
+	// actual deadline too, so a queued CAS cannot use that delay as extra time.
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 func swapRecord(ctx context.Context, tx store.Tx, id string, expected int64, next hitl.Record) error {
@@ -124,6 +163,9 @@ func swapRecord(ctx context.Context, tx store.Tx, id string, expected int64, nex
 	}
 	raw, err := recordBytes(next)
 	if err != nil {
+		return err
+	}
+	if err = checkWriteDeadline(ctx); err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE approval_items SET state=?,revision=?,terminal=?,record=? WHERE id=?", next.State, next.Revision, flag(next.State.IsTerminal()), raw, id)
@@ -165,7 +207,7 @@ func (s *Store) Page(ctx context.Context, history bool, before string, limit int
 	query := "SELECT record FROM approval_items WHERE " + predicate
 	args := []any{time.Now().UnixNano()}
 	if before != "" {
-		cursor, err := s.Get(ctx, before)
+		cursor, _, _, err := readStoredRecord(s.DB.Reader.QueryRowContext(ctx, "SELECT record FROM approval_items WHERE id=?", before))
 		if err != nil {
 			return nil, "", hitl.ErrInvalidRequest
 		}
@@ -180,17 +222,24 @@ func (s *Store) Page(ctx context.Context, history bool, before string, limit int
 	}
 	defer func() { _ = rows.Close() }()
 	out := []hitl.Record{}
+	var scanned []string
 	for rows.Next() {
-		rec, err := readRecord(rows)
+		rec, raw, evidence, err := readStoredRecord(rows)
 		if err != nil {
 			return nil, "", err
+		}
+		scanned = append(scanned, rec.ItemID)
+		if len(scanned) > limit {
+			break
+		}
+		if errors.Is(validateNativeCommit(rec, raw, evidence), ErrNativeUnconfirmed) {
+			continue
 		}
 		out = append(out, rec)
 	}
 	next := ""
-	if len(out) > limit {
-		out = out[:limit]
-		next = out[len(out)-1].ItemID
+	if len(scanned) > limit {
+		next = scanned[limit-1]
 	}
 	return out, next, rows.Err()
 }

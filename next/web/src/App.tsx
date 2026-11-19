@@ -29,11 +29,11 @@ import {
   ChatSurface,
   NeedsYouSurface,
   RegistrySurface,
+  ReposSurface,
   TranscriptsSurface,
 } from "./console/surface"
 import { manifest, surfaceRoutes } from "./manifest"
 import { SettingsPage } from "./pages/settings"
-import { StubPage } from "./pages/stub"
 import { PlannerSurface } from "./planner/surface"
 import { KEY_SCOPES } from "./scopes"
 import { LANDING, legacyRedirect, surfacePath } from "./surfaces"
@@ -67,7 +67,7 @@ const pages: Record<string, PageComponent> = {
   approvals: () => <ApprovalsSurface />,
   "needs-you": () => <NeedsYouSurface />,
   transcripts: () => <TranscriptsSurface />,
-  repos: () => <StubPage area="Repos" slice="G3" />,
+  repos: () => <ReposSurface />,
   settings: () => <SettingsPage />,
   user: () => <IDENTITY_PAGES.account />,
   "identity-keys": () => <ApiKeysPage scopeSuggestions={KEY_SCOPES} />,
