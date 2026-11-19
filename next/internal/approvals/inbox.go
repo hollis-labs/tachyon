@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -21,8 +22,10 @@ import (
 var CardRegistry = cards.NewRegistry()
 
 type Inbox struct {
-	Store   *Store
-	Service *hitl.Service
+	nativeResponses nativeResponseQueue
+	Native          *NativeGate
+	Store           *Store
+	Service         *hitl.Service
 	// ActionRun, when set, attaches the registered-action run for an item to its
 	// browser view (nil result means the item has no run).
 	ActionRun func(ctx context.Context, itemID string) any
@@ -41,6 +44,9 @@ type Inbox struct {
 // NewInbox is the inbox over store, with secrets as its secret store (nil: no key).
 func NewInbox(store *Store, secrets *Secrets) *Inbox {
 	service := hitl.NewService(store, hitl.Options{ValidateResponse: func(kind string, response hitl.Response) error {
+		if kind == NativeKind && response.Decision != "" && response.Note == "" && response.Reply == "" && len(response.Extra) == 0 {
+			return nil
+		}
 		if cards.IsCard(kind) {
 			return CardRegistry.ValidateResponse(kind, response)
 		}
@@ -62,6 +68,7 @@ type browserItem struct {
 	CardReceipt                 any   `json:"card_receipt,omitempty"`
 	// Projection adds the queue fields (risk, group, batchable, ...). Nil leaves the item as it was.
 	Projection *Projection `json:"-"`
+	NativeGate any         `json:"native_gate,omitempty"`
 }
 
 // ItemView has custom marshaling; explicitly add the presentation field.
@@ -75,6 +82,9 @@ func (item browserItem) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields["presented_projection_revision"], _ = json.Marshal(item.PresentedProjectionRevision)
+	if item.NativeGate != nil {
+		fields["native_gate"], _ = json.Marshal(item.NativeGate)
+	}
 	if item.ActionRun != nil {
 		fields["action_run"], _ = json.Marshal(item.ActionRun)
 	}
@@ -111,6 +121,22 @@ func (i *Inbox) view(r *http.Request, id string, operator bool) (browserItem, er
 		}
 	}
 	out := browserItem{ItemView: result.Item, PresentedProjectionRevision: result.Item.Revision, Projection: &proj}
+	if rec.Kind == NativeKind {
+		var req hitl.EnqueueRequest
+		_ = json.Unmarshal(result.Item.RequestSnapshot, &req)
+		if n, err := NativeRequest(req); err == nil {
+			type choice struct {
+				ID        string    `json:"id"`
+				Kind      string    `json:"kind"`
+				ExpiresAt time.Time `json:"expires_at"`
+			}
+			choices := []choice{}
+			for _, o := range n.Options {
+				choices = append(choices, choice{o.ID, string(o.Kind), o.Scope.ExpiresAt})
+			}
+			out.NativeGate = map[string]any{"title": clip(n.OperationClass+": "+n.OperationID, 256), "operation_digest": n.OperationDigest, "adapter": n.Adapter, "enforcement_point": n.EnforcementPoint, "options": choices, "scope": "once"}
+		}
+	}
 	if i.ActionRun != nil && operator {
 		out.ActionRun = i.ActionRun(r.Context(), id)
 	}
@@ -159,6 +185,21 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "Unknown inbox operation.")
 		return
 	}
+	if i.Native != nil && len(parts) == 3 && parts[2] == "resolve" && r.Method == http.MethodPost {
+		native, err := i.Store.isNativeRecord(r.Context(), parts[1])
+		if err != nil {
+			writeHITLError(w, err)
+			return
+		}
+		if native {
+			release, lockErr := i.nativeResponses.acquire(r.Context(), parts[1])
+			if lockErr != nil {
+				writeHITLError(w, lockErr)
+				return
+			}
+			defer release()
+		}
+	}
 	item, err := i.view(r, parts[1], participant.Assurance == "operator-token")
 	if err != nil {
 		writeHITLError(w, err)
@@ -173,6 +214,10 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) == 3 && parts[2] == "defer" && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {
+		if nativeItem(item) {
+			writeHITLError(w, hitl.ErrInvalidRequest)
+			return
+		}
 		var raw []byte
 		if r.Method == http.MethodPost {
 			if raw, err = commandBody(w, r); err != nil {
@@ -228,6 +273,14 @@ func (i *Inbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var request hitl.EnqueueRequest
 	_ = json.Unmarshal(item.RequestSnapshot, &request)
+	if request.Kind == NativeKind {
+		if cmd.Response == nil || cmd.Response.Note != "" || cmd.Response.Reply != "" || cmd.Response.Confirmation != "" || cmd.Response.AlternativeID != "" || len(cmd.Response.Answers) > 0 || len(cmd.Response.Decisions) > 0 || len(cmd.Response.Payload) > 0 {
+			writeHITLError(w, hitl.ErrInvalidRequest)
+			return
+		}
+		i.resolveNative(w, r, item, participant, cmd.ExpectedRevision, cmd.PresentedProjectionRevision, hitl.Response{Kind: cmd.Response.Kind, Decision: cmd.Response.Decision})
+		return
+	}
 	class := extraString(request, "class")
 	rec, err := i.Store.Get(r.Context(), item.ItemID)
 	if err != nil {
@@ -329,7 +382,7 @@ func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
 	status := q.Get("status")
 	if !oneOf(status, "pending", "history") || !oneOf(q.Get("order"), "urgency", "created") || !oneOf(q.Get("batchable"), "1") ||
 		!oneOf(q.Get("group"), approvalsapi.Groups...) || !oneOf(q.Get("risk"), "low", "medium", "high") ||
-		!oneOf(q.Get("history_status"), "approved", "denied", "answered", "expired", "withdrawn", "failed", "superseded") {
+		!oneOf(q.Get("history_status"), "approved", "denied", "answered", "expired", "withdrawn", "failed", "superseded", "native_allow", "native_deny", "native_cancel") {
 		writeHITLError(w, hitl.ErrInvalidRequest)
 		return
 	}
@@ -345,19 +398,23 @@ func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
 		}
 	}
 	type page struct {
-		Pending     []browserItem  `json:"pending"`
-		History     []browserItem  `json:"history"`
-		NextPending string         `json:"next_pending,omitempty"`
-		NextHistory string         `json:"next_history,omitempty"`
-		SyncedAt    string         `json:"synced_at"`
-		ServerNowMs int64          `json:"server_now_ms"`
-		Revision    string         `json:"revision"`
-		Counts      map[string]any `json:"counts,omitempty"`
+		Pending           []browserItem  `json:"pending"`
+		History           []browserItem  `json:"history"`
+		NextPending       string         `json:"next_pending,omitempty"`
+		NextHistory       string         `json:"next_history,omitempty"`
+		SyncedAt          string         `json:"synced_at"`
+		ServerNowMs       int64          `json:"server_now_ms"`
+		Revision          string         `json:"revision"`
+		Counts            map[string]any `json:"counts,omitempty"`
+		NativeUnavailable []string       `json:"native_unavailable,omitempty"`
 	}
 	out := page{Pending: []browserItem{}, History: []browserItem{}, SyncedAt: now.UTC().Format(time.RFC3339Nano), ServerNowMs: now.UnixMilli()}
 	collect := func(ids []string, dst *[]browserItem) bool {
 		for _, id := range ids {
 			item, err := i.view(r, id, operator)
+			if errors.Is(err, ErrNativeUnconfirmed) {
+				continue
+			}
 			if err != nil {
 				writeHITLError(w, err)
 				return false
@@ -403,6 +460,12 @@ func (i *Inbox) list(w http.ResponseWriter, r *http.Request, operator bool) {
 		if !collect(ids, &out.History) {
 			return
 		}
+	}
+	var err error
+	out.NativeUnavailable, err = i.Store.NativeUnavailable(r.Context())
+	if err != nil {
+		writeHITLError(w, err)
+		return
 	}
 	out.Revision = out.SyncedAt
 	writeValue(w, out)

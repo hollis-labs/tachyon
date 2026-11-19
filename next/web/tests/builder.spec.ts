@@ -1,9 +1,10 @@
-import { expect, test } from "./fixtures"
+import { builderBackend, expect, test } from "./fixtures"
 import { owner, shot } from "./helpers"
 
 // Builder, Registry and the Agent Ops Teams tab behind the real next/ binary's identity and shell, against the
-// builder contract stub (e2e/builder-stub.ts, the old build's fixtures). The builder/catalog backend is not built
-// yet; TACHYON_E2E_BUILDER=backend turns the stub off once it is.
+// builder contract stub (e2e/builder-stub.ts, the old build's fixtures). TACHYON_E2E_BUILDER=backend turns the stub
+// off: the binary serves everything, its catalog index and team operations reading the local Tether fake
+// (e2e/tether-fake.ts), with the teams and the formed run from e2e/builder-seed.sql.
 test.use({ storageState: owner })
 
 test("builder agents: the list, and an agent by deep link", async ({ page }) => {
@@ -78,9 +79,39 @@ test("agent ops teams: a running team's members and operations, and a refused ac
     .getByRole("textbox", { name: "Message or assignment briefing" })
     .fill("Please pick up the release notes.")
   await team.getByRole("button", { name: "Preview provider action" }).click()
+  if (!builderBackend) {
+    // The stub has no team operations: the preview is refused with its message.
+    await expect(
+      team.getByText("Team actions reach Tether; not available in this build yet."),
+    ).toBeVisible()
+    return
+  }
+  // The backend has team operations on (builder_changes): the preview is retained as a prepared receipt, applying it
+  // reaches the fake, and a request the fake refuses is retained unconfirmed with the binary's message.
+  await expect(team.getByRole("status")).toHaveText("teams.address · prepared · saved revision 1")
+  await team
+    .getByRole("checkbox", { name: "I reviewed this exact request and its effects." })
+    .check()
+  await team.getByRole("button", { name: "Apply to Tether" }).click()
+  await expect(team.getByRole("status")).toHaveText("teams.address · succeeded · saved revision 1")
+  await expect(team.getByText(/"delivery_keys"/)).toBeVisible()
+  await team.getByRole("button", { name: "Close receipt" }).click()
+  await team
+    .getByRole("textbox", { name: "Message or assignment briefing" })
+    .fill("REFUSE this one.")
+  await team.getByRole("button", { name: "Preview provider action" }).click()
+  await expect(team.getByRole("status")).toHaveText("teams.address · prepared · saved revision 1")
+  await team
+    .getByRole("checkbox", { name: "I reviewed this exact request and its effects." })
+    .check()
+  await team.getByRole("button", { name: "Apply to Tether" }).click()
+  await expect(team.getByRole("status")).toHaveText("teams.address · unknown · saved revision 1")
   await expect(
-    team.getByText("Team actions reach Tether; not available in this build yet."),
+    team.getByText(
+      "Tether returned HTTP 503. The operation is not confirmed; retain this request for reconciliation.",
+    ),
   ).toBeVisible()
+  await expect(team.getByRole("button", { name: "Retry same request" })).toBeVisible()
 })
 
 test.describe("narrow", () => {

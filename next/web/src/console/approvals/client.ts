@@ -19,13 +19,22 @@ export interface ApprovalResponse {
   // Approve one of the item's `alternatives` instead of the original request.
   alternative_id?: string
 }
+export interface NativeResponse { kind: "gate_native_v1"; decision: string; note?: never; reply?: never; answers?: never }
+export interface NativeGateProjection {
+  title: string
+  scope: "once"
+  adapter: { adapter_id: string; protocol: string; launch_mode: string }
+  enforcement_point: string
+  operation_digest: { scheme: string; descriptor_version: string; value: string }
+  options: { id: string; kind: "allow" | "deny" | "cancel"; expires_at: string }[]
+}
 export interface ApprovalOutcome {
   item_id: string
   state: string
   reason?: string
   message?: string
   resolution?: {
-    response: ApprovalResponse
+    response: ApprovalResponse | NativeResponse
     resolved_at: string
     participant: {
       principal_ref: string
@@ -81,6 +90,7 @@ export interface CardReceipt {
 }
 export const ACTION_RUNS_BASE = "/api/plugins/console/v1/action-runs"
 export interface ApprovalItem {
+  native_gate?: NativeGateProjection
   action_run?: ActionRun
   card_receipt?: CardReceipt
   item_id: string
@@ -106,7 +116,7 @@ export interface ApprovalItem {
   evidence?: Evidence[]
   server_now_ms?: number
   request_snapshot: {
-    kind: "approval" | "attention" | CardKind
+    kind: "approval" | "attention" | CardKind | "gate_native_v1"
     class?: "low" | "medium" | "high"
     // false when the backend says this item cannot be decided in the browser.
     approvable?: boolean
@@ -136,6 +146,7 @@ export interface ApprovalItem {
 export interface ApprovalInbox {
   pending: ApprovalItem[]
   history: ApprovalItem[]
+  native_unavailable?: string[]
   next_pending?: string
   next_history?: string
   synced_at: string
@@ -217,7 +228,9 @@ export const decisionError = (e: unknown) =>
 export const isCard = (item: Pick<ApprovalItem["request_snapshot"], "kind">) =>
   item.kind.startsWith("card.")
 // "Approval", "Question", "Form"… for the kind column and search.
+export const displayTitle = (item: ApprovalItem) => item.native_gate?.title ?? item.request_snapshot.title ?? "Native gate request"
 export const kindLabel = (kind: string) => {
+  if (kind === "gate_native_v1") return "Native gate"
   const name = kind.startsWith("card.") ? kind.slice(5) : kind
   return name.charAt(0).toUpperCase() + name.slice(1)
 }
@@ -338,7 +351,19 @@ export function createApprovalClient(fetcher: typeof fetch = operatorFetch) {
         }),
       })
     },
+    async decideNative(item: ApprovalItem, optionID: string) {
+      if (item.request_snapshot.kind !== "gate_native_v1" || !item.native_gate?.options.some((o) => o.id === optionID))
+        throw new ApprovalError(400, "invalid", "Choose an exact native option.")
+      const current = await get(item.item_id, true)
+      if (!isPending(current) || isExpired(current) || current.revision !== item.revision || !item.presented_projection_revision || current.presented_projection_revision !== item.presented_projection_revision)
+        throw new ApprovalError(409, "changed", "This request changed or ended. Refresh and review it again.")
+      return request<ApprovalOutcome>(`/items/${encodeURIComponent(item.item_id)}/resolve`, {
+        method: "POST",
+        body: JSON.stringify({expected_revision: item.revision, presented_projection_revision: item.presented_projection_revision, response: {kind:"gate_native_v1",decision:optionID}}),
+      })
+    },
     async decide(item: ApprovalItem, response: ApprovalResponse, opts: { keepalive?: boolean } = {}) {
+      if (item.request_snapshot.kind === "gate_native_v1") throw new ApprovalError(400,"invalid","Native gates require an exact choice.")
       // A keepalive decision is sent while the page is closing: no time for the pre-check, so the
       // server's expected_revision check is the guard.
       if (opts.keepalive)

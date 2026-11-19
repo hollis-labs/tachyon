@@ -39,7 +39,8 @@ Open items that need a decision or a change outside this cell:
    per slice and recorded in the contract:
    - `access/apps?refresh=1`
    - `chat/threads/{ref}/continue`
-   - terminal `proposals` and `runs` reads, which expire items
+   - terminal `proposals` and `runs` reads, which expire items. B12 keeps them `GET` behind `tachyon.terminal.control`
+     and the operator check, the one scope of the whole terminal family.
 10. **The scheduler module has no Postgres store (Substrate CW-20261115-0014).** On Postgres the served binary does
    not start: libs ships a SQLite scheduler store only. In the Postgres CI pass the full-binary tests
    (`cmd/tachyon`) skip and cite the gap; the package tests run. The cutover is SQLite to SQLite and is unaffected.
@@ -69,7 +70,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_PLUGIN_DIR` | dropped: plugins are the reviewed specs `pluginhost` starts (plugin slices) |
 | `TACHYON_SECRET_KEY_FILE` | `tachyon.files.secret_key` (secrets reference) |
 | `TACHYON_CACHE_POLICY_FILE` | `tachyon.files.cache_policy` |
-| `TACHYON_TERMINAL_POLICY` | `tachyon.files.terminal_policy` |
+| `TACHYON_TERMINAL_POLICY` | `tachyon.files.terminal_policy` (an absolute path; empty: no policy file, see the terminal notes) |
 | `TACHYON_CARD_DELIVERY_FILE` | `tachyon.files.card_delivery` |
 | `TACHYON_APPROVAL_PRODUCER_CONFIG` | `tachyon.files.approval_producer` (unset: `/api/approvals/v1` answers 503, as the old build does unconfigured) |
 | `TACHYON_APPROVAL_ASSURANCE_CONFIG` | `tachyon.files.approval_assurance` |
@@ -104,7 +105,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` (also the ceremony meter's hourly read) |
 | agent controls and launches (on when their credentials were set) | `tachyon.features.agents_controls`: nudge, interrupt, restart, the Tether launches (new switch, B8b) |
 | `TACHYON_CATALOG_INDEX` (`0` = off) | `tachyon.features.catalog_index` |
-| builder changes and registry writes (on when a Tether credential was set) | `tachyon.features.builder_changes` (new switch, B9b) |
+| builder changes, registry writes and team operations (on when a Tether credential was set) | `tachyon.features.builder_changes` (new switch, B9b; team operations B9b-2) |
 | `TACHYON_CARD_EVENTS` | `tachyon.features.card_events` |
 | `TACHYON_CARD_EFFECTS_TORQUE` | `tachyon.features.card_effects_torque` |
 | card delivery (on when the file was set) | `tachyon.features.card_delivery` |
@@ -114,12 +115,14 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_PLANNER_EVENTS` | `tachyon.features.planner_events` |
 | transcript snapshots | `tachyon.features.transcripts` |
 | action runs (on when the hub was set) | `tachyon.features.action_runs` |
+| the quick terminal (always on) | `tachyon.features.terminal`: ssh panes and approved agent commands (new switch, B12) |
 
 ### Tuning, posture, stubs
 
 | Old | New |
 |---|---|
-| `TACHYON_ACTION_DETACH_GRACE`, `TACHYON_TRANSCRIPT_MAX_SESSIONS`, `TACHYON_CACHE_TIMEOUT_MS` | keys added by the slice that ports each feature |
+| `TACHYON_TRANSCRIPT_MAX_SESSIONS` | `tachyon.transcripts.max_sessions` (200 to 20000, default 5000; B10) |
+| `TACHYON_ACTION_DETACH_GRACE`, `TACHYON_CACHE_TIMEOUT_MS` | keys added by the slice that ports each feature |
 | `TACHYON_CERBERUS_CONTROL` | decided by the Cerberus slice |
 | `TACHYON_CERBERUS_ELEVATION` | dropped: the operator check is fixed in code (owner question, Gaps 4) |
 | `TACHYON_CHAT_CLIENT_CONTEXT` | decided by the chat slice |
@@ -258,6 +261,63 @@ Details: `docs/api-contract.md`.
   `tether_control.url` (the old `TACHYON_TETHER_CONTROL_ADDR`) or the Tether address; otherwise handoff on the read
   credential, ending at a bundle the operator plans in Tether. Registry writes need the control credential.
 - **A change's operator** is the signed-in person's principal id; the old build recorded a browser-session ref.
+- **Team operations (B9b-2), the Tether provider on the console data API, share `builder_changes`.** The old build
+  bound them to Tether whenever an address was set. Off, every verb that would reach Tether answers `503 unavailable`
+  before dialing, as the old build did without Tether (a roster refresh answers the saved roster with its "not
+  configured" problem); retained actions, runs and bindings still read. On, they bind on the read credential (`tachyon.upstreams.tether.token`), and the binding's identity digests
+  the address and the credential as before, so retained runs stay matched. The console's object writes need
+  `tachyon.objects.write` and the operator check; the old build needed the operator check alone.
+
+## Pull requests, the read side (slice B11a)
+
+- **Same tables, same answers.** The pending inbox reads the migrated `forge_pr_index` and `forge_index_state`,
+  with the triage rows of `console_item_state` (`pr-inbox:github:…`) and the open `pr_agent_links`. The audit
+  reads `forge_audit`. The poller's tunables are still the `forge.*` rows of `app_settings`; the default watched
+  org is `tachyon.upstreams.github.org`.
+- **`tachyon.features.forge_index`** (the old `TACHYON_FORGE_INDEX`) gates every GitHub request: the poller and
+  each on-demand read (viewer, PR detail, files, diff, checks, commits, comments, a commit by sha). Off, nothing
+  dials GitHub: those reads answer `503 disabled`, and `pulls/pending`, `status`, `stream`, `audit` and
+  `console/state` are served from the store (`status` reports `degraded` with the switch's note). The old build
+  served the on-demand reads whatever `TACHYON_FORGE_INDEX` said.
+- **`pulls/pending?state=all` is new (lead decision, fixing a carried bug).** The inbox asks for pending rows with
+  no `state` and sorts them into its Active, Snoozed, Dismissed and Resolved tabs itself, but the server answers
+  only `active` rows when `state` is absent, so a dismissed or snoozed PR vanished and its tab stayed at 0. Old
+  main has the same pair, so the live app shows this today. The server now also accepts `state=all` (every row
+  whatever its triage); the default stays `active`, so other callers are unchanged. The UI asks for `state=all`
+  from the G7b backend-run follow-up.
+- **No legacy fallback.** Before the first refresh the old `pulls/pending` fell through to the console plugin,
+  which searched GitHub live (in a different row shape). The port answers the saved index, possibly empty.
+- **The console plugin's PR reads** (`repos/{host}/{owner}/{name}/pulls/{num}`, `…/commits`, `…/comments`) keep
+  their camelCase shapes and share the forge reads' GitHub client and error mapping: a refused token is
+  `401 credential_missing` (the plugin said `unauthorized`), another `403` is `502 unavailable`, a rate limit is
+  `429 rate_limited`, and GitHub's own message is not relayed. Comments answer the error when both lists fail
+  (the plugin answered an empty list).
+- **The plugin's repository and PR-list reads** (`repos/{host}/{owner}/{name}`, `repos/{…}/pulls`, `forge/pulls`)
+  are ported the same way, behind the same switch. Differences from the plugin: `state` must be `open`,
+  `closed`, `merged` or `all`, `author` and `assignee` must be GitHub logins (the org search puts them in the
+  query as qualifiers), `q` is at most 256 characters, and an unknown parameter is `400 invalid_args` (the plugin
+  passed anything through). `forge/pulls` searches `tachyon.upstreams.github.org`; with none set it answers
+  `503 configuration` and sends nothing (the plugin fell back to a built-in org). `cursor` is accepted and
+  ignored and `nextCursor` is `null`, as before (one page, `limit` clamped to 100, default 30).
+- **Errors are flat.** A rate limit carries `details.retry_after_s` (and `Retry-After`); a console state version
+  conflict carries `details.version` (the old body put them inside `error`).
+- **Guards.** Reads need `tachyon.forge.read`; the audit read also needs the operator (the old
+  `RequireOperatorReads`). `PUT console/state/{key}` needs `tachyon.forge.write`, refuses any bearer that is
+  not the browser session's (`403 requester_cannot_approve`, as the old handler refused any `Authorization`), and
+  needs the operator (`403 operator_required`), as the old `RequireOperator` did. The contract
+  (`docs/api-contract.md` section 5) lists no operator check on console state; the port follows the old build,
+  pending the lead.
+- **A secondary rate limit** (`403` with `Retry-After`) now counts as a rate limit, not an error.
+- **`GET console/state` lists item state only.** The old list also carried the alerts' state rows (`al_*` keys,
+  351 on the migrated copy), which the alerts store served on the same path. Until the alerts slice lands, those
+  keys are neither listed nor writable here; that slice carves `console/state/al_*` out of this route.
+- **New `pr.*` alert-feed events are dropped** until the alerts slice: the old poller fed them to the alerts
+  store, which is not ported yet.
+- **`assign-agent` is deferred** (`POST forge/repos/{host}/{owner}/{name}/pulls/{num}/assign-agent`, the old
+  `forgeassign`). Nothing calls it: the old SPA and console UI never did, agents could not (forge writes were
+  browser-session only and refused any `Authorization`), and no data verb, MCP tool or CLI reaches it. Its table
+  `pr_agent_links` is migrated; the inbox still reads the open links as agent assignees, and the merge write
+  (B11b) marks them done as before. It is not served, so the scope table has no row for it.
 
 ## Agents (slices B8a, B8b)
 
@@ -290,6 +350,37 @@ Details: `docs/api-contract.md`.
   (`alert_seq`) seed rows the same way, so their slices need the same handling.
 - **Postgres.** Upserts name their table on the right-hand side, scalar `MAX`/`MIN` are `CASE`s, the sample
   pruning uses its key instead of `rowid`, and the bus and gap inserts read their id with `RETURNING`.
+
+## Transcripts (slice B10)
+
+- **The same bridge.** `/api/plugins/console/v1/transcripts/*` is the old Fragments Engine bridge with the same
+  routes, validation, error codes and upstream reads. The last good snapshot is kept in the migrated
+  `transcript_snapshot`.
+- **Off by default.** `tachyon.features.transcripts` comes before anything outbound. Off, the snapshot serves the
+  saved row (marked `unavailable`, error `disabled`), every other read is 503 `disabled`, and nothing dials
+  Fragments Engine. On, it reads `tachyon.upstreams.fragments` (URL and token reference).
+- **The old guard, kept.** A bearer that is not the browser session's own cookie gets 403 `forbidden`
+  ("Transcripts are for a browser session."). That covers API keys and tokens minted from a session or key. Then
+  the `transcripts.read` assurance applies (browser session). The scope is `tachyon.transcripts.read` on every
+  route.
+- **No API cache.** The old generic response cache is not ported. Reads go live, and only the snapshot walk is
+  shared between concurrent requests. To keep the list visible when Fragments Engine is down, the snapshot now
+  serves the saved row on any upstream error, an unreachable one included. The old bridge did that only on a
+  mapped failure, and its cache answered (still marked "live") when the connection was refused. Other reads
+  answer the upstream error, where the old cache served a cached copy for up to its window.
+- **The session cap** is `tachyon.transcripts.max_sessions` (200 to 20000, default 5000), as the old
+  `TACHYON_TRANSCRIPT_MAX_SESSIONS`.
+- **How the guard tells the browser session (pinned by `TestTranscriptsRoutesAuth`).** The identity middleware
+  turns the session cookie into `Authorization: Bearer <cookie value>` only when a request brings no
+  `Authorization` header; it never replaces one. The guard passes a bearer only when it equals the session cookie's
+  value, sent with that cookie. So a token the session minted for itself is refused (403 `forbidden`) on its own and
+  also when sent together with the session's cookie: the header stays the minted token. This corrects the earlier
+  note that such a token passed; the guard refuses every bearer except the cookie's own credential, as the old guard
+  refused any bearer.
+- **The guard depends on the session cookie's name.** The identity module names it `<app>_session` and does not
+  export the name. A served test fails if sign-in stops setting that cookie, before the guard could refuse every
+  browser. The framework gap CW-20261115-0110 (an identity flag saying a request is cookie-authenticated) replaces
+  this cookie-name check when it ships.
 
 ## Approvals (slice B7)
 
@@ -424,6 +515,37 @@ ships its gap, and nothing new is built on them.
 
 Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`, `observations/store.ts`, `chat/aside/FileTree.tsx`, `chat/aside/Panels.tsx`). A sync slice
 before P1 picks that up.
+
+## Terminal (slice B12)
+
+- **The quick terminal is behind `tachyon.features.terminal`,** a new switch, default off. The old build served it
+  whenever it ran. Every pane and every approved agent command starts `ssh`.
+  - Off: the routes are not mounted (404), and the agent verbs are not listed (404), as on an old host without
+    the terminal.
+  - On: the old behaviour.
+  - Either way, startup closes the sessions a restart left open and fails the runs it left running.
+- **The policy file:**
+  - `tachyon.files.terminal_policy` names it as an absolute path. Empty means no policy file: no listed machines
+    beyond `~/.ssh/config`, and every agent command asks.
+  - The old build defaulted to `$DATA/terminal-policy.json`, so set the setting to that file's path to keep its
+    machines and rules.
+  - The file's format and its decisions are unchanged. The same decision table passes on both builds
+    (`policy_parity_test.go`).
+- **The bearer refusal:**
+  - The old handler refused any `Authorization` header. Here the identity middleware turns the session cookie into a
+    bearer, so the one bearer let through is exactly that cookie.
+  - An API key, or a token the session minted, is refused as before (`requester_cannot_approve`).
+  - The cookie must contain the pinned identity module's `ses_` credential and the verified principal must be a
+    user session without token provenance. Session lineage alone is insufficient: a minted token copied into
+    the cookie is refused, with or without an explicit matching bearer. Served regression tests cover reads,
+    session creation, the WebSocket route, and proposal/run mutations.
+- **The operator check covers reads,** as `RequireOperatorReads` did: `tachyon.terminal.control` plus an operator
+  token on every route and on the WebSocket.
+- **Shutdown kills and reaps every pty process group.** The old build relied on its context killing them.
+- **Output redaction is unchanged.** The old `actionrun.Redact` is carried in the terminal package until the
+  action-run slice lands.
+- **An agent's `requested_by`** is its service identity id, which is what the old principal id was, so
+  `terminal.run.get` keeps finding migrated runs.
 
 ## What the operator does differently
 

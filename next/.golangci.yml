@@ -192,6 +192,10 @@ issues:
 # Formatters
 # ---------------------------------------------------------------------------
 formatters:
+  # gofmt is checked here, so CI's lint step fails on an unformatted file (it caught none before: the
+  # section had no formatter enabled).
+  enable:
+    - gofmt
   exclusions:
     generated: lax
     paths:

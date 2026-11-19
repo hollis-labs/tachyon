@@ -783,3 +783,16 @@ describe("decision refusals", () => {
     expect(decisionError("nope")).toBe("Decision not confirmed. Refresh to check the outcome.")
   })
 })
+
+
+it("shows native reconciliation without a usable native choice or blocking an old card", async () => {
+  const decideNative=vi.fn()
+  const client={...noAudit,inbox:vi.fn().mockResolvedValue({pending:[item],history:[],native_unavailable:["uncertain-native"]}),present:vi.fn().mockResolvedValue(item),decide:vi.fn(),decideNative,evidence:vi.fn(),get:vi.fn()} as unknown as ApprovalClient
+  render(<MemoryRouter><ApprovalProvider client={client}><ApprovalsPage /></ApprovalProvider></MemoryRouter>)
+  const alert=await screen.findByRole("alert")
+  expect(alert.textContent).toContain("require reconciliation")
+  expect(alert.textContent).toContain("No approval evidence is available")
+  expect(await screen.findByRole("listitem",{name:/Create a session/})).toBeTruthy()
+  expect(screen.queryByRole("radio")).toBeNull()
+  expect(decideNative).not.toHaveBeenCalled()
+})

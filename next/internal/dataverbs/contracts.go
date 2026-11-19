@@ -14,6 +14,7 @@ const ContractVersion = 1
 const MaxInputBytes = 3 << 20
 
 type Verb struct {
+	Method      string         `json:"method,omitempty"`
 	Name        string         `json:"name"`
 	Mutates     bool           `json:"mutates"`
 	Description string         `json:"description"`

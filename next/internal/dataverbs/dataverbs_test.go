@@ -144,7 +144,7 @@ func TestConsoleObjectReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := NewConsoleHTTP(f.local)
+	h := NewConsoleHTTP(f.local, nil)
 	path := verbPath(Prefix, "objects.get", map[string]string{"id": task.ID})
 	owner := libauth.Principal{Verified: true, ID: "user:usr_o", Kind: "user", Scopes: []string{"*"}}
 	reader := libauth.Principal{Verified: true, ID: "user:usr_r", Kind: "user", Scopes: []string{"tachyon.objects.read"}}

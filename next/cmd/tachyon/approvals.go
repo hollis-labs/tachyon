@@ -7,8 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hollis-labs/libs/mesh/core/hitl"
 	"github.com/hollis-labs/substrate/module"
+	"github.com/hollis-labs/substrate/modules/identity"
 	"github.com/hollis-labs/substrate/modules/secrets"
+	"github.com/hollis-labs/tachyon/next/internal/access"
 
 	"github.com/hollis-labs/tachyon/next/internal/approvals"
 	"github.com/hollis-labs/tachyon/next/internal/routes"
@@ -39,6 +42,23 @@ func newApprovals(ctx context.Context, app *module.App, cfg settings.Settings, d
 	st := &approvals.Store{DB: domain}
 	inbox := approvals.NewInbox(st, approvals.NewSecrets(domain, raw, problem))
 	clear(raw)
+	if c := cfg.NativeGate; c.Enabled {
+		ids := identity.From(app)
+		acc := access.New(store.From(app), ids, nil)
+		inbox.Native = &approvals.NativeGate{OwnerRef: c.OwnerRef, ProducerIdentity: c.ProducerIdentity, CallerScope: c.CallerScope, CurrentUser: ids.User, ProducerActive: func(ctx context.Context) error { return acc.ActiveGateProducer(ctx, c.ProducerIdentity) }}
+		inbox.Native.Authorize = approvals.NativeAuthorizer(c.CallbackURL, c.AllowLoopbackHTTP, func(ctx context.Context) (string, error) {
+			resolver := secrets.Resolver(app)
+			if resolver == nil {
+				return "", &hitl.CodedError{Code: "unavailable", Message: "Callback credential unavailable."}
+			}
+			res, err := resolver.Resolve(ctx, c.CallbackToken)
+			if err != nil {
+				return "", err
+			}
+			defer res.Secret.Zero()
+			return strings.TrimSpace(string(res.Secret.Bytes())), nil
+		})
+	}
 	return inbox
 }
 

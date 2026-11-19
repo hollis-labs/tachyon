@@ -195,8 +195,10 @@ use. A verb the caller may not use is unknown to it (404), as in the old build.
 granted), `objects.get` and `objects.history` (the record's kind must be granted), and `objects.lookup_source`
 (its kind must be granted).
 
-**The console data API**, `/api/plugins/console/v1/data/providers[/tachyon/verbs/{verb}]`, answers signed-in
-people only; a key is refused there whatever its scopes. The four object reads need `tachyon.objects.read`.
+**The console data API**, `/api/plugins/console/v1/data/providers[/{tachyon,tether}/verbs/{verb}]`, answers
+signed-in people only; a key is refused there whatever its scopes. The four object reads need `tachyon.objects.read`;
+the object writes and the `tether` provider are in section 5f (B9b-2). Mutations are `POST` and need the operator
+check.
 `GET /api/plugins/console/v1/objects/sync/status` (`tachyon.objects.read`) is the old sync status.
 
 **Chat verbs (slice B6d).** Served on the agent API with the old names, inputs and results, over the chat
@@ -353,8 +355,56 @@ Served under `/api/plugins/console/v1`, from the migrated `catalog_*`, `library_
   `POST registry/projects`, `PATCH …/{id}`, `POST`/`DELETE …/{id}/link` (`tachyon.builder.write`, operator check).
   With `tachyon.features.builder_changes` off the change routes answer `503 changes_unavailable` and the registry writes
   `501 registry_write_unavailable`, as the old build did unconfigured; nothing reaches Tether.
-- Not yet served (B9b-2, CW-20261115-0085): the console's object writes and the Tether provider verbs (team runs,
-  formations, provider actions).
+- **Team operations (slice B9b-2)** are on the console data API, as before: the object writes on the `tachyon`
+  provider (`objects.create`, `objects.patch`, `objects.delete`, `objects.restore`, `objects.take_ownership`) and the
+  `tether` provider's verbs (`teams.*`, `runtime.*`, `bindings.*`, `actions.*`, `agents.definition_preview`,
+  `agents.publish_preview`, `catalog.apply_preview`, `executions.project`), with the old names, inputs and results.
+  Reads need `tachyon.objects.read`; mutations (`POST`) need `tachyon.objects.write` and the operator check. A key is
+  refused whatever its scopes. With `tachyon.features.builder_changes` off every verb that would reach Tether answers
+  `503 unavailable` ("Tether configuration or credential is unavailable.") before dialing, except a roster
+  refresh, which answers the saved roster with the old "not configured" problem; the local reads still answer. Dispatching provider actions from action runs belongs to the action-runs slice.
+
+## 5g. The quick terminal (slice B12)
+
+The old routes under `/api/plugins/console/v1/terminal`, served by Tachyon with `tachyon.features.terminal` on (off:
+none is mounted, 404, as on an old host without the terminal):
+
+| Route | Old handler |
+|---|---|
+| `GET machines` | `machines` |
+| `POST sessions` `{machine_id, thread_ref?}` → `201 {id, ws_path, ...}`; `DELETE sessions/{id}` | `openSession`, `closeSession` |
+| `GET sessions/{id}/ws` (WebSocket upgrade) | `ws` |
+| `GET proposals[?thread_ref&state]`; `POST proposals/{id}/run` `{op_digest?}`, `…/deny`, `…/edit` `{command}` | `proposals`, `run`, `deny`, `edit` |
+| `GET runs[?thread_ref&state&closed&limit]`, `GET runs/{run_id}[/output?after_seq&limit]`, `POST runs/{run_id}/stop`, `PATCH runs/{run_id}` | `runs`, `getRun`, `output`, `stop`, `patch` |
+
+**Guards**, each the old one:
+- Every route needs `tachyon.terminal.control` and the operator check (assurance `terminal.control`, operator
+  token), reads and the upgrade included. This is the old `RequireOperatorReads`.
+- A bearer that is not the browser session's own is `403 requester_cannot_approve`: an API key or a token the
+  session minted. The old handler refused any `Authorization` header. The identity middleware now turns the
+  session cookie into a bearer, so the one let through is exactly that cookie, as for transcripts (B10).
+- The upgrade is same-origin only: the `Origin` host is the request host and `Sec-Fetch-Site` is not
+  `cross-site`, otherwise `403 origin_denied`. A missing `Origin` is refused. An ended session is `409 conflict`.
+
+**Frames and lifecycle:**
+- The frames are the old ones: binary PTY bytes both ways (64 KiB read limit), and a text
+  `{"type":"resize","cols","rows"}` first and on resize.
+  - If the first frame does not arrive within 3 s the socket is closed. As before, the pane sends it on open.
+  - On attach the server sends the replay, then `{"type":"state","state":"open"}`, and finally `{"type":"exit","code"}`.
+- The `GET proposals` and `GET runs` reads expire overdue proposals, as before (gap 9). They need the control scope,
+  so a read cannot be made by a caller that may not write.
+- **Shutdown:** stopping the server kills every pane's and run's process group and waits until each is reaped.
+- **Startup:** startup closes the sessions a restart left open and fails the runs it left running, whether or not
+  the terminal is on.
+
+**Agent verbs:**
+- `terminal.machines`, `terminal.propose` and `terminal.run.get` are on the agent data API with the old names,
+  inputs and results.
+  - `terminal.propose` takes app threads only. A policy `allow` starts the run at once, `deny` is refused, and
+    anything else waits for the operator.
+  - `terminal.run.get` shows a run only to the service identity that proposed it.
+- They are listed only while the terminal is on. Off, they are unknown verbs (404), as on an old host without the
+  terminal.
 
 ## 6. `/api/plugins/{id}/...`: an allowlist, no catch-all
 

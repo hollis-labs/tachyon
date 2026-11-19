@@ -51,6 +51,12 @@ func CanResolve(rec hitl.Record, now time.Time) Gate {
 	}
 	var req hitl.EnqueueRequest
 	_ = json.Unmarshal(rec.Request, &req)
+	if req.Kind == NativeKind {
+		if _, err := NativeRequest(req); err != nil {
+			return Gate{Reason: ReasonUnsupportedKind}
+		}
+		return Gate{Approvable: true}
+	}
 	g := Gate{Approvable: true, Alternatives: alternativeIDs(req)}
 	if raw := req.Extra["destructive"]; len(raw) > 0 && string(raw) != "null" && string(raw) != "false" {
 		g.Destructive = true

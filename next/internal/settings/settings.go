@@ -29,6 +29,7 @@
 //	    approval_producer: ""
 //	    ...
 //	  alerts: { notify_to: "", public_url: "" }
+//	  transcripts: { max_sessions: 5000 }   # sessions in one transcript snapshot, 200 to 20000
 //
 // Parse refuses an unknown key, a value of the wrong type and a malformed address or secrets
 // reference, and names the key in the error, so a typo stops the start instead of silently turning a
@@ -107,7 +108,7 @@ type Features struct {
 	AgentsCollector   bool // the Tether environment stream read model, and the ceremony meter's hourly read
 	AgentsControls    bool // agent controls and launches over Tether: nudge, interrupt, restart, launch
 	CatalogIndex      bool // the Tether catalog poller
-	BuilderChanges    bool // builder changes, the launch action and registry writes over Tether
+	BuilderChanges    bool // builder changes, the launch action, registry writes and team operations over Tether
 	CardEvents        bool // publish card.* events to the events hub
 	CardEffectsTorque bool // approved cards may change Torque
 	CardDelivery      bool // push card outcomes to the asker over Tether messages
@@ -117,6 +118,7 @@ type Features struct {
 	PlannerEvents     bool // the planner's Torque event ingest
 	Transcripts       bool // Fragments Engine transcript snapshots
 	ActionRuns        bool // run approved actions over the SSH hub
+	Terminal          bool // the chat quick terminal: interactive ssh panes and approved agent commands
 }
 
 // Files are the policy and config files Tachyon reads. Empty means not configured.
@@ -129,14 +131,29 @@ type Files struct {
 	SecretKey         string // a secrets reference: the AES key of approval secrets
 }
 
+// Transcripts are the transcript bridge's limits.
+type Transcripts struct {
+	// MaxSessions caps the sessions in one snapshot (TACHYON_TRANSCRIPT_MAX_SESSIONS), 200 to 20000.
+	MaxSessions int
+}
+
 // Alerts are the alert sink's addressing.
 type Alerts struct {
 	NotifyTo  string // a Tether message address
 	PublicURL string // the URL put in alert messages
 }
 
+// NativeGate is opt-in and independent of the old card and outbound defaults.
+// CallbackToken is a Gatecrasher-issued credential secrets reference.
+type NativeGate struct {
+	Enabled                                                             bool
+	OwnerRef, ProducerIdentity, CallerScope, CallbackURL, CallbackToken string
+	AllowLoopbackHTTP                                                   bool
+}
+
 // Settings are the parsed block.
 type Settings struct {
+	NativeGate   NativeGate
 	AllowedHosts []string
 	CacheDir     string
 	WorkspaceDir string // chat workspace file bytes (the old build's $TACHYON_DATA_DIR/workspace)
@@ -146,6 +163,7 @@ type Settings struct {
 	Features         Features
 	Files            Files
 	Alerts           Alerts
+	Transcripts      Transcripts
 }
 
 // featureKeys is the one list of feature switches: the config key and the field it sets.
@@ -172,6 +190,7 @@ func featureKeys(f *Features) []struct {
 		{"planner_events", &f.PlannerEvents},
 		{"transcripts", &f.Transcripts},
 		{"action_runs", &f.ActionRuns},
+		{"terminal", &f.Terminal},
 	}
 }
 
@@ -267,6 +286,46 @@ func Parse(raw any) (Settings, error) {
 	}
 	if err = alerts.done(); err != nil {
 		return s, err
+	}
+	tr, err := root.child("transcripts")
+	if err != nil {
+		return s, err
+	}
+	if s.Transcripts.MaxSessions, err = tr.intRange("max_sessions", 5000, 200, 20000); err != nil {
+		return s, err
+	}
+	if err = tr.done(); err != nil {
+		return s, err
+	}
+	ng, err := root.child("native_gate")
+	if err != nil {
+		return s, err
+	}
+	if s.NativeGate.Enabled, err = ng.boolean("enabled"); err != nil {
+		return s, err
+	}
+	if s.NativeGate.AllowLoopbackHTTP, err = ng.boolean("allow_loopback_http"); err != nil {
+		return s, err
+	}
+	for _, v := range []struct {
+		key string
+		dst *string
+	}{{"owner_ref", &s.NativeGate.OwnerRef}, {"producer_identity", &s.NativeGate.ProducerIdentity}, {"caller_scope", &s.NativeGate.CallerScope}} {
+		if *v.dst, err = ng.str(v.key); err != nil {
+			return s, err
+		}
+	}
+	if s.NativeGate.CallbackURL, err = ng.httpURL("callback_url"); err != nil {
+		return s, err
+	}
+	if s.NativeGate.CallbackToken, err = ng.secretRef("callback_token"); err != nil {
+		return s, err
+	}
+	if err = ng.done(); err != nil {
+		return s, err
+	}
+	if s.NativeGate.Enabled && (s.NativeGate.OwnerRef == "" || s.NativeGate.ProducerIdentity == "" || s.NativeGate.CallerScope == "" || s.NativeGate.CallbackURL == "" || s.NativeGate.CallbackToken == "") {
+		return s, fmt.Errorf("tachyon.native_gate requires explicit owner, producer, namespace and callback configuration")
 	}
 	return s, root.done()
 }
@@ -425,6 +484,29 @@ func (b *block) duration(k string, def, lo, hi time.Duration) (time.Duration, er
 		return 0, fmt.Errorf("%s must be a duration from %s to %s", b.name(k), lo, hi)
 	}
 	return d, nil
+}
+
+// intRange reads a whole number within [lo, hi]; absent is def.
+func (b *block) intRange(k string, def, lo, hi int) (int, error) {
+	var n float64
+	switch v := b.get(k).(type) {
+	case nil:
+		return def, nil
+	case int:
+		n = float64(v)
+	case int64:
+		n = float64(v)
+	case uint64:
+		n = float64(v)
+	case float64:
+		n = v
+	default:
+		return 0, fmt.Errorf("%s must be a whole number from %d to %d", b.name(k), lo, hi)
+	}
+	if n != float64(int(n)) || int(n) < lo || int(n) > hi {
+		return 0, fmt.Errorf("%s must be a whole number from %d to %d", b.name(k), lo, hi)
+	}
+	return int(n), nil
 }
 
 // jsonObject reads a map and returns it as JSON; absent or empty is nil.

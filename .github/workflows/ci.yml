@@ -139,6 +139,14 @@ jobs:
           # Run directories are made fresh (mkdtemp) under here; nothing is ever wiped.
           TACHYON_E2E_DIR: ${{ runner.temp }}
         run: npm run test:e2e
+      - name: Terminal UI against the real backend and a local PTY process
+        working-directory: next/web
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+          TACHYON_E2E_DIR: ${{ runner.temp }}
+          TACHYON_E2E_PORT: "28393"
+          TACHYON_E2E_TERMINAL: backend
+        run: npm run test:e2e -- tests/terminal.spec.ts
       - name: Browser suite screenshots and traces
         if: always()
         uses: actions/upload-artifact@v4

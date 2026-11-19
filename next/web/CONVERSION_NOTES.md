@@ -384,7 +384,17 @@ Carried byte-identical from **main 4b5e397**:
   mock identity seam only.
 - **e2e:** `e2e/builder-stub.ts`. It serves the old contract stub's fixtures (`internal/builderapi/fixtures` at
   4b5e397, in `e2e/builder-fixtures`, with a project name made a placeholder). The data-verb envelopes follow
-  `internal/dataverbs`. `TACHYON_E2E_BUILDER=backend` turns it off.
+  `internal/dataverbs`. `TACHYON_E2E_BUILDER=backend` turns it off and runs against the binary's builder, registry
+  and team routes (B9a, B9b, B9b-2) with `tachyon.features.builder_changes` and `catalog_index` on, against the
+  suite's local Tether fake (`e2e/tether-fake.ts`: catalog files and history, registry projects, sessions,
+  `teams/form`, `teams/roster` and the team verbs; a body containing `REFUSE` gets a 503). `e2e/builder-seed.sql`
+  adds the Delivery and Docs teams, a confirmed `teams.form` receipt and a saved roster. In that mode the Teams
+  spec asserts the real receipts: preview prepared at the saved revision, apply succeeded, and a refusal left
+  unconfirmed with "Retry same request".
+- **Fixed on purpose (G6b, lead decision):** the Teams tab counts a run Tether reports as `working` (mesh
+  `TaskWorking`, the status of every formed run) as running. The carried `runOf` counted only `active` and
+  `running`, so a formed team showed as not running; old main has the same display bug. Scripted edit
+  (`g6b-adapt.py`), unit-tested in `teams-tab.test.tsx`.
 
 **Main moved under the carried layer since 99c7b88** (for the pre-P1 sync): `chat/aside/FileTree.tsx`,
 `chat/aside/Panels.tsx` (#767), and `observations/store.ts` again (#770, #771).
@@ -558,6 +568,16 @@ Also served by the old handler but not called by the drawer: `runs`, `runs/{run_
   - `{"type":"exit","code"}` when the process ends.
 - **Close:** the client closes the socket on Disconnect, then sends `DELETE sessions/{id}`. When the socket closes,
   the pane goes read-only ("disconnected").
+
+**Real-backend acceptance.** Build `next/web` and then the `next/` binary. Run
+`TACHYON_E2E_TERMINAL=backend PLAYWRIGHT_CHANNEL=chromium npm run test:e2e -- tests/terminal.spec.ts`
+from `next/web` (set `TACHYON_E2E_BIN` if the binary is not `next/tachyon`). This mode enables the
+terminal switch, installs a synthetic policy and substitutes only the external ssh executable with
+`e2e/terminal-ssh.sh` in the run directory. REST, identity, WebSocket handlers, PTY and session storage
+are real; no remote host or user SSH credentials are used. The chat stub falls through for terminal
+paths. Tests cover xterm input/output, first and later resize frames, binary bytes, disconnect/DELETE,
+operator and minted-bearer refusal, missing/foreign/cross-site origins, replay, exit and ended-session
+conflict. Stub refusal tests remain separate and skip in backend mode. CI runs both modes.
 
 ## Chat dock (G8b, CW-20261115-0082)
 

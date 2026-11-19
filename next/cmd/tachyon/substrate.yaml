@@ -36,6 +36,7 @@ config:
     chat_sync_interval: 5s
     upstreams:
       github: { url: "https://api.github.com" }
+    native_gate: { enabled: false }
     features:
       object_sync: false
       chat_sync: false
@@ -52,3 +53,4 @@ config:
       planner_events: false
       transcripts: false
       action_runs: false
+      terminal: false

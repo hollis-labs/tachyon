@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -119,33 +120,61 @@ func (s *Store) LogEvent(ctx context.Context, e Event) error {
 // BackfillLog adds the terminal event of any finished record that has none, so the
 // log can be repaired from the records. Idempotent.
 func (s *Store) BackfillLog(ctx context.Context) (int, error) {
-	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT i.record FROM approval_items i WHERE i.terminal=1 AND NOT EXISTS (SELECT 1 FROM approval_decision_log l WHERE l.event_id='evt_'||i.id||'_terminal') LIMIT 500`)
-	if err != nil {
-		return 0, err
-	}
-	var recs []hitl.Record
-	for rows.Next() {
-		rec, ierr := readRecord(rows)
-		if ierr != nil {
-			_ = rows.Close()
-			return 0, ierr
+	total := 0
+	cursor := ""
+	for {
+		rows, err := s.DB.Reader.QueryContext(ctx, `SELECT i.record FROM approval_items i WHERE i.id>? AND i.terminal=1 AND NOT EXISTS (SELECT 1 FROM approval_decision_log l WHERE l.event_id='evt_'||i.id||'_terminal') ORDER BY i.id LIMIT 500`, cursor)
+		if err != nil {
+			return total, err
 		}
-		recs = append(recs, rec)
-	}
-	_ = rows.Close()
-	n := 0
-	err = s.DB.Writer.Submit(ctx, "approval_log_backfill", func(ctx context.Context, tx store.Tx) error {
-		for _, rec := range recs {
-			if e, ok := terminalEvent(rec); ok {
-				if ierr := insertEvent(ctx, tx, e); ierr != nil {
-					return ierr
-				}
-				n++
+		var recs []hitl.Record
+		scanned := 0
+		for rows.Next() {
+			rec, raw, evidence, readErr := readStoredRecord(rows)
+			if readErr != nil {
+				_ = rows.Close()
+				return total, readErr
 			}
+			scanned++
+			cursor = rec.ItemID
+			if errors.Is(validateNativeCommit(rec, raw, evidence), ErrNativeUnconfirmed) {
+				continue
+			}
+			recs = append(recs, rec)
 		}
-		return nil
-	})
-	return n, err
+		readErr := rows.Err()
+		_ = rows.Close()
+		if readErr != nil {
+			return total, readErr
+		}
+		n := 0
+		err = s.DB.Writer.Submit(ctx, "approval_log_backfill", func(ctx context.Context, tx store.Tx) error {
+			n = 0
+			for _, snapshot := range recs {
+				rec, readErr := readRecord(tx.QueryRowContext(ctx, "SELECT record FROM approval_items WHERE id=?", snapshot.ItemID))
+				if errors.Is(readErr, ErrNativeUnconfirmed) {
+					continue
+				}
+				if readErr != nil {
+					return readErr
+				}
+				if e, ok := terminalEvent(rec); ok {
+					if insertErr := insertEvent(ctx, tx, e); insertErr != nil {
+						return insertErr
+					}
+					n++
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return total, err
+		}
+		total += n
+		if scanned < 500 {
+			return total, nil
+		}
+	}
 }
 
 // EventFilter selects history rows. Zero values mean no filter.
@@ -182,12 +211,17 @@ func (s *Store) Timeline(ctx context.Context, f EventFilter) ([]TimelineRow, int
 		where, args = append(where, "l.seq<?"), append(args, f.After)
 	}
 	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT l.seq,l.event_id,l.ts_ns,l.item_id,l.kind,l.status,l.actor_ref,l.assurance,l.decision,l.note,l.reason_code,l.batch_id,l.revision,l.extra,COALESCE(x.title,''),COALESCE(x.grp,''),COALESCE(x.risk,''),COALESCE(x.requester_id,''),COALESCE(x.requester_label,''),COALESCE(x.requester_kind,'')
-FROM approval_decision_log l LEFT JOIN approval_item_index x ON x.item_id=l.item_id WHERE `+strings.Join(where, " AND ")+` ORDER BY l.seq DESC LIMIT ?`, append(args, limit+1)...)
+FROM approval_decision_log l LEFT JOIN approval_item_index x ON x.item_id=l.item_id WHERE `+strings.Join(where, " AND ")+` ORDER BY l.seq DESC`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 	out, err := scanEvents(rows)
+	_ = rows.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+	out, err = s.authoritativeEvents(ctx, out)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -229,13 +263,21 @@ func timelineWhere(f EventFilter, skip string) ([]string, []any) {
 
 // ItemEvents returns one item's events oldest first.
 func (s *Store) ItemEvents(ctx context.Context, id string) ([]TimelineRow, error) {
+	if _, err := s.Get(ctx, id); errors.Is(err, ErrNativeUnconfirmed) {
+		return nil, err
+	}
 	rows, err := s.DB.Reader.QueryContext(ctx, `SELECT l.seq,l.event_id,l.ts_ns,l.item_id,l.kind,l.status,l.actor_ref,l.assurance,l.decision,l.note,l.reason_code,l.batch_id,l.revision,l.extra,'','','','','',''
 FROM approval_decision_log l WHERE l.item_id=? ORDER BY l.seq`, id)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanEvents(rows)
+	out, err := scanEvents(rows)
+	_ = rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	return s.authoritativeEvents(ctx, out)
 }
 
 func scanEvents(rows *sql.Rows) ([]TimelineRow, error) {
@@ -330,36 +372,63 @@ func (s *Store) DeferredUntil(ctx context.Context, id string, now time.Time) *ti
 // TimelineFacets counts the requesters and statuses of the events the filter selects, each over every
 // filter but its own, so choosing one value does not hide the others. The cursor does not apply.
 func (s *Store) TimelineFacets(ctx context.Context, f EventFilter) (requesters, statuses []Facet, err error) {
-	count := func(skip, cols, group string, scan func(*sql.Rows) (Facet, error), extra string) ([]Facet, error) {
+	count := func(skip string) ([]TimelineRow, error) {
 		where, args := timelineWhere(f, skip)
-		if extra != "" {
-			where = append(where, extra)
+		rows, e := s.DB.Reader.QueryContext(ctx, `SELECT l.seq,l.event_id,l.ts_ns,l.item_id,l.kind,l.status,l.actor_ref,l.assurance,l.decision,l.note,l.reason_code,l.batch_id,l.revision,l.extra,COALESCE(x.title,''),COALESCE(x.grp,''),COALESCE(x.risk,''),COALESCE(x.requester_id,''),COALESCE(x.requester_label,''),COALESCE(x.requester_kind,'') FROM approval_decision_log l LEFT JOIN approval_item_index x ON x.item_id=l.item_id WHERE `+strings.Join(where, " AND "), args...)
+		if e != nil {
+			return nil, e
 		}
-		rows, ierr := s.DB.Reader.QueryContext(ctx, `SELECT `+cols+`, COUNT(*) FROM approval_decision_log l LEFT JOIN approval_item_index x ON x.item_id=l.item_id WHERE `+strings.Join(where, " AND ")+` GROUP BY `+group+` ORDER BY COUNT(*) DESC, 1`, args...)
-		if ierr != nil {
-			return nil, ierr
+		out, e := scanEvents(rows)
+		_ = rows.Close()
+		if e != nil {
+			return nil, e
 		}
-		defer func() { _ = rows.Close() }()
-		out := []Facet{}
-		for rows.Next() {
-			fc, ierr := scan(rows)
-			if ierr != nil {
-				return nil, ierr
-			}
-			out = append(out, fc)
-		}
-		return out, rows.Err()
+		return s.authoritativeEvents(ctx, out)
 	}
-	requesters, err = count("requester", "x.requester_id, x.requester_label", "x.requester_id, x.requester_label", func(r *sql.Rows) (Facet, error) {
-		var fc Facet
-		return fc, r.Scan(&fc.ID, &fc.Label, &fc.Count)
-	}, "x.requester_id IS NOT NULL")
-	if err != nil {
-		return nil, nil, err
+	reqs, e := count("requester")
+	if e != nil {
+		return nil, nil, e
 	}
-	statuses, err = count("status", "l.status", "l.status", func(r *sql.Rows) (Facet, error) {
-		var fc Facet
-		return fc, r.Scan(&fc.Status, &fc.Count)
-	}, "")
-	return requesters, statuses, err
+	stats, e := count("status")
+	if e != nil {
+		return nil, nil, e
+	}
+	rm := map[string]Facet{}
+	sm := map[string]Facet{}
+	for _, r := range reqs {
+		if r.ReqID != "" {
+			v := rm[r.ReqID]
+			v.ID = r.ReqID
+			v.Label = r.ReqLabel
+			v.Count++
+			rm[r.ReqID] = v
+		}
+	}
+	for _, r := range stats {
+		v := sm[r.Status]
+		v.Status = r.Status
+		v.Count++
+		sm[r.Status] = v
+	}
+	requesters = []Facet{}
+	statuses = []Facet{}
+	for _, v := range rm {
+		requesters = append(requesters, v)
+	}
+	for _, v := range sm {
+		statuses = append(statuses, v)
+	}
+	sort.Slice(requesters, func(a, b int) bool {
+		if requesters[a].Count != requesters[b].Count {
+			return requesters[a].Count > requesters[b].Count
+		}
+		return requesters[a].ID < requesters[b].ID
+	})
+	sort.Slice(statuses, func(a, b int) bool {
+		if statuses[a].Count != statuses[b].Count {
+			return statuses[a].Count > statuses[b].Count
+		}
+		return statuses[a].Status < statuses[b].Status
+	})
+	return requesters, statuses, nil
 }
