@@ -80,6 +80,13 @@ admission receipt or the separate `worker_lineage` receipt from an authenticated
 successful launch acknowledgement (`acknowledged_at`). A running worker row
 alone is insufficient.
 
+Ordinary hub crash/boot recovery can leave its positively gone source orphaned.
+That edge requires `hub_resume_lineage` (`hub_resume_v1`): Tether verifies exact
+same-agent local rows and stored non-team resume plans, and refuses retained
+source shim custody. A generic orphan row is insufficient. Historical orphan
+intermediates are accepted only when their outgoing edge has the corresponding
+team or ordinary-hub proof; the current chain tip must still be running.
+
 A one-pair receipt does not prove that older ancestors were observed. Only a
 completed chain reconciliation creates the separate local completion marker.
 For example, if an unseen A-to-B restart is followed by a recorded B-to-C UI

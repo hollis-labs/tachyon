@@ -392,13 +392,16 @@ func TestReadReconcileWorkerLineageRequiresExactLaunchReceipt(t *testing.T) {
 func TestUILineageReceiptsNeverAuthorizeNativePOST(t *testing.T) {
 	const source = "11111111-1111-4111-8111-111111111111"
 	const replacement = "22222222-2222-4222-8222-222222222222"
-	for _, kind := range []string{"team", "worker"} {
+	for _, kind := range []string{"team", "worker", "hub-orphan"} {
 		t.Run(kind, func(t *testing.T) {
 			old := map[string]any{"id": source, "logical_agent_id": "agent", "intent": "fresh", "state": "killed"}
 			next := map[string]any{"id": replacement, "logical_agent_id": "agent", "intent": "resume", "parent_session_id": source, "state": "running"}
 			if kind == "team" {
 				old["state"] = "orphaned"
 				next["replacement_lineage"] = map[string]any{"kind": "retained_team_v1", "source_session_id": source, "replacement_session_id": replacement, "logical_agent_id": "agent", "actor_uri": "msg://agent/team/seat", "source_actor_uri": "msg://agent/team/seat", "replacement_actor_uri": "msg://agent/team/seat", "committed_at": "2026-11-19T17:00:00Z", "intent_key": "intent", "binding_id": "binding", "binding_generation": 1}
+			} else if kind == "hub-orphan" {
+				old["state"] = "orphaned"
+				next["hub_resume_lineage"] = map[string]any{"kind": "hub_resume_v1", "source_session_id": source, "replacement_session_id": replacement, "logical_agent_id": "agent"}
 			} else {
 				old["worker_id"] = "worker"
 				next["worker_id"] = "worker"
@@ -532,5 +535,53 @@ func TestReadReconcileClearedTipRemainsReadable(t *testing.T) {
 	}
 	if ancestors := s.Store.Ancestors(context.Background(), "c"); len(ancestors) != 0 {
 		t.Fatalf("clear exposed history: %v", ancestors)
+	}
+}
+
+func TestReadReconcileHubOrphanChainRequiresStoredResumeProof(t *testing.T) {
+	for _, bad := range []string{"", "missing", "source", "replacement", "agent", "worker", "detached", "unknown", "created-tip"} {
+		t.Run(bad, func(t *testing.T) {
+			rows := hubChain()
+			rows["a"]["state"] = "orphaned"
+			rows["b"]["state"] = "orphaned"
+			for _, pair := range [][2]string{{"a", "b"}, {"b", "c"}} {
+				rows[pair[1]]["hub_resume_lineage"] = map[string]any{"kind": "hub_resume_v1", "source_session_id": pair[0], "replacement_session_id": pair[1], "logical_agent_id": "agent"}
+			}
+			receipt := rows["c"]["hub_resume_lineage"].(map[string]any)
+			switch bad {
+			case "missing":
+				delete(rows["c"], "hub_resume_lineage")
+			case "source":
+				receipt["source_session_id"] = "other"
+			case "replacement":
+				receipt["replacement_session_id"] = "other"
+			case "agent":
+				receipt["logical_agent_id"] = "other"
+			case "worker":
+				rows["c"]["worker_id"] = "worker"
+			case "detached":
+				rows["b"]["state"] = "detached"
+			case "unknown":
+				rows["b"]["state"] = "unknown"
+			case "created-tip":
+				rows["c"]["state"] = "created"
+			}
+			s, r := reconcileFixture(t, rows)
+			original := writePlan(t, s, "a", "Ordinary crash recovery")
+			err := r.Ensure(context.Background(), "c")
+			if (err == nil) != (bad == "") {
+				t.Fatalf("orphan verification: %v", err)
+			}
+			ref := "a"
+			rev := original.Revision
+			if bad == "" {
+				ref = "c"
+				rev += 2
+			}
+			got, e := planOf(s, ref)
+			if e != nil || got.ID != original.ID || got.Revision != rev {
+				t.Fatalf("plan: %+v %v", got, e)
+			}
+		})
 	}
 }

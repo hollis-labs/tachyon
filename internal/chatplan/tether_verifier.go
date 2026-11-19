@@ -23,6 +23,12 @@ type TetherContinuationVerifier struct {
 }
 
 type tetherContinuationSession struct {
+	HubResumeLineage *struct {
+		Kind                 string `json:"kind"`
+		SourceSessionID      string `json:"source_session_id"`
+		ReplacementSessionID string `json:"replacement_session_id"`
+		LogicalAgentID       string `json:"logical_agent_id"`
+	} `json:"hub_resume_lineage"`
 	ID              string `json:"id"`
 	LogicalAgentID  string `json:"logical_agent_id"`
 	ParentSessionID string `json:"parent_session_id"`

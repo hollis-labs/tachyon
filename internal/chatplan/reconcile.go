@@ -37,6 +37,11 @@ func nativeEvidenceMatches(old, next tetherContinuationSession, agent string) bo
 		a.WorkerID != "" && old.WorkerID == a.WorkerID && next.WorkerID == a.WorkerID
 }
 
+func hubResumeEvidenceMatches(old, next tetherContinuationSession, agent string) bool {
+	a := next.HubResumeLineage
+	return a != nil && a.Kind == "hub_resume_v1" && a.SourceSessionID == old.ID && a.ReplacementSessionID == next.ID && a.LogicalAgentID == agent && old.WorkerID == "" && next.WorkerID == ""
+}
+
 func receiptTimeValid(value string) bool {
 	at, err := time.Parse(time.RFC3339Nano, value)
 	return err == nil && !at.IsZero()
@@ -95,7 +100,7 @@ func (r *ReadReconciler) Ensure(ctx context.Context, id string) error {
 	}
 	seen := map[string]bool{id: true}
 	var reverse []ContinuationLink
-	historical, retiredByTeam := false, false
+	historical, retiredWithProof := false, false
 	for {
 		if next.Intent != "resume" || next.ParentSessionID == "" || seen[next.ParentSessionID] || len(reverse) >= MaxLineageHops {
 			return ErrContinuationUnverified
@@ -109,14 +114,16 @@ func (r *ReadReconciler) Ensure(ctx context.Context, id string) error {
 			return ErrContinuationUnverified
 		}
 		team := teamEvidenceMatches(old, next, agent)
-		if !terminal(old.State) && !(old.State == "orphaned" && team) {
+		hub := hubResumeEvidenceMatches(old, next, agent)
+		orphanProof := team || hub
+		if !terminal(old.State) && !(old.State == "orphaned" && orphanProof) {
 			return ErrContinuationUnverified
 		}
-		if historical && !terminal(next.State) && !(next.State == "orphaned" && retiredByTeam) {
+		if historical && !terminal(next.State) && !(next.State == "orphaned" && retiredWithProof) {
 			return ErrContinuationUnverified
 		}
 		switch {
-		case team:
+		case orphanProof:
 			// The producer binds actor/agent to the committed receipt; this is UI
 			// execution lineage, never native context or custody authority.
 		case old.WorkerID == "" && next.WorkerID == "":
@@ -137,7 +144,7 @@ func (r *ReadReconciler) Ensure(ctx context.Context, id string) error {
 		if known || old.Intent != "resume" {
 			break
 		}
-		next, historical, retiredByTeam = old, true, team
+		next, historical, retiredWithProof = old, true, orphanProof
 	}
 	links := make([]ContinuationLink, len(reverse))
 	for i := range reverse {
