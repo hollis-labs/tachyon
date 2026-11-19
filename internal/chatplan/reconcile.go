@@ -124,8 +124,8 @@ func (r *ReadReconciler) Ensure(ctx context.Context, id string) error {
 		}
 		switch {
 		case orphanProof:
-			// The producer binds actor/agent to the committed receipt; this is UI
-			// execution lineage, never native context or custody authority.
+			// The producer verifies this UI lineage from its canonical records;
+			// it conveys neither native context nor custody authority.
 		case old.WorkerID == "" && next.WorkerID == "":
 			if old.State == "orphaned" {
 				return ErrContinuationUnverified
