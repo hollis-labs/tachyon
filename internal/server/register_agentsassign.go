@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hollis-labs/tachyon/internal/builderchange"
+	"github.com/hollis-labs/tachyon/internal/chatplan"
 
 	"github.com/hollis-labs/tachyon/internal/builderread"
 	"github.com/hollis-labs/tachyon/internal/forgeassign"
@@ -111,4 +112,32 @@ func (s *Server) agentsRestarter() agentsserve.Restarter {
 		return nil
 	}
 	return &agentsserve.TetherRestarter{Base: base, Client: c}
+}
+
+func (s *Server) chatContinuationVerifier() *chatplan.TetherContinuationVerifier {
+	tf := strings.TrimSpace(os.Getenv("TACHYON_TETHER_CONTROL_TOKEN_FILE"))
+	if tf == "" {
+		return nil
+	}
+	base, client, err := builderchange.NewControlClient(controlAddr(s.cfg.Upstreams.TetherAddr), tf)
+	if err != nil {
+		return nil
+	}
+	return &chatplan.TetherContinuationVerifier{Base: base, Client: client}
+}
+
+// associateHubRestart uses current Tether rows, never caller readiness claims.
+// The native worker association endpoint retains its stronger receipt verifier.
+func (s *Server) associateHubRestart() func(context.Context, string, string, string) error {
+	verifier := s.chatContinuationVerifier()
+	if verifier == nil || s.chatPlan == nil {
+		return nil
+	}
+	return func(ctx context.Context, source, replacement, agent string) error {
+		if err := verifier.VerifyHubLineage(ctx, source, replacement, agent); err != nil {
+			return err
+		}
+		_, err := s.chatPlan.AssociateContinuation(ctx, source, replacement, agent)
+		return err
+	}
 }

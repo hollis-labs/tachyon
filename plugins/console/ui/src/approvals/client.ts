@@ -52,6 +52,8 @@ export type ActionRunState =
   | "expired"
 // A registered action bound to an approval (see README "Registered actions").
 export interface ActionRun {
+  params?: Record<string, string>
+  requester?: { label?: string; agent?: string; task?: string }
   run_id: string
   item_id: string
   machine: string

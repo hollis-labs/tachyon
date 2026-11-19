@@ -34,6 +34,9 @@ type Server struct {
 	// Interrupter and Restarter turn the interrupt and restart capabilities on (A6); nil leaves them off.
 	Interrupter Interrupter
 	Restarter   Restarter
+	// AssociateRestart verifies and commits hub UI plan/history continuity before done.
+	// Nil refuses Restart before stopping the source.
+	AssociateRestart func(context.Context, string, string, string) error
 
 	hub   hub
 	skips sync.Map // restart request_id -> chan struct{} closed to skip the handoff wait

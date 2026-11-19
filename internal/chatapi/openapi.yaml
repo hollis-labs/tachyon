@@ -26,6 +26,16 @@ tags:
   - {name: terminal}
   - {name: events}
 paths:
+  /chat/continuations:
+    post:
+      tags: [threads, plan]
+      summary: Commit an exact, server-verified native continuation before the replacement uses a proxied tool
+      description: The server checks both Tether sessions and the replacement's durable native-admission receipt. Hub checkpoint resumes and missing or uncertain receipts are refused. Requires explicit operator assurance.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [source_session_id, new_session_id, logical_agent_id, idempotency_key], properties: {source_session_id: {type: string, format: uuid}, new_session_id: {type: string, format: uuid}, logical_agent_id: {type: string}, idempotency_key: {type: string}}}}}}
+      responses:
+        "200": {description: committed exact-pair receipt, content: {application/json: {schema: {type: object, required: [source_session_id, new_session_id, logical_agent_id, idempotency_key, replayed, plan_moved], properties: {source_session_id: {type: string, format: uuid}, new_session_id: {type: string, format: uuid}, logical_agent_id: {type: string}, idempotency_key: {type: string}, replayed: {type: boolean}, plan_moved: {type: boolean}}}}}}
+        "409": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
   /chat/threads:
     get:
       tags: [threads]

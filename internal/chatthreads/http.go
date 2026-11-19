@@ -34,6 +34,9 @@ type Handler struct {
 	Agg *Aggregator
 	Hub *Hub
 	Now func() time.Time
+	// Ancestors names the Tether sessions a session continues, oldest first (the plan carry-over
+	// lineage). The thread's messages are read after theirs, so a restart keeps the history. Nil: none.
+	Ancestors func(ctx context.Context, session string) []string
 
 	sendMu sync.Mutex // serializes idempotency check + send
 }
@@ -315,15 +318,22 @@ func fromUI(m appagent.UIMessage) Message {
 	return Message{Seq: m.Seq, ID: m.ID, Role: role, Kind: kind, Text: m.Body, At: m.At, Meta: meta}
 }
 
+func groupOf(groups []tgroup, ref string) (tgroup, bool) {
+	for _, g := range groups {
+		if g.ref == ref {
+			return g, true
+		}
+	}
+	return tgroup{}, false
+}
+
 func (h *Handler) tetherGroup(ctx context.Context, ref string) (tgroup, error) {
 	gs, err := h.Agg.tetherGroups(ctx)
 	if err != nil {
 		return tgroup{}, err
 	}
-	for _, g := range gs {
-		if g.ref == ref {
-			return g, nil
-		}
+	if g, ok := groupOf(gs, ref); ok {
+		return g, nil
 	}
 	return tgroup{}, ErrNotFound
 }
@@ -360,6 +370,41 @@ func tetherMessages(g tgroup) []Message {
 		}
 	}
 	return out
+}
+
+// withHistory is the thread's messages preceded by those of the sessions it continues, each marked
+// with meta.continued_from, numbered as one sequence. An ancestor with no turns adds nothing.
+func (h *Handler) withHistory(ctx context.Context, session string, g tgroup, groups []tgroup) []Message {
+	var prior []Message
+	if h.Ancestors != nil {
+		by := map[string]tgroup{}
+		for _, x := range groups {
+			by[x.ref] = x
+		}
+		for _, a := range h.Ancestors(ctx, session) {
+			ag, ok := by[chatapi.ThreadRef{Source: chatapi.SourceTether, ID: a}.String()]
+			if !ok {
+				continue
+			}
+			for _, m := range tetherMessages(ag) {
+				if m.Meta == nil { // an operator reply carries none
+					m.Meta = map[string]any{}
+				}
+				m.Meta["continued_from"] = a
+				m.Meta["replyable"] = false // a turn of an earlier session cannot be answered here
+				prior = append(prior, m)
+			}
+		}
+	}
+	own := tetherMessages(g)
+	if len(prior) == 0 {
+		return own
+	}
+	all := append(prior, own...)
+	for i := range all {
+		all[i].Seq = int64(i + 1)
+	}
+	return all
 }
 
 func (h *Handler) messages(w http.ResponseWriter, r *http.Request) {
@@ -402,12 +447,31 @@ func (h *Handler) messages(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]any{"messages": out, "has_more": more})
 		return
 	}
-	g, err := h.tetherGroup(r.Context(), t.String())
+	groups, err := h.Agg.tetherGroups(r.Context())
 	if err != nil {
 		h.problem(w, err)
 		return
 	}
-	all := tetherMessages(g)
+	g, ok := groupOf(groups, t.String())
+	if !ok {
+		// A verified continuation can have lineage before its first inbox turn.
+		// The lineage-backed session stub makes the empty own group addressable.
+		known := false
+		if h.Agg.Sessions != nil {
+			for _, st := range h.Agg.Sessions(r.Context()) {
+				if st.Ref == t.String() {
+					known = true
+					break
+				}
+			}
+		}
+		if !known {
+			h.problem(w, ErrNotFound)
+			return
+		}
+		g = tgroup{ref: t.String()}
+	}
+	all := h.withHistory(r.Context(), t.ID, g, groups)
 	if limit == 0 {
 		limit = 50
 	}

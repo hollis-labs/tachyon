@@ -144,6 +144,17 @@ describe('Restart', () => {
     expect(screen.queryByText(/fewer permissions/)).toBeNull()
   })
 
+  it('retries only association with the original request after the replacement started', async () => {
+    restartWith({ state: 'failed', step: 'associating', new_session_id: 'sess_new', error: 'Chat association failed; retry this request.' })
+    const repair = await screen.findByRole('button', { name: 'Restore chat' }, { timeout: 4000 })
+    const posts = () => vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'POST').map(([, init]) => JSON.parse(String(init?.body)))
+    expect(posts()).toHaveLength(1)
+    fireEvent.click(repair)
+    await waitFor(() => expect(posts()).toHaveLength(2))
+    expect(posts()[1].request_id).toBe(posts()[0].request_id)
+    expect(posts()[1].expected_session_id).toBe(posts()[0].expected_session_id)
+  })
+
   it("shows Tether's reason when a restart fails, including whether the seat is down", async () => {
     restartWith({ state: 'failed', step: 'resuming', error: 'Tether could not complete the restart at resuming: tether /sessions answered 403 (forbidden). The old session is stopped and no new one started: relaunch chief from Tether.' })
     expect(await screen.findByText(/no new one started: relaunch chief from Tether/, {}, { timeout: 4000 })).toBeTruthy()

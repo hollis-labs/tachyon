@@ -342,6 +342,21 @@ func TestPendingStatusAndStream(t *testing.T) {
 	if got := items("/pulls/pending?state=snoozed"); got[0].(map[string]any)["triage"].(map[string]any)["snooze_until"] != float64(1793330000000) {
 		t.Errorf("snoozed: %v", got)
 	}
+	// state=all returns every triage state (the inbox fills Snoozed and Dismissed from it); the default stays active.
+	if got := items("/pulls/pending?state=all"); len(got) != 3 {
+		t.Errorf("all: %v", got)
+	} else {
+		seen := map[string]bool{}
+		for _, g := range got {
+			seen[g.(map[string]any)["triage"].(map[string]any)["status"].(string)] = true
+		}
+		if !seen["active"] || !seen["dismissed"] || !seen["snoozed"] {
+			t.Errorf("all carries each item's triage status: %v", seen)
+		}
+	}
+	if code, _ := get("/pulls/pending?state=bogus"); code != 400 {
+		t.Errorf("unknown state: %d", code)
+	}
 	if got := items("/pulls/pending?reason=checks_failed"); len(got) != 1 {
 		t.Errorf("reason: %v", got)
 	}

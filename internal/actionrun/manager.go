@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"os/user"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -169,6 +171,17 @@ func (m *Manager) Start(ctx context.Context, runID string, cols, rows uint16) (R
 	transport, ok := m.Transports[run.Machine]
 	if !ok {
 		return m.refuse(ctx, run, "no transport is configured for machine "+run.Machine)
+	}
+	// A separate operator may have approved the catalog plan while this run
+	// waited for a terminal. Read only; never re-approve or claim its exit code.
+	if run.Action == "tether.catalog.approve" {
+		state, err := catalogPlanState(ctx, transport, run.Params["plan_id"])
+		if err != nil {
+			return m.refuse(ctx, run, "could not verify the catalog plan before starting; no command ran")
+		}
+		if state != "planned" {
+			return m.refuse(ctx, run, "catalog plan is already "+state+"; this run did not start and has no exit code (external catalog state, not this run's completion)")
+		}
 	}
 	if !m.reserve() {
 		return run, ErrBusy
@@ -486,4 +499,26 @@ func (m *Manager) labelsFor(ctx context.Context, machine, resource string) (Labe
 		}
 	}
 	return Labels{}, fmt.Errorf("Cerberus on %s has no resource %q", machine, resource)
+}
+
+// catalogPlanState reads only the CLI's first status line. The diff may contain
+// sensitive content; it is never logged, returned to the browser or persisted.
+func catalogPlanState(ctx context.Context, transport Transport, planID string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	raw, err := transport.Output(ctx, []string{"tether", "catalog", "show", planID})
+	if err != nil {
+		return "", errors.New("catalog status unavailable")
+	}
+	line, _, _ := strings.Cut(string(raw), "\n")
+	pattern := `^plan ` + regexp.QuoteMeta(planID) + `  "(?:[^"\\]|\\.)*"  state=([a-z]+)  expires `
+	match := regexp.MustCompile(pattern).FindStringSubmatch(line)
+	if len(match) != 2 {
+		return "", errors.New("unreadable catalog status")
+	}
+	switch match[1] {
+	case "planned", "approved", "applied", "invalid":
+		return match[1], nil
+	}
+	return "", errors.New("unknown catalog state")
 }

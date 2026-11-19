@@ -373,17 +373,18 @@ components:
         session_id: {type: string}
         state:
           type: string
-          enum: [queued, delivered, interrupted_then_delivered, failed, requested, handoff_sent, waiting, stopping, stopped, resuming, done]
-          description: "nudge: queued|delivered|interrupted_then_delivered|failed. restart: requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> done | failed(step). The launch a relaunch needs is read before stopping: failed(preparing) means nothing was stopped."
-        step: {type: string, nullable: true, description: "the step a failed restart stopped at: preparing (nothing stopped), stopping, resuming (the old session is stopped, no new one), launching (the old session is stopped; new_session_id names the session created but not started: launch it rather than create another)"}
+          enum: [queued, delivered, interrupted_then_delivered, failed, requested, handoff_sent, waiting, stopping, stopped, resuming, associating, done]
+          description: "nudge: queued|delivered|interrupted_then_delivered|failed. restart: requested -> [handoff_sent -> waiting] -> stopping -> stopped -> resuming -> associating -> done | failed(step). A worker preserve-context restart fails at preparing before stopping because Tachyon lacks native continuation authority."
+        step: {type: string, nullable: true, description: "the step a failed restart stopped at: preparing (nothing stopped), stopping, resuming (old hub session stopped; no replacement started), launching (hub replacement created but not started), or associating (replacement running; retry the same request ID to repair chat association without restarting)."}
         error: {type: string, nullable: true}
         interrupt: {type: string, nullable: true, enum: [cancelled, no_turn_in_progress, turn_superseded, interrupt_unsupported, no_target]}
         message_id: {type: string, nullable: true}
         handoff: {type: boolean}
-        new_session_id: {type: string, nullable: true, description: "the relaunched session; on failed(launching), the session created but not started"}
+        new_session_id: {type: string, nullable: true, description: "the resumed or relaunched hub session; on failed(launching), the created but unstarted session; on failed(associating), the running replacement"}
         discarded_pending: {type: integer, nullable: true, description: "pending approvals/questions lost with the old session (they cannot be kept)"}
         wait_ends_at: {type: integer, nullable: true}
-        relaunched_by: {type: string, nullable: true, enum: [resume, relaunch], description: "how a done restart brought the seat back: a logical-agent resume, or a relaunch of the same launch (continuity relaunch) when Tether refused the resume"}
+        relaunched_by: {type: string, nullable: true, enum: [resume, relaunch], description: "the Tether operation used by a completed hub restart"}
+        continuity_mode: {type: string, nullable: true, enum: [checkpoint, lineage], description: "hub checkpoint/prompt resume or typed-refusal lineage relaunch; neither is a verified native continuation"}
         scopes_dropped: {type: array, nullable: true, items: {type: string}, description: "scopes Tether did not grant the new session (session.scopes_narrowed); a relaunch is made with Tachyon's credential"}
         created_at: {type: integer}
         updated_at: {type: integer}

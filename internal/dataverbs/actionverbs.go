@@ -24,6 +24,7 @@ type actionRequest struct {
 	Action  string                     `json:"action"`
 	Params  map[string]json.RawMessage `json:"params,omitempty"`
 	Reason  string                     `json:"reason"`
+	Task    string                     `json:"task,omitempty"`
 }
 type actionAwait struct {
 	RunID  string `json:"run_id"`
@@ -117,7 +118,7 @@ func actionError(err error) error {
 }
 
 // invokeAction runs one action verb as requester ("service:<id>").
-func invokeAction(ctx context.Context, svc *actionrun.Service, name string, raw json.RawMessage, requester string) (json.RawMessage, error) {
+func invokeAction(ctx context.Context, svc *actionrun.Service, name string, raw json.RawMessage, requester string, attribution ...actionrun.Requester) (json.RawMessage, error) {
 	if svc == nil {
 		return nil, svcerr.New(svcerr.CodePermission, "Registered actions are not enabled on this host.")
 	}
@@ -133,7 +134,17 @@ func invokeAction(ctx context.Context, svc *actionrun.Service, name string, raw 
 		if err != nil {
 			return nil, err
 		}
-		h, err := svc.Request(ctx, actionrun.RequestInput{Machine: q.Machine, Action: q.Action, Params: params, Reason: q.Reason, AgentID: requester})
+		who := actionrun.Requester{}
+		if len(attribution) > 0 {
+			who = attribution[0]
+		}
+		if q.Task != "" {
+			if len(q.Task) > 100 || !strings.HasPrefix(q.Task, "CW-") || strings.ContainsAny(q.Task, " \n\r\t/#?") {
+				return nil, invalid("task must be a Torque CW task ID")
+			}
+			who.Task = q.Task
+		}
+		h, err := svc.Request(ctx, actionrun.RequestInput{Requester: who, Machine: q.Machine, Action: q.Action, Params: params, Reason: q.Reason, AgentID: requester})
 		if err != nil {
 			return nil, actionError(err)
 		}
