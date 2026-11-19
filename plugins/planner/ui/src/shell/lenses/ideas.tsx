@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Textarea } from '@hollis-labs/design-components'
 import { createPlannerId } from '@planner/api/identity'
 import { usePlannerApi } from '@planner/api/context'
@@ -19,7 +19,15 @@ const PROMOTE_TARGETS: { to: IdeaPromoteTarget; label: string; key: string }[] =
 export function IdeaBody({ item, write }: { item: PlannerItem; write: Write }) {
   const api = usePlannerApi()
   const [notes, setNotes] = useState(item.notes ?? '')
-  useEffect(() => setNotes(item.notes ?? ''), [item.id, item.rev])
+  const stored = useRef({ id: item.id, notes: item.notes ?? '' })
+  useEffect(() => {
+    const previous = stored.current
+    const next = item.notes ?? ''
+    // A refreshed revision must not erase an authored draft after a refused write.
+    // Keep it for an explicit retry; clean fields still follow the server.
+    setNotes((draft) => previous.id !== item.id || draft === previous.notes ? next : draft)
+    stored.current = { id: item.id, notes: next }
+  }, [item.id, item.rev, item.notes])
   // One target id per (idea, target), so a retry after a failure never creates twice.
   const [targets] = useState(() => new Map<string, string>())
   const promote = (to: IdeaPromoteTarget) => write(async () => {

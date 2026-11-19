@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { PlannerApiError } from '@planner/api/errors'
 import { PlannerApiProvider } from '@planner/api/context'
 import LensPage from '@planner/shell/lens-page'
 import { LinkKindPicker } from '@planner/shell/link-picker'
@@ -146,5 +147,28 @@ describe('LinkKindPicker', () => {
     expect(onPick).toHaveBeenCalledWith('delivers')
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
     expect(onCancel).toHaveBeenCalled()
+  })
+})
+
+
+describe('Ideas draft revision handling', () => {
+  it('keeps authored notes after a conflict, then retries only those notes with the refreshed revision', async () => {
+    const original = item({ id: 'ID-1', title: 'Idea', status: 'new', notes: 'old' })
+    const latest = { ...original, title: 'Changed remotely', notes: 'remote notes', rev: 5 }
+    const api = client('ideas', [original])
+    api.plannerList.mockResolvedValueOnce([original]).mockResolvedValue([latest])
+    api.plannerUpdate.mockRejectedValueOnce(new PlannerApiError(409, 'Changed', 'conflict')).mockResolvedValue(latest)
+    page(api, 'ideas', 'ID-1')
+    const box = await screen.findByLabelText('Notes') as HTMLTextAreaElement
+    await waitFor(() => expect(box.value).toBe('old'))
+    fireEvent.change(box, { target: { value: 'my draft' } })
+    fireEvent.blur(box)
+    await waitFor(() => expect(api.plannerList).toHaveBeenCalledTimes(2))
+    await screen.findByText('Changed remotely')
+    expect(box.value).toBe('my draft')
+    expect(api.plannerUpdate).toHaveBeenCalledTimes(1)
+    expect(api.plannerUpdate).toHaveBeenCalledWith('ideas', 'ID-1', { notes: 'my draft' }, 4)
+    fireEvent.blur(box)
+    await waitFor(() => expect(api.plannerUpdate).toHaveBeenLastCalledWith('ideas', 'ID-1', { notes: 'my draft' }, 5))
   })
 })

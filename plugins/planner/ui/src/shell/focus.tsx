@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, Pin } from 'lucide-react'
 import { OverflowMenu, cn } from '@hollis-labs/design-components'
-import { themeRowActions } from '@planner/components/planner/theme-board'
+import { themeRowActions } from '@planner/lib/planner'
 import { THEME_SECTIONS } from '@planner/lib/planner'
 import { TEXT } from '@planner/lib/vocabulary'
 import { useContributions } from '@planner/lib/regions'
