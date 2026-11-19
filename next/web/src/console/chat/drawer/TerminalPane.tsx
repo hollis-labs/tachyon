@@ -16,11 +16,11 @@ async function tj<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 interface Machine { machine_id: string; label: string; reachable?: boolean | null }
-interface Proposal { id: string; command: string; reason?: string; requested_by: string; state: string; op_digest?: string }
+interface Proposal { id: string; command: string; reason?: string; requested_by: string; state: string; command_digest: string }
 
 /** The golden's quick terminal, shown as fixtures on ?demo=cards. */
 const DEMO_MACHINES: Machine[] = [{ machine_id: 'example-box', label: 'example-box', reachable: true }]
-const DEMO_PROPOSAL: Proposal = { id: 'p1', command: 'pnpm test --filter chat', requested_by: 'Portfolio Manager', state: 'pending' }
+const DEMO_PROPOSAL: Proposal = { id: 'p1', command: 'pnpm test --filter chat', requested_by: 'Portfolio Manager', state: 'pending', command_digest: 'demo' }
 
 /**
  * Quick terminal: machine picker, connection line, agent-proposed commands (Run / Edit / Deny through the HITL policy).
@@ -78,7 +78,7 @@ export function TerminalPane({ threadRef, demo }: { threadRef: string | undefine
     setError('')
     if (demo) { setProposals((xs) => xs.filter((x) => x.id !== p.id)); return }
     try {
-      await tj(`/proposals/${encodeURIComponent(p.id)}/${verb}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(verb === 'run' ? { op_digest: p.op_digest } : {}) })
+      await tj(`/proposals/${encodeURIComponent(p.id)}/${verb}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(verb === 'run' ? { op_digest: p.command_digest } : {}) })
       setProposals((xs) => xs.filter((x) => x.id !== p.id))
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not answer the proposal. It is still waiting.') }
   }
