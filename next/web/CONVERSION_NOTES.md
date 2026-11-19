@@ -541,10 +541,14 @@ operator-only, reads included. Contract scope: `tachyon.terminal.control` with t
 | `POST` | `sessions` | `{machine_id, thread_ref}` | `{id, ws_path}` | `h.openSession` |
 | `DELETE` | `sessions/{id}` | — | `{ok:true}` | `h.closeSession` |
 | `GET` (upgrade) | `sessions/{id}/ws` | WebSocket | see below | `h.ws` |
-| `GET` | `proposals?thread_ref&state=pending` | — | `{proposals:[{id, command, reason?, requested_by, state, op_digest?}]}` | `h.proposals` |
+| `GET` | `proposals?thread_ref&state=pending` | — | `{proposals:[{id, command, reason?, requested_by, state, command_digest}]}` | `h.proposals` |
 | `POST` | `proposals/{id}/run` | `{op_digest}` | (ignored) | `h.run` |
 | `POST` | `proposals/{id}/deny` | `{}` | (ignored) | `h.deny` |
-| `POST` | `proposals/{id}/edit` | `{command}` | the new Proposal | `h.edit` |
+| `POST` | `proposals/{id}/edit` | `{command}` | the new Proposal, including its new `command_digest` | `h.edit` |
+
+Proposal list and edit responses name the reviewed digest `command_digest` (the stored Proposal shape).
+Run sends that exact selected proposal value under the request field `op_digest`; after an edit it sends
+the replacement proposal's `command_digest`, never the superseded proposal's digest.
 
 Also served by the old handler but not called by the drawer: `runs`, `runs/{run_id}`, `runs/{run_id}/output`,
 `POST runs/{run_id}/stop`, `PATCH runs/{run_id}` (the chat's terminal runs, as listed under G3's Later B).
