@@ -115,7 +115,8 @@ func (r *ReadReconciler) Ensure(ctx context.Context, id string) error {
 		}
 		team := teamEvidenceMatches(old, next, agent)
 		hub := hubResumeEvidenceMatches(old, next, agent)
-		orphanProof := team || hub
+		worker := workerEvidenceMatches(old, next, agent)
+		orphanProof := team || hub || worker
 		if !terminal(old.State) && !(old.State == "orphaned" && orphanProof) {
 			return ErrContinuationUnverified
 		}
@@ -131,7 +132,6 @@ func (r *ReadReconciler) Ensure(ctx context.Context, id string) error {
 				return ErrContinuationUnverified
 			}
 		case nativeEvidenceMatches(old, next, agent):
-		case workerEvidenceMatches(old, next, agent):
 		default:
 			return ErrContinuationUnverified
 		}

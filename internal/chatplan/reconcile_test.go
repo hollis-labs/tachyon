@@ -392,7 +392,7 @@ func TestReadReconcileWorkerLineageRequiresExactLaunchReceipt(t *testing.T) {
 func TestUILineageReceiptsNeverAuthorizeNativePOST(t *testing.T) {
 	const source = "11111111-1111-4111-8111-111111111111"
 	const replacement = "22222222-2222-4222-8222-222222222222"
-	for _, kind := range []string{"team", "worker", "hub-orphan"} {
+	for _, kind := range []string{"team", "worker", "worker-orphan", "hub-orphan"} {
 		t.Run(kind, func(t *testing.T) {
 			old := map[string]any{"id": source, "logical_agent_id": "agent", "intent": "fresh", "state": "killed"}
 			next := map[string]any{"id": replacement, "logical_agent_id": "agent", "intent": "resume", "parent_session_id": source, "state": "running"}
@@ -403,6 +403,9 @@ func TestUILineageReceiptsNeverAuthorizeNativePOST(t *testing.T) {
 				old["state"] = "orphaned"
 				next["hub_resume_lineage"] = map[string]any{"kind": "hub_resume_v1", "source_session_id": source, "replacement_session_id": replacement, "logical_agent_id": "agent"}
 			} else {
+				if kind == "worker-orphan" {
+					old["state"] = "orphaned"
+				}
 				old["worker_id"] = "worker"
 				next["worker_id"] = "worker"
 				next["worker_lineage"] = map[string]any{"kind": "worker_lineage_v1", "source_session_id": source, "replacement_session_id": replacement, "logical_agent_id": "agent", "source_worker_id": "worker", "worker_id": "worker", "command_id": "launch:" + replacement, "acknowledged_at": "2026-11-19T17:00:00Z"}
@@ -583,5 +586,80 @@ func TestReadReconcileHubOrphanChainRequiresStoredResumeProof(t *testing.T) {
 				t.Fatalf("plan: %+v %v", got, e)
 			}
 		})
+	}
+}
+
+func TestReadReconcileOrphanProofChainsWithExistingPairAndFences(t *testing.T) {
+	for _, kind := range []string{"hub", "worker"} {
+		for _, mode := range []string{"chain", "prior-pair", "off", "clear", "missing-ack", "unsettled", "missing-historical-proof"} {
+			t.Run(kind+"/"+mode, func(t *testing.T) {
+				rows := hubChain()
+				rows["a"]["state"] = "orphaned"
+				rows["b"]["state"] = "orphaned"
+				for _, pair := range [][2]string{{"a", "b"}, {"b", "c"}} {
+					if kind == "hub" {
+						rows[pair[1]]["hub_resume_lineage"] = map[string]any{"kind": "hub_resume_v1", "source_session_id": pair[0], "replacement_session_id": pair[1], "logical_agent_id": "agent"}
+					} else {
+						rows[pair[0]]["worker_id"] = "worker"
+						rows[pair[1]]["worker_id"] = "worker"
+						rows[pair[1]]["worker_lineage"] = map[string]any{"kind": "worker_lineage_v1", "source_session_id": pair[0], "replacement_session_id": pair[1], "logical_agent_id": "agent", "source_worker_id": "worker", "worker_id": "worker", "command_id": "launch:" + pair[1], "acknowledged_at": "2026-11-19T17:00:00Z"}
+					}
+				}
+				if mode == "missing-ack" {
+					delete(rows["c"], "worker_lineage")
+					delete(rows["c"], "hub_resume_lineage")
+				}
+				if mode == "missing-historical-proof" {
+					delete(rows["b"], "worker_lineage")
+					delete(rows["b"], "hub_resume_lineage")
+				}
+				if mode == "unsettled" {
+					rows["b"]["state"] = "detached"
+				}
+				s, r := reconcileFixture(t, rows)
+				original := writePlan(t, s, "a", "Recover before first tool call")
+				ctx := context.Background()
+				if mode == "prior-pair" {
+					if _, e := s.Store.AssociateContinuation(ctx, "b", "c", "agent"); e != nil {
+						t.Fatal(e)
+					}
+				}
+				if mode == "off" {
+					if e := s.Store.SetContinue(ctx, "a", false); e != nil {
+						t.Fatal(e)
+					}
+				}
+				if mode == "clear" {
+					if e := s.Store.Clear(ctx, "tether:a"); e != nil {
+						t.Fatal(e)
+					}
+				}
+				err := r.Ensure(ctx, "c")
+				bad := mode == "missing-ack" || mode == "missing-historical-proof" || mode == "unsettled"
+				if (err != nil) != bad {
+					t.Fatalf("verification: %v", err)
+				}
+				if bad {
+					got, e := planOf(s, "a")
+					if e != nil || got.Revision != original.Revision {
+						t.Fatalf("partial move: %+v %v", got, e)
+					}
+					return
+				}
+				got, e := planOf(s, "c")
+				if mode == "off" || mode == "clear" {
+					if e != ErrNotFound {
+						t.Fatalf("fence crossed: %+v %v", got, e)
+					}
+					return
+				}
+				if e != nil || got.ID != original.ID || got.Revision != original.Revision+2 {
+					t.Fatalf("repair: %+v %v", got, e)
+				}
+				if chain := s.Store.Ancestors(ctx, "c"); fmt.Sprint(chain) != "[a b]" {
+					t.Fatalf("history: %v", chain)
+				}
+			})
+		}
 	}
 }
