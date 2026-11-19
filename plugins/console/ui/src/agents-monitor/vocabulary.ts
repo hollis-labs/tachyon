@@ -200,7 +200,7 @@ export const AGENTS = {
     cancel: 'Cancel',
     waiting: (min: number) => `Waiting for handoff (up to ${min} min)`,
     skip: 'Skip and relaunch now',
-    steps: { requested: 'Requested', handoff_sent: 'Handoff asked', waiting: 'Waiting for the handoff', stopping: 'Stopping', stopped: 'Stopped', resuming: 'Relaunching', done: 'Done', failed: 'Failed' } as Record<string, string>,
+    steps: { requested: 'Requested', handoff_sent: 'Handoff asked', waiting: 'Waiting for the handoff', stopping: 'Stopping', stopped: 'Stopped', resuming: 'Relaunching', associating: 'Restoring chat', done: 'Done', failed: 'Failed' } as Record<string, string>,
     failedAt: (step: string) => `Failed at: ${step}`,
     narrowed: (scopes: string[]) => `Relaunched with fewer permissions: Tether did not grant ${scopes.join(', ')}. Relaunch the seat from Tether to restore them.`,
     close: 'Close',

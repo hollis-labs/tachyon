@@ -74,3 +74,55 @@ func TestTetherVerifierRequiresExactServerNativeReceipt(t *testing.T) {
 		})
 	}
 }
+
+func TestHubLineageVerifierRejectsUncertainOrDifferentPair(t *testing.T) {
+	for _, mutate := range []string{"", "source-agent", "new-agent", "parent", "intent", "old-running", "new-failed", "old-worker", "new-worker", "old-id", "new-id", "missing"} {
+		t.Run(mutate, func(t *testing.T) {
+			old := map[string]any{"id": "old", "logical_agent_id": "agent", "state": "completed"}
+			next := map[string]any{"id": "new", "logical_agent_id": "agent", "state": "running", "parent_session_id": "old", "intent": "resume"}
+			switch mutate {
+			case "source-agent":
+				old["logical_agent_id"] = "other"
+			case "new-agent":
+				next["logical_agent_id"] = "other"
+			case "parent":
+				next["parent_session_id"] = "other"
+			case "intent":
+				next["intent"] = "fresh"
+			case "old-running":
+				old["state"] = "running"
+			case "new-failed":
+				next["state"] = "failed"
+			case "old-worker":
+				old["worker_id"] = "worker"
+			case "new-worker":
+				next["worker_id"] = "worker"
+			case "old-id":
+				old["id"] = "other"
+			case "new-id":
+				next["id"] = "other"
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if mutate == "missing" {
+					http.NotFound(w, r)
+					return
+				}
+				if r.URL.Path == "/sessions/old" {
+					_ = json.NewEncoder(w).Encode(old)
+				} else {
+					_ = json.NewEncoder(w).Encode(next)
+				}
+			}))
+			defer server.Close()
+			v := &TetherContinuationVerifier{Base: server.URL, Client: server.Client()}
+			err := v.VerifyHubLineage(context.Background(), "old", "new", "agent")
+			if (err == nil) != (mutate == "") {
+				t.Fatalf("verification: %v", err)
+			}
+			// Hub lineage must never satisfy the public native proof gate.
+			if err := v.Verify(context.Background(), "old", "new", "agent"); err == nil {
+				t.Fatal("hub lineage authorized native association")
+			}
+		})
+	}
+}

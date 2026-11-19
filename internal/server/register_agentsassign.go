@@ -125,3 +125,19 @@ func (s *Server) chatContinuationVerifier() *chatplan.TetherContinuationVerifier
 	}
 	return &chatplan.TetherContinuationVerifier{Base: base, Client: client}
 }
+
+// associateHubRestart uses current Tether rows, never caller readiness claims.
+// The native worker association endpoint retains its stronger receipt verifier.
+func (s *Server) associateHubRestart() func(context.Context, string, string, string) error {
+	verifier := s.chatContinuationVerifier()
+	if verifier == nil || s.chatPlan == nil {
+		return nil
+	}
+	return func(ctx context.Context, source, replacement, agent string) error {
+		if err := verifier.VerifyHubLineage(ctx, source, replacement, agent); err != nil {
+			return err
+		}
+		_, err := s.chatPlan.AssociateContinuation(ctx, source, replacement, agent)
+		return err
+	}
+}

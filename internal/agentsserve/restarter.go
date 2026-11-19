@@ -19,8 +19,8 @@ var ErrResumeRefused = errors.New("tether refused the resume")
 
 // TetherRestarter exposes Tether control routes. The Restart control reads
 // GET /sessions/{id} before Stop and uses POST /logical-agents/{id}/resume only
-// for hub sessions. Its Relaunch method remains for separately explicit flows;
-// Restart does not call it. Client carries the existing sessions control token.
+// for hub sessions. A typed checkpoint refusal uses Relaunch with explicit
+// lineage continuity; other failures never trigger that fallback. Client carries the existing sessions control token.
 type TetherRestarter struct {
 	Base   string
 	Client *http.Client
