@@ -187,13 +187,13 @@ func TestReadReconcileConcurrentFirstReadsMoveOncePerEdge(t *testing.T) {
 }
 
 func TestReadReconcileTeamReceiptAllowsOnlyCommittedOrphanLineage(t *testing.T) {
-	for _, bad := range []string{"", "missing", "source", "agent", "worker", "generation"} {
+	for _, bad := range []string{"", "missing", "source", "agent", "worker", "generation", "source-actor", "replacement-actor", "committed", "intent-key"} {
 		t.Run(bad, func(t *testing.T) {
 			rows := hubChain()
 			delete(rows, "b")
 			rows["a"]["state"] = "orphaned"
 			rows["c"]["parent_session_id"] = "a"
-			receipt := map[string]any{"kind": "retained_team_v1", "source_session_id": "a", "replacement_session_id": "c", "logical_agent_id": "agent", "actor_uri": "msg://agent/team/seat", "intent_key": "intent", "binding_id": "binding", "binding_generation": 1}
+			receipt := map[string]any{"kind": "retained_team_v1", "source_session_id": "a", "replacement_session_id": "c", "logical_agent_id": "agent", "actor_uri": "msg://agent/team/seat", "source_actor_uri": "msg://agent/team/seat", "replacement_actor_uri": "msg://agent/team/seat", "committed_at": "2026-11-19T17:00:00Z", "intent_key": "intent", "binding_id": "binding", "binding_generation": 1}
 			rows["c"]["replacement_lineage"] = receipt
 			switch bad {
 			case "missing":
@@ -206,6 +206,14 @@ func TestReadReconcileTeamReceiptAllowsOnlyCommittedOrphanLineage(t *testing.T) 
 				rows["c"]["worker_id"] = "worker"
 			case "generation":
 				receipt["binding_generation"] = 0
+			case "source-actor":
+				receipt["source_actor_uri"] = "other"
+			case "replacement-actor":
+				receipt["replacement_actor_uri"] = "other"
+			case "committed":
+				receipt["committed_at"] = ""
+			case "intent-key":
+				receipt["intent_key"] = ""
 			}
 			s, r := reconcileFixture(t, rows)
 			original := writePlan(t, s, "a", "Team")
@@ -331,14 +339,14 @@ func TestReadReconcileFreshSpawnParentIsNotContinuation(t *testing.T) {
 }
 
 func TestReadReconcileWorkerLineageRequiresExactLaunchReceipt(t *testing.T) {
-	for _, bad := range []string{"", "missing", "source", "replacement", "agent", "source-worker", "worker", "command", "time"} {
+	for _, bad := range []string{"", "missing", "source", "replacement", "agent", "source-worker", "worker", "command", "time", "wrong-time", "native-time-alias"} {
 		t.Run(bad, func(t *testing.T) {
 			rows := hubChain()
 			delete(rows, "b")
 			rows["a"]["worker_id"] = "old-worker"
 			rows["c"]["worker_id"] = "new-worker"
 			rows["c"]["parent_session_id"] = "a"
-			receipt := map[string]any{"kind": "worker_lineage_v1", "source_session_id": "a", "replacement_session_id": "c", "logical_agent_id": "agent", "source_worker_id": "old-worker", "worker_id": "new-worker", "command_id": "launch:c", "admitted_at": "2026-11-19T17:00:00Z"}
+			receipt := map[string]any{"kind": "worker_lineage_v1", "source_session_id": "a", "replacement_session_id": "c", "logical_agent_id": "agent", "source_worker_id": "old-worker", "worker_id": "new-worker", "command_id": "launch:c", "acknowledged_at": "2026-11-19T17:00:00Z"}
 			rows["c"]["worker_lineage"] = receipt
 			switch bad {
 			case "missing":
@@ -356,7 +364,12 @@ func TestReadReconcileWorkerLineageRequiresExactLaunchReceipt(t *testing.T) {
 			case "command":
 				receipt["command_id"] = "launch:other"
 			case "time":
-				receipt["admitted_at"] = ""
+				receipt["acknowledged_at"] = ""
+			case "wrong-time":
+				receipt["acknowledged_at"] = "not-a-time"
+			case "native-time-alias":
+				delete(receipt, "acknowledged_at")
+				receipt["admitted_at"] = "2026-11-19T17:00:00Z"
 			}
 			s, r := reconcileFixture(t, rows)
 			original := writePlan(t, s, "a", "Worker history")
@@ -385,11 +398,11 @@ func TestUILineageReceiptsNeverAuthorizeNativePOST(t *testing.T) {
 			next := map[string]any{"id": replacement, "logical_agent_id": "agent", "intent": "resume", "parent_session_id": source, "state": "running"}
 			if kind == "team" {
 				old["state"] = "orphaned"
-				next["replacement_lineage"] = map[string]any{"kind": "retained_team_v1", "source_session_id": source, "replacement_session_id": replacement, "logical_agent_id": "agent", "actor_uri": "msg://agent/team/seat", "intent_key": "intent", "binding_id": "binding", "binding_generation": 1}
+				next["replacement_lineage"] = map[string]any{"kind": "retained_team_v1", "source_session_id": source, "replacement_session_id": replacement, "logical_agent_id": "agent", "actor_uri": "msg://agent/team/seat", "source_actor_uri": "msg://agent/team/seat", "replacement_actor_uri": "msg://agent/team/seat", "committed_at": "2026-11-19T17:00:00Z", "intent_key": "intent", "binding_id": "binding", "binding_generation": 1}
 			} else {
 				old["worker_id"] = "worker"
 				next["worker_id"] = "worker"
-				next["worker_lineage"] = map[string]any{"kind": "worker_lineage_v1", "source_session_id": source, "replacement_session_id": replacement, "logical_agent_id": "agent", "source_worker_id": "worker", "worker_id": "worker", "command_id": "launch:" + replacement, "admitted_at": "2026-11-19T17:00:00Z"}
+				next["worker_lineage"] = map[string]any{"kind": "worker_lineage_v1", "source_session_id": source, "replacement_session_id": replacement, "logical_agent_id": "agent", "source_worker_id": "worker", "worker_id": "worker", "command_id": "launch:" + replacement, "acknowledged_at": "2026-11-19T17:00:00Z"}
 			}
 			s, r := reconcileFixture(t, map[string]map[string]any{source: old, replacement: next})
 			original := writePlan(t, s, source, "Never native proof")
@@ -419,7 +432,7 @@ func TestReadReconcileHistoricalTeamChain(t *testing.T) {
 	rows := hubChain()
 	rows["a"]["state"], rows["b"]["state"] = "orphaned", "orphaned"
 	for _, pair := range [][2]string{{"a", "b"}, {"b", "c"}} {
-		rows[pair[1]]["replacement_lineage"] = map[string]any{"kind": "retained_team_v1", "source_session_id": pair[0], "replacement_session_id": pair[1], "logical_agent_id": "agent", "actor_uri": "msg://agent/team/seat", "intent_key": "intent:" + pair[1], "binding_id": "binding:" + pair[1], "binding_generation": 1}
+		rows[pair[1]]["replacement_lineage"] = map[string]any{"kind": "retained_team_v1", "source_session_id": pair[0], "replacement_session_id": pair[1], "logical_agent_id": "agent", "actor_uri": "msg://agent/team/seat", "source_actor_uri": "msg://agent/team/seat", "replacement_actor_uri": "msg://agent/team/seat", "committed_at": "2026-11-19T17:00:00Z", "intent_key": "intent:" + pair[1], "binding_id": "binding:" + pair[1], "binding_generation": 1}
 	}
 	s, r := reconcileFixture(t, rows)
 	original := writePlan(t, s, "a", "Survive repeated team recovery")
@@ -488,7 +501,7 @@ func TestReadReconcileHistoricalWorkerChain(t *testing.T) {
 		row["worker_id"] = "worker"
 	}
 	for _, pair := range [][2]string{{"a", "b"}, {"b", "c"}} {
-		rows[pair[1]]["worker_lineage"] = map[string]any{"kind": "worker_lineage_v1", "source_session_id": pair[0], "replacement_session_id": pair[1], "logical_agent_id": "agent", "source_worker_id": "worker", "worker_id": "worker", "command_id": "launch:" + pair[1], "admitted_at": "2026-11-19T17:00:00Z"}
+		rows[pair[1]]["worker_lineage"] = map[string]any{"kind": "worker_lineage_v1", "source_session_id": pair[0], "replacement_session_id": pair[1], "logical_agent_id": "agent", "source_worker_id": "worker", "worker_id": "worker", "command_id": "launch:" + pair[1], "acknowledged_at": "2026-11-19T17:00:00Z"}
 	}
 	s, r := reconcileFixture(t, rows)
 	original := writePlan(t, s, "a", "Repeated worker relaunch")

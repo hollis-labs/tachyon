@@ -37,9 +37,12 @@ type tetherContinuationSession struct {
 		SourceWorkerID       string `json:"source_worker_id"`
 		WorkerID             string `json:"worker_id"`
 		CommandID            string `json:"command_id"`
-		AdmittedAt           string `json:"admitted_at"`
+		AcknowledgedAt       string `json:"acknowledged_at"`
 	} `json:"worker_lineage"`
 	ReplacementLineage *struct {
+		SourceActorURI       string `json:"source_actor_uri"`
+		ReplacementActorURI  string `json:"replacement_actor_uri"`
+		CommittedAt          string `json:"committed_at"`
 		Kind                 string `json:"kind"`
 		SourceSessionID      string `json:"source_session_id"`
 		ReplacementSessionID string `json:"replacement_session_id"`

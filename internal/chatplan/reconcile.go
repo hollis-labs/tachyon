@@ -37,10 +37,15 @@ func nativeEvidenceMatches(old, next tetherContinuationSession, agent string) bo
 		a.WorkerID != "" && old.WorkerID == a.WorkerID && next.WorkerID == a.WorkerID
 }
 
+func receiptTimeValid(value string) bool {
+	at, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil && !at.IsZero()
+}
+
 func teamEvidenceMatches(old, next tetherContinuationSession, agent string) bool {
 	a := next.ReplacementLineage
 	return a != nil && a.Kind == "retained_team_v1" && a.SourceSessionID == old.ID && a.ReplacementSessionID == next.ID &&
-		a.LogicalAgentID == agent && a.ActorURI != "" && a.IntentKey != "" && a.BindingID != "" && a.BindingGeneration > 0 &&
+		a.LogicalAgentID == agent && a.ActorURI != "" && a.SourceActorURI == a.ActorURI && a.ReplacementActorURI == a.ActorURI && receiptTimeValid(a.CommittedAt) && a.IntentKey != "" && a.BindingID != "" && a.BindingGeneration > 0 &&
 		old.WorkerID == "" && next.WorkerID == ""
 }
 
@@ -49,7 +54,7 @@ func teamEvidenceMatches(old, next tetherContinuationSession, agent string) bool
 func workerEvidenceMatches(old, next tetherContinuationSession, agent string) bool {
 	a := next.WorkerLineage
 	return a != nil && a.Kind == "worker_lineage_v1" && a.SourceSessionID == old.ID && a.ReplacementSessionID == next.ID && a.LogicalAgentID == agent &&
-		a.SourceWorkerID == old.WorkerID && a.WorkerID != "" && a.WorkerID == next.WorkerID && a.CommandID == "launch:"+next.ID && a.AdmittedAt != ""
+		a.SourceWorkerID == old.WorkerID && a.WorkerID != "" && a.WorkerID == next.WorkerID && a.CommandID == "launch:"+next.ID && receiptTimeValid(a.AcknowledgedAt)
 }
 
 // Ensure reconstructs missing ancestry for a running replacement. Complete

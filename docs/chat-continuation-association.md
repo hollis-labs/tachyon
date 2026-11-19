@@ -27,9 +27,7 @@ and a server-owned successful **native admission** receipt before committing
 the association. A client assertion, generic `intent=resume`, or `state=running`
 is insufficient. Missing proof returns `native_proof_unavailable` or
 `native_continuation_unverified`, and no plan or history link is committed.
-The receipt field is being added to the Tether native continuation contract;
-the verifier rejects older Tether rows with no receipt. The field shape remains
-subject to final exact-head contract confirmation before activation.
+The verifier rejects older Tether rows with no native receipt.
 
 Worker UI Restart with preserved context is **not delivered** by this slice:
 Tachyon lacks the exact source generation, current policy digest and independent
@@ -73,10 +71,14 @@ The reconciler verifies every missing edge, up to 16 hops, before committing the
 whole chain in one SQLite transaction. It requires exact session IDs, explicit
 parents and the same logical agent throughout. Ordinary hub edges require a
 terminal source. Retained-team recovery additionally supports orphaned sources
-through Tether's committed `replacement_lineage` receipt, whose actor and agent
-are bound by Tether to both stored plans. Worker edges require either the native
+through Tether's committed `replacement_lineage` receipt. Tether verifies its
+actor against the original fenced replacement transaction, the exact stored
+source-plan hash and the destination recovery actor. All three projected actor
+fields must agree; the receipt also includes its intent key and commit time.
+Worker edges require either the native
 admission receipt or the separate `worker_lineage` receipt from an authenticated
-successful launch acknowledgement. A running worker row alone is insufficient.
+successful launch acknowledgement (`acknowledged_at`). A running worker row
+alone is insufficient.
 
 A one-pair receipt does not prove that older ancestors were observed. Only a
 completed chain reconciliation creates the separate local completion marker.
