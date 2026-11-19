@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/hollis-labs/tachyon/internal/chatapi"
 )
@@ -162,126 +163,188 @@ func (s *Store) AssociateContinuation(ctx context.Context, source, replacement, 
 	now := s.now()
 	on := s.continueDefault(ctx)
 	err := s.DB.Writer.Submit(ctx, "chat_continuation_associate", func(ctx context.Context, tx *sql.Tx) error {
-		out.Carried = Carried{}
-		out.Replayed = false
-		out.PlanMoved = false
-		var receiptSource, receiptAgent string
-		var receiptMoved int
-		receiptErr := tx.QueryRowContext(ctx, `SELECT source_session_id,agent_id,plan_moved FROM chat_continuation_associations WHERE replacement_session_id=?`, replacement).Scan(&receiptSource, &receiptAgent, &receiptMoved)
-		if receiptErr == nil {
-			if receiptSource != source || receiptAgent != agent {
-				return ErrAssociationConflict
-			}
-			out.Replayed, out.PlanMoved = true, receiptMoved != 0
-			return nil
-		}
-		if !errors.Is(receiptErr, sql.ErrNoRows) {
-			return receiptErr
-		}
-		// Preserve an operator's Continue choice or clear marker, including a
-		// marker that was written before the first proxied request.
-		if _, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on)
- VALUES(?,?,NULL,0,?,?) ON CONFLICT(session_id) DO NOTHING`, source, agent, now.UnixNano(), on); err != nil {
-			return err
-		}
-		var sourceAgent string
-		if err := tx.QueryRowContext(ctx, `SELECT agent_id FROM chat_session_lineage WHERE session_id=?`, source).Scan(&sourceAgent); err != nil {
-			return err
-		}
-		if sourceAgent != "" && sourceAgent != agent {
-			return ErrAgentMismatch
-		}
-		if sourceAgent == "" {
-			if _, err := tx.ExecContext(ctx, `UPDATE chat_session_lineage SET agent_id=? WHERE session_id=?`, agent, source); err != nil {
-				return err
-			}
-		}
-		var rowAgent string
-		var rowParent sql.NullString
-		var cleared int
-		err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared FROM chat_session_lineage WHERE session_id=?`, replacement).Scan(&rowAgent, &rowParent, &cleared)
-		if err == nil {
-			if cleared != 0 || rowAgent != "" && rowAgent != agent || rowParent.Valid && rowParent.String != source {
-				return ErrAssociationConflict
-			}
-			if rowAgent == agent && rowParent.Valid && rowParent.String == source {
-				// A proxy may have recorded the same pair before this eager receipt.
-			} else if rowAgent != "" || rowParent.Valid {
-				return ErrAssociationConflict
-			} else {
-				// A Continue preference pinned an agent-less row first.
-				_, err = tx.ExecContext(ctx, `UPDATE chat_session_lineage SET agent_id=?,continues_id=? WHERE session_id=?`, agent, source, replacement)
-			}
-		} else if errors.Is(err, sql.ErrNoRows) {
-			_, err = tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on)
- VALUES(?,?,?,0,?,?)`, replacement, agent, source, now.UnixNano(), on)
-		}
-		if err != nil {
-			return err
-		}
-		me := "tether:" + replacement
-		if _, err := s.get(ctx, tx, "scope='thread' AND thread_ref=?", me); err != nil && !errors.Is(err, ErrNotFound) {
-			return err
-		} else if errors.Is(err, ErrNotFound) {
-			// Match Carry: the nearest eligible, same-agent ancestor owns the plan.
-			// A planless immediate source must not permanently receipt a no-move.
-			cur := source
-			for hop := 0; hop < MaxLineageHops && cur != ""; hop++ {
-				var rowAgent string
-				var next sql.NullString
-				var rowCleared, rowOn int
-				err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared,continue_on FROM chat_session_lineage WHERE session_id=?`, cur).Scan(&rowAgent, &next, &rowCleared, &rowOn)
-				if errors.Is(err, sql.ErrNoRows) {
-					break
-				}
-				if err != nil {
-					return err
-				}
-				if rowAgent == "" || rowOn == 0 {
-					break
-				}
-				if rowAgent != agent {
-					return ErrAgentMismatch
-				}
-				if cur == source && rowCleared != 0 {
-					break // preserve the source clear fence
-				}
-				from := "tether:" + cur
-				plans, err := s.plansOf(ctx, tx, from)
-				if err != nil {
-					return err
-				}
-				if len(plans) > 0 {
-					for i := range plans {
-						p := &plans[i]
-						p.Revision++
-						p.UpdatedAt = now.UnixMilli()
-						if _, err := tx.ExecContext(ctx, `UPDATE chat_plans SET thread_ref=?,revision=?,updated_ns=? WHERE id=?`, me, p.Revision, now.UnixNano(), p.ID); err != nil {
-							return err
-						}
-						p.ThreadRef = &me
-					}
-					out.Carried = Carried{Moved: true, From: from, To: me, Plan: plans[0], Plans: plans}
-					out.PlanMoved = true
-					break
-				}
-				if rowCleared != 0 || !next.Valid {
-					break
-				}
-				cur = next.String
-			}
-		}
-		moved := 0
-		if out.PlanMoved {
-			moved = 1
-		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO chat_continuation_associations(replacement_session_id,source_session_id,agent_id,plan_moved,committed_ns) VALUES(?,?,?,?,?)`, replacement, source, agent, moved, now.UnixNano())
-		return err
+		return s.associateContinuationTx(ctx, tx, &out, now, on, false)
 	})
 	if err != nil {
 		return Association{}, err
 	}
 	return out, nil
+}
+
+// associateContinuationTx is shared by one-pair and whole-chain association.
+// All remote proof is checked before entering this transaction.
+func (s *Store) associateContinuationTx(ctx context.Context, tx *sql.Tx, out *Association, now time.Time, on int, reconcile bool) error {
+	source, replacement, agent := out.Source, out.Replacement, out.Agent
+	out.Carried = Carried{}
+	out.Replayed = false
+	out.PlanMoved = false
+	var receiptSource, receiptAgent string
+	var receiptMoved int
+	receiptErr := tx.QueryRowContext(ctx, `SELECT source_session_id,agent_id,plan_moved FROM chat_continuation_associations WHERE replacement_session_id=?`, replacement).Scan(&receiptSource, &receiptAgent, &receiptMoved)
+	if receiptErr == nil {
+		if receiptSource != source || receiptAgent != agent {
+			return ErrAssociationConflict
+		}
+		out.Replayed, out.PlanMoved = true, receiptMoved != 0
+		if !reconcile {
+			return nil
+		}
+	}
+	if receiptErr != nil && !errors.Is(receiptErr, sql.ErrNoRows) {
+		return receiptErr
+	}
+	// Preserve an operator's Continue choice or clear marker, including a
+	// marker that was written before the first proxied request.
+	if _, err := tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on)
+ VALUES(?,?,NULL,0,?,?) ON CONFLICT(session_id) DO NOTHING`, source, agent, now.UnixNano(), on); err != nil {
+		return err
+	}
+	var sourceAgent string
+	if err := tx.QueryRowContext(ctx, `SELECT agent_id FROM chat_session_lineage WHERE session_id=?`, source).Scan(&sourceAgent); err != nil {
+		return err
+	}
+	if sourceAgent != "" && sourceAgent != agent {
+		return ErrAgentMismatch
+	}
+	if sourceAgent == "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE chat_session_lineage SET agent_id=? WHERE session_id=?`, agent, source); err != nil {
+			return err
+		}
+	}
+	var rowAgent string
+	var rowParent sql.NullString
+	var cleared int
+	err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared FROM chat_session_lineage WHERE session_id=?`, replacement).Scan(&rowAgent, &rowParent, &cleared)
+	if err == nil {
+		if cleared != 0 || rowAgent != "" && rowAgent != agent || rowParent.Valid && rowParent.String != source {
+			return ErrAssociationConflict
+		}
+		if rowAgent == agent && rowParent.Valid && rowParent.String == source {
+			// A proxy may have recorded the same pair before this eager receipt.
+		} else if reconcile && rowAgent == agent && !rowParent.Valid {
+			_, err = tx.ExecContext(ctx, `UPDATE chat_session_lineage SET continues_id=? WHERE session_id=?`, source, replacement)
+		} else if rowAgent != "" || rowParent.Valid {
+			return ErrAssociationConflict
+		} else {
+			// A Continue preference pinned an agent-less row first.
+			_, err = tx.ExecContext(ctx, `UPDATE chat_session_lineage SET agent_id=?,continues_id=? WHERE session_id=?`, agent, source, replacement)
+		}
+	} else if errors.Is(err, sql.ErrNoRows) {
+		_, err = tx.ExecContext(ctx, `INSERT INTO chat_session_lineage(session_id,agent_id,continues_id,cleared,seen_ns,continue_on)
+ VALUES(?,?,?,0,?,?)`, replacement, agent, source, now.UnixNano(), on)
+	}
+	if err != nil {
+		return err
+	}
+	me := "tether:" + replacement
+	if _, err := s.get(ctx, tx, "scope='thread' AND thread_ref=?", me); err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	} else if errors.Is(err, ErrNotFound) {
+		// Match Carry: the nearest eligible, same-agent ancestor owns the plan.
+		// A planless immediate source must not permanently receipt a no-move.
+		cur := source
+		for hop := 0; hop < MaxLineageHops && cur != ""; hop++ {
+			var rowAgent string
+			var next sql.NullString
+			var rowCleared, rowOn int
+			err := tx.QueryRowContext(ctx, `SELECT agent_id,continues_id,cleared,continue_on FROM chat_session_lineage WHERE session_id=?`, cur).Scan(&rowAgent, &next, &rowCleared, &rowOn)
+			if errors.Is(err, sql.ErrNoRows) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if rowAgent == "" || rowOn == 0 {
+				break
+			}
+			if rowAgent != agent {
+				return ErrAgentMismatch
+			}
+			if cur == source && rowCleared != 0 {
+				break // preserve the source clear fence
+			}
+			from := "tether:" + cur
+			plans, err := s.plansOf(ctx, tx, from)
+			if err != nil {
+				return err
+			}
+			if len(plans) > 0 {
+				for i := range plans {
+					p := &plans[i]
+					p.Revision++
+					p.UpdatedAt = now.UnixMilli()
+					if _, err := tx.ExecContext(ctx, `UPDATE chat_plans SET thread_ref=?,revision=?,updated_ns=? WHERE id=?`, me, p.Revision, now.UnixNano(), p.ID); err != nil {
+						return err
+					}
+					p.ThreadRef = &me
+				}
+				out.Carried = Carried{Moved: true, From: from, To: me, Plan: plans[0], Plans: plans}
+				out.PlanMoved = true
+				break
+			}
+			if rowCleared != 0 || !next.Valid {
+				break
+			}
+			cur = next.String
+		}
+	}
+	moved := 0
+	if out.PlanMoved {
+		moved = 1
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO chat_continuation_associations(replacement_session_id,source_session_id,agent_id,plan_moved,committed_ns) VALUES(?,?,?,?,?) ON CONFLICT(replacement_session_id) DO UPDATE SET plan_moved=MAX(plan_moved,excluded.plan_moved)`, replacement, source, agent, moved, now.UnixNano())
+	return err
+}
+
+// ContinuationLink names an externally verified historical edge. Links in a
+// chain are oldest first; every edge belongs to one nonempty logical agent.
+type ContinuationLink struct{ Source, Replacement, Agent string }
+
+// AssociateChain commits an entire verified chain atomically, so a later local
+// conflict cannot leave an earlier plan movement partially applied.
+func (s *Store) AssociateChain(ctx context.Context, links []ContinuationLink) ([]Association, error) {
+	if len(links) == 0 {
+		return nil, nil
+	}
+	if len(links) > MaxLineageHops {
+		return nil, ErrInvalid
+	}
+	seen := map[string]bool{links[0].Source: true}
+	for i, link := range links {
+		if link.Source == "" || link.Replacement == "" || link.Agent == "" || link.Source == link.Replacement || seen[link.Replacement] || link.Agent != links[0].Agent || (i > 0 && links[i-1].Replacement != link.Source) {
+			return nil, ErrInvalid
+		}
+		seen[link.Replacement] = true
+	}
+	now, on := s.now(), s.continueDefault(ctx)
+	var results []Association
+	err := s.DB.Writer.Submit(ctx, "chat_continuation_chain", func(ctx context.Context, tx *sql.Tx) error {
+		results = nil
+		for _, link := range links {
+			out := Association{Source: link.Source, Replacement: link.Replacement, Agent: link.Agent}
+			if err := s.associateContinuationTx(ctx, tx, &out, now, on, true); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO chat_continuation_reconciled(session_id) VALUES(?) ON CONFLICT DO NOTHING`, link.Replacement); err != nil {
+				return err
+			}
+			results = append(results, out)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// HasReconciliationBoundary distinguishes complete ancestry or an explicit
+// operator clear fence from a one-pair receipt.
+// It is only local cache bookkeeping, never native admission proof.
+func (s *Store) HasReconciliationBoundary(ctx context.Context, replacement string) (bool, error) {
+	var found bool
+	err := s.DB.Reader.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chat_continuation_reconciled WHERE session_id=?) OR EXISTS(SELECT 1 FROM chat_session_lineage WHERE session_id=? AND cleared=1)`, replacement, replacement).Scan(&found)
+	return found, err
 }
 
 // recorded reports the fast path: the session is already in the lineage with its agent, so a

@@ -29,6 +29,26 @@ type tetherContinuationSession struct {
 	Intent          string `json:"intent"`
 	State           string `json:"state"`
 	WorkerID        string `json:"worker_id"`
+	WorkerLineage   *struct {
+		Kind                 string `json:"kind"`
+		SourceSessionID      string `json:"source_session_id"`
+		ReplacementSessionID string `json:"replacement_session_id"`
+		LogicalAgentID       string `json:"logical_agent_id"`
+		SourceWorkerID       string `json:"source_worker_id"`
+		WorkerID             string `json:"worker_id"`
+		CommandID            string `json:"command_id"`
+		AdmittedAt           string `json:"admitted_at"`
+	} `json:"worker_lineage"`
+	ReplacementLineage *struct {
+		Kind                 string `json:"kind"`
+		SourceSessionID      string `json:"source_session_id"`
+		ReplacementSessionID string `json:"replacement_session_id"`
+		LogicalAgentID       string `json:"logical_agent_id"`
+		ActorURI             string `json:"actor_uri"`
+		IntentKey            string `json:"intent_key"`
+		BindingID            string `json:"binding_id"`
+		BindingGeneration    int64  `json:"binding_generation"`
+	} `json:"replacement_lineage"`
 	NativeAdmission *struct {
 		Kind                  string `json:"kind"`
 		SourceSessionID       string `json:"source_session_id"`

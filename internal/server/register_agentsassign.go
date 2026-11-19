@@ -141,3 +141,13 @@ func (s *Server) associateHubRestart() func(context.Context, string, string, str
 		return err
 	}
 }
+
+// chatReadReconciler discovers successful non-UI replacements from canonical
+// Tether enumeration, including sessions that have emitted no agent traffic.
+func (s *Server) chatReadReconciler() *chatplan.ReadReconciler {
+	verifier := s.chatContinuationVerifier()
+	if verifier == nil || s.chatPlan == nil {
+		return nil
+	}
+	return &chatplan.ReadReconciler{Service: s.chatPlan, Verifier: verifier, Candidates: verifier.RunningContinuations}
+}
