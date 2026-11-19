@@ -196,6 +196,7 @@ export const AGENTS = {
     handoff: 'Ask for a handoff first',
     handoffPrompt: 'The agent is asked',
     confirm: 'Restart',
+    restoreChat: 'Restore chat',
     working: 'Restarting',
     cancel: 'Cancel',
     waiting: (min: number) => `Waiting for handoff (up to ${min} min)`,

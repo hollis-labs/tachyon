@@ -187,6 +187,7 @@ export function RestartControl({ session, paused, onDone, live = CONTROLS_LIVE }
     requestId.current = newId()
     onDone(done.new_session_id ?? null)
   }
+  const repairAssociation = req?.state === 'failed' && req.step === 'associating'
   const narrowed = req?.state === 'done' && req.scopes_dropped?.length ? req.scopes_dropped : null
 
   const confirm = async () => {
@@ -244,7 +245,7 @@ export function RestartControl({ session, paused, onDone, live = CONTROLS_LIVE }
           {!running && !narrowed && <Button size="sm" variant="ghost" onClick={() => (setReq(null), setOpen(false))}>{R.cancel}</Button>}
           {narrowed && req && <Button size="sm" variant="outline" onClick={() => finish(req)}>{R.close}</Button>}
           {(req === null || req.state === 'failed') && (
-            <Button size="sm" variant="outline" className="border-danger/35 text-danger" disabled={running} onClick={() => (req && (requestId.current = newId(), setReq(null)), void confirm())}>{R.confirm}</Button>
+            <Button size="sm" variant="outline" className="border-danger/35 text-danger" disabled={running} onClick={() => (req && !repairAssociation && (requestId.current = newId(), setReq(null)), void confirm())}>{repairAssociation ? R.restoreChat : R.confirm}</Button>
           )}
           {running && <Button size="sm" disabled>{R.working}</Button>}
         </div>
