@@ -1,0 +1,16 @@
+{
+ "request_id": "req_restart_requested",
+ "kind": "restart",
+ "session_id": "sess_work",
+ "state": "requested",
+ "step": null,
+ "error": null,
+ "interrupt": null,
+ "message_id": null,
+ "created_at": 1793321940000,
+ "updated_at": 1793321970000,
+ "handoff": true,
+ "new_session_id": null,
+ "discarded_pending": null,
+ "wait_ends_at": null
+}

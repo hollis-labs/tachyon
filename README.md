@@ -2,6 +2,10 @@
 
 Plugin-based control plane for the Hollis Labs agent fabric.
 
+The Substrate implementation lives in [next/](next/README.md) on
+`substrate-port`. Its native gate integration is experimental and disabled by
+default; build, configuration and upgrade guidance are documented with that module.
+
 **v2** is a fresh start on [`libs/app/app-host`](https://github.com/hollis-labs/libs/tree/main/app/app-host)
 (the host extracted from Chimera), scaffolded with the Folio `app-dashboard`
 preset (`gui_host=chimera`, then re-pointed at app-host) and the design-kit

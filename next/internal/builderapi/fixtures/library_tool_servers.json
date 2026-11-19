@@ -1,0 +1,5 @@
+{"items": [
+  {"kind": "tool_servers", "id": "tether", "name": "Tether", "summary": "Messaging, tasks and memory.", "used_by_count": 2, "transport": "http", "tags": ["core"], "status": "ok", "health": "healthy", "tool_count": 48, "restarts": 0, "scopes": null, "read_only": true, "editable": false},
+  {"kind": "tool_servers", "id": "github", "name": "GitHub", "summary": "Pull requests and releases.", "used_by_count": 1, "transport": "stdio", "tags": ["vcs"], "status": "degraded", "health": "slow responses", "tool_count": 12, "restarts": 3, "scopes": null, "read_only": true, "editable": false},
+  {"kind": "tool_servers", "id": "browser", "name": "Browser", "summary": "Headless browser control.", "used_by_count": 0, "transport": "http", "tags": [], "status": "down", "health": "unreachable", "tool_count": null, "restarts": null, "scopes": null, "read_only": true, "editable": false}
+]}

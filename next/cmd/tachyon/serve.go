@@ -18,6 +18,7 @@ import (
 	"github.com/hollis-labs/substrate/modules/scheduler"
 
 	"github.com/hollis-labs/tachyon/next/internal/access"
+	"github.com/hollis-labs/tachyon/next/internal/approvals"
 	"github.com/hollis-labs/tachyon/next/internal/dataverbs"
 	"github.com/hollis-labs/tachyon/next/internal/hostguard"
 	"github.com/hollis-labs/tachyon/next/internal/objects"
@@ -43,6 +44,13 @@ type deps struct {
 	objectJob *objectsync.Jobs
 	planner   plannerDeps
 	chat      chatDeps
+	approvals *approvals.Inbox
+	agents    agentsDeps
+	builder   builderDeps
+	terminal  terminalDeps
+	forge     forgeDeps
+	// transcripts is the guarded transcripts bridge (nil: no transcript routes).
+	transcripts http.Handler
 }
 
 // appRoutes are Tachyon's own routes, each with its scope (internal/routes). The domain slices add
@@ -50,16 +58,17 @@ type deps struct {
 // scope is "authenticated" and each verb is checked in the handler against the key's verb scope and
 // the credential's kinds. The console data API answers signed-in people, each verb behind its scope.
 func appRoutes(d deps) []routes.Route {
-	agent := dataverbs.NewAgentHTTP(d.local, d.access)
-	console := dataverbs.NewConsoleHTTP(d.local)
-	return append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), []routes.Route{
+	agent := dataverbs.NewAgentHTTP(d.local, d.access, d.chat.verbs, d.approvals)
+	console := dataverbs.NewConsoleHTTP(d.local, d.builder.teams)
+	return append(append(append(append(append(append(plannerRoutes(d.planner), chatRoutes(d.chat)...), approvalsRoutes(d.approvals)...), agentsRoutes(d.agents)...), append(builderRoutes(d.builder), forgeRoutes(d.forge)...)...), transcriptsRoutes(d.transcripts)...), append(terminalRoutes(d.terminal), []routes.Route{
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodPost, Pattern: dataverbs.AgentPrefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: agent},
 		{Method: http.MethodGet, Pattern: dataverbs.Prefix + "/providers", Scope: routes.Authenticated, Handler: console},
 		{Method: http.MethodGet, Pattern: dataverbs.Prefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: console},
+		{Method: http.MethodPost, Pattern: dataverbs.Prefix + "/providers/{provider}/verbs/{verb}", Scope: routes.Authenticated, Handler: console},
 		{Method: http.MethodGet, Pattern: objectSyncStatusPath, Scope: "tachyon.objects.read", Handler: objectSyncStatus(d.objectJob)},
-	}...)
+	}...)...)
 }
 
 // pluginAllowlist are the (method, path) pairs under /api/plugins/ that reach the plugin host
@@ -103,7 +112,32 @@ func (t *tachyon) serve(ctx context.Context) error {
 	pl := newPlanner(app, cfg, domain)
 	stopIngest := startPlannerIngest(ctx, cfg, pl)
 	defer stopIngest()
-	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: newChat(app, cfg, domain)})
+	chat, err := newChat(ctx, app, cfg, domain)
+	if err != nil {
+		return err
+	}
+	stopChat := startChat(cfg, chat)
+	defer stopChat()
+	inbox := newApprovals(ctx, app, cfg, domain)
+	stopApprovals := startApprovals(inbox)
+	defer stopApprovals()
+	agents := newAgents(app, cfg, domain, chat)
+	stopAgents := agents.start(ctx)
+	defer stopAgents()
+	builder := newBuilder(app, cfg, domain)
+	stopBuilder := builder.start(ctx)
+	defer stopBuilder()
+	term, err := newTerminal(ctx, app, cfg, domain, chat)
+	if err != nil {
+		return err
+	}
+	chat.verbs.Terminal = terminalVerbs(term)
+	stopTerminal := term.start(ctx)
+	defer stopTerminal()
+	forge := newForge(app, cfg, domain)
+	stopForge := forge.start(ctx)
+	defer stopForge()
+	appRts := appRoutes(deps{access: access.New(db, id, nil), local: dataverbs.NewLocal(objects.New(domain)), objectJob: jobs, planner: pl, chat: chat, approvals: inbox, agents: agents, builder: builder, terminal: term, forge: forge, transcripts: newTranscripts(app, cfg, domain)})
 	mux, err := routes.Register(table, appRts)
 	if err != nil {
 		return err

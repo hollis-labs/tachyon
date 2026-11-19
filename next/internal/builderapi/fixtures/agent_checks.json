@@ -1,0 +1,23 @@
+{
+  "builder-reviewer": {
+    "checks": [
+      {"name": "references_exist", "status": "ok", "message": "Skills, tool servers and extends all resolve.", "remedy": null, "entity": "agents/builder-reviewer.yaml"},
+      {"name": "tether_validate", "status": "ok", "message": "Tether validation passed.", "remedy": null, "entity": "agents/builder-reviewer.yaml"},
+      {"name": "part_drift", "status": "warn", "message": "Policy standard-ask@2 was edited outside the Builder.", "remedy": "Re-apply the policy or accept the current fields.", "entity": "policy:standard-ask"},
+      {"name": "model_known", "status": "warn", "message": "claude-sonnet-5-5 is not in Tether's model metadata (soft check).", "remedy": null, "entity": "agents/builder-reviewer.yaml"},
+      {"name": "scope_review_age", "status": "ok", "message": "Last privileged change was 12 days ago (days since the last privileged change; not a review record).", "remedy": null, "entity": "agents/builder-reviewer.yaml"}
+    ],
+    "summary": {"ok": 3, "warn": 2, "fail": 0}
+  },
+  "release-captain": {
+    "checks": [
+      {"name": "references_exist", "status": "fail", "message": "Skill release-notes does not exist in the catalog.", "remedy": "Create the skill or remove it from this agent.", "entity": "agents/release-captain.yaml"},
+      {"name": "tether_validate", "status": "fail", "message": "mcp_scopes github:release is not granted by any enabled tool server.", "remedy": "Enable the github tool server or drop the scope.", "entity": "agents/release-captain.yaml"},
+      {"name": "scope_review_age", "status": "warn", "message": "Last privileged change was 94 days ago (days since the last privileged change; not a review record).", "remedy": null, "entity": "agents/release-captain.yaml"}
+    ],
+    "summary": {"ok": 0, "warn": 1, "fail": 2}
+  },
+  "base-worker": {"checks": [{"name": "tether_validate", "status": "ok", "message": "Tether validation passed.", "remedy": null, "entity": "agents/base-worker.yaml"}], "summary": {"ok": 1, "warn": 0, "fail": 0}},
+  "nightly-triage": {"checks": [{"name": "tether_validate", "status": "ok", "message": "Tether validation passed.", "remedy": null, "entity": "agents/nightly-triage.yaml"}], "summary": {"ok": 1, "warn": 0, "fail": 0}},
+  "legacy-scribe": {"checks": [{"name": "tether_validate", "status": "ok", "message": "Tether validation passed.", "remedy": null, "entity": "agents/legacy-scribe.yaml"}], "summary": {"ok": 1, "warn": 0, "fail": 0}}
+}

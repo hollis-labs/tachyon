@@ -1,0 +1,4 @@
+{"items": [
+  {"kind": "policies", "id": "standard-ask", "name": "Standard (ask)", "summary": "Ask before risky actions.", "used_by_count": 1, "revision": 2, "permission_mode": "default", "network": "restricted", "default_sandbox": "workspace-write", "scope_count": 2, "privileged": false, "archived": false, "updated_at": 1793000000000, "editable": true},
+  {"kind": "policies", "id": "autonomous-sandboxed", "name": "Autonomous (sandboxed)", "summary": "No prompts; sandbox is the guard.", "used_by_count": 0, "revision": 1, "permission_mode": "bypassPermissions", "network": "restricted", "default_sandbox": "workspace-write", "scope_count": 1, "privileged": true, "archived": false, "updated_at": 1792500000000, "editable": true}
+]}

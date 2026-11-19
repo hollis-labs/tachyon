@@ -1,0 +1,482 @@
+package forgeindex
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/hollis-labs/tachyon/next/internal/store/storetest"
+)
+
+type fakePR struct {
+	Number    int
+	Title     string
+	Updated   string
+	SHA       string
+	State     string // mergeable_state
+	Draft     bool
+	Assignees []string
+	Requested []string
+	Reviews   []string    // CHANGES_REQUESTED / APPROVED by reviewer-N
+	Checks    [][2]string // status, conclusion
+	Mentioned bool
+	Merged    bool
+	Closed    bool
+}
+
+type fakeGH struct {
+	mu        sync.Mutex
+	PRs       map[int]*fakePR
+	Remaining int
+	// SearchRemaining, when set, is what /search/issues reports for its own bucket (GitHub's search limit is
+	// 30 a minute), apart from the core Remaining.
+	SearchRemaining int
+	Calls           map[string]int
+}
+
+func newFakeGH() *fakeGH {
+	return &fakeGH{PRs: map[int]*fakePR{}, Remaining: 4000, Calls: map[string]int{}}
+}
+
+func (f *fakeGH) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if r.URL.Path == "/search/issues" && f.SearchRemaining > 0 {
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprint(f.SearchRemaining))
+		w.Header().Set("X-RateLimit-Resource", "search")
+	} else {
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprint(f.Remaining))
+		w.Header().Set("X-RateLimit-Resource", "core")
+	}
+	w.Header().Set("X-RateLimit-Reset", "1793331000")
+	w.Header().Set("X-OAuth-Scopes", "repo")
+	p := r.URL.Path
+	f.Calls[p]++
+	js := func(v any) { w.Header().Set("Content-Type", "application/json"); _ = json.NewEncoder(w).Encode(v) }
+	user := func(l string) map[string]any { return map[string]any{"login": l, "avatar_url": "https://a/" + l} }
+	switch {
+	case p == "/user":
+		js(user("octo-viewer"))
+	case p == "/search/issues":
+		q := r.URL.Query().Get("q")
+		items := []any{}
+		for _, pr := range f.PRs {
+			if pr.Closed || pr.Merged || (strings.Contains(q, "mentions:") && !pr.Mentioned) {
+				continue
+			}
+			items = append(items, map[string]any{"number": pr.Number, "title": pr.Title, "state": "open", "updated_at": pr.Updated,
+				"repository_url": "https://api.github.example/repos/acme/widgets", "html_url": fmt.Sprintf("https://github.example/acme/widgets/pull/%d", pr.Number), "user": user("octo")})
+		}
+		js(map[string]any{"items": items})
+	case strings.HasSuffix(p, "/reviews"):
+		var n int
+		fmt.Sscanf(p, "/repos/acme/widgets/pulls/%d/reviews", &n)
+		out := []any{}
+		for i, st := range f.PRs[n].Reviews {
+			out = append(out, map[string]any{"user": user(fmt.Sprint("reviewer-", i)), "state": st})
+		}
+		js(out)
+	case strings.HasSuffix(p, "/check-runs"):
+		var sha string
+		fmt.Sscanf(p, "/repos/acme/widgets/commits/%s", &sha)
+		sha = strings.TrimSuffix(sha, "/check-runs")
+		runs := []any{}
+		for _, pr := range f.PRs {
+			if pr.SHA == sha {
+				for i, c := range pr.Checks {
+					runs = append(runs, map[string]any{"name": fmt.Sprint("job-", i), "status": c[0], "conclusion": c[1], "html_url": "https://ci/" + sha})
+				}
+			}
+		}
+		js(map[string]any{"check_runs": runs})
+	case strings.HasPrefix(p, "/repos/acme/widgets/pulls/"):
+		var n int
+		fmt.Sscanf(p, "/repos/acme/widgets/pulls/%d", &n)
+		pr, ok := f.PRs[n]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		as, rq := []any{}, []any{}
+		for _, a := range pr.Assignees {
+			as = append(as, user(a))
+		}
+		for _, a := range pr.Requested {
+			rq = append(rq, user(a))
+		}
+		js(map[string]any{"number": n, "title": pr.Title, "state": "open", "draft": pr.Draft, "merged": pr.Merged, "mergeable_state": pr.State,
+			"additions": 10, "deletions": 2, "updated_at": pr.Updated, "html_url": fmt.Sprintf("https://github.example/acme/widgets/pull/%d", n),
+			"user": user("octo"), "assignees": as, "requested_reviewers": rq, "head": map[string]any{"sha": pr.SHA}})
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+type env struct {
+	gh    *fakeGH
+	idx   *Index
+	now   *time.Time
+	feed  []FeedEvent
+	calls func(string) int
+}
+
+func newEnv(t *testing.T) *env {
+	t.Helper()
+	db := storetest.New(t).Open(t)
+	fake := newFakeGH()
+	srv := httptest.NewServer(fake)
+	t.Cleanup(srv.Close)
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	e := &env{gh: fake, now: &now}
+	e.idx = &Index{DB: db, GH: &GitHub{Credential: true, Base: srv.URL, HTTP: srv.Client()}, Bus: NewBroker(func() time.Time { return now }),
+		Now: func() time.Time { return now }, Feed: func(f FeedEvent) { e.feed = append(e.feed, f) },
+		Settings: fixedSettings{Settings{Watched: []string{"org:acme"}, PollS: 60, StaleDays: 7, RateFloor: 200, MaxPending: 100}}}
+	e.calls = func(p string) int { fake.mu.Lock(); defer fake.mu.Unlock(); return fake.Calls[p] }
+	return e
+}
+
+// total is how many requests the fake GitHub has answered.
+func (e *env) total() int {
+	e.gh.mu.Lock()
+	defer e.gh.mu.Unlock()
+	n := 0
+	for _, c := range e.gh.Calls {
+		n += c
+	}
+	return n
+}
+
+type fixedSettings struct{ s Settings }
+
+func (f fixedSettings) Load(context.Context) Settings { return f.s }
+
+func (e *env) rows(t *testing.T) map[string]Row {
+	t.Helper()
+	snap, err := e.idx.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]Row{}
+	for _, r := range snap.Rows {
+		m[r.PRKey] = r
+	}
+	return m
+}
+
+const k = "github:acme/widgets#"
+
+func seed(e *env) {
+	e.gh.PRs[1] = &fakePR{Number: 1, Title: "checks fail", Updated: "2026-10-30T11:00:00Z", SHA: "a1", State: "clean", Assignees: []string{"me"}, Checks: [][2]string{{"completed", "failure"}, {"completed", "success"}}}
+	e.gh.PRs[2] = &fakePR{Number: 2, Title: "changes + conflict", Updated: "2026-10-30T10:00:00Z", SHA: "b2", State: "dirty", Assignees: []string{"me"}, Reviews: []string{"CHANGES_REQUESTED", "APPROVED"}}
+	e.gh.PRs[3] = &fakePR{Number: 3, Title: "old and unowned", Updated: "2026-10-01T10:00:00Z", SHA: "c3", State: "clean", Requested: []string{"octo-viewer"}, Mentioned: true}
+}
+
+func TestRefreshComputesReasonsAndStaysQuietTheFirstTime(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	if err := e.idx.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	r := e.rows(t)
+	want := map[int][]string{1: {"checks_failed"}, 2: {"changes_requested", "conflicting"}, 3: {"review_requested", "mentioned", "unassigned", "stale"}}
+	for n, w := range want {
+		got := r[k+fmt.Sprint(n)].Reasons
+		if strings.Join(got, ",") != strings.Join(w, ",") {
+			t.Errorf("PR %d reasons %v, want %v", n, got, w)
+		}
+	}
+	if c := r[k+"1"].Checks; c.Failed != 1 || c.Passed != 1 || c.Total != 2 || len(c.Failing) != 1 {
+		t.Errorf("checks %+v", c)
+	}
+	if r[k+"2"].Mergeable != "conflicting" || r[k+"1"].Mergeable != "mergeable" {
+		t.Error("mergeable mapping")
+	}
+	if len(e.feed) != 0 {
+		t.Errorf("first sync must not announce: %v", e.feed)
+	}
+	if !e.idx.Ready(context.Background()) {
+		t.Error("ready after a refresh")
+	}
+}
+
+func TestUnchangedPRsAreNotRehydratedAndNewReasonsAreAnnouncedOnce(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	ctx := context.Background()
+	_ = e.idx.Refresh(ctx)
+	pulls := e.calls("/repos/acme/widgets/pulls/1")
+	_ = e.idx.Refresh(ctx)
+	if e.calls("/repos/acme/widgets/pulls/1") != pulls {
+		t.Error("an unchanged PR must not be fetched again")
+	}
+	// PR 2 gets a failing check: updated, new head.
+	e.gh.PRs[2].Updated, e.gh.PRs[2].SHA = "2026-10-30T11:30:00Z", "b3"
+	e.gh.PRs[2].Checks = [][2]string{{"completed", "failure"}}
+	_ = e.idx.Refresh(ctx)
+	if len(e.feed) != 1 || e.feed[0].Kind != "pr.checks_failed" || e.feed[0].ID != "pr:"+k+"2:pr.checks_failed:b3" {
+		t.Fatalf("%+v", e.feed)
+	}
+	_ = e.idx.Refresh(ctx)
+	if len(e.feed) != 1 {
+		t.Errorf("announced again: %+v", e.feed)
+	}
+	// Time passes: PR 1 becomes stale; that is announced, once.
+	*e.now = e.now.Add(8 * 24 * time.Hour)
+	_ = e.idx.Refresh(ctx)
+	_ = e.idx.Refresh(ctx)
+	stale := 0
+	for _, f := range e.feed {
+		if f.Kind == "pr.stale" && f.PRKey == k+"1" {
+			stale++
+		}
+	}
+	if stale != 1 {
+		t.Errorf("stale announcements: %d", stale)
+	}
+}
+
+func TestMergedPRLeavesTheIndexWithAnEvent(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	ctx := context.Background()
+	_ = e.idx.Refresh(ctx)
+	e.gh.PRs[1].Merged = true
+	_ = e.idx.Refresh(ctx)
+	if _, ok := e.rows(t)[k+"1"]; ok {
+		t.Error("a merged PR must leave the index")
+	}
+	if len(e.feed) != 1 || e.feed[0].Kind != "pr.merged" {
+		t.Errorf("%+v", e.feed)
+	}
+}
+
+func TestLowRateBudgetDegradesAndKeepsCachedRows(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	ctx := context.Background()
+	_ = e.idx.Refresh(ctx)
+	e.gh.Remaining = 50
+	e.gh.PRs[4] = &fakePR{Number: 4, Title: "new", Updated: "2026-10-30T11:50:00Z", SHA: "d4", State: "clean"}
+	e.gh.PRs[1].Updated = "2026-10-30T11:55:00Z"
+	_ = e.idx.Refresh(ctx) // first call below sees remaining=50 only after a response; run twice
+	_ = e.idx.Refresh(ctx)
+	st := e.idx.Status(ctx)
+	if !st.Degraded || st.Note == "" {
+		t.Errorf("status %+v", st)
+	}
+	r := e.rows(t)
+	if _, ok := r[k+"1"]; !ok {
+		t.Error("cached rows must stay")
+	}
+	if _, ok := r[k+"4"]; ok {
+		t.Error("a new PR is not hydrated under the rate floor")
+	}
+}
+
+// The live bug: the status showed "remaining 28, degraded" because the last response was a search (30 a
+// minute), so every new PR was held back by the 200 rate floor and the inbox stayed empty.
+func TestSearchBucketDoesNotTripTheCoreRateFloor(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	e.gh.SearchRemaining = 28
+	ctx := context.Background()
+	for i := 0; i < 2; i++ { // the second pass is the one that used to see the search count
+		if err := e.idx.Refresh(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(e.rows(t)) == 0 {
+		t.Fatal("PRs must be indexed while only the search bucket is low")
+	}
+	if st := e.idx.Status(ctx); st.Degraded {
+		t.Errorf("a low search bucket is not a degraded index: %+v", st)
+	}
+	if rem, _, ok := e.idx.GH.Rate(); !ok || rem != 4000 {
+		t.Errorf("status rate is the core bucket: %d %v", rem, ok)
+	}
+}
+
+// Without a credential nothing is sent. Before the first refresh the pending inbox is the (empty) saved
+// index: the old build fell through to the legacy console plugin here, which read GitHub live.
+func TestNoCredentialSendsNothingAndPendingServesTheSavedIndex(t *testing.T) {
+	e := newEnv(t)
+	e.idx.GH.Credential = false
+	if err := e.idx.Refresh(context.Background()); !errors.Is(err, ErrNoCredential) {
+		t.Fatalf("%v", err)
+	}
+	if n := e.total(); n != 0 {
+		t.Errorf("%d requests without a credential", n)
+	}
+	w := httptest.NewRecorder()
+	(&API{Index: e.idx}).Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/plugins/console/v1/forge/pulls/pending", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"items":[]`) || !strings.Contains(w.Body.String(), `"total":0`) {
+		t.Errorf("pending before a refresh: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// With the poller off the status says so (degraded, with the switch's note) and every read is served
+// from the saved index.
+func TestDisabledStatusAndReadsFromTheSavedIndex(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	if err := e.idx.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	before := e.total()
+	e.idx.Disabled = "GitHub reads are off (tachyon.features.forge_index)."
+	st := e.idx.Status(context.Background())
+	if !st.Degraded || st.Note != e.idx.Disabled || st.LastRefreshMS == 0 {
+		t.Errorf("status %+v", st)
+	}
+	w := httptest.NewRecorder()
+	(&API{Index: e.idx}).Handler().ServeHTTP(w, httptest.NewRequest("GET", "/api/plugins/console/v1/forge/pulls/pending", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), k+"1") || !strings.Contains(w.Body.String(), `"degraded":true`) {
+		t.Errorf("pending: %d %s", w.Code, w.Body.String())
+	}
+	if e.total() != before {
+		t.Error("a read dialed GitHub")
+	}
+}
+
+func TestPendingStatusAndStream(t *testing.T) {
+	e := newEnv(t)
+	seed(e)
+	ctx := context.Background()
+	_ = e.idx.Refresh(ctx)
+	api := &API{Index: e.idx, Triage: func(context.Context) (map[string]Triage, error) {
+		return map[string]Triage{k + "2": {Status: "dismissed", By: "operator"}, k + "3": {Status: "snoozed", SnoozeUntilMS: 1793330000000}}, nil
+	}}
+	h := api.Handler()
+	get := func(path string) (int, map[string]any) {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/api/plugins/console/v1/forge"+path, nil))
+		var b map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &b)
+		return w.Code, b
+	}
+	items := func(path string) []any {
+		code, b := get(path)
+		if code != 200 {
+			t.Fatalf("%s: %d %v", path, code, b)
+		}
+		return b["data"].(map[string]any)["items"].([]any)
+	}
+	if got := items("/pulls/pending"); len(got) != 1 || got[0].(map[string]any)["pr_key"] != k+"1" {
+		t.Errorf("active: %v", got)
+	}
+	if got := items("/pulls/pending?state=dismissed"); len(got) != 1 || got[0].(map[string]any)["triage"].(map[string]any)["by"] != "operator" {
+		t.Errorf("dismissed: %v", got)
+	}
+	if got := items("/pulls/pending?state=snoozed"); got[0].(map[string]any)["triage"].(map[string]any)["snooze_until"] != float64(1793330000000) {
+		t.Errorf("snoozed: %v", got)
+	}
+	// state=all (new in the port) returns every row whatever its triage state, for the inbox's own tabs.
+	n := 0
+	for _, st := range []string{"active", "snoozed", "dismissed", "resolved"} {
+		n += len(items("/pulls/pending?state=" + st))
+	}
+	if got := items("/pulls/pending?state=all"); n < 3 || len(got) != n {
+		t.Errorf("all: %d rows, want %d (every state)", len(got), n)
+	}
+	if got := items("/pulls/pending?reason=checks_failed"); len(got) != 1 {
+		t.Errorf("reason: %v", got)
+	}
+	if got := items("/pulls/pending?q=nomatch"); len(got) != 0 {
+		t.Errorf("q: %v", got)
+	}
+	row := items("/pulls/pending")[0].(map[string]any)
+	if row["cached"] != true || row["age_s"] == nil || row["fetched_ms"] == nil || row["head_sha"] != "a1" {
+		t.Errorf("row %v", row)
+	}
+	// Paging.
+	e.gh.PRs[1].Updated = "2026-10-30T11:59:00Z"
+	for i := 10; i < 13; i++ {
+		e.gh.PRs[i] = &fakePR{Number: i, Title: "x", Updated: fmt.Sprintf("2026-10-30T11:0%d:00Z", i-10), SHA: fmt.Sprint("s", i), State: "clean", Assignees: []string{"me"}}
+	}
+	_ = e.idx.Refresh(ctx)
+	code, b := get("/pulls/pending?limit=2")
+	d := b["data"].(map[string]any)
+	if code != 200 || len(d["items"].([]any)) != 2 || d["next_cursor"] != "c2" || d["total"] != float64(4) {
+		t.Fatalf("%d %v", code, d)
+	}
+	if _, b = get("/pulls/pending?limit=2&cursor=c2"); b["data"].(map[string]any)["next_cursor"] != nil {
+		t.Errorf("last page: %v", b)
+	}
+	for _, bad := range []string{"?bogus=1", "?reason=x", "?state=x", "?limit=0", "?limit=101", "?cursor=zz"} {
+		if code, _ := get("/pulls/pending" + bad); code != 400 {
+			t.Errorf("%s: %d", bad, code)
+		}
+	}
+	_, sb := get("/status")
+	st := sb["data"].(map[string]any)
+	if st["token_owner"] != "octo-viewer" || st["scope_warning"] == nil || st["watched"].([]any)[0] != "org:acme" {
+		t.Errorf("status %v", st)
+	}
+	// Stream: a fresh connection gets status; replay and resync.
+	stream := func(q string) string {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/api/plugins/console/v1/forge/stream?once=1"+q, nil))
+		return w.Body.String()
+	}
+	if s := stream(""); !strings.Contains(s, `"type":"status"`) {
+		t.Errorf("fresh: %s", s)
+	}
+	base := e.idx.Bus.Head() - 3
+	s := stream(fmt.Sprintf("&after=%d", base))
+	if strings.Count(s, "id: ") != 3 {
+		t.Errorf("replay: %s", s)
+	}
+	if s := stream("&after=1"); !strings.Contains(s, `"type":"resync"`) {
+		t.Errorf("other epoch: %s", s)
+	}
+	if s := stream(fmt.Sprintf("&after=%d", e.idx.Bus.Head()+5)); !strings.Contains(s, `"type":"resync"`) {
+		t.Errorf("past head: %s", s)
+	}
+	if code, _ := get("/stream?after=-1"); code != 400 {
+		t.Errorf("bad after: %d", code)
+	}
+}
+
+func TestGitHubUsesETagsAndMapsRateLimits(t *testing.T) {
+	hits, conditional := 0, 0
+	rate := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		if rate {
+			w.WriteHeader(403)
+			return
+		}
+		if r.Header.Get("If-None-Match") == `"v1"` {
+			conditional++
+			w.WriteHeader(304)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		_, _ = w.Write([]byte(`{"login":"octo-viewer"}`))
+	}))
+	defer srv.Close()
+	g := &GitHub{Credential: true, Base: srv.URL, HTTP: srv.Client()}
+	for i := 0; i < 2; i++ {
+		if v, err := g.Viewer(context.Background()); err != nil || v != "octo-viewer" {
+			t.Fatalf("%q %v", v, err)
+		}
+	}
+	if hits != 2 || conditional != 1 {
+		t.Errorf("hits %d conditional %d", hits, conditional)
+	}
+	rate = true
+	if _, err := g.pull(context.Background(), "o", "n", 1); !errors.Is(err, ErrRateLimited) {
+		t.Errorf("rate limit: %v", err)
+	}
+	if _, err := (&GitHub{}).Viewer(context.Background()); !errors.Is(err, ErrNoCredential) {
+		t.Errorf("no token: %v", err)
+	}
+}

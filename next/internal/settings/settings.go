@@ -5,8 +5,9 @@
 //
 //	tachyon:
 //	  allowed_hosts: []            # extra Host values (besides loopback) served behind a local TLS proxy
-//	  cache_dir: tachyon-cache     # relative: anchored in the data directory (AfterConfig)
+//	  cache_dir: cache             # relative: anchored in the data directory (AfterConfig)
 //	  workspace_dir: workspace     # chat workspace files; relative: anchored in the data directory
+//	  chat_sync_interval: 5s       # the Tether chat sync loop (features.chat_sync), 1s to 1h
 //	  upstreams:                   # every address empty by default; each credential is a secrets reference
 //	    tether:          { url: "", token: "" }
 //	    tether_control:  { url: "", token: "" }   # builder changes; url empty = tether.url
@@ -18,7 +19,7 @@
 //	    fragments:       { url: "", token: "" }   # Fragments Engine (transcripts)
 //	    activity:        { url: "" }              # activity monitor, no credential
 //	    caster:          { url: "", token: "" }
-//	    app_agent:       { url: "", token: "", label: "" }   # Nanite app agent
+//	    app_agent:       { url: "", token: "", label: "", session: {} }   # Nanite app agent; session: Nanite's session body (pins, no credentials)
 //	    github:          { url: "https://api.github.com", org: "", token: "" }
 //	    action_hub:      { addr: "", user: "", key: "", known_hosts: "" }   # SSH hub for approved actions
 //	  features:                    # every outbound loop, all off by default (the cutover turns them on)
@@ -28,6 +29,7 @@
 //	    approval_producer: ""
 //	    ...
 //	  alerts: { notify_to: "", public_url: "" }
+//	  transcripts: { max_sessions: 5000 }   # sessions in one transcript snapshot, 200 to 20000
 //
 // Parse refuses an unknown key, a value of the wrong type and a malformed address or secrets
 // reference, and names the key in the error, so a typo stops the start instead of silently turning a
@@ -36,12 +38,14 @@
 package settings
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	libsecrets "github.com/hollis-labs/libs/security/secrets"
 )
@@ -56,10 +60,12 @@ type Upstream struct {
 	Token string // a secrets reference (file://, keychain://, op://, helper://, env://), never a value
 }
 
-// AppAgent is the Nanite app agent: an upstream plus the label Tachyon shows for it.
+// AppAgent is the Nanite app agent: an upstream, the label Tachyon shows for it, and the session
+// body Tachyon posts to create its sessions (definition and host pins; never credentials).
 type AppAgent struct {
 	Upstream
-	Label string
+	Label   string
+	Session json.RawMessage // nil when not set
 }
 
 // GitHub is the forge upstream.
@@ -99,8 +105,10 @@ type Upstreams struct {
 type Features struct {
 	ObjectSync        bool // scheduler dispatch of object-sync jobs (Tether, Cerberus, GitHub reads)
 	ChatSync          bool // the Tether chat sync loop
-	AgentsCollector   bool // the Tether environment stream read model
+	AgentsCollector   bool // the Tether environment stream read model, and the ceremony meter's hourly read
+	AgentsControls    bool // agent controls and launches over Tether: nudge, interrupt, restart, launch
 	CatalogIndex      bool // the Tether catalog poller
+	BuilderChanges    bool // builder changes, the launch action, registry writes and team operations over Tether
 	CardEvents        bool // publish card.* events to the events hub
 	CardEffectsTorque bool // approved cards may change Torque
 	CardDelivery      bool // push card outcomes to the asker over Tether messages
@@ -110,6 +118,7 @@ type Features struct {
 	PlannerEvents     bool // the planner's Torque event ingest
 	Transcripts       bool // Fragments Engine transcript snapshots
 	ActionRuns        bool // run approved actions over the SSH hub
+	Terminal          bool // the chat quick terminal: interactive ssh panes and approved agent commands
 }
 
 // Files are the policy and config files Tachyon reads. Empty means not configured.
@@ -122,21 +131,39 @@ type Files struct {
 	SecretKey         string // a secrets reference: the AES key of approval secrets
 }
 
+// Transcripts are the transcript bridge's limits.
+type Transcripts struct {
+	// MaxSessions caps the sessions in one snapshot (TACHYON_TRANSCRIPT_MAX_SESSIONS), 200 to 20000.
+	MaxSessions int
+}
+
 // Alerts are the alert sink's addressing.
 type Alerts struct {
 	NotifyTo  string // a Tether message address
 	PublicURL string // the URL put in alert messages
 }
 
+// NativeGate is opt-in and independent of the old card and outbound defaults.
+// CallbackToken is a Gatecrasher-issued credential secrets reference.
+type NativeGate struct {
+	Enabled                                                             bool
+	OwnerRef, ProducerIdentity, CallerScope, CallbackURL, CallbackToken string
+	AllowLoopbackHTTP                                                   bool
+}
+
 // Settings are the parsed block.
 type Settings struct {
+	NativeGate   NativeGate
 	AllowedHosts []string
 	CacheDir     string
 	WorkspaceDir string // chat workspace file bytes (the old build's $TACHYON_DATA_DIR/workspace)
-	Upstreams    Upstreams
-	Features     Features
-	Files        Files
-	Alerts       Alerts
+	// ChatSyncInterval is how often the Tether chat sync loop runs (TACHYON_CHAT_SYNC_INTERVAL).
+	ChatSyncInterval time.Duration
+	Upstreams        Upstreams
+	Features         Features
+	Files            Files
+	Alerts           Alerts
+	Transcripts      Transcripts
 }
 
 // featureKeys is the one list of feature switches: the config key and the field it sets.
@@ -151,7 +178,9 @@ func featureKeys(f *Features) []struct {
 		{"object_sync", &f.ObjectSync},
 		{"chat_sync", &f.ChatSync},
 		{"agents_collector", &f.AgentsCollector},
+		{"agents_controls", &f.AgentsControls},
 		{"catalog_index", &f.CatalogIndex},
+		{"builder_changes", &f.BuilderChanges},
 		{"card_events", &f.CardEvents},
 		{"card_effects_torque", &f.CardEffectsTorque},
 		{"card_delivery", &f.CardDelivery},
@@ -161,6 +190,7 @@ func featureKeys(f *Features) []struct {
 		{"planner_events", &f.PlannerEvents},
 		{"transcripts", &f.Transcripts},
 		{"action_runs", &f.ActionRuns},
+		{"terminal", &f.Terminal},
 	}
 }
 
@@ -200,6 +230,9 @@ func Parse(raw any) (Settings, error) {
 		return s, err
 	}
 	if s.WorkspaceDir, err = root.str("workspace_dir"); err != nil {
+		return s, err
+	}
+	if s.ChatSyncInterval, err = root.duration("chat_sync_interval", 5*time.Second, time.Second, time.Hour); err != nil {
 		return s, err
 	}
 	if err = parseUpstreams(root, &s.Upstreams); err != nil {
@@ -254,6 +287,46 @@ func Parse(raw any) (Settings, error) {
 	if err = alerts.done(); err != nil {
 		return s, err
 	}
+	tr, err := root.child("transcripts")
+	if err != nil {
+		return s, err
+	}
+	if s.Transcripts.MaxSessions, err = tr.intRange("max_sessions", 5000, 200, 20000); err != nil {
+		return s, err
+	}
+	if err = tr.done(); err != nil {
+		return s, err
+	}
+	ng, err := root.child("native_gate")
+	if err != nil {
+		return s, err
+	}
+	if s.NativeGate.Enabled, err = ng.boolean("enabled"); err != nil {
+		return s, err
+	}
+	if s.NativeGate.AllowLoopbackHTTP, err = ng.boolean("allow_loopback_http"); err != nil {
+		return s, err
+	}
+	for _, v := range []struct {
+		key string
+		dst *string
+	}{{"owner_ref", &s.NativeGate.OwnerRef}, {"producer_identity", &s.NativeGate.ProducerIdentity}, {"caller_scope", &s.NativeGate.CallerScope}} {
+		if *v.dst, err = ng.str(v.key); err != nil {
+			return s, err
+		}
+	}
+	if s.NativeGate.CallbackURL, err = ng.httpURL("callback_url"); err != nil {
+		return s, err
+	}
+	if s.NativeGate.CallbackToken, err = ng.secretRef("callback_token"); err != nil {
+		return s, err
+	}
+	if err = ng.done(); err != nil {
+		return s, err
+	}
+	if s.NativeGate.Enabled && (s.NativeGate.OwnerRef == "" || s.NativeGate.ProducerIdentity == "" || s.NativeGate.CallerScope == "" || s.NativeGate.CallbackURL == "" || s.NativeGate.CallbackToken == "") {
+		return s, fmt.Errorf("tachyon.native_gate requires explicit owner, producer, namespace and callback configuration")
+	}
 	return s, root.done()
 }
 
@@ -301,6 +374,9 @@ func parseUpstreams(root *block, u *Upstreams) error {
 		return err
 	}
 	if u.AppAgent.Label, err = agent.str("label"); err != nil {
+		return err
+	}
+	if u.AppAgent.Session, err = agent.jsonObject("session"); err != nil {
 		return err
 	}
 	if err = agent.done(); err != nil {
@@ -394,6 +470,61 @@ func (b *block) str(k string) (string, error) {
 		return strings.TrimSpace(v), nil
 	default:
 		return "", fmt.Errorf("%s must be a string", b.name(k))
+	}
+}
+
+// duration reads a Go duration string within [lo, hi]; absent is def.
+func (b *block) duration(k string, def, lo, hi time.Duration) (time.Duration, error) {
+	v, err := b.str(k)
+	if err != nil || v == "" {
+		return def, err
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < lo || d > hi {
+		return 0, fmt.Errorf("%s must be a duration from %s to %s", b.name(k), lo, hi)
+	}
+	return d, nil
+}
+
+// intRange reads a whole number within [lo, hi]; absent is def.
+func (b *block) intRange(k string, def, lo, hi int) (int, error) {
+	var n float64
+	switch v := b.get(k).(type) {
+	case nil:
+		return def, nil
+	case int:
+		n = float64(v)
+	case int64:
+		n = float64(v)
+	case uint64:
+		n = float64(v)
+	case float64:
+		n = v
+	default:
+		return 0, fmt.Errorf("%s must be a whole number from %d to %d", b.name(k), lo, hi)
+	}
+	if n != float64(int(n)) || int(n) < lo || int(n) > hi {
+		return 0, fmt.Errorf("%s must be a whole number from %d to %d", b.name(k), lo, hi)
+	}
+	return int(n), nil
+}
+
+// jsonObject reads a map and returns it as JSON; absent or empty is nil.
+func (b *block) jsonObject(k string) (json.RawMessage, error) {
+	switch v := b.get(k).(type) {
+	case nil:
+		return nil, nil
+	case map[string]any:
+		if len(v) == 0 {
+			return nil, nil
+		}
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", b.name(k), err)
+		}
+		return raw, nil
+	default:
+		return nil, fmt.Errorf("%s must be a map", b.name(k))
 	}
 }
 

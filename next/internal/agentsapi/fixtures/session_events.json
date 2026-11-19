@@ -1,0 +1,169 @@
+{
+ "events": [
+  {
+   "id": "ev_9",
+   "seq": 1906009,
+   "session_id": "sess_work",
+   "type": "control",
+   "at": 1793321980000,
+   "actor": "operator",
+   "summary": "Nudge from Tachyon operator: \"run the tests\"",
+   "cite": [],
+   "card": null,
+   "payload": null
+  },
+  {
+   "type": "tool_run",
+   "run_id": "run_3",
+   "session_id": "sess_work",
+   "calls": 9,
+   "summary": "9 tool calls (read x6, grep x2, glob x1)",
+   "started_at": 1793321910000,
+   "ended_at": 1793321970000,
+   "events": [
+    {
+     "id": "ev_8",
+     "seq": 1906008,
+     "session_id": "sess_work",
+     "type": "tool",
+     "at": 1793321969000,
+     "actor": "agent",
+     "summary": "Reading appagent/",
+     "cite": [],
+     "card": null,
+     "payload": null
+    },
+    {
+     "id": "ev_7",
+     "seq": 1906007,
+     "session_id": "sess_work",
+     "type": "tool",
+     "at": 1793321960000,
+     "actor": "agent",
+     "summary": "Searching internal/ for \"input_required\"",
+     "cite": [],
+     "card": null,
+     "payload": null
+    },
+    {
+     "id": "ev_6",
+     "seq": 1906006,
+     "session_id": "sess_work",
+     "type": "tool",
+     "at": 1793321910000,
+     "actor": "agent",
+     "summary": "Reading chatthreads/",
+     "cite": [],
+     "card": null,
+     "payload": null
+    }
+   ]
+  },
+  {
+   "id": "ev_5",
+   "seq": 1906005,
+   "session_id": "sess_work",
+   "type": "message",
+   "at": 1793321880000,
+   "actor": "agent",
+   "summary": "Sent mail to portfolio-manager",
+   "cite": [
+    {
+     "kind": "task",
+     "ref": "CW-20261030-0002",
+     "label": "T1"
+    }
+   ],
+   "card": null,
+   "payload": null
+  },
+  {
+   "id": "ev_4",
+   "seq": 1906004,
+   "session_id": "sess_work",
+   "type": "approval",
+   "at": 1793321400000,
+   "actor": "operator",
+   "summary": "Approved: git push (rule: operator)",
+   "cite": [],
+   "card": null,
+   "payload": null
+  },
+  {
+   "id": "ev_3",
+   "seq": 1906003,
+   "session_id": "sess_work",
+   "type": "compaction",
+   "at": 1793319600000,
+   "actor": "agent",
+   "summary": "Context compacted 910k -> 140k",
+   "cite": [],
+   "card": null,
+   "payload": null
+  },
+  {
+   "id": "ev_2",
+   "seq": 1906002,
+   "session_id": "sess_work",
+   "type": "task",
+   "at": 1793319500000,
+   "actor": "agent",
+   "summary": "Task CW-20261030-0003 -> doing",
+   "cite": [
+    {
+     "kind": "task",
+     "ref": "CW-20261030-0003",
+     "label": "T2"
+    }
+   ],
+   "card": {
+    "title": "T2 started",
+    "cite": [
+     {
+      "kind": "task",
+      "ref": "CW-20261030-0003",
+      "label": "T2"
+     }
+    ],
+    "summary": "Plan/todos",
+    "review_ref": null
+   },
+   "payload": null
+  },
+  {
+   "id": "ev_1",
+   "seq": 1906001,
+   "session_id": "sess_work",
+   "type": "error",
+   "at": 1793319000000,
+   "actor": "agent",
+   "summary": "Tool failed: Bash (exit 1)",
+   "cite": [],
+   "card": null,
+   "payload": null
+  },
+  {
+   "id": "ev_0",
+   "seq": 1906000,
+   "session_id": "sess_work",
+   "type": "lifecycle",
+   "at": 1793316600000,
+   "actor": "tether",
+   "summary": "Session started (claude, claude-sonnet-5-5)",
+   "cite": [],
+   "card": null,
+   "payload": null
+  }
+ ],
+ "gaps": [
+  {
+   "start": 1793320200000,
+   "end": 1793320500000,
+   "reason": "tachyon_offline",
+   "from_seq": 1906020,
+   "to_seq": 1906030,
+   "backfilled": false
+  }
+ ],
+ "next_before": null
+}

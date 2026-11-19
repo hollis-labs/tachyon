@@ -1,0 +1,4 @@
+{"items": [
+  {"kind": "prompts", "id": "review-etiquette", "name": "Review etiquette", "summary": "How to word review comments.", "used_by_count": 1, "revision": 3, "bytes": 49, "tokens_est": 13, "archived": false, "updated_at": 1793147000000, "editable": true},
+  {"kind": "prompts", "id": "handoff-style", "name": "Handoff style", "summary": "How to write a handoff.", "used_by_count": 0, "revision": 1, "bytes": 212, "tokens_est": 53, "archived": false, "updated_at": 1792000000000, "editable": true}
+]}

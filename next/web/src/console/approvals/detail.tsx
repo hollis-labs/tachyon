@@ -17,6 +17,7 @@ import {
   type Evidence,
   decisionError,
 } from "./client"
+import { NativeGateDetail } from "./native-detail"
 import { CardData, CardForm, CardReceiptView } from "./card-body"
 import { noteServerNow, serverNow } from "./clock"
 import { Countdown, RiskChip, ago, timeLeft } from "./parts"
@@ -169,7 +170,7 @@ export function DecisionDetail({
   }
   async function decide(submitted?: CardAnswer[], direct?: ApprovalResponse["decision"], alternativeId?: string) {
     const decision = submitted ? "submitted" : direct
-    if (!item || !decision || busy || !ready) return
+    if (!item || item.request_snapshot.kind === "gate_native_v1" || !decision || busy || !ready) return
     setBusy(true)
     setError("")
     try {
@@ -206,7 +207,7 @@ export function DecisionDetail({
   // Low/medium decisions are held for undo in the queue provider; high-risk and the
   // no-provider case decide at once.
   function decideOrHold(decision: "approved" | "denied") {
-    if (!item || !ready || busy) return
+    if (!item || item.request_snapshot.kind === "gate_native_v1" || !ready || busy) return
     // Only an approval of a low/medium item is held; a denial is safe and immediate.
     if (!queue || item.request_snapshot.class === "high" || item.confirm || decision === "denied")
       return void decide(undefined, decision)
@@ -243,6 +244,7 @@ export function DecisionDetail({
   }
   const agent = request?.source.agent_label ?? request?.source.agent_id
   const bullets = (b: string) => <MessageBody body={b} />
+  if (item?.request_snapshot.kind === "gate_native_v1") return <NativeGateDetail key={item.item_id} item={item} client={client} ready={ready} error={error} refresh={refresh} onChanged={onChanged} />
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div tabIndex={0} className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">

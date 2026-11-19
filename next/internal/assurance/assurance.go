@@ -71,6 +71,12 @@ var table = map[Action]Level{
 	"planner.write": OperatorToken,
 	// Chat writes and the workspace file content read: RequireOperator / RequireOperatorReads.
 	"chat.write": OperatorToken,
+	// Agents writes (settings, nudge, restart, skip, launches): RequireOperator.
+	"agents.control": OperatorToken,
+	// Builder changes, the launch action and registry writes: RequireOperator.
+	"builder.write": OperatorToken,
+	// The quick terminal, reads included (panes, proposals, runs, the WebSocket): RequireOperatorReads.
+	"terminal.control": OperatorToken,
 }
 
 // Actions is every action in the table.

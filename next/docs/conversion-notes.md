@@ -39,7 +39,8 @@ Open items that need a decision or a change outside this cell:
    per slice and recorded in the contract:
    - `access/apps?refresh=1`
    - `chat/threads/{ref}/continue`
-   - terminal `proposals` and `runs` reads, which expire items
+   - terminal `proposals` and `runs` reads, which expire items. B12 keeps them `GET` behind `tachyon.terminal.control`
+     and the operator check, the one scope of the whole terminal family.
 10. **The scheduler module has no Postgres store (Substrate CW-20261115-0014).** On Postgres the served binary does
    not start: libs ships a SQLite scheduler store only. In the Postgres CI pass the full-binary tests
    (`cmd/tachyon`) skip and cite the gap; the package tests run. The cutover is SQLite to SQLite and is unaffected.
@@ -69,7 +70,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_PLUGIN_DIR` | dropped: plugins are the reviewed specs `pluginhost` starts (plugin slices) |
 | `TACHYON_SECRET_KEY_FILE` | `tachyon.files.secret_key` (secrets reference) |
 | `TACHYON_CACHE_POLICY_FILE` | `tachyon.files.cache_policy` |
-| `TACHYON_TERMINAL_POLICY` | `tachyon.files.terminal_policy` |
+| `TACHYON_TERMINAL_POLICY` | `tachyon.files.terminal_policy` (an absolute path; empty: no policy file, see the terminal notes) |
 | `TACHYON_CARD_DELIVERY_FILE` | `tachyon.files.card_delivery` |
 | `TACHYON_APPROVAL_PRODUCER_CONFIG` | `tachyon.files.approval_producer` (unset: `/api/approvals/v1` answers 503, as the old build does unconfigured) |
 | `TACHYON_APPROVAL_ASSURANCE_CONFIG` | `tachyon.files.approval_assurance` |
@@ -88,7 +89,7 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `FRAGMENTS_ENGINE_URL`, `FRAGMENTS_ENGINE_TOKEN_FILE` | `tachyon.upstreams.fragments.url`, `.token` |
 | `TACHYON_ACTIVITY_URL` | `tachyon.upstreams.activity.url` |
 | `CASTER_URL`, `TACHYON_CASTER_TOKEN_FILE` | `tachyon.upstreams.caster.url`, `.token` |
-| `TACHYON_APP_AGENT_CONFIG` (a JSON file: `url`, `token_file`, `label`, `session`) | `tachyon.upstreams.app_agent.url`, `.token`, `.label`. The file's `session` block is decided by the chat slice. |
+| `TACHYON_APP_AGENT_CONFIG` (a JSON file: `url`, `token_file`, `label`, `session`) | `tachyon.upstreams.app_agent.url`, `.token`, `.label`, `.session` (the file's `session` object, as is). Read at start: a change needs a restart (the old build re-read the file on every call). |
 | `GITHUB_TOKEN` / `GH_TOKEN` (a value, not a file reference, in the old build), `GITHUB_ORG` | `tachyon.upstreams.github.token` (reference), `.org`; `.url` defaults to `https://api.github.com`. The fallback to `gh auth token` is dropped. |
 | `TACHYON_ACTION_HUB_SSH_ADDR`, `_USER`, `_KEY_FILE`, `_KNOWN_HOSTS` | `tachyon.upstreams.action_hub.addr`, `.user`, `.key` (reference), `.known_hosts` |
 | `SSH_AUTH_SOCK` | decided by the action-runs slice (an agent socket is not a config key) |
@@ -100,9 +101,11 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | Old | New |
 |---|---|
 | object-sync schedules (enabled by `sync-objects --enable`) | `tachyon.features.object_sync` gates the scheduler engine; the schedules themselves are migrated data (D1) |
-| `TACHYON_CHAT_SYNC_INTERVAL` (sync always on) | `tachyon.features.chat_sync`; the interval key comes with the chat slice |
-| `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` |
+| `TACHYON_CHAT_SYNC_INTERVAL` (sync always on) | `tachyon.features.chat_sync` (default off) and `tachyon.chat_sync_interval` (default `5s`, 1s to 1h) |
+| `TACHYON_AGENTS_COLLECTOR` (`0` = off) | `tachyon.features.agents_collector` (also the ceremony meter's hourly read) |
+| agent controls and launches (on when their credentials were set) | `tachyon.features.agents_controls`: nudge, interrupt, restart, the Tether launches (new switch, B8b) |
 | `TACHYON_CATALOG_INDEX` (`0` = off) | `tachyon.features.catalog_index` |
+| builder changes, registry writes and team operations (on when a Tether credential was set) | `tachyon.features.builder_changes` (new switch, B9b; team operations B9b-2) |
 | `TACHYON_CARD_EVENTS` | `tachyon.features.card_events` |
 | `TACHYON_CARD_EFFECTS_TORQUE` | `tachyon.features.card_effects_torque` |
 | card delivery (on when the file was set) | `tachyon.features.card_delivery` |
@@ -112,12 +115,14 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
 | `TACHYON_PLANNER_EVENTS` | `tachyon.features.planner_events` |
 | transcript snapshots | `tachyon.features.transcripts` |
 | action runs (on when the hub was set) | `tachyon.features.action_runs` |
+| the quick terminal (always on) | `tachyon.features.terminal`: ssh panes and approved agent commands (new switch, B12) |
 
 ### Tuning, posture, stubs
 
 | Old | New |
 |---|---|
-| `TACHYON_ACTION_DETACH_GRACE`, `TACHYON_TRANSCRIPT_MAX_SESSIONS`, `TACHYON_CACHE_TIMEOUT_MS` | keys added by the slice that ports each feature |
+| `TACHYON_TRANSCRIPT_MAX_SESSIONS` | `tachyon.transcripts.max_sessions` (200 to 20000, default 5000; B10) |
+| `TACHYON_ACTION_DETACH_GRACE`, `TACHYON_CACHE_TIMEOUT_MS` | keys added by the slice that ports each feature |
 | `TACHYON_CERBERUS_CONTROL` | decided by the Cerberus slice |
 | `TACHYON_CERBERUS_ELEVATION` | dropped: the operator check is fixed in code (owner question, Gaps 4) |
 | `TACHYON_CHAT_CLIENT_CONTEXT` | decided by the chat slice |
@@ -140,6 +145,27 @@ variable maps to a key in the `SUBSTRATE_CONFIG` override file, or is dropped on
     own version table is `goose_db_version`.
 - **jobs.db is not a separate file.** The scheduler module creates its `gosched_*` tables in the one database; D1
   carries the six schedules and their history.
+
+### The data directory's files (slice D2)
+
+Every path the old build reads or writes under its data directory (`$DATA`: `TACHYON_DATA_DIR`, else
+`$XDG_DATA_HOME/tachyon`) and cache directory (`$CACHE`: `TACHYON_CACHE_DIR`, else `$XDG_CACHE_HOME/tachyon`),
+from the old tree on `main` (the grep is in the D2 PR):
+
+| Old path | Owner (old tree) | Kept? | Why, and where it goes |
+|---|---|---|---|
+| `$DATA/tachyon.db` (+ `-wal`, `-shm`) | `localstore`, `server` | kept | the data; `migrate-from` copies its rows from a `sqlite3 .backup` copy (D1) |
+| `$DATA/jobs.db` (+ `-wal`, `-shm`) | `objectsync` | kept | the schedules; copied into the one database's scheduler tables (D1) |
+| `$DATA/workspace/<hash>/<item id>` | `chatworkspace` | kept | chat uploads (file and image items), each named by a `chat_workspace_items` row with its SHA-256; `migrate-from` copies them into `tachyon.workspace_dir` (D2) |
+| `$DATA/workspace/<hash>/.upload-*` | `chatworkspace` | dropped | an upload still being received; never a stored item (skipped and named in the report) |
+| `$DATA/terminal-policy.json` | `chatterminal` (default when `TACHYON_TERMINAL_POLICY` is empty) | config | operator-written; `tachyon.files.terminal_policy` names it (absolute path) when the terminal slice lands |
+| `$DATA/<plugin id>/`, `$CACHE/<plugin id>/` (`planner`, `console`) | `server` (plugin init) | dropped | created empty for the plugin processes, which never wrote to them; no plugin host in this build |
+| `$DATA/plugins/launch-ops/launches.db` | the external launch-ops plugin | dropped | one empty table (port plan); left with the old directory |
+| `$DATA/plugins/<id>/` binaries, `plugin.yaml` | external plugins | dropped | plugin binaries and their config; no plugin host in this build |
+| `$DATA/backups/*.db`, `$DATA/tachyon-before-*.db` | `scripts/migrate-priorities-to-themes.py`, operator | dropped | pre-migration snapshots kept by hand; left with the old directory |
+
+The new build's own files: `tachyon.db` (with the scheduler tables), `identity-signing.key`, `cache/`,
+`workspace/`, `migrate-from-report.json` and `migrate-from-files-report.json`.
 
 ## Dialects (slice PG1)
 
@@ -216,6 +242,174 @@ Details: `docs/api-contract.md`.
   The Tangent session bridge, `/approval-inbox/session`, `/status`, `/elevate` and `/de-elevate`, and the elevation
   TTL are gone. The confirm phrase stays in the approvals code.
 
+## Builder and catalog (slice B9a, the read side)
+
+- **Same tables, same answers.** The Builder's agents, launches and library, the registry and the catalog summary
+  read the migrated catalog and library tables.
+- **`tachyon.features.catalog_index`** (the old `TACHYON_CATALOG_INDEX`) starts the catalog index. Off, nothing
+  polls Tether; the routes serve the migrated index. The old build mounted the Builder reads only with the index
+  on; the port always serves them.
+- **A fresh database has no catalog state row.** The old migration 030 seeded `catalog_state`; the first write
+  creates it, and until then it reads as the old defaults (`source_status: starting`).
+- **The imported team snapshot** is read from the migrated `api_cache` row with the old defaults (kept a week, the
+  catalog policy's freshness headers). A cache policy file's overrides come with the API cache slice.
+- **Postgres.** The library revision insert is an upsert on its key instead of `INSERT OR REPLACE`.
+- **Builder changes and registry writes (B9b) are behind `tachyon.features.builder_changes`,** a new switch: the
+  old build ran them whenever a Tether credential was set. Off, the change routes answer `503 changes_unavailable`
+  and the registry writes `501`, and nothing reaches Tether. On, the modes are the old ones: direct (plans and
+  applies itself) with `tachyon.upstreams.tether_control.token` (the old `TACHYON_TETHER_CONTROL_TOKEN_FILE`), at
+  `tether_control.url` (the old `TACHYON_TETHER_CONTROL_ADDR`) or the Tether address; otherwise handoff on the read
+  credential, ending at a bundle the operator plans in Tether. Registry writes need the control credential.
+- **A change's operator** is the signed-in person's principal id; the old build recorded a browser-session ref.
+- **Team operations (B9b-2), the Tether provider on the console data API, share `builder_changes`.** The old build
+  bound them to Tether whenever an address was set. Off, every verb that would reach Tether answers `503 unavailable`
+  before dialing, as the old build did without Tether (a roster refresh answers the saved roster with its "not
+  configured" problem); retained actions, runs and bindings still read. On, they bind on the read credential (`tachyon.upstreams.tether.token`), and the binding's identity digests
+  the address and the credential as before, so retained runs stay matched. The console's object writes need
+  `tachyon.objects.write` and the operator check; the old build needed the operator check alone.
+
+## Pull requests, the read side (slice B11a)
+
+- **Same tables, same answers.** The pending inbox reads the migrated `forge_pr_index` and `forge_index_state`,
+  with the triage rows of `console_item_state` (`pr-inbox:github:…`) and the open `pr_agent_links`. The audit
+  reads `forge_audit`. The poller's tunables are still the `forge.*` rows of `app_settings`; the default watched
+  org is `tachyon.upstreams.github.org`.
+- **`tachyon.features.forge_index`** (the old `TACHYON_FORGE_INDEX`) gates every GitHub request: the poller and
+  each on-demand read (viewer, PR detail, files, diff, checks, commits, comments, a commit by sha). Off, nothing
+  dials GitHub: those reads answer `503 disabled`, and `pulls/pending`, `status`, `stream`, `audit` and
+  `console/state` are served from the store (`status` reports `degraded` with the switch's note). The old build
+  served the on-demand reads whatever `TACHYON_FORGE_INDEX` said.
+- **`pulls/pending?state=all` is new (lead decision, fixing a carried bug).** The inbox asks for pending rows with
+  no `state` and sorts them into its Active, Snoozed, Dismissed and Resolved tabs itself, but the server answers
+  only `active` rows when `state` is absent, so a dismissed or snoozed PR vanished and its tab stayed at 0. Old
+  main has the same pair, so the live app shows this today. The server now also accepts `state=all` (every row
+  whatever its triage); the default stays `active`, so other callers are unchanged. The UI asks for `state=all`
+  from the G7b backend-run follow-up.
+- **No legacy fallback.** Before the first refresh the old `pulls/pending` fell through to the console plugin,
+  which searched GitHub live (in a different row shape). The port answers the saved index, possibly empty.
+- **The console plugin's PR reads** (`repos/{host}/{owner}/{name}/pulls/{num}`, `…/commits`, `…/comments`) keep
+  their camelCase shapes and share the forge reads' GitHub client and error mapping: a refused token is
+  `401 credential_missing` (the plugin said `unauthorized`), another `403` is `502 unavailable`, a rate limit is
+  `429 rate_limited`, and GitHub's own message is not relayed. Comments answer the error when both lists fail
+  (the plugin answered an empty list).
+- **The plugin's repository and PR-list reads** (`repos/{host}/{owner}/{name}`, `repos/{…}/pulls`, `forge/pulls`)
+  are ported the same way, behind the same switch. Differences from the plugin: `state` must be `open`,
+  `closed`, `merged` or `all`, `author` and `assignee` must be GitHub logins (the org search puts them in the
+  query as qualifiers), `q` is at most 256 characters, and an unknown parameter is `400 invalid_args` (the plugin
+  passed anything through). `forge/pulls` searches `tachyon.upstreams.github.org`; with none set it answers
+  `503 configuration` and sends nothing (the plugin fell back to a built-in org). `cursor` is accepted and
+  ignored and `nextCursor` is `null`, as before (one page, `limit` clamped to 100, default 30).
+- **Errors are flat.** A rate limit carries `details.retry_after_s` (and `Retry-After`); a console state version
+  conflict carries `details.version` (the old body put them inside `error`).
+- **Guards.** Reads need `tachyon.forge.read`; the audit read also needs the operator (the old
+  `RequireOperatorReads`). `PUT console/state/{key}` needs `tachyon.forge.write`, refuses any bearer that is
+  not the browser session's (`403 requester_cannot_approve`, as the old handler refused any `Authorization`), and
+  needs the operator (`403 operator_required`), as the old `RequireOperator` did. The contract
+  (`docs/api-contract.md` section 5) lists no operator check on console state; the port follows the old build,
+  pending the lead.
+- **A secondary rate limit** (`403` with `Retry-After`) now counts as a rate limit, not an error.
+- **`GET console/state` lists item state only.** The old list also carried the alerts' state rows (`al_*` keys,
+  351 on the migrated copy), which the alerts store served on the same path. Until the alerts slice lands, those
+  keys are neither listed nor writable here; that slice carves `console/state/al_*` out of this route.
+- **New `pr.*` alert-feed events are dropped** until the alerts slice: the old poller fed them to the alerts
+  store, which is not ported yet.
+- **`assign-agent` is deferred** (`POST forge/repos/{host}/{owner}/{name}/pulls/{num}/assign-agent`, the old
+  `forgeassign`). Nothing calls it: the old SPA and console UI never did, agents could not (forge writes were
+  browser-session only and refused any `Authorization`), and no data verb, MCP tool or CLI reaches it. Its table
+  `pr_agent_links` is migrated; the inbox still reads the open links as agent assignees, and the merge write
+  (B11b) marks them done as before. It is not served, so the scope table has no row for it.
+
+## Agents (slices B8a, B8b)
+
+- **Same tables, same answers.** Agent Ops, the ceremony meter and Needs you read the migrated agents tables.
+  Old vs new on a migrated copy is equal apart from the collector's own state and request-time fields.
+- **`tachyon.features.agents_collector`** (the old `TACHYON_AGENTS_COLLECTOR`) starts the collector and the
+  ceremony meter's hourly read. Off (the default), neither runs and nothing dials Tether for them; the routes
+  serve the migrated data and report the collector `off`.
+- **The collector resumes from the migrated cursor.** With `agents_collector_state` copied, it streams from the
+  copied sequence (or first fills the gap since the copy from Tether's history) and never takes the environment
+  snapshot again.
+- **`tachyon.features.agents_controls` is new.** The old build had no switch: nudge, interrupt and restart worked
+  whenever their credentials were set, and so did the launch dialog's `POST tether/sessions` and
+  `…/{id}/launch`. In the port they are off until acceptance (plan sections 6 and 9). Off, a session reports
+  those capabilities unavailable (`409 nudge_unsupported` and the like) and a launch answers `503 disabled`.
+  Nothing reaches an agent. Settings writes (`PUT agents/settings`) are local and need no switch.
+- **The credentials are the old ones.** Nudges go as Tether mail with `tachyon.upstreams.tether_messages.token`.
+  Restarts use `tether_control.url` (default `tether.url`) and `.token`. An interrupt replies through the chat
+  bridge.
+- **The ceremony regression alert waits for the alerts slice.** The old hourly read raised a weekly
+  `ceremony.regression` alert into the alerts store, which is not ported yet; the hourly read keeps the daily
+  snapshot as before.
+- **The launch dialog's Tether reads** (`tether/workers`, `tether/sessions`, `tether/sessions/{id}`,
+  `catalog/launches`) are passed through on demand as the old console plugin did, with its reviewed paths,
+  queries and body fields. Errors are the port's flat `{code, message}`, not the plugin's nested
+  `{error: {code, message}}`.
+- **A fresh database has no collector state row.** The old migration 024 seeded `agents_collector_state`; the
+  port's baseline schema holds no rows, and migrate-from copies the old row. On a fresh database the first write
+  creates it, and until then it reads as the zero state. The old migrations 030 (`catalog_state`) and 032
+  (`alert_seq`) seed rows the same way, so their slices need the same handling.
+- **Postgres.** Upserts name their table on the right-hand side, scalar `MAX`/`MIN` are `CASE`s, the sample
+  pruning uses its key instead of `rowid`, and the bus and gap inserts read their id with `RETURNING`.
+
+## Transcripts (slice B10)
+
+- **The same bridge.** `/api/plugins/console/v1/transcripts/*` is the old Fragments Engine bridge with the same
+  routes, validation, error codes and upstream reads. The last good snapshot is kept in the migrated
+  `transcript_snapshot`.
+- **Off by default.** `tachyon.features.transcripts` comes before anything outbound. Off, the snapshot serves the
+  saved row (marked `unavailable`, error `disabled`), every other read is 503 `disabled`, and nothing dials
+  Fragments Engine. On, it reads `tachyon.upstreams.fragments` (URL and token reference).
+- **The old guard, kept.** A bearer that is not the browser session's own cookie gets 403 `forbidden`
+  ("Transcripts are for a browser session."). That covers API keys and tokens minted from a session or key. Then
+  the `transcripts.read` assurance applies (browser session). The scope is `tachyon.transcripts.read` on every
+  route.
+- **No API cache.** The old generic response cache is not ported. Reads go live, and only the snapshot walk is
+  shared between concurrent requests. To keep the list visible when Fragments Engine is down, the snapshot now
+  serves the saved row on any upstream error, an unreachable one included. The old bridge did that only on a
+  mapped failure, and its cache answered (still marked "live") when the connection was refused. Other reads
+  answer the upstream error, where the old cache served a cached copy for up to its window.
+- **The session cap** is `tachyon.transcripts.max_sessions` (200 to 20000, default 5000), as the old
+  `TACHYON_TRANSCRIPT_MAX_SESSIONS`.
+- **How the guard tells the browser session (pinned by `TestTranscriptsRoutesAuth`).** The identity middleware
+  turns the session cookie into `Authorization: Bearer <cookie value>` only when a request brings no
+  `Authorization` header; it never replaces one. The guard passes a bearer only when it equals the session cookie's
+  value, sent with that cookie. So a token the session minted for itself is refused (403 `forbidden`) on its own and
+  also when sent together with the session's cookie: the header stays the minted token. This corrects the earlier
+  note that such a token passed; the guard refuses every bearer except the cookie's own credential, as the old guard
+  refused any bearer.
+- **The guard depends on the session cookie's name.** The identity module names it `<app>_session` and does not
+  export the name. A served test fails if sign-in stops setting that cookie, before the guard could refuse every
+  browser. The framework gap CW-20261115-0110 (an identity flag saying a request is cookie-authenticated) replaces
+  this cookie-name check when it ships.
+
+## Approvals (slice B7)
+
+- **Same tables, same rows.** The inbox reads and writes the migrated `approval_items`, `approval_item_index`,
+  `approval_decision_log` (append-only on both dialects), `approval_defers`, `approval_batches` and
+  `approval_secrets`. The maintenance loop runs as before: index and decision-log backfill once at start, then the
+  secret purge and the expiry sweep every 30 s.
+- **The caller is the signed-in person.** New decisions record the principal id (`tachyon/identity`) as actor and
+  responder. Rows written before the port keep their old `browser-session:` refs. The old build's operator
+  session ref maps to the owner: history and audit label it "You" to the signed-in owner, and every other old
+  session ref "Operator session", as the old build labeled them. The mapping is at read time; no row changes.
+- **The secret key** is `tachyon.files.secret_key`, a secrets reference to the old key file's content (32 bytes or
+  64 hex characters). Point it at the same key so the migrated `approval_secrets` stay readable.
+- **Postgres.** The search filters use `LIKE … ESCAPE` (SQLite's `instr` has no Postgres twin); the in-transaction
+  writes whose failure is dropped (the derived index row, the defer clears) run in a savepoint, because a failed
+  statement aborts a Postgres transaction.
+
+## Chat data verbs (slice B6d)
+
+- **Same verbs, same grants.** Agents call the chat verbs on the agent data API as before. A credential holds a
+  verb only when its migrated grant names it.
+- **The verb catalog gains `chat.plan.list`, `chat.plan.create` and `chat.plan.move_step`.** Old main added them
+  to its `chat-plan` preset after B3's catalog was taken (#725). They are a parity carry. No migrated grant
+  holds them today; a grant that does is now accepted by `access reissue` instead of refused as unknown.
+- **The pinned proxy stays the pinned proxy.** The pin migrates with `service_proxy_pin` and names a service
+  identity, which `access reissue` keeps. The proxy's `X-Tether-Session-Id` scoping is unchanged.
+- **Activity actors keep their form** `agent:<identity id>`. A reissued credential keeps its service identity, so
+  entries written before and after the cutover attribute to the same id.
+
 ## Objects and object sync (slice B4)
 
 - **Same API.** The objects data verbs and the sync status route keep their paths and semantics: the agent API with
@@ -244,21 +438,39 @@ Details: `docs/api-contract.md`.
 - **Torque's credential** for the planner is `tachyon.upstreams.torque.token`, a secrets reference resolved per
   request.
 
-## Chat without threads (slice B6)
+## Chat (slices B6, B6b)
 
-- **Same API** for topics, bookmarks, plans (several per thread, from `main`'s #725), steps, workspace, scratchpad,
+- **Same API** for threads, messages, send, read, stop, both event streams, the chat-turns inbox and reply, the
+  app agent, topics, bookmarks, plans (several per thread, from `main`'s #725), steps, workspace, scratchpad,
   settings, continue, activity, context and the Work view (`docs/api-contract.md` section 5c). Compared with the
-  old build's handlers on copies of the same data.
-- **Threads are B6b** (CW-20261115-0025): thread list and detail, messages, send, read, stop and both event streams,
-  over the chat bridge's inbound side and the app agent. Until then:
-  - the thread-existence check reads the local tables (`chat.LocalThreads`);
-  - a topic's `message_ref` is not resolved, so its `seq` is null;
-  - changes are not streamed.
+  old build on copies of the same data.
+- **The Tether address keys the chat history.** The bridge stores each turn under the Tether address it was
+  synced from, and lists only the turns under the configured one; the chat outbox rows are owned by a digest of
+  the same address. `tachyon.upstreams.tether.url` must be spelled
+  exactly as the old `TETHER_ADDR` was, or the migrated history stops showing (nothing is lost; it reappears with
+  the old spelling). A setting to name the history's source apart from the address would be a post-adoption
+  improvement.
+- **Upstreams off by default.** With `tachyon.upstreams.tether.url` empty the bridge serves its stored turns and
+  dials nothing; the sync loop needs `tachyon.features.chat_sync` as well. The app agent runs only with
+  `tachyon.upstreams.app_agent.url` and `.session`. An inbox read with `Cache-Control: no-cache`, the chat roster
+  (`GET .../chat/agents`, passed through as before), a send, a reply and a stop still reach a configured Tether on
+  demand, as before.
+- **chat-turns freshness headers** use the old default policy (enabled, 3 s fresh, 60 s revalidate). The old cache
+  policy file's overrides come with the API cache slice.
+- **Run at start (B6c), as the old build did:** the backfill that links each migrated turn and outbox row of the
+  configured Tether address to its session object. It writes only those links; nothing is fetched, and it is
+  skipped while the address is empty.
+- **Not run at start:** the old build's move of outbox rows from a previous identity to a new one. The cutover
+  keeps the identity by spelling the Tether address as the old build did (the runbook item above).
+- **Sending to an agent (B6c) is behind `tachyon.features.chat_sync`**, with the inbound sync. Off (the default),
+  a send answers `503 disabled` and records nothing, so nothing reaches an agent before acceptance (plan sections
+  6 and 9). On, sends work as before. There is no background delivery: a migrated row that is not `sent` is sent
+  again only when the operator retries it with the same key within a day. Tether is given the same idempotency key
+  each time, which is what keeps a retry after a crash from delivering twice.
 - **`tachyon.workspace_dir`** (default `workspace`, anchored in the data directory) holds the chat workspace
   files, the old build's `$TACHYON_DATA_DIR/workspace`. The old layout is refused there too.
-- **Workspace files and migrate-from.** `migrate-from` copies the databases, not the old `workspace/` files. The
-  2026-11-14 snapshot has no workspace items, so nothing is lost today. If files exist at cutover, they must be
-  copied into `tachyon.workspace_dir` (open: raised with the program lead).
+- **Workspace files and migrate-from.** `migrate-from` copies the old `workspace/` files into
+  `tachyon.workspace_dir` (slice D2; the runbook below).
 - **Torque reads** (`internal/torqueread`, used by the Work view): the token is a secrets reference resolved per
   request, as for the planner.
 - **Not ported:** the chat dev stub (`TACHYON_CHAT_STUBS`) with its OpenAPI document and fixtures, as for the
@@ -303,6 +515,36 @@ ships its gap, and nothing new is built on them.
 Main has moved since 4a76422 under this layer (`chat/MessageBody.tsx`, `files/FileViewerPane.tsx`, `observations/store.ts`, `chat/aside/FileTree.tsx`, `chat/aside/Panels.tsx`). A sync slice
 before P1 picks that up.
 
+## Terminal (slice B12)
+
+- **The quick terminal is behind `tachyon.features.terminal`,** a new switch, default off. The old build served it
+  whenever it ran. Every pane and every approved agent command starts `ssh`.
+  - Off: the routes are not mounted (404), and the agent verbs are not listed (404), as on an old host without
+    the terminal.
+  - On: the old behaviour.
+  - Either way, startup closes the sessions a restart left open and fails the runs it left running.
+- **The policy file:**
+  - `tachyon.files.terminal_policy` names it as an absolute path. Empty means no policy file: no listed machines
+    beyond `~/.ssh/config`, and every agent command asks.
+  - The old build defaulted to `$DATA/terminal-policy.json`, so set the setting to that file's path to keep its
+    machines and rules.
+  - The file's format and its decisions are unchanged. The same decision table passes on both builds
+    (`policy_parity_test.go`).
+- **The bearer refusal:**
+  - The old handler refused any `Authorization` header. Here the identity middleware turns the session cookie into a
+    bearer, so the one bearer let through is exactly that cookie.
+  - An API key, or a token the session minted, is refused as before (`requester_cannot_approve`).
+  - **A small widening, recorded as for transcripts (B10):** a session-minted token sent both as the session cookie
+    and as the bearer passes the bearer check. It is still a person's token, and it still needs
+    `tachyon.terminal.control` and the operator scope.
+- **The operator check covers reads,** as `RequireOperatorReads` did: `tachyon.terminal.control` plus an operator
+  token on every route and on the WebSocket.
+- **Shutdown kills and reaps every pty process group.** The old build relied on its context killing them.
+- **Output redaction is unchanged.** The old `actionrun.Redact` is carried in the terminal package until the
+  action-run slice lands.
+- **An agent's `requested_by`** is its service identity id, which is what the old principal id was, so
+  `terminal.run.get` keeps finding migrated runs.
+
 ## What the operator does differently
 
 - **First run.** Create the owner offline before the first start:
@@ -312,8 +554,16 @@ before P1 picks that up.
 - **Data.** A new data directory. The old one is never opened by this build; its data is copied once:
   1. Stop the old unit.
   2. `sqlite3 <old>/tachyon.db ".backup DIR/tachyon.db"`, and the same for `jobs.db`.
-  3. `TACHYON_DATA_DIR=<new, empty> tachyon migrate-from --source DIR` (exit 0, report beside the new database).
-  4. `tachyon identity setup`.
+  3. If `<old>/workspace` exists: `cp -a <old>/workspace DIR/workspace` (read-only on the source).
+  4. `TACHYON_DATA_DIR=<new, empty> tachyon migrate-from --source DIR` (exit 0, report beside the new database).
+     It copies the rows, then the workspace files into `tachyon.workspace_dir`, each proved by SHA-256 against
+     its source and its `chat_workspace_items` row. A row whose file is missing stops the run before any row is
+     copied.
+  5. `tachyon identity setup`.
+
+  To copy the workspace files again into a target `migrate-from` has migrated (a file added to `DIR/workspace`
+  later): `tachyon migrate-from --source DIR --files-only`. It copies only what is missing, refuses a target file
+  that differs, and writes `migrate-from-files-report.json`; a rerun over a complete target copies nothing.
 
   `launches.db`, `backups/`, `plugins/` and old snapshots stay with the old directory.
 - **Upstream addresses must keep their exact form.** Write the Tether, GitHub and Cerberus upstream addresses in
@@ -321,3 +571,7 @@ before P1 picks that up.
   - Object sync derives schedule ids from those strings.
   - `migrate-from` refuses an upstream that differs, and one that is not configured at all.
   - `--allow-unchecked-instances` is for rehearsals with blank upstreams, never for the cutover.
+  - The chat history is keyed by the Tether address too: the chat bridge lists only the turns stored under the
+    configured `tachyon.upstreams.tether.url`, and the chat outbox only the rows owned by a digest of it. With any
+    other spelling the migrated chat history and outbox do not show (nothing is lost; they show again with the old
+    spelling).

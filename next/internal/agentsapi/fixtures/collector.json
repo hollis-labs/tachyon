@@ -1,0 +1,32 @@
+{
+ "collecting": true,
+ "sessions": 10,
+ "last_event_at": 1793321998000,
+ "strategy": "snapshot",
+ "sources": {
+  "tether": {
+   "state": "streaming",
+   "detail": ""
+  },
+  "chimera": {
+   "state": "polling",
+   "detail": ""
+  }
+ },
+ "dropped_output_frames": 0,
+ "open_gaps": 0,
+ "retention": {
+  "last_run_at": 1793321700000,
+  "rows_pruned": 1000
+ },
+ "bus_topics": {
+  "deploy": "off",
+  "restart": "off",
+  "task": "off",
+  "failure": "off",
+  "host": "no_emitter",
+  "workstream": "no_emitter",
+  "lifecycle": "live",
+  "card": "off"
+ }
+}
